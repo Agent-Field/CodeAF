@@ -166,23 +166,20 @@ func TestTheLandingsOwnDetailStaysOnTheCardUnderTheHeadline(t *testing.T) {
 	}
 }
 
-// AN OPEN CARD DOES NOT REPEAT ITS OWN PREVIEW. The muted line under the head
-// quotes the landing's first sentence, which is the sentence the expansion
-// prints in full one row lower — so on an open card the quote stands down. It
-// is still there the moment the card is closed again.
+// A compact card keeps its account inside; opening draws that account once.
 func TestAnOpenCardDropsTheQuotedPreviewItIsAboutToPrintInFull(t *testing.T) {
 	a := doneResultApp(t, 160, session.TaskDone, conflictedStoryNotice())
 
 	collapsed := taskText(a)
-	if !strings.Contains(collapsed, `"its branch task/write-a-10-chapter-story-9c1a did not merge cleanly`) {
-		t.Fatalf("the collapsed card lost its preview:\n%s", collapsed)
+	if strings.Contains(collapsed, "did not merge cleanly") {
+		t.Fatalf("the collapsed card leaked its detail:\n%s", collapsed)
 	}
 	clickHit(t, a, hitDone)
 	open := taskText(a)
 	if strings.Contains(open, `"its branch`) {
 		t.Fatalf("the open card still quotes the sentence it prints in full:\n%s", open)
 	}
-	// And closing it brings the preview back, unchanged.
+	// Closing it restores the compact notification unchanged.
 	clickHit(t, a, hitDone)
 	if again := taskText(a); again != collapsed {
 		t.Fatalf("closing the card did not restore it:\nwas:\n%s\nnow:\n%s", collapsed, again)

@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -16,9 +17,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -173,6 +176,10 @@ const (
 	// records, and rather than a note because a note is a static sentence where
 	// this opens as a question with a clock on it.
 	entryStanding
+	// entryTeam is ONE NOTE A CONVERSATION'S TEAM SENT IT, drawn as the quoted
+	// cards it is (teamcard.go) rather than as the session's dim lane or the
+	// person's own line.
+	entryTeam
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -245,6 +252,10 @@ type entry struct {
 	discussionID    string
 	discussionIndex int
 
+	// team is what a team delivery handed the conversation, line by line, on
+	// an [entryTeam] (teamcard.go); nil on every other entry.
+	team []session.TeamLine
+
 	kind entryKind
 	text string
 	turn int
@@ -272,6 +283,10 @@ type entry struct {
 	// ([app.noteBlock] says why, and a subharness card is the only shape that
 	// asks for it). It is false on every other note, which is nearly all of them.
 	block bool
+	// sheet says this note is a column, so a wrapped row keeps the column its
+	// first line already uses ([wrapSheet]). /help is the one note that asks
+	// for it: a continuation that started at the margin read as another key.
+	sheet bool
 
 	// told says this note is ADDRESSED TO THE PERSON rather than narration
 	// about the machinery, so the work chip may not swallow it (workfold.go's
@@ -286,6 +301,15 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+
+	// carried marks the note naming the skills a turn carried (session's
+	// turnSkillsNotice). It is not addressed to the person, so it does not hold
+	// a turn open the way [entry.told] does; it is a record of what the
+	// person's message took with it, so it sits under that message and a chip
+	// starts below it rather than swallowing it ([countWork]). Folded, the line
+	// vanished for good: an opened chip lists calls, not notes, so the only
+	// screen evidence that a skill reached a turn lasted as long as the turn.
+	carried bool
 
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
@@ -480,6 +504,10 @@ type entry struct {
 	// a value it cost the idle frame seven percent, which is most of what the
 	// memo was buying.
 	hung *toolBlock
+	// thread is the memo of a thread card: what a manager's team_send row
+	// hangs, or the answers under a team note's quoted line
+	// (teamthreadcard.go). A pointer for the reason hung is one.
+	thread *threadMemo
 
 	// demoted says THIS PROSE WAS NARRATION AND NOT THE ANSWER, and it is the
 	// whole of THE ANSWER HIERARCHY as far as a renderer is concerned
@@ -502,6 +530,10 @@ type entry struct {
 	// Provisional prose has arrived, but the response has not yet confirmed
 	// whether it ends in an answer or a tool call. It stays in the work view.
 	provisional bool
+	// addressed is an explicit assistant update, visible while its body streams.
+	// Completion remains a separate response confirmation, so stopping a partial
+	// update cannot present it as a finished reply.
+	addressed bool
 	// The same identity can be attached while the reply is still pending. Its
 	// done flag confirms ownership before any private tail receives a work fold.
 	confirmed *responseConfirmation
@@ -618,8 +650,9 @@ func (e *entry) forming() bool {
 // replaced it.
 type (
 	submittedMsg struct {
-		ch  <-chan session.Event
-		err error
+		call *hostCall
+		ch   <-chan session.Event
+		err  error
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -827,6 +860,23 @@ type (
 )
 
 type app struct {
+	hostReplayLoading bool
+	hostReplayPending []followingMsg
+	hostReplayWaiting bool
+	hostCalls         int
+	hostDeferred      []func() tea.Cmd
+	// telemetryNotice is the usage notice still owed to the person, drawn on the
+	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
+	// is owed or once the greeting that showed it has gone.
+	telemetryNotice string
+	// telemetryNoticeShown is the door's "it was seen" record, and
+	// telemetryNoticeOnFrame is a frame's note that it drew the notice. The frame
+	// only notes; the update loop calls the door, once
+	// ([app.settleTelemetryNotice]), and telemetryNoticeSettled says it has.
+	telemetryNoticeShown   func()
+	telemetryNoticeOnFrame bool
+	telemetryNoticeSettled bool
+
 	questionReplacement *questionReplacement
 
 	discussionFeeds map[string]*discussionFeed
@@ -871,6 +921,10 @@ type app struct {
 	// states the whole contract, taskowner.go is the only caller). Nil is a
 	// window with no engine road, which answers with the card instead.
 	openTaskOwner func(TaskOwnerAsk) (TaskOwnerView, error)
+	// elsewhereOf reads the other conversations' presence off this machine's
+	// disk for a window whose agent cannot (tui3.go's [Options.Elsewhere];
+	// taskview.go's [app.refreshElsewhere] is the only caller).
+	elsewhereOf func(transcript string, now time.Time) session.Elsewhere
 	// taskOwnerGen numbers the attaches this window has asked for and taskOwnerAt
 	// is the one still in flight. An answer carrying an older number is a view
 	// nobody wants any more: it is CLOSED on arrival rather than drawn, which is
@@ -894,6 +948,21 @@ type app struct {
 	updateArgs    []string
 	updateActive  bool
 	restart       *codeupdate.Plan
+	// THE OPENROUTER BALANCE (credits.go). readCredits is the door's reader and
+	// nil on every surface that cannot ask; the rest is what the loop keeps so
+	// the keys row never reads a file or scans a catalog while it draws.
+	readCredits         func(context.Context) (credits.Reading, error)
+	paymentRefusals     func(func()) func()
+	creditHookStop      func()
+	creditWake          *doorbell
+	creditPending       atomic.Uint32
+	creditRecordPending atomic.Bool
+	creditTrigger       *credits.Trigger
+	creditsLow          bool
+	implicitTalk        bool
+	creditSwitching     bool
+	chatCreditWarning   string
+	homeCreditWarning   string
 	// errandHome is the person's own home directory, resolved ONCE at `open` and
 	// held: the `~` project an item that belongs to no repository runs in
 	// ([app.errandPlace], [app.readBareBands], and homeexchange.go's
@@ -976,10 +1045,34 @@ type app struct {
 	// exactly that boundary (the entryCompact block), and a second line saying
 	// the same thing two rows above it is the surface stuttering.
 	earlierSeam bool
+	// recordRows is how many blocks at the FRONT of entries were drawn from the
+	// session's own record rather than said into this window: the opening
+	// replay, every helping [app.backfill] handed up afterwards, and the seam
+	// rows drawn between them.
+	//
+	// IT EXISTS SO A SECOND REPLAY CANNOT DRAW THE CONVERSATION ON TOP OF
+	// ITSELF. [app.replayList] keeps what is already on screen, and that is
+	// right for what it was written for: the record is fetched off the loop and
+	// the box is live the whole time it is in flight, so a person can type while
+	// it is coming and their sentence must not be buried. But it kept ALL of it,
+	// and rows a PREVIOUS replay drew from this same record are not something
+	// said afterwards. A replay arriving onto a surface already drawing the
+	// record put the whole conversation above itself: the same answers twice and
+	// two seams, which is the one thing [session.EarlierHistory] is written to
+	// prevent.
+	//
+	// It is counted in the walk that draws the rows rather than recognised
+	// afterwards by their text, because two rows of one conversation are equal
+	// in every field a comparison could reach.
+	recordRows int
 	// historyLoading admits one page command at a time, and historyGen makes its
 	// answer belong to the replay that asked for it.
 	historyLoading bool
 	historyGen     int
+	// roomPageAsked is the task whose stored page the door opening its room has
+	// just asked for and not found, so the room does not ask again
+	// ([app.roomProgramCheck]). Zero is every other opening.
+	roomPageAsked uint64
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of live and completed work.
@@ -1069,6 +1162,8 @@ type app struct {
 	// (moneydoor.go's [app.moneyNearRail]).
 	spendRail float64
 	railRead  bool
+	// The settings panel takes this command with its key or mouse response.
+	spendRailBindCmd tea.Cmd
 	// ctxWindow is the model's context in tokens as this surface last set it,
 	// and ctxTokens what the conversation currently weighs. The pair is the
 	// meter in the status line. The window is TRACKED rather than asked for
@@ -1323,6 +1418,34 @@ type app struct {
 	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
 	// home names a row by and what the flock is taken on.
 	behind map[string]*kept
+	// wall is the grid of every open conversation and the teams (wallcontract.go).
+	wall wallState
+	// traffic is the Traffic log's cache, its clock and its rail
+	// (teamtraffic.go).
+	traffic trafficState
+	// teamsDisk is where the teams are kept and the edits not yet written
+	// there (teamseam.go).
+	teamsDisk teamsDisk
+	// teamMenu is the strip chip's team switcher (teammenu.go).
+	teamMenu teamMenu
+	// tp is the teams page's own state: its selection, its reading of the
+	// store and the targets it drew (teamspage.go).
+	tp teamsPage
+	// tsheet is a team's card: its settings, its close and its delete
+	// (teamsheet.go).
+	tsheet teamSheet
+	// tmove is the `Move into…` picker, and tdrag a drag in the teams page's
+	// rail (teammove.go, teamdrag.go); tcrew is the teams page's members card
+	// (teamcrew.go).
+	tmove teamMove
+	tdrag teamDrag
+	tcrew teamCrew
+	// frontWaits is the engine's answer to whether the conversation in front is
+	// stopped on a person ([session.Agent.NeedsPerson]), asked once per message
+	// on the loop and read by every frame ([app.frontSignal]). It is the front
+	// tab's copy of the fact [behindWatch.waits] holds for every other tab, so
+	// the two sides of the strip read ONE predicate (tabsignal.go).
+	frontWaits bool
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
 	// than to any conversation, because there is one home — and it is bumped by
 	// every close, so a tick armed by a home that has since been closed cannot
@@ -1344,6 +1467,12 @@ type app struct {
 	// reader could reach before it existed would be a race on this field.
 	news    *doorbell
 	leaving *doorbell
+	// landedBell and serviceLands are the third and fourth of those doors: a
+	// provider listing that a launch warm or a ctrl+r walk stocked behind the
+	// frame (servicelands.go). Made with the surface for the same reason news
+	// is — the fan-out may ring before Init — and read only on the loop.
+	landedBell   *doorbell
+	serviceLands *serviceLands
 	// frontGen counts the conversations this window has taken up, and it is
 	// WHICH ONE IS IN FRONT rather than how many there have been: a door asked
 	// of one conversation and answered after the person switched to another
@@ -1506,9 +1635,6 @@ type app struct {
 	// pick is the model overlay (palette.go). Closed, it costs the frame
 	// nothing; open, it owns the keyboard and the bottom of the screen.
 	pick picker
-	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
-	// model picker because it has no filter and every item always takes two lines.
-	crewPick crewPicker
 	// effPick is the five-row thinking chooser `/effort` opens (effortchip.go).
 	// It is the crew chooser's shape for the crew chooser's reason: a fixed
 	// ladder is a thing you read rather than a thing you search.
@@ -1526,12 +1652,7 @@ type app struct {
 	// memory is the store the place reads and changes. It is optional because
 	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
-	// searchStore is the conversation index the search place reads, while
-	// searchStatus names the web plug the session's next call will use.
-	// usageLedger is the file the spend place reads. Each is optional and absent
-	// rather than broken when it is: search says what it is for, /status keeps no
-	// empty row, and an empty ledger draws the spend place's own teaching.
-	searchStore  SearchStore
+	// searchStatus names the web plug the next call will use.
 	searchStatus func() string
 	usageLedger  string
 	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
@@ -1689,6 +1810,7 @@ type app struct {
 	// is replaced in place: the run's report carries the whole trail, and a step
 	// left in the transcript would be that trail written twice.
 	harnessStep string
+	harnessName string
 	// designLane is the standing subscription to what the harness DESIGNER is
 	// doing (harness.go's design lane) and designGen the generation it belongs
 	// to. It is a lane of its own rather than the turn's stream because a design
@@ -1710,6 +1832,11 @@ type app struct {
 	connAsks  []connAsk
 	conns     Connections
 	connPanel connectPanel
+	// addPanel the add-a-provider door ([app.openAddProvider]): opened from
+	// the model picker's last row, it walks the machine for live servers and
+	// offers the vendored catalog beside them. Every row it activates ends in
+	// the one mint flow (startModelConnect, startCustomAdd).
+	addPanel addProviderPanel
 	// sources and sourceModels are the live model-service side of /connect.
 	// The default catalog still comes through models; only additional services
 	// live in sourceModels, keyed by their stable persisted id.
@@ -1728,14 +1855,29 @@ type app struct {
 	// it, because that path runs entirely on session events (harness.go).
 	harn      *subharness.Store
 	harnPanel harnessPanel
+	// crewUI is /crew: the five rows a person changes about the crew, edited
+	// where they stand, over the conversation (crewpanel.go).
+	crewUI crewPanel
 	// harnPick is the filtering list "/harness " opens over that same registry,
 	// and harnChip the name it was answered with — the one harness the next
 	// message will run, held in the tray above the box rather than in the draft
 	// (harnesspick.go).
-	harnPick  harnessPick
-	harnChip  string
-	connNames map[string]string
-	connFlows map[string]*connect.Flow
+	harnPick harnessPick
+	harnChip string
+	// skillPick is the filtering list "/skill " opens over the shelf
+	// (skillpick.go). It holds no attachment state of its own: the names live
+	// in the session, and the tray chip reads them there.
+	skillPick skillPick
+	// skillShelfSeen is the session's shelf as its last reading answered, nil
+	// until one has (skillpick.go's [app.readSkillShelf]). It outlives the
+	// list, so a list opened again draws the last answer while the next read
+	// is on its way.
+	skillShelfSeen *skillShelfReading
+	// skillDiskSeen is the last foreign folder scan. It outlives the picker
+	// so reopening can draw those rows while a fresh scan is in flight.
+	skillDiskSeen []skills.Skill
+	connNames     map[string]string
+	connFlows     map[string]*connect.Flow
 	// codexFlow is the model-service browser sign-in. Its result is tokens rather
 	// than a connected-account status, so it cannot live in connFlows; it is held
 	// for the same reason, so replacing the conversation can cancel its listener.
@@ -1765,6 +1907,9 @@ type app struct {
 	roomStop hudSpan
 	// roomBackSpan is the padded Back action in the breadcrumb row.
 	roomBackSpan hudSpan
+	// roomTabSpans is where the room's two tab names were drawn on the trail
+	// row, in tab order, and none on a frame too narrow for them (roomtabs.go).
+	roomTabSpans []hudSpan
 	// crumbs is where the breadcrumbs were drawn on the frame's first row, in
 	// columns, and what each of them opens (roomcrumbs.go). It is written by the
 	// draw — [app.roomHead] — and read by the press and the
@@ -1785,8 +1930,6 @@ type app struct {
 	// chatTabBar is the strip as it was last laid out, kept from frame to frame
 	// (chattabs.go's [tabBar] states the whole of why).
 	chatTabBar      tabBar
-	workTabOn       bool
-	railTaskPlanOn  bool
 	railPlanPending railPlanPending
 	workTabSettled  string
 	tabView         tabViewport
@@ -1883,6 +2026,10 @@ type app struct {
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
 	newsSilenceSaid bool
+	// watchSpaces counts the run of spaces a WATCHER has typed, which is how the
+	// door home is reached from a register with no box on the frame
+	// (watching.go's [app.watchKey]). It is zero everywhere else.
+	watchSpaces int
 	// linkLatency is the hosted connection's rolling round trip, and
 	// linkPingAsking keeps its slow clock to one call at a time. Both are zero on
 	// every local session and before the first hosted answer, which the
@@ -1946,39 +2093,32 @@ type app struct {
 	// stamp stands still for ever and this is the only thing that says a task
 	// somebody just started belongs on the page they are looking at.
 	railStamp uint64
-	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
-	// person has folded or opened AGAINST their default — nil is the design as
-	// shipped, and an absent key is a family nobody has touched, which is why this
-	// is a map keyed by node id and not a flag on the node. railTop is the
-	// window's offset into the SCROLLING PART of the roster's line list — the part
-	// under the pinned live head ([app.railLiveHead]), because work that is still
-	// going never leaves this column — resolved by the same [listTop] every other
-	// list on this surface scrolls with. railWhere is the focused row,
-	// named by id rather than by index because a fold takes rows out from under a
-	// cursor while nobody is looking, and railHold says the roster has been GIVEN
-	// the keyboard (alt+t) — without it there is no cursor, and every key still
-	// belongs to the draft.
+	// THE ROSTER'S OWN FACTS (task.go's rail). railTop is the window's offset
+	// into the roster's line list, resolved by the same [listTop] every other
+	// list on this surface scrolls with. railWhere is the focused row, named by
+	// identity rather than by index because a fold takes rows out from under a
+	// cursor while nobody is looking, and railHold says the roster has been
+	// GIVEN the keyboard (alt+t): without it there is no cursor, and every key
+	// still belongs to the draft.
 	//
-	// railWide is the third width tier, asked for with w and sticky until it is
-	// asked for again. railCramped is what earns the offer of it: the last layout
-	// cut a title with its own indent, and it is written where that is discovered
-	// ([app.railEntryRows]) and read by the footer, the way [app.railTop] is
-	// written by the window it resolves.
+	// railWide is the third width tier, asked for with alt+w and sticky until
+	// it is asked for again.
 	//
 	// railAway is the person's own standing answer to whether there is a column at
-	// all (ctrl+g, [app.railStow]). It outranks every width tier and the roster's
-	// own "one node raises it" rule alike — a column somebody put away stays away,
-	// through landings and new work and the next session, until they ask for it
-	// back — and it is the one piece of this block that survives the process,
-	// because it is the only one a person chose deliberately (config's
-	// ui.task_column).
-	railOpen    map[uint64]bool
-	railTop     int
-	railWhere   railSpot
-	railHold    bool
-	railWide    bool
-	railCramped bool
-	railAway    bool
+	// all (alt+l or ctrl+g, [app.railStow]). It outranks every width tier: a
+	// column somebody put away stays away, through landings and new work and the
+	// next session, until they ask for it back, and it is the one piece of this
+	// block that survives the process, because it is the only one a person chose
+	// deliberately (config's ui.task_column).
+	railTop   int
+	railWhere railSpot
+	railHold  bool
+	railWide  bool
+	railAway  bool
+	// side is the side column's own memory for the session: which of its two
+	// words is in front per kind of chat, what is folded, and where the
+	// Traffic's `new` line stands (sidecol.go).
+	side sideState
 	// away is the last reading of what the project's OTHER windows have out
 	// right now, and when it was taken (taskview.go's [app.refreshElsewhere]).
 	// It is a CACHE and not a subscription: the reading is a readdir and a
@@ -1986,6 +2126,7 @@ type app struct {
 	// so it is refreshed on the paint clock while something on screen is drawing
 	// it and held between times.
 	away elsewhereCache
+
 	// pilots are the watchers on the nodes that are running right now, keyed by
 	// id, and pilotGen the counter each one takes its generation from (task.go).
 	// Empty is the ordinary state: nothing is running, so nothing is watched.
@@ -2091,7 +2232,13 @@ type app struct {
 	// list reopened while it is out must not start a second one.
 	refreshModels       func(ctx context.Context) ([]Model, time.Time, error)
 	serviceModelRefresh func(context.Context, modelsource.Connected, []Model) ([]Model, error)
-	modelsFetching      bool
+	// refreshAllModels is [Options.RefreshAllModels]: ctrl+r walks every
+	// provider, not only the default catalog.
+	refreshAllModels func(ctx context.Context)
+	// warmEmptyProviders is [Options.WarmEmptyProviders]: the launch fetch.
+	warmEmptyProviders func(ctx context.Context)
+	providerFetchError func(id string) string
+	modelsFetching     bool
 
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
@@ -2140,15 +2287,19 @@ type app struct {
 	// so the flags are gone and the frame, the keyboard, the pointer and the tab
 	// bar all read this.
 	page page
-	// tabs and tabRow are WHERE THE TAB BAR WAS LAST PAINTED — one span per chip
-	// that survived the width ladder, and the row of the terminal the bar landed
-	// on (-1 when a short frame cut it off). They are written by the draw
-	// (pages.go's [placeFrameWithBar]) and read by the press, which is the same
-	// bargain every hit map on this surface strikes: a click resolves against
-	// what was actually drawn, never against what a second computation thinks
-	// was drawn.
+	// tabs and tabRow are WHERE THE NAV WAS LAST PAINTED: one span per place's
+	// button that survived the width ladder, and the row of the terminal the
+	// nav landed on (-1 on a frame with no head). They are written by the draw
+	// (head.go's [app.headRows], topnav.go's [app.navLine]) and read by the
+	// press, which is the same bargain every hit map on this surface strikes: a
+	// click resolves against what was actually drawn, never against what a
+	// second computation thinks was drawn.
 	tabs   []placeTabSpan
 	tabRow int
+	// navMemo is the nav's row as it was last laid out, and navMore is its
+	// fold, `more ▾`, and the menu of places behind it (topnav.go, navmore.go).
+	navMemo navMemo
+	navMore navMore
 	// boxRow and boxRows are WHERE A PLACE'S COMPOSER WAS LAST PAINTED — the row
 	// its first line landed on and how many lines it took — written by the same
 	// draw and read by the same press, on [app.chatTabs]'s bargain exactly. A click
@@ -2170,22 +2321,12 @@ type app struct {
 	// answers to one question.
 	bar barCursor
 	// tabHover is the place whose word the POINTER is resting on, and [pageNone]
-	// — the zero value — is "the pointer is not on the bar at all". It is what
-	// lifts one word's ink by one tier and changes nothing else on the frame
-	// (placemouse.go's [app.placeTabHover]).
+	// (the zero value) is "the pointer is not on the nav at all". It is what
+	// puts one word on the pointer's ground and changes nothing else on the
+	// frame (topnav.go's [app.navHover]).
 	tabHover page
-	// searchArm is how the search place's QUIET INTERVAL is armed, and nil — the
-	// real 150ms timer — everywhere but a test (place_search.go's
-	// [app.searchQuiet] holds the whole argument). It is a seam rather than a
-	// clock because what a test needs is not a different duration but no real
-	// time at all: the tick is delivered by hand, at the instant the test means.
-	searchArm func(gen int) tea.Cmd
-	// spend and search are those two places' own state: the ledger window and
-	// the lines it is over (spendpage.go), and the query in flight with the
-	// results it is answering for (searchpage.go). Closed, both cost the frame
-	// nothing and neither has read anything.
-	spend  spendPage
-	search searchPage
+	// spend holds the ledger window and the lines it is over.
+	spend spendPage
 	// places is the seam the tab bar's counts come through: the cached answer
 	// per place, recomputed on the clock ([app.refreshPlaceCounts]). It is nil
 	// until the first beat, and a nil seam draws no number anywhere, which is the
@@ -2205,6 +2346,10 @@ type app struct {
 	// not now that a conversation draws it too (pulsebeat.go). Every figure in it
 	// is read from the MACHINE, never from what a screen was holding (#525).
 	machine machineFacts
+	// placeSpaceArmed is the first of the two spaces that open home from a
+	// place with no box — spend, standing — held until the second lands or any
+	// other key disarms it (placekeys.go's [app.placeHomeGesture]).
+	placeSpaceArmed bool
 	// pageMsg is the one refusal a place that is not home has to say, drawn where
 	// the hint would be. It is one field for [homeView.msg]'s reason: pressing a
 	// door twice says the same thing once.
@@ -2258,6 +2403,11 @@ type app struct {
 	// pointer — the same arrangement the model segment and the jump chip use
 	// (render.go's [hudSpan]).
 	homeDoor hudSpan
+	// dock is where the row under the box drew its map of every open
+	// conversation on the last frame, and dockList the list it drew from,
+	// kept so the next frame refills it rather than allocating (walldock.go).
+	dock     dockMap
+	dockList []chatTab
 	// echoHome is raised around the one dispatch home makes on its own behalf
 	// ([app.homeSlash]), and it is what tells a command's answer apart from every
 	// other note this surface writes ([app.noteWritten] holds the argument).
@@ -2277,6 +2427,24 @@ type app struct {
 	targetHover      hoverKind
 	targetFolderSpan hudSpan
 	targetModelSpan  hudSpan
+	// footRow is which row of the frame home's keys row was drawn on — the
+	// row [targetFolderSpan] is on since the project moved down to it
+	// (hometip.go) — and tipRow is the tip row above the rule, with
+	// tipCloseSpan the columns of its cross. Both are -1 on a frame that
+	// drew neither.
+	footRow      int
+	tipRow       int
+	tipCloseSpan hudSpan
+	// chatTipClose is the columns of the cross on a conversation's tip, at the
+	// right end of its keys row (footswap.go's [app.hintRow]). tipQuietFrom is
+	// when this window last stirred, and tipAlarm the one pending alarm of the
+	// conversation's quiet clock, or zero (notice.go's THE CONVERSATION'S TIP).
+	// chatTipDrawn is the id of the tip the keys row last drew, or "", which is
+	// what a showing is counted from ([app.chatTipCount]).
+	chatTipClose hudSpan
+	chatTipDrawn string
+	tipQuietFrom time.Time
+	tipAlarm     time.Time
 	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
 	// columns on that same line — the draft's twins of [app.seamEffortSpan] and
 	// [app.seamApprovalSpan] (boxseam.go), recorded on the same bargain.
@@ -2375,13 +2543,15 @@ type app struct {
 	// call on the conversation's own model and the crew on disk seats nothing,
 	// so the readings built from it name the flag ([Options.OneModel], #444).
 	oneModel bool
-	// workSeatSaid is whether this session has already asked whether its work
-	// seat was inherited (crew.go's [app.sayWorkSeat]). It is a fact about the
-	// SESSION and not about the profile: the line is a receipt for work that is
-	// starting now, said once where a person is already looking, and a surface
-	// that said it again per task — or per node of one task — would be the
-	// warning-on-every-call this whole mechanism refused headless (#311, #312).
-	workSeatSaid bool
+	// crewSaid is the crew line this session has said for each routed task,
+	// and whether the task has landed (crew.go's [app.sayTaskCrew]): the line
+	// is said once and rewritten in place, so a row that updates twenty times
+	// is one line in the thread.
+	crewSaid map[uint64]crewLineSaid
+	// turnLandings holds only ids: the node and the crew line already hold the
+	// landing's facts. The turn boundary moves their conversation rows past its
+	// answer, where a closed work fold cannot hide them.
+	turnLandings []uint64
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard
@@ -2439,7 +2609,11 @@ type app struct {
 	// can sit on, and the draft it is holding (rewind.go). Closed, it costs the
 	// frame nothing.
 	//
-	// rewSay and rewSayAt hold a temporary rewind refusal on the frame clock.
+	// escArm is when the first esc landed, or zero — the door's other half, which
+	// lives out here rather than inside the mode because it is a fact about the
+	// mode being DOWN. rewSay is one sentence the mode could not act on
+	// ("nothing to rewind") and rewSayAt when it was said; both run down on the
+	// frame clock ([app.rewindSweep]), because this surface has one clock.
 	rew rewindMode
 	// rewSheet is the DELIBERATE rewind: the whole conversation as a full-frame
 	// timeline, with a search, a preview of the pick and a two-stage enter
@@ -2447,6 +2621,7 @@ type app struct {
 	// whole, and it is built from the session's own transcript rather than from
 	// the drawn blocks — which is why it can reach turns the inline mode cannot.
 	rewSheet rewindSheet
+	escArm   time.Time
 	rewSay   string
 	rewSayAt time.Time
 	// tmux says this surface is inside a multiplexer, so a clipboard write has
@@ -2699,7 +2874,7 @@ func (a *app) noteKilled() {
 // opens with, which is already about the keys nothing else names, is where it is
 // written down. It is the third and last clause because the two in front of it
 // are about the session a person is in and this one is about the program.
-const landingKeysWord = "esc back · ctrl+c interrupts or quits · ? for help"
+const landingKeysWord = "esc interrupts · ctrl+c quits · ? for help"
 
 func newApp(ctx context.Context, opts Options) *app {
 	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
@@ -2733,6 +2908,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		open:                opts.Open,
 		engineAnswers:       opts.EngineAnswers,
 		openTaskOwner:       opts.OpenTaskOwner,
+		elsewhereOf:         opts.Elsewhere,
 		anchorWorkspace:     opts.AnchorWorkspace,
 		errand:              opts.Errand,
 		standingRoot:        opts.StandingRoot,
@@ -2751,6 +2927,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		build:               strings.TrimSpace(opts.Build),
 		resumed:             opts.Resumed,
 		updateCheck:         opts.UpdateCheck,
+		readCredits:         opts.ReadCredits,
+		paymentRefusals:     opts.PaymentRefusals,
+		implicitTalk:        opts.ImplicitTalk,
 		resolveUpdate:       opts.ResolveUpdate,
 		installUpdate:       opts.InstallUpdate,
 		updateRunning:       strings.TrimSpace(opts.UpdateRunning),
@@ -2762,6 +2941,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		sources:             opts.Sources,
 		refreshModels:       opts.RefreshModels,
 		serviceModelRefresh: opts.RefreshModelsForService,
+		refreshAllModels:    opts.RefreshAllModels,
+		warmEmptyProviders:  opts.WarmEmptyProviders,
+		providerFetchError:  opts.ProviderFetchError,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
@@ -2782,11 +2964,11 @@ func newApp(ctx context.Context, opts Options) *app {
 		resume:              opts.Resume,
 		shared:              opts.SharedAgent,
 		stands:              opts.Standing,
+		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
 		memory:              opts.Memory,
-		searchStore:         opts.Search,
 		searchStatus:        opts.SearchStatus,
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
@@ -2822,12 +3004,21 @@ func newApp(ctx context.Context, opts Options) *app {
 		lastQuestionKey: time.Now(),
 		questionReach:   newQuestionDeliveryRule(),
 	}
+	a.telemetryNotice, a.telemetryNoticeShown = opts.TelemetryNotice, opts.TelemetryNoticeShown
 	// THE MEMOS ARE BUILT BEFORE ANYTHING ASKS THEM ANYTHING, because the frame's
 	// door onto each is a memo lookup and nothing else: a memo with no reader
 	// behind it answers "nobody has read that" forever (learned.go). They are
 	// named once, here, and driven by name nowhere afterwards.
 	a.pictures = newLearned(statPictureFile)
 	a.modelLists = newLearned(readModelCacheName)
+	if a.readCredits != nil {
+		a.creditTrigger = credits.NewTrigger(time.Now)
+		a.creditWake = newDoorbell(creditWakeMsg{})
+		a.creditsLow = config.CreditsLowAt(a.profileDir)
+		if a.paymentRefusals != nil {
+			a.creditHookStop = a.paymentRefusals(func() { a.creditRecordPending.Store(true); a.creditWake.ring() })
+		}
+	}
 	// AND THE HOME DIRECTORY IS ONE OF THEM, with one name rather than a file per
 	// name: the frame names where an errand with no project of its own lands, and
 	// the answer is a fact about the process and not about the frame asking.
@@ -2973,6 +3164,16 @@ func newApp(ctx context.Context, opts Options) *app {
 	// directory having an earlier conversation can see the welcome's list.
 	a.noticeEvent(eventBoot)
 	a.showUnreadProfileKeys(opts.UnreadProfileKeys)
+	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, here on the
+	// first frame, and says so in one line: its preset words became auto, the
+	// ids a person wrote stayed pinned (internal/config's crewmigrate.go). A
+	// hosted window's profile is the far machine's, and is not this one's to
+	// migrate.
+	if !a.hosted() {
+		if line, _ := config.MigrateCrew(a.profileDir); line != "" {
+			a.note(line)
+		}
+	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
 	}
@@ -2987,8 +3188,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	// IT HAS TO BE TRUE IN EVERY STATE, and the line it replaced was not: it
 	// promised an interrupt on the first frame of a session where nothing was
 	// running, and at that moment ctrl+c was the door rather than a stop. The
-	// clauses distinguish back navigation from the stop-or-quit key: Escape
-	// goes back, while Ctrl+C stops a running turn or leaves at rest (leaving.go).
+	// two clauses here are each true whatever is happening — esc stops the turn
+	// when there is one, and ctrl+c at rest always leaves (leaving.go).
 	//
 	// AND IT WAITS FOR THE GREETING TO GO. On an empty session the line lands
 	// when the conversation begins rather than above a screen that is asking for
@@ -3039,6 +3240,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// which is only now — home, a picker or a conversation. [app.Init] sends it,
 	// and from then on [app.retitle] sends it again only when it moves.
 	a.titleSent = terminalTitle(a)
+	a.refreshCreditWarnings()
 	return a
 }
 
@@ -3128,6 +3330,10 @@ var _ tea.Model = (*app)(nil)
 // has no wakeups; a hosted one also owns hostlink.go's separate five-second
 // measurement clock.
 func (a *app) Init() tea.Cmd {
+	// THE TEAMS ARE READ ONCE, HERE, so the strip's switcher is there from the
+	// first frame for a person who has teams (teams.go, teammenu.go). It is one
+	// small file, and the frame only ever reads what this loaded.
+	a.teamsEnsure()
 	// EVERY PICTURE ALREADY ON SCREEN IS STAT'D HERE, before the first frame asks
 	// about any of them. This is `open`, which is one of the two loops the fourth
 	// law lets read the disk, and it is the only reason a RESUMED conversation
@@ -3135,6 +3341,10 @@ func (a *app) Init() tea.Cmd {
 	// replaying the events that made them, so no arrival ever fires for them
 	// (imagepreview.go's [app.learnShownPictures], learned.go).
 	a.learnShownPictures()
+	// AND THE WINDOW HAS JUST OPENED, which is when somebody starts reading
+	// it: a conversation's tip waits out its quiet from here, as it does after
+	// an answer (notice.go's THE CONVERSATION'S TIP).
+	a.stirred()
 	// The repository is asked ONCE here and then only at turn ends. A branch is
 	// a fact that changes when a person changes it, and a person who checks out
 	// a branch mid-turn is between two turns by the time it matters.
@@ -3192,10 +3402,20 @@ func (a *app) Init() tea.Cmd {
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
-		a.setupDemoCmd(), a.checkForUpdate(), titleSend(a.titleSent),
+		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing()}
+		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
+		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
+		// (teamseam.go); nil on every local launch.
+		a.teamsWrite()}
+	if a.warmEmptyProviders != nil {
+		warm := a.warmEmptyProviders
+		standing = append(standing, func() tea.Msg {
+			warm(a.ctx)
+			return nil
+		})
+	}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3218,6 +3438,11 @@ func (a *app) Init() tea.Cmd {
 			standing = append(standing, a.wake())
 		}
 	}
+	// THE PROGRAM ROWS ARE ASKED FOR AT THE LAUNCH, off the loop, so the picker
+	// and /help list them from the first answer rather than the first keystroke
+	// (delegate.go). The list is the engine's, so a switch asks again
+	// ([app.attachConversation]).
+	standing = append(standing, a.installDelegates())
 	return tea.Batch(standing...)
 }
 
@@ -3243,7 +3468,27 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if mode, ok := msg.(tea.ModeReportMsg); ok {
 		a.ruler.noteModeReport(mode)
 	}
+	if _, ok := msg.(trafficLandedMsg); ok {
+		a.touch()
+		return a, nil
+	}
 	model, cmd := a.update(msg)
+	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
+	// the frame may only note that it drew it (view.go), because the door's
+	// record is a write to disk.
+	a.settleTelemetryNotice()
+	// A JUMP TO A MESSAGE WAITING FOR ITS CONVERSATION lands here, on the first
+	// message after that conversation is in front (teamjump.go).
+	if a.traffic.jump.key != "" {
+		cmd = tea.Batch(cmd, a.trafficLand())
+	}
+	// THE ENGINE'S ONE QUESTION ABOUT A PERSON IS ASKED HERE, once per message,
+	// and never by a frame. It is what every held tab's watcher asks after every
+	// event its conversation produces (keeper.go), asked of the conversation in
+	// front at the same beat, so a `?` cannot stand on a tab beside this one and
+	// go away when that conversation comes forward (tabsignal.go). It is read
+	// BEFORE the title below, which is drawn from it.
+	a.frontWaits = needsPerson(a.agent)
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd
@@ -3267,11 +3512,39 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.levelsWaiting() || a.waiting() || a.formingCardLive() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
+	// AND THE CONVERSATION'S TIP WAITS OUT ITS QUIET HERE, on the one line every
+	// message passes: whatever the message did — a key restarting the wait, a
+	// turn ending, the alarm itself landing early — this is where the next
+	// alarm is set, and only ever one (notice.go's [app.chatTipAlarm]).
+	if alarm := a.chatTipAlarm(); alarm != nil {
+		cmd = tea.Batch(cmd, alarm)
+	}
+	a.chatTipCount()
 	// AND A CLOCK SOMEBODY STOPPED IS TOLD TO THE ENGINE HERE, from a command
 	// rather than from inside the key routine that took the key
 	// (questionhold.go's [app.takeQuestionHolds] says why it is this line).
 	if hold := a.takeQuestionHolds(); hold != nil {
 		cmd = tea.Batch(cmd, hold)
+	}
+	// AND THE TRAFFIC CLOCK IS ARMED HERE, for the reason the title is asked
+	// here: a team made, a member joined, a manager opened, each happens by some
+	// message, and this is the one place every one of them has happened by
+	// (teamtraffic.go). It costs a walk of the loaded teams when it is not
+	// turning and nothing when it is.
+	if tick := a.trafficArm(); tick != nil {
+		cmd = tea.Batch(cmd, tick)
+	}
+	// AND AN EDIT TO THE TEAMS IS WRITTEN HERE, off the loop, for the same
+	// reason: every door that edits a team has happened by now, and it costs a
+	// length check when nothing was edited (teamseam.go).
+	if write := a.teamsWrite(); write != nil {
+		cmd = tea.Batch(cmd, write)
+	}
+	// AND THE TEAMS PAGE SETTLES WHICH CONVERSATION ITS PANE HOSTS, after
+	// every message that could have moved the front (teamspagehost.go). One
+	// comparison on every other place.
+	if bring := a.teamsSync(); bring != nil {
+		cmd = tea.Batch(cmd, bring)
 	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
@@ -3304,6 +3577,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// not survive has news, and a person who presses a key gets it rather than
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
+	// THE TEAMS PAGE TAKES WHAT IS ITS OWN AND HANDS THE REST TO THE MANAGER'S
+	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
+	// place.
+	if cmd, took := a.teamsRoute(msg); took {
+		return a, cmd
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// A zero size is a terminal that could not say — a headless boot, a
@@ -3342,6 +3621,40 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// one command waiting on it (doorbell.go).
 		return a, a.news.waitRing()
 
+	case customAddressCheckedMsg:
+		return a, a.customAddressChecked(msg)
+
+	case localServersProbedMsg:
+		p := &a.addPanel
+		if !p.open || msg.ctx != p.probeContext || msg.ctx == nil || msg.ctx.Err() != nil {
+			return a, nil
+		}
+		selected, hadSelection := p.current()
+		p.loading = false
+		p.rebuild(msg.probes, nil)
+		if hadSelection {
+			for i, item := range p.items {
+				if !item.heading && (selected.custom && item.custom || selected.sourceID != "" && item.sourceID == selected.sourceID) {
+					p.cursor = i
+					break
+				}
+			}
+		}
+		a.touch()
+		return a, nil
+	case serviceModelsLandedMsg:
+		// A PROVIDER'S LISTING LANDED BEHIND THE FRAME (servicelands.go): a
+		// launch warm or a ctrl+r walk stocked that provider's compartment off
+		// the loop. The desk is read HERE, on the loop, each pair's memo is
+		// dropped, and an open picker restocks — so a group fills without a
+		// reopen. The door is parked again in the same breath (doorbell.go).
+		if a.serviceLands != nil {
+			for _, pair := range a.serviceLands.take() {
+				a.serviceModelsLanded(pair[0], pair[1])
+			}
+		}
+		return a, a.landedBell.waitRing()
+
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
 		// [forwardSignals]) because Bubble Tea answers an interrupt by returning
@@ -3352,9 +3665,20 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// on the way out.
 		return a, a.quit()
 
+	case chatTipDueMsg:
+		// THE QUIET CLOCK'S ALARM. It carries nothing: the frame drawn after it
+		// asks the clock afresh, and a wait a key restarted meanwhile is set
+		// again for what is left of it ([app.chatTipAlarm], in [app.Update]).
+		a.tipAlarm = time.Time{}
+		a.touch()
+		return a, nil
+
 	case tea.KeyPressMsg:
 		a.sawAPerson()
-		// AND THE HAND IS STAMPED HERE, for the same reason the line above is:
+		a.stirred()
+		// AND THE HAND IS STAMPED HERE, because this is the only line every
+		// keypress passes through, and what the question block needs to know
+		// is whether somebody is at the keyboard at all:
 		// this is the only line every keypress passes through, and what the
 		// question block needs to know is whether somebody is at the keyboard
 		// at all (question.go's [app.questionQuieted]).
@@ -3393,6 +3717,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.hopKey(msg); took {
 				return a, tea.Batch(flushed, cmd)
 			}
+		}
+		// THE TRAFFIC'S KEYS READ NEXT (teamrailpointer.go): esc while its card
+		// is over the body, and the two chords that show it and go to the
+		// manager, which carry no text and take nothing from the box.
+		if cmd, took := a.trafficKeyPress(msg); took {
+			return a, tea.Batch(flushed, cmd)
 		}
 		// THE ROSTER READS NEXT, and only ever once it has been HANDED the
 		// keyboard (alt+t, task.go). Explicit focus outranks ambient place: a room
@@ -3488,6 +3818,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.PasteMsg:
+		a.stirred()
 		// Bracketed paste, whole, in one message — the parser coalesced the keys
 		// between the brackets for us, so the newlines inside it are text and not
 		// a stack of enters. Inside an open bracket it JOINS what the bracket has
@@ -3523,9 +3854,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(text)
 
 	case filesLoadedMsg:
+		if msg.home {
+			a.homeFilesLoaded(msg.paths)
+			return a, nil
+		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
+		a.fillMentions()
 		a.comp.rank()
 		a.touch()
+		return a, nil
+
+	case mentionRecentsMsg:
+		a.mentionRecentsLoaded(msg.rows)
 		return a, nil
 
 	case tasksLoadedMsg:
@@ -3536,7 +3876,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ok {
 			a.runSummaryNow = strings.TrimSpace(msg.summary.Now)
 			a.taskSheet.mine.now = a.runSummaryNow
-			a.taskSheet.reading.summaryNow = a.runSummaryNow
 			a.touch()
 		}
 		return a, nil
@@ -3572,7 +3911,34 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window to let go of (takeover.go).
 		return a, a.takeoverTick(msg)
 
+	case wallReadMsg:
+		a.wallTakeRead(msg)
+		return a, nil
+
+	case wallTreeMsg:
+		a.wallTakeTree(msg)
+		return a, nil
+
+	case wallTickMsg:
+		return a, a.wallTick()
+
+	case trafficTickMsg:
+		// A TURN THAT FOUND NOTHING DRAWS NOTHING: the frame before it stands
+		// (teamtraffic.go), which is what a quiet second over ssh costs.
+		cmd, quiet := a.trafficTick(msg)
+		if quiet {
+			a.ptr.still = a.drawn
+		}
+		return a, cmd
+
+	case wallNameTimeMsg:
+		a.wallNameTimedOut(msg.gen)
+		return a, nil
+
 	case behindStirMsg:
+		if a.wall.on {
+			return a, tea.Batch(a.behindStir(msg), a.wallStir(msg.key))
+		}
 		// A conversation this process holds and is not drawing has something to
 		// say about itself. The message carries no content — the surface reads
 		// the agent it already has a pointer to (keeper.go).
@@ -3596,7 +3962,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pictureOpenedMsg:
 		if msg.err != nil {
-			a.note(filesOpenFailedWord + drawableLine(msg.path))
+			a.toldNote(filesOpenFailedWord + drawableLine(msg.path))
 		}
 		return a, nil
 
@@ -3610,7 +3976,24 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		// A notch, a press and a release are never a still frame, even when the
+		// motion spent ahead of them in the same message was one (wall.go's
+		// [app.wallMotion]).
+		a.ptr.still = false
+		// A wheel under the switcher puts it away: it hangs from the strip,
+		// and the page under it is about to move.
+		if a.teamMenu.on {
+			a.closeTeamMenu()
+		}
+		if a.tsheet.on || a.tmove.on {
+			return a, nil
+		}
+		if a.wall.on {
+			a.wallWheel(msg.Mouse().X, msg.Mouse().Y, msg.Mouse().Button == tea.MouseWheelDown)
+			return a, nil
+		}
 		a.clearPlaceRowHover()
+		a.stirred()
 		a.placePointer.suspended = true
 		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
 		// the WHOLE screen: the conversation under a modal is not live, so a wheel
@@ -3643,11 +4026,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.questionDialogWheel(msg) {
 			return a, nil
 		}
-		// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
-		// the press: it is the router's row, drawn on all seven places in the same
-		// cells, so a wheel answered by the place under it would scroll a list for
-		// a gesture made over a row that is not that list's. Over the bar the
-		// wheel walks the PLACES, one room a tick (placemouse.go's
+		// THE CREW PANEL TAKES THE WHEEL WHILE IT IS UP: its lists are longer
+		// than its frame, and the conversation under a modal is not live
+		// (crewpanel.go).
+		if a.crewUI.open {
+			a.crewWheel(placeWheelDelta(msg.Mouse().Button))
+			return a, nil
+		}
+		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
+		// the press: it is the router's row, drawn on every page in the same
+		// cells, so a wheel answered by the place under it would scroll a list
+		// for a gesture made over a row that is not that list's. Over the nav on
+		// a place the wheel walks the PLACES, one room a tick (placemouse.go's
 		// [app.placeTabWheel]).
 		if cmd, took := a.placeTabWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
 			return a, cmd
@@ -3815,8 +4205,43 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
+		// THE QUIET CLOCK RESTARTS AFTER THE PRESS IS ANSWERED, not before. A
+		// press is resolved against the chrome laid out afresh ([app.chromeAt]),
+		// and a clock restarted first would have taken the tip row — and the
+		// cross being pressed — off that layout (notice.go's [app.chatTipPress]).
+		defer a.stirred()
+		// THE TEAM SWITCHER OWNS THE PRESS WHILE IT IS UP, as a menu does:
+		// its rows answer, and a press off it only puts it away (teammenu.go).
+		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
+			return a, a.teamMenuPress(msg.Mouse().X, msg.Mouse().Y)
+		}
+		// AND THE NAV'S FOLD MENU, on the same terms (navmore.go).
+		if a.navMore.on && msg.Mouse().Button == tea.MouseLeft {
+			return a, a.navMorePress(msg.Mouse().X, msg.Mouse().Y)
+		}
+		// The move picker, over everything, and then a team's card own the
+		// press while they are up, on the same terms (teammove.go,
+		// teamsheet.go).
+		if a.tmove.on {
+			if msg.Mouse().Button == tea.MouseLeft {
+				return a, a.teamMovePress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			return a, nil
+		}
+		if a.tsheet.on {
+			if msg.Mouse().Button == tea.MouseLeft {
+				return a, a.teamSheetPress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			return a, nil
+		}
+		if a.wall.on && msg.Mouse().Button == tea.MouseLeft {
+			if cmd, took := a.wallPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+		}
 		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
 		// press that fell through a modal would switch a tab, open a tool call or
 		// answer a question behind a sheet somebody is looking at
@@ -3848,13 +4273,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
-			// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, because it is
-			// the router's row and not any place's: it is drawn on every one of
-			// them, in the same cells, and a press answered by the place under it
-			// would be the one row of the frame that means something different
-			// depending on which room you happen to be standing in
-			// (placemouse.go's [app.placeTabPress]).
-			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+			// THE NAV IS READ BEFORE EVERY PAGE'S OWN ROWS, because it is the
+			// router's and not any page's: row zero is the places on every
+			// page, and a press answered by the page under it would be the one
+			// row of the frame that means something different depending on
+			// where you happen to be standing (topnav.go's [app.navPress]).
+			// The strip is a chat's row. On a place it is not drawn, so the
+			// row under the nav is the page's.
+			if cmd, took := a.navPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND HOME'S RULE IS READ BEFORE HOME'S OWN ROWS, on the tab bar's
@@ -3959,6 +4385,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.harnPanel.open {
 				return a, a.harnessPanelPress(msg.Mouse().Y)
 			}
+			// AND THE CREW PANEL, on the same terms, with the one difference that
+			// it reads the column too: the models row's two arrows are targets of
+			// their own (crewpanel.go).
+			if a.crewUI.open {
+				return a, a.crewPress(msg.Mouse().X, msg.Mouse().Y)
+			}
 			// AND THE PERMISSIONS PANEL IS THE THIRD OF THEM, on the same terms
 			// (permissions.go): a press on a row acts on that row, and a press
 			// anywhere else closes the list.
@@ -3988,6 +4420,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE @ LIST'S PREFIX WORDS, which are columns of its first row
+			// (mention.go). A press anywhere else on that list still falls through.
+			if cmd, took := a.mentionHeadPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE SKILL PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
+			// ELSE, on exactly the harness picker terms (skillpick.go).
+			if cmd, took := a.skillPickPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE THINKING LADDER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
 			// ELSE, on exactly the harness picker's terms and for its reason: it
 			// hangs over a draft somebody is still writing, so a press anywhere
@@ -4005,6 +4447,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// rather than in the box, and column-aware for the same reason: the
 			// row it rides is empty everywhere else, and empty space on this
 			// surface is not a gesture (jumpchip.go).
+			if a.chatTipPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			if a.jumpPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -4012,6 +4457,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// of the legend. Column-aware for the same reason again: the rest of
 			// that rule is a rule, and pressing a rule means nothing (home.go).
 			if cmd, took := a.homeDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE DOCK AT THE OTHER END OF THAT ROW, column-aware for the
+			// same reason: `▦` opens the wall and each cell goes to its
+			// conversation, and the blank between them and the keys is nothing
+			// (walldock.go).
+			if cmd, took := a.dockPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE MODEL'S NAME IS THE FOURTH, at the left end of the same
@@ -4029,6 +4481,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE APPROVALS CHIP AFTER IT IS THE SIXTH, on its own columns:
 			// pressing it walks the gate's wheel one stop (approvalchip.go).
 			if cmd, took := a.legendApprovalPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE PROJECT AT THE RIGHT END OF THE KEYS ROW IS THE SEVENTH:
+			// pressing it opens the folder chooser, the door `/folder` is
+			// (projectseam.go's [app.seamProjectPress]).
+			if cmd, took := a.seamProjectPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
@@ -4061,6 +4519,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, cmd
 			}
 			if a.roomBackPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
+			if cmd, took := a.roomTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			if a.programBriefPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
@@ -4151,6 +4615,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		a.ptr.still = false
 		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
 		// started: the press it would close was taken by the sheet, and letting
 		// this one through would end a sweep of a transcript nobody swept
@@ -4184,8 +4649,37 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.touch()
 		return a, nil
 
+	case crewUndoMsg:
+		// And the crew panel's undo window closing (crewpanel.go): one repaint,
+		// so the tick and the `z undo` offer come down.
+		a.touch()
+		return a, nil
+
 	case tea.MouseMotionMsg:
 		a.sawAPerson()
+		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
+		// targets light under the pointer, and the strip above it still does
+		// (wall.go).
+		if a.teamMenu.on {
+			a.teamMenuMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.navMore.on {
+			a.navMoreMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.tmove.on {
+			a.teamMoveMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.tsheet.on {
+			a.teamSheetMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.wall.on {
+			a.wallMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		// AND THE CHOOSER OWNS MOTION TOO, ahead of the sweep and ahead of every
 		// place: [app.hoverTarget] already answers for the whole screen while the
 		// sheet is up, and this branch is what keeps a drag started under it from
@@ -4228,12 +4722,20 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft && a.dragMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
-		// AND THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS HERE TOO, for the
-		// press's own reason: the bar is the router's row and means the same thing
-		// on all seven places, so the word under the pointer lifts wherever a
-		// person is standing (placemouse.go's [app.placeTabHover]).
+		// AND THE HEAD IS READ BEFORE EVERY PAGE'S OWN ROWS HERE TOO, for the
+		// press's own reason: the nav and the strip are the router's rows and
+		// mean the same thing on every page, so the button under the pointer
+		// takes its ground wherever a person is standing (topnav.go's
+		// [app.headHover]).
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
-		if a.placeTabHover(msg.Mouse().X, msg.Mouse().Y) {
+		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
+			// AND THE HEAD TAKES THE POINTER OFF HOME'S PROJECT NAMES, which
+			// underline under the pointer alone (home.go's [app.homeHover]) and
+			// would otherwise stay lit after it left them for the nav.
+			if a.home.projectHover != -1 {
+				a.home.projectHover = -1
+				a.touch()
+			}
 			return a, nil
 		}
 		if a.at(pageSettings) {
@@ -4449,6 +4951,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
 
+	case planRoomTickMsg:
+		// A RUN'S TASK'S PAGE, one beat later (planroom.go).
+		return a, a.planRoomPoll(msg.gen)
+
 	case jobLogMsg:
 		// A BACKGROUND JOB'S LOG, ONE READING LATER (roomjoblog.go). The reader
 		// itself decides whether another beat is owed, because the row it watches
@@ -4529,6 +5035,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// one (placecounts.go).
 		if a.at(pageHome) {
 			a.refreshPlaceCounts(a.now())
+			// AND THE TIP ON HOME'S ROW AGES ON THE SAME BEAT (notice.go).
+			a.noticeHomeBeat()
 		}
 		return a, a.homeBeat(msg.gen)
 
@@ -4559,15 +5067,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// flow — no focus moves, nothing is written, and the caret stays in the
 		// field on the left (onboarding.go).
 		return a, a.setupDemoBeatAt(msg.gen)
-
-	case searchTickMsg:
-		// The quiet interval after a keystroke, arriving. It becomes a store read
-		// only when the words have not moved on since (searchpage.go).
-		return a, a.searchTick(msg)
-
-	case searchDoneMsg:
-		a.searchDone(msg)
-		return a, nil
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)
@@ -4656,7 +5155,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case compactedMsg:
 		if msg.err != nil {
-			a.note("compact failed: " + msg.err.Error())
+			a.toldNote("compact failed: " + msg.err.Error())
 		} else {
 			a.noticeEvent(eventCompacted)
 		}
@@ -4665,13 +5164,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case landNoteMsg:
 		// A landing's whole answer is one line, the clean one and the one that
 		// could not go in alike (landcmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case cacheNoteMsg:
 		// A cache errand's whole answer is one line, success and refusal alike
 		// (cachecmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case spelledMsg:
@@ -4697,14 +5196,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// person names this node to any other command on the surface and the
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
-			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
+			started := msg.kind + " task " + msg.id + " started · " + msg.title
+			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
+				a.feed.noteWritten(started, false, []string{msg.id, msg.title})
+			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
 			// about it: the ground ladder's redirect, said when the work goes
 			// somewhere other than where it was asked to go. Its own dim line
 			// under the started one, in the same slot [app.noteFacts] already
 			// carries facts in; empty is every ordinary start and says nothing.
 			if msg.note != "" {
-				a.note(msg.note)
+				a.feed.note(msg.note)
 			}
 			a.noticeEvent(eventTaskStarted)
 		}
@@ -4792,6 +5294,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateCheckMsg:
 		return a, a.tookUpdateCheck(msg)
+	case creditWakeMsg:
+		if a.creditRecordPending.Swap(false) {
+			a.refreshCreditWarnings()
+		}
+		return a, tea.Batch(a.creditWake.waitRing(), a.takeCreditWake())
+	case creditReadMsg:
+		return a, a.tookCredits(msg)
 
 	case updateResolveMsg:
 		return a, a.tookUpdateResolve(msg)
@@ -4837,11 +5346,10 @@ func (a *app) paint() tea.Cmd {
 	if a.room != nil {
 		a.room.dirty = true
 	}
-	// AND THE PLAN PAGE'S OWN READING IS TAKEN ON THE SAME CLOCK, for the same
-	// reason: a page left open on a running task follows its newest step
-	// ([app.taskPlanFollow]), and a page on a settled task is not read at all —
-	// the clock stops with the task, one row down.
-	kick = tea.Batch(kick, a.taskPlanFollow())
+	// A PROGRAM'S ROOM READS ITS STORED PAGE ON THE SAME CLOCK: a room left open
+	// on work that can still move follows its newest action, and a room on a
+	// settled run is not read at all ([app.programRoomFollow]).
+	kick = tea.Batch(kick, a.programRoomFollow())
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
 	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
@@ -4948,7 +5456,10 @@ func (a *app) paint() tea.Cmd {
 		// update wakes this clock, and the clock keeps turning while the store
 		// says the run is still out (homestanding.go, standing.go).
 		a.standingAnimating() ||
-		// Rewind refusals expire on the shared frame clock.
+		// AND THE REWIND ARM IS THE SEVENTH, and the only one of them that turns
+		// with nothing on screen moving at all: the hint slot says "esc again to
+		// rewind" for half a second, and something has to be drawing the frame
+		// that takes it away again (rewind.go).
 		a.rewindTicking() ||
 		// AND A STOP BEING LET GO OF IS THE TENTH, and it is the third that turns
 		// with nothing on screen moving at all — a stopped turn draws nothing new
@@ -5022,11 +5533,20 @@ func (a *app) paint() tea.Cmd {
 		// paragraph would freeze mid-word until something unrelated asked
 		// for a frame (reveal.go).
 		a.liveRevealing() ||
-		// AND A PLAN PAGE ON A RUNNING TASK IS THE SEVENTEENTH, and it is the
-		// fourth that can be the whole of what is happening: the page follows a
-		// live edge the store writes from another process, and no turn of ours
-		// runs while it moves (taskplan.go's [app.taskPlanFollow]).
-		a.taskPlanRunning()
+		// AND THE WALL'S MOTION IS THE EIGHTEENTH: its tiles coming in row by
+		// row, an opened tile growing into the frame, and a working tile's
+		// spinner, each a function of this clock's time (wall.go).
+		a.wallAnimating() ||
+		// AND A RUN'S TASK'S ROOM ON WORK THAT IS STILL GOING IS THE SEVENTEENTH,
+		// and it is the fourth that can be the whole of what is happening: the
+		// room follows a live edge the store writes from another process, and no
+		// turn of ours runs while it moves (planroom.go's [app.planRoomPoll]).
+		a.planRoomRunning() ||
+		// AND A PROGRAM'S ROOM ON WORK THAT CAN STILL MOVE IS THE NINETEENTH, for
+		// the run's room's reason exactly: senior-dev writes its conversation from
+		// another process, and the room's age ticks on this clock
+		// (programroom.go's [app.programRoomFollow]).
+		a.programRoomFollows()
 	// THE WAIT ON THE MODEL is the only term that can hold this clock while
 	// the screen shows nothing but the spinner and the ellipsis, and a spinner
 	// glyph only changes every spinnerStep-th paint (styles.go). A wait whose
@@ -5043,6 +5563,13 @@ func (a *app) paint() tea.Cmd {
 			every *= spinnerStep
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
+	}
+	// A WORKING TILE ON THE WALL turns its spinner at the spinner's own
+	// cadence and no faster: the glyph changes once a step, and a whole wall
+	// drawn thirty times a second to move one glyph a quarter as often would be
+	// the costliest frame on this surface spent on nothing (wall.go).
+	if a.wallSpinning() {
+		return tea.Batch(kick, surfaceTick(a.frameEvery()*spinnerStep, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false
 	return kick
@@ -5087,7 +5614,8 @@ func promoteBlock(e *entry, at *time.Time) {
 //
 // The generation is assigned HERE and never at submit time, because a steering
 // submit must not invalidate the stream it is steering.
-func (a *app) adopt(msg submittedMsg) tea.Cmd {
+func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
+	defer func() { cmd = tea.Batch(cmd, a.hostCallSettled(msg.call)) }()
 	// The attachment tray settles on the same answer: a refused message keeps
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
@@ -5240,6 +5768,9 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 // clock should walk (reveal.go). Only [waitEvent] can answer that for a folded
 // run, which is why the bit is a parameter rather than a length read here.
 func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
+	if owner, ok := a.agent.(interface{ ReplayCovers(session.Event) bool }); ok && owner.ReplayCovers(ev) {
+		return nil
+	}
 	// after is what this event asks the program loop to DO, as opposed to what
 	// it asks the screen to say. Two events produce one — a turn ending, which
 	// may ring a terminal nobody is looking at (notify.go), and a task node
@@ -5525,7 +6056,17 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// blocks the next time a person scrolled off the top. [app.rebase] carries
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
-		a.rebase()
+		//
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
+		// paths, so this used to hand the bookkeeping over on a pass that found
+		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
+		// the reader was nowhere near, the seam was marked drawn without being
+		// drawn, and the conversation between the two went quiet. The surface
+		// then said there was nothing above it. Nothing had moved, so there is
+		// nothing to carry over ([session.Event.Unchanged]).
+		if !ev.Unchanged {
+			a.rebase()
+		}
 		// AND RE-READ THE METER HERE. The pass just changed what the
 		// conversation weighs by an order of magnitude, and the status line's
 		// only other reader is the end of the turn — which is a long way off
@@ -5547,6 +6088,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.retrying = true
 
 	case session.EventTurnDone:
+		a.refreshCreditWarnings()
 		if a.unreadChats == nil {
 			a.unreadChats = make(map[string]bool)
 		}
@@ -5561,6 +6103,10 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		after = tea.Batch(a.settle(), a.notifyDone())
 
 	case session.EventError:
+		a.refreshCreditWarnings()
+		if a.creditRefusalEnded(ev.Err) {
+			a.askCredits(credits.Refusal)
+		}
 		// AND A TURN THAT RAN OUT OF TRIES SAYS SO IN THOSE WORDS. The line used
 		// to be `error: after 3 retries: API error (429) …` — the engine's
 		// arithmetic and the provider's sentence, one inside the other, with
@@ -5645,6 +6191,7 @@ func (a *app) settle() tea.Cmd {
 	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
 	// into ([app.settleTurn]).
 	a.settleTurn()
+	a.sayTurnLandings()
 	// A browser wait belongs to the turn that opened it. Once that turn is over,
 	// the loopback listener is gone as well, so its report must stop claiming the
 	// browser can still finish and must stop bypassing the render cache.
@@ -5745,9 +6292,12 @@ func (a *app) settle() tea.Cmd {
 	a.hopQuick = config.QuickSwitchAt(a.profileDir)
 	a.askWait = a.consentWait()
 	a.notices.enabled = config.HintsAt(a.profileDir)
+	// AND THE ANSWER HAS JUST ARRIVED, which is when somebody starts reading
+	// it: the conversation's tip waits its quiet out from here (notice.go).
+	a.stirred()
 	// A turn ending is the moment most hints become true — the answer was long,
 	// the window is half full, the money is real — so it is the event they are
-	// decided on (notice.go).
+	// decided on, and it is the turn [noticeGap] is counted in (notice.go).
 	a.noticeEvent(eventTurnEnded)
 	a.follow()
 	a.touch()
@@ -6032,10 +6582,8 @@ func (a *app) take(u session.Usage) {
 	}
 }
 
-// note is the conversation's own [feed.note] WITH ONE MORE PLACE TO SAY IT, and
-// it shadows the embedded method deliberately: `a.note(…)` is what four hundred
-// call sites already spell, and a second verb for "say this where the person is
-// standing" would be four hundred chances to pick the wrong one.
+// note answers a UI action or reports something requiring the person's attention.
+// Engine bookkeeping uses feed.note so its audience is explicit at the producer.
 func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 
 // noteWritten is the one body behind all three of the app's note doors, and the
@@ -6045,7 +6593,7 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // whole, so a note written into the conversation behind it is written where
 // nobody can read it — and the answers that landed there were the ones a person
 // most needed: `there is no command called /x · / lists them`, /help's key
-// sheet, /status, /cost, `crew · frugal`, a budget that was set. Home has had a
+// sheet, /status, /cost, the /crew panel, a budget that was set. Home has had a
 // line for exactly this since it was built (pages.go's [app.placeMsgLine]) and
 // the dispatcher never reached it.
 //
@@ -6061,6 +6609,10 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // for. The flag is raised around the ONE dispatch home makes on its own behalf.
 func (a *app) noteWritten(text string, block bool, facts []string) {
 	a.feed.noteWritten(text, block, facts)
+	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
+		a.entries[n-1].told = true
+		a.entries[n-1].stale = true
+	}
 	if a.echoHome && a.at(pageHome) {
 		a.home.say(firstLine(text), "")
 	}
@@ -6143,6 +6695,11 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 // the transcript keeps. Slash tags are stripped from the payload but remain in
 // the person's message as the chipped token that explains which door acted.
 func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, start) }) {
+		return nil
+	}
+	call := a.hostCallStarted()
+
 	// STEERING IS NOT A SECOND TURN, and this is [app.startClock]'s law said
 	// about the transcript rather than about the burn window: a plain enter with
 	// a turn already streaming is a message spliced into THAT turn, queued by the
@@ -6195,7 +6752,7 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
 	}, a.wake())
 }
 
@@ -6405,11 +6962,11 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 // IT IS internal/session's OWN [foldsInto] SAID ON THIS SIDE OF THE CHANNEL. The
 // hub folds a slow subscriber's backlog by that rule; [waitEvent] folds a fast
 // stream's arrivals by this one, and both rest on the same law: EventTextDelta
-// and EventReasoning are each emitted as a kind and a text and nothing more, at
-// every one of the places that emit them. A kind that grows a second field comes
-// off BOTH lists in the same change, or each fold quietly drops it.
+// and EventReasoning preserve their kind and source audience while joining
+// text. Both folding layers keep audience boundaries, so a queued human update
+// cannot inherit an internal event's presentation.
 func foldsInto(prev, next session.Event) bool {
-	if prev.Kind != next.Kind {
+	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
 	return prev.Kind == session.EventTextDelta || prev.Kind == session.EventReasoning
@@ -6440,6 +6997,9 @@ func (a *app) unfold(turn int) {
 // folded the transcript's newest turn while a node's page was up would be
 // folding a cluster nobody can see.
 func (a *app) bodyTurn() int {
+	if run := a.orchOf(); run != nil && run.transcript != "" && len(run.journal) > 0 {
+		return run.journal[len(run.journal)-1].turn
+	}
 	if a.room != nil {
 		return a.room.turn
 	}
@@ -6576,12 +7136,18 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// ([app.roomBackPress]), which is the pointer's share of the same exit.
 		return
 	}
+	// A ROW UNDER A RUN'S TASK STANDS FOR ANOTHER TASK OF THE RUN, and a press
+	// on it opens that task's room, the way its row on the side list does
+	// (planroom.go's [app.planRoomPartRows]).
+	if r.plan != "" && a.roomPlan() != nil {
+		return a.openRailPlan(r.plan, nil)
+	}
 	// A TASK LINK IS THE ONE TARGET INSIDE A ROW, so it is resolved before the
 	// row's own answer: the prose it sits in has no gesture of its own, and a
 	// reference read after the body would be a door the body had already closed
 	// the room behind (markdown.go's [linkifyTasks]).
-	if a.linkPress(x, r) {
-		return
+	if took, open := a.linkPress(x, r); took {
+		return open
 	}
 	// AND THE FOOT UNDER A TABLE THAT WAS CUT IS THE OTHER ONE, resolved here for
 	// the same reason and in the same breath: it is a phrase inside a row of the
@@ -6626,6 +7192,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitThread:
+		a.trafficToggle(r.open)
 	case hitPictureOriginal:
 		return a.openPictureAt(r.entry, r.pictureIndex)
 	case hitPictures:
@@ -6635,6 +7203,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.togglePictureAt(r.entry, r.pictureIndex)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
+	case hitAction:
+		a.toggleProgramAction(int64(r.turn))
 	case hitTask:
 		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
 		// brief, which is the card's own text one fold down — and the question a
@@ -6685,33 +7255,52 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 // answer, which for a paragraph is nothing at all. The gap between two links is
 // a sentence, not a seam, and swallowing a click on it would make the paragraph
 // a place where missing costs you the page.
-func (a *app) linkPress(x int, r row) bool {
+//
+// A TEAM REFERENCE IS THE SAME KIND OF DOOR (teamlink.go): a member opens, or
+// is resumed and opened, and a team's name opens the teams page on it.
+func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 	if len(r.links) == 0 || a.welcome.open {
-		return false
+		return false, nil
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
+			// A HANDLE ON A THREAD CARD OPENS ITS MEMBER AT THE MESSAGE: an
+			// answer at the member's own post, the card's header at the message
+			// as the member was told it (teamjump.go).
+			if land := a.threadRowLand(r); land != "" && link.member != "" {
+				if t, ok := a.teamByID(link.team); ok {
+					if m, ok := t.Member(link.member); ok {
+						return true, a.trafficJump(m.Key, land)
+					}
+				}
+			}
+			if link.team != "" {
+				return true, a.teamLinkPress(link)
+			}
+			if link.member != "" && link.id == 0 {
+				return true, a.mentionChatPress(link.member)
+			}
 			a.openRoomFor(link.id, link.title)
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // linkHoverAt is which reference of this row's BLOCK the pointer is over, and -1
-// for none. It is the ordinal rather than the position on the row for the reason
+// for none, with a team reference's identity for the hint line ([teamLinkKey]). It is the ordinal rather than the position on the row for the reason
 // [taskLink.ord] carries one (markdown.go), and it is the same test [app.linkPress]
 // makes so the words that light are the words that open something.
-func (a *app) linkHoverAt(x int, r row) int {
+func (a *app) linkHoverAt(x int, r row) (int, string) {
 	if len(r.links) == 0 || a.welcome.open {
-		return -1
+		return -1, ""
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
-			return link.ord
+			return link.ord, teamLinkKey(link)
 		}
 	}
-	return -1
+	return -1, ""
 }
 
 // statusPress resolves a click on the status row's MODEL SEGMENT, and reports
@@ -6849,6 +7438,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runUpdateCommand(rest)
 
 	case "autonomy":
+		a.noticeEvent(eventAutonomyAsked)
 		if rest != "" {
 			return a.changeAutonomy(rest)
 		}
@@ -6865,6 +7455,10 @@ func (a *app) slash(line string) tea.Cmd {
 		}
 		return a.quit()
 
+	case "dismiss":
+		a.dismissNotifications(rest)
+		return nil
+
 	case "help":
 		// THE KEY SHEET CARRIES ITS PAYLOAD ON THE LEFT (payload.go): the chord is
 		// the thing a person came here to find and the sentence beside it is the
@@ -6878,6 +7472,9 @@ func (a *app) slash(line string) tea.Cmd {
 		// pasted into a shell. /status still prints it whole.
 		help := helpText(a.hostedPath(tildePath(a.file, a.tilde)), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
+		if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
+			a.entries[n-1].sheet = true
+		}
 		return nil
 
 	case "budget":
@@ -6987,35 +7584,9 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "workspace":
 		if rest == "" {
-			a.note("usage: /workspace <path>")
-			return nil
+			return a.openWorkspacePick()
 		}
-		if a.anchorWorkspace == nil {
-			a.note("this conversation already has a workspace")
-			return nil
-		}
-		resolved, err := a.anchorWorkspace(rest)
-		if err != nil {
-			a.note("could not set the workspace: " + err.Error())
-			return nil
-		}
-		a.workspace = resolved
-		a.owned = false
-		a.place = placeShown(resolved, false, a.host)
-		// THE BRANCH IS ASKED FOR, NOT WAITED ON. This used to call the probe
-		// straight — two `git` processes under one four-hundred-millisecond
-		// ceiling, run on the update loop, so a person who typed `/workspace`
-		// into a large repository watched the whole surface stop for up to four
-		// tenths of a second before their own keystroke was drawn. It takes the
-		// road every other reading of the repository takes ([app.probeGit],
-		// armed at `open` and at every turn end): the command runs off the loop
-		// and the branch arrives as a gitMsg, which is exactly the same nothing
-		// the legend draws until a probe answers.
-		a.branch, a.branchDirty = "", false
-		a.anchorWorkspace = nil
-		a.note("workspace · " + a.hostedPath(resolved))
-		a.touch()
-		return a.probeGit()
+		return a.setWorkspace(rest)
 
 	case "folder":
 		// WHICH FOLDER DO YOU MEAN, asked at any moment. Bare, it is the picker
@@ -7026,23 +7597,26 @@ func (a *app) slash(line string) tea.Cmd {
 		// where it starts.
 		return a.openFolderPick(rest)
 
+	case "project":
+		// AND THE OTHER HALF OF THE WORD IS HOME'S (projectcmd.go). A pin about
+		// the NEXT conversation means nothing inside one, and the two acts are
+		// one keystroke apart in spelling — so this says which screen it lives
+		// on and which command does the neighbouring job here, rather than
+		// quietly doing the neighbouring job.
+		a.note(projectIsHomesWord)
+		return nil
+
 	case "land":
 		// The other end of choosing a folder: what was written for a folder this
 		// conversation only refers to, put into it. Shown first and done second
 		// (landcmd.go), and the landing itself runs off the loop.
 		return a.runLandCommand(rest)
 
-	case "image":
-		// The other door onto the tray, for a picture that is not under this
-		// directory or not in the walk: a path, attached (attach.go).
-		a.attachPath(rest)
-		return nil
-
 	case "attach":
-		// The same tray, for everything that is not a picture: a log, a CSV, a
-		// stack trace saved to a file. The model is handed the PATH rather than
-		// the contents, because an attached file is a file and the session
-		// already has a `read` tool (attach.go).
+		// THE tray, for anything: a log, a CSV, a stack trace saved to a file —
+		// and a picture, which the tray tells apart by its name (attach.go). A
+		// file is handed to the model as a PATH rather than its contents, because
+		// the session already has a `read` tool; a picture travels as the picture.
 		//
 		// AND WITH NO PATH AFTER IT, THE BROWSER — the same sheet /folder opens,
 		// with file intent (folderplace.go's [app.openContextPick]). It used to
@@ -7050,6 +7624,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// answer: somebody who typed the word without the path is somebody who
 		// does not know the path, and a browser is the thing they asked for.
 		if strings.TrimSpace(rest) == "" {
+			a.noticeEvent(eventAttached)
 			return a.openContextPick("", false)
 		}
 		a.attachFilePath(rest)
@@ -7069,14 +7644,13 @@ func (a *app) slash(line string) tea.Cmd {
 		// to remember what home exists to show them (home.go).
 		return a.showPage(pageHome)
 
-	case "search":
-		// THE TYPED DOOR ONTO THE SEARCH PLACE, and it takes no argument on
-		// purpose. The place IS a box — typing in it searches and the read goes
-		// out when the box has been quiet for a moment (place_search.go) — so a
-		// query handed in at the command line would be a second way of asking the
-		// same question that could rank its answers differently from the one the
-		// person then keeps typing into.
-		return a.showPage(pageSearch)
+	case "wall":
+		// EVERY OPEN CONVERSATION AT ONCE, as a grid of live tiles (wall.go).
+		return a.openWall()
+
+	case "teams":
+		// THE TEAM-LEVEL VIEW, which is a place (place_teams.go).
+		return a.showPage(pageTeams)
 
 	case "spend":
 		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word
@@ -7140,7 +7714,21 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
+	case "skill", "skills":
+		// THE SHELF, AS A PICKER. Bare, it opens the list on the whole shelf
+		// with the attached ones at the top, which is the same answer the
+		// space after the command gives (skillpick.go); the surface writes
+		// the command and its query into the box rather than opening the list
+		// from nowhere. A path typed on home must survive the new conversation
+		// that home opens before this command reaches the picker.
+		a.input.reset()
+		a.input.insert("/skill " + rest)
+		cmd := a.edited()
+		a.touch()
+		return cmd
+
 	case "subharness":
+		a.noticeEvent(eventSubharnessOpened)
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
 		// intake card behind each of them (subharness.go). Unlike /harness this
 		// one DOES take a name: a subharness's name is its identity across the
@@ -7185,12 +7773,10 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "crew":
-		// The four models codeaf uses on your own behalf, as one word (crew.go).
-		// The bare form is the three presets with yours marked; a word applies
-		// one. An unknown word shows the three and changes nothing, which is the
-		// shape every choice row on this surface refuses in.
-		a.runCrew(rest)
-		return nil
+		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
+		// allowed and what is pinned, which persists; nothing else about a crew
+		// sticks.
+		return a.runCrew(rest)
 
 	case "effort":
 		// How hard THIS conversation thinks (effortchip.go). The bare form opens
@@ -7199,11 +7785,13 @@ func (a *app) slash(line string) tea.Cmd {
 		// the shape every choice row on this surface refuses in.
 		return a.runEffort(rest)
 
-	case "ask":
-		return a.runAskCommand(rest)
-
 	case "task":
 		return a.runTaskCommand(rest)
+
+	case "redo":
+		// `/redo stronger` — the last task again on a stronger crew (crew.go,
+		// taskcommand.go's [app.runRedo]).
+		return a.runRedo(rest)
 
 	case "history":
 		// The place onto every task this MACHINE has run, this session's and every
@@ -7263,13 +7851,13 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runCacheCommand(rest)
 
 	case "manual":
-		// codeaf's own manual, in the conversation, AS WRITTEN (manualcmd.go).
-		// It is an answer rather than a place for /status' reason — a person who
-		// asked a question about the product wants it where they can scroll back
-		// to it — and it is a lookup rather than a turn, so it makes no model
-		// call and spends nothing.
-		a.runManualCommand(rest)
-		return nil
+		a.noticeEvent(eventManualAsked)
+		// codeaf's own manual, ASKED OF THE MODEL (manualcmd.go): the words go
+		// out as a turn of this conversation, told to answer from the manual and
+		// to name the page. It has been a turn and not a lookup since
+		// 2026-09-22, so the answer lands where every other answer lands, and
+		// it spends what a turn spends.
+		return a.runManualCommand(rest)
 
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
@@ -7300,7 +7888,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "rewind":
 		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE
-		// (rewindsheet.go). Escape remains back navigation
+		// (rewindsheet.go), while esc esc keeps the quick inline gesture
 		// (rewind.go). Somebody who typed six letters to get here has already told
 		// this surface that the answer is not the message they just sent — it is
 		// somewhere back in the conversation, and finding it wants the whole of the
@@ -7329,6 +7917,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// are really on this disk, it was a drop and it becomes chips.
 		if a.droppedLine(line) {
 			return a.edited()
+		}
+		// A PROGRAM CODEAF CARRIES IS A COMMAND OF ITS OWN (delegate.go). It is
+		// asked for last, after the literal table, so nothing a program is
+		// called can shadow a word this surface already answers to.
+		if isDelegateCommand(name) {
+			return a.runDelegateCommand(name, rest)
 		}
 		a.note(unknownCommandWord(name))
 		return nil
@@ -7404,6 +7998,9 @@ func (a *app) openConversation(file string) (Conversation, bool, error) {
 // draft and the trio. That is what `whole` says, and it is the caller's own fact
 // rather than something guessed from the fields.
 func (a *app) takeUp(conv Conversation, whole bool) {
+	// ANOTHER CONVERSATION IS ANOTHER ROW: a cross pressed over the one being
+	// left does not blank the one arriving (notice.go's [app.liftChatTipCross]).
+	a.liftChatTipCross()
 	if conv.Agent != nil {
 		a.agent = conv.Agent
 		// AND EVERY DOOR ASKED OF THE CONVERSATION BEING PUT DOWN IS NOW A DOOR
@@ -7482,7 +8079,7 @@ func (a *app) freshAndEmpty() bool {
 		return false
 	}
 	// A NOTE IS NOT A CONVERSATION. Every surface opens with the surface's own
-	// lines on it — `esc back · ctrl+c interrupts or quits`, a door's notice, a
+	// lines on it — `esc interrupts · ctrl+c quits`, a door's notice, a
 	// refusal somebody read — and counting those would make "fresh and empty"
 	// false on the very first frame of every session, which is the one state
 	// this test exists to recognise.
@@ -7619,22 +8216,25 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// conversation they were in is still running.
 	switch {
 	case replacing && a.file != "":
-		a.note("new session · " + a.hostedPath(a.file))
+		a.toldNote("new session · " + a.hostedPath(a.file))
 	case replacing:
-		a.note("new session")
+		a.toldNote("new session")
 	default:
-		a.note("new conversation · " + a.place)
+		a.toldNote("new conversation · " + a.place)
 	}
 	if conv.Notice != "" {
 		// The door had something to say about HOW this conversation came to be
 		// open — "session open elsewhere — started a new one" is the sentence
 		// that exists — and the entry line is where the first conversation's own
 		// notice lands too ([Options.Notice]).
-		a.note(conv.Notice)
+		a.toldNote(conv.Notice)
 	}
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
 	}
+	// A conversation started while a team is shown is one of that team
+	// (teams.go's [app.teamJoinFront]).
+	a.teamJoinFront()
 	return cmd, true
 }
 
@@ -7731,6 +8331,11 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 // conversation it is holding — ending the ones this process runs, detaching from
 // the ones a host runs (keeper.go's [app.leaveEverything]).
 func (a *app) quit() tea.Cmd {
+	if a.creditHookStop != nil {
+		a.creditHookStop()
+		a.creditHookStop = nil
+	}
+	a.creditWake.close()
 	// A provider connection owns a loopback listener. It leaves with the
 	// surface even when the browser is still open, just as account connections
 	// and file doors below do.
@@ -7769,7 +8374,7 @@ func (a *app) quit() tea.Cmd {
 	return tea.Quit
 }
 
-// interrupt is ctrl+c: stop the turn, keep what it said.
+// interrupt is esc: stop the turn, keep what it said.
 //
 // EVERYTHING A STOP OWES THE SCREEN IS PAID AT THE KEY, and that is the whole of
 // what this function changed when the interruption wave went through it. The
@@ -7782,7 +8387,7 @@ func (a *app) quit() tea.Cmd {
 // disagreeing with the one fact the person is certain of — they pressed the key.
 func (a *app) interrupt() {
 	a.interruptTurn()
-	// CTRL+C STOPS EVERYTHING, including both ways a later turn can already be
+	// ESC STOPS EVERYTHING, including both ways a later turn can already be
 	// waiting. The session drops its follow-up queue on interrupt; the surface
 	// drops that mirror and its editable parked queue in the same keypress so the
 	// stream close cannot orphan or unexpectedly send either one.
@@ -7792,7 +8397,7 @@ func (a *app) interrupt() {
 
 // interruptForBarge stops the current turn but preserves the draft
 // [app.bargeIn] just parked. ctrl+shift+enter promises stop-and-send; it shares the
-// stop machinery with ctrl+c without sharing ctrl+c's queue-clearing decision.
+// stop machinery with esc without sharing esc's queue-clearing decision.
 func (a *app) interruptForBarge() {
 	a.interruptTurn()
 	a.dropFollows()
@@ -7807,6 +8412,8 @@ func (a *app) interruptTurn() {
 		return
 	}
 	a.agent.Interrupt()
+	a.flushUpdatePrefix()
+	a.finishResponse(true)
 	a.state = stateInterrupted
 	// AND THE STOP IS BOUNDED FROM THIS INSTANT. See the block below
 	// [app.windingDown]: the letting-go is the engine's and it takes as long as
@@ -7854,7 +8461,7 @@ func (a *app) interruptTurn() {
 	a.note("stopped")
 	// AND THIS TURN PROMOTES NOTHING (hierarchy.go's [app.cutTurn]). The mark goes
 	// on the blocks at the keypress so the demotion is on screen the moment the
-	// person presses ctrl+c, and again when the stream finally closes ([app.settle]),
+	// person presses esc, and again when the stream finally closes ([app.settle]),
 	// because events in flight land between the two.
 	a.cutTurn(a.turn)
 }
@@ -7866,9 +8473,25 @@ func (a *app) interruptTurn() {
 // it are still true and the second one is what dictated how this was built. What
 // changed is that the thing it said did not exist now does.
 //
-// The stop bound is a clock, not a second key: Ctrl+C already asked the turn
-// to stop, and Escape must remain navigation. The deadline starts on that
-// first stop and releases a turn that will not finish letting go.
+// WHAT THE ARGUMENT GOT RIGHT, FIRST HALF: THERE IS NO KEY LEFT. esc's grammar
+// in the conversation is read in a fixed order (input.go, rewind.go): a recall
+// walk takes it, then [app.escRewind] — where the first esc ARMS the rewind on
+// its way past and a second one inside [rewindArmWindow] OPENS it — and only
+// then [app.interrupt]. So every esc that lands within half a second of another
+// esc already belongs to rewind, and THE INTERRUPT IS NOT FOR SALE cuts the
+// other way just as hard. Putting a hard stop AFTER the window does not save it
+// either, because an esc past the window is a FIRST esc again, so the key would
+// mean "stop harder" or "open the rewind" depending on what the person did half
+// a second later — one keypress with two readings, which is the one thing this
+// keyboard cannot have. ctrl+c is spoken for on both sides of the same moment:
+// mid-turn it is the interrupt, and at rest — which is what winding down IS —
+// it is the door (leaving.go).
+//
+// THAT REMAINS TRUE, SO THE SECOND STAGE TAKES NO KEY AT ALL. It is a CLOCK,
+// started by the esc the person already pressed, and it needs no grammar because
+// it asks for no gesture. A person who wants a turn to stop has said so once;
+// making them say it twice, harder, into a surface that already heard them is
+// the exact experience issue #265 was filed about.
 //
 // WHAT THE ARGUMENT GOT RIGHT, SECOND HALF, AND WHY IT DICTATED THE ORDER OF
 // WORK: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A deadline whose
@@ -8363,6 +8986,14 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return cmd, true
 		}
 	}
+	// AND THE SKILL PICKER ANSWERS FOR ITSELF, beside the harness picker and
+	// for its reason: its enter is a toggle rather than a commit, so it cannot
+	// be handed to the lists below (skillpick.go).
+	if a.skillPick.open {
+		if cmd, taken := a.skillPickKey(msg); taken {
+			return cmd, true
+		}
+	}
 	if !a.menu.open && !a.comp.open {
 		return nil, false
 	}
@@ -8450,6 +9081,10 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // no draft can put the caret in both at once (slashchip.go's [slashToken],
 // files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
+	if _, bash := session.BashCommand(a.input.String()); bash {
+		a.closeLists()
+		return nil
+	}
 	wasOpen := a.menu.open
 	a.menu.sync(&a.input)
 	if a.menu.open && !wasOpen {
@@ -8459,6 +9094,7 @@ func (a *app) syncLists() tea.Cmd {
 	if a.menu.open {
 		a.comp.close()
 		a.harnPick.close()
+		a.skillPick.close()
 		return nil
 	}
 	// AND THE HARNESS PICKER IS THE THIRD OF THEM, asked after the command list
@@ -8467,15 +9103,27 @@ func (a *app) syncLists() tea.Cmd {
 	// one command the argument has a list of its own (harnesspick.go).
 	if a.syncHarnessPick() {
 		a.comp.close()
+		a.skillPick.close()
 		return nil
 	}
+	// AND THE SKILL PICKER IS THE FOURTH OF THEM, on the harness picker own
+	// terms: the same space that begins an argument begins the shelf
+	// (skillpick.go).
+	if open, read := a.syncSkillPick(); open {
+		a.comp.close()
+		return read
+	}
 	was := a.comp.open
+	a.fillMentions()
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
+		// The list coming up is the proof that `@` has been found (notice.go).
+		a.noticeEvent(eventAtOpened)
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
-		// walk lands when it lands (taskmention.go, files.go).
-		return tea.Batch(a.loadFiles(), a.loadTasks())
+		// walk lands when it lands (taskmention.go, files.go). The recent
+		// conversations ride the same opening (mention.go).
+		return tea.Batch(a.loadFiles(), a.loadTasks(), a.loadMentionRecents())
 	}
 	return nil
 }
@@ -8484,6 +9132,7 @@ func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
 	a.harnPick.close()
+	a.skillPick.close()
 }
 
 // dismissLists is esc over a typed list, which is [app.closeLists] plus the one
@@ -8748,7 +9397,7 @@ func (a *app) cacheNote(u session.Usage) {
 			line += " · saved " + savedWord(saved)
 		}
 	}
-	a.note(line)
+	a.feed.note(line)
 }
 
 // repriceCache is what the session's cache reads have been worth, worked out

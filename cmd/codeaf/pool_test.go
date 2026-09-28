@@ -17,8 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/pool/index"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
@@ -1155,8 +1153,6 @@ func TestPoolVerifyRefusesADocumentItsKeyDoesNotTrust(t *testing.T) {
 	}
 }
 
-// ── THE SEATED INDEX ────────────────────────────────────────────────────────
-
 // writePoolDoc puts a document where poolIndexFor reads the cache: doc.json
 // under the profile's pool directory.
 func writePoolDoc(t *testing.T, dir, doc string) {
@@ -1167,58 +1163,6 @@ func writePoolDoc(t *testing.T, dir, doc string) {
 	}
 	if err := os.WriteFile(filepath.Join(poolDir, "doc.json"), []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// With no cache the reader answers the seed this build carries, and a worker
-// cell is in it — so `learn` has numbers on day one.
-func TestPoolIndexForAnswersTheSeedWithNoCache(t *testing.T) {
-	held := poolIndexFor(t.TempDir(), poolcfg.Resolve("", "", noEnv), poolClock(t))()
-	if held == nil {
-		t.Fatal("no cache and no seed: the reader answered nothing")
-	}
-	worker := false
-	for _, cell := range held.Cells("role_quality") {
-		if cell.Role == "worker" {
-			worker = true
-		}
-	}
-	if !worker {
-		t.Fatal("the seed answered no worker cell")
-	}
-}
-
-// A cached document whose generated day is newer than the seed's wins: the
-// reader hands back the cached numbers rather than the embedded ones.
-func TestPoolIndexForKeepsANewerCache(t *testing.T) {
-	dir := t.TempDir()
-	writePoolDoc(t, dir, `{
-		"schema": 1,
-		"generated": "2026-09-20",
-		"min_installs": 1,
-		"metrics": {"role_quality": {"kind": "gaussian", "dims": ["role", "model"]}},
-		"cells": [{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 75, "sd": 7, "n": 30}]
-	}`)
-	held := poolIndexFor(dir, poolcfg.Resolve("", "", noEnv), poolClock(t))()
-	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-20" {
-		t.Fatalf("a newer cache did not win: %v", held)
-	}
-}
-
-// A cache that does not parse is not a cache: the seed stands in its place.
-func TestPoolIndexForIgnoresAnUnparsableCache(t *testing.T) {
-	dir := t.TempDir()
-	writePoolDoc(t, dir, "{ this is not a document")
-	held := poolIndexFor(dir, poolcfg.Resolve("", "", noEnv), poolClock(t))()
-	if held == nil || held.Generated().Format("2006-01-02") != seedDay(t) {
-		t.Fatalf("an unparsable cache did not fall back to the seed: %v", held)
-	}
-}
-
-// A mode that forbids reading answers no index at all.
-func TestPoolIndexForAnswersNothingWhenTheModeIsOff(t *testing.T) {
-	if held := poolIndexFor(t.TempDir(), poolcfg.Resolve("off", "", noEnv), poolClock(t))(); held != nil {
-		t.Fatal("a mode that forbids reading answered an index")
 	}
 }
 
@@ -1708,77 +1652,6 @@ func TestPoolShowReadsAnUnparsableOwnSheetAsNone(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "own sheet: none") {
 		t.Fatalf("a broken own sheet did not read as none:\n%s", out.String())
-	}
-}
-
-// The wired reader answers the own sheet's cells — the install's own evidence,
-// read once and parsed once — and an off mode seats nothing at all.
-func TestWirePoolIndexSeatsTheOwnSheetsCells(t *testing.T) {
-	prevIndex, prevOwn := config.AutoIndex, config.AutoOwnCells
-	t.Cleanup(func() { config.AutoIndex, config.AutoOwnCells = prevIndex, prevOwn })
-	stubPoolRefresh(t)
-
-	dir := t.TempDir()
-	seedOwnSheet(t, dir)
-	wirePoolIndex(dir)
-	if config.AutoOwnCells == nil {
-		t.Fatal("the own sheet was not seated")
-	}
-	own := config.AutoOwnCells()
-	want := []crewpick.Cell{
-		{Role: "worker", Model: "a/one", Mean: 85, N: 2},
-		{Role: "worker", Model: "b/two", Mean: 70, N: 1},
-	}
-	if len(own) != len(want) {
-		t.Fatalf("the seated cells are %+v, want %+v", own, want)
-	}
-	for i := range want {
-		if own[i] != want[i] {
-			t.Fatalf("cell %d is %+v, want %+v", i, own[i], want[i])
-		}
-	}
-	if config.AutoIndex == nil || config.AutoIndex() == nil {
-		t.Fatal("the index was not seated beside the own sheet")
-	}
-}
-
-// A mode that forbids reading seats nothing: the own sheet is the pool's own
-// reading, and off is off for the whole of it.
-func TestWirePoolIndexSeatsNothingWhenThePoolIsOff(t *testing.T) {
-	prevIndex, prevOwn := config.AutoIndex, config.AutoOwnCells
-	t.Cleanup(func() { config.AutoIndex, config.AutoOwnCells = prevIndex, prevOwn })
-	t.Setenv("CODEAF_MODEL_POOL", "off")
-	stubPoolRefresh(t)
-
-	dir := t.TempDir()
-	seedOwnSheet(t, dir)
-	wirePoolIndex(dir)
-	if config.AutoOwnCells != nil {
-		t.Fatal("a pool that forbids reading seated the own sheet")
-	}
-	if config.AutoIndex != nil && config.AutoIndex() != nil {
-		t.Fatal("a pool that forbids reading seated an index")
-	}
-}
-
-// An own sheet that does not parse is a loss, not a fault a pick stops for:
-// the wired reader answers nothing rather than a broken sheet's half.
-func TestWirePoolIndexSeatsNothingForAnUnparsableOwnSheet(t *testing.T) {
-	prevOwn := config.AutoOwnCells
-	t.Cleanup(func() { config.AutoOwnCells = prevOwn })
-	stubPoolRefresh(t)
-
-	dir := t.TempDir()
-	poolDir := filepath.Join(dir, "pool")
-	if err := os.MkdirAll(poolDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(poolDir, "own.json"), []byte("not a document"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	wirePoolIndex(dir)
-	if got := config.AutoOwnCells; got != nil && got() != nil {
-		t.Fatal("a broken own sheet was seated")
 	}
 }
 

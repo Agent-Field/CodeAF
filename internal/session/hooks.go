@@ -234,6 +234,12 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// left to say about who is holding the tree — and it is a no-op in every
 	// session that has never groomed a task, which is most of them.
 	plane.register(treeClaimGuard{agent: a})
+	// AND WHETHER A PROGRAM'S RUN IS WORKING THERE, which is the same question
+	// asked of a different holder (programhold.go): not a node of this
+	// conversation's graph, but a run that holds the person's folder itself,
+	// from this conversation or any other window or shell. It asks no graph, so
+	// it binds a session that never groomed a task as much as one that did.
+	plane.register(programHoldGuard{agent: a})
 	// AND WHERE A TASK IS STANDING, which is the path half of the same question
 	// (taskoutside.go): not whose work a command would take, but which directory
 	// it is aimed at. It is registered BEFORE the git guard below and the order
@@ -262,8 +268,10 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 // bypassed by a new call site that forgot it — which is the property the
 // chokepoint comment in loop.go claims and could not previously enforce.
 type episode struct {
-	agent *Agent
-	plane *controlPlane
+	// userBash is set only by the explicit human command door, never a tool ID.
+	userBash bool
+	agent    *Agent
+	plane    *controlPlane
 	// hub is where a context-shaping pass says what changed to the person who is
 	// watching this turn. It is nil in the small hook tests that have no surface.
 	hub *eventHub
@@ -496,7 +504,11 @@ type approvalGate struct{ agent *Agent }
 
 func (approvalGate) Name() string { return "approval" }
 
-func (g approvalGate) PreAction(ctx context.Context, _ *episode, hub *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
+func (g approvalGate) PreAction(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
+	if ep != nil && ep.userBash {
+		refused, allowed := g.agent.approveUserBash(ctx, hub, call)
+		return call, refused, allowed
+	}
 	refused, allowed := g.agent.approve(ctx, hub, call)
 	return call, refused, allowed
 }

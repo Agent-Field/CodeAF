@@ -42,7 +42,7 @@ func (s *Store) Create(item Item) (Item, error) {
 	if err := checkID(item.ID); err != nil {
 		return Item{}, err
 	}
-	item.Schema = Schema
+	item.Schema = SchemaOf(item)
 	item.Status = StatusActive
 	item.RetiredWhy = ""
 	item.Created = now
@@ -88,7 +88,7 @@ func (s *Store) Save(item Item) error {
 	if err := checkID(item.ID); err != nil {
 		return err
 	}
-	item.Schema = Schema
+	item.Schema = SchemaOf(item)
 	item.Updated = s.now()
 	return s.write(item)
 }
@@ -118,7 +118,7 @@ func (s *Store) SetStandingEffort(id string, rung effort.Rung) error {
 		return err
 	}
 	item.Does.Effort = rung.String()
-	item.Schema = Schema
+	item.Schema = SchemaOf(item)
 	item.Updated = s.now()
 	return s.write(item)
 }

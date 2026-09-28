@@ -48,7 +48,7 @@ func TestALandingBringsHomeOnlyWhatTheWorkerWrote(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, ".pytest_cache", "CACHEDIR.TAG"), "cache\n")
 
-	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py", "parser_test.py"}, false)
+	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py", "parser_test.py"}, gitSignature{})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -87,7 +87,7 @@ func TestAnIgnoredPathTheWorkerWroteDoesNotCostItTheRest(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 	writeFile(t, filepath.Join(tree.dir, "run.log"), "noise\n")
 
-	saved, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"}, false, false)
+	saved, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"}, gitSignature{}, false)
 	if problem != "" {
 		// THE REST OF THE LEDGER WENT IN, so the one path git refused is not a
 		// failure of the landing (task_land_unsaved.go's [unstagedWork]).
@@ -113,7 +113,7 @@ func TestWhatTheNodeDidNotWriteStaysInItsWorktree(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "main.go"), "package main\n")
 	writeFile(t, filepath.Join(tree.dir, "build", "binary"), "elf\n")
 
-	merge, changed := keptWork(tree, "build it", []string{"main.go"}, false)
+	merge, changed := keptWork(tree, "build it", []string{"main.go"}, gitSignature{})
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q, want the branch kept", merge)
 	}
@@ -157,13 +157,16 @@ func TestLeftBehindReadsThePorcelainColumnsWhole(t *testing.T) {
 	// The tree git status reads here is the ordinary shape the landing reads:
 	// one modified-not-staged line with the leading-space padding and one
 	// untracked line beside it.
-	status := gitOut(t, repo, "status", "--porcelain", "--untracked-files=all", "--", ".")
-	if !strings.Contains(status, " M a/b.go") || !strings.Contains(status, "?? c.go") {
+	status := gitOut(t, repo, "status", "--porcelain", "-z", "--untracked-files=all", "--", ".")
+	if !strings.Contains(status, " M a/b.go\x00") || !strings.Contains(status, "?? c.go\x00") {
 		t.Fatalf("the fixture reads:\n%s, want a modified and an untracked path", status)
 	}
-	left := porcelainPaths(status)
+	var left []string
+	for _, entry := range porcelainEntries(status) {
+		left = append(left, entry.Path)
+	}
 	if !containsString(left, "a/b.go") || !containsString(left, "c.go") {
-		t.Fatalf("porcelainPaths = %v, want a/b.go whole and c.go", left)
+		t.Fatalf("porcelainEntries paths = %v, want a/b.go whole and c.go", left)
 	}
 }
 
@@ -221,7 +224,7 @@ func TestAConflictedMergeLeavesHomeCleanAndNamesTheFile(t *testing.T) {
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 
-	merge, detail, _, _ := tree.comeHome("edit the shared file", []string{"shared.txt"}, false)
+	merge, detail, _, _ := tree.comeHome("edit the shared file", []string{"shared.txt"}, gitSignature{})
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want conflicted", merge, detail)
 	}

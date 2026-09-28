@@ -34,8 +34,15 @@ func (n *TaskNode) keptDependencyBranches() []string {
 // prepareTaskTreeForNode adds the one inheritance a graph, rather than a stand,
 // knows about: completed dependency branches that were kept out of the person's
 // protected checkout.
+//
+// IT IS WHERE EVERY NODE OF THE SESSION'S OWN GRAPH STARTS, whichever door
+// admitted it, so it is also where a node is refused a folder a program's run
+// holds, before anything is cut from it or written in it (programhold.go).
 func prepareTaskTreeForNode(ctx context.Context, place Place, workspace, session string, node *TaskNode) (taskTree, error) {
 	stand := node.stand()
+	if refusal := standHeldRefusal(stand, workspace); refusal != "" {
+		return taskTree{}, errors.New(refusal)
+	}
 	branches := node.keptDependencyBranches()
 	if len(branches) == 0 {
 		return prepareTaskTreeOn(ctx, place, workspace, session, node.id, node.title(), stand)
@@ -76,8 +83,9 @@ func prepareTaskTreeForNode(ctx context.Context, place Place, workspace, session
 func (t taskTree) discardBeforeStart() {
 	defer lockGitRoot(t.place, t.root)()
 	if t.ownRepository() {
-		_ = os.RemoveAll(t.dir)
-		_ = t.dropUniverse()
+		if err := t.dropUniverse(); err != nil {
+			return
+		}
 	} else {
 		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
 		_, _ = git(t.root, "worktree", "prune")

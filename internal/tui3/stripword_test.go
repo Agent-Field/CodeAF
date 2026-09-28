@@ -108,7 +108,7 @@ func TestATeachingPagesFootOffersNoVerbOverABodyWithNoRows(t *testing.T) {
 		foot := placeTailed(page.foot(a))
 		want := wayOut
 		if page.what == "tasks" {
-			want += " home"
+			want += " close"
 		}
 		for _, clause := range page.bad {
 			if strings.Contains(foot, clause) {

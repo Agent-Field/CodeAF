@@ -50,7 +50,7 @@ func TestAWorktreeLandsInsideTheSessionFolder(t *testing.T) {
 		t.Fatalf("branch = %q, want a task branch", tree.branch)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "all of it\n")
-	if merge, detail, _, _ := tree.comeHome("do the thing", []string{"done.txt"}, false); merge != mergeMerged {
+	if merge, detail, _, _ := tree.comeHome("do the thing", []string{"done.txt"}, gitSignature{}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "done.txt")); err != nil {
@@ -82,7 +82,7 @@ func TestATaskInAConversationWithNoProjectBranchesFromItsOwnWorkspace(t *testing
 	}
 	// And it comes home, which is the half that makes the branch worth cutting.
 	writeFile(t, filepath.Join(tree.dir, "issue.md"), "filed\n")
-	if merge, detail, _, _ := tree.comeHome("file the issue", []string{"issue.md"}, false); merge != mergeMerged {
+	if merge, detail, _, _ := tree.comeHome("file the issue", []string{"issue.md"}, gitSignature{}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
 	if _, err := os.Stat(filepath.Join(work, "issue.md")); err != nil {
@@ -258,7 +258,7 @@ func TestAFailedTaskKeepsItsFolderWithoutAWorktreeRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "notes.txt"), "unfinished\n")
-	if merge, _ := keptWork(tree, "unfinished change", []string{"notes.txt"}, false); merge != mergeAborted {
+	if merge, _ := keptWork(tree, "unfinished change", []string{"notes.txt"}, gitSignature{}); merge != mergeAborted {
 		t.Fatalf("merge = %q", merge)
 	}
 	if list := gitOut(t, repo, "worktree", "list"); strings.Contains(list, tree.dir) {

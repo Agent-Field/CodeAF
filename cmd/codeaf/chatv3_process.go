@@ -34,6 +34,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -69,6 +70,11 @@ type v3Process struct {
 	// session readers that answer about a model somebody may have just picked
 	// out of that list — can it see, may a task be handed to it — read here.
 	Shelf *v3ModelShelf
+	// serviceNotices are the surfaces to tell when a provider's listing lands.
+	// Appended by each launch that opens the surface, never read on the draw
+	// path.
+	serviceNotices    map[uint64]func(string, string)
+	serviceNoticeNext uint64
 	// Harnesses is the registry under the state root. The law is already written
 	// at [openV3Launch]: two stores at one directory is how /harness and the
 	// offer card come to name different harnesses.
@@ -86,6 +92,15 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
+	// Skills is the skill shelf every conversation this process opens reads:
+	// the Memory store itself when memory is on, and otherwise a store of its
+	// own that holds nothing but the skills the folders on disk hold
+	// ([v3SkillShelf]). It is profile-scoped for Memory's reason, and one
+	// handle for its reason too.
+	Skills *store.Store
+	// skillsDir is the folder the memory-off shelf lives in, removed with it
+	// at close; empty when the shelf is the Memory store.
+	skillsDir string
 	// Artifacts is the deliverables index — one file per machine, and /export
 	// and /files must resolve the same one the session's own products record
 	// themselves in.
@@ -113,7 +128,57 @@ type v3Process struct {
 	standingDone    chan struct{}
 	sweepCancel     context.CancelFunc
 	sweepDone       chan struct{}
-	closed          bool
+	// catalogs are the lazy catalogs this process opened beside Models — a
+	// direct service's own listing, asked for when a conversation is opened on
+	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
+	catalogs []*catalog.Catalog
+	closed   bool
+	// creditWatcher owns the balance reads shared by all conversations.
+	creditWatcher *v3CreditWatcher
+}
+
+// lifetime is the context background work owned by this process runs under,
+// and it ends when closeAll begins. A process built without one (a test's bare
+// literal) hands out the plain background, which is what it had before.
+func (p *v3Process) lifetime() context.Context {
+	if p == nil || p.processCtx == nil {
+		return context.Background()
+	}
+	return p.processCtx
+}
+
+// ownCatalog hands a lazy catalog this process opened to closeAll, which
+// cancels and joins its warm the way it does Models' (#1274). A catalog handed
+// over after the close has begun is closed at once, so none is left unowned.
+func (p *v3Process) ownCatalog(models *catalog.Catalog) {
+	if p == nil || models == nil {
+		return
+	}
+	if !p.keepCatalog(models) {
+		models.Close()
+	}
+}
+
+// keepCatalog files one catalog for closeAll, and answers false when the close
+// has already begun and nothing will come back for it.
+func (p *v3Process) keepCatalog(models *catalog.Catalog) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return false
+	}
+	p.catalogs = append(p.catalogs, models)
+	return true
+}
+
+// takeCatalogs hands over every catalog [v3Process.ownCatalog] was given and
+// empties the list, so the joins run after the lock is let go.
+func (p *v3Process) takeCatalogs() []*catalog.Catalog {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	owned := p.catalogs
+	p.catalogs = nil
+	return owned
 }
 
 // openV3Process builds the once-only half of a v3 launch.
@@ -185,9 +250,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	}
 	processCtx, processStop := context.WithCancel(context.Background())
 	models := catalog.LoadLazy(processCtx, discovery)
-	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
-	config.AutoModels = models.ModelsNow
+	seatCrewRows(models.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
@@ -205,6 +270,8 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Conns:             v3Connect(settings.ProfileDir),
 		LaunchDir:         launchDir,
 	}
+	process.Skills, process.skillsDir = v3SkillShelf(process.Memory)
+	process.creditWatcher = newV3CreditWatcher(process)
 	process.startPlaceSweep()
 	return process, nil
 }
@@ -329,6 +396,90 @@ func (p *v3Process) setModelSources(sources modelsource.Set) {
 	}
 }
 
+// refreshAllModels is [tui3.Options.RefreshAllModels]: ctrl+r in /model walks
+// the router's catalog AND every connected provider's listing (issue #1508).
+// One provider's refusal never stops the walk: each fetch is its own call and
+// its own error, and the group that could not list names its own reason
+// ([v3ModelShelf.fetchErrors]). Runs as a command off the event loop.
+func (p *v3Process) refreshAllModels(ctx context.Context) {
+	if p == nil || p.Shelf == nil {
+		return
+	}
+	_, _, _ = p.refreshDefaultModels(ctx)
+	p.Shelf.warmAll(ctx, false, p.noteServiceModels)
+}
+
+// refreshDefaultModels publishes both success and failure before returning.
+// The default-only menu and the all-provider walk share this delivery boundary.
+func (p *v3Process) refreshDefaultModels(ctx context.Context) ([]tui3.Model, time.Time, error) {
+	rows, at, err := p.Shelf.refresh(ctx)
+	p.Shelf.fetchError(modelsource.DefaultID, err)
+	p.noteServiceModelsTo(modelsource.DefaultID, p.Shelf.options.BaseURL)
+	return rows, at, err
+}
+
+// warmEmptyProviders is [tui3.Options.WarmEmptyProviders]: the launch half of
+// issue #1508. Every connected provider that lists models and whose cache file
+// is missing or empty is fetched once, off the loop, through the connect path's
+// own door. It is called after setSources has filled what the caches could,
+// so a warm provider costs nothing and a cold one fills its group without a
+// reopen.
+func (p *v3Process) warmEmptyProviders(ctx context.Context) {
+	if p == nil || p.Shelf == nil {
+		return
+	}
+	p.Shelf.warmAll(ctx, true, p.noteServiceModels)
+}
+
+// registerServiceNotice subscribes one window and returns its removal function.
+// Callbacks run outside the process lock. A snapshot already in flight may
+// finish after removal; the surface owns and closes its notification desk.
+func (p *v3Process) registerServiceNotice(tell func(source, address string)) func() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.serviceNotices == nil {
+		p.serviceNotices = make(map[uint64]func(string, string))
+	}
+	p.serviceNoticeNext++
+	id := p.serviceNoticeNext
+	p.serviceNotices[id] = tell
+	return func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		delete(p.serviceNotices, id)
+	}
+}
+
+// noteServiceModelsTo is one surface's slice of the news: the drop of its memo
+// and the restock of its open picker happen on ITS loop, through the callback
+// the surface itself supplied — which is the only side allowed to touch the
+// app's memos.
+func (p *v3Process) serviceNoticesSnapshot() []func(string, string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]func(string, string), 0, len(p.serviceNotices))
+	for _, tell := range p.serviceNotices {
+		out = append(out, tell)
+	}
+	return out
+}
+
+func (p *v3Process) noteServiceModelsTo(source, address string) {
+	notify := p.serviceNoticesSnapshot()
+	for _, tell := range notify {
+		if tell != nil {
+			tell(source, address)
+		}
+	}
+}
+
+// noteServiceModels tells every live surface one provider's listing changed,
+// so its memo is dropped and an open picker restocks. The process holds the
+// launch doors; each registers itself here when it opens the surface.
+func (p *v3Process) noteServiceModels(service modelsource.Connected) {
+	p.noteServiceModelsTo(service.Source.ID, service.Address)
+}
+
 // refreshModelSources re-reads this process's own profile and makes that
 // answer live in every conversation it retains.
 //
@@ -435,8 +586,16 @@ func (p *v3Process) closeAll() {
 	if p.processStop != nil {
 		p.processStop()
 	}
+	if p.creditWatcher != nil {
+		p.creditWatcher.close()
+	}
 	if p.Models != nil {
 		p.Models.Close()
+	}
+	// AND EVERY OTHER CATALOG THIS PROCESS OPENED, for the same promise: a direct
+	// service's own listing warms under the same lifetime and is joined here.
+	for _, models := range p.takeCatalogs() {
+		models.Close()
 	}
 
 	// Cancellation is checked between entries and before destructive operations.
@@ -490,6 +649,15 @@ func (p *v3Process) closeAll() {
 	}
 	if p.Memory != nil {
 		_ = p.Memory.Close()
+	}
+	// The memory-off shelf goes with the process that built it: it was only
+	// ever a reading of the skill folders, and the next launch reads them
+	// again.
+	if p.skillsDir != "" {
+		if p.Skills != nil {
+			_ = p.Skills.Close()
+		}
+		_ = os.RemoveAll(p.skillsDir)
 	}
 }
 
@@ -590,6 +758,7 @@ func (s *v3Seam) start(workspace string) (tui3.Conversation, error) {
 	if err != nil {
 		return tui3.Conversation{}, err
 	}
+	launch = v3FreshDefault(launch, s.seed.Model)
 	place, err := v3NextSession(launch.Place, launch.Workspace)
 	if err != nil {
 		return tui3.Conversation{}, err
@@ -762,4 +931,20 @@ func (s *v3Seam) anchor(agent interface {
 		s.boot.Bucket = bucket
 	}
 	return resolved, nil
+}
+
+// liveSettings answers a launch's settings as they stand NOW: the launch's own
+// copy, with the account this process holds at the moment of asking laid over
+// it. A launch copies the process's settings when it opens, which on a first
+// launch is before setup has a key, and [v3Process.setAPIKey] reaches the
+// process and its agents but never a copy something else kept. Anything that
+// runs later on a launch's behalf and calls a model — the Model Pool's judge is
+// the one — asks through this, so it carries the key the person has given
+// rather than the one the boot did not have.
+func (p *v3Process) liveSettings(base config.Config) func() config.Config {
+	return func() config.Config {
+		live := base
+		live.APIKey, live.Sources = p.currentAccount()
+		return live
+	}
 }

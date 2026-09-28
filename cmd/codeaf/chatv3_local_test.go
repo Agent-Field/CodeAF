@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,8 +30,55 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
+
+// Contract 6.1: A plain launch reads a closed team's report from the engine profile on this machine.
+func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
+	engineProfile := t.TempDir()
+	surfaceProfile := t.TempDir()
+	t.Setenv("CODEAF_HOME", surfaceProfile)
+	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(config.APIKeyEnv, "not-a-real-key")
+	t.Cleanup(func() { stopPoolErrands(surfaceProfile) })
+	const harbor = "0a0a0a0a0a0a"
+	if err := teamstore.Save(engineProfile, []teamstore.Team{{ID: harbor, Name: "harbor", Manager: "hm",
+		Members: []teamstore.Member{{Key: "hm", Handle: "boss"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := teamstore.Raise(engineProfile, teamstore.Packet{Team: teamstore.Person, Origin: harbor,
+		Kind: teamstore.PacketClosing, RaisedBy: teamstore.FromManager, Question: "close harbor?",
+		Options: []teamstore.Option{{ID: teamstore.OptionClose, Label: "Close", Consequence: "the team closes"}},
+		Report:  &teamstore.ClosingReport{Done: "the parser"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err = teamstore.Decide(engineProfile, p.ID, teamstore.Person, teamstore.OptionClose, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed, err := teamstore.AcceptClosing(engineProfile, p); err != nil || !closed {
+		t.Fatalf("close on report: %v, %v", closed, err)
+	}
+	welcome := remote.Welcome{Version: remote.Version, Workspace: "/srv/app", ProfileDir: engineProfile,
+		Teams: true, Delegation: true, WrapUp: true}
+	fleet := onePipeFleet("", hostedClient(t))
+	t.Cleanup(fleet.closeAll)
+	options, settings := hostOptions(fleet, welcome, false)
+	if options.Teams.Load == nil {
+		t.Fatal("the engine did not hand teams to the plain launch")
+	}
+	localDoors(&options, welcome, settings)
+	if options.Teams.History == nil {
+		t.Fatal("the plain launch has no history door")
+	}
+	got, err := options.Teams.History(harbor)
+	if err != nil || len(got) != 1 || got[0].ID != p.ID || got[0].Report == nil || got[0].Report.Done != "the parser" {
+		t.Fatalf("closed team's report from engine profile: %+v, %v", got, err)
+	}
+}
 
 // consentSource is an OpenAI-shaped fake whose turn always asks for the same
 // harmless bash command and then finishes after the tool result comes back.
@@ -176,7 +224,7 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 
 	if local.Connections == nil || local.Harnesses == nil || local.SaveApproval == nil ||
 		local.SaveBashApproval == nil || local.SaveModel == nil || local.Sources.Empty() ||
-		local.ApplyModelSources == nil || local.ConnectCodex == nil {
+		local.ApplyModelSources == nil || local.ConnectCodex == nil || local.ReadCredits == nil {
 		t.Fatalf("the plain launch was handed incomplete local doors: %+v", local)
 	}
 	if local.ApplyApprovals != nil {
@@ -229,8 +277,49 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 	hosted, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
 	if hosted.Connections != nil || hosted.Harnesses != nil || hosted.SaveApproval != nil ||
 		hosted.SaveBashApproval != nil || hosted.SaveModel != nil || !hosted.Sources.Empty() ||
-		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil {
+		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil || hosted.ReadCredits != nil || hosted.ImplicitTalk {
 		t.Fatalf("the --host builder grew this machine's doors: %+v", hosted)
+	}
+}
+
+// The ordinary engine window uses the same provider shelf that its picker
+// draws, so a cold direct provider can fill without a reconnect.
+func TestPlainEngineModelDoorsRefreshEveryConnectedProvider(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv("CODEAF_HOME", profile)
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(config.APIKeyEnv, "default-key")
+	t.Cleanup(func() { stopPoolErrands(profile) })
+	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultServer.Close()
+	t.Setenv("CODEAF_BASE_URL", defaultServer.URL())
+	var listed atomic.Int32
+	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listed.Add(1)
+		_, _ = w.Write([]byte(`{"data":[{"id":"direct-chat"}]}`))
+	}))
+	defer direct.Close()
+	if err := config.WriteSources(profile, []config.PersistedSource{{
+		ID: "custom", Written: "direct", Address: direct.URL, Key: "direct-key", Order: 1,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	client := hostedClient(t)
+	welcome := remote.Welcome{Version: remote.Version, ProfileDir: profile, Workspace: t.TempDir()}
+	options, settings := hostOptions(onePipeFleet("", client), welcome, false)
+	localDoors(&options, welcome, settings)
+	if options.ModelsForService == nil || options.RefreshModelsForService == nil ||
+		options.RefreshAllModels == nil || options.WarmEmptyProviders == nil || options.SubscribeServiceModels == nil {
+		t.Fatal("plain engine launch has no provider listing doors")
+	}
+	options.WarmEmptyProviders(t.Context())
+	if listed.Load() != 1 {
+		t.Fatalf("cold provider listed %d times at launch, want once", listed.Load())
+	}
+	options.RefreshAllModels(t.Context())
+	if listed.Load() != 2 {
+		t.Fatalf("refresh listed direct provider %d times, want twice", listed.Load())
 	}
 }
 

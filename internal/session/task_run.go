@@ -1018,6 +1018,9 @@ type TaskGraph struct {
 	// other way round.
 	plan   *planState
 	planMu sync.Mutex
+	// pagePlan is the store as the task pages read it when the switch is off
+	// ([TaskGraph.planForPages]); it is never the plan any worker runs on.
+	pagePlan *planState
 	// order is admission order, and it is what makes the frontier
 	// DETERMINISTIC: with a cap in play, which of two ready nodes starts first
 	// must not be Go's map iteration.
@@ -1253,12 +1256,12 @@ func (a *Agent) graph() *TaskGraph {
 		graph.home = a
 		graph.run = graph.runOwned
 		graph.report = a.reportTaskNode
-		// The two ceilings, resolved once for the life of the session. They are
-		// read off the config rather than off the settings file for the reason
-		// every other task row is: a scheduler that re-read a person's profile
-		// mid-run would be a run whose rules changed under it.
+		// The two ceilings start from config and refresh from the profile's one
+		// settings generation. A held task must be able to start when its person
+		// changes the limit, without requiring an engine restart; run admission
+		// uses the same governor refresh seam.
 		graph.limit = a.config.TaskParallel
-		graph.governor = newAdmissionGovernor(a.config.TaskMaxLoad, a.config.TaskMinFreeMB)
+		graph.governor = newAdmissionGovernorForProfile(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir)
 		// AND THE MACHINE'S OWN ACCOUNT, if this process opened more than one
 		// conversation onto the same machine (task_pressure.go, #907).
 		if a.config.TaskLanes != nil {
@@ -6258,6 +6261,15 @@ func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
 	n.graph.mu.Unlock()
 	if interrupted && strings.TrimSpace(dir) != "" {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			// AND THE CHECKPOINT'S SPELLING IS BROUGHT UP TO GIT'S. Git resolves
+			// symlinks before it registers a worktree, and taskOwnFolder records
+			// that same spelling so checkpoint, cleanup and git name one directory;
+			// a checkpoint written before that law can carry the raw path it was
+			// handed — /var/… where git says /private/var/… — and a tree resumed
+			// under the other spelling is one directory known to cleanup by two
+			// names. Stat runs first, so a copy that no longer exists still takes
+			// its not-resumed road.
+			dir = canonicalPath(dir)
 			ground, mode := n.groundNow()
 			if merge == mergeInPlace {
 				// AND A RESUMED FAMILY REVALIDATES ITS TREE THROUGH THE ONE CALL THAT
@@ -6341,7 +6353,7 @@ func abortedMerge(tree taskTree) string {
 // was checked reaches the person's branch (the gate in [Agent.workTaskNode]);
 // "not proven" is not "throw it away", and it is not "land it either" — the
 // person is told where it is and brings it home themselves.
-func keptWork(tree taskTree, title string, changed []string, sign bool) (string, []string) {
+func keptWork(tree taskTree, title string, changed []string, sign gitSignature) (string, []string) {
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
@@ -6395,11 +6407,7 @@ func (t taskTree) releaseKeptLocked() {
 	left := leftBehind(t.dir)
 	rememberLeftBehind(t.dir, left)
 	if t.ownRepository() {
-		// A universe was never registered as a worktree of anybody, so there is
-		// no registration to unpick and `git worktree remove` would be asking
-		// the person's repository about a directory it has never heard of. Its
-		// leavings are already written down, and its record is furrow's to drop.
-		t.dropUniverse()
+		// A retained copy keeps its registered timeline until the copy is reaped.
 		return
 	}
 	// AND THE RELEASE IS WRITTEN DOWN BEFORE THE REGISTRATION GOES. This is the
@@ -7408,13 +7416,20 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	// THE FOLD DOOR, not the ordinary auxiliary one: the node journaled these
 	// same tokens into the machine's usage ledger as it spent them, and folding
 	// the total in again would count them twice ([Agent.addFoldedUsage]).
-	a.spendLedger(node).addFoldedUsage(&ai.Response{Usage: &ai.Usage{
+	ledger := a.spendLedger(node)
+	ledger.addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
 	}}, child.Model(), used.Calls)
+	// The books on disk are told as the node's tally reaches them, for the
+	// reason [Agent.driveBeltRun] stamps a run's: home takes the larger of the
+	// stamped books and the index rows, and that is exact only while meta.json
+	// already holds every closed node the index names. A worker that folds a part
+	// has no place of its own, and its stamp writes nothing.
+	ledger.stampSpend()
 }
 
 // spendLedger is WHICH SET OF BOOKS this node's spend goes into: the agent that
@@ -7811,15 +7826,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		// AND SO DOES WHETHER codeaf SIGNS THE GIT WORK IT DOES IN THEIR NAME.
-		// A node commits — its landing writes one ([commitTaskWorkAs]) and its
-		// worker may write more with `bash` — and the `attribution` row is the
-		// person's answer for their whole machine, not for the window they
-		// happened to be looking at. A node is handed no ProfileDir either
+		// AND SO DOES WHETHER THE SIGNATURE NAMES THE MODEL. A node commits —
+		// its landing writes one ([commitTaskWorkAs]) and its worker may write
+		// more with `bash` — and the `attribution.model` row is the person's
+		// answer for their whole machine. A node is handed no ProfileDir
 		// (Config.ProfileDir says why), so a child that did not carry this
-		// would re-read the row as its DEFAULT, which is on, and sign for
-		// somebody who had turned signing off.
-		Attribution: parent.Attribution,
+		// would name the model for somebody who had turned the name off.
+		AttributionModelOff: parent.AttributionModelOff,
 		// And so does who decides a landing nobody could check. A parent node's
 		// own agent is the reader of its children's landing notes, so a family
 		// running under a different `task.settle` than the conversation would tell
@@ -8126,6 +8139,10 @@ type taskTree struct {
 	// about the run the ground law was written from.
 	rung GroundRung
 	seal string
+	// continues says a program's run carries on on the branch an earlier run
+	// of it left checked out ([ProgramFolder.Continues]); false for every
+	// other tree.
+	continues bool
 	// base is the machine commit the parent's world was sealed into, when a rung
 	// made one. It is the replay point the landing takes the inheritance back out
 	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing
@@ -8316,7 +8333,7 @@ func cutTaskWorktree(ctx context.Context, place Place, root, session string, id 
 		root:    root,
 		dir:     dir,
 		mode:    mode,
-		branch:  "task/" + slugify(title) + "-" + shortID(),
+		branch:  taskBranchName(title),
 		title:   title,
 		promise: TaskModeWorktree,
 		frozen:  frozen,
@@ -8644,7 +8661,7 @@ var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID(
 // land. If git cannot do it — a real conflict, or local changes it would have
 // to overwrite — the branch is KEPT and named, and nothing of the node's work
 // is lost.
-func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, string, []string, landingRefusal) {
+func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (string, string, []string, landingRefusal) {
 	if t.mode == TaskModeMirror {
 		return t.landMirror(wrote)
 	}
@@ -8708,20 +8725,14 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
 			leftBehindSentence(left, true)), nil, refusedByTheWork
 	}
-	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT. The branch is
-	// already committed and present in the ground repository at this point, so
-	// keeping it gives the person a durable result and gives the working copy
-	// back without changing a byte of the checkout they are using.
-	if t.landsInThePersonsRepository() {
-		if kept := t.keptLandingSentence(); kept != "" {
-			t.releaseKeptLocked()
-			// refusedNothing: the landing was not refused, it was HONOURED. The
-			// work is committed on its branch and the person has been told which
-			// one — a refusal here would put a policy keep on the unsaved road
-			// (task_land_unsaved.go) and offer to try it again, which is the one
-			// thing that must not happen to a checkout codeaf will not write.
-			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), nil, refusedNothing
-		}
+	if kept := t.keptInsteadOfMerged(); kept != "" {
+		t.releaseKeptLocked()
+		// refusedNothing: the landing was not refused, it was HONOURED. The
+		// work is committed on its branch and the person has been told which
+		// one — a refusal here would put a policy keep on the unsaved road
+		// (task_land_unsaved.go) and offer to try it again, which is the one
+		// thing that must not happen to a checkout codeaf will not write.
+		return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), nil, refusedNothing
 	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
 	// task was carved from is the ground it merges into: work of the person's own
@@ -8757,12 +8768,36 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 	}
 	// The working copy is given back only once its work is in, and which road
 	// that takes is the rung's own (groundladder.go's [taskTree.releaseLanded]).
-	t.releaseLanded()
+	if err := t.releaseLanded(); err != nil {
+		return mergeMerged, withReport(withReport(said, stranded),
+			"the work landed; its task copy remains at "+t.dir+" because cleanup failed: "+err.Error()), nil, refusedNothing
+	}
 	// The working copy has just gone, and the sentence says where its leavings
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
 	return mergeMerged, withReport(withReport(said, stranded),
 		leftBehindSentence(left, false)), nil, refusedNothing
+}
+
+// keptInsteadOfMerged is the sentence for a branch that lands by being kept
+// rather than merged, and "" for one that is merged. It is asked once the
+// branch is committed and present in the ground repository, so keeping it
+// gives the person a durable result and gives the working copy back without
+// changing a byte of the checkout they are using.
+func (t taskTree) keptInsteadOfMerged() string {
+	// NOR ONE A PROGRAM'S RUN IS WORKING IN (programhold.go). A merge there
+	// lands under the program — stashing its unfinished edits, or put back by
+	// its own restore once it has submitted — while this row says it landed;
+	// kept, the work waits on its own branch for the run to end.
+	if hold, busy := programHoldNear(canonicalPath(t.root), ""); busy {
+		return "its branch " + t.branch + " was kept: " + hold.holder + ", is working in " + hold.where(t.root) +
+			" — bring it in when that run has ended"
+	}
+	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT.
+	if t.landsInThePersonsRepository() {
+		return t.keptLandingSentence()
+	}
+	return ""
 }
 
 // landMirror brings a mirrored folder home: the files the node wrote, laid over
@@ -8783,6 +8818,14 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 func (t taskTree) landMirror(wrote []string) (string, string, []string, landingRefusal) {
 	if strings.TrimSpace(t.ground) == "" || strings.TrimSpace(t.dir) == "" {
 		return mergeInPlace, "", nil, refusedNothing
+	}
+	// A FOLDER A PROGRAM'S RUN HOLDS IS NOT LAID INTO (programhold.go): the
+	// program would count the files as its own, or put them back once it has
+	// submitted. Nothing is laid and the copy stays whole, a refusal a second
+	// answer gets past once that run has ended.
+	if refusal := programHoldRefusal(t.ground); refusal != "" {
+		return mergeAborted, "its work was not laid into " + t.ground + " and is kept in " + t.dir + ": " + refusal,
+			nil, refusedByTheWork
 	}
 	// AND IT DOES NOT WRITE OVER A FILE THAT CHANGED UNDER IT
 	// (task_mirror_manners.go). The mark is [mergeConflicted] because that is what
@@ -8895,11 +8938,11 @@ const (
 // while the merge is still in progress. An empty answer is a merge that failed
 // before it touched the index.
 func conflictedPaths(root string) []string {
-	out, err := git(root, "diff", "--name-only", "--diff-filter=U")
+	out, err := git(root, "diff", "--name-only", "-z", "--diff-filter=U")
 	if err != nil {
 		return nil
 	}
-	return nonEmptyLines(out)
+	return gitNULPaths(out)
 }
 
 // abandonMerge takes the person's checkout back out of a merge, and it exists
@@ -8939,7 +8982,7 @@ func leftBehind(dir string) []string {
 			return paths
 		}
 	}
-	args := []string{"status", "--porcelain", "--untracked-files=all", "--", "."}
+	args := []string{"status", "--porcelain", "-z", "--untracked-files=all", "--", "."}
 	for _, dropping := range taskDroppingNames() {
 		args = append(args, ":(exclude)"+dropping)
 	}
@@ -8947,7 +8990,11 @@ func leftBehind(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	return porcelainPaths(out)
+	var paths []string
+	for _, entry := range porcelainEntries(out) {
+		paths = append(paths, entry.Path)
+	}
+	return paths
 }
 
 const leftBehindRecord = "left-behind.json"
@@ -9046,7 +9093,7 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal) {
+func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal) {
 	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
@@ -9079,7 +9126,7 @@ func commitTaskWork(dir, title string, wrote []string, sign bool, bashBelt bool)
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal, error) {
+func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal, error) {
 	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
@@ -9095,8 +9142,11 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt b
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
+	if !repositoryRefusesTrailers(dir) {
+		message = signed(message, sign)
+	}
 	if out, err := git(dir, append(codeafGitIdentity(),
-		"commit", "--no-verify", "-m", signed(message, sign))...); err != nil {
+		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —
 		// and those are refusals a second answer can get past. Which of the two
@@ -9115,16 +9165,12 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt b
 // signed is the attribution law applied to a commit NOBODY WAS ASKED ABOUT: the
 // one this harness writes itself when a node's work lands or a family's world is
 // frozen. The model is told the same law in words where it does the committing
-// (beltfacts.go's [Config.signsGitWork], out of internal/exec's
+// (beltfacts.go's attribution fact, out of internal/exec's
 // [exec.AttributionLaw]); this is the other half, and it is mechanical because
 // there is no model in the loop here to tell.
 //
-// THE TRAILER IS APPENDED RATHER THAN HANDED TO `git commit --trailer`. The
-// result is the same block and the same bytes, and the bytes are the feature —
-// but --trailer arrived in git 2.32 and a person on an older git would get a
-// commit that silently carried no attribution at all, which is the failure this
-// law exists to prevent. A blank line and one line after it is what a trailer
-// block IS, in every version of git there has ever been.
+// THE REPOSITORY'S CONTRIBUTING RULE IS THE EXCEPTION. The caller checks it
+// before applying this signature; there is no setting that turns it off.
 //
 // AND THE AUTHOR DOES NOT MOVE. These commits stay authored as
 // codeaf <agentfield-bot@users.noreply.github.com> ([codeafGitIdentity]) rather
@@ -9135,11 +9181,8 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt b
 // not a second answer to the same question — which is why it is a trailer, where
 // a reader already looks for who else had a hand in the commit, and why the
 // address in it is the codeaf GitHub account rather than a local one.
-func signed(message string, sign bool) string {
-	if !sign {
-		return message
-	}
-	return strings.TrimRight(message, "\n") + "\n\n" + attributionTrailer
+func signed(message string, sign gitSignature) string {
+	return sign.sign(message)
 }
 
 // unheldLedgerPaths is every path the node's ledger names that this tree does
@@ -9163,15 +9206,13 @@ func unheldLedgerPaths(dir string, wrote []string) []string {
 	if len(paths) == 0 {
 		return nil
 	}
-	out, err := git(dir, append([]string{"status", "--porcelain", "--untracked-files=all", "--"}, paths...)...)
+	out, err := git(dir, append([]string{"status", "--porcelain", "-z", "--untracked-files=all", "--"}, paths...)...)
 	if err != nil {
 		return nil
 	}
 	var unheld []string
-	for _, line := range nonEmptyLines(out) {
-		if len(line) > 3 {
-			unheld = append(unheld, strings.TrimSpace(line[3:]))
-		}
+	for _, entry := range porcelainEntries(out) {
+		unheld = append(unheld, entry.Path)
 	}
 	return unheld
 }
@@ -9183,11 +9224,11 @@ func unheldLedgerPaths(dir string, wrote []string) []string {
 // otherwise the same one a node that only read gives — and its caller merges and
 // then removes the only other copy of the work on the strength of it.
 func stagedPaths(dir string) ([]string, string) {
-	out, err := git(dir, "diff", "--cached", "--name-only")
+	out, err := git(dir, "diff", "--cached", "--name-only", "-z")
 	if err != nil {
 		return nil, firstLine(out)
 	}
-	return nonEmptyLines(out), ""
+	return gitNULPaths(out), ""
 }
 
 // stagedDiffStat is the node's change AS A SHAPE: one line per file with how
@@ -9326,8 +9367,8 @@ func stageableWork(dir string, wrote []string) []string {
 }
 
 // beltTreeWork reads every change git sees in the working copy that the
-// ledger did not name — modified, added and untracked alike, one path per
-// line — and takes out the paths the harness itself writes, which are
+// ledger did not name — modified, added and untracked alike — and takes out
+// the paths the harness itself writes, which are
 // machinery and never the work. A belt worker's landing stages this whole
 // answer ([stageTaskWork]), so what a person gets on the branch is what the
 // shell did, and nothing else.
@@ -9338,45 +9379,28 @@ func stageableWork(dir string, wrote []string) []string {
 // folder or an ancestor of it — never a path inside the working copy git
 // could name.
 func beltTreeWork(dir string) []string {
-	out, err := git(dir, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	out, err := git(dir, "status", "--porcelain", "-z", "--untracked-files=all", "--", ".")
 	if err != nil {
 		return nil
 	}
 	var paths []string
-	for _, path := range porcelainPaths(out) {
-		switch {
-		case isTaskDropping(path):
-		case path == "bench-results" || strings.HasPrefix(path, "bench-results/"):
-		case path == planStoreFilename || strings.HasPrefix(path, planStoreFilename+"."):
-		case path == "bin/plandb":
-		case strings.HasSuffix(path, ".lock"):
-		default:
-			paths = append(paths, literalPathspec+path)
-		}
-	}
-	return paths
-}
-
-// porcelainPaths reads the paths out of one `git status --porcelain` answer,
-// taken from the fixed columns rather than trimmed off the front: a porcelain
-// line is two status letters, a space, then the path, and a line that was
-// trimmed first has lost the status columns' own padding — the staged ' M
-// a/b.go' reads as 'M a/b.go', and the slice past the third column then cuts
-// the first character of the path. A rename carries both names and the one
-// that exists now is the second.
-func porcelainPaths(out string) []string {
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == "" || len(line) < 4 {
+	for _, entry := range porcelainEntries(out) {
+		path := entry.Path
+		// WHAT IS MACHINERY IS ANSWERED IN ONE PLACE ([harnessWrote]), by where
+		// the harness itself writes, and never by a name project files share: a
+		// `.lock` suffix here once kept every lockfile a run changed off the
+		// branch, and a `bench-results` directory is a project's own folder.
+		if harnessWrote(path) {
 			continue
 		}
-		path := strings.TrimSpace(line[3:])
-		if _, renamed, found := strings.Cut(path, " -> "); found {
-			path = renamed
+		// AN UNTRACKED BUILD CACHE IS NOT THE WORK EITHER, and it is a
+		// separate, narrower question ([buildCache]): exact cache names, and
+		// only for a file git has never been told about. A tracked cache that
+		// changed, or one the worker staged itself, is not `??` and lands.
+		if entry.Code == "??" && buildCache(path) {
+			continue
 		}
-		if path = strings.Trim(path, `"`); path != "" {
-			paths = append(paths, path)
-		}
+		paths = append(paths, literalPathspec+path)
 	}
 	return paths
 }

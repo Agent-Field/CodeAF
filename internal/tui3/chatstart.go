@@ -62,7 +62,7 @@ import (
 // creation before detaching it when doing so would strand its unsent words.
 const startDraftUnownedWord = "finish or clear the draft in the current chat before starting another"
 
-// startKeepsLeaving is `+`'s one amendment to what a create may CLOSE.
+// startKeepsLeaving keeps the draft behind either new-conversation surface.
 //
 // A FRESH CONVERSATION HOLDING AN UNSENT SENTENCE IS KEPT. /new's exception ends
 // a fresh and empty conversation because nothing is in it and the draft goes with
@@ -74,11 +74,11 @@ const startDraftUnownedWord = "finish or clear the draft in the current chat bef
 // exists to prevent. Kept, the words stay in their own conversation and come back
 // by pressing its tab.
 //
-// IT IS ASKED OF THE START PAGE ONLY. Every other caller of the door is standing
-// in the conversation it is about to leave, where carrying the box forward is the
-// promise rather than the leak.
+// HOME MAKES THE SAME PROMISE. Its new conversation starts with its own box and
+// tray, while the conversation behind it keeps the draft somebody left there.
+// /new inside a conversation still carries the draft forward.
 func (a *app) startKeepsLeaving() bool {
-	if !a.startingChat() || a.mainComposer().empty() {
+	if (!a.startingChat() && !a.at(pageHome)) || a.mainComposer().empty() {
 		return false
 	}
 	return a.agent != nil && a.convKey(a.file) != ""
@@ -178,6 +178,7 @@ func (a *app) startSay(word string) {
 // building a second one — a person leaning on a control is not asking for two of
 // what it makes.
 func (a *app) openChatStart() tea.Cmd {
+	a.noticeEvent(eventChatStarted)
 	if a.startingChat() {
 		// The page is already up. It keeps its words and its selection.
 		a.touch()

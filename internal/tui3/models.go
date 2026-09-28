@@ -13,6 +13,7 @@ import (
 
 	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // The model list the picker shows, and the one law about where it comes from:
@@ -52,11 +53,13 @@ type Model struct {
 	// anything the session knows. A session knows tokens; only a catalog knows
 	// what a token costs.
 	//
-	// Zero is "nobody published a figure" and never "free" — the same rule
-	// catalog.Model states, and the reason the note falls back to showing only
-	// the cached token count rather than a saving of $0.00.
+	// Zero alone is not evidence of a free tariff: PriceKnown records whether
+	// the catalog published these figures. An absent figure never becomes a
+	// claimed saving of $0.00.
 	PromptPrice     float64 `json:"prompt_price,omitempty"`
 	CompletionPrice float64 `json:"completion_price,omitempty"`
+	RequestPrice    float64 `json:"request_price,omitempty"`
+	PriceKnown      bool    `json:"price_known,omitempty"`
 	CacheReadPrice  float64 `json:"cache_read_price,omitempty"`
 
 	// ArenaElo is the best Design Arena Elo the catalog carries for this model,
@@ -101,8 +104,10 @@ type Model struct {
 	// Group is the connected service heading this row sits under. It is empty
 	// on the single-service path, which keeps that picker's output unchanged.
 	Group       string `json:"-"`
+	GroupHead   string `json:"-"`
 	GroupOrder  int    `json:"-"`
 	Unavailable bool   `json:"-"`
+	AddProvider bool   `json:"-"`
 	// Notice is display text for an unavailable group row. Such a row has no
 	// ID: a sentence explaining an empty service is not a model and therefore
 	// cannot be selected, pinned, unfolded, or handed to a wire-facing path.
@@ -263,6 +268,23 @@ func sameModelRows(left, right []Model) bool {
 // wait for the beat to find out.
 func (a *app) forgetModelList(source, base string) {
 	a.modelLists.forget(modelCacheNameFor(source, base))
+}
+
+// serviceModelsLanded is [Options.SubscribeServiceModels]'s body: one provider's
+// listing was stocked behind the frame (a launch warm or a ctrl+r walk). The
+// memo under that pair is a reading from before the fetch, so it is dropped;
+// an open picker is restocked so its group fills WITHOUT a reopen.
+func (a *app) serviceModelsLanded(source, address string) {
+	a.forgetModelList(source, address)
+	a.modelLists.learn(modelCacheNameFor(source, address))
+	if strings.EqualFold(source, modelsource.DefaultID) {
+		a.forgetModelList("", modelcatalog.DefaultBaseURL)
+		a.modelLists.learn(modelCacheNameFor("", modelcatalog.DefaultBaseURL))
+	}
+	if a.pick.open {
+		a.pick.restock(a.modelPickerList())
+	}
+	a.touch()
 }
 
 // WriteModelCache replaces the cache with models. It is called from the door

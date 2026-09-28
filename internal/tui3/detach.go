@@ -44,6 +44,8 @@ import (
 // keep correct while it is not drawing it, which is the expensive kind of
 // state; the test is "would a person notice it was gone", not "could we".
 type aside struct {
+	// A send held behind an atomic replay remains with its conversation.
+	hostDeferred []func() tea.Cmd
 	// openingPrompt survives a switch while the title and transcript arrive.
 	openingPrompt string
 	// draft is the unsent sentence in the box, and chips are the pictures
@@ -264,6 +266,7 @@ func (a *app) front() Conversation {
 func (a *app) detachConversation() *aside {
 	main := a.mainComposer()
 	side := &aside{
+		hostDeferred: a.hostDeferred,
 		// The box and the parked messages are separate while this process can
 		// keep the conversation alive. The shared-handle exception below folds
 		// them because its engine ends the conversation during the swap.
@@ -351,6 +354,8 @@ func (a *app) clearConversation() {
 	a.discussionFeeds = nil
 	a.questionReplacement = nil
 	a.entries = nil
+	a.turnLandings = nil
+	a.recordRows = 0
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)
 	a.sel = -1
@@ -376,10 +381,15 @@ func (a *app) clearConversation() {
 	// are drawings rather than questions.
 	a.dropHarnessAsks()
 	a.harnPanel = harnessPanel{}
+	a.crewUI = crewPanel{}
 	a.harnessStep = ""
+	a.harnessName = ""
 	// And the picked harness with them: a chip is a choice about the NEXT
 	// message of this conversation (harnesspick.go).
 	a.harnPick, a.harnChip = harnessPick{}, ""
+	// The skill picker goes with them; the names it attached belong to the
+	// session being put down, not to the one taking the box (skillpick.go).
+	a.skillPick = skillPick{}
 	a.abandonConnects()
 	a.turn = 0
 	// The scrollback's mark and the compacted region both belong to the
@@ -516,6 +526,14 @@ func (a *app) closeForSwitch() {
 // conv is the bundle — the agent and the seams minted around it — and side is
 // the sidecar a detach left, or nil for a conversation that was just opened.
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
+	a.hostReplayLoading = false
+	a.hostReplayPending = nil
+	a.hostReplayWaiting = false
+	a.hostCalls = 0
+	a.hostDeferred = nil
+	if side != nil {
+		a.hostDeferred = side.hostDeferred
+	}
 	was := a.agent
 	a.takeUp(conv, true)
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);
@@ -547,6 +565,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 		a.forgetLevels()
 		a.learnLevel(a.model)
 	}
+	a.refreshCreditWarnings()
 	a.hudStale = true
 	// THE SCREEN IS REBUILT FROM THE AGENT'S OWN RECORD. This is the one moment
 	// a person can tell that this is not several terminals, and it is paid on
@@ -569,6 +588,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// frame the person is switching away from anyway.
 	var joined tea.Cmd
 	if door, ok := agent.(attachReplayer); ok {
+		a.hostReplayLoading = true
 		joined = a.offLoop(func() func(bool) tea.Cmd {
 			entries, events, stop := door.AttachReplay()
 			return func(here bool) tea.Cmd {
@@ -595,7 +615,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 				// exactly as the replay above left it, including whether that
 				// replay handed this window a turn that is still running
 				// (takeover.go's [app.resumeStoppedTurn]).
-				back = append(back, a.resumeStoppedTurn())
+				back = append(back, a.finishHostedReplay(), a.resumeStoppedTurn())
 				a.touch()
 				return tea.Batch(back...)
 			}
@@ -643,7 +663,9 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// armed are parked on the previous one's channels and discard themselves by
 	// generation (watching.go's [followingMsg]).
 	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.watchQuestions(), a.loadTasks(),
-		a.askHeld(), a.watchDriving(), a.watchFollowing()}
+		a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		// The program rows are the engine's, so they follow the conversation (delegate.go).
+		a.installDelegates()}
 
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))

@@ -130,11 +130,17 @@ func (a *app) treeLines() ([]session.UsageLine, bool) {
 // whose ledger was moved — has books the file cannot account for, and a figure
 // that dropped when a person opened yesterday's work would be worse than the
 // figure that was too small.
-func (a *app) spendShown() float64 {
-	if total := a.tree.Folded(); total > a.cost {
-		return total
+func (a *app) spendShown() float64 { return spendOf(a.cost, a.tree.Folded()) }
+
+// spendOf is [app.spendShown]'s rule on its own, the larger of a
+// conversation's books and its tree on the ledger, so the wall's tile for a
+// conversation this window holds behind the front says the figure its status
+// line would (wallspend.go), by the same arithmetic and not a copy of it.
+func spendOf(books, tree float64) float64 {
+	if tree > books {
+		return tree
 	}
-	return a.cost
+	return books
 }
 
 // spendSplit is what /cost prints under the total: what the conversation itself
@@ -164,8 +170,12 @@ func (a *app) spendSplit() (conversation, tasks float64, ok bool) {
 // this is. A session with no journal — and the legacy flat layout, where the
 // folder is the workspace and not an id — answers with something no ledger line
 // names, which sums to nothing and leaves [app.spendShown] on the books alone.
-func (a *app) selfSessionID() string {
-	file := strings.TrimSpace(a.file)
+func (a *app) selfSessionID() string { return sessionIDOf(a.file) }
+
+// sessionIDOf is the conversation id a journal at file is kept under: the name
+// of its folder. "" for no file.
+func sessionIDOf(file string) string {
+	file = strings.TrimSpace(file)
 	if file == "" {
 		return ""
 	}

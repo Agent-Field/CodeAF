@@ -10,6 +10,7 @@ package tui3
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"reflect"
 	"strings"
 	"testing"
@@ -236,13 +237,17 @@ func TestTrailingWorkWithNoReplyStaysWholeOnALandedRoom(t *testing.T) {
 	))
 	landRoom(t, a)
 
-	if folds := a.deckFolds(readingDeck(a)); len(folds) != 0 {
-		t.Fatalf("a stretch with no reply folded anyway: %+v", folds)
+	if folds := a.deckFolds(readingDeck(a)); len(folds) == 0 {
+		t.Fatal("settled operational tail has no disclosure")
 	}
 	page := readingPage(a)
-	if strings.Contains(page, "▸ worked") {
-		t.Fatalf("a chip was drawn over work that reached no reply:\n%s", page)
+	if !strings.Contains(page, "▸ worked") || strings.Contains(page, "index.html") {
+		t.Fatalf("settled tail was not compact:\n%s", page)
 	}
+	a.toggleLatestWorkfold()
+	a.room.capOpen = map[int]bool{1: true}
+	a.room.dirty = true
+	page = readingPage(a)
 	for _, want := range []string{"Draw two posters", "Reading the site first", "index.html"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the page lost %q, which is all the account there is:\n%s", want, page)
@@ -280,8 +285,8 @@ func TestAFailedCallAtTheTailIsStillOnALandedPage(t *testing.T) {
 		t.Fatalf("the fixture never drew a failed call: %#v", a.room.entries)
 	}
 	page := readingPage(a)
-	if !strings.Contains(page, "generate_image") {
-		t.Fatalf("the failed call was folded away:\n%s", page)
+	if !strings.Contains(page, a.icon(tokens.GFailed)+" 1 failed") {
+		t.Fatalf("the compact failure status is missing:\n%s", page)
 	}
 	if !strings.Contains(page, "Now generating both.") {
 		t.Fatalf("the last thing the node said is gone:\n%s", page)
@@ -304,8 +309,8 @@ func TestARunningRoomStillReadsByPhaseAndKeepsItsFrontier(t *testing.T) {
 	}})
 
 	page := readingPage(a)
-	if n := strings.Count(page, "▸ worked"); n != 2 {
-		t.Fatalf("want a chip per settled phase behind the frontier, got %d:\n%s", n, page)
+	if n := strings.Count(page, "▸ worked"); n != 0 {
+		t.Fatalf("running work must use one activity window, found %d historical chips:\n%s", n, page)
 	}
 	if !strings.Contains(page, "Still working") || strings.Contains(page, "bash") {
 		t.Fatalf("compact frontier lost prose or exposed the call:\n%s", page)
@@ -317,8 +322,8 @@ func TestARunningRoomStillReadsByPhaseAndKeepsItsFrontier(t *testing.T) {
 			t.Fatalf("opened frontier lost %q:\n%s", want, page)
 		}
 	}
-	if n := strings.Count(page, "▸ worked"); n != 2 {
-		t.Fatalf("opening live work changed settled phases:\n%s", page)
+	if n := strings.Count(page, "▸ worked"); n != 0 {
+		t.Fatalf("opening live work introduced extra phase chips:\n%s", page)
 	}
 }
 
@@ -361,13 +366,10 @@ func TestOnlyTheFoldStyleChangesWhenARoomLands(t *testing.T) {
 func TestOpenedChipsShutWhenTheWorkLands(t *testing.T) {
 	a := openRoomOn(t, landedJournal(t))
 	live := readingDeck(a)
-	folds := a.deckFolds(live)
-	if len(folds) == 0 {
-		t.Fatal("the running page folded nothing, so this proves nothing")
+	if folds := a.deckFolds(live); len(folds) != 0 {
+		t.Fatal("running turn has extra phase chips outside its activity window")
 	}
-	for _, f := range folds {
-		a.setWorkOpen(live, f.key, true)
-	}
+	a.setWorkOpen(live, liveWorkKey(live), true)
 
 	landRoom(t, a)
 
@@ -408,9 +410,8 @@ func TestSettlingTheFoldsLeavesAnAlreadyLandedReadersChipsAlone(t *testing.T) {
 	// And a room that has not landed is not re-cut either: nothing changed, so
 	// nothing may be dropped.
 	b := openRoomOn(t, landedJournal(t))
-	live := readingDeck(b)
-	for _, f := range b.deckFolds(live) {
-		b.setWorkOpen(live, f.key, true)
+	if !b.toggleLatestWorkfold() || !b.room.workOpen[0] {
+		t.Fatal("running room has no open live work for this assertion")
 	}
 	b.room.setDone(false)
 	open = false

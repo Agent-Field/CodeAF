@@ -64,6 +64,12 @@ func everyPlaceTable() []everyPlace {
 			},
 		},
 		{
+			id:     pageTeams,
+			open:   teamsPlaceLab,
+			cursor: teamsCursorLine,
+			hits:   teamsHits,
+		},
+		{
 			id:     pageTasks,
 			open:   func(t *testing.T) *app { return historyApp(t, 200) },
 			cursor: func(a *app) int { return a.taskSheet.cursor },
@@ -104,15 +110,6 @@ func everyPlaceTable() []everyPlace {
 			cursor: func(a *app) int { return a.spend.cursor },
 			hits: func(a *app) []int {
 				_, hits, _, _ := a.spendFrame(a.width, a.height)
-				return hits
-			},
-		},
-		{
-			id:     pageSearch,
-			open:   searchPlaceWithHits,
-			cursor: func(a *app) int { return a.search.cursor },
-			hits: func(a *app) []int {
-				_, hits, _, _ := a.searchFrame(a.width, a.height)
 				return hits
 			},
 		},
@@ -264,7 +261,6 @@ func everyEmptyPlace() []everyPlace {
 			return a
 		}},
 		{id: pageSpend, open: opened(pageSpend)},
-		{id: pageSearch, open: func(t *testing.T) *app { return searchLab(t, &searchFakeStore{}) }},
 	}
 }
 
@@ -293,14 +289,15 @@ func TestTabLeavesEveryPlaceAndComesBack(t *testing.T) {
 	}
 }
 
-// alt+1…7 JUMPS FROM EVERY PLACE. The numbers are the bar's own order and they
+// alt+1…9 JUMPS FROM EVERY PLACE. The numbers are the bar's own order and they
 // mean the same thing wherever you are standing — or, for a room with nothing
 // in it, they say why and leave you where you were. What they may never do is
 // nothing at all.
 func TestTheNumbersJumpFromEveryPlace(t *testing.T) {
 	for _, place := range everyPlaceTable() {
 		t.Run(place.id.word(), func(t *testing.T) {
-			for at, id := range pages() {
+			for _, id := range pages() {
+				at := placeDigitOf(id) - 1
 				a := place.open(t)
 				drive(t, a, key("alt+"+itoa(at+1)))
 				switch {
@@ -362,7 +359,7 @@ func TestTheWheelNeverReachesTheConversationFromAPlace(t *testing.T) {
 // THE POINTER SELECTS ON EVERY PROMOTED PLACE. Every list uses its one cursor
 // for the highlight and for the row that keyboard actions operate on.
 func TestThePointerSelectsOnEveryPromotedPlace(t *testing.T) {
-	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true, pageSearch: true}
+	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true}
 	for _, place := range everyPlaceTable() {
 		if !promoted[place.id] {
 			continue
@@ -458,7 +455,8 @@ func TestEveryPlaceBringsItsOwnLab(t *testing.T) {
 			t.Fatalf("the %s place is registered and has no lab in everyPlaceTable", id.word())
 		}
 	}
-	if len(labs) != len(placeRegistry) {
+	// The chats are registered for the bar and are no room (place_chats.go).
+	if len(labs) != len(placeRegistry)-1 {
 		t.Fatalf("%d labs for %d registered places", len(labs), len(placeRegistry))
 	}
 }

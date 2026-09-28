@@ -21,7 +21,7 @@ import (
 func clockApp(t *testing.T, agent Agent, rung string) (*app, func(time.Duration)) {
 	t.Helper()
 	dir := t.TempDir()
-	body := []byte(`{"` + config.KeyTimestamps + `":"` + rung + `"}`)
+	body := []byte(`{"` + config.KeyTimestamps + `":"` + rung + `","ui.work":"open"}`)
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), body, 0o600); err != nil {
 		t.Fatalf("writing the profile: %v", err)
 	}
@@ -29,6 +29,7 @@ func clockApp(t *testing.T, agent Agent, rung string) (*app, func(time.Duration)
 	a.width, a.height = 120, 24
 	a.profileDir = dir
 	a.timestamps = config.TimestampsAt(dir)
+	a.workMode = config.WorkOpen
 	now := time.Date(2026, 8, 14, 14, 0, 0, 0, time.UTC)
 	a.clock = func() time.Time { return now }
 	return a, func(d time.Duration) { now = now.Add(d) }
@@ -256,5 +257,21 @@ func TestARunningTurnHasNoReceipt(t *testing.T) {
 
 	if page := strings.Join(plainRows(a), "\n"); strings.Contains(page, "· 14:0") {
 		t.Fatalf("a running turn drew a receipt:\n%s", page)
+	}
+}
+
+func TestCleanChatReceiptsRequireWorkDisclosure(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries = foldFixture()
+	a.workMode = config.WorkFold
+	a.timestamps = config.TimestampsFooters
+	a.stamps = map[int]turnStamp{1: {at: time.Date(2026, 8, 14, 14, 1, 0, 0, time.UTC), took: time.Second}}
+	a.touch()
+	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "14:01") {
+		t.Fatalf("receipt escaped closed work: %s", got)
+	}
+	a.toggleLatestWorkfold()
+	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "14:01") {
+		t.Fatalf("receipt unavailable after disclosure: %s", got)
 	}
 }

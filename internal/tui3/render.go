@@ -67,6 +67,14 @@ const (
 	// row nothing in the conversation produced — the line is drawn between two
 	// blocks, and it exists only while the mode is up.
 	hitRewind
+	// hitAction is one action on a program's room (programroom.go): a press
+	// opens its whole step under its line, and a press on it again — or on the
+	// step it opened — shuts it. The action's key rides in [row.turn].
+	hitAction
+	// hitThread is a line of a thread card (teamthreadcard.go): the words of a
+	// manager's message or of a member's answer, which a press lays out in
+	// full and a second press folds again. The row's open field says whose.
+	hitThread
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -104,6 +112,12 @@ type row struct {
 	// Picture controls retain their index and original-file action through gutter layout.
 	pictureIndex int
 	pictureOpen  hudSpan
+	// plan is the store task a row in a run's task room stands for, on the rows
+	// the room draws under its transcript (planroom.go): a press on one opens
+	// that task's room.
+	plan string
+	// open is a [hitThread] row's message, by team and entry id.
+	open string
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -278,11 +292,16 @@ func (a *app) layout(width int) []row {
 		out = append(out, forming...)
 		closed = true
 	}
-	line, ok := a.harnessStepRow(inner)
-	if !ok && !hasCompactActivity(out) {
-		line, ok = a.ellipsis()
-		if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
-			line = a.activityLine("  " + a.shimmer("Working"))
+	var line string
+	var ok bool
+	compactWindow := !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] && hasCompactWindow(out, liveWorkKey(a.conversation()))
+	if !hasCompactActivity(out) && !compactWindow {
+		line, ok = a.harnessStepRow(inner)
+		if !ok {
+			line, ok = a.ellipsis()
+			if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
+				line = a.activityLine("  " + a.shimmer("Working"))
+			}
 		}
 	}
 	if ok {
@@ -368,6 +387,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// tense earlier. The lens chooses live compactness independently of its
 	// settled fold policy, and each page owns its disclosure key.
 	lives := deriveLiveWork(d)
+	// The compact work window already owns the activity indication. Keep
+	// the anchored logo for the initial waiting state, not as a second
+	// animated row stranded above a reply after work resumes.
+	if len(lives) > 0 {
+		showActivity = false
+	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok {
@@ -376,6 +401,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// chip per phase, and a row that carried the turn would make every
 			// chip on it one control.
 			open := a.workFoldOpen(d, f.key)
+			if !open && housekeepingFold(es, f) {
+				i = f.answer - 1
+				continue
+			}
 			// The chip stands where the turn's work stood, so it takes the same
 			// blank the work's first block would have taken — which after the
 			// person's message is the change-of-speaker gap wasUser buys.
@@ -393,33 +422,34 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
 				continue
 			}
-			// OPEN IS THE OUTLINE: every finished step as a caption line. A click
-			// (or enter) on a caption opens only that step's calls — so the page
-			// stays a stack of what happened, not a dump of every tool again.
-			drewCaption := false
+			// Captions own only their own spans. Walk every other entry too:
+			// reasoning, team replies and receipts must remain reachable when
+			// the reader opens the disclosure.
+			captions := make(map[int]caption)
 			for _, c := range d.captions {
-				toolsFrom, toolsTo := captionTools(c, es)
-				if toolsFrom < f.start || toolsFrom >= f.answer {
+				if c.start >= f.start && c.end <= f.answer {
+					captions[c.start] = c
+				}
+			}
+			for at := f.start; at < f.answer; at++ {
+				if c, ok := captions[at]; ok {
+					capOpen := a.captionCallsOpen(d, c)
+					out = append(out, a.captionRows(c, false, capOpen, width, d)...)
+					if capOpen {
+						out = append(out, a.captionSpanBody(d, c, width)...)
+						from, to := captionTools(c, es)
+						for call := from; call < to; call++ {
+							out = append(out, a.toolRows(d, call, call == to-1, width)...)
+						}
+					}
+					at = c.end - 1
 					continue
 				}
-				drewCaption = true
-				capOpen := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, false, capOpen, width, d)...)
-				if capOpen {
-					out = append(out, a.captionBody(d, c, width)...)
-					for at := toolsFrom; at < toolsTo; at++ {
-						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
-					}
-				}
+				out = append(out, a.disclosedEntryRows(d, at, width)...)
 			}
-			if drewCaption {
-				i = f.answer - 1
-				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
-				continue
-			}
-			// A fold with no captions keeps the old expansion so history is never
-			// behind an empty outline.
-			wasUser = false
+			i = f.answer - 1
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			continue
 		}
 		if e.turn != walk.turn {
 			// The turn before this one is over: its receipt, and then the mark
@@ -446,8 +476,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// working. The frontier keeps everything it has, and a non-frontier run
 		// that DOES hold steps still draws its block: those steps are work with
 		// nothing else on the page to say it.
-		if w, ok := lives[i]; ok && (w.last || len(w.steps) > 0) {
+		if w, ok := lives[i]; ok {
 			if !a.workFoldOpen(d, w.key) {
+				if !w.last {
+					i = w.end - 1
+					continue
+				}
 				// The block owns its activity door before the first caption,
 				// and spends the ordinary gap only when it actually draws.
 				rows := a.liveStepBlock(w, width, d)
@@ -478,9 +512,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			step := 0
 			for at := w.start; at < w.end; at++ {
 				if step >= len(w.steps) || at != w.steps[step].start {
-					for _, text := range a.entryRows(d, at, width) {
-						out = append(out, row{text: text, entry: at})
-					}
+					out = append(out, a.disclosedEntryRows(d, at, width)...)
 					continue
 				}
 				c := w.steps[step]
@@ -493,7 +525,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				if !capOpen {
 					continue
 				}
-				out = append(out, a.captionBody(d, c, width)...)
+				out = append(out, a.captionSpanBody(d, c, width)...)
 				toolsFrom, toolsTo := captionTools(c, es)
 				// AND AN OPEN STEP KEEPS THE CALL WINDOW IT ALREADY HAD. This is
 				// the same batch the cluster below draws with the same budget
@@ -563,9 +595,11 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			for end < len(es) && es[end].kind == entryDone {
 				end++
 			}
-			gap()
-			out = a.doneCluster(d, out, i, end, width)
-			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
+			if cards := a.doneCluster(d, nil, i, end, width); len(cards) > 0 {
+				gap()
+				out = append(out, cards...)
+				wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
+			}
 			i = end - 1
 			continue
 		}
@@ -650,7 +684,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// link's columns are a fact about the row it landed on, and the row it
 			// lands on is decided by a wrap this pass must not have an opinion
 			// about.
-			if e.kind == entryAssistant {
+			if e.kind == entryAssistant || (e.kind == entryNote && len(e.replyTags) > 0) {
 				// AND THE ONE THE POINTER IS ON IS INKED BY THE SAME PASS. It cannot be
 				// done afterwards: the row that comes back is styled text, and a hue
 				// spliced into it by column would have to redo the escape bookkeeping
@@ -741,6 +775,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// the cells that open it — a press on its number landed in the sentence
 	// beside it. That was true of every moved row with a link in it before this
 	// pass moved every row; it is not true of any row now.
+	// THE TEAM HALF OF THE LINK PASS, over the rows as they were laid out and
+	// before the indent law moves them with their spans (teamlink.go).
+	a.teamLinkPass(out, es)
+	a.mentionLinkPass(out, es)
 	if workIndent(width) != "" {
 		cols := workIndentCols(width)
 		for i := range out {
@@ -845,6 +883,56 @@ func (a *app) captionBody(d deck, c caption, width int) []row {
 	return out
 }
 
+// captionSpanBody restores entries skipped together with a folded caption.
+// The ordinary unfurled walk renders these itself; compact and workfold walks
+// skip the entire span and must include intervening reasoning and deliveries.
+func (a *app) captionSpanBody(d deck, c caption, width int) []row {
+	out := a.captionBody(d, c, width)
+	from, _ := captionTools(c, d.entries)
+	for at := c.start; at < from; at++ {
+		if at == c.head {
+			continue
+		}
+		out = append(out, a.disclosedEntryRows(d, at, width)...)
+	}
+	return out
+}
+
+// disclosedEntryRows preserves each retained entry's interaction when the
+// surrounding work is opened, including landed-card doors and assistant links.
+func (a *app) disclosedEntryRows(d deck, at, width int) []row {
+	e := &d.entries[at]
+	// The caption owns its lifted narration, including the disclosed remainder.
+	if e.kind == entryAssistant && e.capHead {
+		return nil
+	}
+	if e.kind == entryDone {
+		return a.doneCluster(d, nil, at, at+1, width)
+	}
+	if e.kind == entryTool {
+		return a.toolRows(d, at, true, width)
+	}
+	var out []row
+	links := 0
+	for n, text := range a.entryRows(d, at, width) {
+		r := row{text: text, entry: at}
+		if e.kind == entryAssistant || (e.kind == entryNote && len(e.replyTags) > 0) {
+			hot := -1
+			if h := a.hoveringLink(at); h >= 0 {
+				hot = h - links
+			}
+			r.text, r.links = a.linkTasks(text, hot)
+			for j := range r.links {
+				r.links[j].ord = links + j
+			}
+			links += len(r.links)
+			r.foot = e.feet[n]
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // opensTurn reports whether the entry at i is the first thing its turn drew.
 // A cluster that opens a turn follows the person's own message, whose
 // change-of-speaker gap (wasUser, in [app.deckRows]) is the one blank that
@@ -922,6 +1010,11 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	// out of the per-frame path; tool rows make the opposite trade because their
 	// lines already bypass this cache.
 	key := renderedEntryKey{identity: e.identity, width: width, ink: a.inkState}
+	// A TEAM NOTE DRAWS ANSWERS OUT OF THE TRAFFIC CACHE (teamthreadcard.go), so
+	// its rows go stale when that cache moves, and only then.
+	if a.teamNoteStale(e, width) {
+		e.stale = true
+	}
 	if e.built && e.rowKey == key && !e.stale {
 		return e.rows
 	}
@@ -1222,7 +1315,13 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 	case entryHarness:
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
 
+	case entryTeam:
+		return a.teamCardRows(*e, width)
+
 	case entryNote:
+		if len(e.replyTags) > 0 {
+			return a.linkPaths(a.taskReplyTagRows(e.replyTags, width))
+		}
 		// A LINE MAY BE QUIET; THE FACT IT CARRIES MAY NOT BE (payload.go). The
 		// lane keeps its dim prose and its dim lead — a note is still the surface
 		// talking about itself — while the words the person typed the command to
@@ -1250,6 +1349,11 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		body := wrap(e.text, room)
 		if e.block {
 			body = noteBlockLines(e.text, room)
+		} else if e.sheet {
+			// /help is a column. A wrap that starts the next row at the margin
+			// makes the sentence look like a new key. Continuations keep the
+			// column the first row's sentence already sits in.
+			body = wrapSheet(e.text, room)
 		}
 		out := make([]string, 0, len(body))
 		walk := factWalk{words: e.facts}
@@ -1318,7 +1422,10 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // those bytes are final enough to format, so the head being calm and the tail
 // being lit is the same fact the promotion itself states, said in ink.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
-	tags := a.taskReplyTagRows(e.replyTags, width)
+	if interruptedUpdate(e) {
+		rows := a.settledMarkdown(at, e, width)
+		return append(rows, a.pal.dim(fit("· interrupted", width)))
+	}
 	// ── AND PROSE THAT TURNED OUT NOT TO BE THE ANSWER ──────────────────────
 	//
 	// A block that more work opened under is narration, and it is drawn as what
@@ -1344,10 +1451,10 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 		if e.capHead && e.capCut > 0 && e.capCut <= len(text) {
 			text = text[e.capCut:]
 		}
-		return append(tags, a.workingProse(text, width)...)
+		return a.workingProse(text, width)
 	}
 	if e.settled {
-		return append(tags, a.settledMarkdown(at, e, width)...)
+		return a.settledMarkdown(at, e, width)
 	}
 	e.feet = nil
 	var out []string
@@ -1358,7 +1465,7 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	} else {
 		out = append(out, a.liveTail(drawn, width)...)
 	}
-	return append(tags, trimBlanks(out)...)
+	return trimBlanks(out)
 }
 
 // promotedRows is the head of a streaming reply — the bytes the throttle has
@@ -1414,7 +1521,7 @@ func (a *app) liveTail(text string, width int) []string {
 	return rows
 }
 
-// taskReplyTagRows puts the cause immediately above the answer it prompted.
+// taskReplyTagRows draws source details only inside disclosed operational work.
 // The request is copied as-is from the task record and omitted when empty.
 func (a *app) taskReplyTagRows(tags []session.TaskReplyTag, width int) []string {
 	var out []string
@@ -1705,9 +1812,19 @@ func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
 	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
 }
 
-// hasCompactActivity asks the rows that actually drew, rather than re-deriving
-// their visibility from engine state. Expanding a block returns its activity
-// budget to the ordinary tool rows and footer on the very same frame.
+// A paused compact window still owns the activity budget. A consent boundary
+// must not acquire an extra fallback status line merely because it is not moving.
+func hasCompactWindow(rows []row, key int) bool {
+	for _, r := range rows {
+		if r.hit == hitWorkFold && r.turn == key {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCompactActivity asks the rows that actually drew. Expanding a block returns
+// its activity budget to the ordinary tool rows and footer on the same frame.
 func hasCompactActivity(rows []row) bool {
 	for _, r := range rows {
 		if r.activity {
@@ -1807,7 +1924,7 @@ func (a *app) compactRow(e *entry, width int) string {
 // The bottom of this surface is TWO ROWS, and every element on them has exactly
 // one job (foot.go states the whole law):
 //
-//	─ porting the parser · gpt-4.1-mini · ⠿ high · ◇ asks · via deepinfra ──── esc back · / commands ─
+//	─ porting the parser · gpt-4.1-mini · ⠿ high · ◇ asks · via deepinfra ──── space space home · / commands ─
 //	$0.14 · ⟲ saved $0.02 · 89% cached   12.4k/128k · 10%   2 jobs      92 tok/s · ⠹ working · 4s
 //
 // THE SEAM IS IDENTITY — which conversation, what is answering it, and the keys
@@ -1882,7 +1999,7 @@ const ctxRingSize = 6
 type hudSeg uint8
 
 const (
-	// segCrew is the crew's preset word — `crew max` — the OTHER model dial,
+	// segCrew is the crew's reading — `crew auto` — the OTHER model dial,
 	// drawn at the head of the telemetry so it stands beside the conversation's
 	// model across the gap (crew.go's [app.crewSegment] says why it is one word).
 	segCrew hudSeg = iota
@@ -1980,6 +2097,7 @@ func (a *app) statusRows(width int) []string {
 	// where they landed (foot.go). The ledger's doors are the seam's now and
 	// are cleared there; the deck records its own.
 	a.modelSpan = hudSpan{}
+	a.dockClear()
 	if a.startingChat() {
 		return []string{a.pal.dim(fit("New chat · first message starts the conversation", width))}
 	}
@@ -3177,23 +3295,15 @@ func (a *app) stateWord() (string, string) {
 	if a.awaitingTask() {
 		return taskStartingWord, a.pal.accent(taskStartingWord)
 	}
-	// A DOOR AT REST WHOSE WORK OUTLIVED ITS TURN IS NOT IDLE. Handing a task out
-	// ends the turn — `a.state` goes back to [stateIdle] — and the node it started
-	// works on for minutes with nothing happening in the conversation, which the
-	// tab strip already draws as `working` ([tabWorkingWord], via
-	// [app.frontSignal]). The row said `idle` under a tab wearing `◐`: one
-	// conversation described two ways on one screen. The word is the tab's own,
-	// and the reading is the surface's frame-safe one — [app.tasksInFlight] walks
-	// a map this surface keeps and [app.jobsRunning] walks the job list, so
-	// nothing here opens [session.Agent.TaskIndex], which reads a file
-	// (tabsignal.go's header states the law). It says `working` and the word is
-	// NOT set on `a.state`: that field is a behavioural predicate (the spinner,
-	// the clock, ticking, barge-in and the background-work question all read it)
-	// and the door is genuinely at rest. There is no spinner and no clock here
-	// either — both belong to a turn, and [app.stateSegment] draws them only in
-	// [stateWorking].
+	// The tab's activity mark includes queued work, but this word describes
+	// execution. Read the task states separately so a busy-machine hold does
+	// not claim a worker is running. Jobs and running tasks still outlive a turn.
 	if a.state == stateIdle && a.frontSignal() == tabWorking {
-		return tabWorkingWord, a.pal.accent(tabWorkingWord)
+		word := roomQueuedWord
+		if a.jobsRunning() > 0 || a.tasksExecuting() {
+			word = tabWorkingWord
+		}
+		return word, a.pal.accent(word)
 	}
 	word := a.state.String()
 	switch a.state {
@@ -3353,10 +3463,12 @@ func (a *app) legend(width int) string {
 			ledger, alive = a.seamRungParts(parts, rung.steps)
 			painted, right = a.seamTelemetryLabel(ledger, alive)
 		}
-		// The project is the final right-hand field, after the numbers. Its
-		// extra columns never move the ledger's doors relative to that label.
+		// THE PROJECT IS THE KEYS ROW'S NOW (footswap.go's [app.hintRow]), and
+		// it stays on the seam only at the phone tier, where the seam IS the
+		// keys row and the last row is the deck. Its extra columns never move
+		// the ledger's doors relative to that label.
 		projectSpan := hudSpan{}
-		if !a.roomOpen() {
+		if !a.roomOpen() && !telemetry {
 			original := right
 			right, projectSpan = seamProjectRight(left, right, pieces.project, width)
 			if projectSpan.pressable() {
@@ -3540,12 +3652,12 @@ func (a *app) legendLinePainted(left, right, rightPainted string, width int, pai
 	// a bug the breadcrumb bar exposed: this line is laid out by the pinned
 	// header as well as by the legend (room.go, roomcrumbs.go), and the header is
 	// drawn AFTER the chrome — so a header clearing the span erased a door the
-	// legend had just recorded, and `esc back` became a label nothing
+	// legend had just recorded, and `space space home` became a label nothing
 	// answered for. What makes the span its own answer to "was it drawn" is
 	// [app.legend] clearing it before its own ladder starts.
-	if offset := strings.Index(right, a.escapeDoorWord()); offset >= 0 {
+	if offset := strings.Index(right, homeDoorWord); offset >= 0 {
 		from := at + ansi.StringWidth(right[:offset])
-		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
 	}
 	line := a.pal.dim("─")
 	if left != "" {
@@ -3714,6 +3826,12 @@ func (a *app) footHint(width int) string {
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
+	// A WORD OF THE HEAD UNDER THE POINTER says what it opens and its key
+	// (topnav.go's [app.headHint]), under a state's own keys and over every
+	// resting sentence.
+	if hint := a.headHint(); hint != "" {
+		return hint
+	}
 	// AND UNDER THE STATES, BUT OVER EVERY TIP AND DOOR: THE CHORD THAT DID NOT
 	// ARRIVE. A Mac whose Option key is composing accents answers the switcher's
 	// chord with the character `˚`, and the legend's own door would go on naming
@@ -3724,14 +3842,6 @@ func (a *app) footHint(width int) string {
 	// Mac, and only after a chord was actually aimed and missed).
 	if a.chordLost && a.chords.meta == chordMetaWord {
 		return a.chords.chordShortWords()
-	}
-	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
-	// lowest rung there is — a tip about a gesture the person has not used yet,
-	// drawn only over an idle box — and it takes the slot from the rest state
-	// below because that is what the rest state is for: the one line a newcomer
-	// reads when nothing is happening.
-	if tip := a.noticeHint(); tip != "" {
-		return tip
 	}
 	return a.idleHint()
 }
@@ -3753,7 +3863,7 @@ func (a *app) idleHint() string {
 	}
 	doors = append(doors, microcopy)
 	if a.homeDoorShowing() {
-		doors = append(doors, a.escapeDoorWord())
+		doors = append(doors, homeDoorWord)
 	}
 	return strings.Join(doors, hintSegment)
 }
@@ -3785,10 +3895,11 @@ const hopDoorWord = hopOpenKey + " chats"
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
 //	the pointer is theirs drag to select · any key ends it
-//	the picker is open    → lanes · enter switch · esc · crew max
-//	  inside a fold       enter choose · ← back · esc · crew max
+//	the picker is open    → lanes · enter switch · esc · crew auto
+//	  inside a fold       enter choose · ← back · esc · crew auto
 //	the sessions are up   enter open · esc
 //	copy mode is on       v select · a block · y yank · esc
+//	rewind is armed       esc again to rewind        (rewind.go's double esc)
 //	rewind mode is up     nothing — the mode bar prints its own keys
 //	the welcome box is up ↑↓ recent · enter open
 //	a path is completing  tab take · enter run · esc
@@ -3828,13 +3939,15 @@ func (a *app) hintWord() string {
 		// that a person cannot see any other way: the pointer being somewhere else
 		// looks exactly like the pointer being broken until a line says otherwise.
 		return "drag to select · any key ends it"
+	case a.addPanel.open:
+		return "↑↓ move · enter connect · esc"
 	case a.pick.open:
 		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
-		// person lands when the crew they just set did not change anything they
-		// can see. The status line's model readout is the conversation's model,
-		// which /crew never touches by design — so somebody who typed `/crew max`
-		// opens /model hunting for the change, and the one word this slot can
-		// afford tells them the crew is a separate thing that is already set.
+		// person lands when a crew change did not change anything they can see.
+		// The status line's model readout is the conversation's model, which
+		// /crew never touches by design — so somebody who pinned a seat opens
+		// /model hunting for the change, and the one word this slot can afford
+		// tells them the crew is a separate thing.
 		// The picker's rows are the list itself and are reused whole inside the
 		// settings panel ([picker.rowsOwned]), so it has no header or foot of its
 		// own to spend on a sentence; this slot is the line that is already there.
@@ -3848,8 +3961,6 @@ func (a *app) hintWord() string {
 			return keys + " · " + crew
 		}
 		return keys
-	case a.crewPick.open:
-		return "↑↓ · ←→ family · enter apply · esc"
 	case a.effPick.open:
 		// The chord is named beside the keys because this list is the only place
 		// on the surface that can teach it: the chip it opens from prints a mark
@@ -3874,6 +3985,10 @@ func (a *app) hintWord() string {
 		// another project cannot be excepted from a place it never reached
 		// ([standingPlace.hint]).
 		return a.orders.hint(a)
+	case a.crewUI.open:
+		// The crew panel prints its keys in its own bottom edge (crewpanel.go),
+		// and a slot repeating them would say the same thing twice on one screen.
+		return ""
 	case a.subPage.open:
 		// /subharness names its verbs here PER ROW, because enter means two
 		// things on the intake card — fill this field in, or start the run — and
@@ -3881,12 +3996,22 @@ func (a *app) hintWord() string {
 		// (subharness.go).
 		return a.subVerbs()
 	case a.copy.on:
-		return "v select · a block · y yank · esc"
+		return copyKeysWord
 	case a.rew.on:
 		// The rewind mode prints its own keys in the bar that replaced the draft
 		// box (rewind.go), and a slot repeating them would be the surface saying
 		// the same thing twice on one screen.
 		return ""
+	case a.rewindArmed() && a.rewindReady():
+		// The first esc has landed and the second one means something else for
+		// half a second. This outranks "esc interrupt" below for exactly that
+		// reason: while the window is open, that is no longer what the key does.
+		//
+		// It asks [app.rewindReady] as well as the clock, because the two can come
+		// apart: a question can be raised in the half second the window is open,
+		// and from that moment esc belongs to the question. The slot promises what
+		// the NEXT esc does, so it has to ask the same thing that key will.
+		return rewindArmWord
 	case a.rewindSaying():
 		return a.rewSay
 	case a.welcome.open:
@@ -3902,6 +4027,9 @@ func (a *app) hintWord() string {
 		// enter belongs to the LINE rather than to the list (input.go).
 		return "tab take · enter run · esc"
 	case a.menu.open || a.comp.open:
+		if hint := a.mentionHeadHint(); hint != "" {
+			return hint
+		}
 		return "↑↓ · enter · esc"
 	case a.shaping():
 		// The widening answer is part-way given and the block is on its second
@@ -3935,7 +4063,7 @@ func (a *app) hintWord() string {
 		// everything the draft would have got. And it ranks ABOVE the two lines
 		// below for the reason this whole slot is ordered the way it is — while a
 		// room is open, esc leaves the page and does not touch the conversation's
-		// turn, so "ctrl+c interrupt" would be naming a key that is spoken for.
+		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
 	case a.state == stateWorking:
 		// ONE RUNNING STATE, ONE COMPOSED LINE (steer.go's [app.runHint]). Its
@@ -3977,7 +4105,7 @@ func (a *app) hintWord() string {
 		// It costs no rows, for the reason the line above it costs none: this is
 		// the legend, which is on the frame in every state.
 		return spellOutHint
-	case a.railAway && a.railAvail():
+	case a.railAway && a.railAvail() && a.headHint() == "":
 		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
 		// [app.railStow]). It ranks LAST, under every state above it, because it is
 		// the only line here that is not about the next keystroke — it is where the
@@ -3990,8 +4118,10 @@ func (a *app) hintWord() string {
 		// there. This is that sign. With nothing run at all it stays quiet — the
 		// column a person closed was empty, ctrl+g still brings it back, and a
 		// standing hint about a roster of nothing is the emptiness law broken in
-		// the one slot a person reads most.
-		return railBackHint
+		// the one slot a person reads most. A word of the head under the pointer
+		// outranks it too ([app.footHint] asks [app.headHint] next): the pointer
+		// is on a word, and the line says that word.
+		return a.sideBackHint()
 	}
 	return ""
 }
@@ -4105,6 +4235,82 @@ func wrap(text string, width int) []string {
 		out = append(out, strings.Split(ansi.Wrap(para, width, ""), "\n")...)
 	}
 	return out
+}
+
+// wrapSheet is [wrap] for a column sheet such as /help. Each source line keeps
+// its own column: a row that already starts in spaces stays there, and a row
+// whose sentence begins after a gap of spaces continues under that sentence.
+// A continuation that fell back to column 0 read as a new key.
+func wrapSheet(text string, width int) []string {
+	if width < 4 {
+		width = 4
+	}
+	text = strings.ReplaceAll(text, "\t", "    ")
+	var out []string
+	for _, para := range strings.Split(text, "\n") {
+		if para == "" {
+			out = append(out, "")
+			continue
+		}
+		out = append(out, wrapSheetLine(para, width)...)
+	}
+	return out
+}
+
+// wrapSheetLine wraps one sheet row so every piece starts at the same column
+// as the sentence on the first piece.
+func wrapSheetLine(line string, width int) []string {
+	at := sheetColumn(line)
+	if at <= 0 || at >= width-4 {
+		return strings.Split(ansi.Wrap(line, width, ""), "\n")
+	}
+	head, rest := splitCells(line, at)
+	if strings.TrimSpace(rest) == "" {
+		return []string{line}
+	}
+	body := strings.Split(ansi.Wrap(rest, width-at, ""), "\n")
+	if len(body) == 0 {
+		return []string{line}
+	}
+	pad := strings.Repeat(" ", at)
+	out := make([]string, len(body))
+	out[0] = head + body[0]
+	for i := 1; i < len(body); i++ {
+		out[i] = pad + body[i]
+	}
+	return out
+}
+
+// sheetColumn is where a sheet row's sentence starts, in cells. A row that
+// already begins with spaces is hanging there. Otherwise it is the cell after
+// the first gap of two or more spaces, which is the column the key's sentence
+// is padded to. Zero means the row has no column to keep.
+func sheetColumn(line string) int {
+	lead := 0
+	for _, r := range line {
+		if r != ' ' {
+			break
+		}
+		lead++
+	}
+	if lead > 0 {
+		return lead
+	}
+	gap := 0
+	col := 0
+	for _, r := range line {
+		if r == ' ' {
+			gap++
+			col++
+			continue
+		}
+		if gap >= 2 {
+			return col
+		}
+		gap = 0
+		col += ansi.StringWidth(string(r))
+	}
+	return 0
 }
 
 // noteBlockLines is [wrap]'s opposite number for a block whose own line

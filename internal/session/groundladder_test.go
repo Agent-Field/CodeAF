@@ -147,7 +147,7 @@ func TestAGroundedTaskLandsWithoutMergingItsInheritance(t *testing.T) {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, false)
+	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, gitSignature{})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -319,7 +319,7 @@ func TestAUniverseGroundedRepositoryLandsOnItsTaskBranch(t *testing.T) {
 		t.Fatalf("rung = %q, want %q", tree.rung, GroundRungUniverse)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, false)
+	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, gitSignature{})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -361,7 +361,7 @@ func TestAKeptUniverseBranchIsInThePersonsOwnRepository(t *testing.T) {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "half.txt"), "as far as it got\n")
-	merge, changed := keptWork(tree, "keep the work", []string{"half.txt"}, false)
+	merge, changed := keptWork(tree, "keep the work", []string{"half.txt"}, gitSignature{})
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q, want the branch kept", merge)
 	}
@@ -370,6 +370,12 @@ func TestAKeptUniverseBranchIsInThePersonsOwnRepository(t *testing.T) {
 	}
 	if _, err := git(repo, "rev-parse", "--verify", "--quiet", tree.branch); err != nil {
 		t.Fatalf("%s cannot be checked out in the person's repository, and the report offers it to them", tree.branch)
+	}
+	if _, err := os.Stat(tree.dir); err != nil {
+		t.Fatalf("kept copy disappeared: %v", err)
+	}
+	if names := forkNames(t, repo); len(names) != 1 || names[0] != tree.universe {
+		t.Fatalf("kept fork lost registration: %v", names)
 	}
 	held := gitOut(t, repo, "show", "--stat", "--oneline", tree.branch)
 	if !strings.Contains(held, "half.txt") {
@@ -454,14 +460,8 @@ const realFurrowEnvVar = "CODEAF_FURROW_REAL"
 // THE WHOLE ROAD, AGAINST THE PROGRAM ITSELF: fork a real repository holding
 // everything git can and cannot see, work in it, and come home to a merge.
 func TestARealFurrowGroundsARepositoryTaskAndItComesHome(t *testing.T) {
-	binary := strings.TrimSpace(os.Getenv(realFurrowEnvVar))
-	if binary == "" {
-		t.Skip("set " + realFurrowEnvVar + " to a furrow binary to run this against the real program")
-	}
+	isolatedRetirementFurrow(t)
 	repo := worldGitCannotSee(t)
-	t.Setenv(furrow.BinaryEnvVar, binary)
-	furrow.Forget()
-	t.Cleanup(furrow.Forget)
 	place := Place{Dir: t.TempDir(), Workspace: repo}
 
 	tree, err := prepareTaskTree(place, repo, "aaaa3333aaaa3333", 15, "the real thing")
@@ -481,7 +481,7 @@ func TestARealFurrowGroundsARepositoryTaskAndItComesHome(t *testing.T) {
 		t.Fatalf("the child's tree is not clean:\n%s", status)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	if merge, detail, _, _ := tree.comeHome("the real thing", []string{"done.txt"}, false); merge != mergeMerged {
+	if merge, detail, _, _ := tree.comeHome("the real thing", []string{"done.txt"}, gitSignature{}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
 	if got := readFile(t, filepath.Join(repo, "done.txt")); !strings.Contains(got, "what the node made") {
@@ -531,8 +531,10 @@ watch)
   echo '{"snapshot":"aaaabbbbcccc0001","workspace":"'"$repo"'"}'
   ;;
 fork-rm)
+  destination=$(sed -n 's/.*"destination":"\([^" ]*\)".*/\1/p' "$repo/.furrow/forks/$2")
+  if [ "$3" != "--keep-files" ] && [ -n "$destination" ]; then rm -rf "$destination"; fi
   rm -f "$repo/.furrow/forks/$2"
-  echo '{"dropped":"'"$2"'"}'
+  echo '{"files_removed":true}'
   ;;
 forks)
   printf '['
@@ -554,6 +556,7 @@ fork)
   done
   mkdir -p "$destination"
   cp -a "$repo"/. "$destination"/
+  rm -rf "$destination/.furrow/forks"
   mkdir -p "$repo/.furrow/forks"
   echo '{"name":"'"$name"'","destination":"'"$destination"'","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009"}' > "$repo/.furrow/forks/$name"
   echo '{"plan":{},"result":{"name":"'"$name"'","destination":"'"$destination"'","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009"}}'

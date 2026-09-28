@@ -52,7 +52,7 @@ func TestTheKeySheetSpellsTheEscapeGestureOneWay(t *testing.T) {
 		{"the task roster", railHoldChord + " ", "esc back"},
 		{"the new chat", newChatChord + " ", "esc back"},
 		{"the conversation switcher", hopOpenKey + " ", "esc cancel"},
-		{"back navigation", "esc            back", "home when no layer remains"},
+		{"space space, over an empty box", "space space", "esc back"},
 	} {
 		found := ""
 		for _, line := range strings.Split(sheet, "\n") {

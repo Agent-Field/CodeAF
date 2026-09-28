@@ -28,6 +28,10 @@ func runTelemetry(args []string) error {
 		return runTelemetryStatus(nil)
 	}
 	switch args[0] {
+	case "-h", "-help", "--help":
+		// ASKING IS NEVER A FAILURE. This door took the flag for a sixth
+		// verb and left with 1, the one door in the binary that did.
+		return commandHelp("telemetry")
 	case "status":
 		return runTelemetryStatus(args[1:])
 	case "info":
@@ -42,11 +46,11 @@ func runTelemetry(args []string) error {
 }
 
 // telemetryFlags holds the one flag every verb accepts so a --help reader and
-// the tests share one parser.
+// the tests share one parser. It is the binary's own seam, named for the whole
+// line a person typed, so `codeaf telemetry status --help` prints the usage and
+// leaves with 0 like every other verb instead of `flag: help requested` and 1.
 func telemetryFlags(name string) *flag.FlagSet {
-	flags := flag.NewFlagSet(name, flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
-	return flags
+	return commandFlags("telemetry " + name)
 }
 
 // runTelemetryStatus prints the pipe's whole answer: on or off, why it is off,
@@ -55,7 +59,7 @@ func telemetryFlags(name string) *flag.FlagSet {
 // recognise, far too little to be a person.
 func runTelemetryStatus(args []string) error {
 	flags := telemetryFlags("status")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	// The config answer goes through the package's single door so the row
@@ -110,7 +114,7 @@ func telemetryInstallPrefix() string {
 // here, each under a line naming where it goes or why it does not.
 func runTelemetryInfo(args []string) error {
 	flags := telemetryFlags("info")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	profileDir := config.ProfileDir()
@@ -127,7 +131,7 @@ func runTelemetryInfo(args []string) error {
 // it, not piping it; a pipe reads indented JSON just as well.
 func runTelemetryShow(args []string) error {
 	flags := telemetryFlags("show")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	profileDir := config.ProfileDir()
@@ -371,7 +375,7 @@ func poolRowsWaiting(poolDir string) []json.RawMessage {
 // nobody could audit.
 func runTelemetrySet(word string, args []string) error {
 	flags := telemetryFlags(word)
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	profileDir := config.ProfileDir()

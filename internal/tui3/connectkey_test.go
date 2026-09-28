@@ -489,7 +489,7 @@ func bigCatalog(n int) []connect.Status {
 			auth = connect.AuthKey
 		}
 		rows = append(rows, connect.Status{Service: connect.Service{
-			ID: id, Name: "Service " + itoa(i), Blurb: "what " + id + " is for", Auth: auth,
+			ID: id, Name: "Provider " + itoa(i), Blurb: "what " + id + " is for", Auth: auth,
 		}})
 	}
 	// One row with a name worth searching for, and a key rather than a sign-in.
@@ -583,7 +583,7 @@ func TestTheConnectPanelSaysHowEachServiceConnects(t *testing.T) {
 	// A browser row carries the other tag. "s" matches every service in the
 	// catalog, so the sign-in half is on screen too.
 	drive(t, a, key("ctrl+u"))
-	for _, r := range "service 0" {
+	for _, r := range "provider 0" {
 		drive(t, a, key(string(r)))
 	}
 	if screen = strings.Join(plainOverlay(a), "\n"); !strings.Contains(screen, signInTag) {
@@ -1040,7 +1040,7 @@ func TestAConnectPanelWithoutCategoriesKeepsItsBlankGap(t *testing.T) {
 	if p.owner[1] != -1 {
 		t.Fatalf("the gap answers to row %d", p.owner[1])
 	}
-	if !strings.Contains(lines[2], "Service 0") {
+	if !strings.Contains(lines[2], "Provider 0") {
 		t.Fatalf("the catalog does not start under the gap: %q", lines[2])
 	}
 }

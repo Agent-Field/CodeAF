@@ -612,7 +612,7 @@ func (a *app) hopStripOrder(rows []hopRow) []hopRow {
 // The feature was invisible until you had learned the thing it exists for.
 //
 // THE WORLD IS READ ON THE KEYSTROKE, ONCE, and that is affordable for one
-// reason: this gesture REPLACES pressing `esc`, which takes the same
+// reason: this gesture REPLACES pressing `space space`, which takes the same
 // reading and then draws a whole page with it. It can be no slower than what a
 // person does today to answer the same question.
 func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
@@ -1172,7 +1172,7 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 // EVERY OTHER DOOR BETWEEN CONVERSATIONS ALREADY DOES IT, and each spells it for
 // itself: home's own `enter` ends in [app.closeHome] (home.go's
 // [app.homeWalkIn]), search's row door in [app.standDownFullscreen]
-// (place_search.go's [app.openConversationRow]), and `ctrl+shift+t` in
+// (conversationrow.go's [app.openConversationRow]), and `ctrl+shift+t` in
 // [app.closeHome] again (tabreopen.go). This is that same statement, made once
 // for the one door that can be opened from ANY place — which is why it asks
 // [app.pageShowing] rather than naming home.

@@ -68,6 +68,15 @@ func (c *countingAgent) Submit(ctx context.Context, text string) (<-chan session
 	return countedEvents(events), nil
 }
 
+// SubmitBash counts the explicit human shell stream the same way as messages.
+func (c *countingAgent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {
+	events, err := c.Agent.SubmitBash(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	return countedEvents(events), nil
+}
+
 // SubmitStanding is [tui3.Agent.SubmitStanding] with the stream counted.
 func (c *countingAgent) SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error) {
 	events, err := c.Agent.SubmitStanding(ctx, text)

@@ -132,7 +132,7 @@ func (s *Store) RecordQuestion(nodeID, scope, body string) (Fact, error) {
 	if len(existing) > 0 {
 		return existing[0], nil
 	}
-	return s.recordFact(FactWriterOther, nodeID, resolved, FactQuestion, body, nil, 0, QuestionOpen, "", false)
+	return s.recordFact(FactWriterOther, nodeID, resolved, FactQuestion, body, nil, 0, QuestionOpen, "", "", false)
 }
 
 // Questions lists knowledge gaps in newest-first order. Empty status includes

@@ -15,13 +15,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/codeaf/internal/manual"
-	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── ROW 23: `?` ─────────────────────────────────────────────────────────────
@@ -71,13 +64,13 @@ func TestTheQuestionMarkOpensHelpAndNeverEatsATypedOne(t *testing.T) {
 		t.Fatal("? twice on a place left the map up — the key is a toggle or it is a mode")
 	}
 
-	// AND A PLACE'S BOX KEEPS ITS OWN QUESTION MARK — the search place's query,
+	// AND A PLACE'S BOX KEEPS ITS OWN QUESTION MARK — the memory place's filter,
 	// since spend has no box any more (pages.go's [place.box]).
 	d := placeApp(t)
-	d.showPage(pageSearch)
+	d.showPage(pageMemory)
 	typeInto(t, d, "how much")
 	drive(t, d, key(helpAskKey))
-	if got := d.search.query.String(); got != "how much?" {
+	if got := d.mem.filter.String(); got != "how much?" {
 		t.Fatalf("? into a place's box left %q — the key ate a character somebody typed", got)
 	}
 	if d.mapShowing {
@@ -247,16 +240,16 @@ func TestTheKeySheetSpellsTheSendChordForThisKeyboardAndScopesBothCtrlR(t *testi
 // ── ROW 14: THE MAP OVER A PLACE WITH NO VERBS ──────────────────────────────
 
 // A KEY DRAWN THAT DOES NOTHING is SCREEN 3a's clause read backwards. The map
-// promised `→ verbs on this row` over all seven places, and the search place
+// promised `→ verbs on this row` even on an empty spend page, which
 // declares no verbs at all — so the arrow it named opened nothing there.
 func TestTheMapNamesTheRowVerbsOnlyWhereTheRowHasThem(t *testing.T) {
 	a := placeApp(t)
-	a.showPage(pageSearch)
+	a.showPage(pageSpend)
 	drive(t, a, key(placeMapKey))
 	if got := a.placeHint(); strings.Contains(got, placeMapVerbWords) {
-		t.Fatalf("the map over search promises %q with nothing to open: %q", placeMapVerbWords, got)
+		t.Fatalf("the map over empty spend promises %q with nothing to open: %q", placeMapVerbWords, got)
 	} else if !strings.Contains(got, mapCloseWords) || !strings.Contains(got, chordJumpWords) {
-		t.Fatalf("the map over search lost the clauses that are true there: %q", got)
+		t.Fatalf("the map over empty spend lost the clauses that are true there: %q", got)
 	}
 
 	// AND IT KEEPS THE CLAUSE WHERE THE ROW REALLY HAS VERBS.
@@ -268,117 +261,6 @@ func TestTheMapNamesTheRowVerbsOnlyWhereTheRowHasThem(t *testing.T) {
 	drive(t, b, key(placeMapKey))
 	if got := b.placeHint(); !strings.Contains(got, placeMapVerbWords) {
 		t.Fatalf("the map over a row with verbs dropped %q: %q", placeMapVerbWords, got)
-	}
-}
-
-// ── ROWS 11, 12 AND 18: THE SEARCH PLACE'S OWN BODY ─────────────────────────
-
-// NOTHING IS CUT, AND EVERY ROW HANGS FROM THE BODY'S OWN COLUMN.
-// Both sentences went through the character ruler, so at eighty columns the
-// third one drew `…at the matching t…` and its other half was gone; and the
-// rows started at column 1 where tasks, standing and spend all start at 2, so
-// walking the tab bar the body stepped sideways.
-func TestTheSearchTeachingWrapsAndHangsFromTheBodysColumn(t *testing.T) {
-	pal := newPalette(tokens.NoColor, false)
-	hits, world := searchFixture()
-	for _, width := range []int{60, 80, 120, 160} {
-		for _, r := range []searchReading{
-			readSearch("", nil, session.World{}, searchTestNow),
-			readSearch("amber rail", nil, session.World{}, searchTestNow),
-			readSearch("report", hits, world, searchTestNow),
-		} {
-			for i, row := range r.rows(width, pal) {
-				text := ansi.Strip(row)
-				if got := ansi.StringWidth(text); got > width {
-					t.Fatalf("row %d drew %d cells at %d columns: %q", i, got, width, text)
-				}
-				if strings.TrimSpace(text) == "" {
-					continue
-				}
-				// THE WHISPER HANGS UNDER ITS HEADING, one gutter in, exactly as
-				// home hangs a panel's (placeprose.go's [placeWhisperLead]); every
-				// other row hangs from the body's own column.
-				// A RESULT hangs its title after the row's two-cell lead, which is
-				// the same column (searchplace.go's [searchLead]).
-				gutter := strings.HasPrefix(text, placeWhisperLead) && !strings.HasPrefix(text, placeWhisperLead+" ")
-				if !gutter && (!strings.HasPrefix(text, " ") || strings.HasPrefix(text, "  ")) {
-					t.Fatalf("row %d at %d columns hangs from the wrong column: %q", i, width, text)
-				}
-				if strings.HasSuffix(strings.TrimRight(text, " "), "…") {
-					t.Fatalf("a sentence was cut instead of wrapped at %d columns: %q", width, text)
-				}
-			}
-		}
-	}
-
-	// AND THE WHISPER IS WHOLE AT EIGHTY COLUMNS, under the place's heading.
-	page := searchSaid(readSearch("", nil, session.World{}, searchTestNow), 80)
-	if !strings.Contains(page, placeWhisper[pageSearch].whisper) {
-		t.Fatalf("the empty search place lost its whisper at 80 columns:\n%s", page)
-	}
-}
-
-// A SEARCH THAT FINDS NOTHING SAYS WHAT TO DO, and a window with no index
-// behind it says which of the two silences this one is. Without the second
-// sentence "nobody has said that" and "nothing looked" are the same line.
-func TestASearchThatFindsNothingSaysWhatToDoAndAMissingIndexSaysSo(t *testing.T) {
-	none := searchSaid(readSearch("amber rail", nil, session.World{}, searchTestNow), 120)
-	if !strings.Contains(none, `nothing on this machine says "amber rail"`) {
-		t.Fatalf("the empty result stopped naming the words that found nothing: %q", none)
-	}
-	if !strings.Contains(none, "try fewer words") {
-		t.Fatalf("the empty result names no next act: %q", none)
-	}
-
-	a := placeApp(t)
-	a.searchArm = func(int) tea.Cmd { return nil }
-	a.searchStore = nil
-	a.showPage(pageSearch)
-	typeInto(t, a, "report")
-	if cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen}); cmd != nil {
-		t.Fatal("a surface with no index sent a read anyway")
-	}
-	page := plain(placeFrameText(a))
-	if !strings.Contains(page, "no index of this machine's conversations") {
-		t.Fatalf("a window with no index behind it does not say so:\n%s", page)
-	}
-	if strings.Contains(page, `nothing on this machine says "report"`) {
-		t.Fatalf("a search that never happened reported a result:\n%s", page)
-	}
-}
-
-// ── ROW 7: THE MANUAL LISTING ───────────────────────────────────────────────
-
-// A LISTING THAT SHOWS A PAGE THAT DOES NOT EXIST is worse than one that shows
-// fewer pages. The listing is one line per page — the name, then the title —
-// and an ordinary note RE-FLOWS its text, so a long title wrapped and its last
-// word landed at the column the page names are in: `/manual` drew a page called
-// `later`, and `/manual later` then answered that there is no such page.
-func TestTheManualListingNeverInventsAPage(t *testing.T) {
-	pages := map[string]bool{}
-	for _, name := range manual.Chat().Pages() {
-		pages[name] = true
-	}
-	for _, width := range []int{60, 80, 120} {
-		a := newTestApp(&fakeAgent{model: "m"})
-		a.width, a.height = width, 40
-		a.railAway = true
-		typeLine(t, a, "/manual")
-		for _, row := range noticeBlockRows(a, len(a.entries)-1, a.bodyWidth()) {
-			// The note's own `· ` marker and the indent law's gutter come off
-			// first: what is left is the row as the listing built it, and its
-			// first word must be a page.
-			said := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(row), "·"))
-			name, _, _ := strings.Cut(said, " ")
-			if name == "" {
-				continue
-			}
-			if !pages[name] {
-				t.Fatalf("the listing at %d columns drew a row whose first word is %q, "+
-					"which is not a page — /manual %s answers that there is no such page:\n%s",
-					width, name, name, row)
-			}
-		}
 	}
 }
 
@@ -442,15 +324,6 @@ func keyRows(sheet string) string {
 		if line != "" && !strings.HasPrefix(line, "/") {
 			out = append(out, line)
 		}
-	}
-	return strings.Join(out, "\n")
-}
-
-// searchSaid is the search place's body as one block of words.
-func searchSaid(r searchReading, width int) string {
-	var out []string
-	for _, row := range r.rows(width, newPalette(tokens.NoColor, false)) {
-		out = append(out, strings.TrimSpace(ansi.Strip(row)))
 	}
 	return strings.Join(out, "\n")
 }

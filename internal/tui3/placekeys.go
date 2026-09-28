@@ -20,7 +20,7 @@ import (
 //	↑↓ enter esc tab      move, open, back out, next place      never text
 //	any printable         goes to the composer, always          never a verb
 //	alt+enter             send what you typed off as a task     one chord
-//	alt+1…7               jump straight to a place              drawn on the map
+//	alt+1…8               jump straight to a place              drawn on the map
 //	alt+<letter>          change how THIS place is shown        drawn on the map
 //	shift+←→↑↓            move this place's time window         no letters spent
 //	→ then a letter       act on the row — letters are verbs only here
@@ -71,10 +71,23 @@ import (
 // was five copies of the same two lines — a place added later that forgot them
 // would be a room `tab` could not leave.
 func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
-	a.keyboardPlaceSelection()
+	// A SEARCH CARD'S KEYS ACT ON THE ROW IT SHOWS. The usual keyboard handoff
+	// clears hover before the place handles a key; doing that for a card verb
+	// would make the key act on the cursor's different row. Keep the pointer
+	// through this one dispatch, then retire it so the next key owns the cursor.
+	if a.at(pageHome) && a.home.searching() && a.home.hover >= 0 && homeSearchCardKey(msg.String()) {
+		defer a.keyboardPlaceSelection()
+	} else {
+		a.keyboardPlaceSelection()
+	}
 	pl := a.showing()
 	if pl == nil {
 		return nil
+	}
+	// THE BARE DOOR DISARMS ON ANY KEY BUT THE SECOND SPACE, read before anything
+	// can take the key ([app.placeHomeGesture] re-arms it on a first space).
+	if msg.Key().Text != " " {
+		a.placeSpaceArmed = false
 	}
 	// THE ROUTER'S OWN LAYER IS READ BEFORE THE PLACE'S, and it is the only thing
 	// on this surface that is. The composer layer belongs to no place — the three
@@ -92,7 +105,26 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, took := a.placeKey(msg); took {
 		return cmd
 	}
+	// THE DOOR HOME IS READ HERE, at the bottom of the place router, because it
+	// must lose to every other meaning a space could have where a person is
+	// standing: the whole-keyboard layers above it, the router's six classes, and
+	// every key a place claims for its own rows. What is left — a plain space
+	// falling toward the place's box — is exactly what the door is made of
+	// ([app.placeHomeGesture]). It stands beside the conversation's own reading
+	// at the bottom of [app.key], one law about the box, two doors in.
+	if cmd, took := a.placeHomeGesture(msg); took {
+		return cmd
+	}
 	return pl.key(a, msg)
+}
+
+// homeSearchCardKey names keys whose subject is the visible search card.
+func homeSearchCardKey(key string) bool {
+	switch key {
+	case "right", "ctrl+t", "ctrl+o", "ctrl+y", "ctrl+e", "ctrl+x", effortKey:
+		return true
+	}
+	return false
 }
 
 // placeKey is the router's claim on one keypress. It reports whether it took it;
@@ -170,6 +202,15 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "tab":
+		if a.at(pageHome) && a.home.cmd.open {
+			// The visible command list owns completion before page navigation.
+			// An unmatched token stays editable instead of leaving Home.
+			if line, ok := a.home.focusedLine(); ok && line.kind == homeCommand {
+				a.touch()
+				return a.homeRunCommand(line), true
+			}
+			return nil, true
+		}
 		// THE NEXT PLACE A PERSON CAN ACTUALLY GET INTO. A place that refuses to
 		// open is walked past rather than walked into ([app.walkPage] tells the
 		// whole story of what pressing `tab` on a fresh machine used to do).
@@ -305,6 +346,7 @@ func (a *app) placeJumpKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
+	a.noticeEvent(eventPlaceJumped)
 	return a.showPage(id), true
 }
 
@@ -329,7 +371,8 @@ func placeDigitAt(prefix, key string) (page, bool) {
 		return 0, false
 	}
 	at := int(key[len(prefix)] - '1')
-	all := pages()
+	// The digits are the BAR's order, the chats included (place_chats.go).
+	all := placeOrder
 	if at < 0 || at >= len(all) {
 		return 0, false
 	}
@@ -393,6 +436,63 @@ func (a *app) placeBox() *editor {
 		return nil
 	}
 	return pl.box(a)
+}
+
+// placeHomeGesture is the door home read from WHATEVER PLACE IS STANDING: two
+// spaces typed into that place's own box, the same two keystrokes that open it
+// from inside a conversation (home.go's [app.homeGesture]).
+//
+// THE DOOR USED TO BE A CONVERSATION'S DOOR ONLY. The gesture lived at the
+// bottom of [app.key], past the rung where a standing place takes the whole
+// keyboard — so a place never saw the check, and a person standing on the
+// search place, or the tasks place, or settings, had `space space` die under
+// their hands while the tab bar sat one walk away. The person's words were
+// `universal`, and this is what makes it so: the same guard
+// ([app.homeDoorOpen] — anywhere but home itself, where the gesture is a no-op
+// and the foot draws nothing), the same law about the box
+// ([app.homeDoorArmed]), the same box the place was already typing into
+// ([app.placeBox]).
+//
+// A PLACE WITH NO BOX HAS NO DOOR, and that is right rather than a gap: the
+// gesture is a thing typed into a box, and where there is no box the key does
+// nothing and always did. The box is RESET before home opens, because the two
+// spaces were two spaces somebody typed and not a draft anybody meant to keep
+// — the conversation's door empties its draft the same way ([app.key]).
+func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.homeDoorOpen() {
+		return nil, false
+	}
+	box := a.placeBox()
+	// A PLACE WITH NO BOX STILL HAS THE DOOR. Spend and standing type into
+	// nothing (pages.go's [place.box]), so the two spaces are counted here
+	// rather than read back out of an editor: the first arms, the second
+	// opens, and any other key in between disarms ([app.placeKeyPress]).
+	if box == nil {
+		if msg.Key().Text != " " {
+			return nil, false
+		}
+		if a.placeSpaceArmed {
+			a.placeSpaceArmed = false
+			return a.homeByTwoSpaces(), true
+		}
+		a.placeSpaceArmed = true
+		return nil, true
+	}
+	if !a.homeDoorArmed(box, msg) {
+		return nil, false
+	}
+	box.reset()
+	return a.homeByTwoSpaces(), true
+}
+
+// homeByTwoSpaces opens home and THEN says the gesture happened, from a
+// conversation's box or a place's. Said first, the event decided home's row
+// while the conversation was in front, where home's own tips read as unarmed,
+// so the first of them came back fresh and jumped the ring on every trip.
+func (a *app) homeByTwoSpaces() tea.Cmd {
+	cmd := a.openHome()
+	a.noticeEvent(eventHomeGesture)
+	return cmd
 }
 
 // placeSend is `alt+enter` over a composer with something in it: THE COMPOSER

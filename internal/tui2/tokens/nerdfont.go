@@ -41,6 +41,8 @@ package tokens
 const NFFailedCell = "nf-fa-times_circle_o"
 
 var vocabulary = []GlyphBinding{
+	{ID: GPromptShell, Name: "PromptShell", Meaning: "composer prompt (shell)",
+		Plain: GlyphShell, UsualTint: Amber, Geometry: true},
 	// -- state (card line 1, rail card, agent row) ---------------------------
 	{
 		ID: GQueued, Name: "Queued", Meaning: "queued",
@@ -68,6 +70,12 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphFailed, NerdFont: "\uF00D", NFName: "nf-fa-times",
 		ASCII:     "x",
 		UsualTint: Coral, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GRemove, Name: "Remove", Meaning: "detach an unsent attachment",
+		Plain: GlyphRemove, NerdFont: "\uF057", NFName: "nf-fa-times_circle",
+		// Multiplication signs in prose must remain text; the tray resolves this slot explicitly.
+		ASCII: "x", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: false,
 	},
 	{
 		ID: GStopped, Name: "Stopped", Meaning: "stopped by the person",
@@ -310,6 +318,14 @@ var vocabulary = []GlyphBinding{
 		ID: GDraftUnsent, Name: "DraftUnsent", Meaning: "a message typed and cleared before it was sent",
 		Plain: GlyphDraftUnsent, NerdFont: "\uF044", NFName: "nf-fa-pencil_square_o",
 		ASCII:     "w",
+		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	// A crew seat a person pinned: the fixed point on the floor, the thumb tack
+	// where a patched font supplies one — a pin at two weights.
+	{
+		ID: GPinned, Name: "Pinned", Meaning: "a crew seat a person pinned; the router leaves it where it is",
+		Plain: GlyphPinned, NerdFont: "\uF08D", NFName: "nf-fa-thumb_tack",
+		ASCII:     "p",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 

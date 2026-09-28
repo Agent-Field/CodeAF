@@ -13,33 +13,18 @@ import (
 //
 // The engine never reads a profile: the surface hands it a [Config.RolesSource]
 // and a task's model climbs the ladder through that (taskmodel.go's
-// [Agent.defaultTaskModel]). So the defect this test pins was one seam further
-// out — the door built the map by asking a profile older than the worker seat
-// for a row it has never held, got the build's own choice back, and every task
-// started in that conversation ran on a model the person had never named.
-//
-// This is the ENGINE half of the acceptance, driven through the same call the
-// chat door builds its map with (cmd/codeaf's v3Crew, whose own wiring test is
-// [TestTheChatRoleMapSeatsTheInheritedWorkerRow]): the five classes as
-// internal/config resolves them, and the model a task admitted right now would
-// run on.
-func TestATaskOnACrewOlderThanTheWorkerSeatRunsOnTheSmallWorkRow(t *testing.T) {
+// [Agent.defaultTaskModel]). This is the ENGINE half of the acceptance, driven
+// through the same call the chat door builds its map with (cmd/codeaf's
+// v3Crew): the worker row as internal/config resolves it — a pin, or the
+// router's pick — and the model a task admitted right now would run on. No
+// row is ever answered with a model this build chose for everybody.
+func TestATaskRunsOnTheCrewsWorker(t *testing.T) {
 	pinned := "vendor/pinned-small-work"
 	for _, test := range []struct {
 		name  string
 		rows  map[string]string
 		model string
 	}{
-		{
-			name: "a crew written before the worker row runs the row it was split out of",
-			rows: map[string]string{
-				config.KeyTierReflexModel:     "vendor/pinned-reflex",
-				config.KeyTierLowModel:        pinned,
-				config.KeyTierHighModel:       "vendor/pinned-careful",
-				config.KeyTierMastermindModel: "vendor/pinned-thinking",
-			},
-			model: pinned,
-		},
 		{
 			name:  "a pinned worker row is what the task runs on",
 			rows:  map[string]string{config.KeyTierLowModel: pinned, config.KeyTierWorkerModel: "vendor/my-own-worker"},
@@ -54,9 +39,13 @@ func TestATaskOnACrewOlderThanTheWorkerSeatRunsOnTheSmallWorkRow(t *testing.T) {
 			model: "test/model",
 		},
 		{
-			name:  "a profile that has said nothing runs this build's choice",
+			// A profile that has said nothing has an AUTO worker: the router
+			// picks it per task, and with nothing to pick from — no catalog in
+			// this test — the task rides the conversation's model, never a
+			// model this build chose for everybody.
+			name:  "a profile that has said nothing never runs a build-chosen worker",
 			rows:  map[string]string{},
-			model: config.DefaultWorkerModel,
+			model: "test/model",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

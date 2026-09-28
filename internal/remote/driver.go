@@ -280,10 +280,19 @@ const watchingWord = "this window is reading this conversation, not typing into 
 // change (tasklane.go) — and it is what a reading page asks INSTEAD of guessing
 // from files on the machine it happens to be running on
 // (internal/tui3's taskowner.go).
+//
+// AND ONE TASK'S STORED PAGE IS ON IT BECAUSE A PROGRAM'S TASK HAS NO JOURNAL.
+// senior-dev writes no worker transcript for [MethodTaskRoom] to read; what it
+// did is its conversation with codeaf on the task's page in the plan store, so
+// a reading page onto a program's task reads [MethodPlanTaskPage] instead
+// (internal/tui3's [app.guestPageRead]). It opens the store's read handles and
+// changes nothing. Every verb on that page — a note, a pause, a stop — is NOT
+// here and must not be: they act on the work, which is the owner's.
 var watcherReads = map[string]bool{
 	MethodTaskRoom:      true,
 	MethodTaskWatch:     true,
 	MethodQuestionWatch: true,
+	MethodPlanTaskPage:  true,
 	MethodDetach:        true,
 	MethodPing:          true,
 }

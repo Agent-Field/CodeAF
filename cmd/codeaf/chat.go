@@ -166,14 +166,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// then let the machine form print underneath, which said one fact twice.
 		return nil, err
 	}
-	// A tier row that says auto is answered from this catalog (config.AutoModels),
-	// so the word is wired BEFORE the seats handed in are applied — a door whose
-	// ladder answered the word before this line resolved it from nothing. The
-	// read is the same non-blocking one, never a fetch.
+	// The crew router picks its seats from this catalog (config.CrewCatalog),
+	// so it is wired BEFORE the seats handed in are applied — a door whose
+	// ladder routed before this line would have routed from nothing. The read
+	// is the same non-blocking one, never a fetch.
 	modelCatalog := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
-	config.AutoModels = modelCatalog.ModelsNow
+	seatCrewRows(modelCatalog.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)
@@ -891,6 +891,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// is here so a worker that speaks a spec is handed one rather than
 			// having it reassembled from prose at the boundary (W3).
 			Spec:         leafSpec(plans, planNode, node),
+			Skills:       leafSkills(planNode),
 			OutputHint:   outputHint,
 			Intermediate: intermediate,
 			Inputs:       inputs,
@@ -5382,6 +5383,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			NodeBudget: settings.NodeBudget,
 			Briefs:     true,
 			Journal:    briefJournal(history, prefix),
+			Skills:     shelfSkills(history),
 			Progress:   progress,
 		})
 		// THE LAW: STRUCTURE THE PLANNER HAS ALREADY FOUND IS NEVER DISCARDED
@@ -5520,6 +5522,36 @@ func briefJournal(history *store.Store, prefix string) plan.BriefJournal {
 			log.Printf("note: could not journal the brief for %s: %v", idFn(nodeID), err)
 		}
 	}
+}
+
+// shelfSkills reads the active shelf once per build, frozen like the terrain
+// and the invoice, for the brief pass to compose per-node skill attachments
+// from. A nil store or a read fault composes nothing: a surface with no shelf
+// attaches no skills, and the prompts it sends are byte for byte what they
+// were before attachment existed.
+func shelfSkills(history *store.Store) []store.Fact {
+	if history == nil {
+		return nil
+	}
+	facts, err := history.SkillFacts(store.FactActive, shelfScanLimit)
+	if err != nil {
+		return nil
+	}
+	return facts
+}
+
+// shelfScanLimit is the whole shelf for attachment purposes, from the one
+// source of truth in internal/store.
+const shelfScanLimit = store.SkillShelfLimit
+
+// leafSkills carries a plan node's shelf attachment onto the task that runs
+// it. A store node with no plan node behind it — a spliced edge, a reflex —
+// attaches nothing.
+func leafSkills(planNode *plan.Node) []string {
+	if planNode == nil {
+		return nil
+	}
+	return planNode.Skills
 }
 
 // taskContract writes the working method for a job small enough to be one leaf.
@@ -5715,6 +5747,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			NodeBudget: min(settings.NodeBudget, replanNodeBudget),
 			Briefs:     true,
 			Journal:    briefJournal(history, prefix),
+			Skills:     shelfSkills(history),
 			Ensemble:   plan.EnsembleNever,
 			// A remainder that the spine finds nothing gated in is one fresh
 			// worker's assignment, and buying a seven-pass planning bundle to

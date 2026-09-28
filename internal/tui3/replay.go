@@ -130,8 +130,15 @@ func (a *app) replayList(all []session.DisplayEntry) {
 	// and typed straight away had their message appended to and then buried by
 	// the history that arrived behind it.
 	inTheGap := a.entries
+	// AND WHAT THIS SURFACE ALREADY DREW FROM THE RECORD WAS NOT SAID AFTER ANY
+	// OF IT. It is the same conversation, and keeping it puts the record on top
+	// of itself: the same answers twice, and a second seam. Only the rows said
+	// into this window since the last replay are in the gap ([app.recordRows]).
+	if drawn := min(a.recordRows, len(inTheGap)); drawn > 0 {
+		inTheGap = inTheGap[drawn:]
+	}
 	a.entries = append(blocks[:len(blocks):len(blocks)], inTheGap...)
-	_ = inTheGap
+	a.recordRows = len(blocks)
 	a.turn += turns
 	a.replayFrom = from
 	// A CONVERSATION THAT WAS COMPACTED AND THEN PUT DOWN HAS ALMOST NO TAIL — a
@@ -413,6 +420,11 @@ func (a *app) prepend(entries []session.DisplayEntry, seam bool) {
 	// AND EVERY POSITION THIS SURFACE HOLDS IN THE BLOCK LIST MOVES WITH IT.
 	a.shiftBlockIndices(len(blocks))
 	a.entries = append(blocks, a.entries...)
+	// AND THEY ARE THE RECORD'S OWN ROWS, which is exactly what they are: one
+	// helping of it, and the seam too when this was the crossing. A replay that
+	// arrives later has to be able to tell them from a sentence somebody typed
+	// ([app.recordRows]).
+	a.recordRows += len(blocks)
 	a.replayFloor = shift
 	// The pointer was over a row of a list that has just been rebuilt around it,
 	// which is the same claim [app.dropHover] makes wherever the rows are
@@ -685,11 +697,19 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			})
 
 		case "assistant":
+			var confirmation *responseConfirmation
+			if e.Answer {
+				confirmation = &responseConfirmation{done: true}
+			}
 			if text == "" {
 				continue // a step that only called tools; its calls follow
 			}
+			if len(e.ReplyTags) > 0 {
+				blocks = append(blocks, taskReplySourceEntry(e.ReplyTags, turn))
+			}
 			blocks = append(blocks, entry{
-				kind: entryAssistant, text: text, turn: turn, settled: true,
+				kind: entryAssistant, text: text, turn: turn, settled: true, confirmed: confirmation,
+				addressed: e.Addressed, cut: e.Interrupted,
 				replyTags: append([]session.TaskReplyTag(nil), e.ReplyTags...),
 			})
 
@@ -711,6 +731,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			}
 			blocks = append(blocks, entry{
 				kind: entryTool, tool: e.Tool, text: e.Hint, turn: turn, status: status,
+				open: session.IsUserBashCall(e.CallID),
 				// THE CALL'S OWN IDENTITY IS KEPT because it is what a live end has
 				// to land on: a page drawn out of the record and then kept listening
 				// pairs the end that arrives a second later with the row already
@@ -760,6 +781,18 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			if text == "" {
 				continue
 			}
+			// A LINE THE TEAM SENT IS A CARD, headed by who said it to whom
+			// (teamcard.go), and never the person's `›`. A TEAM WAKE WITH
+			// NOTHING DELIVERED IN IT IS NOT DRAWN: it is the sentence that told
+			// the model nobody typed this turn, which the live conversation
+			// never draws either (followup.go).
+			switch asideShapeOf(e) {
+			case asideTeam:
+				blocks = append(blocks, entry{kind: entryTeam, text: text, team: e.Team, turn: turn})
+				continue
+			case asideHidden:
+				continue
+			}
 			// A LINE THE SESSION WROTE GOES IN THE SESSION'S OWN LANE — the dim
 			// "· " row this surface says everything of its own in ([feed.note]) —
 			// and NOT above a "›" as though somebody had typed it.
@@ -774,7 +807,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			// A note from a file written before the mark arrives as "user" and
 			// draws exactly as it always did.
 			blocks = append(blocks, entry{
-				kind: entryNote, text: firstLine(text), turn: turn,
+				kind: entryNote, text: text, turn: turn, cut: e.Interrupted,
 			})
 		}
 	}

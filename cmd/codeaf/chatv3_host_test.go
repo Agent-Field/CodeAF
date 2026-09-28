@@ -138,7 +138,15 @@ func TestH9HostMissingCommandNamesTheCurrentInstallation(t *testing.T) {
 }
 
 func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
-	t.Setenv("CODEAF_HOME", filepath.Join(os.TempDir(), "acp"))
+	// A SHORT HOME, because the control socket must fit enginehost.SocketLimit:
+	// under macOS's own $TMPDIR the path came to 104 bytes, one over, and the
+	// multiplexing options were rightly left out.
+	short, err := os.MkdirTemp("/tmp", "acp")
+	if err != nil {
+		t.Skipf("no short folder for the control socket: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(short) })
+	t.Setenv("CODEAF_HOME", short)
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	args := strings.Join(sshTransportArgs("devbox", "codeaf engine"), " ")
 	for _, want := range []string{
@@ -200,6 +208,8 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(home, "state"))
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Chdir(home)
+	// Close the engine owner, including catalog and pool writers, before this home is removed.
+	freshEngineProcess(t)
 
 	engine, err := bootEngine(remote.Hello{Version: remote.Version}, "", "")
 	if err != nil {
@@ -701,6 +711,44 @@ func TestBringingAConversationBackCorrectsTheHeldWorldToo(t *testing.T) {
 func TestHostedWelcomeCarriesUnreadProfileKeysToSurface(t *testing.T) {
 	workspace := t.TempDir()
 	agent := v3TrackedAgent(t, workspace)
+	t.Cleanup(agent.SettleWrites)
+	t.Cleanup(func() { _ = agent.Close() })
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version, Workspace: workspace}, remote.Options{
+		Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: agent, Workspace: workspace, UnreadProfileKeys: []string{"models"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = loop.Close()
+		// Closing the client only starts shutdown; join the engine before its
+		// conversation and deferred writes lose their temporary directories.
+		select {
+		case <-loop.Served:
+		case <-time.After(5 * time.Second):
+			t.Error("hosted welcome engine did not finish shutdown")
+		}
+	})
+	options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
+	if got := options.UnreadProfileKeys; len(got) != 1 || got[0] != "models" {
+		t.Fatalf("hosted unread keys = %v", got)
+	}
+}
+
+// A CLOSED HOSTED LOOP HAS FINISHED THE REAL AGENT'S LEAVE, AND NOTHING WRITES
+// UNDER ITS HOME AFTERWARDS. The test above failed under load with "unlinkat
+// …/<place>: directory not empty" (#1647): the loop's Close returned while the
+// engine was still closing the conversation, and that close's last presence
+// write (taskpresence.go — a `.presence-*.json` renamed into place, then
+// removed) landed inside the folder TempDir's cleanup was walking. So this test
+// owns the home, closes, and then asks the two things that cleanup relies on:
+// the engine has already answered, and the home can be removed and stays gone.
+func TestHostedLoopCloseFinishesBeforeItsHomeIsRemoved(t *testing.T) {
+	workspace := t.TempDir()
+	home := t.TempDir()
+	agent := v3TrackedAgentIn(t, workspace, home)
 	loop, err := remote.Loopback(remote.Hello{Version: remote.Version, Workspace: workspace}, remote.Options{
 		Boot: func(remote.Hello) (*remote.Engine, error) {
 			return &remote.Engine{Agent: agent, Workspace: workspace, UnreadProfileKeys: []string{"models"}}, nil
@@ -710,8 +758,24 @@ func TestHostedWelcomeCarriesUnreadProfileKeysToSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = loop.Close() })
-	options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
-	if got := options.UnreadProfileKeys; len(got) != 1 || got[0] != "models" {
-		t.Fatalf("hosted unread keys = %v", got)
+	if err := loop.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The receive must be ready without waiting: otherwise Close has returned
+	// while the engine can still write under home.
+	select {
+	case err = <-loop.Served:
+	default:
+		<-loop.Served
+		t.Fatal("Close returned before the hosted engine finished")
+	}
+	if err != nil {
+		t.Fatalf("hosted engine: %v", err)
+	}
+	if err := os.RemoveAll(home); err != nil {
+		t.Fatalf("remove closed conversation home: %v", err)
+	}
+	if _, err := os.Stat(home); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("home after engine finished and removal: %v, want ErrNotExist", err)
 	}
 }

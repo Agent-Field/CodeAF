@@ -474,7 +474,7 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	// THE CONVERSATION'S HEAD IS THE PLACES' HEAD — pulse, strip, rule, blank —
 	// and the four rows are charged together (head.go). A room opened from here
 	// would lay its trail on the first row under them.
-	want := placeHeadRows
+	want := chatHeadRows
 	if a.headHeight() != want || a.bodyTop() != want || a.roomHeadRow() != want {
 		t.Fatalf("the strip is drawn but not budgeted: head=%d top=%d row=%d want=%d",
 			a.headHeight(), a.bodyTop(), a.roomHeadRow(), want)

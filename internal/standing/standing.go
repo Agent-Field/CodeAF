@@ -77,12 +77,32 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
-// Schema is the document version every [Item] carries. Bump it when a field
+// Schema is the newest document version this build reads. Bump it when a field
 // changes meaning; a reader that meets a newer schema than it knows skips the
-// document and says so in the pass.
-const Schema = 1
+// document and says so in the pass. [SchemaOf] says which version one item is
+// written at.
+const Schema = 2
+
+// SchemaOf is the version an item is written at: the oldest one whose readers
+// all keep its meaning.
+//
+// AN ITEM THAT ISOLATES ITS WORK IS VERSION 2, AND EVERY OTHER ITEM STAYS AT 1.
+// A build older than [Action.Isolate] decodes the document without that field
+// and would fire the task in the person's own checkout — the commit on their
+// branch the approval card promised would not happen. codeaf, devaf and stageaf
+// share one home, so an older build reading this store is an ordinary
+// afternoon, not a downgrade. Every older build skips a document newer than it
+// reads, so version 2 leaves an isolated order to the builds that can keep it,
+// while an ordinary order stays at 1 and an older build keeps firing it.
+func SchemaOf(it Item) int {
+	if it.Does.Isolate {
+		return 2
+	}
+	return 1
+}
 
 // Interval is how often a pass runs, whether a window runs it or the OS timer
 // does. It is the cadence the ratification card quotes for "checked every …".
@@ -140,14 +160,67 @@ const (
 	// WhenProbe fires when a probe's output, judged by the sentinel against
 	// the person's words, says yes. Anything the belt can do is a probe.
 	WhenProbe WhenKind = "probe"
-	// WhenHold never wakes. A rule — "always use tabs here", "never touch the
-	// public API" — has no moment, no rhythm and no probe: its whole work is
+	// WhenHold never wakes. A rule, "always use tabs here", "never touch the
+	// public API", has no moment, no rhythm and no probe: its whole work is
 	// done at birth, riding into the world of every conversation and task it
 	// reaches (docs/STANDING-ORDERS.md, the birth seam). The pass walks past
 	// it; it cannot fire, so it cannot spend, so it alone needs no rails and
 	// no action.
 	WhenHold WhenKind = "hold"
 )
+
+// CardKind is what a proposal card calls this item. It is derived from the
+// when, because that is the fact a person can check: a moment is a reminder,
+// a rhythm is a repeating check, a condition is a watch, and a hold is a rule.
+type CardKind string
+
+const (
+	// CardReminder is one moment. Doing it now is not a smaller version of it.
+	CardReminder CardKind = "reminder"
+	// CardCheck repeats on a cadence.
+	CardCheck CardKind = "check"
+	// CardWatch waits on a condition or an event.
+	CardWatch CardKind = "watch"
+	// CardRule is kept, and never wakes.
+	CardRule CardKind = "rule"
+)
+
+// CardKindOf reports which card this item is. A when this build does not know
+// is read as a watch: it is something to look for, and the card says so.
+func (it Item) CardKindOf() CardKind {
+	switch it.When.Kind {
+	case WhenAt:
+		return CardReminder
+	case WhenEvery:
+		return CardCheck
+	case WhenHold:
+		return CardRule
+	default:
+		return CardWatch
+	}
+}
+
+// shortWordsRunes is how much of a cadence a button may carry. Past it the
+// label eats the row and the other answers disappear.
+const shortWordsRunes = 32
+
+// ShortWords is the cadence a button can carry. A long sentence is cut at a
+// word, because a label that fills the row leaves no room for the other answers.
+func (w When) ShortWords() string {
+	words := strings.TrimSpace(w.Words)
+	if words == "" || utf8.RuneCountInString(words) <= shortWordsRunes {
+		return words
+	}
+	runes := []rune(words)
+	cut := shortWordsRunes
+	for cut > 0 && runes[cut-1] != ' ' {
+		cut--
+	}
+	if cut == 0 {
+		cut = shortWordsRunes
+	}
+	return strings.TrimSpace(string(runes[:cut])) + "..."
+}
 
 // When is what wakes an item. Exactly the fields its Kind names are read; the
 // rest are left empty and never consulted. Words are always kept: they are the
@@ -208,6 +281,9 @@ const (
 // Model, Effort and MaxSteps for ActionTask. Either kind may template the
 // probe's evidence into its text with {{evidence}}.
 type Action struct {
+	// Isolate runs a task in a separate Git worktree, as shown on its approval
+	// card. Permission prose never selects an execution directory.
+	Isolate    bool       `json:"isolate,omitempty"`
 	Kind       ActionKind `json:"kind"`
 	Say        string     `json:"say,omitempty"`
 	Brief      string     `json:"brief,omitempty"`
@@ -427,6 +503,9 @@ type Item struct {
 // admission law in one place: words, a workspace, a kind with its fields, an
 // action with its text, and rails that are not zero.
 func (it Item) Validate() error {
+	if it.Does.Isolate && (it.Does.Kind != ActionTask || it.When.Kind == WhenHold) {
+		return errors.New("only a waking task can use a separate Git worktree")
+	}
 	switch {
 	case it.Words == "":
 		return errors.New("an item needs the person's words")
@@ -554,7 +633,7 @@ func (it Item) Reaches(workspace, sessionID string) bool {
 	case AltitudeMachine:
 		return true
 	case AltitudeProject:
-		return workspace != "" && it.Workspace == workspace
+		return sameWorkspace(it.Workspace, workspace)
 	case AltitudeConversation:
 		return sessionID != "" && it.Origin.SessionID == sessionID
 	}
@@ -571,7 +650,7 @@ func (it Item) AppliesTo(workspace, sessionID string) bool {
 // ExceptedFrom answers whether the person excepted this item from the place.
 func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 	for _, ex := range it.Exceptions {
-		if ex.Workspace != "" && ex.Workspace == workspace {
+		if sameWorkspace(ex.Workspace, workspace) {
 			return true
 		}
 		if ex.SessionID != "" && ex.SessionID == sessionID {
@@ -1021,7 +1100,14 @@ type WatchStatus struct {
 // `codeaf tick` every [Interval]. The core lane builds it on internal/watchdog's
 // shape with its own unit names, so it can coexist with v1's.
 type Watch interface {
+	Ensure(ctx context.Context) error
 	Install(ctx context.Context) error
 	Uninstall(ctx context.Context) error
 	Status() (WatchStatus, error)
+}
+
+// sameWorkspace gives reach and exceptions the same lexical path identity.
+// An absent path never names the current directory.
+func sameWorkspace(a, b string) bool {
+	return a != "" && b != "" && filepath.Clean(a) == filepath.Clean(b)
 }

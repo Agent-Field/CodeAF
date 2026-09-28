@@ -214,6 +214,21 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	if forming {
 		bodyHit = hitNone
 	}
+	// A MANAGER'S MESSAGE HANGS ITS THREAD instead of a preview: the words
+	// quoted, and each member's answer under them as it lands
+	// (teamthreadcard.go). Opened, it is an ordinary call again.
+	if !e.open {
+		if card, ok := a.teamSendCard(e, i, room); ok {
+			for _, r := range card {
+				hit := bodyHit
+				if r.open != "" && !forming {
+					hit = hitThread
+				}
+				out = append(out, row{text: a.pal.dim(stem) + r.text, entry: i, hit: hit, open: r.open})
+			}
+			return out
+		}
+	}
 	out = append(out, a.mediaRows(e, i, width-workIndentCols(width), a.pal.dim(stem))...)
 	body, more := a.toolBlock(e, room, layoutTier(width) == tierPhone)
 	for _, line := range body {
@@ -257,6 +272,12 @@ func (a *app) toolBlock(e *entry, room int, phone bool) ([]string, int) {
 
 // toolBlockRows draws that block, and says whether what it drew may be kept.
 func (a *app) toolBlockRows(e *entry, room int, phone bool) (rows []string, more int, keep bool) {
+	// A command the person ran keeps its literal output visible at every width,
+	// including while it runs; ordinary tool previews have a different purpose.
+	if session.IsUserBashCall(e.callID) && e.open {
+		rows, more = a.detailBody(e, room)
+		return rows, more, true
+	}
 	if e.status == toolForming {
 		return a.formingRows(e, room, previewCap(phone)), 0, true
 	}
@@ -1384,8 +1405,14 @@ func (a *app) toolLimit(e *entry) time.Duration {
 	// it, and the row must count down against the same figure. A surface that
 	// read the argument for itself drew a bound the engine had not armed, which
 	// is the one number on this row a person cannot check.
+	backgroundAfter := a.bashBackgroundAfter
+	// A command the person entered never joins the job registry, so its row
+	// must count against the runner's timeout rather than a handoff clock.
+	if session.IsUserBashCall(e.callID) {
+		backgroundAfter = 0
+	}
 	return time.Duration(session.BashBoundSeconds(
-		json.RawMessage(raw), a.bashBackgroundAfter,
+		json.RawMessage(raw), backgroundAfter,
 	) * float64(time.Second))
 }
 
@@ -1684,6 +1711,18 @@ const (
 func (a *app) detailBody(e *entry, width int) ([]string, int) {
 	if width < 8 {
 		width = 8
+	}
+	if session.IsUserBashCall(e.callID) {
+		if e.detail.Output == "" {
+			return nil, 0
+		}
+		var rows []string
+		for _, line := range strings.Split(e.detail.Output, "\n") {
+			for _, row := range strings.Split(ansi.Hardwrap(drawableLine(line), width, true), "\n") {
+				rows = append(rows, a.pal.ink(row))
+			}
+		}
+		return rows, 0
 	}
 	if e.status.live() {
 		rows, more, _ := a.liveDetail(e, width)

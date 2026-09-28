@@ -88,8 +88,8 @@ carve-out, the quiet period before practice), **rhythm** (how long an absence
 earns an arrival brief, how many clean firings earn a charter tenure),
 **learning** (how much practice follows measured demand rather than curiosity,
 and whether codeaf may propose new skills), **documents & vision** (the reading
-rung and the model that looks at images), **sharing** (attribution — whether
-codeaf signs the commits and pull requests it writes for you), and
+rung and the model that looks at images), **sharing** (attribution.model — whether
+the line codeaf always signs its commits with names the model), and
 **appearance** (the chat/rail split).
 
 `↑/↓` or `j/k` move, enter changes the focused row, `esc` closes an open editor
@@ -162,9 +162,12 @@ locally.
   stop with Ctrl+C: the last line on the error stream is `record kept at
   <path>`, and that directory holds the whole record as `graph.db`. `--keep`
   keeps it whatever happened, and so does `CODEAF_DEBUG` set to anything but
-  `0`, `false` or `off`. It runs on this profile's crew unless `--model`,
-  `--plan-model` or the matching variables name something else, and it opens by
-  saying which of those chose its two models.
+  `0`, `false` or `off`. It runs on a crew picked for the run — with any `/crew pin` this profile holds —
+  unless `--model`, `--plan-model`, `--check-model`, `--pin seat=model[@provider]` or the
+  matching variables pin a seat for it, and it opens by saying which of those chose its
+  models. `--best` and `--cheap` move that one run's crew. It is held to the per-task
+  limit set in `/crew` ($5 unless set), which `-yes-spend` does not lift; `-yes-spend`
+  answers the daily cap and the plan-price question.
 - `codeaf wake` — run one bounded pass and exit. This is what the standing watch
   timer runs; you can run it by hand too.
 - `codeaf doctor` — the brain's path and size, whether a resident is alive, the

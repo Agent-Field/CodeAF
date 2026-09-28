@@ -5,8 +5,6 @@ package bare
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -181,7 +179,7 @@ const editDescription = "Edit a single file using exact text replacement. Every 
 const writeDescription = "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories."
 
 func grepDescription(caps Caps) string {
-	return fmt.Sprintf("Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to 100 matches or %s (whichever is hit first). Long lines are truncated to 500 chars.", sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Search contents; returns path:line:match. Respects .gitignore. Default cap: 100 matches or %s; lines clipped to 500 chars.", sizeWord(caps.MaxBytes)) + grepSafetyDescription()
 }
 
 func findDescription(caps Caps) string {
@@ -398,6 +396,18 @@ func readTool(cwd string, caps Caps) Tool {
 
 const maxTimeoutMs = 2147483647
 
+type bashOutputKey struct{}
+
+// RunBash runs the ordinary non-interactive shell and mirrors its raw output to
+// a caller-owned writer as it arrives. The runner retains its normal bounds,
+// cancellation, process isolation and spill handling.
+func RunBash(ctx context.Context, cwd string, args json.RawMessage, caps Caps, output io.Writer) (string, bool, error) {
+	if output != nil {
+		ctx = context.WithValue(ctx, bashOutputKey{}, output)
+	}
+	return newBashTool(cwd, caps).Execute(ctx, args)
+}
+
 func newBashTool(cwd string, caps Caps) Tool {
 	caps = caps.resolve()
 	return Tool{
@@ -493,6 +503,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// with goroutines raced: cmd.Wait closes the pipes before the
 			// goroutines drain the last chunk.
 			acc := newOutputAccumulator(caps)
+			acc.observer, _ = ctx.Value(bashOutputKey{}).(io.Writer)
 			cmd.Stdout = acc
 			cmd.Stderr = acc
 
@@ -1010,15 +1021,15 @@ type outputAccumulator struct {
 	currentLineBytes int
 	hasOpenLine      bool
 	finished         bool
-	tempFilePath     string
-	tempFile         *os.File
+	spill            *bashSpill
 	// mirror is where a PROMOTED call's output goes (promote.go). Once it is
 	// set, this accumulator stops accumulating altogether: the tool result has
 	// already been answered, nobody will ask for another snapshot, and the one
 	// place the rest of the output belongs is the adopter's own log. Two files
 	// for one command would be two answers to "where is the rest of it".
-	mirror io.Writer
-	mu     sync.Mutex
+	observer io.Writer
+	mirror   io.Writer
+	mu       sync.Mutex
 }
 
 // Write implements io.Writer so both cmd.Stdout and cmd.Stderr can be set
@@ -1028,6 +1039,9 @@ func (a *outputAccumulator) Write(data []byte) (int, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.append(data)
+	if a.observer != nil {
+		_, _ = a.observer.Write(data)
+	}
 	return len(data), nil
 }
 
@@ -1057,10 +1071,7 @@ func (a *outputAccumulator) mirrorTo(w io.Writer) {
 	a.mirror = w
 	// The temp spill ends here for the same reason the accumulation does: the
 	// full log is the adopter's file now.
-	if a.tempFile != nil {
-		a.tempFile.Close()
-		a.tempFile = nil
-	}
+	a.closeTempFile()
 }
 
 func (a *outputAccumulator) append(data []byte) {
@@ -1070,6 +1081,14 @@ func (a *outputAccumulator) append(data []byte) {
 	}
 	if a.finished {
 		return
+	}
+	// Start the snapshot before dropping any prefix from the rolling buffer.
+	// A spill created only after appending used to begin halfway through output.
+	if a.spill == nil && (a.totalDecoded+len(data) > a.maxBytes || a.completedLines+bytes.Count(data, []byte{'\n'}) > a.maxLines) {
+		a.ensureTempFile()
+	}
+	if a.spill != nil {
+		a.spill.write(data)
 	}
 	a.totalDecoded += len(data)
 	a.tailText = append(a.tailText, data...)
@@ -1097,12 +1116,6 @@ func (a *outputAccumulator) append(data []byte) {
 		a.totalLines++
 	}
 
-	if a.shouldUseTempFile() {
-		a.ensureTempFile()
-		if a.tempFile != nil {
-			a.tempFile.Write(data)
-		}
-	}
 }
 
 // sealed ends the accumulation and reports what it holds, under ONE hold of the
@@ -1119,9 +1132,8 @@ func (a *outputAccumulator) sealed() accumulatorSnapshot {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.finish()
-	snapshot := a.snapshot()
 	a.closeTempFile()
-	return snapshot
+	return a.snapshot()
 }
 
 // finish, snapshot and closeTempFile are the unlocked halves of [outputAccumulator.sealed]
@@ -1138,15 +1150,16 @@ func (a *outputAccumulator) finish() {
 }
 
 type accumulatorSnapshot struct {
-	content         string
-	truncated       bool
-	truncatedBy     string
-	totalLines      int
-	outputLines     int
-	outputBytes     int
-	lastLinePartial bool
-	lastLineBytes   int
-	fullOutputPath  string
+	content           string
+	truncated         bool
+	truncatedBy       string
+	totalLines        int
+	outputLines       int
+	outputBytes       int
+	lastLinePartial   bool
+	lastLineBytes     int
+	fullOutputPath    string
+	outputDescription string
 	// capBytes is the byte cap this snapshot was cut at, so the footer quotes
 	// the bound that actually bound it rather than a constant.
 	capBytes int
@@ -1173,17 +1186,22 @@ func (a *outputAccumulator) snapshot() accumulatorSnapshot {
 		a.ensureTempFile()
 	}
 
+	path, description := "", ""
+	if a.spill != nil {
+		path, description = a.spill.path, a.spill.description()
+	}
 	return accumulatorSnapshot{
-		content:         tailTrunc.content,
-		truncated:       truncated,
-		truncatedBy:     truncatedBy,
-		totalLines:      a.totalLines,
-		outputLines:     tailTrunc.outputLines,
-		outputBytes:     tailTrunc.outputBytes,
-		lastLinePartial: tailTrunc.lastLinePartial,
-		lastLineBytes:   a.currentLineBytes,
-		fullOutputPath:  a.tempFilePath,
-		capBytes:        a.maxBytes,
+		content:           tailTrunc.content,
+		truncated:         truncated,
+		truncatedBy:       truncatedBy,
+		totalLines:        a.totalLines,
+		outputLines:       tailTrunc.outputLines,
+		outputBytes:       tailTrunc.outputBytes,
+		lastLinePartial:   tailTrunc.lastLinePartial,
+		lastLineBytes:     a.currentLineBytes,
+		fullOutputPath:    path,
+		outputDescription: description,
+		capBytes:          a.maxBytes,
 	}
 }
 
@@ -1207,23 +1225,15 @@ func (a *outputAccumulator) shouldUseTempFile() bool {
 }
 
 func (a *outputAccumulator) ensureTempFile() {
-	if a.tempFilePath != "" {
+	if a.spill != nil {
 		return
 	}
-	id := make([]byte, 8)
-	rand.Read(id)
-	a.tempFilePath = filepath.Join(os.TempDir(), "pi-bash-"+hex.EncodeToString(id)+".log")
-	f, err := os.Create(a.tempFilePath)
-	if err == nil {
-		a.tempFile = f
-	}
+	a.spill = newBashSpill()
+	a.spill.write(a.tailText)
 }
 
 func (a *outputAccumulator) closeTempFile() {
-	if a.tempFile != nil {
-		a.tempFile.Close()
-		a.tempFile = nil
-	}
+	a.spill.close()
 }
 
 // formatBashTruncationFooter renders the exact pi footer for a truncated bash
@@ -1234,13 +1244,17 @@ func formatBashTruncationFooter(snap accumulatorSnapshot) string {
 	}
 	startLine := snap.totalLines - snap.outputLines + 1
 	endLine := snap.totalLines
+	output := snap.outputDescription
+	if output == "" {
+		output = "Output snapshot unavailable"
+	}
 	if snap.lastLinePartial {
-		return fmt.Sprintf("\n\n[Showing last %s of line %d (line is %s). Full output: %s]", formatSize(snap.outputBytes), endLine, formatSize(snap.lastLineBytes), snap.fullOutputPath)
+		return fmt.Sprintf("\n\n[Showing last %s of line %d (line is %s). %s]", formatSize(snap.outputBytes), endLine, formatSize(snap.lastLineBytes), output)
 	}
 	if snap.truncatedBy == "lines" {
-		return fmt.Sprintf("\n\n[Showing lines %d-%d of %d. Full output: %s]", startLine, endLine, snap.totalLines, snap.fullOutputPath)
+		return fmt.Sprintf("\n\n[Showing lines %d-%d of %d. %s]", startLine, endLine, snap.totalLines, output)
 	}
-	return fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). Full output: %s]", startLine, endLine, snap.totalLines, formatSize(snap.capBytes), snap.fullOutputPath)
+	return fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). %s]", startLine, endLine, snap.totalLines, formatSize(snap.capBytes), output)
 }
 
 // _ keeps strconv imported for potential future use.

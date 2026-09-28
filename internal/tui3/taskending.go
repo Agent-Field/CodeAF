@@ -34,6 +34,7 @@ const (
 	endingWordRefused  = "not accepted"
 	endingWordStale    = "its world did not match"
 	endingWordError    = "ended with an error"
+	endingWordProgram  = "did not finish"
 )
 
 // endingWord is the two-or-three-word reason a failed node's row leads with,
@@ -61,6 +62,8 @@ func endingWord(ending session.TaskEnding) string {
 		return endingWordStale
 	case session.TaskEndingError:
 		return endingWordError
+	case session.TaskEndingProgram:
+		return endingWordProgram
 	}
 	return ""
 }

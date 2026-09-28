@@ -218,7 +218,7 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 	// moved under the box on 2026-09-09 and a count would be a row out
 	// (attach.go's [app.chipTrayTarget] says the whole of it).
 	y := trayRow(a)
-	labels := chipLabels(a.chips, a.pal)
+	labels := removableChipLabels(a.chips, a.pal)
 	x := len(inputPad) + ansi.StringWidth(labels[0]) + len(chipGap) + 1
 
 	drive(t, a, motionTo(x, y))
@@ -303,6 +303,10 @@ func TestTheTaskRecordCardLightsTheEdgeUnderThePointer(t *testing.T) {
 	if !a.taskSheet.detailOn {
 		t.Fatal("enter did not go inside the card")
 	}
+	// THE POINTER RESOLVES AGAINST THE LAST FRAME, and the program draws one
+	// between the key and the next motion. The card draws no nav, so its first
+	// row is the card's own title, not the nav's.
+	frame(a)
 
 	drive(t, a, motionTo(2, 0))
 	if !a.hoveringTaskCard(int(taskCardHitHead)) {

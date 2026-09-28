@@ -106,7 +106,7 @@ func TestEveryPlaceSaysItsOwnKeys(t *testing.T) {
 	for handle, file := range placeHandleNames(t) {
 		if _, ok := owners[handle]; !ok {
 			t.Errorf("%s (registered in %s) has no hint method of its own, so its foot would be another place's sentence — "+
-				"give it one beside the other five, the way placeSearch.hint and placeSpend.hint are written",
+				"give it one beside the other five, the way placeSpend.hint is written",
 				handle, file)
 		}
 	}
@@ -116,35 +116,6 @@ func TestEveryPlaceSaysItsOwnKeys(t *testing.T) {
 	if file, ok := owners["placeBase"]; ok {
 		t.Errorf("placeBase declares a hint again (%s) — a place with no foot of its own must not compile, "+
 			"let alone silently draw placeHintWords", file)
-	}
-}
-
-// The search place's own foot, in both of the states `enter` means something
-// different in. The router's default said `enter talk about it` over both, and
-// with an empty box `enter` does nothing at all.
-func TestTheSearchFootNamesTheKeyThatOpensAHit(t *testing.T) {
-	a := newTestApp(nil)
-	a.width, a.height = 120, 40
-
-	// Nothing typed: the teaching page, where there is no row to stand on.
-	resting := (placeSearch{}).hint(a)
-	if resting != searchAskHint {
-		t.Fatalf("the resting search foot drew %q, want %q", resting, searchAskHint)
-	}
-	if strings.Contains(resting, "talk about it") {
-		t.Errorf("the search foot still carries the router's default clause: %q", resting)
-	}
-
-	// A hit under the cursor: enter opens it, and the foot says so in the words
-	// the place's own body and the manual both use.
-	a.search.reading = searchReading{query: "docker", hits: []searchHit{{title: "a chat", transcript: "/tmp/t.jsonl"}}}
-	a.search.cursor = 0
-	line := (placeSearch{}).hint(a)
-	if line != searchHitHint {
-		t.Fatalf("the search foot over a result drew %q, want %q", line, searchHitHint)
-	}
-	if !strings.Contains(line, "enter opens it") {
-		t.Errorf("the search foot does not say what enter opens: %q", line)
 	}
 }
 
@@ -159,9 +130,9 @@ func TestTheSpendFootNamesTheKeysAPersonWouldPress(t *testing.T) {
 	if strings.Contains(bare, spendEnterWord) {
 		t.Errorf("the spend foot promises %q over a ledger with no rows: %q", spendEnterWord, bare)
 	}
-	if bare != placeHintTail+" · esc home" {
+	if bare != placeHintTail+" · esc close" {
 		t.Errorf("the spend foot over an empty ledger drew %q, want %q — the way out is said last and said once",
-			bare, placeHintTail+" · esc home")
+			bare, placeHintTail+" · esc close")
 	}
 
 	// A row that opens something: enter, the one verb, and the window.
@@ -240,14 +211,14 @@ func TestAHintDropsWholeClausesAndKeepsTheWayOut(t *testing.T) {
 
 	// AND A PLACE'S OWN FOOT DEGRADES THE SAME WAY, with `tab next place` kept
 	// ahead of the `esc` that follows it.
-	tailed := placeTailed(searchHitHint)
+	tailed := placeTailed(spendEnterWord + " · " + spendWindowWord)
 	for _, room := range []int{70, 50, 34} {
 		line := hintFit(tailed, room)
 		if !strings.Contains(line, placeHintTail) {
-			t.Errorf("at %d cells the search foot lost %q: %q", room, placeHintTail, line)
+			t.Errorf("at %d cells the spend foot lost %q: %q", room, placeHintTail, line)
 		}
 		if ansi.StringWidth(line) > room {
-			t.Errorf("at %d cells the search foot drew %d cells: %q", room, ansi.StringWidth(line), line)
+			t.Errorf("at %d cells the spend foot drew %d cells: %q", room, ansi.StringWidth(line), line)
 		}
 	}
 }

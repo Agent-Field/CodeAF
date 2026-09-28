@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // ── THE PLACES OVER --host ──────────────────────────────────────────────────
@@ -63,7 +62,6 @@ func TestEveryPlaceOverHostSaysWhoseMachineItIsAbout(t *testing.T) {
 	}{
 		{pageMemory, memoryRemoteWord},
 		{pageSpend, spendRemoteWord},
-		{pageSearch, searchRemoteWord},
 	} {
 		t.Run(want.id.word(), func(t *testing.T) {
 			a := hostedPlaceLab(t)
@@ -164,7 +162,7 @@ func TestTheTasksPlaceOverHostDrawsTheFarMachinesWork(t *testing.T) {
 
 // Settings is NOT one of them, and that is the point of the default being "".
 // Every row on it is either this surface's own or is read from the far machine's
-// profile, and it already says so as it opens ([settingsRemoteWord]) — a place
+// profile, and it already says so as it opens ([settingsHostNote]). A place
 // that drew one dim line instead would have taken working rows away.
 func TestTheSettingsPlaceIsNotGatedOverHost(t *testing.T) {
 	a := hostedPlaceLab(t)
@@ -175,23 +173,13 @@ func TestTheSettingsPlaceIsNotGatedOverHost(t *testing.T) {
 
 func TestHostedLatePlacesArePresentOnlyWhenTheirFarSeamsAreWired(t *testing.T) {
 	a := hostedPlaceLab(t)
-	if placeFor(pageSpend).remote(a) == "" || placeFor(pageSearch).remote(a) == "" {
+	if placeFor(pageSpend).remote(a) == "" {
 		t.Fatal("an unwired hosted reading did not keep its honest sentence")
 	}
 	a.ledger = func(time.Time) ([]session.UsageLine, bool, bool) { return nil, false, true }
-	a.searchStore = hostSearchStub{}
 	if got := placeFor(pageSpend).remote(a); got != "" {
 		t.Fatalf("wired spend still refused: %q", got)
 	}
-	if got := placeFor(pageSearch).remote(a); got != "" {
-		t.Fatalf("wired search still refused: %q", got)
-	}
-}
-
-type hostSearchStub struct{}
-
-func (hostSearchStub) SearchConversations(string, int) ([]store.ConversationHit, error) {
-	return nil, nil
 }
 
 // THE WORLD IS THE ONE SEAM, and over a connection it is the seam's answer

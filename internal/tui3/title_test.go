@@ -71,10 +71,11 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 	want := map[page]string{
 		pageTasks:    "sessions · codeaf",
+		pageTeams:    "teams · codeaf",
 		pageStanding: "standing · codeaf",
 		pageMemory:   "memory · codeaf",
 		pageSpend:    "spend · codeaf",
-		pageSearch:   "search · codeaf",
+
 		pageSettings: "settings · codeaf",
 	}
 	for _, place := range everyPlaceTable() {

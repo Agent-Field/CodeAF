@@ -14,22 +14,6 @@ import (
 // the owner against the real binary: a tab word is a door, the wheel moves the
 // list under the pointer, and mouse and keyboard share the selected row.
 
-// searchPlaceWithHits is the search place standing over real results — the one
-// promoted place a test can fill without a store on disk, and therefore the one
-// this file uses to pin the laws every promoted place is held to.
-func searchPlaceWithHits(t *testing.T) *app {
-	t.Helper()
-	hits, _ := searchFixture()
-	a := searchLab(t, &searchFakeStore{hits: hits})
-	a.width, a.height = 120, 30
-	typeInto(t, a, "report")
-	a.searchDone(searchDoneMsg{ask: a.search.ask, hits: hits})
-	if len(a.search.hits) == 0 {
-		t.Fatal("the search fixture put no results on the page")
-	}
-	return a
-}
-
 // standPlaceLab is the standing place standing over three orders.
 func standPlaceLab(t *testing.T) *app {
 	t.Helper()
@@ -72,7 +56,7 @@ func TestClickingATabWordGoesToThatPlace(t *testing.T) {
 	if !ok {
 		t.Fatal("the spend tab is not on this bar")
 	}
-	drive(t, a, tea.MouseClickMsg{X: x, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: x, Y: navRow, Button: tea.MouseLeft})
 	if a.page != pageSpend {
 		t.Fatalf("clicking the spend tab left the router on %q", a.page.word())
 	}
@@ -86,23 +70,25 @@ func TestClickingATabWordGoesToThatPlace(t *testing.T) {
 	// The spend place has no box, so what a reopen would reset is its cursor.
 	a.moveSpend(1)
 	was := a.spend.cursor
-	drive(t, a, tea.MouseClickMsg{X: x, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: x, Y: navRow, Button: tea.MouseLeft})
 	if a.spend.cursor != was {
 		t.Fatalf("pressing the tab you are on reopened the place: the cursor moved from %d to %d", was, a.spend.cursor)
 	}
 }
 
-// AND A PRESS BETWEEN TWO WORDS DOES NOTHING. The gap belongs to no room, and
-// a bar that rounded a miss to its nearest neighbour would be a bar that opens
-// the wrong place for a one-cell slip.
+// AND A PRESS IN THE NAV'S AIR DOES NOTHING. Two words' buttons touch, each
+// owning its own pad cells, so the air on the row is the cells before the
+// first button and after the last; they belong to no room, and a row that
+// rounded a miss to its nearest neighbour would open the wrong place for a
+// one-cell slip.
 func TestClickingBetweenTwoTabsDoesNothing(t *testing.T) {
 	a := placeApp(t)
 	placeFrameText(a)
 	gap, ok := placeTabGapColumn(a)
 	if !ok {
-		t.Fatal("this bar has no gap between two chips")
+		t.Fatal("this nav has no air before its first button")
 	}
-	drive(t, a, tea.MouseClickMsg{X: gap, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: gap, Y: navRow, Button: tea.MouseLeft})
 	if a.page != pageHome {
 		t.Fatalf("a press in the gap moved to %q", a.page.word())
 	}
@@ -126,7 +112,7 @@ func TestAFrameWithNoTabBarHasNoTabToPress(t *testing.T) {
 	if a.tabRow >= 0 {
 		t.Fatalf("the phone frame claims a tab bar on row %d", a.tabRow)
 	}
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: navRow, Button: tea.MouseLeft})
 	if a.page != pageHome {
 		t.Fatalf("a press on the phone frame's second row went to %q", a.page.word())
 	}
@@ -142,36 +128,21 @@ func placeTabColumnOf(a *app, id page) (int, bool) {
 	return 0, false
 }
 
-// placeTabGapColumn is a cell between two chips: the last column before the
-// second chip begins, which no chip claims.
+// placeTabGapColumn is a cell of the nav's air: the last column before the
+// first button, between it and the wordmark, which no button claims.
 func placeTabGapColumn(a *app) (int, bool) {
-	if len(a.tabs) < 2 {
+	if len(a.tabs) < 1 || a.tabs[0].from < 1 {
 		return 0, false
 	}
-	if a.tabs[1].from-1 < a.tabs[0].to {
-		return 0, false
+	for _, span := range a.tabs {
+		if a.tabs[0].from-1 >= span.from && a.tabs[0].from-1 < span.to {
+			return 0, false
+		}
 	}
-	return a.tabs[1].from - 1, true
+	return a.tabs[0].from - 1, true
 }
 
 // ── the wheel ───────────────────────────────────────────────────────────────
-
-// THE WHEEL MOVES THE LIST UNDER THE POINTER, on every place. It is the oldest
-// thing a pointer does, and a place that let the wheel fall through to the
-// conversation would scroll a transcript nobody can see.
-func TestTheWheelWalksThePlacesCursor(t *testing.T) {
-	a := searchPlaceWithHits(t)
-	was := a.search.cursor
-	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeHeadRows + 1, Button: tea.MouseWheelDown})
-	if a.search.cursor == was {
-		t.Fatalf("the wheel did not move the search place's cursor from %d", was)
-	}
-	down := a.search.cursor
-	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeHeadRows + 1, Button: tea.MouseWheelUp})
-	if a.search.cursor == down {
-		t.Fatalf("the wheel back up did not move the cursor from %d", down)
-	}
-}
 
 // AND THE STANDING PLACE ANSWERS IT TOO, which is the same law asked of the
 // other promoted list.
@@ -185,38 +156,6 @@ func TestTheWheelWalksTheStandingPlacesCursor(t *testing.T) {
 }
 
 // ── the hover ───────────────────────────────────────────────────────────────
-
-// Pointer motion selects the same row that the keyboard acts on.
-func TestHoveringARowOfAPlaceMovesTheSelection(t *testing.T) {
-	a := searchPlaceWithHits(t)
-	_, hits, _, _ := a.searchFrame(a.width, a.height)
-	// The second stop on the page, which is not where the cursor opened.
-	stops := []int{}
-	for l := 0; l < len(a.search.reading.hits)+2; l++ {
-		if _, ok := a.search.reading.at(l); ok {
-			stops = append(stops, l)
-		}
-	}
-	if len(stops) < 2 {
-		t.Skip("this fixture has one result, so there is no row to hover that is not the cursor")
-	}
-	other := stops[1]
-	y := placeBodyRowOf(t, hits, other)
-	before, _, _, _ := a.searchFrame(a.width, a.height)
-	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
-	if a.search.cursor != other {
-		t.Fatalf("the pointer selected %d, want %d", a.search.cursor, other)
-	}
-	after, _, _, _ := a.searchFrame(a.width, a.height)
-	if before[y] == after[y] {
-		t.Fatalf("the hovered row is painted exactly as it was: %q", plain(after[y]))
-	}
-	// A press opens the row that mouse navigation already selected.
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
-	if a.search.cursor != other {
-		t.Fatalf("clicking body line %d left the cursor on %d", other, a.search.cursor)
-	}
-}
 
 // AND THE STANDING PLACE PREVIEWS TOO. Its hover map was left answering -1
 // when the list was promoted out of the chrome that used to draw it, so a
@@ -251,36 +190,3 @@ func TestHoveringARowOfTheStandingPlaceLightsIt(t *testing.T) {
 }
 
 // ── the window ──────────────────────────────────────────────────────────────
-
-// A LIST WALKED PAST THE BOTTOM OF ITS ROOM SCROLLS. A place whose body was cut
-// at the room and never moved would lose the cursor off the end of the screen,
-// which is the one thing a list may never do.
-func TestAPlaceScrollsWhenTheCursorWalksPastItsRoom(t *testing.T) {
-	a := searchPlaceWithHits(t)
-	// A frame short enough that the results cannot all fit at once.
-	a.width, a.height = 120, 14
-	lines, hits, _, _ := a.searchFrame(a.width, a.height)
-	rows := 0
-	for _, at := range hits {
-		if at >= 0 {
-			rows++
-		}
-	}
-	if rows >= len(a.search.reading.hits) {
-		t.Skip("this frame holds the whole reading, so there is nothing to scroll")
-	}
-	_ = lines
-	for i := 0; i < len(a.search.reading.hits)+4; i++ {
-		drive(t, a, key("down"))
-	}
-	_, hits, _, _ = a.searchFrame(a.width, a.height)
-	on := false
-	for _, at := range hits {
-		if at == a.search.cursor {
-			on = true
-		}
-	}
-	if !on {
-		t.Fatalf("the cursor walked to body line %d and the frame does not draw it", a.search.cursor)
-	}
-}

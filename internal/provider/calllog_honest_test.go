@@ -357,12 +357,14 @@ func TestAnAttemptNothingWroteIsClosedByTheTransport(t *testing.T) {
 // anything reads the log the race is long over.
 func TestTheLosingArmsRowSaysItIsExhaustAndNotAFailure(t *testing.T) {
 	read := loggingTo(t)
+	resume := make(chan struct{})
 	rig := newLaneRig(t, "exhaust/row",
-		// Thirty virtual seconds to A's first token, against five milliseconds
-		// to B's: the rescue lands and A is cut off with nothing written.
-		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		// A cannot finish before its rescue merely because the watcher was
+		// scheduled late. Teardown releases the hold if the request fails.
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{FirstTokenUntil: resume, Rate: 2000, Tokens: 24}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
+	t.Cleanup(func() { close(resume) })
 	rig.believes("A", 20, 2000)
 
 	report := &HedgeReport{}
@@ -372,7 +374,7 @@ func TestTheLosingArmsRowSaysItIsExhaustAndNotAFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !report.Hedged() {
-		t.Fatal("the scenario did not hedge, so there is no losing arm to record")
+		t.Fatalf("the scenario did not hedge, so there is no losing arm to record; asks=%+v report action=%s reason=%s arms=%d", rig.server.Asks(), report.Action(), report.Reason(), report.Arms())
 	}
 	// The loser's row is written where the loser finds out, which is a moment
 	// after the caller already has its answer.

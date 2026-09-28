@@ -435,8 +435,8 @@ func (a *app) modelOwnLevel() string {
 // effortMenu is the six-row chooser the chip opens: auto and then the whole
 // ladder, cheapest first, with the rung in force marked.
 //
-// Its zero value is closed, like [crewPicker], whose shape this is — a fixed,
-// bottom-anchored list with no filter, because six words is a thing you read
+// Its zero value is closed, like [picker] — a fixed, bottom-anchored list with
+// no filter, because six words is a thing you read
 // rather than a thing you search.
 type effortMenu struct {
 	open   bool
@@ -661,7 +661,7 @@ func (a *app) openEffortMenu() {
 
 // effortMenuKey routes one keypress while the chooser is up. It takes EVERY key,
 // which is the idiom the fixed bottom-anchored lists on this surface keep
-// (crew.go's [app.crewPickerKey], input.go's router): a plain letter typed into
+// (input.go's router): a plain letter typed into
 // the box under a list a person is reading is a letter they have to find and
 // delete afterwards. ctrl+c is excepted upstream, as it is for every modal here.
 func (a *app) effortMenuKey(msg tea.KeyPressMsg) tea.Cmd {

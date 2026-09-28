@@ -1,18 +1,75 @@
 # Promoting, and releasing
 
+## Weekly staging promotion
+
+`Promote to staging` runs every Friday after the 17:00 America/Toronto cutoff.
+It chooses the newest commit on `dev`'s first-parent line whose **committer time**
+is at or before that cutoff. The scheduled run may start hours late, so its
+start time cannot choose the commit. `staging` moves only after a fresh reusable
+`Full check` run against that exact commit succeeds. A successful push starts
+`Release`; the promotion waits for its staging build and reports its tag.
+
+The workflow sends each message to the run summary and, when configured, to
+the channel attached to `SLACK_RELEASE_WEBHOOK`:
+
+- **Moved and published:** install the named staging build with
+  `curl -fsSL https://agentfield.ai/get/stageaf | bash`, or run `stageaf update`.
+- **Nothing new:** staging already contains the chosen dev commit; no action.
+- **Full check did not pass:** the message names the failed jobs and links the
+  run. Fix `dev`, then retry from Actions.
+- **Target off dev or branches diverged:** nothing moves. Inspect the branch
+  pointers; never force a promotion.
+- **Token missing:** the check passed, but nothing moved. Configure the token
+  or use the exact by-hand push in the message.
+- **Push refused:** inspect the first git error and the branch pointers before
+  using the by-hand command in the message.
+- **Moved but did not publish:** inspect the linked `Release` run and repair
+  the release. The staging pointer has already moved.
+- **Plan could not choose a commit:** inspect the linked run's fetch and plan
+  step, then retry from Actions after the cause is fixed. Nothing moved.
+- **Promotion step failed unexpectedly:** inspect the linked run. Its message
+  says whether the push completed; if it did, inspect the staging release.
+
+Retry with Actions → `Promote to staging`, on `dev`, leaving `target` empty for
+the current dev tip; `target=cutoff` repeats the weekly cutoff choice, and a
+dev commit SHA selects that commit. `dry_run=true` runs the full check and sends
+the marked messages without pushing. `signal=true` also sends the production
+signal. A dry run still needs the Slack webhook if the notification road is to
+be exercised.
+
+The scheduled run separately signals what the **old** staging pointer held
+before this week's move. That commit has had its week on staging. The message
+lists what main is behind and gives the exact fast-forward command for a person
+to run; it does not move `main`. In this cadence, main runs one week behind
+staging. If main already contains that staging commit, the message says so.
+The date in the message is the release's `published_at` when one exists.
+
+One-time setup: set `SLACK_RELEASE_WEBHOOK` to an incoming Slack webhook (its
+configuration chooses the channel). Set `PROMOTION_TOKEN` to a fine-grained
+personal access token scoped to this repository with **Contents: read and
+write** and **Workflows: read and write**, owned by an account the live
+`protection` branch ruleset lets bypass. List ruleset ids with `gh api
+repos/Agent-Field/codeaf/rulesets`, then check from that account with `gh api
+repos/Agent-Field/codeaf/rulesets/<id> --jq .current_user_can_bypass`; it must
+answer `always`. A GitHub App would need a token-minting step because its
+installation tokens expire after one hour; this workflow has no such step.
+`GITHUB_TOKEN` cannot start the downstream release workflow on push and cannot
+push commits that change workflow files.
+
 ## Choosing what to promote
 
-**Promote the newest commit on `dev` that is at least two days old, green on the
-full check, and has nothing open against it.**
+The weekly promotion chooses the Friday cutoff commit after a fresh full check.
+It does not inspect a commit's age or open issues. The older two-day soak rule
+guides the by-hand fallback: choose a dev commit people have used for at least
+two days and against which nothing is open. A dispatch can name that SHA while
+it is still ahead of staging; a forward-only pointer cannot
+move back to an older commit after a promotion.
 
-Age is the criterion that matters here and it is the one people skip. The
-failures this repository actually suffers are not the ones review catches — they
-are the ones that surface when somebody uses the thing for an afternoon, which is
-precisely what agent-written code produces and precisely what no gate can see.
-A commit that nobody has run is a commit nobody has tested, however green it is.
-
-So: people build `dev` with `make build` and use it. If a day passes and nobody
-has said "something is off", that commit is a candidate.
+People should build `dev` with `make build` and use it during the week. The
+failures that surface after an afternoon of use are not all caught by a gate.
+That human use informs whether to repair dev before Friday or select a specific
+dev commit by hand. The scheduled job still follows its cutoff and Full check
+rule, so it never silently substitutes a human judgment for either one.
 
 ## dev → staging
 
@@ -29,11 +86,14 @@ git merge-base --is-ancestor $SHA origin/dev && echo "on dev"
 
 # 3. Run the full check against it first, so a red staging is never how you
 #    find out. This is the same workflow CI runs.
-gh workflow run ci-full.yml --ref $SHA
+gh workflow run ci-full.yml --ref dev -f ref=$SHA
 
 # 4. Move the pointer. Not a merge — a fast-forward.
 git push origin $SHA:staging
 ```
+
+Wait for the dispatched Full check to conclude `success` on `$SHA` before
+running step 4. A queued dispatch is not a passed check.
 
 If step 4 is rejected as a non-fast-forward, **do not force it.** It means
 `staging` is somewhere `dev` has not been, which should be impossible and is

@@ -129,15 +129,17 @@ const (
 // and quietly taking the last road ([TestEveryCommandHasAFateAtHome]).
 //
 //	pins the next conversation's model   /model — the target, and home says so
-//	next conversation's folder           /folder /place /dir — the browser, aimed
-//	                                     at the target (folderplace.go)
+//	next conversation's folder           /project — the browser, aimed at the
+//	                                     target (projectcmd.go)
 //	opens the page                       a place replaces a place
 //	this list is /resume                 the thing asked for is on the screen
-//	onto home's tray                     /attach /image — the files home is
+//	onto home's tray                     /attach — the files home is
 //	                                     already carrying into the next one
 //	opens a conversation here first      it opens one AT THE TARGET (homedraft.go)
 //	                                     and runs there, the door `enter` uses
 //	answers here                         a note, echoed onto home's own line
+//	opens the crew panel                 /crew, bare or a shortcut — home steps
+//	                                     aside for it and esc comes back
 //	runs on the conversation behind home  /land /workspace — and they say so
 //	a fresh conversation behind home     /new
 //	closes the conversation behind home  /quit
@@ -158,6 +160,7 @@ const (
 	fateTray         = "onto home's tray"
 	fateNeedsChat    = "opens a conversation here first"
 	fateAnswers      = "answers here"
+	fateCrew         = "opens the crew panel"
 	fateBehind       = "runs on the conversation behind home"
 	fateFresh        = "a fresh conversation behind home"
 	fateQuit         = "closes the conversation behind home"
@@ -169,10 +172,9 @@ const (
 // may touch a disk or a door; and the test that walks [commands] can then ask it
 // about every row without an app.
 //
-// THE ARGUMENT IS PART OF THE QUESTION, because four commands mean two different
+// THE ARGUMENT IS PART OF THE QUESTION, because three commands mean two different
 // things with and without one: `/standing` is a page and `/standing <words>`
-// raises a card in a conversation; `/crew` is a picker and `/crew frugal` is a
-// note; `/task` is the task page and `/task <brief>` starts work; `/memory` is
+// raises a card in a conversation; `/task` is the task page and `/task <brief>` starts work; `/memory` is
 // the place and `/memory <query>` prints. A table keyed on the name alone would
 // send a person to the wrong one of each pair. The drop-up asks with the row's
 // own placeholder ([command.args]), which is empty on exactly the bare rows.
@@ -181,27 +183,41 @@ const (
 // always did — `there is no command called /x · / lists them`, on home's line.
 func homeFate(word, rest string) string {
 	rest = strings.TrimSpace(rest)
+	// A PROGRAM'S ROW IS `/task` WITH THE WORKER CHOSEN (delegate.go), and it
+	// needs what a /task with a brief needs: a conversation to start in.
+	if isDelegateCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
+		return fateNeedsChat
+	}
 	switch canonicalCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
-	case "ask":
-		return fateAnswers
 	case "model":
 		return fateTargetModel
-	case "folder":
+	case "project":
+		// /project IS THE PIN AND /folder IS NOT, since 2026-09-22
+		// (projectcmd.go says what the two used to share).
 		return fateTargetFolder
-	case "settings", "search", "spend", "history", "home":
+	case "settings", "spend", "history", "home", "wall", "teams":
 		return fatePlace
 	case "resume":
 		return fateResume
-	case "attach", "image":
+	case "attach":
 		return fateTray
 	case "quit":
 		return fateQuit
 	case "new":
 		return fateFresh
-	case "land", "workspace":
+	case "land", "workspace", "dismiss":
 		return fateBehind
-	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
-		"copy", "select", "rewind", "compact", "export", "drafts":
+	case "files", "permissions", "connect", "harness", "subharness", "skill",
+		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
+		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
+		// turn of a conversation now (manualcmd.go), and a turn needs one. As
+		// an answer it printed the pages into the conversation BEHIND home,
+		// where the person who typed it could see nothing happen.
+		//
+		// AND /folder JOINED IT THE SAME DAY. It means one thing everywhere
+		// now — give THIS conversation a folder — so on home it needs one,
+		// exactly like /files. The pin it used to be here is /project
+		// (projectcmd.go).
 		return fateNeedsChat
 	case "standing":
 		// Bare it is the standing place; with words it is a card raised in a
@@ -220,11 +236,15 @@ func homeFate(word, rest string) string {
 		}
 		return fateNeedsChat
 	case "crew":
-		// Bare it is a picker this screen cannot draw; with a word it is a note.
-		if rest == "" {
-			return fateNeedsChat
-		}
-		return fateAnswers
+		// THE PANEL AND ITS FOUR SHORTCUTS ALL OPEN THE PANEL — the bare form to
+		// change something, a shortcut to show what it changed — and a place
+		// cannot draw an overlay, so every form steps off home onto the
+		// conversation behind it, and esc on the panel steps back (crewpanel.go).
+		return fateCrew
+	case "redo":
+		// A redo runs a task this conversation started again, so there has to
+		// be one.
+		return fateNeedsChat
 	case "effort":
 		// BOTH FORMS NEED A CONVERSATION, and that is what tells this apart from
 		// /crew and /model. The crew is the machine's, the model has a target
@@ -240,7 +260,7 @@ func homeFate(word, rest string) string {
 			return fatePlace
 		}
 		return fateAnswers
-	case "help", "manual", "status", "cost", "budget", "cache", "debug", "update",
+	case "help", "status", "cost", "budget", "cache", "debug", "update",
 		"stop", "remember", "forget":
 		return fateAnswers
 	}
@@ -255,10 +275,6 @@ const (
 	// than refusing, because the thing the person asked for is already in front
 	// of them.
 	homeIsTheResumeWord = "this list is /resume · enter opens a row"
-	// homeTypeThePathWord is a bare /attach. The browser is /folder's door and
-	// this command's own is a path, so the line says the two ways a file gets
-	// onto home's tray rather than opening a sheet nobody asked for.
-	homeTypeThePathWord = "type the path after /attach · or drop the file here"
 	// homeRidesWord is the tail of the line a file attached at home leaves: the
 	// tray belongs to the person and travels into the conversation home opens
 	// next (home.go's [app.homeStart] carries it there).
@@ -280,9 +296,9 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
 	word := canonicalCommand(strings.ToLower(name))
-	if word == "ask" {
-		return a.runAskCommand(rest)
-	}
+	// Bind the submission before clearing the draft rebuilds the list. The
+	// folder shown beside this draft is its destination, not the next row.
+	target := a.targetWhere()
 	h.box.reset()
 	h.build()
 	switch homeFate(word, rest) {
@@ -290,13 +306,12 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		return a.homeModelCommand(rest)
 
 	case fateTargetFolder:
-		// THE BROWSER, AIMED AT THE TARGET (folderplace.go). Bare it opens where
-		// the next conversation would; with a path it opens on that path. Both
-		// forms answer one question — which folder does the next conversation open
-		// in — so both open the one surface that answers it, and picking a row
-		// pins the rule above home's box rather than moving the conversation
-		// behind the screen.
-		return a.openTargetFolderPick(rest)
+		// /project (projectcmd.go). With a path it takes that path; bare it is
+		// the browser, opened where the next conversation would open. Both
+		// forms answer one question — which folder does the next conversation
+		// open in — and either way the rule above home's box changes rather
+		// than the conversation behind the screen.
+		return a.runProjectCommand(rest)
 
 	case fateResume:
 		h.say(homeIsTheResumeWord, "")
@@ -311,8 +326,14 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		// the conversation `enter` is going to open. So the line under the box
 		// says which conversation actually changed, and the refusals travel here
 		// through the seam [app.renewRefusing] exists for.
+		if !a.mainComposer().empty() && (a.agent == nil || a.convKey(a.file) == "") {
+			h.say(startDraftUnownedWord, "")
+			return nil
+		}
 		renewed, started := a.renewRefusing(func(text string) { h.say(text, "") })
 		if started {
+			// The old conversation keeps its draft even when /new is asked on Home.
+			a.putComposer(composerState{})
 			h.say(homeFreshBehindWord, "")
 		}
 		return renewed
@@ -322,7 +343,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		// used to compact a conversation behind the screen, and `/files` opened a
 		// shelf over one. Both are now about the conversation this line is
 		// opening, which is the conversation the rule above the box named.
-		started, opened := a.homeOpenAtTarget()
+		started, opened := a.homeOpenAt(target)
 		if !opened {
 			return nil
 		}
@@ -332,7 +353,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		return tea.Batch(started, a.slash(line))
 	}
 	// AND THE ANSWER OF EVERYTHING ELSE IS ECHOED WHERE IT WAS TYPED. /help,
-	// /status, /cost, /crew frugal, /budget 20 and `there is no command called
+	// /status, /cost, /crew, /budget 20 and `there is no command called
 	// /x · / lists them` all answer with a note, which lands in the conversation
 	// behind this screen — true, kept, and unreadable until you leave. The flag
 	// puts the first line of it on home's own message line as well
@@ -347,32 +368,26 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	return a.slash(line)
 }
 
-// homeTrayCommand is /attach <path> and /image <path> at home: the tray HOME is
+// homeTrayCommand is /attach <path> at home: the tray HOME is
 // already carrying, and the line says which conversation those files are for.
 //
 // THE TRAY IS THE PERSON'S AND NOT THE CONVERSATION'S (attach.go's law, said
 // again by home.go's [app.homeStart], which carries the chips into the
-// conversation it opens). So these two commands needed no conversation to be
-// opened for them — /image opened one, ran there, and left home behind for a
-// picture that would have travelled anyway — and what they DID need was a
-// sentence: the chip appears on a row above the box, which is easy to miss on a
-// screen full of projects.
+// conversation it opens). So /attach needs no conversation to be opened for a
+// file, but it DOES need a sentence: the chip appears on a row above the box,
+// which is easy to miss on a screen full of projects.
 //
 // A DIRECTORY AFTER /attach IS THE TARGET'S. The dispatcher hands one to
 // [app.referPlace], which gives it to the conversation behind home — invisibly,
 // where the person cannot read the answer. Here it is the same decision
-// `/folder` makes, said in the same words.
+// `/project` makes, said in the same words.
 func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
 	if rest == "" {
-		if word == "image" {
-			// The dispatcher's own usage line, said where it was typed rather than
-			// in a conversation opened to hold it.
-			a.echoHome = true
-			defer func() { a.echoHome = false }()
-			return a.slash("/image")
-		}
-		a.home.say(homeTypeThePathWord, "")
-		return nil
+		// A BARE /attach IS THE BROWSER, aimed at the next conversation's folder
+		// the way a bare /project is (folderplace.go's [app.openTargetContextPick]):
+		// a file chosen there lands on home's tray. It used to answer `type the
+		// path after /attach`, which is a correction rather than an answer.
+		return a.openTargetContextPick("", true)
 	}
 	// AND ONLY ON THIS MACHINE'S OWN DISK. Over a connection the directory this
 	// process can stat is the laptop's and the next conversation is on the other
@@ -387,17 +402,17 @@ func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
 			}
 		}
 	}
-	held := len(a.chips)
+	held := len(a.home.chips)
 	a.echoHome = true
 	cmd := a.slash("/" + word + " " + rest)
 	a.echoHome = false
 	// A REFUSAL — no such file, not a picture, over the ceiling, already on the
 	// tray — has already put its own sentence on this line through the echo, and
 	// it is the truer one.
-	if len(a.chips) > held {
-		a.home.say(folderAttachedWord+a.chips[len(a.chips)-1].name()+homeRidesWord, "")
+	if len(a.home.chips) > held {
+		a.home.say(folderAttachedWord+a.home.chips[len(a.home.chips)-1].name()+homeRidesWord, "")
 	}
-	a.home.carrying = len(a.chips) > 0
+	a.home.carrying = len(a.home.chips) > 0
 	a.home.build()
 	a.touch()
 	return cmd

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -21,8 +20,8 @@ import (
 //
 // Three laws come out of that, and these are them:
 //
-//   - A ROW THAT HAS LANDED IS ONE LINE, and what it had to say is tucked behind
-//     the fold the column already had rather than thrown away.
+//   - A ROW THAT HAS LANDED IS ONE LINE, and what it had to say is on the hint
+//     line when the pointer is on it rather than thrown away.
 //   - THE SECTIONS UNDER THE ROSTER ARE RESERVED, not stacked. A list that can
 //     grow without limit starves anything below it, every time.
 //   - THE WHEEL MOVES THE LIST UNDER THE POINTER, which is the oldest thing a
@@ -64,11 +63,12 @@ func railBuild(i int) string {
 }
 
 // railLanded fills a session with landed jobs, which is the shape the column was
-// drowning in.
+// drowning in, with the finished group opened so that every one is drawn.
 func railLanded(a *app, n int) {
 	for i := 1; i <= n; i++ {
 		a.taskUpdate(railLandedTask(uint64(i), railBuild(i)))
 	}
+	railOpenAll(a)
 }
 
 // ── 1. a landed row is one line ─────────────────────────────────────────────
@@ -87,22 +87,21 @@ func TestALandedRowSpendsOneLineOnTheColumn(t *testing.T) {
 		}
 	}
 	// AND THE HISTORY UNDER THEM IS NOT DRAWN. The log path is what a settled job
-	// used to spend its second row on; it is behind the fold now (see below), and
+	// used to spend its second row on; it is the hint line's now (see below), and
 	// a column that still drew it would not have fitted the thirteen rows above.
 	if strings.Contains(text, railReportOf(1)) {
 		t.Fatalf("a landed row still spends a line on its own history:\n%s", text)
 	}
 }
 
-// WORK THAT IS STILL GOING IS UNTOUCHED, which is what says the rule above is
-// about what is OVER and not about the column having gone quiet. The fold is
-// offered on a row that has landed and on no other: a person cannot tuck away
-// the one thing they opened the column to watch.
+// WORK THAT IS STILL GOING IS ONE LINE TOO, and the row is its door: the
+// column draws one row for one running node under its heading, and the hint
+// line over it names it whole.
 //
 // It used to be said about a running background JOB, whose second line was the
 // path its output was going to. That line is gone from this column with the jobs
-// themselves — a job's log is on the job's own page now (jobpage.go) — so what
-// is left to pin is the rule the job row was only ever an example of.
+// themselves (a job's log is on the job's own page now, jobpage.go), so what is
+// left to pin is the rule the job row was only ever an example of.
 func TestARunningRowKeepsWhatItIsDoing(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(4, "Collect the sources", session.TaskRunning, session.TaskNotice{
@@ -110,96 +109,49 @@ func TestARunningRowKeepsWhatItIsDoing(t *testing.T) {
 	}))
 
 	entries := a.railEntries()
-	if len(entries) != 1 {
-		t.Fatalf("the column drew %d rows for one running node", len(entries))
+	if len(entries) != 2 || !entries[0].head || entries[1].node == nil || entries[1].node.id != 4 {
+		t.Fatalf("the column drew %d rows for one running node: %+v", len(entries), entries)
 	}
-	if a.railTucks(entries[0]) {
-		t.Fatal("a row that is still going offers the fold that is meant for work that is over")
+	if hint := railHint(a, 4); !strings.Contains(hint, "Collect the sources") {
+		t.Fatalf("the hint over the running row reads %q", hint)
 	}
 }
 
-// AND A ROW THAT HAS NOT STARTED KEEPS ITS SENTENCE TOO. `waits:` is the only
-// place this surface says what is in the way of a flat node, and queued is not
-// settled.
+// AND A ROW THAT HAS NOT STARTED KEEPS ITS SENTENCE. `waits:` is the only
+// place this surface says what is in the way of a flat node, and it is on the
+// hint line over the row.
 func TestAQueuedRowStillSaysWhatItWaitsOn(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Collect sources", session.TaskRunning, session.TaskNotice{}))
 	a.taskUpdate(update(2, "Mix audio", session.TaskQueued, session.TaskNotice{DependsOn: []uint64{1}}))
 
-	if text := strings.Join(railText(a, 20), "\n"); !strings.Contains(text, "waits: Collect sources") {
-		t.Fatalf("a queued row lost the sentence saying what is in its way:\n%s", text)
+	if hint := railHint(a, 2); !strings.Contains(hint, "waits: Collect sources") {
+		t.Fatalf("a queued row lost the sentence saying what is in its way: %q", hint)
 	}
 }
 
-// NOTHING IS THROWN AWAY — IT IS TUCKED. → opens a landed row's own block, ←
-// puts it back, and both are the keys a family already folds on: one fold
-// vocabulary down the whole column.
-func TestALandedRowGivesItsBlockBackWhenItIsOpened(t *testing.T) {
+// NOTHING IS THROWN AWAY. What a landed row used to spend its second line on
+// is on the hint line when the pointer is on it, and only that row's.
+func TestALandedRowGivesItsBlockToTheHintLine(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railLanded(a, 3)
-	a.railTake(true)
-	railFocusOn(t, a, 2)
-
-	a.railOut()
-	text := strings.Join(railText(a, 20), "\n")
-	if !strings.Contains(text, railReportOf(2)) {
-		t.Fatalf("→ on a landed row disclosed nothing:\n%s", text)
+	hint := railHint(a, 2)
+	if !strings.Contains(hint, dollars(railCostOf(2))) {
+		t.Fatalf("the hint over a landed row does not say what it cost: %q", hint)
 	}
-	// AND ONLY THAT ROW'S. The gesture is per row, exactly as a family's fold is
-	// per family.
-	if strings.Contains(text, railReportOf(1)) || strings.Contains(text, railReportOf(3)) {
-		t.Fatalf("opening one row opened its neighbours:\n%s", text)
+	if strings.Contains(hint, dollars(railCostOf(1))) || strings.Contains(hint, dollars(railCostOf(3))) {
+		t.Fatalf("one row's hint carried its neighbours': %q", hint)
 	}
-
-	a.railIn()
-	if text := strings.Join(railText(a, 20), "\n"); strings.Contains(text, railReportOf(2)) {
-		t.Fatalf("← did not tuck the block back away:\n%s", text)
-	}
-}
-
-// THE POINTER IS OFFERED THE SAME FOLD, in the cell the state was in — which is
-// the affordance law this column already keeps for a family root: the triangle
-// arrives when there is a hand on the row and never before.
-func TestALandedRowOffersItsDisclosureUnderThePointer(t *testing.T) {
-	a, _, _ := taskApp(t)
-	railLanded(a, 3)
-
-	line, y := marginLine(t, a, func(l railLine) bool {
+	// AND THE POINTER READS THE SAME HINT, on the row the pointer is on.
+	_, y := marginLine(t, a, func(l railLine) bool {
 		return strings.Contains(plain(l.text), railBuild(2))
 	})
-	if strings.Contains(plain(line.text), glyphShut) {
-		t.Fatalf("a row nobody is pointing at already wears the disclosure:\n%q", plain(line.text))
+	drive(t, a, tea.MouseMotionMsg{X: a.railLeft() + 3, Y: y})
+	if a.hot.kind != hoverRail || a.hot.id != 2 {
+		t.Fatalf("the pointer on the row resolved to %+v", a.hot)
 	}
-
-	x := a.railLeft() + 3
-	drive(t, a, tea.MouseMotionMsg{X: x, Y: y})
-	lit, _ := marginLine(t, a, func(l railLine) bool {
-		return strings.Contains(plain(l.text), railBuild(2))
-	})
-	if !strings.Contains(plain(lit.text), glyphShut) {
-		t.Fatalf("the row under the pointer offers no way into what it is holding:\n%q", plain(lit.text))
-	}
-
-	// AND THE PRESS ON THAT CELL IS THE FOLD, which is hover.go's own law: the
-	// set that lights is the set that acts.
-	drive(t, a, tea.MouseClickMsg{X: a.railLeft() + ansi.StringWidth(railSeam), Y: y, Button: tea.MouseLeft})
-	if text := strings.Join(railText(a, 20), "\n"); !strings.Contains(text, railReportOf(2)) {
-		t.Fatalf("a press on the disclosure opened nothing:\n%s", text)
-	}
-}
-
-// A ROW WITH NOTHING BEHIND IT OFFERS NOTHING. A triangle that answered a press
-// with silence would teach a person that the cell means nothing.
-func TestALandedRowWithNothingToSayOffersNoDisclosure(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.taskUpdate(update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{}))
-
-	entries := a.railEntries()
-	if len(entries) != 1 {
-		t.Fatalf("the column drew %d rows for one node", len(entries))
-	}
-	if a.railTucks(entries[0]) {
-		t.Fatal("a row with no block behind it still offers the fold")
+	if got := a.sideHoverWords(); got != hint {
+		t.Fatalf("the pointer's hint %q is not the row's %q", got, hint)
 	}
 }
 
@@ -239,15 +191,17 @@ func TestTheStandingSectionIsNotStarvedByALongRoster(t *testing.T) {
 	}
 }
 
-// The blank spacer under the hide control stays while tasks scroll.
-func TestTheTasksSpacerStaysWhileTheRosterScrolls(t *testing.T) {
+// THE HEADER STAYS WHILE THE TASKS SCROLL, and the first row of the list is
+// right under it with no spacer between.
+func TestTheHeaderStaysWhileTheRosterScrolls(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railLanded(a, 40)
 	a.railScroll(12)
 
 	rows := railText(a, 20)
-	if len(rows) < 2 || !strings.Contains(rows[0], railStowHint) || strings.TrimSpace(strings.TrimPrefix(rows[1], "│")) != "" {
-		t.Fatalf("the spacer changed while scrolling:\n%s", strings.Join(rows, "\n"))
+	if len(rows) < 2 || !strings.Contains(rows[0], sideTasksWord+" 40") ||
+		strings.TrimSpace(strings.TrimPrefix(rows[1], "│")) == "" {
+		t.Fatalf("the header moved while scrolling:\n%s", strings.Join(rows, "\n"))
 	}
 }
 
