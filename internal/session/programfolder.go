@@ -17,9 +17,9 @@ package session
 //     when the folder it would be made in is there.
 //  2. A GIT REPOSITORY — history, a commit, and a root below the home folder.
 //     The program works in a copy of its own: a git worktree in a private
-//     temporary folder, on a branch of its own cut from the commit the
-//     person's checkout stands on, removed when the program exits so the
-//     branch is released and kept. THE PERSON'S CHECKOUT IS NEVER TOUCHED,
+//     folder under this account's cache folder, on a branch of its own cut
+//     from the commit the person's checkout stands on, removed when the
+//     program exits so the branch is released and kept. THE PERSON'S CHECKOUT IS NEVER TOUCHED,
 //     so it is never refused for its uncommitted changes either, and several
 //     runs may work on one repository at once. programcopy.go is the whole of
 //     it.
@@ -33,7 +33,8 @@ package session
 //     — in a repository, what the program left uncommitted in its copy, except
 //     paths ignored at start and known test droppings, is committed onto its
 //     branch in one commit (the task's title, the result under it), and the
-//     copy is removed (programcopy.go). In either kind of folder the program's
+//     copy is removed (programcopy.go) — unless what it left could be kept
+//     nowhere else, when the copy stays and the ending says where. In either kind of folder the program's
 //     notes ([delegate.Delegate.Notes]) are moved into the run's record folder
 //     unless they were there before the run.
 //  5. ONE RUN PER PLAIN FOLDER. codeaf starts and stops the run and keeps its
@@ -41,7 +42,8 @@ package session
 //     on a plain folder one is working in, or on a folder inside it or around
 //     it — from any conversation, any window, or a shell — is refused, naming
 //     the run that holds it; the hold is a file lock, which dies with the
-//     process that took it (programhold.go). A run in a copy holds only its
+//     last process holding it — codeaf and the program it hands it to
+//     (programhold.go). A run in a copy holds only its
 //     copy, which is why runs on one repository never wait for each other.
 //
 // WHY THERE IS SO LITTLE HERE. Until 2026-09-24 a program ran through the
@@ -142,7 +144,7 @@ type ProgramFolder struct {
 	// folder worked in itself ([ProgramFolder.Copied]). Linked is the ignored
 	// names linked into the copy from it ([programCopyLinks]), and LeftBehind
 	// the paths its checkout had not committed when the copy was cut, which
-	// the copy does not have.
+	// the copy does not have ([ProgramFolder.LeftBehindWords]).
 	Repo       string   `json:"repo,omitempty"`
 	Linked     []string `json:"linked,omitempty"`
 	LeftBehind []string `json:"leftBehind,omitempty"`
@@ -176,6 +178,13 @@ type ProgramFolder struct {
 	// ([ProgramFolderOrder.Carry]): Branch, Home and Start are that line's, so
 	// what the earlier runs did is never counted as this one's nothing.
 	Continues bool `json:"continues,omitempty"`
+	// From is the branch this run's own was cut from when that is an earlier
+	// run's rather than the person's checkout: a run of the same line after one
+	// whose work passed starts on top of that work, on a new branch, so the
+	// passed branch holds that run's work and nothing after it
+	// ([programCarry.Fresh]). Start is then that branch's tip, so the files the
+	// ending counts are this run's own.
+	From string `json:"from,omitempty"`
 	// IgnoredAtStart keeps paths git ignored before the run changed its rules.
 	IgnoredAtStart []string `json:"ignoredAtStart,omitempty"`
 	// IgnoredOuter is the enclosing repository when Dir itself is ignored by it.
@@ -389,10 +398,11 @@ type ProgramFolderEnd struct {
 	Changed []string
 	// Kept says the program's branch holds its work.
 	Kept bool
-	// Dropped says the run changed nothing, so the person's own branch (or
-	// commit) was checked out again and the program's branch deleted: the
-	// ending of a run in the person's checkout itself, written by a build
-	// before programs worked in copies and still read back from its record.
+	// Dropped says the program's branch was deleted because it holds
+	// nothing: for a run in a copy, one readied and never started
+	// ([ProgramFolder.abandon]); for a run in the person's checkout itself,
+	// written by a build before programs worked in copies and still read back
+	// from its record, one that changed nothing and was switched back.
 	Dropped bool
 	// Moved says HEAD was not on the program's branch when the run ended:
 	// HeadOn is the branch it was on, empty with At naming the commit when it
@@ -407,16 +417,28 @@ type ProgramFolderEnd struct {
 	HomeMoved bool
 	HomeAt    string
 	// Gone says the run's process went away before it could end the run
-	// itself, so codeaf settled its folder without writing to git at all
-	// ([ProgramFolder.settleGone]). Uncommitted is how many files are not
-	// committed in a checkout left on or moved off the task branch.
+	// itself, so a later codeaf settled its folder ([ProgramFolder.settleGone]):
+	// a copy finished as any ending finishes it, a folder the person works in
+	// read and never written. Uncommitted is how many files are not committed
+	// in a checkout left on or moved off the task branch.
 	Gone        bool
 	Uncommitted int
+	// Committed says codeaf made the commit that finishes the run: there was
+	// something left to commit, and it went. A run whose copy held nothing
+	// more — or whose copy was gone — has only the commits it made itself.
+	Committed bool
 	// Patch is where what a program left in its copy was kept when it could
 	// not be committed on its branch ([programLeftoversFile]), and CopyLeft
-	// the copy itself when it could not be removed; both empty otherwise.
+	// the copy itself when it is still on disk; both empty otherwise. CopyKept
+	// is why a copy was left on purpose — what is in it could be neither
+	// committed nor kept anywhere else — and empty for one that would not go.
 	Patch    string
 	CopyLeft string
+	CopyKept string
+	// Frozen is the copy's own refs that held something its branch does not,
+	// each put on a branch of its own before the copy went
+	// ([ProgramFolder.keepOwnRefs]).
+	Frozen []programKeptRef
 	// Saved is the branch codeaf put on commits the program made on a
 	// detached HEAD in its copy, which nothing else would have kept
 	// ([ProgramFolder.keepDetached]).
@@ -516,14 +538,18 @@ func (f *ProgramFolder) settle(result string) ProgramFolderEnd {
 // settleGone settles the folder of a run whose process went away before it
 // could end the run itself — a crash, a kill, codeaf closed. A copy is
 // finished as though the run had ended ([ProgramFolder.settleCopy]), because
-// nothing but the run's own work can be in it. A folder the person works in
-// itself WRITES NOTHING TO GIT: no add, no commit, no switch, no branch deleted. It reads
+// nothing but the run's own work can be in it, and its finishing commit
+// credits only the models its record says answered, read the way an ending
+// codeaf saw reads them ([SetProgramAnswerAttribution]). A folder the person
+// works in itself WRITES NOTHING TO GIT: no add, no commit, no switch, no
+// branch deleted. It reads
 // where the checkout is, what the program's branch holds and how many files
 // are not committed, moves the program's notes into the run's record folder,
 // and answers the ending that says so ([ProgramFolderEnd.Gone]).
 //
-// ONLY AN END CODEAF SAW IS FINISHED WITH A COMMIT. Once the process that
-// held the folder is gone, the folder is the person's again, and what is
+// IN A FOLDER THE PERSON WORKS IN, ONLY AN END CODEAF SAW IS FINISHED WITH A
+// COMMIT. Once the process that held the folder is gone, the folder is the
+// person's again, and what is
 // uncommitted in it may be the run's last edits or their own made on its
 // branch since — codeaf cannot tell the two apart. A commit here once swept a
 // person's day of edits, and a merge they were resolving, into a commit under
@@ -531,6 +557,7 @@ func (f *ProgramFolder) settle(result string) ProgramFolderEnd {
 // locks off, so not even the index is refreshed.
 func (f *ProgramFolder) settleGone() ProgramFolderEnd {
 	if f.Copied() {
+		_ = SetProgramAnswerAttribution(f, f.SignModel != "")
 		return f.settleCopy("", true)
 	}
 	end := ProgramFolderEnd{Folder: *f, Gone: true}
@@ -557,7 +584,8 @@ func (f *ProgramFolder) settleGone() ProgramFolderEnd {
 
 // uncommittedCount is how many files in a checkout are not committed, the
 // program's notes left out, read without taking or writing any of git's locks;
-// zero when git cannot say.
+// zero when git cannot say. It only counts, for a sentence: a copy's settling
+// asks [uncommittedList], which never reads "cannot say" as "nothing".
 func uncommittedCount(dir, notes string) int {
 	out, err := git(dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "-z")
 	if err != nil {
@@ -597,8 +625,9 @@ func (f *ProgramFolder) homeMoved() (bool, string) {
 // THE CHECKOUT WAS CLEAN AT THE START, but its ignore rules can change during
 // the run. Paths ignored at the start and known test droppings are never
 // staged by this finishing commit. The notes are excluded for the same reason:
-// a program's private record must not enter the person's branch. A run whose
-// process went away is settled without a commit ([ProgramFolder.settleGone]).
+// a program's private record must not enter the person's branch. It is only
+// ever made in a program's copy: a folder the person works in is never
+// committed by codeaf ([ProgramFolder.settleGone]).
 //
 // A CHECKOUT IN THE MIDDLE OF A MERGE IS NOT COMMITTED. The program's shell can
 // start one, and a commit now would conclude it, conflict markers and all,
@@ -720,18 +749,29 @@ func (f *ProgramFolder) keepNotes() string {
 
 // abandon lets a folder go that a run was readied in and then never started:
 // a copy removed, and the branch it cut, which holds nothing, deleted — a run
-// that never ran leaves no branch behind, where one that ran always does. A
-// nil folder is a run that readied none.
+// that never ran leaves no branch behind, where one that ran always does — and
+// the ending that says so is the one written down. A branch a line of runs
+// carries on is the line's, and stays. A nil folder is a run that readied
+// none.
 func (f *ProgramFolder) abandon() {
 	if f == nil {
 		return
 	}
-	f.Finish("")
-	if f.Copied() && !f.Continues {
+	if !f.Copied() {
+		f.Finish("")
+		return
+	}
+	end := f.settleCopy("", false)
+	if !f.Continues && !end.Kept && end.CopyLeft == "" {
 		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.Start {
-			_, _ = git(f.Repo, "branch", "-q", "-D", f.Branch)
+			if _, err := git(f.Repo, "branch", "-q", "-D", f.Branch); err == nil {
+				end.Dropped = true
+			}
 		}
 	}
+	f.Ended = end.Sentence()
+	end.keepEnding()
+	f.releaseCopy()
 }
 
 // tree is the folder as a run's tree: the folder itself, worked in where it
@@ -746,7 +786,7 @@ func (f *ProgramFolder) tree() taskTree {
 		// THE ROOT IS THE PERSON'S REPOSITORY, where the branch lives and
 		// outlives the copy, which is gone by the time anybody reads the row.
 		tree.root, tree.branch, tree.home, tree.homeSha = f.Ground(), f.Branch, f.Home, f.Start
-		tree.continues = f.Continues
+		tree.continues, tree.from = f.Continues, f.From
 	}
 	return tree
 }
@@ -758,7 +798,7 @@ func (f *ProgramFolder) StopPromise() string {
 		return "its work so far stays in " + f.Dir
 	}
 	if f.Copied() {
-		return "its work so far is committed on its branch " + f.Branch + " in " + f.Repo
+		return "its work so far goes onto its branch " + f.Branch + " in " + f.Repo + " as it stops"
 	}
 	return "its work so far stays on its branch " + f.Branch + ", checked out in " + f.Dir
 }
@@ -1021,16 +1061,17 @@ func settleOwedProgramFolder(keep string) (ProgramFolderEnd, bool) {
 		if !ok || owed.Ended != "" || filepath.Clean(owed.Keep) != filepath.Clean(keep) {
 			continue
 		}
-		lock, _, busy := claimProgramFolder(owed.key, owed.Program+", settling a run codeaf closed under")
-		if busy || lock == nil {
-			// A HOLD SOMEBODY ELSE HAS, or one nobody can take, is a folder this
-			// reopen cannot know is idle: it is left for the next codeaf that can.
+		// A HOLD SOMEBODY ELSE HAS — the run's program still stopping, holding
+		// the hold its codeaf handed it ([ProgramFolder.Hold]) — or one nobody
+		// can take, is a folder this reopen cannot know is idle: it is left for
+		// the next codeaf that can. So is a run that ended while this asked.
+		if owed = claimOwedProgramFolder(path, owed); owed == nil {
 			return ProgramFolderEnd{}, false
 		}
-		owed.lock = lock
-		// NOTHING IS COMMITTED FOR A RUN WHOSE END NOBODY SAW
-		// ([ProgramFolder.settleGone]): the folder has been the person's since
-		// the process went away, however long ago that was.
+		// A COPY IS FINISHED, A PERSON'S FOLDER ONLY READ
+		// ([ProgramFolder.settleGone]): nothing but the run's work can be in its
+		// copy, and a folder the person works in has been theirs since the
+		// process went away, however long ago that was.
 		end := owed.settleGone()
 		owed.Ended = end.Sentence()
 		end.keepEnding()
@@ -1048,8 +1089,8 @@ func settleOwedProgramFolder(keep string) (ProgramFolderEnd, bool) {
 // taskBranchName is the branch a task's work is cut on: `task/`, the title as
 // a branch name can spell it, and a short random tail, so the same work
 // proposed twice lands on two branches. ONE SPELLING FOR EVERY ROAD that cuts
-// one — a task's own worktree ([cutTaskWorktree]) and a program's branch in
-// the person's folder ([PrepareProgramFolder]) — so a person reading `git
+// one — a task's own worktree ([cutTaskWorktree]) and a program's copy of the
+// person's repository ([PrepareProgramFolder]) — so a person reading `git
 // branch` meets one shape.
 func taskBranchName(title string) string {
 	return "task/" + slugify(title) + "-" + shortID()

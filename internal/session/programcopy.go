@@ -5,16 +5,18 @@ package session
 // THE CONTRACT, for a folder that is a git repository (programfolder.go keeps
 // the rest — which folder, a plain folder, the refusals):
 //
-//  1. THE COPY IS A GIT WORKTREE IN A PRIVATE TEMPORARY FOLDER — under the
-//     system's temporary folder ([programCopyRoot]), never inside the person's
-//     repository — cut on a branch of the program's own ([taskBranchName]) from
-//     the commit the person's checkout stands on. It is not for the person to
-//     open: it exists so that several runs can work on one repository at once,
-//     and so that the person's own checkout, index and branch are never touched.
+//  1. THE COPY IS A GIT WORKTREE IN A PRIVATE FOLDER OF CODEAF'S — under this
+//     account's cache folder ([programCopyRoot]), never inside the person's
+//     repository, and never in a shared temporary folder another account can
+//     reach first or a restart empties — cut on a branch of the program's own
+//     ([taskBranchName]) from the commit the person's checkout stands on. It is
+//     not for the person to open: it exists so that several runs can work on
+//     one repository at once, and so that the person's own checkout, index and
+//     branch are never touched.
 //  2. WHAT IS NOT COMMITTED IN THE PERSON'S CHECKOUT IS NOT IN THE COPY. A copy
 //     is cut from a commit, so their uncommitted changes stay theirs, unread,
-//     and the run is not refused for them: the card and the receipt say they
-//     were left behind ([ProgramFolder.LeftBehind]).
+//     and the run is not refused for them: the receipt and a shell run's first
+//     lines say they were left behind ([ProgramFolder.LeftBehindWords]).
 //  3. A FEW FOLDERS GIT IGNORES ARE LINKED IN, NOT COPIED ([programCopyLinks]):
 //     installed dependencies and environment files the project's own build
 //     and tests need and a fresh checkout does not have — `node_modules`, a
@@ -22,7 +24,9 @@ package session
 //     building into one folder corrupt each other, and neither is anything
 //     else: a `bin/` linked in once had a run's `make build` overwrite the
 //     binary its person was running. A project names its own list in
-//     `.codeaf/config.json` ([config.ProjectProgramLinks]).
+//     `.codeaf/config.json` ([config.ProjectProgramLinks]). A link git would
+//     not otherwise ignore is named in the repository's exclude file only
+//     while a copy of it is on disk ([excludeLinkedNames]).
 //  4. WHEN THE PROGRAM EXITS — done, not finished, stopped, crashed, or its
 //     process gone — what it left uncommitted on its branch is committed there,
 //     the copy is removed and git's record of it pruned, so THE BRANCH IS
@@ -30,29 +34,50 @@ package session
 //     next run of the same work. THE BRANCH IS ALWAYS KEPT, even when the run
 //     changed nothing. What cannot be committed on it — the program moved the
 //     copy off its branch, or left a merge half done — is kept as a patch in the
-//     run's record folder instead of being lost with the copy.
+//     run's record folder instead of being lost with the copy, and commits it
+//     made on no branch are put on one. NOTHING THE PROGRAM LEFT IS DELETED
+//     UNSAVED: a copy whose leftovers could be neither committed nor kept is
+//     left where it is, and the ending says where ([ProgramFolderEnd.CopyKept]).
 //  5. A RUN WHOSE PROCESS WENT AWAY IS FINISHED THE SAME WAY by the next codeaf
 //     that finds it: the conversation that reopens it, or the next program run
 //     on the same repository ([sweepProgramCopies]). Unlike a folder a person
 //     works in, nobody else's edits can be in a copy, so committing what is in
-//     it is committing the run's own work.
+//     it is committing the run's own work. And the program is not still making
+//     it: the hold on the copy is handed to the program's own process
+//     ([ProgramFolder.Hold]), so a codeaf that died leaves the program its
+//     grace to stop, and its copy is finished only once the program is gone.
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// programCopyRoot is the folder every program's copy is made under: private
-// to this user and temporary by nature. A variable so a test can put copies in
-// a folder of its own.
+// programCopyRoot is the folder every program's copy is made under: this
+// account's cache folder (`~/Library/Caches/codeaf/worktrees` on a Mac,
+// `~/.cache/codeaf/worktrees` on Linux), which is private to it, out of the
+// way, and — unlike the system's temporary folder — neither shared with other
+// accounts nor emptied by a restart, so a copy a crash left behind is still
+// there to finish. A state root CODEAF_HOME moved takes the copies with it, to
+// `worktrees` inside it ([home.Moved]), so a disposable home leaves nothing in
+// the person's cache. A variable so a test can put copies in a folder of its
+// own.
 var programCopyRoot = func() string {
-	return filepath.Join(os.TempDir(), "codeaf-worktrees")
+	if !home.Moved() {
+		if cache, err := os.UserCacheDir(); err == nil && filepath.IsAbs(cache) {
+			return filepath.Join(cache, "codeaf", "worktrees")
+		}
+	}
+	return home.Join("worktrees")
 }
 
 // programCopyLinked is the ignored names a copy links in from the person's
@@ -66,9 +91,14 @@ var programCopyLinked = []string{"node_modules", ".venv", "venv", ".env", ".envr
 // program left in its copy and codeaf could not commit on its branch.
 const programLeftoversFile = "leftovers.patch"
 
-// programCopyExcludeSentinel heads the lines codeaf adds to the repository's
-// exclude file for the names it links into a copy ([excludeLinkedNames]).
-const programCopyExcludeSentinel = "# codeaf: folders linked into a program's copy"
+// programCopyExcludeSentinel and programCopyExcludeEnd fence the lines codeaf
+// adds to a repository's exclude file for the links in its copies
+// ([excludeLinkedNames]), so they can be taken out again whole and nothing
+// else of the file is touched.
+const (
+	programCopyExcludeSentinel = "# codeaf: links in a program's copy of this repository, removed when no copy is left"
+	programCopyExcludeEnd      = "# codeaf: end"
+)
 
 // Copied says the program works in a copy of its own of a repository, rather
 // than in a folder itself.
@@ -82,6 +112,22 @@ func (f *ProgramFolder) Ground() string {
 		return f.Repo
 	}
 	return f.Dir
+}
+
+// Hold is the open file the run's hold on its folder is taken on, for the door
+// that starts the program to hand to the program's process
+// ([delegate.Launch.Hold]); nil when there is none.
+//
+// THE HOLD LIVES AS LONG AS THE LAST PROCESS THAT HAS IT. It is a flock, which
+// belongs to the open file and not to the process that opened it, so with the
+// program holding the same file a codeaf that dies leaves the folder held until
+// the program has stopped too: the next codeaf never finishes a copy — commits
+// it, removes it — while the program is still writing its last edits there.
+func (f *ProgramFolder) Hold() *os.File {
+	if f == nil {
+		return nil
+	}
+	return f.lock
 }
 
 // prepareProgramCopy readies a copy of the repository at folder.Dir for a
@@ -98,20 +144,17 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 	if hold, busy := programHoldNear(canonicalPath(repo), ""); busy {
 		return nil, fmt.Errorf("%s", programFolderBusy(repo, hold))
 	}
+	links, err := programCopyLinks(repo)
+	if err != nil {
+		return nil, err
+	}
 	start, err := git(repo, "rev-parse", "--verify", "HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("%s has no commit to cut a branch from: %s", repo, firstLine(start))
 	}
 	folder.Start, folder.Home = strings.TrimSpace(start), currentBranch(repo)
 	folder.LeftBehind = uncommittedPaths(repo, "")
-	if carry := order.Carry; carry != nil && canonicalPath(carry.Root) == canonicalPath(repo) && branchCommit(repo, carry.Branch) != "" {
-		// THE LINE'S START, NOT THIS RUN'S. "Changed nothing" and the files the
-		// ending counts are measured from where the first run of the line began,
-		// so a sent-back run can never read the earlier runs' work as none.
-		folder.Branch, folder.Home, folder.Start, folder.Continues = carry.Branch, carry.Home, carry.Start, true
-	} else {
-		folder.Branch = taskBranchName(folder.Title)
-	}
+	folder.takeCarry(order.Carry)
 	sweepProgramCopies(repo)
 	dir, err := newProgramCopyDir(repo)
 	if err != nil {
@@ -132,23 +175,45 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 		folder.forget()
 		return nil, fmt.Errorf("%s", refusal)
 	}
-	folder.Linked = linkIgnored(repo, dir, folder.Notes, programCopyLinks(repo))
+	folder.Linked = linkIgnored(repo, dir, folder.Notes, links)
 	excludeLinkedNames(dir, folder.Linked)
 	ignored, err := git(dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 	if err != nil {
-		folder.settleCopy("", false)
 		folder.forget()
 		return nil, fmt.Errorf("read paths ignored at the start in %s: %s", dir, firstLine(ignored))
 	}
 	listed := strings.Split(strings.TrimSuffix(ignored, "\x00"), "\x00")
 	folder.IgnoredAtStart = append(listed, folder.Linked...)
 	if err := folder.writeIgnoredAtStart([]byte(strings.Join(folder.IgnoredAtStart, "\x00"))); err != nil {
-		folder.settleCopy("", false)
 		folder.forget()
 		return nil, err
 	}
 	folder.write()
 	return folder, nil
+}
+
+// takeCarry names the branch the run works on: the one an earlier run of its
+// line left, when it carries that on in this repository ([programCarry]), and
+// otherwise a new one of its own, cut from the person's checkout or — after a
+// run whose work passed — from that run's branch.
+func (f *ProgramFolder) takeCarry(carry *programCarry) {
+	f.Branch = taskBranchName(f.Title)
+	if carry == nil || canonicalPath(carry.Root) != canonicalPath(f.Repo) {
+		return
+	}
+	tip := branchCommit(f.Repo, carry.Branch)
+	switch {
+	case tip == "":
+	case carry.Fresh:
+		// THIS RUN'S START IS THE PASSED WORK'S TIP, so the files its ending
+		// counts are its own; its branch holds the passed work too, and says so.
+		f.Home, f.Start, f.From = carry.Home, tip, carry.Branch
+	default:
+		// THE LINE'S START, NOT THIS RUN'S. "Changed nothing" and the files the
+		// ending counts are measured from where the first run of the line began,
+		// so a sent-back run can never read the earlier runs' work as none.
+		f.Branch, f.Home, f.Start, f.Continues = carry.Branch, carry.Home, carry.Start, true
+	}
 }
 
 // cutCopy adds the copy as a worktree of the person's repository, on the
@@ -172,7 +237,7 @@ func (f *ProgramFolder) cutCopy() string {
 		f.Branch = taskBranchName(f.Title)
 		f.write()
 		if out2, err := git(f.Repo, append(head, "-b", f.Branch, f.Dir, taken)...); err != nil {
-			return fmt.Sprintf("could not cut %s's copy of %s: %s (and carrying on on %s: %s)", f.Program, f.Repo, firstLine(out2), taken, firstLine(out))
+			return fmt.Sprintf("could not cut %s's copy of %s: %s (and carrying on on %s: %s)", f.Program, f.Repo, copyCutWords(out2), taken, firstLine(out))
 		}
 		return ""
 	}
@@ -182,15 +247,33 @@ func (f *ProgramFolder) cutCopy() string {
 		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.Start {
 			_, _ = git(f.Repo, "branch", "-q", "-D", f.Branch)
 		}
-		return fmt.Sprintf("could not cut %s's copy of %s: %s", f.Program, f.Repo, firstLine(out))
+		return fmt.Sprintf("could not cut %s's copy of %s: %s", f.Program, f.Repo, copyCutWords(out))
 	}
 	return ""
+}
+
+// copyCutWords is git's line for a cut that failed, with the cause named when it
+// is one a person cannot read off that line.
+//
+// A REPOSITORY THAT KEEPS FILES IN GIT LFS NEEDS git-lfs TO CHECK ONE OUT. The
+// person's own checkout was filled when they cloned it, so a run that worked in
+// it never needed the filter; a copy is a fresh checkout, and a PATH without
+// git-lfs fails it with "command not found". Emptying the filter for the cut is
+// no cure: git then fails every `git status` in the copy instead, the program's
+// own among them.
+func copyCutWords(out string) string {
+	said := firstLine(out)
+	if strings.Contains(out, "git-lfs") && strings.Contains(out, "not found") {
+		said += "; this repository keeps files in Git LFS, and git-lfs is not on the PATH codeaf runs with: install it, or start codeaf where it is on the PATH, then ask again"
+	}
+	return said
 }
 
 // forget undoes a copy's preparation that failed part way: the copy and git's
 // record of it gone, a branch it cut that holds nothing deleted, the record
 // and the hold let go.
 func (f *ProgramFolder) forget() {
+	f.unlinkCopy()
 	f.removeCopy()
 	if !f.Continues {
 		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.Start {
@@ -207,6 +290,9 @@ func newProgramCopyDir(repo string) (string, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", err
 	}
+	if err := privateCopyRoot(root); err != nil {
+		return "", err
+	}
 	name := programCopyName.ReplaceAllString(filepath.Base(repo), "-")
 	dir, err := os.MkdirTemp(root, strings.Trim(name, "-")+"-")
 	if err != nil {
@@ -217,20 +303,58 @@ func newProgramCopyDir(repo string) (string, error) {
 
 var programCopyName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
+// privateCopyRoot refuses a folder for copies that is not this account's own:
+// a link, a file, or a folder another account made. One that is this
+// account's but open to others is closed to them.
+//
+// A COPY HOLDS THE PERSON'S CODE AND LINKS TO THEIR `.env`. A folder somebody
+// else made first, at the name codeaf would use, would have every run's copy
+// cut where that somebody can read it — or, as a link, somewhere else entirely.
+func privateCopyRoot(root string) error {
+	info, err := os.Lstat(root)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("%s is a link or a file, not a folder of codeaf's own, so no copy is made there", root)
+	}
+	if !ownedByThisAccount(info) {
+		return fmt.Errorf("%s belongs to another account, so no copy is made there", root)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return os.Chmod(root, 0o700)
+	}
+	return nil
+}
+
 // programCopyLinks is the ignored names a copy of repo links in: the
 // project's own list when its `.codeaf/config.json` names one — an empty one
 // links nothing — and [programCopyLinked] with every `.env.*` file otherwise.
-func programCopyLinks(repo string) []string {
-	if project, err := config.LoadProjectConfig(repo); err == nil {
-		if listed, found, err := project.String(config.ProjectProgramLinks); err == nil && found {
-			var names []string
-			for _, name := range strings.Split(listed, ",") {
-				if name = strings.Trim(strings.TrimSpace(name), "/"); name != "" {
-					names = append(names, name)
-				}
+//
+// A LIST THAT DOES NOT APPLY IS SAID, NOT SKIPPED (projectconfig.go's third
+// law): a project file that cannot be read, a list in a shape codeaf does not
+// take, or a name that is not at the top of the repository refuses the run
+// with the file named, rather than quietly linking the defaults instead.
+func programCopyLinks(repo string) ([]string, error) {
+	project, err := config.LoadProjectConfig(repo)
+	if err != nil {
+		return nil, fmt.Errorf("%s; codeaf reads which ignored folders to link into the program's copy there, so fix it, then ask again", err)
+	}
+	listed, found, err := project.Names(config.ProjectProgramLinks)
+	if err != nil {
+		return nil, fmt.Errorf("%s; fix it, then ask again", err)
+	}
+	if found {
+		names := make([]string, 0, len(listed))
+		for _, name := range listed {
+			name = strings.Trim(name, "/")
+			if name == "" || strings.Contains(name, "/") || name == "." || name == ".." || name == ".git" {
+				return nil, fmt.Errorf("%s: %s names %q, which is not a folder or file at the top of the repository, and a copy links only those; fix it, then ask again",
+					project.Path(), config.ProjectProgramLinks, name)
 			}
-			return names
+			names = append(names, name)
 		}
+		return names, nil
 	}
 	names := append([]string(nil), programCopyLinked...)
 	if matches, err := filepath.Glob(filepath.Join(repo, ".env.*")); err == nil {
@@ -238,7 +362,7 @@ func programCopyLinks(repo string) []string {
 			names = append(names, filepath.Base(match))
 		}
 	}
-	return names
+	return names, nil
 }
 
 // linkIgnored links into dir each of names that is in repo, at its top level,
@@ -271,51 +395,187 @@ func linkIgnored(repo, dir, notes string, names []string) []string {
 	return linked
 }
 
-// excludeLinkedNames writes the names linked into a copy into the exclude
-// file git reads for it, anchored at the top, once each.
+// excludeLinkedNames names, in the exclude file git reads for the copy at dir,
+// each of the links in it that git would not otherwise ignore, anchored at the
+// top and fenced by codeaf's own two lines.
 //
 // A LINK IS NOT A DIRECTORY TO GIT. `node_modules/` in a .gitignore matches a
 // directory and not a link named node_modules, so without this the link is an
 // untracked file in the copy: the program is told its tree is not clean, and a
-// commit of it would put a link to the person's disk in their history. The file
-// is the repository's shared one — git reads no other for a worktree — and an
-// anchored name that is already ignored there changes nothing for the person.
+// commit of it would put a link to the person's disk in their history. The
+// file is the repository's shared one — git reads no other for a worktree —
+// so ONLY WHAT IS NEEDED GOES IN, AND ONLY FOR AS LONG AS A COPY IS ON DISK: a
+// name git already ignores as a link (`.env`, `node_modules` without the
+// slash) is left out, and the lines come back out when the last copy of the
+// repository is removed ([dropProgramExclude]). A team that stops ignoring
+// `.envrc` to commit it is then never told by a line codeaf left behind that
+// it is ignored.
+//
+// The file is rewritten whole, under codeaf's own lock on it, and put in place
+// by a rename, so git never reads half of it and two copies starting at once
+// never write over each other's lines.
 func excludeLinkedNames(dir string, names []string) {
 	if len(names) == 0 {
 		return
 	}
+	exclude := gitExcludeFile(dir)
+	if exclude == "" {
+		return
+	}
+	// THE LOOK IS TAKEN UNDER THE LOCK: a copy of the same repository removed
+	// at this moment takes the lines out under it too, and a look taken before
+	// it would read them as already there.
+	defer lockProgramExclude(exclude)()
+	var need []string
+	for _, name := range names {
+		if _, err := git(dir, "check-ignore", "-q", "--", name); err != nil {
+			need = append(need, "/"+name)
+		}
+	}
+	if len(need) == 0 {
+		return
+	}
+	current, _ := os.ReadFile(exclude)
+	outside, ours := splitProgramExclude(string(current))
+	for _, line := range need {
+		if !slices.Contains(ours, line) {
+			ours = append(ours, line)
+		}
+	}
+	writeProgramExclude(exclude, outside, ours)
+}
+
+// dropProgramExclude takes codeaf's lines back out of repo's exclude file when
+// no copy of the repository is left on disk ([excludeLinkedNames]).
+func dropProgramExclude(repo string) {
+	exclude := gitExcludeFile(repo)
+	if exclude == "" {
+		return
+	}
+	if current, err := os.ReadFile(exclude); err != nil || !strings.Contains(string(current), programCopyExcludeSentinel) {
+		return
+	}
+	defer lockProgramExclude(exclude)()
+	if programCopiesOnDisk(repo) {
+		return
+	}
+	current, _ := os.ReadFile(exclude)
+	if outside, ours := splitProgramExclude(string(current)); len(ours) > 0 || outside != string(current) {
+		writeProgramExclude(exclude, outside, nil)
+	}
+}
+
+// gitExcludeFile is the exclude file git reads for the checkout at dir: the
+// repository's shared one, for a worktree too. "" when git cannot say.
+func gitExcludeFile(dir string) string {
 	out, err := git(dir, "rev-parse", "--git-path", "info/exclude")
+	if err != nil {
+		return ""
+	}
+	exclude := strings.TrimSpace(out)
+	if !filepath.IsAbs(exclude) {
+		exclude = filepath.Join(dir, exclude)
+	}
+	return exclude
+}
+
+// lockProgramExclude takes codeaf's lock on one repository's exclude file, and
+// answers the release. It is a file of codeaf's own beside the holds, never a
+// lock of git's, so the person's git is never kept waiting on it; a
+// filesystem that takes no locks goes unlocked.
+func lockProgramExclude(exclude string) func() {
+	directory := home.Join("v3", programFolderDir)
+	if os.MkdirAll(directory, 0o700) != nil {
+		return func() {}
+	}
+	// THE NAME DOES NOT END IN .lock, which is how the holds are listed
+	// ([programHoldNear]); this is no program's hold on a folder.
+	file, err := os.OpenFile(filepath.Join(directory, programFolderName(exclude)+".exclude"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return func() {}
+	}
+	if filelock.Lock(file, true, false) != nil {
+		_ = file.Close()
+		return func() {}
+	}
+	return func() {
+		_ = filelock.Unlock(file)
+		_ = file.Close()
+	}
+}
+
+// splitProgramExclude parts an exclude file into everything that is not
+// codeaf's, as it was written, and the lines between codeaf's two fences.
+func splitProgramExclude(text string) (string, []string) {
+	var outside []string
+	var ours []string
+	inside := false
+	for _, line := range strings.SplitAfter(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == programCopyExcludeSentinel:
+			inside = true
+		case inside && trimmed == programCopyExcludeEnd:
+			inside = false
+		case inside && trimmed != "":
+			ours = append(ours, trimmed)
+		case !inside:
+			outside = append(outside, line)
+		}
+	}
+	return strings.Join(outside, ""), ours
+}
+
+// writeProgramExclude writes an exclude file as outside with codeaf's lines
+// fenced at its end, none when ours is empty, through a temporary file and a
+// rename.
+func writeProgramExclude(exclude, outside string, ours []string) {
+	text := outside
+	if len(ours) > 0 {
+		if text != "" && !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		text += programCopyExcludeSentinel + "\n" + strings.Join(ours, "\n") + "\n" + programCopyExcludeEnd + "\n"
+	}
+	if os.MkdirAll(filepath.Dir(exclude), 0o755) != nil {
+		return
+	}
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(exclude); err == nil {
+		mode = info.Mode().Perm()
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(exclude), ".exclude-codeaf-*")
 	if err != nil {
 		return
 	}
-	path := strings.TrimSpace(out)
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(dir, path)
+	_, werr := temporary.WriteString(text)
+	cerr := temporary.Close()
+	if werr != nil || cerr != nil || os.Chmod(temporary.Name(), mode) != nil || os.Rename(temporary.Name(), exclude) != nil {
+		_ = os.Remove(temporary.Name())
 	}
-	current, _ := os.ReadFile(path)
-	have := map[string]bool{}
-	for _, line := range strings.Split(string(current), "\n") {
-		have[strings.TrimSpace(line)] = true
+}
+
+// programCopiesOnDisk says a worktree of repo is still on disk under
+// [programCopyRoot]: a copy of it some run is working in, or one left for a
+// sweep.
+func programCopiesOnDisk(repo string) bool {
+	out, err := git(repo, "worktree", "list", "--porcelain")
+	if err != nil {
+		return true
 	}
-	var add []string
-	for _, name := range names {
-		if line := "/" + name; !have[line] {
-			add = append(add, line)
+	root := canonicalPath(programCopyRoot())
+	for _, line := range strings.Split(out, "\n") {
+		dir, ok := strings.CutPrefix(line, "worktree ")
+		if !ok {
+			continue
+		}
+		if dir = canonicalPath(dir); strictlyInside(dir, root) {
+			if _, err := os.Stat(dir); err == nil {
+				return true
+			}
 		}
 	}
-	if len(add) == 0 {
-		return
-	}
-	text := string(current)
-	if text != "" && !strings.HasSuffix(text, "\n") {
-		text += "\n"
-	}
-	if !have[programCopyExcludeSentinel] {
-		text += programCopyExcludeSentinel + "\n"
-	}
-	text += strings.Join(add, "\n") + "\n"
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, []byte(text), 0o644)
+	return false
 }
 
 // unlinkCopy takes the linked folders back out of a copy before anything is
@@ -330,57 +590,231 @@ func (f *ProgramFolder) unlinkCopy() {
 	}
 }
 
+// programKeptRef is one of a copy's own refs that codeaf put a branch on,
+// because the copy that held it was about to go ([ProgramFolder.keepOwnRefs]).
+type programKeptRef struct {
+	Ref    string
+	Branch string
+}
+
 // settleCopy ends a program's run in its copy, per the fourth and fifth points
 // of the contract at the top of this file: its notes kept, what it left
 // committed on its branch (or kept as a patch when that cannot be), and the
-// copy removed so the branch is released. gone says the run's process went
-// away before it could end the run itself.
+// copy removed so the branch is released — or, when what it left could not be
+// kept anywhere else, the copy left where it is. gone says the run's process
+// went away before it could end the run itself.
 func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 	end := ProgramFolderEnd{Folder: *f, Gone: gone}
 	end.Notes = f.keepNotes()
 	f.unlinkCopy()
+	before := branchCommit(f.Repo, f.Branch)
+	stays := ""
 	if _, err := os.Stat(f.Dir); err == nil {
-		if head := currentBranch(f.Dir); head != f.Branch {
-			// A HEAD THE PROGRAM MOVED IS NOT COMMITTED ON. Its branch holds
-			// what it committed there; whatever is loose in the copy is kept as
-			// a patch rather than committed onto a branch nobody chose.
-			end.Moved, end.HeadOn = true, head
-			if head == "" {
-				end.At = shortCommit(f.Dir, "HEAD")
-				end.Saved = f.keepDetached()
-			}
-			end.Uncommitted = uncommittedCount(f.Dir, f.Notes)
-			if end.Uncommitted > 0 {
-				end.Patch, end.Refused = f.keepLeftovers()
-			}
-		} else if refused := f.commitLeftovers(result); refused != "" {
-			end.Refused = refused
-			end.Patch, _ = f.keepLeftovers()
-		}
+		stays = f.settleCopyWork(&end, result, gone)
 	}
 	if tip := branchCommit(f.Repo, f.Branch); tip != "" {
 		end.Changed = changedBetween(f.Repo, f.Start, tip)
 		end.Kept = tip != f.Start
+		end.Committed = tip != before
+	}
+	if stays != "" {
+		end.CopyKept, end.CopyLeft = stays, f.Dir
+		return end
 	}
 	end.CopyLeft = f.removeCopy()
 	return end
 }
 
+// settleCopyWork puts what the program left in its copy somewhere that
+// outlives the copy — its branch, a patch, a branch on the commits it made on
+// none, a branch on a record of its own the branch does not hold — and answers
+// why the copy has to stay instead, "" when it may go.
+func (f *ProgramFolder) settleCopyWork(end *ProgramFolderEnd, result string, gone bool) string {
+	if !f.copyReadable() {
+		return "git can no longer read it as a checkout, so what " + f.Program + " left there could be neither committed nor kept"
+	}
+	f.clearStaleLocks()
+	var stays string
+	if head := currentBranch(f.Dir); head != f.Branch {
+		stays = f.settleMovedCopy(end, head)
+	} else if refused := f.commitLeftovers(result); refused != "" {
+		end.Refused = refused
+		stays = f.keepWhatIsLeft(end)
+	}
+	if gone {
+		end.Frozen = f.keepOwnRefs()
+	}
+	return stays
+}
+
+// settleMovedCopy settles a copy whose HEAD the program moved off its branch.
+//
+// A HEAD THE PROGRAM MOVED IS NOT COMMITTED ON. Its branch holds what it
+// committed there; whatever is loose in the copy is kept as a patch rather
+// than committed onto a branch nobody chose, and commits it made on no branch
+// are put on one ([ProgramFolder.keepDetached]).
+func (f *ProgramFolder) settleMovedCopy(end *ProgramFolderEnd, head string) string {
+	end.Moved, end.HeadOn = true, head
+	if head == "" {
+		end.At = shortCommit(f.Dir, "HEAD")
+		saved, ok := f.keepDetached()
+		end.Saved = saved
+		if !ok {
+			return "the commits " + f.Program + " made there on no branch could not be kept on one"
+		}
+	}
+	return f.keepWhatIsLeft(end)
+}
+
+// keepWhatIsLeft keeps what is still uncommitted in the copy as a patch
+// ([ProgramFolder.keepLeftovers]), and answers why the copy has to stay when
+// git could not say what that is or the patch could not be written.
+func (f *ProgramFolder) keepWhatIsLeft(end *ProgramFolderEnd) string {
+	left, err := uncommittedList(f.Dir, f.Notes)
+	if err != nil {
+		return "git could not say what " + f.Program + " left there (" + err.Error() + ")"
+	}
+	end.Uncommitted = len(left)
+	if len(left) == 0 {
+		return ""
+	}
+	patch, refused := f.keepLeftovers()
+	end.Patch = patch
+	if refused == "" {
+		return ""
+	}
+	if end.Refused == "" {
+		end.Refused = refused
+	}
+	return "what " + f.Program + " left there could be neither committed nor kept as a patch"
+}
+
+// copyReadable says git can still read the copy as the checkout codeaf cut:
+// its `.git` file names a worktree record that is there, and HEAD resolves.
+//
+// THE COPY'S OWN `.git` FILE IS READ, NOT ASKED OF GIT. git asked where the
+// checkout is climbs out of a folder whose `.git` is gone, and answers
+// whatever repository is above it — the person's home, when that is one — so
+// only the one asker is allowed that question ([repositoryRoot]).
+func (f *ProgramFolder) copyReadable() bool {
+	body, err := os.ReadFile(filepath.Join(f.Dir, ".git"))
+	if err != nil {
+		return false
+	}
+	gitdir, ok := strings.CutPrefix(strings.TrimSpace(string(body)), "gitdir: ")
+	if !ok {
+		return false
+	}
+	if !filepath.IsAbs(gitdir) {
+		gitdir = filepath.Join(f.Dir, gitdir)
+	}
+	if _, err := os.Stat(filepath.Join(gitdir, "HEAD")); err != nil {
+		return false
+	}
+	_, err = git(f.Dir, "rev-parse", "--verify", "-q", "HEAD")
+	return err == nil
+}
+
+// clearStaleLocks removes the lock files a git process killed in the copy
+// leaves behind — the copy's own index and HEAD, and its branch — which would
+// refuse every commit after them.
+//
+// THEY ARE STALE BY THE TIME THIS RUNS: codeaf holds the copy, and the hold is
+// the program's too while it lives ([ProgramFolder.Hold]), so nothing that
+// could still be writing them is left. A program killed in the middle of one
+// of its own commits once had its last edits deleted with its copy because of
+// the `index.lock` it left.
+func (f *ProgramFolder) clearStaleLocks() {
+	for _, name := range []string{"index.lock", "HEAD.lock", "refs/heads/" + f.Branch + ".lock"} {
+		out, err := git(f.Dir, "rev-parse", "--git-path", name)
+		if err != nil {
+			continue
+		}
+		stale := strings.TrimSpace(out)
+		if !filepath.IsAbs(stale) {
+			stale = filepath.Join(f.Dir, stale)
+		}
+		_ = os.Remove(stale)
+	}
+}
+
 // keepDetached puts a branch on a detached HEAD the program committed on in
-// its copy, when no branch holds that commit, and answers the branch.
+// its copy, when no branch holds that commit, and answers the branch; false
+// when one was needed and could not be made.
 //
 // A COMMIT NO BRANCH HOLDS GOES WITH THE COPY. In the person's own checkout a
 // detached HEAD kept it reachable; a copy is removed when the run ends, and
-// what was only its HEAD would be left for git's garbage collection.
-func (f *ProgramFolder) keepDetached() string {
+// what was only its HEAD would be left for git's garbage collection. The name
+// is the first free one ([freeBranchName]), because a line of runs carried on
+// on one branch can each leave commits on none.
+func (f *ProgramFolder) keepDetached() (string, bool) {
 	// `git branch --contains` counts the detached HEAD itself as a holder, so
 	// the branches are read as refs, which it is not.
-	if holders, err := git(f.Dir, "for-each-ref", "--contains", "HEAD", "--format=%(refname)", "refs/heads/"); err != nil || strings.TrimSpace(holders) != "" {
-		return ""
+	holders, err := git(f.Dir, "for-each-ref", "--contains", "HEAD", "--format=%(refname)", "refs/heads/")
+	if err != nil {
+		return "", false
 	}
-	name := f.Branch + "-detached"
+	if strings.TrimSpace(holders) != "" {
+		return "", true
+	}
+	name := freeBranchName(f.Repo, f.Branch+"-detached")
 	if _, err := git(f.Dir, "branch", "-q", name, "HEAD"); err != nil {
-		return ""
+		return "", false
+	}
+	return name, true
+}
+
+// keepOwnRefs puts a branch on each of the copy's own refs (`refs/worktree/`)
+// that holds something its branch does not, and answers what it kept.
+//
+// A COPY'S OWN REFS GO WITH IT. senior-dev keeps the candidate it submitted at
+// `refs/worktree/senior-dev/submitted`, so a run killed between submitting and
+// finishing still has it to restore; per worktree, so two runs never write
+// over each other's, and so removed with the copy. A run whose end nobody saw
+// is the one that can have stopped in that gap, and its candidate is kept on a
+// branch of its own (`<branch>-submitted`) rather than lost with the copy.
+func (f *ProgramFolder) keepOwnRefs() []programKeptRef {
+	out, err := git(f.Dir, "for-each-ref", "--format=%(refname)", "refs/worktree/")
+	if err != nil {
+		return nil
+	}
+	tip := branchCommit(f.Repo, f.Branch)
+	var kept []programKeptRef
+	for _, ref := range nonEmptyLines(out) {
+		if f.branchHolds(ref, tip) {
+			continue
+		}
+		name := freeBranchName(f.Repo, f.Branch+"-"+path.Base(ref))
+		if _, err := git(f.Dir, "branch", "-q", name, ref); err == nil {
+			kept = append(kept, programKeptRef{Ref: ref, Branch: name})
+		}
+	}
+	return kept
+}
+
+// branchHolds says the branch whose tip is tip already holds what ref names:
+// the commit itself, or a tree the same as its own.
+func (f *ProgramFolder) branchHolds(ref, tip string) bool {
+	if tip == "" {
+		return false
+	}
+	if _, err := git(f.Dir, "merge-base", "--is-ancestor", ref, tip); err == nil {
+		return true
+	}
+	theirs, err := git(f.Dir, "rev-parse", ref+"^{tree}")
+	if err != nil {
+		return false
+	}
+	ours, err := git(f.Dir, "rev-parse", tip+"^{tree}")
+	return err == nil && strings.TrimSpace(theirs) == strings.TrimSpace(ours)
+}
+
+// freeBranchName is base, or base with the first number after it that no
+// branch in repo has.
+func freeBranchName(repo, base string) string {
+	name := base
+	for n := 2; branchCommit(repo, name) != ""; n++ {
+		name = fmt.Sprintf("%s-%d", base, n)
 	}
 	return name
 }
@@ -420,7 +854,9 @@ func (f *ProgramFolder) keepLeftovers() (string, string) {
 }
 
 // removeCopy removes the copy and git's record of it, and answers where a copy
-// that would not go is left ("" when it went, or was already gone).
+// that would not go is left ("" when it went, or was already gone). The
+// repository's exclude file loses codeaf's lines with the last copy
+// ([dropProgramExclude]).
 func (f *ProgramFolder) removeCopy() string {
 	if !f.Copied() || strings.TrimSpace(f.Dir) == "" {
 		return ""
@@ -441,16 +877,21 @@ func (f *ProgramFolder) removeCopy() string {
 	if _, err := os.Stat(f.Dir); err == nil {
 		return f.Dir
 	}
+	dropProgramExclude(f.Repo)
 	return ""
 }
 
-// releaseCopy lets a copy's hold go and removes its hold file and record: a
-// copy's folder is never asked for again, so neither is kept once its run's
+// releaseCopy removes a copy's record and hold file and then lets its hold go:
+// a copy's folder is never asked for again, so neither is kept once its run's
 // ending is in the run's own record folder ([programFolderEndFile]).
+//
+// THE RECORD GOES BEFORE THE HOLD. A sweep that read the record while this run
+// was ending waits for the hold, and reads the record again once it has it
+// ([claimOwedProgramFolder]); gone by then, it is never finished twice.
 func (f *ProgramFolder) releaseCopy() {
-	f.release()
-	_ = os.Remove(programHoldFile(f.key))
 	_ = os.Remove(programFolderRecord(f.key))
+	_ = os.Remove(programHoldFile(f.key))
+	f.release()
 }
 
 // sweepProgramCopies finishes the copies of repo whose runs' processes went
@@ -460,8 +901,8 @@ func (f *ProgramFolder) releaseCopy() {
 func sweepProgramCopies(repo string) {
 	repo = canonicalPath(repo)
 	records, _ := filepath.Glob(filepath.Join(home.Join("v3", programFolderDir), "*.json"))
-	for _, path := range records {
-		owed, ok := readProgramFolderAt(path)
+	for _, record := range records {
+		owed, ok := readProgramFolderAt(record)
 		if !ok || owed.Ended != "" {
 			continue
 		}
@@ -472,11 +913,9 @@ func sweepProgramCopies(repo string) {
 		if !legacy && (!owed.Copied() || canonicalPath(owed.Repo) != repo) {
 			continue
 		}
-		lock, _, busy := claimProgramFolder(owed.key, owed.Program+", settling a run codeaf closed under")
-		if busy || lock == nil {
+		if owed = claimOwedProgramFolder(record, owed); owed == nil {
 			continue
 		}
-		owed.lock = lock
 		end := owed.settleGone()
 		owed.Ended = end.Sentence()
 		end.keepEnding()
@@ -488,15 +927,53 @@ func sweepProgramCopies(repo string) {
 		owed.releaseCopy()
 	}
 	_, _ = git(repo, "worktree", "prune")
+	dropProgramExclude(repo)
+}
+
+// claimOwedProgramFolder takes the hold on the folder of a run read as owed
+// from record, and answers that run as its record says now, held; nil when
+// somebody holds the folder — the run itself, or its program still stopping —
+// or when the run was finished while this asked.
+//
+// THE RECORD IS READ AGAIN UNDER THE HOLD. A run that was ending when the
+// record was first read lets its hold go only after removing it
+// ([ProgramFolder.releaseCopy]); read once, before the hold, its ending would
+// be written over with a second one. A run whose ending is in its record
+// folder already — its codeaf gone between writing the ending and letting go —
+// is let go, not settled again.
+func claimOwedProgramFolder(record string, owed *ProgramFolder) *ProgramFolder {
+	lock, _, busy := claimProgramFolder(owed.key, owed.Program+", settling a run codeaf closed under")
+	if busy || lock == nil {
+		return nil
+	}
+	now, ok := readProgramFolderAt(record)
+	if !ok || now.Ended != "" || now.key != owed.key {
+		_ = filelock.Unlock(lock)
+		_ = lock.Close()
+		return nil
+	}
+	now.lock = lock
+	if _, ended := keptProgramFolderEnd(now.Keep); ended && now.Copied() {
+		now.releaseCopy()
+		return nil
+	}
+	return now
 }
 
 // uncommittedPaths is every path a checkout has not committed, the program's
 // notes left out, read without taking or writing any of git's locks — the
-// person's checkout is never so much as refreshed.
+// person's checkout is never so much as refreshed. Nil when git cannot say.
 func uncommittedPaths(dir, notes string) []string {
+	paths, _ := uncommittedList(dir, notes)
+	return paths
+}
+
+// uncommittedList is [uncommittedPaths] with git's line when git cannot say,
+// for the reader that must not take "cannot say" for "nothing".
+func uncommittedList(dir, notes string) ([]string, error) {
 	out, err := git(dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "-z")
 	if err != nil {
-		return nil
+		return nil, errors.New(firstLine(out))
 	}
 	var paths []string
 	for _, path := range porcelainZPaths(out) {
@@ -505,7 +982,25 @@ func uncommittedPaths(dir, notes string) []string {
 		}
 		paths = append(paths, path)
 	}
-	return paths
+	return paths, nil
+}
+
+// LeftBehindWords is what a run in a copy says, as it starts, about the
+// changes the person's checkout had not committed, which its copy does not
+// have; "" when there were none, and for every run not in a copy.
+func (f *ProgramFolder) LeftBehindWords() string {
+	if !f.Copied() {
+		return ""
+	}
+	return leftBehindWords(f.LeftBehind)
+}
+
+// leftBehindWords is that sentence for a list of paths.
+func leftBehindWords(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return "Your uncommitted changes (" + namedFew(paths, programFolderShown) + ") are not in its copy."
 }
 
 // BriefNote is the line a program's brief opens with when it works in a copy:
@@ -526,37 +1021,71 @@ func (f *ProgramFolder) BriefNote() string {
 }
 
 // copySentence is how a run left its copy, in the sentence every surface says
-// ([ProgramFolderEnd.Sentence]).
+// ([ProgramFolderEnd.Sentence]): where its work is, then what else was kept
+// and where ([ProgramFolderEnd.copyAfterwords]).
 func (e ProgramFolderEnd) copySentence() string {
 	f := e.Folder
-	repo := shellQuoted(f.Repo)
-	merge := "`git -C " + repo + " merge " + f.Branch + "` brings it in"
+	merge := "`git -C " + shellQuoted(f.Repo) + " merge " + f.Branch + "` brings it in"
 	var said string
 	switch {
+	case e.Dropped:
+		said = "it never started, so its copy is removed and its empty branch " + f.Branch + " deleted; your checkout was not touched"
 	case e.Moved:
-		where := "the branch " + e.HeadOn
-		if e.HeadOn == "" {
-			where = "no branch, at " + e.At
-		}
-		said = f.Program + " left its copy on " + where + " instead of its own branch " + f.Branch +
-			", so codeaf committed nothing there"
-		if e.Saved != "" {
-			said += "; what it committed there is kept on the branch " + e.Saved
-		}
-		if e.Kept {
-			said += "; " + f.Branch + " in " + f.Repo + " holds " + fileCount(len(e.Changed)) + ", and " + merge
-		}
-	case e.Kept && e.Gone:
-		said = "its work so far is on the branch " + f.Branch + " in " + f.Repo + ", " + fileCount(len(e.Changed)) +
+		said = e.movedCopyWords(merge)
+	case e.Kept && e.Gone && e.Committed:
+		said = "its work so far is on the branch " + f.Branch + " in " + f.Repo + ", " + fileCount(len(e.Changed)) + e.fromWords() +
 			", committed when codeaf found its run had gone; " + merge
+	case e.Kept && e.Gone:
+		said = "its work so far is on the branch " + f.Branch + " in " + f.Repo + ", " + fileCount(len(e.Changed)) + e.fromWords() +
+			", as its run had committed it before it went away; " + merge
 	case e.Kept:
-		said = "its work is on the branch " + f.Branch + " in " + f.Repo + ", " + fileCount(len(e.Changed)) +
+		said = "its work is on the branch " + f.Branch + " in " + f.Repo + ", " + fileCount(len(e.Changed)) + e.fromWords() +
 			"; your checkout was not touched, and " + merge
 	case e.Refused != "":
 		said = "it committed nothing on its branch " + f.Branch + " in " + f.Repo + ", and what it left could not be committed (" + e.Refused + ")"
+	case e.CopyKept != "":
+		said = "nothing of its work is on its branch " + f.Branch + " in " + f.Repo + " yet, and your checkout was not touched"
 	default:
 		said = "it changed nothing; its branch " + f.Branch + " in " + f.Repo + " is kept where it began, and your checkout was not touched"
 	}
+	return said + e.copyAfterwords()
+}
+
+// fromWords says a branch cut from an earlier run's holds that run's work too,
+// which a merge of it brings in with this one's ([ProgramFolder.From]).
+func (e ProgramFolderEnd) fromWords() string {
+	if e.Folder.From == "" {
+		return ""
+	}
+	return ", on top of " + e.Folder.From + ", whose work it holds too"
+}
+
+// movedCopyWords is where the work is when the program left its copy off its
+// own branch ([ProgramFolder.settleMovedCopy]).
+func (e ProgramFolderEnd) movedCopyWords(merge string) string {
+	f := e.Folder
+	where := "the branch " + e.HeadOn
+	if e.HeadOn == "" {
+		where = "no branch, at " + e.At
+	}
+	said := f.Program + " left its copy on " + where + " instead of its own branch " + f.Branch +
+		", so codeaf committed nothing there"
+	if e.Saved != "" {
+		said += "; what it committed there is kept on the branch " + e.Saved
+	}
+	if e.Kept {
+		said += "; " + f.Branch + " in " + f.Repo + " holds " + fileCount(len(e.Changed)) + ", and " + merge
+	}
+	return said
+}
+
+// copyAfterwords is what follows where a run's work is: what could not be
+// committed, the patch, a record of the program's own put on a branch, and a
+// copy that stayed on disk — left because it would not go, or kept because
+// what is in it is kept nowhere else.
+func (e ProgramFolderEnd) copyAfterwords() string {
+	f := e.Folder
+	var said string
 	if e.Refused != "" && e.Kept && !e.Moved {
 		said += "; what it left uncommitted could not be committed (" + e.Refused + ")"
 	}
@@ -565,7 +1094,14 @@ func (e ProgramFolderEnd) copySentence() string {
 	} else if e.Moved && e.Refused != "" {
 		said += "; what it left uncommitted could not be kept (" + e.Refused + ")"
 	}
-	if e.CopyLeft != "" {
+	for _, kept := range e.Frozen {
+		said += "; what it had saved at " + kept.Ref + ", which its branch does not hold, is kept on the branch " + kept.Branch
+	}
+	switch {
+	case e.CopyKept != "":
+		said += "; its copy is kept at " + e.CopyLeft + ", because " + e.CopyKept + ": take what you need from it, then delete that folder, and `git -C " +
+			shellQuoted(f.Repo) + " worktree prune` releases " + f.Branch
+	case e.CopyLeft != "":
 		said += "; its copy at " + e.CopyLeft + " could not be removed, so " + f.Branch + " is still checked out there"
 	}
 	return said

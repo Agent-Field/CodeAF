@@ -118,6 +118,10 @@ type DelegateSetup struct {
 	// copy of the person's repository (session.ProgramFolder.BriefNote): where
 	// the copy is. Empty for a folder worked in itself.
 	BriefNote string
+	// Hold is the file the run's hold on the program's folder is taken on
+	// (session.ProgramFolder.Hold), handed to the program's process so the
+	// folder stays held until it has gone ([delegate.HoldEnv]). Nil hands none.
+	Hold *os.File
 	// Crew is the conversation's crew (session.RunSpec.Crew), which the
 	// program's line carries in its own flags (delegate.Delegate.CrewFlags) so
 	// it works on the models the person chose. Zero leaves it to its own.
@@ -498,6 +502,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		Dir:        w.workspace,
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,
+		Hold:       w.setup.Hold,
 	}, sink)
 	// THE INSTANT THE PROCESS WAS GONE, and not the instant its stdout drained
 	// ([delegate.Result.ExitedAt] says why; a shell run reads it the same way).

@@ -134,7 +134,7 @@ func TestAStoppedProgramSaysWhereItsWorkWillBe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "its work so far is committed on its branch " + branch + " in " + canonicalPath(repo); !strings.Contains(said, want) {
+	if want := "its work so far goes onto its branch " + branch + " in " + canonicalPath(repo) + " as it stops"; !strings.Contains(said, want) {
 		t.Fatalf("the stop said %q, want %q", said, want)
 	}
 	beltRunWaitFor(t, "the run to end", func() bool {

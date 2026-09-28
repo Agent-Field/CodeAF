@@ -433,8 +433,12 @@ func TestASecondRunCarriesOnOnTheFirstRunsBranch(t *testing.T) {
 	}
 	carry := agent.programCarryOf(prior, "fake")
 	first := agent.runRowCopy(id)
-	if carry == nil || carry.Branch != first.Branch || canonicalPath(carry.Root) != canonicalPath(repo) || carry.Home != home {
+	if carry == nil || carry.Branch != first.Branch || canonicalPath(carry.Root) != canonicalPath(repo) || carry.Home != home || carry.Fresh {
 		t.Fatalf("the carried branch = %+v, want the first run's %+v", carry, first)
+	}
+	// A RUN WHOSE WORK PASSED IS TAKEN UP ON A NEW BRANCH, never written again.
+	if passed := agent.programCarryOf(&programOutcome{row: id, program: "fake", verdict: programPassed}, "fake"); passed == nil || !passed.Fresh || passed.Branch != first.Branch {
+		t.Fatalf("the run after a pass carries %+v, want a new branch cut from %s", passed, first.Branch)
 	}
 
 	fake := testPrograms("fake")[0]

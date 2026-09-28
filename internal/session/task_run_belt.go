@@ -190,6 +190,9 @@ type RunSpec struct {
 	// ProgramBriefNote is the line a program working in a copy is told where
 	// the copy is by, ahead of its brief ([ProgramFolder.BriefNote]).
 	ProgramBriefNote string
+	// ProgramFolderHold is the file the run's hold on the program's folder is taken
+	// on, handed to the program's process ([ProgramFolder.Hold]).
+	ProgramFolderHold *os.File
 	// Crew is the conversation's crew as a delegated run's program is handed it
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
@@ -880,9 +883,10 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 // thing a run does, so a folder that refuses refuses before a store is seeded
 // or a row is published. sessionDir is the folder the run's store is in.
 //
-//   - A PROGRAM THAT EDITS FILES WORKS IN THE FOLDER ITSELF (programfolder.go),
-//     readied here: refused over changes that are not committed or another
-//     program's run in or around it, and otherwise held for the run.
+//   - A PROGRAM THAT EDITS FILES IS READIED HERE (programfolder.go): in a
+//     repository a copy of its own, cut on a branch of its own and held for
+//     the run; in a plain folder the folder itself, held, and refused while
+//     another program's run holds it or a folder in or around it.
 //   - AN ORDINARY RUN IS REFUSED A FOLDER A PROGRAM'S RUN HOLDS
 //     (programhold.go), before a copy is cut from it.
 //
@@ -913,11 +917,11 @@ func programJoinRefusal(via *delegate.Delegate, live *beltRun) error {
 		return nil
 	}
 	where := "in a copy of " + live.ground
-	if live.folder != nil {
+	if live.folder != nil && !live.folder.Copied() {
 		where = "in " + live.ground
 	}
 	return errors.New("work is already underway " + where +
-		"; " + aloneName(via, live.delegate) + " runs alone, so propose it again when that work has ended")
+		"; " + aloneName(via, live.delegate) + " runs alone in a conversation, so propose it again when that work has ended")
 }
 
 // aloneName is the program a refused join is about: the one asked for, or the
@@ -1046,6 +1050,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		}(),
 		ProgramIgnoredFile: run.folder.IgnoredFile(),
 		ProgramBriefNote:   run.folder.BriefNote(),
+		ProgramFolderHold:  run.folder.Hold(),
 		Crew:               programCrew,
 		// THE ORDERS ARE RESOLVED HERE AND NOT PER WORKER, for the same reason
 		// the frontier resolves them once per pass: every worker of one run

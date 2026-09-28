@@ -110,8 +110,8 @@ A program that edits code works on one folder: the one the task names as its `gr
 this conversation's own folder when it names none (a typed `/<name>` names none). Nothing
 else moves it — not `where`, not a path in the brief, not where the conversation has been
 working — and the task's receipt names the folder. **Inside a git repository it works in a
-private copy of the repository's root** — a git worktree in a temporary folder, on a branch
-of its own, removed when it ends — so your checkout is never touched and several runs can
+private copy of the repository's root** — a git worktree in codeaf's cache folder, on a
+branch of its own, removed when it ends — so your checkout is never touched and several runs can
 work on one repository at once. **In a folder with no git history it works in the folder
 itself**, and while it runs that folder is the program's: codeaf's own file tools and
 tasks keep out of it (senior-dev's page says how). A `ground` that is not there yet is
@@ -185,13 +185,14 @@ program run at a time; ask again when that run has ended`. So do the folders ins
 and around it: `… is working in <held folder>, which holds it, …` (or `which is inside
 it`).
 
-**It runs alone.** While one is running, no other task can join it, and it cannot be
-started under another run of this conversation: `work is already underway in <folder>;
-<name> runs alone, so propose it again when that work has ended` (`in a copy of
-<folder>` when the work underway is a task of codeaf's own). codeaf's own tasks run as the
-conversation's run too, so a `/task` typed in a conversation while senior-dev is working
-there is refused the same way, as a task that did not start; another conversation can
-run one, on a different folder.
+**It runs alone in a conversation.** While one is running, no other task can join it, and
+it cannot be started under another run of this conversation: `work is already underway in
+a copy of <folder>; <name> runs alone in a conversation, so propose it again when that work
+has ended` (`in <folder>` when the program works in a folder with no git history).
+codeaf's own tasks run as the conversation's run too, so a `/task` typed in a conversation
+while senior-dev is working there is refused the same way, as a task that did not start.
+Another conversation, window or shell can run one beside it, on the same repository
+too.
 
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.

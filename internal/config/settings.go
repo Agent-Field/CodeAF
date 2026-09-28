@@ -1079,6 +1079,11 @@ var OperatorEnvPins = []string{
 	// still be found and ended (internal/processgroup). codeaf sets it and reads
 	// it back, and a person has nothing to say to it, so it is plumbing too.
 	"CODEAF_DELEGATE_RUN",
+	// The descriptor a program's process holds its host's hold on its folder
+	// by (internal/delegate's HoldEnv), so the folder stays held until the
+	// program has gone too. codeaf sets it on the launch and the program reads
+	// it back; it is a number only that one process can mean, so plumbing.
+	"CODEAF_PROGRAM_HOLD_FD",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two

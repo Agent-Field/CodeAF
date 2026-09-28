@@ -231,9 +231,13 @@ shows its card, with the same countdown as any other, so you can stop one.
 work back after an ending, before you have said anything, the new run is cut in a copy of
 its own on the branch the last run left, and its receipt says `carrying on on its branch
 <branch>, where the last run left it`. What earlier runs committed is counted as the line's
-work, so a run that adds nothing never reads it as nothing. A hand-off made after you have
-spoken starts fresh, on a new branch cut from your checkout's last commit: check an earlier
-run's branch out first and the new run is cut from its work.
+work, so a run that adds nothing never reads it as nothing. **A branch whose work passed is
+never written again**: the next hand-off before you speak — the rest of the work, or the
+next piece — is cut on a new branch from its tip, and says `on a new branch <new> cut from
+<branch>, whose work passed and which it leaves as it is`; its ending says its branch is
+`on top of <branch>, whose work it holds too`. A hand-off made after you have spoken starts
+fresh, on a new branch cut from your checkout's last commit: check an earlier run's branch
+out first and the new run is cut from its work.
 
 **The card stays quiet.** senior-dev's landed card says `done` when the run finished,
 `stopped` when you stopped it, and `ended` when it ended without finishing (never a red
@@ -346,8 +350,8 @@ branch there and commits nothing`.
 ## Why can't codeaf edit files while senior-dev is working — the folder is senior-dev's while it runs, a write or a task refused, bash, your own editor
 
 **In a git repository nothing is held.** senior-dev works in a copy of its own, so the
-chat's tools, your editor, other tasks and a second senior-dev run all keep working in
-your folder while it runs.
+chat's tools, your editor, and tasks and senior-dev runs from other conversations or a
+shell all keep working in your folder while it runs.
 
 **A folder with no git history is senior-dev's until the run ends**, because it works in
 the folder itself: once it has submitted, anything changed there is put back to what it
@@ -453,45 +457,75 @@ answered, there is no `Assisted-by` trailer. The attribution setting still decid
 whether answered model names are shown.
 If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
 than your Git identity. The `Assisted-by` credit is added only to a finishing
-commit codeaf makes when there is something left to stage. It never amends, rebases or
-rewrites a commit.
+commit codeaf makes when there is something left to stage, and that holds for a run you
+stopped and for one whose codeaf closed under it. It never amends, rebases or rewrites a
+commit.
 
 The ending keeps two witnesses apart: what senior-dev's model said it did
 (`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
 and tests (`senior-dev observed: …`). Read the second for "did it work".
 
-**A run you stop keeps its work the same way**: the stop says `its work so far is committed
-on its branch <branch> in <folder>` at once. **A run that changed nothing** says `it changed
+**A run you stop keeps its work the same way**: the stop says `its work so far goes onto its
+branch <branch> in <folder> as it stops` at once. **A run that changed nothing** says `it changed
 nothing; its branch <branch> in <folder> is kept where it began, and your checkout was not
 touched`.
 
-## Where is senior-dev's copy — a git worktree in a temporary folder, node_modules and .env linked in, removed when it ends
+## Where is senior-dev's copy — a git worktree in codeaf's cache folder, node_modules and .env linked in, removed when it ends
 
 In a git repository senior-dev works in a git worktree of your repository under your
-machine's temporary folder (`$TMPDIR/codeaf-worktrees/<repository>-<random>`), private to
-your account. It is not for you to open: it exists so several runs can work on one
-repository at once and your checkout is never touched, and it is removed the moment
-senior-dev exits. `git worktree list` shows it while the run works.
+account's cache folder (`~/Library/Caches/codeaf/worktrees/<repository>-<random>` on a
+Mac, `~/.cache/codeaf/worktrees/…` on Linux; `worktrees` inside `CODEAF_HOME` when that
+moves codeaf's folder), private to your account and not emptied by a restart. It is not for you to open: it exists so several runs can work on one repository
+at once and your checkout is never touched, and it is removed the moment senior-dev exits.
+`git worktree list` shows it while the run works. A copies folder that is a link, or that
+another account made, is refused rather than used.
 
 **It is cut from your last commit**, so what you have not committed is not in it. **A few
 folders git ignores are linked in from your folder**, because a fresh checkout lacks them
 and a project's build and tests need them: `node_modules`, `.venv`, `venv`, `.env`,
 `.envrc` and every `.env.*`, when they sit at the top of your repository and git ignores
 them. Nothing else is: build output such as `bin/`, `dist/` or `target/` is never linked,
-because two runs building into one folder corrupt each other. The links are ignored in the
-copy (codeaf adds each name to the repository's `.git/info/exclude`, which ignored them
-already), removed before anything is committed, and never on a branch. **What senior-dev's
-shell writes through a link lands in your folder**: an `npm install` there updates your
-`node_modules`.
+because two runs building into one folder corrupt each other. The links are removed before
+anything is committed, and never on a branch. **What senior-dev's shell writes through a
+link lands in your folder**: an `npm install` there updates your `node_modules`.
 
-**Name your own list** in the repository's `.codeaf/config.json`:
-`"program.links": "node_modules, .env, vendor"`. An empty text links nothing.
+A link that your `.gitignore` ignores only as a folder (`node_modules/`) is named in the
+repository's `.git/info/exclude`, between two `# codeaf:` lines, while a copy is on disk,
+and codeaf takes those lines out when the last copy of the repository is removed.
 
 The brief senior-dev reads opens with one line saying where its copy is, and that a path
 the brief names under your folder is the same file in the copy.
 
-A copy left behind — the machine restarted mid-run — is finished by the next run on that
-repository, which also prunes git's record of it.
+## Which folders are linked into senior-dev's copy — program.links, .codeaf/config.json, Git LFS
+
+**Name your own list** in the repository's `.codeaf/config.json`, as text or as a list:
+`"program.links": "node_modules, .env, vendor"` or `["node_modules", ".env", "vendor"]`.
+An empty one links nothing. **A list that does not apply refuses the run** with the file
+named, rather than quietly linking the defaults: `<file>: program.links wants
+comma-separated text, or a list of names, got …; fix it, then ask again`; a name that is
+not at the top of the repository (`tools/bin`) is refused the same way, and so is a
+`.codeaf/config.json` that cannot be read at all.
+
+**Git LFS.** A copy is a fresh checkout, so a repository that keeps files in Git LFS needs
+`git-lfs` on the PATH codeaf runs with, and a run without it is refused: `could not cut
+senior-dev's copy of <folder>: … command not found; this repository keeps files in Git
+LFS, and git-lfs is not on the PATH codeaf runs with: install it, or start codeaf where it
+is on the PATH, then ask again`. With it, the copy is filled from the files your checkout
+already has.
+
+## When senior-dev's copy is kept — its copy is not removed, what it left could not be saved, delete the copy
+
+**codeaf never deletes what senior-dev left unsaved.** When what it left in its copy can be
+neither committed on its branch nor kept as a patch — git can no longer read the copy, or
+the patch cannot be written — the copy stays where it is and the ending says so: `its copy
+is kept at <copy>, because <why>: take what you need from it, then delete that folder, and
+`git -C '<folder>' worktree prune` releases <branch>`. A lock file a killed git left in
+the copy (`index.lock`) does not cause this: nothing can still be using the copy by then,
+so codeaf removes it and commits. A copy that would not be removed says `its copy at
+<copy> could not be removed, so <branch> is still checked out there`.
+
+A copy left behind — codeaf crashed, or the machine restarted mid-run — is finished by the
+next run on that repository, which also prunes git's record of it.
 
 ## Does senior-dev change my branch — your branch never moves, your checkout is never touched
 
@@ -511,8 +545,8 @@ what was committed on it, what was left uncommitted is kept as a patch in the ru
 folder, and the page says so: `senior-dev left its copy on the branch <other> instead of
 its own branch <branch>, so codeaf committed nothing there; <branch> in <folder> holds N
 files …; what it left uncommitted is kept as a patch at <path>`. Commits it made on no
-branch are kept on a branch named `<branch>-detached`, because the copy that held them is
-removed. A merge its shell left half done is never committed: it is kept as a patch the
+branch are kept on a branch named `<branch>-detached` (`<branch>-detached-2` and on when a
+run before it took that name), because the copy that held them is removed. A merge its shell left half done is never committed: it is kept as a patch the
 same way.
 
 **Your own branch may move freely**: you committing on it while senior-dev works is what
@@ -531,8 +565,12 @@ Until 2026-09-28 senior-dev worked in your checkout itself, and refused to start
 
 ## Two senior-dev runs on one repository, the folder is busy — runs side by side, one run per plain folder, another window, a shell run
 
-**Runs on one git repository work side by side**, from any conversation, window or shell:
-each has a copy and a branch of its own, and none holds your folder.
+**Runs on one git repository work side by side**, from different conversations, windows or
+shells: each has a copy and a branch of its own, and none holds your folder. **One
+conversation runs one program run at a time**, though: a second hand-off in it while one
+works is refused, `work is already underway in a copy of <folder>; senior-dev runs alone in
+a conversation, so propose it again when that work has ended`. Start the other from a
+second conversation or a shell.
 
 **A folder with no git history takes one run at a time**, because senior-dev works in it
 itself. A second is refused, naming the one working there: `<folder> is busy: senior-dev,
@@ -635,9 +673,10 @@ a run already working. `/senior-dev` typed with a brief uses your crew.
 **Otherwise, from the chat it uses your crew.** codeaf hands senior-dev the worker
 (hands) model for its work and the low model for its history summaries. A pinned
 worker is kept; with no worker pin, codeaf reads one profile worker recommendation
-at the start of the run, independent of this task's brief — and `/task --best` or
-`--cheap`, or "do this one properly" said in words, moves that recommendation the way it
-moves codeaf's own worker. The per-task worker,
+at the start of the run, independent of this task's brief — and "do this one properly" or
+"do it cheaply" said in words, which the chat's hand-off carries, moves that
+recommendation the way it moves codeaf's own worker. `/task --best` and `--cheap` start
+codeaf's own worker, never senior-dev. The per-task worker,
 planner and checker routing and `/crew`'s per-task limit apply to codeaf's own
 tasks, not senior-dev's run. Change the crew and the next run follows. The
 mastermind (brain) model is not used: every call senior-dev makes is either its
@@ -840,12 +879,7 @@ stage, nothing waiting on you, and no fault; or `senior-dev had ended; codeaf cl
 before it could say where its work is` if it had exited. A run senior-dev had finished
 reads done, with its result.
 
-**Its copy is finished by the next codeaf that finds the run**: the one that opens that
-conversation, hands work off in it, or starts a run on that repository, a shell run
-included. Nothing but senior-dev's own work can be in its copy, so what it left there is
-committed on its branch and the copy is removed, releasing the branch: `its work so far is
-on the branch <branch> in <folder>, N files, committed when codeaf found its run had gone;
-`git -C '<folder>' merge <branch>` brings it in`. Your checkout is not touched. **In a
+Its copy is finished by the next codeaf that finds the run (the next section). **In a
 folder with no git history nothing is committed**: its work stays in the folder as it left
 it, and its notes are moved out.
 
@@ -857,6 +891,26 @@ or hands work off in it, writes it.
 
 **Nothing carries it on.** The next `/senior-dev` starts a run of its own, with its own
 task and page; the old page stays as the record of what it did.
+
+## Where senior-dev's work goes when codeaf quits — its copy finished later, committed when codeaf found its run had gone, the submitted candidate
+
+**senior-dev is never cut off mid-edit.** codeaf hands its hold on the copy to senior-dev's
+own process, so a codeaf that dies leaves senior-dev its 15 seconds to stop — put back
+what it submitted, commit its last edits — and nothing touches the copy until it has gone.
+
+**Then the next codeaf that finds the run finishes its copy**: the one that opens that
+conversation, hands work off in it, or starts a run on that repository, a shell run
+included. Nothing but senior-dev's own work can be in its copy, so what it left there is
+committed on its branch and the copy is removed, releasing the branch: `its work so far is
+on the branch <branch> in <folder>, N files, committed when codeaf found its run had gone;
+`git -C '<folder>' merge <branch>` brings it in` — or `as its run had committed it before
+it went away` when nothing was left to commit. The commit credits only models recorded as
+answering a call in that run. Your checkout is not touched.
+
+**A candidate it had submitted and not yet finished is kept.** If senior-dev stopped
+between submitting and finishing, what it submitted is put on a branch of its own before
+the copy goes: `what it had saved at refs/worktree/senior-dev/submitted, which its branch
+does not hold, is kept on the branch <branch>-submitted`.
 
 ## senior-dev's log — delegate-stderr.log, agent-summary, a shell run's record folder
 

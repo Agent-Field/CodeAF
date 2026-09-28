@@ -206,7 +206,25 @@ func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecor
 	if record != nil && record.Branch != "" {
 		return programCopyReceipt(ground, via, record)
 	}
+	// A RUN THAT HAS NOT STARTED YET — one waiting its turn — has no record to
+	// read a branch off, and a repository is still a repository: it is told
+	// where the run will work, not that it works in the folder itself.
+	if _, repo, _, _ := programFolderOf(ground); repo {
+		return "It is " + via.Name + "'s: when it starts it works alone in a private copy of " + ground +
+			", on a new branch of its own cut from your last commit; your checkout is not touched, and when it ends that branch holds its work, checked out nowhere." +
+			leftBehindReceipt(ground, via)
+	}
 	return delegateFolderReceipt(ground, via) + " Until it ends, codeaf's own tools write nothing in " + ground + "."
+}
+
+// leftBehindReceipt is the receipt's sentence about the changes the person's
+// checkout has not committed, which a copy does not have, read now without
+// refreshing anything of git's; "" when there are none.
+func leftBehindReceipt(ground string, via delegate.Delegate) string {
+	if words := leftBehindWords(uncommittedPaths(ground, via.Notes)); words != "" {
+		return " " + words
+	}
+	return ""
 }
 
 // programCopyReceipt is where a program working in a copy of the person's
@@ -219,15 +237,15 @@ func programCopyReceipt(ground string, via delegate.Delegate, record *TaskCopyRe
 		from = "your branch " + record.Home + " as last committed"
 	}
 	on := "on a new branch " + record.Branch + " cut from " + from
-	if record.Continues {
+	switch {
+	case record.Continues:
 		on = "carrying on on its branch " + record.Branch + ", where the last run left it"
+	case record.From != "":
+		on = "on a new branch " + record.Branch + " cut from " + record.From + ", whose work passed and which it leaves as it is"
 	}
 	said := "It is " + via.Name + "'s: it works alone in a private copy of " + ground + ", " + on +
 		"; your checkout is not touched, and when it ends " + record.Branch + " holds its work, checked out nowhere."
-	if left := uncommittedPaths(ground, via.Notes); len(left) > 0 {
-		said += " Your uncommitted changes (" + namedFew(left, programFolderShown) + ") are not in its copy."
-	}
-	return said
+	return said + leftBehindReceipt(ground, via)
 }
 
 // delegateFolderReceipt is where a program that edits files works in a folder

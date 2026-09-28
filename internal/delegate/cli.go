@@ -202,6 +202,7 @@ func commandHelp(program Delegate, command Command, fs *flag.FlagSet, out io.Wri
 func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	keepHold()
 	finished := make(chan struct{})
 	defer close(finished)
 	go watchHost(ctx, cancel, finished)

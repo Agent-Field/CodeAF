@@ -7,7 +7,8 @@ package session
 // (programcopy.go) and holds only the copy, which is why runs on one
 // repository never wait for each other or refuse the person's tools. The hold is how every other road in codeaf knows:
 // a flock on a file under the state root named for the folder, which dies with
-// the process that took it however that process dies, and which holds between
+// the last process holding it however that process dies — codeaf, and the
+// program's own process it hands the hold to ([ProgramFolder.Hold]) — and which holds between
 // two windows, two conversations in one engine and a shell alike, because a
 // flock is per open file.
 //

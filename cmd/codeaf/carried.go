@@ -390,6 +390,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		Dir:        here,
 		StderrPath: filepath.Join(record, carriedStderrName),
 		Grace:      grace,
+		Hold:       folder.Hold(),
 	}, view)
 	// THE INSTANT THE PROCESS WAS GONE, not the instant its stdout drained, for
 	// both the last line and the record's end: a helper the program left holding
@@ -710,6 +711,23 @@ func (v *carriedView) begin() {
 		return
 	}
 	v.say("%s · working in %s · %s", v.inv.Program.Name, v.where(), v.inv.Ceilings.Summary())
+	// A COPY IS CUT FROM A COMMIT, so what the person had not committed is not
+	// in it, and a person at a shell is told so before the run spends a cent on
+	// work that needed it — as a conversation's receipt tells them.
+	if left := v.leftBehind(); left != "" {
+		v.say("%s", left)
+	}
+}
+
+// leftBehind is the line about the changes the person's checkout had not
+// committed when the program's copy was cut ([session.ProgramFolder.LeftBehindWords]).
+func (v *carriedView) leftBehind() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.folder == nil {
+		return ""
+	}
+	return v.folder.LeftBehindWords()
 }
 
 // inFolder keeps the folder the run was readied in, for the line that says

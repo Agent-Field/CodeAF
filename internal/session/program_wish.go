@@ -30,11 +30,16 @@ type programWish struct {
 // programCarry is the branch a run carries on, as its earlier run's row wrote
 // it down ([runCopyOf]): the branch, the repository it is in, and where the
 // person's checkout stood when the line began.
+//
+// Fresh says the run takes the work up on a new branch of its own cut from
+// that one's tip rather than on that branch itself, because the earlier run's
+// work passed: its branch is left holding exactly what passed.
 type programCarry struct {
 	Branch string
 	Root   string
 	Home   string
 	Start  string
+	Fresh  bool
 }
 
 type programWishKey struct{}
@@ -63,6 +68,12 @@ func programWishOf(ctx context.Context) programWish {
 // run cut fresh from the person's checkout would not have it. Before programs
 // worked in a copy of their own, that branch was simply the one left checked
 // out; it is checked out nowhere now, so the line's own record names it.
+//
+// A BRANCH WHOSE WORK PASSED IS NEVER WRITTEN AGAIN. The next hand-off to the
+// same program before the person speaks may be the rest of that work, which
+// needs it, or new work queued behind it; either way it starts from that
+// branch's tip on a new branch of its own ([programCarry.Fresh]), so the
+// passed branch still holds exactly what passed.
 func (a *Agent) programCarryOf(prior *programOutcome, program string) *programCarry {
 	if prior == nil || prior.program != program {
 		return nil
@@ -71,7 +82,7 @@ func (a *Agent) programCarryOf(prior *programOutcome, program string) *programCa
 	if record == nil || strings.TrimSpace(record.Branch) == "" || strings.TrimSpace(record.Root) == "" {
 		return nil
 	}
-	return &programCarry{Branch: record.Branch, Root: record.Root, Home: record.Home, Start: record.HomeSha}
+	return &programCarry{Branch: record.Branch, Root: record.Root, Home: record.Home, Start: record.HomeSha, Fresh: prior.verdict == programPassed}
 }
 
 // programEffort is the rung a program's working model is asked for, as its

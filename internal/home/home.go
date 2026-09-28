@@ -83,6 +83,16 @@ func directoryExists(path string) bool {
 	return err == nil && info.IsDir()
 }
 
+// Moved says the state root is not the person's own default one: CODEAF_HOME
+// names another, or this is a test binary, whose root is never the person's
+// (undertest.go). A folder codeaf keeps outside the state root on a person's
+// behalf — a program's copies under the cache folder — follows the state root
+// when it has moved, so a disposable home takes everything codeaf writes with
+// it, and a test never writes into the cache of whoever ran it.
+func Moved() bool {
+	return strings.TrimSpace(env.Get(EnvVar)) != "" || underTest
+}
+
 // Join names a file inside the state root.
 func Join(elements ...string) string {
 	return filepath.Join(append([]string{Dir()}, elements...)...)
