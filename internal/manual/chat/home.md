@@ -1575,16 +1575,18 @@ this folder as the first row of `projects`.
 ## Is there a key for home?
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-four places on the tab bar, and each answers to its own position, `alt+1` through `alt+4`
-(the three places off the bar answer `alt+5` through `alt+7`).
+six words on the tab bar, and each answers to its own position, `alt+1` through `alt+6`
+(standing and memory, the two places off the bar, answer `alt+7` and `alt+8`).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
 `alt+<digit>` arrives in every terminal codeaf runs in — it is sent as escape-then-digit and
 has been for forty years — which is why the place keys are on `alt`. `ctrl+<digit>` has no
-encoding a terminal can send at all.
+encoding in the scheme most terminals speak; a terminal running the kitty keyboard protocol
+reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spelling that the
+map's own line names while it is live.
 
-There is still no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
+Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
 tasks place, `/history`).
 
 ## What landed while I was away — since you left, and the look stamp

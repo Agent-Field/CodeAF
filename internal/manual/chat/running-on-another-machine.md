@@ -579,15 +579,14 @@ The task roster lists this far conversation's work. Its rows come from the far
     keep it, or drop it — goes back the same way. Running a harness that already exists was
     never affected.
 
-13. **Three of the eight places still read this machine.** Spend adds up the ledger every
-    model call on the machine this window runs on writes into, search reads the index of what
-    was said here, and memory reads what sessions here learned — and there is no door on the
-    wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
-    says one line where its rows would be:
+13. **Spend and memory read the far machine, and say so when its engine cannot.** Spend adds
+    up that machine's priced model calls and memory reads and writes its memory store. Against
+    an older engine without one of those doors the place still opens, keeps its head and its
+    bar, and says one line where its rows would be instead of showing this computer's files:
     `spend shows what this machine has cost, and this session is on another`
-    `search reads what was said on this machine, and this session is on another`
     `memory shows what this machine has learned, and this session is on another`
-    Home, tasks, standing and settings all work and all answer for the right machine.
+    To find an old conversation, type on home: it searches the far machine's conversation
+    list. There is no separate Search page or `/search` command.
 
 14. **File paths are clickable again, and this is now a capability rather than a limit.**
     They were not for a wave: the only thing your terminal could open was a path of the
