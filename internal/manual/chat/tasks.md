@@ -340,8 +340,10 @@ your money to learn what it was going to be told anyway. If the pieces share wha
 learn, they are one quick task's items instead, and they stay in order.
 ## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
 
-**Yes, under exactly the bounds every task is under.** A quick task's worker carries
-`quick_task` and `propose_task` on the same terms as any other worker.
+**Yes, on the node belt selected with `CODEAF_TASK_BELT=node`.** A quick task's worker carries `quick_task` and
+`propose_task` on the same terms as another node worker. These bounds describe the
+session task tree, including ordinary tasks on that belt. With the switch unset,
+the bash worker harness is the default and the conversation has no quick task.
 
 **Depth is 3 levels.** The conversation starts work; that work may start more; what it
 started may start more once again; the level below that may not. A worker at the floor
@@ -356,6 +358,12 @@ may.` and to do the rest in its own hands.
 
 And a quick task takes a slot like anything else: if you have set `task.parallel`, quick
 tasks queue behind it with everything else.
+
+On the default bash belt, a task starts a run instead. Its workers have neither
+`quick_task` nor `propose_task`; they split work with `plandb split`. The plan store
+allows at most 256 tasks in one added batch and 1024 in one run; a composite worker
+can wake at most four times to integrate its children. The tree's 3/20 bounds do not
+describe that run road.
 
 ## A quick task started inside a task — a quick row appeared under my task, and who reads its answer
 
@@ -551,18 +559,25 @@ block in the conversation shows:
   because it is the one fact nothing else on screen will say again; on a narrow frame the
   hint is dropped and the model kept.
 
-**There is no row of answers on it and no meter.** Those were a decision drawn in a place
+## What the task proposal asks above the message box
+
+**There is no row of answers on the transcript block and no meter.** Those were a decision drawn in a place
 no other decision on this screen is drawn. The question is above the box:
 
 ```
-? wants to start a task: Fix the nil-map crash
+? wants to start a task: Fix the nil-map crash     codeaf asks · start it in 15s
   The parser drops a key on an empty map. · codeaf
-  ▸ 1  start it
+  ▸ 1  start it                                ◆ recommended
+       it starts on its own unless you say otherwise · fairly sure
     2  no
-  enter take it · esc later · c change · start it in 9s
+  any key stops the clock · you can still change the answer afterwards
+  esc later · o other · ? clarify
 ```
 
-`▸` marks the answer the clock is about to take. The question is **not modal**: the message
+`▸` marks the answer the clock is about to take. The default clock is 15 seconds
+(`task.autoapprove_seconds` changes it). `◆ recommended` marks the asker's pick;
+the reason and confidence appear below it when supplied. The clock sits at the top
+right, and the keys sit at the bottom edge. The question is **not modal**: the message
 box stays live, and what you type into it is the correction.
 
 Only one proposal is a live question at a time. If a second one arrives while the first is
@@ -1387,7 +1402,8 @@ grammar every question on this screen takes:
 | `enter` | box has words | sends what you typed as a correction, and starts the corrected work |
 | `enter` | box empty | takes the answer marked `▸`, which is the one the clock would take |
 | `esc` | always | **later** — folds the question to the chip and answers nothing |
-| `c` | box empty | answer in words: the same thing as typing and pressing `enter` |
+| `o` | box empty | opens **something else…** for your own answer or correction |
+| `?` | box empty | asks for clarification |
 | `ctrl+e` | box empty | opens or closes the brief in the conversation |
 
 **Bare letters are ordinary text.** The question is not modal: the moment there is anything
@@ -1403,6 +1419,8 @@ moving hand is not answered by a keystroke aimed at your sentence.
 
 You can also click an answer: each answer's row is pressable along its whole width.
 
+## Choosing a different model or opening the task proposal's brief
+
 **Honest limit:** there is no longer any way to pick the model from the proposal. When a
 word matched more than one model the card used to offer them on a row of chips answered by
 `1`–`4`, and those digits are the question's answers now. The work runs on the closest
@@ -1417,11 +1435,16 @@ Expanding the brief: `ctrl+e` with an empty box, or `ctrl+o` on a block you sele
 on its own labelled line. Clicking the block's body does not open the brief — it opens the
 task's room.
 
-## The countdown on a task proposal — start it in 9s
+## The countdown on a task proposal — start it in 15s by default
 
-The clock is the last thing on the question's own answers row, and it says which answer is
-about to be taken and when: `start it in 9s`. It is rounded up, so the last second you have
+The clock sits at the top right of the card, beside `codeaf asks`, and says which answer is
+about to be taken and when: `start it in 15s` at the default setting. It is rounded up, so the last second you have
 is drawn as a second; above a minute it reads `2m 13s`.
+
+While it runs, the card says `any key stops the clock · you can still change the answer afterwards`.
+Its bottom edge reads `esc later · o other · ? clarify`.
+
+## What happens when a task proposal clock stops
 
 **The clock runs toward yes.** Silence approves the work as briefed, with no correction
 appended, and the block settles as `approved · the clock`. This is the opposite of the
@@ -1437,6 +1460,8 @@ question that really needs an answer.
 quarter-second the card drops keys, because they were aimed at whatever was there before.
 The dropped key still holds the clock and moves the pointer to `2 no`, so an `enter` straight
 after it declines; it never starts the task. After that, `1` starts and `2` declines at once.
+
+## Changing the task proposal countdown
 
 The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
 is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
@@ -1746,6 +1771,15 @@ means the check did judge it and named the next work.
 
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
+
+## Where did my task's result go when it finished while codeaf was still answering
+
+If a task finishes while codeaf is still answering, its landed card and its crew line (the
+`task N crew · …` line with what it cost and `not right? /redo stronger`) appear after that
+answer ends, under it, and never inside the `▸ worked` chip the answer's steps fold into.
+They still appear if the answer fails or you stop it. A task that finishes while nothing is
+being answered appears at once. When two tasks finish, their landings stay in the order they
+arrived.
 
 ## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
@@ -4218,8 +4252,8 @@ which is why neither is in the settings panel.
 
 Two hard bounds, and they behave differently on purpose.
 
-**Both bounds count quick tasks and ordinary ones together**, and `quick_task` is withheld
-at the floor exactly as `propose_task` is.
+**On the optional node belt, both bounds count quick tasks and ordinary ones together**,
+and `quick_task` is withheld at the floor exactly as `propose_task` is.
 
 **Depth: 3 levels.** The conversation proposes a task; that task may propose pieces; a
 piece may propose pieces of its own share; a piece of a piece may not. Neither
@@ -4246,6 +4280,14 @@ splits.
 
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
+
+## How the bash belt run splits work instead of nesting node tasks
+
+With the switch unset, or `CODEAF_TASK_BELT=bash`, a task uses the run engine instead of the node tree.
+Run workers have neither `quick_task` nor `propose_task`; they split with `plandb split`.
+The plan store allows up to 256 tasks in one added batch and 1024 tasks in one run.
+A composite worker can wake at most four times to integrate its children. The node
+tree's 3/20 bounds do not apply to that run.
 
 ## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
 
@@ -5178,7 +5220,7 @@ same word. The row's kind is not drawn, and its cost is available in the detail 
 `←` folds the branch under the cursor and `→` opens it again. When you fold one, the
 section heading says how many rows are hidden, such as `completed · 4 folded away`.
 The list scrolls through every conversation tree selected by the time window.
-This includes tasks from the run store. The compact rail inside a conversation instead keeps running work first and groups finished children into a count; that compact view does not change the Sessions page’s folds or chronological order.
+This includes tasks from the run store. The side column inside a conversation has its own groups: Done starts folded, and opening it shows every task row its heading counts, including separate attempts at the same request. That column does not change the Sessions page's folds or chronological order.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
@@ -5240,18 +5282,14 @@ A task's **page** shows everything below it under its steps the same way, each
 with its live step while its worker is on one. Opening a row (`enter`) and
 leaving a note are unchanged by the tree.
 
-## Why is this group one line? — finished families fold on the rail
+## Why is this group one line? — Done folds its task rows
 
-The rail shows the run's tree. It puts families with running work first, newest
-activity on top, then queued families, then done families folded with their age.
-Inside a family it keeps store order, except that running rows float to the top and
-its done rows fold into one `✔ N done` line at the bottom.
-
-A family becomes one rail line when every task in it is done or failed. The line
-keeps the family title and says how many settled below it — `· 3 done`, or
-`· 3 failed` when the family failed. This is a fold, not missing work: select the
-line and press `enter` to open the family's page. A family with anything running
-or queued stays open on the rail.
+The side column puts each task under Running, Queued, Waiting or Done. Running
+stays open; the other groups start folded to one heading, such as `Done 2 ▸`.
+Press the heading or use `enter` on it to see its task rows (`Done 2 ▾`). Every
+task the heading counts gets a row, even when two attempts at the same request
+have the same title. A run's parts fold with the task row that carries them.
+Press a task row to open its page and see the work inside it.
 
 ## What does queued behind it mean? — open tasks are waiting on this one
 
