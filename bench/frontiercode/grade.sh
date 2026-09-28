@@ -19,7 +19,7 @@
 #   scan.json                the egress scan (agent runs and sealed fixtures)
 #   record.jsonl final row + DONE + artifacts.sha256
 set -uo pipefail
-RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$RIG_DIR/lib.sh"
 
 OUT="$1"
