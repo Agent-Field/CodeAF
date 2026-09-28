@@ -4971,10 +4971,12 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	// /compact reads it; an automatic pass says nothing either way).
 	why := ""
 	appendedDuringSummary := 0
+	attempted := false
 	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
 		plan, short, ok := a.planSummaryLocked(policy)
 		why = short
 		if ok {
+			attempted = true
 			lengthBeforeSummary := len(a.messages)
 			a.mu.Unlock()
 			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
@@ -4988,7 +4990,11 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 			}
 		}
 	}
-	if pass.summarized == 0 {
+	// ONLY A SUMMARY THAT WAS ASKED FOR AND DID NOT LAND IS "SKIPPED". Too
+	// little older conversation to be worth a call is not a failure: a fold
+	// that changed something says what it folded, as it always did, and the
+	// reason is kept for the pass that changed nothing ([NothingToCompact]).
+	if attempted && pass.summarized == 0 {
 		pass.summarySkipped = why
 	}
 	a.compacting = false
