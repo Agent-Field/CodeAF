@@ -95,10 +95,13 @@ func (a *app) followUp() tea.Cmd {
 }
 
 func (a *app) sendFollow(spoken, line string) tea.Cmd {
-	if a.deferHosted(func() tea.Cmd { return a.sendFollow(spoken, line) }) {
+	return a.sendFollowFrom(a.agent, spoken, line)
+}
+
+func (a *app) sendFollowFrom(agent Agent, spoken, line string) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.sendFollowFrom(agent, spoken, line) }) {
 		return nil
 	}
-	agent := a.agent
 	call := a.hostCallStarted()
 	return func() tea.Msg {
 		ch, err := agent.FollowUp(spoken)
