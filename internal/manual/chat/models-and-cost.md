@@ -1248,6 +1248,10 @@ rather than handed to the model that just wrote the answer. Under this flag they
 model like everything else, because you have said your model is the crew. Without the flag and
 without a planner to seat, a move that needs them says `no second model is set`.
 
+**Model Pool judging waits for an ordinary launch.** Its judge must be independent
+of the crew, so `--one-model` runs neither the task-landing judge nor the startup sweep
+of pending judgments. It does not substitute your worker as its own independent judge.
+
 **It changes no setting and writes nothing.** Your pins and rows are untouched, `/crew`
 still says what it said, and the next session without the flag reads them exactly as before.
 It is a posture for one run, not an edit.
@@ -3932,6 +3936,13 @@ before the answer began, which is the one failure a larger ceiling actually fixe
 attempts get their own lines, so a call that was rate limited four times before it landed
 is five lines rather than one slow one.
 
+If an empty-at-the-ceiling response triggers the adapter's one retry, both paid
+attempts count toward session spend and the applicable task, day and seat budgets.
+The first charge remains counted even if the retry fails or is cancelled. The final
+answer keeps its own context size; the earlier attempt does not make that context
+look larger. A billing owner that already records every provider response still
+records each one only once.
+
 ## Why did a provider error keep the same endpoint?
 
 A provider can accept a request and later end its reply with
@@ -4037,3 +4048,13 @@ case it is there for is an endpoint that reports a window its loaded model does
 not really have, which is where `lean` is you telling codeaf the truth. `full`
 is the other direction: a small window you would rather spend on the whole tool
 list than on the conversation.
+
+## Does the daily budget apply to chat and team tasks?
+
+The daily budget blocks a new chat call when today's recorded spending reaches
+the limit. Task crews and their helpers use it when checking the next call's
+estimated cost. Other conversations' completed usage receipts are read on each
+check, and completed spending resets at the local date boundary. Calls already
+in flight may finish; this is not an atomic reservation across processes.
+Use `/budget` to change the limit. Per-conversation and per-task limits still
+apply separately.

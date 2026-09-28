@@ -640,13 +640,14 @@ func ConsentHead(tool, args string) string {
 // consentRule is [Event.Rule] for a call: the policy's own words, and for a
 // start with none, what the person is agreeing to pay for ([teamStartCost]).
 func consentRule(call ai.ToolCall, decision approval.Decision) string {
-	if rule := strings.TrimSpace(decision.Rule); rule != "" {
+	rule := strings.TrimSpace(decision.Rule)
+	if rule != "" && rule != "default" && rule != "default (unset)" {
 		return rule
 	}
 	if call.Function.Name == teamStartToolName {
 		return teamStartCost
 	}
-	return ""
+	return rule
 }
 
 // consentReason is why the gate is asking, in the policy's own words where it

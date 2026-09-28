@@ -524,7 +524,7 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 	if len(groups) == 0 {
 		return
 	}
-	text := teamWakeManagerLead + "\n\n" +
+	text := teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\n" +
 		strings.Join(groups, "\n\n")
 	woke, reason := a.teamWakeWith(text)
 	if woke {

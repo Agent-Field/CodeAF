@@ -431,6 +431,8 @@ func TestAPartThatAskedHereLandsItsAnswerHereToo(t *testing.T) {
 	if card == nil || card.status.State != session.TaskDone {
 		t.Fatalf("the decided part left its latest card at %+v, want done", card)
 	}
+	card.open = true
+	a.touch()
 	if text := taskText(a); !strings.Contains(text, took) {
 		t.Fatalf("the conversation does not say the part was decided:\n%s", text)
 	}

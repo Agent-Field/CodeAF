@@ -40,6 +40,7 @@ func TestAShortenedCaptionKeepsItsRemainingNarrationOnThePage(t *testing.T) {
 				{kind: entryTool, tool: "edit", text: "edit internal/config/load.go", status: status, turn: 1},
 			}
 			a.room.capOpen = map[int]bool{1: true}
+			a.room.workOpen = map[int]bool{1: true}
 			drawn, _ := a.deckRows(a.room.deck(), 90)
 			var page []string
 			captions := 0

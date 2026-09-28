@@ -474,11 +474,9 @@ const (
 // per-command pages — which is where somebody writing a script actually looks,
 // and where taking it out of the group's lines had silently removed it. One
 // source of truth, two places it is read.
-var handWorkFooter = `  the three differ by how much thinking happens first: do plans and may split
-  the job, exec does not plan, run follows a plan somebody saved. None takes
-  --yolo, and What do and run can still refuse is a plan whose price crosses
-  your limit — --yes-spend answers that in advance. All three end the same
-  way, and why is in --json's stop field:
+var handWorkFooter = `  do plans and may split the job, exec skips planning, run follows a saved plan.
+  None takes --yolo. do and run may refuse a plan over your spending limit;
+  --yes-spend answers in advance. The reason is in --json's stop field:
   ` + foldedExitLadder(2, helpWidth) + `
   CODEAF_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
 
@@ -490,14 +488,17 @@ Talk to it — a surface you sit in front of
   codeaf chat [--model slug] [--reasoning level] [--session path] [--yolo]
               [--host host[:path]] [--at name[:path]] [--once "text"]
               [--no-compact] [--one-model] [--no-host] [--debug]
-      --no-host runs the conversation in this process rather than on this
-      workspace's session host; --debug keeps the whole record of the run
+              [--max-cost dollars] [--max-hours hours]
+      --no-host stays in this process; --debug keeps the full run record
+      --max-cost and --max-hours bound unattended work and require --yolo
   codeaf resume
       pick an earlier conversation by name and open it — /resume inside the chat
 
 Hand it work — nobody is watching, the answer is on stdout
   codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
               [--json] [--yes-spend] [--model slug] [--plan-model slug]
+              [--check-model slug] [--slots N] [--best|--cheap]
+              [--pin seat=model[@provider]]
               [--context-fill 60] [--completion-reserve 65536] [--debug]
       do one task and exit — the same living agent the chat runs, unwatched
   codeaf exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
@@ -507,8 +508,7 @@ Hand it work — nobody is watching, the answer is on stdout
       run one worker for one pass, with no planning at all
   codeaf run  <program> --input <file.json|-> [--dir dir] [--model slug]
               [--journal path] [--json]
-      run one saved program: typed input in, its typed output on stdout. A
-      question it was not told how to answer stops it rather than being guessed
+      run a saved program: typed input and output; unanswered questions stop it
 ` + handWorkFooter + `
 
 Look at what happened — read-only, no key, nothing spent

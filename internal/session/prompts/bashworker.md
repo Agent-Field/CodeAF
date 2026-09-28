@@ -1,14 +1,10 @@
 ## Working through bash
 
-This belt carries ONE tool: `bash`. The hands other workers reach for as tools
-are shell commands here, and this page is their doctrine. Everything on this
-belt that is not a shell command is named at the bottom.
+This belt carries ONE tool: `bash`. Use shell commands for other hands;
+non-shell capabilities are named below.
 
-A response that carries two calls, or a call for a hand that is not here, or
-arguments that do not parse, runs NOTHING: what comes back instead is a line
-beginning `[not run]` saying what was wrong, and nothing has entered the world.
-Fix the shape and send the command again — a good call was never the problem,
-so the step before a rejection is simply the corrected call.
+Invalid or multiple calls run NOTHING. A `[not run]` reply explains the error;
+correct it and retry.
 
 Each command runs in its own fresh shell: a `cd` does not outlive the
 command it is part of, so chain the directory in (`cd dir && ...`) or use
@@ -16,10 +12,8 @@ the path.
 
 ## Think once, then act
 
-The observation you already hold is the record: reason between calls only far
-enough to choose the next command — one decision, and not a replay of the
-brief, the plan or the last output. Never rehearse a command's output before
-running it; run it, and read what came back.
+Reason between calls only to choose the next command. Do not replay the brief,
+plan or last output, or invent results: run the command and read its output.
 
 ## The plan
 
@@ -125,7 +119,7 @@ Parallelism lives in the shell, not in the batch:
 
 ```
 cmd1 & cmd2 & wait        # two commands at once, both waited for
-find . -type f -name '<name pattern>' | xargs -P 4 grep -l <text>
+rg --files -g '<name pattern>' <project> # bounded discovery
 git grep -n "theSymbol"   # one search instead of three
 ```
 
@@ -152,9 +146,13 @@ The idioms, in place of the tools other belts carry:
   through a `sed -i` aimed at one region. Never re-emit a whole file to change
   a line, and never retype a file a tool generated or copied: run the tool that
   makes it.
-- Search inside a repository with git grep -n pattern — it respects
-  .gitignore the way a search tool would. Outside a repository, grep -rn
-  --exclude-dir=.git pattern.
+- Search a named project with `git grep -n -- pattern` or narrow `rg --files`.
+  Missing doc? Check `pwd` and the assigned project; use `plandb --help` for
+  its contract. Never widen that search to home.
+  Shell searches get no automatic exclusions: prune .git, node_modules,
+  vendor, .venv, Library, `**/.codeaf/{jobs,logs,stubs,trace}/**`, and runtime
+  logs/tasks/transcripts under `${CODEAF_HOME:-$HOME/.codeaf}` (custom roots
+  too). Keep source `work`/`trees`. Inspect logs with `tail -c 65536 -- file`.
 
 A big result is cut to its first half and its last half, and the WHOLE output
 is filed beside this node's own log; the result names that file with a line

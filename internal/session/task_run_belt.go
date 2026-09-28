@@ -190,6 +190,14 @@ type RunSpec struct {
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
 	Crew delegate.Crew
+	// Standing is the person's standing orders over this place, already
+	// rendered as the section a worker's brief closes on ([StandingWorld],
+	// resolved once per run against the conversation's own place). It is the
+	// same answer a task node starting in this conversation reads
+	// ([TaskGraph.standingWorld]) — a plan-born worker and a node worker must
+	// never disagree about what stands (#1549). Empty when nothing stands or
+	// the ambient side is off: no orders is no section, never an empty heading.
+	Standing string
 }
 
 // ProgramEnding is a delegated run's program's own ending when it did not
@@ -389,7 +397,11 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
-	stand := taskStand{dir: a.config.Workspace, mode: TaskModeWorktree}
+	// The default run door uses the same placement evidence as a proposal or
+	// legacy task. Starting from home must not discard the named project.
+	stand := a.taskGroundOrStandingIn(taskSpec{
+		title: title, request: brief, brief: brief, acceptance: taskPersonAcceptance,
+	})
 	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, stand, question); err != nil {
 		if errors.Is(err, errRunRoadUnavailable) {
 			return a.startTaskLegacy(ctx, brief, solo)
@@ -1011,6 +1023,11 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		}(),
 		ProgramIgnoredFile: run.folder.IgnoredFile(),
 		Crew:               programCrew,
+		// THE ORDERS ARE RESOLVED HERE AND NOT PER WORKER, for the same reason
+		// the frontier resolves them once per pass: every worker of one run
+		// sits in one place, and reading a folder per worker would be the same
+		// question asked ten times (standing_world.go).
+		Standing: a.standingWorld(),
 	}
 }
 

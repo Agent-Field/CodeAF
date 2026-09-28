@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"strings"
 	"testing"
 
@@ -91,6 +92,17 @@ func TestARoomPhaseEndpointKeepsItsAnswerAcrossReceiptsAndPersonBoundaries(t *te
 			if r.hit == hitCaption || strings.Contains(plain(r.text), "## Verified") {
 				t.Fatalf("answer lost its markdown rendering: %q", r.text)
 			}
+			if boundary == entryNote {
+				// Operational receipts no longer occupy the default conversation.
+				// Opening its work restores the retained receipt.
+				for _, r := range drawn {
+					if strings.Contains(plain(r.text), next.text) {
+						t.Fatal("ordinary receipt escaped closed work")
+					}
+				}
+				a.setWorkOpen(a.room.deck(), 1, true)
+				drawn, _ = a.deckRows(a.room.deck(), 90)
+			}
 			if boundary != entryDivider {
 				phaseHierarchyRow(t, drawn, "Review the integration coverage next")
 			}
@@ -108,12 +120,7 @@ func TestARoomPhaseCaptionDoesNotHideAFailedNextStep(t *testing.T) {
 	if !a.room.entries[2].demoted || a.room.entries[4].demoted {
 		t.Fatal("the failed step did not separate progress from its final explanation")
 	}
-	for _, f := range a.deckFolds(a.room.deck()) {
-		if f.start <= 3 && f.answer > 3 {
-			t.Fatalf("a fold hid the failed step: %#v", f)
-		}
-	}
-	phaseHierarchyRow(t, drawn, "integration assertion failed")
+	phaseHierarchyRow(t, drawn, a.icon(tokens.GFailed)+" 1 failed")
 	phaseHierarchyRow(t, drawn, "The migration still fails its compatibility check")
 }
 
@@ -149,8 +156,8 @@ func TestASettledRoomPhaseKeepsItsNarrationReachableThroughItsCaption(t *testing
 		entry{kind: entryAssistant, text: "The parser API is preserved.", settled: true, turn: 1},
 	)
 	folds := a.deckFolds(a.room.deck())
-	f, ok := folds[2]
-	if !ok || f.answer != 4 || f.key != 2 {
+	f, ok := folds[1]
+	if !ok || f.answer != 4 || f.key != 1 {
 		t.Fatalf("the second phase did not settle: %#v", folds)
 	}
 	closed, _ := a.deckRows(a.room.deck(), 90)
@@ -183,7 +190,7 @@ func TestPhaseNarrationOwnershipDoesNotInventWorkOrCrossProtectedRows(t *testing
 	for _, protected := range []entry{
 		{kind: entryUser, text: "A correction", turn: 1},
 		{kind: entrySteer, turn: 1, steer: &steerElbow{words: "A correction", consumed: true}},
-		{kind: entryTool, tool: "bash", status: toolFailed, turn: 1},
+		{kind: entryTool, tool: "bash", status: toolConsent, turn: 1},
 		{kind: entryTask, turn: 1},
 	} {
 		es := append([]entry(nil), prose...)
@@ -223,23 +230,18 @@ func TestReasoningBetweenPhasesCannotStealTheirNarrationOrKeys(t *testing.T) {
 		{kind: entryAssistant, text: "The parser API is preserved.", settled: true, turn: 1},
 	}
 	folds := a.deckFolds(a.room.deck())
-	if len(folds) != 3 {
-		t.Fatalf("a reasoning phase was overwritten: %#v", folds)
+	if len(folds) != 1 || folds[0].answer != 5 {
+		t.Fatalf("settled work must share one complete disclosure: %#v", folds)
 	}
-	for key, span := range [][2]int{{0, 1}, {1, 3}, {3, 5}} {
-		if f, ok := folds[span[0]]; !ok || f.answer != span[1] || f.key != key+1 {
-			t.Fatalf("phase %d overlaps or changed its key: %#v", key+1, folds)
-		}
-	}
-	a.openWorkfold(3)
+	a.openWorkfold(folds[0].key)
 	drawn, _ := a.deckRows(a.room.deck(), 90)
 	caption := phaseHierarchyRow(t, drawn, "Running compatibility checks")
 	if caption.hit != hitCaption {
 		t.Fatalf("the tool phase did not keep its own narration: %#v", caption)
 	}
-	for _, r := range drawn {
-		if strings.Contains(plain(r.text), "Comparing parser contracts") {
-			t.Fatal("a tool phase borrowed the prior reasoning phase's narration")
-		}
+	// Both steps remain independently captioned inside the shared disclosure.
+	prior := phaseHierarchyRow(t, drawn, "Comparing parser contracts")
+	if prior.turn == caption.turn {
+		t.Fatal("the tool and reasoning phases share a caption control")
 	}
 }

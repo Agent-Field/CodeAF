@@ -109,6 +109,10 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 	fake.plan[0].Status, fake.plan[1].Status = "done", "done"
 	a.workTabStable()
 	a.workTabStable()
+	if got := taskText(a); !strings.Contains(got, "Root") {
+		t.Fatalf("self-closing work tab hid the compact landing: %s", got)
+	}
+	a.toggleDoneAt(a.doneEntryFor(7))
 	if got := plain(func() string { s, _, _ := a.frame(); return s }()); !strings.Contains(got, "Root") || !strings.Contains(got, "the importer landed") {
 		t.Fatalf("self-closing work tab removed the landing card:\n%s", got)
 	}

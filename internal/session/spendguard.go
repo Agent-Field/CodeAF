@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // A SEAT'S NEXT CALL IS PRICED BEFORE IT IS MADE.
@@ -38,9 +40,15 @@ type SpendPrice func(model string) (prompt, completion, cacheRead float64, ok bo
 // SpendDay is today's spend as this process knows it: what the ledger said
 // when the process looked, and every guarded call since.
 type SpendDay struct {
-	mu    sync.Mutex
-	usd   float64
-	since float64
+	// Live days also observe spending booked by other conversations. A
+	// calendar boundary resets completed spending, never in-flight holds.
+	ledger   func() float64
+	clock    func() time.Time
+	date     string
+	observed float64
+	mu       sync.Mutex
+	usd      float64
+	since    float64
 	// held is what calls in flight were estimated at: a call is priced
 	// against the day AND every call already on its way, so seats asked at
 	// the same moment cannot all pass on one figure.
@@ -54,6 +62,31 @@ type SpendDay struct {
 // NewSpendDay is a day that had spent base when it was read.
 func NewSpendDay(base float64) *SpendDay { return &SpendDay{usd: base} }
 
+// newLedgerSpendDay keeps the shared ledger visible throughout a conversation.
+func newLedgerSpendDay(read func() float64, now func() time.Time) *SpendDay {
+	return &SpendDay{ledger: read, clock: now}
+}
+
+// refreshLocked preserves locally settled costs while the asynchronous ledger
+// catches up, without adding the same response twice. Cross-process calls in
+// flight are not reservations in this process; their receipts are seen here.
+func (d *SpendDay) refreshLocked() {
+	if d.ledger == nil {
+		return
+	}
+	date := d.clock().Format("2006-01-02")
+	spent := d.ledger()
+	if date != d.date {
+		d.date, d.usd, d.since = date, spent, 0
+		d.last = nil
+	}
+	d.observed = spent
+}
+
+func (d *SpendDay) totalLocked() float64 {
+	return max(d.usd+d.since, d.observed)
+}
+
 // Total is what the day has spent.
 func (d *SpendDay) Total() float64 {
 	if d == nil {
@@ -61,7 +94,8 @@ func (d *SpendDay) Total() float64 {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.usd + d.since
+	d.refreshLocked()
+	return d.totalLocked()
 }
 
 // hold prices one call to model at est — raised to the model's last actual
@@ -73,10 +107,11 @@ func (d *SpendDay) hold(model string, est, capUSD float64) (float64, bool) {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.refreshLocked()
 	if last := d.last[model]; last > est {
 		est = last
 	}
-	if capUSD > 0 && d.usd+d.since+d.held+est > capUSD {
+	if capUSD > 0 && d.totalLocked()+d.held+est > capUSD {
 		return 0, false
 	}
 	d.held += est
@@ -90,6 +125,7 @@ func (d *SpendDay) settle(model string, held, usd float64) {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.refreshLocked()
 	d.held -= held
 	if d.held < 0 {
 		d.held = 0
@@ -379,7 +415,10 @@ func (c guardedCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.next.CompleteWithMessages(ctx, messages, options...)
+	callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
+		c.guard.after(ctx, model, response, 0)
+	})
+	response, err := c.next.CompleteWithMessages(callCtx, messages, options...)
 	c.guard.after(ctx, model, response, held)
 	return response, err
 }

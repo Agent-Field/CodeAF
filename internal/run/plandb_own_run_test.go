@@ -47,7 +47,7 @@ func TestBashWorkerCannotWriteIntoAnotherRunsStore(t *testing.T) {
 			return toolReply(bashArguments(t, `plandb add '`+title+`' --description 'not this run'`)), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 	_, _ = worker.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task("mine"))
 
 	other, err := plandb.Open(path, "", "", "", "")

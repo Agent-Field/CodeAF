@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
@@ -250,5 +251,92 @@ func TestACallThatCostsNothingPassesEveryDollarLine(t *testing.T) {
 	seat := SeatCompleter(crewroute.Checker, guard.Wrap("ollama/gemma4:12b", calls))
 	if _, err := seat.CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "hi")}, ai.WithMaxTokens(2000)); err != nil || calls.calls != 1 {
 		t.Fatalf("a call that costs nothing past every line: %v after %d calls", err, calls.calls)
+	}
+}
+
+func TestTaskCrewDelegationEnforcesDailyBudget(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(dir, 1.00); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{
+		config: Config{
+			ProfileDir: dir,
+			RouteCrew: func(config.CrewAsk) (crewroute.Decision, error) {
+				return crewroute.Decision{
+					Crew: []crewroute.Pick{
+						{Seat: crewroute.Worker, Send: "test/worker"},
+					},
+				}, nil
+			},
+		},
+	}
+	crew, err := a.routeTaskCrew(t.Context(), 1, "task", "brief")
+	if err != nil {
+		t.Fatalf("routeTaskCrew: %v", err)
+	}
+	if crew.guard == nil {
+		t.Fatal("expected crew.guard to be non-nil")
+	}
+	if crew.guard.Cap != 1.00 {
+		t.Fatalf("crew.guard.Cap = %v, want 1.00", crew.guard.Cap)
+	}
+	if !strings.Contains(crew.guard.CapAction, "today's spending limit") {
+		t.Fatalf("crew.guard.CapAction = %q, want it to mention daily spending limit", crew.guard.CapAction)
+	}
+}
+
+func TestHelperGuardEnforcesDailyBudget(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(dir, 0.75); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{
+		config: Config{
+			ProfileDir: dir,
+			RouteCrew: func(config.CrewAsk) (crewroute.Decision, error) {
+				return crewroute.Decision{}, nil
+			},
+		},
+	}
+	helper := a.helperGuard(nil)
+	if helper == nil {
+		t.Fatal("expected helper to be non-nil")
+	}
+	if helper.Cap != 0.75 {
+		t.Fatalf("helper.Cap = %v, want 0.75", helper.Cap)
+	}
+	if !strings.Contains(helper.CapAction, "today's spending limit") {
+		t.Fatalf("helper.CapAction = %q, want it to mention daily spending limit", helper.CapAction)
+	}
+}
+
+func TestDailyGuardSeesOtherConversationsAndRollsOver(t *testing.T) {
+	now := time.Date(2026, 9, 27, 23, 59, 0, 0, time.Local)
+	ledger := 1.0
+	day := newLedgerSpendDay(func() float64 { return ledger }, func() time.Time { return now })
+	if got := day.Total(); got != 1 {
+		t.Fatal(got)
+	}
+	held, ok := day.hold("model", 0.25, 2)
+	if !ok {
+		t.Fatal("first call refused")
+	}
+	day.settle("model", held, 0.25)
+	ledger = 1.25
+	if got := day.Total(); got != 1.25 {
+		t.Fatalf("double counted receipt: %v", got)
+	}
+	ledger = 2.0
+	if _, ok := day.hold("model", 0.1, 2); ok {
+		t.Fatal("ignored another conversation's receipt")
+	}
+	now = now.Add(2 * time.Minute)
+	ledger = 0
+	if got := day.Total(); got != 0 {
+		t.Fatalf("yesterday's spend survived midnight: %v", got)
+	}
+	if _, ok := day.hold("model", 0.1, 2); !ok {
+		t.Fatal("new day remained blocked")
 	}
 }

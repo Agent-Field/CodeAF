@@ -424,24 +424,57 @@ func TestALandingAsksForTheFadesTwoWakeupsAndNoTicker(t *testing.T) {
 // THE POINT OF THE DESIGN. A finished turn collapses its machinery into one
 // chip, and everything the person ASKED is still on the screen.
 func TestACollapsedTurnKeepsTheQuestionsElbows(t *testing.T) {
-	agent := &fakeAgent{turns: [][]session.Event{{
-		toolBegin("read", "internal/parse/lex.go"),
-		toolEnd("read", "package parse"),
-		text(session.EventTextDelta, "done — the lexer is swapped"),
-	}}}
-	a := newTestApp(agent)
-	typeLine(t, a, "port the parser")
-	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
-	drive(t, a, streamEventMsg{gen: a.gen, ev: steerConsumedEvent(1)})
-	agent.finish()
-	drive(t, a, streamClosedMsg{gen: a.gen})
-
-	lines := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(lines, "worked") {
-		t.Fatalf("the turn did not collapse, so this test proves nothing:\n%s", lines)
-	}
-	if !strings.Contains(lines, glyphSteer+"use the staging bucket") {
-		t.Fatalf("the collapse ate the question's corrections:\n%s", lines)
+	for _, completed := range []bool{false, true} {
+		name := "interrupted_without_replacement"
+		if completed {
+			name = "completed_after_steer"
+		}
+		t.Run(name, func(t *testing.T) {
+			agent := &fakeAgent{turns: [][]session.Event{{
+				toolBegin("read", "internal/parse/lex.go"),
+				toolEnd("read", "PRIVATE ORIGINAL RESULT"),
+				text(session.EventTextDelta, "unfinished parser narration"),
+			}}}
+			a := newTestApp(agent)
+			typeLine(t, a, "port the parser")
+			drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
+			drive(t, a, streamEventMsg{gen: a.gen, ev: steerConsumedEvent(1)})
+			if completed {
+				for _, ev := range []session.Event{
+					toolBegin("bash", "verify staging"),
+					toolEnd("bash", "PRIVATE STAGING RESULT"),
+					text(session.EventTextDelta, "The staging parser is ready."),
+					{Kind: session.EventAssistantDone},
+				} {
+					drive(t, a, streamEventMsg{gen: a.gen, ev: ev})
+				}
+			}
+			agent.finish()
+			drive(t, a, streamClosedMsg{gen: a.gen})
+			lines := strings.Join(plainRows(a), "\n")
+			if !strings.Contains(lines, "stopped by you") {
+				t.Fatalf("interrupted generation lost its compact status:\n%s", lines)
+			}
+			if strings.Count(lines, glyphSteer+"use the staging bucket") != 1 {
+				t.Fatalf("the collapse lost or duplicated the correction:\n%s", lines)
+			}
+			for _, hidden := range []string{"PRIVATE ORIGINAL RESULT", "PRIVATE STAGING RESULT", "unfinished parser narration"} {
+				if strings.Contains(lines, hidden) {
+					t.Fatalf("closed work leaked %q:\n%s", hidden, lines)
+				}
+			}
+			if completed {
+				if !strings.Contains(lines, "worked") || strings.Count(lines, "The staging parser is ready.") != 1 {
+					t.Fatalf("completed replacement lost its work disclosure or answer:\n%s", lines)
+				}
+			} else {
+				for _, e := range a.entries {
+					if confirmedAnswer(&e) {
+						t.Fatal("interrupted generation was promoted to a completed answer")
+					}
+				}
+			}
+		})
 	}
 }
 

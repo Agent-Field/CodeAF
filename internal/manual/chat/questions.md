@@ -1290,7 +1290,9 @@ and `2 not now`. A service connected by a KEY has no `1`: a bare yes to one of
 those connects nothing, so the question asks for the key in the message box under
 it, masked to a bullet a character with the count beside it, and `enter` sends it.
 The one answer it keeps is `2 not now`, because a question the turn is waiting on
-with no visible no is a question nobody can end.
+with no visible no is a question nobody can end. The waiting mark and the
+sentence arrive as one fact: the moment a sign-in needs you, the line is already
+`connect your <Name> account?`, on this page, on home and on the tab.
 
 **So does the harness lane's pair.** An offer to run a saved program is one line —
 `run harness "research"?` with `1 run it` and `2 not now`. A finished harness
@@ -1398,3 +1400,11 @@ older blocks — the connect offer, with its own answers row and its own keys �
 gone. The one card in this program that still answers to keys of its own is the
 intake form `/subharness` opens for a saved program, which is a fullscreen page
 with fields to fill in rather than a question above the box.
+
+## Does accepting a standing card mean it repeats?
+
+The answer depends on the kind shown on the card. A one-off reminder says
+`Reminds you then. Nothing repeats.` A repeating check says
+`It repeats on that cadence until you stop it.` A rule says
+`The rule is kept until you stop it.` These are the engine's own answer
+consequences, shared by the home screen and the conversation.

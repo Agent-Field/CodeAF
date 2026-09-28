@@ -433,6 +433,7 @@ func TestHostedTaskPageDrawsARefusedActionAsOneLineAndACorrectionAsNone(t *testi
 		t.Fatal(err)
 	}
 	openHostedPage(t, a)
+	drive(t, a, key("ctrl+e"))
 	page := roomCallText(t, a)
 	refused := taskPlanRefusedWord + railSep + "touch /outside/the-ground"
 	var drawn []string

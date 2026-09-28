@@ -1183,8 +1183,13 @@ func TestAFailedToolIsMarkedAndSaysWhy(t *testing.T) {
 	runTurn(t, a, agent, "build it")
 
 	got := plain(frame(a))
-	if !strings.Contains(got, glyphBad) || !strings.Contains(got, "exit 2") {
-		t.Fatalf("a failed tool has to say so:\n%s", got)
+	if !strings.Contains(got, glyphBad+" 1 failed") {
+		t.Fatalf("the closed work must flag its failed call:\n%s", got)
+	}
+	drive(t, a, key("ctrl+e"))
+	openFirstCaption(t, a)
+	if opened := plain(frame(a)); !strings.Contains(opened, "exit 2") {
+		t.Fatalf("the disclosed failed call lost its reason:\n%s", opened)
 	}
 }
 
@@ -1308,7 +1313,7 @@ func collapse(shape []string) []string {
 // A cluster that is the WHOLE turn still opens under the change-of-speaker
 // blank: the person said "build it", and the surface answering with a call is
 // a different voice, so exactly one row of silence sits between the message
-// and the first work row — the caption heading, with the tool under it.
+// and the first work row — the compact summary until the reader opens it.
 func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("bash", "go build ./..."),
@@ -1323,9 +1328,6 @@ func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 		bare := unindented(r)
 		if !(strings.HasPrefix(bare, "▸ ") || strings.HasPrefix(bare, "▾ ") ||
 			strings.HasPrefix(bare, "╰─▶") || strings.HasPrefix(bare, "├─▶")) {
-			continue
-		}
-		if strings.HasPrefix(bare, "▸ worked") || strings.HasPrefix(bare, "▾ worked") {
 			continue
 		}
 		if i < 2 || strings.TrimSpace(list[i-1]) != "" || strings.TrimSpace(list[i-2]) == "" {
@@ -1349,6 +1351,9 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 	// PARALLEL CALLS SHARE ONE CAPTION. Give both tools the same clocks so the
 	// outline treats them as one step — the rail still tees inside that step.
 	overlapToolClocks(a)
+
+	drive(t, a, key("ctrl+e"))
+	openFirstCaption(t, a)
 
 	list := plainRows(a)
 	first, last := -1, -1
@@ -1379,8 +1384,7 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 	}
 }
 
-// Past three calls the older ones fold into one line under their caption, and
-// ctrl+o opens them.
+// A completed cluster stays behind its caption, and ctrl+o reveals every call.
 func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	var events []session.Event
 	for _, name := range []string{"a.go", "b.go", "c.go", "d.go", "e.go"} {
@@ -1402,6 +1406,8 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 		a.entries[i].ended = base.Add(time.Second)
 	}
 
+	drive(t, a, key("ctrl+e"))
+
 	list := plainRows(a)
 	page := strings.Join(list, "\n")
 	// The turn is over and all five reads came back, so the floor caption is in
@@ -1412,8 +1418,8 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	if strings.Contains(page, "earlier tool calls") {
 		t.Fatalf("the old fold line survived under a caption:\n%s", page)
 	}
-	if n := countTools(a); n != toolWindow {
-		t.Fatalf("%d tool lines are visible, want %d:\n%s", n, toolWindow, page)
+	if n := countTools(a); n != 0 {
+		t.Fatalf("%d tool lines escaped the closed caption:\n%s", n, page)
 	}
 	if strings.Contains(strings.Join(list, "\n"), "a.go") {
 		t.Fatalf("a folded call is still on screen:\n%s", strings.Join(list, "\n"))
@@ -1429,7 +1435,7 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	}
 
 	drive(t, a, key("ctrl+o"))
-	if n := countTools(a); n != toolWindow {
+	if n := countTools(a); n != 0 {
 		t.Fatalf("ctrl+o did not fold back: %d calls visible", n)
 	}
 }
@@ -1460,6 +1466,8 @@ func TestOpeningOneCallShowsItsResultUnderTheRail(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "find main")
+	drive(t, a, key("ctrl+e"))
+	openFirstCaption(t, a)
 
 	call := -1
 	for i := range a.entries {
@@ -1539,6 +1547,8 @@ func TestAClickOpensTheCallUnderIt(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "read it")
+	drive(t, a, key("ctrl+e"))
+	openFirstCaption(t, a)
 
 	at := -1
 	for i, r := range rows(a) {
@@ -1908,6 +1918,11 @@ func TestScrollSticksToTheBottomUntilTheReaderLeaves(t *testing.T) {
 	// running ([feed.note]) and this transcript has to be taller than its window.
 	for i := range 40 {
 		a.note("line " + itoa(i))
+	}
+	// Operational notes are retained behind a disclosure; scroll the opened log.
+	drive(t, a, key("ctrl+e"))
+	if len(a.visible(a.width)) <= a.viewHeight() {
+		t.Fatal("opened fixture does not fill the viewport")
 	}
 	if !a.stick {
 		t.Fatal("a surface that never scrolled has to be stuck to the bottom")

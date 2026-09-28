@@ -753,7 +753,7 @@ func TestTheLinearTierDrawsNoReceipt(t *testing.T) {
 // showed.
 func TestASplitTurnCarriesTheColumnOnItsFrontierAlone(t *testing.T) {
 	a := tokenColApp(t)
-	a.entries[3].status = toolFailed
+	a.entries = append(a.entries[:4:4], append([]entry{{kind: entrySteer, turn: 1, steer: &steerElbow{words: "Check the caller first", consumed: true}}}, a.entries[4:]...)...)
 	a.touch()
 	d := a.conversation()
 	stampHierarchy(d.entries, a.deckFolds(d))
@@ -804,8 +804,8 @@ func TestASplitTurnDrawsNoSecondWorkDoorAboveTheKeptStep(t *testing.T) {
 	d := a.conversation()
 	stampHierarchy(d.entries, a.deckFolds(d))
 	d.captions = deriveCaptions(d.entries, d.runningTurn)
-	if runs := liveWorkRuns(d); len(runs) < 2 {
-		t.Fatalf("the fixture did not split into two runs: %d", len(runs))
+	if runs := liveWorkRuns(d); len(runs) != 1 {
+		t.Fatalf("a failed call split the unified activity window: %d", len(runs))
 	}
 
 	doors := func(page []string) (thought, work int) {
@@ -833,16 +833,10 @@ func TestASplitTurnDrawsNoSecondWorkDoorAboveTheKeptStep(t *testing.T) {
 		t.Fatalf("the shut page drew %d work doors, want none — the compact block IS the shut state:\n%s",
 			work, strings.Join(page, "\n"))
 	}
-	if thought != 1 {
-		t.Fatalf("the reasoning above the kept step is not behind exactly one thought row (%d):\n%s",
+	if thought != 0 {
+		t.Fatalf("closed work exposed a standalone thought row (%d):\n%s",
 			thought, strings.Join(page, "\n"))
 	}
-	// The step the failure kept still stands between the two, whole and above
-	// the working block, exactly where it happened.
-	if !strings.Contains(strings.Join(page, "\n"), "Reading the loader first") {
-		t.Fatalf("the kept step is not on the page:\n%s", strings.Join(page, "\n"))
-	}
-
 	// And the work is still one window with one way in and out of it: opening it
 	// draws exactly one `working · ctrl+e`, and the thought row is still its own.
 	showLiveWork(t, a)

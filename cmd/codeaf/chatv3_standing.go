@@ -525,3 +525,18 @@ func startBackgroundRepair(profileDir string) {
 }
 
 var backgroundOnce sync.Once
+
+// doStanding is the standing section a headless `codeaf do` run's workers close
+// on, resolved against the workspace the run edits and NO conversation: a
+// headless errand is a place with no conversation ([standing.Item.Reaches]),
+// so only the project and the machine's orders reach it — which is exactly what
+// the resolver answers for the place. The ambient side off, or a store that
+// cannot be opened, is no section, the same emptiness law every caller reads
+// ([v3Standing]). Empty is what a run with nothing standing over it gets.
+func doStanding(workspace string) string {
+	store, err := standing.Open(v3StandingRoot())
+	if err != nil {
+		return ""
+	}
+	return session.StandingWorld(store, workspace, "")
+}

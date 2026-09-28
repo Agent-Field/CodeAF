@@ -3712,7 +3712,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, completerFor),
+		}, doStanding(workspace), completerFor),
 	})
 	errand := headlessOutcome{
 		Artifacts: []string{},
