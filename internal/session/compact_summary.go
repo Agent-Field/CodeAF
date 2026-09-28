@@ -99,6 +99,16 @@ const (
 	purposeSummary callPurpose = "summary"
 )
 
+// CompactPatience is how long a surface on the far side of a connection waits
+// for a /compact it asked for. A pass may now ask the model for a summary, and
+// the ten seconds every other call gets is shorter than one summary request on
+// a slow model (twenty seconds each on deepseek-v3.2, 2026-09-28), so the
+// surface said "did not answer in time" about a pass that then landed. Two
+// summary requests is the most a manual pass over one window's worth of
+// conversation makes, and the minute is for the fold and the journal around
+// them.
+const CompactPatience = 2*summaryCallWindow + time.Minute
+
 // summaryNotePrefix opens every summary note. It is the same opening an older
 // codeaf's summarizer wrote ([legacyCompactionNote]), so [isCompactionNote]
 // already treats both as the session's own words rather than the person's.

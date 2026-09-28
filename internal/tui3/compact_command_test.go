@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -22,6 +23,9 @@ func TestCompactCommandReportsReductionAndExplainsProtectedHistory(t *testing.T)
 			"nothing to compact — only ~400 tokens since the last summary — too little to summarize"},
 		{compactedMsg{err: errors.New("session: nothing to compact: the summary was interrupted")},
 			"nothing to compact — the summary was interrupted"},
+		// A PASS THAT OUTLIVED THE WAIT IS STILL RUNNING, never "failed".
+		{compactedMsg{err: remote.ErrLate}, "still compacting — it is taking longer than usual and finishes on its own"},
+		{compactedMsg{err: errors.New("the model refused")}, "compact failed: the model refused"},
 	} {
 		a := newTestApp(&fakeAgent{model: "m"})
 		drive(t, a, test.message)

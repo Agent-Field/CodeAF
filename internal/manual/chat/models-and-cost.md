@@ -2850,12 +2850,14 @@ cannot guarantee that every provider's initial response succeeds.
 
 `/compact` runs a reduction immediately, even below the automatic threshold. It notes
 `compacting…` and works off the input loop. Older completed work becomes pointers to the
-full journal first, which makes no model call.
+full journal first, which makes no model call. If that is not enough, the conversation's
+own model summarizes the oldest part, your older messages included.
 
-Your messages, the system prompt, the newest assistant/tool batch and the recent working
-tail stay in context. Success reports `⚭ compacted · about N to M tokens`; those figures are
-estimates. A no-op says `nothing to compact — your messages and recent work are kept`.
-Other failures say `compact failed: ` followed by the reason.
+Your three most recent messages, the system prompt, the newest assistant/tool batch and the
+recent working tail stay word for word. Success reports `⚭ compacted · about N to M
+tokens`; those figures are estimates. A no-op says `nothing to compact — ` and why. A pass
+still running after five minutes says `still compacting — ` and lands on its own. Other
+failures say `compact failed: ` followed by the reason.
 
 There is no separate compaction model or summarization setting. The smaller retained tail and the
 explicit reduction distinguish this command from routine automatic cleanup.

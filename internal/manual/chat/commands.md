@@ -441,7 +441,11 @@ changed it says `nothing to compact — ` and why: for example `only ~400 tokens
 last summary — too little to summarize`, `there is nothing before your latest message to
 summarize`, or `the model could not write a summary: ` and the reason.
 Other failures say `compact failed: ` followed by the reason. The pass runs off the input
-loop, so the surface stays responsive. `/compact` has no argument form and no alias.
+loop, so the surface stays responsive, and a message you send while it runs is not held
+behind it. A summary on a slow model can take a minute; the chat waits up to five. If the
+engine is still working after that, it says `still compacting — it is taking longer than
+usual and finishes on its own`, and the status line's count drops when the pass lands.
+`/compact` has no argument form and no alias.
 
 ## /rewind — go back to an earlier point in the conversation
 

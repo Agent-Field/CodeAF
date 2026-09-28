@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -56,6 +58,10 @@ const markdownThrottle = 1500 * time.Millisecond
 // is how often the lock is worth taking in wall time, and that answer does not
 // change because the frames arrived over a wire (link.go's [app.dueEvery]).
 const usageEvery = 10
+
+// compactStillRunning is what /compact says when the engine is still working
+// after the surface's wait ran out: the pass lands on its own.
+const compactStillRunning = "still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands"
 
 // quietBeforeEllipsis is how long the stream has to be silent before the
 // ellipsis appears under a reply that is already streaming. Text arriving in
@@ -5167,6 +5173,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 					why = "your messages and recent work are kept"
 				}
 				a.toldNote("nothing to compact — " + why)
+			} else if errors.Is(msg.err, remote.ErrLate) {
+				// A PASS THAT OUTLIVED THE WAIT IS STILL RUNNING. The engine
+				// holds it, not this window, and it lands with the status
+				// line's count dropping; "failed" was the sentence for a pass
+				// that then succeeded (internal/remote's [Agent.Compact]).
+				a.toldNote(compactStillRunning)
 			} else {
 				a.toldNote("compact failed: " + msg.err.Error())
 			}
