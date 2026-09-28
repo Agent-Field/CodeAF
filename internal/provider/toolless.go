@@ -73,12 +73,14 @@ func (c *Client) leaveOffTools(ctx context.Context, model string, knobs callKnob
 	if !(c.publishesNoTools(model) || c.toolless.learned(model)) {
 		return knobs
 	}
-	if _, said := c.toolless.said.LoadOrStore(normalizeModel(model), true); !said {
-		// NEWS ABOUT THE MODEL, NOT NARRATION ABOUT ONE REQUEST: it rides the
-		// row-news channel a surface keeps out of the folded work block,
-		// because a person who never opens that block still has to learn why
-		// the model will not touch their files.
-		Emit(ctx, StreamRowNews, toollessNotice(model))
+	if streamObserverFrom(ctx) != nil {
+		if _, said := c.toolless.said.LoadOrStore(normalizeModel(model), true); !said {
+			// NEWS ABOUT THE MODEL, NOT NARRATION ABOUT ONE REQUEST: it rides the
+			// row-news channel a surface keeps out of the folded work block,
+			// because a person who never opens that block still has to learn why
+			// the model will not touch their files.
+			Emit(ctx, StreamRowNews, toollessNotice(model))
+		}
 	}
 	if carriesTools {
 		knobs.relaxed |= relaxTools
