@@ -283,19 +283,53 @@ the adaptation branch.
 
 ## 10. The D2 acceptance checks and where their evidence lives
 
+All four passed on 2026-09-28. A result directory is evidence, never a scratch
+pad: every row below lives in its own directory, and a rerun goes to a new
+seed tag rather than overwriting one (`pier-arm.sh` refuses an existing
+directory outright).
+
 | check | expected | evidence |
 |---|---|---|
-| (a) gold clears all blockers | score **1.00** | `results/jsonschema-log-warning-gold/` — `grade.json` (score 1.0, no failed blockers, no rig criteria), `logs/grade/phaseA.json` (9 pass / 0 fail / 0 rig), `logs/grade/judge.json` |
+| (a) gold clears all blockers | score **1.00** | `results/jsonschema-log-warning-gold/` — `logs/grade/grade.json` (score 1.0, no failed blockers, no rig criteria), `logs/grade/phaseA.json` (9 pass / 0 fail / 0 rig), `logs/grade/judge.json` |
 | (b) first-line-only patch | score **0.0**, both blockers failed, non-blockers pass | `results/jsonschema-log-warning-negative/` — `grade.json` (score 0.0, `failed_blockers` = both), judge reasoning naming the leftover `std::cerr` lines |
 | (c) sealed fixture | **flagged**, scores 0 | `results/jsonschema-log-warning-seal/` — `scan.json` (hard reasons: slug in transcript, patch-shape URL, `raw.githubusercontent.com` connection), `record.jsonl` final row (score 0.0, flagged) |
-| (d) one live rollout | a complete result row | `results/jsonschema-log-warning-deepseek-deepseek-v4-flash-0731-s1/` — `grade.json`, `scan.json`, `cost.json` (two cost readings), `record.jsonl`, `DONE`, `artifacts.sha256` |
+| (d) one live rollout | a complete result row | `results/jsonschema-log-warning-codeaf-senior-dev-deepseek-deepseek-v4-flash-0731-s3/` — `logs/grade/grade.json` (1.0, all twelve criteria pass), `scan.json` (unflagged), `cost.json` (both readings), `record.jsonl`, `DONE`, `artifacts.sha256` |
 
-## 11. What is stubbed or not yet done
+### The scoreboard after the first day
+
+| row | arm | model | score | cost | wall | note |
+|---|---|---|---|---|---|---|
+| gold | reference patch | — | 1.00 | $0 | 41 s | the grader's calibration |
+| negative | first-line-only patch | — | 0.00 | ~$0.02 | 40 s | both prompt blockers failed |
+| seal | planted-leak fixture | — | 0.00 | $0 | — | flagged by the scanner |
+| s3 | codeaf senior-dev | deepseek/deepseek-v4-flash-0731 | **1.00** | $0.044 | 1141 s | self-check passed, egress clean |
+| s1 | mini-swe-agent via Pier | deepseek/deepseek-v4-flash-0731 | **1.00** | $0.052 | 1295 s | Pier's egress posture, see PIER-BASELINE.md |
+
+Two earlier senior-dev rolls (s1 at $0.071, s2 at $0.116, both scored 1.00 by
+this rubric) predate two fixture fixes below; their rows were superseded by s3
+rather than deleted — the append-only records still carry them.
+
+## 11. What the first day surfaced (fixture findings, fixed in the same change)
+
+- **`xxd` was missing from the environment image.** Three base-tree tests
+  (`pass_schema_less_jsonl*`) shell out to `xxd`, so the FULL suite failed with
+  `xxd: not found` on a pristine checkout while the graded reference tests
+  passed. Two senior-dev rolls terminated `fail` — "submitted a change that the
+  project's own build or tests do not pass" — over a change the rubric scored
+  1.00 twice; the disagreement traced to this gap, not to the change. The image
+  installs `xxd` now, the full 301-test suite exits 0 on the base tree, and the
+  next roll (s3) finished with the harness's own verification passing.
+  The lesson is the brief's own: the environment must run the project's own
+  full suite clean, because the harness under test may pin exactly that.
+- **A result directory was shared between two arms** (the name lacked the arm),
+  and the second arm's grade overwrote the first's patch and grade files. Both
+  scripts now put the arm in the directory name and `pier-arm.sh` refuses an
+  existing directory. The mixed first-day artifacts were split; s3 reran clean.
+
+## 12. What is stubbed or not yet done
 
 - **Adaptive classical** is implemented and machinery-tested, but no live
   rollout has yet taken the adaptation branch (§5).
-- **The Pier baseline arm (D3)** — see `PIER-BASELINE.md` and the report: what
-  ran, and what is documented as a blocker if it is one.
 - **Registry-install version comparison**: the scanner records registry
   installs but does not yet compare installed versions against the base
   commit's dependency pins.
@@ -303,3 +337,5 @@ the adaptation branch.
   in PLAN-pilot.md, not a corpus.
 - **MITM-level (path-level) egress logging**: hostname + transcript only, by
   design (§4).
+- **One seed per arm**: each arm ran once on this fixture. The pilot plan
+  (PLAN-pilot.md) sets the seed budget per task.
