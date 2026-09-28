@@ -111,9 +111,12 @@ func TestLandedForkRetirementRetriesFromCheckpoint(t *testing.T) {
 	}
 	document.Nodes[0].Merge = mergeMerged
 	document.Nodes[0].State = TaskDone
-	document.Nodes = append(document.Nodes,
-		taskRecord{ID: 2, Worktree: repo, Ground: repo, Rung: GroundRungHere},
-		taskRecord{ID: 3, Worktree: repo, Ground: repo, Rung: GroundRungHere})
+	for _, id := range []uint64{2, 3} {
+		inPlace := document.Nodes[0]
+		inPlace.ID, inPlace.Worktree, inPlace.Ground = id, repo, repo
+		inPlace.Rung, inPlace.Universe = GroundRungHere, ""
+		document.Nodes = append(document.Nodes, inPlace)
+	}
 	writeCheckpoint(t, (Place{Dir: dir}).Tasks(), document)
 	t.Setenv(furrow.BinaryEnvVar, binary)
 	furrow.Forget()
@@ -228,6 +231,8 @@ func TestRealFurrowWorkerCompletionRetiresTimeline(t *testing.T) {
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
+		config.Place = Place{Dir: t.TempDir(), Workspace: repo}
+		config.SessionFile = config.Place.Transcript()
 		config.AskConsent = false
 		config.TaskAutoApproveSeconds = 0
 		config.TaskRepairRounds = 0
