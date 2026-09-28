@@ -140,6 +140,7 @@ func TestVocabularyIsCompleteAndFallsBackToFiveSeventeen(t *testing.T) {
 // because a painted cell that is exactly one of these is plausible CONTENT and
 // a mechanism that rewrote it would be a mechanism that can lie (12.7 D.3).
 var typedPlainSides = map[string]string{
+	GlyphRemove:            "the multiplication sign, which is ordinary mathematical content",
 	GlyphActionCommunicate: "the guillemet, which is a quotation mark in half of Europe",
 }
 

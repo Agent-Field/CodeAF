@@ -87,7 +87,8 @@ func tab() tea.KeyPressMsg { return tea.KeyPressMsg{Code: tea.KeyTab} }
 
 func chipNames(a *app) []string {
 	out := make([]string, 0, len(a.chips))
-	for _, c := range a.chips {
+	_, tray := a.keyboardBox()
+	for _, c := range *tray {
 		out = append(out, c.name())
 	}
 	return out
@@ -195,7 +196,7 @@ func TestAClickOnAChipTakesThatChipOff(t *testing.T) {
 	// (attach.go's [app.chipTrayTarget] says the whole of it).
 	y := trayRow(a)
 	// The second chip starts after the first label and the gap between them.
-	x := len(inputPad) + ansi.StringWidth(chipLabels(a.chips, a.pal)[0]) + len(chipGap) + 1
+	x := len(inputPad) + ansi.StringWidth(removableChipLabels(a.chips, a.pal)[0]) + len(chipGap) + 1
 
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})

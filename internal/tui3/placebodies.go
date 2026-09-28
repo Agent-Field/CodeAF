@@ -134,7 +134,7 @@ func (a *app) placeTray(width int) []string {
 	if !a.at(pageHome) || a.home.phone {
 		return nil
 	}
-	chips := a.chips
+	chips := a.home.chips
 	if ex := a.paneExchange(); ex != nil && ex.focused {
 		chips = ex.chips
 	}

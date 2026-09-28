@@ -487,20 +487,6 @@ type Options struct {
 	// surface asks for them (cmd/codeaf's v3MemorySeam).
 	Memory MemoryStore
 
-	// Search is the conversation index the search place reads: one full-text
-	// query over every message this machine has kept ([store.Store.SearchConversations]).
-	//
-	// IT IS A SEAM AND NOT THE STORE for [Options.Memory]'s reason — the door
-	// owns where the database lives — and it is a SECOND seam beside Memory
-	// rather than a method on it because the two are different capabilities that
-	// fail apart: memory turned off in the settings opens no store, and searching
-	// what was said is not memory at all. A build with one and not the other is
-	// the ordinary case, and each place is absent on its own terms.
-	//
-	// Nil is a surface that cannot search, and the place says what it is for
-	// rather than drawing an empty result list.
-	Search SearchStore
-
 	// SearchStatus names the web-search plug the conversation's next call will
 	// use and whether it has a key. Nil means that conversation has no web-search
 	// hand, so /status omits the row under the emptiness law. It is a function
@@ -868,6 +854,26 @@ type Options struct {
 	// shelf. The connect command runs it off the event loop, just as ctrl+r runs
 	// RefreshModels, so opening /model never waits on the network.
 	RefreshModelsForService func(context.Context, modelsource.Connected, []Model) ([]Model, error)
+	// RefreshAllModels refreshes the default catalog AND every connected
+	// provider's listing, on the same ctrl+r chord (issue #1508). One provider's
+	// failure must not stop the others: the door walks them all and reports
+	// nothing here — the groups say their own reasons. The door owns the
+	// per-provider memo drops and the open picker's restock through
+	// SubscribeServiceModels; when this is set it REPLACES the single-catalog meaning
+	// of the chord and the surface offers the key unconditionally as before.
+	RefreshAllModels func(ctx context.Context)
+	// WarmEmptyProviders fetches, off the loop, every connected provider whose
+	// cache is missing or empty. The door calls it once at launch (issue
+	// #1508's first acceptance); groups fill as each fetch lands, without a
+	// reopen. Nil keeps the old launch: cache only, nothing fetched.
+	WarmEmptyProviders func(ctx context.Context)
+	// SubscribeServiceModels registers this surface's nonblocking notification
+	// callback and returns its unsubscribe function. Run owns the subscription
+	// until the window closes; all picker changes remain on the update loop.
+	SubscribeServiceModels func(tell func(source, address string)) (unsubscribe func())
+	// ProviderFetchError reports the error from the most recent fetch attempt
+	// for a connected provider, if any, for rendering status lines in /model.
+	ProviderFetchError func(id string) string
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the
@@ -1025,7 +1031,7 @@ type Options struct {
 	//     is nothing left here to close.
 	//
 	// WHAT IT COSTS A PERSON is that these doors hold ONE conversation at a time:
-	// opening another from home, the switcher or the search place swaps to it and
+	// opening another from home, the switcher or Sessions swaps to it and
 	// closes what was in front, rather than keeping it running beside. The surface
 	// says so on the entry line ([oneConversationWord]) rather than letting
 	// somebody discover it.
@@ -1370,6 +1376,8 @@ func Run(ctx context.Context, opts Options) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if opts.ReadCredits != nil {
 		var closeReads func()
 		opts.ReadCredits, closeReads = ownedCreditReader(ctx, opts.ReadCredits)
@@ -1389,6 +1397,7 @@ func Run(ctx context.Context, opts Options) error {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
 	surface := newApp(ctx, opts)
+	defer listenForServiceModels(surface, opts.SubscribeServiceModels)()
 	p := tea.NewProgram(surface, program...)
 	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT ITS NEWS, and the loop a door to
 	// be rung through that never waits for it ([listenForNews], doorbell.go). They

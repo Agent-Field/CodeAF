@@ -632,6 +632,9 @@ const (
 	EventRowNews
 	// EventQuestionDiscussion carries a reply beside a pending decision.
 	EventQuestionDiscussion
+	// EventToolOutput carries literal stdout/stderr in Text while a user shell
+	// command is running. CallID owns the bytes; its result still ends the call.
+	EventToolOutput
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -668,6 +671,9 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	ReplayCursor   ReplayCursor `json:",omitempty"`
+	ReplayObserved bool         `json:"-"`
+
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
 	Kind EventKind
@@ -3092,7 +3098,8 @@ type Agent struct {
 	// hub is the in-flight turn's fan-out, non-nil exactly while running. Every
 	// Submit that lands on the turn subscribes to it, so a steering caller gets
 	// a live channel of its own instead of a closed one.
-	hub *eventHub
+	hub          *eventHub
+	replayCursor ReplayCursor
 	// abandon is closed by [Agent.Abandon] and by nothing else. It is the SECOND
 	// STAGE OF A STOP: a cancellation reaches every wait that looks at a context,
 	// and this reaches the waits that were deliberately written not to — the tool

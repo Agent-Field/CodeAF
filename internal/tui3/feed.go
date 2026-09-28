@@ -348,6 +348,18 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.confirmUserUpdate()
 		f.beginTool(ev)
 
+	case session.EventToolOutput:
+		for i := range f.entries {
+			e := &f.entries[i]
+			if e.kind == entryTool && e.callID == ev.CallID {
+				e.detail.Output += ev.Text
+				e.open = true
+				f.follow()
+				f.touch()
+				break
+			}
+		}
+
 	case session.EventToolFinished:
 		f.finishTool(ev)
 
@@ -692,6 +704,7 @@ func (f *feed) beginTool(ev session.Event) {
 	f.closeLive()
 	f.entries = append(f.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
+		open:   session.IsUserBashCall(ev.CallID),
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
 		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
 		// row records it and this one did not, which left the rows drawn for a

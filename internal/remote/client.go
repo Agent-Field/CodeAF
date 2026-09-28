@@ -156,9 +156,11 @@ type Client struct {
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
 	// their ids belong to this connection and never enter turn replay cursors.
-	calls     map[uint64]chan result
-	streams   map[uint64]*stream
-	observers map[uint64]*stream
+	calls        map[uint64]chan result
+	streams      map[uint64]*stream
+	observers    map[uint64]*stream
+	replayCursor session.ReplayCursor
+	replayOrder  uint64
 
 	// driver is who holds the keyboard, as the engine last told this surface.
 	// It is set from the welcome and moved by every "driver" frame, and it is
@@ -334,8 +336,19 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	}
 	c.mu.Lock()
 	first := c.welcome.Version == 0
+	replaced := !first && c.welcome.Persistent && welcome.Persistent &&
+		c.welcome.SessionInstance != "" && welcome.SessionInstance != "" &&
+		c.welcome.SessionInstance != welcome.SessionInstance
 	c.welcome = welcome
 	c.mu.Unlock()
+	// A persistent host can restart without changing the transcript. Reset its
+	// stream namespace before following any live turn in the new welcome; its
+	// first reply may reuse an ID whose old channel is already closed.
+	if replaced {
+		if c.forgetStreams("the engine restarted, so the previous answer stopped; ask again to continue") {
+			c.note("the engine restarted; the previous answer stopped")
+		}
+	}
 	// THE FIRST WELCOME AND THE STREAM ARE TWO ROADS FOR THE SAME QUESTION.
 	// The surface draws Held separately; suppress its copies in the initial
 	// replay without skipping the other events or losing the stream cursor.
@@ -358,8 +371,10 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// EITHER, and it reaches the screen by the same road. It carries no sentence:
 	// the message that opened it is in the journal, which this surface reads on
 	// its way in ([Turn.Said] states which of the two moments needs one).
-	if welcome.Live != 0 {
-		c.follows(Following{Events: c.stream(welcome.Live).events()})
+	if !first && c.hasReplayBoundary() {
+		c.follows(Following{Replay: true})
+	} else if welcome.Live != 0 {
+		c.followStream(welcome.Live, "")
 	}
 	// The welcome's word on the keyboard is a driver frame by another road, and
 	// it goes through the same door so that a redial that came back as a watcher
@@ -382,6 +397,7 @@ func (c *Client) helloNow() Hello {
 	c.mu.Lock()
 	hello := c.hello
 	open := c.welcome.SessionFile
+	hello.SessionInstance = c.welcome.SessionInstance
 	c.mu.Unlock()
 	// The session file the engine last told us about beats the one the door
 	// asked for: /new and /resume both move it, and a redial that asked for the
@@ -485,6 +501,8 @@ const followingRoom = 8
 // it with the code that draws every turn, and the only thing it lacks is the
 // [StreamRef] it would have got from opening it.
 type Following struct {
+	Replay  bool
+	Covered func() bool
 	// Said is the message that opened the turn, empty when the transcript
 	// already has it — see [Turn.Said].
 	Said string
@@ -786,7 +804,7 @@ func (c *Client) read() {
 		case "turn":
 			var turn Turn
 			if err := json.Unmarshal(frame.Payload, &turn); err == nil && turn.Stream != 0 {
-				c.follows(Following{Said: turn.Said, Events: c.stream(turn.Stream).events()})
+				c.followStream(turn.Stream, turn.Said)
 			}
 		case "driver":
 			var note Driver
@@ -1651,6 +1669,12 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
 }
 
+// SubmitBash explicitly runs the person's command; ordinary Submit never
+// interprets message content as executable shell syntax.
+func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {
+	return a.open(ctx, MethodSubmitBash, SubmitArgs{Text: text})
+}
+
 // SubmitStanding is Submit for a draft the person marked as something to keep
 // true. It rides the same method as an ordinary send with one flag on it, for
 // the reason [SubmitArgs.Standing] states: the two turns differ only in what the
@@ -2209,12 +2233,14 @@ func (a *Agent) entries(method string, args any) []session.DisplayEntry {
 // an UNBUFFERED channel for the same events, so the buffering added here is the
 // buffering the wire needs and no more of a promise than the local lane makes.
 type stream struct {
-	mu     sync.Mutex
-	wake   *sync.Cond
-	queue  []session.Event
-	closed bool
-	out    chan session.Event
-	once   sync.Once
+	observed     bool
+	replayCursor session.ReplayCursor
+	mu           sync.Mutex
+	wake         *sync.Cond
+	queue        []session.Event
+	closed       bool
+	out          chan session.Event
+	once         sync.Once
 	// inWelcome identifies questions already handed to this surface outside
 	// the stream. It lasts only as long as this turn's stream does.
 	inWelcome map[heldKey]struct{}
@@ -2278,7 +2304,14 @@ func (s *stream) push(seq uint64, payload json.RawMessage) {
 			return
 		}
 	}
-	s.deliver(wired.Unwire())
+	ev := wired.Unwire()
+	s.mu.Lock()
+	if ev.ReplayCursor.Owner != "" {
+		s.replayCursor = ev.ReplayCursor
+	}
+	ev.ReplayObserved = s.observed
+	s.mu.Unlock()
+	s.deliver(ev)
 }
 
 // cursor is how far the surface got and whether this turn is still open — the

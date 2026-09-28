@@ -360,7 +360,9 @@ import (
 // fail as silence on an older engine: a version-17 engine reads `effort` as a
 // field it does not know and starts the task on the crew it would have had,
 // and the person is never told their word did nothing. NEVER TO SILENCE.
-const Version = 19
+// Version 20 adds the explicit human shell door and streamed shell output.
+// Older peers must refuse rather than treat a shell command as model input.
+const Version = 20
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -443,6 +445,7 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
+	MethodSubmitBash      = "SubmitBash"      // SubmitArgs → StreamRef, then shell output events
 	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
 	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
 	MethodSubmitFiles     = "SubmitFiles"     // SubmitFilesArgs → StreamRef, then "event" frames
@@ -813,6 +816,9 @@ type StandingWatchResult struct {
 // after the colon — empty means the engine's own home — and the engine answers
 // with the path it resolved.
 type Hello struct {
+	// SessionInstance scopes Resume cursors to the live owner that issued them.
+	SessionInstance string `json:"sessionInstance,omitempty"`
+
 	// Headless says this caller cannot answer approval questions. The engine
 	// requires explicit approval settings instead of the interactive default.
 	Headless  bool   `json:"headless,omitempty"`
@@ -958,6 +964,12 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// SessionInstance identifies this live conversation owner, not its durable
+	// transcript. A replaced engine can reopen the same file with stream IDs
+	// starting over, so a returning surface must forget the previous owner IDs.
+	// Empty preserves compatibility with engines predating this optional field.
+	SessionInstance string `json:"sessionInstance,omitempty"`
+
 	Version     int    `json:"version"`
 	Workspace   string `json:"workspace"`
 	SessionFile string `json:"sessionFile"`

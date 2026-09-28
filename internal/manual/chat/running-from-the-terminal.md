@@ -94,11 +94,19 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf` and prints two things: one line
-naming the installed file's `version` (`installed codeaf <tag> built …`), and last,
-when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste. It
-prints nothing about telemetry; codeaf itself shows that notice before any count
-is sent.
+The installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
+when a folder already on `PATH` is writable (`~/.local/bin`, `~/bin`, or
+`/usr/local/bin`) it links `codeaf` there too, so the command works in the same
+terminal with nothing to paste. It never replaces anything there but its own link:
+a file, or a link to another build, stays, and you get the line to paste instead. It prints a few checked steps (`Downloaded`, `Installed codeaf <tag>`, `PATH`,
+`Linked`), then a short *Get started* guide: the `export PATH=…` line to paste when
+the command is not reachable yet, `cd your-project` and `codeaf`, and how to connect a
+model. On a terminal it ends by asking `Start codeaf in <folder> now? [Y/n]`; `enter`
+starts it there, and the first run connects a model. `--no-start` or
+`CODEAF_NO_START=1` skips the question, and nothing is asked when the output is not a
+terminal, when `CI` is set, or when the install runs in your home folder or `/` —
+`cd` into a project and type `codeaf` there instead. It prints nothing about telemetry; codeaf itself shows that
+notice before any count is sent.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 
@@ -1190,3 +1198,11 @@ Two things that account does not cover:
 - **`codeaf manual --help` prints its usage, then the list of pages.** The list is what
   that command can be asked for, so it is still there; it used to be *all* that was there,
   which made one verb in the binary answer `--help` differently from the other twenty-two.
+
+## Why does an empty task brief say no goal was given?
+
+`codeaf do`, `codeaf exec`, and `codeaf plan new` require a nonblank brief.
+An empty quoted argument, whitespace-only arguments, or empty piped input are
+rejected before planning or model work starts. Supply the goal as command
+arguments or pipe it through standard input; a single `-` explicitly selects
+standard input. A missing goal is not a request for the model to invent work.

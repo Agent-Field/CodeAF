@@ -1014,8 +1014,14 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	// message that arrives mid-turn is journaled like any other, and what the
 	// journal keeps is what the person said — the block rides the message the
 	// model reads and nothing else.
-	a.attachTurnSkillsLocked(&user)
+	if user.bash == "" {
+		a.attachTurnSkillsLocked(&user)
+	}
 	if a.running {
+		if user.bash != "" {
+			a.mu.Unlock()
+			return nil, errors.New(BashBusyWord)
+		}
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
 		// between an assistant's tool_calls and their results is a shape every
@@ -1033,9 +1039,11 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	// The spend rail is checked here, before anything is recorded: a refused
 	// turn must do NO work, so the person's text is not journaled either — the
 	// message is theirs to send again once the rail moves (rail.go).
-	if err := a.railBlockLocked(); err != nil {
-		a.mu.Unlock()
-		return refusedStream(err), nil
+	if user.bash == "" {
+		if err := a.railBlockLocked(); err != nil {
+			a.mu.Unlock()
+			return refusedStream(err), nil
+		}
 	}
 	events := a.startTurnLocked(ctx, user, nil)
 	a.mu.Unlock()
@@ -1126,6 +1134,10 @@ func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
 func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, stop func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.attachReplayLocked()
+}
+
+func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Event, stop func()) {
 	if a.closed || !a.running || a.hub == nil {
 		return shapeEntries(a.messages, a.file, a.presentation), nil, func() {}
 	}
@@ -1170,6 +1182,8 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// bash is set only by the person's SubmitBash door; model output cannot enter it.
+	bash    string
 	message ai.Message
 	refs    []journalPart
 	// replyTags names finished tasks whose reports this message carries. It is
@@ -1769,7 +1783,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// something the next turn may still be blind to (standing_world.go).
 	a.refreshStandingLocked()
 	a.refreshSystemLocked()
-	hub := newEventHub()
+	hub := a.newReplayHubLocked()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
@@ -1804,7 +1818,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// the transcript on the line above, which is the only thing the namer
 		// needs; it is started under this lock so that two Submits racing to be
 		// the first cannot buy two names.
-		a.startTitleLocked()
+		if user.bash == "" {
+			a.startTitleLocked()
+		}
 	}
 	// AND THE RECALL STARTS HERE TOO, beside the title and for a stronger version
 	// of the title's own reason (memory.go's [Agent.startRecallLocked]). The name
@@ -1816,7 +1832,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	//
 	// IT IS STARTED UNDER THIS LOCK for the title's reason as well: two Submits
 	// racing to be the first must not each buy a route.
-	a.startRecallLocked(turnCtx, user.text())
+	if user.bash == "" {
+		a.startRecallLocked(turnCtx, user.text())
+	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
 	// decision the leftover handlers and this turn's opening share.
@@ -4068,9 +4086,10 @@ func textMessage(role, text string) ai.Message {
 // never saw the events, and starting empty would leave it looking at a session
 // that is visibly working and saying nothing.
 type eventHub struct {
-	mu          sync.Mutex
-	subscribers []*eventStream
-	closed      bool
+	replayCursor ReplayCursor
+	mu           sync.Mutex
+	subscribers  []*eventStream
+	closed       bool
 
 	// finishedCalls is how many tool ends and tool failures this turn has sent
 	// — the same events the node room's recorder counts as steps
@@ -4284,6 +4303,7 @@ func (h *eventHub) send(event Event) (landed bool) {
 	if h.closed {
 		return false
 	}
+	event.ReplayCursor = h.replayCursor
 	if event.Kind == EventToolEnd || event.Kind == EventToolFailed {
 		h.finishedCalls++
 	}
@@ -4334,7 +4354,8 @@ func foldsInto(prev, next Event) bool {
 	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
-	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning
+	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning ||
+		prev.Kind == EventToolOutput && prev.CallID == next.CallID
 }
 
 // close ends every subscriber's channel. It runs after the turn's last event,
@@ -4859,7 +4880,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
 				Args:     argsText(*call),
-				Output:   capOutput(result),
+				Output:   displayToolOutput(call.ID, result),
 				Answered: answered,
 				// And the call's own duration, off the journal's `took` line —
 				// the same figure EventToolFinished carried while the window was

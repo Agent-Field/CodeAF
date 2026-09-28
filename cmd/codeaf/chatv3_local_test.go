@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -278,6 +279,47 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 		hosted.SaveBashApproval != nil || hosted.SaveModel != nil || !hosted.Sources.Empty() ||
 		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil || hosted.ReadCredits != nil || hosted.ImplicitTalk {
 		t.Fatalf("the --host builder grew this machine's doors: %+v", hosted)
+	}
+}
+
+// The ordinary engine window uses the same provider shelf that its picker
+// draws, so a cold direct provider can fill without a reconnect.
+func TestPlainEngineModelDoorsRefreshEveryConnectedProvider(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv("CODEAF_HOME", profile)
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(config.APIKeyEnv, "default-key")
+	t.Cleanup(func() { stopPoolErrands(profile) })
+	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultServer.Close()
+	t.Setenv("CODEAF_BASE_URL", defaultServer.URL())
+	var listed atomic.Int32
+	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listed.Add(1)
+		_, _ = w.Write([]byte(`{"data":[{"id":"direct-chat"}]}`))
+	}))
+	defer direct.Close()
+	if err := config.WriteSources(profile, []config.PersistedSource{{
+		ID: "custom", Written: "direct", Address: direct.URL, Key: "direct-key", Order: 1,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	client := hostedClient(t)
+	welcome := remote.Welcome{Version: remote.Version, ProfileDir: profile, Workspace: t.TempDir()}
+	options, settings := hostOptions(onePipeFleet("", client), welcome, false)
+	localDoors(&options, welcome, settings)
+	if options.ModelsForService == nil || options.RefreshModelsForService == nil ||
+		options.RefreshAllModels == nil || options.WarmEmptyProviders == nil || options.SubscribeServiceModels == nil {
+		t.Fatal("plain engine launch has no provider listing doors")
+	}
+	options.WarmEmptyProviders(t.Context())
+	if listed.Load() != 1 {
+		t.Fatalf("cold provider listed %d times at launch, want once", listed.Load())
+	}
+	options.RefreshAllModels(t.Context())
+	if listed.Load() != 2 {
+		t.Fatalf("refresh listed direct provider %d times, want twice", listed.Load())
 	}
 }
 

@@ -75,7 +75,7 @@ var commands = []command{
 	{name: "settings", desc: "open the settings panel · ctrl+,", alias: []string{"set", "config"}},
 	// It sits under /settings because it is the other half of the same errand:
 	// one is what this surface may do, the other is what it may reach.
-	{name: "connect", desc: "your connected accounts · connect another", alias: []string{"connections"}},
+	{name: "connect", desc: "providers and accounts · connect another", alias: []string{"connections"}},
 	// THE VOCABULARY OF THE FRESH START IS BORROWED AND NOT INVENTED. /clear is
 	// what a terminal person's fingers type, /reset is what a chat person's do,
 	// and both of them mean the thing this surface calls /new — so all three land
@@ -148,7 +148,6 @@ var commands = []command{
 	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
-	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
 	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
 	// conversations big, and this is the team-level view, every member open or
@@ -688,6 +687,10 @@ type menu struct {
 // unrelated search results on home. A space or path punctuation leaves command
 // mode, and Esc seals a literal token until the caret leaves it.
 func (m *menu) sync(e *editor) {
+	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
+		m.close()
+		return
+	}
 	at, query, ok := slashToken(e.value, e.cursor)
 	if ok {
 		// Inspect the whole token, including text after the caret, so moving

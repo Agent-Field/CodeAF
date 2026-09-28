@@ -1034,7 +1034,7 @@ func (a *app) taskSheetMove(delta int) {
 func (p *tasksPlace) enter(a *app) tea.Cmd {
 	// A CONVERSATION OPENS THE CONVERSATION, through the one door this surface
 	// has onto a chat from a place that is not home ([app.openConversationRow],
-	// place_search.go) — which is where the checks live that decide whether it is
+	// conversationrow.go) — which is where the checks live that decide whether it is
 	// the window you are sitting in, one this terminal is already holding, or a
 	// folder that is not there any more. A second ladder here would be a second
 	// answer to whether a conversation may be opened.
@@ -1042,9 +1042,9 @@ func (p *tasksPlace) enter(a *app) tea.Cmd {
 		if strings.TrimSpace(chat.row.Transcript) == "" {
 			// NOTHING IS INVENTED FOR A CONVERSATION WITH NO JOURNAL BEHIND IT. The
 			// row is real — the record says this work came out of it — and the way in
-			// is not, so the page says exactly that in the sentence the search results
-			// already use for it.
-			a.pageMsg = searchNoDoorWord
+			// is not, so the page says exactly that in the sentence the spend page
+			// already uses for it.
+			a.pageMsg = spendGoneTalkWord
 			return nil
 		}
 		return a.openConversationRow(chat.row)

@@ -166,11 +166,11 @@ const (
 	// The verdicts a settled card keeps. They are sentences and not states,
 	// because the row is read once, later, by somebody reconstructing what
 	// happened.
-	standSetWord     = "set up"
-	standChangedWord = "you asked for something different"
-	standOnceDone    = "done now, nothing kept"
-	standNoWord      = "not set up"
-	standExpiredWord = "ended · nothing was set up"
+	standSetWord      = "set up"
+	standChangedWord  = "you asked for something different"
+	standOnceApproved = "approved once, not scheduled"
+	standNoWord       = "not set up"
+	standExpiredWord  = "ended · nothing was set up"
 
 	// WHAT EACH ANSWER COSTS, one clause apiece, drawn beside its own word on
 	// the block's card ([session.AnswerOption.Consequence]).
@@ -454,7 +454,7 @@ func standUpdateRow(pal palette, card *standingCard, width int) string {
 			glyph = standWaitASCII
 		}
 	}
-	line := glyph + " " + card.name + " · " + standUpdateWord(card.update, card.text)
+	line := glyph + " " + card.name + " · " + standActivityUpdateWord(card)
 	return pal.dim(fit(line, width))
 }
 
@@ -633,7 +633,7 @@ func standVerdictOf(card *standingCard, answer session.Answer) (string, string) 
 	word := standAnswerWord(card.item, key)
 	switch key {
 	case session.StandingOnceKey:
-		return standOnceDone, word
+		return standOnceApproved, word
 	case session.StandingNoKey:
 		// THE DECLINE KEEPS NO WORD BESIDE ITS VERDICT. `not set up · no` is the
 		// same fact twice, and the verdict is the half that says what happened.
@@ -852,6 +852,11 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	// (docs/STANDING-ORDERS.md: the card always names it before anything
 	// stands). It is drawn in the person's own words and never the field's
 	// ([standLevelWord]).
+	if card.item.Does.Isolate {
+		for _, line := range wrap("work · separate Git worktree · changes kept for review", width) {
+			out = append(out, a.pal.dim(line))
+		}
+	}
 	for _, line := range wrap(standWhereTag+standLevelWord(card.item.Level()), width) {
 		out = append(out, a.pal.dim(line))
 	}

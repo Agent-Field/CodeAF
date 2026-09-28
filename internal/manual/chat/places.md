@@ -1,18 +1,18 @@
 # Places
 
-## What a place is, and the eight of them
+## What a place is, and the seven of them
 
-A **place** is a full-screen room in codeaf that is not this conversation. There are eight,
-and they are always in the same order: the words on the top line, then the three reached by
+A **place** is a full-screen room in codeaf that is not this conversation. There are seven,
+and they are always in the same order: the words on the top line, then the two reached by
 their command, with `chats`, the way back to your conversations, third on the line:
 
-`home` · `teams` · `chats` · `sessions` · `spend` · `settings` · `standing` · `memory` · `search`
+`home` · `teams` · `chats` · `sessions` · `spend` · `settings` · `standing` · `memory`
 
 **The top line draws six places:** `home  teams  chats  sessions  spend  settings`. **Teams** is
 right after home: your teams, what waits on you from them, and the selected team's manager
 conversation (the **Teams page** of this manual has all of it). `chats` is not a room: it is
-the way back to your conversations (*The `chats` word on the bar* below). Standing, memory and search are
-places all the same — `/standing`, `/memory`, `/search`, their digit, the map and the typed
+the way back to your conversations (*The `chats` word on the bar* below). Standing and memory are
+places all the same — `/standing`, `/memory`, their digit, the map and the typed
 box all reach them — and while you are standing in one its word is on the bar after the
 six, so the bar always says where you are.
 
@@ -60,19 +60,19 @@ no count. Its hint says `every conversation, one at a time`, which is how it dif
 
 ## How to get to a place — the keyboard shortcut to jump between pages
 
-Four ways, and they all reach the same eight rooms:
+Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
-  the one before. From standing, memory or search, `tab` goes on round the bar to home.
-- **`alt+1`** … **`alt+9`** (**`opt+1`** … **`opt+9`** on a Mac) jump straight to one, **from a
+  the one before. From standing or memory, `tab` goes on round the bar to home.
+- **`alt+1`** … **`alt+8`** (**`opt+1`** … **`opt+8`** on a Mac) jump straight to one, **from a
   place or from a conversation**. `alt+1` … `alt+6` are the tab bar's own order (home,
-  teams, chats, sessions, spend, settings), and `alt+7`, `alt+8`, `alt+9` are the three places off the bar:
-  standing, memory, search. Hold `alt` and press the digit. macOS draws the modifier as `opt`
+  teams, chats, sessions, spend, settings), and `alt+7` and `alt+8` are the two places off the bar:
+  standing and memory. Hold `alt` and press the digit. macOS draws the modifier as `opt`
   because that is the key's name on a Mac keycap; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
   place key that means the same thing wherever you are standing.
-- **`ctrl+1`** … **`ctrl+9`**: the same jump, on the terminals that can send it. `ctrl` and
+- **`ctrl+1`** … **`ctrl+8`**: the same jump, on the terminals that can send it. `ctrl` and
   a digit has no encoding in the scheme most terminals speak, so this is a second spelling and
   never the first: it works only where the terminal runs the kitty keyboard protocol and says
   so (kitty, ghostty, WezTerm, foot, Windows Terminal are the usual ones). `ctrl+.` draws the
@@ -122,7 +122,7 @@ lands on the **bar**, the row of place words on the top line, and from there:
 | `esc` | back into the page, on the row you walked up from |
 | `↑` | nothing. The bar is the top line; there is nothing above it |
 | `tab` `shift+tab` | the next and the previous place, exactly as everywhere else |
-| `alt+1` … `alt+9` | jump straight to one, exactly as everywhere else |
+| `alt+1` … `alt+8` | jump straight to one, exactly as everywhere else |
 | any printable key | goes to the composer, and the cursor comes back down into the page with it |
 
 **The word your cursor is on wears the cursor's band**, in place of the mark the word you
@@ -214,17 +214,16 @@ that chat.
 
 ## The mouse on a place — clicking a row, hovering, and the wheel
 
-Three gestures, the same on all eight places:
+Three gestures, the same on all seven places:
 
-- **List rows have one selection.** On home, tasks, standing, memory, spend and search,
+- **List rows have one selection.** On home, tasks, standing, memory, spend,
   moving the mouse onto a row selects it. Keyboard navigation immediately takes over
   and clears the old mouse highlight. A parked pointer cannot reclaim the selection;
   move it again to switch back. Leaving the list keeps the latest selection. Settings
   retains its separate hover preview. Home's `projects` rows are not selected by the
   mouse: the pointer only underlines a project's name, and a click picks that folder for
   the next message without moving the selection.
-- **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
-  search the first press puts the cursor there and opens what the row names. **A click
+- **a click on a row opens it**, exactly as `enter` on it would: on standing and spend the first press puts the cursor there and opens what the row names. **A click
   never spends**: on memory, where `enter` on a line asks the model about it, the press
   opens the line's card instead, and on a shelf it folds the shelf. The verbs stay keys.
   Home keeps the same grammar — one click on a row or a fold opens it, and a panel's
@@ -246,8 +245,7 @@ and a click opens. Its own section is above.
 
 **Only home has a message box.** Type a sentence on home and `enter` starts a conversation
 carrying it; `alt+enter` sends it off as a task instead (the composer layer, below). No
-other place starts anything: there is no box under tasks, standing, memory, spend or
-search, `enter` on those pages opens the row under the cursor and nothing else, and
+other place starts anything: there is no box under tasks, standing, memory, spend, `enter` on those pages opens the row under the cursor and nothing else, and
 `alt+enter` does nothing there. `tab` to home, or `alt+1`, when you want to start something
 — its rule already says where the conversation will land and what it will run on.
 
@@ -259,8 +257,7 @@ is gone (2026-09-17).
 
 **Typing still filters where a list is worth filtering.** On **sessions** every printable key
 narrows the list, and the letters draw on the control row at the top of it beside the `⌕`
-mark. On **search** the words you type are the query, drawn on the first row of the body the
-same way, and `esc` clears them. On **memory** the head row echoes the filter in place of
+mark. On **memory** the head row echoes the filter in place of
 `type to filter`. Spend and standing take no text.
 
 **Two spaces still open home from every place.** On a place with a filter they are typed
@@ -396,8 +393,8 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place — and `↑` off the first row of the page moves onto the **tab bar**, which is a row the cursor can stand on (*How do I move between the tabs with the arrow keys*) |
 | any printable key | goes to the composer, always |
 | `alt+enter` | send what you typed off as a task |
-| `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) | jump straight to a place |
-| `ctrl+1` … `ctrl+9` | the same jump, only on terminals that report they can send it |
+| `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) | jump straight to a place |
+| `ctrl+1` … `ctrl+8` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
 | `alt+p` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
@@ -507,17 +504,16 @@ Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
-- the tab bar's words grow their numbers, `1 home`, `2 chats`, `3 tasks`, `4 spend`,
-  `5 settings`, and the three places off the bar are drawn after them with theirs:
-  `6 standing`, `7 memory`, `8 search`
+- the tab bar's words grow their numbers: `1 home`, `2 teams`, `3 chats`, `4 sessions`,
+  `5 spend`, `6 settings`. The two places off the bar follow: `7 standing`, `8 memory`.
 - the hint line becomes the chord list
 
 `?` over an empty box draws the same map, which is what that key means on a place — show me
 the keys for where I am standing. In a conversation the same key opens the `/help` sheet.
 
 **The chord list is built from the place you are on.** It reads
-`alt+1…9 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
-— and the `→` clause is left out on a place whose rows have no verbs, such as search, rather
+`alt+1…8 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
+— and the `→` clause is left out on a place whose rows have no verbs, such as an empty spend page, rather
 than naming a key that would open nothing there.
 
 Nothing moves, nothing pops up, and the next key you press takes it away and then does what
@@ -710,53 +706,21 @@ On a machine that has spent nothing the place is its heading `spend` over one li
 `every chat and task is priced here as it runs`. A window paged onto a quiet fortnight is a
 different thing — its head row stays, with the arrows that page it back.
 
-## search — finding anything said or run, and what it matches when memory is off
+## Search for an old conversation — use Home
 
-Everything that has been said on this machine. `alt+9` opens it; it is not on the tab
-bar — and typing searches: the
-matches come back with the conversation they were said in, how long ago, and the project it
-belongs to, with your own words picked out in the line.
+The separate Search tab, `/search` command and `alt+9` shortcut have been removed.
+Open Home with `/home` or `alt+1` (`opt+1` on macOS), then type. Home matches
+conversation names, projects, folders, task titles and task outcomes. It does not
+search the full text of every message. Use `↑`/`↓` to choose and `enter` to open a
+match; `esc` clears the search.
 
-Nothing is indexed behind your back — this reads the record that was already being kept. The
-read happens after the box has been quiet for a moment, never on the keystroke, so typing
-never waits on a search.
+## Search says what was said is not indexed — can I search conversations with memory off
 
-`enter` opens the conversation the matching turn was said in, and **the foot says so**:
-`enter opens it at that turn · ↑↓ pick · type to search · esc clear the words · tab next
-place`. With nothing typed there is no row to stand on, so the foot drops to `type to
-search · esc clear the words · tab next place` — `enter` is not named where it does
-nothing. (This foot used to be the router's own default, which said `enter talk about it`
-and was wrong in both states.) Above the results, a legend counts the projects the matches
-came from. Twelve conversations are shown and the rest fold into one line, `▸ 38 more`;
-`enter` or a click on it draws them all, and `▾ 38 fewer` folds them back. A new search
-starts folded.
-
-**`/search` is the typed door onto this place**, beside `alt+9` and the map. It
-takes no argument: the place is a box, and typing in it searches.
-
-With nothing typed the place is its heading `search` over one line saying what to do:
-`type a word · every conversation on this machine is searched`.
-
-**A search that finds nothing says what to do about it**:
-`nothing on this machine says "amber rail" · try fewer words, or a name`.
-
-**With memory off the place refuses, and says which silence it is.** What was said is
-indexed only while the **memory** row is on — memory off opens no store at all — so this
-window says `there is no index of this machine's conversations behind this window, so
-nothing can be searched from here.` and searches nothing, whatever you type. That is
-deliberate: a search that never happened must not report a result, because
-`nothing on this machine says "amber rail"` would make you believe a conversation does not
-exist. **To find a conversation on such a machine, use home's box**, which matches names
-and projects and has never needed the index. (For one build on 2026-09-22 this place
-matched by name itself; that was taken back on 2026-09-23, because a place called `search`
-that searches something narrower than it says reads exactly like a whole search that found
-nothing.) Over `--host` a sentence at the top names the machine: the index is the one this
-machine's conversations were written into, and the conversation you are in was written on
-the other one.
-
-Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
-the standing place beside the chats that match) — the same offer made twice, one `tab` apart,
-would be two rankings that could disagree.
+That message came from the retired Search page. The separate page and `/search`
+command have been removed. Open Home with `/home` or `alt+1` and type to find a
+conversation by its name, project, folders, task titles or task outcomes. Home's
+search works with memory off; it does not need a conversation-message index and
+does not search the full text of old messages.
 
 ## settings — how this machine is set
 
@@ -795,9 +759,9 @@ click goes there; `↑` `↓` and `enter` do the same from the keyboard; `esc`, 
 anywhere off the menu, puts it away and leaves everything else as it was.
 
 **The wordmark and the place you are standing in never fold**, and neither does the word the
-bar's cursor is on or a place wearing a count. `alt+1`…`alt+9` still go straight to a place
+bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
 whether or not its word is on the row, and the numbers never move: the six on the bar are
-`alt+1`…`alt+6`, then standing, memory and search are `alt+7`…`alt+9`.
+`alt+1`…`alt+6`, then standing and memory are `alt+7`…`alt+8`.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts
@@ -812,7 +776,7 @@ names what arrives there and the one thing that puts it there, the way home's em
 do. It never says the place is empty.
 
 **Every place opens, always.** There is no state of the machine in which a word on the bar,
-or any of the nine digits, is a key that does nothing. On a machine codeaf was installed on
+or any of the eight assigned digits, is a key that does nothing. On a machine codeaf was installed on
 an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
 
 - **sessions**, headed `sessions`:
@@ -825,15 +789,12 @@ an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
   If this build is not remembering anything at all, the rule under the page also says
   `memory is off for this session · turn it on under /settings`.
 - **spend**, headed `spend`: `every chat and task is priced here as it runs`
-- **search** with an empty box, headed `search`:
-  `type a word · every conversation on this machine is searched`
 
 On a narrow window the line wraps onto a second or third dim line under the first; it is
 never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
 the same heading; nothing above it moves.
-- **spend**, **search** and **memory** over `--host` each say one dim line where their rows
-  would be — see *The places over --host* below for the exact words and why three of the
-  eight still say them.
+- **spend** and **memory** over `--host` each say one dim line where their rows
+  would be — see *The places over --host* below for the exact words and why these places still say them when their remote stores are unavailable.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
@@ -851,7 +812,7 @@ A tab wears a number when **something in that place has changed since you last l
 place** — not how many things are in there. A permanent count is furniture, and furniture is
 what people stop seeing.
 
-Home, tasks, standing and memory can wear one. Spend is a sum, search is something you do,
+Home, tasks, standing and memory can wear one. Spend is a sum,
 and settings is how this machine is set — a number in front of any of those would be a number
 about nothing.
 
@@ -880,13 +841,12 @@ to it — rather than a room in the machine, so it has no tab and `tab` does not
 **A place is a listing of one machine's disk, and over `--host` that machine is the one your
 session runs on.** Home lists the conversations under `~/.codeaf/v3`; tasks lists the work
 those conversations ran; standing lists what keeps an eye on that machine; spend adds up the
-ledger every model call there writes a line into; search reads the index of what was said
-there; memory reads what those sessions learned. All six are directories, and over a
+ledger every model call there writes a line into; memory reads what those sessions learned. Over a
 connection there are two machines with those directories on them.
 
 **Home, tasks and standing now read the far machine's.** They ask the engine for its own
-reading and draw that. Settings is deliberately mixed; the other three places state that
-their readings have not crossed:
+reading and draw that. Settings is deliberately mixed; spend and memory use their
+own remote stores when the engine supports them:
 
 | Place | Over `--host` |
 |---|---|
@@ -896,12 +856,10 @@ their readings have not crossed:
 | **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
 | **settings** | this computer's rows; the sheet says the far conversation reads its profile on the other machine |
 | **spend** | the far machine's priced model calls |
-| **search** | the far machine's conversation index |
 | **memory** | the far machine's memories; fixing and forgetting a line write there too |
 
 **No place silently substitutes this laptop's rows for the far machine's.** Settings names
-the split as it opens. Spend, search and memory draw no local rows at all over `--host` and
-say why. A screen full of the wrong machine's work is a confident lie, and one honest
+the split as it opens. Spend and memory never substitute local rows when their remote stores are unavailable. A screen full of the wrong machine's work is a confident lie, and one honest
 sentence is better than eight rows and a total in dollars that belong to somebody else's
 afternoon.
 
@@ -947,9 +905,8 @@ that reads a real disk and names the wrong machine is worse than a page that say
 
 ## Can I search my old chats, or see spend and memory, over --host
 
-**Yes. All three follow the machine the session runs on.** Spend reads that machine's priced
-model calls, search asks its conversation index, and memory reads and writes its memory
-store. `e` and `f` on a memory line therefore change the other machine's memory, not this
+**Yes. Home searches the far machine's conversation list.** Spend reads that machine's priced
+model calls, and memory reads and writes its memory store. `e` and `f` on a memory line therefore change the other machine's memory, not this
 computer's. If the engine is an older build without one of these doors, the place keeps its
 honest dim sentence instead of falling through to this computer's files.
 
