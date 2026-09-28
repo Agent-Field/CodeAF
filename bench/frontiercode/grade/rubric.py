@@ -367,12 +367,11 @@ def main():
     cb = sub.add_parser("combine")
     cb.add_argument("--task", required=True)
     cb.add_argument("--grade-dir", required=True)
-    cb.add_argument("--adapt-result", default=None)
     args = parser.parse_args()
     if args.cmd == "phase-a":
         return phase_a(args.task, args.repo, args.base, args.out)
     if args.cmd == "combine":
-        combine(args.task, args.grade_dir, args.adapt_result)
+        combine(args.task, args.grade_dir)
         return 0
     return 2
 
