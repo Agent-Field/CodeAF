@@ -123,6 +123,13 @@ func TestHeldRecoveryRetainsTheAcceptedCrew(t *testing.T) {
 	if _, err := second.Cancel("task:" + strconv.FormatUint(id, 10)); err != nil {
 		t.Fatal(err)
 	}
+	// Cancellation is acknowledged before the driver publishes its final row.
+	// Join this fixture's driver before its temporary conversation is removed.
+	select {
+	case <-run.over:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancelled recovery driver did not settle")
+	}
 }
 
 func TestAdmittedRecoveryRestoresRoutingAndSpendState(t *testing.T) {
