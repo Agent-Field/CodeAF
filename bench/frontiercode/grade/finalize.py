@@ -5,6 +5,7 @@ DONE marker and the sha256 manifest. The one place the contract fields are
 assembled — so a field the rig never fills is visible here, as null."""
 
 import argparse
+import hashlib
 import json
 import pathlib
 import sys
