@@ -48,8 +48,7 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 			continue
 		}
 		asked[key] = true
-		trees := canonicalPath((Place{Dir: dir}).Trees())
-		if tree.dir == "" || !filepath.IsAbs(tree.dir) || !withinDir(trees, canonicalPath(tree.dir)) || canonicalPath(tree.dir) == trees {
+		if !sessionOwnsForkDirectory(dir, tree.dir) {
 			note(fmt.Sprintf("sweep: cannot retire fork %s outside its session trees", tree.universe))
 			return false
 		}
@@ -95,4 +94,12 @@ func forkRetirementOrder(nodes []taskRecord) ([]taskRecord, error) {
 		}
 	}
 	return ordered, nil
+}
+
+// A checkpoint may name only a copy below this session's tree directory.
+// Resolve symlinks before checking containment, just as task creation does.
+func sessionOwnsForkDirectory(session, path string) bool {
+	trees := canonicalPath((Place{Dir: session}).Trees())
+	copy := canonicalPath(path)
+	return path != "" && filepath.IsAbs(path) && copy != trees && withinDir(trees, copy)
 }
