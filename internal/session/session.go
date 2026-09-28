@@ -94,10 +94,10 @@ const (
 	// EventCompacted always follows it — a surface opens a row on this one and
 	// settles it on that one. A pass that found nothing to do sends neither, so
 	// it opens no row that would need settling (loop.go's [Agent.compactWithPolicy]);
-	// `/compact` hears that from [ErrNothingToCompact] instead. There is no
-	// summarizer behind it any more: the pass is two mechanical walks over
-	// messages this session already holds, so what it costs is a lock and not a
-	// model call.
+	// `/compact` hears that from [ErrNothingToCompact] instead. Most passes are
+	// two mechanical walks over messages this session already holds, so what
+	// they cost is a lock; only a pass those walks cannot finish writes a summary
+	// with the conversation's model (compact_summary.go).
 	EventCompacting
 	// EventCompacted marks a compaction pass; Hint summarizes
 	// ("compacted from ~84k tokens, kept last ~20k"). [Event.Unchanged] is only

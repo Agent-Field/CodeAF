@@ -2180,11 +2180,9 @@ func (a *Agent) Compact(ctx context.Context) error {
 //
 // It was one extra instruction for the summarizer — `/compact keep the API
 // decisions and the failing test`, a person saying which part of a lossy summary
-// had to survive. There is no summarizer any more (loop.go): a pass stubs tool
-// results and folds assistant work, and neither of those is a judgement anybody
-// can steer. The kept content is the same whatever is typed after /compact —
-// every user message, the recent tail, and the state card — so there is nothing
-// for a focus to protect that is not already protected.
+// had to survive. The summarizer was deleted on 2026-08-18 and came back on
+// 2026-09-28 only as a pass's last rung (compact_summary.go), and the surface
+// passes no focus to it: `/compact` takes no argument.
 //
 // The door stays open with its signature unchanged because the surface calls it
 // (internal/tui3), and a person who types the old form gets the pass they asked
@@ -4805,6 +4803,11 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			continue
 		}
 		role := msg.Role
+		// A SUMMARY IS THE SESSION'S RECORD OF WHAT WENT, not something anybody
+		// typed, and it is drawn as the divider a "note" is (compact_summary.go).
+		if role == "user" && strings.HasPrefix(messageContentText(msg), summaryNotePrefix) {
+			role = "note"
+		}
 		if role == "user" && journal.isNote(msg) {
 			// A LINE THE SESSION WROTE IS NOT THE PERSON'S. It is user-role in the
 			// transcript because that is the only role the model can be told

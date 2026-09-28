@@ -429,9 +429,12 @@ replacement says so, and nothing is replaced.
 ## /compact — shorten the conversation now
 
 `/compact` notes `compacting…` immediately and reduces older completed work, even below
-the automatic threshold. It calls no model and produces no summary. Your messages, the
-system prompt, the newest assistant/tool batch and a recent working tail remain in context.
-The full record stays in the session journal, with a pointer in place of folded work.
+the automatic threshold. It first turns old tool results into pointers and folds older
+assistant work, which costs nothing. If that frees nothing, or leaves the conversation
+large, the conversation's own model writes a **summary** of the oldest part — your older
+messages included — and that summary replaces it. Your three most recent messages and
+everything after them stay word for word, and so does the system prompt. The full record
+stays in the session journal, and the summary names that file.
 
 Success reports `compacted · about N to M tokens`; these are estimates. If no eligible
 history remains, it says `nothing to compact — your messages and recent work are kept`.

@@ -672,8 +672,9 @@ Both halves of the line are true and neither one covers for the other:
   the words it was said in — your messages, the replies, the tool calls and their whole
   output. Nothing was thrown away.
 - **The model does not.** Above that line the model is working from a shortened version:
-  old tool results became one-line pointers to the files that hold them, and long runs of
-  its own earlier work became a single line saying how much went. So if you ask about
+  old tool results became one-line pointers to the files that hold them, long runs of
+  its own earlier work became a single line saying how much went, and — when that was not
+  enough — the oldest part of the conversation became a summary it wrote. So if you ask about
   something above the line, it may answer from something shorter than what you are looking
   at — ask it to `read` the file, or paste the part you mean back in.
 

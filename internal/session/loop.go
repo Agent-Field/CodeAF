@@ -4779,28 +4779,30 @@ var ErrNothingToCompact = errors.New("session: nothing to compact")
 var ErrCompactionInFlight = errors.New("session: a compaction pass is already running")
 
 // compactionPass is what one pass did, and it is the ONLY thing a pass produces:
-// two counts and, when something was folded, the marker line that stands in its
-// place. There is no summary because there is no summarizer — a pass is a
-// rearrangement of text this session already has (see the file header comment on
-// [Agent.compact]).
+// its counts and, when something was folded, the marker line that stands in its
+// place. A summary, when the last rung writes one, is in the transcript like any
+// message; the pass keeps only how many messages it replaced.
 type compactionPass struct {
 	stubbed int
 	folded  int
-	marker  string
+	// summarized is how many messages the pass's summary note replaced
+	// (compact_summary.go), zero when the free rungs were enough.
+	summarized int
+	marker     string
 	// stored says the full record went somewhere a later session can still read
 	// it — the store's thread (chatlog.go). It is what makes the difference
 	// between the two announce lines honest.
 	stored bool
 }
 
-func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
+func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 && p.summarized == 0 }
 
-// compact runs one pass, and IT MAKES NO MODEL CALL AT ALL.
+// compact runs one pass, and IT MAKES NO MODEL CALL UNLESS THE FREE RUNGS FAIL.
 //
-// The old pass paid a summarizer to write prose about the prefix it was about to
-// throw away. It was expensive at the worst moment, it was lossy by
+// The pass before 2026-08-18 paid a summarizer to write prose about the prefix
+// on every compaction. It was expensive at the worst moment, it was lossy by
 // construction, and the loss was unrecoverable because the transcript the prose
-// was written from went with it. What replaces it is two mechanical passes over
+// was written from went with it. What replaced it is two mechanical passes over
 // the same messages, in order of how cheap the content is to give up:
 //
 //  1. THE STUB PASS. A tool result the model has already used is a pointer to
@@ -4819,19 +4821,26 @@ func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
 // What the model is handed instead of a summary is the STATE CARD, which rides
 // in the system prompt on every turn and is maintained incrementally by the
 // post-turn extractor (card.go). So the cost of knowing what the conversation is
-// about is amortized across the turns that produced it, and the compaction
-// itself is free.
+// about is amortized across the turns that produced it, and those two rungs are
+// free.
 //
-// The lock is held across the WHOLE pass, which the old one could not do because
-// it was waiting on a provider. That is not a cost, it is the removal of one:
-// the mid-batch race the old pass had to repair — a tool result landing after
-// the cut while the summary was being written — cannot happen when nothing is
-// awaited.
+//  3. THE SUMMARY, and only when the two above leave the conversation over the
+//     line the pass needs (compact_summary.go). They never touch a person's
+//     words or the turn in hand, so a conversation made mostly of those had no
+//     way down at all: every pass found nothing while the window filled. The
+//     conversation's own model rewrites the oldest part — person and assistant
+//     alike — as one note, keeping the most recent person messages whole and
+//     the original lines in the journal.
+//
+// The lock is held across the two free rungs. The summary is the one wait on a
+// provider, and it is made with the lock released and the region compared
+// before the answer is spliced in; the old summarizer held the lock and could
+// not be interrupted.
 func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
-	return a.compactWithPolicy(ctx, hub, compactPolicy{target: a.compactTargetTokens(), keep: a.keepRecentTokens()})
+	return a.compactWithPolicy(ctx, hub, a.automaticCompactPolicy())
 }
 
-func (a *Agent) compactWithPolicy(_ context.Context, hub *eventHub, policy compactPolicy) (bool, error) {
+func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy compactPolicy) (bool, error) {
 	// A PASS SAYS ITSELF WHILE IT RUNS, and it says itself from OUTSIDE the
 	// lock. A phase post reaches a surface, and a surface answers one by asking
 	// for a frame — so a phase posted with this agent's mutex held is a surface
@@ -4880,6 +4889,21 @@ func (a *Agent) compactWithPolicy(_ context.Context, hub *eventHub, policy compa
 	// headroom is the same figure the fold already stops at.
 	if policy.active || a.estimateTokensLocked() > policy.target {
 		pass.folded, pass.marker = a.foldWithPolicyLocked(policy)
+	}
+	// THE LAST RUNG IS A SUMMARY, and it is the only one that waits on a model
+	// (compact_summary.go). The lock is released for the call and taken back
+	// to splice the answer in; [Agent.compacting] still holds every other pass
+	// off, and a transcript that moved in the gap keeps its shape.
+	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
+		if plan, ok := a.planSummaryLocked(policy.summarizeTo); ok {
+			a.mu.Unlock()
+			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
+			summary, err := a.writeSummary(ctx, plan)
+			a.mu.Lock()
+			if err == nil {
+				pass.summarized = a.spliceSummaryLocked(plan, summary)
+			}
+		}
 	}
 	a.compacting = false
 
@@ -4955,6 +4979,9 @@ func compactionHint(pass compactionPass, before, after int) string {
 	}
 	if pass.folded > 0 {
 		clauses = append(clauses, fmt.Sprintf("folded %d message%s", pass.folded, plural(pass.folded)))
+	}
+	if pass.summarized > 0 {
+		clauses = append(clauses, fmt.Sprintf("summarized %d message%s", pass.summarized, plural(pass.summarized)))
 	}
 	if before > after {
 		clauses = append(clauses, fmt.Sprintf("%s → %s tokens", approxTokens(before), approxTokens(after)))

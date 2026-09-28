@@ -27,6 +27,17 @@ boundaries. Only crossing the threshold rebuilds the default prompt and belt; un
 profiles do no schema work. Explicitly loaded capabilities survive the rebuild. Automatic
 no-op compaction emits no seam events, while manual commands retain their no-op feedback.
 
+A compaction pass makes **one model call only when its free rungs fail**: a summary
+(`internal/session/compact_summary.go`) is written when stubbing and folding leave the
+transcript above the pass's line, and never when the tool definitions alone exceed that
+line. It needs at least **1,024 tokens** of region the previous summary has not read,
+keeps the **three** most recent person messages and everything after them when that
+still reaches the line, and asks for at most a twentieth of the window (**512–4,096**
+tokens). A region larger than one request is summarized in chunks sized to the window,
+each bounded to **two minutes**; the session lock is released during every call. The
+render the summarizer reads caps a tool result at 2,000 bytes and a call's arguments at
+400. Tests use scripted completers and assert request counts and sizes, not clocks.
+
 ## Connection recovery bounds
 
 `internal/provider/connectivity.go` limits a connection-recovery episode to

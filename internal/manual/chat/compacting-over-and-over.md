@@ -125,15 +125,19 @@ the newest slice stays whole. Each older slice becomes a pointer naming the file
 `offset` and `limit` that read it, and no copy is filed — the file itself is where those
 bytes came from, and `read` brings the slice back.
 
-## A pass that cannot reach its target
+## A pass that cannot reach its target — when folding is not enough
 
 The fold walks the oldest assistant work first and stops at the target, but it never folds
 your own messages, the system prompt, the verbatim tail, or a tool call whose result has
 been stubbed. A conversation that is mostly your own words and recent work can run out of
-foldable material above the target. The pass still succeeds with what it took, and the
-`compacted · …` line reports the real counts; the next step's check may then fire again,
-honestly, because there was nothing more to take. That is the one case where two passes
-in quick succession are not a defect.
+foldable material above the target.
+
+When that leaves the conversation above the line that fired the pass, the pass ends with a
+**summary**: the conversation's own model rewrites the oldest part of the conversation as
+one note, and the `compacted · …` line says `summarized N messages`. See *When compaction
+writes a summary*. A summary is skipped when the tool definitions alone already exceed the
+line — no summary could get under it — and then the next step may fire again, honestly,
+because there was nothing more to take.
 
 ## What happened to the earlier messages — where did the folded messages go — how do I get the compacted text back, why it loses the earlier part of our chat
 
@@ -162,16 +166,17 @@ model's copy, not yours. The fold is not unrecoverable.
 `/compact` now has its own reduction policy. It can fold older completed assistant work
 before the automatic trigger, including completed batches inside one long turn. It keeps
 your messages, the system prompt, the newest assistant/tool batch, and 4,096 recent tokens
-(at most an eighth of the trusted window). The full record stays in the journal. No model
-writes a summary.
+(at most an eighth of the trusted window). When folding frees nothing, it writes a summary
+of the oldest part instead (see *When compaction writes a summary*).
 
 The old command reused the automatic target. A conversation with 60,000 tokens on a 128k
 model could have older history and still receive `session: nothing to compact`, because it
 was below that target. The manual command no longer has that threshold gate.
 
 A no-op now says `nothing to compact — your messages and recent work are kept`. That means
-there is no eligible history outside the protected material, not that the provider request
-fits. Provider admission also counts schemas, replayed reasoning and reserved output.
+nothing could be folded and there was too little older conversation to be worth a summary
+(under about 1,000 tokens), or the summary failed. It does not mean the provider request
+fits: admission also counts schemas, replayed reasoning and reserved output.
 
 ## Why the provider says maximum context length when the status shows 20 percent
 
@@ -185,3 +190,27 @@ A successful response resets the allowance. A second overflow later in a long to
 can therefore recover instead of ending the turn just because it compacted earlier.
 If protected material still cannot fit, codeaf explains that locally; it does not
 knowingly send the same oversized request again.
+
+## When compaction writes a summary — does codeaf summarize my conversation, what the summary keeps
+
+Yes, as a last resort. Folding and pointers are tried first because they are free and
+nothing is paraphrased. A summary is written only when they cannot bring the conversation
+under the line the pass needs: the automatic threshold, the size a refused request has to
+shrink to, or — for `/compact` — the automatic target, or whenever the free steps found
+nothing at all.
+
+The summary is written by **the model you are talking to**, with no tools, and it is billed
+like any other call, counting toward the session's spending. It replaces the
+oldest part of the conversation — your older messages and the assistant's work alike —
+with one note that starts `[context compacted]`. It never touches:
+
+- the system prompt;
+- your **three most recent messages** and everything after them (fewer only when keeping
+  three cannot get under the line; the message being answered always stays);
+- the turn that is running.
+
+A later summary folds the earlier one in, so there is only ever one note. The original
+words stay in the session journal, which the note names, and on your screen when you
+scroll up. A summary that fails, is not prose, or is not smaller than what it replaces is
+thrown away and the conversation is left as the free steps left it. While it is being
+written the status row shows `tidying` with a clock.

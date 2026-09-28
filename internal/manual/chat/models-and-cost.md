@@ -2695,7 +2695,8 @@ smallest window this surface routes to and the safe direction for a guess to be 
 
 ## What happens before the conversation is compacted
 
-codeaf uses mechanical reductions, with no summarization.
+codeaf uses mechanical reductions first; a summary is written only when they are not
+enough (see *What a compaction pass keeps*).
 
 **During one long turn, tool output has its own working-set bound.** Once tool observations from the turn
 cross **64,000 tokens** — or half the trusted context window when that is smaller
@@ -2792,9 +2793,11 @@ nothing else can reconstruct, so the fold walks past them and takes only the ass
 
 ## What a compaction pass keeps
 
-Compaction asks no model and produces no summary. Tool results can become pointers to
-their full bytes, and older assistant work can become a marker naming the saved journal.
-Your own messages and the system prompt stay in context.
+Compaction first asks no model: tool results can become pointers to their full bytes, and
+older assistant work can become a marker naming the saved journal. Only when that cannot
+reach the line the pass needs does the conversation's own model write a summary of the
+oldest part, your older messages included, marked `[context compacted]`. The system prompt
+and your three most recent messages, with everything after them, stay word for word.
 
 Routine cleanup keeps the latest 20,000 tokens, capped at a quarter of the window, and
 protects the running turn. `/compact` and necessary request-size recovery can also fold
@@ -2829,24 +2832,29 @@ reporting the work folded and the size reduction. Automatic attempts that find n
 to reduce leave no seam; `/compact` still reports its no-op. Your scrollback and the journal keep the original record. The
 model's fold marker names the journal so `read` or `grep` can recover the omitted work.
 
-If user instructions and the newest working batch still cannot fit, shortening stops and
-the request is refused locally. A new conversation or a larger-context model is needed.
+Recovery from a refused request can also end with a summary of the oldest part of the
+conversation, written by the conversation's own model. If your most recent message and the
+newest working batch still cannot fit, shortening stops and the request is refused locally. A new conversation or a larger-context model is needed.
 An unfamiliar endpoint can still reject a first request: estimates and published limits
 cannot guarantee that every provider's initial response succeeds.
 
 ## /compact — compacting now
 
-`/compact` runs a mechanical reduction immediately, even below the automatic threshold.
-It notes `compacting…` and works off the input loop. It produces **no summary** and makes
-no model call. Older completed work becomes pointers to the full journal.
+`/compact` runs a reduction immediately, even below the automatic threshold. It notes
+`compacting…` and works off the input loop. Older completed work becomes pointers to the
+full journal first, which makes no model call.
 
 Your messages, the system prompt, the newest assistant/tool batch and the recent working
 tail stay in context. Success reports `compacted · about N to M tokens`; those figures are
 estimates. A no-op says `nothing to compact — your messages and recent work are kept`.
 Other failures say `compact failed: ` followed by the reason.
 
-There is no compaction model or summarization setting. The smaller retained tail and the
+There is no separate compaction model or summarization setting. The smaller retained tail and the
 explicit reduction distinguish this command from routine automatic cleanup.
+
+When the free reductions find nothing, or leave the conversation above the automatic
+target, `/compact` ends with a summary written by the conversation's own model; its cost
+counts toward the session's spending like any other call.
 
 ## Turning automatic compaction off
 

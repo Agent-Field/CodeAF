@@ -1010,6 +1010,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did the folded messages go", "compacting-over-and-over"},
 		{"how do I get the compacted text back", "compacting-over-and-over"},
 		{"what happened to the earlier messages", "compacting-over-and-over"},
+		// Summaries came back as compaction's last rung on 2026-09-28.
+		{"does codeaf summarize my conversation", "compacting-over-and-over"},
+		{"when does compaction write a summary", "compacting-over-and-over"},
+		{"what does the summary keep", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},

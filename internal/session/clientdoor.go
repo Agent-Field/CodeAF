@@ -327,8 +327,11 @@ func (a *Agent) hasClient() bool {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.client != nil
+	return a.hasClientLocked()
 }
+
+// hasClientLocked is [Agent.hasClient] for a caller already holding a.mu.
+func (a *Agent) hasClientLocked() bool { return a.client != nil }
 
 // modelRoutingCompleter is the only completer view of a live Agent that may
 // leave this file. A caller may pin any model onto it; the wrapper reads that
