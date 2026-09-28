@@ -308,7 +308,7 @@ def combine(task_dir, grade_dir):
         cid, kind = c["id"], c["kind"]
         entry = dict(phase_a["criteria"].get(cid, {"status": RIG, "note": "no phase A result"}))
         if kind == "prompt":
-            verdict = judge.get(cid, {})
+            verdict = judge_criteria.get(cid, {})
             entry["status"] = PASS if verdict.get("pass") else (
                 FAIL if verdict else RIG)
             entry["judge"] = verdict

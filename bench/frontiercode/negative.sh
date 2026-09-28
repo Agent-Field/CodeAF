@@ -36,7 +36,7 @@ PY
   TASK_ID="$id" EGRESS_SCAN=0 bash "$RIG_DIR/grade.sh" "$out" || ok=0
   wall=$(( $(date +%s) - t0 ))
   read_result() {
-    python3 - "$out/grade.json" <<'PY'
+    python3 - "$out/logs/grade/grade.json" <<'PY'
 import json, sys
 g = json.load(open(sys.argv[1]))
 print(g.get("score"), len(g.get("failed_blockers") or []))

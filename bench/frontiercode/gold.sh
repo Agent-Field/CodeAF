@@ -39,7 +39,7 @@ PY
   t0=$(date +%s)
   TASK_ID="$id" EGRESS_SCAN=0 bash "$RIG_DIR/grade.sh" "$out" || ok=0
   wall=$(( $(date +%s) - t0 ))
-  grade="$(python3 -c "import json;print(json.load(open('$out/grade.json')).get('score'))" 2>/dev/null || echo rig)"
+  grade="$(python3 -c "import json;print(json.load(open('$out/logs/grade/grade.json')).get('score'))" 2>/dev/null || echo rig)"
   [ "$grade" = "1.0" ] || [ "$grade" = "1" ] || ok=0
   printf '%-40s gold score=%-6s %4ds  %s\n' "$id" "$grade" "$wall" "$out"
 done

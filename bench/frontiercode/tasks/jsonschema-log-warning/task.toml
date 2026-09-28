@@ -10,7 +10,7 @@ artifacts = ["/logs/artifacts/model.patch"]
 [task]
 name = "frontiercode/jsonschema-log-warning"
 description = "Add a warning logging helper to a C++ CLI and convert every warning site to it"
-authors = ["rig"]
+authors = []
 keywords = ["cpp", "logging", "cli"]
 
 [metadata]
@@ -35,7 +35,9 @@ os = "linux"
 # Internet is on, as FrontierCode runs it; egress goes through the rig's
 # open-and-logged proxy and the transcript is scanned afterwards.
 allow_internet = true
-network_mode = "egress-logged"
+# "public" is Pier's word for internet on; THIS rig additionally
+# routes the agent container through its own open-and-logged proxy (README §4).
+network_mode = "public"
 cpus = 4
 memory_mb = 8192
 build_timeout_sec = 2400.0
@@ -55,7 +57,7 @@ cpus = 4
 memory_mb = 8192
 docker_image = "frontiercode-jsonschema-log-warning:verify"
 
-[verifier.collect]
+[[verifier.collect]]
 # What Pier's verifier would collect in a baseline arm: the whole diff against
 # the base commit, untracked files staged, binary-safe. The rig's own harness
 # arm collects through grade/collect-candidates.sh, which tries every place
