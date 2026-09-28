@@ -10,6 +10,7 @@ package remote
 // machinery.
 
 import (
+	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -559,20 +560,11 @@ func TestTheSurfaceLearnsItHasBecomeAWatcherWithNobodyTouchingIt(t *testing.T) {
 // loopSession is [Loopback] onto a conversation that already exists — the same
 // difference [dialSession] is to [dial], and for the same reason.
 func loopSession(sess *Session, hello Hello) (*Loop, error) {
-	surface, engine := Pipe()
-	served := make(chan error, 1)
-	go func() {
-		served <- ServeAttach(engine, engine, AttachOptions{
+	return loopOver(hello, func(engine io.ReadWriteCloser) error {
+		return ServeAttach(engine, engine, AttachOptions{
 			Open: func(Hello) (*Session, error) { return sess, nil },
 		})
-		_ = engine.Close()
-	}()
-	client, err := Dial(surface, "loopback", hello)
-	if err != nil {
-		_ = surface.Close()
-		return nil, err
-	}
-	return &Loop{Client: client, Served: served, surface: surface}, nil
+	})
 }
 
 // ── the name on the wire ────────────────────────────────────────────────────
