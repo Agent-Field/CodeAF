@@ -203,6 +203,8 @@ Recovery shortens by what is missing plus a little room — a thirty-second of t
 rather than a quarter of the conversation, and it will summarize even a small older part
 when that is what the request is short of. Overflow recovery can run twice per failed
 generation, only while the request changes.
+A DeepInfra refusal saying `Requested input length … exceeds maximum input length …`
+counts as an overflow; its stated maximum is used as that endpoint's limit.
 A successful response resets the allowance. A second overflow later in a long tool turn
 can therefore recover instead of ending the turn just because it compacted earlier.
 If protected material still cannot fit, codeaf explains that locally; it does not
@@ -222,10 +224,12 @@ oldest part of the conversation — your older messages and the assistant's work
 with one note that starts `[context compacted]`. It never touches:
 
 - the system prompt;
-- your **three most recent messages** and everything after them. Only when keeping three
-  cannot get under the line does it keep two, then your latest message **with the reply just before it**
-  (what "translate it" or "keep going" is about), then your latest alone — the message
-  being answered always stays;
+- your **three most recent messages** and everything after them. If a cut can reach
+  the line, codeaf keeps as many of those messages as that cut allows. If no cut can
+  reach it, an automatic pass or `/compact` still keeps all three: summarizing more
+  would not reach the line either. Recovery from a refused request tries two, then
+  your latest message **with the reply just before it** (what "translate it" or
+  "keep going" is about), then your latest alone — the message being answered always stays;
 - the turn that is running.
 
 Messages codeaf writes into the conversation itself — the note after a reply was cut off

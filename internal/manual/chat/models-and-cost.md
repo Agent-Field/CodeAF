@@ -2816,8 +2816,9 @@ older assistant work can become a marker naming the saved journal. Only when tha
 reach the line the pass needs does the conversation's own model write a summary of the
 oldest part, your older messages included, marked `[context compacted]`. The system prompt
 and your three most recent messages, with everything after them, stay word for word
-unless keeping three cannot get under the line. It then tries two, your latest with
-the reply before it, and your latest alone. The latest message always stays word for word.
+when no cut can reach the line. If a cut can reach it, codeaf chooses the one that
+keeps the most. Recovery from a refused request can keep fewer to reclaim the
+missing room; your latest message always stays word for word.
 
 Routine cleanup keeps the latest 20,000 tokens, capped at a quarter of the window, and
 protects the running turn. `/compact` and necessary request-size recovery can also fold
@@ -2867,9 +2868,10 @@ full journal first, which makes no model call. If enough older conversation rema
 the conversation's own model summarizes it, your older messages included — in the same
 pass, so one `/compact` goes as far as it can.
 
-Your three most recent messages and everything after them stay word for word unless
-keeping three cannot get under the line; the pass then tries two, your latest with the
-reply before it, and your latest alone. The latest message and system prompt always stay.
+Your three most recent messages and everything after them stay word for word when
+no cut can reach the line. If a cut can reach it, codeaf chooses the one that keeps
+the most. Recovery from a refused request can keep fewer to reclaim the missing
+room; your latest message and system prompt always stay.
 Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
 `⚭ compacted` without a size when it did not; those figures are estimates. A no-op says
 `nothing to compact — ` and why. A pass still running after five minutes says
@@ -4107,3 +4109,10 @@ and the one-time line above follows; a retry that also failed teaches nothing:
 Retry 1/1: sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer
 ```
 
+## Switching back to a model without tools after a file read — earlier calls and results
+
+When you switch to a model that cannot use tools after another model used one,
+the earlier call and its result are carried as readable conversation text. The
+model can discuss that result, but it cannot make a new tool call itself.
+Switching back to a tool-capable model restores the original tool-call history
+on its request.
