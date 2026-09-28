@@ -5039,7 +5039,7 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	// next reported count replaces it.
 	a.contextTokens = 0
 	a.contextBeltTokens = belt
-	tokensAfter := a.estimateTokensLocked()
+	tokensAfter := a.meterTokensLocked()
 	// The whole rebuilt window is re-journaled behind the marker, not just the
 	// tail: a stub and a fold are edits to messages the file already holds ABOVE
 	// the marker, and replay discards everything above it. Writing the window is
@@ -5353,6 +5353,21 @@ func (a *Agent) cutPointForLocked(keep int) int {
 // threshold. Taking the max keeps the honest number as a floor while letting
 // the content speak for everything after it.
 func (a *Agent) estimateTokensLocked() int {
+	estimate := a.transcriptTokensLocked()
+	if a.contextTokens > estimate {
+		return a.contextTokens
+	}
+	return estimate
+}
+
+// meterTokensLocked is what a person is shown: [Agent.estimateTokensLocked]
+// plus, between a compaction and the provider's next count, the tool
+// definitions the next request carries. THE THRESHOLDS DO NOT READ IT. The fold
+// and the automatic trigger are measured on the transcript estimate their laws
+// were written against (compaction_headroom_test.go); only the status line, the
+// /compact note and the ⚭ figures need the whole request, so that a pass does not
+// read as a larger drop than the next request will show.
+func (a *Agent) meterTokensLocked() int {
 	estimate := a.transcriptTokensLocked() + a.contextBeltTokens
 	if a.contextTokens > estimate {
 		return a.contextTokens

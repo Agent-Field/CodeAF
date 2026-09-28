@@ -620,14 +620,14 @@ func (a *Agent) Usage() Usage {
 // every tool result, the arguments of every call, all the bytes a surface
 // counting words cannot see. When the transcript has grown since (a 300KB file
 // read that has not been sent yet), the content estimate is larger and wins. See
-// [Agent.estimateTokensLocked] for why it is the max of the two.
+// [Agent.meterTokensLocked] for why it is the max of the two.
 //
 // Zero is a session that has neither sent nor recorded anything, which is the
 // only case where "nothing" is true.
 func (a *Agent) ContextTokens() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.estimateTokensLocked()
+	return a.meterTokensLocked()
 }
 
 // Model returns the model the next request will use.
