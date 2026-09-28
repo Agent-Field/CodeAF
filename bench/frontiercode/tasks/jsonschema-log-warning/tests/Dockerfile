@@ -16,18 +16,22 @@ ARG BASE_COMMIT
 ARG REFERENCE_COMMIT
 
 # A full clone beside the task tree, pinned to the reference commit, is where
-# the reference patch and the test overlay come from. The task tree at
-# /root/repos/jsonschema stays at the base commit: that is what the agent's
-# patch is applied on top of at grade time.
+# the reference patch, the test overlay and the negative control come from.
+# The task tree at /root/repos/jsonschema stays at the base commit: that is
+# what the agent's patch is applied on top of at grade time.
 RUN git clone https://github.com/sourcemeta/jsonschema.git /solution/full \
     && cd /solution/full \
     && git checkout "$REFERENCE_COMMIT" \
-    && git config --global --add safe.directory /solution/full \
+    && git config --global --add safe.directory /solution/full
+
+# The reference patch, verbatim, and the test-side overlay (the reference
+# commit's test/ diff alone), which the classical criterion applies over the
+# agent's tree.
+RUN cd /solution/full \
     && git format-patch -1 "$REFERENCE_COMMIT" --stdout > /solution/upstream-reference.patch \
     && git diff "$BASE_COMMIT" "$REFERENCE_COMMIT" -- test/ > /solution/test-overlay.patch \
     && test -s /solution/upstream-reference.patch \
-    && test -s /solution/test-overlay.patch \
-    && rm -rf /solution/full/.git
+    && test -s /solution/test-overlay.patch
 
 # The first-line-only negative control: the labelled example's shape — every
 # non-blocker conversion done, the two multi-line warnings converted only down
@@ -44,3 +48,4 @@ RUN cd /solution/full \
 # grader must not need one. The clang-format wheel download the project's
 # module attempts is a warning with a PATH fallback, and 20.1.6 is already on
 # PATH from the base image — pinning the same version the project pins.
+RUN rm -rf /solution/full/.git
