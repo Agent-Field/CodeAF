@@ -214,6 +214,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	note := textMessage("user", marker)
 	a.messages = append(a.messages, note)
 	a.contextTokens = 0
+	a.contextBeltTokens = 0
 
 	// The original transcript becomes the scroll-back region, and the rebuilt
 	// window is journaled behind a compaction marker exactly as the cross-turn

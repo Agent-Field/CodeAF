@@ -3159,6 +3159,10 @@ type Agent struct {
 	// contextTokens is the last provider-reported context size, the honest
 	// figure when there is one. Zero means "estimate from content".
 	contextTokens int
+	// contextBeltTokens belongs only to a rebuilt window after compaction. It
+	// keeps later transcript growth on the same footing until a provider count
+	// replaces the estimate.
+	contextBeltTokens int
 
 	// followups is the second injection queue (agent.go). Steering drains at a
 	// step boundary INTO the running turn; a follow-up waits for the turn to

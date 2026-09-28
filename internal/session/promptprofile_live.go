@@ -98,5 +98,6 @@ func (a *Agent) preparePromptProfile(model string) error {
 	// The last usage figure counted the old prefix. The new request is weighed
 	// again by the provider after the new prompt and schemas are encoded.
 	a.contextTokens = 0
+	a.contextBeltTokens = 0
 	return nil
 }

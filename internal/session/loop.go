@@ -4182,6 +4182,7 @@ func (a *Agent) bank(call bankedCall) {
 	}
 	if call.context > 0 {
 		a.contextTokens = call.context
+		a.contextBeltTokens = 0
 	}
 	a.mu.Unlock()
 	if call.ledger {
@@ -4888,6 +4889,10 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	// is refused below still ends this clock on the way out.
 	a.tellPhase(provider.PhaseTidying, "the conversation", time.Now())
 	defer a.endPhase()
+	// The definitions are outside the transcript and take the belt's own lock.
+	// Read their weight before taking the session lock, then use it only for
+	// the person's meter; the policy's transcript-only lines stay unchanged.
+	belt := a.beltTokens()
 
 	a.mu.Lock()
 	if a.compacting {
@@ -4896,7 +4901,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	}
 	a.compacting = true
 	a.compactDone = make(chan struct{})
-	tokensBefore := a.estimateTokensLocked()
+	tokensBefore := max(a.estimateTokensLocked(), a.transcriptTokensLocked()+belt)
 
 	// THE CONVERSATION IS SHAPED FOR THE SCROLLBACK BEFORE IT IS EDITED. This is
 	// the same region a resume recovers from the journal ([replayedSession.earlier]),
@@ -4995,8 +5000,11 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	a.earlierFloor = countEntries(a.messages[:len(a.messages)-appendedDuringSummary])
 
 	// The provider's context figure described the request that is now gone.
-	// Zero sends the estimator back to the content until the next response.
+	// Estimate the rebuilt transcript AND the definitions the next request
+	// carries. Keep that weight as the transcript grows until a provider's
+	// next reported count replaces it.
 	a.contextTokens = 0
+	a.contextBeltTokens = belt
 	tokensAfter := a.estimateTokensLocked()
 	// The whole rebuilt window is re-journaled behind the marker, not just the
 	// tail: a stub and a fold are edits to messages the file already holds ABOVE
@@ -5311,7 +5319,7 @@ func (a *Agent) cutPointForLocked(keep int) int {
 // threshold. Taking the max keeps the honest number as a floor while letting
 // the content speak for everything after it.
 func (a *Agent) estimateTokensLocked() int {
-	estimate := a.transcriptTokensLocked()
+	estimate := a.transcriptTokensLocked() + a.contextBeltTokens
 	if a.contextTokens > estimate {
 		return a.contextTokens
 	}
