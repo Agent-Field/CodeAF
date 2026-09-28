@@ -84,6 +84,19 @@ def main():
     import record
     record.append(run_dir, {**final, "event": "final"})
     (run_dir / "DONE").write_text("final\n")
+    # The sha256 manifest the attempt contract carries: every file beside the
+    # record, digested at finalize time. A key file is named as scrubbed rather
+    # than digested — its digest would be a fingerprint of a secret.
+    manifest = []
+    for path in sorted(run_dir.rglob("*")):
+        rel = str(path.relative_to(run_dir))
+        if path.is_dir() or path.name in ("DONE", "artifacts.sha256", "record.jsonl"):
+            continue
+        if path.name == "config.json":
+            manifest.append(f"{hashlib.sha256(b'<scrubbed-key-record>').hexdigest()}  {rel} (key scrubbed)")
+            continue
+        manifest.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {rel}")
+    (run_dir / "artifacts.sha256").write_text("\n".join(manifest) + "\n")
     print(json.dumps(final, indent=2))
     return 0
 
