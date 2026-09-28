@@ -54,9 +54,12 @@ if [ -z "${BENCH_SNAPSHOT:-}" ]; then
   __out="$RESULTS/$1-$__slug-$3"
   rm -rf "$__out"; mkdir -p "$__out/rig"
   cp -R "$__RIG_SRC/lib.sh" "$__RIG_SRC/run.sh" "$__RIG_SRC/grade.sh" "$__RIG_SRC/gold.sh" \
-        "$__RIG_SRC/negative.sh" "$__RIG_SRC/seal.sh" "$__RIG_SRC/report.py" "$__out/rig/"
+        "$__RIG_SRC/negative.sh" "$__RIG_SRC/seal.sh" "$__out/rig/"
   cp -R "$__RIG_SRC/grade" "$__out/rig/grade"
   cp -R "$__RIG_SRC/bin" "$__out/rig/bin" 2>/dev/null || true
+  # The task dir travels with the run: the frozen rig grades from its own copy.
+  mkdir -p "$__out/rig/tasks"
+  cp -R "$__RIG_SRC/tasks/$1" "$__out/rig/tasks/$1"
   # The credential guard is the conversation battery's; a run's frozen copy
   # carries its own, like journal.py in the DeepSWE rig.
   cp "$__RIG_SRC/../conversation/lib/guard.py" "$__out/rig/guard.py"
@@ -136,7 +139,7 @@ log "$TASK: starting the credential guard (holds the key, meters every call)"
 # copy is transformed, never the shared file.
 sed 's/("127.0.0.1", args.port)/("0.0.0.0", args.port)/' \
   "$RIG_DIR/guard.py" > "$OUT/rig/guard-container.py"
-docker run -d --name "fc-guard-$SEED" --network "fc-in-$SEED" \
+docker run -d --name "fc-guard-$SEED" --network "fc-in-$SEED" --network-alias guard \
   -e "GUARD_UPSTREAM_KEY=$KEY" \
   -v "$OUT:/audit" \
   --entrypoint python3 python:3.12-slim \
@@ -155,10 +158,10 @@ done
 log "$TASK: guard listening on port $GUARD_PORT"
 
 log "$TASK: starting the egress proxy (open and logged)"
-docker run -d --name "fc-egress-$SEED" --network "fc-in-$SEED" \
+docker run -d --name "fc-egress-$SEED" --network "fc-in-$SEED" --network-alias egress \
   -v "$RIG_DIR/bin:/rigbin:ro" -v "$OUT:/logs" \
   --entrypoint /rigbin/egress-proxy-$([ "$PLATFORM" = linux/amd64 ] && echo amd64 || echo arm64) \
-  alpine:3.20 -addr :3128 -log /logs/egress-proxy.log > "$OUT/egress-start.log" 2>&1 || {
+  alpine:3.20 -addr :3128 -resolver 1.1.1.1:53 -log /logs/egress-proxy.log > "$OUT/egress-start.log" 2>&1 || {
   log "$TASK: egress proxy failed to start — see $OUT/egress-start.log"; meta "stage=egress-failed"; exit 1; }
 docker network connect bridge "fc-egress-$SEED" > /dev/null 2>&1
 sleep 2
@@ -227,10 +230,10 @@ docker exec "$NAME" chmod +x /bench/drive.sh >> "$OUT/docker.log" 2>&1
 log "$TASK: codeaf senior-dev — model $MODEL, wall ${MAX_HOURS}h, cap \$$MAX_COST"
 meta "stage=agent"
 t0=$(date +%s)
-timeout "$((TASK_SECS + 300))" docker exec "${EMU_ARGS[@]}" \
+timeout "$((TASK_SECS + 300))" docker exec "${EMU_ARGS[@]+${EMU_ARGS[@]}}" \
   -e "CODEAF_HOME=/bench/home" \
   -e "HOME=/root" \
-  -e "CODEAF_BASE_URL=http://guard:$GUARD_PORT/api/v1" \
+  -e "CODEAF_BASE_URL=http://guard:$GUARD_PORT" \
   -e "HTTPS_PROXY=http://egress:3128" \
   -e "HTTP_PROXY=http://egress:3128" \
   -e "ALL_PROXY=http://egress:3128" \
@@ -240,6 +243,10 @@ CODE=$?
 WALL=$(( $(date +%s) - t0 ))
 # senior-dev's exit ladder: 0 done · 2 incomplete · 3 a limit · 4 asked · 124 the rig's own wall.
 case "$CODE" in 0) ENDED=self ;; 124) ENDED="wall (killed)" ;; 3) ENDED=limit ;; 4) ENDED=asked ;; *) ENDED=partial ;; esac
+if [ "$CODE" = 124 ]; then
+  docker rm -f "$NAME" >/dev/null 2>&1
+  log "$TASK: the rig's own wall fired with the agent still running — no patch collected, the run grades rig"
+fi
 log "$TASK: codeaf exited $CODE after ${WALL}s"
 meta "exit_code=$CODE" "ended=$ENDED" "agent_seconds=$WALL" "stage=extract"
 
@@ -351,4 +358,4 @@ t1=$(date +%s)
 EGRESS_SCAN=1 TASK_ID="$TASK" RESULTS="$RESULTS" bash "$RIG_DIR/grade.sh" "$OUT" || \
   log "$TASK: grading failed"
 meta "grade_seconds=$(( $(date +%s) - t1 ))" "stage=done"
-python3 "$RIG_DIR/report.py" "$OUT"
+python3 "$RIG_DIR/grade/report.py" "$OUT"
