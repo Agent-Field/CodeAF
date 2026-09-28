@@ -298,25 +298,32 @@ def combine(task_dir, grade_dir, adapt_result=None):
             entry["judge"] = verdict
             entry["note"] = verdict.get("reasoning", entry["note"])[:300]
         elif kind == "adaptive-classical":
-            # Derived when the verbatim overlay applied and passed: the tests
-            # fit the solution as written and no adaptation is needed. When
-            # phase A reported an overlay conflict, the judge's adaptation and
-            # phase B's rerun answer the criterion instead.
-            classical = phase_a["criteria"].get(
-                next((x["id"] for x in rubric["criteria"]
-                      if x["kind"] == "classical"), ""))
-            if classical and classical["status"] == PASS:
+            # Three honest paths. The verbatim overlay applied and passed: the
+            # tests fit the solution as written, and the criterion is derived.
+            # The overlay conflicted or the tests failed: the judge either
+            # adapts them to the solution (phase B re-runs the adapted tests)
+            # or refuses to — a behavioural failure is not an interface
+            # divergence, and a test rewritten to match wrong behaviour tests
+            # nothing. What the judge could not decide stays rig.
+            classical_id = next((x["id"] for x in rubric["criteria"]
+                                 if x["kind"] == "classical"), "")
+            classical = phase_a["criteria"].get(classical_id, {})
+            adapt = judge.get("adaptive", {})
+            if classical.get("status") == PASS:
                 entry["status"] = PASS
                 entry["note"] = "derived: the verbatim reference tests apply and pass"
-            elif adapt_result == "no_adaptation":
+            elif adapt.get("adapted"):
+                if cid in phase_b:
+                    entry.update(phase_b[cid])
+                else:
+                    entry = {"status": RIG, "note": "judge adapted the tests but phase B did not run"}
+            elif adapt:
                 entry["status"] = FAIL
-                entry["note"] = "the judge could not adapt the tests to this solution"
-            elif cid in phase_b:
-                entry.update(phase_b[cid])
-            elif not entry["note"].startswith("test overlay conflict"):
-                # Phase A answered something else (e.g. a fail from a partial
-                # run) — keep it unless it is the adaptive trigger itself.
-                pass
+                entry["note"] = f"no legitimate adaptation: {adapt.get('reasoning', '')[:280]}"
+            elif classical.get("note", "").startswith("test overlay conflict"):
+                entry = {"status": RIG, "note": "overlay conflict and no judge adaptation result"}
+            else:
+                entry = {"status": RIG, "note": "no judge adaptation result"}
         criteria[cid] = entry
 
     blockers = [c["id"] for c in rubric["criteria"] if c.get("blocker")]
