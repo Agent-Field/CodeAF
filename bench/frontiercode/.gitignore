@@ -1,0 +1,5 @@
+# This rig's working tree keeps its evidence local, and keeps the upstream
+# reference solution out of the repository entirely (the verify image fetches
+# it from the pinned commit at build time; gold.sh reads it from the image).
+results/
+tasks/*/solution/
