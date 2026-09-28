@@ -467,61 +467,6 @@ func TestEnterOnAttachInTheListOpensTheBrowserAtOnce(t *testing.T) {
 	}
 }
 
-// WITH NO CONVERSATION STORE BEHIND THE WINDOW — memory off — THE PLACE
-// REFUSES, and says which silence this is. It matched conversations by their
-// name and project for one build on 2026-09-22, the way home's box does, and
-// the owner took that back on 2026-09-23: a place called `search` that
-// searches something narrower than it says is worse than one that refuses,
-// because half a search reads exactly like a whole one that found nothing.
-func TestWithNoIndexTheSearchPlaceSaysSoAndSearchesNothing(t *testing.T) {
-	a := placeApp(t)
-	a.searchStore = nil
-	a.searchArm = func(int) tea.Cmd { return nil }
-	a.showPage(pageSearch)
-	_, world := searchFixture()
-	a.search.world = world
-	a.rebuildSearch()
-	if text := placeFrameText(a); !strings.Contains(text, "no index of this machine's conversations") {
-		t.Fatalf("the place does not say it has no index:\n%s", text)
-	}
-	// And typing does not send a read, nor draw a result under the words.
-	typeInto(t, a, "swarm")
-	if cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen}); cmd != nil {
-		t.Fatal("a place with no index sent a store read")
-	}
-	text := placeFrameText(a)
-	if !strings.Contains(text, "no index of this machine's conversations") {
-		t.Fatalf("the refusal went away once words were typed:\n%s", text)
-	}
-	if strings.Contains(strings.ToLower(text), "swarm splitting") {
-		t.Fatalf("a place with no index drew a conversation it matched by name:\n%s", text)
-	}
-	if strings.Contains(text, searchNothingSaid("swarm")) {
-		t.Fatalf("a search that never happened claimed nothing was said:\n%s", text)
-	}
-}
-
-// `/search` typed on home opens the place, and typing there searches — the
-// road the owner walked.
-func TestSlashSearchOnHomeOpensThePlaceAndTypingSearches(t *testing.T) {
-	lab := newHomeLab(t)
-	a := lab.door("")
-	a.searchStore = nil
-	a.searchArm = func(int) tea.Cmd { return nil }
-	a.showPage(pageHome)
-	drive(t, a, key("/"), key("s"), key("e"), key("a"), key("r"), key("c"), key("h"), key("enter"))
-	if !a.at(pageSearch) {
-		t.Fatalf("/search on home did not open the search place; %v is showing", a.showing())
-	}
-	drive(t, a, key("p"), key("a"), key("r"))
-	if got := a.search.query.String(); got != "par" {
-		t.Fatalf("typing on the search place put %q in its box", got)
-	}
-	if a.search.ask.query != "par" {
-		t.Fatalf("the place is answering for %q", a.search.ask.query)
-	}
-}
-
 // A quoted path with spaces still reaches the tray from the list's typed row.
 func TestTheTypedAttachRowStillTakesAPath(t *testing.T) {
 	a, _ := sheetApp(t)

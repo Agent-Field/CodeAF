@@ -205,7 +205,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 of the commands they named still works** — only the tips about them are gone.
 
 - `alt+3 shows what this machine has spent, by the day`, `alt+1 to alt+7 jump straight to a
-  place`, `/search finds anything ever said on this machine` and `/subharness lists the
+  place` and `/subharness lists the
   programs you can run` name doors the tab bar or the `/` list already puts in front of
   you, which is the argument that kept `alt+p`, `alt+e` and `/` off the list in the first
   place.

@@ -44,13 +44,12 @@ const (
 	// MethodPlacesSearch is one full-text query over every message the ENGINE
 	// machine has kept ([store.Store.SearchConversations]).
 	//
-	// IT IS THE ONE DOOR ON THIS WIRE A KEYSTROKE MAY REACH, and it is still not
-	// reached ON a keystroke: the search place arms a quiet interval and asks
-	// only when the words have stopped moving (internal/tui3's place_search.go),
-	// so this is exactly one call per question a person actually asked. There is
-	// no cache behind it for the reason there is one behind every other reading
-	// here — a query is not a beat, it is an answer somebody's enter key is
-	// waiting for.
+	// THE SURFACE NO LONGER ASKS IT, and the engine keeps answering it anyway.
+	// The Search place that sent this query was removed (#1650), so a current
+	// surface never calls it; an older surface attached to a newer engine still
+	// has that place, and this door is what keeps its box finding anything.
+	// There is no cache behind it — a query is not a beat, it is an answer
+	// somebody's enter key is waiting for.
 	MethodPlacesSearch  = "Places.Search"  // SearchArgs → []store.ConversationHit
 	MethodPlacesArchive = "Places.Archive" // ArchiveArgs → nothing
 

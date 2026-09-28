@@ -142,7 +142,7 @@ func TestLiveTaskReadingPreservesGraphParents(t *testing.T) {
 }
 
 func TestEveryMainChatDoorLeavesTheChildViewAndRestoresDrafts(t *testing.T) {
-	for _, door := range []string{"home", "search", "tasks"} {
+	for _, door := range []string{"home", "tasks"} {
 		t.Run(door, func(t *testing.T) {
 			a, _, _ := roomApp(t)
 			a.title = "Repair the parser"
@@ -154,9 +154,6 @@ func TestEveryMainChatDoorLeavesTheChildViewAndRestoresDrafts(t *testing.T) {
 			case "home":
 				a.showPage(pageHome)
 				a.homeOpenLine(homeLine{row: row})
-			case "search":
-				a.showPage(pageSearch)
-				a.openConversationRow(row)
 			case "tasks":
 				a.showPage(pageTasks)
 				a.taskSheetEnter()

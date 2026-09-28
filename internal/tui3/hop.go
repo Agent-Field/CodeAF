@@ -1172,7 +1172,7 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 // EVERY OTHER DOOR BETWEEN CONVERSATIONS ALREADY DOES IT, and each spells it for
 // itself: home's own `enter` ends in [app.closeHome] (home.go's
 // [app.homeWalkIn]), search's row door in [app.standDownFullscreen]
-// (place_search.go's [app.openConversationRow]), and `ctrl+shift+t` in
+// (conversationrow.go's [app.openConversationRow]), and `ctrl+shift+t` in
 // [app.closeHome] again (tabreopen.go). This is that same statement, made once
 // for the one door that can be opened from ANY place — which is why it asks
 // [app.pageShowing] rather than naming home.

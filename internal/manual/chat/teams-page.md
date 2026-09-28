@@ -238,7 +238,7 @@ conversation. The page keeps these:
 | `alt+↑` `alt+↓` | put the keyboard on the page's buttons and walk them (`opt+↑` `opt+↓` on a Mac) |
 | `esc` | from the page's buttons, back to the message box |
 | `tab`, `shift+tab` | the next or previous place |
-| `alt+1` … `alt+9`, `alt+.` | jump to a place, draw the map |
+| `alt+1` … `alt+8`, `alt+.` | jump to a place, draw the map |
 
 On the page's buttons, and on a team with no manager in the pane:
 

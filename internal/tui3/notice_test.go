@@ -689,7 +689,6 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventChatStarted:      func(t *testing.T, a *app) { drive(t, a, key("ctrl+t")) },
 		eventPlaceJumped:      func(t *testing.T, a *app) { drive(t, a, key("alt+3")) },
 		eventRemembered:       func(t *testing.T, a *app) { a.slash("/remember the parser is under internal") },
-		eventSearchOpened:     func(t *testing.T, a *app) { a.slash("/search") },
 		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
 		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
 		eventAutonomyAsked:    func(t *testing.T, a *app) { a.slash("/autonomy") },

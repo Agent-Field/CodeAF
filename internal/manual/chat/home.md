@@ -643,21 +643,17 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing, memory and search go: the six words on the tab bar
+## Where did standing and memory go: the six words on the tab bar
 
-**They are still places; they are just off the bar.** The bar on the top line is six
-words, `home  teams  chats  sessions  spend  settings`. `tab` walks the five rooms among them and
-`alt+1` … `alt+6` go to each; `chats` (`alt+3`) is the way back to your conversation. Standing,
-memory and search open exactly as they did:
+The top line reads `home  teams  chats  sessions  spend  settings`. `alt+1` through
+`alt+6` go to each; `chats` (`alt+3`) returns to your conversation.
 
-- **`/standing`** (or `/orders`), `alt+7`, or `enter` on a `standing` row;
-- **`/memory`** (or `/memories`), `alt+8`, or `enter` on memory's line in `since you left`;
-- **`/search`**, `alt+9`, or the typed door on home's box.
+- `/standing` (or `/orders`) and `alt+7` open Standing.
+- `/memory` (or `/memories`) and `alt+8` open Memory.
 
-While you stand in one of the three, its word is drawn after the six so you can see where
-you are; `tab` from there goes to home. `alt+.` draws the map of all eight with their
-numbers. Home's own panels already summarise the three on the bar: `sessions` is a glimpse of
-tasks, `spend` of spend, `standing` of standing.
+Their words appear after the six while open. `tab` returns to Home; `alt+.` shows
+all eight numbered destinations. Search is on Home: type into its box to find a
+conversation. There is no separate Search tab or `/search` command.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -1335,7 +1331,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | --- | --- | --- |
 | **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
 | **`next conversation's folder`** | `/project` · `/project <path>` | Bare, opens the folder browser **aimed at the next conversation**; picking a folder pins it, with no duplicate footer message. With a path, pins that folder at once, opens nothing and says nothing. Either way `project: ~/src/parser` at the right of the keys row shows the selection, and neither road writes a second sentence over the keys. |
-| **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
+| **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
 | **`onto home's tray`** | `/attach <path>` | The file — or picture — rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` opens the browser aimed at the next conversation's folder, and a file chosen there lands on the tray. |
 | **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/skill` `/skills` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder at the right of the keys row and the model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
@@ -1505,7 +1501,7 @@ and opens home. So a space you actually wanted is never eaten: space then `x` le
 **Wherever the door is drawn, two spaces open it.** That includes a box holding only blank
 lines, from a `ctrl+j` or an `alt+enter` you did not mean. It also includes the other
 places: the same two spaces, typed into a place's own empty box — the tasks roster's filter,
-the memory filter and the search query — open home from there. Places without a box,
+the memory filter — open home from there. Places without a box,
 such as spend and standing, count the two spaces directly. The door still
 loses to a space that already means something where you are standing: on the settings panel
 space is the row's `activate` verb, inside a task's record `space` pages the card, and on
@@ -1579,16 +1575,18 @@ this folder as the first row of `projects`.
 ## Is there a key for home?
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-four places on the tab bar, and each answers to its own position, `alt+1` through `alt+4`
-(the three places off the bar answer `alt+5` through `alt+7`).
+six words on the tab bar, and each answers to its own position, `alt+1` through `alt+6`
+(standing and memory, the two places off the bar, answer `alt+7` and `alt+8`).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
 `alt+<digit>` arrives in every terminal codeaf runs in — it is sent as escape-then-digit and
 has been for forty years — which is why the place keys are on `alt`. `ctrl+<digit>` has no
-encoding a terminal can send at all.
+encoding in the scheme most terminals speak; a terminal running the kitty keyboard protocol
+reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spelling that the
+map's own line names while it is live.
 
-There is still no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
+Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
 tasks place, `/history`).
 
 ## What landed while I was away — since you left, and the look stamp
