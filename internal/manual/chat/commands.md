@@ -430,13 +430,17 @@ replacement says so, and nothing is replaced.
 
 `/compact` notes `compacting…` immediately and reduces older completed work, even below
 the automatic threshold. It first turns old tool results into pointers and folds older
-assistant work, which costs nothing. Then, in the same pass, the conversation's own model
-writes a **summary** of whatever older conversation is left — your older messages included —
+assistant work, which costs nothing. If enough older conversation remains, the conversation's
+own model writes a **summary** in the same pass — your older messages included —
 and that summary replaces it, so one `/compact` shortens as far as it can. Your three most recent messages and
-everything after them stay word for word, and so does the system prompt. The full record
+everything after them stay word for word unless keeping three cannot get under the line;
+the pass then tries two, your latest with the reply before it, and your latest alone. The
+latest message and the system prompt always stay word for word. The full record
 stays in the session journal, and the summary names that file.
 
-Success reports `⚭ compacted · about N to M tokens`; these are estimates, and the line stays in the conversation as the record of the pass. When nothing
+Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
+`⚭ compacted` without a size when it did not; the figures are estimates, and the line
+stays in the conversation as the record of the pass. When nothing
 changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
 last summary — too little to summarize`, `there is nothing before your last 3 messages to
 summarize`, or `the model could not write a summary: ` and the reason. The status line's
@@ -444,8 +448,7 @@ count drops as soon as the pass lands.
 Other failures say `compact failed: ` followed by the reason. The pass runs off the input
 loop, so the surface stays responsive, and a message you send while it runs is not held
 behind it. A summary on a slow model can take a minute; the chat waits up to five. If the
-engine is still working after that, it says `still compacting — it is taking longer than
-usual and finishes on its own`, and the status line's count drops when the pass lands.
+engine is still working after that, it says `still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands`.
 `/compact` has no argument form and no alias.
 
 ## /rewind — go back to an earlier point in the conversation

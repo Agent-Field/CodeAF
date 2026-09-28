@@ -3496,13 +3496,14 @@ A compaction is drawn while it runs and left as one quiet line
 once it lands, so the conversation never silently loses its middle. Running, it reads
 `⠙ compacting ~84k tokens · 6s` — a braille spinner on the same grid as the tool
 spinners, dim, with a count-up. Settled, it becomes a dim line in the notes' lane:
-`· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · took 6s`. The duration is
+`· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · full record in the session journal · took 6s`. The duration is
 dropped under one second. It is never painted the question hue, because nobody is being
 asked anything. **It stays after the turn ends**: when the turn's work folds behind
 `▸ worked`, the compaction line stands outside the fold — above the answer when the pass
 ran mid-turn, under it when it ran at the end — so there is always a visible record that
 the model's copy of the conversation changed. A `/compact`
-you run yourself leaves the same mark: `· ⚭ compacted · about N to M tokens`.
+you run yourself leaves the same mark: `⚭ compacted · about N to M tokens` when the
+measured count fell, or `⚭ compacted` without a size when it did not.
 
 ## What is it doing right now — connecting, first word, thinking, writing, paced, trying again
 

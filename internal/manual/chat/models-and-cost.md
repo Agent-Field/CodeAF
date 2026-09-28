@@ -2805,7 +2805,9 @@ Compaction first asks no model: tool results can become pointers to their full b
 older assistant work can become a marker naming the saved journal. Only when that cannot
 reach the line the pass needs does the conversation's own model write a summary of the
 oldest part, your older messages included, marked `[context compacted]`. The system prompt
-and your three most recent messages, with everything after them, stay word for word.
+and your three most recent messages, with everything after them, stay word for word
+unless keeping three cannot get under the line. It then tries two, your latest with
+the reply before it, and your latest alone. The latest message always stays word for word.
 
 Routine cleanup keeps the latest 20,000 tokens, capped at a quarter of the window, and
 protects the running turn. `/compact` and necessary request-size recovery can also fold
@@ -2815,8 +2817,9 @@ that alone exceeds the allowance stays whole; pending tool calls are not discard
 
 Manual compaction does not wait for the automatic threshold. It folds eligible history
 outside that smaller tail. Necessary recovery takes enough older work to buy headroom,
-then checks the newly assembled request again. Nothing is paraphrased. Removed reasoning
-leaves together with the assistant message it belongs to.
+then checks the newly assembled request again. Those two free steps paraphrase nothing;
+a summary paraphrases the older part, while the originals stay in the session journal.
+Removed reasoning leaves together with the assistant message it belongs to.
 
 `nothing to compact — your messages and recent work are kept` means no eligible material
 could be reduced. It does not mean the whole request fits. A genuinely concurrent pass
@@ -2850,14 +2853,17 @@ cannot guarantee that every provider's initial response succeeds.
 
 `/compact` runs a reduction immediately, even below the automatic threshold. It notes
 `compacting…` and works off the input loop. Older completed work becomes pointers to the
-full journal first, which makes no model call. Then the conversation's own model
-summarizes whatever older conversation is left, your older messages included — in the
-same pass, so one `/compact` goes as far as it can.
+full journal first, which makes no model call. If enough older conversation remains,
+the conversation's own model summarizes it, your older messages included — in the same
+pass, so one `/compact` goes as far as it can.
 
-Your three most recent messages, the system prompt, the newest assistant/tool batch and the
-recent working tail stay word for word. Success reports `⚭ compacted · about N to M
-tokens`; those figures are estimates. A no-op says `nothing to compact — ` and why. A pass
-still running after five minutes says `still compacting — ` and lands on its own. Other
+Your three most recent messages and everything after them stay word for word unless
+keeping three cannot get under the line; the pass then tries two, your latest with the
+reply before it, and your latest alone. The latest message and system prompt always stay.
+Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
+`⚭ compacted` without a size when it did not; those figures are estimates. A no-op says
+`nothing to compact — ` and why. A pass still running after five minutes says
+`still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands`. Other
 failures say `compact failed: ` followed by the reason.
 
 There is no separate compaction model or summarization setting. The smaller retained tail and the

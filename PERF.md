@@ -1575,10 +1575,10 @@ otherwise getting 57–61% of its prompt back from.
 So the ceiling is a MEASUREMENT now and not a constant: the narrowest prompt this
 model has actually been refused for being too long, learned from the overflow
 refusal itself and remembered across processes
-(`internal/provider`'s `NoteServedWindow` / `ServedWindow`, applied by
-`session.TrustedWindowFor`). A model nobody has refused is believed; one that has
-refused is capped at what it refused, for good. The 386k incident now costs one
-turn per model per machine instead of every model for ever.
+(`internal/provider`'s `NoteServedWindow` / `ServedWindow`, applied while the provider
+sizes each assembled request). `session.TrustedWindowFor` now returns the catalog window
+unchanged: a model-only memo cannot say which endpoint can serve a request with tools.
+The provider uses the refused endpoint's evidence when that request is sized.
 
 Two guards stand behind that trade and neither is new: `guardOversizeRequest`
 still shrinks a transcript that has grown past the trusted window before it goes

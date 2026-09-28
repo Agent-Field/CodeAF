@@ -294,8 +294,8 @@ sitting at, and a hundred of those against a machine that is switched off is you
 working for nothing. A blip is caught by the first retry; a machine that is really gone is
 not worth hammering.
 
-Every call codeaf makes over a connection already gives up after 10 seconds, so nothing
-about a dead link can leave your terminal frozen while this is going on.
+Ordinary calls over a connection give up after 10 seconds. A remote `/compact` waits up
+to five minutes for a summary to finish; the chat stays responsive while it waits.
 
 ## It said something "fell over once and will be tried again"
 
