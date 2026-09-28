@@ -633,6 +633,8 @@ type TaskNotice struct {
 	// carries these facts in its own record. Nil is a row whose copy was never
 	// recorded, which is a run that cannot be carried on.
 	Copy *TaskCopyRecord
+	// PendingRun keeps an admitted request before it owns a working copy.
+	PendingRun *PendingRunRecord
 	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS, and it is the one
 	// fact that tells a row the store answers for from a row the graph holds a
 	// node for. It is set on a RUN's row and nowhere else, by the door that
@@ -822,6 +824,8 @@ type TaskNotice struct {
 	// draws its crew line from it, with CostUSD as the actual beside the
 	// estimate once there is one.
 	Crew *crewroute.Decision
+	// CrewState is the private checkpoint policy; surfaces draw Crew instead.
+	CrewState *TaskCrewRecord `json:"-"`
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as
@@ -978,4 +982,13 @@ func (c *TaskCall) Received() int {
 		return 0
 	}
 	return c.Tokens + c.Reasoning
+}
+
+// PendingRunRecord is the accepted work needed to rejoin machine admission after
+// restart. It is cleared once the working copy is recorded, before workers start.
+type PendingRunRecord struct {
+	Brief  string   `json:"brief"`
+	Ground string   `json:"ground"`
+	Mode   TaskMode `json:"mode"`
+	Asked  []string `json:"asked,omitempty"`
 }
