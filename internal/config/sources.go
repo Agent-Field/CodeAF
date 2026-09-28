@@ -35,6 +35,9 @@ type PersistedSource struct {
 	Address string `json:"address,omitempty"`
 	Key     string `json:"key,omitempty"`
 	KeyEnv  string `json:"key_env,omitempty"`
+	// KeyOptional records an explicitly checked anonymous custom endpoint.
+	// Vendored providers never inherit this per-instance choice.
+	KeyOptional bool `json:"key_optional,omitempty"`
 	// Door is the billing road explicitly proved at connect time. Empty belongs
 	// to a pre-door row and resolves to its old metered address, never to a new
 	// subscription road that has not been proved for that key.
@@ -85,6 +88,7 @@ func WriteSources(profileDir string, rows []PersistedSource) error {
 		}
 		if !modelsource.IsCustomID(row.ID) {
 			row.Address = ""
+			row.KeyOptional = false
 		} else {
 			row.Address = strings.TrimSpace(row.Address)
 		}
@@ -194,6 +198,9 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 			source, ok = template, true
 		}
 		source.ID = strings.TrimSpace(row.ID)
+		if modelsource.IsCustomID(source.ID) {
+			source.KeyOptional = row.KeyOptional
+		}
 		if written := strings.TrimSpace(row.Written); written != "" {
 			source.Written = written
 		}
@@ -380,6 +387,9 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	}
 	if written := strings.TrimSpace(row.Written); written != "" {
 		src.Written = written
+	}
+	if modelsource.IsCustomID(row.ID) && modelsource.IsCustomID(src.ID) {
+		src.KeyOptional = row.KeyOptional
 	}
 	key := SourceKeyAt(profileDir, row, src)
 	if key != "" {

@@ -21,7 +21,7 @@ import (
 // package keeps a model service named "google" separate from a Google account.
 const modelConnectionPrefix = "model-service:"
 
-const noServiceModelListWord = "no list from this service · type a model id"
+const noServiceModelListWord = "lists no models · type a model id"
 
 type modelConnectStep uint8
 
@@ -36,10 +36,13 @@ const (
 // on the Providers tab. The profile is not touched until every answer is here
 // and internal/config has accepted the service.
 type modelConnectDraft struct {
-	source modelsource.Source
-	row    config.PersistedSource
-	step   modelConnectStep
-	sheet  bool
+	source        modelsource.Source
+	row           config.PersistedSource
+	step          modelConnectStep
+	sheet         bool
+	addressCheck  uint64
+	addressCancel context.CancelFunc
+	keyRequired   bool
 	// entryID is the row the flow's answer boxes hang under, fixed at draft
 	// time. A custom connection that is still being minted has no persisted id
 	// of its own until the name answer lands, so the boxes cannot look the row
@@ -181,7 +184,7 @@ func (a *app) modelConnectionRows() []connect.Status {
 	// service and would put a second door onto the first connection here.
 	if len(customInstances(a.sources)) > 0 {
 		rows = append(rows, connect.Status{Service: connect.Service{
-			ID: modelConnectionID(customAddRowID), Name: "add custom connection",
+			ID: modelConnectionID(customAddRowID), Name: "+ add a provider",
 			Blurb: "address · key", Auth: connect.AuthKey, Category: "models",
 		}})
 	}
@@ -193,7 +196,7 @@ func (a *app) modelConnectionRows() []connect.Status {
 	// somewhere to move to, whatever the panel's other doors are.
 	if reading, ok := switchReading(a.conversationModel(), a.sources); ok {
 		rows = append(rows, connect.Status{Service: connect.Service{
-			ID: modelConnectionID(connectionSwitchRowID), Name: "active connection",
+			ID: modelConnectionID(connectionSwitchRowID), Name: "active provider",
 			Blurb: reading.sentence,
 			Auth:  connect.AuthKey, Category: "models",
 		}})
@@ -448,6 +451,10 @@ func regionChoices(source modelsource.Source) []entryChoice {
 }
 
 func (a *app) showModelEntry(entry *keyEntry, inSheet bool) {
+	if a.addPanel.open && !inSheet {
+		a.addPanel.entry = entry
+		return
+	}
 	if inSheet {
 		a.sheet.conn.entry = entry
 		a.sheet.build()
@@ -506,7 +513,7 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		return nil
 	}
 	answer := entry.value()
-	if answer == "" && draft.step != modelConnectName {
+	if answer == "" && draft.step != modelConnectName && !(draft.step == modelConnectKey && draft.editing && (draft.row.Key != "" || draft.row.KeyEnv != "")) {
 		a.showModelEntry(entry, draft.sheet)
 		return nil
 	}
@@ -525,20 +532,30 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 			a.showModelEntry(entry, draft.sheet)
 			return nil
 		}
-		draft.row.Address = strings.TrimRight(answer, "/")
-		draft.step = modelConnectName
-		// THE NAME IS ASKED, NOT ASSUMED. The default is the host's own slug,
-		// shared with config through modelsource.SourceSlug so every surface
-		// spells a host the same way; an edit starts from the name it already
-		// has, because changing it is a rename with consequences downstream.
-		name := modelsource.SourceSlug(modelsource.AddressHost(answer))
-		if draft.editing && draft.renamedFrom != "" {
-			name = draft.renamedFrom
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			a.modelServiceMessage("use an http or https base URL")
+			a.showModelEntry(entry, draft.sheet)
+			return nil
 		}
-		nameEntry := newModelEntry(draft.entryID, draft.source.Name, "name", nil, false)
-		nameEntry.box.setText(name)
-		a.showModelEntry(nameEntry, draft.sheet)
-		return nil
+		if draft.addressCancel != nil {
+			draft.addressCancel()
+		}
+		draft.row.Address = strings.TrimRight(answer, "/")
+		draft.addressCheck++
+		generation, address := draft.addressCheck, draft.row.Address
+		ctx := a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx, cancel := context.WithCancel(ctx)
+		draft.addressCancel = cancel
+		a.showModelEntry(entry, draft.sheet)
+		a.modelServiceMessage("checking the address")
+		return func() tea.Msg {
+			defer cancel()
+			count, err := ProbeOpenAIEndpoint(ctx, address, "")
+			return customAddressCheckedMsg{draft: draft, generation: generation, entry: entry, address: address, count: count, err: err}
+		}
 	case modelConnectName:
 		// AN EMPTY ANSWER MEANS WHAT THE BOX ALREADY SHOWED: a new connection
 		// takes the host slug the surface itself suggested, and an edit keeps
@@ -569,6 +586,13 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 			// later ones take custom-<slug> with a numeric tiebreak.
 			draft.row = config.PrepareCustomSource(a.profileDir, draft.row.Address, answer)
 		}
+		draft.row.KeyOptional = !draft.keyRequired
+		if !draft.keyRequired {
+			// Existing credentials also serve inference, even if listing is public.
+			copy := *draft
+			a.modelDraft = nil
+			return a.beginModelConnect(copy)
+		}
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(draft.entryID, draft.source.Name, "key", nil, true), draft.sheet)
 		return nil
@@ -592,6 +616,53 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 	return nil
 }
 
+// customAddressChecked accepts only the still-visible answer that launched it.
+// Closing, replacing, editing or resubmitting the box makes an old result inert.
+func (a *app) customAddressChecked(msg customAddressCheckedMsg) tea.Cmd {
+	draft := a.modelDraft
+	if draft == nil || draft != msg.draft || draft.step != modelConnectAddress || draft.addressCheck != msg.generation {
+		return nil
+	}
+	entry := a.connPanel.entry
+	if draft.sheet {
+		entry = a.sheet.conn.entry
+	} else if a.addPanel.open {
+		entry = a.addPanel.entry
+	}
+	if entry == nil || entry != msg.entry || strings.TrimRight(entry.value(), "/") != msg.address {
+		return nil
+	}
+	draft.addressCancel = nil
+	if msg.err != nil && !errors.Is(msg.err, errAuthRequired) {
+		a.modelServiceMessage("that address did not list models · " + msg.err.Error())
+		return nil
+	}
+	draft.keyRequired = errors.Is(msg.err, errAuthRequired)
+	draft.step = modelConnectName
+	name := modelsource.SourceSlug(modelsource.AddressHost(msg.address))
+	if draft.editing && draft.renamedFrom != "" {
+		name = draft.renamedFrom
+	}
+	nameEntry := newModelEntry(draft.entryID, draft.source.Name, "name", nil, false)
+	nameEntry.box.setText(name)
+	a.modelServiceMessage("")
+	a.showModelEntry(nameEntry, draft.sheet)
+	return nil
+}
+
+func (a *app) cancelModelEntry(entry *keyEntry) {
+	if entry == nil {
+		return
+	}
+	if _, model := modelConnectionSource(entry.id); !model {
+		return
+	}
+	if draft := a.modelDraft; draft != nil && draft.addressCancel != nil {
+		draft.addressCancel()
+	}
+	a.modelDraft = nil
+}
+
 // connectionNameFault says why a name cannot be a connection's Written word,
 // empty when it can. The name becomes the first segment of every model id the
 // connection qualifies and part of the persisted row, so the / that separates
@@ -599,10 +670,10 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 // two characters it cannot carry.
 func connectionNameFault(name string) string {
 	if strings.Contains(name, "/") {
-		return "a connection name cannot contain / · the slash is what separates connection from model"
+		return "a provider name cannot contain / · the slash is what separates provider from model"
 	}
 	if strings.ContainsFunc(name, unicode.IsSpace) {
-		return "a connection name cannot contain spaces · they would travel into every model id"
+		return "a provider name cannot contain spaces · they would travel into every model id"
 	}
 	return ""
 }
@@ -621,6 +692,9 @@ func modelKeyEnvironment(answer string) (string, bool) {
 }
 
 func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
+	if a.addPanel.open {
+		a.addPanel.close()
+	}
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -1075,11 +1149,15 @@ func deferredMoveWord(written string) string {
 }
 
 func serviceStrandedWord(was string) string {
-	return "this conversation was on " + was + " and nothing else here can take it · connect a service or pick a model"
+	return "this conversation was on " + was + " and nothing else here can take it · connect a provider or pick a model"
 }
 
 func (a *app) modelServiceMessage(line string) {
 	line = strings.TrimSpace(line)
+	if a.addPanel.open {
+		a.addPanel.err = line
+		return
+	}
 	if line == "" {
 		return
 	}
@@ -1298,7 +1376,7 @@ const connectionSwitchRowID = "switch-connection"
 // never a second implementation of the mint or the connect.
 func customAddRow() *modelServiceRow {
 	return &modelServiceRow{
-		id: customAddRowID, name: "add custom connection",
+		id: customAddRowID, name: "+ add a provider",
 		value: "an OpenAI-compatible base URL · a name of your own", addCustom: true,
 	}
 }
@@ -1359,7 +1437,7 @@ func (s *sheet) connectionSwitcherRow() *modelServiceRow {
 	if !ok {
 		return nil
 	}
-	return &modelServiceRow{name: "active connection", value: reading.sentence, switcher: true}
+	return &modelServiceRow{name: "active provider", value: reading.sentence, switcher: true}
 }
 
 // serviceWrittenWord is the name a person calls a service in the switcher's
@@ -1514,4 +1592,173 @@ func (a *app) reconnectModelService(id string) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// addProviderRowWord is the model picker's last row: the door to connect
+// another provider, living in the same list the choice is made in.
+const addProviderRowWord = "+ add a provider"
+
+const cannotListModelsWord = "can't list models · "
+const listRetryWord = " · ctrl+r retry"
+
+// serviceGroupHead is a block's head line: the service as written, its
+// address when it has one, and how many models it listed. Two facts a person
+// reads before they read a single row under it.
+func serviceGroupHead(source modelsource.Source, count int) string {
+	name := strings.TrimSpace(source.Written)
+	if name == "" {
+		name = strings.TrimSpace(source.Name)
+	}
+	line := ""
+	if addr := strings.TrimSpace(source.Address); addr != "" {
+		line = strings.TrimPrefix(strings.TrimPrefix(addr, "https://"), "http://") + " · "
+	}
+	word := "models"
+	if count == 1 {
+		word = "model"
+	}
+	return name + "   " + line + itoa(count) + " " + word
+}
+
+// defaultServiceRow is the Providers tab's first row: the default provider,
+// named with its address, its model count and whether a key is set. Nil when
+// the default service is not connected — the tab then reads only what is.
+func defaultServiceRow(dir string, sources modelsource.Set) *modelServiceRow {
+	service, ok := sources.ByID(modelsource.DefaultID)
+	if !ok {
+		return nil
+	}
+	parts := make([]string, 0, 3)
+	if addr := strings.TrimSpace(service.Source.Address); addr != "" {
+		addr = strings.TrimPrefix(strings.TrimPrefix(addr, "https://"), "http://")
+		parts = append(parts, addr)
+	}
+	if count := len(readModelCacheName(modelCacheNameFor(service.Source.ID, service.Source.Address))); count > 0 {
+		parts = append(parts, itoa(count)+" models")
+	}
+	switch {
+	case strings.TrimSpace(service.Key) != "":
+		parts = append(parts, "key set")
+	case service.Source.KeyOptional:
+		parts = append(parts, "no key needed")
+	default:
+		parts = append(parts, "no key")
+	}
+	return &modelServiceRow{id: modelsource.DefaultID, name: strings.TrimSpace(service.Source.Written), value: strings.Join(parts, " · ")}
+}
+
+// modelServiceMenuChoices offers only operations the connection can perform.
+func (a *app) modelServiceMenuChoices(id string) []entryChoice {
+	source, ok := a.modelSource(id)
+	if !ok {
+		return nil
+	}
+	var choices []entryChoice
+	if id == modelsource.DefaultID {
+		if a.refreshModels != nil {
+			choices = append(choices, entryChoice{ID: "refresh", Name: "refresh models"})
+		}
+		return append(choices, entryChoice{ID: "key", Name: "change key"})
+	}
+	if source.ID == "codex" {
+		return []entryChoice{{ID: "disconnect", Name: "disconnect"}}
+	}
+	if a.refreshAllModels != nil && source.Listing == modelsource.ListingModels {
+		choices = append(choices, entryChoice{ID: "refresh", Name: "refresh models"})
+	}
+	if modelsource.IsCustomID(id) {
+		choices = append(choices, entryChoice{ID: "rename", Name: "rename"})
+	}
+	if !source.KeyOptional || modelsource.IsCustomID(id) {
+		choices = append(choices, entryChoice{ID: "key", Name: "change key"})
+	}
+	return append(choices, entryChoice{ID: "disconnect", Name: "disconnect"})
+}
+
+// modelServiceMenuChoice acts on an operation this provider supports.
+// Every branch is a door this surface already had; the menu only holds the
+// doors together in one place.
+func (a *app) modelServiceMenuChoice(id, action string) tea.Cmd {
+	allowed := false
+	for _, choice := range a.modelServiceMenuChoices(id) {
+		if choice.ID == action {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return nil
+	}
+	if id == modelsource.DefaultID {
+		if action == "key" {
+			for at, item := range a.sheet.items {
+				if item.row.Key == config.KeyAPIKey {
+					a.sheet.cursor = at
+					return a.activate()
+				}
+			}
+			return nil
+		}
+		if a.modelsFetching {
+			return nil
+		}
+		a.modelsFetching, a.pick.fetching = true, a.pick.open
+		a.sheet.msg = modelsFetching
+		fetch, ctx := a.refreshModels, a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		shown := map[string]bool{}
+		for _, row := range a.defaultServiceModels() {
+			shown[row.ID] = true
+		}
+		return func() tea.Msg {
+			rows, at, err := fetch(ctx)
+			return modelsFetchedMsg{rows: rows, at: at, err: err, shown: shown}
+		}
+	}
+	switch action {
+	case "refresh":
+		// Refreshing a list must not adopt that provider's preferred model.
+		if a.modelsFetching {
+			return nil
+		}
+		a.modelsFetching, a.pick.fetching = true, a.pick.open
+		a.sheet.msg = modelsFetching
+		walk, ctx := a.refreshAllModels, a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		return func() tea.Msg { walk(ctx); return modelsFetchedMsg{all: true} }
+	case "rename":
+		source, ok := a.modelSource(id)
+		if !ok {
+			return nil
+		}
+		return a.startModelConnect(modelConnectionStatus(source, true), true)
+	case "key":
+		source, ok := a.modelSource(id)
+		if !ok {
+			return nil
+		}
+		cmd := a.startModelConnect(modelConnectionStatus(source, true), true)
+		// Custom connections keep their address when changing credentials.
+		// Vendored connections retain the region choice before the key.
+		if draft := a.modelDraft; draft != nil && modelsource.IsCustomID(id) {
+			draft.step = modelConnectKey
+			a.showModelEntry(newModelEntry(modelConnectionID(id), draft.source.Name, "key", nil, true), true)
+		}
+		return cmd
+	case "disconnect":
+		a.disconnectModelService(id)
+		return nil
+	}
+	return nil
+}
+
+// isServiceMenuChoices tells the menu answer from any other closed-choice
+// entry that shares its id — a region answer opens a choice entry over the
+// same connection, and a menu verb must never swallow a region answer.
+func isServiceMenuChoices(entry *keyEntry) bool {
+	return entry.blank == "provider action"
 }
