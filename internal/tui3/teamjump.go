@@ -159,7 +159,7 @@ func (a *app) teamEntryAt(id string) int {
 			}
 		}
 	}
-	return -1
+	return a.teamStartEntryAt(id)
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the

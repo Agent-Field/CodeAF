@@ -262,7 +262,9 @@ func TestTrafficStartRootRevealsManagerCallAndMemberBrief(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: handle, To: teamstore.ToManager, Text: "Invoice rows checked", Answers: id})
 	trafficReadNow(t, a)
+	a.sideSetView(sideTraffic)
 	a.workMode = config.WorkFold
 	a.entries = foldFixture()
 	a.entries[3] = entry{kind: entryTool, tool: "team_start", text: "team_start", turn: 1, status: toolOK, settled: true,
@@ -315,5 +317,35 @@ func TestTrafficStartRootDoesNotGuessAnotherCall(t *testing.T) {
 				t.Fatalf("matched unrelated call at %d", at)
 			}
 		})
+	}
+}
+
+func TestTrafficStartRootUsesReceiptAndRejectsAmbiguousLegacy(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	root := teamstore.Entry{ID: "000000000123", Kind: teamstore.KindStart, From: teamstore.FromManager, To: "review", Text: "accepted brief"}
+	later := root
+	later.ID = "000000000124"
+	a.traffic.rows = map[string][]teamstore.Entry{harbor: {root, later}}
+	call := entry{kind: entryTool, tool: "team_start", status: toolOK, settled: true, detail: toolDetail{Args: `{"handle":"review","brief":"accepted brief"}`, Output: "Asked for a new member."}}
+	a.entries = []entry{call, call}
+	if at := a.teamEntryAt(root.ID); at != -1 {
+		t.Fatalf("ambiguous legacy start guessed entry%d", at)
+	}
+	a.entries[0].detail.Output = "Asked for a new member @review in \"harbor\" (#123)."
+	a.entries[1].detail.Output = "Asked for a new member @review in \"harbor\" (#124)."
+	if at := a.teamEntryAt(root.ID); at != 0 {
+		t.Fatalf("receipt selected entry%d instead of0", at)
+	}
+	if at := a.teamEntryAt(later.ID); at != 1 {
+		t.Fatalf("receipt selected entry%d instead of1", at)
+	}
+	a.entries[0].detail.Args = `{"handle":"review","brief":"accepted brief","team":"another-team"}`
+	if at := a.teamEntryAt(root.ID); at != -1 {
+		t.Fatalf("cross-team receipt selected entry%d", at)
+	}
+	a.entries[0] = call
+	a.entries = a.entries[:1]
+	if at := a.teamEntryAt(root.ID); at != -1 {
+		t.Fatalf("two roots for one legacy call guessed entry%d", at)
 	}
 }

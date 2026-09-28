@@ -437,3 +437,12 @@ step to read the complete exchange, or open Traffic. The manager is instructed
 to tell you meaningful new results, blockers, decisions, and requested updates,
 without repeating an unchanged status. Its exact `[no change]` response is kept
 in the model record but does not add another answer to your conversation.
+
+## Opening a new member’s brief from Traffic
+
+Press a new-member Traffic row’s words to reveal the accepted `team_start` call in
+the manager’s conversation. Its receipt carries the message number. Press the
+member’s handle to open the delivered brief in that member’s conversation.
+Collapsed work opens at the selected message. Older unnumbered receipts are
+matched only when the accepted handle and brief identify one successful start
+in the current team; ambiguous or missing history is not guessed.
