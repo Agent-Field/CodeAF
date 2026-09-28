@@ -304,15 +304,20 @@ func waitParkedOnItsCommand(t *testing.T, node *Agent, completer *scriptedComple
 // drawn from, where a settled job's elapsed is its ending minus its start
 // ([job.info]).
 //
-// THE POLL IS ONLY THE WAIT AND NEVER THE READING. A watcher that stamped
+// THE DONE SIGNAL IS THE WAIT AND NEVER THE READING. A watcher that stamped
 // time.Now() when it NOTICED the state change would be reporting how often it
 // looked, and the gaps this file prints are sub-millisecond once the wait exists.
 func waitSettled(t *testing.T, node *Agent, id int) time.Time {
 	t.Helper()
 	for until := generously(t, 30*time.Second); time.Now().Before(until); {
-		if one := node.jobs.find(id); one != nil && !one.running() {
-			settled := one.info()
-			return settled.started.Add(settled.elapsed)
+		if one := node.jobs.find(id); one != nil {
+			select {
+			case <-one.done:
+				settled := one.info()
+				return settled.started.Add(settled.elapsed)
+			case <-time.After(time.Until(until)):
+				t.Fatalf("job %d never ended", id)
+			}
 		}
 		time.Sleep(time.Millisecond)
 	}
