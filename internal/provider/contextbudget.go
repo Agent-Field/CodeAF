@@ -48,25 +48,32 @@ func (c *Client) rememberContextLimit(model string, failure *APIError) {
 		return
 	}
 	limit := ContextLimit{Base: c.config.BaseURL, Model: normalizeModel(model), Provider: failure.Provider, Tokens: failure.ContextLimit}
-	key := contextLimitKey(limit.Base, limit.Model, limit.Provider)
-	quirks.mutex.Lock()
-	if quirks.contextLimits == nil {
-		quirks.contextLimits = make(map[string]ContextLimit)
-	}
-	old, known := quirks.contextLimits[key]
-	changed := !known || old.Tokens != limit.Tokens
-	quirks.contextLimits[key] = limit
-	quirks.mutex.Unlock()
+	changed := storeContextLimit(limit)
 	failure.BudgetChanged = changed
 	if changed {
 		quirks.persist()
 	}
 }
 
-// requestWindow takes the smallest known window among endpoints this request
+// storeContextLimit records one endpoint's stated window and reports whether
+// it is news. The memo's lock is released by a defer, so a panic inside cannot
+// leave every later request waiting on it.
+func storeContextLimit(limit ContextLimit) bool {
+	key := contextLimitKey(limit.Base, limit.Model, limit.Provider)
+	quirks.mutex.Lock()
+	defer quirks.mutex.Unlock()
+	if quirks.contextLimits == nil {
+		quirks.contextLimits = make(map[string]ContextLimit)
+	}
+	old, known := quirks.contextLimits[key]
+	quirks.contextLimits[key] = limit
+	return !known || old.Tokens != limit.Tokens
+}
+
+// servingWindow takes the smallest known window among endpoints this request
 // can reach. A strict pin excludes other endpoints; an advisory order does not.
 // This is a read of the existing sheet and memo, with no network work.
-func (c *Client) requestWindow(model string, prefs *providerPrefs, claimed int) int {
+func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int) int {
 	window := claimed
 	take := func(tokens int) {
 		if tokens > 0 && (window <= 0 || tokens < window) {
@@ -86,14 +93,27 @@ func (c *Client) requestWindow(model string, prefs *providerPrefs, claimed int) 
 			}
 		}
 	}
-	quirks.mutex.Lock()
-	for _, limit := range quirks.contextLimits {
-		if contextLimitKey(limit.Base, limit.Model, "") == contextLimitKey(c.config.BaseURL, model, "") && accepts(limit.Provider) {
+	for _, limit := range storedContextLimits(c.config.BaseURL, model) {
+		if accepts(limit.Provider) {
 			take(limit.Tokens)
 		}
 	}
-	quirks.mutex.Unlock()
 	return window
+}
+
+// storedContextLimits is every window the memo holds for one account and
+// model, whichever endpoint stated it.
+func storedContextLimits(base, model string) []ContextLimit {
+	want := contextLimitKey(base, model, "")
+	quirks.mutex.Lock()
+	defer quirks.mutex.Unlock()
+	var limits []ContextLimit
+	for _, limit := range quirks.contextLimits {
+		if contextLimitKey(limit.Base, limit.Model, "") == want {
+			limits = append(limits, limit)
+		}
+	}
+	return limits
 }
 
 // minimumContextAnswer is a useful short answer, not the desired reply size.
@@ -113,7 +133,7 @@ func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tool
 		return ceiling, hasCeiling, nil
 	}
 	model := c.modelFor(request)
-	window := c.requestWindow(model, prefs, knobs.contextBudget.Window)
+	window := c.servingWindow(model, prefs, knobs.contextBudget.Window)
 	weight := 0
 	for _, message := range messages {
 		weight += len(message)

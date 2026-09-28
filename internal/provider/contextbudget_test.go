@@ -80,11 +80,11 @@ func TestContextBudgetFitsInputAndOutputAndIgnoresOldModelMemo(t *testing.T) {
 	}
 	// A pinned different endpoint and a different account do not inherit this
 	// endpoint's refusal. An advisory order may still land on the smaller one.
-	if got := client.requestWindow(model, &providerPrefs{Only: []string{"Other"}}, 131072); got != 131072 {
+	if got := client.servingWindow(model, &providerPrefs{Only: []string{"Other"}}, 131072); got != 131072 {
 		t.Fatalf("other endpoint got %d", got)
 	}
 	other, _ := NewClient(Config{BaseURL: "http://another.test", Model: model, Direct: true})
-	if got := other.requestWindow(model, nil, 131072); got != 131072 {
+	if got := other.servingWindow(model, nil, 131072); got != 131072 {
 		t.Fatalf("other account got %d", got)
 	}
 	quirks.settle()
