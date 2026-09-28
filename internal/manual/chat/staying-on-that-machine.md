@@ -479,6 +479,12 @@ in the middle of stops where it is and keeps what it had written — and they re
 new build. Windows that were on it reconnect to the new one. `codeaf engine --daemon` does
 the same and prints the same line.
 
+When both ends support restart detection, that reconnect retires the old reply channels
+before displaying new replies. If an answer was still open, the window says
+`the engine restarted; the previous answer stopped`. Your saved conversation remains;
+asking a follow-up starts a fresh answer instead of silently losing it. A temporary link
+loss to the same running engine still resumes its existing answer.
+
 "Older" is when the build was made, whichever file it runs from: another binary built two
 days ago is older, and so is one too old to say. **A newer engine is never replaced** by an
 older codeaf — that window joins it — and two copies of one build never take the slot from
