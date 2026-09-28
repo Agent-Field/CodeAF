@@ -415,7 +415,10 @@ func (j *job) settledKilled() bool {
 // is what makes the close of done safe without a second flag guarding it.
 func (j *job) settle(code int) bool {
 	// The log file closes before the status is final, so a reader that sees a
-	// finished job sees a complete file.
+	// finished job sees a complete file. Closing it only ASKS the registry for
+	// a folder pass ([jobRegistry.askRetention]); the sweep itself never runs
+	// on this road, because a stop that waited for it read as running for a
+	// whole folder scan (issue #1636).
 	j.sink.close()
 
 	j.mu.Lock()
@@ -540,6 +543,22 @@ type jobRegistry struct {
 	// to say no.
 	closed bool
 	epoch  uint64
+	// THE LOG-FOLDER SWEEP BELONGS TO THE REGISTRY AND NOT TO ANY ONE JOB'S
+	// ENDING (issue #1636). A job's end only ASKS for it; one pass at a time
+	// drains every folder asked for, off the road that publishes the ending, so
+	// a stopped job reads as ended at once rather than after a whole folder scan.
+	// retentionPass is that pass's channel, closed when it has drained, and it
+	// is how [jobRegistry.shutdown] joins it.
+	retentionPass    chan struct{}
+	retentionPending map[string]map[*jobSink]struct{}
+	// retentionShut refuses new passes. It is set at the END of shutdown's round
+	// and not with `closed`, so a job that dies inside the grace still has its
+	// folder tidied, and joined, before Close returns; only a death nobody waits
+	// for (the SIGKILL after the grace) is left to the next claim or the startup
+	// sweep. [jobRegistry.reopen] clears it with `closed`.
+	retentionShut bool
+	// The stage callback is a per-registry test seam; production leaves it nil.
+	retentionStage func(string)
 }
 
 func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
@@ -610,10 +629,81 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		done:    make(chan struct{}),
 	}
 	started.sink = newJobSink(logFile, logPath)
-	// Retention maintenance (issue #1601) runs when the sink closes — the
-	// maintenance also runs at claim and startup, never per Write.
-	started.sink.finishRetention = func() { jobRetentionFinish(started.sink) }
+	// Closing asks for maintenance before the job publishes its final state.
+	// Claim and startup also sweep, while a log write never does.
+	started.sink.finishRetention = func() { r.askRetention(directory, started.sink) }
 	return started, nil
+}
+
+// askRetention only queues an ending. The folder pass must not hold up the
+// state change or the done signal that follow the sink's close.
+func (r *jobRegistry) askRetention(directory string, sink *jobSink) {
+	r.mu.Lock()
+	if r.retentionShut {
+		r.mu.Unlock()
+		return
+	}
+	if r.retentionPending == nil {
+		r.retentionPending = make(map[string]map[*jobSink]struct{})
+	}
+	if r.retentionPending[directory] == nil {
+		r.retentionPending[directory] = make(map[*jobSink]struct{})
+	}
+	r.retentionPending[directory][sink] = struct{}{}
+	if r.retentionPass == nil {
+		r.retentionPass = make(chan struct{})
+		go r.runRetentionPass(r.retentionPass)
+	}
+	r.mu.Unlock()
+}
+
+// runRetentionPass drains requests already admitted even if shutdown closed
+// the registry meanwhile. One goroutine and one directory pass at a time keep
+// a busy set of endings from multiplying folder scans.
+func (r *jobRegistry) runRetentionPass(done chan struct{}) {
+	for {
+		r.mu.Lock()
+		pending := r.retentionPending
+		r.retentionPending = nil
+		if len(pending) == 0 {
+			r.retentionPass = nil
+			r.mu.Unlock()
+			close(done)
+			return
+		}
+		stage := r.retentionStage
+		r.mu.Unlock()
+		for directory, sinks := range pending {
+			if err := jobRetentionTidy(directory, defaultJobRetentionBudget(), stage); err != nil {
+				for sink := range sinks {
+					sink.mu.Lock()
+					sink.retentionText = "job log retention deferred: " + err.Error()
+					sink.mu.Unlock()
+				}
+			}
+		}
+	}
+}
+
+// joinRetention refuses new folder passes and waits for the one in progress,
+// together with everything it had been asked for before the refusal.
+func (r *jobRegistry) joinRetention() {
+	r.mu.Lock()
+	r.retentionShut = true
+	pass := r.retentionPass
+	r.mu.Unlock()
+	if pass != nil {
+		<-pass
+	}
+}
+
+// reopen admits work again after a Stop work round shut this registry
+// (stopwork.go). Job ids and logs are kept; endings ask for folder passes again.
+func (r *jobRegistry) reopen() {
+	r.mu.Lock()
+	r.closed = false
+	r.retentionShut = false
+	r.mu.Unlock()
 }
 
 // claimJobLog reserves the persistent id, creates the spool, and holds its
@@ -880,11 +970,11 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	if r.notify == nil {
 		return
 	}
-	if done.sink.notice() != "" {
+	if done.sink.completionNotice() != "" {
 		if note == "" {
 			note = fmt.Sprintf("job %d finished", done.id)
 		}
-		note += "\n\n[job " + strconv.Itoa(done.id) + " · " + done.sink.logFooter(done.logPath) + "]"
+		note += "\n\n[job " + strconv.Itoa(done.id) + " · " + done.sink.completionFooter(done.logPath) + "]"
 	}
 	if note == "" {
 		return
@@ -1021,12 +1111,12 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		// make one more call for what the note was already about.
 		if watched.kind == jobKindBash {
 			tail := watched.sink.tail(jobExitTailLines)
-			if strings.TrimSpace(tail) != "" || watched.sink.notice() != "" || watched.sink.retentionLost() {
+			if strings.TrimSpace(tail) != "" || watched.sink.completionNotice() != "" || watched.sink.retentionLost() {
 				if strings.TrimSpace(tail) != "" {
 					note += "\n\n" + tail
 				}
 				note += "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
-					strconv.Itoa(jobExitTailLines) + " lines · " + watched.sink.logFooter(watched.logPath) + "]"
+					strconv.Itoa(jobExitTailLines) + " lines · " + watched.sink.completionFooter(watched.logPath) + "]"
 			}
 		}
 		r.notify(note)
@@ -1121,6 +1211,13 @@ func (r *jobRegistry) shutdown(grace time.Duration) {
 	r.mu.Lock()
 	r.closed = true
 	r.mu.Unlock()
+	// THE FOLDER PASS IS JOINED ON EVERY ROAD OUT, the no-running-jobs return
+	// included: that return is exactly where a caller that then removes the
+	// folder (a copy's give-back, a test's temporary directory) used to race a
+	// sweep still writing in it. It runs last so the jobs this round ends inside
+	// its grace are tidied too. A pass reads one folder at a time and is
+	// bounded, so the wait carries no timer of its own.
+	defer r.joinRetention()
 
 	var claimed []*job
 	for _, candidate := range r.all() {
@@ -1433,9 +1530,9 @@ func (s *jobSink) breakSpoolLocked(err error) {
 	s.brokenText = "job log stopped: " + err.Error()
 }
 
-func (s *jobSink) noticeLocked() string {
+func (s *jobSink) noticeLocked(includeRetention bool) string {
 	parts := []string{}
-	if s.retentionText != "" {
+	if includeRetention && s.retentionText != "" {
 		parts = append(parts, s.retentionText)
 	}
 	if s.brokenText != "" {
@@ -1456,22 +1553,47 @@ func (s *jobSink) notice() string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.noticeLocked()
+	return s.noticeLocked(true)
+}
+
+// A completion note belongs to the ending, while retention may finish later.
+// Only jobs output reports a failure from that independent folder pass.
+func (s *jobSink) completionNotice() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.noticeLocked(false)
 }
 
 // logFooter names both chunks from the first rotation, even before any bytes
 // are discarded. Calling only the live chunk the full log would be false.
 func (s *jobSink) logFooter(path string) string {
+	return s.footer(path, true)
+}
+
+func (s *jobSink) completionFooter(path string) string {
+	return s.footer(path, false)
+}
+
+func (s *jobSink) footer(path string, includeRetention bool) string {
 	if s.retentionLost() {
 		ending := "log evicted by the retention budget · the lines above are the in-memory tail"
-		if notice := s.notice(); notice != "" {
+		var notice string
+		if includeRetention {
+			notice = s.notice()
+		} else {
+			notice = s.completionNotice()
+		}
+		if notice != "" {
 			ending = notice + " · " + ending
 		}
 		return ending
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	notice := s.noticeLocked()
+	notice := s.noticeLocked(includeRetention)
 	if notice == "" {
 		return "full log: " + path
 	}
@@ -1536,7 +1658,7 @@ func (s *jobSink) close() {
 	finish := s.finishRetention
 	s.finishRetention = nil
 	s.mu.Unlock()
-	// Maintenance takes the directory lock only after releasing the writer
+	// The request takes the registry lock only after releasing the writer
 	// lease and sink mutex, so it cannot deadlock with another job's claim.
 	if finish != nil {
 		finish()
