@@ -51,8 +51,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # `git gc --prune=now` then drops the commits past the base so not even a
 # packed ref carries the fix. The history BELOW the base commit stays: that is
 # the repository's real past and part of the environment.
-ARG BASE_COMMIT
-ARG REFERENCE_COMMIT
+# The ARGs carry the task's own pinned commits as defaults, so a harness that
+# builds this Dockerfile without build args (Pier does) gets the same tree.
+ARG BASE_COMMIT=fc0dd94d716e87a0373091e9946b1011d4ac682c
+ARG REFERENCE_COMMIT=440674e0a09d549c8cd3fb18ee762e04fa3b83bd
 RUN git clone --no-tags https://github.com/sourcemeta/jsonschema.git /root/repos/jsonschema \
     && cd /root/repos/jsonschema \
     && git checkout "$BASE_COMMIT" \
@@ -61,12 +63,23 @@ RUN git clone --no-tags https://github.com/sourcemeta/jsonschema.git /root/repos
     && rm -f .git/FETCH_HEAD .git/ORIG_HEAD \
     && git reflog expire --all --expire=now --expire-unreachable=now \
     && git gc --prune=now --quiet \
-    && git config --global --add safe.directory /root/repos/jsonschema \
-    && git config user.name "Bench Agent" \
-    && git config user.email "bench-agent@example.invalid" \
     && git rev-parse HEAD | grep -qx "$BASE_COMMIT" \
     && ! git cat-file -e "$REFERENCE_COMMIT" 2>/dev/null \
     && ! git for-each-ref --format='%(refname)' | grep -q .
+
+# The harness-user layout. Pier's agents run as the user `agent`, so the
+# repository lives in the agent's own home and is owned by it; the root path
+# is a symlink to the same tree, which is what the senior-dev arm's --dir and
+# the brief's `make -C ~/repos/jsonschema` both resolve to. Git identity is
+# set system-wide so either user can commit.
+RUN useradd -m -s /bin/bash agent \
+    && mkdir -p /home/agent/repos /logs \
+    && mv /root/repos/jsonschema /home/agent/repos/jsonschema \
+    && ln -s /home/agent/repos/jsonschema /root/repos/jsonschema \
+    && git config --system user.name "Bench Agent" \
+    && git config --system user.email "bench-agent@example.invalid" \
+    && git config --system --add safe.directory /home/agent/repos/jsonschema \
+    && git config --system --add safe.directory /root/repos/jsonschema
 
 # The agent's shell should feel like a workstation, not a bare container.
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
