@@ -177,6 +177,9 @@ type Client struct {
 	// carry (withdrawn.go). It is beside `encodes` for the same reason: a fact
 	// about one router and one account, over the span of one conversation.
 	withdrawn withdrawnMemo
+	// toolless is which models this client has said it sends no tools to
+	// (toolless.go).
+	toolless toollessMemo
 	// encodes is what this client already knows its transcript and its tool
 	// block serialize to (memo.go). It changes nothing about the bytes and is
 	// carried per client because a transcript belongs to a conversation.
@@ -597,6 +600,9 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 		return nil, withdrawnRefusal(model)
 	}
 	noteModelTried(ctx, model)
+	// A MODEL THE CATALOG SAYS TAKES NO TOOLS IS SENT NONE (toolless.go), before
+	// any body is encoded, so the size check measures what really goes out.
+	knobs = c.leaveOffTools(ctx, model, knobs, len(request.Tools) > 0)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
 	// AN ANSWER MEANS IT IS CARRIED AGAIN. A memo nothing clears takes a model
 	// away for the life of the process on the strength of one bad minute.
@@ -768,7 +774,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, encodeFailure(err)
 	}
 	began := logNow()
 	response, err := c.send(ctx, request, knobs, body, stream)
@@ -844,7 +850,7 @@ func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnob
 	refused.Body.Close()
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, encodeFailure(err)
 	}
 	return c.send(ctx, request, knobs, body, stream)
 }

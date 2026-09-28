@@ -493,7 +493,7 @@ var relaxRungs = []relaxStep{
 	{bit: relaxMaxTokens, label: "removed max_tokens", name: "max_tokens"},
 	{bit: relaxResponseFormat, label: "removed response_format", name: "response_format"},
 	{bit: relaxImages, label: "removed images", name: "images"},
-	{bit: relaxTools, label: "removed tools", name: "tools"},
+	{bit: relaxTools, label: "sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer", name: "tools"},
 }
 
 // widenedOff is what the first rung really takes off ONE preference object:
@@ -591,7 +591,7 @@ func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model stri
 	if carriesAttachments(request.Messages) {
 		plan = append(plan, rung(relaxImages))
 	}
-	if len(request.Tools) > 0 {
+	if len(request.Tools) > 0 && !knobs.relaxed.has(relaxTools) {
 		plan = append(plan, rung(relaxTools))
 	}
 	return plan

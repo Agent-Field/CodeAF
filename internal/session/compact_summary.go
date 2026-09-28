@@ -156,7 +156,18 @@ func summaryWanted(policy compactPolicy, pass compactionPass, transcript int) bo
 // their encoding. The transcript estimate does not carry them, and on a small
 // window they are most of what is sent. It takes the belt's own lock, so it is
 // read before the session lock is.
+//
+// A model the catalog says takes no tools is sent none (internal/provider's
+// toolless.go), so for it the belt weighs nothing.
 func (a *Agent) beltTokens() int {
+	if a.config.SupportsParameter != nil {
+		a.mu.Lock()
+		model := a.model
+		a.mu.Unlock()
+		if supported, known := a.config.SupportsParameter(model, "tools"); known && !supported {
+			return 0
+		}
+	}
 	definitions := a.beltDefinitions()
 	if len(definitions) == 0 {
 		return 0

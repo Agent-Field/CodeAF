@@ -4048,3 +4048,28 @@ check, and completed spending resets at the local date boundary. Calls already
 in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately.
+
+## A model that can't use tools — what retry "removed tools" meant, "can't use tools, so it answers without them", "sent without tools"
+
+Some models take no tool calls at all. When the model catalog says so (the model's
+published parameters do not include tools), codeaf leaves every tool off the request from
+the start and says so once per model, the first time:
+
+```
+microsoft/phi-4 can't use tools, so it answers without them — it cannot read, search or change files
+```
+
+The conversation still works as a chat: the model answers from what it knows and from what
+you paste in. It cannot open files, run commands or look anything up, and it will say so
+if you ask it to. The request-size check counts only what is really sent, so tool
+definitions the model never receives do not make the conversation look fuller than it is.
+Pick a model that takes tools (`/model`) when you need it to work in your files.
+
+A model the catalog does not know is still sent its tools. If no provider serving it accepts
+them, the retry line says so — it used to read `Retry 1/1: removed tools`, which did not
+say why:
+
+```
+Retry 1/1: sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer
+```
+
