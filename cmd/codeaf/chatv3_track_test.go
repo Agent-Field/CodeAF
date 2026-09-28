@@ -23,7 +23,14 @@ func v3HeldAgents(proc *v3Process) []*session.Agent {
 // put in it is the thing a broadcast has to reach.
 func v3TrackedAgent(t *testing.T, workspace string) *session.Agent {
 	t.Helper()
-	place, err := v3MintSession(t.TempDir(), workspace, workspace, false)
+	return v3TrackedAgentIn(t, workspace, t.TempDir())
+}
+
+// v3TrackedAgentIn lets a caller own the home of a real tracked conversation.
+// A close test needs to remove that home itself before the test framework does.
+func v3TrackedAgentIn(t *testing.T, workspace, home string) *session.Agent {
+	t.Helper()
+	place, err := v3MintSession(home, workspace, workspace, false)
 	if err != nil {
 		t.Fatal(err)
 	}

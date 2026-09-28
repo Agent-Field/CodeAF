@@ -2,8 +2,9 @@
 
 ## I just installed it — what is the first thing to do after installing codeaf
 
-Run `codeaf`. That is the whole of it: the installer leaves the program at
-`~/.codeaf/bin/codeaf` and asks nothing else of you, and the setup described below is the
+Run `codeaf`, or press `enter` when the installer asks `Start codeaf in <folder> now?`.
+That is the whole of it: the installer leaves the program at `~/.codeaf/bin/codeaf`,
+links it into a folder already on `PATH` when it can, and asks nothing else of you, and the setup described below is the
 only setup there is. It opens by itself the first time, so there is no command to go
 looking for and nothing to configure by hand first.
 
