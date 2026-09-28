@@ -342,7 +342,7 @@ if [ "${SKIP_GRADE:-0}" = 1 ]; then
 fi
 
 t1=$(date +%s)
-EGRESS_SCAN=1 TASK_ID="$TASK" RESULTS="$RESULTS" bash "$SNAPSHOT_DIR/grade.sh" "$OUT" || \
+EGRESS_SCAN=1 TASK_ID="$TASK" RESULTS="$RESULTS" bash "$RIG_DIR/grade.sh" "$OUT" || \
   log "$TASK: grading failed"
 meta "grade_seconds=$(( $(date +%s) - t1 ))" "stage=done"
-python3 "$SNAPSHOT_DIR/report.py" "$OUT"
+python3 "$RIG_DIR/report.py" "$OUT"
