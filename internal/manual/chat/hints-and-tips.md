@@ -192,7 +192,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   It is the only row that names two commands as a pair, because the two rows about keeping
   something used to be told apart by nothing: a standing order is a condition the work has
   to honour and a memory is a fact carried forward.
-- `/connect links Notion, Slack and other services` — retired when the connect panel
+- `/connect links Notion, Slack and other accounts` — retired when the connect panel
   is reached for.
 - `/autonomy sets how questions are handled while you are away` — after the first
   exchange. Retired when `/autonomy` is typed, bare or with a rule. (It took the seat

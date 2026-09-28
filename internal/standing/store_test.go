@@ -53,8 +53,8 @@ func TestCreateStampsAnItemAndWritesIt(t *testing.T) {
 	if !made.Created.Equal(now) || !made.Updated.Equal(now) {
 		t.Fatalf("the stamps are %s and %s, wanted %s", made.Created, made.Updated, now)
 	}
-	if made.Schema != Schema {
-		t.Fatalf("the schema is %d, wanted %d", made.Schema, Schema)
+	if made.Schema != 1 {
+		t.Fatalf("the schema is %d, wanted 1 so an older build keeps reading an ordinary item", made.Schema)
 	}
 	if !made.NextDue.Equal(now.Add(8 * time.Hour)) {
 		t.Fatalf("the next moment is %s, wanted the moment asked for", made.NextDue)

@@ -373,7 +373,8 @@ type beltRun struct {
 	folder   *ProgramFolder
 	// crew is routed for an ordinary task. A program keeps its requested
 	// models and run ceiling instead of receiving a task router's seats.
-	crew *taskCrew
+	crew          *taskCrew
+	recoveredCrew *TaskCrewRecord
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -643,8 +644,8 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 		// twice rather than two pieces of work ([TaskNotice.PlanTask]). In
 		// [planStoreID]'s spelling, which is the one the plan read answers under.
 		PlanTask: planStoreID(storeID),
-		Crew:     run.crewDecision(),
-		Model:    run.crewWorker(),
+		Crew:     run.crewDecision(), CrewState: a.initialCrewRecord(run),
+		Model: run.crewWorker(),
 	})
 	spec := a.beltRunSpec(run, brief)
 	if programName(via) == "senior-dev" {
@@ -697,7 +698,7 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 	// and recovery one persisted identity to reconcile.
 	a.publishRunRow(g, TaskNotice{
 		ID: id, Title: title, State: TaskQueued, Program: programName(via),
-		PlanTask: planStoreID(storeID), Crew: run.crewDecision(),
+		PlanTask: planStoreID(storeID), Crew: run.crewDecision(), CrewState: a.initialCrewRecord(run),
 		Model: run.crewWorker(), Waiting: waitingMachineBusy,
 		PendingRun: &PendingRunRecord{Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
 	})
@@ -959,6 +960,17 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	if a.config.OneModel {
 		oneModel = a.Model()
 		workSeat, planSeat, checkSeat = oneModel, oneModel, oneModel
+	}
+
+	// A recovered factory asks for original send IDs; the crew completer then
+	// applies the saved swaps instead of treating moved seats as auxiliary calls.
+	if run.crew != nil && run.recoveredCrew != nil {
+		workSeat = run.crew.original[crewroute.Worker]
+		planSeat = run.crew.original[crewroute.Planner]
+		checkSeat = run.crew.original[crewroute.Checker]
+		oneModel = ""
+	} else if saved := run.recoveredCrew; saved != nil {
+		workSeat, planSeat, checkSeat, oneModel = saved.Work, saved.Plan, saved.Check, saved.OneModel
 	}
 
 	wallLeft, _ := a.config.Budget.Left()
@@ -1505,6 +1517,9 @@ func setAsideRunStore(path string) error {
 // joins. The plan is set under the graph's plan gate, the same lock every other
 // plan reader takes, and the run itself under the Agent's own.
 func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
+	if run.crew != nil {
+		a.bindCrewCheckpoint(run.row, run.crew)
+	}
 	g.planMu.Lock()
 	if g.plan == nil {
 		g.plan = run.plan
@@ -1552,6 +1567,11 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	notice = carryRunRow(g, notice)
+	if crew := a.crews.get(notice.ID); crew != nil {
+		crew.persistMu.Lock()
+		defer crew.persistMu.Unlock()
+		notice.CrewState = crew.record()
+	}
 	notice.Program = keptRunProgram(g, notice)
 	if notice.Elapsed == 0 {
 		notice.Elapsed = runSpan(notice.StartedAt, notice.EndedAt)
@@ -1572,23 +1592,12 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 // carryRunRow preserves the durable identity fields across partial updates.
 // Pending admission survives queued updates only; a started run sheds it.
 func carryRunRow(g *TaskGraph, notice TaskNotice) TaskNotice {
-	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil {
+	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil || notice.CrewState == nil {
 		for _, kept := range g.runRows(notice.ID) {
 			if kept.ID != notice.ID {
 				continue
 			}
-			if notice.State == TaskQueued && notice.PendingRun == nil {
-				notice.PendingRun = kept.PendingRun
-			}
-			if notice.Copy == nil && kept.Copy != nil {
-				notice.Copy = kept.Copy
-			}
-			if notice.PlanTask == "" && kept.PlanTask != "" {
-				notice.PlanTask = kept.PlanTask
-			}
-			if notice.Crew == nil && kept.Crew != nil {
-				notice.Crew = kept.Crew
-			}
+			notice = carryRunIdentity(notice, kept)
 			break
 		}
 	}
@@ -2435,4 +2444,33 @@ func (run *beltRun) crewWorker() string {
 		return d.Seat(crewroute.Worker).Model
 	}
 	return ""
+}
+
+// initialCrewRecord records the accepted seats even when routing is disabled.
+func (a *Agent) initialCrewRecord(run *beltRun) *TaskCrewRecord {
+	if run.crew != nil {
+		return run.crew.record()
+	}
+	return a.unroutedCrewRecord()
+}
+
+// carryRunIdentity fills only absent identity fields from the matching row.
+// A queued update keeps pending admission; a started update sheds it.
+func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
+	if notice.State == TaskQueued && notice.PendingRun == nil {
+		notice.PendingRun = kept.PendingRun
+	}
+	if notice.Copy == nil && kept.Copy != nil {
+		notice.Copy = kept.Copy
+	}
+	if notice.PlanTask == "" && kept.PlanTask != "" {
+		notice.PlanTask = kept.PlanTask
+	}
+	if notice.CrewState == nil {
+		notice.CrewState = kept.CrewState
+	}
+	if notice.Crew == nil && kept.Crew != nil {
+		notice.Crew = kept.Crew
+	}
+	return notice
 }

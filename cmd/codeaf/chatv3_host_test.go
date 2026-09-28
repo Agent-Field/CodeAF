@@ -208,6 +208,8 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(home, "state"))
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Chdir(home)
+	// Close the engine owner, including catalog and pool writers, before this home is removed.
+	freshEngineProcess(t)
 
 	engine, err := bootEngine(remote.Hello{Version: remote.Version}, "", "")
 	if err != nil {
@@ -709,6 +711,8 @@ func TestBringingAConversationBackCorrectsTheHeldWorldToo(t *testing.T) {
 func TestHostedWelcomeCarriesUnreadProfileKeysToSurface(t *testing.T) {
 	workspace := t.TempDir()
 	agent := v3TrackedAgent(t, workspace)
+	t.Cleanup(agent.SettleWrites)
+	t.Cleanup(func() { _ = agent.Close() })
 	loop, err := remote.Loopback(remote.Hello{Version: remote.Version, Workspace: workspace}, remote.Options{
 		Boot: func(remote.Hello) (*remote.Engine, error) {
 			return &remote.Engine{Agent: agent, Workspace: workspace, UnreadProfileKeys: []string{"models"}}, nil
@@ -717,7 +721,16 @@ func TestHostedWelcomeCarriesUnreadProfileKeysToSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = loop.Close() })
+	t.Cleanup(func() {
+		_ = loop.Close()
+		// Closing the client only starts shutdown; join the engine before its
+		// conversation and deferred writes lose their temporary directories.
+		select {
+		case <-loop.Served:
+		case <-time.After(5 * time.Second):
+			t.Error("hosted welcome engine did not finish shutdown")
+		}
+	})
 	options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
 	if got := options.UnreadProfileKeys; len(got) != 1 || got[0] != "models" {
 		t.Fatalf("hosted unread keys = %v", got)

@@ -329,7 +329,7 @@ func (a *app) takeLinkNotice() {
 // from before the status line's news crossed a connection. It is in the
 // engine-host sentences' own voice (cmd/codeaf's busyEngineHostSentence): the
 // machine is older, nothing is wrong, and it says when that changes.
-const newsSilenceNote = "this conversation's engine is an older codeaf, so the provider and tok/s are not shown — they come back once it picks up this build"
+const newsSilenceNote = "this conversation's engine is an older codeaf, so the host and tok/s are not shown — they come back once it picks up this build"
 
 // sayNewsSilence says [newsSilenceNote] once per window, the first time a turn
 // that produced an answer ends on an engine that has sent no news.

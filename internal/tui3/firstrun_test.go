@@ -144,7 +144,7 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	t.Cleanup(func() { processOpener = was })
 
 	screen := setupScreen(a)
-	for _, want := range []string{"connect openrouter", "default service", "sign in once in your browser", "enter connects in browser", "paste a key"} {
+	for _, want := range []string{"connect openrouter", "default provider", "sign in once in your browser", "enter connects in browser", "paste a key"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the browser connection must say %q; got:\n%s", want, screen)
 		}

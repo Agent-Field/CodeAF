@@ -532,7 +532,7 @@ var notices = []notice{
 	{
 		id: "connect-accounts", slot: slotHint,
 		armed:  ready,
-		text:   "/connect links Notion, Slack and other services",
+		text:   "/connect links Notion, Slack and other accounts",
 		retire: eventConnectOpened,
 	},
 	{

@@ -406,6 +406,10 @@ const StandingNoKey = "0"
 // doing it now says the thing at the wrong time. A rule never runs, so "once"
 // has nothing to do.
 func StandingOnceIsAnAnswer(item standing.Item) bool {
+	// Ordinary turns cannot provide the scheduled executor's retained worktree.
+	if item.Does.Isolate {
+		return false
+	}
 	switch item.CardKindOf() {
 	case standing.CardCheck, standing.CardWatch:
 		return true
@@ -417,16 +421,20 @@ func StandingOnceIsAnAnswer(item standing.Item) bool {
 // The heads a standing card opens with. The person's own sentence is the next
 // line, not this one: this line says what KIND of thing is being asked.
 const (
-	StandingHeadReminder = "wants to remind you"
-	StandingHeadCheck    = "wants to set up a repeating check"
-	StandingHeadWatch    = "wants to watch for something"
-	StandingHeadRule     = "wants to keep a rule"
+	StandingHeadReminder      = "wants to remind you"
+	StandingHeadScheduledWork = "wants to schedule work once"
+	StandingHeadCheck         = "wants to set up a repeating check"
+	StandingHeadWatch         = "wants to watch for something"
+	StandingHeadRule          = "wants to keep a rule"
 )
 
 // StandingHead is the card's first line for this item.
 func StandingHead(item standing.Item) string {
 	switch item.CardKindOf() {
 	case standing.CardReminder:
+		if item.Does.Kind == standing.ActionTask {
+			return StandingHeadScheduledWork
+		}
 		return StandingHeadReminder
 	case standing.CardCheck:
 		return StandingHeadCheck
@@ -466,13 +474,19 @@ const standingCadenceMark = " · "
 
 // StandingPlainLabel is a label with its cadence removed. A label that carries
 // none is returned as it is.
+//
+// A REMINDER'S WHEN IS THE WHOLE TAIL, including a clock joined on with the
+// same mark a repeating check uses between its verb and its cadence. "Remind
+// me in 1 minute · 07:35" drops to "Remind me", not to "Remind me in 1 minute":
+// the mark inside the when is part of the when, and a narrow row still loses
+// the when before it cuts a character.
 func StandingPlainLabel(label string) string {
-	if at := strings.Index(label, standingCadenceMark); at > 0 {
-		return label[:at]
-	}
 	const stem = "Remind me "
 	if strings.HasPrefix(label, stem) && len(label) > len(stem) {
 		return "Remind me"
+	}
+	if at := strings.Index(label, standingCadenceMark); at > 0 {
+		return label[:at]
 	}
 	return label
 }
@@ -489,9 +503,31 @@ func StandingPlainLabel(label string) string {
 // The no is last and marked safe, so a row that has to drop an answer drops
 // one in front of it.
 func StandingOptions(item standing.Item) []AnswerOption {
+	options := standingOptions(item)
+	if !StandingOnceIsAnAnswer(item) {
+		for i, option := range options {
+			if option.Key == StandingOnceKey {
+				return append(options[:i], options[i+1:]...)
+			}
+		}
+	}
+	return options
+}
+
+func standingOptions(item standing.Item) []AnswerOption {
 	cadence := item.When.ShortWords()
 	switch item.CardKindOf() {
 	case standing.CardReminder:
+		if item.Does.Kind == standing.ActionTask {
+			yes := "Run it then"
+			if cadence != "" {
+				yes += standingCadenceMark + cadence
+			}
+			return []AnswerOption{
+				{Key: "1", Label: yes, Consequence: "Runs the work then. Nothing repeats."},
+				{Key: StandingNoKey, Label: "Don't schedule it", Consequence: "Nothing is scheduled or run.", Safe: true},
+			}
+		}
 		yes := "Remind me"
 		if cadence != "" {
 			yes = "Remind me " + cadence

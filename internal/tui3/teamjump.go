@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -46,6 +47,7 @@ const trafficOlderWords = "that message is older than this chat's history"
 type trafficJumpTo struct {
 	key, id string
 	until   time.Time
+	waking  bool
 }
 
 type trafficLanding struct {
@@ -56,6 +58,10 @@ type trafficLanding struct {
 
 // trafficLandedMsg is the lift expiring: one repaint.
 type trafficLandedMsg struct{}
+
+// trafficJumpDeadlineMsg gives a still-loading conversation one final chance
+// to land before the older-history hint is shown.
+type trafficJumpDeadlineMsg struct{}
 
 // trafficJump opens member key's conversation at Traffic entry id, or in
 // front at id when key is "" or already in front.
@@ -78,18 +84,29 @@ func (a *app) trafficLand() tea.Cmd {
 	if j.key == "" {
 		return nil
 	}
-	if a.now().After(j.until) {
+	if a.frontTabKey() != j.key {
+		if !a.now().Before(j.until) {
+			a.traffic.jump = trafficJumpTo{}
+		}
+		return nil
+	}
+	if j.id == "" {
 		a.traffic.jump = trafficJumpTo{}
 		return nil
 	}
-	if a.frontTabKey() != j.key {
+	at := -1
+	if a.now().Before(j.until) {
+		at = a.teamEntryAt(j.id)
+	}
+	if at < 0 && (a.hostReplayLoading || a.hostReplayWaiting) && a.now().Before(j.until) {
+		if !j.waking {
+			j.waking = true
+			a.traffic.jump = j
+			return tea.Tick(j.until.Sub(a.now())+time.Millisecond, func(time.Time) tea.Msg { return trafficJumpDeadlineMsg{} })
+		}
 		return nil
 	}
 	a.traffic.jump = trafficJumpTo{}
-	if j.id == "" {
-		return nil
-	}
-	at := a.teamEntryAt(j.id)
 	land := trafficLanding{entry: at, until: a.now().Add(trafficLandFor)}
 	if at < 0 {
 		a.offset, a.stick = 0, true
@@ -136,7 +153,15 @@ func (a *app) teamEntryAt(id string) int {
 	if id == "" {
 		return -1
 	}
+	// A START ROOT IS ANSWERED BY ITS OWN TEAM'S MATCHER FIRST. Traffic numbers
+	// count per team, so a `team_send` into another team can carry the same
+	// `(#N)` as this team's start, and the newest-first search below would land
+	// on it; [app.teamStartEntryAt] checks the team, and that search cannot.
+	if at := a.teamStartEntryAt(id); at >= 0 {
+		return at
+	}
 	number := teamstore.ThreadNumber(id)
+	shown, inTeam := a.teamOfFront()
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
 		switch e.kind {
@@ -149,6 +174,9 @@ func (a *app) teamEntryAt(id string) int {
 		case entryTool:
 			switch e.tool {
 			case "team_send":
+				if inTeam && sentElsewhere(e, shown) {
+					continue
+				}
 				if strings.Contains(e.detail.Output, "("+number+")") {
 					return i
 				}
@@ -160,6 +188,18 @@ func (a *app) teamEntryAt(id string) int {
 		}
 	}
 	return -1
+}
+
+// sentElsewhere reports a `team_send` that named a team other than shown, whose
+// `(#N)` counts in that team's traffic and says nothing about this one. A send
+// that names no team went to the sender's own and is still a candidate.
+func sentElsewhere(e *entry, shown team) bool {
+	var args struct{ Team string }
+	if json.Unmarshal([]byte(e.detail.Args), &args) != nil {
+		return false
+	}
+	target := strings.TrimSpace(args.Team)
+	return target != "" && target != shown.ID && target != shown.Name
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the

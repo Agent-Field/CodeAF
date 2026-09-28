@@ -495,7 +495,7 @@ func standReminder() standing.Item {
 		ID:        "abc",
 		Words:     "remind me to sleep in 1 min",
 		Workspace: "/tmp/lab",
-		When:      standing.When{Kind: standing.WhenAt, Words: "in 1 minute — 07:35", At: time.Now().Add(time.Minute)},
+		When:      standing.When{Kind: standing.WhenAt, Words: "in 1 minute · 07:35", At: time.Now().Add(time.Minute)},
 		Does:      standing.Action{Kind: standing.ActionSay, Say: "time to sleep"},
 		Rails:     standing.Rails{PerRunUSD: 0.05, MaxPerDay: 1},
 		Status:    standing.StatusActive,
@@ -513,7 +513,7 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	a, agent, tick := standApp(t)
 	standAsk(t, a, tick, session.StandingNotice{
 		Item:      standReminder(),
-		WhenWords: "in 1 minute — 07:35",
+		WhenWords: "in 1 minute · 07:35",
 		CostWords: "about a cent, once",
 		Options:   session.StandingOptions(standReminder()),
 	})
@@ -540,7 +540,7 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	// The derivation names the keys the card drew and not one more. (The slot
 	// itself is quiet while the block draws them — hints pick A — and this is
 	// the reading behind it, which is where the defect would be.)
-	const twoHint = "1 Remind me in 1 minute — 07:35 · 0 Don't remind me · esc later"
+	const twoHint = "1 Remind me in 1 minute · 07:35 · 0 Don't remind me · esc later"
 	if got := a.questionHintFor(); got != twoHint {
 		t.Fatalf("the hint is %q, want %q", got, twoHint)
 	}
@@ -1149,5 +1149,28 @@ func TestANarrowStandingLabelDropsTheCadenceFirst(t *testing.T) {
 	}
 	if got := a.questionBandWord("Don't set it up", "0", 80); got != "Don't set it up" {
 		t.Fatalf("the no was rewritten: %q", got)
+	}
+}
+
+func TestStandingOnceReceiptDoesNotClaimExecution(t *testing.T) {
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{WhenWords: "Mondays at 9am"})
+	drive(t, a, key2("3"))
+	if len(agent.answered) != 1 || !agent.answered[0].answer.Once {
+		t.Fatalf("answer: %+v", agent.answered)
+	}
+	text := standText(a)
+	if !strings.Contains(text, "approved once, not scheduled") || strings.Contains(text, "done now") {
+		t.Fatal(text)
+	}
+}
+
+func TestStandingCardShowsApprovedWorktreeIsolation(t *testing.T) {
+	a, _, tick := standApp(t)
+	item := standItem()
+	item.Does.Isolate = true
+	standAsk(t, a, tick, session.StandingNotice{Item: item})
+	if got := standText(a); !strings.Contains(got, "separate Git worktree") {
+		t.Fatalf("isolation missing from card: %s", got)
 	}
 }

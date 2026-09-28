@@ -824,6 +824,8 @@ type TaskNotice struct {
 	// draws its crew line from it, with CostUSD as the actual beside the
 	// estimate once there is one.
 	Crew *crewroute.Decision
+	// CrewState is the private checkpoint policy; surfaces draw Crew instead.
+	CrewState *TaskCrewRecord `json:"-"`
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as

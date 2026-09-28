@@ -75,7 +75,7 @@ var commands = []command{
 	{name: "settings", desc: "open the settings panel · ctrl+,", alias: []string{"set", "config"}},
 	// It sits under /settings because it is the other half of the same errand:
 	// one is what this surface may do, the other is what it may reach.
-	{name: "connect", desc: "your connected accounts · connect another", alias: []string{"connections"}},
+	{name: "connect", desc: "providers and accounts · connect another", alias: []string{"connections"}},
 	// THE VOCABULARY OF THE FRESH START IS BORROWED AND NOT INVENTED. /clear is
 	// what a terminal person's fingers type, /reset is what a chat person's do,
 	// and both of them mean the thing this surface calls /new — so all three land

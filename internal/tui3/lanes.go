@@ -1037,7 +1037,7 @@ func laneQuantRank(quant string) int {
 func (a *app) pinLane(model, name string) {
 	slot := laneSlotFor(model)
 	if a.hosted() {
-		a.note(a.host + " owns the provider · change it on that machine")
+		a.note(a.host + " owns the host · change it on that machine")
 		return
 	}
 	if err := config.SetLane(a.profileDir, slot, name); err != nil {
@@ -1046,14 +1046,14 @@ func (a *app) pinLane(model, name string) {
 	}
 	_ = config.SetLaneBorrow(a.profileDir, slot, false)
 	a.laneRowChanged()
-	a.noteFacts("provider · "+strings.ToLower(name), name)
+	a.noteFacts("host · "+strings.ToLower(name), name)
 	a.touch()
 }
 
 // clearLanePin puts the row back to auto.
 func (a *app) clearLanePin(model string) {
 	if a.hosted() {
-		a.note(a.host + " owns the provider · change it on that machine")
+		a.note(a.host + " owns the host · change it on that machine")
 		return
 	}
 	if err := config.SetLane(a.profileDir, laneSlotFor(model), config.LaneAuto); err != nil {
@@ -1061,7 +1061,7 @@ func (a *app) clearLanePin(model string) {
 		return
 	}
 	a.laneRowChanged()
-	a.noteFacts("provider · auto", config.LaneAuto)
+	a.noteFacts("host · auto", config.LaneAuto)
 	a.touch()
 }
 
@@ -1071,7 +1071,7 @@ func (a *app) clearLanePin(model string) {
 // makes, and this is about the machines behind one model.
 func (a *app) setLaneRouterOnly(model string) {
 	if a.hosted() {
-		a.note(a.host + " owns the provider · change it on that machine")
+		a.note(a.host + " owns the host · change it on that machine")
 		return
 	}
 	if err := config.SetLane(a.profileDir, laneSlotFor(model), config.LaneOpenRouter); err != nil {
@@ -1079,7 +1079,7 @@ func (a *app) setLaneRouterOnly(model string) {
 		return
 	}
 	a.laneRowChanged()
-	a.noteFacts("provider · openrouter", config.LaneOpenRouter)
+	a.noteFacts("host · openrouter", config.LaneOpenRouter)
 	a.touch()
 }
 
