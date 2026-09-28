@@ -41,6 +41,14 @@ func (a *app) refreshHostedReplay() tea.Cmd {
 			// earlier visible prefix is replaced, not retained as "in the gap".
 			a.entries = nil
 			a.recordRows = 0
+			a.turn = 0
+			abandonLive(a.entries, &a.live)
+			abandonLive(a.entries, &a.think)
+			a.echoAt, a.sel = -1, -1
+			a.unfolded = map[int]bool{}
+			a.rows, a.rowsWidth = nil, 0
+			a.hudStale = true
+			a.dropHover()
 			a.replayList(entries)
 			var joined tea.Cmd
 			if events != nil {

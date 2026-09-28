@@ -44,6 +44,8 @@ import (
 // keep correct while it is not drawing it, which is the expensive kind of
 // state; the test is "would a person notice it was gone", not "could we".
 type aside struct {
+	// A send held behind an atomic replay remains with its conversation.
+	hostDeferred []func() tea.Cmd
 	// openingPrompt survives a switch while the title and transcript arrive.
 	openingPrompt string
 	// draft is the unsent sentence in the box, and chips are the pictures
@@ -264,6 +266,7 @@ func (a *app) front() Conversation {
 func (a *app) detachConversation() *aside {
 	main := a.mainComposer()
 	side := &aside{
+		hostDeferred: a.hostDeferred,
 		// The box and the parked messages are separate while this process can
 		// keep the conversation alive. The shared-handle exception below folds
 		// them because its engine ends the conversation during the swap.
@@ -527,6 +530,9 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.hostReplayWaiting = false
 	a.hostCalls = 0
 	a.hostDeferred = nil
+	if side != nil {
+		a.hostDeferred = side.hostDeferred
+	}
 	was := a.agent
 	a.takeUp(conv, true)
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);

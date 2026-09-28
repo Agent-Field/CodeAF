@@ -278,3 +278,44 @@ func TestReconnectRefreshHoldsFollowUpCallUntilSnapshotIsFolded(t *testing.T) {
 		t.Fatal("follow-up not settled after snapshot")
 	}
 }
+
+type replayFollowAgent struct {
+	*atomicBoundaryAgent
+	followed []string
+}
+
+func (a *replayFollowAgent) FollowUp(text string) (<-chan session.Event, error) {
+	a.followed = append(a.followed, text)
+	done := make(chan session.Event)
+	close(done)
+	return done, nil
+}
+
+func TestHostedReplayGateKeepsRealFollowUpWithItsConversation(t *testing.T) {
+	first := &replayFollowAgent{atomicBoundaryAgent: replayTestAgent(nil)}
+	second := &replayFollowAgent{atomicBoundaryAgent: replayTestAgent(nil)}
+	a := newTestApp(first)
+	a.file = t.TempDir() + "/one.jsonl"
+	a.workspace = t.TempDir()
+	snapshot := a.refreshHostedReplay()
+	oldAnswer := snapshot()
+	a.input.setText("keep this follow-up")
+	if cmd := a.followUp(); cmd != nil {
+		t.Fatal("follow-up escaped snapshot gate")
+	}
+	if a.input.String() != "" || len(first.followed) != 0 {
+		t.Fatal("follow-up was not held after leaving composer")
+	}
+	original, side := a.front(), a.detachConversation()
+	drain(t, a, a.attachConversation(Conversation{Agent: second, SessionFile: t.TempDir() + "/two.jsonl"}, nil))
+	_, stale := a.Update(oldAnswer)
+	drain(t, a, stale)
+	if len(first.followed) != 0 || len(second.followed) != 0 {
+		t.Fatal("deferred send crossed to another conversation")
+	}
+	a.detachConversation()
+	drain(t, a, a.attachConversation(original, side))
+	if len(first.followed) != 1 || first.followed[0] != "keep this follow-up" || len(second.followed) != 0 {
+		t.Fatalf("deferred send lost or misrouted: first=%v second=%v", first.followed, second.followed)
+	}
+}
