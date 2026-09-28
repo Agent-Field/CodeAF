@@ -690,7 +690,6 @@ type (
 		err           error
 		before, after int
 		agent         Agent
-		front         int
 	}
 	// frameMsg is the paint clock: it promotes whatever streamed since the
 	// last one into a frame, and steps the animations.
@@ -5165,12 +5164,25 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.steerFell(msg)
 
 	case compactedMsg:
-		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A switch
-		// or a visit to Home must not write its note, meter or notice here.
-		if msg.agent != nil && (msg.agent != a.agent || msg.front != a.frontGen || a.showing() != nil) {
+		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
+		// page over that conversation still leaves its reply behind the page.
+		if msg.agent != nil && msg.agent != a.agent {
 			return a, nil
 		}
-		if msg.err != nil {
+		if why, skipped := session.SummarySkippedWhy(msg.err); skipped {
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+				why = compactASCII(why)
+			}
+			line := lead + " compacted"
+			if msg.before > msg.after && msg.after > 0 {
+				line += fmt.Sprintf("%sabout %d to %d tokens", separator, msg.before, msg.after)
+			}
+			a.toldNote(line + separator + "summary skipped: " + why)
+			a.measureContext()
+			a.noticeEvent(eventCompacted)
+		} else if msg.err != nil {
 			if why, nothing := session.NothingToCompactWhy(msg.err); nothing {
 				// THE NO-OP SAYS WHY when the engine knows: too little older
 				// conversation to summarize, or the summary that would have
@@ -7934,12 +7946,12 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "compact":
-		agent, ctx, front := a.agent, a.ctx, a.frontGen
+		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
 		return func() tea.Msg {
 			before := agent.ContextTokens()
 			err := agent.Compact(ctx)
-			return compactedMsg{err: err, before: before, after: agent.ContextTokens(), agent: agent, front: front}
+			return compactedMsg{err: err, before: before, after: agent.ContextTokens(), agent: agent}
 		}
 
 	case "rewind":

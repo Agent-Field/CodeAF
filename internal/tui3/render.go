@@ -1861,7 +1861,16 @@ func (a *app) silentFor() time.Duration {
 	return time.Since(a.lastDelta)
 }
 
-var compactASCIIPunctuation = strings.NewReplacer(" · ", " - ", " → ", " to ", " — ", " - ")
+var compactASCIIPunctuation = strings.NewReplacer(" · ", " - ", " → ", " to ", " — ", " - ", "…", "...")
+
+func compactASCII(hint string) string {
+	return strings.Map(func(r rune) rune {
+		if r > 127 {
+			return '?'
+		}
+		return r
+	}, compactASCIIPunctuation.Replace(hint))
+}
 
 // divider is the compaction mark: one dim line with the fact in it, because a
 // conversation that silently lost its middle is a conversation the person
@@ -1877,7 +1886,7 @@ func (a *app) divider(hint string, width int) string {
 	if a.linear || a.pal.ascii {
 		lead = "- "
 		more = ">"
-		hint = compactASCIIPunctuation.Replace(hint)
+		hint = compactASCII(hint)
 	}
 	return a.pal.dim(ansi.Truncate(lead+a.icon(tokens.GCompacted)+" "+hint, width, more))
 }

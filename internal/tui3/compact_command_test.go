@@ -26,6 +26,10 @@ func TestCompactCommandReportsReductionAndExplainsProtectedHistory(t *testing.T)
 			"nothing to compact — only ~400 tokens since the last summary — too little to summarize"},
 		{compactedMsg{err: errors.New("session: nothing to compact: the summary was interrupted")},
 			"nothing to compact — the summary was interrupted"},
+		{compactedMsg{err: &session.SummarySkipped{Why: "provider unavailable"}, before: 60000, after: 5000},
+			"compacted · about 60000 to 5000 tokens · summary skipped: provider unavailable"},
+		{compactedMsg{err: errors.New("session: compacted: summary skipped: provider unavailable"), before: 60000, after: 60000},
+			"compacted · summary skipped: provider unavailable"},
 		// A PASS THAT OUTLIVED THE WAIT IS STILL RUNNING, never "failed".
 		{compactedMsg{err: remote.ErrLate}, "still compacting — it is taking longer than usual and finishes on its own"},
 		{compactedMsg{err: errors.New("the model refused")}, "compact failed: the model refused"},
@@ -71,7 +75,7 @@ func TestCompactReplyOnItsOriginalConversationStillReportsSuccess(t *testing.T) 
 	}
 }
 
-func TestCompactReplyWhileHomeChangesNeitherPageNorMeter(t *testing.T) {
+func TestCompactReplyBehindHomeStaysWithOriginalConversation(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "first", weight: 8615})
 	cmd := a.slash("/compact")
 	if cmd == nil {
@@ -85,8 +89,12 @@ func TestCompactReplyWhileHomeChangesNeitherPageNorMeter(t *testing.T) {
 	a.ctxTokens = 1234
 	delete(a.notices.seen, eventCompacted)
 	drive(t, a, cmd())
-	if len(a.entries) != 0 || a.ctxTokens != 1234 || a.notices.seen[eventCompacted] {
-		t.Fatalf("late reply changed Home: entries=%v, meter=%d, compact notice=%v", a.entries, a.ctxTokens, a.notices.seen[eventCompacted])
+	if len(a.entries) != 1 || a.ctxTokens != 8615 || !a.notices.seen[eventCompacted] {
+		t.Fatalf("original conversation lost reply behind Home: entries=%v, meter=%d, compact notice=%v", a.entries, a.ctxTokens, a.notices.seen[eventCompacted])
+	}
+	a.closeHome()
+	if got := lastNote(t, a); !strings.Contains(got, "compacted") {
+		t.Fatalf("reply missing on return: %q", got)
 	}
 }
 
@@ -106,9 +114,19 @@ func TestCompactLinesUseOnlyASCIIOnTheLinearTier(t *testing.T) {
 	line := a.divider("compacted · summarized 4 messages · ~31k → ~13k tokens · full record in the session journal", 120)
 	drive(t, a, compactedMsg{before: 60000, after: 5000})
 	line += lastNote(t, a)
+	line += a.divider("compacted · summary skipped: the model refused … "+strings.Repeat("a", 150), 120)
 	for _, r := range line {
 		if r > 127 {
 			t.Fatalf("linear compaction line contains non-ASCII %q: %q", r, line)
+		}
+	}
+	b := newTestApp(&fakeAgent{model: "m"})
+	b.pal.ascii = true
+	drive(t, b, compactedMsg{err: &session.SummarySkipped{Why: "the model refused …"}, before: 60000, after: 5000})
+	line = b.divider("compacted · summary skipped: the model refused …", 120) + lastNote(t, b)
+	for _, r := range line {
+		if r > 127 {
+			t.Fatalf("ASCII compaction line contains non-ASCII %q: %q", r, line)
 		}
 	}
 }
