@@ -87,7 +87,11 @@ func (c *taskCrew) record() *TaskCrewRecord {
 		}
 		if g.Day != nil {
 			g.Day.mu.Lock()
-			r.Guard.DaySpent = g.Day.usd + g.Day.since
+			g.Day.refreshLocked()
+			if g.Day.date != "" {
+				r.Guard.Day = g.Day.date
+			}
+			r.Guard.DaySpent = g.Day.totalLocked()
 			r.Guard.DayLast = maps.Clone(g.Day.last)
 			g.Day.mu.Unlock()
 		}
@@ -214,22 +218,27 @@ func (c *taskCrew) endCall() {
 // restoreCrewDay retains the saved same-day lower bounds without reducing the
 // current ledger reading or carrying yesterday's spend into a fresh day.
 func restoreCrewDay(day *SpendDay, s *crewGuardRecord) {
-	if s.Day == time.Now().Format("2006-01-02") {
-		// Initialize the ledger-backed day's date before restoring lower bounds;
-		// otherwise its first read would reset the recovered spend and call prices.
-		day.Total()
-		day.mu.Lock()
-		if s.DaySpent > day.usd+day.since {
-			day.usd = s.DaySpent - day.since
+	day.mu.Lock()
+	defer day.mu.Unlock()
+	// Refresh under the day's lock before copying any saved lower bound. The
+	// ledger may still lag, but a calendar rollover must expire yesterday first.
+	day.refreshLocked()
+	today := time.Now().Format("2006-01-02")
+	if day.date != "" {
+		today = day.date
+	}
+	if s.Day != today {
+		return
+	}
+	if s.DaySpent > day.usd+day.since {
+		day.usd = s.DaySpent - day.since
+	}
+	if day.last == nil {
+		day.last = map[string]float64{}
+	}
+	for model, cost := range s.DayLast {
+		if cost > day.last[model] {
+			day.last[model] = cost
 		}
-		if day.last == nil {
-			day.last = map[string]float64{}
-		}
-		for model, cost := range s.DayLast {
-			if cost > day.last[model] {
-				day.last[model] = cost
-			}
-		}
-		day.mu.Unlock()
 	}
 }
