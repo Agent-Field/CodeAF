@@ -42,7 +42,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
