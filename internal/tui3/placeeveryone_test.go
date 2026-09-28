@@ -114,15 +114,6 @@ func everyPlaceTable() []everyPlace {
 			},
 		},
 		{
-			id:     pageSearch,
-			open:   searchPlaceWithHits,
-			cursor: func(a *app) int { return a.search.cursor },
-			hits: func(a *app) []int {
-				_, hits, _, _ := a.searchFrame(a.width, a.height)
-				return hits
-			},
-		},
-		{
 			id:     pageSettings,
 			open:   settingsPlaceLab,
 			cursor: func(a *app) int { return a.sheet.cursor },
@@ -270,7 +261,6 @@ func everyEmptyPlace() []everyPlace {
 			return a
 		}},
 		{id: pageSpend, open: opened(pageSpend)},
-		{id: pageSearch, open: func(t *testing.T) *app { return searchLab(t, &searchFakeStore{}) }},
 	}
 }
 
@@ -369,7 +359,7 @@ func TestTheWheelNeverReachesTheConversationFromAPlace(t *testing.T) {
 // THE POINTER SELECTS ON EVERY PROMOTED PLACE. Every list uses its one cursor
 // for the highlight and for the row that keyboard actions operate on.
 func TestThePointerSelectsOnEveryPromotedPlace(t *testing.T) {
-	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true, pageSearch: true}
+	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true}
 	for _, place := range everyPlaceTable() {
 		if !promoted[place.id] {
 			continue

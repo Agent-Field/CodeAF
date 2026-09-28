@@ -487,20 +487,6 @@ type Options struct {
 	// surface asks for them (cmd/codeaf's v3MemorySeam).
 	Memory MemoryStore
 
-	// Search is the conversation index the search place reads: one full-text
-	// query over every message this machine has kept ([store.Store.SearchConversations]).
-	//
-	// IT IS A SEAM AND NOT THE STORE for [Options.Memory]'s reason — the door
-	// owns where the database lives — and it is a SECOND seam beside Memory
-	// rather than a method on it because the two are different capabilities that
-	// fail apart: memory turned off in the settings opens no store, and searching
-	// what was said is not memory at all. A build with one and not the other is
-	// the ordinary case, and each place is absent on its own terms.
-	//
-	// Nil is a surface that cannot search, and the place says what it is for
-	// rather than drawing an empty result list.
-	Search SearchStore
-
 	// SearchStatus names the web-search plug the conversation's next call will
 	// use and whether it has a key. Nil means that conversation has no web-search
 	// hand, so /status omits the row under the emptiness law. It is a function
@@ -1045,7 +1031,7 @@ type Options struct {
 	//     is nothing left here to close.
 	//
 	// WHAT IT COSTS A PERSON is that these doors hold ONE conversation at a time:
-	// opening another from home, the switcher or the search place swaps to it and
+	// opening another from home, the switcher or Sessions swaps to it and
 	// closes what was in front, rather than keeping it running beside. The surface
 	// says so on the entry line ([oneConversationWord]) rather than letting
 	// somebody discover it.

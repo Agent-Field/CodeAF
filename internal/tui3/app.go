@@ -1654,12 +1654,7 @@ type app struct {
 	// memory is the store the place reads and changes. It is optional because
 	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
-	// searchStore is the conversation index the search place reads, while
-	// searchStatus names the web plug the session's next call will use.
-	// usageLedger is the file the spend place reads. Each is optional and absent
-	// rather than broken when it is: search says what it is for, /status keeps no
-	// empty row, and an empty ledger draws the spend place's own teaching.
-	searchStore  SearchStore
+	// searchStatus names the web plug the next call will use.
 	searchStatus func() string
 	usageLedger  string
 	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
@@ -2332,18 +2327,8 @@ type app struct {
 	// puts one word on the pointer's ground and changes nothing else on the
 	// frame (topnav.go's [app.navHover]).
 	tabHover page
-	// searchArm is how the search place's QUIET INTERVAL is armed, and nil — the
-	// real 150ms timer — everywhere but a test (place_search.go's
-	// [app.searchQuiet] holds the whole argument). It is a seam rather than a
-	// clock because what a test needs is not a different duration but no real
-	// time at all: the tick is delivered by hand, at the instant the test means.
-	searchArm func(gen int) tea.Cmd
-	// spend and search are those two places' own state: the ledger window and
-	// the lines it is over (spendpage.go), and the query in flight with the
-	// results it is answering for (searchpage.go). Closed, both cost the frame
-	// nothing and neither has read anything.
-	spend  spendPage
-	search searchPage
+	// spend holds the ledger window and the lines it is over.
+	spend spendPage
 	// places is the seam the tab bar's counts come through: the cached answer
 	// per place, recomputed on the clock ([app.refreshPlaceCounts]). It is nil
 	// until the first beat, and a nil seam draws no number anywhere, which is the
@@ -2986,7 +2971,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
 		memory:              opts.Memory,
-		searchStore:         opts.Search,
 		searchStatus:        opts.SearchStatus,
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
@@ -5099,15 +5083,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// flow — no focus moves, nothing is written, and the caret stays in the
 		// field on the left (onboarding.go).
 		return a, a.setupDemoBeatAt(msg.gen)
-
-	case searchTickMsg:
-		// The quiet interval after a keystroke, arriving. It becomes a store read
-		// only when the words have not moved on since (searchpage.go).
-		return a, a.searchTick(msg)
-
-	case searchDoneMsg:
-		a.searchDone(msg)
-		return a, nil
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)
@@ -7684,15 +7659,6 @@ func (a *app) slash(line string) tea.Cmd {
 		// want, and a command that took a project name would be asking a person
 		// to remember what home exists to show them (home.go).
 		return a.showPage(pageHome)
-
-	case "search":
-		// THE TYPED DOOR ONTO THE SEARCH PLACE, and it takes no argument on
-		// purpose. The place IS a box — typing in it searches and the read goes
-		// out when the box has been quiet for a moment (place_search.go) — so a
-		// query handed in at the command line would be a second way of asking the
-		// same question that could rank its answers differently from the one the
-		// person then keeps typing into.
-		return a.showPage(pageSearch)
 
 	case "wall":
 		// EVERY OPEN CONVERSATION AT ONCE, as a grid of live tiles (wall.go).

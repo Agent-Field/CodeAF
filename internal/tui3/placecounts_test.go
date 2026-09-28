@@ -89,11 +89,11 @@ func TestAPlaceWithNoLookStampWearsNoNumber(t *testing.T) {
 func TestTheUncountablePlacesAreNeverGivenANumber(t *testing.T) {
 	a, brain := countingApp(t)
 	brain.learned = 5
-	for _, id := range []page{pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageSpend, pageSettings} {
 		session.NoteLookAt(a.placesRoot(), id.lookKey(), time.Now().Add(-time.Hour))
 	}
 	a.refreshPlaceCounts(time.Now())
-	for _, id := range []page{pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageSpend, pageSettings} {
 		if got := a.placeCount(id); got != 0 {
 			t.Fatalf("%s wears %d, and it is not a collection", id.word(), got)
 		}

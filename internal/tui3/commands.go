@@ -148,7 +148,6 @@ var commands = []command{
 	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
-	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
 	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
 	// conversations big, and this is the team-level view, every member open or

@@ -104,12 +104,16 @@ func (a *app) renewLater(say func(string), after func() tea.Cmd) tea.Cmd {
 }
 
 func (a *app) homeStartLater(text, place string) tea.Cmd {
-	if (strings.TrimSpace(text) != "" || place != "" || len(a.chips) > 0) && a.updateStopsTurn() {
+	if (strings.TrimSpace(text) != "" || place != "" || len(a.home.chips) > 0) && a.updateStopsTurn() {
 		return nil
 	}
 	say := func(text string) { a.home.say(text, "") }
 	if !a.canStart() {
 		say(newUnavailableWord)
+		return nil
+	}
+	if !a.mainComposer().empty() && (a.agent == nil || a.convKey(a.file) == "") {
+		say(startDraftUnownedWord)
 		return nil
 	}
 	where := place
@@ -127,18 +131,18 @@ func (a *app) homeStartLater(text, place string) tea.Cmd {
 	}
 	ask, whole := a.startDoor(doorWhere)
 	replacing := a.renewReplaces()
+	carried := a.home.chips
 	return a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
 		var started tea.Cmd
 		if beside {
-			carried := a.chips
-			a.chips = nil
 			started = a.takeBeside(conv)
-			a.chips = carried
 			a.teamJoinFront()
 		} else {
 			started = a.finishRenew(conv, whole, replacing)
 		}
 		a.closeHome()
+		// Home owns its tray; the previous conversation keeps its own draft.
+		a.putComposer(composerState{chips: carried})
 		if place != "" {
 			a.applyTargetModel()
 			return started

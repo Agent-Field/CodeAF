@@ -23,8 +23,6 @@ func selectedRowY(t *testing.T, a *app, at int) int {
 		_, hits, _, _ = a.memoryFrame(a.width, a.height)
 	case pageStanding:
 		_, hits, _, _ = a.standingPlaceFrame(a.width, a.height)
-	case pageSearch:
-		_, hits, _, _ = a.searchFrame(a.width, a.height)
 	case pageSpend:
 		_, hits, _, _ = a.spendFrame(a.width, a.height)
 	}
@@ -36,7 +34,7 @@ func TestListSelectionFollowsTheLatestNavigationMethod(t *testing.T) {
 		"threads":  placeAppOneColumn,
 		"tasks":    func(t *testing.T) *app { a, _ := stripWalkLab(t); return a },
 		"standing": standPlaceLab, "memory": memoryPlaceLab,
-		"search": searchPlaceWithHits, "spend": spendPlaceLab,
+		"spend": spendPlaceLab,
 	}
 	for name, lab := range labs {
 		t.Run(name, func(t *testing.T) {
@@ -56,7 +54,7 @@ func TestListSelectionFollowsTheLatestNavigationMethod(t *testing.T) {
 			if got := pl.cursorAt(a); got != stops[1] {
 				t.Fatalf("keyboard selected %d, want %d", got, stops[1])
 			}
-			if a.home.hover >= 0 || a.mem.hover >= 0 || a.orders.hover >= 0 || a.search.hover >= 0 || a.spend.hover >= 0 || a.hot.kind == hoverTaskSheet {
+			if a.home.hover >= 0 || a.mem.hover >= 0 || a.orders.hover >= 0 || a.spend.hover >= 0 || a.hot.kind == hoverTaskSheet {
 				t.Fatal("keyboard navigation left a second highlighted row")
 			}
 			// Repeated reports from a parked pointer cannot undo a newer key.
