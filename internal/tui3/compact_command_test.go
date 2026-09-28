@@ -37,6 +37,58 @@ func TestCompactCommandReportsReductionAndExplainsProtectedHistory(t *testing.T)
 	}
 }
 
+func TestCompactReplyFromAnotherConversationChangesNeitherPageNorMeter(t *testing.T) {
+	first := &fakeAgent{model: "first", weight: 8615}
+	a := newTestApp(first)
+	cmd := a.slash("/compact")
+	if cmd == nil {
+		t.Fatal("/compact did not start")
+	}
+	second := &fakeAgent{model: "second", weight: 9000}
+	a.takeUp(Conversation{Agent: second}, false)
+	a.entries = nil
+	a.ctxTokens = 1234
+	delete(a.notices.seen, eventCompacted)
+	drive(t, a, cmd())
+	if len(a.entries) != 0 || a.ctxTokens != 1234 || a.notices.seen[eventCompacted] {
+		t.Fatalf("late reply changed the new conversation: entries=%v, meter=%d, compact notice=%v", a.entries, a.ctxTokens, a.notices.seen[eventCompacted])
+	}
+}
+
+func TestCompactReplyOnItsOriginalConversationStillReportsSuccess(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "first", weight: 8615})
+	cmd := a.slash("/compact")
+	if cmd == nil {
+		t.Fatal("/compact did not start")
+	}
+	drive(t, a, cmd())
+	if got := lastNote(t, a); !strings.Contains(got, "compacted") {
+		t.Fatalf("the pass was not reported in its original conversation: %q", got)
+	}
+	if a.ctxTokens != 8615 || !a.notices.seen[eventCompacted] {
+		t.Fatalf("the pass did not update its original conversation: meter=%d, notice=%v", a.ctxTokens, a.notices.seen[eventCompacted])
+	}
+}
+
+func TestCompactReplyWhileHomeChangesNeitherPageNorMeter(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "first", weight: 8615})
+	cmd := a.slash("/compact")
+	if cmd == nil {
+		t.Fatal("/compact did not start")
+	}
+	a.openHome()
+	if !a.at(pageHome) {
+		t.Fatal("Home did not open")
+	}
+	a.entries = nil
+	a.ctxTokens = 1234
+	delete(a.notices.seen, eventCompacted)
+	drive(t, a, cmd())
+	if len(a.entries) != 0 || a.ctxTokens != 1234 || a.notices.seen[eventCompacted] {
+		t.Fatalf("late reply changed Home: entries=%v, meter=%d, compact notice=%v", a.entries, a.ctxTokens, a.notices.seen[eventCompacted])
+	}
+}
+
 // A COMPACTION IN THE MIDDLE OF A TURN OUTLIVES THE FOLD. The work on either
 // side of it goes behind the chip as it always did; the one quiet line saying
 // the model's copy of the conversation changed stays, above the answer.
