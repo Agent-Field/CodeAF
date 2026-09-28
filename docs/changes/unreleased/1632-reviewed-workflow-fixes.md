@@ -40,3 +40,10 @@ devaf or stageaf sharing the same home skips it instead of firing it in the
 person's own checkout; every other order stays at schema 1 and older builds keep
 firing it. A Traffic row now opens its own team's message even when the same
 conversation sent a `team_send` into another team that carries the same number.
+
+A closed conversation's sweep keeps a landed task copy that gained files, edits
+or commits after its cleanup failed, instead of retiring it with that work. A
+Traffic reply row opened on the default engine road waits for the member's
+conversation to finish arriving before it lands. On the default engine road,
+`ctrl+r` in `/model` refreshes every connected provider and a provider with an
+empty cached list is fetched once at launch, as it already was under `--no-host`.
