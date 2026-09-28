@@ -46,6 +46,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -322,6 +323,8 @@ func summaryFailedWhy(ctx context.Context, err error) string {
 	switch {
 	case ctx.Err() != nil:
 		return "the summary was interrupted"
+	case errors.Is(err, errSummaryDeclined):
+		return "the model declined to write a summary"
 	case errors.Is(err, errEmptyAnswer):
 		return "the model's summary came back empty or unreadable"
 	default:
@@ -527,12 +530,53 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 		a.addDetachedUsageAs(response, answered, 1, auxRoleSummary)
 	}
 	text := strings.TrimSpace(response.Text())
+	if strings.EqualFold(strings.TrimSpace(provider.FinishReason(response)), "content_filter") || summaryRefusalWithoutSubstance(text, chunk) {
+		return "", errSummaryDeclined
+	}
 	// An empty answer, machine markup and a model repeating itself are the
 	// same failure here: nothing came back that could stand in for the region.
 	if !briefIsProse(text) || briefRepeats(text) {
 		return "", errEmptyAnswer
 	}
 	return clip(text, plan.ceiling*bytesPerToken), nil
+}
+
+var errSummaryDeclined = errors.New("session: the model declined to write a summary")
+
+// A short refusal opening is not a summary when it names nothing from the
+// region. Generic refusal words are ignored so a shared "request" or "help"
+// cannot make an otherwise empty refusal look like conversation substance.
+func summaryRefusalWithoutSubstance(answer, region string) bool {
+	if len(answer) > 512 {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(answer))
+	opening := false
+	for _, prefix := range []string{"i'm sorry", "i’m sorry", "i am sorry", "sorry,", "i can't", "i can’t", "i cannot", "i'm unable", "i am unable"} {
+		if strings.HasPrefix(lower, prefix) {
+			opening = true
+			break
+		}
+	}
+	if !opening {
+		return false
+	}
+	words := func(text string) []string {
+		return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' })
+	}
+	generic := map[string]bool{"sorry": true, "cannot": true, "could": true, "would": true, "help": true, "request": true, "content": true, "policy": true, "provide": true, "assist": true, "information": true, "about": true, "that": true, "this": true, "with": true, "your": true, "their": true, "there": true, "because": true, "unable": true}
+	regionWords := make(map[string]bool)
+	for _, word := range words(region) {
+		if len(word) >= 5 && !generic[word] {
+			regionWords[word] = true
+		}
+	}
+	for _, word := range words(lower) {
+		if len(word) >= 5 && !generic[word] && regionWords[word] {
+			return false
+		}
+	}
+	return true
 }
 
 // summaryInstruction is the summarizer's system message.
