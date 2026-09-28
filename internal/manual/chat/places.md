@@ -703,6 +703,14 @@ conversation names, projects, folders, task titles and task outcomes. It does no
 search the full text of every message. Use `↑`/`↓` to choose and `enter` to open a
 match; `esc` clears the search.
 
+## Search says what was said is not indexed — can I search conversations with memory off
+
+That message came from the retired Search page. The separate page and `/search`
+command have been removed. Open Home with `/home` or `alt+1` and type to find a
+conversation by its name, project, folders, task titles or task outcomes. Home's
+search works with memory off; it does not need a conversation-message index and
+does not search the full text of old messages.
+
 ## settings — how this machine is set
 
 Every setting, in sections, with a search that crosses all of them. `/settings`, `/set` and
