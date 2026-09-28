@@ -68,8 +68,7 @@ fi
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
 [ $# -eq 3 ] || { echo "usage: run.sh <task-id> <model-id> <seed-tag>" >&2; exit 2; }
-TASK="$1"; MODEL="${2:-$MODEL}"; SEED="$3"
-MODEL="${MODEL:-deepseek/deepseek-v4-flash-0731}"
+TASK="$1"; MODEL="${2:-${MODEL:-deepseek/deepseek-v4-flash-0731}}"; SEED="$3"
 SLUG="$(printf '%s' "$MODEL" | tr '/:' '--')"
 VARIANT="${VARIANT:-high}"
 MAX_COST="${MAX_COST:-5}"
