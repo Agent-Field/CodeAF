@@ -48,14 +48,36 @@ func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan Event, erro
 	return a.submitUser(ctx, user)
 }
 
-// approveUserBash treats the entered command as consent while retaining hard
-// policy denies and disabled capabilities. It never asks a model for permission.
-func (a *Agent) approveUserBash(call ai.ToolCall) (toolResult, bool) {
+// approveUserBash treats the entered command as consent except where the
+// critical floor still needs an answer. It never asks a model for permission.
+// The context and hub are the turn's own, the same answer door a model call's
+// question uses, so the floor's card reaches both roads alike; with no hub the
+// critical question has nobody to put it to and refuses unattended.
+func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
 	if off := a.capabilityRefusal(call.Function.Name, json.RawMessage(call.Function.Arguments)); off != "" {
 		return refusal(off), false
 	}
-	if decision, governed := a.decide(call); governed && decision.Action == approval.ActionDeny {
+	decision, governed := a.decide(call)
+	if governed && decision.Action == approval.ActionDeny {
 		return refusal("denied by approval rule: " + decision.Rule), false
+	}
+	args := json.RawMessage(call.Function.Arguments)
+	// THE FLOOR STILL ASKS. Enter consents to ordinary shell work, but it
+	// cannot answer the critical table on behalf of a question not yet shown.
+	if governed && approval.AlwaysAsks(call.Function.Name, args) {
+		// An allow-only policy asks the same critical matcher for the rule
+		// shown on the card, even when the person's policy said "default".
+		decision = (approval.Policy{Default: approval.ActionAllow}).Check(call.Function.Name, args)
+		if !a.config.AskConsent || hub == nil {
+			return refusal("needs approval but no resolver is attached: " + decision.Rule), false
+		}
+		allowed, err := a.ask(ctx, hub, call, decision)
+		if err != nil {
+			return refusal(notApprovedWording(err)), false
+		}
+		if !allowed {
+			return refusal("denied by the person: " + decision.Rule), false
+		}
 	}
 	return toolResult{}, true
 }

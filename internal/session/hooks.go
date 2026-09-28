@@ -506,7 +506,7 @@ func (approvalGate) Name() string { return "approval" }
 
 func (g approvalGate) PreAction(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
 	if ep != nil && ep.userBash {
-		refused, allowed := g.agent.approveUserBash(call)
+		refused, allowed := g.agent.approveUserBash(ctx, hub, call)
 		return call, refused, allowed
 	}
 	refused, allowed := g.agent.approve(ctx, hub, call)

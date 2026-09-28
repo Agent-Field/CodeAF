@@ -175,6 +175,118 @@ func TestUserBashExplicitDenyStopsExecution(t *testing.T) {
 	}
 }
 
+// THE FLOOR STILL ASKS for a command the person typed, even when the policy
+// otherwise allows bash. A harmless missing program precedes the marker so
+// an accidental execution is visible without touching anything valuable.
+func TestUserBashCriticalFloorAsksUnderAllow(t *testing.T) {
+	for _, allow := range []bool{false, true} {
+		t.Run(map[bool]string{false: "refuse", true: "allow"}[allow], func(t *testing.T) {
+			a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+				cfg.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+				cfg.AskConsent = true
+			})
+			marker := filepath.Join(t.TempDir(), "ran")
+			ch, err := a.SubmitBash(t.Context(), "!mkfs.codeaf-floor-probe; touch "+marker)
+			if err != nil {
+				t.Fatal(err)
+			}
+			events := drainAnswering(t, ch, func(request Event) {
+				if request.Rule != `critical command "mkfs*"` {
+					t.Errorf("question rule = %q", request.Rule)
+				}
+				if _, err := os.Stat(marker); !os.IsNotExist(err) {
+					t.Errorf("command ran before answer: %v", err)
+				}
+				a.ResolveConsent(request.ID, allow)
+			})
+			if countKind(events, EventConsentRequest) != 1 || events[len(events)-1].Kind != EventTurnDone {
+				t.Fatalf("question or turn end missing: %v", kinds(events))
+			}
+			if allow {
+				if _, err := os.Stat(marker); err != nil {
+					t.Fatalf("allowed command did not run: %v", err)
+				}
+			} else {
+				if _, err := os.Stat(marker); !os.IsNotExist(err) {
+					t.Fatalf("refused command ran: %v", err)
+				}
+				failed, ok := firstOfKind(events, EventToolFailed)
+				if !ok || !strings.Contains(failed.Output, `denied by the person: critical command "mkfs*"`) {
+					t.Fatalf("refusal = %+v", failed)
+				}
+			}
+		})
+	}
+}
+
+func TestUserBashCriticalFloorWithoutResolverRefuses(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		cfg.AskConsent = false
+	})
+	marker := filepath.Join(t.TempDir(), "ran")
+	ch, err := a.SubmitBash(t.Context(), "!mkfs.codeaf-floor-probe; touch "+marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := collect(t, ch)
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("unattended command ran: %v", err)
+	}
+	failed, ok := firstOfKind(events, EventToolFailed)
+	if !ok || !strings.Contains(failed.Output, `needs approval but no resolver is attached: critical command "mkfs*"`) {
+		t.Fatalf("refusal = %+v", failed)
+	}
+}
+
+func TestUserBashCriticalFloorInterruptRefuses(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		cfg.AskConsent = true
+	})
+	marker := filepath.Join(t.TempDir(), "ran")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ch, err := a.SubmitBash(ctx, "!mkfs.codeaf-floor-probe; touch "+marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := drainAnswering(t, ch, func(request Event) { cancel() })
+	if countKind(events, EventConsentRequest) != 1 {
+		t.Fatalf("question missing: %v", kinds(events))
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("interrupted command ran: %v", err)
+	}
+	failed, ok := firstOfKind(events, EventToolFailed)
+	if !ok || !strings.Contains(failed.Output, "not approved: ended before an answer") {
+		t.Fatalf("refusal = %+v", failed)
+	}
+}
+
+func TestUserBashOrdinaryCommandNeverAsks(t *testing.T) {
+	for _, policy := range []approval.Action{approval.ActionAllow, approval.ActionPrompt} {
+		t.Run(string(policy), func(t *testing.T) {
+			a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+				cfg.ApprovalPolicy = &approval.Policy{Default: policy}
+				cfg.AskConsent = true
+			})
+			ch, err := a.SubmitBash(t.Context(), "!echo ordinary-ok")
+			if err != nil {
+				t.Fatal(err)
+			}
+			events := collect(t, ch)
+			if countKind(events, EventConsentRequest) != 0 {
+				t.Fatalf("ordinary command asked: %v", kinds(events))
+			}
+			end, ok := firstOfKind(events, EventToolEnd)
+			if !ok || !strings.Contains(end.Output, "ordinary-ok") {
+				t.Fatalf("ordinary command did not run: %+v", end)
+			}
+		})
+	}
+}
+
 func TestUserBashOrdinarySubmitNeverInterpretsBang(t *testing.T) {
 	c := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("literal text"), nil }}}
 	a, workspace := newTestAgent(t, c, nil)
