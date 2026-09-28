@@ -3069,7 +3069,7 @@ func TestTheRaceLosesInTheSameWordsNotARawError(t *testing.T) {
 	a.home.point(theirs)
 	before := len(a.entries)
 
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 	if !a.at(pageHome) {
 		t.Fatal("losing the race closed home")
 	}
@@ -3125,7 +3125,7 @@ func TestAnUnlockedRowStillOpens(t *testing.T) {
 	if strings.Contains(homeText(a), homeHeldShort) {
 		t.Fatalf("an unheld row was drawn as held:\n%s", homeText(a))
 	}
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 	if a.at(pageHome) {
 		t.Fatal("opening a free conversation left home up")
 	}

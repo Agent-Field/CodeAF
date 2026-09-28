@@ -748,7 +748,7 @@ func TestTheHolderLetsGoOntoTheConversationItWasKeeping(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	a.home.point(free)
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 	if a.file != free || len(a.behind) != 1 {
 		t.Fatalf("the lab did not end up with one conversation in front and one kept · %q %d", a.file, len(a.behind))
 	}
@@ -780,7 +780,7 @@ func TestAKeptConversationIsLetGoOfOnItsStir(t *testing.T) {
 	a.stirLane()
 	a.openHome()
 	a.home.point(free)
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 	key := a.convKey(mine)
 	held := a.behind[key]
 	if held == nil {
