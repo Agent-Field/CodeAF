@@ -4,7 +4,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"io"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -129,51 +128,52 @@ func TestAnOldObserveResponseCannotReplaceNewOwnership(t *testing.T) {
 	}
 }
 
-type delayedCursorAgent struct {
-	*observedAgent
-	calls        atomic.Int32
-	firstEntered chan struct{}
-	releaseFirst chan struct{}
-}
-
-func (a *delayedCursorAgent) AttachReplayCursor() ([]session.DisplayEntry, <-chan session.Event, func(), session.ReplayCursor) {
-	if a.calls.Add(1) == 1 {
-		close(a.firstEntered)
-		<-a.releaseFirst
-		return nil, nil, func() {}, session.ReplayCursor{Owner: "previous", Turn: 99}
-	}
-	return nil, nil, func() {}, session.ReplayCursor{Owner: "replacement", Turn: 2}
-}
-
+// A scripted peer deliberately releases wire results out of order. The normal
+// server orders Observe calls; this also protects the client when goroutine
+// scheduling delays folding an earlier result until after a newer one.
 func TestAnOldObserveWireResponseCannotReplaceNewOwnership(t *testing.T) {
-	far := &delayedCursorAgent{
-		observedAgent: &observedAgent{fakeAgent: &fakeAgent{model: "m"}},
-		firstEntered:  make(chan struct{}), releaseFirst: make(chan struct{}),
+	client, peer := newEngine(t)
+	peer.silent[MethodObserve] = true
+	waitCall := func(n int) Frame {
+		t.Helper()
+		deadline := time.NewTimer(3 * time.Second)
+		defer deadline.Stop()
+		tick := time.NewTicker(time.Millisecond)
+		defer tick.Stop()
+		for {
+			calls := peer.calls(MethodObserve)
+			if len(calls) >= n {
+				return calls[n-1]
+			}
+			select {
+			case <-deadline.C:
+				t.Fatal("Observe request did not arrive")
+			case <-tick.C:
+			}
+		}
 	}
-	loop, err := Loopback(Hello{}, Options{Boot: func(Hello) (*Engine, error) { return &Engine{Agent: far}, nil }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop.Close()
 	oldDone := make(chan struct{})
-	go func() { _, _, stop := loop.Client.Agent().AttachReplay(); stop(); close(oldDone) }()
+	go func() { _, _, stop := client.Agent().AttachReplay(); stop(); close(oldDone) }()
+	old := waitCall(1)
+	newDone := make(chan struct{})
+	go func() { _, _, stop := client.Agent().AttachReplay(); stop(); close(newDone) }()
+	fresh := waitCall(2)
+	peer.send(Frame{Kind: "result", ID: fresh.ID, Payload: mustJSON(observed{Cursor: session.ReplayCursor{Owner: "replacement", Turn: 2}})})
 	select {
-	case <-far.firstEntered:
+	case <-newDone:
 	case <-time.After(3 * time.Second):
-		t.Fatal("first observe never arrived")
+		t.Fatal("new Observe reply did not settle")
 	}
-	_, _, stop := loop.Client.Agent().AttachReplay()
-	stop()
-	close(far.releaseFirst)
+	peer.send(Frame{Kind: "result", ID: old.ID, Payload: mustJSON(observed{Cursor: session.ReplayCursor{Owner: "previous", Turn: 99}})})
 	select {
 	case <-oldDone:
 	case <-time.After(3 * time.Second):
-		t.Fatal("old observe did not return")
+		t.Fatal("old Observe reply did not settle")
 	}
-	if !loop.Client.Agent().ReplayCovers(session.Event{ReplayCursor: session.ReplayCursor{Owner: "replacement", Turn: 2}}) {
+	if !client.Agent().ReplayCovers(session.Event{ReplayCursor: session.ReplayCursor{Owner: "replacement", Turn: 2}}) {
 		t.Fatal("late old wire reply replaced newer observer ownership")
 	}
-	if loop.Client.Agent().ReplayCovers(session.Event{ReplayCursor: session.ReplayCursor{Owner: "previous", Turn: 99}}) {
+	if client.Agent().ReplayCovers(session.Event{ReplayCursor: session.ReplayCursor{Owner: "previous", Turn: 99}}) {
 		t.Fatal("late previous owner inherited replay suppression")
 	}
 }
