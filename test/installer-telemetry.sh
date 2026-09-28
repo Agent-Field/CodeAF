@@ -103,7 +103,7 @@ ok "README quotes the notice verbatim" '[ -n "$readme_block" ] && [ "$(printf "%
 
 hint='export PATH="/x/bin:$PATH"'
 has_escape() { printf '%s' "$1" | grep -q "$(printf '\033')"; }
-init_style
+init_style >/dev/null # a pipe, whatever the test itself runs under
 out=$(print_guide codeaf "$hint" "$tmp/.zshrc")
 ok "the PATH line stands on a line of its own" 'printf "%s\n" "$out" | grep -qx "     $hint"'
 ok "the guide names the command to type" 'printf "%s\n" "$out" | grep -qx "     codeaf"'
@@ -115,7 +115,7 @@ out_named=$(print_guide devaf "" "")
 ok "a named install sends the person to its own name" 'printf "%s\n" "$out_named" | grep -qx "     devaf"'
 ok "no colour when stdout is not a terminal" '! has_escape "$out"'
 export NO_COLOR=1
-init_style
+init_style >/dev/null # a pipe, whatever the test itself runs under
 out=$(print_guide codeaf "$hint" "" 2>&1)
 ok "NO_COLOR is respected" '! has_escape "$out"'
 unset NO_COLOR
