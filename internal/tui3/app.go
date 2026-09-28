@@ -5171,10 +5171,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.toldNote("compact failed: " + msg.err.Error())
 			}
 		} else {
+			// THE SAME MARK AS A PASS THE ENGINE RAN ON ITS OWN ([app.divider]),
+			// so a person reading back can tell a compaction from any other note
+			// whichever door started it.
 			if msg.before > 0 && msg.after > 0 {
-				a.toldNote(fmt.Sprintf("compacted · about %d to %d tokens", msg.before, msg.after))
+				a.toldNote(fmt.Sprintf("⚭ compacted · about %d to %d tokens", msg.before, msg.after))
 			} else {
-				a.toldNote("compacted")
+				a.toldNote("⚭ compacted")
 			}
 			a.noticeEvent(eventCompacted)
 		}

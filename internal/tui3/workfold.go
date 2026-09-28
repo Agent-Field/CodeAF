@@ -1,9 +1,11 @@
 package tui3
 
 import (
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -272,7 +274,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// machine the router refuses — and a chip that hid it left them with a
 		// pin that disappeared and no sentence anywhere saying why.
 		blocked, stopped := false, false
-		var asks []int
+		var asks, compactions []int
 		for i := lo; i < hi; i++ {
 			if es[i].kind == entryAssistant && strings.TrimSpace(es[i].text) != "" {
 				answer = i
@@ -289,6 +291,14 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			}
 			if es[i].kind == entryTool && ((es[i].status != toolOK && es[i].status != toolFailed && !es[i].cut) || es[i].decision != "") {
 				asks = append(asks, i)
+			}
+			// A FINISHED COMPACTION STANDS LIKE AN ASK. It is the record that the
+			// model's copy of the conversation changed, and it used to fold away
+			// with the work around it the moment the turn answered — on a turn
+			// whose only machinery was the pass, the chip hid nothing else. The
+			// work before and after it still folds; the line itself stays.
+			if es[i].kind == entryCompact && !es[i].ended.IsZero() {
+				compactions = append(compactions, i)
 			}
 			if es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel")) {
 				asks = append(asks, i)
@@ -319,6 +329,17 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				}
 			}
 		}
+		// ONLY A PASS BEFORE THE ANSWER SPLITS THE FOLD. A fold ends at the
+		// answer, so a pass that ran after it — the end-of-turn check, the
+		// ordinary case — is already standing; made an ask, it would put the
+		// answer inside the segment before it and fold the reply away. A turn
+		// with no answer has no reply to lose, so its pass stands too.
+		for _, at := range compactions {
+			if answer < 0 || at < answer {
+				asks = append(asks, at)
+			}
+		}
+		sort.Ints(asks)
 		// AN ASK STANDS, AND THE WORK BEFORE IT STILL FOLDS. A task proposal, a
 		// sign-in or a standing card is a thing the work could not decide alone,
 		// so no chip may cover it. It used to keep the WHOLE turn open instead:

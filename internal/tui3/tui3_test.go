@@ -1203,17 +1203,15 @@ func TestCompactionDrawsADivider(t *testing.T) {
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "keep going")
 
-	// The compaction mark is machinery, so a turn that settles on an answer
-	// tucks it away with the rest of the work (workfold.go). Nobody wants to be
-	// told the context was squeezed while they are reading the reply; they want
-	// it when they go looking for why, which is what ctrl+e is for.
-	if folded := plain(frame(a)); strings.Contains(folded, "compacted from") {
-		t.Fatalf("a settled turn still shows the compaction mark:\n%s", folded)
-	}
-	drive(t, a, key("ctrl+e"))
+	// THE MARK OUTLIVES THE TURN. It is the record that the model's copy of the
+	// conversation changed, so it stands when the turn's work folds
+	// (workfold.go) — one quiet line, not a rule across the page.
 	got := plain(frame(a))
-	if !strings.Contains(got, "⚭ compacted from ~84k tokens") || !strings.Contains(got, "──") {
-		t.Fatalf("the compaction divider is missing:\n%s", got)
+	if !strings.Contains(got, "· ⚭ compacted from ~84k tokens") {
+		t.Fatalf("a settled turn does not keep the quiet compaction line:\n%s", got)
+	}
+	if row := findRow(t, a, "compacted from ~84k tokens"); strings.Contains(row, "──") {
+		t.Fatalf("the compaction mark is still a rule: %q", row)
 	}
 }
 

@@ -30,3 +30,32 @@ func TestCompactCommandReportsReductionAndExplainsProtectedHistory(t *testing.T)
 		}
 	}
 }
+
+// A COMPACTION IN THE MIDDLE OF A TURN OUTLIVES THE FOLD. The work on either
+// side of it goes behind the chip as it always did; the one quiet line saying
+// the model's copy of the conversation changed stays, above the answer.
+func TestACompactionMidTurnStaysVisibleWhenTheWorkFolds(t *testing.T) {
+	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
+		toolBegin("bash", "go build ./..."),
+		{Kind: session.EventToolEnd, Tool: "bash"},
+		{Kind: session.EventCompacting, Hint: "compacting ~31k tokens"},
+		{Kind: session.EventCompacted, Hint: "compacted · summarized 4 messages · ~31k → ~13k tokens"},
+		toolBegin("bash", "go test ./..."),
+		{Kind: session.EventToolEnd, Tool: "bash"},
+		text(session.EventTextDelta, "all green"),
+		{Kind: session.EventTurnDone},
+	}}}
+	a := newTestApp(agent)
+	runTurn(t, a, agent, "build and test it")
+
+	page := plain(frame(a))
+	if !strings.Contains(page, "· ⚭ compacted · summarized 4 messages") {
+		t.Fatalf("the compaction left no trace once the turn folded:\n%s", page)
+	}
+	if !strings.Contains(page, "all green") {
+		t.Fatalf("the answer is not standing:\n%s", page)
+	}
+	if strings.Contains(page, "go test ./...") || strings.Contains(page, "go build ./...") {
+		t.Fatalf("the work around the compaction did not fold:\n%s", page)
+	}
+}

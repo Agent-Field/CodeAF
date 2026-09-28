@@ -436,7 +436,7 @@ messages included — and that summary replaces it. Your three most recent messa
 everything after them stay word for word, and so does the system prompt. The full record
 stays in the session journal, and the summary names that file.
 
-Success reports `compacted · about N to M tokens`; these are estimates. When nothing
+Success reports `⚭ compacted · about N to M tokens`; these are estimates, and the line stays in the conversation as the record of the pass. When nothing
 changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
 last summary — too little to summarize`, `there is nothing before your latest message to
 summarize`, or `the model could not write a summary: ` and the reason.

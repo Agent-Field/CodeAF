@@ -3466,7 +3466,7 @@ conversation you are in, the room you are standing in — and the **copy span's*
 are facts about the session rather than about a pointer, and they are true whoever is
 reading. What is dropped is the quieter background the pointer and the cursor share.
 
-## Two other things that move on screen
+## The pulsing ellipsis and "still working" — what moves on screen while a turn waits
 
 **The pulsing ellipsis, and the `still working` fallback.** When a turn is running and
 nothing else on screen is moving, two spaces then a pulsing ellipsis cycles `·` → `··` →
@@ -3490,12 +3490,18 @@ left when neither of the lines above knows anything. It says "still working" and
 "trying again" — a silence is only a silence to this suffix, and the words change to
 `trying again` solely when the request really was cut and re-sent, which is said outright.
 
-**The compaction mark.** A compaction is drawn while it runs and left as a rule once it
-lands, so the conversation never silently loses its middle. Running, it reads
+## The compaction line — what "⚭ compacted" means, and why it stays after the turn
+
+A compaction is drawn while it runs and left as one quiet line
+once it lands, so the conversation never silently loses its middle. Running, it reads
 `⠙ compacting ~84k tokens · 6s` — a braille spinner on the same grid as the tool
-spinners, dim, with a count-up. Settled, it becomes a centred rule:
-`───── ⚭ compacted from ~84k tokens · took 6s ─────`. The duration is dropped under one
-second. It is never painted the question hue, because nobody is being asked anything.
+spinners, dim, with a count-up. Settled, it becomes a dim line in the notes' lane:
+`· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · took 6s`. The duration is
+dropped under one second. It is never painted the question hue, because nobody is being
+asked anything. **It stays after the turn ends**: when the turn's work folds behind
+`▸ worked`, the compaction line stands outside the fold, above the answer, so there is
+always a visible record that the model's copy of the conversation changed. A `/compact`
+you run yourself leaves the same mark: `· ⚭ compacted · about N to M tokens`.
 
 ## What is it doing right now — connecting, first word, thinking, writing, paced, trying again
 

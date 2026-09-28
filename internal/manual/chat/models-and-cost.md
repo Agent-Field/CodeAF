@@ -2845,7 +2845,7 @@ cannot guarantee that every provider's initial response succeeds.
 full journal first, which makes no model call.
 
 Your messages, the system prompt, the newest assistant/tool batch and the recent working
-tail stay in context. Success reports `compacted · about N to M tokens`; those figures are
+tail stay in context. Success reports `⚭ compacted · about N to M tokens`; those figures are
 estimates. A no-op says `nothing to compact — your messages and recent work are kept`.
 Other failures say `compact failed: ` followed by the reason.
 
