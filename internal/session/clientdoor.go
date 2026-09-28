@@ -605,6 +605,10 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	var held float64
 	if purpose != purposeTurn && !isCrewSeatCall(ctx) {
 		task := crewTaskOf(ctx)
+		if err := task.beginCall(); err != nil {
+			return nil, model, err
+		}
+		defer task.endCall()
 		if stopped := task.stoppedAction(); stopped != "" {
 			// A TASK THAT STOPPED ON ITS ACTION buys no more helpers: every
 			// route it could reach already said no.
