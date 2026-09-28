@@ -207,6 +207,7 @@ func (a *app) takeKeyboard() tea.Cmd {
 // Following is a turn some other window on this conversation started, on its
 // way to be drawn here.
 type Following struct {
+	Covered func() bool
 	// Said is the message that opened it, and the empty string when the
 	// transcript this surface already read has that message in it — which is
 	// the case for a turn that was running before this window arrived.
@@ -273,6 +274,9 @@ func (a *app) followTurn(msg followingMsg) tea.Cmd {
 		return nil
 	}
 	next := a.watchFollowing()
+	if msg.turn.Covered != nil && msg.turn.Covered() {
+		return next
+	}
 	if msg.turn.Events == nil || msg.turn.Events == a.stream {
 		return next
 	}

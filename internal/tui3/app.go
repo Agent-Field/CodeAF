@@ -5721,6 +5721,9 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 // clock should walk (reveal.go). Only [waitEvent] can answer that for a folded
 // run, which is why the bit is a parameter rather than a length read here.
 func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
+	if owner, ok := a.agent.(interface{ ReplayCovers(session.Event) bool }); ok && owner.ReplayCovers(ev) {
+		return nil
+	}
 	// after is what this event asks the program loop to DO, as opposed to what
 	// it asks the screen to say. Two events produce one — a turn ending, which
 	// may ring a terminal nobody is looking at (notify.go), and a task node
