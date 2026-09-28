@@ -156,8 +156,7 @@ def adapt_tests(rubric, grade_dir, key, model, prompt_version):
         if c["kind"] == "classical":
             classical_id = c["id"]
     classical = phase_a["criteria"].get(classical_id, {})
-    agent_diff = (grade_dir / "agent.diff")
-    overlay = (pathlib.Path(rubric_task_dir(grade_dir)) / "solution")  # unused; overlay path lives in the verifier image
+    agent_diff = grade_dir / "agent.diff"
     evidence = ""
     ev = grade_dir / "evidence"
     if ev.exists() and classical_id:
