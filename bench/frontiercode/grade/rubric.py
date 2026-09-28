@@ -269,30 +269,9 @@ def phase_a(task_dir, repo, base, out_dir):
                 entry = {"status": RIG, "note": f"criterion machinery failed: {e!r}"}
             results[cid] = entry
 
-    # The judge's input: for every prompt criterion, the diff hunks of the
-    # paths it names and the mechanical evidence gathered beside them. For the
-    # adaptive path, the reference overlay's own text and the base content of
-    # every file it touches — the host never sees inside the verifier image,
-    # so the judge adapts from what phase A carries out.
-    judge_input = {"base": base, "criteria": {}, "test_files": {}, "overlay": ""}
-    for c in rubric["criteria"]:
-        if c["kind"] == "prompt":
-            paths = (c.get("prompt") or {}).get("paths", [])
-            judge_input["criteria"][c["id"]] = {
-                "question": c["prompt"]["question"], "paths": paths,
-                "hunks": diff_hunks(repo, paths, base),
-                "mechanical": mechanical_evidence(repo, paths),
-            }
-        elif c["kind"] == "classical":
-            overlay = c["classical"]["overlay"]
-            judge_input["overlay"] = pathlib.Path(overlay).read_text(errors="replace")
-            for path in re.findall(r"^diff --git a/(\S+) b/", judge_input["overlay"], re.M):
-                code, content = sh(f"git show '{base}:{path}'", cwd=repo)
-                judge_input["test_files"][path] = content if code == 0 else f"[missing at base: {path}]"
-
-    # The applied diff as a whole, for the record and for any later regrade.
-    sh(f"git diff '{base}' --binary > /logs/grade/applied.diff", cwd=repo)
-
+# The judge's input was captured right after the patch applied, while the
+    # tree was exactly the agent's — the reverse criterion below reverts src/,
+    # and evidence gathered after that would judge the base tree.
     (out / "phaseA.json").write_text(json.dumps(
         {"criteria": results, "judge_input": judge_input,
          "apply_ok": ok, "apply_note": note}, indent=2))
