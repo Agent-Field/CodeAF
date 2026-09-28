@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -394,7 +395,7 @@ func (w *Workspace) Forks(ctx context.Context) ([]Fork, error) {
 	defer cancel()
 
 	stdout, stderr, err := w.run(ctx, "--json", "forks")
-	if err != nil && len(documents(stdout)) == 0 {
+	if err != nil {
 		return nil, failure(stderr, err)
 	}
 	var rows []struct {
@@ -684,32 +685,56 @@ func (w *Workspace) Fork(ctx context.Context, name, destination string) (Fork, e
 	return fork, nil
 }
 
-// DropFork tells furrow to forget one universe while LEAVING ITS FILES ALONE.
-//
-// The two halves are separated on purpose. Whoever asked for the fork owns the
-// directory — for a task that is the session, which removes its own trees when
-// the work has landed — and a furrow that deleted those files from under it
-// would be a second owner of one directory. What furrow is asked to drop is the
-// record and the timeline, so that `furrow forks` does not fill up with the
-// universes of every task this machine has ever run.
-//
-// A FAILURE IS REPORTED AND NEVER DECIDED ABOUT HERE, because what one is worth
-// depends entirely on who asked. A landing has already put the work in, so a
-// record furrow would not drop costs it one line in a listing and it says
-// nothing about it. The sweep that reaps a session nobody landed is the last
-// thing on the machine that will ever know this fork's name, and the directory
-// the record points at is about to go — so it writes the miss down
-// (internal/session/sweep.go). One door, two readings, and neither of them is
-// this package's to make.
-func (w *Workspace) DropFork(ctx context.Context, name string) error {
-	if name = strings.TrimSpace(name); name == "" {
+// DropFork retires a task's files and timeline together. Furrow's keep-files
+// option retains the timeline too, so callers must retire before deleting files.
+// The expected destination prevents a stale checkpoint from deleting another fork.
+func (w *Workspace) DropFork(ctx context.Context, name, destination string) error {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(destination) == "" {
+		return fmt.Errorf("furrow: retiring a fork needs its name and destination")
+	}
+	forks, err := w.Forks(ctx)
+	if err != nil {
+		return err
+	}
+	for _, fork := range forks {
+		if fork.Name != name {
+			continue
+		}
+		if !filepath.IsAbs(destination) || filepath.Clean(fork.Path) != filepath.Clean(destination) {
+			return fmt.Errorf("furrow: fork %s has a different destination", name)
+		}
+		info, err := os.Lstat(destination)
+		if err != nil {
+			return fmt.Errorf("furrow: cannot retire fork %s: %w", name, err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("furrow: fork %s is not a directory", name)
+		}
+		// A retained child still needs this ground to retire its own timeline.
+		children, err := (&Workspace{root: destination, binary: w.binary}).Forks(ctx)
+		if err != nil {
+			return err
+		}
+		if len(children) != 0 {
+			return fmt.Errorf("furrow: fork %s still has child forks", name)
+		}
+		ctx, cancel := context.WithTimeout(ctx, wholeWorkspaceTimeout)
+		defer cancel()
+		stdout, stderr, err := w.run(ctx, "--json", "fork-rm", name)
+		if err != nil {
+			return failure(stderr, err)
+		}
+		var receipt struct {
+			FilesRemoved bool `json:"files_removed"`
+		}
+		if err := decodeLast(stdout, &receipt); err != nil {
+			return err
+		}
+		if !receipt.FilesRemoved {
+			return fmt.Errorf("furrow: fork %s was not retired", name)
+		}
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, readTimeout)
-	defer cancel()
-	stdout, stderr, err := w.run(ctx, "--json", "fork-rm", name, "--keep-files")
-	if err != nil && len(documents(stdout)) == 0 {
-		return failure(stderr, err)
-	}
+	// A previous successful retirement is safe to retry.
 	return nil
 }

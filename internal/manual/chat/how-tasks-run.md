@@ -3364,3 +3364,16 @@ A task cancelled by its supervisor stays cancelled. A late `plandb done` reports
 The refusal does not reopen the task or change its result. Active tasks still
 require their owner; an automatically completed composite's empty placeholder
 can still receive its final report.
+
+## Task copies and Furrow disk usage after a merge
+
+After a repository task lands, codeaf retires its Furrow copy and timeline
+before removing the task directory. Furrow garbage collection can then reclaim
+objects that no other timeline needs. This does not erase shared parent history.
+
+A cleanup failure does not undo a successful merge. The report names the copy
+that remains, and a later sweep of the closed conversation retries using its
+saved task record. Failed tasks and work kept for review retain their copies
+and timelines. Old temporary conversations still follow the usual seven-day
+retention policy. Previously orphaned timelines are not automatically purged:
+a missing directory alone does not prove that its history is disposable.
