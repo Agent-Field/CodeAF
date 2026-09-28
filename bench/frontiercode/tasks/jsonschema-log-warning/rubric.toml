@@ -1,0 +1,177 @@
+# The rubric for the jsonschema-log-warning fixture.
+#
+# SCHEMA. Every task carries rubric.toml beside task.toml. Each criterion has:
+#   id       unique word-name
+#   kind     one of: classical | command | reverse-classical |
+#            adaptive-classical | scope | prompt
+#   blocker  true = a failed criterion scores the whole run 0 (and the run
+#            counts as a pass-rate miss)
+#   weight   relative weight in the non-blocker sum (blockers never enter the
+#            sum; they only gate)
+#   spec     kind-specific, under [criterion.<kind>]:
+#              command: command = the shell command that must exit 0 (run in
+#                       the task tree, in rubric order)
+#              classical: overlay = the test-side patch applied over the
+#                       agent's tree (idempotent), run = the test command,
+#                       expect = pass
+#              reverse-classical: like classical plus revert_paths (paths
+#                       restored to the base commit before a forced rebuild),
+#                       expect = fail — the tests must fail once the
+#                       implementation is reverted, proving they test the
+#                       change
+#              adaptive-classical: overlay/run as classical; when the verbatim
+#                       overlay already applies and passes the criterion is
+#                       derived, otherwise the judge rewrites the tests to the
+#                       agent's solution and a second no-network container re-
+#                       runs them
+#              scope: max_files, max_changed_lines, allowed_paths (prefixes),
+#                       forbidden_paths
+#              prompt: question = the pinned judge question, paths = the diff
+#                       hunks the judge is shown
+#
+# WEIGHTS AND JUDGE. FrontierCode publishes no rubric weights, judge model,
+# judge prompt or threshold; ours are recorded here and in every grade. All
+# non-blockers weigh 1, and the score is the weighted mean over non-blockers
+# after blocker gating. The judge model is pinned per rubric and its prompt is
+# versioned in the grader (grade/judge.py).
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "resolver-multiline-converted"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["src/resolver.h"]
+question = """The change was meant to convert EVERY statement of the multi-line
+warning in this file to the new logging helper, so that no statement writes to
+std::cerr directly any more. A conversion that rewrote only the first statement
+(or only the first line) and left the continuation statements on std::cerr is
+NOT fully converted, and is exactly the failure this criterion exists to catch.
+Read the diff hunk for this file. Does it convert every statement of the
+multi-line warning block — every former std::cerr line — to the helper? The
+mechanical excerpt underneath counts the std::cerr statements left in the file.
+Answer pass only if none remain in that block."""
+
+[[criterion]]
+id = "bundle-multiline-converted"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["src/command_bundle.cc"]
+question = """The change was meant to convert EVERY statement of the multi-line
+warning in this file to the new logging helper, so that no statement writes to
+std::cerr directly any more. A conversion that rewrote only the first statement
+(or only the first line) and left the continuation statements on std::cerr is
+NOT fully converted, and is exactly the failure this criterion exists to catch.
+Read the diff hunk for this file. Does it convert every statement of the
+multi-line warning block — every former std::cerr line — to the helper? The
+mechanical excerpt underneath counts the std::cerr statements left in the file.
+Answer pass only if none remain in that block."""
+
+[[criterion]]
+id = "helper-added"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "grep -q 'LOG_WARNING()' src/logger.h && grep -q -- '-> std::ostream &' src/logger.h && grep -q 'warning: ' src/logger.h"
+
+[[criterion]]
+id = "lint-site-converted"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "grep -q 'LOG_WARNING' src/command_lint.cc && ! grep -q 'warning: Cannot exclude unknown rule' src/command_lint.cc"
+
+[[criterion]]
+id = "validate-precompiled-site-converted"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "grep -q 'LOG_WARNING' src/command_validate.cc && ! grep -q 'warning: Failed to parse pre-compiled schema template' src/command_validate.cc"
+
+[[criterion]]
+id = "validate-jsonl-site-converted"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "grep -q 'LOG_WARNING' src/command_validate.cc && ! grep -q 'warning: The JSONL file is empty' src/command_validate.cc"
+
+# The format check runs before the build: it needs no build directory, and the
+# project's own compile target reformats sources in place, which would mask a
+# non-compliant tree if the check came after it.
+[[criterion]]
+id = "format-clean"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "bash /rig/grade/checks/format-clean.sh"
+
+[[criterion]]
+id = "clean-build"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "make configure compile"
+timeout_sec = 2400
+
+[[criterion]]
+id = "reference-tests-pass"
+kind = "classical"
+blocker = false
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"
+run = "ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure"
+timeout_sec = 900
+
+# Reverse check: the reference tests must FAIL once the implementation is
+# reverted to the base commit — that is what proves they test the change. The
+# rebuild is forced (every reverted source is touched) because an incremental
+# build would otherwise keep the patched binary, which the tests would then
+# pass.
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure"
+revert_paths = ["src"]
+timeout_sec = 2400
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 12
+max_changed_lines = 300
+allowed_paths = ["src/", "test/"]
+forbidden_paths = ["build/", "vendor/", ".github/"]
+
+# Adaptive classical: when the verbatim reference tests apply and pass, this
+# criterion is derived from the classical one (the tests fit the solution as
+# written). When they do not — a conflict, or a failure the judge attributes
+# to an interface divergence rather than a behavioural one — the judge rewrites
+# the tests to the agent's solution and a second no-network container re-runs
+# them. See grade/judge.py for the pinned adaptation prompt.
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "/solution/test-overlay.patch"
+run = "ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure"
+timeout_sec = 2400
