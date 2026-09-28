@@ -12,8 +12,11 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-ARG BASE_COMMIT
-ARG REFERENCE_COMMIT
+# The task's own pinned commits as defaults, matching the environment image,
+# so a harness that builds this Dockerfile without build args gets the same
+# tree and the same reference solution.
+ARG BASE_COMMIT=fc0dd94d716e87a0373091e9946b1011d4ac682c
+ARG REFERENCE_COMMIT=440674e0a09d549c8cd3fb18ee762e04fa3b83bd
 
 # A full clone beside the task tree, pinned to the reference commit, is where
 # the reference patch, the test overlay and the negative control come from.
