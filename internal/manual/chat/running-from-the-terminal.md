@@ -94,11 +94,18 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf` and prints two things: one line
-naming the installed file's `version` (`installed codeaf <tag> built …`), and last,
-when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste. It
-prints nothing about telemetry; codeaf itself shows that notice before any count
-is sent.
+The installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
+when a folder already on `PATH` is writable (`~/.local/bin`, `~/bin`, or
+`/usr/local/bin`) it links `codeaf` there too, so the command works in the same
+terminal with nothing to paste. It never replaces a file there that is not its own
+link. It prints a few checked steps (`Downloaded`, `Installed codeaf <tag>`, `PATH`,
+`Linked`), then a short *Get started* guide: the `export PATH=…` line to paste when
+the command is not reachable yet, `cd your-project` and `codeaf`, and how to connect a
+model. On a terminal it ends by asking `Start codeaf in <folder> now? [Y/n]`; `enter`
+starts it there, and the first run connects a model. `--no-start` or
+`CODEAF_NO_START=1` skips the question, and nothing is asked when the output is not a
+terminal or `CI` is set. It prints nothing about telemetry; codeaf itself shows that
+notice before any count is sent.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 

@@ -9,6 +9,7 @@ INSTALL_NAME="${CODEAF_INSTALL_NAME:-codeaf}"
 VERSION="${VERSION:-}"
 VERBOSE="${VERBOSE:-0}"
 NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-${AFORGE_NO_MODIFY_PATH:-0}}" # legacy-name
+NO_START="${CODEAF_NO_START:-0}"
 INSTALL_DIR="${CODEAF_INSTALL_DIR:-${AFORGE_INSTALL_DIR:-${HOME}/.codeaf/bin}}" # legacy-name
 STATE_ROOT="${CODEAF_HOME:-${AFORGE_HOME:-${HOME}/.codeaf}}" # legacy-name
 GITHUB_API="${CODEAF_GITHUB_API:-${AFORGE_GITHUB_API:-https://api.github.com}}" # legacy-name
@@ -22,7 +23,8 @@ Install codeaf from a GitHub release.
 
 Usage:
   install.sh [--stable|--rc|--dev|--staging] [--version TAG]
-             [--name WORD] [--dir PATH] [--no-modify-path] [--verbose]
+             [--name WORD] [--dir PATH] [--no-modify-path] [--no-start]
+             [--verbose]
 
 Channels:
   --stable   Latest stable release (default).
@@ -34,20 +36,110 @@ Flags:
   --version TAG       Install one named release tag.
   --name WORD         Install the binary with this file name.
   --dir PATH          Install somewhere other than ~/.codeaf/bin.
-  --no-modify-path    Print the PATH line without editing a shell file.
+  --no-modify-path    Print the PATH line without editing a shell file or
+                      linking the command into a folder already on PATH.
+  --no-start          Do not offer to start codeaf when the install ends.
   --verbose           Print download details.
   --help              Show this help.
 
 Environment:
   CHANNEL, VERSION, CODEAF_INSTALL_NAME, CODEAF_INSTALL_DIR
-  CODEAF_NO_MODIFY_PATH, VERBOSE
+  CODEAF_NO_MODIFY_PATH, CODEAF_NO_START, VERBOSE
   GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
   CODEAF_GITHUB_API and CODEAF_GITHUB_DOWNLOAD for mirrors and tests
 EOF
 }
 
+# THE INSTALLER SPEAKS IN ONE VOICE: a mark, a few checked steps, then a short
+# guide to the first minute. Colour, the spinner and the non-ASCII marks are for
+# a person at a terminal only. Piped, logged or under NO_COLOR
+# (https://no-color.org) the same words print plain, so a log or a test reads
+# them byte for byte.
+init_style() {
+  BOLD="" DIM="" ACCENT="" GREEN="" RED="" RESET=""
+  MARK_OK="ok" MARK_FAIL="x" MARK_BRAND="*" DOT="-"
+  SPINNER_FRAMES="-\\|/"
+  local locale="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+  case "$locale" in
+    *UTF-8*|*utf-8*|*UTF8*|*utf8*)
+      MARK_OK="✓" MARK_FAIL="✗" MARK_BRAND="◆" DOT="·"
+      SPINNER_FRAMES="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+      ;;
+  esac
+  if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]; then
+    BOLD=$'\033[1m'
+    DIM=$'\033[2m'
+    GREEN=$'\033[32m'
+    RED=$'\033[31m'
+    RESET=$'\033[0m'
+    # The brand's amber, in truecolor where the terminal says it has it and the
+    # nearest of the 256 otherwise.
+    case "${COLORTERM:-}" in
+      truecolor|24bit) ACCENT=$'\033[38;2;212;162;74m' ;;
+      *) ACCENT=$'\033[38;5;178m' ;;
+    esac
+  fi
+}
+
+# A person's home folder reads as ~ in anything printed; the paths written into
+# shell files stay absolute.
+tidy_path() {
+  local path="$1"
+  if [[ -n "${HOME:-}" && "$path" == "$HOME"/* ]]; then
+    printf '~%s' "${path#"$HOME"}"
+  else
+    printf '%s' "$path"
+  fi
+}
+
+# The spinner turns in a background loop while the real work runs in THIS
+# shell, so the work's variables (the tag, the HTTP status, the asset name)
+# survive it. It draws only on a terminal that has `sleep`, and it is erased
+# before the line that replaces it is printed.
+SPIN_PID=""
+spin_start() {
+  [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]] || return 0
+  command -v sleep >/dev/null 2>&1 || return 0
+  local label="$1"
+  printf '\033[?25l'
+  (
+    local frames="$SPINNER_FRAMES" i=0 count=${#SPINNER_FRAMES}
+    while :; do
+      printf '\r  %s%s%s %s%s%s' "$ACCENT" "${frames:$i:1}" "$RESET" "$DIM" "$label" "$RESET"
+      i=$(( (i + 1) % count ))
+      sleep 0.08
+    done
+  ) &
+  SPIN_PID=$!
+}
+
+spin_stop() {
+  [[ -n "$SPIN_PID" ]] || return 0
+  kill "$SPIN_PID" >/dev/null 2>&1 || true
+  wait "$SPIN_PID" 2>/dev/null || true
+  SPIN_PID=""
+  printf '\r\033[2K\033[?25h'
+}
+
+# One finished step: a green check, a word, and what it came to.
+step_ok() {
+  local word="$1"
+  local detail="${2:-}"
+  printf '  %s%s%s %-11s %s\n' "$GREEN" "$MARK_OK" "$RESET" "$word" "$detail"
+}
+
+print_banner() {
+  printf '\n  %s%s%s %scodeaf%s  %sby AgentField AI%s\n\n' \
+    "$ACCENT" "$MARK_BRAND" "$RESET" "$BOLD" "$RESET" "$DIM" "$RESET"
+}
+
 fail() {
-  printf 'codeaf: %s\n' "$*" >&2
+  spin_stop
+  if [[ -t 2 && -n "$RED" ]]; then
+    printf '  %s%s%s codeaf: %s\n\n' "$RED" "$MARK_FAIL" "$RESET" "$*" >&2
+  else
+    printf 'codeaf: %s\n' "$*" >&2
+  fi
   exit 1
 }
 
@@ -84,21 +176,45 @@ write_install_marker() {
   chmod 0600 "$file"
 }
 
-# The one line a person still has to paste, printed last of all, between a
-# blank line above and a blank line below, bold green on a terminal. Bare
-# `export PATH=...` and nothing else, so it can be selected and pasted without
-# trimming a prefix. Colour is skipped when stdout is not a terminal or
-# NO_COLOR is set (https://no-color.org).
-print_path_hint() {
-  local hint="$1"
-  [[ -n "$hint" ]] || return 0
-  local on="" off=""
-  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-    on=$'\033[1;32m'
-    off=$'\033[0m'
+# The guide is the installer's last word: what to type, in the order a person
+# types it. The PATH line, when there is one, is step 1 and stands on a line of
+# its own, bare, so it can be selected and pasted without trimming a prefix.
+# $1 the command a person types (the install name), $2 the PATH line or empty,
+# $3 the shell file the line was written to, or empty when none was edited.
+print_guide() {
+  local command_name="$1"
+  local hint="$2"
+  local edited="$3"
+  local n=1
+  printf '\n  %sGet started%s\n\n' "$BOLD" "$RESET"
+  if [[ -n "$hint" ]]; then
+    if [[ -n "$edited" ]]; then
+      printf '  %s%d%s  Open a new terminal, or run this to use %s here:\n' "$ACCENT" "$n" "$RESET" "$command_name"
+    else
+      printf '  %s%d%s  Put %s on your PATH by adding this to your shell profile:\n' "$ACCENT" "$n" "$RESET" "$command_name"
+    fi
+    printf '\n     %s%s%s\n\n' "$BOLD" "$hint" "$RESET"
+    n=$((n + 1))
   fi
-  printf '\n%s%s%s\n\n' "$on" "$hint" "$off"
+  printf '  %s%d%s  Start it inside any project:\n' "$ACCENT" "$n" "$RESET"
+  printf '\n     %scd your-project%s\n' "$BOLD" "$RESET"
+  printf '     %s%s%s\n\n' "$BOLD" "$command_name" "$RESET"
+  n=$((n + 1))
+  printf '  %s%d%s  Connect a model when it asks. OpenRouter signs in through your\n' "$ACCENT" "$n" "$RESET"
+  printf '     browser; DeepSeek, Qwen, GLM and Kimi take a key; Ollama needs none.\n'
+  printf '     Then say what you want done, the way you would to a colleague.\n'
+  printf '\n  %sMore%s\n\n' "$BOLD" "$RESET"
+  printf '     %s%-34s%s %s%s%s\n' "$BOLD" "$command_name do \"add a health check\"" "$RESET" "$DIM" "one task, answer on stdout" "$RESET"
+  printf '     %s%-34s%s %s%s%s\n' "$BOLD" "$command_name update" "$RESET" "$DIM" "the newest build, in place" "$RESET"
+  printf '     %s%-34s%s %s%s%s\n' "$BOLD" "$command_name --help" "$RESET" "$DIM" "every command" "$RESET"
+  printf '\n  %sLearn more%s\n\n' "$BOLD" "$RESET"
+  printf '     %s%-10s%s %shttps://agentfield.ai/docs/codeaf%s\n' "$DIM" "Docs" "$RESET" "$ACCENT" "$RESET"
+  printf '     %s%-10s%s %shttps://agentfield.ai/docs/codeaf/playbooks%s\n' "$DIM" "Playbooks" "$RESET" "$ACCENT" "$RESET"
+  printf '     %s%-10s%s %shttps://agentfield.ai/docs/codeaf/connections%s\n' "$DIM" "Models" "$RESET" "$ACCENT" "$RESET"
+  printf '     %s%-10s%s %shttps://discord.gg/aBHaXMkpqh%s\n\n' "$DIM" "Discord" "$RESET" "$ACCENT" "$RESET"
 }
+
+init_style
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -122,6 +238,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --no-modify-path) NO_MODIFY_PATH=1; shift ;;
+    --no-start) NO_START=1; shift ;;
     --verbose|-v) VERBOSE=1; shift ;;
     --help|-h) usage; exit 0 ;;
     *) usage_error "unknown option: $1" ;;
@@ -144,12 +261,15 @@ fi
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/codeaf.XXXXXX")
 INSTALL_TEMP=""
 cleanup() {
+  spin_stop
   rm -rf "$TMP_ROOT"
   if [[ -n "$INSTALL_TEMP" ]]; then
     rm -f "$INSTALL_TEMP"
   fi
 }
 trap cleanup EXIT HUP INT TERM
+
+print_banner
 
 HTTP_STATUS=""
 http_get() {
@@ -292,7 +412,15 @@ extract_dated_tags() {
   ' "$1"
 }
 
+# --verbose prints each GET as it goes, which a spinner would draw over.
+spin_label() {
+  [[ "$VERBOSE" == "1" ]] || spin_start "$1"
+}
+
 release_file="$TMP_ROOT/release.json"
+if [[ -z "$VERSION" ]]; then
+  spin_label "Finding the latest $CHANNEL build"
+fi
 if [[ -n "$VERSION" ]]; then
   TAG="$VERSION"
 else
@@ -329,6 +457,7 @@ else
   esac
 fi
 
+spin_stop
 if [[ -z "${TAG:-}" ]]; then
   api_problem
 fi
@@ -399,6 +528,7 @@ if [[ "$VERBOSE" == "1" ]]; then
 		printf 'codeaf: %s for %s/%s\n' "$TAG" "$OS" "$ARCH" >&2
 	fi
 fi
+spin_label "Downloading codeaf $TAG for $OS/$ARCH"
 DOWNLOAD_REPOSITORY="$REPOSITORY"
 if ! download_release "$DOWNLOAD_REPOSITORY"; then
 	if [[ "$HTTP_STATUS" == "404" && "$DOWNLOAD_REPOSITORY" != "$LEGACY_REPOSITORY" ]]; then
@@ -423,6 +553,12 @@ else
 fi
 if [[ "$actual" != "$expected" ]]; then
   fail "the checksum for $ASSET did not match"
+fi
+spin_stop
+if [[ -n "$DISPLAY_CHANNEL" ]]; then
+  step_ok "Downloaded" "$DISPLAY_CHANNEL build for $OS/$ARCH ${DOT} checksum verified"
+else
+  step_ok "Downloaded" "$TAG for $OS/$ARCH ${DOT} checksum verified"
 fi
 
 # Running the verified binary before creating its destination gives boot
@@ -451,6 +587,38 @@ if [[ "$VERBOSE" == "1" ]]; then
   printf 'codeaf: installed %s\n' "$INSTALL_DIR/$INSTALL_NAME${extension}" >&2
 fi
 
+# The receipt is the installed binary naming itself: `codeaf version` is one
+# line by law, so it reads whole after "Installed". A FILE INSTALLED UNDER
+# ANOTHER NAME IS NAMED FIRST, because the receipt tells a person what to type
+# next: a devaf install that said "Installed codeaf …" sent them to a command
+# this install never wrote, or to an older codeaf that happened to be on their
+# PATH. The version line after it stays whole, so the build is still named and
+# codeaf is still the product.
+if [[ "$RUN_BOOT_ADOPTION" == "1" ]]; then
+  version_line=$("$INSTALL_DIR/$INSTALL_NAME${extension}" version)
+else
+  version_line=$(CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/$INSTALL_NAME${extension}" version)
+fi
+# The line is split where it would wrap an 80-column terminal: the name and the
+# tag on the step, the rest of the build's own words dim beneath it, whole.
+version_head="${version_line%% built *}"
+version_rest=""
+if [[ "$version_head" != "$version_line" ]]; then
+  version_rest="built ${version_line#* built }"
+elif [[ "$version_line" == *" · "* ]]; then
+  version_head="${version_line%% · *}"
+  version_rest="${version_line#* · }"
+fi
+if [[ "$INSTALL_NAME" == "codeaf" ]]; then
+  step_ok "Installed" "$version_head"
+else
+  step_ok "Installed" "$INSTALL_NAME · $version_head"
+fi
+if [[ -n "$version_rest" ]]; then
+  printf '  %-13s %s%s%s\n' "" "$DIM" "$version_rest" "$RESET"
+fi
+printf '  %-13s %s%s%s\n' "" "$DIM" "$(tidy_path "$INSTALL_DIR/$INSTALL_NAME${extension}")" "$RESET"
+
 path_has_dir() {
   case ":${PATH}:" in
     *":$INSTALL_DIR:"*) return 0 ;;
@@ -476,48 +644,76 @@ append_path_line() {
   fi
 }
 
-# The PATH line is not printed here. It is the last thing the installer says,
-# after `codeaf version`, so the one line a person
-# has to paste sits at the bottom of the screen where their eye already is.
+# The folders a link may go in, in order: the person's own first, then the
+# system's customary one when they can write to it without sudo. A folder counts
+# only when it is on PATH already. A FILE THAT IS NOT A LINK IS NEVER REPLACED:
+# it is somebody else's install, and shadowing it silently is how a person ends
+# up running a build they did not choose. Prints the folder it linked into.
+link_into_path() {
+  local target="$INSTALL_DIR/$INSTALL_NAME${extension}"
+  local dir
+  for dir in "$HOME/.local/bin" "$HOME/bin" "/usr/local/bin"; do
+    case ":${PATH}:" in
+      *":$dir:"*) ;;
+      *) continue ;;
+    esac
+    [[ -d "$dir" && -w "$dir" ]] || continue
+    if [[ -e "$dir/$INSTALL_NAME" && ! -L "$dir/$INSTALL_NAME" ]]; then
+      return 1
+    fi
+    if ln -sf "$target" "$dir/$INSTALL_NAME" 2>/dev/null; then
+      printf '%s' "$dir"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The PATH line is not printed here. It is step 1 of the guide at the end, so
+# the one line a person has to paste sits beside the words that say why.
 PATH_HINT=""
+PATH_FILE=""
 if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
   PATH_HINT="$export_line"
+  # The line a person reads spells their home as $HOME, which is shorter and
+  # still right if they copy it into a profile on another machine.
+  if [[ -n "${HOME:-}" && "$INSTALL_DIR" == "$HOME"/* ]]; then
+    PATH_HINT="export PATH=\"\$HOME${INSTALL_DIR#"$HOME"}:\$PATH\""
+  fi
+  shell_name=$(basename "${SHELL:-/bin/bash}")
+  if [[ "$shell_name" == "fish" ]]; then
+    PATH_HINT="fish_add_path \"$INSTALL_DIR\""
+  fi
   if [[ "$NO_MODIFY_PATH" != "1" ]]; then
-    shell_name=$(basename "${SHELL:-/bin/bash}")
     case "$shell_name" in
       zsh)
-        append_path_line "$HOME/.zshrc" "$export_line # codeaf installer"
+        PATH_FILE="$HOME/.zshrc"
+        append_path_line "$PATH_FILE" "$export_line # codeaf installer"
         ;;
       fish)
-        append_path_line "$HOME/.config/fish/config.fish" "fish_add_path \"$INSTALL_DIR\" # codeaf installer"
+        PATH_FILE="$HOME/.config/fish/config.fish"
+        append_path_line "$PATH_FILE" "fish_add_path \"$INSTALL_DIR\" # codeaf installer"
         ;;
       *)
-        append_path_line "$HOME/.bashrc" "$export_line # codeaf installer"
+        PATH_FILE="$HOME/.bashrc"
+        append_path_line "$PATH_FILE" "$export_line # codeaf installer"
         if [[ "$OS" == "darwin" && -f "$HOME/.bash_profile" ]]; then
           append_path_line "$HOME/.bash_profile" "$export_line # codeaf installer"
         fi
         ;;
     esac
+    step_ok "PATH" "added to $(tidy_path "$PATH_FILE")"
+    # A piped install cannot change the PATH of the shell that ran it, so the
+    # profile line only reaches the NEXT terminal. A link in a folder that is
+    # already on PATH makes the command work in this one, with nothing to paste.
+    # The link only helps when it is what the name resolves to: an older
+    # codeaf earlier on PATH would still answer, so the paste line stays.
+    if link_dir=$(link_into_path) && [[ "$(type -P "$INSTALL_NAME" 2>/dev/null)" == "$link_dir/$INSTALL_NAME" ]]; then
+      step_ok "Linked" "$(tidy_path "$link_dir/$INSTALL_NAME"), ready in this terminal"
+      PATH_HINT=""
+    fi
   fi
-fi
-
-# The receipt is the installed binary naming itself: `codeaf version` is one
-# line by law, so "installed " in front of it reads as one sentence. A FILE
-# INSTALLED UNDER ANOTHER NAME IS NAMED FIRST, because the receipt is the one
-# line that tells a person what to type next: a devaf install that said
-# "installed codeaf …" sent them to a command this install never wrote, or to
-# an older codeaf that happened to be on their PATH. The version line after it
-# stays whole, so the build is still named and codeaf is still the product.
-if [[ "$RUN_BOOT_ADOPTION" == "1" ]]; then
-  version_line=$("$INSTALL_DIR/$INSTALL_NAME${extension}" version)
-else
-  version_line=$(CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/$INSTALL_NAME${extension}" version)
-fi
-if [[ "$INSTALL_NAME" == "codeaf" ]]; then
-  printf 'installed %s\n' "$version_line"
-else
-  printf 'installed %s · %s\n' "$INSTALL_NAME" "$version_line"
 fi
 
 # The install marker lives under the state root, and a custom install outside
@@ -527,4 +723,27 @@ fi
 if [[ "$RUN_BOOT_ADOPTION" == "1" || -d "$STATE_ROOT" ]]; then
   write_install_marker "$STATE_ROOT"
 fi
-print_path_hint "$PATH_HINT"
+print_guide "$INSTALL_NAME" "$PATH_HINT" "$PATH_FILE"
+
+# The last step is offered, not taken: a person at a terminal is asked whether
+# to start codeaf now, where the first run connects a model, and Enter says yes.
+# The answer is read from the terminal itself, because under `curl | bash`
+# standard input is the script. Nothing is asked of a pipe, a CI runner, a
+# --verbose run or --no-start.
+offer_start() {
+  [[ "$NO_START" != "1" && "$VERBOSE" != "1" && -z "${CI:-}" && "$OS" != "windows" ]] || return 0
+  [[ -t 1 ]] || return 0
+  { : </dev/tty; } 2>/dev/null || return 0
+  local reply=""
+  printf '  %sStart %s in %s now?%s %s[Y/n]%s ' "$BOLD" "$INSTALL_NAME" "$(tidy_path "$PWD")" "$RESET" "$DIM" "$RESET"
+  read -r reply </dev/tty || reply="n"
+  case "$reply" in
+    ""|y|Y|yes|Yes|YES) ;;
+    *) printf '\n'; return 0 ;;
+  esac
+  printf '\n'
+  cleanup
+  trap - EXIT HUP INT TERM
+  exec "$INSTALL_DIR/$INSTALL_NAME${extension}" </dev/tty
+}
+offer_start

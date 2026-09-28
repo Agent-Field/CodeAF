@@ -14,9 +14,10 @@ script=scripts/install.sh
 doc=docs/TELEMETRY.md
 test -f "$doc" || { echo "docs/TELEMETRY.md is missing; this test reads the notice from it"; exit 1; }
 
-eval "$(sed -n '/^write_install_marker()/,/^}/p; /^print_path_hint()/,/^}/p' "$script")"
+eval "$(sed -n '/^write_install_marker()/,/^}/p; /^init_style()/,/^}/p; /^print_guide()/,/^}/p' "$script")"
 type write_install_marker >/dev/null
-type print_path_hint >/dev/null
+type init_style >/dev/null
+type print_guide >/dev/null
 
 pass=0
 fail=0
@@ -94,27 +95,35 @@ readme_block=$(awk '
 ' README.md)
 ok "README quotes the notice verbatim" '[ -n "$readme_block" ] && [ "$(printf "%s\n" "$expected")" = "$readme_block" ]'
 
-# --- the PATH line comes last -------------------------------------------------
-# The line a person has to paste is the installer's final word: bare, after a
-# blank line, and never prefixed with "codeaf: add it to this shell with:",
-# which made it a sentence to trim rather than a line to select.
+# --- the guide ends the install ------------------------------------------------
+# The installer's last word is a short guide. The PATH line, when there is one,
+# is its first step and stands alone, bare, so it can be selected and pasted
+# without trimming a prefix ("codeaf: add it to this shell with:" made it a
+# sentence to trim rather than a line to select).
 
 hint='export PATH="/x/bin:$PATH"'
 has_escape() { printf '%s' "$1" | grep -q "$(printf '\033')"; }
-ok "an empty hint prints nothing" '[ -z "$(print_path_hint "" 2>&1)" ]'
-out=$(print_path_hint "$hint"; printf x); out=${out%x}
-expected_hint=$(printf '\n%s\n\nx' "$hint"); expected_hint=${expected_hint%x}
-ok "the hint is one blank line, the bare export, one blank line" '[ "$out" = "$expected_hint" ]'
-ok "channel and path announcements go to stderr, verbose only" '[ -z "$(grep -E "printf .codeaf: (installed|%s %s for|%s for)" "$script" | grep -v ">&2")" ]'
-ok "the receipt is the installed binary naming itself" 'grep -q "printf .installed %s" "$script"'
+init_style
+out=$(print_guide codeaf "$hint" "$tmp/.zshrc")
+ok "the PATH line stands on a line of its own" 'printf "%s\n" "$out" | grep -qx "     $hint"'
+ok "the guide names the command to type" 'printf "%s\n" "$out" | grep -qx "     codeaf"'
+ok "the guide says to connect a model" 'printf "%s\n" "$out" | grep -q "Connect a model"'
+ok "the guide links the docs" 'printf "%s\n" "$out" | grep -q "https://agentfield.ai/docs/codeaf"'
+out_none=$(print_guide codeaf "" "")
+ok "no hint, no PATH step" '! printf "%s\n" "$out_none" | grep -q "PATH"'
+out_named=$(print_guide devaf "" "")
+ok "a named install sends the person to its own name" 'printf "%s\n" "$out_named" | grep -qx "     devaf"'
 ok "no colour when stdout is not a terminal" '! has_escape "$out"'
 export NO_COLOR=1
-out=$(print_path_hint "$hint" 2>&1)
+init_style
+out=$(print_guide codeaf "$hint" "" 2>&1)
 ok "NO_COLOR is respected" '! has_escape "$out"'
 unset NO_COLOR
-last_line=$(grep -v '^[[:space:]]*#' "$script" | grep -v '^[[:space:]]*$' | tail -n 1)
-ok "the hint is the installer's last line" '[ "$last_line" = "print_path_hint \"\$PATH_HINT\"" ]'
+ok "channel and path announcements go to stderr, verbose only" '[ -z "$(grep -E "printf .codeaf: (installed|%s %s for|%s for)" "$script" | grep -v ">&2")" ]'
+ok "the receipt is the installed binary naming itself" 'grep -q "step_ok \"Installed\" \"\$version_head\"" "$script"'
+ok "the guide is printed after the marker is written" '[ "$(grep -n "^print_guide " "$script" | cut -d: -f1)" -gt "$(grep -n "^  write_install_marker \"\$STATE_ROOT\"" "$script" | cut -d: -f1)" ]'
 ok "the old prefixed sentence is gone" '! grep -q "add it to this shell with" "$script"'
+ok "the answer to start now is read from the terminal, never the piped script" 'grep -q "read -r reply </dev/tty" "$script"'
 
 # --- nothing new on the wire --------------------------------------------------
 
