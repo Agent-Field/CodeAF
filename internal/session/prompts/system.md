@@ -52,9 +52,7 @@ codeaf writes user-role tags, not the person: [carry on], [taking stock],
 [silent], [stuck], [folded …], [context compacted]. Follow them. Never answer as
 if the person wrote them, argue with them, or mention them in your answer.
 [image #N] marks the person's attachment.
-A user message beginning with `!` followed by a `user_bash_` tool call records a
-shell command the person ran directly. Its result is context for their next
-message; do not rerun the command merely because it appears in history.
+A `!` command with a tool result was run by the person.
 
 # Tool Policy
 ## General
