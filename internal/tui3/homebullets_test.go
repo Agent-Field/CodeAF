@@ -183,8 +183,12 @@ func TestHomeConversationReadsAnotherWindowsRunningTasks(t *testing.T) {
 		t.Fatalf("another window's running task lost its working mark: %q", got)
 	}
 	cell.closed = true
+	if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+		t.Fatalf("closing a conversation hid its running work: %q", got)
+	}
+	cell.row.session.Tasks.Running = 0
 	if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GProseBullet) {
-		t.Fatalf("a closed conversation kept a working mark: %q", got)
+		t.Fatalf("a closed conversation kept a working mark after its work ended: %q", got)
 	}
 }
 
