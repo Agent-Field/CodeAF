@@ -966,16 +966,6 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
-	// A command typed by the person is literal shell input, before mentions or
-	// skills can add context that would change what the shell executes.
-	if command, bash := BashCommand(text); bash {
-		if command == "" {
-			return nil, errors.New(BashEmptyWord)
-		}
-		user := userText(text)
-		user.bash = command
-		return a.submitUser(ctx, user)
-	}
 	// A @ team or chat in the words is a reference, and the model needs a
 	// bounded digest of it (mention.go). The journal keeps the words as typed.
 	said := text
@@ -1188,7 +1178,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
-	// bash is set only by the person's Submit door; model output cannot enter it.
+	// bash is set only by the person's SubmitBash door; model output cannot enter it.
 	bash    string
 	message ai.Message
 	refs    []journalPart
@@ -4358,7 +4348,8 @@ func foldsInto(prev, next Event) bool {
 	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
-	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning
+	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning ||
+		prev.Kind == EventToolOutput && prev.CallID == next.CallID
 }
 
 // close ends every subscriber's channel. It runs after the turn's last event,
@@ -4883,7 +4874,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
 				Args:     argsText(*call),
-				Output:   capOutput(result),
+				Output:   displayToolOutput(call.ID, result),
 				Answered: answered,
 				// And the call's own duration, off the journal's `took` line —
 				// the same figure EventToolFinished carried while the window was

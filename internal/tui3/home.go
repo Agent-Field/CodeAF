@@ -3646,6 +3646,9 @@ func (a *app) homeStartWithProject(text, place string) tea.Cmd {
 	if strings.TrimSpace(text) == "" {
 		return started
 	}
+	if _, bash := session.BashCommand(text); bash {
+		return tea.Batch(started, a.submitBash(text))
+	}
 	return tea.Batch(started, a.submit(text))
 }
 

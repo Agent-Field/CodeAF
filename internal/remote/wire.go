@@ -360,7 +360,9 @@ import (
 // fail as silence on an older engine: a version-17 engine reads `effort` as a
 // field it does not know and starts the task on the crew it would have had,
 // and the person is never told their word did nothing. NEVER TO SILENCE.
-const Version = 19
+// Version 20 adds the explicit human shell door and streamed shell output.
+// Older peers must refuse rather than treat a shell command as model input.
+const Version = 20
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -443,6 +445,7 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
+	MethodSubmitBash      = "SubmitBash"      // SubmitArgs → StreamRef, then shell output events
 	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
 	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
 	MethodSubmitFiles     = "SubmitFiles"     // SubmitFilesArgs → StreamRef, then "event" frames

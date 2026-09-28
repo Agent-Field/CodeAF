@@ -41,6 +41,8 @@ package tokens
 const NFFailedCell = "nf-fa-times_circle_o"
 
 var vocabulary = []GlyphBinding{
+	{ID: GPromptShell, Name: "PromptShell", Meaning: "composer prompt (shell)",
+		Plain: GlyphShell, UsualTint: Amber, Geometry: true},
 	// -- state (card line 1, rail card, agent row) ---------------------------
 	{
 		ID: GQueued, Name: "Queued", Meaning: "queued",

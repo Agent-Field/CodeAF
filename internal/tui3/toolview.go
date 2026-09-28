@@ -1700,6 +1700,18 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 	if width < 8 {
 		width = 8
 	}
+	if session.IsUserBashCall(e.callID) {
+		if e.detail.Output == "" {
+			return nil, 0
+		}
+		var rows []string
+		for _, line := range strings.Split(e.detail.Output, "\n") {
+			for _, row := range strings.Split(ansi.Hardwrap(drawableLine(line), width, true), "\n") {
+				rows = append(rows, a.pal.ink(row))
+			}
+		}
+		return rows, 0
+	}
 	if e.status.live() {
 		rows, more, _ := a.liveDetail(e, width)
 		return rows, more

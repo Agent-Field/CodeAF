@@ -1,12 +1,20 @@
 package tui3
 
 import (
+	"context"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+func (f *fakeAgent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {
+	f.bashSent = append(f.bashSent, text)
+	return f.Submit(ctx, text)
+}
 
 func TestUserBashComposerBypassesSetupAndKeepsShellSyntax(t *testing.T) {
 	a, _, _ := setupApp(t, nil)
@@ -24,7 +32,7 @@ func TestUserBashComposerBypassesSetupAndKeepsShellSyntax(t *testing.T) {
 		t.Fatalf("shell hit setup: %v", result.err)
 	}
 	fake := a.agent.(*fakeAgent)
-	if len(fake.sent) != 1 || fake.sent[0] != line || len(fake.marked) != 0 {
+	if len(fake.bashSent) != 1 || len(fake.sent) != 1 || fake.sent[0] != line || len(fake.marked) != 0 {
 		t.Fatalf("shell was modified or sent through a model modifier: %+v", fake.sent)
 	}
 }
@@ -71,7 +79,7 @@ func TestUserBashHomeRunsInTheSelectedProject(t *testing.T) {
 	line := "!printf '%s' /task @literal"
 	typeHome(a, line)
 	runCmd(a.homeEnter())
-	if opened != theirs || len(next.sent) != 1 || next.sent[0] != line {
+	if opened != theirs || len(next.bashSent) != 1 || len(next.sent) != 1 || next.sent[0] != line {
 		t.Fatalf("home shell went to %q with %q", opened, next.sent)
 	}
 }
@@ -97,5 +105,43 @@ func TestUserBashOutputStaysVisibleLiveAndAfterReopen(t *testing.T) {
 	}
 	if !found || len(deriveWorkfolds(a.entries, 0)) != 0 {
 		t.Fatal("reopen hid the shell output")
+	}
+}
+
+func TestUserBashComposerPromptReactsAndRestores(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	for _, text := range []string{"!", "!pwd", "", "hello!"} {
+		a.input.setText(text)
+		rows, _, _ := draftBlockWithTags(&a.input, a.pal, 80, 3, "", "", nil, a.pal.ink)
+		want := a.pal.dim(prompt)
+		if strings.HasPrefix(text, "!") {
+			want = a.pal.warn(a.pal.glyph(tokens.GPromptShell) + " ")
+		}
+		if !strings.Contains(rows[0], want) {
+			t.Fatalf("draft %q has wrong prompt: %q", text, rows[0])
+		}
+	}
+	a.input.setText("!")
+	rows, _, _ := draftBlock(&a.input, a.pal, 80, 3, "", "")
+	if strings.Contains(ansi.Strip(rows[0]), "$ ") {
+		t.Fatal("filter acquired shell prompt")
+	}
+}
+
+func TestUserBashStreamsLiteralRowsWithoutFoldingOrClipping(t *testing.T) {
+	f := &feed{live: -1, think: -1, turn: 1}
+	id := "user_bash_live"
+	f.ingest(session.Event{Kind: session.EventToolBegin, Tool: "bash", CallID: id})
+	output := "  **literal**\n\n" + strings.Repeat("x", 100) + "END\n"
+	f.ingest(session.Event{Kind: session.EventToolOutput, Tool: "bash", CallID: id, Text: output})
+	e := &f.entries[0]
+	if !e.open || !liveWorkKeepsRow(e) || e.detail.Output != output {
+		t.Fatal("live shell output hidden or modified")
+	}
+	a := newTestApp(&fakeAgent{})
+	rows, more := a.detailBody(e, 40)
+	plain := ansi.Strip(strings.Join(rows, "\n"))
+	if more != 0 || !strings.HasPrefix(plain, "  **literal**\n\n") || !strings.Contains(plain, "END") || !strings.HasSuffix(plain, "\n") {
+		t.Fatalf("literal output clipped or formatted: %q", plain)
 	}
 }

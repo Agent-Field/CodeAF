@@ -2,6 +2,8 @@ package tui3
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"context"
+	"errors"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -36,5 +38,22 @@ func (a *app) enterBash(line string) tea.Cmd {
 	a.spendWelcome()
 	a.remember(line)
 	a.dropDraft()
-	return a.submit(a.expandPastes(line))
+	return a.submitBash(a.expandPastes(line))
+}
+
+// bashAgent is deliberately separate from Submit: only an explicit shell
+// gesture can execute a command, including across a host connection.
+type bashAgent interface {
+	SubmitBash(context.Context, string) (<-chan session.Event, error)
+}
+
+func (a *app) submitBash(line string) tea.Cmd {
+	agent, ctx := a.agent, a.ctx
+	return a.submitting(line, func() (<-chan session.Event, error) {
+		door, ok := agent.(bashAgent)
+		if !ok {
+			return nil, errors.New("this session cannot run ! commands")
+		}
+		return door.SubmitBash(ctx, line)
+	})
 }

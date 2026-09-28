@@ -298,7 +298,7 @@ func liveWorkKeepsRow(e *entry) bool {
 		// Consent and the person's decision remain actionable. Failed calls
 		// use a status glyph in the compact caption; error output is disclosed
 		// only when the reader opens that step.
-		return e.status == toolConsent || e.decision != ""
+		return session.IsUserBashCall(e.callID) || e.status == toolConsent || e.decision != ""
 	case entryAssistant:
 		// NARRATION IS THE STEP TITLE ITSELF — its first line is lifted into the
 		// caption this block draws (hierarchy.go's [stampCaptions]), so covering it

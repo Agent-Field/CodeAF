@@ -8,16 +8,21 @@ from Home it opens a conversation in the selected project first. With `--host`,
 the command runs on the connected machine. No model is asked to run it or explain
 its result, and no provider key is needed for the command itself.
 
-The command and combined stdout/stderr are saved in conversation history. Output
-opens immediately and remains available after reopening; your next ordinary
-message can ask about it. A failed command keeps its output and exit status too.
+Typing the leading `!` changes the composer prompt to an amber `$`; deleting it
+restores the ordinary prompt. Combined stdout/stderr appears as plain text while
+the command runs, preserving line breaks and indentation. Wide lines wrap and
+terminal control sequences are removed for safe display. The command and output
+are saved in conversation history and remain visible after reopening. The model
+waits for your next message before responding. A failed command keeps its output and exit status too.
 Shell paths, `@` names and slash words remain literal, not mentions or send tags.
 
 Commands receive no interactive input or terminal. Use non-interactive flags;
 editors, prompts and terminal apps are not supported. Each command starts a fresh
 shell in the workspace: `cd` and `export` apply only within that command. Large
 output is truncated with a notice. The foreground shell timeout applies, and
-Escape stops the command. These commands cannot be sent to background jobs.
+Escape stops the command. These commands cannot be sent to background jobs. Enter supplies consent for
+the command you typed; explicit policy denies and active-work guards still apply.
+They run with your shell permissions and are not a filesystem or network sandbox.
 
 An empty `!`, attached files, or a busy conversation leaves your draft in place
 and explains what to change. Wait for the turn to finish or stop it first.

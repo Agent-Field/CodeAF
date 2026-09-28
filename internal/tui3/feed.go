@@ -348,6 +348,18 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.confirmUserUpdate()
 		f.beginTool(ev)
 
+	case session.EventToolOutput:
+		for i := range f.entries {
+			e := &f.entries[i]
+			if e.kind == entryTool && e.callID == ev.CallID {
+				e.detail.Output += ev.Text
+				e.open = true
+				f.follow()
+				f.touch()
+				break
+			}
+		}
+
 	case session.EventToolFinished:
 		f.finishTool(ev)
 
