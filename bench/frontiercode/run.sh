@@ -304,8 +304,11 @@ except FileNotFoundError:
     rec["ledger_error"] = "no usage.jsonl in the run's home"
 except Exception as e:
     rec["ledger_error"] = str(e)
-# The guard's meter: every admitted call with upstream's own usage row.
-gcost = gtin = gtout = gcalls = 0
+# The guard's meter: every settled call, priced by upstream's own usage row.
+# The row is flat (cost_usd, prompt_tokens, completion_tokens) and a settled
+# row with no price is recorded as unknown — an admitted call the meter could
+# not price is a hole in the account, said out loud, never averaged over.
+gcost = gtin = gtout = gcalls = gunknown = 0
 try:
     for line in open(os.path.join(out, "guard-usage.jsonl"), errors="replace"):
         if not line.strip():
@@ -313,12 +316,15 @@ try:
         r = json.loads(line)
         if r.get("phase") != "settled":
             continue
-        gcost += r.get("cost_usd") or 0.0
-        usage = r.get("usage") or {}
-        gtin += usage.get("prompt_tokens") or 0
-        gtout += usage.get("completion_tokens") or 0
         gcalls += 1
+        if r.get("cost_usd") is None:
+            gunknown += 1
+            continue
+        gcost += r["cost_usd"] or 0.0
+        gtin += r.get("prompt_tokens") or 0
+        gtout += r.get("completion_tokens") or 0
     rec["cost_usd_guard"] = gcost
+    rec["guard_unknown_cost_calls"] = gunknown
     rec["guard_prompt_tokens"] = gtin
     rec["guard_completion_tokens"] = gtout
     rec["guard_calls"] = gcalls
