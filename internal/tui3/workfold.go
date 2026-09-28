@@ -5,12 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
-
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // workfold is render-time structure. Nothing here is journaled: replaying the
