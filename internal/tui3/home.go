@@ -1736,7 +1736,9 @@ func (h *homeView) buildWorld() {
 				continue
 			}
 			hit.rows = append(hit.rows, row)
-			ranked = append(ranked, rankedRow{row, score})
+			if query != "" {
+				ranked = append(ranked, rankedRow{row, score})
+			}
 			if score > hit.score {
 				hit.score = score
 			}
