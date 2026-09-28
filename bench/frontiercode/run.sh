@@ -156,7 +156,7 @@ log "$TASK: guard listening on port $GUARD_PORT"
 
 log "$TASK: starting the egress proxy (open and logged)"
 docker run -d --name "fc-egress-$SEED" --network "fc-in-$SEED" \
-  -v "$SNAPSHOT_DIR/bin:/rigbin:ro" -v "$OUT:/logs" \
+  -v "$RIG_DIR/bin:/rigbin:ro" -v "$OUT:/logs" \
   --entrypoint /rigbin/egress-proxy-$([ "$PLATFORM" = linux/amd64 ] && echo amd64 || echo arm64) \
   alpine:3.20 -addr :3128 -log /logs/egress-proxy.log > "$OUT/egress-start.log" 2>&1 || {
   log "$TASK: egress proxy failed to start — see $OUT/egress-start.log"; meta "stage=egress-failed"; exit 1; }
