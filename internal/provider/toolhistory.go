@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -37,11 +38,14 @@ func readableToolHistory(messages []ai.Message) []ai.Message {
 			for _, call := range message.ToolCalls {
 				names[call.ID] = call.Function.Name
 				arguments := call.Function.Arguments
+				// The limit is in bytes, cut back to the start of a character so a
+				// clipped argument is never a broken one.
 				if len(arguments) > toolHistoryArgumentLimit {
-					runes := []rune(arguments)
-					if len(runes) > toolHistoryArgumentLimit {
-						arguments = string(runes[:toolHistoryArgumentLimit]) + "…"
+					cut := toolHistoryArgumentLimit
+					for cut > 0 && !utf8.RuneStart(arguments[cut]) {
+						cut--
 					}
+					arguments = arguments[:cut] + "…"
 				}
 				fmt.Fprintf(&lines, "\nCalled %s (%s) with %s", call.Function.Name, call.ID, arguments)
 			}
