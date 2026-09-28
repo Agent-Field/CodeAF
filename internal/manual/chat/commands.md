@@ -963,8 +963,9 @@ model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
-The picker **never fetches on its own** — it fetches only when you ask, with `ctrl+r` (see
-"Refreshing the model list" below). The list is what is already known, tried in this order,
+At launch, codeaf fetches a connected provider's model list once if it has an empty cached list.
+After that, `ctrl+r` asks for a fresh list (see "Refreshing the model list" below).
+The list is what is already known, tried in this order,
 each rung used only when the one above it came back empty after filtering:
 
 1. the catalog handed in at launch,
@@ -1018,11 +1019,13 @@ Limits:
   back. `/new` forgets it.
 - There is no mouse commit on the picker's rows.
 
-## Refreshing the model list — a new model is not in /model, the list is out of date
+## Refreshing the model list — a new model came out but it is not in /model; the model list is out of date
 
 The list `/model` shows is fetched from the router at most once a day, so a model a
 provider shipped this morning may not be in it yet. With the picker open, press
-**`ctrl+r`** to fetch the newest list now. The placeholder names it — `ctrl+r refresh` —
+**`ctrl+r`** to fetch the newest list now from the router and every connected provider
+that lists models. Each provider's group fills as its answer arrives; one provider's
+failure does not stop the others. The placeholder names it — `ctrl+r refresh` —
 and when your filter matches nothing the list says `no model matches · ctrl+r fetches the
 newest list`. Nothing on screen shows how old the list is; when in doubt, press it.
 
@@ -1562,7 +1565,8 @@ catalog groups follow it. The Codex row says `browser`; enter opens the sign-in 
 the waiting card keeps the address available to copy. The other listed providers say what
 they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom provider: it asks for a
 base URL, then a name of your own with the host's own spelling pre-filled (`127.0.0.1`
-becomes `127-0-0-1`), then a key. Several custom providers sit beside each other,
+becomes `127-0-0-1`). It asks for a key only if the model-list address answers 401 or 403.
+Several custom providers sit beside each other,
 each under its name; once one is connected a `+ add a provider` row appears and
 the **Custom OpenAI-compatible API** row becomes that provider's edit door. The
 [services page](services.md) covers model keys, and the accounts page covers what each

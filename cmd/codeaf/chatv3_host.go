@@ -860,6 +860,24 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// replaces a closure that named this session file and was left bound to it
 	// through every switch.
 	options.TaskIndex = farTaskRows(options.World, welcome.SessionFile)
+	if dest == "" {
+		// The linked engine and this window read the same profile, so its shelf
+		// can list every connected provider just as the in-process door does.
+		engineProfile := strings.TrimSpace(welcome.ProfileDir)
+		if engineProfile == "" {
+			engineProfile = profileDir
+		}
+		shelf.options.Dir = engineProfile
+		shelf.setSources(config.ResolveSources(engineProfile, settings.APIKey, settings.BaseURL))
+		listing := &v3Process{Shelf: shelf}
+		options.RefreshModels = listing.refreshDefaultModels
+		options.ModelsForService = shelf.modelsForService
+		options.RefreshModelsForService = shelf.refreshService
+		options.RefreshAllModels = listing.refreshAllModels
+		options.WarmEmptyProviders = listing.warmEmptyProviders
+		options.SubscribeServiceModels = listing.registerServiceNotice
+		options.ApplyModelSources = shelf.setSources
+	}
 	if !fleet.canBeside() {
 		// A DOOR THAT CANNOT DIAL AGAIN REALLY DOES HOLD ONE CONVERSATION AT A
 		// TIME, and says so ([tui3.Options.SharedAgent]) rather than letting

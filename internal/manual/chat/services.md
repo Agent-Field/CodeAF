@@ -99,8 +99,9 @@ is first and starts under the cursor, then `China`. Up and down, or `ctrl+p` and
 `ctrl+n`, move the cursor; a letter jumps to a region whose name starts with it;
 enter takes the row under the cursor and then opens `your key`; esc backs out with
 nothing saved. The region is a choice and cannot be typed. Ollama asks for nothing.
-**Custom OpenAI-compatible API** asks for `your base url` and then `your key`. A key may also be the
-name of an environment variable, such as `$DEEPSEEK_API_KEY`.
+**Custom OpenAI-compatible API** asks for `your base url` and `name`, then asks for `your key`
+only if the model-list address answers 401 or 403. A key may also be the name of an
+environment variable, such as `$DEEPSEEK_API_KEY`.
 
 A key with the wrong shape is stopped before any call:
 `that is not the shape of a deepseek key — they start with sk-`. A refusal carries the

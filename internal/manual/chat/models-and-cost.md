@@ -230,8 +230,9 @@ match. Twelve rows show at a time. No word means anything but itself — the spe
 capability terms this box used to take are gone, and the section "You cannot filter the
 picker by speed, price or capability" says what to read instead.
 
-The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
-router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
+At launch, codeaf fetches a connected provider's model list once if it has an empty cached list.
+Pressing `ctrl+r` in the picker asks for a fresh list (the *commands* page,
+"Refreshing the model list"). Otherwise
 the list comes from what is already known, in this order: the
 catalog the door passed in, then `~/.codeaf/v3/models.json`, then five names this build
 remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,

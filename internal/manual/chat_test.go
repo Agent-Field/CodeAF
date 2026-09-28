@@ -3047,6 +3047,34 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
+// People should be told when a provider skips the key box and when its list
+// can fill before they press refresh, at either manual door they may reach.
+func TestManualDescribesProviderKeyAndFirstModelFetch(t *testing.T) {
+	cases := []struct {
+		page, title, want string
+	}{
+		{"commands", "/connect — your connected accounts", "401 or 403"},
+		{"services", "Connect a provider — what is asked for, and what codeaf checks before it saves anything", "401 or 403"},
+		{"commands", "What the model picker lists, and what it will not do", "empty cached list"},
+		{"models-and-cost", "Why left and right arrows do the wrong thing in the model picker — the caret and the providers share one pair of keys", "empty cached list"},
+	}
+	for _, check := range cases {
+		found := false
+		for _, section := range Chat().Sections() {
+			if section.Page == check.page && section.Title == check.title {
+				found = true
+				if !strings.Contains(section.Body, check.want) {
+					t.Errorf("%s/%s does not explain %q", check.page, check.title, check.want)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("manual section %s/%s is missing", check.page, check.title)
+		}
+	}
+}
+
 // The ordinary task's Spending row stays as written, but each general page
 // must point to the separate ceiling before it can answer for senior-dev.
 func TestGeneralTaskCostPagesNameSeniorDevCeiling(t *testing.T) {
