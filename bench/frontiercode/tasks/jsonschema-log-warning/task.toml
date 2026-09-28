@@ -1,0 +1,63 @@
+# The task manifest for the jsonschema-log-warning fixture.
+#
+# A superset of the Harbor/Pier task layout the DeepSWE corpus uses (the same
+# [task]/[metadata]/[environment]/[agent]/[verifier] sections), so the Pier
+# baseline arms can run this directory unmodified, plus the keys this rig's
+# grader reads. The rig's lib.sh is the reader; keep it and this file in step.
+schema_version = "1.3"
+artifacts = ["/logs/artifacts/model.patch"]
+
+[task]
+name = "frontiercode/jsonschema-log-warning"
+description = "Add a warning logging helper to a C++ CLI and convert every warning site to it"
+authors = ["rig"]
+keywords = ["cpp", "logging", "cli"]
+
+[metadata]
+task_id = "jsonschema-log-warning"
+display_title = "Add a LOG_WARNING helper and convert every warning to it"
+display_description = "Add an always-on stderr warning helper to src/logger.h and route every warning site in the CLI sources through it."
+language = "cpp"
+# Provenance. The task is mined from a merged pull request in an open-source
+# repository (the reference commit below); no upstream source bytes are
+# committed to the rig — the environment image clones the tree at the base
+# commit and the verifier image fetches the reference commit at build time.
+repository_url = "https://github.com/sourcemeta/jsonschema"
+base_commit_hash = "fc0dd94d716e87a0373091e9946b1011d4ac682c"
+reference_commit_hash = "440674e0a09d549c8cd3fb18ee762e04fa3b83bd"
+reference_pr = "sourcemeta/jsonschema#521"
+license = "AGPL-3.0 (upstream only; fetched at image build time)"
+
+[environment]
+# Built by the rig from environment/Dockerfile for the host's architecture.
+docker_image = "frontiercode-jsonschema-log-warning:env"
+os = "linux"
+# Internet is on, as FrontierCode runs it; egress goes through the rig's
+# open-and-logged proxy and the transcript is scanned afterwards.
+allow_internet = true
+network_mode = "egress-logged"
+cpus = 4
+memory_mb = 8192
+build_timeout_sec = 2400.0
+
+[agent]
+# The agent's wall. FrontierCode publishes no per-task time budget; ours is
+# recorded here and in every row.
+timeout_sec = 7200.0
+
+[verifier]
+# The grader runs in its own container with no network. The LLM judge is the
+# one exception and runs from the host.
+network_mode = "no-network"
+environment_mode = "separate"
+timeout_sec = 5400.0
+cpus = 4
+memory_mb = 8192
+docker_image = "frontiercode-jsonschema-log-warning:verify"
+
+[verifier.collect]
+command = "cd /root/repos/jsonschema && git add -A && git diff --binary HEAD > /logs/artifacts/model.patch"
+timeout_sec = 300.0
+
+[rubric]
+file = "rubric.toml"
