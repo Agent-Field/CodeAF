@@ -142,21 +142,7 @@ func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error
 	c.decision.Ladder = r.Ladders
 	s := r.Guard
 	day := a.crewDay()
-	if s.Day == time.Now().Format("2006-01-02") {
-		day.mu.Lock()
-		if s.DaySpent > day.usd+day.since {
-			day.usd = s.DaySpent - day.since
-		}
-		if day.last == nil {
-			day.last = map[string]float64{}
-		}
-		for model, cost := range s.DayLast {
-			if cost > day.last[model] {
-				day.last[model] = cost
-			}
-		}
-		day.mu.Unlock()
-	}
+	restoreCrewDay(day, s)
 	c.day = day
 	c.guard = &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: day, Cap: s.Cap, TaskCap: s.TaskCap, CapAction: s.CapAction, TaskAction: s.TaskAction,
 		CeilingAction: s.CeilingAction, SeatCeilings: s.SeatCeilings, modelSpent: s.ModelSpent, Task: &SpendTask{spent: s.TaskSpent}, seatSpent: map[crewroute.Seat]*SpendTask{}}
@@ -223,4 +209,24 @@ func (c *taskCrew) endCall() {
 	c.mu.Unlock()
 	// A failed completion write leaves the earlier in-flight checkpoint on disk.
 	_ = c.persist()
+}
+
+// restoreCrewDay retains the saved same-day lower bounds without reducing the
+// current ledger reading or carrying yesterday's spend into a fresh day.
+func restoreCrewDay(day *SpendDay, s *crewGuardRecord) {
+	if s.Day == time.Now().Format("2006-01-02") {
+		day.mu.Lock()
+		if s.DaySpent > day.usd+day.since {
+			day.usd = s.DaySpent - day.since
+		}
+		if day.last == nil {
+			day.last = map[string]float64{}
+		}
+		for model, cost := range s.DayLast {
+			if cost > day.last[model] {
+				day.last[model] = cost
+			}
+		}
+		day.mu.Unlock()
+	}
 }

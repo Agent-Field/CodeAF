@@ -383,6 +383,13 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		// It is a call of this task, so it counts against the task's limit.
 		return c.agent.completeWithModel(withCrewTask(ctx, crew), purposeInherited, messages, key, options...)
 	}
+	return c.completeSeat(ctx, key, messages, options)
+}
+
+// completeSeat owns retries and fallback movement for an identified crew seat.
+// Its caller keeps the durable in-flight checkpoint around the whole loop.
+func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, messages []ai.Message, options []ai.Option) (*ai.Response, error) {
+	crew := c.run.crew
 	retried := false
 	for {
 		current := crew.sendFor(key)
