@@ -36,12 +36,23 @@ type compactPolicy struct {
 // rungs leave the conversation above the threshold.
 func (a *Agent) automaticCompactPolicy() compactPolicy {
 	belt := a.beltTokens()
+	// THE SYSTEM PAGE IS THE FIRST MESSAGE WHEN THERE IS ONE. An agent that
+	// has not been given it yet has nothing fixed to measure, and indexing an
+	// empty transcript would panic the pass that was only asking.
+	system := 0
+	a.mu.Lock()
+	if len(a.messages) > 0 {
+		system = EstimateTokens(a.transcriptMessageBytesLocked(0))
+	}
+	a.mu.Unlock()
+	line := a.compactTargetTokens() - belt
 	return compactPolicy{
-		target:         a.compactTargetTokens(),
-		keep:           a.keepRecentTokens(),
-		summarize:      true,
+		target: a.compactTargetTokens(),
+		keep:   a.keepRecentTokens(),
+		// A summary cannot make the fixed system page or the note smaller.
+		summarize:      line > system+summaryNoteTokens,
 		summarizeAbove: a.compactThreshold() - belt,
-		summarizeTo:    a.compactTargetTokens() - belt,
+		summarizeTo:    line,
 	}
 }
 
