@@ -111,6 +111,7 @@ func TestLandedForkRetirementRetriesFromCheckpoint(t *testing.T) {
 	}
 	document.Nodes[0].Merge = mergeMerged
 	document.Nodes[0].State = TaskDone
+	document.Seq = 3
 	for _, id := range []uint64{2, 3} {
 		inPlace := document.Nodes[0]
 		inPlace.ID, inPlace.Worktree, inPlace.Ground = id, repo, repo
