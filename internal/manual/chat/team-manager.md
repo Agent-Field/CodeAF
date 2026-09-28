@@ -58,7 +58,9 @@ like a pinned browser tab so it never scrolls away:
   that one the manager. When the team already has one, the row says which one it replaces:
   `◆ Make this harbor's manager (replaces Shipping the parser)`. On the manager itself the row
   reads **`◇ Make an ordinary member`**, which turns it back into an ordinary conversation with
-  all its history.
+  all its history. When the chip reads `teams ▾` with All shown, choose a team and reopen the
+  chip: All has no manager or Remove row. After you make a manager, the menu stays open and
+  that row changes to `◇ Make an ordinary member`.
 
 Once there is a manager the place reads **`◆ Manager`**, and on the conversations view its tile
 comes first, titled `◆ Manager · <its title>`. Point at the tab to see the team and the title in
@@ -147,9 +149,14 @@ the Traffic is the team's own and a manager set from the laptop is the one the f
 follows. Against a far machine running an older codeaf, `+ Manager` and the menus say managers
 are not available over `--host`, and the column has no Traffic word.
 
-When the manager starts a member with `team_start`, you are asked first, on a card that reads
-`◆ manager wants to start @lexer`, with the brief under it and the clause `a new conversation;
-it spends until it stops`. When you allow it, this window opens the new conversation in the
+## When a manager starts a member — team_start and approvals
+
+When the manager starts a member with `team_start`, the conversation's approval posture
+applies. The default `◇ YOLO` lets it start without a card; `◇ asks` raises a permission
+card headed `◆ manager wants to start @lexer`, with the brief under it and the clause
+`a new conversation; it spends until it stops`. With a card, `1 allow once` permits this
+start, `2 always` permits this tool for the session, `3 deny` refuses, and `esc` leaves it
+for later. An allowed start opens the new conversation in the
 team's folder **behind** the one you are in, never in front of it: what you were typing stays
 where it was. Its tab arrives at the end of the team's run, named `@lexer` until it has a title,
 and its working mark is the only thing that moves. With the team's auto-wake on, the member
@@ -222,13 +229,16 @@ on one waits for you.
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running | no |
-| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | yes |
+| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | under `◇ asks` |
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
 | `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
-`team_start` asks because a new conversation spends money for as long as it runs, and it is
+## Why team_start may ask before it starts
+
+`team_start` follows the conversation's approval posture because a new conversation can
+spend money; the default `◇ YOLO` allows it, while `◇ asks` raises the card. It is
 refused while the team is at its daily cap. The others act only inside the team you made, and
 every one of them is logged in the team's traffic. Questions, packets, caps and wrapping up are
 on the page **Team questions, decisions and caps**.
@@ -265,8 +275,9 @@ move wakes it by itself, and a move that was refused writes no line.
 
 A manager can start a **sub-team**: `team_start` with kind `team`, a name for the new team, a
 handle and a brief for its manager, and optionally members of its own team to move into it. You
-are asked first, on the same card as any start, which then reads `a new team "backend" under
-yours`. When you allow it:
+are asked first under `◇ asks`, on the same permission card as a member start, which then
+reads `a new team "backend" under yours, managed by it.` The default `◇ YOLO` starts it
+without that card. When allowed:
 
 - the new team is made under the manager's team, with its share of the pool: the parent's daily
   cap times `sub-team share` (`/settings`, **Teams**; 50% by default), written on the new team.
@@ -281,6 +292,8 @@ yours`. When you allow it:
 It is refused, with the reason, past the team depth (`team depth` in `/settings` under
 **Teams**, three levels by default, a team's own override first), under a closed team, at the
 team's daily cap, or when the name or the handle is taken.
+
+## Sub-team orders and reports
 
 **Orders go one level down, reports one level up.** A manager directs its own team's members,
 and a sub-team's manager is one of them; it never directs a sub-team's members. A `team_send`
