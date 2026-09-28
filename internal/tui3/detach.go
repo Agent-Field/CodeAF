@@ -44,6 +44,8 @@ import (
 // keep correct while it is not drawing it, which is the expensive kind of
 // state; the test is "would a person notice it was gone", not "could we".
 type aside struct {
+	// A send held behind an atomic replay remains with its conversation.
+	hostDeferred []func() tea.Cmd
 	// openingPrompt survives a switch while the title and transcript arrive.
 	openingPrompt string
 	// draft is the unsent sentence in the box, and chips are the pictures
@@ -264,6 +266,7 @@ func (a *app) front() Conversation {
 func (a *app) detachConversation() *aside {
 	main := a.mainComposer()
 	side := &aside{
+		hostDeferred: a.hostDeferred,
 		// The box and the parked messages are separate while this process can
 		// keep the conversation alive. The shared-handle exception below folds
 		// them because its engine ends the conversation during the swap.
@@ -523,6 +526,14 @@ func (a *app) closeForSwitch() {
 // conv is the bundle — the agent and the seams minted around it — and side is
 // the sidecar a detach left, or nil for a conversation that was just opened.
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
+	a.hostReplayLoading = false
+	a.hostReplayPending = nil
+	a.hostReplayWaiting = false
+	a.hostCalls = 0
+	a.hostDeferred = nil
+	if side != nil {
+		a.hostDeferred = side.hostDeferred
+	}
 	was := a.agent
 	a.takeUp(conv, true)
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);
@@ -577,6 +588,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// frame the person is switching away from anyway.
 	var joined tea.Cmd
 	if door, ok := agent.(attachReplayer); ok {
+		a.hostReplayLoading = true
 		joined = a.offLoop(func() func(bool) tea.Cmd {
 			entries, events, stop := door.AttachReplay()
 			return func(here bool) tea.Cmd {
@@ -603,7 +615,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 				// exactly as the replay above left it, including whether that
 				// replay handed this window a turn that is still running
 				// (takeover.go's [app.resumeStoppedTurn]).
-				back = append(back, a.resumeStoppedTurn())
+				back = append(back, a.finishHostedReplay(), a.resumeStoppedTurn())
 				a.touch()
 				return tea.Batch(back...)
 			}

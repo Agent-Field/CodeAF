@@ -816,6 +816,9 @@ type StandingWatchResult struct {
 // after the colon — empty means the engine's own home — and the engine answers
 // with the path it resolved.
 type Hello struct {
+	// SessionInstance scopes Resume cursors to the live owner that issued them.
+	SessionInstance string `json:"sessionInstance,omitempty"`
+
 	// Headless says this caller cannot answer approval questions. The engine
 	// requires explicit approval settings instead of the interactive default.
 	Headless  bool   `json:"headless,omitempty"`
@@ -961,6 +964,12 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// SessionInstance identifies this live conversation owner, not its durable
+	// transcript. A replaced engine can reopen the same file with stream IDs
+	// starting over, so a returning surface must forget the previous owner IDs.
+	// Empty preserves compatibility with engines predating this optional field.
+	SessionInstance string `json:"sessionInstance,omitempty"`
+
 	Version     int    `json:"version"`
 	Workspace   string `json:"workspace"`
 	SessionFile string `json:"sessionFile"`

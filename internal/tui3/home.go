@@ -3669,7 +3669,14 @@ func (a *app) homeStartWithProject(text, place string) tea.Cmd {
 // ruling). It is spent on the way OUT rather than on the way in, so a door that
 // refused leaves the pin a person set exactly where they set it.
 func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
-	where := strings.TrimSpace(a.targetWhere())
+	return a.homeOpenAt(a.targetWhere())
+}
+
+// homeOpenAt opens the target captured while the draft is still visible.
+// Consuming a slash draft rebuilds Home's rows and can move its cursor to a
+// different project; that new selection must not redirect the submitted work.
+func (a *app) homeOpenAt(target string) (tea.Cmd, bool) {
+	where := strings.TrimSpace(target)
 	if where != "" && where != strings.TrimSpace(a.workspace) {
 		// THE TRAY GOES WITH THE PERSON, and carrying it means taking it OUT of
 		// the conversation being stepped aside from before the aside is stowed —

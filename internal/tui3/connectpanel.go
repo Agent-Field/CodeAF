@@ -585,16 +585,17 @@ func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 	entry := p.entry
 	switch msg.String() {
 	case "esc":
+		a.cancelModelEntry(entry)
 		p.entry = nil
 
 	case "enter":
 		answer := entry.value()
 		p.entry = nil
-		if answer == "" {
-			break
-		}
 		if _, model := modelConnectionSource(entry.id); model {
 			return a.modelEntryAnswer(entry)
+		}
+		if answer == "" {
+			break
 		}
 		p.close()
 		a.touch()

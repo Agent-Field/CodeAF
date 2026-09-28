@@ -1134,6 +1134,10 @@ func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
 func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, stop func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.attachReplayLocked()
+}
+
+func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Event, stop func()) {
 	if a.closed || !a.running || a.hub == nil {
 		return shapeEntries(a.messages, a.file, a.presentation), nil, func() {}
 	}
@@ -1779,7 +1783,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// something the next turn may still be blind to (standing_world.go).
 	a.refreshStandingLocked()
 	a.refreshSystemLocked()
-	hub := newEventHub()
+	hub := a.newReplayHubLocked()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
@@ -4082,9 +4086,10 @@ func textMessage(role, text string) ai.Message {
 // never saw the events, and starting empty would leave it looking at a session
 // that is visibly working and saying nothing.
 type eventHub struct {
-	mu          sync.Mutex
-	subscribers []*eventStream
-	closed      bool
+	replayCursor ReplayCursor
+	mu           sync.Mutex
+	subscribers  []*eventStream
+	closed       bool
 
 	// finishedCalls is how many tool ends and tool failures this turn has sent
 	// — the same events the node room's recorder counts as steps
@@ -4298,6 +4303,7 @@ func (h *eventHub) send(event Event) (landed bool) {
 	if h.closed {
 		return false
 	}
+	event.ReplayCursor = h.replayCursor
 	if event.Kind == EventToolEnd || event.Kind == EventToolFailed {
 		h.finishedCalls++
 	}

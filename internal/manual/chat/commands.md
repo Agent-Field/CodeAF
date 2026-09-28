@@ -187,7 +187,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/model` | — | — | opens the model picker |
 | `/model` | — | `<slug>` | switches the model to that slug |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
-| `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
+| `/connect` | `/connections` | — | opens the connect panel; its `providers` group holds model providers, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/drafts` | — | — | lists cleared drafts, newest first; enter restores one to the box and `d` lets one go; an empty ring says `no cleared draft is waiting` |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
@@ -969,8 +969,8 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-Models from connected services sit under their service's name as a dim heading, default
-service first; a custom connection's heading is the name you gave it.
+Models from connected providers sit under their provider's name as a dim heading, default
+provider first; a custom provider's heading is the name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -1020,7 +1020,7 @@ falls back to `filter`.
 moment you type — which is exactly when you have found your model and want its providers.
 The foot follows the cursor and always reads in one order — the keys that move the **cursor**,
 then the ones that change the **list**, then `enter`, then the one key that is about neither:
-`→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model,
+`→ hosts · alt+s sort · enter switch · ctrl+t effort · esc` on a model,
 `← back · alt+s sort · enter choose · esc` inside its providers — and `← back · alt+s sort ·
 enter unpin · esc` on the provider you are already pinned to, where the same key takes the pin
 off again. While you are
@@ -1037,8 +1037,9 @@ model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
-The picker **never fetches on its own** — it fetches only when you ask, with `ctrl+r` (see
-"Refreshing the model list" below). The list is what is already known, tried in this order,
+At launch, codeaf fetches a connected provider's model list once if it has an empty cached list.
+After that, `ctrl+r` asks for a fresh list (see "Refreshing the model list" below).
+The list is what is already known, tried in this order,
 each rung used only when the one above it came back empty after filtering:
 
 1. the catalog handed in at launch,
@@ -1092,11 +1093,13 @@ Limits:
   back. `/new` forgets it.
 - There is no mouse commit on the picker's rows.
 
-## Refreshing the model list — a new model is not in /model, the list is out of date
+## Refreshing the model list — a new model came out but it is not in /model; the model list is out of date
 
 The list `/model` shows is fetched from the router at most once a day, so a model a
 provider shipped this morning may not be in it yet. With the picker open, press
-**`ctrl+r`** to fetch the newest list now. The placeholder names it — `ctrl+r refresh` —
+**`ctrl+r`** to fetch the newest list now from the router and every connected provider
+that lists models. Each provider's group fills as its answer arrives; one provider's
+failure does not stop the others. The placeholder names it — `ctrl+r refresh` —
 and when your filter matches nothing the list says `no model matches · ctrl+r fetches the
 newest list`. Nothing on screen shows how old the list is; when in doubt, press it.
 
@@ -1630,15 +1633,16 @@ status sheet. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
-`/connect` (or `/connections`) opens the connection panel. Its pinned `models` group
-holds the six built-in model services plus every one already connected; the account
+`/connect` (or `/connections`) opens the connect panel. Its pinned `providers` group
+holds the six built-in model providers plus every one already connected; the account
 catalog groups follow it. The Codex row says `browser`; enter opens the sign-in road and
-the waiting card keeps the address available to copy. The other listed services say what
-they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom service: it asks for a
+the waiting card keeps the address available to copy. The other listed providers say what
+they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom provider: it asks for a
 base URL, then a name of your own with the host's own spelling pre-filled (`127.0.0.1`
-becomes `127-0-0-1`), then a key. Several custom connections sit beside each other,
-each under its name; once one is connected an `add custom connection` row appears and
-the **Custom OpenAI-compatible API** row becomes that connection's edit door. The
+becomes `127-0-0-1`). It asks for a key only if the model-list address answers 401 or 403.
+Several custom providers sit beside each other,
+each under its name; once one is connected a `+ add a provider` row appears and
+the **Custom OpenAI-compatible API** row becomes that provider's edit door. The
 [services page](services.md) covers model keys, and the accounts page covers what each
 account can do once it is connected.
 
@@ -1774,7 +1778,7 @@ Refusals inside the panel, exactly as written:
 ## config.json keys are not read — why codeaf says a setting I wrote is ignored
 
 codeaf reads the top-level keys of your profile's `config.json` that a settings row or
-the model-service setup owns. A key nothing reads — a hand-written `models` object, a
+the model-provider setup owns. A key nothing reads — a hand-written `models` object, a
 spelling from another tool — does nothing, and the defaults apply in its place. (A key
 codeaf itself retired is passed over quietly rather than named.) So the conversation says so once, as a note:
 
@@ -1843,7 +1847,7 @@ moved to Spending.
 
 The ssh rows are here because "what may codeaf reach on your behalf" is this tab's own
 question, and a link to another machine is that question asked about a machine rather
-than about a service. They are not on the tab named **Connections**: that one is the
+than about an account. They are not on the tab named **Connections**: that one is the
 catalog of third-party accounts you sign in to, and it is built from the account list
 rather than from the settings registry.
 
@@ -1959,12 +1963,12 @@ worker, checker and planner have no rows of their own here: the one **seats** ro
 `/crew` panel, and a seat is pinned there or with `/crew pin` — a pin may carry a thinking
 level, `/crew pin planner moonshotai/kimi-k3:high`, and the seat is then asked at that level.
 
-The connected model services have their own section on the tab, each with its billing
-door, the safe spelling of its key, its region and its order. The section ends with an
-`add custom connection` row, and once a custom connection is connected an `active
-connection` row follows it: it reads
+The connected model providers have their own section on the tab, each with its billing
+door, the safe spelling of its key, its region and its order. The section ends with a
+`+ add a provider` row, and once a custom provider is connected an `active
+provider` row follows it: it reads
 `answering on localhost · enter moves it to homelab`, and enter moves this conversation
-onto the next connection, wrapping past the last back to the first. The
+onto the next provider, wrapping past the last back to the first. The
 [services page](services.md) has the whole of it.
 
 **Connections** — the accounts this profile has connected and what each may do. Its rows
