@@ -3,6 +3,8 @@ package tui3
 import (
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // Removing a place must remove every advertised way into it while keeping
@@ -64,5 +66,21 @@ func TestHomeStillFindsConversationsAfterSearchPlaceRemoval(t *testing.T) {
 	drive(t, a, key("esc"))
 	if !a.at(pageHome) || !a.home.box.empty() {
 		t.Fatal("Escape did not clear Home's search in place")
+	}
+}
+
+// A retired place leaves no door and no sentence behind it. Home's slash road
+// gives /search the fate of a word nobody defined, and no chat page still
+// quotes the line the removed place drew over --host, because the manual may
+// only quote what the surface can still say.
+func TestTheRetiredSearchLeavesNoFateOrQuotedLine(t *testing.T) {
+	if got, want := homeFate("/search", ""), homeFate("/nosuchthing", ""); got != want {
+		t.Fatalf("/search on Home has the fate %q, want the unknown-command fate %q", got, want)
+	}
+	for _, name := range manual.Chat().Pages() {
+		text, _ := manual.Chat().Page(name)
+		if strings.Contains(text, "search reads what was said on this machine") {
+			t.Fatalf("the %s page still quotes the retired Search place's --host line", name)
+		}
 	}
 }
