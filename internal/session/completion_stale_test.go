@@ -442,9 +442,11 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 		}
 	}
 	agent = finishedAgent(t, completer, path)
+	// This scenario needs each completed reading before the next scripted answer.
+	watchReadings(t, agent)
 	graph := stubbedGraph(agent, func(*TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), theAsk)
+	events, err := agent.Submit(watchedContext(agent), theAsk)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
