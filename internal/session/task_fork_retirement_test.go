@@ -165,3 +165,24 @@ func TestForkRetirementOrdersSiblingCopiesByTheirGrounds(t *testing.T) {
 		t.Fatal("cyclic grounds accepted")
 	}
 }
+
+func TestNestedForkRetirementPreservesKeptChildGround(t *testing.T) {
+	installFakeFurrow(t)
+	dir, parent := newSweptUniverseSession(t, t.TempDir(), "eeee9999eeee9999", dirtyRepo(t), time.Now())
+	child, err := prepareTaskTree(Place{Dir: dir}, parent.dir, "eeee9999eeee9999", 2, "kept child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.dropUniverse(); err == nil {
+		t.Fatal("retired ground of a kept child")
+	}
+	if _, err := os.Stat(parent.dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.dropUniverse(); err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.dropUniverse(); err != nil {
+		t.Fatal(err)
+	}
+}

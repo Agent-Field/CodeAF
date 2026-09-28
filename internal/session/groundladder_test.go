@@ -556,6 +556,7 @@ fork)
   done
   mkdir -p "$destination"
   cp -a "$repo"/. "$destination"/
+  rm -rf "$destination/.furrow/forks"
   mkdir -p "$repo/.furrow/forks"
   echo '{"name":"'"$name"'","destination":"'"$destination"'","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009"}' > "$repo/.furrow/forks/$name"
   echo '{"plan":{},"result":{"name":"'"$name"'","destination":"'"$destination"'","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009"}}'

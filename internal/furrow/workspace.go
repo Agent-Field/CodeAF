@@ -710,6 +710,14 @@ func (w *Workspace) DropFork(ctx context.Context, name, destination string) erro
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("furrow: fork %s is not a directory", name)
 		}
+		// A retained child still needs this ground to retire its own timeline.
+		children, err := (&Workspace{root: destination, binary: w.binary}).Forks(ctx)
+		if err != nil {
+			return err
+		}
+		if len(children) != 0 {
+			return fmt.Errorf("furrow: fork %s still has child forks", name)
+		}
 		ctx, cancel := context.WithTimeout(ctx, wholeWorkspaceTimeout)
 		defer cancel()
 		stdout, stderr, err := w.run(ctx, "--json", "fork-rm", name)

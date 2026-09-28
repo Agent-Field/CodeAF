@@ -10,7 +10,7 @@ import (
 )
 
 func TestDropForkChecksIdentityAndRemovalReceipt(t *testing.T) {
-	for _, mode := range []string{"ok", "mismatch", "missing", "symlink", "json-error", "retained", "invalid", "absent"} {
+	for _, mode := range []string{"ok", "mismatch", "missing", "symlink", "json-error", "retained", "invalid", "absent", "children"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			destination := filepath.Join(root, "child")
@@ -34,11 +34,14 @@ func TestDropForkChecksIdentityAndRemovalReceipt(t *testing.T) {
 				row = []byte("[]")
 			}
 			t.Setenv("RETIREMENT_ROWS", string(row))
+			t.Setenv("RETIREMENT_ROOT", root)
 			t.Setenv("RETIREMENT_MODE", mode)
 			binary := filepath.Join(root, "furrow")
 			script := `#!/bin/sh
 case "$4" in
-forks) printf '%s\n' "$RETIREMENT_ROWS" ;;
+forks)
+ if [ "$2" != "$RETIREMENT_ROOT" ] && [ "$RETIREMENT_MODE" != "children" ]; then echo '[]'; exit 0; fi
+ printf '%s\n' "$RETIREMENT_ROWS" ;;
 fork-rm)
  printf '%s\n' "$*" > "$2/called"
  case "$RETIREMENT_MODE" in
@@ -60,7 +63,7 @@ esac
 				t.Fatalf("DropFork error = %v, want error %v", err, wantError)
 			}
 			call, readErr := os.ReadFile(filepath.Join(root, "called"))
-			if mode == "mismatch" || mode == "missing" || mode == "symlink" || mode == "absent" {
+			if mode == "mismatch" || mode == "missing" || mode == "symlink" || mode == "absent" || mode == "children" {
 				if !os.IsNotExist(readErr) {
 					t.Fatalf("unsafe removal was called: %s", call)
 				}
