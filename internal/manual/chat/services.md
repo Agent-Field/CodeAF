@@ -270,7 +270,12 @@ provider` row connects a new one; with none connected yet, **Custom OpenAI-compa
 door onto the first.
 
 On the Providers tab in `/settings` each custom provider is a row of its own. `enter`
-opens its available actions. Custom providers offer refresh, rename, change key,
+opens its available actions. On an ordinary local launch, including a conversation
+kept running by its local host, connected providers with empty caches load their
+models in the background. In `/model`, `ctrl+r` refreshes every connected provider
+that supports listing; a failed listing keeps cached models and reports its error.
+Refreshing does not change the current conversation model.
+Custom providers offer refresh, rename, change key,
 and disconnect; rename reopens the address and name with their saved values. An
 empty key box keeps the saved key. A changed name is a rename: every model id already picked under the old
 name is re-spelled with the new one, the conversation's own pick first (a turn still

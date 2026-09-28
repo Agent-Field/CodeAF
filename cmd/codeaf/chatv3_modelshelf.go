@@ -39,7 +39,9 @@ type v3ModelShelf struct {
 	// fetchErrors holds, per provider id, why its last listing attempt failed —
 	// the sentence the provider's group shows until a fetch lands. Written only
 	// from commands off the event loop, read on the draw path.
-	fetchErrors map[string]string
+	fetchErrors       map[string]string
+	serviceNotices    map[uint64]func(string, string)
+	serviceNoticeNext uint64
 }
 
 type serviceCompartment struct {
@@ -403,4 +405,110 @@ func v3FetchReason(err error) error {
 		return failed.Err
 	}
 	return err
+}
+
+// refreshAllModels is [tui3.Options.RefreshAllModels]: ctrl+r in /model walks
+// the router's catalog AND every connected provider's listing (issue #1508).
+// One provider's refusal never stops the walk: each fetch is its own call and
+// its own error, and the group that could not list names its own reason
+// ([v3ModelShelf.fetchErrors]). Runs as a command off the event loop.
+func (s *v3ModelShelf) refreshAllModels(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	_, _, _ = s.refreshDefaultModels(ctx)
+	s.warmAll(ctx, false, s.noteServiceModels)
+}
+
+// refreshDefaultModels publishes both success and failure before returning.
+// The default-only menu and the all-provider walk share this delivery boundary.
+func (s *v3ModelShelf) refreshDefaultModels(ctx context.Context) ([]tui3.Model, time.Time, error) {
+	rows, at, err := s.refresh(ctx)
+	s.fetchError(modelsource.DefaultID, err)
+	s.noteServiceModelsTo(modelsource.DefaultID, s.options.BaseURL)
+	return rows, at, err
+}
+
+// warmEmptyProviders is [tui3.Options.WarmEmptyProviders]: the launch half of
+// issue #1508. Every connected provider that lists models and whose cache file
+// is missing or empty is fetched once, off the loop, through the connect path's
+// own door. It is called after setSources has filled what the caches could,
+// so a warm provider costs nothing and a cold one fills its group without a
+// reopen.
+func (s *v3ModelShelf) warmEmptyProviders(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.warmAll(ctx, true, s.noteServiceModels)
+}
+
+// registerServiceNotice subscribes one window and returns its removal function.
+// Callbacks run outside the shelf lock. A snapshot already in flight may
+// finish after removal; the surface owns and closes its notification desk.
+func (s *v3ModelShelf) registerServiceNotice(tell func(source, address string)) func() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.serviceNotices == nil {
+		s.serviceNotices = make(map[uint64]func(string, string))
+	}
+	s.serviceNoticeNext++
+	id := s.serviceNoticeNext
+	s.serviceNotices[id] = tell
+	return func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		delete(s.serviceNotices, id)
+	}
+}
+
+// noteServiceModelsTo is one surface's slice of the news: the drop of its memo
+// and the restock of its open picker happen on ITS loop, through the callback
+// the surface itself supplied — which is the only side allowed to touch the
+// app's memos.
+func (s *v3ModelShelf) serviceNoticesSnapshot() []func(string, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]func(string, string), 0, len(s.serviceNotices))
+	for _, tell := range s.serviceNotices {
+		out = append(out, tell)
+	}
+	return out
+}
+
+func (s *v3ModelShelf) noteServiceModelsTo(source, address string) {
+	notify := s.serviceNoticesSnapshot()
+	for _, tell := range notify {
+		if tell != nil {
+			tell(source, address)
+		}
+	}
+}
+
+// noteServiceModels tells every live surface one provider's listing changed,
+// so its memo is dropped and an open picker restocks. The shelf holds the
+// launch doors; each registers itself here when it opens the surface.
+func (s *v3ModelShelf) noteServiceModels(service modelsource.Connected) {
+	s.noteServiceModelsTo(service.Source.ID, service.Address)
+}
+
+// bindProviderModels installs one catalog and one notification registry on both
+// local UI roads. Existing source application remains authoritative: the direct
+// process updates its agents, while the linked engine re-reads its profile.
+func (s *v3ModelShelf) bindProviderModels(options *tui3.Options) {
+	s.setSources(options.Sources)
+	options.Models = func() []tui3.Model { return v3Models(s) }
+	options.RefreshModels = s.refreshDefaultModels
+	options.ModelsForService = s.modelsForService
+	options.RefreshModelsForService = s.refreshService
+	options.RefreshAllModels = s.refreshAllModels
+	options.WarmEmptyProviders = s.warmEmptyProviders
+	options.SubscribeServiceModels = s.registerServiceNotice
+	options.ProviderFetchError = s.fetchErrorFor
+	apply := options.ApplyModelSources
+	options.ApplyModelSources = func(sources modelsource.Set) {
+		s.setSources(sources)
+		if apply != nil {
+			apply(sources)
+		}
+	}
 }
