@@ -56,7 +56,11 @@ memory_mb = 8192
 docker_image = "frontiercode-jsonschema-log-warning:verify"
 
 [verifier.collect]
-command = "cd /root/repos/jsonschema && git add -A && git diff --binary HEAD > /logs/artifacts/model.patch"
+# What Pier's verifier would collect in a baseline arm: the whole diff against
+# the base commit, untracked files staged, binary-safe. The rig's own harness
+# arm collects through grade/collect-candidates.sh, which tries every place
+# the work could have landed and picks the richest source diff.
+command = "cd /root/repos/jsonschema && git add -A && git diff --binary fc0dd94d716e87a0373091e9946b1011d4ac682c > /logs/artifacts/model.patch"
 timeout_sec = 300.0
 
 [rubric]
