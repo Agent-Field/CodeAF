@@ -353,6 +353,7 @@ var overflowPhrases = []string{
 	"context limit",
 	"prompt is too long",
 	"too many tokens",
+	"exceeds maximum input length",
 }
 
 // overflowRefusal reports that a refusal is the request not fitting: the

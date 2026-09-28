@@ -236,10 +236,11 @@ func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tool
 }
 
 var contextLimitPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)maximum input length\s*([0-9][0-9,]*)`),
 	regexp.MustCompile(`(?i)maximum context (?:length|window)(?: is| of|:)\s*([0-9][0-9,]*)`),
 	regexp.MustCompile(`(?i)(?:context length|context window|context limit)\s*[:=]\s*([0-9][0-9,]*)`),
 }
-var inputLimitPattern = regexp.MustCompile(`(?i)(?:prompt contains (?:at least )?|input_tokens[^0-9]{1,12})([0-9][0-9,]*)`)
+var inputLimitPattern = regexp.MustCompile(`(?i)(?:prompt contains (?:at least )?|input_tokens[^0-9]{1,12}|requested input length\s*)([0-9][0-9,]*)`)
 var outputLimitPattern = regexp.MustCompile(`(?i)(?:requested |max_tokens[^0-9]{1,12})([0-9][0-9,]*)(?: output tokens)?`)
 var anthropicLimitPattern = regexp.MustCompile(`(?i)prompt is too long:\s*([0-9][0-9,]*) tokens\s*>\s*([0-9][0-9,]*)`)
 
