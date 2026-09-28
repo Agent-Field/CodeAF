@@ -90,10 +90,21 @@ func storeContextLimit(limit ContextLimit) bool {
 // overflow from that endpoint gets one resend before the caller compacts; its
 // smaller learned limit must not cap later tool requests.
 func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int, carriesTools bool) int {
-	window := claimed
-	take := func(tokens int) {
+	window, _ := c.servingWindowStated(model, prefs, claimed, carriesTools)
+	return window
+}
+
+// servingWindowStated is [Client.servingWindow] plus whether the window in
+// force is one an endpoint STATED in a size refusal. That refusal is evidence
+// the endpoint's own default answer did not fit behind the prompt, which is
+// what makes an explicit ceiling worth sending ([Client.budgetWire]).
+func (c *Client) servingWindowStated(model string, prefs *providerPrefs, claimed int, carriesTools bool) (int, bool) {
+	window, stated := claimed, false
+	take := func(tokens int, fromRefusal bool) {
 		if tokens > 0 && (window <= 0 || tokens < window) {
-			window = tokens
+			window, stated = tokens, fromRefusal
+		} else if fromRefusal && tokens > 0 && tokens == window {
+			stated = true
 		}
 	}
 	accepts := func(endpoint string) bool {
@@ -107,16 +118,16 @@ func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int, 
 		for _, row := range lanes.Default().Sheet().Rows(laneModel(model)) {
 			toolSupport[strings.ToLower(strings.TrimSpace(row.ID.Lane))] = row.Facts.Tools
 			if accepts(row.ID.Lane) && (!carriesTools || row.Facts.Tools) {
-				take(row.Facts.Context)
+				take(row.Facts.Context, false)
 			}
 		}
 	}
 	for _, limit := range storedContextLimits(c.config.BaseURL, model) {
 		if takesTools, known := toolSupport[strings.ToLower(strings.TrimSpace(limit.Provider))]; accepts(limit.Provider) && (!carriesTools || !known || takesTools) {
-			take(limit.Tokens)
+			take(limit.Tokens, true)
 		}
 	}
-	return window
+	return window, stated
 }
 
 // storedContextLimits is every window the memo holds for one account and
@@ -150,8 +161,8 @@ const minimumContextThinking = 1024
 func ContextSafetyTokens(window int) int { return min(8192, max(512, window/20)) }
 
 // budgetWire checks the encoded input and sizes a TOTAL output allowance,
-// including thinking. It never lets an omitted max_tokens delegate that size
-// to a provider default which may not fit behind the prompt. It returns the
+// including thinking. It sends a ceiling when the natural answer would not
+// fit behind the prompt, or when a thinking budget needs room above it. It returns the
 // thinking budget that fits beside the answer, which is what the request must
 // then carry.
 //
@@ -166,7 +177,7 @@ func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tool
 		return ceiling, hasCeiling, thinking, nil
 	}
 	model := c.modelFor(request)
-	window := c.servingWindow(model, prefs, knobs.contextBudget.Window, len(tools) > 0)
+	window, stated := c.servingWindowStated(model, prefs, knobs.contextBudget.Window, len(tools) > 0)
 	weight := 0
 	for _, message := range messages {
 		weight += len(message)
@@ -210,7 +221,18 @@ func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tool
 			ContextLimit: window, InputTokens: prompt, OutputTokens: floor,
 			Message: fmt.Sprintf("context needs shortening before sending: about %d input tokens plus a %d-token answer and %d safety tokens exceed the %d-token window; compact the conversation or choose a larger-context model", prompt, floor, ContextSafetyTokens(window), window)}
 	}
-	return min(max(ceiling, floor), room), true, thinking, nil
+	// A NORMAL SHORT REQUEST LEAVES THE ENDPOINT ITS OWN COMPLETION DEFAULT,
+	// as it did before the budget existed: an unasked ceiling is a routing
+	// filter at the router and can exclude an endpoint whose completion cap is
+	// lower. The ceiling is sent when it does work — a caller's own, a thinking
+	// budget that needs room above it, a window too small for the ordinary
+	// answer, or a window an endpoint stated when it refused a request whose
+	// default answer did not fit behind the prompt.
+	naturalAnswer := knobs.contextBudget.Reserve
+	if naturalAnswer <= 0 {
+		naturalAnswer = window / 4
+	}
+	return min(max(ceiling, floor), room), hasCeiling || thinking > 0 || stated || room < naturalAnswer, thinking, nil
 }
 
 var contextLimitPatterns = []*regexp.Regexp{
