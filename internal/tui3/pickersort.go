@@ -323,6 +323,11 @@ func (p *picker) sortHits(ranked bool) {
 		if first.group != second.group {
 			return first.group < second.group
 		}
+		// A provider's refusal describes the cached rows below it. Sorting
+		// model measurements must not bury that status at the list's end.
+		if left, right := p.all[p.hits[i]].Unavailable, p.all[p.hits[j]].Unavailable; left != right {
+			return left
+		}
 		if col == tableSortName {
 			// ── THE NAME COLUMN IS RELEVANCE FIRST WHILE SOMETHING IS TYPED ───
 			//

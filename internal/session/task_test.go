@@ -2447,15 +2447,13 @@ func newGoModuleRepo(t *testing.T) string {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
-	// The build cache is PINNED to the machine's own before these tests move
-	// HOME (the node's journal needs a scratch home). Left to follow HOME, every
-	// `go test ./...` an auditor runs would rebuild the standard library into an
-	// empty directory, which is six seconds per test to prove nothing.
-	cache, err := exec.Command("go", "env", "GOCACHE").Output()
-	if err != nil {
-		t.Skipf("go env GOCACHE: %v", err)
+	// TestMain resolves the build cache before moving HOME. Resolving it here
+	// would select the suite's empty scratch cache and rebuild the standard
+	// library inside the task's completion deadline.
+	if testGoCacheErr != nil {
+		t.Skipf("go env GOCACHE: %v", testGoCacheErr)
 	}
-	t.Setenv("GOCACHE", strings.TrimSpace(string(cache)))
+	t.Setenv("GOCACHE", strings.TrimSpace(string(testGoCache)))
 
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, "go.mod"), "module taskaudit\n\ngo 1.25\n")
