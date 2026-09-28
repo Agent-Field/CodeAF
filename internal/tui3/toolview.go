@@ -272,6 +272,12 @@ func (a *app) toolBlock(e *entry, room int, phone bool) ([]string, int) {
 
 // toolBlockRows draws that block, and says whether what it drew may be kept.
 func (a *app) toolBlockRows(e *entry, room int, phone bool) (rows []string, more int, keep bool) {
+	// A command the person ran keeps its literal output visible at every width,
+	// including while it runs; ordinary tool previews have a different purpose.
+	if session.IsUserBashCall(e.callID) && e.open {
+		rows, more = a.detailBody(e, room)
+		return rows, more, true
+	}
 	if e.status == toolForming {
 		return a.formingRows(e, room, previewCap(phone)), 0, true
 	}

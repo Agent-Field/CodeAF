@@ -139,9 +139,13 @@ func TestUserBashStreamsLiteralRowsWithoutFoldingOrClipping(t *testing.T) {
 		t.Fatal("live shell output hidden or modified")
 	}
 	a := newTestApp(&fakeAgent{})
-	rows, more := a.detailBody(e, 40)
+	rows, more, _ := a.toolBlockRows(e, 40, false)
 	plain := ansi.Strip(strings.Join(rows, "\n"))
 	if more != 0 || !strings.HasPrefix(plain, "  **literal**\n\n") || !strings.Contains(plain, "END") || !strings.HasSuffix(plain, "\n") {
 		t.Fatalf("literal output clipped or formatted: %q", plain)
+	}
+	phone, _, _ := a.toolBlockRows(e, 30, true)
+	if !strings.Contains(ansi.Strip(strings.Join(phone, "\n")), "END") {
+		t.Fatal("phone hid live shell output")
 	}
 }
