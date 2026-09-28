@@ -2850,8 +2850,9 @@ cannot guarantee that every provider's initial response succeeds.
 
 `/compact` runs a reduction immediately, even below the automatic threshold. It notes
 `compacting…` and works off the input loop. Older completed work becomes pointers to the
-full journal first, which makes no model call. If that is not enough, the conversation's
-own model summarizes the oldest part, your older messages included.
+full journal first, which makes no model call. Then the conversation's own model
+summarizes whatever older conversation is left, your older messages included — in the
+same pass, so one `/compact` goes as far as it can.
 
 Your three most recent messages, the system prompt, the newest assistant/tool batch and the
 recent working tail stay word for word. Success reports `⚭ compacted · about N to M
@@ -2862,9 +2863,9 @@ failures say `compact failed: ` followed by the reason.
 There is no separate compaction model or summarization setting. The smaller retained tail and the
 explicit reduction distinguish this command from routine automatic cleanup.
 
-When the free reductions find nothing, or leave the conversation above the automatic
-target, `/compact` ends with a summary written by the conversation's own model; its cost
-counts toward the session's spending like any other call.
+`/compact` ends with a summary written by the conversation's own model whenever at least
+about 1,000 tokens of older conversation are left to summarize; its cost counts toward the
+session's spending like any other call.
 
 ## Turning automatic compaction off
 

@@ -18,8 +18,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
+// /compact shortens a conversation already under the automatic target, as far
+// as it goes: the fold takes the old answers and the summary the older
+// questions, and the three most recent stay word for word.
 func TestManualCompactionReducesHistoryBelowAutomaticTarget(t *testing.T) {
-	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(c *Config) { c.ContextWindow = 131072; c.SessionFile = filepath.Join(t.TempDir(), "session.jsonl") })
+	agent, _ := newTestAgent(t, &summarizer{}, func(c *Config) { c.ContextWindow = 131072; c.SessionFile = filepath.Join(t.TempDir(), "session.jsonl") })
 	grownTranscript(agent, 30, 8000)
 	before := estimate(agent)
 	if before >= agent.compactTargetTokens() {
@@ -32,9 +35,9 @@ func TestManualCompactionReducesHistoryBelowAutomaticTarget(t *testing.T) {
 		t.Fatalf("manual compaction barely changed %d to %d", before, after)
 	}
 	messages := liveTranscript(agent)
-	for i := 1; i <= 30; i++ {
+	for i := 28; i <= 30; i++ {
 		if !holdsText(messages, fmt.Sprintf("question %d", i)) {
-			t.Fatal("lost user instructions")
+			t.Fatalf("lost recent question %d", i)
 		}
 	}
 }

@@ -154,9 +154,15 @@ func summaryWanted(policy compactPolicy, pass compactionPass, transcript int) bo
 	if !policy.summarize || policy.summarizeTo <= 0 {
 		return false
 	}
-	if policy.manual && pass.empty() {
-		// A person asked for a shorter conversation and the free rungs found
-		// nothing. The region's own minimum decides whether a summary is worth it.
+	if policy.manual {
+		// A PERSON'S /compact GOES ALL THE WAY IN ONE PASS. It asked for the
+		// conversation as short as it may be made ([Agent.requestedCompactPolicy]),
+		// so after the free rungs it summarizes whatever older conversation is
+		// left, however far under the automatic lines that already is; the
+		// region's own minimum ([summaryWorthIt]) decides whether it is worth a
+		// request. It used to stop once the fold got under the automatic
+		// target, and a person had to type /compact a second time — with
+		// nothing on screen saying so — to get the summary (2026-09-28).
 		return true
 	}
 	return transcript > policy.summarizeAbove
@@ -221,12 +227,18 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 	var fallback, chosen *cut
 	// What the most a summary could have taken came to, for the sentence a
 	// pass that takes nothing says about itself.
-	freshest, noted, closed := 0, false, false
+	freshest, noted, closed, kept := 0, false, false, 1
 	for _, end := range a.summaryEndsLocked(persons) {
 		if !a.regionClosedLocked(end) {
 			continue
 		}
 		closed = true
+		kept = 0
+		for _, person := range persons {
+			if person >= end {
+				kept++
+			}
+		}
 		bytes, fresh := 0, 0
 		for index := 1; index < end; index++ {
 			size := a.transcriptMessageBytesLocked(index)
@@ -239,6 +251,14 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 		freshest = EstimateTokens(fresh)
 		noted = end > 1 && strings.HasPrefix(messageContentText(a.messages[1]), summaryNotePrefix)
 		if !summaryWorthIt(policy, tokens, EstimateTokens(fresh)) {
+			// A CUT WITH NOTHING WORTH A REQUEST IS NOT A REASON TO KEEP LESS.
+			// Fewer of the person's messages are kept only when keeping more
+			// cannot get under the line; a conversation already under it has
+			// nothing to gain from summarizing their third-newest message, and
+			// a second /compact did exactly that until 2026-09-28.
+			if total <= policy.summarizeTo {
+				break
+			}
 			continue
 		}
 		candidate := &cut{end: end, tokens: tokens, answer: summaryTargetTokens(most, tokens)}
@@ -252,7 +272,7 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 		chosen = fallback
 	}
 	if chosen == nil {
-		return summaryPlan{}, summaryTooLittle(closed, noted, freshest), false
+		return summaryPlan{}, summaryTooLittle(closed, noted, freshest, kept), false
 	}
 	end := chosen.end
 	region := make([]ai.Message, end-1)
@@ -277,18 +297,22 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 }
 
 // summaryTooLittle is what a pass says when no region was worth a summary.
-func summaryTooLittle(closed, noted bool, fresh int) string {
+func summaryTooLittle(closed, noted bool, fresh, kept int) string {
+	before := "your latest message"
+	if kept > 1 {
+		before = fmt.Sprintf("your last %d messages", kept)
+	}
 	switch {
 	case !closed:
 		return "the newest work is still in progress"
 	case fresh == 0 && noted:
 		return "nothing new since the last summary"
 	case fresh == 0:
-		return "there is nothing before your latest message to summarize"
+		return "there is nothing before " + before + " to summarize"
 	case noted:
 		return "only " + approxTokens(fresh) + " tokens since the last summary — too little to summarize"
 	default:
-		return "only " + approxTokens(fresh) + " tokens before your latest message — too little to summarize"
+		return "only " + approxTokens(fresh) + " tokens before " + before + " — too little to summarize"
 	}
 }
 

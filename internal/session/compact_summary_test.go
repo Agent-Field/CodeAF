@@ -489,14 +489,27 @@ func TestANoOpCompactSaysWhy(t *testing.T) {
 				textMessage("assistant", strings.Repeat("Order of the Phoenix. ", 60)),
 				textMessage("user", "and the first book?"),
 			},
-			"since the last summary — too little to summarize"},
+			// Both messages since the summary are kept word for word, so
+			// nothing older is left for another one.
+			"nothing new since the last summary"},
+		{"two messages and nothing older", &refusingCompleter{t: t},
+			[]ai.Message{
+				textMessage("user", "question: "+strings.Repeat("pasted log line ", 800)),
+				textMessage("assistant", "answer"),
+				textMessage("user", "next question"),
+			},
+			"there is nothing before your last 2 messages to summarize"},
 		{"the summary failed", &summarizer{answer: func(int, []ai.Message) (*ai.Response, error) {
 			return nil, errors.New("provider unavailable")
 		}},
 			[]ai.Message{
 				textMessage("user", "question: "+strings.Repeat("pasted log line ", 800)),
 				textMessage("assistant", "answer"),
-				textMessage("user", "next question"),
+				textMessage("user", "second question"),
+				textMessage("assistant", "second answer"),
+				textMessage("user", "third question"),
+				textMessage("assistant", "third answer"),
+				textMessage("user", "fourth question"),
 			},
 			"the model could not write a summary: provider unavailable"},
 	} {
@@ -525,4 +538,62 @@ func hintCount(hint, verb string) int {
 		}
 	}
 	return 0
+}
+
+// ONE /compact GOES ALL THE WAY. A conversation of pastes and long answers,
+// already under the automatic target: the fold takes the answers, and the
+// same pass goes on to summarize the pastes it cannot fold. It used to stop
+// after the fold, because the fold alone had got under the automatic line,
+// and a second /compact was the only way to the summary (sandbox #3,
+// 2026-09-28: 1,083,488 → 567,975, then → 15,110).
+func TestOneCompactFoldsAndThenSummarizesUnderTheAutomaticTarget(t *testing.T) {
+	model := &summarizer{}
+	agent, _ := newTestAgent(t, model, func(config *Config) {
+		config.ContextWindow = 131_072
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+	agent.mu.Lock()
+	for turn := 1; turn <= 12; turn++ {
+		agent.messages = append(agent.messages,
+			textMessage("user", fmt.Sprintf("question %d: %s", turn, strings.Repeat("pasted log line ", 500))),
+			textMessage("assistant", fmt.Sprintf("answer %d: %s", turn, strings.Repeat("reading the parser. ", 400))))
+	}
+	agent.mu.Unlock()
+	if before := estimate(agent); before >= agent.compactTargetTokens() {
+		t.Fatalf("fixture %d is not under the automatic target %d", before, agent.compactTargetTokens())
+	}
+
+	hub := newEventHub()
+	changed, err := agent.compactWithPolicy(context.Background(), hub, agent.requestedCompactPolicy())
+	if err != nil || !changed {
+		t.Fatalf("compact = %v, %v; want one pass that changed the conversation", changed, err)
+	}
+	if model.calls() != 1 {
+		t.Fatalf("summary requests = %d, want the one pass to summarize", model.calls())
+	}
+	event := lastCompacted(t, hub)
+	if hintCount(event.Hint, "folded") == 0 || hintCount(event.Hint, "summarized") == 0 {
+		t.Fatalf("hint = %q; want a fold and a summary in the same pass", event.Hint)
+	}
+	messages := liveTranscript(agent)
+	for turn := 10; turn <= 12; turn++ {
+		if !holdsText(messages, fmt.Sprintf("question %d:", turn)) {
+			t.Fatalf("recent question %d was summarized", turn)
+		}
+	}
+	if holdsText(messages, "question 1:") || summaryNotes(messages) != 1 {
+		t.Fatal("the older pastes were not summarized")
+	}
+
+	// And a second /compact finds nothing left worth a request.
+	// It must not reach into the three kept messages to find something.
+	if err := agent.Compact(context.Background()); !errors.Is(err, ErrNothingToCompact) {
+		t.Fatalf("second /compact = %v, want nothing to compact", err)
+	}
+	if model.calls() != 1 {
+		t.Fatalf("summary requests = %d after a second /compact, want still 1", model.calls())
+	}
+	if !holdsText(liveTranscript(agent), "question 10:") {
+		t.Fatal("a second /compact summarized the third-newest message")
+	}
 }

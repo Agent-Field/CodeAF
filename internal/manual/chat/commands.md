@@ -430,16 +430,17 @@ replacement says so, and nothing is replaced.
 
 `/compact` notes `compacting…` immediately and reduces older completed work, even below
 the automatic threshold. It first turns old tool results into pointers and folds older
-assistant work, which costs nothing. If that frees nothing, or leaves the conversation
-large, the conversation's own model writes a **summary** of the oldest part — your older
-messages included — and that summary replaces it. Your three most recent messages and
+assistant work, which costs nothing. Then, in the same pass, the conversation's own model
+writes a **summary** of whatever older conversation is left — your older messages included —
+and that summary replaces it, so one `/compact` shortens as far as it can. Your three most recent messages and
 everything after them stay word for word, and so does the system prompt. The full record
 stays in the session journal, and the summary names that file.
 
 Success reports `⚭ compacted · about N to M tokens`; these are estimates, and the line stays in the conversation as the record of the pass. When nothing
 changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
-last summary — too little to summarize`, `there is nothing before your latest message to
-summarize`, or `the model could not write a summary: ` and the reason.
+last summary — too little to summarize`, `there is nothing before your last 3 messages to
+summarize`, or `the model could not write a summary: ` and the reason. The status line's
+count drops as soon as the pass lands.
 Other failures say `compact failed: ` followed by the reason. The pass runs off the input
 loop, so the surface stays responsive, and a message you send while it runs is not held
 behind it. A summary on a slow model can take a minute; the chat waits up to five. If the

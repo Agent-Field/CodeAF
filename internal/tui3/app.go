@@ -5191,6 +5191,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				a.toldNote("⚭ compacted")
 			}
+			// THE METER FOLLOWS THE PASS, as it does for one inside a turn
+			// ([app.applyEvent]'s EventCompacted). Without this the status line
+			// kept the last request's weight — 585.1k over a conversation /compact
+			// had just taken to 15k — until the next message was sent.
+			a.measureContext()
 			a.noticeEvent(eventCompacted)
 		}
 		return a, nil

@@ -86,3 +86,20 @@ func TestAnEndOfTurnCompactionStaysVisibleUnderTheAnswer(t *testing.T) {
 		t.Fatalf("want the answer and then the compaction line under it:\n%s", text)
 	}
 }
+
+// THE METER FOLLOWS A /compact. The status line read the last request's weight
+// until the next message, so a conversation just taken from 568k to 15k still
+// showed 585.1k (sandbox #3, 2026-09-28).
+func TestTheMeterDropsAsSoonAsACompactLands(t *testing.T) {
+	fake := &fakeAgent{model: "m", weight: 585_100}
+	a := newTestApp(fake)
+	a.measureContext()
+	if a.ctxTokens != 585_100 {
+		t.Fatalf("fixture meter = %d", a.ctxTokens)
+	}
+	fake.weight = 15_110
+	drive(t, a, compactedMsg{before: 567_975, after: 15_110})
+	if a.ctxTokens != 15_110 {
+		t.Fatalf("meter after /compact = %d, want the new weight 15110", a.ctxTokens)
+	}
+}

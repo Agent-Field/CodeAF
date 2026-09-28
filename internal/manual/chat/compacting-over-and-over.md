@@ -166,8 +166,9 @@ model's copy, not yours. The fold is not unrecoverable.
 `/compact` now has its own reduction policy. It can fold older completed assistant work
 before the automatic trigger, including completed batches inside one long turn. It keeps
 your messages, the system prompt, the newest assistant/tool batch, and 4,096 recent tokens
-(at most an eighth of the trusted window). When folding frees nothing, it writes a summary
-of the oldest part instead (see *When compaction writes a summary*).
+(at most an eighth of the trusted window). Then, in the same pass, it summarizes whatever
+older conversation is left (see *When compaction writes a summary*), so one `/compact` goes
+as far as it can; a second one right after has nothing left to do.
 
 The old command reused the automatic target. A conversation with 60,000 tokens on a 128k
 model could have older history and still receive `session: nothing to compact`, because it
@@ -177,8 +178,9 @@ A no-op says `nothing to compact — ` and why:
 
 - `only ~400 tokens since the last summary — too little to summarize` (or `before your
   latest message`): a summary needs about 1,000 tokens of conversation it has not read;
-- `nothing new since the last summary`, or `there is nothing before your latest message to
-  summarize`;
+- `nothing new since the last summary`, or `there is nothing before your last 3 messages
+  to summarize` (or `your latest message`): the messages kept word for word are all that
+  is left;
 - `the model could not write a summary: …`, `the model's summary came back empty or
   unreadable`, `the summary was interrupted`, or `the conversation changed while the summary
   was being written` — the conversation is left exactly as it was.
@@ -207,8 +209,8 @@ knowingly send the same oversized request again.
 Yes, as a last resort. Folding and pointers are tried first because they are free and
 nothing is paraphrased. A summary is written only when they cannot bring the conversation
 under the line the pass needs: the automatic threshold, the size a refused request has to
-shrink to, or — for `/compact` — the automatic target, or whenever the free steps found
-nothing at all.
+shrink to. `/compact` is the exception: it always goes on to summarize whatever older
+conversation is left, because you asked for it as short as it can be.
 
 The summary is written by **the model you are talking to**, with no tools, and it is billed
 like any other call, counting toward the session's spending. It replaces the
@@ -216,8 +218,8 @@ oldest part of the conversation — your older messages and the assistant's work
 with one note that starts `[context compacted]`. It never touches:
 
 - the system prompt;
-- your **three most recent messages** and everything after them. When that cannot get
-  under the line it keeps two, then your latest message **with the reply just before it**
+- your **three most recent messages** and everything after them. Only when keeping three
+  cannot get under the line does it keep two, then your latest message **with the reply just before it**
   (what "translate it" or "keep going" is about), then your latest alone — the message
   being answered always stays;
 - the turn that is running.
