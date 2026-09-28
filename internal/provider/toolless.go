@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ── A MODEL THAT TAKES NO TOOLS IS NOT SENT ANY ─────────────────────────────
@@ -28,27 +29,32 @@ import (
 // and which models the catalog could not describe but no provider would serve
 // with tools, so the refusal is paid once per model rather than every turn.
 //
-// THE LEARNED HALF LIVES AS LONG AS THE CLIENT AND NO LONGER. It is not written
-// to the quirks file: a provider that starts serving tools next week should
-// get them back on the next launch, and a catalog that learns the model will
-// answer for it from then on.
+// THE LEARNED HALF LAPSES AFTER A SERVING HOLD. It is not written to the
+// quirks file: a provider that starts serving tools again gets another chance
+// during a long-running client as well as after a restart.
 type toollessMemo struct {
 	said    sync.Map
 	refused sync.Map
 }
 
-// learn records that the tools rung was what it took for this model. The
-// retry line already told the person, so the notice is marked said.
+// learn records that the tools rung was what it took for this model.
 func (m *toollessMemo) learn(model string) {
 	key := normalizeModel(model)
-	m.refused.Store(key, true)
-	m.said.Store(key, true)
+	m.refused.Store(key, time.Now())
 }
 
 // learned says a provider has already refused this model's tools here.
 func (m *toollessMemo) learned(model string) bool {
-	_, refused := m.refused.Load(normalizeModel(model))
-	return refused
+	value, refused := m.refused.Load(normalizeModel(model))
+	if !refused {
+		return false
+	}
+	at, dated := value.(time.Time)
+	if !dated || !at.After(time.Now().Add(-servingFactHold)) {
+		m.refused.CompareAndDelete(normalizeModel(model), value)
+		return false
+	}
+	return true
 }
 
 // publishesNoTools says the catalog knows this model and says it takes no
@@ -64,16 +70,18 @@ func (c *Client) publishesNoTools(model string) bool {
 // leaveOffTools marks this call's body to go without tool definitions when the
 // model takes none, and tells the person the first time.
 func (c *Client) leaveOffTools(ctx context.Context, model string, knobs callKnobs, carriesTools bool) callKnobs {
-	if !carriesTools || knobs.relaxed.has(relaxTools) || !(c.publishesNoTools(model) || c.toolless.learned(model)) {
+	if !(c.publishesNoTools(model) || c.toolless.learned(model)) {
 		return knobs
 	}
-	knobs.relaxed |= relaxTools
 	if _, said := c.toolless.said.LoadOrStore(normalizeModel(model), true); !said {
 		// NEWS ABOUT THE MODEL, NOT NARRATION ABOUT ONE REQUEST: it rides the
 		// row-news channel a surface keeps out of the folded work block,
 		// because a person who never opens that block still has to learn why
 		// the model will not touch their files.
 		Emit(ctx, StreamRowNews, toollessNotice(model))
+	}
+	if carriesTools {
+		knobs.relaxed |= relaxTools
 	}
 	return knobs
 }

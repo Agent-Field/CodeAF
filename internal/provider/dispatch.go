@@ -1242,8 +1242,9 @@ func (c *Client) recoverFromRefusal(
 			// cheaper rung was already on and refused, so this model is not
 			// served with tools here, and the next turn is sent without them
 			// rather than refused again (toolless.go).
-			if step.bit == relaxTools {
+			if step.bit == relaxTools && response.StatusCode < 400 {
 				c.toolless.learn(model)
+				c.leaveOffTools(ctx, model, relaxed, false)
 			}
 			return response, nil
 		}
