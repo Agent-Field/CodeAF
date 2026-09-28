@@ -50,8 +50,73 @@ var laneWordLaw = regexp.MustCompile(`(?i)\blanes?\b`)
 // was promised a stable spelling — so it stays, and the manual's own account of
 // `/status` says the row keeps the old word and why. Everything else here is an
 // import path, which is a package name and not a sentence.
-var laneWordAllowed = map[string]string{
-	"lane": "statusdeck.go",
+// laneWordAllowed keeps only the /status --json key; see retiredWordAllowed.
+var laneWordAllowed = map[string]string{}
+
+// THE SECOND AND THIRD LAWS: one word for the thing you connect and hold a key
+// for (provider), one word for the machine that served one answer (host).
+// Issue #1508 found the same thing called service, model service, connection,
+// custom connection, active connection and the `models` group head — and the
+// routing word `provider` sitting on the same tab. The service and connection
+// words are banned outright here and every literal that may still carry them is
+// named below with the OTHER meaning it has; the host law bans the routing
+// phrases (`→ providers`, `tab providers`, `provider · `, `all providers slow`,
+// the measured-nothing line) rather than the bare word, because the word
+// `provider` in its own right is the law of the first paragraph.
+
+// serviceWordLaw and connectionWordLaw are the standalone words in either
+// number, word-bounded on both sides and case-insensitive.
+var serviceWordLaw = regexp.MustCompile(`(?i)\bservices?\b`)
+var connectionWordLaw = regexp.MustCompile(`(?i)\bconnections?\b`)
+
+// providerHostLaw catches `provider` in the ROUTING meaning, the meaning issue
+// #1508 moves to `host`: the hints, the row prefixes, the fold empty line and
+// the slow-all line. A literal that only names the thing you connect does not
+// match any of these shapes.
+var providerHostLaw = regexp.MustCompile(`(?i)(→ ?providers?\b|tab providers?\b|providers? · |all providers slow|no providers? has been measured|served by providers?\b)`)
+
+// retiredWordAllowed is every string literal that may still carry a retired
+// word, each with the OTHER meaning that keeps it: an account (Slack, Google, a
+// tool server), a long-running process (`codeaf services`), the ssh or session
+// wire, a machinery identifier a script reads, or a demo not on this surface.
+var retiredWordAllowed = []struct{ text, where string }{
+	// machinery: ids and prefixes a person never reads as a sentence
+	{"model-service:", "modelservices.go"},
+	{"new-custom-connection", "modelservices.go"},
+	{"switch-connection", "modelservices.go"},
+	{"connections", "commands.go"},
+	{"Connections", "connectcaps.go"},
+	{"connection", "statusdeck.go"},
+	{"lane", "statusdeck.go"},
+	{"lost the connection", "taskending.go"},
+	{"each of the five can be pinned on its own in /settings → Providers", "crew.go"},
+	// the account connect flow: the ACT of connecting, not the thing
+	{" connection didn't complete", "connect.go"},
+	{" connection didn't complete", "connectcaps.go"},
+	{"openrouter did not start a browser connection", "firstrun.go"},
+	{"openrouter connection cancelled · enter tries again or paste a key", "firstrun.go"},
+	// the session wire, not a provider
+	{"this connection cannot carry a file · the words were not sent", "attach.go"},
+	{"a connection holds one conversation at a time", "keeper.go"},
+	{"this connection cannot replace a pending request", "questionconversation.go"},
+	{"connections are unavailable here", "connectpanel.go"},
+	// ssh, in Session settings
+	{"seconds an ssh connection stays reusable after it closes, so a quick ", "settings.go"},
+	{"how many unanswered heartbeats end a dead connection — three with the ", "settings.go"},
+	// a long-running process and a demo document, not a model source
+	{"Rows already carry a foreign key into it and the migration is one file.\n+ one place to back up\n- another service to run locally", "questiondemo.go"},
+	{"the ledger and the rest of the project share one connection", "questiondemo.go"},
+	// a team or host connection, not a model source (dev commits of Sep 2026)
+	{". changing them is not available over this connection.", "host.go"},
+	{"changing them is not available over this connection", "settings.go"},
+	{" the teams inherit that machine's Settings · changing them is not available over this connection", "settings.go"},
+	{"Wrap up first is not offered over this connection: Close now, or Cancel", "teamclose.go"},
+	{"delete is not available over this connection", "teamclose.go"},
+	{"the inbox and the spend are not available over this connection", "teamspage.go"},
+	{"its closing report is kept where the team ran, and is not readable over this connection", "teamspagedraw.go"},
+	// the crew provider list (daily caps, price ceilings), not the routing tab
+	{" · providers · ", "crewpanel.go"},
+	{"walk the models row · the providers · a model's routes", "crewpanel.go"},
 }
 
 // TestNoPersonFacingStringInThisSurfaceSaysLane walks every string literal this
@@ -94,14 +159,28 @@ func TestNoPersonFacingStringInThisSurfaceSaysLane(t *testing.T) {
 				return true
 			}
 			text, err := strconv.Unquote(lit.Value)
-			if err != nil || !laneWordLaw.MatchString(text) {
+			if err != nil {
 				return true
 			}
-			if where, allowed := laneWordAllowed[text]; allowed && where == name {
-				return true
+			for _, kept := range retiredWordAllowed {
+				if kept.text == text && kept.where == name {
+					return true
+				}
 			}
-			t.Errorf("%s:%d says %q — the person-facing word for the machine behind a model is `provider` (issue #1023)",
-				name, fset.Position(lit.Pos()).Line, text)
+			switch {
+			case laneWordLaw.MatchString(text):
+				t.Errorf("%s:%d says %q — the person-facing word for the machine behind a model is `provider` (issue #1023)",
+					name, fset.Position(lit.Pos()).Line, text)
+			case serviceWordLaw.MatchString(text):
+				t.Errorf("%s:%d says %q — the person-facing word for the thing you connect is `provider`, not `service` (issue #1508)",
+					name, fset.Position(lit.Pos()).Line, text)
+			case connectionWordLaw.MatchString(text):
+				t.Errorf("%s:%d says %q — the person-facing word for the thing you connect is `provider`, not `connection` (issue #1508)",
+					name, fset.Position(lit.Pos()).Line, text)
+			case providerHostLaw.MatchString(text):
+				t.Errorf("%s:%d says %q — the person-facing word for the machine that served one answer is `host` (issue #1508)",
+					name, fset.Position(lit.Pos()).Line, text)
+			}
 			return true
 		})
 	}
