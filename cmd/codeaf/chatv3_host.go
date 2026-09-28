@@ -679,6 +679,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		ContextWindow:              v3Window(models, welcome.Model),
 		Models:                     func() []tui3.Model { return v3Models(shelf) },
 		RefreshModels:              shelf.refresh,
+		ProviderFetchError:         shelf.fetchErrorFor,
 		// /export writes on THIS machine (host.go's honesty table), so its row
 		// goes in this machine's index — the same one the local launch spells.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -859,6 +860,24 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// replaces a closure that named this session file and was left bound to it
 	// through every switch.
 	options.TaskIndex = farTaskRows(options.World, welcome.SessionFile)
+	if dest == "" {
+		// The linked engine and this window read the same profile, so its shelf
+		// can list every connected provider just as the in-process door does.
+		engineProfile := strings.TrimSpace(welcome.ProfileDir)
+		if engineProfile == "" {
+			engineProfile = profileDir
+		}
+		shelf.options.Dir = engineProfile
+		shelf.setSources(config.ResolveSources(engineProfile, settings.APIKey, settings.BaseURL))
+		listing := &v3Process{Shelf: shelf}
+		options.RefreshModels = listing.refreshDefaultModels
+		options.ModelsForService = shelf.modelsForService
+		options.RefreshModelsForService = shelf.refreshService
+		options.RefreshAllModels = listing.refreshAllModels
+		options.WarmEmptyProviders = listing.warmEmptyProviders
+		options.SubscribeServiceModels = listing.registerServiceNotice
+		options.ApplyModelSources = shelf.setSources
+	}
 	if !fleet.canBeside() {
 		// A DOOR THAT CANNOT DIAL AGAIN REALLY DOES HOLD ONE CONVERSATION AT A
 		// TIME, and says so ([tui3.Options.SharedAgent]) rather than letting
@@ -1029,7 +1048,7 @@ func hostFollow(seams hostSeams) func() <-chan tui3.Following {
 				// again.
 				defer close(out)
 				for turn := range seams.Follow() {
-					out <- tui3.Following{Said: turn.Said, Events: turn.Events}
+					out <- tui3.Following{Said: turn.Said, Events: turn.Events, Covered: turn.Covered, Replay: turn.Replay}
 				}
 			})
 		})

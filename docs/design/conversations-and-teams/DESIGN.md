@@ -379,19 +379,31 @@ them.
   (`+ /task`, standing, jobs, `ctrl+. earlier`) and a run's plan rows stay.
 - **Traffic in a manager's chat is work**: one row per thread (`teams.Threads`), and every row
   reads `from → to  words`. The manager is `◆`, several recipients are `@scrape +2`, and the
-  words follow (`◆ → @scrape +2  Please provide a st… ▸`). The state its answers leave it in
-  and its message count give way to the words when the column is narrow; the hint says them.
-  The age is never on the row, at any width: the hint line says it before its click, and the
-  band says it the same way, so the arrow and the names keep their cells. A narrow column cuts
-  only the words, at a word, with `…`. A band row is `? @model → ◆  keep the old schema?`,
-  amber, and a task row in the band is still cut at a clause, never leaving ` · …`. `▸`
-  lays the replies open as `↳ @model → ◆  ✓ done, 3 files changed` (events folded into the
-  member's line, the clock on the hint), and every unthreaded line under one `General` thread,
-  its open lines in the same `from → to`. A thin `new` line
-  marks what arrived since the Traffic was last in front and holds still while it is read. A
-  handle opens its member at the message; the rest of a row brings the message into view in
-  the chat in front. **In a member's chat** it is the messages to or from that member, or to
-  everyone, one line each, and that member is `you` (`◆ → you`, `you → ◆`, `you → @gravity`).
+  words follow, and how long ago at the right (`◆ → @scrape +2  Please provide a st… ▸  2m`).
+  The age is `now`, `2m`, `3h`, `1d`, the same ladder a task row and a home session use
+  (`sinceAt`) through a day, dim, on every kind of row: a thread, a `↳` reply, a band question, General,
+  and a member's own lines. Past thirty days a task row and a home session print a date
+  (`sinceAt`). A Traffic row stays compact (`trafficAgeAt`): `30d`, weeks from six weeks
+  (`6w`, `12w` at ninety days), then years (`1y` at four hundred days). It moves when the minute in the row cache moves, and nowhere
+  else. The state its answers leave it in and its message count give way to the words when
+  the column is narrow; the hint says them. The arrow and the names keep their cells, then
+  the age, and a narrow column cuts only the words, at a word, with `…`. A band row is
+  `? @model → ◆  keep the old schema?  3m`, amber on the question and dim on the age, and a
+  task row in the band is still cut at a clause, never leaving ` · …`. `▸` lays the replies
+  open as `↳ @model → ◆  ✓ done, 3 files changed  4m` (events folded into the member's line,
+  the age on the row), and every unthreaded line under one `General` thread, its open lines
+  in the same `from → to` with the same age. `▸` and `▾` stay the expand door. The rest of
+  the row is the jump. A thin `new` line marks what arrived since the Traffic was last in
+  front and holds still while it is read. A handle opens its member at the message. A press
+  anywhere else on the row opens the conversation the message belongs to, at that message,
+  lifted the way a jump already lifts one: a message the sender wrote opens the sender's
+  chat (`◆ → all` opens the manager at the directive, `you → ◆` in a member's chat scrolls
+  that chat), and a message to the person opens the manager's chat. Already in front, it
+  scrolls in place. It does not take the keyboard and it does not open a new window. The
+  hint is `Open ◆'s message · 2m ago · click`. The hover ground is the whole row, padding
+  included. **In a member's chat** it is the messages to or from that member, or to
+  everyone, one line each, and that member is `you` (`◆ → you  2m`, `you → ◆  now`,
+  `you → @gravity  3h`).
 - **Geometry.** The column is a quarter of the frame, 28 to 40 columns (30 at 120), from 100
   columns up while the conversation keeps 56; `alt+w` adds 16 from 120 up. It is the same in
   both views and every kind of chat, so switching, folding, the band and new rows never move
@@ -1518,7 +1530,7 @@ depth block is not shown and the store's own `SetParent` is the only check.
 
 A proposal card names its kind on the first line, then what it does, then when and what one time costs. The words live in `session.StandingOptions` so the conversation, home, `--host` and the recorded `labels` say the same thing.
 
-- A reminder (`when.at`): `wants to remind you`. `Remind me <when>`, `Change…`, `Don't remind me`. No once.
+- A reminder (`when.at`): `wants to remind you`. `Remind me <when>`, `Change…`, `Don't remind me`. No once. A distance from now is said back with the clock it landed on, joined by a middle dot: `Remind me in 1 minute · 07:35`.
 - A repeating check (`when.every`): `wants to set up a repeating check`. `Set it up · <cadence>`, `Change…`, `Only now, don't repeat`, `Don't set it up`.
 - A watch (file, idle, probe): `wants to watch for something`. `Watch for it`, `Change…`, `Check once now`, `Don't watch`.
 - A rule (`when.hold`): `wants to keep a rule`. `Keep this rule`, `Change where…`, `Don't keep it`. No once.

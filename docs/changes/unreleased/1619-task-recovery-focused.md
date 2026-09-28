@@ -22,3 +22,7 @@ does not promise exactly-once replay of arbitrary external operations.
 Graph and run admission read current persisted limits when created and follow
 later changes from another process, including the ordinary default profile.
 Absent settings preserve the supplied startup limits.
+
+Recovered tasks now retain their accepted crew pins, fallback history and spend
+ceilings/tallies. Old records without that policy, or an unresolved model call,
+stay interrupted instead of silently rerouting or resetting a spending limit.

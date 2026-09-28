@@ -174,7 +174,11 @@ func sweepSession(ctx context.Context, dir string, now time.Time, note func(stri
 	// for a file that is missing or will not parse, and a missing identity is
 	// exactly the case where deleting would be a guess. The rule reaps what is
 	// PROVABLY litter and leaves everything else alone forever.
-	if strings.TrimSpace(meta.ID) == "" || !sweepIsLitter(meta, dir, now) {
+	if strings.TrimSpace(meta.ID) == "" {
+		return
+	}
+	if !sweepIsLitter(meta, dir, now) {
+		retireCheckpointForks(ctx, dir, true, note)
 		return
 	}
 	reapSession(ctx, dir, meta, note)
@@ -322,13 +326,13 @@ func underTempDir(path string) bool {
 // recorded workspace before the folder goes, and the prune sweeps up whatever
 // the removes could not name.
 //
-// It is best-effort by design and the outcome is never checked: the workspace
+// Git unregistration is best-effort: the workspace
 // may have moved, been deleted, or stopped being a repository since the session
 // last ran, and none of those is a reason to leave the litter standing. When the
 // workspace is gone there is nothing holding a registration either, which is why
 // the git commands are skipped entirely rather than run into an error.
 func reapSession(ctx context.Context, dir string, meta Meta, note func(string)) {
-	if contextDone(ctx) {
+	if contextDone(ctx) || !retireCheckpointForks(ctx, dir, false, note) {
 		return
 	}
 	if root, ok := repositoryRoot(meta.Workspace); ok {
@@ -399,72 +403,11 @@ func reapSession(ctx context.Context, dir string, meta Meta, note func(string)) 
 		_, _ = git(root, "worktree", "prune")
 		release()
 	}
-	// AND THE FORKS FURROW IS STILL KEEPING A LINE ABOUT. A task that landed
-	// dropped its own; what reaches here is the world of a task whose session was
-	// killed mid-run, and its directory is one of the ones about to go.
-	dropSweptForks(ctx, dir, note)
 	if contextDone(ctx) {
 		return
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
-	}
-}
-
-// dropSweptForks tells furrow to forget every universe this session's checkpoint
-// names, through the door a landing uses.
-//
-// WHAT REACHES IT IS ONLY EVER A FORK NOBODY LANDED. A task whose work came home
-// dropped its own record on the way past ([taskTree.releaseLanded]); a session
-// killed mid-run never got the chance, so its fork sits in `furrow forks` in the
-// person's project describing a directory this sweep is about to remove. The
-// checkpoint is the only thing left that knows the name (task_store.go's
-// groundUniverse, written by [TaskNode.setTree]), and this is the last moment
-// anything reads it.
-//
-// IT GOES THROUGH [taskTree.dropUniverse] AND NEVER AROUND IT, because a second
-// road to furrow's fork records would be a second thing to keep true — the drop
-// a landing makes and the drop a sweep makes are the same act on the same
-// record, and they differ only in what they do about a miss.
-//
-// NOTHING HERE STOPS THE REMOVAL. furrow may be gone, the ground may have been
-// deleted or detached, the drop may simply fail, and none of those is a reason
-// to leave the litter standing — which is this file's own rule, stated in
-// [reapSession]. What each of them earns is a line in the log, because after
-// this pass nothing knows the fork's name at all.
-func dropSweptForks(ctx context.Context, dir string, note func(string)) {
-	if contextDone(ctx) {
-		return
-	}
-	document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
-	if !ok {
-		return
-	}
-	// A checkpoint is READ AND NOT TRUSTED, exactly as everything else this
-	// sweep opens is: two records naming one universe would otherwise be two
-	// drops and two log lines about one record.
-	asked := map[string]bool{}
-	for _, record := range document.Nodes {
-		if contextDone(ctx) {
-			return
-		}
-		tree, isUniverse := universeInRecord(record)
-		if !isUniverse {
-			continue
-		}
-		key := tree.ground + "\x00" + tree.universe
-		if asked[key] {
-			continue
-		}
-		asked[key] = true
-		if contextDone(ctx) {
-			return
-		}
-		if err := tree.dropUniverse(); err != nil {
-			note(fmt.Sprintf("sweep: could not tell furrow to forget the fork %s of %s: %v", tree.universe, tree.ground, err))
-			continue
-		}
-		note(fmt.Sprintf("sweep: told furrow to forget the fork %s of %s", tree.universe, tree.ground))
 	}
 }
 

@@ -412,7 +412,11 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		// disk when this callback runs; setting the current model through the
 		// existing wire door makes the engine re-read that disk without sending
 		// a key or address through a second protocol.
-		options.ApplyModelSources = func(modelsource.Set) {
+		stock := options.ApplyModelSources
+		options.ApplyModelSources = func(sources modelsource.Set) {
+			if stock != nil {
+				stock(sources)
+			}
 			options.Agent.SetModel(options.Agent.Model())
 		}
 	}

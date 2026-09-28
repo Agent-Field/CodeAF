@@ -2625,13 +2625,13 @@ its own and does not spend any of those three (see *Models, context, and what it
 **Routing around a full pool.** Some *too many requests* answers name which upstream
 provider's pool is full — one machine room out of the several that can serve the same
 model. When that happens, codeaf remembers the name and asks the router to route new
-calls around that provider for the next five minutes (or for the comeback time it named,
+calls around that host for the next five minutes (or for the comeback time it named,
 if shorter), so fresh work lands on machines with room instead of queueing behind the
 full one. The call that drew the answer still waits its own wait — only calls sent after
-it steer around. A model served by a single provider has nowhere else to go, and simply
+it steer around. A model served by a single host has nowhere else to go, and simply
 waits as described above.
 
-**Why things can stay slow afterwards.** codeaf watches how many calls the provider will
+**Why things can stay slow afterwards.** codeaf watches how many calls the host will
 take at once and pulls that number in half when it is told *too many requests* — once per
 burst, not once per answer. It gives it back on the clock: after **20 seconds** with no
 further pacing, one call's worth returns every **5 seconds** until it is back where it
@@ -3364,3 +3364,18 @@ A task cancelled by its supervisor stays cancelled. A late `plandb done` reports
 The refusal does not reopen the task or change its result. Active tasks still
 require their owner; an automatically completed composite's empty placeholder
 can still receive its final report.
+
+## Task copies and Furrow disk usage after a merge
+
+After a repository task lands, codeaf retires its Furrow copy and timeline
+before removing the task directory. Furrow garbage collection can then reclaim
+objects that no other timeline needs. This does not erase shared parent history.
+
+A cleanup failure does not undo a successful merge. The report names the copy
+that remains, and a later sweep of the closed conversation retries using its
+saved task record. If you add files, edit files, or commit new work in that copy
+after the failure, the sweep keeps it and names why; only a copy with no work of
+its own is retired. Failed tasks and work kept for review retain their copies
+and timelines. Old temporary conversations still follow the usual seven-day
+retention policy. Previously orphaned timelines are not automatically purged:
+a missing directory alone does not prove that its history is disposable.

@@ -296,6 +296,9 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
 	word := canonicalCommand(strings.ToLower(name))
+	// Bind the submission before clearing the draft rebuilds the list. The
+	// folder shown beside this draft is its destination, not the next row.
+	target := a.targetWhere()
 	h.box.reset()
 	h.build()
 	switch homeFate(word, rest) {
@@ -340,7 +343,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		// used to compact a conversation behind the screen, and `/files` opened a
 		// shelf over one. Both are now about the conversation this line is
 		// opening, which is the conversation the rule above the box named.
-		started, opened := a.homeOpenAtTarget()
+		started, opened := a.homeOpenAt(target)
 		if !opened {
 			return nil
 		}

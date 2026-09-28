@@ -119,7 +119,7 @@ that instant, then says back the moment it landed on. That is what the card
 shows:
 
 ```
-in 2 minutes — 06:54
+in 2 minutes · 06:54
 ```
 
 so you can check the time it settled on without reading a timestamp.
@@ -214,7 +214,7 @@ been marked `expired`, and the only trace would be a line in its own log:
 `its time ran out — no longer watching`.
 
 The mistake it exists to catch is arithmetic, not carelessness: a reminder said
-as "in 1 minute — 23:11" lands at 23:11:11, and an end taken from the same words
+as "in 1 minute · 23:11" lands at 23:11:11, and an end taken from the same words
 lands at 23:11:00 — eleven seconds too early. That is why the refusal spells
 both stamps out to the second.
 
@@ -602,7 +602,7 @@ needs a yes and nobody was able to say one. The item still records that it looke
 the count of what was examined is honest and the record of the pass carries one error.
 
 Set the default key — `/settings` → **openrouter key**, say "set up my api key", or use
-the `models` group in `/connect` to add a service — and the
+the `providers` group in `/connect` to add a provider — and the
 next pass judges normally. Nothing has to be re-made and nothing was lost while there
 was no key.
 
@@ -866,8 +866,8 @@ same judgement: one you started **in a temp directory**, seven days after you
 last said anything to it. Everything it holds goes with it — the transcript, and
 the `work/` workspace if it owned one. If a task of that conversation was still
 running when you last closed it, furrow is told to forget the copy of your
-folder that task was working in as well, so `furrow forks` is never left naming
-a directory that has gone. Every other conversation under
+folder that task was working in, including its timeline, before the files are
+removed. If retirement fails, the conversation and copy stay for a later retry. Every other conversation under
 `~/.codeaf/v3/projects/` stays whatever its age. If you work in a temp directory
 and want to keep what a conversation makes, anchor it with `/workspace <path>`
 or copy the files out; the starting-codeaf page has both under *I deleted my chat
@@ -950,10 +950,13 @@ piece of the ask still to do.
   `the card was left unanswered — nothing was set up`. This is the opposite of a
   task proposal, where silence starts the work: a task is bounded work somebody
   is watching, and a standing item spends money at times nobody chose.
-- **A "do it once" answer sets nothing up.** It answers
-  `Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.`
-  and codeaf does the thing in front of you instead. A **one-off reminder's card
-  does not offer that answer** — see "Why is there no once on my reminder card".
+- **A "do it once" answer approves immediate work, not a schedule.** The settled
+  card says `approved once, not scheduled`. That is an approval receipt, not
+  proof that the work has finished. The approved action, workspace, watch probe,
+  acceptance and spending limits are handed back to the current conversation;
+  it uses its ordinary tools and permissions and reports the actual result or
+  a blocker. No standing item is saved. A **one-off reminder's card does not
+  offer that answer** — see "Why is there no once on my reminder card".
 - **It will not set a reminder for a moment that has already passed.** The stamp
   is refused with the current time in it, and codeaf is asked to work it out
   again from that.
@@ -970,3 +973,45 @@ piece of the ask still to do.
   one: nothing that runs on its own may arm something else that runs on its own.
 - **Nothing is armed by a matcher.** Nothing runs because a phrase looked like a
   rule; every single one of these was a card you said yes to.
+
+## Which daily allowance does a new standing card quote?
+
+When you did not name a per-run limit, a new proposal quotes the current daily
+budget. Changing the budget affects the next proposal, including in an already
+open conversation. A card already being read keeps its proposal-time quote.
+An explicit per-run limit keeps the words you supplied. Task firings in the
+activity history are labelled `task:`; a spoken reminder is labelled `said:`.
+
+## Why does a one-time job say run it then instead of remind me?
+
+A one-time card that will perform work says `wants to schedule work once`.
+Its approval is `Run it then · <time>` with `Runs the work then. Nothing repeats.`
+The decline is `Don't schedule it`: nothing is scheduled or run. It has no
+`Only now, don't repeat` option, because this card approves the stated future
+time. A say-only reminder still says `wants to remind you` and `Remind me`.
+Both kinds show the action they will take before you approve.
+
+## Keep scheduled coding work on a separate branch
+
+For a scheduled task that should open a pull request without merging, set
+`does.isolate` to `true` on the `stand` proposal. Its approval card says
+`work · separate Git worktree · changes kept for review`. Permission words
+alone do not select isolation. An isolated task has no “Only now” option: an
+ordinary conversation turn cannot provide the scheduled runner’s worktree. Existing orders keep their current behavior;
+replace an order and approve its isolation option to change that behavior.
+
+An isolated firing requires a Git repository with at least one commit. It
+starts from the current committed checkout in a new worktree and branch.
+Uncommitted changes in the original checkout are not copied. The firing keeps
+its worktree, including unfinished edits, and reports its branch and folder.
+A firing that changes nothing reports that fact rather than a landing. The copy
+is recorded before its worker opens, so startup failure still leaves its branch
+and folder discoverable.
+You can inspect and commit those files or open a pull request yourself.
+It does not merge or delete the copy automatically. This is workspace isolation,
+not a sandbox: commands with explicit paths can still access other folders.
+
+An isolated order is saved in a newer format than ordinary orders. codeaf,
+devaf and stageaf share one home, so a build from before isolation that reads
+it leaves it alone rather than running it in your checkout; only a build that
+knows isolation fires it. Ordinary orders stay readable by every build.

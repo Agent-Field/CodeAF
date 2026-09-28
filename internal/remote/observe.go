@@ -24,6 +24,7 @@ type observeArgs struct {
 type observed struct {
 	Entries []session.DisplayEntry
 	Running bool
+	Cursor  session.ReplayCursor
 }
 
 type replayObserver interface {
@@ -41,7 +42,11 @@ func (s *server) observe(agent WrappedAgent, call Frame) (json.RawMessage, error
 	var events <-chan session.Event
 	stop := func() {}
 	if args.Replay {
-		if door, ok := agent.(replayObserver); ok {
+		if door, ok := agent.(interface {
+			AttachReplayCursor() ([]session.DisplayEntry, <-chan session.Event, func(), session.ReplayCursor)
+		}); ok {
+			answer.Entries, events, stop, answer.Cursor = door.AttachReplayCursor()
+		} else if door, ok := agent.(replayObserver); ok {
 			answer.Entries, events, stop = door.AttachReplay()
 		} else {
 			answer.Entries = agent.Transcript()
@@ -133,6 +138,7 @@ func (a *Agent) observe(replay bool) ([]session.DisplayEntry, <-chan session.Eve
 	c := a.c
 	id := c.seq.Add(1)
 	tail := newStream()
+	tail.observed = true
 	c.mu.Lock()
 	if c.observers == nil {
 		c.observers = make(map[uint64]*stream)
@@ -162,6 +168,9 @@ func (a *Agent) observe(replay bool) ([]session.DisplayEntry, <-chan session.Eve
 			return a.Transcript(), nil, func() {}
 		}
 		return nil, nil, func() {}
+	}
+	if replay {
+		c.rememberReplay(answer.Cursor, id)
 	}
 	if !answer.Running {
 		stop()

@@ -715,6 +715,8 @@ type harnessOfferRecord struct {
 // exists, and no answer could reach one. Left out, the row comes back settled
 // like every other row that was moving, which is the truth about it.
 type runRecord struct {
+	CrewState *TaskCrewRecord `json:"crewState,omitempty"`
+
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
 	Node   string `json:"node,omitempty"`
@@ -1093,6 +1095,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		state = TaskRunning
 	}
 	return runRecord{
+		CrewState:  notice.CrewState,
 		ID:         notice.ID,
 		Run:        notice.Run,
 		Node:       notice.Node,
@@ -1138,19 +1141,20 @@ func runRowRecord(notice TaskNotice) runRecord {
 // That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
-		ID:      record.ID,
-		Run:     record.Run,
-		Node:    record.Node,
-		Parent:  record.Parent,
-		Title:   record.Title,
-		Kind:    record.Kind,
-		Program: record.Program,
-		State:   record.State,
-		Stopped: record.Stopped,
-		Report:  record.Report,
-		Model:   record.Model,
-		CostUSD: record.CostUSD,
-		Elapsed: time.Duration(record.ElapsedMS) * time.Millisecond,
+		CrewState: record.CrewState,
+		ID:        record.ID,
+		Run:       record.Run,
+		Node:      record.Node,
+		Parent:    record.Parent,
+		Title:     record.Title,
+		Kind:      record.Kind,
+		Program:   record.Program,
+		State:     record.State,
+		Stopped:   record.Stopped,
+		Report:    record.Report,
+		Model:     record.Model,
+		CostUSD:   record.CostUSD,
+		Elapsed:   time.Duration(record.ElapsedMS) * time.Millisecond,
 
 		StartedAt:  record.StartedAt,
 		EndedAt:    record.EndedAt,
@@ -1162,6 +1166,10 @@ func runRowNotice(record runRecord) TaskNotice {
 		Result:     record.Result,
 		Changed:    append([]string(nil), record.Changed...),
 		PlanTask:   record.PlanTask,
+	}
+	if record.CrewState != nil && record.CrewState.Routed {
+		decision := record.CrewState.Decision
+		notice.Crew = &decision
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live

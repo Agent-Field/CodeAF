@@ -3639,13 +3639,20 @@ func (a *app) homeStartWithProject(text, place string) tea.Cmd {
 // ruling). It is spent on the way OUT rather than on the way in, so a door that
 // refused leaves the pin a person set exactly where they set it.
 func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
+	return a.homeOpenAt(a.targetWhere())
+}
+
+// homeOpenAt opens the target captured while the draft is still visible.
+// Consuming a slash draft rebuilds Home's rows and can move its cursor to a
+// different project; that new selection must not redirect the submitted work.
+func (a *app) homeOpenAt(target string) (tea.Cmd, bool) {
 	// A draft with no conversation identity cannot be put in the keeper.
 	if !a.mainComposer().empty() && (a.agent == nil || a.convKey(a.file) == "") {
 		a.home.say(startDraftUnownedWord, "")
 		return nil, false
 	}
 	carried := a.home.chips
-	where := strings.TrimSpace(a.targetWhere())
+	where := strings.TrimSpace(target)
 	if where != "" && where != strings.TrimSpace(a.workspace) {
 		cmd, refusal := a.startBeside(where)
 		if refusal != "" {
