@@ -21,8 +21,9 @@ editors, prompts and terminal apps are not supported. Each command starts a fres
 shell in the workspace: `cd` and `export` apply only within that command. Large
 output is truncated with a notice. The foreground shell timeout applies, and
 Escape stops the command. These commands cannot be sent to background jobs. Enter supplies consent for
-the command you typed; explicit policy denies and active-work guards still apply.
-They run with your shell permissions and are not a filesystem or network sandbox.
+the command you typed; explicit policy denies still apply. Shell commands run
+with your permissions, including network access. File-tool workspace guards
+cannot restrict shell writes; bash mode is not a sandbox.
 
 An empty `!`, attached files, or a busy conversation leaves your draft in place
 and explains what to change. Wait for the turn to finish or stop it first.
