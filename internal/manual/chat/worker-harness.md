@@ -255,7 +255,7 @@ the row stays under the task that requested it and wears
 `queued · waits: <that task>` to name the separate dependency.
 
 A task's **page** shows its children under its steps the same way, in `under it`,
-each drawn as the side list draws a task — mark, name, `#id`, the tree's `├─`/`└─`
+each drawn as the side list draws a task — mark, name, `#id`, the tree's `├ `/`└ `
 — with the command it is on while its worker is on one. Notes, pause, cancel and the
 rest of steering are unchanged by the tree.
 

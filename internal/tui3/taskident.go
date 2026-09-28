@@ -35,7 +35,7 @@ import (
 //     the marker's own argument applied to one column: the rail holds nothing
 //     but tasks, so there is nothing there for "this row is a task" to tell
 //     apart, and the two cells are worth more to the name on a surface
-//     twenty-four columns wide (task.go's [app.railLead]).
+//     twenty-four columns wide (task.go's [app.railEntryRow]).
 //
 // THE MARKER USED TO BE EIGHT SHAPES IN SIX HUES, hashed off the id — a private
 // alphabet in which ◆ teal was task 3 and ▲ amber was task 5. The argument was
