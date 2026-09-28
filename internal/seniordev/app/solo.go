@@ -700,7 +700,8 @@ func (runner *pipeline) soloRecordTree(treeSHA, message string) (string, error) 
 
 // soloFrozenRef makes the frozen candidate reachable from outside this process,
 // so a hard kill between submit and finalize still has something to restore.
-const soloFrozenRef = "refs/senior-dev/submitted"
+// It is per worktree for the reason [soloStartRef] is.
+const soloFrozenRef = "refs/worktree/senior-dev/submitted"
 
 // soloTreeChange describes the whole working tree against the run's base.
 type soloTreeChange struct {

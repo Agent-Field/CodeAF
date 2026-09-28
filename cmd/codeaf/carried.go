@@ -263,6 +263,10 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		if err != nil {
 			return err
 		}
+		// AND THE SEAT IS WHAT THE PROGRAM WORKS ON, as a conversation's crew is
+		// ([carriedSeatedLine]): a shell run and a chat run of one program on
+		// one profile route on the same model.
+		inv.Line = carriedSeatedLine(inv, road.seat)
 	}
 	// A PERSON TYPED THIS AND IS WATCHING ITS LINES, which is the fact the
 	// lane layer reads for the calls that ride no context of the door's own
@@ -271,11 +275,11 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	record := carriedRecordDir(inv.Program.Name)
 	view := newCarriedView(carriedStdout, inv, record)
 	// THE FOLDER IS READIED BEFORE ANYTHING STARTS, the one way a conversation's
-	// run readies it (internal/session's programfolder.go): the folder itself,
-	// on a branch of its own in a repository, and a refusal — changes that are
-	// not committed, another program's run in it — before a cent is spent. A
-	// plain folder is no longer the program's first-line failure: codeaf says
-	// so on the program's line.
+	// run readies it (internal/session's programfolder.go): a copy of its own on
+	// a branch of its own in a repository, the folder itself otherwise, and a
+	// refusal — another program's run in a plain folder — before a cent is
+	// spent. A plain folder is no longer the program's first-line failure:
+	// codeaf says so on the program's line.
 	folder, err := carriedFolder(inv, record)
 	if err != nil {
 		fmt.Fprintln(carriedStderr, "error:", err)
@@ -431,11 +435,12 @@ func carriedFolder(inv *delegate.Invocation, record string) (*session.ProgramFol
 }
 
 // carriedInFolder puts on a shell run's child line what codeaf decided about
-// its folder, after --json and before the person's own words: the folder
-// itself when it is not the one the line names (a folder inside a repository
-// is worked in at the repository's root, and the person's own --dir is taken
-// off so it cannot win), and the program's own flags for a folder worked in
-// without git ([delegate.Delegate.PlainFolder]).
+// its folder, after --json and before the person's own words: the folder it
+// works in when it is not the one the line names (a repository is worked in
+// in a copy of its own, and the person's own --dir is taken off so it cannot
+// win), the program's own flags for a folder worked in without git
+// ([delegate.Delegate.PlainFolder]), and, ahead of the brief, the line that
+// says where a copy is ([session.ProgramFolder.BriefNote]).
 func carriedInFolder(child []string, inv *delegate.Invocation, folder *session.ProgramFolder) []string {
 	if folder == nil {
 		return child
@@ -462,6 +467,10 @@ func carriedInFolder(child []string, inv *delegate.Invocation, folder *session.P
 	}
 	if folder.Plain() {
 		head = append(head, inv.Program.PlainFolder...)
+	}
+	if note := folder.BriefNote(); note != "" && len(inv.Args) > 0 && len(rest) >= len(inv.Args) {
+		flags, words := rest[:len(rest)-len(inv.Args)], rest[len(rest)-len(inv.Args):]
+		rest = append(append(append([]string(nil), flags...), note+"\n\n"), words...)
 	}
 	return append(head, rest...)
 }
@@ -513,6 +522,35 @@ func carriedChildLine(inv *delegate.Invocation) []string {
 	}
 	head = append(head, "--json")
 	return append(head, line...)
+}
+
+// carriedSeatedLine puts the profile's work seat on a shell run's line as the
+// program's working seat, in the program's own crew flags
+// ([delegate.Delegate.CrewFlags]) — for senior-dev the pool it routes on, and
+// the seat's own rung (`model:high`) as its effort — exactly as a
+// conversation hands its crew over. They go first, so a flag the person typed
+// after them still wins. A program with no crew flags, or no seat, keeps the
+// line as typed.
+//
+// A SHELL RUN USED TO ROUTE ON SENIOR-DEV'S OWN LIST while the same program
+// started from the chat worked on the person's crew, so one person on one
+// profile got a different model depending on the door; the seat was only a
+// fallback for calls nothing here could serve.
+func carriedSeatedLine(inv *delegate.Invocation, seat string) []string {
+	model, rung := roles.SplitEffort(seat)
+	if inv.Program.CrewFlags == nil || strings.TrimSpace(model) == "" {
+		return inv.Line
+	}
+	flags := inv.Program.CrewFlags(delegate.Crew{Hands: strings.TrimSpace(model), Effort: rung})
+	at := 0
+	if len(inv.Line) > 0 {
+		if _, named := inv.Program.Command(inv.Line[0]); named {
+			at = 1
+		}
+	}
+	line := append([]string(nil), inv.Line[:at]...)
+	line = append(line, flags...)
+	return append(line, inv.Line[at:]...)
 }
 
 // carriedResolvedHigh replaces only the model flag's value on the person's
@@ -692,6 +730,9 @@ func (v *carriedView) where() string {
 	}
 	if v.folder.Plain() {
 		return v.folder.Dir
+	}
+	if v.folder.Copied() {
+		return v.folder.Repo + ", in a copy of its own on its own branch " + v.folder.Branch
 	}
 	return v.folder.Dir + ", on its own branch " + v.folder.Branch
 }

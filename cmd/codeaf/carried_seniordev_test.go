@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -115,8 +116,11 @@ func TestSeniorDevWorksATaskThroughTheShellHostsModelAPI(t *testing.T) {
 			t.Fatalf("the shell run never printed %q:\n%s", want, out)
 		}
 	}
-	if content, err := os.ReadFile(filepath.Join(workspace, "feature.txt")); err != nil || string(content) != "implemented\n" {
-		t.Fatalf("the work is not in the tree: %q %v", content, err)
+	if content, err := onTheTaskBranch(workspace, "feature.txt"); err != nil || content != "implemented\n" {
+		t.Fatalf("the work is not on the run's branch: %q %v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "feature.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the run wrote into the person's checkout instead of its copy: %v", err)
 	}
 	model.mu.Lock()
 	calls, keys := model.calls, append([]string(nil), model.keys...)
@@ -151,6 +155,22 @@ func TestSeniorDevWorksATaskThroughTheShellHostsModelAPI(t *testing.T) {
 // (internal/seniordev's hermeticRun): nothing of the machine's configuration,
 // its model catalog on disk and no fetch, and a git repository whose build and
 // tests pass.
+// onTheTaskBranch reads name off the one task branch a run left in repo. In a
+// repository the program works in a copy of its own, so its work is on its
+// branch and not in the person's folder.
+func onTheTaskBranch(repo, name string) (string, error) {
+	out, err := exec.Command("git", "-C", repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/task/").Output()
+	if err != nil {
+		return "", err
+	}
+	branches := strings.Fields(string(out))
+	if len(branches) != 1 {
+		return "", fmt.Errorf("want the run's one task branch, got %q", branches)
+	}
+	content, err := exec.Command("git", "-C", repo, "show", branches[0]+":"+name).Output()
+	return string(content), err
+}
+
 func seniorDevWorkspace(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -204,4 +224,34 @@ func newestSeniorDevRecord(t *testing.T) string {
 		}
 	}
 	return newest
+}
+
+// A SHELL RUN WITH NO --high WORKS ON THE PROFILE'S WORK SEAT, as a chat run
+// does: the seat goes on the child's line in senior-dev's own crew flags, its
+// rung as the coder's effort, ahead of the person's flags so one they typed
+// still wins.
+func TestAShellRunWorksOnTheProfilesWorkSeat(t *testing.T) {
+	program, carried := builtin.Find("senior-dev")
+	if !carried {
+		t.Skip("this build carries no senior-dev")
+	}
+	inv, err := delegate.Parse(program, []string{"run", "--dir", "/r/repo", "--", "fix", "it"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := carriedSeatedLine(inv, "z-ai/glm-5.3-flash:high")
+	if got, want := strings.Join(line, " "), "run --crew --high openrouter/z-ai/glm-5.3-flash --variant high --dir /r/repo -- fix it"; got != want {
+		t.Fatalf("the seated line = %q, want %q", got, want)
+	}
+	typed, err := delegate.Parse(program, []string{"run", "--variant", "low", "--", "fix", "it"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := delegate.Parse(program, carriedSeatedLine(typed, "z-ai/glm-5.3-flash:high"), &bytes.Buffer{})
+	if err != nil || again.ExplicitFlags["variant"] != "low" || again.Brief() != "fix it" {
+		t.Fatalf("the person's own --variant lost to the seat's: %+v (%v)", again.ExplicitFlags, err)
+	}
+	if got := carriedSeatedLine(inv, ""); strings.Join(got, " ") != strings.Join(inv.Line, " ") {
+		t.Fatalf("no seat changed the line: %q", got)
+	}
 }

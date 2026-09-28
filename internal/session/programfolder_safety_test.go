@@ -20,7 +20,9 @@ func safetyRepo(t *testing.T) string {
 }
 
 // An ignored secret at the start remains outside the run's commit after the
-// program changes the ignore rule, while the changed rule is ordinary work.
+// program changes the ignore rule, while the changed rule is ordinary work. The
+// secret is linked into the copy (programcopy.go), and neither the link nor
+// the file it points at is ever committed or removed.
 func TestProgramFolderNeverCommitsPathsIgnoredAtStartOrRunCaches(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	repo := safetyRepo(t)
@@ -30,18 +32,18 @@ func TestProgramFolderNeverCommitsPathsIgnoredAtStartOrRunCaches(t *testing.T) {
 	writeFile(t, filepath.Join(repo, ".env"), "SECRET=private\n")
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Change ignore rules")
 	ignoredRecord, err := os.ReadFile(folder.IgnoredFile())
-	if err != nil || !strings.Contains(string(ignoredRecord), ".env\x00") {
+	if err != nil || !strings.Contains(string(ignoredRecord), ".env") {
 		t.Fatalf("the child cannot read its start-time ignore record: %q, %v", ignoredRecord, err)
 	}
-	writeFile(t, filepath.Join(repo, ".gitignore"), "# changed by run\n")
-	writeFile(t, filepath.Join(repo, "__pycache__", "module.pyc"), "bytecode")
-	writeFile(t, filepath.Join(repo, ".pytest_cache", "state"), "cache")
-	writeFile(t, filepath.Join(repo, "made.txt"), "work\n")
+	writeFile(t, filepath.Join(folder.Dir, ".gitignore"), "# changed by run\n")
+	writeFile(t, filepath.Join(folder.Dir, "__pycache__", "module.pyc"), "bytecode")
+	writeFile(t, filepath.Join(folder.Dir, ".pytest_cache", "state"), "cache")
+	writeFile(t, filepath.Join(folder.Dir, "made.txt"), "work\n")
 	folder.Finish("done")
 	if frozen, err := os.ReadFile(folder.IgnoredFile()); err != nil || string(frozen) != string(ignoredRecord) {
 		t.Fatalf("the repository's frozen ignore list changed during the run: %q, %v", frozen, err)
 	}
-	paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", "HEAD")
+	paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Branch)
 	for _, want := range []string{".gitignore", "made.txt"} {
 		if !strings.Contains(paths, want) {
 			t.Fatalf("%s missing from commit: %s", want, paths)
@@ -51,9 +53,56 @@ func TestProgramFolderNeverCommitsPathsIgnoredAtStartOrRunCaches(t *testing.T) {
 		if strings.Contains(paths, excluded) {
 			t.Fatalf("%s entered commit: %s", excluded, paths)
 		}
-		if _, err := os.Stat(filepath.Join(repo, excluded)); err != nil {
-			t.Fatalf("%s was removed: %v", excluded, err)
+	}
+	if body := readFile(t, filepath.Join(repo, ".env")); body != "SECRET=private\n" {
+		t.Fatalf("the person's secret was touched: %q", body)
+	}
+}
+
+// A COPY LINKS IN THE DEPENDENCIES AND ENVIRONMENT A FRESH CHECKOUT LACKS, AND
+// NOTHING ELSE: an ignored `node_modules` and `.env` are there, an ignored
+// `bin/` is not — a run's `make build` once overwrote the binary its person was
+// running — and the copy's own tree is clean with them in it. A project names
+// its own list in `.codeaf/config.json`, an empty one linking nothing. The
+// links go before the copy does, and what they pointed at is untouched.
+func TestACopyLinksTheIgnoredDependenciesAndNothingElse(t *testing.T) {
+	repo := safetyRepo(t)
+	writeFile(t, filepath.Join(repo, ".gitignore"), "node_modules/\nbin/\n.env\n.env.*\n")
+	mustGit(t, repo, "add", ".gitignore")
+	mustGit(t, repo, "commit", "-q", "-m", "ignore")
+	writeFile(t, filepath.Join(repo, "node_modules", "left-pad", "index.js"), "module.exports = 1\n")
+	writeFile(t, filepath.Join(repo, "bin", "codeaf"), "the person's binary\n")
+	writeFile(t, filepath.Join(repo, ".env"), "A=1\n")
+	writeFile(t, filepath.Join(repo, ".env.local"), "B=2\n")
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Use the dependencies")
+	for _, name := range []string{"node_modules", ".env", ".env.local"} {
+		if target, err := os.Readlink(filepath.Join(folder.Dir, name)); err != nil || target != filepath.Join(repo, name) {
+			t.Fatalf("%s is not linked into the copy: %q, %v", name, target, err)
 		}
+	}
+	if _, err := os.Lstat(filepath.Join(folder.Dir, "bin")); !os.IsNotExist(err) {
+		t.Fatalf("a build folder was linked into the copy: %v", err)
+	}
+	if status := strings.TrimSpace(gitOut(t, folder.Dir, "status", "--porcelain")); status != "" {
+		t.Fatalf("the copy's tree is not clean with its links in it:\n%s", status)
+	}
+	writeFile(t, filepath.Join(folder.Dir, "made.txt"), "work\n")
+	end := folder.Finish("done")
+	if paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Branch); strings.Contains(paths, "node_modules") || strings.Contains(paths, ".env") || !end.Kept {
+		t.Fatalf("a link entered the commit, or the work did not: %s", paths)
+	}
+	if body := readFile(t, filepath.Join(repo, "node_modules", "left-pad", "index.js")); body != "module.exports = 1\n" {
+		t.Fatalf("what a link pointed at was touched: %q", body)
+	}
+
+	writeFile(t, filepath.Join(repo, ".codeaf", "config.json"), `{"program.links": "bin"}`)
+	own := prepareIn(t, testPrograms("fake")[0], repo, "Use the project's own list")
+	defer own.Finish("")
+	if _, err := os.Readlink(filepath.Join(own.Dir, "bin")); err != nil {
+		t.Fatalf("the project's own list was not linked: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(own.Dir, "node_modules")); !os.IsNotExist(err) {
+		t.Fatalf("a folder the project's list does not name was linked: %v", err)
 	}
 }
 
@@ -90,33 +139,34 @@ func TestProgramFolderInsideIgnoredDirectoryStaysPlain(t *testing.T) {
 	}
 }
 
-// A moved checkout gets no finishing commit and the ending names the commit
-// already on the task branch as well as the uncommitted work left on main.
+// A copy the program moved off its branch gets no finishing commit: its
+// branch keeps what it committed there, what is loose is kept as a patch, and
+// the person's own branch and checkout are never touched.
 func TestProgramFolderMovedHeadEndingAccountsForCommittedAndLooseWork(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	repo := safetyRepo(t)
 	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "main"))
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Own branch only")
-	writeFile(t, filepath.Join(repo, "task.txt"), "committed on task\n")
-	mustGit(t, repo, "add", "task.txt")
-	mustGit(t, repo, "commit", "-q", "-m", "task work")
-	mustGit(t, repo, "switch", "-q", "main")
-	writeFile(t, filepath.Join(repo, "loose.txt"), "uncommitted\n")
+	writeFile(t, filepath.Join(folder.Dir, "task.txt"), "committed on task\n")
+	mustGit(t, folder.Dir, "add", "task.txt")
+	mustGit(t, folder.Dir, "commit", "-q", "-m", "task work")
+	mustGit(t, folder.Dir, "switch", "-q", "-c", "elsewhere")
+	writeFile(t, filepath.Join(folder.Dir, "loose.txt"), "uncommitted\n")
 	end := folder.Finish("done")
 	if currentBranch(repo) != "main" || strings.TrimSpace(gitOut(t, repo, "rev-parse", "main")) != base {
 		t.Fatal("the person's branch gained a commit or HEAD moved")
 	}
-	if status := gitOut(t, repo, "status", "--porcelain"); !strings.Contains(status, "loose.txt") {
-		t.Fatalf("run's loose work disappeared: %s", status)
+	if end.Patch == "" || !strings.Contains(readFile(t, end.Patch), "loose.txt") {
+		t.Fatalf("the run's loose work was not kept: %+v", end)
 	}
 	said := end.Sentence()
-	for _, want := range []string{"the branch main", "uncommitted", "holds 1 file", "your branch main was not given a commit by codeaf"} {
+	for _, want := range []string{"left its copy on the branch elsewhere", "holds 1 file", "kept as a patch at " + end.Patch} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("ending missing %q: %s", want, said)
 		}
 	}
-	if strings.Contains(said, "nothing was committed") {
-		t.Fatalf("ending denied a real task commit: %s", said)
+	if paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Branch); strings.Contains(paths, "loose.txt") {
+		t.Fatalf("loose work was committed on the task branch: %s", paths)
 	}
 }
 
@@ -124,26 +174,29 @@ func TestProgramFolderMovedHeadWithCleanCheckoutDoesNotClaimLooseWork(t *testing
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	repo := safetyRepo(t)
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Look only")
-	mustGit(t, repo, "switch", "-q", "main")
-	said := folder.Finish("done").Sentence()
-	if !strings.Contains(said, "no uncommitted files were left in that checkout") {
-		t.Fatalf("clean moved checkout misreported as uncommitted work: %s", said)
+	mustGit(t, folder.Dir, "switch", "-q", "-c", "elsewhere")
+	end := folder.Finish("done")
+	if end.Patch != "" || strings.Contains(end.Sentence(), "patch") {
+		t.Fatalf("clean moved copy misreported as uncommitted work: %s", end.Sentence())
 	}
 }
 
-// A process that vanished after moving HEAD still leaves a truthful account
-// of loose files on the person's checkout, without committing them there.
+// A process that vanished after moving its copy's HEAD is finished the same
+// way by the next codeaf: loose work kept as a patch, the copy removed.
 func TestProgramFolderMovedHeadAfterVanishedRunNamesLooseWork(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	repo := safetyRepo(t)
 	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "main"))
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Stopped after switch")
 	t.Cleanup(folder.release)
-	mustGit(t, repo, "switch", "-q", "main")
-	writeFile(t, filepath.Join(repo, "loose.txt"), "still here\n")
-	said := folder.settleGone().Sentence()
-	if !strings.Contains(said, "the checkout has 1 file uncommitted") || !strings.Contains(said, "your branch main was not given a commit by codeaf") {
-		t.Fatalf("vanished run's moved checkout was misstated: %s", said)
+	mustGit(t, folder.Dir, "switch", "-q", "-c", "elsewhere")
+	writeFile(t, filepath.Join(folder.Dir, "loose.txt"), "still here\n")
+	end := folder.settleGone()
+	if !end.Moved || end.Patch == "" || !strings.Contains(end.Sentence(), "kept as a patch") {
+		t.Fatalf("vanished run's moved copy was misstated: %s", end.Sentence())
+	}
+	if _, err := os.Stat(folder.Dir); !os.IsNotExist(err) {
+		t.Fatalf("the vanished run's copy is still there: %v", err)
 	}
 	if currentBranch(repo) != "main" || strings.TrimSpace(gitOut(t, repo, "rev-parse", "main")) != base {
 		t.Fatal("the person's branch gained a commit or HEAD moved")

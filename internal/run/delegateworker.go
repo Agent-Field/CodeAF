@@ -114,6 +114,10 @@ type DelegateSetup struct {
 	// ignore list. Both are passed to the child before any eager commit.
 	Branch      string
 	IgnoredFile string
+	// BriefNote is the line the program's brief opens with when it works in a
+	// copy of the person's repository (session.ProgramFolder.BriefNote): where
+	// the copy is. Empty for a folder worked in itself.
+	BriefNote string
 	// Crew is the conversation's crew (session.RunSpec.Crew), which the
 	// program's line carries in its own flags (delegate.Delegate.CrewFlags) so
 	// it works on the models the person chose. Zero leaves it to its own.
@@ -477,6 +481,9 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	brief := strings.TrimSpace(task.Description)
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
+	}
+	if note := strings.TrimSpace(w.setup.BriefNote); note != "" {
+		brief = note + "\n\n" + brief
 	}
 	started = time.Now()
 	sink.record.StartedAt = started

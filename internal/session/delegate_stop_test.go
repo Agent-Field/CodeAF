@@ -2,11 +2,11 @@ package session
 
 // WHERE A STOPPED PROGRAM'S WORK GOES.
 //
-// A stop ends a program's run the way every ending of it ends: its folder
-// finished (programfolder.go), with what it had left uncommitted committed on
-// its own branch, that branch left checked out, and the person's branch where
-// it was. A stop that changed nothing leaves no branch, and the person is told
-// at once where the work will be.
+// A stop ends a program's run the way every ending of it ends: its copy
+// finished (programcopy.go), with what it had left uncommitted committed on
+// its own branch, the copy removed so the branch is checked out nowhere, and
+// the person's checkout untouched. A stop that changed nothing keeps its
+// branch too, and the person is told at once where the work will be.
 
 import (
 	"context"
@@ -61,16 +61,16 @@ func stoppedDelegatedRunThatDid(t *testing.T, prepare func(repo string), play fu
 }
 
 // A STOPPED PROGRAM'S WORK IS COMMITTED ON ITS BRANCH, committed by the
-// program or not, and the branch is left checked out: the stop's own words are
-// the body of the commit that holds what it left.
-func TestAStoppedProgramsWorkIsCommittedOnItsBranchAndLeftCheckedOut(t *testing.T) {
+// program or not, and its copy removed: the stop's own words are the body of
+// the commit that holds what it left.
+func TestAStoppedProgramsWorkIsCommittedOnItsBranch(t *testing.T) {
 	repo, row, notes := stoppedDelegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
 		commitIn(t, workspace, "one.txt")
 		writeFile(t, filepath.Join(workspace, "two.txt"), "two\n")
 	})
 	branch, log := taskBranchLog(t, repo)
-	if head := currentBranch(repo); head != branch {
-		t.Fatalf("the checkout is on %q after the stop, want the program's branch %q", head, branch)
+	if head := currentBranch(repo); head != "work" || worktreeCount(t, repo) != 1 {
+		t.Fatalf("the checkout is on %q after the stop with %d worktrees, want the person's own and no copy", head, worktreeCount(t, repo))
 	}
 	files := gitOut(t, repo, "ls-tree", "--name-only", branch)
 	for _, name := range []string{"one.txt", "two.txt"} {
@@ -90,28 +90,26 @@ func TestAStoppedProgramsWorkIsCommittedOnItsBranchAndLeftCheckedOut(t *testing.
 	if row.Branch != branch || len(row.Changed) != 2 || row.Merge != mergeKept {
 		t.Fatalf("the row names %q with %q (%s), want the program's branch with both files", row.Branch, row.Changed, row.Merge)
 	}
-	if joined := strings.Join(notes, "\n"); !strings.Contains(joined, "stopped · its work is on the branch "+branch+" in "+canonicalPath(repo)+", 2 files, and that branch is checked out there") {
+	if joined := strings.Join(notes, "\n"); !strings.Contains(joined, "stopped · its work is on the branch "+branch+" in "+canonicalPath(repo)+", 2 files; your checkout was not touched") {
 		t.Fatalf("the stop does not say where the work is: %q", notes)
 	}
 }
 
-// A STOPPED PROGRAM THAT CHANGED NOTHING LEAVES NO BRANCH, as one that ended
-// does, and the person's own branch is checked out again.
-func TestAStoppedProgramThatChangedNothingLeavesNoBranch(t *testing.T) {
+// A STOPPED PROGRAM THAT CHANGED NOTHING KEEPS ITS BRANCH, as one that ended
+// does, and the person's checkout is where it was.
+func TestAStoppedProgramThatChangedNothingKeepsItsBranch(t *testing.T) {
 	repo, row, notes := stoppedDelegatedRunThatDid(t, nil, func(*testing.T, string) {})
-	if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
-		t.Fatalf("a stopped run that changed nothing left a branch behind: %q", branches)
+	branch, _ := taskBranchLog(t, repo)
+	if head := currentBranch(repo); head != "work" || worktreeCount(t, repo) != 1 {
+		t.Fatalf("the checkout is on %q, want the person's branch work and no copy", head)
 	}
-	if head := currentBranch(repo); head != "work" {
-		t.Fatalf("the checkout is on %q, want the person's branch work back", head)
-	}
-	if row.Branch != "" || !strings.Contains(strings.Join(notes, "\n"), "stopped · it changed nothing, so "+canonicalPath(repo)+" is back on your branch work") {
+	if row.Branch != "" || !strings.Contains(strings.Join(notes, "\n"), "stopped · it changed nothing; its branch "+branch+" in "+canonicalPath(repo)+" is kept where it began") {
 		t.Fatalf("a stopped run that changed nothing draws %q and says %q", row.Branch, notes)
 	}
 }
 
 // THE STOP SAYS AT ONCE WHERE THE WORK WILL BE: on the program's branch in the
-// person's folder, not on "its branch", which named nothing a person could
+// person's repository, not on "its branch", which named nothing a person could
 // find.
 func TestAStoppedProgramSaysWhereItsWorkWillBe(t *testing.T) {
 	double := newBeltRunDouble("unused")
@@ -129,12 +127,14 @@ func TestAStoppedProgramSaysWhereItsWorkWillBe(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-double.entered
-	branch := currentBranch(repo)
+	double.mu.Lock()
+	branch := double.spec.ProgramBranch
+	double.mu.Unlock()
 	said, err := agent.Cancel(CancelTask + ":" + strconv.FormatUint(id, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "its work so far stays on its branch " + branch + ", checked out in " + canonicalPath(repo); !strings.Contains(said, want) {
+	if want := "its work so far is committed on its branch " + branch + " in " + canonicalPath(repo); !strings.Contains(said, want) {
 		t.Fatalf("the stop said %q, want %q", said, want)
 	}
 	beltRunWaitFor(t, "the run to end", func() bool {

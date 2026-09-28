@@ -97,6 +97,15 @@ var ProjectKeys = []string{
 	KeyTelemetry,
 }
 
+// ProjectProgramLinks is a key only a project file answers, and no settings
+// row: the folders git ignores that a program's copy of this repository links
+// in from the person's checkout, comma-separated (`"node_modules, .env"`), an
+// empty text linking none. It is a fact about the repository — which ignored
+// folders its build and tests need — and nobody's profile has an answer to it,
+// so it is read straight off the project file (internal/session's
+// programcopy.go) rather than through the registry the rows above are.
+const ProjectProgramLinks = "program.links"
+
 // ProjectKeyAllowed reports whether a row may live in a project file.
 func ProjectKeyAllowed(key string) bool {
 	for _, allowed := range ProjectKeys {
