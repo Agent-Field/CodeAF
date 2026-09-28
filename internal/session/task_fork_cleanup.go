@@ -14,7 +14,14 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 	if !ok {
 		return true
 	}
-	nodes, err := forkRetirementOrder(document.Nodes)
+	// Tasks standing in place can share a ground and are not fork dependencies.
+	var forks []taskRecord
+	for _, record := range document.Nodes {
+		if _, ok := universeInRecord(record); ok {
+			forks = append(forks, record)
+		}
+	}
+	nodes, err := forkRetirementOrder(forks)
 	if err != nil {
 		note("sweep: " + err.Error())
 		return false

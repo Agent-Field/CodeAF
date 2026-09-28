@@ -109,6 +109,9 @@ func TestLandedForkRetirementRetriesFromCheckpoint(t *testing.T) {
 	}
 	document.Nodes[0].Merge = mergeMerged
 	document.Nodes[0].State = TaskDone
+	document.Nodes = append(document.Nodes,
+		taskRecord{ID: 2, Worktree: repo, Ground: repo, Rung: GroundRungHere},
+		taskRecord{ID: 3, Worktree: repo, Ground: repo, Rung: GroundRungHere})
 	writeCheckpoint(t, (Place{Dir: dir}).Tasks(), document)
 	t.Setenv(furrow.BinaryEnvVar, binary)
 	furrow.Forget()
