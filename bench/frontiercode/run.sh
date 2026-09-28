@@ -57,6 +57,9 @@ if [ -z "${BENCH_SNAPSHOT:-}" ]; then
         "$__RIG_SRC/negative.sh" "$__RIG_SRC/seal.sh" "$__RIG_SRC/report.py" "$__out/rig/"
   cp -R "$__RIG_SRC/grade" "$__out/rig/grade"
   cp -R "$__RIG_SRC/bin" "$__out/rig/bin" 2>/dev/null || true
+  # The credential guard is the conversation battery's; a run's frozen copy
+  # carries its own, like journal.py in the DeepSWE rig.
+  cp "$__RIG_SRC/../conversation/lib/guard.py" "$__out/rig/guard.py"
   export BENCH_SNAPSHOT="$__out/rig"
   export BENCH_RIG_REV="$(git -C "$__RIG_SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   exec bash "$__out/rig/run.sh" "$@"
