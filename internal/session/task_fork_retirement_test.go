@@ -132,6 +132,55 @@ func TestLandedForkRetirementRetriesFromCheckpoint(t *testing.T) {
 	}
 }
 
+// A failed cleanup leaves the copy in the person's hands, so a later sweep
+// must ask what is in it now before retiring its timeline.
+func TestLandedForkRetirementKeepsWorkAddedAfterFailure(t *testing.T) {
+	for _, change := range []string{"untracked", "edited", "committed"} {
+		t.Run(change, func(t *testing.T) {
+			installFakeFurrow(t)
+			binary := os.Getenv(furrow.BinaryEnvVar)
+			dir, tree := newSweptUniverseSession(t, t.TempDir(), "aaaa5555aaaa5555", dirtyRepo(t), time.Now())
+			writeFile(t, filepath.Join(tree.dir, "landed.txt"), "landed\n")
+			t.Setenv(furrow.BinaryEnvVar, filepath.Join(t.TempDir(), "missing"))
+			furrow.Forget()
+			merged, _, _, _ := tree.comeHome("land it", []string{"landed.txt"}, gitSignature{})
+			if merged != mergeMerged {
+				t.Fatalf("merge = %s", merged)
+			}
+			document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
+			if !ok {
+				t.Fatal("missing checkpoint")
+			}
+			document.Nodes[0].Merge = mergeMerged
+			writeCheckpoint(t, (Place{Dir: dir}).Tasks(), document)
+			path := filepath.Join(tree.dir, "new-unmerged-work.txt")
+			switch change {
+			case "untracked":
+				writeFile(t, path, "unique work\n")
+			case "edited":
+				path = filepath.Join(tree.dir, "landed.txt")
+				writeFile(t, path, "changed after landing\n")
+			case "committed":
+				writeFile(t, path, "unique work\n")
+				gitOut(t, tree.dir, "add", "new-unmerged-work.txt")
+				gitOut(t, tree.dir, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "work after landing")
+			}
+			t.Setenv(furrow.BinaryEnvVar, binary)
+			furrow.Forget()
+			var notes []string
+			if !retireCheckpointForks(context.Background(), dir, true, func(line string) { notes = append(notes, line) }) {
+				t.Fatal("retirement retry failed")
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("work added after landing was lost: %v", err)
+			}
+			if !saidSomethingAbout(notes, tree.universe) {
+				t.Fatalf("retry did not explain kept copy: %v", notes)
+			}
+		})
+	}
+}
+
 func TestCheckpointRetirementLeavesUnmergedAndForeignCopies(t *testing.T) {
 	for _, mode := range []string{"kept", "foreign"} {
 		t.Run(mode, func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // retireCheckpointForks preserves the checkpoint whenever retirement fails.
@@ -52,6 +53,10 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 			note(fmt.Sprintf("sweep: cannot retire fork %s outside its session trees", tree.universe))
 			return false
 		}
+		if landedOnly && forkHasLaterWork(ctx, tree) {
+			note(fmt.Sprintf("sweep: kept fork %s of %s because its copy has work after landing", tree.universe, tree.ground))
+			continue
+		}
 		if err := tree.dropUniverse(); err != nil {
 			note(fmt.Sprintf("sweep: could not retire fork %s of %s: %v", tree.universe, tree.ground, err))
 			return false
@@ -59,6 +64,30 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 		note(fmt.Sprintf("sweep: retired fork %s of %s", tree.universe, tree.ground))
 	}
 	return !contextDone(ctx)
+}
+
+// forkHasLaterWork protects a retained copy that somebody may have used after
+// cleanup failed. A status read includes untracked files, and a commit must
+// already be reachable from the ground before this sweep may remove its copy.
+// Any failed reading keeps the copy, since a retry can ask again later.
+func forkHasLaterWork(ctx context.Context, tree taskTree) bool {
+	if _, err := os.Stat(tree.dir); os.IsNotExist(err) {
+		return false
+	}
+	args := []string{"--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		args = append(args, ":(exclude)"+dropping)
+	}
+	status, err := gitContext(ctx, tree.dir, nil, args...)
+	if err != nil || strings.TrimSpace(status) != "" {
+		return true
+	}
+	tip, err := gitContext(ctx, tree.dir, nil, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(tip) == "" {
+		return true
+	}
+	_, err = gitContext(ctx, tree.ground, nil, "merge-base", "--is-ancestor", strings.TrimSpace(tip), "HEAD")
+	return err != nil
 }
 
 // Fork directories are siblings even when their work is nested. Follow the

@@ -3373,7 +3373,9 @@ objects that no other timeline needs. This does not erase shared parent history.
 
 A cleanup failure does not undo a successful merge. The report names the copy
 that remains, and a later sweep of the closed conversation retries using its
-saved task record. Failed tasks and work kept for review retain their copies
+saved task record. If you add files, edit files, or commit new work in that copy
+after the failure, the sweep keeps it and names why; only a copy with no work of
+its own is retired. Failed tasks and work kept for review retain their copies
 and timelines. Old temporary conversations still follow the usual seven-day
 retention policy. Previously orphaned timelines are not automatically purged:
 a missing directory alone does not prove that its history is disposable.
