@@ -2183,29 +2183,36 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 				notice.Title, notice.StartedAt = kept.Title, kept.StartedAt
 			}
 		}
-		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil {
-			notice.Stopped = planTaskStopped(run.store, task)
-			if notice.Stopped {
-				notice.Ending = TaskEndingStopped
-			}
-			if task.Status == plandb.StatusDone {
-				notice.State = TaskDone
-			}
-			notice.Result = strings.TrimSpace(task.Result)
-			notice.Report = notice.Result
-			// THE STORE HOLDS THE ACCOUNT OF WHAT BROKE IN ITS ERROR, and a
-			// failed task carries no result: a fault row with nothing to say
-			// would draw the bare word, so its first line is the store's own
-			// sentence of the break.
-			if notice.Report == "" && task.Status != plandb.StatusDone {
-				notice.Report = strings.TrimSpace(task.Error)
-			}
-		}
+		notice = settledJoinedTaskNotice(notice, run.store)
 		if !notice.Stopped && notice.State != TaskDone && runEnding != "" && (cutRows[id] || cancelledByRunEnding(run.store, id)) {
 			notice.Ending = runEnding
 		}
 		a.publishRunRow(g, notice)
 	}
+}
+
+// settledJoinedTaskNotice reads the task's saved outcome before the run's
+// ending is applied, so a person's stop keeps its own meaning.
+func settledJoinedTaskNotice(notice TaskNotice, store *plandb.Store) TaskNotice {
+	if task := store.Task(strconv.FormatUint(notice.ID, 10)); task != nil {
+		notice.Stopped = planTaskStopped(store, task)
+		if notice.Stopped {
+			notice.Ending = TaskEndingStopped
+		}
+		if task.Status == plandb.StatusDone {
+			notice.State = TaskDone
+		}
+		notice.Result = strings.TrimSpace(task.Result)
+		notice.Report = notice.Result
+		// THE STORE HOLDS THE ACCOUNT OF WHAT BROKE IN ITS ERROR, and a
+		// failed task carries no result: a fault row with nothing to say
+		// would draw the bare word, so its first line is the store's own
+		// sentence of the break.
+		if notice.Report == "" && task.Status != plandb.StatusDone {
+			notice.Report = strings.TrimSpace(task.Error)
+		}
+	}
+	return notice
 }
 
 // cancelledByRunEnding answers whether a joined row's task was cancelled by the
