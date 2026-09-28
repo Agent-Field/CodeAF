@@ -387,30 +387,33 @@ func TestARecallThatLandsBeforeTheFirstWordIsAskedAgainWithIt(t *testing.T) {
 // late indistinguishable from a store with nothing in it, and leaves the ranking
 // with nothing to learn from.
 func TestARecallThatLandsAfterTheFirstWordRidesTheNextStep(t *testing.T) {
+	firstWord := make(chan struct{})
 	completer := &paceCompleter{
 		steps: []step{
 			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-				// The first word arrives at once, so the request may not be cut.
+				// Recall cannot answer until the stream observer has marked this
+				// request as visible. Its action must land before the tool boundary.
 				provider.Emit(ctx, provider.StreamDelta, "looking")
+				close(firstWord)
+				besideWatchOn(ctx).quiet(ctx)
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
 				arguments, _ := json.Marshal(struct {
 					Path string `json:"path"`
 				}{Path: "./0"})
-				select {
-				case <-time.After(400 * time.Millisecond):
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				}
 				return toolResponseWithText("call-0", "ls", string(arguments), "looking"), nil
 			},
 			func(context.Context, []ai.Message) (*ai.Response, error) {
 				return textResponse("reformatted"), nil
 			},
 		},
-		// Long enough to land behind the delta above, short enough to land inside
-		// the step it then rides.
-		slow: 100 * time.Millisecond,
+		// The gate orders the first word; the watch joins recall parsing and
+		// its late/re-ask decision, not merely the router response.
+		recallAfter: firstWord,
 	}
 	agent, brain, journal := paceAgent(t, completer)
+	watchReadings(t, agent)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
 	completer.route = `{"inject":["` + tabs.ID + `"],"cmd":null}`
 
