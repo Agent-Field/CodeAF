@@ -410,7 +410,7 @@ func visionUserMessage(text string, refs []journalPart) userMessage {
 // half is this function and it should move to agent.go beside the original.
 func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, live ai.Message, seer string) <-chan Event {
 	a.running = true
-	hub := newEventHub()
+	hub := a.newReplayHubLocked()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel

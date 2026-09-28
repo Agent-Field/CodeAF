@@ -650,8 +650,9 @@ func (e *entry) forming() bool {
 // replaced it.
 type (
 	submittedMsg struct {
-		ch  <-chan session.Event
-		err error
+		call *hostCall
+		ch   <-chan session.Event
+		err  error
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -859,6 +860,11 @@ type (
 )
 
 type app struct {
+	hostReplayLoading bool
+	hostReplayPending []followingMsg
+	hostReplayWaiting bool
+	hostCalls         int
+	hostDeferred      []func() tea.Cmd
 	// telemetryNotice is the usage notice still owed to the person, drawn on the
 	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
 	// is owed or once the greeting that showed it has gone.
@@ -1461,6 +1467,12 @@ type app struct {
 	// reader could reach before it existed would be a race on this field.
 	news    *doorbell
 	leaving *doorbell
+	// landedBell and serviceLands are the third and fourth of those doors: a
+	// provider listing that a launch warm or a ctrl+r walk stocked behind the
+	// frame (servicelands.go). Made with the surface for the same reason news
+	// is — the fan-out may ring before Init — and read only on the loop.
+	landedBell   *doorbell
+	serviceLands *serviceLands
 	// frontGen counts the conversations this window has taken up, and it is
 	// WHICH ONE IS IN FRONT rather than how many there have been: a door asked
 	// of one conversation and answered after the person switched to another
@@ -1820,6 +1832,11 @@ type app struct {
 	connAsks  []connAsk
 	conns     Connections
 	connPanel connectPanel
+	// addPanel the add-a-provider door ([app.openAddProvider]): opened from
+	// the model picker's last row, it walks the machine for live servers and
+	// offers the vendored catalog beside them. Every row it activates ends in
+	// the one mint flow (startModelConnect, startCustomAdd).
+	addPanel addProviderPanel
 	// sources and sourceModels are the live model-service side of /connect.
 	// The default catalog still comes through models; only additional services
 	// live in sourceModels, keyed by their stable persisted id.
@@ -2215,7 +2232,13 @@ type app struct {
 	// list reopened while it is out must not start a second one.
 	refreshModels       func(ctx context.Context) ([]Model, time.Time, error)
 	serviceModelRefresh func(context.Context, modelsource.Connected, []Model) ([]Model, error)
-	modelsFetching      bool
+	// refreshAllModels is [Options.RefreshAllModels]: ctrl+r walks every
+	// provider, not only the default catalog.
+	refreshAllModels func(ctx context.Context)
+	// warmEmptyProviders is [Options.WarmEmptyProviders]: the launch fetch.
+	warmEmptyProviders func(ctx context.Context)
+	providerFetchError func(id string) string
+	modelsFetching     bool
 
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
@@ -2918,6 +2941,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		sources:             opts.Sources,
 		refreshModels:       opts.RefreshModels,
 		serviceModelRefresh: opts.RefreshModelsForService,
+		refreshAllModels:    opts.RefreshAllModels,
+		warmEmptyProviders:  opts.WarmEmptyProviders,
+		providerFetchError:  opts.ProviderFetchError,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
@@ -3379,10 +3405,17 @@ func (a *app) Init() tea.Cmd {
 		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing(),
+		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
 		a.teamsWrite()}
+	if a.warmEmptyProviders != nil {
+		warm := a.warmEmptyProviders
+		standing = append(standing, func() tea.Msg {
+			warm(a.ctx)
+			return nil
+		})
+	}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3587,6 +3620,40 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// door is parked again in the same breath, which is what keeps exactly
 		// one command waiting on it (doorbell.go).
 		return a, a.news.waitRing()
+
+	case customAddressCheckedMsg:
+		return a, a.customAddressChecked(msg)
+
+	case localServersProbedMsg:
+		p := &a.addPanel
+		if !p.open || msg.ctx != p.probeContext || msg.ctx == nil || msg.ctx.Err() != nil {
+			return a, nil
+		}
+		selected, hadSelection := p.current()
+		p.loading = false
+		p.rebuild(msg.probes, nil)
+		if hadSelection {
+			for i, item := range p.items {
+				if !item.heading && (selected.custom && item.custom || selected.sourceID != "" && item.sourceID == selected.sourceID) {
+					p.cursor = i
+					break
+				}
+			}
+		}
+		a.touch()
+		return a, nil
+	case serviceModelsLandedMsg:
+		// A PROVIDER'S LISTING LANDED BEHIND THE FRAME (servicelands.go): a
+		// launch warm or a ctrl+r walk stocked that provider's compartment off
+		// the loop. The desk is read HERE, on the loop, each pair's memo is
+		// dropped, and an open picker restocks — so a group fills without a
+		// reopen. The door is parked again in the same breath (doorbell.go).
+		if a.serviceLands != nil {
+			for _, pair := range a.serviceLands.take() {
+				a.serviceModelsLanded(pair[0], pair[1])
+			}
+		}
+		return a, a.landedBell.waitRing()
 
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
@@ -5547,7 +5614,8 @@ func promoteBlock(e *entry, at *time.Time) {
 //
 // The generation is assigned HERE and never at submit time, because a steering
 // submit must not invalidate the stream it is steering.
-func (a *app) adopt(msg submittedMsg) tea.Cmd {
+func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
+	defer func() { cmd = tea.Batch(cmd, a.hostCallSettled(msg.call)) }()
 	// The attachment tray settles on the same answer: a refused message keeps
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
@@ -5700,6 +5768,9 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 // clock should walk (reveal.go). Only [waitEvent] can answer that for a folded
 // run, which is why the bit is a parameter rather than a length read here.
 func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
+	if owner, ok := a.agent.(interface{ ReplayCovers(session.Event) bool }); ok && owner.ReplayCovers(ev) {
+		return nil
+	}
 	// after is what this event asks the program loop to DO, as opposed to what
 	// it asks the screen to say. Two events produce one — a turn ending, which
 	// may ring a terminal nobody is looking at (notify.go), and a task node
@@ -6624,6 +6695,11 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 // the transcript keeps. Slash tags are stripped from the payload but remain in
 // the person's message as the chipped token that explains which door acted.
 func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, start) }) {
+		return nil
+	}
+	call := a.hostCallStarted()
+
 	// STEERING IS NOT A SECOND TURN, and this is [app.startClock]'s law said
 	// about the transcript rather than about the burn window: a plain enter with
 	// a turn already streaming is a message spliced into THAT turn, queued by the
@@ -6676,7 +6752,7 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
 	}, a.wake())
 }
 

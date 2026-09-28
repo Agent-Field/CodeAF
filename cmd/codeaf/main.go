@@ -536,11 +536,11 @@ Look at what happened — read-only, no key, nothing spent
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
   codeaf connect
-      list the model services this profile knows and which are connected
-  codeaf connect <service> [--no-browser] [--region intl|cn]
+      list the providers this profile knows and which are connected
+  codeaf connect <provider> [--no-browser] [--region intl|cn]
       connect one: openrouter and codex sign in in your browser; the others
       take a key on stdin, or ask for one without echo
-  codeaf disconnect <service>
+  codeaf disconnect <provider>
       forget a service and the key or sign-in behind it
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
       check or install a release; this build's own channel is the default
@@ -1099,11 +1099,15 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 // lines, the environment included — for the sake of one missing quoted string,
 // and the one line that mattered scrolled off the top of the terminal.
 func readText(name string, args []string) (string, error) {
-	if len(args) == 1 && args[0] == "-" {
-		return readPipedText(name)
-	}
 	if len(args) > 0 {
-		return strings.TrimSpace(strings.Join(args, " ")), nil
+		text := strings.TrimSpace(strings.Join(args, " "))
+		if text == "" {
+			return "", noGoalGiven(name)
+		}
+		if len(args) == 1 && args[0] == "-" {
+			return readPipedText(name)
+		}
+		return text, nil
 	}
 	if stdinIsTerminal(os.Stdin) {
 		return "", noGoalGiven(name)

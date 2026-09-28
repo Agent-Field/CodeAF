@@ -140,8 +140,9 @@ const (
 	sideActNone = iota
 	// sideActOpen opens task id.
 	sideActOpen
-	// sideActJump takes the person to Traffic entry entry, in member key's
-	// conversation or, with no key, in the one in front (teamjump.go).
+	// sideActJump takes the person to Traffic entry entry in member key's
+	// conversation. key is the chat the message belongs to (teamrail.go's
+	// [app.trafficBelongsTo]). Already in front, it scrolls in place.
 	sideActJump
 	// sideActThread lays work thread key open or folds it.
 	sideActThread
@@ -510,15 +511,14 @@ func (a *app) sideBand() []sideBandItem {
 			}
 			q := strings.TrimSpace(strings.TrimPrefix(strings.Join(strings.Fields(e.Text), " "), "asks:"))
 			words := from + " " + a.linearMark("→", "->") + " " + a.teamManagerMark() + "  " + q
-			act := sideAct{kind: sideActJump, entry: e.ID}
-			hint := words
-			if m, ok := t.ByHandle(e.From); ok && m.Key != a.frontTabKey() {
-				act.key = m.Key
-				hint += hintSegment + "click opens @" + m.Handle + " at the question"
-			} else {
-				hint += hintSegment + "click shows the question"
+			self := ""
+			if kind == sideKindMember {
+				self = handle
 			}
-			out = append(out, sideBandItem{key: "ask/" + t.ID + "/" + e.ID, ask: true, mark: homeAskGlyph, words: words, age: a.trafficAge(e), act: act, hint: hint})
+			age := a.trafficAge(e)
+			act := sideAct{kind: sideActJump, key: a.trafficBelongsTo(t, e), entry: e.ID}
+			hint := trafficOpenHint(a.trafficSenderWord(e.From, self), age, q)
+			out = append(out, sideBandItem{key: "ask/" + t.ID + "/" + e.ID, ask: true, mark: homeAskGlyph, words: words, age: age, act: act, hint: hint})
 		}
 		if kind == sideKindManager {
 			for _, p := range a.tp.packets {
@@ -623,11 +623,17 @@ func (a *app) sideBandRows(width int) []railLine {
 			paint = a.pal.ink
 			lead = a.pal.ink(mark)
 		}
-		room := width - ansi.StringWidth(mark) - 1
-		// THE AGE IS ON THE HINT LINE AT EVERY WIDTH, as the Traffic's rows
-		// do: the arrow and the names need the cells the clock used to take.
+		// THE AGE SITS AT THE RIGHT, dim, on the same ladder as a Traffic row.
+		// It is kept ahead of the words, which are the only part that is cut.
+		ageText := ""
+		ageW := 0
 		if item.age != "" {
-			row.hint = sideHintWith(row.hint, item.age)
+			ageText = " " + item.age
+			ageW = ansi.StringWidth(ageText)
+		}
+		room := width - ansi.StringWidth(mark) - 1 - ageW
+		if room < 0 {
+			ageText, ageW, room = "", 0, width-ansi.StringWidth(mark)-1
 		}
 		// A TRAFFIC ASK KEEPS `from → to` AND CUTS THE QUESTION AT A WORD. A task
 		// row has no arrow, and still cuts at a clause.
@@ -642,6 +648,9 @@ func (a *app) sideBandRows(width int) []railLine {
 		}
 		w := ansi.StringWidth(words)
 		line := lead + " " + paint(words) + strings.Repeat(" ", max(room-w, 0))
+		if ageW > 0 {
+			line += a.pal.dim(ageText)
+		}
 		out = append(out, railLine{text: line, entry: -1, side: row})
 	}
 	if more > 0 || (a.side.bandAll && len(items) > sideBandCap+1) {

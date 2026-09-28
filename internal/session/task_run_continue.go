@@ -79,6 +79,11 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		return "", fmt.Errorf("%s is %s, so there is nothing to carry on", taskStopName(row, kept.Title), kept.State)
 	}
 
+	crew, err := a.restoreTaskCrew(row, kept.CrewState)
+	if err != nil {
+		return "", err
+	}
+
 	// THE COPY IS ADOPTED AND NEVER MADE. This is the line the whole of the
 	// record exists for: the road that MAKES a copy clears the directory it is
 	// handed, so reaching for it here would delete the work this door is meant
@@ -103,7 +108,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	runCtx, cut := context.WithCancel(context.WithoutCancel(ctx))
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: row, title: kept.Title,
-		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut,
+		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut, crew: crew, recoveredCrew: kept.CrewState,
 		born: a.taskClockNow(), over: make(chan struct{}),
 		joined: recoveredJoinedRows(g, row),
 	}

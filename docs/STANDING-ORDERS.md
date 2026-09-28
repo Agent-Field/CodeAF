@@ -70,7 +70,11 @@ opened — words as the epigraph, brief as the mechanism.
 
 **D3 — Grant.** One prose sentence on `Item`: what acting on this order may do
 without asking. Empty means say-only (every pre-existing item). Wave 1 stores
-and displays it; wave 3's judgment is bounded by it.
+and displays it; wave 3's judgment is bounded by it. A task's separate
+`Does.Isolate` setting selects a Git worktree and is displayed before approval.
+The grant is permission prose, not an execution-mode parser. Each isolated
+firing keeps its branch, working directory and recovery record, including
+uncommitted files. See the chat manual's scheduled-branch section for limits.
 
 **D4 — Exceptions.** `[]Exception` on `Item`, each naming exactly one
 workspace OR one session. Made by the person only, from either direction (the

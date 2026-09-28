@@ -83,8 +83,9 @@ func prepareTaskTreeForNode(ctx context.Context, place Place, workspace, session
 func (t taskTree) discardBeforeStart() {
 	defer lockGitRoot(t.place, t.root)()
 	if t.ownRepository() {
-		_ = os.RemoveAll(t.dir)
-		_ = t.dropUniverse()
+		if err := t.dropUniverse(); err != nil {
+			return
+		}
 	} else {
 		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
 		_, _ = git(t.root, "worktree", "prune")
