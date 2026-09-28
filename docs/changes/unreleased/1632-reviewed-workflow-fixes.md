@@ -3,6 +3,8 @@ kind: fixed
 title: Home tasks, standing work, and traffic keep their context and navigation
 pr: 1632
 surface: [chat, engine]
+invalidates:
+  - "Every codeaf, devaf or stageaf sharing `~/.codeaf` reads every standing order. An isolated order is standing schema 2, and a build from before isolation skips it."
 ---
 
 Home task drafts bind to the project currently displayed. Standing work respects
@@ -32,3 +34,9 @@ New-member Traffic roots now open their accepted start call, including calls
 inside collapsed work. New start receipts carry the root message number; older
 receipts use only an unambiguous current-team match. Delivered member briefs
 remain navigable from the same root.
+
+An isolated standing order is written as standing schema 2, so an older codeaf,
+devaf or stageaf sharing the same home skips it instead of firing it in the
+person's own checkout; every other order stays at schema 1 and older builds keep
+firing it. A Traffic row now opens its own team's message even when the same
+conversation sent a `team_send` into another team that carries the same number.
