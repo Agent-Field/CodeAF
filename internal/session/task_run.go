@@ -6407,11 +6407,7 @@ func (t taskTree) releaseKeptLocked() {
 	left := leftBehind(t.dir)
 	rememberLeftBehind(t.dir, left)
 	if t.ownRepository() {
-		// A universe was never registered as a worktree of anybody, so there is
-		// no registration to unpick and `git worktree remove` would be asking
-		// the person's repository about a directory it has never heard of. Its
-		// leavings are already written down, and its record is furrow's to drop.
-		t.dropUniverse()
+		// A retained copy keeps its registered timeline until the copy is reaped.
 		return
 	}
 	// AND THE RELEASE IS WRITTEN DOWN BEFORE THE REGISTRATION GOES. This is the
@@ -8772,7 +8768,10 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 	}
 	// The working copy is given back only once its work is in, and which road
 	// that takes is the rung's own (groundladder.go's [taskTree.releaseLanded]).
-	t.releaseLanded()
+	if err := t.releaseLanded(); err != nil {
+		return mergeMerged, withReport(withReport(said, stranded),
+			"the work landed; its task copy remains at "+t.dir+" because cleanup failed: "+err.Error()), nil, refusedNothing
+	}
 	// The working copy has just gone, and the sentence says where its leavings
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
