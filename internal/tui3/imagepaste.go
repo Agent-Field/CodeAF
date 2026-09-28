@@ -172,10 +172,8 @@ func (a *app) keyboardBox() (*editor, *[]chip) {
 			// conversation with its own next message (homeexchange.go).
 			return &ex.box, &ex.chips
 		}
-		// HOME'S TRAY IS THE CONVERSATION'S TRAY, because what home's box starts
-		// IS a conversation: [app.renew] hands the chips to the one it opens, on
-		// the law that the draft goes with the person (detach.go).
-		return &a.home.box, &a.chips
+		// Home starts its own message. The conversation behind it keeps its tray.
+		return &a.home.box, &a.home.chips
 	}
 	return &a.input, &a.chips
 }
@@ -194,7 +192,7 @@ func (a *app) dropLanded(box *editor) {
 	if box != &a.home.box {
 		return
 	}
-	a.home.carrying = len(a.chips) > 0
+	a.home.carrying = len(a.home.chips) > 0
 	a.home.build()
 }
 

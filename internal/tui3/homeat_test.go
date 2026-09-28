@@ -80,8 +80,8 @@ func TestAPictureChosenFromTheListGoesOnHomesTray(t *testing.T) {
 	if got := h.box.String(); got != "" {
 		t.Fatalf("the token was left in the box: %q", got)
 	}
-	if len(a.chips) != 1 || a.chips[0].path != filepath.Join(root, "shot.png") {
-		t.Fatalf("the picture did not reach the tray: %+v", a.chips)
+	if len(a.home.chips) != 1 || a.home.chips[0].path != filepath.Join(root, "shot.png") {
+		t.Fatalf("the picture did not reach the tray: %+v", a.home.chips)
 	}
 	if !h.carrying {
 		t.Fatal("home is not carrying the tray")
