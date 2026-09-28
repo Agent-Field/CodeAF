@@ -55,7 +55,7 @@ func TestWorkIndentReclassifiesAndDropsAtPhoneFloor(t *testing.T) {
 func TestWorkfoldNeverHidesTextOnlyFailureOrNoAnswer(t *testing.T) {
 	cases := [][]entry{
 		{{kind: entryUser, text: "hi", turn: 1}, {kind: entryAssistant, text: "hello", turn: 1, settled: true}},
-		{{kind: entryUser, text: "do", turn: 1}, {kind: entryTool, tool: "bash", turn: 1}, {kind: entryNote, text: "error: boom", turn: 1}},
+		{{kind: entryUser, text: "do", turn: 1}, {kind: entryTool, tool: "bash", turn: 1}, {kind: entryNote, text: "error: boom", turn: 1, told: true}},
 		{{kind: entryUser, text: "do", turn: 1}, {kind: entryTool, tool: "bash", turn: 1}},
 	}
 	for _, entries := range cases {
@@ -118,9 +118,9 @@ func TestWorkfoldSettlementAnchorsBottomAndScrolledReader(t *testing.T) {
 			return -1
 		}
 		beforeAt, afterAt := rowOf(before), rowOf(after)
-		// Settlement adds the receipt below the answer. Relative to the live
-		// edge excluding that new receipt, collapse itself has not moved it.
-		if beforeAt < 0 || len(before)-1-beforeAt != len(after)-2-afterAt {
+		// Closed work keeps the receipt inside disclosure, so settlement
+		// preserves the answer at the same bottom-relative row.
+		if beforeAt < 0 || len(before)-1-beforeAt != len(after)-1-afterAt {
 			t.Fatalf("the answer left the bottom anchor: before=%v after=%v", before, after)
 		}
 	})
@@ -152,14 +152,14 @@ func TestOneTurnCountsItsToolCallsInOneWord(t *testing.T) {
 	a.timestamps = timestampsFooters
 	a.touch()
 
-	// The frame carries both readings of the same number: the fold chip over the
-	// turn, and the receipt under it.
+	// The compact frame carries the count once; the expanded receipt uses the
+	// same wording without duplicating telemetry in the closed view.
 	frame := strings.Join(plainRows(a), "\n")
 	if strings.Contains(frame, "2 tools") {
 		t.Fatalf("the turn still counts its calls two ways:\n%s", frame)
 	}
-	if want, got := "2 tool calls", strings.Count(frame, "2 tool calls"); got != 2 {
-		t.Fatalf("the chip and the receipt say %q %d times, want twice — one word for one number:\n%s",
+	if want, got := "2 tool calls", strings.Count(frame, "2 tool calls"); got != 1 {
+		t.Fatalf("the compact view says %q %d times, want once:\n%s",
 			want, got, frame)
 	}
 	if receipt := plain(a.stampRow(1, 80)); !strings.Contains(receipt, "2 tool calls") {
@@ -194,8 +194,10 @@ func TestWorkfoldNeverHidesNewsAboutAPersonsOwnRow(t *testing.T) {
 		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(6 * time.Second), ended: base.Add(8 * time.Second)},
 		{kind: entryAssistant, text: "ok", turn: 1, settled: true},
 	}
-	if got := deriveWorkfolds(entries, 0); len(got) != 0 {
-		t.Fatalf("the chip swallowed a sentence addressed to the person: %#v", got)
+	for _, f := range deriveWorkfolds(entries, 0) {
+		if f.start <= 1 && f.answer > 1 {
+			t.Fatalf("the chip swallowed a sentence addressed to the person: %#v", f)
+		}
 	}
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries, a.workMode = entries, config.WorkFold
@@ -212,5 +214,48 @@ func TestWorkfoldNeverHidesNewsAboutAPersonsOwnRow(t *testing.T) {
 	entries[1].told = false
 	if got := deriveWorkfolds(entries, 0); len(got) != 1 {
 		t.Fatalf("an ordinary note stopped the chip forming at all: %#v", got)
+	}
+}
+
+// AN APPROVAL CARD STANDS, AND THE WORK ABOVE IT STAYS FOLDED. A turn that ended
+// on `/senior-dev`'s proposal card used to derive no fold at all, so every
+// thought and call of the turn unfolded the moment the card arrived: a
+// screenful of machinery exactly when the person had one question to answer.
+// The work before the card folds behind a chip that stops at the card; the
+// card itself and the answer after it are drawn.
+func TestAnApprovalCardDoesNotUnfoldTheWorkAboveIt(t *testing.T) {
+	base := time.Unix(100, 0)
+	es := []entry{
+		{kind: entryUser, text: "solve it with senior-dev", turn: 1},
+		{kind: entryThinking, text: "reading the task", turn: 1, open: true, settled: true, began: base, ended: base.Add(4 * time.Second)},
+		{kind: entryAssistant, text: "I found the task; reading its contract.", turn: 1, settled: true},
+		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(4 * time.Second), ended: base.Add(5 * time.Second)},
+		{kind: entryThinking, text: "writing the brief", turn: 1, open: true, settled: true, began: base.Add(5 * time.Second), ended: base.Add(9 * time.Second)},
+		{kind: entryTool, tool: "propose_task", turn: 1, status: toolOK},
+		{kind: entryTask, text: "Solve true-myth", turn: 1},
+		{kind: entryAssistant, text: "senior-dev will take it once you approve.", turn: 1, settled: true},
+	}
+	folds := deriveWorkfolds(es, 0)
+	covered := map[int]bool{}
+	for _, f := range folds {
+		for i := f.start; i < f.answer; i++ {
+			covered[i] = true
+		}
+	}
+	for _, i := range []int{1, 3, 4, 5} {
+		if !covered[i] {
+			t.Fatalf("row %d (kind %d) above the card is not folded: %+v", i, es[i].kind, folds)
+		}
+	}
+	if covered[6] {
+		t.Fatal("the approval card was folded away")
+	}
+	if covered[7] {
+		t.Fatal("the answer after the card was folded away")
+	}
+	// AND WHILE THE TURN IS STILL RUNNING nothing here folds it: the live
+	// policy owns a running turn (livesteps.go).
+	if got := deriveWorkfolds(es, 1); len(got) != 0 {
+		t.Fatalf("a running turn derived settled folds: %+v", got)
 	}
 }

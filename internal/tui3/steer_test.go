@@ -583,7 +583,7 @@ func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing
 	a, _ := steerableTurn(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")
 
-	want := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · ctrl+c interrupt"
+	want := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
 	if got := a.hintWord(); got != want {
 		t.Fatalf("the hint slot reads %q, want %q", got, want)
 	}
@@ -592,7 +592,7 @@ func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing
 	// because steering does not need a modified-key protocol. The unavailable
 	// secondary chords are the only clauses removed.
 	a.keysDisambiguated = false
-	if got := a.hintWord(); got != steerShortHint+" · ctrl+c interrupt" {
+	if got := a.hintWord(); got != steerShortHint+" · esc interrupt" {
 		t.Fatalf("a basic terminal lost the plain-enter steer: %q", got)
 	}
 }
@@ -604,13 +604,13 @@ func TestAPictureOnTheTrayKeepsThePlainEnterHint(t *testing.T) {
 	a, _ := steerableTurn(t, "reading the tree. ")
 	a.chips = []chip{{path: "/tmp/shot.png"}}
 
-	want := enterWaitHint + " · " + bargeKey + " " + bargeSendWord + " · ctrl+c interrupt"
+	want := enterWaitHint + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
 	if got := a.hintWord(); got != want {
 		t.Fatalf("the tray-only hint reads %q, want %q", got, want)
 	}
 
 	a.keysDisambiguated = false
-	if got := a.hintWord(); got != enterWaitHint+" · ctrl+c interrupt" {
+	if got := a.hintWord(); got != enterWaitHint+" · esc interrupt" {
 		t.Fatalf("a basic terminal lost the tray's plain-enter hint: %q", got)
 	}
 }
@@ -651,7 +651,7 @@ func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
 	if !strings.Contains(body, steerShortHint) {
 		t.Fatalf("the narrow frame lost the whole hint slot:\n%s", body)
 	}
-	if strings.Contains(body, whole) || strings.Contains(body, "ctrl+c interrupt") {
+	if strings.Contains(body, whole) || strings.Contains(body, "esc interrupt") {
 		t.Fatalf("the narrow ladder did not drop from the right:\n%s", body)
 	}
 }
@@ -659,7 +659,7 @@ func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
 // AND THE WAITING MESSAGE'S OWN LINE CARRIES THE ARROW, unconditionally as far
 // as the terminal is concerned: an arrow key reaches every terminal there is, so
 // there is nothing to gate the clause on but whether the act itself is possible.
-func TestTheStripNamesTheArrowAndCtrlCDropsTheWholeWaitingBlock(t *testing.T) {
+func TestTheStripNamesTheArrowAndEscDropsTheWholeWaitingBlock(t *testing.T) {
 	a, agent := steerableTurn(t, "reading the tree. ")
 	a.width = 90
 	parkLine(t, a, "do much more of a deep research please")
@@ -677,7 +677,7 @@ func TestTheStripNamesTheArrowAndCtrlCDropsTheWholeWaitingBlock(t *testing.T) {
 
 	// ESC drops the queue at the keypress, so a winding-down turn has neither a
 	// stale message nor an arrow that claims it can still cross a boundary.
-	drive(t, a, key("ctrl+c"), frameMsg{})
+	drive(t, a, key("esc"), frameMsg{})
 	if !a.windingDown() {
 		t.Fatal("the surface is not winding down after esc")
 	}

@@ -669,8 +669,8 @@ func TestTheStatusLineSaysYourCallWhileTheOfferStands(t *testing.T) {
 		t.Fatalf("the status line read %q while a card was up", word)
 	}
 	drive(t, a, key("esc"))
-	if !a.awaitingSubharness() {
-		t.Fatal("a deferred offer stopped being waited on")
+	if a.awaitingSubharness() {
+		t.Fatal("an answered offer is still being waited on")
 	}
 }
 
@@ -701,15 +701,16 @@ func TestEnterOnTheAnswersRunsWhatChatOffered(t *testing.T) {
 	}
 }
 
-// Escape puts the offer aside without answering the turn waiting for it.
-func TestEscOnAnOfferDefersWithoutAnswering(t *testing.T) {
+// ESC IS A NO AND NOT A WAY OUT. There is a turn waiting on this question, so
+// the key that dismisses every other overlay answers this one.
+func TestEscOnAnOfferAnswersNoRatherThanWalkingAway(t *testing.T) {
 	a, agent := answeredApp(t)
 	drive(t, a, key("esc"))
-	if len(agent.answers) != 0 {
+	if len(agent.answers) != 1 || agent.answers[0].run {
 		t.Fatalf("esc on the card answered %+v", agent.answers)
 	}
 	if a.subPage.open {
-		t.Fatal("the card stayed up after it was deferred")
+		t.Fatal("the card stayed up after it was declined")
 	}
 }
 

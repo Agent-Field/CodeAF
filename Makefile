@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -354,6 +354,12 @@ DEMO_BINARY := bin/codeaf-demo-home
 demo-home: build
 	go build -o $(DEMO_BINARY) ./cmd/codeaf-demo-home
 	@$(DEMO_BINARY) $(if $(DEMO_HOME),--into "$(DEMO_HOME)") $(if $(KEEP),--keep) --launch "$(CURDIR)/$(BINARY)"
+
+# clean-run opens bin/codeaf on a fresh state root holding only your settings
+# and keys (scripts/clean-run.sh), so a new build is tried from the same clean
+# start every time: no conversations, projects or tasks from ~/.codeaf.
+clean-run: build
+	@scripts/clean-run.sh
 
 vet:
 	go vet ./...

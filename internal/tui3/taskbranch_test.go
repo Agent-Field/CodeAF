@@ -55,3 +55,19 @@ func TestASettledProposalDropsTheBranchPoint(t *testing.T) {
 		t.Fatalf("a settled card is still naming its branch point:\n%s", text)
 	}
 }
+
+// A PROGRAM'S CARD NAMES NO BRANCH POINT. senior-dev works in the folder itself,
+// on a branch of its own cut from the checkout's commit, and a checkout with
+// work not committed is refused before its card goes up: the copy's sentence,
+// `unsaved edits included`, was on its card and was false.
+func TestAProgramsProposalNamesNoBranchPoint(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.branch = "work"
+	ev := proposal(a, 7, 4*time.Second)
+	ev.Task.Program = "senior-dev"
+	drive(t, a, streamEventMsg{gen: a.gen, ev: ev})
+
+	if text := taskText(a); strings.Contains(text, taskBranchPointWord) {
+		t.Fatalf("a program's proposal names the copy's branch point:\n%s", text)
+	}
+}

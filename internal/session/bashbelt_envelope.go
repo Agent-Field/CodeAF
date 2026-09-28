@@ -13,11 +13,19 @@ import (
 //
 // THE ENVELOPE IS THE EXPERIMENT'S SECOND BET (docs/design/bash-task-loop/
 // DESIGN.md, Decision 2): a bash-belt worker gets the one-action discipline —
-// exactly one tool call per response, and it names bash — in exchange for
-// parallelism moving into the shell, where `&` and `xargs -P` have always
-// lived. The branch belt carries one tool, so a response carrying anything
-// else is not a batch, it is a response the model could not drive the belt
-// with, and running a piece of it would answer a question nobody asked.
+// exactly one tool call per response — in exchange for parallelism moving into
+// the shell, where `&` and `xargs -P` have always lived. A response carrying
+// two calls is not a batch, it is a response the model could not drive the
+// belt with, and running a piece of it would answer a question nobody asked.
+//
+// THE ONE CALL MAY NAME ANY HAND THIS BELT CARRIES, and bash is only the
+// commonest. The belt keeps `jobs`, `read_document` and `manual` because none
+// of them can be a shell command (Decision 6 and the tool table), and the
+// worker's page sends the worker to the first two. An envelope that refused
+// every name but bash made those hands present and broken at once: a worker
+// whose `find /` had become a job called `jobs` to stop it, was told `jobs`
+// was not on this belt, and the walk ran on for the rest of the task. A name
+// the belt does not carry is still refused here, before anything runs.
 //
 // THE REJECT IS THE SAME ON BOTH BRANCHES. A response whose calls are
 // addressable — every call carries a non-empty, unique id — is answered with
@@ -63,7 +71,11 @@ const bashEnvelopeStop = "stopped: four responses in a row carried no valid sing
 // bashEnvelopeFault is what is wrong with one submission under the envelope,
 // and empty for one that may run. A response with no calls is a final answer,
 // not an invalid action — ending the turn in words is how this loop finishes.
-func bashEnvelopeFault(calls []ai.ToolCall) string {
+//
+// WHAT THE BELT CARRIES IS READ OFF THE BELT ITSELF ([Agent.beltTools]), the
+// same list the request's definitions were built from, so the envelope and the
+// wire cannot come to disagree about which names a call may carry.
+func (a *Agent) bashEnvelopeFault(calls []ai.ToolCall) string {
 	if len(calls) == 0 {
 		return ""
 	}
@@ -74,8 +86,8 @@ func bashEnvelopeFault(calls []ai.ToolCall) string {
 	if !bashCallsAddressable(calls) {
 		return bashEnvelopeMark + "no action executed: a tool call carries no id, so its result could never be paired with it — send the bash call again as the provider's tool-call form"
 	}
-	if call.Function.Name != "bash" {
-		return bashEnvelopeMark + "no action executed: `" + call.Function.Name + "` is not on this belt — the one tool is bash, and what it cannot do is spelled in the belt's own page"
+	if !a.beltCarries(call.Function.Name) {
+		return bashEnvelopeMark + "no action executed: `" + call.Function.Name + "` is not on this belt — bash is the hand for files and commands, and what the belt cannot do is spelled in its own page"
 	}
 	// THE ARGUMENTS ARE READ WITH THE ONE DECODER EVERY TOOL USES, so a bash
 	// call is refused in the same words on the branch belt as on today's — a
@@ -84,6 +96,17 @@ func bashEnvelopeFault(calls []ai.ToolCall) string {
 		return bashEnvelopeMark + "no action executed: " + invalid
 	}
 	return ""
+}
+
+// beltCarries answers whether a tool of this name is on the belt the request
+// was built from.
+func (a *Agent) beltCarries(name string) bool {
+	for _, tool := range a.beltTools() {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // rejectBashEnvelope answers one invalid submission without running any of it
@@ -223,7 +246,7 @@ func (a *Agent) enforceBashEnvelope(ctx context.Context, hub *eventHub, calls []
 	if !a.config.mayBashBelt() {
 		return false, false
 	}
-	fault := bashEnvelopeFault(calls)
+	fault := a.bashEnvelopeFault(calls)
 	if fault == "" {
 		return false, false
 	}

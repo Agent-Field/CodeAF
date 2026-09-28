@@ -93,12 +93,14 @@ func TestEveryProjectRowResolvesProjectOverProfileOverDefault(t *testing.T) {
 	}{
 		{KeyToolApprovalMode, "deny", "allow", DefaultToolApprovalMode},
 		{KeyToolApprovals, "bash:deny", "bash:allow", ""},
-		// The two tier rows ARRIVE WITH A MODEL IN THEM since the crew landed
-		// (crew.go), so their built-in reading is this build's own choice for
-		// that class of work rather than nothing. The ladder is unchanged: the
-		// repository's answer, then the person's, then the shipped one.
+		// The small-work row ARRIVES WITH A MODEL IN IT, so its built-in
+		// reading is this build's own near-free model. The checker row is a
+		// crew seat and has no shipped model: unpinned, it is routed, and a
+		// profile with no provider connected has nothing to route to — empty,
+		// which follows the conversation. The ladder is unchanged: the
+		// repository's answer, then the person's, then the built-in one.
 		{KeyTierLowModel, "project/cheap", "profile/cheap", DefaultLowModel},
-		{KeyTierHighModel, "project/capable", "profile/capable", DefaultHighModel},
+		{KeyTierHighModel, "project/capable", "profile/capable", ""},
 		{KeyModelRoles, "title:project/title", "title:profile/title", ""},
 	} {
 		got, err := ProjectStringAt(project, profile, row.key)

@@ -28,6 +28,53 @@ type taskCommandAgent interface {
 	StartTask(context.Context, string, bool) (uint64, string, string, error)
 }
 
+// taskCrewEffortAgent is the session's door for a task with a one-task effort
+// word said: best or cheap (session's taskcrew.go). It is a second interface
+// rather than a wider first one, so a surface or a test double that has only
+// the ordinary door still starts ordinary tasks.
+type taskCrewEffortAgent interface {
+	StartTaskEffort(context.Context, string, bool, string) (uint64, string, string, error)
+}
+
+// redoAgent is the session's door for `/redo stronger`.
+type redoAgent interface {
+	RedoStronger(context.Context, uint64) (uint64, string, error)
+}
+
+// runRedo is `/redo stronger`: the newest task this conversation started, run
+// again with every seat nobody pinned one step stronger. The router's log is
+// told the first crew under-served this kind of work here, so the next task
+// like it starts a step higher until enough accepted work decays it back.
+func (a *app) runRedo(arg string) tea.Cmd {
+	arg = strings.ToLower(strings.TrimSpace(arg))
+	if arg == "" {
+		arg = "stronger"
+	}
+	if arg != "stronger" {
+		a.note("usage: /redo stronger")
+		return nil
+	}
+	door, ok := a.agent.(redoAgent)
+	if !ok {
+		a.note("could not redo · this session has no task door")
+		return nil
+	}
+	ctx, conv := a.ctx, a.taskBriefConv()
+	return a.offLoop(func() func(bool) tea.Cmd {
+		id, title, err := door.RedoStronger(ctx, 0)
+		started := taskStartedMsg{kind: "single", id: strconv.FormatUint(id, 10), title: title, err: err, conv: conv}
+		return foldTaskStarted(started)
+	})
+}
+
+// foldTaskStarted hands a start's receipt to the ordinary task-start handling,
+// wherever the window is standing: the receipt carries its own conversation.
+func foldTaskStarted(started taskStartedMsg) func(bool) tea.Cmd {
+	return func(bool) tea.Cmd {
+		return func() tea.Msg { return started }
+	}
+}
+
 type taskStartedMsg struct {
 	kind, id, title string
 	err             error
@@ -51,6 +98,8 @@ type taskStartedMsg struct {
 }
 
 func (a *app) runTaskCommand(arg string) tea.Cmd {
+	// The word was typed, bare or with a brief (notice.go).
+	a.noticeEvent(eventTaskTyped)
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
 		// A BARE /task IS THE ROSTER AND NOT A USAGE LINE. The margin's `+ /task`
@@ -71,6 +120,13 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	// THE WHOLE VOCABULARY IS TWO FORMS: a brief, or `solo` and a brief. A first
 	// word that is neither of those is simply the beginning of the brief, so the
 	// split is taken once here and the brief defaults to everything typed.
+	// HOW HARD TO TRY THIS ONE TASK comes first when it is said at all —
+	// `/task --best …`, `/task --cheap …` — and moves this task's crew and
+	// nothing after it (crew.go). A flag that is neither is part of the brief.
+	effort := ""
+	if flag, after, _ := strings.Cut(arg, " "); flag == "--best" || flag == "--cheap" {
+		effort, arg = strings.TrimPrefix(flag, "--"), strings.TrimSpace(after)
+	}
 	word, rest, _ := strings.Cut(arg, " ")
 	rest = strings.TrimSpace(rest)
 	brief, solo := arg, false
@@ -97,8 +153,25 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 		}
 	}
 	if brief == "" {
-		a.note("usage: /task <brief> · /task solo <brief>")
+		a.note("usage: /task <brief> · /task solo <brief> · /task --best <brief> · /task --cheap <brief>")
 		return nil
+	}
+	if effort != "" {
+		door, ok := a.agent.(taskCrewEffortAgent)
+		if !ok {
+			a.note("this session cannot choose a task's crew · the brief starts on the crew it would have had")
+		} else {
+			solo = solo || config.TaskStartAt(a.profileDir) == config.TaskStartSingle
+			a.noteBeforeTaskStart(brief)
+			ctx, conv := a.ctx, a.taskBriefConv()
+			return a.offLoop(func() func(bool) tea.Cmd {
+				id, title, note, err := door.StartTaskEffort(ctx, brief, solo, effort)
+				return foldTaskStarted(taskStartedMsg{
+					kind: "single", id: strconv.FormatUint(id, 10), title: title,
+					err: err, note: note, brief: brief, conv: conv,
+				})
+			})
+		}
 	}
 	// ONE WORKER'S WORK IS SAID TWO WAYS, and both are the person's own word:
 	// `/task solo` says it outright for this brief, and a standing `single` in
@@ -127,11 +200,27 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // naming a pause that no longer exists would be the surface describing
 // machinery rather than work.
 func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.Cmd {
-	ctx := a.ctx
+	return a.startTaskDoorVia(brief, func(ctx context.Context) (uint64, string, string, error) {
+		return door.StartTask(ctx, brief, solo)
+	})
+}
+
+// taskDoorNotes says who else is in these files before either task door opens,
+// and answers which conversation is speaking before the asynchronous answer
+// lands. A program works in the folder itself, so only the ordinary task door
+// adds the separate note about edits travelling into its copy.
+func (a *app) taskDoorNotes(brief string) string {
 	// WHICH CONVERSATION IS SAYING THIS, read HERE rather than when the answer
 	// lands: the door is opened on a goroutine and the window may have moved on
 	// by the time it answers ([app.adoptTypedBrief] is where that matters).
 	conv := a.taskBriefConv()
+	a.noteBeforeTaskStart(brief)
+	return conv
+}
+
+// noteBeforeTaskStart says the two lines a person is owed in the last moment
+// before a typed task is handed over and paid for — whichever door opens it.
+func (a *app) noteBeforeTaskStart(brief string) {
 	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
 	// proposal card — the person typed the brief, so there is nothing to consent
 	// to — which means this note is the only place the fact can reach them, and
@@ -149,7 +238,13 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.
 			a.note(line)
 		}
 	}
-	// AND WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO SEND. The task works in a
+}
+
+// taskCopyDoorNotes adds the ordinary task's copy note after the shared
+// preflight. A program's door does not call this: it has no copy to describe.
+func (a *app) taskCopyDoorNotes(brief string) string {
+	conv := a.taskDoorNotes(brief)
+	// WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO SEND. The task works in a
 	// copy of the folder AS IT STANDS (internal/session's groundladder.go), so
 	// half-finished edits go with the work — which is what almost everybody
 	// wants and is worth one line for the person who was in the middle of
@@ -162,8 +257,14 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.
 	if line := session.UnsavedEditsNote(a.workspace); line != "" {
 		a.note(line)
 	}
+	return conv
+}
+
+func (a *app) startTaskDoorVia(brief string, start func(context.Context) (uint64, string, string, error)) tea.Cmd {
+	ctx := a.ctx
+	conv := a.taskCopyDoorNotes(brief)
 	return func() tea.Msg {
-		id, title, note, err := door.StartTask(ctx, brief, solo)
+		id, title, note, err := start(ctx)
 		return taskStartedMsg{
 			kind: "single", id: strconv.FormatUint(id, 10), title: title,
 			err: err, note: note, brief: brief, conv: conv,

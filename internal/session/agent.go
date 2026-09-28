@@ -143,6 +143,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// with the header's id, which survives every resume.
 		id: NewSessionID(),
 	}
+	agent.presentation = &presentationIndex{}
 	agent.cacheKey = sessionCacheKey(agent.id)
 	// WHAT IS ALREADY KNOWN ABOUT THIS MODEL'S REAL WINDOW, before the first
 	// check. The memo survives processes (internal/provider's ServedWindow), so
@@ -236,6 +237,8 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		agent.presentation = file.presentation
+		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
 		// in the journal that cannot be re-derived from the transcript — whether
 		// a file was there before the session touched it is a measurement, taken
@@ -376,6 +379,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// recovery is load, reconcile with the disk, continue the frontier
 	// (task_store.go). A fresh session has no checkpoint and this is a stat.
 	agent.recoverTasks()
+	// AND A PROGRAM'S RUN THE LAST PROCESS LEFT OPEN IS ENDED, where it was last
+	// seen, so its page stops reading `running` (task_run_belt.go).
+	agent.recoverBeltRun()
+	agent.endInterruptedProgramRun()
 	// AND THE PROJECT'S RECORD IS RECONCILED BESIDE IT. The checkpoint above is
 	// one conversation's graph; the project index is every window's record of
 	// what this directory ever ran, and it holds rows that say "running" — a run
@@ -435,6 +442,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// the frontier, but no ending or notice may run before the caller can hold
 	// the agent and a surface can subscribe to its standing lane.
 	agent.armWallClock()
+	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
+	// OWN, once the interface has made it a member (team_wake.go).
+	agent.watchTeamStart()
 	return agent, nil
 }
 
@@ -492,7 +502,12 @@ func (a *Agent) startLaneBeat() {
 	// second spelling of that number here is a number that would drift, so that
 	// one session fetched on a clock the cache disagreed with.
 	a.laneBeating = true
-	go lanes.Beat(ctx, lanes.Default().Sheet(), models, 0)
+	a.laneDone = make(chan struct{})
+	sheet := lanes.Default().Sheet()
+	guard.Go("session/lane-beat", func() {
+		defer close(a.laneDone)
+		lanes.Beat(ctx, sheet, models, 0)
+	})
 }
 
 // laneBeatModels is the models this session actually sends to, deduplicated and
@@ -537,13 +552,15 @@ func laneBeatModels(config Config) []string {
 	return models
 }
 
-// stopLaneBeat ends the beat. It is Close's, and it never waits: a fetch in
-// flight is a prior the next session will read off the wire again, and a quit
-// that waited on somebody else's half-hour aggregate would be a quit that hangs
-// on a slow router.
+// stopLaneBeat cancels the fetch and joins this session's beat. Cancellation
+// ends network work, but a cache or ledger write already in progress must finish
+// before Close lets a caller remove or switch the state directory.
 func (a *Agent) stopLaneBeat() {
 	if a.laneStop != nil {
 		a.laneStop()
+	}
+	if a.laneDone != nil {
+		<-a.laneDone
 	}
 }
 
@@ -696,6 +713,7 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// with the session (loop.go's [Agent.noteModelWindow]).
 	a.noteModelWindow(model)
 	a.scrubBlindImagePartsLocked(model)
+	a.followModelOnThePageLocked()
 	a.mu.Unlock()
 	// AND THE BEAT IS TOLD, OUTSIDE THE LOCK. Everything above is about this
 	// session's own state; this is about a fetch somebody else will do, and a
@@ -948,7 +966,28 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
-	return a.submitUser(ctx, userText(text))
+	// A @ team or chat in the words is a reference, and the model needs a
+	// bounded digest of it (mention.go). The journal keeps the words as typed.
+	said := text
+	if note := a.mentionNote(text); note != "" {
+		text = text + "\n\n" + note
+	}
+	// A PERSON'S TURN OPENS ON WHAT IS RUNNING, while anything is (plandigest.go
+	// states why it is pushed rather than asked for). The digest is read here,
+	// on the person's own door, and nowhere else: a wake note, a job's ending
+	// and a steer are not sentences that can change what a task should do, and
+	// the block is the empty string whenever no run is live, which is every turn
+	// of most conversations.
+	if digest := a.planDigest(); digest != "" {
+		user := planDigested(digest, text)
+		user.said = said
+		return a.submitUser(ctx, user)
+	}
+	user := userText(text)
+	if text != said {
+		user.said = said
+	}
+	return a.submitUser(ctx, user)
 }
 
 // submitUser is Submit's body with the MESSAGE left to the caller: the closed
@@ -969,6 +1008,13 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		a.mu.Unlock()
 		return nil, err
 	}
+	// AND THE SKILLS THE MESSAGE CARRIES ARE CHOSEN NOW, from the words of the
+	// message itself rather than the workspace the catalog scores against
+	// (skillturn.go). It happens before the steering branch on purpose: a
+	// message that arrives mid-turn is journaled like any other, and what the
+	// journal keeps is what the person said — the block rides the message the
+	// model reads and nothing else.
+	a.attachTurnSkillsLocked(&user)
 	if a.running {
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
@@ -1081,7 +1127,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed || !a.running || a.hub == nil {
-		return shapeEntries(a.messages, a.file), nil, func() {}
+		return shapeEntries(a.messages, a.file, a.presentation), nil, func() {}
 	}
 	// The hub cannot already be closed here: the turn's goroutine clears
 	// running under a.mu before it closes the hub, and we hold a.mu. The
@@ -1089,7 +1135,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 	// the caller where the full record answers them.
 	stream, live := a.hub.attach(a.stillAskedLocked())
 	if !live {
-		return shapeEntries(a.messages, a.file), nil, func() {}
+		return shapeEntries(a.messages, a.file, a.presentation), nil, func() {}
 	}
 	floor := a.turnFloor
 	if floor > len(a.messages) {
@@ -1105,7 +1151,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 		}
 	}
 	hub := a.hub
-	return shapeEntries(kept, a.file), stream.out, func() { hub.drop(stream) }
+	return shapeEntries(kept, a.file, a.presentation), stream.out, func() { hub.drop(stream) }
 }
 
 // userMessage is a person's message on its way into the transcript: the message
@@ -1146,9 +1192,11 @@ type userMessage struct {
 	wake bool
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
-	// them. Empty in every ordinary case, and set by exactly one door: a draft
-	// the person MARKED STANDING, whose message carries an instruction in front
-	// of the sentence (standing_mark.go).
+	// them. Empty in every ordinary case, and set by two doors: a draft the
+	// person MARKED STANDING, whose message carries an instruction in front of
+	// the sentence (standing_mark.go), and a message that names a team or a
+	// conversation, whose message carries that reference's digest after the
+	// sentence (mention.go).
 	//
 	// THE INSTRUCTION IS THE MODEL'S AND THE JOURNAL IS THE PERSON'S. A
 	// transcript that replayed the instruction would show somebody a paragraph
@@ -1156,6 +1204,13 @@ type userMessage struct {
 	// screen that is theirs — so the journal and the store keep this, and only
 	// the messages this turn reasons from carry the rest.
 	said string
+
+	// lead is how many of the message's leading content parts the SESSION put
+	// there, for a message whose parts are not all words: a picture message the
+	// plan digest opens (plandigest.go's [planDigestedParts]). [userMessage.said]
+	// cannot carry that case, because it keeps words alone and the journal of a
+	// picture message must keep its pictures. Zero on every other message.
+	lead int
 
 	// authored marks a line the SESSION wrote rather than the person: every note
 	// that goes through [Agent.enqueueNote] or the watch-only
@@ -1168,6 +1223,13 @@ type userMessage struct {
 	// harness's own line in the harness's own lane (sessionfile.go's
 	// [sessionEntry.Note]).
 	authored bool
+
+	// skills is the ordered shelf names this message's block carried
+	// (skillturn.go), set by [Agent.attachTurnSkillsLocked] and read by
+	// [Agent.startTurnLocked] to report them as one notice. Empty on every
+	// message that carries no block, which is every message before that door
+	// and every message a shelf-less shape sends.
+	skills []string
 
 	// resumed marks THE PERSON'S OWN WORDS, ALREADY IN THE RECORD: a question
 	// this session is asking again because the turn that was answering it ended
@@ -1228,6 +1290,14 @@ type userMessage struct {
 	// seat and dedicated role page; ordinary settle wakes leave both empty.
 	settleModel  string
 	settlePrompt string
+	// settleWindow widens the turn's window past the settle turn's own
+	// ([Agent.settleWindow]) — a program's ending may be checked by running the
+	// project's tests ([programOutcomeWindow]); zero leaves it as it is.
+	settleWindow time.Duration
+	// programOutcome is a program run's ending, on the note its landing wakes
+	// the conversation with ([Agent.programLandingNote]); nil on every other
+	// message.
+	programOutcome *programOutcome
 
 	// landingQuestion and landingOutcome preserve the two roles inside an owed
 	// landing document: what was asked and the evidence the run returned.
@@ -1569,6 +1639,17 @@ const (
 	// sent, and the sentence says that rather than reporting a second delivery
 	// that did not happen.
 	steerAgainWord = "already on the task's record from the same message — nothing was sent a second time"
+	// RunNotePickupWord is WHEN a note on a run's task is read, and it is ONE
+	// SENTENCE IN TWO PLACES: the receipt a note typed at a run's own row
+	// answers in the chat (stoprun.go's [Agent.sayToRunRow]), and the line the
+	// task room writes under the note once the store has it (internal/tui3's
+	// taskPlanPickupWord takes it from here). A run's task has no worker to
+	// splice a line into; a worker is a separate loop, so the words wait in the
+	// store as a note until the worker asks for its next step. Saying the note
+	// arrived now would claim a read that has not happened. It is exported
+	// because the room must say the same thing about the same note, and the
+	// manual quotes it exactly (worker-harness.md, task-controls.md).
+	RunNotePickupWord = "the worker reads a note at its next step"
 )
 
 // steerRecord is what the JOURNAL keeps about this line when it is a correction
@@ -1601,7 +1682,35 @@ func (u userMessage) empty() bool {
 // text is the message's words — what a queued message says, with its parts left
 // out. It is what a reader of the queue wants: the pictures are not a line of
 // the conversation, and a data URL rendered into one would be unreadable.
-func (u userMessage) text() string { return messageContentText(u.message) }
+//
+// AND IT IS THE PERSON'S WORDS, never the session's in front of them. A message
+// the plan digest or a standing mark opens is read by the model whole, but what
+// a reader of the message wants — the recall, the owed answer, the ask a
+// `forward` carries into a task — is what the person typed, and a digest read
+// back as their ask would forward the run's own rows into a worker as the
+// person's sentence.
+func (u userMessage) text() string {
+	if u.said != "" {
+		return u.said
+	}
+	return messageContentText(u.journaled())
+}
+
+// journaled is the message as the record keeps it: the person's own sentence
+// where the session wrote something in front of it ([userMessage.said]), the
+// message without the session's leading parts where those are separate parts
+// ([userMessage.lead]), and the message itself every other time.
+func (u userMessage) journaled() ai.Message {
+	if u.said != "" {
+		return textMessage("user", u.said)
+	}
+	if u.lead > 0 && u.lead <= len(u.message.Content) {
+		kept := u.message
+		kept.Content = append([]ai.ContentPart(nil), u.message.Content[u.lead:]...)
+		return kept
+	}
+	return u.message
+}
 
 // startTurnLocked begins one turn on a transcript the caller has already
 // checked, with a.mu held. It is the ONE place a turn starts: Submit reaches it
@@ -1620,8 +1729,12 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	// The person speaking is what resets a team's loop breaker (team_wakewatch.go).
+	a.notePersonTurn(user)
 	a.rebindClientLocked(a.model)
 	a.running = true
+	a.teamTurnAt = time.Now()
+	a.teamTurnSerial++
 	a.lastTurnTruncated = false
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
@@ -1731,6 +1844,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	}
 	for _, stream := range extra {
 		hub.adopt(stream)
+	}
+	// AND THE TURN SAYS WHICH SKILLS IT CARRIED, as one dim notice — the shape
+	// the rest of this package reports its own machinery through — so a surface
+	// can draw the block beside the message it was chosen for (skillturn.go).
+	// The names, not the block: the model reads the block, the person reads
+	// the line.
+	if len(user.skills) > 0 {
+		hub.send(turnSkillsNotice(user.skills))
 	}
 
 	go func() {
@@ -1847,6 +1968,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// return above because a turn that was abandoned has had every one
 			// of these acts done for it already.
 			a.retireTurnQuestions()
+			// AND A TEAM MEMBER'S MANAGER IS TOLD HOW IT ENDED, after the
+			// questions above came down, so the wait the turn ended inside is
+			// closed before the ending is said (teamevent.go). The context is
+			// the turn's own, still uncancelled unless somebody stopped it.
+			a.teamTurnEnded(turnCtx, hub)
 		}()
 		// A faulted turn must end its streams with a reason rather than take
 		// the process down: the person is holding a live channel.
@@ -2101,7 +2227,9 @@ type sessionCompleter struct {
 }
 
 func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	ctx = provider.WithCacheKey(ctx, f.cacheKey)
+	if !bringsOwnLineage(ctx) {
+		ctx = provider.WithCacheKey(ctx, f.cacheKey)
+	}
 	if f.patient {
 		ctx = provider.WithPatientRateLimits(ctx)
 	}
@@ -2112,6 +2240,34 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		ctx = provider.WithoutBabbleGuard(ctx)
 	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
+}
+
+// ownLineageKey marks a call that brings its own prompt-cache lineage
+// ([WithOwnCacheLineage]).
+type ownLineageKey struct{}
+
+// WithOwnCacheLineage marks a call whose context already carries the cache key
+// its request must travel under, so the conversation's wrapper keeps that key
+// rather than stamping its own.
+//
+// IT EXISTS FOR ONE CALLER AND IT IS OPT-IN. A program codeaf carries talks to
+// its model through the run's model API (internal/provider/modelapi), which
+// hands each call to this conversation's completer — and the program keeps
+// conversations of its own, each with its own `prompt_cache_key`. Stamped with
+// the conversation's key, every one of them would ask for the conversation's
+// warm instance: two different prefixes on one lineage, each cold-starting the
+// other, which is [unwrapCompleter]'s reason for giving a task node a lineage
+// of its own. A call that is not marked keeps exactly the stamp it always had.
+func WithOwnCacheLineage(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ownLineageKey{}, true)
+}
+
+// bringsOwnLineage reports a call marked by [WithOwnCacheLineage] that really
+// does carry a key: a marked call with none is stamped like any other, so the
+// mark can never send a request out unkeyed.
+func bringsOwnLineage(ctx context.Context) bool {
+	own, _ := ctx.Value(ownLineageKey{}).(bool)
+	return own && provider.CacheKeyFrom(ctx) != ""
 }
 
 // ProbeLanes passes the keystroke's pre-warm through, and does nothing at all
@@ -2280,10 +2436,9 @@ func (a *Agent) Close() error {
 	// inbox rather than onto a queue that will never be drained again
 	// (standing_run.go).
 	forgetLiveSession(a)
-	// AND THE LANE SHEET STOPS BEATING FOR A SESSION THAT HAS LEFT. It is cut
-	// here, beside the line above and before anything that can take time,
-	// because it is the one background lane that owes nothing to the quit: a
-	// beat holds no write anybody is waiting for.
+	// AND THE LANE SHEET STOPS BEATING FOR A SESSION THAT HAS LEFT. Cancel
+	// its fetch and join any cache write before the state directory can be
+	// handed back to the caller.
 	a.stopLaneBeat()
 	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
 	// of its own precisely because the turn that proposed it ended, so this is
@@ -2407,6 +2562,9 @@ func (a *Agent) Close() error {
 // order is the transcript order by construction; it is one buffered append to
 // an already-open file, not a place a turn waits.
 func (a *Agent) recordLocked(message ai.Message) {
+	if message.Role == "assistant" {
+		message.Content = append([]ai.ContentPart(nil), message.Content...)
+	}
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
@@ -2448,10 +2606,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// instruction the person never typed and never sees (standing_mark.go); the
 	// turn reasons from it and nothing outlives it, because a replay is a
 	// reading of the conversation and that paragraph was never part of one.
-	kept := user.message
-	if user.said != "" {
-		kept = textMessage("user", user.said)
-	}
+	kept := user.journaled()
 	// The store's copy is taken before the journal's early return: a session
 	// with no file still has a conversation worth keeping, and the person's own
 	// words are the last thing that should depend on which layout they opened in.
@@ -2667,8 +2822,18 @@ func (a *Agent) landVolatileLocked() {
 	// (memory.go), so leaving it in front of the whole conversation re-priced the
 	// entire transcript on any turn the router reached differently — the same bug
 	// the card had, on a faster beat. See [memoryNoteOpening].
+	// THE TEAM ROLE LANDS FIRST, because it is the one note that says what this
+	// conversation is rather than what is around it, and it was composed from a
+	// read made before this request ([Agent.teamBoundary]) rather than beside
+	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
+	a.landTeamRoleLocked()
 	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
+	// AND A MANAGER'S TEAM, in a note of its own for the reason the memory block
+	// has one: a team moves whenever a member does, and riding the card's note
+	// would re-send the card each time (team.go's [teamNoteOpening]). A
+	// conversation that manages nothing has an empty block and lands nothing.
+	a.landNoteLocked(teamNoteOpening, a.teamBlockLocked())
 }
 
 // landNoteLocked appends one of the session's own notes when what it says has
@@ -2732,7 +2897,9 @@ func (a *Agent) lastNoteLocked(opening string) string {
 func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
 		strings.HasPrefix(text, memoryNoteOpening) ||
-		strings.HasPrefix(text, bashBeltFrameOpening)
+		strings.HasPrefix(text, bashBeltFrameOpening) ||
+		strings.HasPrefix(text, teamNoteOpening) ||
+		strings.HasPrefix(text, teamRoleNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the
@@ -2807,7 +2974,7 @@ func (a *Agent) bashBeltFrame(hub *eventHub) string {
 	rail := 0.0
 	if home := graph.home; home != nil {
 		home.mu.Lock()
-		rail = home.config.SpendRailUSD
+		rail = home.spendRailUSD()
 		home.mu.Unlock()
 	}
 	runSpend := graph.planRunSpend()
@@ -2968,6 +3135,17 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// the first thing it reads, and an agent that is not on the experiment
 	// composes nothing and lands nothing.
 	frame := a.bashBeltFrame(hub)
+	// AND WHAT THIS CONVERSATION'S TEAMS SAID TO IT, read on the same side of
+	// the lock for the same reason: it is a stat of the teams file and of each
+	// Traffic log, and a read only when one of them moved (team.go's
+	// [Agent.teamBoundary]). What comes back is one marked note on the steering
+	// queue, so the drain below puts it in front of this very request: at the
+	// turn's opening and at every step after it, which is what makes a line the
+	// manager sends mid-turn land mid-turn. A conversation in no team pays one
+	// stat, and one with no profile or a task node pays nothing.
+	if news := a.teamBoundary(); news != "" {
+		a.enqueueNote(userText(news))
+	}
 	a.mu.Lock()
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
@@ -3623,6 +3801,7 @@ type settleWake struct {
 	ceiling int
 	model   string
 	prompt  string
+	window  time.Duration
 }
 
 type settleWakeKey struct{}
@@ -3658,6 +3837,9 @@ func (a *Agent) settleWakeLocked() (settleWake, bool) {
 		}
 		if note.settlePrompt != "" {
 			wake.model, wake.prompt = note.settleModel, note.settlePrompt
+		}
+		if note.settleWindow > wake.window {
+			wake.window = note.settleWindow
 		}
 	}
 	return wake, wake.ceiling != 0
@@ -4144,13 +4326,12 @@ func (h *eventHub) foldedLocked() {
 // a backlog — which is true for exactly the two kinds that are a STREAM OF TEXT
 // and carry nothing else.
 //
-// EventTextDelta and EventReasoning are each emitted as `Event{Kind: …, Text: …}`
-// and nothing more, at every one of the six places that emit them (loop.go,
-// image.go, harness.go, task_room.go). THAT IS THE LAW THIS DEPENDS ON: a kind
-// that ever grows a second field must come off this list in the same change, or
-// the fold will quietly drop it for whoever attaches next.
+// The stream's audience is part of its meaning, so adjacent deltas fold only
+// when that declaration agrees. A newly added stream field must likewise join
+// this comparison, or be excluded from folding, to survive a late attach.
+
 func foldsInto(prev, next Event) bool {
-	if prev.Kind != next.Kind {
+	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
 	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning
@@ -4359,9 +4540,16 @@ type DisplayEntry struct {
 	// mark, so a line from a file written before the mark existed still arrives as
 	// "user", which is exactly what it always was.
 	Role string
-	Text string
-	Tool string // set when the entry is one call in a batch
-	Hint string // the call's gloss, as the tool cluster rendered it
+	// Answer marks a completed tool-free response or an explicit human update. This
+	// boundary survives replay so a later response cannot demote its message.
+	Answer bool
+	// Addressed identifies an explicit update to the person, independently of
+	// completion. Interrupted updates remain readable without claiming success.
+	Addressed   bool
+	Interrupted bool
+	Text        string
+	Tool        string // set when the entry is one call in a batch
+	Hint        string // the call's gloss, as the tool cluster rendered it
 
 	// CallID is the provider's own identity for a tool entry's call, exactly as
 	// the record holds it, and "" for every entry that is not a call.
@@ -4477,6 +4665,14 @@ type DisplayEntry struct {
 	// Nil on every other entry, and on every session with no file to have kept a
 	// mark.
 	Steer *SteerMark
+
+	// Team is what a TEAM DELIVERY handed this conversation, line by line, on
+	// an "aside" that is one (teamshape.go): the manager's brief that started
+	// it (Kind [teams.KindStart]), a manager's note or directive, a teammate's
+	// post. It is what lets a surface draw the brief as a quoted card headed by
+	// who sent it rather than as the aside's first line. Nil on every other
+	// entry; the aside's Text still holds the whole delivery as the model read it.
+	Team []TeamLine
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -4499,7 +4695,7 @@ type SteerMark struct {
 func (a *Agent) Transcript() []DisplayEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return shapeEntries(a.messages, a.file)
+	return shapeEntries(a.messages, a.file, a.presentation)
 }
 
 // EarlierHistory is the conversation a compaction pass edited away, and where
@@ -4571,7 +4767,14 @@ func displayEntries(messages []ai.Message) []DisplayEntry {
 // that made it, and its result is a SEPARATE message further down, keyed by the
 // call's id. One pass to index, one pass to shape, so a batch of ten calls costs
 // one walk rather than ten.
-func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
+func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*presentationIndex) []DisplayEntry {
+	var presentation *presentationIndex
+	if journal != nil {
+		presentation = journal.presentation
+	}
+	if len(indexes) > 0 {
+		presentation = indexes[0]
+	}
 	results := toolResults(messages)
 	// Sized by [entryRows], which is the rule this loop appends by, so a
 	// transcript full of tool batches is not grown a power of two at a time.
@@ -4596,21 +4799,45 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			role = "aside"
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
+		displayText := messageContentText(msg)
+		interrupted, explicitlyHuman := false, false
+		if mark := presentation.of(msg); role == "assistant" && mark != nil {
+			interrupted = mark.Interrupted
+			explicitlyHuman = mark.Audience == "human"
+			if mark.Audience == "operational" {
+				role = "aside"
+			}
+			if mark.Audience == "human" && mark.Text != nil {
+				displayText = *mark.Text
+			}
+		}
+		var team []TeamLine
+		if role == "aside" {
+			team = teamNewsLines(messageContentText(msg))
+		}
 		var tags []TaskReplyTag
 		if role == "assistant" && len(replyTags) > 0 {
 			tags = append([]TaskReplyTag(nil), replyTags...)
 			replyTags = nil
 		}
+		update := false
+		if role == "assistant" {
+			displayText, update = UserFacingUpdate(displayText)
+		}
 		entries = append(entries, DisplayEntry{
-			Role:      role,
-			Text:      messageContentText(msg),
-			ImageRefs: journal.imageRefs(msg),
-			ReplyTags: tags,
+			Role:        role,
+			Answer:      role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
+			Addressed:   role == "assistant" && (update || interrupted && explicitlyHuman),
+			Interrupted: interrupted,
+			Text:        displayText,
+			ImageRefs:   journal.imageRefs(msg),
+			ReplyTags:   tags,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the
 			// model has to read it as (steer.go).
 			Steer: journal.steerMark(msg),
+			Team:  team,
 		})
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]

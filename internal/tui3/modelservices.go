@@ -111,6 +111,7 @@ func (a *app) reloadModelSources() {
 		address = config.DefaultBaseURL
 	}
 	a.sources = config.ResolveSources(a.profileDir, base.Key, address)
+	a.refreshCreditWarnings()
 	if a.applyModelSources != nil {
 		a.applyModelSources(a.sources)
 	}
@@ -1202,7 +1203,7 @@ func (a *app) reachableModelAfterDisconnect() (string, bool) {
 		return "", false
 	}
 	if strings.TrimSpace(services[0].Key) != "" {
-		return config.DefaultModel, true
+		return config.ChatDefaultAt(a.profileDir), true
 	}
 	for _, service := range services[1:] {
 		if strings.TrimSpace(service.Key) == "" && service.Source.ID != "ollama" {

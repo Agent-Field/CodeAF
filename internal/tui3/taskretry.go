@@ -31,6 +31,11 @@ func (a *app) taskCanRetry(entry session.TaskIndexEntry) bool {
 	if node == nil || node.state != session.TaskFailed || node.run != "" || a.taskSheet.awayOwner.on {
 		return false
 	}
+	// A PROGRAM'S TASK IS NEVER RETRIED: the engine's retry reopens one of its
+	// own nodes, and a program's run is not one (session's programNotCarriedOn).
+	if strings.TrimSpace(entry.Program) != "" || node.program != "" {
+		return false
+	}
 	switch node.kind {
 	case session.TaskKindJob, session.TaskKindAdaptive:
 		return false

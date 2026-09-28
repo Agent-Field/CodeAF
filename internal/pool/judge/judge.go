@@ -7,9 +7,8 @@
 // [Ask], which sends a system and a user prompt and returns the answer. One
 // question is asked per seat, in role order, and each answer is read as one
 // JSON object carrying a score from 0 to 100 and a one-sentence reason. That is
-// the same scale crewpick reads seat quality on and a pool records its
-// role_quality metric in, so a run's seats land on the scale the picker already
-// uses.
+// the scale a pool records its role_quality metric in, so a run's seats land
+// on one scale across every install.
 //
 // THE CALLER OWNS THE CALL. This package touches no disk and no network and
 // holds no credentials: the model, the transport and the bill are the caller's,

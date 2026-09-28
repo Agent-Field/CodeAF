@@ -174,16 +174,15 @@ this machine, and `/home`, sees this conversation as `waiting on you`, with the 
 | `←` / `→` | walk the answers |
 | `enter` | take the answer under the cursor |
 | `1` | run it, from anywhere on the card |
-| `0` | no — nothing runs |
-| `esc` | defer; `/subharness` returns to this card |
+| `0` or `esc` | no — nothing runs |
 | `↑` / `↓` | move between the fields and the answers |
 | `enter` on a field | open the box and type its value |
 
-The hint under the answers reads `←→ · enter takes it · 0 no · esc back`.
+The hint under the answers reads `←→ · enter takes it · 0 or esc, no`.
 
-**`esc` defers the offer without answering.** `/subharness` reopens the same pending card
-with your field edits intact. The note reads `subharness waiting · /subharness to return`.
-`0` explicitly declines. Another Escape goes back toward Home.
+**`esc` here is a no and not a way out.** A turn is waiting on this question, so the key
+that dismisses every other overlay answers this one instead — nothing runs, and the
+conversation carries on immediately.
 
 **If you never answer it, nothing runs.** The offer holds the turn for at most **15
 minutes**; when that runs out the card comes down by itself, the line under the

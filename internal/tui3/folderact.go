@@ -104,6 +104,9 @@ func (f *folderPick) markAt(path string) int {
 // THE ORDER IS THE ORDER THEY WERE MARKED IN and marks are appended rather than
 // sorted, for the reason this file's header gives about `[image #2]`.
 func (f *folderPick) mark() string {
+	if f.forWorkspace {
+		return "choose one workspace folder with enter"
+	}
 	path, dir, ok := f.hereKind()
 	if !ok {
 		return ""
@@ -223,6 +226,18 @@ type folderAdded struct {
 // what it would do. It is one function because the key and the row must not be
 // able to drift into meaning two different things.
 func (a *app) folderConfirm() tea.Cmd {
+	if a.folder.forWorkspace {
+		path, dir, ok := a.folder.hereKind()
+		if !ok || !dir {
+			a.note("choose a folder for the workspace")
+			return nil
+		}
+		cmd := a.setWorkspace(path)
+		if a.anchorWorkspace != nil {
+			return cmd
+		} // Keep the choice on a refused anchor.
+		return tea.Batch(a.closeFolderSheet(), cmd)
+	}
 	takes := a.folder.takes()
 	if len(takes) == 0 {
 		return a.closeFolderSheet()

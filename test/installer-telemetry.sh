@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # THE INSTALLER'S TELEMETRY DUTIES, PROVED WITHOUT A NETWORK.
 #
-# The notice text lives once, byte for byte, in docs/TELEMETRY.md: the full
-# form quoted by the binary and the README, and the three-line form the
-# installer prints. Only a test notices when one of them drifts. The installer's main body
+# The installer writes the local install marker and prints no telemetry notice:
+# the binary shows the notice, quoted byte for byte in docs/TELEMETRY.md and the
+# README, before the first session's events are sent. The installer's main body
 # downloads a release, so this test never sources it whole: it lifts out the
-# three telemetry functions and runs them against a temporary state root.
+# marker and PATH functions and runs them against a temporary state root.
 # Nothing here opens a socket.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -14,11 +14,8 @@ script=scripts/install.sh
 doc=docs/TELEMETRY.md
 test -f "$doc" || { echo "docs/TELEMETRY.md is missing; this test reads the notice from it"; exit 1; }
 
-eval "$(awk '/^TELEMETRY_NOTICE=/{f=1} /^VERBOSE=/{f=0} f' "$script")"
-eval "$(sed -n '/^telemetry_off()/,/^}/p; /^write_install_marker()/,/^}/p; /^print_telemetry_notice()/,/^}/p; /^print_path_hint()/,/^}/p' "$script")"
-type telemetry_off >/dev/null
+eval "$(sed -n '/^write_install_marker()/,/^}/p; /^print_path_hint()/,/^}/p' "$script")"
 type write_install_marker >/dev/null
-type print_telemetry_notice >/dev/null
 type print_path_hint >/dev/null
 
 pass=0
@@ -78,56 +75,24 @@ CHANNEL='we"ird' write_install_marker "$tmp/state"
 ok "unexpected channel written as unknown" 'grep -q "\"channel\":\"unknown\"" "$f"'
 ok "unexpected-channel marker is valid JSON" 'json_valid'
 ok "unwritable state root does not fail the install" 'write_install_marker /proc/nonexistent-root'
+ok "an unwritable state root says nothing" '[ -z "$(write_install_marker /proc/nonexistent-root 2>&1)" ]'
 
-# --- the notice -------------------------------------------------------------
+# --- no notice from the installer --------------------------------------------
 
-notice="$tmp/notice.txt"
-print_telemetry_notice 2> "$notice"
-# The first fenced block under "The notice" is the binary's full notice, the
-# second is the installer's three-line form; awk counts fences to tell them apart.
+# The binary shows the notice at the first session; the installer shows none.
+ok "installer prints no telemetry notice" '! grep -qE "anonymous (performance data|usage counts)|TELEMETRY_NOTICE|print_telemetry_notice" "$script"'
+ok "no printed line in the installer mentions telemetry" '! grep -E "printf|echo" "$script" | grep -qi telemetry'
 expected=$(awk '
 	/^## The notice$/ {f=1; next}
 	f && /^```$/ {f++; next}
 	f == 2 {print}
 ' "$doc")
-installer_expected=$(awk '
-	/^## The notice$/ {f=1; next}
-	f && /^```$/ {f++; next}
-	f == 4 {print}
-' "$doc")
-body=$(sed 1d "$notice")
-ok "one blank line before the notice" '[ -z "$(head -n 1 "$notice")" ]'
-ok "installer notice matches docs/TELEMETRY.md verbatim" '[ "$body" = "$installer_expected" ]'
-ok "installer notice is three lines" '[ "$(printf "%s\n" "$body" | wc -l | tr -d " ")" = 3 ]'
-ok "installer notice names the inspector and the switch" 'case "$body" in *"codeaf telemetry info"*CODEAF_TELEMETRY=off*) true;; *) false;; esac'
-ok "installer notice names what is never shared" 'case "$body" in *"does NOT share your prompts, code, files"*) true;; *) false;; esac'
 readme_block=$(awk '
 	/^```text$/ {f = 1; buf = ""; next}
 	/^```$/     {if (f && buf ~ /codeaf sends anonymous usage counts/) {print buf; exit} f = 0; next}
 	f           {buf = buf $0 "\n"}
 ' README.md)
 ok "README quotes the notice verbatim" '[ -n "$readme_block" ] && [ "$(printf "%s\n" "$expected")" = "$readme_block" ]'
-ok "notice goes to stderr, nothing to stdout" '[ -z "$(print_telemetry_notice 2>/dev/null)" ]'
-
-for v in off 0 false OFF False; do
-	export CODEAF_TELEMETRY="$v"
-	out=$( print_telemetry_notice 2>&1 )
-	ok "CODEAF_TELEMETRY=$v opts out" 'case "$out" in *"off"*) true;; *) false;; esac'
-	ok "opt-out prints no notice body" 'case "$out" in *"anonymous performance data"*) false;; *) true;; esac'
-	unset CODEAF_TELEMETRY
-done
-for v in 1 true TRUE; do
-	export DO_NOT_TRACK="$v"
-	out=$( print_telemetry_notice 2>&1 )
-	ok "DO_NOT_TRACK=$v opts out" 'case "$out" in *"off"*) true;; *) false;; esac'
-	unset DO_NOT_TRACK
-done
-out=$( print_telemetry_notice 2>&1 )
-ok "unset prints the notice" 'case "$out" in *"anonymous performance data with AgentField"*) true;; *) false;; esac'
-export CODEAF_TELEMETRY=1
-out=$( print_telemetry_notice 2>&1 )
-ok "CODEAF_TELEMETRY=1 prints the notice" 'case "$out" in *"anonymous performance data with AgentField"*) true;; *) false;; esac'
-unset CODEAF_TELEMETRY
 
 # --- the PATH line comes last -------------------------------------------------
 # The line a person has to paste is the installer's final word: bare, after a

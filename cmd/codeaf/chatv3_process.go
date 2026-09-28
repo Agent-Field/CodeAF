@@ -86,6 +86,15 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
+	// Skills is the skill shelf every conversation this process opens reads:
+	// the Memory store itself when memory is on, and otherwise a store of its
+	// own that holds nothing but the skills the folders on disk hold
+	// ([v3SkillShelf]). It is profile-scoped for Memory's reason, and one
+	// handle for its reason too.
+	Skills *store.Store
+	// skillsDir is the folder the memory-off shelf lives in, removed with it
+	// at close; empty when the shelf is the Memory store.
+	skillsDir string
 	// Artifacts is the deliverables index — one file per machine, and /export
 	// and /files must resolve the same one the session's own products record
 	// themselves in.
@@ -113,7 +122,57 @@ type v3Process struct {
 	standingDone    chan struct{}
 	sweepCancel     context.CancelFunc
 	sweepDone       chan struct{}
-	closed          bool
+	// catalogs are the lazy catalogs this process opened beside Models — a
+	// direct service's own listing, asked for when a conversation is opened on
+	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
+	catalogs []*catalog.Catalog
+	closed   bool
+	// creditWatcher owns the balance reads shared by all conversations.
+	creditWatcher *v3CreditWatcher
+}
+
+// lifetime is the context background work owned by this process runs under,
+// and it ends when closeAll begins. A process built without one (a test's bare
+// literal) hands out the plain background, which is what it had before.
+func (p *v3Process) lifetime() context.Context {
+	if p == nil || p.processCtx == nil {
+		return context.Background()
+	}
+	return p.processCtx
+}
+
+// ownCatalog hands a lazy catalog this process opened to closeAll, which
+// cancels and joins its warm the way it does Models' (#1274). A catalog handed
+// over after the close has begun is closed at once, so none is left unowned.
+func (p *v3Process) ownCatalog(models *catalog.Catalog) {
+	if p == nil || models == nil {
+		return
+	}
+	if !p.keepCatalog(models) {
+		models.Close()
+	}
+}
+
+// keepCatalog files one catalog for closeAll, and answers false when the close
+// has already begun and nothing will come back for it.
+func (p *v3Process) keepCatalog(models *catalog.Catalog) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return false
+	}
+	p.catalogs = append(p.catalogs, models)
+	return true
+}
+
+// takeCatalogs hands over every catalog [v3Process.ownCatalog] was given and
+// empties the list, so the joins run after the lock is let go.
+func (p *v3Process) takeCatalogs() []*catalog.Catalog {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	owned := p.catalogs
+	p.catalogs = nil
+	return owned
 }
 
 // openV3Process builds the once-only half of a v3 launch.
@@ -185,9 +244,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	}
 	processCtx, processStop := context.WithCancel(context.Background())
 	models := catalog.LoadLazy(processCtx, discovery)
-	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
-	config.AutoModels = models.ModelsNow
+	seatCrewRows(models.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
@@ -205,6 +264,8 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Conns:             v3Connect(settings.ProfileDir),
 		LaunchDir:         launchDir,
 	}
+	process.Skills, process.skillsDir = v3SkillShelf(process.Memory)
+	process.creditWatcher = newV3CreditWatcher(process)
 	process.startPlaceSweep()
 	return process, nil
 }
@@ -435,8 +496,16 @@ func (p *v3Process) closeAll() {
 	if p.processStop != nil {
 		p.processStop()
 	}
+	if p.creditWatcher != nil {
+		p.creditWatcher.close()
+	}
 	if p.Models != nil {
 		p.Models.Close()
+	}
+	// AND EVERY OTHER CATALOG THIS PROCESS OPENED, for the same promise: a direct
+	// service's own listing warms under the same lifetime and is joined here.
+	for _, models := range p.takeCatalogs() {
+		models.Close()
 	}
 
 	// Cancellation is checked between entries and before destructive operations.
@@ -490,6 +559,15 @@ func (p *v3Process) closeAll() {
 	}
 	if p.Memory != nil {
 		_ = p.Memory.Close()
+	}
+	// The memory-off shelf goes with the process that built it: it was only
+	// ever a reading of the skill folders, and the next launch reads them
+	// again.
+	if p.skillsDir != "" {
+		if p.Skills != nil {
+			_ = p.Skills.Close()
+		}
+		_ = os.RemoveAll(p.skillsDir)
 	}
 }
 
@@ -590,6 +668,7 @@ func (s *v3Seam) start(workspace string) (tui3.Conversation, error) {
 	if err != nil {
 		return tui3.Conversation{}, err
 	}
+	launch = v3FreshDefault(launch, s.seed.Model)
 	place, err := v3NextSession(launch.Place, launch.Workspace)
 	if err != nil {
 		return tui3.Conversation{}, err
@@ -762,4 +841,20 @@ func (s *v3Seam) anchor(agent interface {
 		s.boot.Bucket = bucket
 	}
 	return resolved, nil
+}
+
+// liveSettings answers a launch's settings as they stand NOW: the launch's own
+// copy, with the account this process holds at the moment of asking laid over
+// it. A launch copies the process's settings when it opens, which on a first
+// launch is before setup has a key, and [v3Process.setAPIKey] reaches the
+// process and its agents but never a copy something else kept. Anything that
+// runs later on a launch's behalf and calls a model — the Model Pool's judge is
+// the one — asks through this, so it carries the key the person has given
+// rather than the one the boot did not have.
+func (p *v3Process) liveSettings(base config.Config) func() config.Config {
+	return func() config.Config {
+		live := base
+		live.APIKey, live.Sources = p.currentAccount()
+		return live
+	}
 }

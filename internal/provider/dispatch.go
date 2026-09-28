@@ -260,6 +260,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
 	tellTakeover(ctx)
+	if gate := c.config.RouteGate; gate != nil {
+		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
+			return nil, err
+		}
+	}
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.
@@ -529,6 +534,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			//
 			// The cap is still the cap: [maxProviderWait] bounds one wait
 			// whatever asked for it, which is what keeps an interrupt prompt.
+			// A CALL THAT HANDS A LIMIT BACK DOES NOT SIT IT OUT (patience.go's
+			// [WithoutPatientRateLimits]): its caller's next move is another
+			// route or another model, which beats any window.
+			if handsBackRateLimits(ctx, lastErr) {
+				return nil, lastErr
+			}
 			delay := backoffFor(attempt, providerWait)
 			if move.Kind == control.MoveWait && move.Wait > 0 {
 				delay = min(move.Wait, maxProviderWait)
@@ -639,6 +650,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			attempt: attempts, began: attemptBegan, phase: calllog.PhaseStart,
 		})
 		response, err := httpClient.Do(httpRequest)
+		if err == nil && response != nil && response.StatusCode == http.StatusPaymentRequired {
+			// Every call shape passes this transport door, including reflexes,
+			// titles, tasks, and the affordable retry itself.
+			announcePaymentRequired(c.config.BaseURL)
+		}
 		// Custom transports may omit Request; retain the exact sent object so
 		// refusal learning never reconstructs it from mutable routing state.
 		if response != nil && response.Request == nil {

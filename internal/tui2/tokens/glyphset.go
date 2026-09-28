@@ -191,6 +191,9 @@ const (
 	GDraftUnsent
 	// GRemove is an action on an attachment, not a work state.
 	GRemove
+	// GPinned marks a crew seat a person pinned, which the router does not move
+	// (internal/tui3's crew.go).
+	GPinned
 	glyphIDCount
 )
 

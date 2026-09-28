@@ -233,33 +233,40 @@ func TestTheLinearTierStillSpellsEveryState(t *testing.T) {
 
 // ── the rail ────────────────────────────────────────────────────────────────
 
-// THE ORDER IS THE TIER'S: the person's call first, then work in flight, then
-// work that is over — with the one rank the design keeps for the news a folded
-// family wears, because "something in here did not come off" is louder than
-// "something in here has not started".
-func TestTheRailRanksYourCallFirstThenMovingThenOver(t *testing.T) {
+// THE ORDER IS THE TIER'S: the person's call first, in amber in the band, then
+// a failure nobody has opened, in ink in the band, then work in flight, then
+// work that has not started, then work that is over, each under its heading.
+func TestTheColumnFilesYourCallFirstThenMovingThenOver(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged})},
 		streamEventMsg{gen: a.gen, ev: update(2, "Mix audio", session.TaskQueued, session.TaskNotice{})},
 		streamEventMsg{gen: a.gen, ev: update(3, "Fix the nil-map", session.TaskRunning, session.TaskNotice{})},
+		streamEventMsg{gen: a.gen, ev: update(4, "Cut the goldens", session.TaskRunning, session.TaskNotice{})},
 		streamEventMsg{gen: a.gen, ev: update(4, "Cut the goldens", session.TaskFailed, session.TaskNotice{Ending: session.TaskEndingSteps})},
 		streamEventMsg{gen: a.gen, ev: update(5, "Port the parser", session.TaskUnverified, session.TaskNotice{Merge: mergeWordAborted, Branch: "task/parser"})},
 	)
-	ranks := map[uint64]int{}
-	for id := uint64(1); id <= 5; id++ {
-		ranks[id] = a.railGlyphRank(a.tasks[id])
+	band := a.sideBand()
+	if len(band) != 2 || band[0].key != "task/5" || !band[0].ask || band[1].key != "fail/4" || band[1].ask {
+		t.Fatalf("the band is not the question in amber then the failure in ink: %+v", band)
 	}
-	if !(ranks[5] < ranks[3] && ranks[3] < ranks[4] && ranks[4] < ranks[2] && ranks[2] < ranks[1]) {
-		t.Fatalf("the rail ranks are out of order: %v", ranks)
+	railOpenAll(a)
+	var order []uint64
+	for _, e := range a.railEntries() {
+		if e.node != nil {
+			order = append(order, e.node.id)
+		}
+	}
+	if len(order) != 3 || order[0] != 3 || order[1] != 2 || order[2] != 1 {
+		t.Fatalf("the list is %v, want running 3, queued 2, done 1, and nothing the band holds", order)
 	}
 }
 
-// A FOLDED FAMILY WEARS ITS LOUDEST CHILD, and a child whose decision belongs to
-// the parent's own agent is not what makes the fold a demand — the parent is
-// already holding that question. It is read off the ask's owner and off nothing
-// else, and the row still says what it is asking about.
-func TestAFoldedFamilyWearsItsLoudestChild(t *testing.T) {
+// A QUESTION IS THE PERSON'S UNTIL SOMEBODY ELSE HOLDS IT. A child whose
+// decision belongs to the parent's own agent is not a demand on the person,
+// so it leaves the band; it is read off the ask's owner and off nothing else,
+// and the row still says what it is asking about.
+func TestAQuestionSomebodyElseHoldsLeavesTheBand(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Port the parser", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged})},
@@ -267,20 +274,18 @@ func TestAFoldedFamilyWearsItsLoudestChild(t *testing.T) {
 			Merge: mergeWordAborted, Branch: "task/goldens",
 		})},
 	)
-	// A ROOT QUESTION NOBODY ELSE IS HOLDING IS THE LOUDEST THING ON THE COLUMN.
 	kid := a.tasks[2]
-	if got := a.railGlyphRank(kid); got != 0 {
-		t.Fatalf("an unanswered question ranks %d, want 0", got)
+	if band := a.sideBand(); len(band) != 1 || band[0].key != "task/2" || !band[0].ask {
+		t.Fatalf("an unanswered question is not the band's: %+v", band)
 	}
 	if glyph := plain(a.railTreeGlyph(kid)); glyph != glyphAsk {
 		t.Fatalf("the child wears %q, want %q", glyph, glyphAsk)
 	}
-	// Hand the decision to the model and the fold stops being a demand — and the
-	// row goes on reading its reason either way, because a person watching it is
-	// owed what it is asking about whoever is answering.
 	kid.decider = session.TaskAskOwnerModel
-	if got := a.railGlyphRank(kid); got == 0 {
-		t.Fatalf("a question the model holds still ranks as a demand")
+	for _, item := range a.sideBand() {
+		if item.key == "task/2" {
+			t.Fatalf("a question the model holds is still in the band: %+v", item)
+		}
 	}
 	if group := a.railGroupOf(kid); group == railDone {
 		t.Fatalf("a question nobody has answered is filed under %q", railGroupWords[group])
@@ -529,6 +534,11 @@ func railSaid(a *app) string {
 			row = row[at+len(railSeam):]
 		}
 		out = append(out, row)
+	}
+	// AND THE HINT LINE OVER EACH ROW, which is where what a row has no room
+	// for is said now that every row is one line.
+	for _, id := range a.taskOrder {
+		out = append(out, railHint(a, id))
 	}
 	return strings.Join(strings.Fields(strings.Join(out, " ")), " ")
 }

@@ -180,8 +180,8 @@ func TestTypingOnAPhoneSearchesWithNoSections(t *testing.T) {
 	if strings.Contains(text, homePhoneWaitingWord+"\n") && strings.Contains(text, homePhoneNewsWord) {
 		t.Fatalf("a search kept the sections:\n%s", text)
 	}
-	if strings.Contains(text, homeStartWord) || strings.Contains(text, "? ask here:") {
-		t.Fatalf("removed action rows remain at the foot:\n%s", text)
+	if !strings.Contains(text, homeStartWord) || !strings.Contains(text, homeAskHereWord) {
+		t.Fatalf("the action rows are not at the foot:\n%s", text)
 	}
 }
 
@@ -401,7 +401,7 @@ func TestTheTaskRecordsFootIsBandsOnAPhone(t *testing.T) {
 
 // ── the action bar ──────────────────────────────────────────────────────────
 
-func TestThePhoneInboxBarDoesNotOfferSubmissionModes(t *testing.T) {
+func TestThePhoneActionBarIsThreeTargets(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", time.Now())
 	a := phoneHome(t, lab, mine)
@@ -603,9 +603,7 @@ func TestAnErrandOnAPhoneIsTheSameSheet(t *testing.T) {
 	a.width, a.height = 50, 30
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	a.home.box.setText("/ask " + a.home.box.String())
-	a.home.build()
-	drive(t, a, key("enter"))
+	drive(t, a, key("up"), key("enter"))
 
 	ex := theExchange(a)
 	if ex == nil {

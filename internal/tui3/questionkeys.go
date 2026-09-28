@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── ONE KEY GRAMMAR, SPELLED ONCE ───────────────────────────────────────────
@@ -491,6 +492,15 @@ const questionKeyGap = " · "
 func questionVerbWord(q questionShown, verb questionVerb) string {
 	switch verb.key {
 	case questionCommentKey:
+		if q.question.Kind == session.QuestionStanding {
+			// THE CORRECTION BUTTON SAYS WHAT IT IS. A rule's is about where
+			// the rule reaches. The head is the kind, which is how this row
+			// knows without a second copy of the words.
+			if q.question.Head == session.StandingHeadRule {
+				return session.StandingChangeWord(standing.Item{When: standing.When{Kind: standing.WhenHold}})
+			}
+			return standChangeWord
+		}
 		if q.question.Ask == session.AskRatify {
 			return "change"
 		}
@@ -609,9 +619,20 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 			return len(room.picked) > 0 || (q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "")
 		}
 		if q.question.Input.Kind == session.InputText {
-			// A question answered in words has nothing for enter to take
-			// while the box is empty ([app.questionEnter]).
-			return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
+			// A question answered in words has nothing for enter to take while
+			// the box is empty AND nothing stands under the pointer — the same
+			// give-up [app.questionEnter] makes ([#1506]): a correction or a
+			// standing card still carries answers the arrows walk, so a
+			// pointer on one is enter taking it.
+			if q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "" {
+				return true
+			}
+			// A PICK LIVES ON A CHOICE. A connect question keeps one answer, the
+			// way out, and its enter means the words — the offer row says so.
+			if q.question.Ask != session.AskChoice && q.question.Ask != session.AskJudgement {
+				return false
+			}
+			return q.pick >= 0 && q.pick < len(q.question.Options)
 		}
 		if len(q.question.Options) > 0 {
 			return true

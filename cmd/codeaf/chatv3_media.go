@@ -236,7 +236,19 @@ func v3MediaPick(models *catalog.Catalog) func(string, string) (string, error) {
 // absence law is a plain nil check. Without it, a build that could not make a
 // client would put every generation tool on the belt and fail each one on its
 // first call — the belt that lies, which is the thing the law exists to stop.
+//
+// NO KEY IS ABSENCE, NOT A FAULT, AND ABSENCE SAYS NOTHING. A first launch
+// builds its conversation before setup has asked for a key, so this door is
+// reached keyless on every new install; the line it used to log landed on the
+// person's terminal just before the surface took it, and was the first thing
+// they read after quitting (the fresh-install check of 2026-09-25). The key
+// asked about is the one the client would carry — [config.Config.ClientConfig]
+// resolves it the way [config.Config.MediaClient] does — and only a failure
+// with a key in hand is a fault worth a line.
 func v3MediaClient(settings config.Config) session.MediaGenerator {
+	if strings.TrimSpace(settings.ClientConfig(settings.Model).APIKey) == "" {
+		return nil
+	}
 	client, err := settings.MediaClient()
 	if err != nil || client == nil {
 		if err != nil {

@@ -10,37 +10,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// WORK COMING HOME IS AN EVENT, AND IT GETS A CARD.
-//
-// What stood here was one dim line — "task Fix the nil-map crash done in 2m 10s
-// · merged" — wedged into the transcript between two paragraphs, in the same
-// grey the surface uses to mutter about its own housekeeping. That line is
-// wrong in proportion to how much it is worth: it is the END of something a
-// person delegated ten minutes ago, it is the only place the outcome is ever
-// stated, and it was drawn quieter than the tool call that read a file.
-//
-//	✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
-//	  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
-//
-// TWO ROWS, AND THE SECOND IS THE ONE THAT PAYS. The head is what happened; the
-// muted line under it is what came of it, in the node's own first sentence,
-// with the two facts that let a person go back to it — when it started, and the
-// key that opens what it actually did.
-//
-// It is the same card in three states, which is the whole of decision 4: a
-// proposal collapsed is a title and a subtitle (task.go), a landed node
-// collapsed is a title and an outcome, and BOTH open onto the full context
-// behind the same two gestures. A person who has learned that a card has more
-// inside it has learned it once.
-//
-// ── A BATCH IS ONE OBJECT ──
-//
-// Three nodes finishing within a second of each other used to write three
-// lines, each repeating the word "task", and between them they said one thing:
-// the batch is home. So a run of more than two lands as a ROLLUP — a header
-// that counts them, a compact row each, and the outcome sentence on the most
-// recent one only. The rest of the outcomes are one keystroke away on their own
-// rows, which is where they were going to be read anyway.
+// Landings stay compact until opened. Dismissal changes only presentation;
+// records, output and pending decisions remain available.
 
 // taskDone is one landed node, as the transcript keeps it.
 //
@@ -51,6 +22,11 @@ import (
 type taskDone struct {
 	id    uint64
 	ident taskIdent
+	// program is the program the work was handed to, "" for codeaf's own.
+	// Its ending is the conversation's to act on (session's program_outcome.go),
+	// so its card says it ended and that the chat has the rest
+	// ([doneProgramUnder]), never the program's own status.
+	program string
 	// title and subtitle are the identity (taskident.go), frozen at landing.
 	title, subtitle string
 	// status is THE READING, taken once at landing from the node's own facts
@@ -121,6 +97,8 @@ type taskDone struct {
 	// open says the full context is showing, behind the same expand mechanic
 	// every other card on this surface is behind.
 	open bool
+	// Dismissal only affects this window; the task record stays in Sessions.
+	dismissed bool
 	// gut is how many columns of the READING GUTTER this card's rows already
 	// carry (gutter.go), for the reason the proposal's own spans carry one
 	// (task.go's [taskCard]).
@@ -225,10 +203,11 @@ func (a *app) landedCard(node *taskNode) {
 	card := &taskDone{
 		id:          node.id,
 		ident:       node.ident,
+		program:     a.nodeProgram(node),
 		title:       title,
 		subtitle:    taskSubtitleOf(title, node.assignment),
 		status:      session.ProjectTask(doneNodeFacts(node)),
-		span:        node.elapsed,
+		span:        node.ranFor(),
 		started:     node.spawnedAt(),
 		landed:      landed,
 		outcome:     firstProseLine(node.report),
@@ -340,6 +319,10 @@ func (a *app) handedBackCard(fresh *taskDone) bool {
 		return false
 	}
 	card.status = fresh.status
+	// A fresh decision must be visible even when its task state did not move.
+	if card.status.Tier == session.TaskTierYourCall {
+		card.dismissed = false
+	}
 	a.settleTouched(card)
 	return true
 }
@@ -391,12 +374,18 @@ func (a *app) openDone(i int) bool {
 // it: whether a batch rolls up is a property of the RUN and not of any card in
 // it.
 func (a *app) doneCluster(d deck, out []row, from, to, width int) []row {
-	if to-from > doneRollupFloor {
+	visible := 0
+	for i := from; i < to; i++ {
+		if card := d.entries[i].done; card != nil && !card.dismissed && !supersededIn(d, i, to) {
+			visible++
+		}
+	}
+	if visible > doneRollupFloor {
 		return a.rollupRows(d, out, from, to, width)
 	}
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil {
+		if card == nil || card.dismissed || supersededIn(d, i, to) {
 			continue
 		}
 		for _, text := range a.doneRows(card, width, a.selected(i)) {
@@ -406,20 +395,20 @@ func (a *app) doneCluster(d deck, out []row, from, to, width int) []row {
 	return out
 }
 
-// doneRollupFloor is how many cards a batch has to have before it becomes one
-// object. Two full cards are four rows and read as two events, which is what
-// they are; three are six rows saying the word "task" three times.
-const doneRollupFloor = 2
+// doneRollupFloor keeps two or more adjacent notifications in one folded row.
+const doneRollupFloor = 1
 
-// doneRows is one card whole: the head, the outcome line, and the full context
-// when it is open.
+// doneRows draws one compact notification. Only an open card or pending
+// decision needs more than its headline.
 func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
-	if card == nil || width < 8 {
+	if card == nil || card.dismissed || width < 8 {
 		return nil
 	}
 	out := []string{a.doneHead(card, width, sel)}
-	if line := a.doneUnder(card, width); line != "" {
-		out = append(out, line)
+	if card.open || card.status.Tier == session.TaskTierYourCall {
+		if line := a.doneUnder(card, width); line != "" {
+			out = append(out, line)
+		}
 	}
 	return append(out, a.doneDetail(card, width)...)
 }
@@ -444,6 +433,12 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 func (a *app) doneHead(card *taskDone, width int, sel bool) string {
 	lead := a.doneMark(card) + " " + a.taskMarkSel(card.ident, sel) + " "
 	tail := a.doneTail(card)
+	if !card.open {
+		tail += " · ctrl+o"
+	}
+	if sel && card.status.Tier != session.TaskTierYourCall {
+		tail += " · delete dismiss"
+	}
 	// THE TAIL GOES FIRST WHEN THE TERMINAL IS NARROW, which is the tool line's
 	// own rule for the same reason (toolview.go): the name is the substance, and
 	// an outcome hung off a title nobody can read is a fact about nothing.
@@ -483,6 +478,11 @@ func (a *app) doneMark(card *taskDone) string {
 		// A person's own stop is not a finding, so it is neither a tick nor a cross.
 		return a.pal.dim(mark)
 	case session.TaskPresenceIncomplete:
+		// A PROGRAM'S ENDING IS NEVER PAINTED AS A FAULT: the chat acts on it
+		// and says what became of the work.
+		if card.program != "" {
+			return a.pal.dim(mark)
+		}
 		// THE CROSS IS DIM UNLESS SOMETHING BROKE. Running out of steps, losing the
 		// wire and a check that named gaps are all work that did not finish, and
 		// colouring them as failures reports a fault nobody found
@@ -511,6 +511,9 @@ func (a *app) doneMark(card *taskDone) string {
 func (a *app) doneTail(card *taskDone) string {
 	tail := ""
 	if word := strings.TrimSpace(card.status.Word); word != "" {
+		if card.program != "" && card.status.Presence == session.TaskPresenceIncomplete {
+			word = doneProgramEnded
+		}
 		tail = " · " + word
 	}
 	// ONE SEPARATOR MEANS ONE THING ON THIS ROW. The span used to be joined to
@@ -628,6 +631,9 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 			return a.pal.dim("  " + fit(session.LandingDecidingWord, width-4))
 		}
 		return ""
+	}
+	if card.program != "" {
+		return a.doneProgramUnder(card, width)
 	}
 	// AND AN INCOMPLETE LANDING'S SECOND ROW IS WHY, dim, in the engine's own
 	// sentence ([session.TaskReasonOf] spells the table once). It stands INSTEAD
@@ -1094,41 +1100,41 @@ func capFieldMark(lines []string, mark string) []string {
 
 // ── the rollup ──────────────────────────────────────────────────────────────
 
-// rollupRows draws a batch as one object:
-//
-//	✓ 3 tasks done · 9m14s
-//	  ◆ Fix nil-map crash · 4m12s · 3 files
-//	  ▲ Collect sources · 1m02s
-//	  ● Mix audio · 4m00s
-//	  "the mix is level and the stems are kept" · started 14:02 · ctrl+o output
-//
-// THE OUTCOME IS THE MOST RECENT ONE'S, AND ONLY ITS. Three quoted sentences
-// stacked under a header is the thing this rollup exists to stop being; the
-// last one is the one a person is most likely to be waiting on, and every other
-// card opens its own on its own row.
-//
-// Each compact row keeps its own entry, so a click expands THAT card in place
-// and the rollup stays a rollup. The header carries the run's first card, which
-// is the only entry a header could honestly point at.
+// rollupRows draws one expandable batch, with pending decisions always visible.
 func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
-	out = append(out, row{text: a.rollupHead(d, from, to, width), entry: from, hit: hitDone})
-	last := -1
+	first := -1
 	for i := from; i < to; i++ {
-		card := d.entries[i].done
-		if card == nil || supersededIn(d, i, to) {
-			continue
-		}
-		last = i
-		out = append(out, row{text: a.rollupRow(card, width, a.selected(i)), entry: i, hit: hitDone})
-		for _, text := range a.doneDetail(card, width-2) {
-			out = append(out, row{text: "  " + text, entry: i, hit: hitDone})
+		if card := d.entries[i].done; card != nil && !card.dismissed && !supersededIn(d, i, to) {
+			first = i
+			break
 		}
 	}
-	if last >= 0 {
-		if card := d.entries[last].done; card != nil && !card.open {
+	if first < 0 {
+		return out
+	}
+	open := d.entries[first].done.open
+	head := a.rollupHead(d, from, to, width)
+	if !open {
+		head = fitPainted(head+a.pal.dim(" · ctrl+o expand · /dismiss"), width)
+	}
+	out = append(out, row{text: head, entry: first, hit: hitDone})
+	for i := from; i < to; i++ {
+		card := d.entries[i].done
+		if card == nil || card.dismissed || supersededIn(d, i, to) {
+			continue
+		}
+		// A decision is never hidden inside a folded batch.
+		if !open && card.status.Tier != session.TaskTierYourCall {
+			continue
+		}
+		out = append(out, row{text: a.rollupRow(card, width, a.selected(i)), entry: i, hit: hitDone})
+		if card.status.Tier == session.TaskTierYourCall {
 			if line := a.doneUnder(card, width-2); line != "" {
-				out = append(out, row{text: "  " + line, entry: last, hit: hitDone})
+				out = append(out, row{text: "  " + line, entry: i, hit: hitDone})
 			}
+		}
+		for _, text := range a.doneDetail(card, width-2) {
+			out = append(out, row{text: "  " + text, entry: i, hit: hitDone})
 		}
 	}
 	return out
@@ -1146,7 +1152,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	var first, last time.Time
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil || supersededIn(d, i, to) {
+		if card == nil || card.dismissed || supersededIn(d, i, to) {
 			continue
 		}
 		count++
@@ -1245,4 +1251,24 @@ func (a *app) rollupRow(card *taskDone, width int, sel bool) string {
 		tail = ""
 	}
 	return lead + a.pal.ink(fit(card.title, room)) + a.pal.dim(tail)
+}
+
+// doneProgramEnded is the head's word for a program's run that did not finish:
+// it ended, and what became of the work is the chat's to say.
+const doneProgramEnded = "ended"
+
+// doneProgramUnder is a program's card's second row: that its ending went to
+// the chat, which acts on it and says where the work stands, and where the
+// whole of it is. THE PROGRAM'S STATUS IS NOT ON IT. It is codeaf's to act on
+// (session's program_outcome.go), and the person reads the chat's summary of
+// what came of it; the program's own words are one key away.
+func (a *app) doneProgramUnder(card *taskDone, width int) string {
+	said := card.program + "'s ending went to the chat"
+	if !card.started.IsZero() {
+		said += " · " + doneStartWord + card.started.Format("15:04")
+	}
+	if a.doneHasDetail(card) && !card.open {
+		said += " · " + doneOutputKey
+	}
+	return a.pal.dim("  " + fit(said, width-4))
 }

@@ -15,9 +15,9 @@ import (
 // v3 process or launch. A long-lived writer must identify both its stop and the
 // closeAll join. chatv3/models and engine/models name the process waiter, joined
 // since #1179, and the internal/catalog warm each one starts, which closeAll now
-// cancels and joins through Models.Close.
-// The remaining known-open row (chatv3/sweep-home) names the later cell that owns it;
-// deleting a row is part of landing that cell.
+// cancels and joins through Models.Close. chatv3/sweep-home is joined too, by
+// stopPlaceSweep since #1276. No row is known-open now; a new one that is must
+// name the later cell that owns it, and deleting it is part of landing that cell.
 func TestV3ProcessGuardGoClass(t *testing.T) {
 	type class struct {
 		kind, stop, join, owner string
@@ -28,10 +28,11 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		"pool/judge-sweep":        {kind: "joined writer", stop: "pool errand context", join: "v3Process.closeAll calls stopPoolErrands"},
 		"chatv3/models":           {kind: "joined writer", stop: "warmModels waiter on the pool errand context, and the catalog's own warm context", join: "v3Process.closeAll calls stopPoolErrands for the waiter (since #1179) and Models.Close, which cancels and joins the internal/catalog warm"},
 		"engine/models":           {kind: "joined writer", stop: "warmModels waiter on the pool errand context, and the catalog's own warm context", join: "v3Process.closeAll calls stopPoolErrands for the waiter (since #1179) and Models.Close, which cancels and joins the internal/catalog warm"},
-		"chatv3/sweep-home":       {kind: "KNOWN-OPEN writer", owner: "later home-sweep ownership cell (class target three)"},
+		"chatv3/sweep-home":       {kind: "joined writer", stop: "v3Process.sweepCancel cancels the walk's context, checked between entries and before every destructive operation", join: "v3Process.closeAll calls stopPlaceSweep, which waits on sweepDone (since #1276)"},
 		"chatv3/background":       {kind: "one-shot", stop: "repairBackgroundChecks returns after one bounded Drift/Install pass"},
 		"chatv3/once-questions":   {kind: "one-shot", stop: "agent.Close closes the WatchQuestions channel consumed by the range"},
 		"chatv3/close-agent":      {kind: "joined one-shot", stop: "Agent.Close is bounded", join: "v3Process.closeAll waits on waiting"},
+		"chatv3/payment-credits":  {kind: "joined one-shot", stop: "processCtx is canceled and credits.Read is bounded", join: "v3Process.closeAll calls creditWatcher.close and waits"},
 		"chatv3/host-reap":        {kind: "one-shot", stop: "exec.Cmd.Wait returns when the replaced ssh child exits"},
 		"chatv3/host-follow":      {kind: "one-shot", stop: "remote Follow channel closes with the host connection"},
 		"chatv3/telemetry-events": {kind: "one-shot", stop: "source event channel closes and countedEvents returns"},

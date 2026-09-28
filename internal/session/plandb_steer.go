@@ -64,6 +64,15 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 		if task.Chat != plan.chat {
 			return errPlanOtherChat
 		}
+		// THE NEWEST RUN IS NOT A LIVE ONE ONCE ITS OWN TASK HAS ENDED. A run's
+		// store is set aside only when the NEXT request arrives, so the run that
+		// finished last is still the live file, and this road used to take a
+		// note, a hold, an amendment or a priority on it as though somebody were
+		// there to read them: the write landed and nothing ever read it. An ended
+		// run answers the one sentence every earlier run answers.
+		if root := live.Task(live.RootID()); root != nil && terminalStoreStatus(root.Status) {
+			return errPlanEndedRun
+		}
 		return write(live, task)
 	}
 	for _, store := range stores[:len(stores)-1] {
@@ -78,12 +87,30 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 }
 
 // PlanNote leaves a note in the person's own voice on one task. It is the soft
-// steering beside the hard verbs: the worker reads it in its next frame, and
+// steering beside the hard verbs: the task's worker is handed it between its own
+// steps, on the road internal/run's note channel carries, and
 // the note carries the person as its author the way the store spells that
 // (AddPersonNote), so a surface draws the two voices apart.
 func (a *Agent) PlanNote(id, text string) error {
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
 		_, err := store.AddPersonNote(task.ID, text)
+		return err
+	})
+}
+
+// PlanNoteFromChat leaves a note on one task in THE CONVERSATION'S voice, and
+// it is [Agent.PlanNote] with the one difference that matters: the author.
+//
+// THE MODEL IS NOT THE PERSON, AND THE WORKER MUST BE ABLE TO TELL. A note
+// arriving named as the person is a note a worker may read as authority, and a
+// conversation that could write in the person's voice could grant itself
+// permissions nobody gave it — the same hazard, and the same answer, as the
+// `say` door's ([Agent.relayToTask]). So the note carries [plandb.NoteAgentChat]
+// and is a worker-side note by the store's own column, and every reader draws it
+// apart from the person's own.
+func (a *Agent) PlanNoteFromChat(id, text string) error {
+	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		_, err := store.AddNote(task.ID, plandb.NoteAgentChat, text)
 		return err
 	})
 }
@@ -114,8 +141,13 @@ func (a *Agent) PlanResume(id string) error {
 }
 
 // PlanCancel ends a task, its descendants and the work hard-depending on it.
-// The cascade is the store's own law; the person's cancel carries no reason,
-// because the store records the ending and the surface reads the word.
+// The cascade is the store's own law.
+//
+// THE CANCEL CARRIES THE STOP'S OWN WORD, because a person pressed it. The
+// store keeps the reason with the ending and a row reads `stopped` only off
+// that word ([planTaskStopped]); this cancel used to carry none, so a part a
+// person stopped — and everything its cascade took down — read `incomplete`,
+// the word for work that ran and came up short on its own.
 //
 // THE RUN'S OWN TASK IS STOPPED AS THE RUN. The store refuses every verb on it,
 // because no worker may end the run it is part of; a person may, and the stop
@@ -134,7 +166,7 @@ func (a *Agent) PlanCancel(id string) error {
 			// is open under it end, and the next hand-off starts fresh.
 			return store.StopRoot(taskStoppedWord)
 		}
-		_, err := store.Cancel(task.ID, "")
+		_, err := store.Cancel(task.ID, taskStoppedWord)
 		return err
 	})
 }

@@ -1,9 +1,11 @@
 package session
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The belt half of the completeness gate (internal/tui3's manual_test.go is the
@@ -20,11 +22,16 @@ func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
 	// that built the belt without one would let a conditional tool ship with no
 	// page — green, and wrong in exactly the way this test exists to catch.
 	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
-	// AND THE SHELF IS WALKED WITH THE BELT. A tool held back for the tool block's
-	// sake is a capability this build still has and a person can still ask about
-	// (tools_capabilities.go), so it goes on owing a page — a gate reading the
-	// carried belt alone would go green the day a verb was shelved, which is the
-	// one way shelving could quietly delete a feature.
+	// AND THE SHELF IS REACHED THROUGH A STORE. `use_skill` is gated on a non-nil
+	// Memory (tools_skill.go) — without one the verb never lands on the belt and
+	// the gate would let it ship without a page. So a store is opened so the belt
+	// is the same one a real conversation carries.
+	db, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open gate store: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	agent.config.Memory = db
 	agent.tools = agent.belt()
 	tools := agent.offeredTools()
 	if len(tools) == 0 {

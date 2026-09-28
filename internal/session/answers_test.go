@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -219,7 +220,7 @@ func TestTheStandingCardTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 	if question.Kind != QuestionStanding || question.ID != proposal.Standing.ID {
 		t.Fatalf("the question reads %+v, the card is %d", question, proposal.Standing.ID)
 	}
-	if question.Text != "wants to keep an eye on: tell me when ci goes red" {
+	if question.Text != StandingHeadWatch {
 		t.Fatalf("the line is %q", question.Text)
 	}
 	// `2 change when` is not offered from another window: it is a request for a
@@ -292,6 +293,76 @@ func TestAStandingCardIsDeclinedFromAnotherWindowWithOneKey(t *testing.T) {
 	waitForNoQuestion(t, dir)
 }
 
+// EACH KIND OF CARD SAYS WHAT IT IS, AND EACH BUTTON SAYS WHAT IT DOES.
+func TestStandingCardWordsFollowTheKind(t *testing.T) {
+	cases := []struct {
+		item standing.Item
+		head string
+		yes  string
+		once string
+		no   string
+	}{
+		{
+			item: standing.Item{When: standing.When{Kind: standing.WhenAt, Words: "at 6"}},
+			head: StandingHeadReminder, yes: "Remind me at 6", once: "", no: "Don't remind me",
+		},
+		{
+			item: standing.Item{When: standing.When{Kind: standing.WhenEvery, Words: "every 3 hours"}},
+			head: StandingHeadCheck, yes: "Set it up · every 3 hours", once: "Only now, don't repeat", no: "Don't set it up",
+		},
+		{
+			item: standing.Item{When: standing.When{Kind: standing.WhenProbe, Words: "when CI goes red"}},
+			head: StandingHeadWatch, yes: "Watch for it", once: "Check once now", no: "Don't watch",
+		},
+		{
+			item: standing.Item{When: standing.When{Kind: standing.WhenHold, Words: "always"}},
+			head: StandingHeadRule, yes: "Keep this rule", once: "", no: "Don't keep it",
+		},
+	}
+	for _, c := range cases {
+		if got := StandingHead(c.item); got != c.head {
+			t.Errorf("%s head %q, want %q", c.item.When.Kind, got, c.head)
+		}
+		var sawOnce bool
+		for _, option := range StandingOptions(c.item) {
+			switch option.Key {
+			case "1":
+				if option.Label != c.yes || option.Consequence == "" {
+					t.Errorf("%s yes %q (%q)", c.item.When.Kind, option.Label, option.Consequence)
+				}
+				if option.Safe {
+					t.Errorf("%s yes is the cursor rest", c.item.When.Kind)
+				}
+			case StandingOnceKey:
+				sawOnce = true
+				if option.Label != c.once || option.Safe {
+					t.Errorf("%s once %q safe=%v", c.item.When.Kind, option.Label, option.Safe)
+				}
+				if option.Consequence == "" {
+					t.Errorf("%s once has no hint", c.item.When.Kind)
+				}
+			case StandingNoKey:
+				if option.Label != c.no || !option.Safe || option.Consequence == "" {
+					t.Errorf("%s no %+v", c.item.When.Kind, option)
+				}
+			}
+		}
+		if sawOnce != (c.once != "") {
+			t.Errorf("%s once offered=%v want %q", c.item.When.Kind, sawOnce, c.once)
+		}
+		if plain := StandingPlainLabel(c.yes); strings.Contains(c.yes, " · ") && strings.Contains(plain, " · ") {
+			t.Errorf("%s plain label kept the cadence: %q", c.item.When.Kind, plain)
+		}
+		if c.item.When.Kind == standing.WhenAt && StandingPlainLabel(c.yes) != "Remind me" {
+			t.Errorf("reminder plain label %q", StandingPlainLabel(c.yes))
+		}
+	}
+	long := standing.When{Words: "every Monday morning after the deploy window closes and the board has signed off"}
+	if got := long.ShortWords(); len(got) > 40 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("a long cadence was not shortened: %q", got)
+	}
+}
+
 // THE DECLINE IS ON EVERY STANDING CARD THERE IS. The `once` chip is the only
 // one that is ever missing (a one-off reminder's), because "do it now" is not a
 // smaller version of "do it at six" — but "set nothing up" answers every
@@ -309,7 +380,7 @@ func TestEveryStandingCardOffersTheSameDecline(t *testing.T) {
 	for _, item := range []standing.Item{reminder, watch} {
 		var found bool
 		for _, option := range StandingOptions(item) {
-			found = found || (option.Key == StandingNoKey && option.Label == "not set up")
+			found = found || (option.Key == StandingNoKey && option.Label != "")
 		}
 		if !found {
 			t.Fatalf("a %s card offers %v, with no decline on it", item.When.Kind, StandingOptions(item))
@@ -470,9 +541,9 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 		// named no action at all (question.go's proposalQuestion).
 		{QuestionTask, "1", "start it", func(a AnswerAction) bool { return a.Task.Approved }},
 		{QuestionTask, "2", "no", func(a AnswerAction) bool { return !a.Task.Approved }},
-		{QuestionStanding, "1", "yes", func(a AnswerAction) bool { return a.Standing.Approved && !a.Standing.Once }},
-		{QuestionStanding, "3", "just once", func(a AnswerAction) bool { return a.Standing.Once && !a.Standing.Approved }},
-		{QuestionStanding, "0", "not set up", func(a AnswerAction) bool {
+		{QuestionStanding, "1", "Set it up", func(a AnswerAction) bool { return a.Standing.Approved && !a.Standing.Once }},
+		{QuestionStanding, "3", "Only now, don't repeat", func(a AnswerAction) bool { return a.Standing.Once && !a.Standing.Approved }},
+		{QuestionStanding, "0", "Don't set it up", func(a AnswerAction) bool {
 			return a.Standing == (StandingAnswer{})
 		}},
 	} {

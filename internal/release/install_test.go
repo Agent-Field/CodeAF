@@ -896,10 +896,18 @@ func TestV1InstallerName(t *testing.T) {
 		if err != nil || string(kept) != string(original) {
 			t.Fatalf("codeaf = %q, %v", kept, err)
 		}
-		// A normal run's receipt is the installed file naming itself, and the
-		// last thing said is the line to paste; the path is --verbose's to say.
-		if !strings.Contains(run.output, "installed codeaf "+tag+" · fake") {
-			t.Fatalf("output does not carry the receipt:\n%s", run.output)
+		// A normal run's receipt names the COMMAND the person will type first,
+		// then the installed file naming its build; the last thing said is the
+		// line to paste, and the path is --verbose's to say. A devaf install that
+		// said "installed codeaf" sent the person to type a command this install
+		// never wrote (the fresh-install check of 2026-09-25).
+		if !strings.Contains(run.output, "installed devaf · codeaf "+tag+" · fake") {
+			t.Fatalf("output does not carry the receipt naming devaf:\n%s", run.output)
+		}
+		for _, line := range strings.Split(run.output, "\n") {
+			if strings.HasPrefix(line, "installed codeaf") {
+				t.Fatalf("a devaf install's receipt says %q:\n%s", line, run.output)
+			}
 		}
 		if got := strings.Split(strings.TrimSpace(run.output), "\n"); got[len(got)-1] != `export PATH="`+dir+`:$PATH"` {
 			t.Fatalf("last line = %q:\n%s", got[len(got)-1], run.output)
@@ -920,6 +928,9 @@ func TestV1InstallerName(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(dir, "devaf")); err != nil {
 			t.Fatal(err)
+		}
+		if !strings.Contains(fromEnv.output, "installed devaf · codeaf "+tag+" · fake") {
+			t.Fatalf("an install named from the environment does not name devaf in its receipt:\n%s", fromEnv.output)
 		}
 		flag := runInstaller(t, github, []string{"--name", "mine", "--dev"},
 			"CODEAF_INSTALL_DIR="+dir, "CODEAF_INSTALL_NAME=ignored", "CODEAF_NO_MODIFY_PATH=1")

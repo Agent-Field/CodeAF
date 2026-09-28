@@ -39,7 +39,7 @@ func TestClickingATabWordWorksFromEveryPlace(t *testing.T) {
 			if !ok {
 				t.Fatalf("the %s tab is not on the bar the %s place drew", target.word(), place.id.word())
 			}
-			if a.tabRow != placeTabRow {
+			if a.tabRow != navRow {
 				t.Fatalf("the %s place drew its tab bar on row %d", place.id.word(), a.tabRow)
 			}
 			drive(t, a, tea.MouseClickMsg{X: x, Y: a.tabRow, Button: tea.MouseLeft})
@@ -491,7 +491,7 @@ func placeFootText(frame string) string {
 
 // A PANEL'S HEADING IS A DOOR INTO THE PLACE IT NAMES, on the grid at two
 // columns and at three: `needs you`, `tasks` and `since you left` open tasks,
-// `spend` opens spend and `scheduled` standing — and `projects` and `threads`,
+// `spend` opens spend and `standing` opens standing — and `projects` and `threads`,
 // which name nothing but their own panels, open nothing and leave home up
 // (`threads` opened the typed search until 2026-09-17; the box under home is
 // the search now). The heading is found by its WORDS on the painted frame and

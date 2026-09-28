@@ -156,3 +156,22 @@ func TestTaskRetryOffersEveryStoredRunnerAndUnsuccessfulEnding(t *testing.T) {
 		}
 	}
 }
+
+// A PROGRAM'S FAILED TASK OFFERS NO RETRY, because the engine's retry reopens
+// one of its own nodes and a program's run is not one.
+func TestAProgramsFailedTaskOffersNoRetry(t *testing.T) {
+	a, _, entry := retryFixture(t)
+	if !a.taskCanRetry(entry) {
+		t.Fatal("the fixture's ordinary failed task is not offered a retry")
+	}
+	a.taskUpdate(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{ID: 7, Title: "Repair export", State: session.TaskFailed, Report: "old failure", Program: "senior-dev", EndedAt: time.Now()}})
+	entry.Program = "senior-dev"
+	a.taskSheet.detail = entry
+	if a.taskCanRetry(entry) {
+		t.Fatal("a program's failed task is offered a retry the engine refuses")
+	}
+	rows, _, _, _ := a.taskCardFrame(120, 40)
+	if text := ansi.Strip(strings.Join(rows, "\n")); strings.Contains(text, taskRetryWord) {
+		t.Fatalf("the card offers %q on a program's task:\n%s", taskRetryWord, text)
+	}
+}

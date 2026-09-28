@@ -27,6 +27,10 @@ type Report struct {
 	Steps   int
 	USD     float64
 	Waiting bool
+	// Verdict is a program's own word for the finished work it handed in —
+	// senior-dev's `pass` or `pass-unverified` — when a delegated run's program
+	// finished; empty for every other worker ([delegate.Terminal.Verdict]).
+	Verdict string
 }
 
 // Worker is one task's executor. The supervisor never talks to a model
@@ -78,6 +82,24 @@ type Limits struct {
 	// every caller that does not ask for it keeps the run it had — no check
 	// tasks, nothing new on the plan.
 	ReviewRound bool
+}
+
+// costDust is the most a dollar limit may still have left and be reached: a
+// billionth of a dollar, far below any call's price and far above the float
+// rounding in a sum of prices. The model API a program's calls go through
+// reads its ceiling the same way (internal/provider/modelapi's ceilingReached).
+const costDust = 1e-9
+
+// costReached reports whether a run's spend has reached its dollar limit.
+//
+// A LIMIT WITH NOTHING LEFT IS REACHED WITH NOTHING SPENT. The conversation
+// hands a run whose person's limit is already spent the smallest positive
+// figure, because zero means no limit at all; read as `spent >= limit`,
+// nothing spent was still under it, and a run whose program's first call was
+// refused for it ended as work that did not finish instead of on the limit the
+// person set.
+func (l Limits) costReached(spent float64) bool {
+	return l.CostUSD > 0 && l.CostUSD-spent <= costDust
 }
 
 // stepsPerTaskKey is the type behind the context value, so a worker reads its

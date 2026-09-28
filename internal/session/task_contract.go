@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"strconv"
 	"strings"
 	"time"
@@ -307,6 +308,13 @@ const (
 	// Its reason names the dollar limit ([taskReasonCostLimit]), and the two
 	// endings exist apart so a person who set both is told which one fired.
 	TaskEndingCostLimit TaskEnding = "cost-limit"
+	// TaskEndingProgram says the program a task was handed to
+	// (delegate_door.go) ended it without finishing, and said why: its own
+	// check did not pass what it made, or it stopped on its own ceiling. The
+	// program's sentence is the reason ([TaskReasonOf]), and it is not a fault:
+	// nothing broke, a program judged its own work and said so, and what it
+	// made is on its branch. A program that crashed is [TaskEndingError].
+	TaskEndingProgram TaskEnding = "program"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"
@@ -349,9 +357,10 @@ const (
 	// "The work did not finish" and "nobody was there to carry it on" are
 	// different news with different consequences, and collapsing the second into
 	// the first is how a run whose window was closed came back reading as though
-	// it had gone wrong. A person's answer is the only thing that moves it, and
-	// the answer is to continue it or to leave it ([TaskAskContinue]); continuing
-	// spends money, so nothing here moves on its own.
+	// it had gone wrong. Nothing here moves it on its own, because continuing
+	// spends money; and nothing a person can press moves it yet either, so the
+	// row asks no question and raises no mark (task_status.go's
+	// [taskInterruptedReason]) until the card that carries a run on lands.
 	TaskInterrupted TaskState = "interrupted"
 )
 
@@ -457,6 +466,28 @@ type TaskNotice struct {
 	// worktree. It is on the proposal AND on every update, because it is the one
 	// fact about a node that is true before it starts and after it lands.
 	Kind TaskKind
+	// Program is the program codeaf carries that this work is handed to —
+	// senior-dev — by the one name that program answers to (the Name of its
+	// [delegate.Delegate], the word its command row says), and "" for every task
+	// a worker of this conversation's own does, which is almost all of them.
+	//
+	// IT IS ON THE PROPOSAL AND ON EVERY ROW A PROGRAM'S RUN PUBLISHES, and that
+	// is the whole of why it is here. A surface used to learn a program's name
+	// only from the run's plan rows, which it reads on a beat of its own and
+	// drops on a conversation switch — so the card a person answered could not
+	// say which program the work was going to, and a program's row on the side
+	// list looked exactly like an ordinary task's for its first seconds and again
+	// after every switch. Carried here, the badge a program's work wears
+	// (internal/tui3's programbadge.go) is there from the first frame.
+	//
+	// IT IS A FACT FOR THE ROW'S WHOLE LIFE, like Kind above it: settled before the
+	// work starts and moved by nothing that happens to the work afterwards, so a
+	// publisher that forgets it has not changed it ([Agent.publishRunRow] carries
+	// it forward).
+	Program string
+	// Ceiling is the finite allowance a proposed program run will start with,
+	// spelled for the approval card. Ordinary tasks leave it empty.
+	Ceiling string
 
 	// ── proposal fields (EventTaskProposal) ─────────────────────────────
 
@@ -602,6 +633,30 @@ type TaskNotice struct {
 	// carries these facts in its own record. Nil is a row whose copy was never
 	// recorded, which is a run that cannot be carried on.
 	Copy *TaskCopyRecord
+	// PendingRun keeps an admitted request before it owns a working copy.
+	PendingRun *PendingRunRecord
+	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS, and it is the one
+	// fact that tells a row the store answers for from a row the graph holds a
+	// node for. It is set on a RUN's row and nowhere else, by the door that
+	// minted both halves in one breath (task_run_belt.go's
+	// [Agent.startKnownTaskRun] names the store task with the number the row
+	// wears), and it is empty on every node of the session's own tree.
+	//
+	// IT IS SPELLED THE ONE WAY A STORE ID CROSSES THIS SEAM ([planStoreID]):
+	// the same spelling [PlanTaskRow.ID] carries and [Agent.PlanTaskPage] is
+	// asked for. The store's own bare id is answered under by nothing a surface
+	// can reach, so a row carrying that instead would name an identity no read
+	// in this package joins.
+	//
+	// IT IS AN IDENTITY AND NOT A DESCRIPTION. A surface reading it knows this
+	// row and that store task are one piece of work read from two ends, so it
+	// can draw the one of them the store is the authority for — its state word,
+	// and the page carrying its worker's trajectory. Before this field existed
+	// the only link was the TITLE the two halves happened to share, which
+	// cannot tell a run's row from a node that merely wears the same words, and
+	// the place drew the row whose Enter opened a room the engine holds no node
+	// for (internal/tui3's taskplan.go).
+	PlanTask string
 	// Merge is how the branch came home: "merged", "kept" (finished but left
 	// on its branch), "conflicted" (branch kept), "inplace" (a non-git
 	// workspace ran in the person's tree), or "" while running.
@@ -763,6 +818,12 @@ type TaskNotice struct {
 	Model string
 	// NextModel is a saved continuation choice; Model still names the last attempt.
 	NextModel string
+	// Crew is the crew the router picked for this task — the class it read the
+	// task as, each seat's model and route, which seats were pinned, and the
+	// estimate — and nil on work that was not routed (taskcrew.go). The card
+	// draws its crew line from it, with CostUSD as the actual beside the
+	// estimate once there is one.
+	Crew *crewroute.Decision
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as
@@ -919,4 +980,13 @@ func (c *TaskCall) Received() int {
 		return 0
 	}
 	return c.Tokens + c.Reasoning
+}
+
+// PendingRunRecord is the accepted work needed to rejoin machine admission after
+// restart. It is cleared once the working copy is recorded, before workers start.
+type PendingRunRecord struct {
+	Brief  string   `json:"brief"`
+	Ground string   `json:"ground"`
+	Mode   TaskMode `json:"mode"`
+	Asked  []string `json:"asked,omitempty"`
 }

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -32,6 +33,12 @@ const (
 	trajectoryStepKind  = "step"
 	trajectoryEndKind   = "end"
 	trajectoryBeginKind = "begin"
+	// trajectoryNotesKind is the line that says which of the task's notes a
+	// worker of it has already had: handed over at a step boundary, or written
+	// by that worker itself. It is not a step and every step reader skips it,
+	// because it records what a worker KNOWS rather than anything it did
+	// ([notesAlreadyHad] is its one reader).
+	trajectoryNotesKind = "notes"
 )
 
 // observationHeadBytes is how much of one step's observation the record
@@ -96,6 +103,16 @@ type Step struct {
 	Result string `json:"result,omitempty"`
 	Reason string `json:"reason,omitempty"`
 
+	// StartedAt and EndedAt are a PROGRAM's own clock on the ending line of the
+	// task it was handed: the instant codeaf started its process and the
+	// instant that process was gone — the pair the program record carries
+	// (delegate.ProgramRecord). They are zero on every other line, on an ending
+	// written by a road that never started a process, and on every line a
+	// worker of this conversation's own wrote. Step lines never carry them, so
+	// the session's mirror of the step line (PlanStep) has no use for them.
+	StartedAt time.Time `json:"started_at,omitzero"`
+	EndedAt   time.Time `json:"ended_at,omitzero"`
+
 	// ExitsRecorded is stamped true by a build that records each command's
 	// exit, on the OPENING line it writes before any step and on the ending
 	// line; bashworker.go sets it at both. A reader uses it to tell a record
@@ -103,6 +120,38 @@ type Step struct {
 	// before exits were recorded: the first refuses a holds verdict that never
 	// ran its checks, the second falls back to reading.
 	ExitsRecorded bool `json:"exits_recorded,omitempty"`
+
+	// Notes is the notes line's one field: the ids of the task's notes a worker
+	// of it has had, handed over or written itself ([trajectoryNotesKind]).
+	Notes []string `json:"notes,omitempty"`
+}
+
+// notesAlreadyHad reads back every note id a worker of this task has already
+// had, across every launch of it, so a worker woken for the same task starts
+// with them marked.
+//
+// A NOTE IS HANDED TO A TASK ONCE, NOT ONCE PER LAUNCH. The mark that stops a
+// second delivery lived in one worker's memory, so a parent woken to integrate
+// its children, or a task parked and woken, was handed the same older notes
+// again at its first boundaries — up to a delivery's worth of words it had
+// already been told, crowding out the one note that was new. The record is
+// where a task's history lives, so that is where the mark is kept.
+func notesAlreadyHad(storeDir, id string) map[string]bool {
+	had := map[string]bool{}
+	data, err := os.ReadFile(filepath.Join(plandb.TaskDir(storeDir, id), trajectoryName))
+	if err != nil {
+		return had
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		var step Step
+		if json.Unmarshal([]byte(strings.TrimSpace(line)), &step) != nil || step.Kind != trajectoryNotesKind {
+			continue
+		}
+		for _, note := range step.Notes {
+			had[note] = true
+		}
+	}
+	return had
 }
 
 // Trajectory reads one task's recorded steps back, in the order they were
