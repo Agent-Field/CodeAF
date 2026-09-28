@@ -80,9 +80,7 @@ def main():
     dirs = sys.argv[1:]
     if not dirs:
         root = pathlib.Path(RESULTS)
-        dirs = sorted(str(p) for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")
-                      and not p.name.endswith("-gold") and not p.name.endswith("-negative")
-                      and not p.name.endswith("-seal"))
+        dirs = sorted(str(p) for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))
     rows = [row(d) for d in dirs]
     print(f"{'DIR':44} {'TASK':30} {'ARM':12} {'MODEL':22} "
           f"{'SCORE':>6} {'PASS':>4} {'FLAG':>7} {'COST$':>7} {'GUARD$':>7} {'OUT TOK':>8} {'WALL':>6} NOTE")
