@@ -35,6 +35,16 @@ func sendRow(a *app, args, output string) {
 	a.touch()
 }
 
+// showTeamDetails explicitly opens retained work for thread-content assertions.
+// sendRow itself preserves the compact default used by the jump tests.
+func showTeamDetails(a *app) {
+	for i := range a.entries {
+		if a.entries[i].kind == entryTool || a.entries[i].kind == entryTeam {
+			a.revealTrafficEntry(i)
+		}
+	}
+}
+
 // THE MANAGER'S QUESTION IS A THREAD CARD THAT GROWS. The team_send row says
 // who it went to and that it was a directive, quotes the words under it, and
 // each member's answer is attached under it, muted, as it is read; the
@@ -49,6 +59,7 @@ func TestThreadCardGrowsAsRepliesLand(t *testing.T) {
 		To: teamstore.ToSeveral, Handles: []string{price, rail}, Text: "status please"})
 	trafficReadNow(t, a)
 	sendRow(a, `{"to":"@`+price+` @`+rail+`","text":"status please","kind":"directive"}`, "Sent a directive to @"+price+", @"+rail+" ("+teamstore.ThreadNumber(q)+").")
+	showTeamDetails(a)
 	text := bodyText(a)
 	if !strings.Contains(text, teamManagerGlyph+" to @"+price+" @"+rail+" · do") || !strings.Contains(text, "│ status please") {
 		t.Fatalf("the call is not a thread card:\n%s", text)
@@ -87,6 +98,8 @@ func TestThreadCardAnswerExpandsOnPress(t *testing.T) {
 	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: long, Answers: q})
 	trafficReadNow(t, a)
 	sendRow(a, `{"to":"`+price+`","text":"status?","kind":"directive"}`, "Sent a directive to @"+price+" ("+teamstore.ThreadNumber(q)+").")
+	drive(t, a, key("ctrl+e"))
+	openFirstCaption(t, a)
 	if strings.Contains(bodyText(a), "END") {
 		t.Fatal("the answer is drawn whole before a press")
 	}
@@ -139,12 +152,14 @@ func TestThreadCardFoldsTheDeliveredAnswers(t *testing.T) {
 	note := "Your team's replies started this turn; the person did not speak.\n\nTeam traffic in \"harbor\", which you manage. These are your members' messages, not the person's words:\nfrom @" + price + ": prices are cached\n(rule)"
 	a.entries = append(a.entries, entry{kind: entryTeam, text: note, settled: true,
 		team: []session.TeamLine{{Team: "harbor", From: price, Kind: teamstore.KindNote, Text: "prices are cached"}}})
+	showTeamDetails(a)
 	text := bodyText(a)
 	if strings.Count(text, "prices are cached") != 1 || !strings.Contains(text, "@"+price+" answered · in the thread above") {
 		t.Fatalf("the delivered answer is drawn twice, or its line is missing:\n%s", text)
 	}
 	a.entries = append(a.entries, entry{kind: entryTeam, text: note, settled: true,
 		team: []session.TeamLine{{Team: "harbor", From: price, Kind: teamstore.KindNote, Text: "an aside nobody asked for"}}})
+	showTeamDetails(a)
 	if text := bodyText(a); !strings.Contains(text, "an aside nobody asked for") {
 		t.Fatalf("a line that answers nothing was folded:\n%s", text)
 	}
@@ -171,6 +186,7 @@ func TestThreadCardMemberMirror(t *testing.T) {
 	note := "Team traffic in \"harbor\" for you (@" + price + "). These are the team's messages, not the person's words:\n◆ directive from manager " + teamstore.ThreadNumber(q) + ": status please\n(rule)"
 	a.entries = append(a.entries, entry{kind: entryTeam, text: note, settled: true,
 		team: []session.TeamLine{{Team: "harbor", From: teamstore.FromManager, Kind: teamstore.KindDirective, Text: "status please", Thread: q}}})
+	drive(t, a, key("ctrl+e"))
 	text := bodyText(a)
 	card := strings.Index(text, "│ status please")
 	mine := strings.Index(text, "└ @"+price+"  prices are cached")

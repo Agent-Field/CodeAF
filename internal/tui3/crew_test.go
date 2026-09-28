@@ -236,6 +236,7 @@ func TestTaskEffortWordsReachTheSession(t *testing.T) {
 }
 
 // `/redo stronger` is the one form of /redo, and it reaches the session.
+// Bare `/redo` defaults to stronger.
 func TestRedoStrongerReachesTheSession(t *testing.T) {
 	a, _ := sheetApp(t)
 	door := &crewEffortAgent{fakeAgent: &fakeAgent{model: "openai/gpt-4.1-mini"}}
@@ -243,6 +244,11 @@ func TestRedoStrongerReachesTheSession(t *testing.T) {
 	runCmd(a.runRedo("stronger"))
 	if !door.redone {
 		t.Fatal("/redo stronger never reached the session")
+	}
+	door.redone = false
+	runCmd(a.runRedo(""))
+	if !door.redone {
+		t.Fatal("bare /redo never reached the session")
 	}
 	door.redone = false
 	runCmd(a.runRedo("harder"))

@@ -670,7 +670,10 @@ type TaskReplyTag struct {
 type Event struct {
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
-	Kind          EventKind
+	Kind EventKind
+	// Addressed is a producer's declaration that streamed text is for the person.
+	// It does not imply a completed response and survives interruption.
+	Addressed     bool `json:"Addressed,omitempty"`
 	Text          string
 	ShortTitle    string `json:"ShortTitle,omitempty"`
 	Tool          string
@@ -2372,8 +2375,9 @@ type Agent struct {
 	// definition block rides at the front of every request and a definition that
 	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
 	// the law).
-	tools       []bare.Tool
-	definitions []ai.ToolDefinition
+	presentation *presentationIndex
+	tools        []bare.Tool
+	definitions  []ai.ToolDefinition
 	// served is what the belt cannot say about the tools an ACCOUNT named
 	// rather than this build (served.go): whose account each one is, what the
 	// account calls it, and which capability governs it. Keyed by the name the
@@ -2488,16 +2492,11 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
-	// laneStop ends this session's lane-sheet beat (agent.go's
-	// [Agent.startLaneBeat]), and is nil for every session that runs no beat —
-	// routing off, a base that is not a router, no model to fetch a sheet for.
-	//
-	// It is a CANCEL AND NOT A WAIT, which is where it parts company with
-	// memoryStop above. A memory pass owes the store a write and Close waits for
-	// it; a beat owes nothing to anybody — the sheet it was about to fetch is a
-	// prior the next session will fetch again — so a quit cuts it and does not
-	// look back.
+	// laneStop cancels the session's lane context, including probes. laneDone
+	// joins the optional sheet beat, whose cache writes must finish before Close
+	// returns. Both are established before the agent is published.
 	laneStop context.CancelFunc
+	laneDone chan struct{}
 	// laneCtx is the context the beat runs under and the one a probe rides. It
 	// is the SESSION'S life rather than a turn's, deliberately: a probe is
 	// bought while somebody is typing and outlives the keystroke that bought it,

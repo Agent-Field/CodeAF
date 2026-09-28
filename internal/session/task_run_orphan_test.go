@@ -210,8 +210,8 @@ func TestClosingUnderAProgramsRunEndsItInItsStoreFirst(t *testing.T) {
 		t.Fatalf("the second run is on root %q with brief %q", spec.Store.RootID(), spec.Store.Task(spec.Store.RootID()).Description)
 	}
 	endBeltRun(t, again, second)
-	// Start returning is not the end of the owner's bookkeeping. Join the
-	// closed agent's run before the fixture removes its store and workspace.
+	// The double returning is not the owner finishing: the driver still owes
+	// its final record and store close before the fixture can remove its files.
 	endBeltRun(t, agent, first)
 }
 

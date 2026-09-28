@@ -121,6 +121,12 @@ func TestAHedgeReplacementLeavesOnlyTheRescuedAnswerOnThePage(t *testing.T) {
 	if strings.Contains(page, "PARTIALTEXT") {
 		t.Fatalf("the dead lane's answer stayed on the page:\n%s", page)
 	}
+	if strings.Contains(page, "that provider went quiet") {
+		t.Fatalf("retry bookkeeping escaped the compact window: %s", page)
+	}
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
+	page = livePage(a)
 	if got := strings.Count(page, "that provider went quiet"); got != 1 {
 		t.Fatalf("the replacement line appears %d times, want once:\n%s", got, page)
 	}

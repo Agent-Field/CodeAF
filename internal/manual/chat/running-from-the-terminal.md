@@ -267,6 +267,10 @@ reference somebody consults and it used to be more than half of what `--help` pr
 Every verb also answers `<verb> --help` with its own line and its flags, and `codeaf plan
 --help` answers with all four of its subcommands.
 
+The top-level synopsis includes `do` worker limits and model choices (`--slots`,
+`--best`, `--cheap`, `--pin`, and `--check-model`). It also names chat
+`--max-cost` and `--max-hours`; those unattended-work limits require `--yolo`.
+
 ## What $? means after a headless one-shot — the codes it leaves with
 
 **One table, and `codeaf do`, `codeaf exec` and `codeaf run` all leave on it.**

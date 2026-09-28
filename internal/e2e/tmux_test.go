@@ -22,9 +22,12 @@
 // stood by accident" and gets an owned session in a private work directory
 // (cmd/codeaf's chatv3_layout.go), which is not the shape any of these
 // scenarios are about, so the workspace is always a repository.
+// Every run also gets scheduler stand-ins and a separate login folder. The
+// machine's own background timer is never this suite's timer.
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -50,6 +53,7 @@ type rig struct {
 	t    *testing.T
 	name string
 	home string
+	host hostGuard
 	ws   string
 	dead bool
 }
@@ -121,7 +125,16 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	}
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
-	rows["model.talk"] = "deepseek/deepseek-v4-flash"
+	for _, key := range []string{config.KeyChatModel, config.KeyTaskModel,
+		config.KeyTierWorkerModel, config.KeyTierLowModel, config.KeyTierHighModel,
+		config.KeyTierReflexModel, config.KeyTierMastermindModel, config.KeyModelFallbacks} {
+		rows[key] = e2eModel
+	}
+	var pins []string
+	for _, role := range textRoles {
+		pins = append(pins, string(role)+":"+e2eModel)
+	}
+	rows[config.KeyModelRoles] = strings.Join(pins, ",")
 	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
 	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
 	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is
@@ -226,6 +239,17 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 	// itself through [startWithEnv], and the one that tests the default says no
 	// word at all ([testTaskOnTheDefaultBelt]).
 	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=node"},
+		name, home, ws, cols, rows, args...)
+	r.skipSetup(t)
+	return r
+}
+
+// startDefault uses the same public launch as a person, with no belt override.
+// Historical node-specific scenarios keep start; default-road acceptance uses
+// this door so a private test setting cannot hide the shipped worker harness.
+func startDefault(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
+	t.Helper()
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
 		name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
 	return r
@@ -337,6 +361,10 @@ func startFresh(t *testing.T, name, home, ws string, cols, rows int, args ...str
 // front of the assignments, then the state root and the terminal.
 func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
+	// THE PRODUCT WRITES THE TIMER DEFINITION UNDER HOME BEFORE IT ASKS
+	// SYSTEMCTL OR LAUNCHCTL TO LOAD IT. Both must belong to this rig, or
+	// #1631 replaces the developer's timer with a deleted checkout.
+	g := guardHost(t, home)
 	// EVERY RUN ON THIS HOST NAMES ITS OWN RIG. Several checkouts run this
 	// suite at once on one machine, and with a fixed session name each start()
 	// kills the other run's rig before opening its own — a whole suite then
@@ -352,6 +380,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// and a scenario that names none really runs with the variable absent.
 	command := []string{"env", "-u", "CODEAF_TASK_BELT"}
 	command = append(command, env...)
+	command = append(command, g.tokens(env)...)
 	command = append(command,
 		"CODEAF_HOME="+home,
 		"TERM=xterm-256color",
@@ -372,7 +401,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	if out, err := launch.CombinedOutput(); err != nil {
 		t.Fatalf("tmux new-session: %v\n%s", err, out)
 	}
-	r := &rig{t: t, name: name, home: home, ws: ws}
+	r := &rig{t: t, name: name, home: home, host: g, ws: ws}
 	t.Cleanup(func() {
 		if t.Failed() {
 			r.dump()
@@ -435,8 +464,6 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	}
 	return r
 }
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func (r *rig) resize(cols, rows int) {
 	r.t.Helper()
@@ -601,7 +628,7 @@ func (r *rig) kill() {
 		return
 	}
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
-		if syscall.Kill(pid, 0) != nil {
+		if terminalProcessExited(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -610,12 +637,26 @@ func (r *rig) kill() {
 	// wait. This PID belongs to the test's own pane, never to another rig.
 	_ = syscall.Kill(pid, syscall.SIGKILL)
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		if syscall.Kill(pid, 0) != nil {
+		if terminalProcessExited(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	r.t.Errorf("the test terminal process %d did not exit before cleanup", pid)
+}
+
+// On Linux an exited child can remain a zombie until tmux reaps it. Such a
+// process cannot write into the fixture, but kill(pid, 0) still succeeds.
+func terminalProcessExited(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return true
+	}
+	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	} // Other hosts keep the portable signal check.
+	end := strings.LastIndexByte(string(status), ')')
+	return end >= 0 && len(status) > end+2 && status[end+2] == 'Z'
 }
 
 // dump is the transcript this suite owes anybody reading a failure: the screen,
@@ -670,8 +711,7 @@ func clip(s string, n int) string {
 // the launchd agent and the systemd timer do.
 func tick(t *testing.T, home string) string {
 	t.Helper()
-	command := exec.Command(binary(t), "tick")
-	command.Env = append(os.Environ(), "CODEAF_HOME="+home)
+	command := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home), binary(t), "tick")
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("codeaf tick: %v\n%s", err, out)

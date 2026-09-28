@@ -90,6 +90,7 @@ var commands = []command{
 	// A project-less conversation needs this once, while /compact is a daily
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.
+	{name: "workspace", desc: "choose a folder to anchor this conversation · or /workspace <path>"},
 	{name: "workspace", args: "<path>", desc: "anchor this conversation to a project"},
 	// AND THE OTHER HALF OF THE SAME ERRAND, directly under it: /workspace is
 	// the one-shot anchor a project-less conversation needs once, and this is
@@ -129,6 +130,8 @@ var commands = []command{
 	// looking, /compact is one of them, and a row inserted above it would push
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
+	{name: "dismiss", desc: "hide settled task notifications here"},
+	{name: "dismiss", args: "undo", desc: "restore dismissed task notifications"},
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
@@ -293,6 +296,7 @@ var commands = []command{
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
 	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
+	{name: "task", desc: "every task this machine has run · ctrl+.", door: sendDoorTask},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// HOW HARD TO TRY THIS ONE TASK is said in the ask and sticks to nothing
@@ -300,6 +304,7 @@ var commands = []command{
 	// --cheap the cheapest, and neither moves the next task.
 	{name: "task", args: "--best <brief>", desc: "…on the strongest crew allowed, this task only", door: sendDoorTask},
 	{name: "task", args: "--cheap <brief>", desc: "…on the cheapest crew allowed, this task only", door: sendDoorTask},
+	{name: "redo", desc: "the last task again, on a stronger crew"},
 	{name: "redo", args: "stronger", desc: "the last task again, on a stronger crew"},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
 	// `adaptive <brief>`, which opened a planner that drew the whole graph before

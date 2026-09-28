@@ -1400,7 +1400,7 @@ and inside a task the work then *waits* for that command instead of asking what 
 Nothing is asked over the wait, no step is counted, and no `[stuck]` note can be earned,
 because a task that is waiting makes no calls at all. What wakes it is the command's own
 ending, and that ending arrives whole: the exit line, the command's last lines, and the path
-to the full log, all in the one turn. This is why a task does not `sleep` and `tail` its own
+to the log, all in the one turn. This is why a task does not `sleep` and `tail` its own
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately
@@ -3340,3 +3340,27 @@ object beside its matching tool result, within the existing context budget. A la
 input is explicitly marked omitted, rather than shown as a partial object. Earlier
 failures remain part of the evidence. The model continuing the work is told to check a
 reader's objection against the actual work before changing an already-correct result.
+
+## Worker starts in home instead of the project — missing relative documents
+
+When a top-level task has no stronger folder instruction and the conversation's
+working directory is outside a repository, codeaf uses its configured project
+repository. A child keeps its parent's directory, including an ordinary folder;
+a project fallback must not move it elsewhere. Explicit placement still wins.
+
+Every bash worker and checker receives its assigned working directory before the
+work order. Original checkout paths in the request stay quoted, but project edits
+and checks belong in the assigned directory; unrelated reference paths stay literal.
+
+Bash workers search the assigned project with `rg` or `git grep`. A missing
+relative document calls for checking the working directory and project first,
+not a recursive search of the whole home directory. `plandb --help` explains
+the available plan commands without looking for repository design documents.
+
+## plandb done says already terminal — cancelled tasks and ownership
+
+A task cancelled by its supervisor stays cancelled. A late `plandb done` reports
+`task "<id>" is already terminal (cancelled)` instead of `is not claimed`.
+The refusal does not reopen the task or change its result. Active tasks still
+require their owner; an automatically completed composite's empty placeholder
+can still receive its final report.

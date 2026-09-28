@@ -612,7 +612,13 @@ func captionText(c caption) string {
 	if c.source != captionSaid && c.told != "" {
 		return captionWords(c.told)
 	}
-	return shortCaption(c.text)
+	text := shortCaption(c.text)
+	if strings.ContainsAny(text, "#*`[") {
+		// Caption prose is rendered as markdown too, then reduced to its
+		// readable text before the caption applies its own status styling.
+		text = strings.TrimSpace(ansi.Strip(strings.Join(proseRows(markdownStyler(), text, 500), " ")))
+	}
+	return text
 }
 
 // captionRows draws the step title. IT WRAPS; IT NEVER ELLIPSIS-CUTS. A

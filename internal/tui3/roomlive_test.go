@@ -268,7 +268,7 @@ func TestARoomOpensAtTheLiveEdgeAndNotAtTheTop(t *testing.T) {
 	a.touch()
 	// This assertion is about the reader who requests the retained history.
 	// The compact default deliberately does not fill the screen with it.
-	openRoomCompactWork(t, a)
+	revealTestWork(a)
 
 	rows := a.roomRows(a.bodyWidth())
 	height := a.viewHeight()

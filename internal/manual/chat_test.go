@@ -2980,6 +2980,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does codeaf do exit with", "worker-harness"},
 		{"does a subtask see my original request", "worker-harness"},
 		{"who checks a task's work", "worker-harness"},
+		{"why did my task's check say issue_.go does not exist", "worker-harness"},
+		{"why was no fix task started for a check", "worker-harness"},
 		{"why do the step numbers skip", "worker-harness"},
 		{"a step is missing and the cd at the front of the command is gone", "worker-harness"},
 		{"a line under steps says refused with no number in front", "worker-harness"},

@@ -44,6 +44,7 @@ func firstTool(t *testing.T, a *app) int {
 // toolRowText is the first tool row, painted.
 func toolRowText(t *testing.T, a *app) string {
 	t.Helper()
+	revealTestWork(a)
 	for _, r := range rows(a) {
 		if r.hit == hitTool {
 			return r.text
@@ -164,24 +165,24 @@ func TestAnnouncementsPairWithTheirOwnBeginsByPayload(t *testing.T) {
 	}
 }
 
-// A FAILURE OPENS ITSELF. Every other expansion waits to be asked for; the one
-// row whose detail is the reason the person is looking at the screen does not.
-func TestAFailedToolAutoExpandsItsDetail(t *testing.T) {
+// A failure stays compact until the reader asks; the complete diagnostic is
+// retained behind the same disclosure as every other tool call.
+func TestAFailedToolKeepsItsDetailBehindDisclosure(t *testing.T) {
 	a := toolApp(t, tokens.ANSI256, failedCall("bash",
 		`{"command":"go build ./..."}`,
 		"undefined: railMid",
 		"undefined: railMid\n\nCommand exited with code 1"))
-
-	at := firstTool(t, a)
-	if !a.entries[at].open {
-		t.Fatal("a failed call did not open itself")
-	}
 	body := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(body, "│ undefined: railMid") {
-		t.Fatalf("the failure's detail is not on screen without a click:\n%s", body)
+	if strings.Contains(body, "undefined: railMid") {
+		t.Fatalf("the failure detail opened without being requested:\n%s", body)
 	}
-
-	// A SUCCESS does not, and that asymmetry is the point.
+	if !strings.Contains(body, "failed") {
+		t.Fatalf("the compact summary hid the failure status:\n%s", body)
+	}
+	body = strings.Join(openFirst(t, a), "\n")
+	if !strings.Contains(body, "│ undefined: railMid") {
+		t.Fatalf("the requested failure detail is missing:\n%s", body)
+	}
 	ok := toolApp(t, tokens.ANSI256, call("bash", `{"command":"go build ./..."}`, "ok"))
 	if ok.entries[firstTool(t, ok)].open {
 		t.Fatal("a successful call opened itself")
@@ -561,6 +562,8 @@ func screenRowOf(t *testing.T, a *app, want func(row) bool) int {
 // because a click on it does not.
 func TestHoverAnswersOnInteractiveRowsAndNowhereElse(t *testing.T) {
 	a := toolApp(t, tokens.ANSI256, call("read", `{"path":"a.go"}`, "one\ntwo"))
+	revealTestWork(a)
+
 	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 
 	toolY := screenRowOf(t, a, func(r row) bool { return r.hit == hitTool })
@@ -708,6 +711,8 @@ func TestHoverReachesTheChoicesAndThePickerRows(t *testing.T) {
 func TestHoverRepaintsOnlyWhenTheAnswerChanges(t *testing.T) {
 	a := toolApp(t, tokens.ANSI256, failedCall("bash", `{"command":"go build"}`,
 		"first line", "first line\nsecond line\nthird line\n\nCommand exited with code 1"))
+
+	openFirst(t, a) // The reader asks to inspect the failed call.
 
 	var ys []int
 	body, _ := a.window(a.width, a.viewHeight())

@@ -1,93 +1,29 @@
 package tui3
 
-import "strings"
+import (
+	"github.com/charmbracelet/x/ansi"
+	"strings"
+)
 
-// ── THE ANSWER HIERARCHY ────────────────────────────────────────────────────
+// The hierarchy separates conversation from operational work on every deck.
+// User messages, confirmed tool-free responses and explicitly addressed [update]
+// messages stay visible. The audience marker is parsed by the shared session
+// layer; it is a protocol declaration, not a guess based on prose keywords.
+// Addressed updates can stream before the response boundary confirms them.
 //
-// An agentic turn is prose, then tools, then prose, then tools, then prose. This
-// surface used to paint every one of those prose blocks identically, so "let me
-// check the config first" arrived in the same ink, at the same margin, with the
-// same headings and the same weight as the sentence that actually answered the
-// question. A person scrolling back through an hour of work read a wall of
-// paragraphs with no way of telling which of them they had been waiting for.
+// Tool preambles and reasoning belong to the work disclosure. Unclassified
+// streaming prose remains compact until its response role is known. A completed
+// response remains a reply when later work starts. Interrupting that later work
+// preserves the completed reply and marks only the unfinished continuation cut.
 //
-// THE FIX IS STRUCTURAL AND NEEDS NO COOPERATION FROM THE MODEL. Four statements,
-// each true by construction:
+// Replies use full markdown at the body margin. Opened narration retains
+// markdown structure in quieter ink in the work column; raw markdown markers do
+// not substitute for rendering. Captions take the introducing narration, while
+// the remaining text and all intervening entries remain behind the step door.
 //
-//  1. PROSE FOLLOWED BY MORE WORK IN THE SAME TURN WAS NEVER THE ANSWER. It was
-//     narration — the surface saying what it was about to do — and the proof
-//     arrives the moment the next tool call opens under it. Nothing has to be
-//     guessed and nothing has to be parsed: the entry list's own shape says it.
-//  2. STREAMED PROSE STAYS COMPACT UNTIL THE RESPONSE CONFIRMS ITS ROLE. The
-//     provider can write a preamble before its tool call arrives. A tool-free
-//     response boundary promotes the reply without waiting for later checks.
-//  3. SETTLE IS THE CONFIRMATION. When the turn ends, whatever is last is the
-//     answer and everything above it in that turn is working material.
-//  4. AN INTERRUPTED TURN PROMOTES NOTHING ([entry.cut]). The turn ended without
-//     reaching an answer, and the absence of a flush, full-ink block under the
-//     work is the surface stating that plainly rather than pretending the last
-//     half-sentence was a reply.
-//
-// ── WHAT THE TWO TIERS LOOK LIKE, AND WHY ───────────────────────────────────
-//
-// THE ANSWER is unchanged: flush to the margin, the body ink, full markdown. It
-// is what this surface drew for every assistant block before the hierarchy
-// existed, and it goes on being drawn that way, because the answer is the thing
-// the reader came for and the rendering it already had is the right one.
-//
-// NARRATION DROPS INTO THE WORK COLUMN AT THE MUTED TIER, PLAIN. Three decisions,
-// each of them a law rather than a taste:
-//
-//   - THE INDENT IS THE ONE THE MACHINERY ALREADY WEARS (workfold.go's
-//     [workIndent]). Demoted prose is the surface doing things, which is what the
-//     two-column gutter means on every other row of a turn — a thought, a call,
-//     a call's output. It costs nothing to state and it says the whole thing:
-//     flush is said TO you, indented is done FOR you. [workEntry] has classified
-//     assistant blocks this way since the fold wave; this file is what finally
-//     makes the ink agree with the column.
-//
-//   - THE TIER IS THE NARRATION RUNG, NOT MUTED AND NOT DIM. Dim is the lane
-//     this surface says its OWN lines in — a note, a seam, a fold chip, a tool
-//     row's figures — and narration is not the surface talking about itself; it
-//     is the model's own prose, one rung back. It wore muted for a wave, and
-//     muted was the wrong hue for a paragraph: muted is the ACCENT one step
-//     back, right for a tool's name or a heading — a word or two of label —
-//     and paragraphs of it turned a working turn into a field of blue prose.
-//     So the working tier is the body's own hue family at the second voice's
-//     loudness ([hueNarr]): quieter than the answer in lightness, and never a
-//     different KIND of thing in hue.
-//
-//   - A DEMOTED BLOCK IS PLAIN, WITH NO MARKDOWN AT ALL. This is the honest
-//     simplification, and MARKDOWN OWNS WEIGHT (render.go's user-entry comment)
-//     is what forces it. Weight is the one channel a block cannot borrow without
-//     lying: a bold lead-in or a `##` heading inside demoted narration would
-//     render HEAVIER than the settled answer below it, and the hierarchy would be
-//     inverted by the very block it was drawn on. Nor can the weight simply be
-//     stripped — prose hands back rows with its own foregrounds already spliced
-//     in, and a second colour wrapped around them tears open at the first inner
-//     SGR 39 (render.go's [app.assistantRows] says why the promoted head is never
-//     repainted). So the demoted block takes the ONE rendering that carries no
-//     weight and no colour of its own: wrapped plain text, one tier, exactly the
-//     shape the live tail already uses with a different lightness in it. Nothing
-//     is lost that a person wanted — narration is two sentences and a verb — and
-//     what the reader gets instead is a block that cannot shout.
-//
-// ── AND THE BREATH ABOVE THE ANSWER ─────────────────────────────────────────
-//
-// A promoted answer under a turn that did work opens with ONE blank row
-// ([answerBreath]). It is emitted by [app.deckRows] with every other blank on
-// this surface, because [app.layout] is THE SPACING LAW and a block that appended
-// a row of its own would be a second one. A turn with no work in it is not given
-// the breath and renders byte-identically to what it rendered before this file
-// existed — pinned by TestATurnWithNoWorkIsUntouchedByTheHierarchy.
-//
-// ── ONE IDEOLOGY, EVERY CHAT SURFACE ────────────────────────────────────────
-//
-// Nothing here reads [app.entries]. The stamp runs over whatever deck is being
-// laid out, so the conversation, a task's room and a node's transcript inside a
-// run's page get the same hierarchy from the same rule — which is the guarantee
-// [deck] exists to make. Both chat and task rooms use the same response
-// boundary; the hierarchy is a property of the prose, not of its page.
+// These decisions are computed over the deck, so chat, manager, task and nested
+// transcript pages use the same classification. Explicit audience metadata is
+// persisted for replay alongside structural response boundaries.
 
 // stampHierarchy writes THE ANSWER HIERARCHY onto the blocks of one deck, before
 // any of them is asked for its rows.
@@ -136,22 +72,12 @@ func stampCaptions(es []entry, captions []caption) {
 	}
 }
 
-// workingProse is a demoted block's rows: the model's own words, wrapped plain,
-// at the tier one rung back from the body.
-//
-// It is a method of its own for [app.liveTail]'s reason — a test can ask for the
-// rows the renderer builds instead of spelling the paint out a second time — and
-// it is deliberately that function with one value changed, because the two are
-// the same idea at two ends of a block's life: the growing edge is the body ink
-// one step UP, and the working tier is the body ink one step DOWN.
-//
-// THE WIDTH IS THE COLUMN'S AND NOT THE FRAME'S. These rows are shifted two cells
-// right by the indent law after layout (render.go's [app.deckRows]), so a block
-// wrapped to the whole frame would be two cells wider than the column it is drawn
-// in — which is the overhang [workIndentCols] exists to let a block subtract, and
-// the reason [app.toolLine] subtracts it too.
+// workingProse renders disclosed narration as markdown structure in quiet ink.
+// Strip the markdown renderer's styling before applying the narration palette
+// so nested foreground resets cannot accidentally promote part of the block.
+// Layout uses the work column width; the shared row pass applies its indent.
 func (a *app) workingProse(text string, width int) []string {
-	rows := wrap(text, width-workIndentCols(width))
+	rows := a.renderMarkdown(text, max(1, width-workIndentCols(width)))
 	for i, line := range rows {
 		// A ROW WITH NOTHING ON IT IS LEFT ALONE, for [app.liveTail]'s reason:
 		// [trimBlanks] decides what to drop by asking whether a row is blank, and a
@@ -159,7 +85,7 @@ func (a *app) workingProse(text string, width int) []string {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		rows[i] = a.pal.narr(line)
+		rows[i] = a.pal.narr(ansi.Strip(line))
 	}
 	return trimBlanks(rows)
 }
@@ -233,7 +159,15 @@ func answerBreath(es []entry, i int) bool {
 // the turn still claiming to be an answer.
 func (a *app) cutTurn(turn int) {
 	changed := false
+	// A completed response already said its words to the person. Only the
+	// activity resumed after its boundary is being interrupted now.
+	from := 0
 	for i := range a.entries {
+		if a.entries[i].turn == turn && confirmedAnswer(&a.entries[i]) {
+			from = i + 1
+		}
+	}
+	for i := from; i < len(a.entries); i++ {
 		e := &a.entries[i]
 		// AND A CORRECTION IS NOT MARKED EITHER, for the person's own message's
 		// reason said again: it is a thing they said in full, and only the work

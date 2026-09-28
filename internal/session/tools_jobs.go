@@ -264,8 +264,9 @@ const (
 // each word here is paid dozens of times in one task and the prose around it is
 // paid never. Every rule the longer version stated is still stated, once.
 //
-// AND EVERY FIGURE IS INTERPOLATED. The ring's size, the kill grace and the
-// tail's bounds are all enforced somewhere else in this package ([jobRingBytes],
+// AND EVERY FIGURE IS INTERPOLATED. The ring's size, the spool's chunk size,
+// the kill grace and the tail's bounds are all enforced somewhere else in this
+// package ([jobRingBytes], [jobSpoolChunkBytes],
 // [jobTermGrace], [jobsDefaultTail], [jobsMaxTail]); a digit typed here would be
 // the second copy, and the second copy is the one that goes stale.
 // AND IT DOES NOT OFFER POLLING AS A WAY TO WAIT. `output` is still here for an
@@ -289,7 +290,7 @@ const (
 // each op does, what comes back, and where the whole log lives.
 var jobsDescription = "Background work: bash background:true commands and watches. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
 	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks). kill: SIGTERM the process group, SIGKILL " +
-	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's whole log is a file on disk, named when it started; read it when the tail is short. A running job also shows on their screen."
+	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's recent log is a bounded file on disk, named when it started; when older output has been discarded, its footer says so instead of promising a full log. A running job also shows on their screen."
 
 var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"integer","description":"Job id (output and kill need one)"},"tail":{"type":"integer","description":"Lines returned (default: ` +
 	strconv.Itoa(jobsDefaultTail) + `, max: ` + strconv.Itoa(jobsMaxTail) + `)"}},"required":["action"],"additionalProperties":false}`
@@ -298,6 +299,10 @@ var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","
 // same Tool shape, same wire discipline — and it is deliberately the ONLY way
 // the model reaches a job: the registry is not addressable from the prompt, so
 // there is one vocabulary for background work and it is this one.
+//
+// THE SPOOL IS BOUNDED (issue #1599), and the description does not promise a
+// full log: what a job keeps on disk is its most recent chunks, and the footer
+// a model reads says the truncation is there when any output has fallen out.
 func (a *Agent) jobsTool() bare.Tool {
 	return bare.Tool{
 		Name:        "jobs",

@@ -149,6 +149,23 @@ func beltRunEnv(t *testing.T) string {
 	return home
 }
 
+// beltModelPins preserves the fixture's resource settings while changing the
+// seats a test intends to exercise. Replacing the profile wholesale would
+// silently re-enable the real machine gate on a busy test host (#1525).
+func beltModelPins(t *testing.T, profileDir string, pins map[string]string) {
+	t.Helper()
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profileDir})
+	for key, value := range pins {
+		row, ok := settings.Row(key)
+		if !ok {
+			t.Fatalf("missing setting %s", key)
+		}
+		if err := row.Apply(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // beltPlandbDoor is the real plandb CLI behind the resolver's override, built
 // once for the package. THE LOOP ENDS IN THE STORE: a worker's task is done
 // when `plandb done` marks it so and no other way, so a scripted worker that
