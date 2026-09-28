@@ -129,6 +129,7 @@ def review_criteria(rubric, judge_input, key, model, prompt_version):
             f"{json.dumps(item['mechanical'], indent=2)}\n\n"
             "Answer the criterion question."
         )
+        usage = {}
         try:
             content, usage = call(model, system, user, key)
             verdict = parse_json_reply(content)
@@ -140,8 +141,8 @@ def review_criteria(rubric, judge_input, key, model, prompt_version):
             results[cid] = {"error": repr(e)[:400]}
             log(f"{cid}: judge call failed: {e}")
         usage_total["calls"] += 1
-        usage_total["prompt_tokens"] += (usage if 'usage' in dir() else {}).get("prompt_tokens", 0) if False else (results[cid].get("usage", {}) or {}).get("prompt_tokens", 0)
-        usage_total["completion_tokens"] += (results[cid].get("usage", {}) or {}).get("completion_tokens", 0)
+        usage_total["prompt_tokens"] += (usage or {}).get("prompt_tokens", 0)
+        usage_total["completion_tokens"] += (usage or {}).get("completion_tokens", 0)
     return results, usage_total
 
 
