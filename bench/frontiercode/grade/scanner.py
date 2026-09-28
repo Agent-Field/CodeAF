@@ -96,10 +96,12 @@ def read_proxy_log(path):
 
 def read_transcripts(run_dir):
     """Every line of every transcript the run wrote: the harness's action log
-    and any run log the rig kept, plus the sealed fixture's planted files."""
+    and its own records (whose step entries carry every model-written shell
+    command and web tool call), any run log, and a sealed fixture's planted
+    files."""
     texts = []
-    for pattern in ("**/delegate-actions.jsonl", "**/*.log", "**/transcript.txt",
-                    "**/events.ndjson"):
+    for pattern in ("**/delegate-actions.jsonl", "**/records.jsonl",
+                    "**/*.log", "**/transcript.txt", "**/events.ndjson"):
         for path in pathlib.Path(run_dir).glob(pattern):
             try:
                 texts.append((str(path), path.read_text(errors="replace")))
