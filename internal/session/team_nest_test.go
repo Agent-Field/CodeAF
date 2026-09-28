@@ -130,6 +130,9 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 	}
 	log, _ := teams.ReadTraffic(n.fixture.profile, harbor, "", 0)
 	start := last(log)
+	if !strings.Contains(said, "("+teams.ThreadNumber(start.ID)+")") {
+		t.Fatalf("start receipt lacks its root ID: %q", said)
+	}
 	if start.Kind != teams.KindStart || start.To != "api" || start.Team != backend.ID {
 		t.Fatalf("harbor's start line: %+v", start)
 	}

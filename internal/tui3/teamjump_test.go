@@ -230,9 +230,9 @@ func TestTrafficJumpRevealsACompletedToolInsideClosedWork(t *testing.T) {
 			for _, r := range a.visible(a.bodyWidth()) {
 				initiallyVisible = initiallyVisible || r.entry == 3
 			}
-			// On this base a send is already a visible thread card; a post is
-			// ordinary completed work. Exercise both paths honestly.
-			if initiallyVisible != (tool == "team_send") {
+			// Completed sends and posts both stay inside closed work until
+			// the person deliberately opens their Traffic row.
+			if initiallyVisible {
 				t.Fatalf("unexpected initial visibility for %s: %v", tool, initiallyVisible)
 			}
 			spend(t, a, a.trafficJump("", id))
@@ -247,5 +247,105 @@ func TestTrafficJumpRevealsACompletedToolInsideClosedWork(t *testing.T) {
 				t.Fatal("jump found the target but left its enclosing disclosure closed")
 			}
 		})
+	}
+}
+
+// A new-member root predates numbered tool receipts. Its exact accepted brief
+// still identifies the manager's call, and the delivered member card keeps ID.
+func TestTrafficStartRootRevealsManagerCallAndMemberBrief(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	handle, member := trafficHandle(t, a, harbor, "openrouter")
+	manager := a.frontTabKey()
+	brief := "Check the invoice report against the source rows"
+	id, err := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: handle, Text: brief})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: handle, To: teamstore.ToManager, Text: "Invoice rows checked", Answers: id})
+	trafficReadNow(t, a)
+	a.sideSetView(sideTraffic)
+	a.workMode = config.WorkFold
+	a.entries = foldFixture()
+	a.entries[3] = entry{kind: entryTool, tool: "team_start", text: "team_start", turn: 1, status: toolOK, settled: true,
+		detail: toolDetail{Args: `{"handle":"` + handle + `","brief":"` + brief + `"}`, Output: "Asked for a new member @" + handle + " in \"harbor\"."}}
+	a.touch()
+	for _, r := range a.visible(a.bodyWidth()) {
+		if r.entry == 3 {
+			t.Fatal("start should begin inside closed work")
+		}
+	}
+	_ = railLines(t, a)
+	x, y := sideRowOn(t, a, "thread/"+id)
+	sideClick(t, a, x, y)
+	if a.frontTabKey() != manager || a.traffic.landing.entry != 3 || a.traffic.landing.older {
+		t.Fatalf("root did not land on manager start: %+v", a.traffic.landing)
+	}
+	found := false
+	for _, r := range a.visible(a.bodyWidth()) {
+		found = found || r.entry == 3
+	}
+	if !found {
+		t.Fatal("root jump left manager start hidden")
+	}
+	spend(t, a, a.trafficGo(member))
+	note := "Team traffic in \"harbor\" for you (@" + handle + "). These are the team's messages, not the person's words:\n◆ brief from manager " + teamstore.ThreadNumber(id) + ": " + brief + "\n(rule)"
+	a.entries, _ = a.replayBlocks([]session.DisplayEntry{{Role: "aside", Text: note, Team: []session.TeamLine{{Team: "harbor", From: teamstore.FromManager, Kind: teamstore.KindStart, Text: brief, Thread: id}}}}, replayShape{})
+	fillEntries(a, 60, "after")
+	a.offset, a.stick = 0, true
+	spend(t, a, a.trafficJump(member, id))
+	shown, lifted := landedRow(a, brief)
+	if !shown || !lifted || a.traffic.landing.older {
+		t.Fatalf("member brief not shown/lifted: %v %v %+v", shown, lifted, a.traffic.landing)
+	}
+}
+
+func TestTrafficStartRootDoesNotGuessAnotherCall(t *testing.T) {
+	for _, tc := range []struct {
+		name, handle, brief string
+		status              toolState
+	}{
+		{"different handle", "other", "accepted brief", toolOK},
+		{"different brief", "review", "other brief", toolOK},
+		{"failed start", "review", "accepted brief", toolFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, harbor, _, _ := trafficApp(t)
+			a.traffic.rows = map[string][]teamstore.Entry{harbor: {{ID: "000000000123", Kind: teamstore.KindStart, From: teamstore.FromManager, To: "review", Text: "accepted brief"}}}
+			a.entries = []entry{{kind: entryTool, tool: "team_start", status: tc.status, settled: true, detail: toolDetail{Args: `{"handle":"` + tc.handle + `","brief":"` + tc.brief + `"}`, Output: "Asked for a new member."}}}
+			if at := a.teamEntryAt("000000000123"); at != -1 {
+				t.Fatalf("matched unrelated call at %d", at)
+			}
+		})
+	}
+}
+
+func TestTrafficStartRootUsesReceiptAndRejectsAmbiguousLegacy(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	root := teamstore.Entry{ID: "000000000123", Kind: teamstore.KindStart, From: teamstore.FromManager, To: "review", Text: "accepted brief"}
+	later := root
+	later.ID = "000000000124"
+	a.traffic.rows = map[string][]teamstore.Entry{harbor: {root, later}}
+	call := entry{kind: entryTool, tool: "team_start", status: toolOK, settled: true, detail: toolDetail{Args: `{"handle":"review","brief":"accepted brief"}`, Output: "Asked for a new member."}}
+	a.entries = []entry{call, call}
+	if at := a.teamEntryAt(root.ID); at != -1 {
+		t.Fatalf("ambiguous legacy start guessed entry%d", at)
+	}
+	a.entries[0].detail.Output = "Asked for a new member @review in \"harbor\" (#123)."
+	a.entries[1].detail.Output = "Asked for a new member @review in \"harbor\" (#124)."
+	if at := a.teamEntryAt(root.ID); at != 0 {
+		t.Fatalf("receipt selected entry%d instead of0", at)
+	}
+	if at := a.teamEntryAt(later.ID); at != 1 {
+		t.Fatalf("receipt selected entry%d instead of1", at)
+	}
+	a.entries[0].detail.Args = `{"handle":"review","brief":"accepted brief","team":"another-team"}`
+	if at := a.teamEntryAt(root.ID); at != -1 {
+		t.Fatalf("cross-team receipt selected entry%d", at)
+	}
+	a.entries[0] = call
+	a.entries = a.entries[:1]
+	if at := a.teamEntryAt(root.ID); at != -1 {
+		t.Fatalf("two roots for one legacy call guessed entry%d", at)
 	}
 }
