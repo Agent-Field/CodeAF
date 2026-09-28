@@ -455,10 +455,14 @@ whose base and rotated chunk have both been untouched for **7 days**;
 active jobs are never touched, and files codeaf did not create there — older
 unmarked logs included — are left alone. If a log you were pointed at has
 since been evicted, the jobs footer says so instead of naming the file, and
-the last 64KB in memory is still readable. Cleanup runs when a job starts or
-finishes and during the startup sweep of existing jobs directories; active jobs, legacy logs, and files without safe ownership records
-are outside this completed-log budget. A cleanup failure is reported and may
-leave the directory over budget. Damaged allocation metadata refuses new logs
+the last 64KB in memory is still readable. Cleanup runs when a job starts,
+again in the background just after one finishes, and during the startup sweep
+of existing jobs directories. A job's ending is shown at once and never waits
+for that cleanup; closing the session waits for a cleanup already under way.
+Active jobs, legacy logs, and files without safe ownership records are outside
+this completed-log budget. A cleanup failure is named in that job's log footer
+(`jobs output`) and may leave the directory over budget until the next job
+starts. Damaged allocation metadata refuses new logs
 rather than reusing previous job IDs.
 
 
