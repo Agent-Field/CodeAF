@@ -723,3 +723,46 @@ func TestHostedWelcomeCarriesUnreadProfileKeysToSurface(t *testing.T) {
 		t.Fatalf("hosted unread keys = %v", got)
 	}
 }
+
+// A CLOSED HOSTED LOOP HAS FINISHED THE REAL AGENT'S LEAVE, AND NOTHING WRITES
+// UNDER ITS HOME AFTERWARDS. The test above failed under load with "unlinkat
+// …/<place>: directory not empty" (#1647): the loop's Close returned while the
+// engine was still closing the conversation, and that close's last presence
+// write (taskpresence.go — a `.presence-*.json` renamed into place, then
+// removed) landed inside the folder TempDir's cleanup was walking. So this test
+// owns the home, closes, and then asks the two things that cleanup relies on:
+// the engine has already answered, and the home can be removed and stays gone.
+func TestHostedLoopCloseFinishesBeforeItsHomeIsRemoved(t *testing.T) {
+	workspace := t.TempDir()
+	home := t.TempDir()
+	agent := v3TrackedAgentIn(t, workspace, home)
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version, Workspace: workspace}, remote.Options{
+		Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: agent, Workspace: workspace, UnreadProfileKeys: []string{"models"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	if err := loop.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The receive must be ready without waiting: otherwise Close has returned
+	// while the engine can still write under home.
+	select {
+	case err = <-loop.Served:
+	default:
+		<-loop.Served
+		t.Fatal("Close returned before the hosted engine finished")
+	}
+	if err != nil {
+		t.Fatalf("hosted engine: %v", err)
+	}
+	if err := os.RemoveAll(home); err != nil {
+		t.Fatalf("remove closed conversation home: %v", err)
+	}
+	if _, err := os.Stat(home); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("home after engine finished and removal: %v, want ErrNotExist", err)
+	}
+}
