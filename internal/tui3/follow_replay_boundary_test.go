@@ -90,3 +90,49 @@ func TestCoveredFollowDoesNotAddAnotherUserMessage(t *testing.T) {
 		t.Fatalf("covered turn duplicated its user message: %d", n)
 	}
 }
+
+func TestHostedReplayGateRetainsOnlyUncoveredArrivals(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.hostReplayLoading = true
+	old := make(chan session.Event)
+	close(old)
+	fresh := make(chan session.Event, 2)
+	fresh <- session.Event{Kind: session.EventTextDelta, Text: "new while opening"}
+	fresh <- session.Event{Kind: session.EventTurnDone}
+	close(fresh)
+	drive(t, a, followingMsg{turn: Following{Events: old, Covered: func() bool { return true }}, gen: a.convGen}, followingMsg{turn: Following{Events: fresh, Covered: func() bool { return false }}, gen: a.convGen})
+	if len(a.hostReplayPending) != 2 {
+		t.Fatal("arrivals were not held at snapshot boundary")
+	}
+	a.replayList([]session.DisplayEntry{{Role: "assistant", Text: "already complete"}})
+	drain(t, a, a.finishHostedReplay())
+	if got := plain(frame(a)); !strings.Contains(got, "already complete") || !strings.Contains(got, "new while opening") {
+		t.Fatalf("snapshot or new tail lost: %s", got)
+	}
+}
+
+type atomicBoundaryAgent struct {
+	*replayBoundaryAgent
+	entries []session.DisplayEntry
+	events  <-chan session.Event
+}
+
+func (a *atomicBoundaryAgent) AttachReplay() ([]session.DisplayEntry, <-chan session.Event, func()) {
+	return a.entries, a.events, func() {}
+}
+
+func TestReconnectRefreshReplacesSnapshotAndKeepsObserverTail(t *testing.T) {
+	cursor := session.ReplayCursor{Owner: "same engine", Turn: 2}
+	events := make(chan session.Event, 2)
+	events <- session.Event{Kind: session.EventTextDelta, Text: "remaining live answer", ReplayCursor: cursor, ReplayObserved: true}
+	events <- session.Event{Kind: session.EventTurnDone, ReplayCursor: cursor, ReplayObserved: true}
+	close(events)
+	agent := &atomicBoundaryAgent{replayBoundaryAgent: &replayBoundaryAgent{fakeAgent: &fakeAgent{model: "m"}, cursor: cursor}, entries: []session.DisplayEntry{{Role: "assistant", Text: "completed while disconnected"}}, events: events}
+	a := newTestApp(agent)
+	a.replayList([]session.DisplayEntry{{Role: "assistant", Text: "stale view"}})
+	drive(t, a, followingMsg{turn: Following{Replay: true}, gen: a.convGen})
+	got := plain(frame(a))
+	if strings.Contains(got, "stale view") || !strings.Contains(got, "completed while disconnected") || !strings.Contains(got, "remaining live answer") {
+		t.Fatalf("reconnect replay not authoritative: %s", got)
+	}
+}

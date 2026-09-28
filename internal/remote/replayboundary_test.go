@@ -2,7 +2,10 @@ package remote
 
 import (
 	"github.com/Agent-Field/codeaf/internal/session"
+	"io"
+	"sync"
 	"testing"
+	"time"
 )
 
 type cursorObservedAgent struct {
@@ -64,5 +67,54 @@ func TestObserveOwnsCoveredFollowButNotTheNextTurn(t *testing.T) {
 	loop.Client.rememberReplay(session.ReplayCursor{Owner: "engine-one", Turn: 1})
 	if !agent.ReplayCovers(old) {
 		t.Fatal("delayed older snapshot moved boundary backward")
+	}
+}
+
+func TestObserverReconnectRequestsFreshAtomicReplay(t *testing.T) {
+	far := &cursorObservedAgent{observedAgent: &observedAgent{fakeAgent: &fakeAgent{model: "m"}}, cursor: session.ReplayCursor{Owner: "engine", Turn: 1}}
+	sess := NewSession(&Engine{Agent: far}, true)
+	defer sess.Close()
+	var mu sync.Mutex
+	var pipes []io.ReadWriteCloser
+	dial := func() (io.ReadWriteCloser, error) {
+		surface, engine := Pipe()
+		mu.Lock()
+		pipes = append(pipes, surface)
+		mu.Unlock()
+		go func() {
+			_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return sess, nil }})
+			_ = engine.Close()
+		}()
+		return surface, nil
+	}
+	client, err := Roam("test", Hello{}, Roaming{Dial: dial, Window: 3 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, events, stop := client.Agent().AttachReplay()
+	defer stop()
+	observerEvent(t, events, "before")
+	mu.Lock()
+	first := pipes[0]
+	mu.Unlock()
+	_ = first.Close()
+	select {
+	case next := <-client.Follow():
+		if !next.Replay || next.Events != nil {
+			t.Fatalf("reconnect reused stale observer: %+v", next)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("reconnect did not request replay")
+	}
+	_, fresh, leave := client.Agent().AttachReplay()
+	defer leave()
+	observerEvent(t, fresh, "before")
+	far.mu.Lock()
+	far.readers[len(far.readers)-1] <- session.Event{Kind: session.EventTextDelta, Text: "after reconnect", ReplayCursor: far.cursor}
+	far.mu.Unlock()
+	ev := <-fresh
+	if ev.Text != "after reconnect" || client.Agent().ReplayCovers(ev) {
+		t.Fatalf("new observer tail lost: %+v", ev)
 	}
 }

@@ -859,6 +859,8 @@ type (
 )
 
 type app struct {
+	hostReplayLoading bool
+	hostReplayPending []followingMsg
 	// telemetryNotice is the usage notice still owed to the person, drawn on the
 	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
 	// is owed or once the greeting that showed it has gone.

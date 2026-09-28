@@ -207,6 +207,7 @@ func (a *app) takeKeyboard() tea.Cmd {
 // Following is a turn some other window on this conversation started, on its
 // way to be drawn here.
 type Following struct {
+	Replay  bool
 	Covered func() bool
 	// Said is the message that opened it, and the empty string when the
 	// transcript this surface already read has that message in it — which is
@@ -274,22 +275,33 @@ func (a *app) followTurn(msg followingMsg) tea.Cmd {
 		return nil
 	}
 	next := a.watchFollowing()
-	if msg.turn.Covered != nil && msg.turn.Covered() {
+	if msg.turn.Replay {
+		return tea.Batch(a.refreshHostedReplay(), next)
+	}
+	if a.hostReplayLoading {
+		a.hostReplayPending = append(a.hostReplayPending, msg)
 		return next
 	}
-	if msg.turn.Events == nil || msg.turn.Events == a.stream {
-		return next
+	return tea.Batch(a.admitFollowing(msg.turn), next)
+}
+
+func (a *app) admitFollowing(turn Following) tea.Cmd {
+	if turn.Covered != nil && turn.Covered() {
+		return nil
+	}
+	if turn.Events == nil || turn.Events == a.stream {
+		return nil
 	}
 	for _, pending := range a.follows {
-		if pending.ch == msg.turn.Events {
-			return next
+		if pending.ch == turn.Events {
+			return nil
 		}
 	}
 	a.dismissWelcome()
-	said := strings.TrimSpace(msg.turn.Said)
-	a.follows = append(a.follows, queued{text: said, ch: msg.turn.Events, woken: said == ""})
+	said := strings.TrimSpace(turn.Said)
+	a.follows = append(a.follows, queued{text: said, ch: turn.Events, woken: said == ""})
 	a.touch()
-	return tea.Batch(a.startFollow(), next)
+	return a.startFollow()
 }
 
 // ── learning that it moved, with nobody touching this keyboard ──────────────
