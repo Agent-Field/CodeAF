@@ -596,7 +596,11 @@ func (r *recallAside) applyOrDefer() {
 	// A GENERATION THAT HAS NOT STARTED NEEDS NO CUTTING. The block is already in
 	// the transcript, so the request being assembled will carry it and this aside
 	// keeps its one re-ask for a turn that actually needs one.
-	if r.agent.cutGeneration(errRecallCut) {
+	// Publish the re-ask before endGeneration can consume its cancellation.
+	// Otherwise a fast replacement request can journal the turn before this flag.
+	r.agent.mu.Lock()
+	defer r.agent.mu.Unlock()
+	if r.agent.cutGenerationLocked(errRecallCut) {
 		r.resent.Store(true)
 	}
 }
