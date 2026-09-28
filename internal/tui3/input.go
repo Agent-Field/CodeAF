@@ -1457,6 +1457,9 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	if windowsDroppedLineShape(line) && a.inputDroppedLine(line) {
 		return a.edited()
 	}
+	if _, bash := session.BashCommand(a.pastesUnfolded(line)); bash {
+		return a.enterBash(line)
+	}
 	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
 	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a
 	// person who pressed esc to read an existing conversation can still type

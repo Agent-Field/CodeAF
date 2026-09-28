@@ -692,6 +692,7 @@ func (f *feed) beginTool(ev session.Event) {
 	f.closeLive()
 	f.entries = append(f.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
+		open:   session.IsUserBashCall(ev.CallID),
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
 		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
 		// row records it and this one did not, which left the rows drawn for a

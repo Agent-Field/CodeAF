@@ -1571,6 +1571,10 @@ const roomTraySteerWord = "attached files do not go with a correction · they st
 // of it: what the page says the instant enter is pressed, and what it says when
 // the answer comes back.
 func (a *app) steer() tea.Cmd {
+	if _, bash := session.BashCommand(a.pastesUnfolded(a.input.String())); bash {
+		a.roomNote("run ! commands in the conversation, not a task page")
+		return nil
+	}
 	room := a.room
 	line := strings.TrimSpace(a.input.String())
 	if room == nil || line == "" {

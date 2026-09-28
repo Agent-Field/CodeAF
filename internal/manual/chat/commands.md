@@ -1,5 +1,28 @@
 # Commands
 
+## Bash mode — run a shell command with ! and keep its output in context
+
+Start a message with `!` to run a non-interactive shell command yourself:
+`!ls -lth`, `!pwd`, or `!git status`. Enter runs it in this conversation's workspace;
+from Home it opens a conversation in the selected project first. With `--host`,
+the command runs on the connected machine. No model is asked to run it or explain
+its result, and no provider key is needed for the command itself.
+
+The command and combined stdout/stderr are saved in conversation history. Output
+opens immediately and remains available after reopening; your next ordinary
+message can ask about it. A failed command keeps its output and exit status too.
+Shell paths, `@` names and slash words remain literal, not mentions or send tags.
+
+Commands receive no interactive input or terminal. Use non-interactive flags;
+editors, prompts and terminal apps are not supported. Each command starts a fresh
+shell in the workspace: `cd` and `export` apply only within that command. Large
+output is truncated with a notice. The foreground shell timeout applies, and
+Escape stops the command. These commands cannot be sent to background jobs.
+
+An empty `!`, attached files, or a busy conversation leaves your draft in place
+and explains what to change. Wait for the turn to finish or stop it first.
+Task pages accept task messages; run `!` commands from the parent conversation.
+
 ## Typing a slash to see the command list
 
 Type `/` in the home or conversation message box to see every available command in

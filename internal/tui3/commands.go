@@ -688,6 +688,10 @@ type menu struct {
 // unrelated search results on home. A space or path punctuation leaves command
 // mode, and Esc seals a literal token until the caret leaves it.
 func (m *menu) sync(e *editor) {
+	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
+		m.close()
+		return
+	}
 	at, query, ok := slashToken(e.value, e.cursor)
 	if ok {
 		// Inspect the whole token, including text after the caret, so moving

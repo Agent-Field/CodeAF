@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // workfold is render-time structure. Nothing here is journaled: replaying the
@@ -298,7 +299,9 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			// with it, and the fold would be quietly claiming that the
 			// conversation above it is the same unbroken conversation. The whole
 			// group keeps its rows instead (replay.go's [entrySeam]).
-			if es[i].kind == entrySeam {
+			// The output of a command the person ran is its answer, so it
+			// stays visible even though it has the journal shape of a tool.
+			if es[i].kind == entrySeam || session.IsUserBashCall(es[i].callID) {
 				asks = append(asks, i)
 			}
 			// Team exchanges are operational work. Their replies remain available
