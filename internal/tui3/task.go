@@ -3418,7 +3418,7 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 		}
 		if node := carrier[run]; node != nil {
 			if at, ok := visible[node]; ok {
-				lines := a.planRailLines(kids, 1, width)
+				lines := a.planRailLines(kids, nil, width)
 				under[at] = append(under[at], lines...)
 				markPlan(lines)
 				drawnPlan[run] = true

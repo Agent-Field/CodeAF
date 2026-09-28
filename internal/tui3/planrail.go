@@ -23,7 +23,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // planRailNodeBit marks a node id as LENT to a store row. Every id the engine
@@ -227,20 +230,69 @@ func planTwigsOf(rows []session.PlanTaskRow) []*planTwig {
 	return out
 }
 
+// railLead is the lead cells a family row hangs by: two a level, drawn as the
+// tree the manual documents — `├ ` off the parent while a sibling follows the
+// row, `└ ` where the row closes its family, `│ ` down every level above it
+// whose row had a sibling still to come, and two spaces where a branch has
+// ended. `last` is those levels' own answers, shallowest first, the last one
+// the row's own level, and a row with none draws nothing.
+//
+// The glyphs come through the vocabulary's one door ([palette.glyph]) like the
+// tasks place draws its own kin with, so one tree shape is spelled one way on
+// this surface. THE WIDTH IS MEASURED AND NOT COUNTED, the same bargain
+// hometree.go strikes: a level is two cells today, and a row that assumed so
+// would draw a broken column the day one of them is respelled — or on the
+// terminal where a box-drawing glyph is reported wide.
+//
+// AN UNDER-ROW DRAWS NO ELBOW. The block a part says under its title stands
+// between that row and whatever follows it — the sibling next to it, or its
+// own parts — so the same flags with `elbow` false keep the trunk running
+// where rows follow and leave air where the branch closed, and the elbow is
+// the row's, drawn once.
+func (a *app) railLead(last []bool, elbow bool) string {
+	var out strings.Builder
+	for i, closed := range last {
+		if elbow && i == len(last)-1 {
+			if closed {
+				out.WriteString(a.pal.glyph(tokens.GTreeLast))
+			} else {
+				out.WriteString(a.pal.glyph(tokens.GTreeBranch))
+			}
+			out.WriteString(" ")
+			continue
+		}
+		// An ancestor level carries the trunk while its row had a sibling
+		// still to come, and the air the branch leaves when it was the last.
+		if closed {
+			out.WriteString("  ")
+			continue
+		}
+		out.WriteString(a.pal.glyph(tokens.GTreeVert))
+		out.WriteString(" ")
+	}
+	return out.String()
+}
+
 // planRailLines draws a run's parts under a row, each one THROUGH THE NODE
 // RENDERER and one line each, as every task on the side column is (sidecol.go):
-// depth is how far under the row they hang, two cells a level, which is the
-// only shape the column gives a family now that its forest is gone.
+// a level of family costs two cells, drawn as the tree's own connectors
+// ([app.railLead]) — `last` is the levels above the parts, each saying whether
+// that ancestor was the last child of its own, and the parts' own levels hang
+// off the row above them, `├ ` while a sibling follows and `└ ` where one
+// closes the family.
 //
 // Every line a part draws carries its store id, which is what makes it a door
 // onto that task's page ([app.openRailPlan]).
-func (a *app) planRailLines(kids []*planTwig, depth, width int) []railLine {
+func (a *app) planRailLines(kids []*planTwig, last []bool, width int) []railLine {
 	var out []railLine
-	lead := strings.Repeat("  ", depth)
-	for _, kid := range kids {
-		text := a.railEntryRow(railEntry{node: planRailNode(kid.row)}, max(width-len(lead), 0))
+	for i, kid := range kids {
+		at := make([]bool, len(last), len(last)+1)
+		copy(at, last)
+		at = append(at, i == len(kids)-1)
+		lead := a.railLead(at, true)
+		text := a.railEntryRow(railEntry{node: planRailNode(kid.row)}, max(width-ansi.StringWidth(lead), 0))
 		out = append(out, railLine{text: lead + text, entry: -1, plan: kid.row.ID, head: true})
-		out = append(out, a.planRailLines(kid.kids, depth+1, width)...)
+		out = append(out, a.planRailLines(kid.kids, at, width)...)
 	}
 	return out
 }
@@ -249,18 +301,24 @@ func (a *app) planRailLines(kids []*planTwig, depth, width int) []railLine {
 // the side column gave up: under each part's one line stand the lines the
 // column moved to its hint ([app.railUnder]), what the part is doing and what
 // it is costing, so the page still names a call in flight the way the rail
-// once did beside the row.
-func (a *app) planPageLines(kids []*planTwig, depth, width int) []railLine {
+// once did beside the row. The page's own task stands in its head, so its
+// parts hang a level in here, the same connectors the rail draws and the same
+// trunk running through the under-block ([app.railLead]).
+func (a *app) planPageLines(kids []*planTwig, last []bool, width int) []railLine {
 	var out []railLine
-	lead := strings.Repeat("  ", depth)
-	room := max(width-len(lead), 0)
-	for _, kid := range kids {
+	for i, kid := range kids {
+		at := make([]bool, len(last), len(last)+1)
+		copy(at, last)
+		at = append(at, i == len(kids)-1)
+		lead := a.railLead(at, true)
+		room := max(width-ansi.StringWidth(lead), 0)
 		node := planRailNode(kid.row)
 		out = append(out, railLine{text: lead + a.railEntryRow(railEntry{node: node}, room), entry: -1, plan: kid.row.ID, head: true})
+		hang := a.railLead(at, false)
 		for _, under := range a.railUnder(node, max(room-4, 0)) {
-			out = append(out, railLine{text: lead + "    " + under, entry: -1, plan: kid.row.ID})
+			out = append(out, railLine{text: hang + "    " + under, entry: -1, plan: kid.row.ID})
 		}
-		out = append(out, a.planPageLines(kid.kids, depth+1, width)...)
+		out = append(out, a.planPageLines(kid.kids, at, width)...)
 	}
 	return out
 }
@@ -270,5 +328,5 @@ func (a *app) planPageLines(kids []*planTwig, depth, width int) []railLine {
 func (a *app) planRailRoot(twig *planTwig, width int) []railLine {
 	text := a.railEntryRow(railEntry{node: planRailNode(twig.row)}, width)
 	out := []railLine{{text: text, entry: -1, plan: twig.row.ID, head: true}}
-	return append(out, a.planRailLines(twig.kids, 1, width)...)
+	return append(out, a.planRailLines(twig.kids, nil, width)...)
 }

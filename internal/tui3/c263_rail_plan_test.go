@@ -169,6 +169,75 @@ func TestARunsPartsHangUnderTheNodeRowThatCarriesIt(t *testing.T) {
 	}
 }
 
+// THE TREE THE SIDE COLUMN USED TO DRAW IS BACK IN THE LEAD. A family hangs
+// off its own connectors: a child rides `├ ` while a sibling follows it and
+// `└ ` where it closes its parent's family, a grandchild carries the `│ ` stem
+// past every ancestor that had rows still coming, and the last child's own
+// level leaves air — no stem past its connector, because nothing follows it
+// there. The lead is two cells a level, so every row stands in the column the
+// bare indent drew, and the run's own row keeps its place above the family
+// with no lead at all.
+func TestTheRailDrawsAPlanFamilyOnItsOwnConnectors(t *testing.T) {
+	rows := []session.PlanTaskRow{
+		{ID: "t-root", Title: "Root task", Status: "running"},
+		{ID: "t-a", Parent: "t-root", Title: "Child one", Status: "running"},
+		{ID: "t-b", Parent: "t-root", Title: "Child two", Status: "pending"},
+		{ID: "t-g1", Parent: "t-a", Title: "Grand one", Status: "pending"},
+		{ID: "t-g2", Parent: "t-a", Title: "Grand two", Status: "pending"},
+		{ID: "t-g3", Parent: "t-b", Title: "Grand three", Status: "pending"},
+	}
+	a, _ := planAppWith(t, rows, nil)
+	a.width, a.height = 160, 30
+	a.taskUpdate(update(9, "Root task", session.TaskRunning, session.TaskNotice{PlanTask: "t-root"}))
+	a.paints = 0
+	readPlanRows(t, a)
+
+	drawn := railText(a, a.viewHeight())
+	lead := func(title string) string {
+		for _, line := range drawn {
+			if !strings.Contains(line, title) {
+				continue
+			}
+			// The seam is the column's own edge, and the keyboard's row wears
+			// its marker in the seam's place; the lead the family hangs by
+			// starts after whichever of the two is on this row.
+			body := strings.TrimPrefix(line, railSeam)
+			return strings.TrimPrefix(body, railMark)
+		}
+		t.Fatalf("the rail has no row for %q:\n%s", title, strings.Join(drawn, "\n"))
+		return ""
+	}
+	root, one, two := lead("Root task"), lead("Child one"), lead("Child two")
+	gOne, gTwo, gThree := lead("Grand one"), lead("Grand two"), lead("Grand three")
+
+	// THE RUN'S OWN ROW DRAWS NO LEAD — the family hangs off it, two cells in.
+	if strings.HasPrefix(root, "├") || strings.HasPrefix(root, "└") || strings.HasPrefix(root, "│") {
+		t.Fatalf("the run's own row wears a lead:\n%s", strings.Join(drawn, "\n"))
+	}
+	// THE FIRST LEVEL: an elbow off the parent, `├ ` while a sibling follows
+	// and `└ ` where the child closes the family.
+	if !strings.HasPrefix(one, "├ ") {
+		t.Fatalf("the child with a sibling after it does not hang off `├ `: %q\n%s", one, strings.Join(drawn, "\n"))
+	}
+	if !strings.HasPrefix(two, "└ ") {
+		t.Fatalf("the family's last child does not close off `└ `: %q\n%s", two, strings.Join(drawn, "\n"))
+	}
+	// THE SECOND LEVEL: the trunk `│ ` runs past an ancestor with rows still
+	// coming, and the row's own elbow rides it.
+	if !strings.HasPrefix(gOne, "│ ├ ") || !strings.HasPrefix(gTwo, "│ └ ") {
+		t.Fatalf("the middle rows carry no stem past their parent:\n%q\n%q\n%s", gOne, gTwo, strings.Join(drawn, "\n"))
+	}
+	// AND A LAST CHILD CARRIES NO STEM PAST ITS OWN CONNECTOR: the branch it
+	// closes leaves air where a trunk would run, on its own levels and its
+	// children's.
+	if strings.Contains(two[:4], "│") || strings.Contains(gThree[:4], "│") {
+		t.Fatalf("a stem runs past the last child's connector:\n%q\n%q\n%s", two, gThree, strings.Join(drawn, "\n"))
+	}
+	if !strings.HasPrefix(gThree, "  └ ") {
+		t.Fatalf("the last child's own part does not hang in the air it leaves: %q\n%s", gThree, strings.Join(drawn, "\n"))
+	}
+}
+
 // A RUN'S TASK OPENS THE TASK ROOM AND WEARS ITS HEAD: the trail with the way
 // back at its end, and the facts with the clock, the steps and the money. The
 // figures the store has not got are absent, never zero.

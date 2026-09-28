@@ -96,9 +96,9 @@ func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 }
 
 // A TASK UNDER A TASK STANDS A LEVEL IN, AND THE LINE A RUNNING PART WOULD
-// HAVE HAD UNDER IT IS THE HINT'S. The family's connectors are gone from the
-// side column (DESIGN.md, One side column): every task is one line, and a part
-// shows its depth by its indent alone.
+// HAVE HAD UNDER IT IS THE HINT'S. Every task is one line; a part shows its
+// depth by the tree's own connectors in its lead ([app.railLead]), and its
+// call is the hint's, never a line under the row.
 func TestTheFamilysLineRunsThroughTheLinesUnderARow(t *testing.T) {
 	rows := c266PlanRows()
 	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
