@@ -4934,14 +4934,17 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	// why is what a pass that changed nothing says about itself (a person's
 	// /compact reads it; an automatic pass says nothing either way).
 	why := ""
+	appendedDuringSummary := 0
 	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
 		plan, short, ok := a.planSummaryLocked(policy)
 		why = short
 		if ok {
+			lengthBeforeSummary := len(a.messages)
 			a.mu.Unlock()
 			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
 			summary, err := a.writeSummary(ctx, plan)
 			a.mu.Lock()
+			appendedDuringSummary = max(0, len(a.messages)-lengthBeforeSummary)
 			if err == nil {
 				pass.summarized, why = a.spliceSummaryLocked(plan, summary)
 			} else {
@@ -4983,7 +4986,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	// time, under this lock, at the one moment a person is most likely to be
 	// pressing Esc ([Agent.Interrupt] wants the same lock).
 	a.earlier = earlier
-	a.earlierFloor = countEntries(a.messages)
+	a.earlierFloor = countEntries(a.messages[:len(a.messages)-appendedDuringSummary])
 
 	// The provider's context figure described the request that is now gone.
 	// Zero sends the estimator back to the content until the next response.
