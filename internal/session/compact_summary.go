@@ -508,7 +508,7 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	}
 	ask.WriteString(chunk)
 	ask.WriteString("\n\nWrite the summary now.")
-	response, err := a.completeWithModel(ctx, purposeSummary, []ai.Message{
+	response, answered, err := a.completeWithNamedModel(ctx, purposeSummary, []ai.Message{
 		textMessage("system", summaryInstruction(plan.answer)),
 		textMessage("user", ask.String()),
 	}, plan.model, ai.WithMaxTokens(plan.ceiling))
@@ -522,9 +522,9 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	running := a.running
 	a.mu.Unlock()
 	if running {
-		a.addAuxiliaryUsageAs(response, plan.model, 1, auxRoleSummary)
+		a.addAuxiliaryUsageAs(response, answered, 1, auxRoleSummary)
 	} else {
-		a.addDetachedUsageAs(response, plan.model, 1, auxRoleSummary)
+		a.addDetachedUsageAs(response, answered, 1, auxRoleSummary)
 	}
 	text := strings.TrimSpace(response.Text())
 	// An empty answer, machine markup and a model repeating itself are the
