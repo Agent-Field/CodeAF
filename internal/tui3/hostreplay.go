@@ -1,6 +1,9 @@
 package tui3
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/session"
+)
 
 // An observer ends on a broken connection. Reconnect obtains another atomic
 // history/current-turn boundary, rather than treating an old ownership cursor
@@ -13,6 +16,11 @@ func (a *app) refreshHostedReplay() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	if a.hostCalls > 0 {
+		a.hostReplayWaiting = true
+		return nil
+	}
+	a.hostReplayWaiting = false
 	a.hostReplayLoading = true
 	return a.offLoop(func() func(bool) tea.Cmd {
 		entries, events, stop := door.AttachReplay()
@@ -29,7 +37,10 @@ func (a *app) refreshHostedReplay() tea.Cmd {
 			}
 			a.gen++
 			a.stream = nil
-			a.follows = nil
+			// The new observer starts at the current turn's beginning. Its
+			// earlier visible prefix is replaced, not retained as "in the gap".
+			a.entries = nil
+			a.recordRows = 0
 			a.replayList(entries)
 			var joined tea.Cmd
 			if events != nil {
@@ -59,5 +70,56 @@ func (a *app) finishHostedReplay() tea.Cmd {
 			}
 		}
 	}
+	if !a.hostReplayLoading {
+		deferred := a.hostDeferred
+		a.hostDeferred = nil
+		for _, start := range deferred {
+			cmds = append(cmds, start())
+		}
+		cmds = append(cmds, a.startFollow())
+	}
 	return tea.Batch(cmds...)
+}
+
+// A snapshot and a locally initiated turn cannot own the surface at the same
+// time. Calls already sent settle before refresh begins; new calls wait until
+// its atomic boundary has been folded. The composer itself remains responsive.
+type hostCall struct{ generation int }
+
+func (a *app) deferHosted(start func() tea.Cmd) bool {
+	if !a.hostReplayLoading && !a.hostReplayWaiting {
+		return false
+	}
+	a.hostDeferred = append(a.hostDeferred, start)
+	return true
+}
+
+func (a *app) hostCallStarted() *hostCall {
+	if _, ok := a.agent.(interface{ ReplayCovers(session.Event) bool }); !ok {
+		return nil
+	}
+	a.hostCalls++
+	return &hostCall{generation: a.convGen}
+}
+
+func (a *app) hostCallSettled(call *hostCall) tea.Cmd {
+	if call == nil || call.generation != a.convGen {
+		return nil
+	}
+	if a.hostCalls > 0 {
+		a.hostCalls--
+	}
+	if a.hostCalls == 0 && a.hostReplayWaiting {
+		return a.refreshHostedReplay()
+	}
+	return nil
+}
+
+func (a *app) hostStreamCovered(ch <-chan session.Event) func() bool {
+	if agent, ok := a.agent.(interface {
+		ReplayCoversStream(<-chan session.Event) func() bool
+	}); ok {
+		return agent.ReplayCoversStream(ch)
+	}
+	return nil
 }

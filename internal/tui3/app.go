@@ -650,8 +650,9 @@ func (e *entry) forming() bool {
 // replaced it.
 type (
 	submittedMsg struct {
-		ch  <-chan session.Event
-		err error
+		call *hostCall
+		ch   <-chan session.Event
+		err  error
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -861,6 +862,9 @@ type (
 type app struct {
 	hostReplayLoading bool
 	hostReplayPending []followingMsg
+	hostReplayWaiting bool
+	hostCalls         int
+	hostDeferred      []func() tea.Cmd
 	// telemetryNotice is the usage notice still owed to the person, drawn on the
 	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
 	// is owed or once the greeting that showed it has gone.
@@ -5570,7 +5574,8 @@ func promoteBlock(e *entry, at *time.Time) {
 //
 // The generation is assigned HERE and never at submit time, because a steering
 // submit must not invalidate the stream it is steering.
-func (a *app) adopt(msg submittedMsg) tea.Cmd {
+func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
+	defer func() { cmd = tea.Batch(cmd, a.hostCallSettled(msg.call)) }()
 	// The attachment tray settles on the same answer: a refused message keeps
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
@@ -6649,6 +6654,11 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 // the transcript keeps. Slash tags are stripped from the payload but remain in
 // the person's message as the chipped token that explains which door acted.
 func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, start) }) {
+		return nil
+	}
+	call := a.hostCallStarted()
+
 	// STEERING IS NOT A SECOND TURN, and this is [app.startClock]'s law said
 	// about the transcript rather than about the burn window: a plain enter with
 	// a turn already streaming is a message spliced into THAT turn, queued by the
@@ -6701,7 +6711,7 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
 	}, a.wake())
 }
 
