@@ -24,7 +24,7 @@ def main():
     run_dir = pathlib.Path(args.run_dir)
     meta = json.loads((run_dir / "meta.json").read_text()) if (run_dir / "meta.json").exists() else {}
     cost = json.loads((run_dir / "cost.json").read_text()) if (run_dir / "cost.json").exists() else {}
-    grade_path = run_dir / "grade.json"
+    grade_path = run_dir / "logs" / "grade" / "grade.json"
     scan_path = run_dir / "scan.json"
     judge_path = run_dir / "logs" / "grade" / "judge.json"
     grade = json.loads(grade_path.read_text()) if grade_path.exists() else {}

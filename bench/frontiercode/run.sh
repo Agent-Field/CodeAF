@@ -51,7 +51,7 @@ if [ -z "${BENCH_SNAPSHOT:-}" ]; then
   [ $# -eq 3 ] || { echo "usage: run.sh <task-id> <model-id> <seed-tag>" >&2; exit 2; }
   __slug="$(printf '%s' "$2" | tr '/:' '--')"
   export RESULTS="${RESULTS:-$__RIG_SRC/results}"
-  __out="$RESULTS/$1-$__slug-$3"
+  __out="$RESULTS/$1-codeaf-senior-dev-$__slug-$3"
   rm -rf "$__out"; mkdir -p "$__out/rig"
   cp -R "$__RIG_SRC/lib.sh" "$__RIG_SRC/run.sh" "$__RIG_SRC/grade.sh" "$__RIG_SRC/gold.sh" \
         "$__RIG_SRC/negative.sh" "$__RIG_SRC/seal.sh" "$__out/rig/"
@@ -89,9 +89,9 @@ BIN="${CODEAF_BIN:-}"
 load_key || { echo "run.sh: no provider key (API_KEY / OPENROUTER_API_KEY / keychain)" >&2; exit 2; }
 
 load_task "$TASK" || exit 1
-OUT="$RESULTS/$TASK-$SLUG-$SEED"
+OUT="$RESULTS/$TASK-codeaf-senior-dev-$SLUG-$SEED"
 mkdir -p "$OUT"
-NAME="fc-$TASK-$SEED"
+NAME="fc-$TASK-seniordev-$SEED"
 SENTINEL="bench-sentinel-$RANDOM$RANDOM"
 
 # Build the environment image before anything else: the run is dead without it.
@@ -303,8 +303,8 @@ try:
             continue
         r = json.loads(line)
         rec["cost_usd"] += r.get("usd") or 0.0
-        rec["prompt_tokens"] += r.get("input") or 0
-        rec["completion_tokens"] += r.get("output") or 0
+        rec["prompt_tokens"] += r.get("in") or 0
+        rec["completion_tokens"] += r.get("out") or 0
         rec["calls"] += r.get("calls") or 0
         rec["models"] = r.get("model", rec["models"])
 except FileNotFoundError:

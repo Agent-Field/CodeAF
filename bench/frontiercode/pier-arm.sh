@@ -23,7 +23,11 @@ source "$RIG_DIR/lib.sh"
 [ $# -ge 3 ] || { echo "usage: pier-arm.sh <task-id> <model-id> <seed-tag> [pier-agent]" >&2; exit 2; }
 TASK="$1"; MODEL="$2"; SEED="$3"; PIER_AGENT="${4:-${PIER_AGENT:-mini-swe-agent}}"
 SLUG="$(printf '%s' "$MODEL" | tr '/:' '--')"
-OUT="$RESULTS/$TASK-$SLUG-$SEED"
+OUT="$RESULTS/$TASK-$PIER_AGENT-pier-$SLUG-$SEED"
+# A RESULT DIRECTORY IS EVIDENCE, NEVER A SCRATCH PAD: one that
+# already exists is refused, the way bench/deepswe/compare-cell.sh
+# refuses — a rerun goes to a new seed tag.
+[ ! -e "$OUT" ] || { echo "pier-arm.sh: refusing to overwrite evidence: $OUT" >&2; exit 2; }
 mkdir -p "$OUT" "$RESULTS"
 
 load_key || { echo "pier-arm.sh: no provider key" >&2; exit 2; }

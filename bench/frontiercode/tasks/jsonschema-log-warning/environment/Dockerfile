@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       make \
       ninja-build \
       ccache \
-      git \
+      git xxd \
       curl \
       wget \
       ca-certificates \

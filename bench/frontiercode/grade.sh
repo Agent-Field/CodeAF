@@ -54,7 +54,7 @@ ensure_verify_image || {
 emu_args
 log "$TASK_ID: grading phase A (limit ${TASK_VSECS}s, network none)"
 timeout "$((TASK_VSECS + 120))" docker run --rm --platform "$PLATFORM" --network none \
-  --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]}" \
+  --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]+${EMU_ARGS[@]}}" \
   -e FC_PATCH=/logs/artifacts/model.patch \
   -v "$OUT/logs:/logs" \
   -v "$TASK_DIR:/task:ro" \
@@ -95,7 +95,7 @@ if [ "$NEEDS_ADAPT" = 1 ]; then
   if [ -s "$OUT/logs/grade/adapted-tests.patch" ]; then
     log "$TASK_ID: phase B — rerunning adapted tests"
     timeout "$((TASK_VSECS + 120))" docker run --rm --platform "$PLATFORM" --network none \
-      --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]}" \
+      --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]+${EMU_ARGS[@]}}" \
       -e FC_PATCH=/logs/artifacts/model.patch \
       -v "$OUT/logs:/logs" \
       -v "$TASK_DIR:/task:ro" \
@@ -128,5 +128,5 @@ fi
 python3 "$RIG_DIR/grade/finalize.py" --run-dir "$OUT" --task-dir "$TASK_DIR" \
   > "$OUT/logs/grade/finalize.out" 2>&1 || log "$TASK_ID: finalize failed — see finalize.out"
 
-SCORE=$(python3 -c "import json;g=json.load(open('$OUT/grade.json'));print(g.get('score'))" 2>/dev/null || echo rig)
-log "$TASK_ID: graded — score=$SCORE (see $OUT/grade.json)"
+SCORE=$(python3 -c "import json;g=json.load(open('$OUT/logs/grade/grade.json'));print(g.get('score'))" 2>/dev/null || echo rig)
+log "$TASK_ID: graded — score=$SCORE (see $OUT/logs/grade/grade.json)"
