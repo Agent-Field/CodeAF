@@ -267,3 +267,15 @@ func TestRealFurrowWorkerCompletionRetiresTimeline(t *testing.T) {
 		t.Fatal("parent history disappeared")
 	}
 }
+
+func TestCheckpointRetirementPreservesUnreadableIdentity(t *testing.T) {
+	installFakeFurrow(t)
+	dir, tree := newSweptUniverseSession(t, t.TempDir(), "ffff0000ffff0000", dirtyRepo(t), time.Now())
+	writeFile(t, (Place{Dir: dir}).Tasks(), "{broken")
+	if retireCheckpointForks(context.Background(), dir, false, func(string) {}) {
+		t.Fatal("unreadable checkpoint reported safe retirement")
+	}
+	if _, err := os.Stat(tree.dir); err != nil {
+		t.Fatalf("lost fork recovery directory: %v", err)
+	}
+}

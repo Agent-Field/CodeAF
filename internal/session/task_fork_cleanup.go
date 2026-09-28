@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 )
 
@@ -12,6 +13,10 @@ import (
 func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, note func(string)) bool {
 	document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
 	if !ok {
+		if _, err := os.Stat((Place{Dir: dir}).Tasks()); !os.IsNotExist(err) {
+			note("sweep: cannot retire forks without a readable task checkpoint")
+			return false
+		}
 		return true
 	}
 	// Tasks standing in place can share a ground and are not fork dependencies.
