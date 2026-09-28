@@ -72,12 +72,15 @@ RUN git clone --no-tags https://github.com/sourcemeta/jsonschema.git /root/repos
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 # Prewarm the base tree's build so a grader that re-runs the build on a patched
-# tree pays only the incremental cost. The tree stays byte-identical to the
-# base commit afterwards (build/ is in the project's own .gitignore), which
-# the build asserts so a prewarm that edited sources can never ship.
+# tree pays only the incremental cost. A prewarm failure is a BUILD failure —
+# said out loud, never swallowed into a clean exit: the graded build criterion
+# would otherwise inherit whatever the prewarm left broken.
+# The tree stays byte-identical to the base commit afterwards (build/ is in
+# the project's own .gitignore), which the step asserts.
 RUN cd /root/repos/jsonschema \
-    && make configure compile > /tmp/prewarm.log 2>&1 \
-    && git status --porcelain | grep -q . && exit 1 || true
+    && make configure compile > /tmp/prewarm.log 2>&1; code=$?; \
+    if [ "$code" -ne 0 ]; then echo "prewarm failed (exit $code), tail:" >&2; tail -40 /tmp/prewarm.log >&2; exit 1; fi \
+    && if [ -n "$(git status --porcelain)" ]; then echo "prewarm edited the tree:" >&2; git status --porcelain >&2; exit 1; fi
 
 WORKDIR /root/repos/jsonschema
 CMD ["/bin/bash"]
