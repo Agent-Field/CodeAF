@@ -5,8 +5,8 @@ pr: 1656
 surface:
   - chat
 invalidates:
-  - "ordinary linked-local launches only refreshed the default catalog and omitted custom-provider refresh actions"
-  - "a cached model list concealed the provider's latest refresh failure"
+  - "Ordinary linked-local launches only refreshed the default catalog; they now refresh connected providers and expose their refresh actions."
+  - "A cached model list concealed the provider's latest refresh failure; the refusal now stays visible beside cached choices."
 ---
 
 Ordinary local conversations now share provider catalog warming, refresh and
