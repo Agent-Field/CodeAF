@@ -9,6 +9,7 @@ import (
 // Home's search available through the ordinary keyboard route.
 func TestSearchIsAbsentFromNavigationAndCommands(t *testing.T) {
 	a := placeApp(t)
+	a.keysDisambiguated = true
 	drive(t, a, key(placeMapKey))
 	if text := placeFrameText(a); strings.Contains(text, "9 search") {
 		t.Fatalf("the map still offers Search:\n%s", text)

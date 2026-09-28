@@ -313,11 +313,11 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	if len(before) != len(after) {
 		t.Fatalf("the map moved the frame: %d rows became %d", len(before), len(after))
 	}
-	// THE NUMBERS ARE ON THE TABS, and the three places off the bar are drawn
+	// THE NUMBERS ARE ON THE TABS, and the two places off the bar are drawn
 	// after the six with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+7`…`alt+8` are on it.
 	if bar := after[navRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 teams") || !strings.Contains(bar, "3 chats") ||
-		!strings.Contains(bar, "6 settings") || !strings.Contains(bar, "7 standing") || !strings.Contains(bar, "9 search") {
+		!strings.Contains(bar, "6 settings") || !strings.Contains(bar, "7 standing") || !strings.Contains(bar, "8 memory") || strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
