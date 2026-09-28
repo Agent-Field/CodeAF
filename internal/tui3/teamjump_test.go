@@ -349,3 +349,29 @@ func TestTrafficStartRootUsesReceiptAndRejectsAmbiguousLegacy(t *testing.T) {
 		t.Fatalf("two roots for one legacy call guessed entry%d", at)
 	}
 }
+
+// TRAFFIC NUMBERS COUNT PER TEAM. A manager that also sends into another team
+// holds a `team_send` receipt carrying the same `(#1)` as this team's start;
+// pressing this team's start row must land on its own `team_start`, and a send
+// into the other team never answers for a row of this one.
+func TestTrafficJumpNeverLandsOnAnotherTeamsSameNumber(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	start := teamstore.Entry{ID: "000000000001", Kind: teamstore.KindStart, From: teamstore.FromManager, To: "review", Text: "same brief"}
+	send := teamstore.Entry{ID: "000000000002", Kind: teamstore.KindDirective, From: teamstore.FromManager, To: "review", Text: "and check the totals"}
+	a.traffic.rows = map[string][]teamstore.Entry{harbor: {start, send}}
+	started := entry{kind: entryTool, tool: "team_start", status: toolOK, settled: true,
+		detail: toolDetail{Args: `{"handle":"review","brief":"same brief"}`, Output: "Asked for a new member @review (#1)."}}
+	ownSend := entry{kind: entryTool, tool: "team_send", status: toolOK, settled: true,
+		detail: toolDetail{Args: `{"to":"review","text":"and check the totals"}`, Output: "Sent to @review (#2)."}}
+	otherStart := entry{kind: entryTool, tool: "team_send", status: toolOK, settled: true,
+		detail: toolDetail{Args: `{"team":"other","to":"someone","text":"different work"}`, Output: "Sent to @someone (#1)."}}
+	otherSend := entry{kind: entryTool, tool: "team_send", status: toolOK, settled: true,
+		detail: toolDetail{Args: `{"team":"other","to":"someone","text":"more different work"}`, Output: "Sent to @someone (#2)."}}
+	a.entries = []entry{started, ownSend, otherStart, otherSend}
+	if got := a.teamEntryAt(start.ID); got != 0 {
+		t.Fatalf("this team's start landed on entry %d, want its own team_start at 0", got)
+	}
+	if got := a.teamEntryAt(send.ID); got != 1 {
+		t.Fatalf("this team's send landed on entry %d, want its own team_send at 1", got)
+	}
+}

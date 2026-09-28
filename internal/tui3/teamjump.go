@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -136,7 +137,15 @@ func (a *app) teamEntryAt(id string) int {
 	if id == "" {
 		return -1
 	}
+	// A START ROOT IS ANSWERED BY ITS OWN TEAM'S MATCHER FIRST. Traffic numbers
+	// count per team, so a `team_send` into another team can carry the same
+	// `(#N)` as this team's start, and the newest-first search below would land
+	// on it; [app.teamStartEntryAt] checks the team, and that search cannot.
+	if at := a.teamStartEntryAt(id); at >= 0 {
+		return at
+	}
 	number := teamstore.ThreadNumber(id)
+	shown, inTeam := a.teamOfFront()
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
 		switch e.kind {
@@ -149,6 +158,9 @@ func (a *app) teamEntryAt(id string) int {
 		case entryTool:
 			switch e.tool {
 			case "team_send":
+				if inTeam && sentElsewhere(e, shown) {
+					continue
+				}
 				if strings.Contains(e.detail.Output, "("+number+")") {
 					return i
 				}
@@ -159,7 +171,19 @@ func (a *app) teamEntryAt(id string) int {
 			}
 		}
 	}
-	return a.teamStartEntryAt(id)
+	return -1
+}
+
+// sentElsewhere reports a `team_send` that named a team other than shown, whose
+// `(#N)` counts in that team's traffic and says nothing about this one. A send
+// that names no team went to the sender's own and is still a candidate.
+func sentElsewhere(e *entry, shown team) bool {
+	var args struct{ Team string }
+	if json.Unmarshal([]byte(e.detail.Args), &args) != nil {
+		return false
+	}
+	target := strings.TrimSpace(args.Team)
+	return target != "" && target != shown.ID && target != shown.Name
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the
