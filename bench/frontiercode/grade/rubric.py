@@ -422,6 +422,8 @@ def main():
     args = parser.parse_args()
     if args.cmd == "phase-a":
         return phase_a(args.task, args.repo, args.base, args.out)
+    if args.cmd == "phase-b":
+        return phase_b(args.task, args.repo, args.base, args.out)
     if args.cmd == "combine":
         combine(args.task, args.grade_dir)
         return 0
