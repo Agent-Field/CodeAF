@@ -16,3 +16,8 @@ are rejected before execution.
 Traffic rows show compact ages and open their exact message, including completed
 work hidden inside a collapsed group. Reminder labels separate their cadence
 from their title. Unknown timestamps remain absent.
+
+Held tasks now notice changed machine limits and retain their accepted request across
+engine restarts, reusing the focused recovery fix from #1619. A persistent engine
+restart also retires old reply streams, so a follow-up no longer disappears when
+its new stream number matches a completed reply from the previous engine.

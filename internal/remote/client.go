@@ -334,8 +334,19 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	}
 	c.mu.Lock()
 	first := c.welcome.Version == 0
+	replaced := !first && c.welcome.Persistent && welcome.Persistent &&
+		c.welcome.SessionInstance != "" && welcome.SessionInstance != "" &&
+		c.welcome.SessionInstance != welcome.SessionInstance
 	c.welcome = welcome
 	c.mu.Unlock()
+	// A persistent host can restart without changing the transcript. Reset its
+	// stream namespace before following any live turn in the new welcome; its
+	// first reply may reuse an ID whose old channel is already closed.
+	if replaced {
+		if c.forgetStreams("the engine restarted, so the previous answer stopped; ask again to continue") {
+			c.note("the engine restarted; the previous answer stopped")
+		}
+	}
 	// THE FIRST WELCOME AND THE STREAM ARE TWO ROADS FOR THE SAME QUESTION.
 	// The surface draws Held separately; suppress its copies in the initial
 	// replay without skipping the other events or losing the stream cursor.
@@ -382,6 +393,7 @@ func (c *Client) helloNow() Hello {
 	c.mu.Lock()
 	hello := c.hello
 	open := c.welcome.SessionFile
+	hello.SessionInstance = c.welcome.SessionInstance
 	c.mu.Unlock()
 	// The session file the engine last told us about beats the one the door
 	// asked for: /new and /resume both move it, and a redial that asked for the

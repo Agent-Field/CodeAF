@@ -54,6 +54,7 @@ package remote
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -408,6 +409,7 @@ type Session struct {
 	engine     *Engine
 	agent      WrappedAgent
 	persistent bool
+	instance   string
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -526,6 +528,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		engine:     engine,
 		agent:      engine.Agent,
 		persistent: persistent,
+		instance:   rand.Text(),
 		rings:      map[uint64]*ring{},
 		held:       newHeldSet(),
 		surfaces:   map[*server]struct{}{},
@@ -1055,7 +1058,13 @@ func (sess *Session) attach(s *server, hello Hello) error {
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
-	replay := sess.replayLocked(hello.Resume)
+	cursors := hello.Resume
+	// A reopened transcript is a new stream namespace. Old cursors must not
+	// suppress the beginning of work that has already resumed in this owner.
+	if hello.SessionInstance != "" && hello.SessionInstance != sess.instance {
+		cursors = nil
+	}
+	replay := sess.replayLocked(cursors)
 	sess.mu.Unlock()
 
 	if err := s.sendLocked(Frame{Kind: "welcome", Payload: mustJSON(welcome)}); err != nil {
@@ -1177,6 +1186,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Live:                       sess.liveLocked(),
 		Held:                       sess.heldWaitingLocked(s.arrived),
 		Persistent:                 sess.persistent,
+		SessionInstance:            sess.instance,
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),

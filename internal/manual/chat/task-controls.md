@@ -37,7 +37,9 @@ rows. Short or narrow terminals retain the compact column and existing controls.
 ## Stop this task — /stop and the Stop task button
 
 Click `Stop task…` under Task setup, click `Stop` in the compact task header, or type
-`/stop` while inside the task. These open the same confirmation; work is stopped
+`/stop` while inside the task. From the main box, `/stop` also offers the only queued or
+held task when it is the sole active task, so a machine-held task can be ended without
+opening its room. These open the same confirmation; work is stopped
 only after you choose `stop it`. The initial selection is `keep going`.
 `x` is also a shortcut, but only when the input is empty. When exactly one task row
 is visible it works without doing anything else first; when two or more are, walk to the
