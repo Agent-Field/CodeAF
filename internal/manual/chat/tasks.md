@@ -1747,6 +1747,15 @@ means the check did judge it and named the next work.
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
+## Where did my task's result go when it finished while codeaf was still answering
+
+If a task finishes while codeaf is still answering, its landed card and its crew line (the
+`task N crew · …` line with what it cost and `not right? /redo stronger`) appear after that
+answer ends, under it, and never inside the `▸ worked` chip the answer's steps fold into.
+They still appear if the answer fails or you stop it. A task that finishes while nothing is
+being answered appears at once. When two tasks finish, their landings stay in the order they
+arrived.
+
 ## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
 Every landing writes a compact, expandable notification into the conversation and moves
@@ -5178,7 +5187,7 @@ same word. The row's kind is not drawn, and its cost is available in the detail 
 `←` folds the branch under the cursor and `→` opens it again. When you fold one, the
 section heading says how many rows are hidden, such as `completed · 4 folded away`.
 The list scrolls through every conversation tree selected by the time window.
-This includes tasks from the run store. The compact rail inside a conversation instead keeps running work first and groups finished children into a count; that compact view does not change the Sessions page’s folds or chronological order.
+This includes tasks from the run store. The side column inside a conversation has its own groups: Done starts folded, and opening it shows every task row its heading counts, including separate attempts at the same request. That column does not change the Sessions page's folds or chronological order.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
@@ -5240,18 +5249,14 @@ A task's **page** shows everything below it under its steps the same way, each
 with its live step while its worker is on one. Opening a row (`enter`) and
 leaving a note are unchanged by the tree.
 
-## Why is this group one line? — finished families fold on the rail
+## Why is this group one line? — Done folds its task rows
 
-The rail shows the run's tree. It puts families with running work first, newest
-activity on top, then queued families, then done families folded with their age.
-Inside a family it keeps store order, except that running rows float to the top and
-its done rows fold into one `✔ N done` line at the bottom.
-
-A family becomes one rail line when every task in it is done or failed. The line
-keeps the family title and says how many settled below it — `· 3 done`, or
-`· 3 failed` when the family failed. This is a fold, not missing work: select the
-line and press `enter` to open the family's page. A family with anything running
-or queued stays open on the rail.
+The side column puts each task under Running, Queued, Waiting or Done. Running
+stays open; the other groups start folded to one heading, such as `Done 2 ▸`.
+Press the heading or use `enter` on it to see its task rows (`Done 2 ▾`). Every
+task the heading counts gets a row, even when two attempts at the same request
+have the same title. A run's parts fold with the task row that carries them.
+Press a task row to open its page and see the work inside it.
 
 ## What does queued behind it mean? — open tasks are waiting on this one
 

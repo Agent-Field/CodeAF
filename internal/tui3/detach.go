@@ -351,6 +351,7 @@ func (a *app) clearConversation() {
 	a.discussionFeeds = nil
 	a.questionReplacement = nil
 	a.entries = nil
+	a.turnLandings = nil
 	a.recordRows = 0
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)

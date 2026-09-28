@@ -252,13 +252,60 @@ func (a *app) landedCard(node *taskNode) {
 	if a.handedBackCard(card) {
 		return
 	}
-	// A card lands in the middle of whatever the model was saying, exactly as a
-	// note did: the streaming block is closed first so the card is a block of its
-	// own rather than a paragraph inside the reply (app.go's [feed.note]).
+	// The streaming block closes so this card is its own block. If the task
+	// lands during that turn, its boundary moves the card past the final answer:
+	// a settled work fold would otherwise close over a card left inside it.
 	a.closeLive()
 	a.entries = append(a.entries, entry{kind: entryDone, turn: a.turn, done: card})
 	a.follow()
 	a.touch()
+}
+
+// holdTurnLanding remembers the arrival order without copying a card or its
+// crew facts. A second notice for one task must not make a second landing.
+func (a *app) holdTurnLanding(id uint64) {
+	for _, held := range a.turnLandings {
+		if held == id {
+			return
+		}
+	}
+	a.turnLandings = append(a.turnLandings, id)
+}
+
+// sayTurnLandings moves each in-turn landing beyond the turn's answer. The
+// original slot is left inert because entry indices can be held by the
+// reader, while the current node card and crew line retain their one identity.
+// Both normal and interrupted turn endings pass through app.settle.
+func (a *app) sayTurnLandings() {
+	if len(a.turnLandings) == 0 {
+		return
+	}
+	for _, id := range a.turnLandings {
+		if said, ok := a.crewSaid[id]; ok && said.landed {
+			for i := len(a.entries) - 1; i >= 0; i-- {
+				if a.entries[i].kind == entryNote && a.entries[i].text == said.text {
+					a.moveLandingEntry(i)
+					break
+				}
+			}
+		}
+		if at := a.doneEntryFor(id); at >= 0 {
+			a.moveLandingEntry(at)
+		}
+	}
+	a.turnLandings = nil
+	stampHierarchy(a.entries, a.deckFolds(a.conversation()))
+	a.follow()
+	a.touch()
+}
+
+func (a *app) moveLandingEntry(at int) {
+	e := a.entries[at]
+	a.entries[at] = entry{kind: entryAssistant, turn: e.turn, stale: true}
+	a.entries = append(a.entries, e)
+	if a.sel == at {
+		a.sel = len(a.entries) - 1
+	}
 }
 
 // doneNodeFacts is one landing as [session.ProjectTask] takes it.
