@@ -365,6 +365,44 @@ def combine(task_dir, grade_dir):
     return grade
 
 
+def phase_b(task_dir, repo, base, out_dir):
+    """The adaptive path's second no-network container: the agent's tree, the
+    judge's adapted test patch in place of the verbatim overlay, build, run.
+    Written to phaseB.json in the same shape phase A uses, keyed by the
+    adaptive criterion ids."""
+    rubric = load_rubric(os.path.join(task_dir, "rubric.toml"))
+    patch_path = os.environ.get("FC_PATCH", "/logs/artifacts/model.patch")
+    grade_dir = pathlib.Path(out_dir)
+    adapted = grade_dir / "adapted-tests.patch"
+    results = {}
+    ok, note = apply_patch(repo, patch_path, "phase-b apply")
+    if not ok:
+        for c in rubric["criteria"]:
+            if c["kind"] == "adaptive-classical":
+                results[c["id"]] = {"status": RIG, "note": f"phase B could not apply the patch: {note}"}
+    else:
+        overlay_ok, onote = apply_overlay_idempotent(repo, str(adapted))
+        for c in rubric["criteria"]:
+            if c["kind"] != "adaptive-classical":
+                continue
+            spec = c.get("adaptive_classical") or c.get("adaptive-classical") or {}
+            if not overlay_ok:
+                results[c["id"]] = {"status": RIG, "note": f"the adapted test patch did not apply: {onote}"}
+                continue
+            code, outtext = sh(f"make configure compile", cwd=repo, timeout=spec.get("timeout_sec"))
+            if code != 0:
+                results[c["id"]] = {"status": RIG, "note": f"phase B build failed: {outtext[-2000:]}"}
+                continue
+            code, outtext = sh(spec["run"], cwd=repo, timeout=spec.get("timeout_sec"))
+            results[c["id"]] = {"status": PASS if code == 0 else FAIL, "exit_code": code,
+                                "note": f"adapted tests exit {code}"}
+            (grade_dir / "evidence").mkdir(exist_ok=True)
+            (grade_dir / "evidence" / f"{c['id']}-phaseb.log").write_text(outtext)
+    (grade_dir / "phaseB.json").write_text(json.dumps({"criteria": results}, indent=2))
+    log(f"phase B: {json.dumps({k: v['status'] for k, v in results.items()})}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
