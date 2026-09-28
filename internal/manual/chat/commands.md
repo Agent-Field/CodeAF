@@ -436,8 +436,10 @@ messages included — and that summary replaces it. Your three most recent messa
 everything after them stay word for word, and so does the system prompt. The full record
 stays in the session journal, and the summary names that file.
 
-Success reports `compacted · about N to M tokens`; these are estimates. If no eligible
-history remains, it says `nothing to compact — your messages and recent work are kept`.
+Success reports `compacted · about N to M tokens`; these are estimates. When nothing
+changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
+last summary — too little to summarize`, `there is nothing before your latest message to
+summarize`, or `the model could not write a summary: ` and the reason.
 Other failures say `compact failed: ` followed by the reason. The pass runs off the input
 loop, so the surface stays responsive. `/compact` has no argument form and no alias.
 

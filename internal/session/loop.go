@@ -4774,6 +4774,38 @@ func (a *Agent) maybeCompact(ctx context.Context, hub *eventHub) {
 // instead of reporting a success that changed nothing.
 var ErrNothingToCompact = errors.New("session: nothing to compact")
 
+// NothingToCompact is [ErrNothingToCompact] with the reason a person can act
+// on: how little older conversation there was, or why the summary that would
+// have shortened it did not land. errors.Is still matches the sentinel.
+type NothingToCompact struct{ Why string }
+
+func (e *NothingToCompact) Error() string {
+	if e.Why == "" {
+		return ErrNothingToCompact.Error()
+	}
+	return ErrNothingToCompact.Error() + ": " + e.Why
+}
+
+func (e *NothingToCompact) Is(target error) bool { return target == ErrNothingToCompact }
+
+// NothingToCompactWhy reads the reason out of a no-op, and reports false for
+// any other error. It reads the words as well as the type, because a remote
+// engine's error reaches a surface as its text alone.
+func NothingToCompactWhy(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	var typed *NothingToCompact
+	if errors.As(err, &typed) {
+		return typed.Why, true
+	}
+	text := err.Error()
+	if !strings.HasPrefix(text, ErrNothingToCompact.Error()) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(text, ErrNothingToCompact.Error()), ":")), true
+}
+
 // ErrCompactionInFlight says another pass is already running. The second caller
 // gets an error for the same reason: it did nothing, and it should say so.
 var ErrCompactionInFlight = errors.New("session: a compaction pass is already running")
@@ -4894,14 +4926,21 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	// (compact_summary.go). The lock is released for the call and taken back
 	// to splice the answer in; [Agent.compacting] still holds every other pass
 	// off, and a transcript that moved in the gap keeps its shape.
+	// why is what a pass that changed nothing says about itself (a person's
+	// /compact reads it; an automatic pass says nothing either way).
+	why := ""
 	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
-		if plan, ok := a.planSummaryLocked(policy); ok {
+		plan, short, ok := a.planSummaryLocked(policy)
+		why = short
+		if ok {
 			a.mu.Unlock()
 			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
 			summary, err := a.writeSummary(ctx, plan)
 			a.mu.Lock()
 			if err == nil {
-				pass.summarized = a.spliceSummaryLocked(plan, summary)
+				pass.summarized, why = a.spliceSummaryLocked(plan, summary)
+			} else {
+				why = summaryFailedWhy(ctx, err)
 			}
 		}
 	}
@@ -4911,7 +4950,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 		// No eligible material was reduced. A manual pass and a routine pass
 		// protect different tails, so this is not a claim about total size.
 		a.mu.Unlock()
-		return false, ErrNothingToCompact
+		return false, &NothingToCompact{Why: why}
 	}
 
 	// Mechanical reduction is synchronous. Publish a paired seam only once

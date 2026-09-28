@@ -456,3 +456,53 @@ func TestARecoveryReclaimsWhatIsMissingNotAQuarter(t *testing.T) {
 		t.Fatalf("freed %d of %d tokens — a quarter, for 300 missing", freed, before)
 	}
 }
+
+// /COMPACT SAYS WHY IT DID NOTHING, in terms of the conversation: how little
+// there was since the last summary, or what stopped the summary.
+func TestANoOpCompactSaysWhy(t *testing.T) {
+	short := func(agent *Agent, messages ...ai.Message) {
+		agent.mu.Lock()
+		agent.messages = append(agent.messages, messages...)
+		agent.mu.Unlock()
+	}
+	for _, test := range []struct {
+		name     string
+		model    Completer
+		messages []ai.Message
+		want     string
+	}{
+		{"only the latest message", &refusingCompleter{t: t},
+			[]ai.Message{textMessage("user", "hello")},
+			"there is nothing before your latest message to summarize"},
+		{"a little since the last summary", &refusingCompleter{t: t},
+			[]ai.Message{
+				textMessage("user", summaryNote(strings.Repeat("the story so far. ", 150), "grep or read x")),
+				textMessage("user", "which book is longest?"),
+				textMessage("assistant", strings.Repeat("Order of the Phoenix. ", 60)),
+				textMessage("user", "and the first book?"),
+			},
+			"since the last summary — too little to summarize"},
+		{"the summary failed", &summarizer{answer: func(int, []ai.Message) (*ai.Response, error) {
+			return nil, errors.New("provider unavailable")
+		}},
+			[]ai.Message{
+				textMessage("user", "question: "+strings.Repeat("pasted log line ", 800)),
+				textMessage("assistant", "answer"),
+				textMessage("user", "next question"),
+			},
+			"the model could not write a summary: provider unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			agent, _ := newTestAgent(t, test.model, func(config *Config) { config.ContextWindow = 131_072 })
+			short(agent, test.messages...)
+			err := agent.Compact(context.Background())
+			why, nothing := NothingToCompactWhy(err)
+			if !nothing || !errors.Is(err, ErrNothingToCompact) {
+				t.Fatalf("Compact = %v, want nothing to compact", err)
+			}
+			if !strings.Contains(why, test.want) {
+				t.Fatalf("why = %q, want it to say %q", why, test.want)
+			}
+		})
+	}
+}

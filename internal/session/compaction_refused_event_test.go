@@ -15,6 +15,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -43,7 +44,7 @@ func TestAPassThatCompactedNothingSendsNoEvent(t *testing.T) {
 	agent.mu.Unlock()
 
 	hub := newEventHub()
-	if _, err := agent.compact(context.Background(), hub); err != ErrNothingToCompact {
+	if _, err := agent.compact(context.Background(), hub); !errors.Is(err, ErrNothingToCompact) {
 		t.Fatalf("compact = %v, want ErrNothingToCompact", err)
 	}
 	hub.mu.Lock()

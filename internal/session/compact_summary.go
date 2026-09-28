@@ -180,38 +180,43 @@ func (a *Agent) beltTokens() int {
 }
 
 // planSummaryLocked chooses the region a summary replaces, and reports false
-// when there is no region worth a call.
+// when there is no region worth a call — with why, in the words a person's
+// /compact prints (empty where there is nothing useful to say).
 //
 // The cuts are tried from the most kept to the least ([Agent.summaryEndsLocked])
 // and the first one that brings the conversation under the policy's line wins;
 // when none does, the most aggressive worthwhile cut is taken, because a pass
 // that reaches for the line and misses still buys more room than one that
 // stops short of it.
-func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, bool) {
+func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bool) {
 	if !a.hasClientLocked() {
-		return summaryPlan{}, false
+		return summaryPlan{}, "", false
 	}
 	window := a.trustedWindow()
 	if window <= 0 {
-		return summaryPlan{}, false
+		return summaryPlan{}, "", false
 	}
 	most := summaryAnswerTokens(window)
 	// A window too small to hold one useful chunk and its answer cannot be
 	// summarized into; the provider's own guard reports that case.
 	if summaryChunkTokens(window, most, 0) < summaryMinRegionTokens {
-		return summaryPlan{}, false
+		return summaryPlan{}, "the model's window is too small to write a summary into", false
 	}
 	persons := a.personMessagesLocked()
 	if len(persons) == 0 {
-		return summaryPlan{}, false
+		return summaryPlan{}, "there is no conversation to summarize yet", false
 	}
 	total := a.transcriptTokensLocked()
 	type cut struct{ end, tokens, answer int }
 	var fallback, chosen *cut
+	// What the most a summary could have taken came to, for the sentence a
+	// pass that takes nothing says about itself.
+	freshest, noted, closed := 0, false, false
 	for _, end := range a.summaryEndsLocked(persons) {
 		if !a.regionClosedLocked(end) {
 			continue
 		}
+		closed = true
 		bytes, fresh := 0, 0
 		for index := 1; index < end; index++ {
 			size := a.transcriptMessageBytesLocked(index)
@@ -221,6 +226,8 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, bool) {
 			}
 		}
 		tokens := EstimateTokens(bytes)
+		freshest = EstimateTokens(fresh)
+		noted = end > 1 && strings.HasPrefix(messageContentText(a.messages[1]), summaryNotePrefix)
 		if !summaryWorthIt(policy, tokens, EstimateTokens(fresh)) {
 			continue
 		}
@@ -235,7 +242,7 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, bool) {
 		chosen = fallback
 	}
 	if chosen == nil {
-		return summaryPlan{}, false
+		return summaryPlan{}, summaryTooLittle(closed, noted, freshest), false
 	}
 	end := chosen.end
 	region := make([]ai.Message, end-1)
@@ -256,7 +263,36 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, bool) {
 	default:
 		plan.pointer = "the full record is in the session journal"
 	}
-	return plan, true
+	return plan, "", true
+}
+
+// summaryTooLittle is what a pass says when no region was worth a summary.
+func summaryTooLittle(closed, noted bool, fresh int) string {
+	switch {
+	case !closed:
+		return "the newest work is still in progress"
+	case fresh == 0 && noted:
+		return "nothing new since the last summary"
+	case fresh == 0:
+		return "there is nothing before your latest message to summarize"
+	case noted:
+		return "only " + approxTokens(fresh) + " tokens since the last summary — too little to summarize"
+	default:
+		return "only " + approxTokens(fresh) + " tokens before your latest message — too little to summarize"
+	}
+}
+
+// summaryFailedWhy is what a pass says when the summary it asked for did not
+// come back usable.
+func summaryFailedWhy(ctx context.Context, err error) string {
+	switch {
+	case ctx.Err() != nil:
+		return "the summary was interrupted"
+	case errors.Is(err, errEmptyAnswer):
+		return "the model's summary came back empty or unreadable"
+	default:
+		return "the model could not write a summary: " + clip(strings.TrimSpace(err.Error()), 160)
+	}
 }
 
 // summaryWorthIt says whether a region is worth a model call.
@@ -581,10 +617,10 @@ func summaryNoteBody(note string) string {
 
 // spliceSummaryLocked replaces the planned region with the summary note, if
 // the region is still exactly what was summarized. It reports how many
-// messages the note replaced, and zero when nothing changed.
-func (a *Agent) spliceSummaryLocked(plan summaryPlan, summary string) int {
+// messages the note replaced, and zero with the reason when nothing changed.
+func (a *Agent) spliceSummaryLocked(plan summaryPlan, summary string) (int, string) {
 	if len(a.messages) < plan.end || !reflect.DeepEqual(a.messages[1:plan.end], plan.region) {
-		return 0
+		return 0, "the conversation changed while the summary was being written"
 	}
 	note := textMessage("user", summaryNote(summary, plan.pointer))
 	replaced := 0
@@ -594,7 +630,7 @@ func (a *Agent) spliceSummaryLocked(plan summaryPlan, summary string) int {
 	// A summary that is not smaller than what it replaces is refused, for the
 	// fold's reason: a pass that makes the conversation heavier is not one.
 	if messageBytes(note) >= replaced {
-		return 0
+		return 0, "the summary came out no shorter than what it would replace"
 	}
 	a.alignReasoningLocked()
 	rebuilt := make([]ai.Message, 0, len(a.messages)-plan.end+2)
@@ -613,5 +649,5 @@ func (a *Agent) spliceSummaryLocked(plan summaryPlan, summary string) int {
 	}
 	a.messages = rebuilt
 	a.messageReasoning = rebuiltReasoning
-	return plan.end - 1
+	return plan.end - 1, ""
 }

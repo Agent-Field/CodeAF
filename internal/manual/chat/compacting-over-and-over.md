@@ -173,10 +173,18 @@ The old command reused the automatic target. A conversation with 60,000 tokens o
 model could have older history and still receive `session: nothing to compact`, because it
 was below that target. The manual command no longer has that threshold gate.
 
-A no-op now says `nothing to compact — your messages and recent work are kept`. That means
-nothing could be folded and there was too little older conversation to be worth a summary
-(under about 1,000 tokens), or the summary failed. It does not mean the provider request
-fits: admission also counts schemas, replayed reasoning and reserved output.
+A no-op says `nothing to compact — ` and why:
+
+- `only ~400 tokens since the last summary — too little to summarize` (or `before your
+  latest message`): a summary needs about 1,000 tokens of conversation it has not read;
+- `nothing new since the last summary`, or `there is nothing before your latest message to
+  summarize`;
+- `the model could not write a summary: …`, `the model's summary came back empty or
+  unreadable`, `the summary was interrupted`, or `the conversation changed while the summary
+  was being written` — the conversation is left exactly as it was.
+
+None of these means the next request fits: admission also counts schemas, replayed
+reasoning and reserved output.
 
 ## Why the provider says maximum context length when the status shows 20 percent — a request refused as too long
 

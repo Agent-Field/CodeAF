@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -5159,8 +5158,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case compactedMsg:
 		if msg.err != nil {
-			if errors.Is(msg.err, session.ErrNothingToCompact) || msg.err.Error() == session.ErrNothingToCompact.Error() {
-				a.toldNote("nothing to compact — your messages and recent work are kept")
+			if why, nothing := session.NothingToCompactWhy(msg.err); nothing {
+				// THE NO-OP SAYS WHY when the engine knows: too little older
+				// conversation to summarize, or the summary that would have
+				// shortened it did not land. An engine that says nothing more
+				// (a peer built before the reason existed) gets the old line.
+				if why == "" {
+					why = "your messages and recent work are kept"
+				}
+				a.toldNote("nothing to compact — " + why)
 			} else {
 				a.toldNote("compact failed: " + msg.err.Error())
 			}
