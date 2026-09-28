@@ -1029,7 +1029,7 @@ func hostFollow(seams hostSeams) func() <-chan tui3.Following {
 				// again.
 				defer close(out)
 				for turn := range seams.Follow() {
-					out <- tui3.Following{Said: turn.Said, Events: turn.Events}
+					out <- tui3.Following{Said: turn.Said, Events: turn.Events, Covered: turn.Covered}
 				}
 			})
 		})

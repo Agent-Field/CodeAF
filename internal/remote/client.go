@@ -156,9 +156,10 @@ type Client struct {
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
 	// their ids belong to this connection and never enter turn replay cursors.
-	calls     map[uint64]chan result
-	streams   map[uint64]*stream
-	observers map[uint64]*stream
+	calls        map[uint64]chan result
+	streams      map[uint64]*stream
+	observers    map[uint64]*stream
+	replayCursor session.ReplayCursor
 
 	// driver is who holds the keyboard, as the engine last told this surface.
 	// It is set from the welcome and moved by every "driver" frame, and it is
@@ -370,7 +371,7 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// the message that opened it is in the journal, which this surface reads on
 	// its way in ([Turn.Said] states which of the two moments needs one).
 	if welcome.Live != 0 {
-		c.follows(Following{Events: c.stream(welcome.Live).events()})
+		c.followStream(welcome.Live, "")
 	}
 	// The welcome's word on the keyboard is a driver frame by another road, and
 	// it goes through the same door so that a redial that came back as a watcher
@@ -497,6 +498,7 @@ const followingRoom = 8
 // it with the code that draws every turn, and the only thing it lacks is the
 // [StreamRef] it would have got from opening it.
 type Following struct {
+	Covered func() bool
 	// Said is the message that opened the turn, empty when the transcript
 	// already has it — see [Turn.Said].
 	Said string
@@ -798,7 +800,7 @@ func (c *Client) read() {
 		case "turn":
 			var turn Turn
 			if err := json.Unmarshal(frame.Payload, &turn); err == nil && turn.Stream != 0 {
-				c.follows(Following{Said: turn.Said, Events: c.stream(turn.Stream).events()})
+				c.followStream(turn.Stream, turn.Said)
 			}
 		case "driver":
 			var note Driver
@@ -2221,12 +2223,14 @@ func (a *Agent) entries(method string, args any) []session.DisplayEntry {
 // an UNBUFFERED channel for the same events, so the buffering added here is the
 // buffering the wire needs and no more of a promise than the local lane makes.
 type stream struct {
-	mu     sync.Mutex
-	wake   *sync.Cond
-	queue  []session.Event
-	closed bool
-	out    chan session.Event
-	once   sync.Once
+	observed     bool
+	replayCursor session.ReplayCursor
+	mu           sync.Mutex
+	wake         *sync.Cond
+	queue        []session.Event
+	closed       bool
+	out          chan session.Event
+	once         sync.Once
 	// inWelcome identifies questions already handed to this surface outside
 	// the stream. It lasts only as long as this turn's stream does.
 	inWelcome map[heldKey]struct{}
@@ -2290,7 +2294,12 @@ func (s *stream) push(seq uint64, payload json.RawMessage) {
 			return
 		}
 	}
-	s.deliver(wired.Unwire())
+	ev := wired.Unwire()
+	s.mu.Lock()
+	s.replayCursor = ev.ReplayCursor
+	ev.ReplayObserved = s.observed
+	s.mu.Unlock()
+	s.deliver(ev)
 }
 
 // cursor is how far the surface got and whether this turn is still open — the

@@ -38,6 +38,9 @@ the only part a café's wifi, a VPN flap or a sleeping laptop can take away. Whe
 dies without a goodbye, codeaf opens another one, tells the far machine how far your
 screen got, and the reply carries on from there. Text you had already been shown is not
 drawn a second time, even when the far machine sends a little of it again.
+Opening a team conversation also shows each completed reply once: its saved
+history and any still-buffered live turn share one replay boundary. A new reply
+with the same words is still a new reply, and remains visible.
 
 **It keeps trying for 5 minutes.** The first retry is a second later, and the pause
 doubles up to fifteen seconds between attempts. If the machine answers in that window, the
