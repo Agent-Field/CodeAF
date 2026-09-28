@@ -213,11 +213,16 @@ func TestThePhoneWindowKeepsThePairWhole(t *testing.T) {
 func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 	a := phonePicker(t, phoneWidth)
 	// Six rows holds three wrapped models; the catalog has four, so the cursor
-	// walking to the last one has to scroll.
+	// walking to the last one has to scroll. The walk goes to the LAST MODEL,
+	// not the list's end — the door below it is a row of the list, not a model
+	// ([app.modelPickerList]).
 	const n = 6
+	// The walk clamps at the list's end — which is now the door row — so one
+	// more down than the models have, then one up, lands on the last model.
 	for range phoneCatalog {
 		drive(t, a, key("down"))
 	}
+	drive(t, a, key("up"))
 	lines := a.pick.rows(a.width, n, a.pal, -1, a.reasoningFor)
 	at := -1
 	for i, line := range lines {
@@ -254,7 +259,9 @@ func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 		// ([picker.headLines]); the law this test holds is about the rows.
 		head := a.pick.headLines(width)
 		lines := overlayBlock(a)
-		if len(lines) != len(phoneCatalog)+head {
+		// THE DOOR IS A ROW OF THE LIST ([app.modelPickerList]): the
+		// add-provider row sits under the models and costs its own line.
+		if len(lines) != len(phoneCatalog)+head+1 {
 			t.Fatalf("at %d columns the list is %d rows for %d models under %d heading lines",
 				width, len(lines), len(phoneCatalog), head)
 		}
