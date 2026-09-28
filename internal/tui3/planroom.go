@@ -406,7 +406,7 @@ func (a *app) planRoomPartRows(width int) []row {
 	}
 	if len(plan.page.Children) > 0 {
 		out = append(out, row{entry: -1}, row{text: a.pal.dim(fit(planRoomPartsWord, width)), entry: -1})
-		for _, line := range a.planPageLines(planTwigsOf(plan.page.Children), nil, min(width, planPageKinWidth)) {
+		for _, line := range a.planPageLines(planTwigsOf(plan.page.Children), nil, min(width, planPageKinWidth), railLevels(width)) {
 			out = append(out, row{text: line.text, entry: -1, plan: line.plan})
 		}
 	}
