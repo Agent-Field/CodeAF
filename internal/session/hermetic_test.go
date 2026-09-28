@@ -37,12 +37,18 @@ package session
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/home"
 )
+
+// Only the Go-module fixtures use this result; a missing Go tool still skips
+// those fixtures without preventing the rest of the package from running.
+var testGoCache []byte
+var testGoCacheErr error
 
 func TestMain(m *testing.M) { os.Exit(runTests(m)) }
 
@@ -63,6 +69,9 @@ func runTests(m *testing.M) int {
 	// same moment: a node commits as well as journals, and a git command with no
 	// directory of its own runs here. See hermetic_checkout_test.go.
 	tree := watchTheCheckout()
+
+	// Capture the compiler cache before HOME becomes an empty scratch home.
+	testGoCache, testGoCacheErr = exec.Command("go", "env", "GOCACHE").Output()
 
 	root, err := os.MkdirTemp("", "codeaf-session-test-home-")
 	if err != nil {

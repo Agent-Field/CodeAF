@@ -27,13 +27,19 @@ func TestStopWorkDoesNotWakeAndOnlyFreshSubmissionRestarts(t *testing.T) {
 		t.Fatal("Stop work started another model turn")
 	case <-time.After(100 * time.Millisecond):
 	}
-	if a.jobs.find(id).running() {
-		t.Fatal("stopped process remains running")
-	}
 	if _, err := a.jobs.start("sleep 30"); err == nil {
 		t.Fatal("stopped conversation admitted another job")
 	}
+	// StopWork accepts promptly; process reaping belongs to the asynchronous stop.
 	waitFor(t, "work stop to settle", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return !a.workStopping })
+	if a.jobs.find(id).running() {
+		t.Fatal("stopped process remains running")
+	}
+	select {
+	case <-wakes:
+		t.Fatal("Stop work started another model turn while settling")
+	default:
+	}
 	events, err := a.Submit(context.Background(), "fresh request")
 	if err != nil {
 		t.Fatal(err)
