@@ -1747,6 +1747,15 @@ means the check did judge it and named the next work.
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
+## Where did my task's result go when it finished while codeaf was still answering
+
+If a task finishes while codeaf is still answering, its landed card and its crew line (the
+`task N crew · …` line with what it cost and `not right? /redo stronger`) appear after that
+answer ends, under it, and never inside the `▸ worked` chip the answer's steps fold into.
+They still appear if the answer fails or you stop it. A task that finishes while nothing is
+being answered appears at once. When two tasks finish, their landings stay in the order they
+arrived.
+
 ## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
 Every landing writes a compact, expandable notification into the conversation and moves

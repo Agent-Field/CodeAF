@@ -5511,7 +5511,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// nested-landing subtest, red from #776 until this). A part that never asked
 		// here still lands on the roster alone.
 		if node.parent == "" || node.state == session.TaskUnverified || a.doneEntryFor(node.id) >= 0 {
+			before := len(a.entries)
 			a.landedCard(node)
+			if len(a.entries) > before && a.stream != nil &&
+				(a.state == stateWorking || a.state == stateInterrupted) {
+				a.holdTurnLanding(node.id)
+			}
 		}
 	}
 	a.touch()
