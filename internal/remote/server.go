@@ -2006,7 +2006,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2433,6 +2433,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			door.Typing()
 		}
 		return nil, nil
+
+	case MethodSubmitBash:
+		args, err := arg[SubmitArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SubmitBash(context.Context, string) (<-chan session.Event, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot run ! commands")
+		}
+		events, err := door.SubmitBash(context.Background(), args.Text)
+		return s.stream(MethodSubmitBash, args.Text, events, err)
 
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)

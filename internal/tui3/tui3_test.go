@@ -137,14 +137,15 @@ func runTests(m *testing.M) int {
 // reason [Agent] is an interface — the surface is driven without a provider, a
 // key, or a file.
 type fakeAgent struct {
-	turns  [][]session.Event
-	turn   int
-	live   chan session.Event
-	model  string
-	window int
-	usage  session.Usage
-	sent   []string
-	stops  int
+	turns    [][]session.Event
+	turn     int
+	live     chan session.Event
+	model    string
+	window   int
+	usage    session.Usage
+	sent     []string
+	bashSent []string
+	stops    int
 	// stopDoor is the door the last stop named (internal/session's stopcause.go).
 	stopDoor session.StopDoor
 	closes   int

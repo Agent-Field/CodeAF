@@ -476,6 +476,7 @@ func Glyphs() []GlyphInfo {
 		{"Pinned", GlyphPinned, '⌖', false},
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
+		{"PromptShell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
 		{"Filter", GlyphFilter, '⌕', false},
 		{"Write", GlyphWrite, '✎', false},

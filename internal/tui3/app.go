@@ -9081,6 +9081,10 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // no draft can put the caret in both at once (slashchip.go's [slashToken],
 // files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
+	if _, bash := session.BashCommand(a.input.String()); bash {
+		a.closeLists()
+		return nil
+	}
 	wasOpen := a.menu.open
 	a.menu.sync(&a.input)
 	if a.menu.open && !wasOpen {

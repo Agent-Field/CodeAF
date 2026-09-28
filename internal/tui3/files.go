@@ -169,6 +169,10 @@ func deadLine() compLine {
 // draft is still what it is about — but it answers to [argToken] instead, and
 // it stays open while the person types a path with spaces in it.
 func (c *completion) sync(e *editor) {
+	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
+		c.close()
+		return
+	}
 	if at, query, ok := argToken(e.value, e.cursor); ok {
 		switch {
 		case query == "" && !(c.open && c.arg):

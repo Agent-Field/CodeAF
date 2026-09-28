@@ -1669,6 +1669,12 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
 }
 
+// SubmitBash explicitly runs the person's command; ordinary Submit never
+// interprets message content as executable shell syntax.
+func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {
+	return a.open(ctx, MethodSubmitBash, SubmitArgs{Text: text})
+}
+
 // SubmitStanding is Submit for a draft the person marked as something to keep
 // true. It rides the same method as an ordinary send with one flag on it, for
 // the reason [SubmitArgs.Standing] states: the two turns differ only in what the

@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // prompt is the input line's mark. Two cells, and the only furniture below the
@@ -1464,6 +1465,9 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	if windowsDroppedLineShape(line) && a.inputDroppedLine(line) {
 		return a.edited()
 	}
+	if _, bash := session.BashCommand(a.pastesUnfolded(line)); bash {
+		return a.enterBash(line)
+	}
 	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
 	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a
 	// person who pressed esc to read an existing conversation can still type
@@ -1854,12 +1858,16 @@ func draftBlockTacked(e *editor, pal palette, width, maxRows int, hint, lead, ta
 // [app.draftInk]) — a dim box is how the walk says these words were never
 // sent.
 func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment, ink func(string) string) ([]string, int, int) {
-	return draftBlockFull(e, pal, width, maxRows, hint, lead, "", demoted, ink)
+	return draftBlockFull(e, pal, width, maxRows, hint, lead, "", demoted, ink, lead == "")
 }
 
 // draftBlockFull is the whole of it, and the only one of these four that takes
 // every knob. The three above are the shapes that are actually asked for.
-func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack string, demoted []segment, ink func(string) string) ([]string, int, int) {
+func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack string, demoted []segment, ink func(string) string, shell ...bool) ([]string, int, int) {
+	mark := pal.dim(prompt)
+	if len(shell) > 0 && shell[0] && len(e.value) > 0 && e.value[0] == '!' {
+		mark = pal.warn(pal.glyph(tokens.GPromptShell) + " ")
+	}
 	chip := ""
 	if tack != "" {
 		chip = pal.chip(tack) + " "
@@ -1881,7 +1889,7 @@ func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack
 		// out and keeps the way out itself, which is the same ladder the foot of
 		// every place is fitted by; on a hint with nothing to drop it is exactly
 		// [fit], so the boxes whose placeholder is a plain phrase lose nothing.
-		return []string{lead + pal.dim(prompt) + chip + pal.dim(hintFit(hint, room))}, head, 0
+		return []string{lead + mark + chip + pal.dim(hintFit(hint, room))}, head, 0
 	}
 
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the
@@ -1915,7 +1923,7 @@ func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack
 		row0 := under
 		switch {
 		case i == 0 && opening:
-			row0 = lead + pal.dim(prompt) + chip
+			row0 = lead + mark + chip
 		case i == top:
 			// The block is scrolled: say so where the prompt would be, in the
 			// same two cells, so the rows do not shift under the caret.

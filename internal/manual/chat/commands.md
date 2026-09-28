@@ -1,5 +1,35 @@
 # Commands
 
+## Bash mode — run a shell command with ! and keep its output in context
+
+Start a message with `!` to run a non-interactive shell command yourself:
+`!ls -lth`, `!pwd`, or `!git status`. Enter runs it in this conversation's workspace;
+from Home it opens a conversation in the selected project first. With `--host`,
+the command runs on the connected machine. No model is asked to run it or explain
+its result, and no provider key is needed for the command itself.
+
+Typing the leading `!` changes the composer prompt to an amber `$`; deleting it
+restores the ordinary prompt. Combined stdout/stderr appears as plain text while
+the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
+control sequences are removed for safe display. The command and output remain in
+history after reopening. The model waits for your next message before responding.
+A failed command keeps its output and exit status too. Shell paths, `@` names and
+slash words remain literal, not mentions or send tags.
+
+Commands receive no interactive input or terminal. Use non-interactive flags;
+editors, prompts and terminal apps are not supported. Each command starts a fresh
+shell in the workspace: `cd` and `export` apply only within that command. Large
+output is truncated with a notice. The foreground shell timeout applies, and
+Escape stops the command. These commands cannot be sent to background jobs. Enter
+supplies consent for ordinary commands; explicit policy denies still apply. The short
+table of dangerous commands (disk wipes, `mkfs`, reboot/shutdown and the fork bomb)
+still asks first. Shell commands run with your permissions, including network access.
+File-tool workspace guards cannot restrict shell writes; bash mode is not a sandbox.
+
+An empty `!`, attached files, or a busy conversation leaves your draft in place
+and explains what to change. Wait for the turn to finish or stop it first.
+Task pages accept task messages; run `!` commands from the parent conversation.
+
 ## Typing a slash to see the command list
 
 Type `/` in the home or conversation message box to see every available command in

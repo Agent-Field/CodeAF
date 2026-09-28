@@ -632,6 +632,9 @@ const (
 	EventRowNews
 	// EventQuestionDiscussion carries a reply beside a pending decision.
 	EventQuestionDiscussion
+	// EventToolOutput carries literal stdout/stderr in Text while a user shell
+	// command is running. CallID owns the bytes; its result still ends the call.
+	EventToolOutput
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its

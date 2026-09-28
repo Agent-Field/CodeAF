@@ -1012,7 +1012,7 @@ func placeFrameWithBar(a *app, width, height int,
 	case hasBox && box != nil && len(box.value) > 0:
 		// Blank lines still hold the caret. The send-time emptiness check
 		// discards whitespace, but the editor must draw everything typed.
-		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
+		draftRows, draftCX, draftCY = draftBlockWithTags(box, pal, width-2, homeDraftRows, "", "", nil, pal.ink)
 	}
 	// THE BOX HAS A FLOOR ([boxFloor]) AND EVERY BRANCH ABOVE IS HELD TO IT, the
 	// target's filter included. The rows that make it up are added BELOW what was

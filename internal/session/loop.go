@@ -300,6 +300,9 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	if user.bash != "" {
+		return a.runUserBash(ctx, hub, user.bash)
+	}
 	// AND A SETTLE TURN OPENS ITS OWN WINDOW HERE, where no lock is held: the length
 	// is read off the [Steward] ([Agent.settleWindow]), and that reading runs the
 	// run's spend closure, which takes the agent's lock — so it cannot be made

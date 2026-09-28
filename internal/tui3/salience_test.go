@@ -56,6 +56,7 @@ type salienceCase struct {
 
 // salienceTable is every kind, in the order internal/session declares them.
 var salienceTable = []salienceCase{
+	{name: "EventToolOutput", ev: session.Event{Kind: session.EventToolOutput, CallID: "c1", Tool: "bash", Text: "literal shell output\n"}},
 	{name: "EventTextDelta", ev: session.Event{Kind: session.EventTextDelta, Text: "the loader is fine"}},
 	{name: "EventThinking", ev: session.Event{Kind: session.EventThinking}},
 	{name: "EventReasoning", ev: session.Event{Kind: session.EventReasoning, Text: "the map is never made"}},

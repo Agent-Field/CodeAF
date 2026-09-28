@@ -751,8 +751,8 @@ are asked, exactly as if it had said `ASK`.
 ## The floor nothing lifts: dangerous shell commands
 
 A short table of shell shapes is asked about **whichever way your settings are
-set**. A blanket `allow` does not switch it off. `--yolo` does not switch it
-off. A pushed policy cannot widen it.
+set**, including a `!` command you type. A blanket `allow` does not switch it off.
+`--yolo` does not switch it off. A pushed policy cannot widen it.
 
 The entries, verbatim:
 

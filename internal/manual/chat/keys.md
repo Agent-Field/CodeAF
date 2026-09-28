@@ -170,9 +170,10 @@ enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
 ```
 
 That is the terminal-capable form when no command can be kept. A running foreground
-command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
-cannot deliver `ctrl+shift+enter` leaves that clause out. `cmd+enter` still waits, but the
-one-line slot no longer advertises it.
+command that can be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`;
+a `!` command cannot be kept. A terminal that cannot deliver `ctrl+shift+enter`
+leaves that clause out. `cmd+enter` still waits, but the one-line slot no longer
+advertises it.
 
 ## My message went in too late — the answer finished first, so it became the next message
 

@@ -3108,6 +3108,9 @@ func (h *homeView) buildFor() {
 func (a *app) homeSubmit() tea.Cmd {
 	h := &a.home
 	typed := strings.TrimSpace(h.box.String())
+	if _, bash := session.BashCommand(typed); bash {
+		return a.homeStart(typed)
+	}
 	if h.runLabel(typed) != "" {
 		return a.homeSlash(typed)
 	}
@@ -3143,6 +3146,9 @@ func (a *app) homeEnter() tea.Cmd {
 	// pressed enter inside two frames meant the drop (dropkeys.go). The net
 	// under the row below catches whatever this did not.
 	a.spendDrop()
+	if _, bash := session.BashCommand(h.box.String()); bash {
+		return a.homeSubmit()
+	}
 	if project := h.pastedProject(); project != "" {
 		h.projectPaste.path = ""
 		h.build()
@@ -3560,6 +3566,12 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 }
 
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	if _, bash := session.BashCommand(text); bash {
+		if refusal := bashRefusal(text, len(a.home.chips) > 0, false); refusal != "" {
+			a.home.say(refusal, "")
+			return nil
+		}
+	}
 	if (strings.TrimSpace(text) != "" || place != "" || len(a.home.chips) > 0) && a.updateStopsTurn() {
 		return nil
 	}
@@ -3619,6 +3631,9 @@ func (a *app) homeStartWithProject(text, place string) tea.Cmd {
 	}
 	if strings.TrimSpace(text) == "" {
 		return started
+	}
+	if _, bash := session.BashCommand(text); bash {
+		return tea.Batch(started, a.submitBash(text))
 	}
 	return tea.Batch(started, a.submit(text))
 }
