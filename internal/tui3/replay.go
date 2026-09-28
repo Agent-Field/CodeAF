@@ -731,6 +731,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			}
 			blocks = append(blocks, entry{
 				kind: entryTool, tool: e.Tool, text: e.Hint, turn: turn, status: status,
+				open: session.IsUserBashCall(e.CallID),
 				// THE CALL'S OWN IDENTITY IS KEPT because it is what a live end has
 				// to land on: a page drawn out of the record and then kept listening
 				// pairs the end that arrives a second later with the row already

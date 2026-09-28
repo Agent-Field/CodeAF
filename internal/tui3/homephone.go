@@ -490,7 +490,7 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 
 	// Use the same multiline layout as the wide frame, including blank lines
 	// and the caret's actual position rather than the end of the draft.
-	draft, draftX, draftY := draftBlock(&a.home.box, pal, width-2, homeDraftRows, placeRestWord, "")
+	draft, draftX, draftY := draftBlockWithTags(&a.home.box, pal, width-2, homeDraftRows, placeRestWord, "", nil, pal.ink)
 	foot := 2 + len(draft) // The rule, the draft rows, and the bar.
 	room := height - len(lines) - foot
 	if room < 1 {

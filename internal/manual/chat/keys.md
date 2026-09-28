@@ -170,9 +170,10 @@ enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
 ```
 
 That is the terminal-capable form when no command can be kept. A running foreground
-command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
-cannot deliver `ctrl+shift+enter` leaves that clause out. `cmd+enter` still waits, but the
-one-line slot no longer advertises it.
+command that can be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`;
+a `!` command cannot be kept. A terminal that cannot deliver `ctrl+shift+enter`
+leaves that clause out. `cmd+enter` still waits, but the one-line slot no longer
+advertises it.
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -243,7 +244,7 @@ transcript where you can scroll it. A row that is wider than the window wraps un
 column its sentence already starts in, so the next line does not sit at the left edge as
 if it were another key.
 
-**On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
+**On a place** — home, tasks, standing, memory, spend, settings — `?` draws **the
 map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
 was already using. One meaning, two screens: show me the keys for where I am standing.
 
@@ -621,7 +622,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise it does what `alt+l` does: close the column, or bring it back; the column stands even with no tasks in it. Remembered for the next session |
 | `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest completed work inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
-| `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
+| `tab` | Take the highlighted slash command on Home or in a conversation; otherwise open or commit path completion over a command's path argument — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
 ## Keys in the message box: moving the caret
 
@@ -674,7 +675,7 @@ person means by one — a path, a hash, a flag, `go.mod`, a URL are each one wor
 same boundary a double-click uses in the conversation above.
 
 **It works in every box you type into**: the message box in a conversation, the box at
-the foot of home, and the composer on tasks, standing, memory, spend, search and
+the foot of home, and the composer on tasks, standing, memory, spend and
 settings. Sweeping out of the box carries the selection to the end of what is in it,
 rather than stopping at the edge.
 
@@ -811,8 +812,8 @@ text when you click on the prompt's side of it. It works on a wrapped, multi-lin
 draft.
 
 It answers **on home as well as in the conversation** — home is the one place with
-a box at its foot (the Places page, *Typing on a place*); the filters on tasks,
-memory and search are rows of their own bodies.
+a box at its foot (the Places page, *Typing on a place*); the filters on tasks and
+memory are rows of their own bodies.
 
 Two things it does not do. With **nothing typed** there is no caret to place, so
 the click falls through to the place underneath — the row is carrying a dim
@@ -1404,12 +1405,15 @@ answers every picture question here, whether you attached the file or not.
 Attaching is for a picture you are handing over as part of what you are saying.
 
 **The tray.** Attached pictures sit in a one-row tray directly above the message box,
-one dim chip each, drawn as `▣ #1 name.png` — `*` in place of the square on an ASCII
-terminal. The number is the picture's place in the message and the number `[image #1]`
+one dim chip each, drawn as `▣ #1 name.png ×` — `*` in place of the square and
+`x` for removal on an ASCII terminal. The number is the picture's place in the message and the number `[image #1]`
 in your sentence refers to. The message box stays the sentence. `backspace` over an
 empty box drops the last chip, and clicking a chip removes that one — and takes its
 `[image #n]` out of your sentence, counting the ones behind it down so the numbers
-stay true.
+stay true. Returning to Home preserves your unsent prompt, cursor and attachments in
+that conversation. Reopening it restores them. Home starts with an empty box and tray;
+a new conversation receives only what you type or attach there. Queued messages keep
+their own attachments.
 
 ## Dragging or pasting a screenshot in
 
@@ -1608,7 +1612,7 @@ follows what you type. Only these keys are taken from you:
 | `down` / `ctrl+n` | Move the list cursor down |
 | `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
 | `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted team, conversation, task or file; if nothing is picked, the line is sent |
-| `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/attach ` or `/export `. With nothing to complete and an empty box it goes back to the last conversation |
+| `tab` | Command list on Home or in a conversation: take the highlighted command, as Enter does. Mid-sentence it only completes the word; a finished send tag is not submitted. No match leaves the draft alone. Otherwise opens or commits path completion over `/attach ` or `/export `; with an empty conversation box it goes back to the last conversation |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 
 ## Keys in the model picker and the sessions roster
@@ -1651,7 +1655,7 @@ With the providers open, `enter` on one of them pins it instead of switching mod
 
 Its placeholder reads exactly `filter by name · ctrl+r refresh` — the keys are on the FOOT, because
 a placeholder vanishes under the first typed character and the foot does not. The hint slot
-follows the cursor: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
+follows the cursor: `→ hosts · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
 providers, and `enter unpin · ← back · esc` on the provider already pinned, where `enter` takes
 the pin off — with `tab providers` and `tab back` in place of the arrows while you are
 mid-typing and the arrow would step over a character instead. The foot always names whichever
@@ -1867,8 +1871,8 @@ see *Switch between open conversations*.
 It works while either conversation is running, over every door: the one you leave keeps
 streaming into its own transcript and is all there when you come back.
 
-**On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
-search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
+**On a place, `tab` is the next place instead.** Home, teams, sessions, spend and settings form the circle it walks; `shift+tab` walks it back.
+From standing or memory, `tab` returns to Home. That is
 the same key doing the same kind of thing — going to the next thing of the kind you are
 looking at — and it is the only meaning `tab` has while a place is up. See **Places**.
 
@@ -2213,8 +2217,8 @@ inside a conversation, and `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the six places on
 the top line, `home  teams  chats  sessions  spend  settings`, and each answers to its position there,
-`alt+1` through `alt+6`. **`alt+7`, `alt+8` and `alt+9` are kept**, on the three places that
-are off the bar — standing, memory and search — so those keys still open a room rather than
+`alt+1` through `alt+6`. **`alt+7` and `alt+8` are kept**, on the two places that
+are off the bar — standing and memory — so those keys still open a room rather than
 doing nothing; `alt+.` draws them all with their numbers. `alt+2` is the teams page, and
 `alt+3` is `chats`, the way back to the conversation in front (a new chat when none is open);
 it is not a room, so `tab` steps over it. Hold
@@ -2223,12 +2227,12 @@ that keycap; it is the same key and the same chord, and on Linux and on Windows 
 `alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
 rather than on `ctrl`.
 
-**`ctrl+1` … `ctrl+9` are a second spelling, on the terminals that can send them.** `ctrl`
+**`ctrl+1` … `ctrl+8` are a second spelling, on the terminals that can send them.** `ctrl`
 and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
 the first spelling and never will be — but a terminal running the kitty keyboard protocol
 sends exactly the keys that scheme cannot spell, and it tells codeaf it does. Where that
-report arrives, `ctrl+1` … `ctrl+9` jump to the same eight places and `ctrl+.` draws the same
-map, and the map's own line says `alt+1…9 or ctrl+1…9 go to a place` so you can see it is
+report arrives, `ctrl+1` … `ctrl+8` jump to the same eight destinations; `ctrl+.` draws the same
+map, and the map's own line says `alt+1…8 or ctrl+1…8 go to a place` so you can see it is
 live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
 WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
 way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
@@ -2259,7 +2263,7 @@ spaces. A machine with one conversation, or none, opens an empty home; so does a
 over `--host`, where what opens is the **far machine's** home.
 
 **It answers from every place as well as from a conversation.** Wherever a place is
-standing, the two spaces are read against that place's own filter — tasks, memory, search —
+standing, the two spaces are read against that place's own filter — tasks and memory —
 and open home just as they do from a draft; on spend and standing, which have nothing to
 type into, two bare spaces open it and any key between them disarms it. On home itself the
 door is a no-op: the page is already open, and two spaces type into home's own filter. It also does not answer from under a layer that owns the
@@ -2408,7 +2412,7 @@ to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
 the six place words on the top line after the `codeaf` wordmark (seven while you stand in
-standing, memory or search, whose word is drawn after the six). The chat tab strip is
+standing or memory, whose word is drawn after the six). The chat tab strip is
 not on a place. It is the row under that top line only while a conversation is in front.
 The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:
@@ -2422,7 +2426,7 @@ band there instead of its usual mark, and five keys mean something on that row:
 | `↑` | nothing. The bar is on the top line, and there is nothing above it |
 
 Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
-next and previous place, `alt+1` … `alt+9` jump, `alt+.` draws the map, and **any printable
+next and previous place, `alt+1` … `alt+8` jump, `alt+.` draws the map, and **any printable
 key goes into the composer** — taking the cursor back down into the page with it, because
 somebody who has started typing has stopped looking at the bar.
 
@@ -2756,7 +2760,7 @@ Only the left button acts. A press is resolved in this order:
    follows it, and a second press on the same row opens it — on a frame too narrow for that
    pane one press opens, as it always did; a press on a section word or on
    empty padding does nothing. Inside an old task's record card, the head row and the foot
-   go back to the list and its body is read. On standing, spend and search a press on a
+   go back to the list and its body is read. On standing and spend a press on a
    row opens it on the first press too; on memory it opens a line's card, or folds a
    shelf. On home a click puts the cursor on a row and a second click opens it. On the rewind timeline a click places the pick and a click on the
    point already placed does the rewind.
@@ -2989,7 +2993,7 @@ snapshot.
 
 **The terminal is too narrow for the word you are aiming at.** The top line folds its
 trailing places into `more ▾` as the frame narrows; click `more ▾` and pick the place from
-its menu. `tab`, `shift+tab` and `alt+1`…`alt+9` still go everywhere.
+its menu. `tab`, `shift+tab` and `alt+1`…`alt+8` still go everywhere.
 
 **A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
@@ -3208,7 +3212,7 @@ answer:
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
 | `ctrl+y` | **Bound** on a program's task page: it turns the page between the actions the program took and its raw model calls; on a Home project row and in the `/files` list it copies the path under the cursor. Nowhere else |
 | `ctrl+z` | **Bound**: undo in every box, with `ctrl+shift+z` to redo — see "Undo what I typed" |
-| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak, which is why `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) are the first spelling and always will be, but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+9` reach the same eight places. The map's line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak, which is why `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) are the first spelling and always will be, but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+8` reach the same seven places and the chats destination. The map's line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |

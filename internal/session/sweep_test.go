@@ -446,16 +446,17 @@ func TestTheSweepTellsFurrowToForgetASweptSessionsForks(t *testing.T) {
 	}
 }
 
-// AND A DROP IT CANNOT MAKE IS A LINE IN THE LOG AND NEVER A HELD-UP REMOVAL.
+// A FAILED RETIREMENT KEEPS THE COPY AND ITS RECOVERY RECORD.
 // furrow gone from the machine is the ordinary way this happens — the ground
 // deleted or detached is the same shape — and the session folder is litter
-// either way, so the reap goes through and the miss is written down.
-func TestASweptSessionIsReapedEvenWhenFurrowCannotForgetItsFork(t *testing.T) {
+// either way, but retirement must succeed before its recovery record goes.
+func TestASweptSessionPreservesItsForkUntilRetirementSucceeds(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "projects")
 	now := time.Now()
 	repo := dirtyRepo(t)
 	installFakeFurrow(t)
 
+	binary := os.Getenv(furrow.BinaryEnvVar)
 	litter, tree := newSweptUniverseSession(t, root, "dddd2222dddd2222", repo, now)
 	// furrow leaves the machine between the run and the sweep: the record it is
 	// keeping is now out of reach from here, whatever it says.
@@ -465,11 +466,17 @@ func TestASweptSessionIsReapedEvenWhenFurrowCannotForgetItsFork(t *testing.T) {
 	var said []string
 	SweepPlaces(root, now, func(line string) { said = append(said, line) })
 
-	if _, err := os.Stat(litter); !os.IsNotExist(err) {
-		t.Fatalf("a fork that could not be forgotten held up the reap (%v)", err)
+	if _, err := os.Stat(litter); err != nil {
+		t.Fatalf("failed retirement lost the checkpoint (%v)", err)
 	}
 	if !saidSomethingAbout(said, tree.universe) {
 		t.Fatalf("the sweep said %q and swallowed the miss", said)
+	}
+	t.Setenv(furrow.BinaryEnvVar, binary)
+	furrow.Forget()
+	SweepPlaces(root, now, func(string) {})
+	if _, err := os.Stat(litter); !os.IsNotExist(err) {
+		t.Fatalf("retry did not reap session: %v", err)
 	}
 }
 
@@ -481,18 +488,13 @@ func TestASweptSessionIsReapedEvenWhenFurrowCannotForgetItsFork(t *testing.T) {
 //
 //	CODEAF_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
 func TestARealFurrowForgetsASweptSessionsFork(t *testing.T) {
-	binary := strings.TrimSpace(os.Getenv(realFurrowEnvVar))
-	if binary == "" {
-		t.Skip("set " + realFurrowEnvVar + " to a furrow binary to run this against the real program")
-	}
+	_, data := isolatedRetirementFurrow(t)
 	root := filepath.Join(t.TempDir(), "projects")
 	now := time.Now()
 	repo := dirtyRepo(t)
-	t.Setenv(furrow.BinaryEnvVar, binary)
-	furrow.Forget()
-	t.Cleanup(furrow.Forget)
 
 	litter, tree := newSweptUniverseSession(t, root, "dddd3333dddd3333", repo, now)
+	childID := strings.TrimSpace(readFile(t, filepath.Join(tree.dir, ".furrow", "workspace-id")))
 	if names := forkNames(t, repo); len(names) == 0 {
 		t.Fatalf("the real furrow reports no fork of %s at all, so there is nothing to forget", repo)
 	}
@@ -501,6 +503,9 @@ func TestARealFurrowForgetsASweptSessionsFork(t *testing.T) {
 
 	if _, err := os.Stat(litter); !os.IsNotExist(err) {
 		t.Fatalf("the litter session is still there (%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "store-v1", "workspaces", childID)); !os.IsNotExist(err) {
+		t.Fatalf("swept timeline remains: %v", err)
 	}
 	for _, name := range forkNames(t, repo) {
 		if name == tree.universe {

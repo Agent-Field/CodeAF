@@ -1,5 +1,35 @@
 # Commands
 
+## Bash mode — run a shell command with ! and keep its output in context
+
+Start a message with `!` to run a non-interactive shell command yourself:
+`!ls -lth`, `!pwd`, or `!git status`. Enter runs it in this conversation's workspace;
+from Home it opens a conversation in the selected project first. With `--host`,
+the command runs on the connected machine. No model is asked to run it or explain
+its result, and no provider key is needed for the command itself.
+
+Typing the leading `!` changes the composer prompt to an amber `$`; deleting it
+restores the ordinary prompt. Combined stdout/stderr appears as plain text while
+the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
+control sequences are removed for safe display. The command and output remain in
+history after reopening. The model waits for your next message before responding.
+A failed command keeps its output and exit status too. Shell paths, `@` names and
+slash words remain literal, not mentions or send tags.
+
+Commands receive no interactive input or terminal. Use non-interactive flags;
+editors, prompts and terminal apps are not supported. Each command starts a fresh
+shell in the workspace: `cd` and `export` apply only within that command. Large
+output is truncated with a notice. The foreground shell timeout applies, and
+Escape stops the command. These commands cannot be sent to background jobs. Enter
+supplies consent for ordinary commands; explicit policy denies still apply. The short
+table of dangerous commands (disk wipes, `mkfs`, reboot/shutdown and the fork bomb)
+still asks first. Shell commands run with your permissions, including network access.
+File-tool workspace guards cannot restrict shell writes; bash mode is not a sandbox.
+
+An empty `!`, attached files, or a busy conversation leaves your draft in place
+and explains what to change. Wait for the turn to finish or stop it first.
+Task pages accept task messages; run `!` commands from the parent conversation.
+
 ## Typing a slash to see the command list
 
 Type `/` in the home or conversation message box to see every available command in
@@ -15,18 +45,19 @@ For example, `/res` selects `/resume`, although `/new` also matches its `reset` 
 A filter with no matches shows `no commands match` and keeps unrelated results hidden.
 
 - ↑ / ctrl+p and ↓ / ctrl+n choose a row. PgUp / PgDown and the mouse wheel scroll.
-- Enter takes the selected row. A command that takes words, such as `/model <slug>`,
+- Enter or Tab takes the selected row. A command that takes words, such as `/model <slug>`,
   leaves `/model ` in the box ready for its argument. A bare command runs.
 - In a conversation, Esc dismisses the list and leaves the typed word; the list stays
   dismissed while you continue that token. On home, Esc clears the draft as usual.
 
 The list follows the caret as well as edits. The box remains editable while it is open.
-A command chosen inside a sentence completes its token rather than running on its own;
-The `/task` send tag retains its submission behavior.
+A command chosen inside a sentence completes its token rather than running on its own.
+Tab never submits that sentence or a finished `/task` or `/standing` tag; Enter retains
+its send behavior. With no matching command, Tab leaves the draft and screen unchanged.
 
 On home, command rows describe what they will do there, including commands that open a
 conversation first. See *What each command does on home*. In a conversation, pointer
-hover highlights a row but clicking does not execute it. Enter confirms the keyboard
+hover highlights a row but clicking does not execute it. Enter or Tab confirms the keyboard
 selection. Commands entered in a conversation are kept in its ↑-history.
 
 ## Why a file path does not pop up the command list
@@ -157,7 +188,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/model` | — | — | opens the model picker |
 | `/model` | — | `<slug>` | switches the model to that slug |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
-| `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
+| `/connect` | `/connections` | — | opens the connect panel; its `providers` group holds model providers, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/drafts` | — | — | lists cleared drafts, newest first; enter restores one to the box and `d` lets one go; an empty ring says `no cleared draft is waiting` |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
@@ -232,7 +263,6 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | none | none | opens the search place, everything said on this machine (also `alt+9`) |
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
 | `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
@@ -284,12 +314,12 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…9        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory search
+alt+1…8        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `opt+1…9` and `opt+.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -807,13 +837,7 @@ pipe it into and it is not written to a file. That also means it is wrapped to t
 of your terminal, so text copied off the screen carries the line breaks the frame put in
 and the note's leading `· `; strip those before feeding it to a parser.
 
-## /search and /spend — the typed doors onto those two places
-
-`/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+9` opens and the same
-place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
-searches. With the **memory** row off nothing said is indexed, and the place says so and
-searches nothing — find the conversation from home's box instead (see the *places* page).
+## /spend — open the machine-wide spending page
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
 and by what it was for. It is the same place `alt+5` opens.
@@ -939,8 +963,8 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-Models from connected services sit under their service's name as a dim heading, default
-service first; a custom connection's heading is the name you gave it.
+Models from connected providers sit under their provider's name as a dim heading, default
+provider first; a custom provider's heading is the name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -990,7 +1014,7 @@ falls back to `filter`.
 moment you type — which is exactly when you have found your model and want its providers.
 The foot follows the cursor and always reads in one order — the keys that move the **cursor**,
 then the ones that change the **list**, then `enter`, then the one key that is about neither:
-`→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model,
+`→ hosts · alt+s sort · enter switch · ctrl+t effort · esc` on a model,
 `← back · alt+s sort · enter choose · esc` inside its providers — and `← back · alt+s sort ·
 enter unpin · esc` on the provider you are already pinned to, where the same key takes the pin
 off again. While you are
@@ -1007,8 +1031,9 @@ model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
-The picker **never fetches on its own** — it fetches only when you ask, with `ctrl+r` (see
-"Refreshing the model list" below). The list is what is already known, tried in this order,
+At launch, codeaf fetches a connected provider's model list once if it has an empty cached list.
+After that, `ctrl+r` asks for a fresh list (see "Refreshing the model list" below).
+The list is what is already known, tried in this order,
 each rung used only when the one above it came back empty after filtering:
 
 1. the catalog handed in at launch,
@@ -1062,11 +1087,13 @@ Limits:
   back. `/new` forgets it.
 - There is no mouse commit on the picker's rows.
 
-## Refreshing the model list — a new model is not in /model, the list is out of date
+## Refreshing the model list — a new model came out but it is not in /model; the model list is out of date
 
 The list `/model` shows is fetched from the router at most once a day, so a model a
 provider shipped this morning may not be in it yet. With the picker open, press
-**`ctrl+r`** to fetch the newest list now. The placeholder names it — `ctrl+r refresh` —
+**`ctrl+r`** to fetch the newest list now from the router and every connected provider
+that lists models. Each provider's group fills as its answer arrives; one provider's
+failure does not stop the others. The placeholder names it — `ctrl+r refresh` —
 and when your filter matches nothing the list says `no model matches · ctrl+r fetches the
 newest list`. Nothing on screen shows how old the list is; when in doubt, press it.
 
@@ -1600,15 +1627,16 @@ status sheet. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
-`/connect` (or `/connections`) opens the connection panel. Its pinned `models` group
-holds the six built-in model services plus every one already connected; the account
+`/connect` (or `/connections`) opens the connect panel. Its pinned `providers` group
+holds the six built-in model providers plus every one already connected; the account
 catalog groups follow it. The Codex row says `browser`; enter opens the sign-in road and
-the waiting card keeps the address available to copy. The other listed services say what
-they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom service: it asks for a
+the waiting card keeps the address available to copy. The other listed providers say what
+they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom provider: it asks for a
 base URL, then a name of your own with the host's own spelling pre-filled (`127.0.0.1`
-becomes `127-0-0-1`), then a key. Several custom connections sit beside each other,
-each under its name; once one is connected an `add custom connection` row appears and
-the **Custom OpenAI-compatible API** row becomes that connection's edit door. The
+becomes `127-0-0-1`). It asks for a key only if the model-list address answers 401 or 403.
+Several custom providers sit beside each other,
+each under its name; once one is connected a `+ add a provider` row appears and
+the **Custom OpenAI-compatible API** row becomes that provider's edit door. The
 [services page](services.md) covers model keys, and the accounts page covers what each
 account can do once it is connected.
 
@@ -1652,7 +1680,7 @@ Moving in it:
 - ↑ / ctrl+p and ↓ / ctrl+n move a row at a time. Headings are stepped over, never landed
   on. pgup/pgdown move 16. home/end jump to the ends.
 - ← and → switch sections, clamping at the ends rather than wrapping. **`tab` no longer
-  does**: it is the way to the next place — home, tasks, standing, memory, spend, search,
+  does**: it is the way to the next place — home, teams, sessions, spend,
   settings — here as everywhere else, and `shift+tab` walks that circle back. The panel's own
   bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,
@@ -1744,7 +1772,7 @@ Refusals inside the panel, exactly as written:
 ## config.json keys are not read — why codeaf says a setting I wrote is ignored
 
 codeaf reads the top-level keys of your profile's `config.json` that a settings row or
-the model-service setup owns. A key nothing reads — a hand-written `models` object, a
+the model-provider setup owns. A key nothing reads — a hand-written `models` object, a
 spelling from another tool — does nothing, and the defaults apply in its place. (A key
 codeaf itself retired is passed over quietly rather than named.) So the conversation says so once, as a note:
 
@@ -1813,7 +1841,7 @@ moved to Spending.
 
 The ssh rows are here because "what may codeaf reach on your behalf" is this tab's own
 question, and a link to another machine is that question asked about a machine rather
-than about a service. They are not on the tab named **Connections**: that one is the
+than about an account. They are not on the tab named **Connections**: that one is the
 catalog of third-party accounts you sign in to, and it is built from the account list
 rather than from the settings registry.
 
@@ -1929,12 +1957,12 @@ worker, checker and planner have no rows of their own here: the one **seats** ro
 `/crew` panel, and a seat is pinned there or with `/crew pin` — a pin may carry a thinking
 level, `/crew pin planner moonshotai/kimi-k3:high`, and the seat is then asked at that level.
 
-The connected model services have their own section on the tab, each with its billing
-door, the safe spelling of its key, its region and its order. The section ends with an
-`add custom connection` row, and once a custom connection is connected an `active
-connection` row follows it: it reads
+The connected model providers have their own section on the tab, each with its billing
+door, the safe spelling of its key, its region and its order. The section ends with a
+`+ add a provider` row, and once a custom provider is connected an `active
+provider` row follows it: it reads
 `answering on localhost · enter moves it to homelab`, and enter moves this conversation
-onto the next connection, wrapping past the last back to the first. The
+onto the next provider, wrapping past the last back to the first. The
 [services page](services.md) has the whole of it.
 
 **Connections** — the accounts this profile has connected and what each may do. Its rows

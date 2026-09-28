@@ -160,6 +160,12 @@ func TestTrafficThreadOneQuestionIsOneWorkRow(t *testing.T) {
 			t.Fatalf("%q is drawn as a line of its own:\n%s", never, joined)
 		}
 	}
+	// EVERY KIND OF ROW KEEPS ITS AGE: the work, each reply, and General.
+	for _, at := range []int{top, top + 1, top + 2, top + 3, railRowOf(rows, "General")} {
+		if at < 0 || !rowEndsWithAge(rows[at]) {
+			t.Fatalf("row %d has no age:\n%s", at, joined)
+		}
+	}
 	if !strings.Contains(rows[top], glyphOpen) || railRowOf(rows, "General") != top+4 {
 		t.Fatalf("the open row does not say it is open, or General moved off its place:\n%s", joined)
 	}
@@ -191,12 +197,12 @@ func TestTrafficThreadAnAskIsTheBandAndAFailureIsInk(t *testing.T) {
 	if head < 0 || ask != head+1 {
 		t.Fatalf("the ask is not the band's row under the header (%d, %d):\n%s", head, ask, joined)
 	}
-	if strings.HasSuffix(strings.TrimRight(rows[ask], " "), "now") || strings.Contains(rows[ask], "asks:") {
-		t.Fatalf("the band row still carries its age or the old asks lead: %q", rows[ask])
+	if !strings.HasSuffix(strings.TrimRight(rows[ask], " "), "now") || strings.Contains(rows[ask], "asks:") {
+		t.Fatalf("the band row lost its age or kept the old asks lead: %q", rows[ask])
 	}
 	for _, r := range a.side.last {
-		if strings.HasPrefix(r.key, "ask/") && !strings.Contains(r.hint, "now") {
-			t.Fatalf("the band's hint does not carry the age: %q", r.hint)
+		if strings.HasPrefix(r.key, "ask/") && (!strings.Contains(r.hint, "Open ") || !strings.Contains(r.hint, "now")) {
+			t.Fatalf("the band's hint does not open the message at its age: %q", r.hint)
 		}
 	}
 	work := railRowOf(rows, teamManagerGlyph+" → @"+price)

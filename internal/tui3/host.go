@@ -489,9 +489,4 @@ const (
 	memoryRemoteWord = "memory shows what this machine has learned, and this session is on another"
 	// spendRemoteWord is the spend place over --host.
 	spendRemoteWord = "spend shows what this machine has cost, and this session is on another"
-	// searchRemoteWord is the search place over --host. The box still takes
-	// letters, because a place with a composer that refused them would be a box
-	// that eats typing; what it cannot do is find anything, and this says so
-	// before somebody reads an empty result as an answer.
-	searchRemoteWord = "search reads what was said on this machine, and this session is on another"
 )

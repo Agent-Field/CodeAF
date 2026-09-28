@@ -181,8 +181,6 @@ const (
 	eventPlaceJumped = "place-jumped"
 	// eventRemembered is /remember reaching its command (memory.go).
 	eventRemembered = "remembered"
-	// eventSearchOpened is the search place raised by any door (pages.go).
-	eventSearchOpened = "search-opened"
 	// eventSubharnessOpened is /subharness reaching its command, bare or named
 	// (app.go).
 	eventSubharnessOpened = "subharness-opened"
@@ -209,7 +207,7 @@ var noticeEvents = []string{
 	eventAsked, eventTaskTyped, eventManualAsked, eventTabReopened, eventAtOpened, eventAttached,
 	eventFolderPicked, eventProjectSet, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
-	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
+	eventPlaceJumped, eventRemembered, eventSubharnessOpened,
 	eventConnectOpened, eventAutonomyAsked, eventHomeGesture,
 }
 
@@ -532,7 +530,7 @@ var notices = []notice{
 	{
 		id: "connect-accounts", slot: slotHint,
 		armed:  ready,
-		text:   "/connect links Notion, Slack and other services",
+		text:   "/connect links Notion, Slack and other accounts",
 		retire: eventConnectOpened,
 	},
 	{

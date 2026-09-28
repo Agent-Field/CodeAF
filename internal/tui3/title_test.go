@@ -75,7 +75,7 @@ func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 		pageStanding: "standing · codeaf",
 		pageMemory:   "memory · codeaf",
 		pageSpend:    "spend · codeaf",
-		pageSearch:   "search · codeaf",
+
 		pageSettings: "settings · codeaf",
 	}
 	for _, place := range everyPlaceTable() {

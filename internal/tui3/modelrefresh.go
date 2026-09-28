@@ -84,6 +84,9 @@ type modelsFetchedMsg struct {
 	at    time.Time
 	err   error
 	shown map[string]bool
+	// all marks the walk-every-provider chord; rows, at and err are empty
+	// because each provider answers through [Options.SubscribeServiceModels].
+	all bool
 }
 
 // offersRefresh is whether this list names the key and answers it right now:
@@ -146,7 +149,27 @@ func (a *app) armRefresh() {
 // client (internal/catalog's fetch), so nothing here keeps a second clock that
 // could disagree with it.
 func (a *app) fetchModels() tea.Cmd {
-	if a.refreshModels == nil || !a.pick.offersRefresh() {
+	if !a.pick.offersRefresh() {
+		return nil
+	}
+	// ctrl+r REFRESHES EVERY PROVIDER (issue #1508), not only the router's
+	// catalog: when the door walks all of them the chord is handed there, and
+	// each provider's group restocks itself as its fetch lands
+	// ([app.serviceModelsLanded]). A door without the walk keeps the old single-
+	// catalog fetch. Either way the fetch is a command and the picker never
+	// waits on it.
+	if a.refreshAllModels != nil {
+		a.modelsFetching, a.pick.fetching = true, true
+		walk, ctx := a.refreshAllModels, a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		return func() tea.Msg {
+			walk(ctx)
+			return modelsFetchedMsg{shown: map[string]bool{}, all: true}
+		}
+	}
+	if a.refreshModels == nil {
 		return nil
 	}
 	a.modelsFetching, a.pick.fetching = true, true
@@ -172,8 +195,21 @@ func (a *app) fetchModels() tea.Cmd {
 // picker keeps what it was showing, so the only thing a failure adds is its
 // sentence — and the key, which is offered again.
 func (a *app) modelsFetched(msg modelsFetchedMsg) {
+	settingsWaiting := a.sheet.msg == modelsFetching
+	if settingsWaiting {
+		a.sheet.msg = ""
+	}
 	a.modelsFetching, a.pick.fetching = false, false
 	a.touch()
+	if msg.all {
+		// The completion is also a refresh boundary for doors without a live
+		// subscription and for notifications still queued behind this message.
+		a.modelLists.refresh()
+		if a.pick.open {
+			a.pick.restock(a.modelPickerList())
+		}
+		return
+	}
 	list := keepModels(msg.rows, chatModel)
 	err := msg.err
 	if err == nil && (len(list) == 0 || msg.at.IsZero()) {
@@ -182,7 +218,11 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		err = errNoModelList
 	}
 	if err != nil {
-		a.toldNote(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
+		reason := ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " ")
+		if settingsWaiting {
+			a.sheet.msg = reason
+		}
+		a.toldNote(reason)
 		return
 	}
 	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/codeaf's v3 door),
@@ -197,9 +237,12 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 	a.forgetModelList("", modelcatalog.DefaultBaseURL)
 	a.refreshCreditWarnings()
 	if a.pick.open && a.pick.refresh {
-		a.pick.restock(list)
+		a.pick.restock(a.modelPickerList())
 	}
 	note, named := modelsNote(list, msg.shown)
+	if settingsWaiting {
+		a.sheet.msg = note
+	}
 	a.toldNote(note, named...)
 }
 

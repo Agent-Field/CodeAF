@@ -1183,12 +1183,15 @@ func TestAJudgedWideTaskWhoseFirstPartsAreRefusedStillGainsTheDivideVerb(t *test
 		config.TaskRepairRounds = 0
 	})
 	graph := session.graph()
-	// THE WORKER STAYS AT ITS FIRST ANSWER UNTIL THE REVIEWER HAS SPOKEN. A
-	// reading does not outlive the node that started it, so a worker whose whole
-	// run is one "Done." would cancel the judge mid-sentence and this test would
-	// be about that instead. The refusal is decided after the answer this waits
-	// for, and the join below is what makes it a fact.
-	completer.hold = completer.reviewed
+	// THE OBSERVER OWNS THE WORKER'S LIFETIME. A fast refusal can release
+	// the mock worker before this test resumes from its first request. Keep
+	// it seated until the test captures it and hears the reviewer, so the
+	// live belt below belongs to the worker whose request was observed.
+	release := make(chan struct{})
+	var released sync.Once
+	releaseWorker := func() { released.Do(func() { close(release) }) }
+	t.Cleanup(releaseWorker)
+	completer.hold = release
 
 	ask := "bring the flaking auth test, the http client upgrade and the release notes up to date"
 	id, _, _, err := session.StartTask(t.Context(), ask, false)
@@ -1207,6 +1210,12 @@ func TestAJudgedWideTaskWhoseFirstPartsAreRefusedStillGainsTheDivideVerb(t *test
 	if worker == nil {
 		t.Fatal("no worker was in the room after its first request")
 	}
+	select {
+	case <-completer.reviewed:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the reviewer never weighed the division")
+	}
+	releaseWorker()
 
 	select {
 	case <-node.done:
@@ -1256,9 +1265,15 @@ func TestATaskTheJudgeCallsNarrowNeverGainsTheDivideVerb(t *testing.T) {
 		config.TaskRepairRounds = 0
 	})
 	graph := session.graph()
-	// The judge is the only reader this road reaches, so its no is what the
-	// worker waits for — see the test above for why it waits at all.
-	completer.hold = completer.judged
+	// THE OBSERVER OWNS THE WORKER'S LIFETIME. The judge can answer and the
+	// worker can finish before this test resumes after its first request.
+	// Keep that worker seated until the test has captured it and heard the
+	// judge, then let the original landing and belt assertions run unchanged.
+	release := make(chan struct{})
+	var released sync.Once
+	releaseWorker := func() { released.Do(func() { close(release) }) }
+	t.Cleanup(releaseWorker)
+	completer.hold = release
 
 	id, _, _, err := session.StartTask(t.Context(), "fix the flaking reconciler test", false)
 	if err != nil {
@@ -1270,6 +1285,12 @@ func TestATaskTheJudgeCallsNarrowNeverGainsTheDivideVerb(t *testing.T) {
 	if worker == nil {
 		t.Fatal("no worker was in the room after its first request")
 	}
+	select {
+	case <-completer.judged:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the judge never read the narrow task")
+	}
+	releaseWorker()
 
 	select {
 	case <-node.done:

@@ -364,9 +364,9 @@ func TestASweepOverAPlacesComposerSelectsAndCopiesIt(t *testing.T) {
 // defect editkeys.go was written for, kept from happening again.
 func TestCtrlZReachesAPlacesComposer(t *testing.T) {
 	lab := newHomeLab(t)
-	a, box := driveToPlace(t, lab, pageSearch)
+	a, box := driveToPlace(t, lab, pageMemory)
 	if box == nil {
-		t.Fatal("the search place has no box to type into")
+		t.Fatal("the memory place has no box to type into")
 	}
 	for _, r := range "fix the flaky test" {
 		a.key(key(string(r)))

@@ -122,6 +122,11 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 		a.interruptUnrecoverableRun(g, kept, reason)
 		return
 	}
+	crew, err := a.restoreTaskCrew(kept.ID, kept.CrewState)
+	if err != nil {
+		a.interruptUnrecoverableRun(g, kept, err.Error())
+		return
+	}
 	via := a.pendingRunProgram(kept.Program)
 	if kept.Program != "" && via == nil {
 		return
@@ -133,7 +138,7 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 	}
 	ctx, cut := context.WithCancel(context.Background())
 	run := &beltRun{plan: plan, store: reopened, root: reopened.RootID(), row: id,
-		title: kept.Title, brief: pending.Brief, ground: canonicalPath(pending.Ground),
+		title: kept.Title, brief: pending.Brief, crew: crew, recoveredCrew: kept.CrewState, ground: canonicalPath(pending.Ground),
 		stand: taskStand{dir: pending.Ground, mode: pending.Mode}, pending: true,
 		delegate: via, asked: pending.Asked, cut: cut, born: a.taskClockNow(), over: make(chan struct{}),
 		joined:      recoveredJoinedRows(g, id),

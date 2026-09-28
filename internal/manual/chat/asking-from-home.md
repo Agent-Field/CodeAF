@@ -307,7 +307,7 @@ on home says `? waiting on you` for as long as it does.
 
 **The card stays after you answer it.** It does not disappear — it settles in place, greys
 out, and its bottom edge carries what was decided in the same words a card in a conversation
-uses: `Set it up · Mondays at 9am · set up`, `Only now, don't repeat · done now, nothing kept`,
+uses: `Set it up · Mondays at 9am · set up`, `Only now, don't repeat · approved once, not scheduled`,
 `Change… · you asked for something different`,
 `not set up`, `ended · nothing was set up`. The answers go, so `1`, `3`, `0` and `o` are
 ordinary characters again and can be typed into a follow-up. The only card that ever

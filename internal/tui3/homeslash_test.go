@@ -220,7 +220,7 @@ func TestHomeSlashSmokeWalks(t *testing.T) {
 	if text := homeText(a); !strings.Contains(text, a.targetPickFoot()) {
 		t.Fatalf("the foot does not name the list's own keys:\n%s", text)
 	}
-	for _, want := range []string{targetPickWalkWord, "→ providers", sortKeyWord, "enter choose", effortKeyWord, targetPickLeaveWord} {
+	for _, want := range []string{targetPickWalkWord, "→ hosts", sortKeyWord, "enter choose", effortKeyWord, targetPickLeaveWord} {
 		if !strings.Contains(a.targetPickFoot(), want) {
 			t.Fatalf("the foot on a model row does not name %q: %q", want, a.targetPickFoot())
 		}

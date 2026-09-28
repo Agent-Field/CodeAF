@@ -104,7 +104,7 @@ func (a *app) promotableEntry(i int) bool {
 		return false
 	}
 	e := &a.entries[i]
-	if e.kind != entryTool || e.tool != "bash" || e.status != toolRunning {
+	if e.kind != entryTool || e.tool != "bash" || e.status != toolRunning || session.IsUserBashCall(e.callID) {
 		return false
 	}
 	if e.callID == "" || e.bg != "" || !e.ended.IsZero() || e.ran > 0 {

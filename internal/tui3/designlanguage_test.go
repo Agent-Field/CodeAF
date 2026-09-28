@@ -780,7 +780,7 @@ func TestEveryPlaceHoldsAtThePlainFloor(t *testing.T) {
 	a.pal = newThemedPalette(tokens.NoColor, true, themeDark, nil)
 	for _, width := range []int{80, 120, 200} {
 		a.width, a.height = width, 26
-		for _, id := range []page{pageHome, pageSpend, pageSearch} {
+		for _, id := range []page{pageHome, pageSpend} {
 			a.showPage(id)
 			if a.page != id {
 				t.Fatalf("the %s place would not open at the plain floor", id.word())
@@ -831,7 +831,7 @@ func TestNoPlaceDrawsAPrivateUseGlyph(t *testing.T) {
 	}
 	a := placeApp(t)
 	a.width, a.height = 160, 30
-	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+	for _, id := range []page{pageHome, pageSpend} {
 		a.showPage(id)
 		for _, r := range placeFrameText(a) {
 			if private(r) {
@@ -902,7 +902,7 @@ func TestThePlaceMarksAreTheDesignsOwn(t *testing.T) {
 func TestNoPlaceDrawsAnItalic(t *testing.T) {
 	a := placeApp(t)
 	a.width, a.height = 160, 30
-	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+	for _, id := range []page{pageHome, pageSpend} {
 		a.showPage(id)
 		frame, _, _ := a.frame()
 		if strings.Contains(frame, "\x1b[3m") {

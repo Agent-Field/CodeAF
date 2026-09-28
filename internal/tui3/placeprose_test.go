@@ -22,7 +22,7 @@ func TestPlaceProseKeepsOneFoldGrammarAndOneSectionBreath(t *testing.T) {
 }
 
 func TestTheSixPlacesDoNotRegrowRetiredProseHelpers(t *testing.T) {
-	files := []string{"switcher.go", "tasksplace.go", "standingplace.go", "memoryplace.go", "spendplace.go", "searchplace.go"}
+	files := []string{"switcher.go", "tasksplace.go", "standingplace.go", "memoryplace.go", "spendplace.go"}
 	retired := []string{"tasksMoneyInk", "standingMoneyInk", "spendMoneyInk", "formatMemoryNumber", "commaInt"}
 	for _, name := range files {
 		body, err := os.ReadFile(name)

@@ -1023,7 +1023,7 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	// rather than being copied: two trays holding one file would be two answers
 	// to what the next message carries, which is the law attach.go states about
 	// there being one tray and not two.
-	ex.chips, a.chips = a.chips, nil
+	ex.chips, a.home.chips = a.home.chips, nil
 	a.home.carrying = false
 	text = errandSentence(text, ex.chips)
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})

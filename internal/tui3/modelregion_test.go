@@ -238,6 +238,11 @@ func TestTheProvidersSheetAsksWithTheSameChoice(t *testing.T) {
 		t.Fatal("Providers did not draw the connected Z.ai service")
 	}
 	drive(t, a, key("enter"))
+	// The vendored provider exposes its region and credentials through change key.
+	if !strings.Contains(strings.Join(sheetLabels(a), "\n"), "change key") {
+		t.Fatal("enter on a connected service did not offer change key")
+	}
+	drive(t, a, key("enter"))
 
 	screen := strings.Join(sheetLabels(a), "\n")
 	if !strings.Contains(screen, "your region") ||

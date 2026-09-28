@@ -130,7 +130,7 @@ func TestRestartReattachesTheRecordedCopyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = store.Close()
-	first.publishRunRow(g, TaskNotice{ID: id, Title: "task", State: TaskRunning, Copy: runCopyOf(tree), PlanTask: planStoreID(strconv.FormatUint(id, 10))})
+	first.publishRunRow(g, TaskNotice{ID: id, Title: "task", State: TaskRunning, Copy: runCopyOf(tree), CrewState: first.unroutedCrewRecord(), PlanTask: planStoreID(strconv.FormatUint(id, 10))})
 	_ = first.Close()
 	second := open()
 	select {
@@ -250,7 +250,7 @@ func TestRecoveringAPendingProgramDoesNotEndItsNewDriver(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = store.Close()
-	first.publishRunRow(g, TaskNotice{ID: id, Title: "program", State: TaskQueued, Program: "fake", PendingRun: &PendingRunRecord{Brief: "work", Ground: repo, Mode: TaskModeWorktree}})
+	first.publishRunRow(g, TaskNotice{ID: id, Title: "program", State: TaskQueued, Program: "fake", CrewState: first.unroutedCrewRecord(), PendingRun: &PendingRunRecord{Brief: "work", Ground: repo, Mode: TaskModeWorktree}})
 	_ = first.Close()
 	second := open()
 	second.beltMu.Lock()

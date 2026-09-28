@@ -263,10 +263,10 @@ func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
 	if run.code != 0 {
 		t.Fatalf("exit %d:\n%s", run.code, run.output)
 	}
-	// A normal run says three things and nothing else: the installed binary
-	// naming itself, the notice, the line to paste. The channel, the tag and
-	// the platform are --verbose's to say.
-	if !strings.Contains(run.output, "installed codeaf v1.2.3 · fake") {
+	// A normal run says what it did in checked steps, the installed binary
+	// naming itself on one of them, then the guide. The tag and the GETs are
+	// --verbose's to say.
+	if !strings.Contains(run.output, "Installed   codeaf v1.2.3\n") {
 		t.Errorf("output does not carry the receipt:\n%s", run.output)
 	}
 	for _, absent := range []string{"stable v1.2.3", "codeaf: installed"} {
@@ -275,7 +275,7 @@ func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
 		}
 	}
 	verbose := runInstaller(t, github, []string{"--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
-	for _, want := range []string{"stable v1.2.3", runtime.GOOS + "/" + runtime.GOARCH, "codeaf: installed", "installed codeaf v1.2.3 · fake"} {
+	for _, want := range []string{"stable v1.2.3", runtime.GOOS + "/" + runtime.GOARCH, "codeaf: installed", "Installed   codeaf v1.2.3\n"} {
 		if verbose.code != 0 || !strings.Contains(verbose.output, want) {
 			t.Errorf("verbose output does not contain %q (exit %d):\n%s", want, verbose.code, verbose.output)
 		}
@@ -591,7 +591,7 @@ func TestInstallerPinsAReleaseAndNamesAMissingOne(t *testing.T) {
 		t.Fatalf("exit %d:\n%s", run.code, run.output)
 	}
 	fromEnvironment := runInstaller(t, github, nil, "VERSION=v1.2.3", "CODEAF_NO_MODIFY_PATH=1")
-	if fromEnvironment.code != 0 || !strings.Contains(fromEnvironment.output, "installed codeaf v1.2.3 · fake") {
+	if fromEnvironment.code != 0 || !strings.Contains(fromEnvironment.output, "Installed   codeaf v1.2.3\n") {
 		t.Fatalf("VERSION install exit %d:\n%s", fromEnvironment.code, fromEnvironment.output)
 	}
 	legacy := runInstaller(t, github, []string{"--version", "build-legacy", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
@@ -633,7 +633,7 @@ func TestDocumentedVersionPinReachesThePipedInstaller(t *testing.T) {
 		"SHELL=/bin/bash",
 	}
 	output, err := command.CombinedOutput()
-	if err != nil || !strings.Contains(string(output), "installed codeaf v1.2.3 · fake") || strings.Contains(string(output), "v9.9.9") {
+	if err != nil || !strings.Contains(string(output), "Installed   codeaf v1.2.3\n") || strings.Contains(string(output), "v9.9.9") {
 		t.Fatalf("documented pin failed: %v\n%s", err, output)
 	}
 }
@@ -834,7 +834,7 @@ func TestInstallerUsesWgetWhenCurlIsAbsent(t *testing.T) {
 	}
 	github := newInstallGitHub(t, "v1.2.3")
 	run := runInstaller(t, github, nil, "PATH="+minimalPath(t, false), "CODEAF_NO_MODIFY_PATH=1")
-	if run.code != 0 || !strings.Contains(run.output, "codeaf v1.2.3 · fake") {
+	if run.code != 0 || !strings.Contains(run.output, "Installed   codeaf v1.2.3\n") {
 		t.Fatalf("wget install exit %d:\n%s", run.code, run.output)
 	}
 	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "PATH="+minimalPath(t, false), "CODEAF_NO_MODIFY_PATH=1")
@@ -901,16 +901,25 @@ func TestV1InstallerName(t *testing.T) {
 		// line to paste, and the path is --verbose's to say. A devaf install that
 		// said "installed codeaf" sent the person to type a command this install
 		// never wrote (the fresh-install check of 2026-09-25).
-		if !strings.Contains(run.output, "installed devaf · codeaf "+tag+" · fake") {
+		if !strings.Contains(run.output, "Installed   devaf · codeaf "+tag+"\n") {
 			t.Fatalf("output does not carry the receipt naming devaf:\n%s", run.output)
 		}
+		if strings.Contains(run.output, "Installed   codeaf") {
+			t.Fatalf("a devaf install's receipt names codeaf:\n%s", run.output)
+		}
+		// The guide tells the person to type the name this install wrote, and
+		// the PATH line stands on a line of its own so it can be pasted whole.
+		if !strings.Contains(run.output, "\n     devaf\n") || strings.Contains(run.output, "\n     codeaf\n") {
+			t.Fatalf("the guide does not send the person to devaf:\n%s", run.output)
+		}
+		pasteable := false
 		for _, line := range strings.Split(run.output, "\n") {
-			if strings.HasPrefix(line, "installed codeaf") {
-				t.Fatalf("a devaf install's receipt says %q:\n%s", line, run.output)
+			if strings.TrimSpace(line) == `export PATH="`+dir+`:$PATH"` {
+				pasteable = true
 			}
 		}
-		if got := strings.Split(strings.TrimSpace(run.output), "\n"); got[len(got)-1] != `export PATH="`+dir+`:$PATH"` {
-			t.Fatalf("last line = %q:\n%s", got[len(got)-1], run.output)
+		if !pasteable {
+			t.Fatalf("no line is the bare PATH line to paste:\n%s", run.output)
 		}
 		verbose := runInstaller(t, github, []string{"--name", "devaf", "--dev", "--verbose"},
 			"CODEAF_INSTALL_DIR="+dir, "CODEAF_NO_MODIFY_PATH=1")
@@ -929,7 +938,7 @@ func TestV1InstallerName(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "devaf")); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(fromEnv.output, "installed devaf · codeaf "+tag+" · fake") {
+		if !strings.Contains(fromEnv.output, "Installed   devaf · codeaf "+tag+"\n") {
 			t.Fatalf("an install named from the environment does not name devaf in its receipt:\n%s", fromEnv.output)
 		}
 		flag := runInstaller(t, github, []string{"--name", "mine", "--dev"},
@@ -994,5 +1003,84 @@ func TestV2InstallerNameSeamAndHelp(t *testing.T) {
 	help := runInstaller(t, github, []string{"--help"})
 	if help.code != 0 || !strings.Contains(help.output, "--name WORD") || !strings.Contains(help.output, "CODEAF_INSTALL_NAME") {
 		t.Fatalf("help exit %d:\n%s", help.code, help.output)
+	}
+}
+
+// A piped install cannot change its parent shell's PATH, so the installer links
+// the command into a folder already on PATH, and the guide then has no line to
+// paste. A file there that is not a link is somebody else's install and is left
+// alone, and the paste line comes back.
+func TestInstallerLinksIntoAFolderAlreadyOnPath(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	home := t.TempDir()
+	local := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(local, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := local + ":" + minimalPath(t, true)
+	installDir := filepath.Join(home, ".codeaf", "bin")
+	run := runInstaller(t, github, nil, "HOME="+home, "PATH="+path, "CODEAF_INSTALL_DIR="+installDir)
+	if run.code != 0 {
+		t.Fatalf("exit %d:\n%s", run.code, run.output)
+	}
+	target, err := os.Readlink(filepath.Join(local, "codeaf"))
+	if err != nil || target != filepath.Join(installDir, "codeaf") {
+		t.Fatalf("link = %q, %v", target, err)
+	}
+	if !strings.Contains(run.output, "ready in this terminal") || strings.Contains(run.output, "export PATH=") {
+		t.Fatalf("a linked install still asks for a PATH line:\n%s", run.output)
+	}
+	// Installing again finds its own link and refreshes it.
+	rerun := runInstaller(t, github, nil, "HOME="+home, "PATH="+path, "CODEAF_INSTALL_DIR="+installDir)
+	if rerun.code != 0 {
+		t.Fatalf("exit %d:\n%s", rerun.code, rerun.output)
+	}
+	if target, err := os.Readlink(filepath.Join(local, "codeaf")); err != nil || target != filepath.Join(installDir, "codeaf") || !strings.Contains(rerun.output, "ready in this terminal") {
+		t.Fatalf("a second install did not keep its own link: %q, %v\n%s", target, err, rerun.output)
+	}
+
+	// A link to another build is somebody's choice too: a developer's source
+	// build linked into ~/.local/bin must survive a stable install.
+	other := filepath.Join(home, "src", "codeaf", "bin", "codeaf")
+	if err := os.MkdirAll(filepath.Dir(other), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("#!/bin/sh\necho source build\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(local, "codeaf")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, filepath.Join(local, "codeaf")); err != nil {
+		t.Fatal(err)
+	}
+	linked := runInstaller(t, github, nil, "HOME="+home, "PATH="+path, "CODEAF_INSTALL_DIR="+installDir)
+	if linked.code != 0 {
+		t.Fatalf("exit %d:\n%s", linked.code, linked.output)
+	}
+	if target, err := os.Readlink(filepath.Join(local, "codeaf")); err != nil || target != other {
+		t.Fatalf("the installer replaced a link to another build: %q, %v", target, err)
+	}
+	if !strings.Contains(linked.output, `export PATH="$HOME/.codeaf/bin:$PATH"`) || strings.Contains(linked.output, "ready in this terminal") {
+		t.Fatalf("a link to another build does not leave the PATH line:\n%s", linked.output)
+	}
+
+	theirs := []byte("#!/bin/sh\necho someone else's codeaf\n")
+	if err := os.Remove(filepath.Join(local, "codeaf")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "codeaf"), theirs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	again := runInstaller(t, github, nil, "HOME="+home, "PATH="+path, "CODEAF_INSTALL_DIR="+installDir)
+	if again.code != 0 {
+		t.Fatalf("exit %d:\n%s", again.code, again.output)
+	}
+	kept, err := os.ReadFile(filepath.Join(local, "codeaf"))
+	if err != nil || string(kept) != string(theirs) {
+		t.Fatalf("the installer replaced a file that was not its link: %q, %v", kept, err)
+	}
+	if !strings.Contains(again.output, `export PATH="$HOME/.codeaf/bin:$PATH"`) {
+		t.Fatalf("a shadowed install does not give the PATH line:\n%s", again.output)
 	}
 }

@@ -3482,7 +3482,7 @@ func driveToPlace(t *testing.T, lab *homeLab, where page) (*app, *editor) {
 // conversation's draft, and the second opens home and leaves nothing behind
 // in the box.
 func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
-	for _, where := range []page{pageTasks, pageMemory, pageSearch} {
+	for _, where := range []page{pageTasks, pageMemory} {
 		lab := newHomeLab(t)
 		a, box := driveToPlace(t, lab, where)
 		if box == nil {
@@ -3553,7 +3553,7 @@ func TestSpaceStaysTheVerbOnSettings(t *testing.T) {
 // place types into and no other: a sentence aimed at a filter is nobody's way
 // of asking for home.
 func TestASingleSpaceThenALetterTypesNormallyOnAPlace(t *testing.T) {
-	for _, where := range []page{pageTasks, pageMemory, pageSearch} {
+	for _, where := range []page{pageTasks, pageMemory} {
 		lab := newHomeLab(t)
 		a, box := driveToPlace(t, lab, where)
 		a.key(key(" "))
