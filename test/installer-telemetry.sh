@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # THE INSTALLER'S TELEMETRY DUTIES, PROVED WITHOUT A NETWORK.
 #
-# The notice text lives once, byte for byte, in docs/TELEMETRY.md: the full
-# form quoted by the binary and the README, and the three-line form the
-# installer prints. Only a test notices when one of them drifts. The installer's main body
+# The installer writes the local install marker and prints no telemetry notice:
+# the binary shows the notice, quoted byte for byte in docs/TELEMETRY.md and the
+# README, before the first session's events are sent. The installer's main body
 # downloads a release, so this test never sources it whole: it lifts out the
-# three telemetry functions and runs them against a temporary state root.
+# marker and PATH functions and runs them against a temporary state root.
 # Nothing here opens a socket.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -14,12 +14,10 @@ script=scripts/install.sh
 doc=docs/TELEMETRY.md
 test -f "$doc" || { echo "docs/TELEMETRY.md is missing; this test reads the notice from it"; exit 1; }
 
-eval "$(awk '/^TELEMETRY_NOTICE=/{f=1} /^VERBOSE=/{f=0} f' "$script")"
-eval "$(sed -n '/^telemetry_off()/,/^}/p; /^write_install_marker()/,/^}/p; /^print_telemetry_notice()/,/^}/p; /^print_path_hint()/,/^}/p' "$script")"
-type telemetry_off >/dev/null
+eval "$(sed -n '/^write_install_marker()/,/^}/p; /^init_style()/,/^}/p; /^print_guide()/,/^}/p; /^start_folder()/,/^}/p' "$script")"
 type write_install_marker >/dev/null
-type print_telemetry_notice >/dev/null
-type print_path_hint >/dev/null
+type init_style >/dev/null
+type print_guide >/dev/null
 
 pass=0
 fail=0
@@ -78,78 +76,65 @@ CHANNEL='we"ird' write_install_marker "$tmp/state"
 ok "unexpected channel written as unknown" 'grep -q "\"channel\":\"unknown\"" "$f"'
 ok "unexpected-channel marker is valid JSON" 'json_valid'
 ok "unwritable state root does not fail the install" 'write_install_marker /proc/nonexistent-root'
+ok "an unwritable state root says nothing" '[ -z "$(write_install_marker /proc/nonexistent-root 2>&1)" ]'
 
-# --- the notice -------------------------------------------------------------
+# --- no notice from the installer --------------------------------------------
 
-notice="$tmp/notice.txt"
-print_telemetry_notice 2> "$notice"
-# The first fenced block under "The notice" is the binary's full notice, the
-# second is the installer's three-line form; awk counts fences to tell them apart.
+# The binary shows the notice at the first session; the installer shows none.
+ok "installer prints no telemetry notice" '! grep -qE "anonymous (performance data|usage counts)|TELEMETRY_NOTICE|print_telemetry_notice" "$script"'
+ok "no printed line in the installer mentions telemetry" '! grep -E "printf|echo" "$script" | grep -qi telemetry'
 expected=$(awk '
 	/^## The notice$/ {f=1; next}
 	f && /^```$/ {f++; next}
 	f == 2 {print}
 ' "$doc")
-installer_expected=$(awk '
-	/^## The notice$/ {f=1; next}
-	f && /^```$/ {f++; next}
-	f == 4 {print}
-' "$doc")
-body=$(sed 1d "$notice")
-ok "one blank line before the notice" '[ -z "$(head -n 1 "$notice")" ]'
-ok "installer notice matches docs/TELEMETRY.md verbatim" '[ "$body" = "$installer_expected" ]'
-ok "installer notice is three lines" '[ "$(printf "%s\n" "$body" | wc -l | tr -d " ")" = 3 ]'
-ok "installer notice names the inspector and the switch" 'case "$body" in *"codeaf telemetry info"*CODEAF_TELEMETRY=off*) true;; *) false;; esac'
-ok "installer notice names what is never shared" 'case "$body" in *"does NOT share your prompts, code, files"*) true;; *) false;; esac'
 readme_block=$(awk '
 	/^```text$/ {f = 1; buf = ""; next}
 	/^```$/     {if (f && buf ~ /codeaf sends anonymous usage counts/) {print buf; exit} f = 0; next}
 	f           {buf = buf $0 "\n"}
 ' README.md)
 ok "README quotes the notice verbatim" '[ -n "$readme_block" ] && [ "$(printf "%s\n" "$expected")" = "$readme_block" ]'
-ok "notice goes to stderr, nothing to stdout" '[ -z "$(print_telemetry_notice 2>/dev/null)" ]'
 
-for v in off 0 false OFF False; do
-	export CODEAF_TELEMETRY="$v"
-	out=$( print_telemetry_notice 2>&1 )
-	ok "CODEAF_TELEMETRY=$v opts out" 'case "$out" in *"off"*) true;; *) false;; esac'
-	ok "opt-out prints no notice body" 'case "$out" in *"anonymous performance data"*) false;; *) true;; esac'
-	unset CODEAF_TELEMETRY
-done
-for v in 1 true TRUE; do
-	export DO_NOT_TRACK="$v"
-	out=$( print_telemetry_notice 2>&1 )
-	ok "DO_NOT_TRACK=$v opts out" 'case "$out" in *"off"*) true;; *) false;; esac'
-	unset DO_NOT_TRACK
-done
-out=$( print_telemetry_notice 2>&1 )
-ok "unset prints the notice" 'case "$out" in *"anonymous performance data with AgentField"*) true;; *) false;; esac'
-export CODEAF_TELEMETRY=1
-out=$( print_telemetry_notice 2>&1 )
-ok "CODEAF_TELEMETRY=1 prints the notice" 'case "$out" in *"anonymous performance data with AgentField"*) true;; *) false;; esac'
-unset CODEAF_TELEMETRY
-
-# --- the PATH line comes last -------------------------------------------------
-# The line a person has to paste is the installer's final word: bare, after a
-# blank line, and never prefixed with "codeaf: add it to this shell with:",
-# which made it a sentence to trim rather than a line to select.
+# --- the guide ends the install ------------------------------------------------
+# The installer's last word is a short guide. The PATH line, when there is one,
+# is its first step and stands alone, bare, so it can be selected and pasted
+# without trimming a prefix ("codeaf: add it to this shell with:" made it a
+# sentence to trim rather than a line to select).
 
 hint='export PATH="/x/bin:$PATH"'
 has_escape() { printf '%s' "$1" | grep -q "$(printf '\033')"; }
-ok "an empty hint prints nothing" '[ -z "$(print_path_hint "" 2>&1)" ]'
-out=$(print_path_hint "$hint"; printf x); out=${out%x}
-expected_hint=$(printf '\n%s\n\nx' "$hint"); expected_hint=${expected_hint%x}
-ok "the hint is one blank line, the bare export, one blank line" '[ "$out" = "$expected_hint" ]'
-ok "channel and path announcements go to stderr, verbose only" '[ -z "$(grep -E "printf .codeaf: (installed|%s %s for|%s for)" "$script" | grep -v ">&2")" ]'
-ok "the receipt is the installed binary naming itself" 'grep -q "printf .installed %s" "$script"'
+init_style >/dev/null # a pipe, whatever the test itself runs under
+out=$(print_guide codeaf "$hint" "$tmp/.zshrc")
+ok "the PATH line stands on a line of its own" 'printf "%s\n" "$out" | grep -qx "     $hint"'
+ok "the guide names the command to type" 'printf "%s\n" "$out" | grep -qx "     codeaf"'
+ok "the guide says to connect a model" 'printf "%s\n" "$out" | grep -q "Connect a model"'
+ok "the guide links the docs" 'printf "%s\n" "$out" | grep -q "https://agentfield.ai/docs/codeaf"'
+out_none=$(print_guide codeaf "" "")
+ok "no hint, no PATH step" '! printf "%s\n" "$out_none" | grep -q "PATH"'
+out_named=$(print_guide devaf "" "")
+ok "a named install sends the person to its own name" 'printf "%s\n" "$out_named" | grep -qx "     devaf"'
 ok "no colour when stdout is not a terminal" '! has_escape "$out"'
 export NO_COLOR=1
-out=$(print_path_hint "$hint" 2>&1)
+init_style >/dev/null # a pipe, whatever the test itself runs under
+out=$(print_guide codeaf "$hint" "" 2>&1)
 ok "NO_COLOR is respected" '! has_escape "$out"'
 unset NO_COLOR
-last_line=$(grep -v '^[[:space:]]*#' "$script" | grep -v '^[[:space:]]*$' | tail -n 1)
-ok "the hint is the installer's last line" '[ "$last_line" = "print_path_hint \"\$PATH_HINT\"" ]'
+ok "channel and path announcements go to stderr, verbose only" '[ -z "$(grep -E "printf .codeaf: (installed|%s %s for|%s for)" "$script" | grep -v ">&2")" ]'
+ok "the receipt is the installed binary naming itself" 'grep -q "step_ok \"Installed\" \"\$version_head\"" "$script"'
+ok "the guide is printed after the marker is written" '[ "$(grep -n "^print_guide " "$script" | cut -d: -f1)" -gt "$(grep -n "^  write_install_marker \"\$STATE_ROOT\"" "$script" | cut -d: -f1)" ]'
 ok "the old prefixed sentence is gone" '! grep -q "add it to this shell with" "$script"'
+ok "the answer to start now is read from the terminal, never the piped script" 'grep -q "read -r reply </dev/tty" "$script"'
+ok "every spinner frame is one whole mark, even when the named UTF-8 locale is not installed" '(LC_ALL= LC_CTYPE= LANG=xx_XX.UTF-8; init_style >/dev/null; [ "${#SPINNER_FRAMES[@]}" = 10 ] && [ "${SPINNER_FRAMES[1]}" = "⠙" ])'
+ok "the guide sends other services to /connect" 'printf "%s\n" "$(print_guide codeaf "" "")" | grep -q "/connect in the chat"'
+ok "the guide fits an 80-column terminal" '[ "$(print_guide codeaf "$hint" "$tmp/.zshrc" | awk "{ if (length > m) m = length } END { print m }")" -lt 80 ]'
+
+# The start question is never asked where starting would hand codeaf a whole
+# home folder or the filesystem root.
+mkdir -p "$tmp/home/project"
+ok "start is offered inside a project" '(HOME="$tmp/home"; cd "$tmp/home/project" && start_folder)'
+ok "start is not offered in the home folder" '! (HOME="$tmp/home"; cd "$tmp/home" && start_folder)'
+ok "start is not offered at /" '! (HOME="$tmp/home"; cd / && start_folder)'
+ok "the offer asks start_folder before the question" '[ "$(grep -n "^  start_folder || return 0" "$script" | cut -d: -f1)" -lt "$(grep -n "read -r reply </dev/tty" "$script" | cut -d: -f1)" ]'
 
 # --- nothing new on the wire --------------------------------------------------
 
