@@ -592,6 +592,13 @@ func correctHostChoices(agent *remote.Agent, launch hostLaunch, welcome remote.W
 // the fleet adds is the pair of seams that open a conversation BESIDE this one,
 // each on a connection of its own (chatv3_beside.go).
 func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Options, config.Config) {
+	options, settings, _ := hostOptionsWithShelf(fleet, welcome, pick)
+	return options, settings
+}
+
+// hostOptionsWithShelf retains the catalog for the linked-local enrichment.
+// Remote callers use hostOptions and never install local provider doors.
+func hostOptionsWithShelf(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Options, config.Config, *v3ModelShelf) {
 	client, agent, dest := fleet.client(), fleet.agent(), fleet.dest
 	// THE PICKER'S LIST IS RESOLVED WITHOUT CREDENTIALS. The catalog is opened
 	// with whatever this machine happens to have — usually nothing, because the
@@ -882,7 +889,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 			}
 			return counted, next.SessionFile, nil
 		}
-		return options, settings
+		return options, settings, shelf
 	}
 	// AND A DOOR THAT CAN GETS THE WHOLE SEAM AND NOT THE OLDER HALF OF IT.
 	// [tui3.Options.Start] and [tui3.Options.Open] hand back a conversation with
@@ -891,7 +898,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// there is exactly one door and no road on which a swap can still happen.
 	options.Start = fleet.start
 	options.Open = fleet.open
-	return options, settings
+	return options, settings, shelf
 }
 
 // ── what the engine says about the room ─────────────────────────────────────

@@ -488,7 +488,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// The byte meter and the logger redirect both belong to the surface rather
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
 	// door gets them.
-	err = runSurface(ctx, tui3.Options{
+	options := tui3.Options{
 		Agent:             agent,
 		Build:             buildinfo.String(),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
@@ -510,19 +510,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// what is SAVED, so it has to be the same directory the builder saved
 		// into (internal/subharness's store.go).
 		Harnesses: harnesses,
-		// Asked at the moment the picker opens, never at boot: a catalog that
-		// resolved while the person was reading is a catalog the picker can
-		// use, and one that has not resolved answers nil instead of waiting.
-		// It reads the shelf, which ctrl+r in /model refills with today's list.
-		Models:                  func() []tui3.Model { return v3Models(proc.Shelf) },
-		RefreshModels:           proc.refreshDefaultModels,
-		ModelsForService:        proc.Shelf.modelsForService,
-		RefreshModelsForService: proc.Shelf.refreshService,
-		RefreshAllModels:        proc.refreshAllModels,
-		WarmEmptyProviders:      proc.warmEmptyProviders,
-		SubscribeServiceModels:  proc.registerServiceNotice,
-		ProviderFetchError:      proc.Shelf.fetchErrorFor,
-		Sources:                 settings.Sources,
+		// The shared shelf installs the picker and refresh doors below.
+		Sources: settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -673,7 +662,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		SaveApproval:     bankToolApproval(agent, workspace, settings.ProfileDir, *yolo),
 		SaveBashApproval: bankBashApproval(agent, workspace, settings.ProfileDir, *yolo),
 		ApplyApprovals:   applyV3Approvals(agent, workspace, settings.ProfileDir, *yolo),
-	})
+	}
+	proc.Shelf.bindProviderModels(&options)
+	err = runSurface(ctx, options)
 	return finishChatRestart(err, restart, "")
 }
 

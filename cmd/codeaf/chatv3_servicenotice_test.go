@@ -13,15 +13,15 @@ import (
 )
 
 func TestProviderNoticesUnsubscribeWithoutHoldingTheProcessLock(t *testing.T) {
-	p := &v3Process{}
+	p := &v3Process{Shelf: newV3ModelShelf(nil, catalog.Options{})}
 	calls := 0
 	var remove func()
-	remove = p.registerServiceNotice(func(string, string) { calls++; remove() })
-	p.noteServiceModelsTo("service", "address")
-	p.noteServiceModelsTo("service", "address")
+	remove = p.Shelf.registerServiceNotice(func(string, string) { calls++; remove() })
+	p.Shelf.noteServiceModelsTo("service", "address")
+	p.Shelf.noteServiceModelsTo("service", "address")
 	remove()
-	if calls != 1 || len(p.serviceNotices) != 0 {
-		t.Fatalf("calls=%d subscriptions=%d", calls, len(p.serviceNotices))
+	if calls != 1 || len(p.Shelf.serviceNotices) != 0 {
+		t.Fatalf("calls=%d subscriptions=%d", calls, len(p.Shelf.serviceNotices))
 	}
 }
 
@@ -36,13 +36,13 @@ func TestDefaultProviderRefreshNotifiesOnSuccessAndFailure(t *testing.T) {
 		p := &v3Process{Shelf: newV3ModelShelf(launch, options)}
 		p.Shelf.setSources(modelsource.NewSet(modelsource.Connected{Source: modelsource.DefaultSource(options.BaseURL), Address: options.BaseURL}))
 		calls := 0
-		remove := p.registerServiceNotice(func(source, address string) {
+		remove := p.Shelf.registerServiceNotice(func(source, address string) {
 			calls++
 			if source != modelsource.DefaultID || address != options.BaseURL {
 				t.Errorf("wrong landing %q %q", source, address)
 			}
 		})
-		p.refreshAllModels(t.Context())
+		p.Shelf.refreshAllModels(t.Context())
 		remove()
 		if calls != 1 {
 			t.Fatalf("failure=%v: got%d notices", fail, calls)
@@ -77,10 +77,10 @@ func TestProviderWarmReportsFailureBeforeTheNextProviderFinishes(t *testing.T) {
 	shelf.setSources(modelsource.NewSet(makeService(modelsource.DefaultID, "https://example.invalid"), makeService("custom:first", first.URL), makeService("custom:second", second.URL)))
 	notices := make(chan string, 2)
 	p := &v3Process{Shelf: shelf}
-	remove := p.registerServiceNotice(func(source, address string) { notices <- source })
+	remove := p.Shelf.registerServiceNotice(func(source, address string) { notices <- source })
 	defer remove()
 	done := make(chan struct{})
-	go func() { p.warmEmptyProviders(context.Background()); close(done) }()
+	go func() { p.Shelf.warmEmptyProviders(context.Background()); close(done) }()
 	<-entered
 	select {
 	case got := <-notices:

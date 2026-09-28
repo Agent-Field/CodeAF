@@ -257,8 +257,9 @@ func openChatV3Local(launch localLaunch) error {
 	// The fleet owns every connection now, the boot one included, so the door's
 	// own defer hands the job over rather than closing the client twice.
 	closeClient = fleet.closeAll
-	options, settings := hostOptions(fleet, welcome, launch.pick)
+	options, settings, shelf := hostOptionsWithShelf(fleet, welcome, launch.pick)
 	localDoors(&options, welcome, settings)
+	localProviderModels(&options, shelf)
 	options.ImplicitTalk = strings.TrimSpace(launch.model) == "" && strings.TrimSpace(env.Get(config.ModelEnv)) == "" && config.ChatModelAt(options.ProfileDir) == ""
 	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
 	// is being greeted is one fact — a person opened codeaf with no particular
@@ -720,4 +721,16 @@ func localErrandDoor(launch localLaunch, welcome remote.Welcome) (func(tui3.Erra
 			held.closeAll()
 		}
 	}
+}
+
+// localProviderModels is installed only after localDoors resolves the engine's
+// authoritative local profile. The host catalog stays the same shelf; refreshes
+// and provider compartments now read that profile rather than the launch one.
+func localProviderModels(options *tui3.Options, shelf *v3ModelShelf) {
+	if options == nil || shelf == nil {
+		return
+	}
+	// This is assembly, before surface commands or subscribers can use the shelf.
+	shelf.options.Dir = options.ProfileDir
+	shelf.bindProviderModels(options)
 }
