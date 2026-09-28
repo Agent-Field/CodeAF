@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -1863,12 +1864,17 @@ func (a *app) silentFor() time.Duration {
 
 var compactASCIIPunctuation = strings.NewReplacer(" · ", " - ", " → ", " to ", " — ", " - ", "…", "...")
 
+// compactASCII spells a compaction line's MARKS in ASCII and leaves its WORDS
+// alone. The linear tier is a screen reader's, and a reason or a summary's first
+// line in the person's own language is read out as written; only punctuation
+// and symbols a plain terminal cannot draw become ASCII, or `?` when there is
+// no spelling for them.
 func compactASCII(hint string) string {
 	return strings.Map(func(r rune) rune {
-		if r > 127 {
-			return '?'
+		if r <= unicode.MaxASCII || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) || unicode.IsMark(r) {
+			return r
 		}
-		return r
+		return '?'
 	}, compactASCIIPunctuation.Replace(hint))
 }
 
