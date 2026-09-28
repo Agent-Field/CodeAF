@@ -423,6 +423,24 @@ func (p *picker) rank() {
 		p.score[i] = total
 		p.hits = append(p.hits, i)
 	}
+	// A matching cached model still carries its provider's refresh status.
+	// Keep that status even when the query names the model rather than the
+	// refusal; unrelated providers remain filtered out.
+	if len(tokens) > 0 {
+		visible := make(map[int]bool)
+		kept := make(map[int]bool)
+		for _, at := range p.hits {
+			kept[at] = true
+			if !p.all[at].Unavailable && !p.all[at].AddProvider {
+				visible[p.all[at].GroupOrder] = true
+			}
+		}
+		for at, model := range p.all {
+			if model.Unavailable && visible[model.GroupOrder] && !kept[at] {
+				p.hits = append(p.hits, at)
+			}
+		}
+	}
 	if len(tokens) > 0 {
 		sort.SliceStable(p.hits, func(a, b int) bool {
 			left, right := p.all[p.hits[a]], p.all[p.hits[b]]
@@ -2791,7 +2809,8 @@ func (a *app) modelPickerList() []Model {
 // model falls through for /model.
 func (a *app) modelsFor(keep modelFilter) []Model {
 	services := a.sources.All()
-	if len(services) < 2 {
+	if len(services) == 0 || len(services) == 1 &&
+		(a.providerFetchError == nil || a.providerFetchError(services[0].Source.ID) == "") {
 		return a.modelsForDefault(keep)
 	}
 	grouped := make([]Model, 0)
@@ -2807,23 +2826,28 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 			group = strings.ToLower(strings.TrimSpace(service.Source.Name))
 		}
 		head := serviceGroupHead(service.Source, len(models))
+		fetchError := ""
+		if a.providerFetchError != nil {
+			fetchError = a.providerFetchError(service.Source.ID)
+		}
+		if fetchError != "" {
+			// A FAILED REFRESH DOES NOT ERASE CACHED CHOICES. Its refusal is
+			// still visible beside those choices, rather than looking like a
+			// successful refresh merely because an older list was available.
+			grouped = append(grouped, Model{
+				Notice: cannotListModelsWord + fetchError + listRetryWord,
+				Group:  group, GroupHead: head, GroupOrder: order, Unavailable: true,
+			})
+		}
+		if len(models) == 0 && fetchError != "" {
+			continue
+		}
 		if len(models) == 0 {
-			// A SERVICE THAT LISTS NOTHING SAYS WHY. The bare placeholder named
-			// the fact; the state names the reason: a fetch that failed carries
-			// its reason and the retry, a fetch still out says so, and a
-			// provider that answered with nothing says that instead
-			// ([app.providerFetchError]).
+			// No cached choices and no refusal leaves either the in-flight
+			// reading or the ordinary empty-list explanation.
 			notice := noServiceModelListWord
-			// THE ERROR DOOR IS AN OPTION, NOT A GIVEN: older seams construct an
-			// app without one ([Options.ProviderFetchError]), and a nil reading
-			// of a field this surface owns is a panic on a picker that was
-			// already drawing.
-			if a.providerFetchError != nil {
-				if err := a.providerFetchError(service.Source.ID); err != "" {
-					notice = cannotListModelsWord + err + listRetryWord
-				} else if a.modelsFetching {
-					notice = modelsFetching
-				}
+			if a.modelsFetching {
+				notice = modelsFetching
 			}
 			grouped = append(grouped, Model{
 				Notice: notice, Group: group, GroupHead: head, GroupOrder: order, Unavailable: true,
