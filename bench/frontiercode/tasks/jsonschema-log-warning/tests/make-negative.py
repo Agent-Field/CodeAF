@@ -115,7 +115,9 @@ def main() -> int:
     if '#include "logger.h"' not in bundle:
         sys.exit("src/command_bundle.cc: the control lacks the logger include")
 
-    patch = git(repo, "diff", args.base, "HEAD", "--binary")
+    # The worktree carries the edits (HEAD still names the base commit), so
+    # the diff is worktree-against-base.
+    patch = git(repo, "diff", args.base, "--binary")
     if not patch.strip():
         sys.exit("the negative control is an empty diff")
     pathlib.Path(args.out).write_text(patch)
