@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -115,13 +116,14 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
-	// WHICH OF THE TWO FIXED PREFIXES THIS SESSION SENDS, SETTLED ONCE AND
-	// BEFORE ANYTHING IS BUILT FROM IT (promptprofile.go). It is derived rather
-	// than configured — the model's window and the crew's worker seat are the
-	// two facts — and it is settled HERE, above the render, because the page,
-	// the belt, the shelf and the memory reflex are all built from this one
-	// config and a profile resolved twice is a profile that can answer twice.
+	// Settle the launch preference before building either the page or belt.
+	// Explicit pins remain fixed; automatic profiles follow the selected
+	// window at later request boundaries (promptprofile_live.go).
 	config.profile = settlePromptProfile(config)
+	_, pinned := promptProfileWord(env.Get(promptProfileEnv))
+	_, chosen := promptProfileWord(config.PromptProfile)
+	config.liveProfile = &livePromptProfile{auto: !pinned && !chosen}
+	config.liveProfile.current.Store(config.profile)
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -145,10 +147,8 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	agent.presentation = &presentationIndex{}
 	agent.cacheKey = sessionCacheKey(agent.id)
-	// WHAT IS ALREADY KNOWN ABOUT THIS MODEL'S REAL WINDOW, before the first
-	// check. The memo survives processes (internal/provider's ServedWindow), so
-	// a model that refused an over-long prompt last week is capped from this
-	// session's first turn rather than from its first refusal (loop.go).
+	// Start with no session-local endpoint limit; the provider applies its
+	// durable evidence when it encodes a request.
 	agent.noteModelWindow(agent.model)
 	// AND WHO THIS SESSION IS WORKING FOR, before anything else is built
 	// (principal.go). It is written once here and never again, which is what
@@ -162,13 +162,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// store has to exist before the tools are assembled (memory.go). The
 	// background lifetime is minted with it, because a pass started by the first
 	// turn has to have somewhere to be cancelled from.
-	// THE PREDICATE IS [Config.hasStore] AND NOT THE FIELD, because the field is
-	// two things: the conversation's own record, which every shape writes and
-	// reads, and the writable memory this brain is, which a lean prefix does not
-	// have (promptprofile.go). The belt and the page are built from that same
-	// predicate a moment later, which is what stops them disagreeing about
-	// whether `remember` exists.
-	if config.hasStore() {
+	// Automatic lean sessions keep a dormant brain so a later switch back to
+	// full can enable memory without changing a pointer background readers
+	// hold. remembers gates every memory entry point by the live profile.
+	if config.Memory != nil && (config.hasStore() || config.liveProfile.auto) {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
@@ -2193,7 +2190,7 @@ func (a *Agent) Compact(ctx context.Context) error {
 // (internal/tui3), and a person who types the old form gets the pass they asked
 // for rather than an error about a machine that used to exist.
 func (a *Agent) CompactWithFocus(ctx context.Context, _ string) error {
-	_, err := a.compact(ctx, nil)
+	_, err := a.compactWithPolicy(ctx, nil, a.requestedCompactPolicy())
 	return err
 }
 

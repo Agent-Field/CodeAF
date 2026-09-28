@@ -340,7 +340,7 @@ var notices = []notice{
 			pct, ok := a.ctxPercent()
 			return ok && pct >= contextHintPct
 		},
-		text:   "/compact summarizes the conversation now",
+		text:   "/compact shortens the conversation now",
 		retire: eventCompacted,
 	},
 	{

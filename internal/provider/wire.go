@@ -399,6 +399,10 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// refusal carries none — so this is set at the one line that puts the
 	// object on the bytes, true or false, and nowhere earlier (prefcarry.go).
 	c.prefWentOut(wire.Provider != nil)
+	ceiling, hasCeiling, err = c.budgetWire(&scrubbed, knobs, messages, tools, wire.Provider, ceiling, hasCeiling)
+	if err != nil {
+		return nil, err
+	}
 	if hasCeiling {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 			wire.MaxCompletionTokens = &ceiling

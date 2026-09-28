@@ -97,6 +97,7 @@ package session
 
 import (
 	"strings"
+	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/env"
 
@@ -153,19 +154,21 @@ const (
 
 // ── the decision ────────────────────────────────────────────────────────────
 
-// promptProfile is this session's profile, SETTLED ONCE at construction
-// (agent.go's newAgent) and read from the config everywhere after.
-//
-// It is a method on [Config] and not on [Agent] because every reader of it is a
-// reader the agent does not exist for yet: the page is rendered before the agent
-// is built, and the belt is built from the same config a moment later. That is
-// the same law beltfacts.go's predicates are written under — every predicate is
-// answerable from the config alone — and it is what makes it impossible for the
-// page and the belt to disagree about which profile this is.
-//
-// A config nobody settled derives the answer live, which is what a test asking
-// the question of a bare [Config] wants.
+// livePromptProfile keeps the launch choice and the current automatic shape.
+// The pointer is private to one engine, even when its Config came from a parent.
+// Background memory readers share the atomic value; request boundaries own
+// changes to the page and belt.
+type livePromptProfile struct {
+	current atomic.Value
+	auto    bool
+}
+
+// promptProfile also works before an engine exists, when the page and belt
+// are first composed from a bare Config.
 func (c Config) promptProfile() promptProfile {
+	if c.liveProfile != nil {
+		return c.liveProfile.current.Load().(promptProfile)
+	}
 	if c.profile != "" {
 		return c.profile
 	}

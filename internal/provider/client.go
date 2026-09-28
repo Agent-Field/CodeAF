@@ -416,7 +416,8 @@ type callKnobs struct {
 	relaxed relaxSet
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
-	reasoning []MessageReasoning
+	reasoning     []MessageReasoning
+	contextBudget ContextBudget
 	// noProvider takes the `provider` object OFF this one encode entirely, and
 	// it is set by exactly one caller: the single widened retry that asks
 	// whether a base's 400 was about the field at all (endpoints.go's
@@ -490,17 +491,18 @@ func (k callKnobs) carriesTheDemand() bool {
 
 func knobsFrom(ctx context.Context) callKnobs {
 	knobs := callKnobs{
-		cacheKey:   CacheKeyFrom(ctx),
-		effort:     effortFrom(ctx),
-		role:       RoleFrom(ctx),
-		intent:     routingIntentFrom(ctx),
-		lambda:     valueOfTimeFrom(ctx),
-		horizon:    callHorizonFrom(ctx),
-		hedgeLane:  hedgeLaneFrom(ctx),
-		reasoning:  MessageReasoningFrom(ctx),
-		refused:    &refusedHere{},
-		retryAvoid: RetryAvoidFrom(ctx),
-		trace:      newCallTrace(),
+		cacheKey:      CacheKeyFrom(ctx),
+		effort:        effortFrom(ctx),
+		role:          RoleFrom(ctx),
+		intent:        routingIntentFrom(ctx),
+		lambda:        valueOfTimeFrom(ctx),
+		horizon:       callHorizonFrom(ctx),
+		hedgeLane:     hedgeLaneFrom(ctx),
+		reasoning:     MessageReasoningFrom(ctx),
+		contextBudget: contextBudgetFrom(ctx),
+		refused:       &refusedHere{},
+		retryAvoid:    RetryAvoidFrom(ctx),
+		trace:         newCallTrace(),
 	}
 	// The choice this call was already made on, if it was. See
 	// [Client.withLaneChoice]: it is carried rather than recomputed because it
@@ -954,7 +956,17 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 // be served this way says so on the wire — a gateway that takes `stream: true`
 // and answers one whole JSON completion — and [Client.unstreamable] remembers it
 // from what actually happened, so the fallback is a memo rather than a guess.
-func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (response *ai.Response, err error) {
+	// Every failed completion can teach the next encode, including the retry
+	// after an empty thinking-only answer.
+	defer func() {
+		if failure, ok := RefusalFrom(err); ok {
+			request, requestErr := c.newRequest(messages, options)
+			if requestErr == nil {
+				c.rememberContextLimit(c.modelFor(request), failure)
+			}
+		}
+	}()
 	ctx = WithPlanOverflowGuard(ctx)
 	observer := streamObserverFrom(ctx)
 	response, relearned, err := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
@@ -2544,6 +2556,12 @@ type APIError struct {
 	// envelope's own `code`, with the sentence kept only as a hint for a body
 	// that carries neither ([overflowRefusal]).
 	Overflow bool
+	// Context facts are optional evidence, parsed once at the refusal boundary.
+	ContextLimit  int
+	InputTokens   int
+	OutputTokens  int
+	Local         bool
+	BudgetChanged bool
 	// Code is the error envelope's `code`, as text. The router types that field
 	// as a number, as a string, and sometimes omits it, so it is normalised here
 	// once rather than decoded at each reader.
@@ -2776,6 +2794,7 @@ func apiError(status int, payload []byte) error {
 	// built and is therefore true of every APIError this build makes, including
 	// the ones a stream raises in-band.
 	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
+	readContextLimit(failure)
 	return failure
 }
 

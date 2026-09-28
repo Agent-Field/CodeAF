@@ -76,29 +76,13 @@ type quirksStore struct {
 	// one-object verdict, and a memo that pooled them would raise the ceiling
 	// on every call in the system because one of them is wide.
 	answerCut map[string]int
-	// servedWindow is the seventh learned fact and the second that is a NUMBER:
-	// the largest prompt, in tokens, that a model was REFUSED for being too
-	// long, keyed by model alone.
-	//
-	// It is the same kind of fact as its neighbours — something a provider will
-	// not publish and only a call's answer can teach — and it exists because the
-	// published figure is sometimes wrong by an order of magnitude. The catalog
-	// row for ~deepseek/deepseek-v4-flash-latest claims 1,310,720 tokens; the
-	// endpoint serving it did not serve anything like that, and the compaction
-	// law believed the row. What an overflow refusal says is not a claim but a
-	// measurement: THIS many tokens was too many, here, today.
-	//
-	// It is keyed by model and not by lane, which is the one place it differs
-	// from answerCut above. A window is a property of the model's serving
-	// weights rather than of one replica's completion budget, and a memo that
-	// re-learned it per endpoint would spend one over-long request per endpoint
-	// discovering the same fact.
-	//
-	// It only ever SHRINKS, and it is written down for the same reason every
-	// other fact here is: so that the next process does not have to be told
-	// again.
-	servedWindow map[string]int
-	loaded       bool
+	// servedWindow retains the legacy on-disk field for compatibility. Those
+	// values were rejected prompt estimates, not total context limits, and
+	// request sizing no longer reads them. Explicit endpoint limits live in
+	// contextLimits, keyed by base URL, model and serving endpoint.
+	servedWindow  map[string]int
+	contextLimits map[string]ContextLimit
+	loaded        bool
 
 	// writes counts saves in flight. The save is deliberately off the request
 	// path — the call that learned the fact is waiting to be re-sent and must
@@ -177,7 +161,8 @@ type quirksWire struct {
 	// ServedWindow maps a model to the largest prompt, in tokens, it has been
 	// refused for. It only ever shrinks, and it is read as a CEILING on what the
 	// catalog claims rather than as a window in its own right.
-	ServedWindow map[string]int `json:"served_window,omitempty"`
+	ServedWindow  map[string]int          `json:"served_window,omitempty"`
+	ContextLimits map[string]ContextLimit `json:"context_limits,omitempty"`
 }
 
 func (q *quirksStore) load(path string) {
@@ -192,6 +177,14 @@ func (q *quirksStore) load(path string) {
 	var wire quirksWire
 	if json.Unmarshal(raw, &wire) != nil {
 		return
+	}
+	if q.contextLimits == nil {
+		q.contextLimits = make(map[string]ContextLimit)
+	}
+	for key, limit := range wire.ContextLimits {
+		if limit.Tokens > 0 {
+			q.contextLimits[key] = limit
+		}
 	}
 	seed(q.mandatory, wire.ReasoningMandatory)
 	seed(q.disableIgnored, wire.ReasoningDisableIgnored)
@@ -428,6 +421,10 @@ func (q *quirksStore) snapshot() (string, quirksWire) {
 		ReasoningReplayRejected: make(map[string]time.Time, len(q.noReasoningReplay)),
 		AnswerCutAt:             make(map[string]int, len(q.answerCut)),
 		ServedWindow:            make(map[string]int, len(q.servedWindow)),
+		ContextLimits:           make(map[string]ContextLimit, len(q.contextLimits)),
+	}
+	for key, limit := range q.contextLimits {
+		wire.ContextLimits[key] = limit
 	}
 	for key, spent := range q.answerCut {
 		wire.AnswerCutAt[key] = spent

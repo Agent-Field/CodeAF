@@ -794,6 +794,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if peek == nil {
 			peek, _ = io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 		}
+		// A context refusal needs a smaller request, even when the router names
+		// the machine that refused it. Return it to the conversation before an
+		// endpoint walk can resend the same oversized bytes.
+		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow {
+			response.Body = rewound(peek, response.Body)
+			sharedLimiter.release(false, 0)
+			return response, nil
+		}
 		response.Body.Close()
 		cancelAttempt()
 		lastErr = apiError(response.StatusCode, peek)

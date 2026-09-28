@@ -1,17 +1,17 @@
 package session
 
-// A PASS THAT FOUND NOTHING SAYS SO ON THE EVENT ITSELF.
+// A PASS THAT FOUND NOTHING SAYS NOTHING.
 //
-// [EventCompacted] is sent on both paths by promise: a surface opens a row on
-// [EventCompacting] and has to be able to settle it whether the pass edited
-// anything or not. That left one value carrying two meanings, and the failing
-// one was the silent one, so a reader could not tell a transcript that had been
-// replaced from one that had not been touched. [Event.Unchanged] is the
-// disjoint range, and its zero value is the meaning that was always safe.
+// [EventCompacting] is sent only once a pass has really edited the transcript,
+// and [EventCompacted] follows it at once. A pass that stubbed nothing and folded
+// nothing therefore opens no row, and so has no row to settle: it returns
+// [ErrNothingToCompact] to its caller and leaves the hub alone. An automatic
+// attempt is silent that way, and `/compact` says "nothing to compact" from the
+// error rather than from an event.
 //
-// THIS PINS THE SESSION HALF ONLY. internal/tui3 pins what a surface does with
-// the field, and that test passes on a hand-built event whether this half exists
-// or not, which is exactly why both are written down.
+// [Event.Unchanged] is still read by a surface, because a peer built before this
+// announced every pass and settled a refused one with that field set
+// (internal/tui3's compact_refused_test.go). No pass in this build sends it.
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func lastCompacted(t *testing.T, hub *eventHub) Event {
 	return Event{}
 }
 
-func TestAPassThatCompactedNothingSaysTheTranscriptDidNotMove(t *testing.T) {
+func TestAPassThatCompactedNothingSendsNoEvent(t *testing.T) {
 	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) {
 		config.ContextWindow = 2_000_000
 	})
@@ -46,14 +46,12 @@ func TestAPassThatCompactedNothingSaysTheTranscriptDidNotMove(t *testing.T) {
 	if _, err := agent.compact(context.Background(), hub); err != ErrNothingToCompact {
 		t.Fatalf("compact = %v, want ErrNothingToCompact", err)
 	}
-	event := lastCompacted(t, hub)
-	if !event.Unchanged {
-		t.Fatalf("a pass that stubbed nothing and folded nothing announced itself as a pass that happened: %+v", event)
-	}
-	// AND THE ROW STILL SETTLES. The field separates the two meanings; it does
-	// not withdraw the event, which a surface is waiting on either way.
-	if strings.TrimSpace(event.Hint) == "" {
-		t.Fatal("the refused pass settled the row with nothing to say")
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	for _, event := range hub.backlog {
+		if event.Kind == EventCompacting || event.Kind == EventCompacted {
+			t.Fatalf("a pass that stubbed nothing and folded nothing announced itself: %+v", event)
+		}
 	}
 }
 

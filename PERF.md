@@ -6,6 +6,27 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Context recovery bounds
+
+Conversation request admission sums the existing encoded messages and tool schemas;
+it performs no tokenizer call, network lookup or extra model request. Image payload
+bytes are replaced by a token allowance. The margin is 5% of the effective endpoint
+window, bounded to 512–8,192 tokens. An unspecified output allowance is bounded by
+one quarter of the window and the configured completion reserve; shrinking it retains
+up to 512 tokens as the useful minimum (one eighth for very small windows), with extra
+room when an explicit thinking budget requires it.
+
+Manual and emergency reductions retain 4,096 recent tokens, capped to an eighth of
+the window, and always retain the latest assistant/tool batch. Recovery is bounded
+to two changed-request attempts per failed generation and resets after a successful
+response. Tests assert request counts, fitting budgets, tool pairing and actions that
+execute exactly once; they do not wait on real clocks.
+
+Automatic conversation profiles use the existing 32,000-token threshold at request
+boundaries. Only crossing the threshold rebuilds the default prompt and belt; unchanged
+profiles do no schema work. Explicitly loaded capabilities survive the rebuild. Automatic
+no-op compaction emits no seam events, while manual commands retain their no-op feedback.
+
 ## Connection recovery bounds
 
 `internal/provider/connectivity.go` limits a connection-recovery episode to

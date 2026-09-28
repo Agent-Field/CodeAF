@@ -1826,7 +1826,7 @@ These are the sentences and what each one means.
 | --- | --- | --- |
 | `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
 | `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
-| `this conversation got too long for the model` | the transcript is past the model's window | shortens the conversation once and asks the same question again |
+| `this conversation got too long for the model` | the transcript is past the model's window | reduces the request and retries within a bounded recovery episode |
 | `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
 | `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
 | `nothing came back from the model — asking again` | a reply arrived with no words and no tool call | asks again on the same budget as any other failure |
@@ -2656,42 +2656,26 @@ An unknown window has no threshold at all.
 
 ## The most tokens one request can carry — the model's own window, and the ceiling an endpoint puts on it
 
-**The threshold follows the model's own window.** On a model claiming 1,310,720 tokens,
-compaction fires at **1,114,112** — not at some smaller figure of codeaf's choosing. On the
-default 128,000-token window it fires at 108,800. The line is always
-`window − max(15% of window, 16384)`, and `window` is what the model card says.
+The model catalog is the starting window. Before sending a conversation request, codeaf
+checks the encoded messages, tool schemas and replayed reasoning, the output allowance
+including thinking, and a safety margin. It uses the smallest known context window among
+endpoints the request can reach. A strict provider pin excludes other endpoints; an
+advisory order does not.
 
-There used to be a flat ceiling of 256,000 over every model alike, and it made a
-million-token model fold exactly like a small one — nineteen passes in one two-and-a-half
-hour run, each at around a hundred thousand tokens, each one throwing the provider's prompt
-cache away. That ceiling is gone.
+An endpoint's explicit total limit is remembered by base URL, model and provider in
+`model-quirks.json`. A rejected prompt's length is **not** a total context limit. Old
+model-wide `served_window` guesses are no longer used to size requests.
 
-**What can still lower it is an endpoint refusing.** If a provider answers that a request
-would not fit, codeaf writes down how big that request was and never trusts that model past
-that size again — in this conversation from the next check onward, and on this machine for
-good, because the note is kept in `model-quirks.json` beside your other settings. That is
-the one thing allowed to contradict a model card, and it is the only thing: a published
-window is a claim, and a refusal is a measurement.
+When no output cap was requested, the total output allowance is the smaller of the answer
+room setting and a quarter of the effective window. It may shrink to fit, while normally
+keeping at least 512 output tokens (an eighth of a very small window). Explicit thinking
+budgets retain room for an answer. The safety margin is 5% of the window, bounded between
+512 and 8,192 tokens. These are estimates, not a provider tokenizer.
 
-It exists because a claim can be very wrong. A session on
-`~deepseek/deepseek-v4-flash-latest` — a row claiming 1.3M tokens — grew to 386,309 tokens
-without compaction firing once, and what came back at that size was the model's own template
-turned inside out rather than an answer. That now costs one turn on that model on this
-machine, instead of costing every model with real room every turn for ever.
-
-What the status line reports is still the model's own window, because that line is
-describing the model.
-
-**A request that would not fit is never sent.** Immediately before each request goes out,
-a transcript already past the trusted window is compacted first — and unlike the ordinary
-pass, this one runs **even when automatic compaction is switched off**. Fitting is not a
-preference. Nothing is truncated and nothing of yours is dropped; it is the same pass
-`/compact` runs, and every message you typed survives it.
-
-**Accuracy note.** codeaf also carries a shared context-budget package with a 60%-fill rule,
-a 160k working set and a 250% reuse law. **That package is not used by this chat.** Its
-consumer is the sub-harness leaf sizing elsewhere in codeaf. The chat's own law is the one
-above — do not describe this conversation as filling to 60%.
+If the request still cannot fit, it is shortened before sending. If protected content
+cannot fit either, codeaf stops locally with `context needs shortening before sending` and
+suggests compaction or a larger-context model. This guard stays on with `--no-compact`.
+The status line still shows the catalog window; an endpoint may have a smaller limit.
 
 ## A task or a worker on another model gets that model's window
 
@@ -2711,10 +2695,10 @@ smallest window this surface routes to and the safe direction for a guess to be 
 
 ## What happens before the conversation is compacted
 
-codeaf does not jump straight to summarizing. There are rungs before it.
+codeaf uses mechanical reductions, with no summarization.
 
-**During one long turn, tool output has its own working-set bound.** Once the live request
-estimate crosses **64,000 tokens** — or half the trusted context window when that is smaller
+**During one long turn, tool output has its own working-set bound.** Once tool observations from the turn
+cross **64,000 tokens** — or half the trusted context window when that is smaller
 — codeaf replaces already-seen tool results from that turn with the same readable pointer
 lines described below. It works in whole tool batches, oldest first, while leaving the
 latest **20,000 tokens** verbatim (capped at a quarter of a smaller window). The result from
@@ -2795,15 +2779,7 @@ are appended at the *end* of the conversation and never written into the system 
 because a system message that changed would make every message behind it new again, while a
 note at the end costs only the note.
 
-**Rung 2 — page images.** Instead of summarizing the part being dropped, it can be
-photographed: rendered verbatim to monospaced page images that the model reads back. No model
-call, nothing paraphrased. This rung is chosen only when you gave `/compact` no focus, there
-is a workspace, there is page budget, and the model in use can read images. Pages are 120
-columns by 64 lines, greyscale, deterministic, and footed
-`<title> | context page 1 of 4`. The ceiling is **8 pages**; anything past it is folded to a
-marker after the pages.
-
-**Rung 3 — the fold.** If the transcript is still too big after stubbing, the oldest
+**The fold.** If the transcript is still too big after stubbing, the oldest
 **assistant** work is replaced by one marker line. It is not a summary: nothing is described
 and nothing is decided.
 
@@ -2816,66 +2792,61 @@ nothing else can reconstruct, so the fold walks past them and takes only the ass
 
 ## What a compaction pass keeps
 
-**A compaction asks no model, costs nothing, and takes no time you can feel.** There is no
-summarizer behind it — there was one, and it was deleted. It paid a model to write prose
-about the text it was about to throw away, at the worst possible moment, and the loss was
-unrecoverable because the transcript the prose came from went with it.
+Compaction asks no model and produces no summary. Tool results can become pointers to
+their full bytes, and older assistant work can become a marker naming the saved journal.
+Your own messages and the system prompt stay in context.
 
-What replaces it is two mechanical passes over messages this session already has: tool
-results become pointers to their own bytes, and then the oldest assistant work becomes one
-marker line naming where the whole of it can still be read.
+Routine cleanup keeps the latest 20,000 tokens, capped at a quarter of the window, and
+protects the running turn. `/compact` and necessary request-size recovery can also fold
+older completed batches within the running turn. They keep a 4,096-token tail, capped at
+an eighth of the window, and always keep the newest assistant/tool batch whole. A batch
+that alone exceeds the allowance stays whole; pending tool calls are not discarded.
 
-What the model is handed instead of a summary is the **state card** — what `track` and
-`commit` recorded — which rides in the system prompt on every turn and is kept up to date
-after each one. So what the conversation is about is never paraphrased, because it was never
-written as prose in the first place.
+Manual compaction does not wait for the automatic threshold. It folds eligible history
+outside that smaller tail. Necessary recovery takes enough older work to buy headroom,
+then checks the newly assembled request again. Nothing is paraphrased. Removed reasoning
+leaves together with the assistant message it belongs to.
 
-A pass can decline: `session: nothing to compact` (everything already fits in the tail), or
-`session: a compaction pass is already running`.
+`nothing to compact — your messages and recent work are kept` means no eligible material
+could be reduced. It does not mean the whole request fits. A genuinely concurrent pass
+may return `session: a compaction pass is already running`.
 
 ## What happens when the conversation gets too long — when compaction happens by itself
 
-When the conversation gets too long to fit, nothing is lost and nothing stops: the oldest
-part of it is stubbed and folded down to a marker and the recent tail is kept, which is what
-compaction is.
+Routine compaction starts after a step crosses the automatic threshold. Necessary
+compaction also runs when the assembled provider request cannot fit, regardless of
+`--no-compact`. It considers the input, tool definitions, replayed reasoning, output
+allowance and safety margin together.
 
-**Nothing is lost is meant literally, and you can go and look.** The session file keeps
-every original line, and scrolling up above the boundary is given those rather than the
-shortened copy — with one dim line, `· above here the model keeps a shortened record — you
-can still read it all`, where the two meet. What shrank is the model's copy, not yours (the
-screen page has the whole of that line's meaning, and the limit: a session compacted by an
-older codeaf is still drawn from the shortened copy). The fold marker the model sees names
-that journal as a real path — `[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, lines 12..40]`
-— so codeaf can open the lines that left the window itself. *Where did the folded messages
-go* on the compacting page is the whole of that.
+A provider can still reveal an unknown or changed limit. codeaf recognizes that overflow,
+reads a reported total limit when available, and retries only after reducing the request,
+learning a changed limit or correcting its input estimate. There are at most **two recovery
+attempts per failed generation**. A successful response resets the allowance, so a later
+overflow in the same long turn can recover too. Completed tool actions are not rerun.
 
-Four ways a pass starts:
+A pass that reduces history shows `compacting ~84k tokens`, then a `compacted` line
+reporting the work folded and the size reduction. Automatic attempts that find nothing
+to reduce leave no seam; `/compact` still reports its no-op. Your scrollback and the journal keep the original record. The
+model's fold marker names the journal so `read` or `grep` can recover the omitted work.
 
-- **Automatically**, after any step where the estimate is over the threshold. A failed pass is
-  not a failed turn.
-- **Just before a request that would not fit**, when the transcript is already past the
-  256,000-token ceiling. This one runs **even when automatic compaction is switched off** —
-  the switch governs headroom, and fitting is not headroom.
-- **On a context-overflow error from the provider**, once per turn. This one runs **even when
-  automatic compaction is switched off** — the switch governs the automatic pass, not the
-  recovery from a request the provider has already refused. Overflow errors are never retried.
-- **On demand**, when you ask for it.
-
-While a pass runs you see `compacting ~84k tokens` (`~842` under a thousand). On success:
-`compacted from ~84k tokens, kept last ~20k`, or with page images
-`compacted from ~84k tokens to 4 page images, kept last ~20k`. On failure:
-`compaction failed · context unchanged`. A failed pass always settles its row.
+If user instructions and the newest working batch still cannot fit, shortening stops and
+the request is refused locally. A new conversation or a larger-context model is needed.
+An unfamiliar endpoint can still reject a first request: estimates and published limits
+cannot guarantee that every provider's initial response succeeds.
 
 ## /compact — compacting now
 
-`/compact` compacts the conversation on demand. It notes `compacting…` immediately and runs
-the pass off the loop, so the surface stays alive.
+`/compact` runs a mechanical reduction immediately, even below the automatic threshold.
+It notes `compacting…` and works off the input loop. It produces **no summary** and makes
+no model call. Older completed work becomes pointers to the full journal.
 
-**Success is silent.** There is no "done" message — a compaction that worked simply leaves the
-conversation shorter. A failure comes back as `compact failed: ` followed by the error.
+Your messages, the system prompt, the newest assistant/tool batch and the recent working
+tail stay in context. Success reports `compacted · about N to M tokens`; those figures are
+estimates. A no-op says `nothing to compact — your messages and recent work are kept`.
+Other failures say `compact failed: ` followed by the reason.
 
-**It costs nothing and asks no model**, so there is no reason not to run it, and no `compaction`
-role in settings to point at a model for it.
+There is no compaction model or summarization setting. The smaller retained tail and the
+explicit reduction distinguish this command from routine automatic cleanup.
 
 ## Turning automatic compaction off
 
@@ -2885,7 +2856,7 @@ text reads `never compact automatically`.
 What it turns off is exactly the automatic threshold check. Still working:
 
 - `/compact`, when you ask for it, and
-- the recovery pass when the provider itself refuses a request as too long.
+- the request-size guard and recovery when the provider refuses a request as too long.
 
 With a `--host` remote launch the flag is **refused rather than ignored**, because it cannot
 travel to the other machine.
@@ -4032,9 +4003,19 @@ words:
   reports.
 - **`full`** sends everything whatever the model reports.
 
-**A change lands the next time codeaf starts.** The profile is settled once when
-a conversation opens, because it decides the page and the tool list every
-request in that conversation is sent with.
+**Changes to this setting land the next time codeaf starts.** The launch preference
+stays fixed. With `auto`, selecting a model below 32,000 tokens changes the prompt
+and default tool list together before the next request; selecting a larger model
+restores the full profile. An answer already in flight keeps its original shape.
+Explicit `lean` and `full` choices override that automatic switching.
+
+Capabilities you explicitly loaded and connected service tools remain available
+across a switch. Consequently, a conversation with many loaded tools can still be
+too large for the smaller model. A profile change does not summarize history.
+
+The lean profile is still too large for some 4k–8k models. Automatic selection is
+not a promise that every model can fit the prefix or use tools; the final request
+guard still checks the assembled request.
 
 **`CODEAF_PROMPT_PROFILE` still pins it for one launch, over the row.** Put
 `CODEAF_PROMPT_PROFILE=lean` or `CODEAF_PROMPT_PROFILE=full` in front of the

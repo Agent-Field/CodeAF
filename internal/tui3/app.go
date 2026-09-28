@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -680,7 +681,10 @@ type (
 		lump bool
 	}
 	streamClosedMsg struct{ gen int }
-	compactedMsg    struct{ err error }
+	compactedMsg    struct {
+		err           error
+		before, after int
+	}
 	// frameMsg is the paint clock: it promotes whatever streamed since the
 	// last one into a frame, and steps the animations.
 	frameMsg struct{}
@@ -5155,8 +5159,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case compactedMsg:
 		if msg.err != nil {
-			a.toldNote("compact failed: " + msg.err.Error())
+			if errors.Is(msg.err, session.ErrNothingToCompact) || msg.err.Error() == session.ErrNothingToCompact.Error() {
+				a.toldNote("nothing to compact — your messages and recent work are kept")
+			} else {
+				a.toldNote("compact failed: " + msg.err.Error())
+			}
 		} else {
+			if msg.before > 0 && msg.after > 0 {
+				a.toldNote(fmt.Sprintf("compacted · about %d to %d tokens", msg.before, msg.after))
+			} else {
+				a.toldNote("compacted")
+			}
 			a.noticeEvent(eventCompacted)
 		}
 		return a, nil
@@ -6057,13 +6070,15 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
 		//
-		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
-		// paths, so this used to hand the bookkeeping over on a pass that found
-		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
-		// the reader was nowhere near, the seam was marked drawn without being
-		// drawn, and the conversation between the two went quiet. The surface
-		// then said there was nothing above it. Nothing had moved, so there is
-		// nothing to carry over ([session.Event.Unchanged]).
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. A local engine no longer
+		// sends this event for a pass that found nothing, but a remote engine
+		// built before that change sends it on both paths. This used to hand the
+		// bookkeeping over on a pass that found nothing to stub and nothing to
+		// fold: replayFrom was dropped to a floor the reader was nowhere near,
+		// the seam was marked drawn without being drawn, and the conversation
+		// between the two went quiet. The surface then said there was nothing
+		// above it. Nothing had moved, so there is nothing to carry over
+		// ([session.Event.Unchanged]).
 		if !ev.Unchanged {
 			a.rebase()
 		}
@@ -7884,7 +7899,11 @@ func (a *app) slash(line string) tea.Cmd {
 	case "compact":
 		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
-		return func() tea.Msg { return compactedMsg{err: agent.Compact(ctx)} }
+		return func() tea.Msg {
+			before := agent.ContextTokens()
+			err := agent.Compact(ctx)
+			return compactedMsg{err: err, before: before, after: agent.ContextTokens()}
+		}
 
 	case "rewind":
 		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE

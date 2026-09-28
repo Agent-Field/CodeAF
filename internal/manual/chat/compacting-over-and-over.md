@@ -40,8 +40,8 @@ you have not set one yourself; the next section is how to set one.
 Two things used to make a big model fold like a small one, and both are fixed:
 
 - codeaf refused to believe any claim above 256,000 tokens, for every model alike. That
-  ceiling is gone; what can lower a claim now is an endpoint actually **refusing** a request
-  for being too long, which codeaf writes down and never trusts that model past again.
+  ceiling is gone; request admission now reads endpoint-specific windows and explicit limits reported by
+  refusals. A rejected prompt size is not saved as a model-wide window.
 - work that left the conversation — a task's worker, an adaptive run's worker, the
   reader that checks a task — was handed nothing at all when its model differed from yours,
   and so folded against the conservative 128,000-token default whatever its own model held.
@@ -105,8 +105,9 @@ keep appearing is the sign of the defect this page describes.
 ## What happens to tool results while one long answer is still working
 
 A running answer keeps its assistant notes, tool calls, their exact arguments and every
-mutating result in the model's context. General conversation compaction does not fold that
-current-turn work. This is deliberate: it is the working record of what the model tried
+mutating result in the model's context. Routine conversation compaction does not fold that
+current-turn work. Manual compaction and necessary overflow recovery may archive older
+completed batches while retaining the newest batch and a smaller recent working tail. This is deliberate: it is the working record of what the model tried
 and what it changed, and removing it can make the model inspect the same files or repeat
 an edit.
 
@@ -155,3 +156,32 @@ ever the journal. Neither invents a file to open.
 
 Scrolling up above the fold on the screen also still shows the words; what shrank is the
 model's copy, not yours. The fold is not unrecoverable.
+
+## Why /compact says nothing to compact — manual compaction before the automatic trigger
+
+`/compact` now has its own reduction policy. It can fold older completed assistant work
+before the automatic trigger, including completed batches inside one long turn. It keeps
+your messages, the system prompt, the newest assistant/tool batch, and 4,096 recent tokens
+(at most an eighth of the trusted window). The full record stays in the journal. No model
+writes a summary.
+
+The old command reused the automatic target. A conversation with 60,000 tokens on a 128k
+model could have older history and still receive `session: nothing to compact`, because it
+was below that target. The manual command no longer has that threshold gate.
+
+A no-op now says `nothing to compact — your messages and recent work are kept`. That means
+there is no eligible history outside the protected material, not that the provider request
+fits. Provider admission also counts schemas, replayed reasoning and reserved output.
+
+## Why the provider says maximum context length when the status shows 20 percent
+
+The status shows the model catalog's window. The serving endpoint may have less room, and
+its window must hold input **plus output**, including thinking. codeaf budgets the assembled
+request against known endpoint limits before sending and remembers explicit limits from
+errors by base URL, model and endpoint. Old rejected-prompt-size guesses are ignored.
+
+Overflow recovery can run twice per failed generation, only while the request changes.
+A successful response resets the allowance. A second overflow later in a long tool turn
+can therefore recover instead of ending the turn just because it compacted earlier.
+If protected material still cannot fit, codeaf explains that locally; it does not
+knowingly send the same oversized request again.

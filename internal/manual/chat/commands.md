@@ -192,7 +192,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/drafts` | — | — | lists cleared drafts, newest first; enter restores one to the box and `d` lets one go; an empty ring says `no cleared draft is waiting` |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
-| `/compact` | — | — | summarizes the conversation now |
+| `/compact` | — | — | shortens the conversation now |
 
 ## Home, project and file context commands — what does /workspace path do
 
@@ -426,29 +426,17 @@ new session failed: <error>
 A close that fails says so and the surface continues. A launcher that cannot build the
 replacement says so, and nothing is replaced.
 
-## /compact — summarize the conversation now
+## /compact — shorten the conversation now
 
-`/compact` notes `compacting…` immediately and runs the compaction off the loop.
+`/compact` notes `compacting…` immediately and reduces older completed work, even below
+the automatic threshold. It calls no model and produces no summary. Your messages, the
+system prompt, the newest assistant/tool batch and a recent working tail remain in context.
+The full record stays in the session journal, with a pointer in place of folded work.
 
-**There is no success message.** A compaction that worked is silent — the note that it
-started is all you get.
-
-A failure comes back as:
-
-```
-compact failed: <error>
-```
-
-`/compact` has no argument form and no alias.
-
-**A compaction costs nothing and asks no model.** It is two mechanical passes over
-the messages this session already has: tool results the model has already used
-become pointers to their own bytes, and if that is not enough the oldest assistant
-work is replaced by one marker line naming how much went and where it can be read.
-Your own words are never folded. There is **no summariser** and there is **no
-`compaction` role in settings** — there was one, and it was a priced row wired to
-nothing. What the model is handed instead of a summary is the state card, which is
-maintained a little at a time by the reader that runs after each turn.
+Success reports `compacted · about N to M tokens`; these are estimates. If no eligible
+history remains, it says `nothing to compact — your messages and recent work are kept`.
+Other failures say `compact failed: ` followed by the reason. The pass runs off the input
+loop, so the surface stays responsive. `/compact` has no argument form and no alias.
 
 ## /rewind — go back to an earlier point in the conversation
 

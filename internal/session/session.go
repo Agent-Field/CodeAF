@@ -87,21 +87,21 @@ const (
 	EventTurnDone
 	// EventError ends the turn abnormally; Err says why.
 	EventError
-	// EventCompacting says a compaction pass has started, which is work a
-	// surface should show rather than silence. Hint sizes the pass
+	// EventCompacting says a compaction pass has edited the transcript, which is
+	// work a surface should show rather than silence. Hint sizes the pass
 	// ("compacting ~84k tokens").
 	//
-	// EventCompacted always follows it, success or failure — a surface opens a
-	// row on this one and settles it on that one, and a pass that found nothing
-	// to do says so rather than leaving the row open (loop.go's [Agent.compact]).
-	// There is no summarizer behind it any more: the pass is two mechanical
-	// walks over messages this session already holds, so what it costs is a lock
-	// and not a model call.
+	// EventCompacted always follows it — a surface opens a row on this one and
+	// settles it on that one. A pass that found nothing to do sends neither, so
+	// it opens no row that would need settling (loop.go's [Agent.compactWithPolicy]);
+	// `/compact` hears that from [ErrNothingToCompact] instead. There is no
+	// summarizer behind it any more: the pass is two mechanical walks over
+	// messages this session already holds, so what it costs is a lock and not a
+	// model call.
 	EventCompacting
 	// EventCompacted marks a compaction pass; Hint summarizes
-	// ("compacted from ~84k tokens, kept last ~20k"), and [Event.Unchanged]
-	// separates the pass that edited the transcript from the one that found
-	// nothing to do.
+	// ("compacted from ~84k tokens, kept last ~20k"). [Event.Unchanged] is only
+	// ever set on it by a peer built before a no-op pass went silent.
 	EventCompacted
 	// EventReasoning carries one streamed chunk of the model's REASONING in
 	// Text, for the models that put their working on the wire (OpenRouter's
@@ -739,6 +739,12 @@ type Event struct {
 	// It rides the wire behind a json tag of its own, so a peer built before it
 	// existed does not send it, reads false, and behaves exactly as it always
 	// did (internal/remote embeds this struct whole).
+	//
+	// NO PASS IN THIS BUILD SETS IT. A pass that finds nothing now sends neither
+	// EventCompacting nor EventCompacted, so there is no row to settle. The field
+	// stays, and a surface still honours it, because a remote engine built
+	// between the two changes announces every pass and settles a refused one
+	// with it.
 	Unchanged bool `json:"Unchanged,omitempty"`
 
 	// Args is the tool call's arguments rendered for display: the JSON the
@@ -2239,16 +2245,12 @@ type Config struct {
 	// (promptprofile.go's [resolvePromptProfile] is the whole ladder).
 	PromptProfile string
 
-	// profile is which of the two fixed prefixes this session sends, SETTLED
-	// ONCE by newAgent before anything is built from it (promptprofile.go).
-	//
-	// It is a field on the config rather than on the agent because everything
-	// that reads it reads it before the agent exists — the page is rendered
-	// first and the belt is built from the same config a moment later — which is
-	// the law beltfacts.go's predicates are already written under. Empty means
-	// nobody has settled it, and [Config.promptProfile] then derives the answer
-	// live, which is what a test asking the question of a bare Config wants.
+	// profile is the initial shape, settled before the page and belt exist.
+	// liveProfile follows model changes for automatic conversation profiles;
+	// neither field requires mutation of this shared Config after construction.
 	profile promptProfile
+	// liveProfile publishes automatic window changes without mutating Config.
+	liveProfile *livePromptProfile
 }
 
 // Agent is one conversation. It is safe for concurrent use, but Submit
@@ -2416,6 +2418,9 @@ type Agent struct {
 	// already on its way onto the belt (tools_capabilities.go). Nil on every
 	// shape that pre-arms nothing, which is every full-profile belt.
 	prearm []bare.Tool
+	// profileArmed retains explicitly loaded tools across profile changes.
+	// Like the belt itself, this ordered list is guarded by armMu.
+	profileArmed []bare.Tool
 	// withdrawn is the record of a belt narrowed ON PURPOSE (withdrawn.go): the
 	// hands the harness took, why, and what is left. Nil whenever the belt is
 	// whole, which is nearly always.
@@ -3139,17 +3144,9 @@ type Agent struct {
 	// cutPointLocked, which already holds the lock: a second acquisition there
 	// would deadlock the one call — Interrupt — that must always be answerable.
 	contextWindow atomic.Int64
-	// servedWindow is what this process has LEARNED about the window the model
-	// now in use really has, as opposed to the one its catalog row claims: the
-	// narrowest prompt that model has been refused for being too long
-	// (internal/provider's ServedWindow). Zero means nothing has been learned
-	// and the claim stands alone, which is the ordinary case.
-	//
-	// It is a field rather than a call because the memo is keyed by MODEL and
-	// the model is guarded by mu, while the threshold is read from
-	// cutPointLocked with mu already held — so it is atomic for
-	// [Agent.contextWindow]'s reason, word for word, and refreshed wherever the
-	// model or the window moves.
+	// servedWindow is the explicit total context limit most recently learned
+	// in this session. It is atomic because fold helpers read it under mu;
+	// endpoint-scoped persistence belongs to the provider, not the model id.
 	servedWindow atomic.Int64
 
 	// compacting serializes compaction passes. One pass reads the transcript,

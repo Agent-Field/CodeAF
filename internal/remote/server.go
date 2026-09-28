@@ -2571,7 +2571,11 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return mustJSON(door.AnswerLaneOffer(yes)), nil
 
 	case MethodCompact:
-		return nil, agent.Compact(context.Background())
+		err := agent.Compact(context.Background())
+		// The command's reply follows the new size, so hosted surfaces show
+		// the same before/after reading as a local conversation.
+		sess.announce()
+		return nil, err
 
 	case MethodClose:
 		// The surface said goodbye politely, and it is saying it about the
