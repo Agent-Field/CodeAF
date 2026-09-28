@@ -17,6 +17,10 @@ invalidates:
   - "A switch back to a model without tools carried earlier tool-call protocol messages and could be refused. Its request now carries the earlier calls and results as readable text; tool-capable requests keep their original history bytes."
   - "DeepInfra's `Requested input length … exceeds maximum input length …` refusal was retried as an ordinary error. It now enters overflow recovery and teaches the endpoint's stated limit."
   - "A finished compaction was a full-width rule that folded into `▸ worked` when the turn ended. It is one dim `⚭ compacted` line that stays visible, including after dev's trailing-bookkeeping fold."
+  - "A /compact pass that folded work while its summary failed said only `compacted`. It now says `summary skipped: <why>` in its note, including over a remote engine; a successful remote reply to an older surface still reads as plain success. A visit to Home during the pass no longer loses that conversation's note or meter update."
+  - "An unobserved helper call could consume a tool-less model's one visible notice. The notice is now spent only on a call with a stream observer."
+  - "A strict endpoint pin could resend the same oversized tool request to that endpoint and ignore its learned limit on later tool requests. It now pays one refusal and sizes the next request against the pinned endpoint's limit. A routed resend logs its first 400 as well as the answer. Equal limits refresh their disk date, and future dates are clamped."
+  - "An ordinary request could send `max_tokens` even when its computed output ceiling did not bind. It now omits that field until the ceiling actually binds."
 ---
 
 A conversation could fill its window and then be stuck: the request was refused

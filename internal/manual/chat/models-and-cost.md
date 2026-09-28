@@ -2664,12 +2664,14 @@ The model catalog is the starting window. Before sending a conversation request,
 checks the encoded messages, tool schemas and replayed reasoning, the output allowance
 including thinking, and a safety margin. It uses the smallest known context window among
 endpoints the request can reach. A strict provider pin excludes other endpoints; an
-advisory order does not. A request that carries tools is measured only against endpoints
-that take tools: deepseek-v3.2's two 32,768-token endpoints take none, so a conversation
-with tools is measured against the others. With the default routing the router can still
-send such a request to one of them. If that endpoint refuses it as too long, codeaf sends
-the same request once more before shortening anything, and that endpoint's window is not
-used to measure later requests that carry tools.
+advisory order does not. A request that carries tools is measured against endpoints
+known to take tools; after a pinned endpoint refuses it, that endpoint's learned
+limit also sizes later tool requests. A limit learned from a refusal counts for
+30 minutes even when the endpoint is absent from the sheet. With default routing
+the router can still send a tool request to an endpoint that takes no tools. If
+that endpoint refuses it as too long, codeaf sends
+the same request once more before shortening anything; its window does not size later
+tool requests unless that endpoint is pinned.
 
 An endpoint's explicit total limit is remembered by base URL, model and provider in
 `model-quirks.json` for 30 minutes, then learned again if it still holds. A rejected
