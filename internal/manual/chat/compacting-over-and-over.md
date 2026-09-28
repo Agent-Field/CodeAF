@@ -181,9 +181,13 @@ A no-op says `nothing to compact — ` and why:
 - `nothing new since the last summary`, or `there is nothing before your last 3 messages
   to summarize` (or `your latest message`): the messages kept word for word are all that
   is left;
-- `the model could not write a summary: …`, `the model's summary came back empty or
-  unreadable`, `the summary was interrupted`, or `the conversation changed while the summary
-  was being written` — the conversation is left exactly as it was.
+- `the model could not write a summary: …`, `the model declined to write a summary`,
+  `the model's summary came back empty or unreadable`, `the summary was interrupted`, or
+  `the conversation changed while the summary was being written` — the conversation is
+  left exactly as it was.
+
+When the free steps did shorten something but the summary did not land, the pass still
+reports what it folded, and its line ends `summary skipped: ` with one of those reasons.
 
 None of these means the next request fits: admission also counts schemas, replayed
 reasoning and reserved output.

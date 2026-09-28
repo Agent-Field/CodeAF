@@ -2664,16 +2664,26 @@ The model catalog is the starting window. Before sending a conversation request,
 checks the encoded messages, tool schemas and replayed reasoning, the output allowance
 including thinking, and a safety margin. It uses the smallest known context window among
 endpoints the request can reach. A strict provider pin excludes other endpoints; an
-advisory order does not. A request that carries tools cannot reach an endpoint that takes
-none, so those endpoints' windows are not counted: deepseek-v3.2's two 32,768-token
-endpoints take no tools, and a conversation with tools is measured against the others.
+advisory order does not. A request that carries tools is measured only against endpoints
+that take tools: deepseek-v3.2's two 32,768-token endpoints take none, so a conversation
+with tools is measured against the others. With the default routing the router can still
+send such a request to one of them. If that endpoint refuses it as too long, codeaf sends
+the same request once more before shortening anything, and that endpoint's window is not
+used to measure later requests that carry tools.
 
 An endpoint's explicit total limit is remembered by base URL, model and provider in
-`model-quirks.json`. A rejected prompt's length is **not** a total context limit. Old
-model-wide `served_window` guesses are no longer used to size requests.
+`model-quirks.json` for 30 minutes, then learned again if it still holds. A rejected
+prompt's length is **not** a total context limit. Old model-wide `served_window` guesses
+are no longer used to size requests.
+
+## How much room is left for the answer — the output cap, max_tokens and the safety margin
 
 When no output cap was requested, the total output allowance is the smaller of the answer
-room setting and a quarter of the effective window. It may shrink to fit, while normally
+room setting and a quarter of the effective window. It is sent as the request's
+`max_tokens` only when it does work — a thinking budget, a window too small for an ordinary
+answer, or an endpoint that stated its window when it refused — and an ordinary request
+leaves the output cap to the endpoint, since an unasked cap can rule out an endpoint whose
+own cap is lower. It may shrink to fit, while normally
 keeping at least 512 output tokens (an eighth of a very small window). A thinking budget
 shrinks to fit beside room for an answer, and is dropped below 1,024 tokens, so thinking
 alone never makes a request too long. The safety margin is 5% of the window, bounded between
@@ -4089,8 +4099,9 @@ applies to every model that can use tools.
 
 A model the catalog does not know is still sent its tools and its working page. If no
 provider serving it accepts them, the retry line says so — it used to read
-`Retry 1/1: removed tools`, which did not say why — and for the rest of that run codeaf
-sends that model no tools, so the refusal happens once rather than on every message:
+`Retry 1/1: removed tools`, which did not say why. If that retry is answered, codeaf sends
+the model no tools for the next 30 minutes, so the refusal is not paid on every message,
+and the one-time line above follows; a retry that also failed teaches nothing:
 
 ```
 Retry 1/1: sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer

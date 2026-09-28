@@ -447,7 +447,8 @@ summarize`, or `the model could not write a summary: ` and the reason. The statu
 count drops as soon as the pass lands.
 Other failures say `compact failed: ` followed by the reason. The pass runs off the input
 loop, so the surface stays responsive, and a message you send while it runs is not held
-behind it. A summary on a slow model can take a minute; the chat waits up to five. If the
+behind it; if that message is too long to send before the pass lands, it waits for the pass
+and then goes. A summary on a slow model can take a minute; the chat waits up to five. If the
 engine is still working after that, it says `still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands`.
 `/compact` has no argument form and no alias.
 
