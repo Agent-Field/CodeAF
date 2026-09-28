@@ -54,7 +54,7 @@ func keepInterruptedRun(t *testing.T, agent *Agent, g *TaskGraph, row uint64, ti
 	t.Helper()
 	agent.publishRunRow(g, TaskNotice{
 		ID: row, Title: title, State: TaskInterrupted, Copy: record,
-		StartedAt: agent.taskClockNow(),
+		StartedAt: agent.taskClockNow(), CrewState: agent.unroutedCrewRecord(),
 	})
 }
 
