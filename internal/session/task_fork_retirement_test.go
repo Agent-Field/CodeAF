@@ -144,3 +144,24 @@ func TestCheckpointRetirementLeavesUnmergedAndForeignCopies(t *testing.T) {
 		})
 	}
 }
+
+func TestForkRetirementOrdersSiblingCopiesByTheirGrounds(t *testing.T) {
+	nodes := []taskRecord{
+		{ID: 1, Worktree: "/session/trees/parent", Ground: "/repo"},
+		{ID: 2, Worktree: "/session/trees/child", Ground: "/session/trees/parent"},
+		{ID: 3, Worktree: "/session/trees/leaf", Ground: "/session/trees/child"},
+	}
+	ordered, err := forkRetirementOrder(nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []uint64{3, 2, 1} {
+		if ordered[i].ID != want {
+			t.Fatalf("retirement order = %v", ordered)
+		}
+	}
+	nodes[0].Ground = nodes[2].Worktree
+	if _, err := forkRetirementOrder(nodes); err == nil {
+		t.Fatal("cyclic grounds accepted")
+	}
+}

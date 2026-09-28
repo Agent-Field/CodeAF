@@ -446,7 +446,7 @@ func TestTheSweepTellsFurrowToForgetASweptSessionsForks(t *testing.T) {
 	}
 }
 
-// AND A DROP IT CANNOT MAKE IS A LINE IN THE LOG AND NEVER A HELD-UP REMOVAL.
+// A FAILED RETIREMENT KEEPS THE COPY AND ITS RECOVERY RECORD.
 // furrow gone from the machine is the ordinary way this happens — the ground
 // deleted or detached is the same shape — and the session folder is litter
 // either way, but retirement must succeed before its recovery record goes.

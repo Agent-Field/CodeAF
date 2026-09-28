@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
 )
 
 // retireCheckpointForks preserves the checkpoint whenever retirement fails.
@@ -15,11 +14,13 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 	if !ok {
 		return true
 	}
-	sort.SliceStable(document.Nodes, func(i, j int) bool {
-		return len(document.Nodes[i].Worktree) > len(document.Nodes[j].Worktree)
-	})
+	nodes, err := forkRetirementOrder(document.Nodes)
+	if err != nil {
+		note("sweep: " + err.Error())
+		return false
+	}
 	asked := map[string]bool{}
-	for _, record := range document.Nodes {
+	for _, record := range nodes {
 		if contextDone(ctx) {
 			return false
 		}
@@ -47,4 +48,39 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 		note(fmt.Sprintf("sweep: retired fork %s of %s", tree.universe, tree.ground))
 	}
 	return !contextDone(ctx)
+}
+
+// Fork directories are siblings even when their work is nested. Follow the
+// recorded grounds rather than path length so a child's parent remains open.
+func forkRetirementOrder(nodes []taskRecord) ([]taskRecord, error) {
+	var ordered []taskRecord
+	state := make([]uint8, len(nodes))
+	var visit func(int) error
+	visit = func(i int) error {
+		if state[i] == 2 {
+			return nil
+		}
+		if state[i] == 1 {
+			return fmt.Errorf("cyclic fork grounds in task checkpoint")
+		}
+		state[i] = 1
+		if nodes[i].Worktree != "" {
+			for j := range nodes {
+				if j != i && nodes[j].Ground != "" && withinDir(canonicalPath(nodes[i].Worktree), canonicalPath(nodes[j].Ground)) {
+					if err := visit(j); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		state[i] = 2
+		ordered = append(ordered, nodes[i])
+		return nil
+	}
+	for i := range nodes {
+		if err := visit(i); err != nil {
+			return nil, err
+		}
+	}
+	return ordered, nil
 }
