@@ -147,26 +147,30 @@ def review_criteria(rubric, judge_input, key, model, prompt_version):
 
 
 def adapt_tests(rubric, grade_dir, key, model, prompt_version):
-    """The adaptive path's judge call. Reads phase A's classical evidence and
-    the agent diff, answers an adapted test patch or a refusal."""
+    """The adaptive path's judge call. Reads phase A's classical evidence, the
+    reference overlay and the base test files phase A carried out, and answers
+    an adapted test patch or a refusal."""
     grade_dir = pathlib.Path(grade_dir)
     phase_a = json.loads((grade_dir / "phaseA.json").read_text())
-    classical_id = None
-    for c in rubric["criteria"]:
-        if c["kind"] == "classical":
-            classical_id = c["id"]
+    classical_id = next((c["id"] for c in rubric["criteria"] if c["kind"] == "classical"), "")
     classical = phase_a["criteria"].get(classical_id, {})
     agent_diff = grade_dir / "agent.diff"
     evidence = ""
     ev = grade_dir / "evidence"
-    if ev.exists() and classical_id:
+    if ev.exists() and classical_id and (ev / f"{classical_id}.log").exists():
         evidence = (ev / f"{classical_id}.log").read_text(errors="replace")[-4000:]
     system = JUDGE_PROMPTS[prompt_version]["adapt"]
     user = (
-        f"The reference tests' failure:\n{evidence}\n\n"
+        f"The reference test-side patch (a diff against the base commit's "
+        f"test files):\n{phase_a['judge_input'].get('overlay', '(none)')}\n\n"
+        f"The base commit's own text of those test files:\n"
+        f"{json.dumps(phase_a['judge_input'].get('test_files', {}), indent=2)[:20000]}\n\n"
+        f"The reference tests' failure under this solution:\n{evidence}\n\n"
         f"The agent's diff:\n{(agent_diff.read_text(errors='replace') if agent_diff.exists() else '(missing)')[:24000]}\n\n"
         "Decide whether the reference tests can be legitimately adapted to "
-        "this solution, and if so produce the adapted test patch."
+        "this solution, and if so produce the adapted test patch — a unified "
+        "diff against the base commit's test files, which the grader applies "
+        "over the agent's tree."
     )
     content, usage = call(model, system, user, key, max_tokens=2400)
     verdict = parse_json_reply(content)
