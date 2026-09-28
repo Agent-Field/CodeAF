@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -1033,13 +1034,14 @@ func (s *Supervisor) reviewLanded(task plandb.Task, result string) {
 // recordCheckFinding turns a check's "does not hold" into work. A check's result
 // begins "holds:" or "does not hold:" and closes with one sentence; the second is
 // the finding, so it is left on the checked leaf in the check's own voice —
-// author "check" — AND it is made into a fix task under the checked leaf's
-// parent, the coordinator that owns the work.
+// author "check" — and an actionable finding is made into a fix task under
+// the checked leaf's parent, the coordinator that owns the work.
 //
 // A FINDING IS WORK, NOT A REMARK. The note alone left the coordinator to notice
 // a sentence nobody read; the fix task is the repair, and the run is not over
-// until it lands. The fix carries the leaf's acceptance, the finding and the
-// leaf's own result, and depends on nothing, so it is ready at once.
+// until it lands. A check on a file nothing in the run makes has no possible
+// repair and gets a second note instead. A fix carries the leaf's acceptance,
+// the finding and the leaf's own result, and depends on nothing.
 //
 // ONE ROUND ONLY: a finding on a fix task is a note and no second fix task, so a
 // run cannot loop.
@@ -1069,6 +1071,10 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 	if prefix == checkAnswer || strings.HasPrefix(checked.Title, fixTitlePrefix) {
 		return
 	}
+	if file := s.fileNothingMakes(checked, sentence); file != "" {
+		_, _ = s.store.AddNote(leaf, "check", "No fix was started: the check names "+file+", a file nothing in this run makes.")
+		return
+	}
 	id := s.store.NextID()
 	_, _ = s.store.AddMany([]plandb.TaskSpec{{
 		ID:          id,
@@ -1077,6 +1083,111 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		Checks:      append([]string(nil), checked.Checks...),
 		ParentID:    checked.ParentID,
 	}})
+}
+
+// fileNothingMakes withholds a fix only for a missing file named by no part.
+// A FIX MUST HAVE A FILE THE RUN CAN MAKE: #1573 spent ten paid `fix:` tasks
+// chasing issue_.go. #1604 showed that a broad refusal breaks a check on a
+// package a part creates, so only a numbered placeholder or a file shared by
+// checks qualifies.
+func (s *Supervisor) fileNothingMakes(checked *plandb.Task, finding string) string {
+	tasks := s.store.Tasks()
+	var texts []string
+	for _, task := range tasks {
+		if task.Role == plandb.RoleCheck || strings.HasPrefix(task.Title, fixTitlePrefix) || strings.HasPrefix(task.Title, checkTitlePrefix) {
+			continue
+		}
+		text := task.Title + " " + task.Description
+		for _, check := range task.Checks {
+			text = strings.ReplaceAll(text, check, "")
+		}
+		texts = append(texts, text)
+	}
+	for _, check := range checked.Checks {
+		for _, file := range plandb.CheckFiles(check) {
+			base := filepath.Base(file)
+			if !findingNamesFile(finding, base) {
+				continue
+			}
+			path := file
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(s.workspace, path)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				continue
+			}
+			namedByTask := false
+			for _, text := range texts {
+				for _, named := range plandb.NamedFiles(text) {
+					if filepath.Base(named) == base {
+						namedByTask = true
+						break
+					}
+				}
+				if namedByTask {
+					break
+				}
+			}
+			if namedByTask {
+				continue
+			}
+			shared := 0
+			for _, task := range tasks {
+				if task.Role == plandb.RoleCheck || strings.HasPrefix(task.Title, fixTitlePrefix) || strings.HasPrefix(task.Title, checkTitlePrefix) {
+					continue
+				}
+				taskNamesFile := false
+				for _, declaration := range task.Checks {
+					for _, named := range plandb.CheckFiles(declaration) {
+						if filepath.Base(named) == base {
+							taskNamesFile = true
+							break
+						}
+					}
+					if taskNamesFile {
+						break
+					}
+				}
+				if taskNamesFile {
+					shared++
+				}
+				if shared >= 2 {
+					return file
+				}
+			}
+			if len(plandb.PlaceholderSiblings(file, s.workspace, texts)) > 0 {
+				return file
+			}
+		}
+	}
+	return ""
+}
+
+// findingNamesFile requires a whole base name because a finding about data.go
+// says nothing about a missing a.go even though those bytes appear inside it.
+func findingNamesFile(finding, base string) bool {
+	if base == "" {
+		return false
+	}
+	for at := 0; at <= len(finding)-len(base); {
+		next := strings.Index(finding[at:], base)
+		if next < 0 {
+			return false
+		}
+		start := at + next
+		end := start + len(base)
+		before := start == 0 || (!fileNameWordByte(finding[start-1]) && finding[start-1] != '.')
+		after := end == len(finding) || !fileNameWordByte(finding[end])
+		if before && after {
+			return true
+		}
+		at = start + 1
+	}
+	return false
+}
+
+func fileNameWordByte(b byte) bool {
+	return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '_' || b == '-'
 }
 
 // The two prefixes the review round mints: the check it adds under a leaf, and

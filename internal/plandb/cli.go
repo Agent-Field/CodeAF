@@ -468,6 +468,9 @@ func cliAdd(st *Store, p *cliParsed) error {
 		}
 		spec.Priority = n
 	}
+	if err := cliPlaceholderChecks(st, spec.Checks, spec.Title, spec.Description, "Nothing was added."); err != nil {
+		return err
+	}
 	created, err := st.AddMany([]TaskSpec{spec})
 	if err != nil {
 		return err
@@ -819,6 +822,9 @@ func cliSetChecks(st *Store, p *cliParsed) error {
 		return err
 	}
 	checks := append([]string(nil), p.lists["check"]...)
+	if err := cliPlaceholderChecks(st, checks, task.Title, task.Description, "Nothing was changed."); err != nil {
+		return err
+	}
 	updated, err := st.Revise(task.ID, TaskPatch{Checks: &checks})
 	if err != nil {
 		return err
@@ -828,6 +834,82 @@ func cliSetChecks(st *Store, p *cliParsed) error {
 	}
 	fmt.Fprintf(cliOut, "set checks on %s\n", cliID(updated.ID))
 	return nil
+}
+
+// cliPlaceholderChecks sends #1573's lost-number shape back before either CLI
+// verb writes, so a loop cannot buy fix tasks for issue_.go. The example is
+// advice only: the store keeps the worker's own check bytes, never a guess.
+func cliPlaceholderChecks(st *Store, checks []string, title, description, ending string) error {
+	if len(checks) == 0 {
+		return nil
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	texts := []string{title, description}
+	for _, task := range st.Tasks() {
+		texts = append(texts, task.Title, task.Description)
+	}
+	for _, check := range checks {
+		for _, file := range CheckFiles(check) {
+			siblings := PlaceholderSiblings(file, dir, texts)
+			if len(siblings) == 0 {
+				continue
+			}
+			stem, ext, _ := fileStem(filepath.Base(file))
+			// A TEMPLATE IS EVIDENCE, NOT A FILE. `issue_NN.go` in the brief is
+			// why issue_.go reads as a lost number, but it is not one of the
+			// numbered files the sentence counts, nor an example to copy. It is
+			// listed only when the plan names no real numbered file at all.
+			if numbered := numberedOnly(siblings, stem, ext); len(numbered) > 0 {
+				siblings = numbered
+			}
+			example := siblings[0]
+			for _, own := range []string{title, description} {
+				for _, named := range NamedFiles(own) {
+					for _, sibling := range siblings {
+						if filepath.Base(named) == sibling {
+							example = sibling
+							break
+						}
+					}
+				}
+			}
+			exampleFile := strings.TrimSuffix(file, filepath.Base(file)) + example
+			sentence := fmt.Sprintf("check %q names %s, which is %sNN.%s with its number missing (the numbered files are %s). Write each part's check with that part's own file, such as %q, and run the command again; if a shell loop built the check, its number variable came out empty. %s",
+				check, file, stem, ext, cliSiblingList(siblings), strings.ReplaceAll(check, file, exampleFile), ending)
+			return errors.New(sentence)
+		}
+	}
+	return nil
+}
+
+// numberedOnly keeps the siblings whose number is digits, dropping a template
+// slot such as `issue_NN.go`.
+func numberedOnly(siblings []string, stem, ext string) []string {
+	var out []string
+	for _, sibling := range siblings {
+		if numberedSibling(sibling, stem, ext, false) {
+			out = append(out, sibling)
+		}
+	}
+	return out
+}
+
+// cliSiblingList keeps the refusal short even when a planner made a whole
+// fan-out of parts: two examples show the pattern, and the count says the rest.
+func cliSiblingList(siblings []string) string {
+	switch len(siblings) {
+	case 0:
+		return ""
+	case 1:
+		return siblings[0]
+	case 2:
+		return siblings[0] + " and " + siblings[1]
+	default:
+		return fmt.Sprintf("%s, %s and %d more", siblings[0], siblings[1], len(siblings)-2)
+	}
 }
 
 // cliAmend prepends to a task's description — one of the two ways a plan
