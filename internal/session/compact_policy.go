@@ -74,6 +74,30 @@ func (a *Agent) requestedCompactPolicy() compactPolicy {
 // recoverContext only retries a changed request. An endpoint's explicit window
 // is evidence; the failed prompt's estimated size is not a context limit.
 func (a *Agent) recoverContext(ctx context.Context, hub *eventHub, err error) bool {
+	// A manual pass may be buying the very room this refused turn needs.
+	// Wait for its signal once, then send the changed request; if it did not
+	// shrink the transcript, run the ordinary recovery policy below.
+	a.mu.Lock()
+	beforePass := a.transcriptTokensLocked()
+	done := a.compactDone
+	compacting := a.compacting
+	a.mu.Unlock()
+	if compacting && done != nil {
+		waitCtx, cancel := context.WithTimeout(ctx, CompactPatience)
+		select {
+		case <-done:
+		case <-waitCtx.Done():
+			cancel()
+			return false
+		}
+		cancel()
+		a.mu.Lock()
+		roomMade := a.transcriptTokensLocked() < beforePass
+		a.mu.Unlock()
+		if roomMade {
+			return true
+		}
+	}
 	failure, _ := provider.RefusalFrom(err)
 	calibrated := false
 	if failure != nil && failure.InputTokens > 0 && !failure.Local {

@@ -1055,6 +1055,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					continue
 				}
 			}
+			if ctx.Err() != nil {
+				a.endStoppedTurn(ctx, hub, partial, turn, started, model)
+				return false
+			}
 			// A permanent failure mid-stream is still a step the person
 			// watched: the streamed text is kept and the turn is sealed, so an
 			// error leaves the same record an interrupt does and the surface
@@ -4888,6 +4892,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 		return false, ErrCompactionInFlight
 	}
 	a.compacting = true
+	a.compactDone = make(chan struct{})
 	tokensBefore := a.estimateTokensLocked()
 
 	// THE CONVERSATION IS SHAPED FOR THE SCROLLBACK BEFORE IT IS EDITED. This is
@@ -4945,6 +4950,8 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 		}
 	}
 	a.compacting = false
+	close(a.compactDone)
+	a.compactDone = nil
 
 	if pass.empty() {
 		// No eligible material was reduced. A manual pass and a routine pass

@@ -3153,6 +3153,9 @@ type Agent struct {
 	// releases the lock to summarize, then rebuilds; a second pass entering
 	// that window would summarize a prefix the first one is about to drop.
 	compacting bool
+	// compactDone wakes a refused turn waiting for that pass to finish. It is
+	// closed under the same lock that clears compacting, so no wake is missed.
+	compactDone chan struct{}
 	// contextTokens is the last provider-reported context size, the honest
 	// figure when there is one. Zero means "estimate from content".
 	contextTokens int
