@@ -87,7 +87,8 @@ func tab() tea.KeyPressMsg { return tea.KeyPressMsg{Code: tea.KeyTab} }
 
 func chipNames(a *app) []string {
 	out := make([]string, 0, len(a.chips))
-	for _, c := range a.chips {
+	_, tray := a.keyboardBox()
+	for _, c := range *tray {
 		out = append(out, c.name())
 	}
 	return out

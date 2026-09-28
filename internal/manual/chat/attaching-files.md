@@ -458,10 +458,13 @@ browser on local home, and it is aimed at which folder the next conversation ope
 "Choosing a folder"); `/folder` on home opens a conversation first and browses there. Over
 `--host`, both say why this machine's folder cannot be that far conversation's folder.
 
-**Returning to Home detaches unsent conversation attachments.** Their picture tokens
-come out of the conversation draft too; the files themselves are untouched. Queued
-messages keep their own attachments. Attach on Home to include a file in a new
-conversation. Home's tray row cannot be clicked; on a conversation's tray, click the
+**Returning to Home keeps your unsent prompt and attachments in their conversation.**
+Reopen that conversation to find the same words, cursor position and picture tokens.
+They never appear on Home or in another conversation. Home starts with an empty box
+and tray; only words and files you add there go into the new conversation. Queued
+messages keep their own attachments. If the current draft has no conversation identity
+to save it under, starting another says `finish or clear the draft in the current chat before starting another`.
+Home's tray row cannot be clicked; on a conversation's tray, click the
 chip or its remove mark (`×`, or `x` in ASCII mode).
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of

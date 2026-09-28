@@ -216,7 +216,8 @@ func (a *app) attachFile(path string) bool {
 }
 
 func (a *app) attachChip(held chip) bool {
-	if !attachChipTo(&a.chips, held) {
+	_, tray := a.keyboardBox()
+	if !attachChipTo(tray, held) {
 		return false
 	}
 	a.touch()

@@ -1405,8 +1405,9 @@ one dim chip each, drawn as `▣ #1 name.png ×` — `*` in place of the square 
 in your sentence refers to. The message box stays the sentence. `backspace` over an
 empty box drops the last chip, and clicking a chip removes that one — and takes its
 `[image #n]` out of your sentence, counting the ones behind it down so the numbers
-stay true. Returning to Home detaches unsent attachments and removes their picture
-tokens; attach on Home to include them in a new conversation. Queued messages keep
+stay true. Returning to Home preserves your unsent prompt, cursor and attachments in
+that conversation. Reopening it restores them. Home starts with an empty box and tray;
+a new conversation receives only what you type or attach there. Queued messages keep
 their own attachments.
 
 ## Dragging or pasting a screenshot in
