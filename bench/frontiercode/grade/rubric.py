@@ -186,6 +186,9 @@ def phase_a(task_dir, repo, base, out_dir):
             results[c["id"]] = {"status": FAIL, "note": f"patch did not apply: {note}"}
         (out / "apply.txt").write_text(note)
     else:
+        # The agent's own diff, captured BEFORE any reference overlay is
+        # applied, so the record carries exactly what the agent changed.
+        sh(f"git diff '{base}' --binary > /logs/grade/agent.diff", cwd=repo)
         for c in rubric["criteria"]:
             kind, cid = c["kind"], c["id"]
             spec = c.get(kind) or c.get(kind.replace("-", "_")) or {}
