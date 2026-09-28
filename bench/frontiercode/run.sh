@@ -203,7 +203,7 @@ docker exec -w /root/repos/jsonschema "$NAME" sh -c \
   'git config --global --add safe.directory /root/repos/jsonschema; git status --porcelain | wc -l' \
   > "$OUT/base-status.txt" 2>> "$OUT/docker.log"
 docker exec -w /root/repos/jsonschema "$NAME" git rev-parse HEAD > "$OUT/base-head.txt" 2>> "$OUT/docker.log"
-if [ "$(cat "$OUT/base-head.txt")" != "$TASK_BASE" ] || [ -n "$(tr -d '[:space:]' < "$OUT/base-status.txt")" ]; then
+if [ "$(cat "$OUT/base-head.txt")" != "$TASK_BASE" ] || [ "$(tr -d '[:space:]' < "$OUT/base-status.txt")" != "0" ]; then
   meta "stage=base-not-pristine"
   log "$TASK: the task tree is not pristine at the base commit — refusing to run"
   exit 1
