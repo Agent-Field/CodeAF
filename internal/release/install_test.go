@@ -1030,6 +1030,40 @@ func TestInstallerLinksIntoAFolderAlreadyOnPath(t *testing.T) {
 	if !strings.Contains(run.output, "ready in this terminal") || strings.Contains(run.output, "export PATH=") {
 		t.Fatalf("a linked install still asks for a PATH line:\n%s", run.output)
 	}
+	// Installing again finds its own link and refreshes it.
+	rerun := runInstaller(t, github, nil, "HOME="+home, "PATH="+path, "CODEAF_INSTALL_DIR="+installDir)
+	if rerun.code != 0 {
+		t.Fatalf("exit %d:\n%s", rerun.code, rerun.output)
+	}
+	if target, err := os.Readlink(filepath.Join(local, "codeaf")); err != nil || target != filepath.Join(installDir, "codeaf") || !strings.Contains(rerun.output, "ready in this terminal") {
+		t.Fatalf("a second install did not keep its own link: %q, %v\n%s", target, err, rerun.output)
+	}
+
+	// A link to another build is somebody's choice too: a developer's source
+	// build linked into ~/.local/bin must survive a stable install.
+	other := filepath.Join(home, "src", "codeaf", "bin", "codeaf")
+	if err := os.MkdirAll(filepath.Dir(other), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("#!/bin/sh\necho source build\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(local, "codeaf")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, filepath.Join(local, "codeaf")); err != nil {
+		t.Fatal(err)
+	}
+	linked := runInstaller(t, github, nil, "HOME="+home, "PATH="+path, "CODEAF_INSTALL_DIR="+installDir)
+	if linked.code != 0 {
+		t.Fatalf("exit %d:\n%s", linked.code, linked.output)
+	}
+	if target, err := os.Readlink(filepath.Join(local, "codeaf")); err != nil || target != other {
+		t.Fatalf("the installer replaced a link to another build: %q, %v", target, err)
+	}
+	if !strings.Contains(linked.output, `export PATH="$HOME/.codeaf/bin:$PATH"`) || strings.Contains(linked.output, "ready in this terminal") {
+		t.Fatalf("a link to another build does not leave the PATH line:\n%s", linked.output)
+	}
 
 	theirs := []byte("#!/bin/sh\necho someone else's codeaf\n")
 	if err := os.Remove(filepath.Join(local, "codeaf")); err != nil {

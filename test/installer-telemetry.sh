@@ -14,7 +14,7 @@ script=scripts/install.sh
 doc=docs/TELEMETRY.md
 test -f "$doc" || { echo "docs/TELEMETRY.md is missing; this test reads the notice from it"; exit 1; }
 
-eval "$(sed -n '/^write_install_marker()/,/^}/p; /^init_style()/,/^}/p; /^print_guide()/,/^}/p' "$script")"
+eval "$(sed -n '/^write_install_marker()/,/^}/p; /^init_style()/,/^}/p; /^print_guide()/,/^}/p; /^start_folder()/,/^}/p' "$script")"
 type write_install_marker >/dev/null
 type init_style >/dev/null
 type print_guide >/dev/null
@@ -124,6 +124,17 @@ ok "the receipt is the installed binary naming itself" 'grep -q "step_ok \"Insta
 ok "the guide is printed after the marker is written" '[ "$(grep -n "^print_guide " "$script" | cut -d: -f1)" -gt "$(grep -n "^  write_install_marker \"\$STATE_ROOT\"" "$script" | cut -d: -f1)" ]'
 ok "the old prefixed sentence is gone" '! grep -q "add it to this shell with" "$script"'
 ok "the answer to start now is read from the terminal, never the piped script" 'grep -q "read -r reply </dev/tty" "$script"'
+ok "every spinner frame is one whole mark, even when the named UTF-8 locale is not installed" '(LC_ALL= LC_CTYPE= LANG=xx_XX.UTF-8; init_style >/dev/null; [ "${#SPINNER_FRAMES[@]}" = 10 ] && [ "${SPINNER_FRAMES[1]}" = "⠙" ])'
+ok "the guide sends other services to /connect" 'printf "%s\n" "$(print_guide codeaf "" "")" | grep -q "/connect in the chat"'
+ok "the guide fits an 80-column terminal" '[ "$(print_guide codeaf "$hint" "$tmp/.zshrc" | awk "{ if (length > m) m = length } END { print m }")" -lt 80 ]'
+
+# The start question is never asked where starting would hand codeaf a whole
+# home folder or the filesystem root.
+mkdir -p "$tmp/home/project"
+ok "start is offered inside a project" '(HOME="$tmp/home"; cd "$tmp/home/project" && start_folder)'
+ok "start is not offered in the home folder" '! (HOME="$tmp/home"; cd "$tmp/home" && start_folder)'
+ok "start is not offered at /" '! (HOME="$tmp/home"; cd / && start_folder)'
+ok "the offer asks start_folder before the question" '[ "$(grep -n "^  start_folder || return 0" "$script" | cut -d: -f1)" -lt "$(grep -n "read -r reply </dev/tty" "$script" | cut -d: -f1)" ]'
 
 # --- nothing new on the wire --------------------------------------------------
 

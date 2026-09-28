@@ -125,16 +125,17 @@ The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
 `checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
 appends one `export PATH=… # codeaf installer` line to the applicable shell file, and
 when `~/.local/bin`, `~/bin` or `/usr/local/bin` is on `PATH` and writable, links the
-command there so it works in the current terminal (a file there that is not its link is
-never replaced). A normal run prints checked steps, `Downloaded`, `Installed codeaf v…`
+command there so it works in the current terminal (nothing there but its own link is
+ever replaced). A normal run prints checked steps, `Downloaded`, `Installed codeaf v…`
 (the installed file naming itself, split so it fits 80 columns; an install under another
 name puts that name first, `Installed devaf · codeaf dev-…`), `PATH` and `Linked`, then a
 *Get started* guide: the bare `export PATH=…` line on its own line when the command is not
 reachable yet, `cd your-project` and the command, how to connect a model, and links to
 https://agentfield.ai/docs/codeaf. On a terminal it colours the steps, turns a spinner
 while it resolves and downloads, and ends by asking `Start codeaf in <folder> now? [Y/n]`,
-read from the terminal rather than the piped script. Piped output, `NO_COLOR`, `CI`,
-`--verbose` and `--no-start` get plain text and no question.
+read from the terminal rather than the piped script. Piped output and `NO_COLOR` get
+plain text; a pipe, `CI`, `--verbose`, `--no-start` and a run from the home folder or
+`/` get no question.
 `--verbose` also reports the channel, the tag and the install path on stderr. The
 `/get/devaf` line selects the dev channel and names the file `devaf`, installing it
 beside codeaf. The `/get/stageaf` line selects staging and names the file

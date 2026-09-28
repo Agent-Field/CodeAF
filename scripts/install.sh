@@ -58,12 +58,15 @@ EOF
 init_style() {
   BOLD="" DIM="" ACCENT="" GREEN="" RED="" RESET=""
   MARK_OK="ok" MARK_FAIL="x" MARK_BRAND="*" DOT="-"
-  SPINNER_FRAMES="-\\|/"
+  # The frames are an array, not a string sliced a character at a time: slicing
+  # by character needs the named locale to be installed, and a UTF-8 LANG that
+  # ssh forwarded to a machine without it turns every frame into a broken byte.
+  SPINNER_FRAMES=('-' '\' '|' '/')
   local locale="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
   case "$locale" in
     *UTF-8*|*utf-8*|*UTF8*|*utf8*)
       MARK_OK="✓" MARK_FAIL="✗" MARK_BRAND="◆" DOT="·"
-      SPINNER_FRAMES="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+      SPINNER_FRAMES=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
       ;;
   esac
   if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]; then
@@ -103,9 +106,9 @@ spin_start() {
   local label="$1"
   printf '\033[?25l'
   (
-    local frames="$SPINNER_FRAMES" i=0 count=${#SPINNER_FRAMES}
+    local i=0 count=${#SPINNER_FRAMES[@]}
     while :; do
-      printf '\r  %s%s%s %s%s%s' "$ACCENT" "${frames:$i:1}" "$RESET" "$DIM" "$label" "$RESET"
+      printf '\r  %s%s%s %s%s%s' "$ACCENT" "${SPINNER_FRAMES[$i]}" "$RESET" "$DIM" "$label" "$RESET"
       i=$(( (i + 1) % count ))
       sleep 0.08
     done
@@ -200,9 +203,10 @@ print_guide() {
   printf '\n     %scd your-project%s\n' "$BOLD" "$RESET"
   printf '     %s%s%s\n\n' "$BOLD" "$command_name" "$RESET"
   n=$((n + 1))
-  printf '  %s%d%s  Connect a model when it asks. OpenRouter signs in through your\n' "$ACCENT" "$n" "$RESET"
-  printf '     browser; DeepSeek, Qwen, GLM and Kimi take a key; Ollama needs none.\n'
-  printf '     Then say what you want done, the way you would to a colleague.\n'
+  printf '  %s%d%s  Connect a model when it asks: OpenRouter signs in through your browser.\n' "$ACCENT" "$n" "$RESET"
+  printf '     For your own DeepSeek, Qwen, GLM or Kimi key, or a local Ollama, type\n'
+  printf '     /connect in the chat. Then say what you want done, the way you would\n'
+  printf '     to a colleague.\n'
   printf '\n  %sMore%s\n\n' "$BOLD" "$RESET"
   printf '     %s%-34s%s %s%s%s\n' "$BOLD" "$command_name do \"add a health check\"" "$RESET" "$DIM" "one task, answer on stdout" "$RESET"
   printf '     %s%-34s%s %s%s%s\n' "$BOLD" "$command_name update" "$RESET" "$DIM" "the newest build, in place" "$RESET"
@@ -646,9 +650,11 @@ append_path_line() {
 
 # The folders a link may go in, in order: the person's own first, then the
 # system's customary one when they can write to it without sudo. A folder counts
-# only when it is on PATH already. A FILE THAT IS NOT A LINK IS NEVER REPLACED:
-# it is somebody else's install, and shadowing it silently is how a person ends
-# up running a build they did not choose. Prints the folder it linked into.
+# only when it is on PATH already. NOTHING THERE IS REPLACED BUT THIS INSTALL'S
+# OWN LINK: a file, or a link to anything else (a source build, another install,
+# a leftover pointing nowhere), is somebody's choice, and shadowing it silently
+# is how a person ends up running a build they did not choose. The paste line is
+# the answer then. Prints the folder it linked into.
 link_into_path() {
   local target="$INSTALL_DIR/$INSTALL_NAME${extension}"
   local dir
@@ -658,7 +664,11 @@ link_into_path() {
       *) continue ;;
     esac
     [[ -d "$dir" && -w "$dir" ]] || continue
-    if [[ -e "$dir/$INSTALL_NAME" && ! -L "$dir/$INSTALL_NAME" ]]; then
+    if [[ -L "$dir/$INSTALL_NAME" ]]; then
+      # -ef follows the link: true only when it lands on this very file. It is
+      # a shell test, so the installer needs no readlink.
+      [[ "$dir/$INSTALL_NAME" -ef "$target" ]] || return 1
+    elif [[ -e "$dir/$INSTALL_NAME" ]]; then
       return 1
     fi
     if ln -sf "$target" "$dir/$INSTALL_NAME" 2>/dev/null; then
@@ -725,14 +735,26 @@ if [[ "$RUN_BOOT_ADOPTION" == "1" || -d "$STATE_ROOT" ]]; then
 fi
 print_guide "$INSTALL_NAME" "$PATH_HINT" "$PATH_FILE"
 
+# Starting codeaf here only helps when here is a project. The home folder and /
+# are where a piped install usually runs, and neither is one: starting there
+# would hand codeaf the whole of it, and the guide above already says to cd into
+# a project first. A folder deleted from under the shell is no place either.
+start_folder() {
+  local here home
+  here=$(pwd -P 2>/dev/null) || return 1
+  home=$(cd "${HOME:-/}" 2>/dev/null && pwd -P) || home="${HOME:-}"
+  [[ "$here" != "/" && "$here" != "$home" ]]
+}
+
 # The last step is offered, not taken: a person at a terminal is asked whether
 # to start codeaf now, where the first run connects a model, and Enter says yes.
 # The answer is read from the terminal itself, because under `curl | bash`
 # standard input is the script. Nothing is asked of a pipe, a CI runner, a
-# --verbose run or --no-start.
+# --verbose run or --no-start, nor in the home folder or /.
 offer_start() {
   [[ "$NO_START" != "1" && "$VERBOSE" != "1" && -z "${CI:-}" && "$OS" != "windows" ]] || return 0
   [[ -t 1 ]] || return 0
+  start_folder || return 0
   { : </dev/tty; } 2>/dev/null || return 0
   local reply=""
   printf '  %sStart %s in %s now?%s %s[Y/n]%s ' "$BOLD" "$INSTALL_NAME" "$(tidy_path "$PWD")" "$RESET" "$DIM" "$RESET"
