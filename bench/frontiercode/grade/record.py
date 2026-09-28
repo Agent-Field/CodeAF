@@ -17,28 +17,11 @@ never a 0, never an omission.
 """
 
 import argparse
-import datetime
-import hashlib
 import json
-import os
 import pathlib
 import sys
 
 RECORD = "record.jsonl"
-MANIFEST = "artifacts.sha256"
-
-# The fields every final row carries, whatever the caller supplied. A field
-# the run genuinely does not know is written as null — an absence is a fact,
-# not a gap to be smoothed over.
-FINAL_FIELDS = [
-    "task", "arm", "model", "variant", "seed", "base_commit", "reference_commit",
-    "image", "platform", "emulated", "rig_rev", "bin_sha256_16",
-    "patch_source", "patch_bytes", "exit_code", "ended", "agent_seconds",
-    "cost_usd_harness", "cost_usd_guard", "prompt_tokens", "completion_tokens",
-    "calls", "score", "pass", "flagged", "flag_reasons", "grade_status",
-    "judge_model", "judge_prompt_version", "judge_tokens", "failed_blockers",
-    "criteria_pass", "criteria_total", "apply_failed", "notes",
-]
 
 
 def now():
@@ -64,37 +47,15 @@ def row(args):
     return 0
 
 
-def finalize(args):
-    given = json.loads(args.json)
-    final = {field: given.get(field) for field in FINAL_FIELDS}
-    final["event"] = "final"
-    append(args.run_dir, final)
-    run_dir = pathlib.Path(args.run_dir)
-    manifest = []
-    for path in sorted(run_dir.rglob("*")):
-        if path.is_dir() or path.name in (MANIFEST,) or path.name == RECORD:
-            continue
-        # Keys never enter the manifest's digest of themselves; the record says
-        # they were scrubbed instead.
-        if path.name == "config.json":
-            manifest.append(f"{hashlib.sha256(b'<scrubbed-key-record>').hexdigest()}  {path.relative_to(run_dir)} (key scrubbed)")
-            continue
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        manifest.append(f"{digest}  {path.relative_to(run_dir)}")
-    (run_dir / MANIFEST).write_text("\n".join(manifest) + "\n")
-    (run_dir / "DONE").write_text(final["event"] + "\n")
-    return 0
-
-
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name in ("start", "row", "finalize"):
+    for name in ("start", "row"):
         p = sub.add_parser(name)
         p.add_argument("--run-dir", required=True)
         p.add_argument("--json", default="{}")
     args = parser.parse_args()
-    return {"start": start, "row": row, "finalize": finalize}[args.cmd](args)
+    return {"start": start, "row": row}[args.cmd](args)
 
 
 if __name__ == "__main__":
