@@ -4,6 +4,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"io"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -125,5 +126,54 @@ func TestAnOldObserveResponseCannotReplaceNewOwnership(t *testing.T) {
 	c.rememberReplay(session.ReplayCursor{Owner: "previous", Turn: 99}, 10)
 	if c.replayCursor.Owner != "replacement" {
 		t.Fatal("old response replaced current owner")
+	}
+}
+
+type delayedCursorAgent struct {
+	*observedAgent
+	calls        atomic.Int32
+	firstEntered chan struct{}
+	releaseFirst chan struct{}
+}
+
+func (a *delayedCursorAgent) AttachReplayCursor() ([]session.DisplayEntry, <-chan session.Event, func(), session.ReplayCursor) {
+	if a.calls.Add(1) == 1 {
+		close(a.firstEntered)
+		<-a.releaseFirst
+		return nil, nil, func() {}, session.ReplayCursor{Owner: "previous", Turn: 99}
+	}
+	return nil, nil, func() {}, session.ReplayCursor{Owner: "replacement", Turn: 2}
+}
+
+func TestAnOldObserveWireResponseCannotReplaceNewOwnership(t *testing.T) {
+	far := &delayedCursorAgent{
+		observedAgent: &observedAgent{fakeAgent: &fakeAgent{model: "m"}},
+		firstEntered:  make(chan struct{}), releaseFirst: make(chan struct{}),
+	}
+	loop, err := Loopback(Hello{}, Options{Boot: func(Hello) (*Engine, error) { return &Engine{Agent: far}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	oldDone := make(chan struct{})
+	go func() { _, _, stop := loop.Client.Agent().AttachReplay(); stop(); close(oldDone) }()
+	select {
+	case <-far.firstEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("first observe never arrived")
+	}
+	_, _, stop := loop.Client.Agent().AttachReplay()
+	stop()
+	close(far.releaseFirst)
+	select {
+	case <-oldDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("old observe did not return")
+	}
+	if !loop.Client.Agent().ReplayCovers(session.Event{ReplayCursor: session.ReplayCursor{Owner: "replacement", Turn: 2}}) {
+		t.Fatal("late old wire reply replaced newer observer ownership")
+	}
+	if loop.Client.Agent().ReplayCovers(session.Event{ReplayCursor: session.ReplayCursor{Owner: "previous", Turn: 99}}) {
+		t.Fatal("late previous owner inherited replay suppression")
 	}
 }
