@@ -52,8 +52,9 @@ import (
 // will speak on. The channel exists from the moment the message is queued —
 // session hands it back immediately — so there is nothing to wait for later.
 type queued struct {
-	text string
-	ch   <-chan session.Event
+	covered func() bool
+	text    string
+	ch      <-chan session.Event
 	// woken says nobody typed this one: it is a turn THE SESSION STARTED ON ITS
 	// OWN (see the wake lane below). It rides the same queue because the queue
 	// is about streams waiting for the one being pumped, and that is exactly
@@ -65,6 +66,7 @@ type queued struct {
 // followMsg carries the session's answer back into the program loop. FollowUp
 // takes the agent's lock, and the Update loop is not a place to wait.
 type followMsg struct {
+	call *hostCall
 	text string
 	ch   <-chan session.Event
 	err  error
@@ -78,7 +80,6 @@ func (a *app) followUp() tea.Cmd {
 		return nil
 	}
 	a.noticeEvent(eventQueued)
-	agent := a.agent
 	// The model reads the paste and the queue's row keeps the tag (pastechip.go).
 	spoken, line := a.composed(line)
 	a.input.reset()
@@ -90,9 +91,21 @@ func (a *app) followUp() tea.Cmd {
 	a.dropDraft()
 	a.stick = true
 	a.touch()
+	return a.sendFollow(spoken, line)
+}
+
+func (a *app) sendFollow(spoken, line string) tea.Cmd {
+	return a.sendFollowFrom(a.agent, spoken, line)
+}
+
+func (a *app) sendFollowFrom(agent Agent, spoken, line string) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.sendFollowFrom(agent, spoken, line) }) {
+		return nil
+	}
+	call := a.hostCallStarted()
 	return func() tea.Msg {
 		ch, err := agent.FollowUp(spoken)
-		return followMsg{text: line, ch: ch, err: err}
+		return followMsg{text: line, ch: ch, err: err, call: call}
 	}
 }
 
@@ -102,7 +115,8 @@ func (a *app) followUp() tea.Cmd {
 // so, and it is the right answer: there is no turn end coming to drain it. So a
 // stream we are not already pumping is adopted here rather than at the next
 // close, which would never arrive.
-func (a *app) queueFollow(msg followMsg) tea.Cmd {
+func (a *app) queueFollow(msg followMsg) (cmd tea.Cmd) {
+	defer func() { cmd = tea.Batch(cmd, a.hostCallSettled(msg.call)) }()
 	if msg.err != nil {
 		a.note("follow-up failed: " + msg.err.Error())
 		return nil
@@ -110,7 +124,7 @@ func (a *app) queueFollow(msg followMsg) tea.Cmd {
 	if msg.ch == nil {
 		return nil
 	}
-	a.follows = append(a.follows, queued{text: msg.text, ch: msg.ch})
+	a.follows = append(a.follows, queued{text: msg.text, ch: msg.ch, covered: a.hostStreamCovered(msg.ch)})
 	a.touch()
 	if a.stream != nil {
 		return nil
@@ -124,7 +138,13 @@ func (a *app) queueFollow(msg followMsg) tea.Cmd {
 // It is [app.submit] without the submit — the turn was started by the session
 // when the last one ended, so there is nothing to ask for and nothing to wait on.
 func (a *app) startFollow() tea.Cmd {
-	if a.stream != nil || len(a.follows) == 0 {
+	if a.hostReplayLoading || a.hostReplayWaiting || a.stream != nil || len(a.follows) == 0 {
+		return nil
+	}
+	for len(a.follows) > 0 && a.follows[0].covered != nil && a.follows[0].covered() {
+		a.follows = a.follows[1:]
+	}
+	if len(a.follows) == 0 {
 		return nil
 	}
 	next := a.follows[0]
