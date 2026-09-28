@@ -180,6 +180,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-// atomic is spelled through the sync/atomic import above; keep it referenced.
-var _ = sync.Mutex{}
