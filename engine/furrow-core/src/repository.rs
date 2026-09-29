@@ -372,11 +372,24 @@ impl FurrowRepository {
         existing_trigger: SnapshotTrigger,
         options: SealOptions,
     ) -> anyhow::Result<(Self, ObjectId)> {
+        Self::attach_and_seal_in(&data_root()?, root, label, existing_trigger, options)
+    }
+
+    /// As [`Self::attach_and_seal`], with the engine's data directory named
+    /// instead of read from the process environment, so one process can serve
+    /// many stores.
+    pub fn attach_and_seal_in(
+        data_dir: &Path,
+        root: &Path,
+        label: Option<String>,
+        existing_trigger: SnapshotTrigger,
+        options: SealOptions,
+    ) -> anyhow::Result<(Self, ObjectId)> {
         let root = root
             .canonicalize()
             .with_context(|| format!("open {}", root.display()))?;
         let home = IdentityHome::of(options.overlay.is_some());
-        let store_root = data_root()?.join("store-v1");
+        let store_root = data_dir.join("store-v1");
         anyhow::ensure!(
             !root.starts_with(&store_root),
             "workspace cannot contain the furrow store"
@@ -394,18 +407,24 @@ impl FurrowRepository {
             overlay: options.overlay.map(Overlay::new),
         };
         repository.recover_interrupted_rewind()?;
-        let trigger = if repository
-            .store
-            .workspace_head(&repository.workspace_id)?
-            .is_some()
-        {
+        let id = repository.seal(label, existing_trigger, options.changed.as_deref())?;
+        Ok((repository, id))
+    }
+
+    /// Seals the attached workspace: the first seal of a workspace is its
+    /// initial snapshot, every later one carries `existing_trigger`.
+    pub fn seal(
+        &mut self,
+        label: Option<String>,
+        existing_trigger: SnapshotTrigger,
+        changed: Option<&[PathBuf]>,
+    ) -> anyhow::Result<ObjectId> {
+        let trigger = if self.store.workspace_head(&self.workspace_id)?.is_some() {
             existing_trigger
         } else {
             SnapshotTrigger::Initial
         };
-        let id =
-            repository.snapshot_internal(label, trigger, options.changed.as_deref(), Vec::new())?;
-        Ok((repository, id))
+        self.snapshot_internal(label, trigger, changed, Vec::new())
     }
 
     pub fn open(root: &Path) -> anyhow::Result<Self> {
@@ -417,11 +436,20 @@ impl FurrowRepository {
     /// instead of in the root. A composed workspace keeps its identity in the
     /// store, so nothing is written into the tree.
     pub fn open_composed(root: &Path, overlay: Option<PathBuf>) -> anyhow::Result<Self> {
+        Self::open_composed_in(&data_root()?, root, overlay)
+    }
+
+    /// As [`Self::open_composed`], with the data directory named.
+    pub fn open_composed_in(
+        data_dir: &Path,
+        root: &Path,
+        overlay: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         let root = root
             .canonicalize()
             .with_context(|| format!("open {}", root.display()))?;
         let home = IdentityHome::of(overlay.is_some());
-        let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
+        let mut store = ObjectStore::open(data_dir.join("store-v1"))?;
         let workspace_id = home.open_id(&root, &store)?;
         store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
         let family_id = ensure_family_id(home, &root, &store, &workspace_id)?;
