@@ -57,7 +57,11 @@ func TestSealFailureDoesNotFailTheCallAndRidesTheNextSeal(t *testing.T) {
 		return good(ctx, d, env, argv...)
 	}
 	var reported []error
-	r, err := NewRecorder(&stubExec{}, e, c, filepath.Join(t.TempDir(), "wal"), Options{Report: func(err error) { reported = append(reported, err) }})
+	r, err := NewRecorder(&stubExec{}, e, c, filepath.Join(t.TempDir(), "wal"), Options{Report: func(err error) {
+		if err != nil {
+			reported = append(reported, err)
+		}
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}

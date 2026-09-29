@@ -2022,6 +2022,9 @@ type app struct {
 	// is every local session — no segment, no notice, no waiting room — which is
 	// the same absence the seam above draws when the ambient side is off.
 	link LinkSeam
+	// seal is what the door can tell this surface about the sealing of the
+	// conversation's calls (sealseam.go). Its zero value draws nothing.
+	seal SealSeam
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
@@ -2966,6 +2969,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		stands:              opts.Standing,
 		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
+		seal:                opts.Seal,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
 		memory:              opts.Memory,
@@ -3577,6 +3581,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// not survive has news, and a person who presses a key gets it rather than
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
+	a.takeSealNotice()
 	// THE TEAMS PAGE TAKES WHAT IS ITS OWN AND HANDS THE REST TO THE MANAGER'S
 	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
 	// place.

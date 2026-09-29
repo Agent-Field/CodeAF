@@ -1174,6 +1174,12 @@ type Options struct {
 	// asked about. Only the --host door fills it (cmd/codeaf's chatv3_host.go).
 	Link LinkSeam
 
+	// Seal is what the door can tell this surface about the sealing of the
+	// conversation's calls: whether the last seal failed, and the sentences
+	// worth saying when that changes ([SealSeam]). The zero value is a surface
+	// whose calls are not sealed, which draws nothing.
+	Seal SealSeam
+
 	// Width and Height are the size a headless driver is pretending to be.
 	// A real terminal answers this itself and these stay zero; a pipe cannot
 	// be asked, and a renderer with no size draws nothing at all.
