@@ -756,7 +756,7 @@ func v3Migrated(cfg session.Config) session.Config {
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
 	cfg.Seat, cfg.Machine, cfg.Seals, cfg.Interrupted = nil, nil, nil, nil
-	seat, machine, seals := v3SeatOf(cfg.Place, nil)
+	seat, machine, seals := v3SeatWith(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	if machine != nil {
 		cfg.Machine = machine
@@ -773,6 +773,14 @@ func v3Seated(cfg session.Config) session.Config {
 // a door with no surface passes where they go: the one construction every door that seals its calls goes
 // through. A place that is not a readable cell answers no seat.
 func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
+	return v3SeatWith(place, say, nil)
+}
+
+// v3SeatWith is v3SeatOf for a door that syncs: with a drive side for the cell
+// every seal is also noted for the relay, and once another machine has taken
+// the chat its tool calls are refused. A nil book, or sync off, is the seat
+// exactly as it was.
+func v3SeatWith(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
 	if !cell.Enabled() || place.Dir == "" || place.Workspace == "" {
 		return nil, nil, nil
 	}
@@ -787,9 +795,10 @@ func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	watch := &cellstore.SealWatch{Say: say}
 	failed(watch, err)
-	seat, err := cellstore.SeatFor(class, c, place.Workspace, observerOf(machine), watch.Report)
+	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive))
 	failed(watch, err)
-	return seat, machine, watch
+	return executor.Gated(seat, driveGate(drive)), machine, watch
 }
 
 // observerOf is the machine's observer, and no observer where the inventory

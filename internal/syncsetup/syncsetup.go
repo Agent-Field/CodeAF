@@ -10,16 +10,17 @@ package syncsetup
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -49,7 +50,9 @@ type Sync struct {
 	Counters *blobstore.Counters // what Store has been asked to move
 	Device   identity.Dev
 	Identity identity.Identity
-	Ledger   string        // names the published ledger for this relay and identity
+	Relay    string        // the normalized relay address every client and the ledger name are built from
+	Home     string        // the codeaf home: where the branch map and the stats files live
+	Ledger   string        // cellstore.LedgerName of Relay and the identity
 	Interval time.Duration // flush interval
 }
 
@@ -78,7 +81,7 @@ func Open(home string) (*Sync, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	return build(base, id, dev, interval), true, nil
+	return build(home, base, id, dev, interval), true, nil
 }
 
 // relayBase checks that s is an http or https address with a host, and returns
@@ -88,7 +91,7 @@ func relayBase(s string) (string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", fmt.Errorf("%s is not a web address like http://host:8787", URLVar)
 	}
-	return u.Scheme + "://" + u.Host + u.Path, nil
+	return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
 }
 
 // loadIdentity reads the identity without making one: a machine that has none
@@ -116,7 +119,7 @@ func flushInterval() (time.Duration, error) {
 }
 
 // build binds both wires to one signer and one client, and counts the store.
-func build(base string, id identity.Identity, dev identity.Dev, interval time.Duration) *Sync {
+func build(home, base string, id identity.Identity, dev identity.Dev, interval time.Duration) *Sync {
 	sign := reqsign.SignFor(deviceSigner{id, dev}, time.Now)
 	hc := &http.Client{Timeout: requestTimeout}
 	counters := &blobstore.Counters{}
@@ -126,7 +129,9 @@ func build(base string, id identity.Identity, dev identity.Dev, interval time.Du
 		Counters: counters,
 		Device:   dev,
 		Identity: id,
-		Ledger:   ledgerName(base, id.ID()),
+		Relay:    base,
+		Home:     home,
+		Ledger:   cellstore.LedgerName(base, id.ID()),
 		Interval: interval,
 	}
 }
@@ -142,15 +147,6 @@ func (s deviceSigner) IdentityKey() ed25519.PublicKey { return s.id.PublicKey() 
 func (s deviceSigner) Cert() identity.Cert            { return s.dev.Cert }
 func (s deviceSigner) Sign(msg []byte) []byte         { return s.dev.Sign(msg) }
 
-// ledgerName names the published ledger of one (relay, identity) pair, so that
-// pointing at a new or wiped relay starts an empty ledger. It is the same
-// formula as cellstore.LedgerName (contract §5), which this package will call
-// once that lands.
-func ledgerName(relay, identityID string) string {
-	sum := sha256.Sum256([]byte(relay + "\n" + identityID))
-	return hex.EncodeToString(sum[:8])
-}
-
 // Rows makes a Sync the chat list's source: every chat the person has on any
 // machine, with names opened under the metadata key of their cell key.
 func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
@@ -163,4 +159,8 @@ func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
 	return chatlist.Rows(l, s.Device.ID(), open), nil
 }
 
-var _ chatlist.Source = (*Sync)(nil)
+var (
+	_ chatlist.Source = (*Sync)(nil)
+	// The engine glue is the sync seam by method set: no adapter between them.
+	_ cellsync.Engine = cellstore.SyncEngine{}
+)
