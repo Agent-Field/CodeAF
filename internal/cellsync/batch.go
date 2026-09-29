@@ -273,13 +273,10 @@ func (b *Batcher) holder(ctx context.Context) string {
 	return v.Cell.Lease.Device
 }
 
-// branch makes sure head's objects are in the store, then creates the branch
-// cell that names them.
+// branch creates the cell that holds the orphaned turns; the Brancher uploads
+// their objects first.
 func (b *Batcher) branch(ctx context.Context, head string, turns int) (string, error) {
 	d, _, _ := b.view()
-	if _, err := b.Publisher.Upload(ctx, d.Cell, head); err != nil {
-		return "", err
-	}
 	id, err := b.Brancher.Branch(ctx, &d, head, uint32(turns), b.info())
 	if err != nil {
 		return "", err

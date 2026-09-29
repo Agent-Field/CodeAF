@@ -89,7 +89,8 @@ func (d *device) taker() Taker {
 	fetcher := &cellsync.Fetcher{Engine: d.eng, Store: d.store, Inbox: func(c cell.Cell) string {
 		return filepath.Join(d.base, "inbox", c.ID)
 	}}
-	brancher := cellsync.Brancher{Dir: d.dir, NewID: d.newID}
+	pub := &cellsync.Publisher{Engine: d.eng, Store: d.store, Dir: d.dir}
+	brancher := cellsync.Brancher{Dir: d.dir, Publisher: pub, NewID: d.newID}
 	return Taker{
 		Dir:     d.dir,
 		Fetch:   &tracedFetch{d: d, inner: fetcher},
@@ -105,34 +106,13 @@ func (d *device) newID() (string, error) {
 	return fmt.Sprintf("branch-%s-%d", d.name, d.w.ids), nil
 }
 
-// branch uploads head first and then creates the branch, as the real wiring must.
+// branch notes the step and hands over to the Brancher, which uploads head
+// itself: nothing in this wiring uploads for it.
 func (d *device) branch(b cellsync.Brancher) func(context.Context, *cellsync.Driving, string, uint32) (string, error) {
 	return func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error) {
 		d.w.trace.add("branch")
-		if err := d.upload(ctx, from.Cell, head); err != nil {
-			return "", err
-		}
 		return b.Branch(ctx, from, head, turns, cellsync.PublishInfo{Class: "chat"})
 	}
-}
-
-func (d *device) upload(ctx context.Context, c cell.Cell, head string) error {
-	ex, err := d.eng.Export(ctx, c, head)
-	if err != nil {
-		return err
-	}
-	paths := make([]string, len(ex.Frames))
-	for i, f := range ex.Frames {
-		raw, err := os.ReadFile(f.Path)
-		if err != nil {
-			return err
-		}
-		if _, err := d.store.PutFrame(ctx, raw); err != nil {
-			return err
-		}
-		paths[i] = f.Path
-	}
-	return d.eng.Published(ctx, c, paths)
 }
 
 // start makes this device create the chat with files and hold it.

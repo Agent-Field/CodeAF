@@ -71,7 +71,7 @@ func (r *rig) info() PublishInfo { return PublishInfo{Class: "chat", Size: 7} }
 func (r *rig) batcher() *Batcher {
 	return &Batcher{
 		Publisher: r.pub,
-		Brancher:  Brancher{Dir: r.dirA, NewID: r.newID, Map: r.branch},
+		Brancher:  Brancher{Dir: r.dirA, Publisher: r.pub, NewID: r.newID, Map: r.branch},
 		Driving:   r.drv,
 		Interval:  5 * time.Second,
 		Info:      r.info,
