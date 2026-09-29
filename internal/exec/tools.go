@@ -3,11 +3,9 @@ package exec
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -22,8 +20,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/rtk"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -1593,25 +1591,14 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// names a private socket directory even in that nil case (tools.go).
 	environment = JobShellEnv(environment)
 
-	//codeaf:tool-pending
-	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)
-	cmd.Dir = t.workspace.Root()
-	cmd.Env = environment
 	// A command that leaves a background child sharing its stdout used to hang
 	// the whole run: killing bash at the timeout is not enough, because Wait
 	// blocks until every inherited pipe writer exits, and a scheduler goroutine
-	// stuck there wedges the graph silently and forever. The process group
-	// makes the timeout kill reach grandchildren, and WaitDelay force-closes
-	// the pipes shortly after bash itself is gone for anything that survives —
-	// a stuck tool call must cost its timeout, never the run.
-	processgroup.Configure(cmd)
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return os.ErrProcessDone
-		}
-		return processgroup.Kill(cmd.Process.Pid)
-	}
-	cmd.WaitDelay = 3 * time.Second
+	// stuck there wedges the graph silently and forever. The executor puts the
+	// command in its own process group so the timeout kill reaches grandchildren,
+	// and WaitDelay force-closes the pipes shortly after bash itself is gone for
+	// anything that survives — a stuck tool call must cost its timeout, never
+	// the run.
 	// Collected rather than read whole. A command inside a fifteen-minute call
 	// may print hundreds of megabytes and all but twelve kilobytes of them are
 	// discarded a line later; the collector keeps only the part that survives,
@@ -1629,25 +1616,28 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// than that. Everything past the first is teed to a file as it arrives, so
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
-	cmd.Stdout, cmd.Stderr = collected, collected
-	err := cmd.Run()
+	res, err := executor.In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
+		Argv: []string{"bash", "-lc", command}, Env: environment, Net: executor.OpenNet,
+		WaitDelay: 3 * time.Second, Combined: true, Stream: true,
+	}, func(c executor.Chunk) { _, _ = collected.Write(c.Data) })
+	if res.Status != "" {
+		err = res.Failure() // the process ran: its own status is the outcome
+	}
 	run := shellRun{body: collected.String(), bounded: collected.truncated(),
-		err: err, exitCode: exitCode(cmd, err)}
+		err: err, exitCode: exitCode(res, err)}
 	run.timedOut = runCtx.Err() == context.DeadlineExceeded
-	run.detached = errors.Is(err, exec.ErrWaitDelay)
+	run.detached = res.PipesForced
 	return run
 }
 
-func exitCode(cmd *exec.Cmd, err error) int {
-	if err == nil {
+func exitCode(res executor.ExecResult, err error) int {
+	switch {
+	case err == nil:
 		return 0
+	case res.Status == "":
+		return -1 // never started
 	}
-	if cmd.ProcessState != nil {
-		if code := cmd.ProcessState.ExitCode(); code >= 0 {
-			return code
-		}
-	}
-	return -1
+	return res.Exit
 }
 
 func (t *Toolbox) write(args map[string]any) Result {
