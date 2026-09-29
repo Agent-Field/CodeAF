@@ -177,7 +177,7 @@ write_iteration_meta() { # <iter dir> <shard> <wave> <label> <tasks...>
 
 record_wave() { # <iter> <tasks...>
   local iter="$1"; shift
-  local t out score exitf
+  local t out score
   echo -e "task\trun_dir\tscore" > "$iter/scoreboard.tsv"
   for t in "$@"; do
     out="$(run_dir_for "$t" "$SEED")"
