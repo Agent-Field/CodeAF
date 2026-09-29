@@ -57,7 +57,7 @@ func (r *rig) machine() *machine {
 	must(r.t, err)
 	dev := "dev_" + strings.Repeat(string(rune('a'+r.n)), 32)
 	s := Syncer{Store: r.store, Dir: r.dir.For(dev), Vault: v, CellKeyID: r.id.CellKeyID(),
-		CredentialsPath: filepath.Join(home, CredentialsFile)}
+		Carry: []Carried{Credentials(filepath.Join(home, CredentialsFile))}}
 	return &machine{Syncer: s, vault: v, home: home}
 }
 

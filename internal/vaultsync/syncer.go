@@ -43,9 +43,10 @@ type Syncer struct {
 	Dir       directory.Client
 	Vault     VaultFile
 	CellKeyID string // this identity's cell key id; empty on a machine with no identity
-	// CredentialsPath is this machine's credentials.json, which travels in the
-	// vault beside the secrets.
-	CredentialsPath string
+	// Carry is the state that rides in the vault beside the secrets, each kept
+	// here in its own Medium (credentials.go, and the provider keys of the
+	// profile config).
+	Carry []Carried
 	// Notify, when set, receives one plain sentence about what Inject skipped.
 	// A sentence names secrets, never their values.
 	Notify func(string)
@@ -57,7 +58,7 @@ type Syncer struct {
 // third device pushed in between, pulls again and pushes once more; a second
 // loss is returned, since looping would only hide a busy directory.
 func (s Syncer) Push(ctx context.Context) error {
-	if err := s.credentials().capture(); err != nil {
+	if err := s.Capture(); err != nil {
 		return err
 	}
 	err := s.pullThenPublish(ctx)
@@ -101,7 +102,7 @@ func (s Syncer) put(ctx context.Context, rid string, obj []byte) error {
 // Pull fetches the vault the directory names, checks it hashes to that name and
 // merges it. Nothing reaches the local vault before the check passes.
 func (s Syncer) Pull(ctx context.Context) error {
-	if err := s.credentials().capture(); err != nil {
+	if err := s.Capture(); err != nil {
 		return err
 	}
 	_, err := s.pull(ctx)
@@ -127,7 +128,7 @@ func (s Syncer) pull(ctx context.Context) (string, error) {
 	if err := s.Vault.Merge(enc); err != nil {
 		return "", err
 	}
-	return rid, s.credentials().restore()
+	return rid, s.restoreCarried()
 }
 
 // verified returns the vault.enc inside obj when obj hashes to rid.
@@ -141,4 +142,25 @@ func verified(rid string, obj []byte) ([]byte, error) {
 func ridOf(obj []byte) string {
 	sum := sha256.Sum256(obj)
 	return hex.EncodeToString(sum[:])
+}
+
+// Capture stores every changed carried medium in the vault without any network,
+// so a caller that fingerprints the vault sees the change.
+func (s Syncer) Capture() error {
+	for _, c := range s.Carry {
+		if err := c.capture(s.Vault); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreCarried writes what a merge brought in back to each medium.
+func (s Syncer) restoreCarried() error {
+	for _, c := range s.Carry {
+		if err := c.restore(s.Vault); err != nil {
+			return err
+		}
+	}
+	return nil
 }
