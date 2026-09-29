@@ -80,7 +80,9 @@ type Chunk struct {
 
 // Service is a process group still alive after its call returned.
 type Service struct {
-	PGID int
+	PGID    int
+	Ports   []int  // listening ports, when known
+	DataDir string // cell-relative data directory, when the service keeps one
 }
 
 // ExecResult is what one call did.
@@ -101,4 +103,10 @@ type ExecResult struct {
 // call could not run or was cancelled by its context.
 type Executor interface {
 	Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) (ExecResult, error)
+}
+
+// Observer is told about every call that ran: the request and what came back.
+// It must not block, and it never changes the result.
+type Observer interface {
+	Observe(req ExecRequest, res ExecResult)
 }

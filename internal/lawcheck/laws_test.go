@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/inventory"
 )
 
 // ── THE PERSISTED-OBJECT TABLE ──────────────────────────────────────────────
@@ -27,6 +28,14 @@ var persisted = []struct {
 	{"cell.Meta", cell.Meta{
 		V: 1, Class: cell.FilesOnly, CellKeyID: "00112233445566778899aabbccddeeff",
 		Base: &cell.Base{Remote: "https://example.test/repo.git", SHA: "abc123"},
+	}},
+	{"inventory.Inventory", inventory.Inventory{
+		V:        1,
+		Tools:    []inventory.Tool{{Name: "node", BinaryHash: "3fa9c2", VersionString: "v22.4.0"}},
+		Services: []inventory.Service{{Name: "postgres", Version: "16.3", Ports: []int{5432}, DataDir: "var/pg"}},
+		Platform: inventory.Platform{OS: "linux", Arch: "amd64"}, Lockfiles: []string{"uv.lock"},
+		EnvVarNames: []string{"DATABASE_URL"}, Hints: map[string]string{"devcontainer": ".devcontainer/devcontainer.json"},
+		Annotations: map[string]map[string]any{"postgres": {"optional": true}},
 	}},
 }
 
