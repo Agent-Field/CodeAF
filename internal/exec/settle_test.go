@@ -33,7 +33,7 @@ func TestOnlyTheSettlingSeamWritesALeafsEnding(t *testing.T) {
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "third_party", "bin":
+			case ".git", ".claude", "third_party", "bin":
 				if path != root {
 					return filepath.SkipDir
 				}

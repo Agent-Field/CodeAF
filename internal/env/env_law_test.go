@@ -197,7 +197,7 @@ func walkGo(root string, visit func(string, *ast.File, *token.FileSet)) error {
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "bin", "third_party", "testdata":
+			case ".git", ".claude", "bin", "third_party", "testdata":
 				return filepath.SkipDir
 			}
 			return nil
