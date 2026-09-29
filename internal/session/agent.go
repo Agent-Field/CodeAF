@@ -171,6 +171,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// whether `remember` exists.
 	if config.hasStore() {
 		agent.memory = newMemoryBrain(config.Memory)
+		bindMemoryLedger(config.Place)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
 	// AND THE NAMER'S OWN LIFETIME, minted for every session because every
