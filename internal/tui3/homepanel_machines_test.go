@@ -24,6 +24,9 @@ func machinesHome(t *testing.T, src chatlist.Source, width int) *app {
 	t.Helper()
 	a, _ := homeTabsFixture(t)
 	a.machines = src
+	// A merge is behind the row, so its sentence is the frozen one; the tests of a
+	// surface with none say so themselves (homepanel_continue_test.go).
+	a.branches = BranchActions{Merge: func(context.Context, string) error { return nil }}
 	a.width, a.height = width, 70
 	drain(t, a, a.askMachines())
 	return a

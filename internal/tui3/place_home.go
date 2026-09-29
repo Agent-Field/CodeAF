@@ -358,6 +358,15 @@ func (placeHome) close(a *app)        { a.dropHome() }
 // body is home's own column, and the pane map beside it: two facts per row, so
 // the hit is a [homeMark] rather than a line number.
 func (placeHome) body(a *app, width, room int) []placeRow {
+	// A QUESTION ABOUT A CHAT ON ANOTHER MACHINE TAKES THE BODY when there is no
+	// column to draw its card in (homepanel_continue.go's [app.machineScreen]).
+	if screen := a.machineScreen(width); screen != nil {
+		rows := make([]placeRow, len(screen))
+		for i, text := range screen {
+			rows[i] = placeRow{text: text, hit: homeMark{line: -1, pane: -1}}
+		}
+		return rows
+	}
 	// AT REST THE BODY IS THE GRID (homegrid.go), and its shape is settled
 	// before it is drawn: the column count, the width and the room all decide
 	// which rows exist — a whisper wraps at its column's width — so any of them
