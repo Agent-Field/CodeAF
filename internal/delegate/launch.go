@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -102,8 +103,6 @@ var ErrNoTerminal = errors.New("the program exited without a terminal record")
 // terminal. The error answered is the context's own, so a run supervisor that
 // reads `context.Canceled` off a worker knows its own ending cut the task.
 func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
-	//codeaf:tool-pending
-	cmd := exec.Command(launch.Bin, launch.Args...)
 	// The marker is a last-resort Linux sweep after SIGKILL stops the engine
 	// before its own subreaper can clean up its descendants.
 	markerBytes := make([]byte, 16)
@@ -115,10 +114,13 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	if baseEnv == nil {
 		baseEnv = os.Environ()
 	}
-	cmd.Env = append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker)
-	cmd.Dir = launch.Dir
-	cmd.Stdin = nil
-	processgroup.Configure(cmd)
+	cmd, err := executor.In(launch.Dir).Command(context.Background(), executor.ExecRequest{
+		Argv: append([]string{launch.Bin}, launch.Args...), Net: executor.OpenNet,
+		Env: append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
+	})
+	if err != nil {
+		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
+	}
 	stderr, err := openStderr(launch.StderrPath)
 	if err != nil {
 		return Result{ExitCode: -1}, err
