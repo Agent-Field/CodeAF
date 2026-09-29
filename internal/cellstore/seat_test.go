@@ -23,43 +23,44 @@ func TestSeatIsPlainWhenCellsAreOff(t *testing.T) {
 }
 
 func TestComposedEngineSealsTheWorkspaceAndKeepsTheCellOutOfIt(t *testing.T) {
-	c := newCell(t)
-	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "a.txt"), []byte("one"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	engine := realEngine(t)
-	engine.Workspace = workspace
-	sealed, err := engine.Seal(context.Background(), c, TurnInfo{Trigger: AgentRun})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sealed.Turn.ID == "" {
-		t.Fatal("no turn sealed")
-	}
-	if _, err := os.Stat(filepath.Join(c.Root, TurnsPath)); err != nil {
-		t.Fatalf("the chain is not in the cell: %v", err)
-	}
-	// The engine still leaves its own .furrow/ identity marker in the tree it
-	// attaches (repository.rs WORKSPACE_FILE); that is the engine's to move.
-	for _, litter := range []string{cell.StateDir, ".git"} {
-		if _, err := os.Stat(filepath.Join(workspace, litter)); err == nil {
-			t.Fatalf("the seal wrote %s into the user's workspace", litter)
+	forEachTransport(t, func(t *testing.T) {
+		c := newCell(t)
+		workspace := t.TempDir()
+		if err := os.WriteFile(filepath.Join(workspace, "a.txt"), []byte("one"), 0o600); err != nil {
+			t.Fatal(err)
 		}
-	}
-	if inside(engine.LocalDir(c), workspace) {
-		t.Fatal("the engine store must live outside the workspace")
-	}
+		engine := realEngine(t)
+		engine.Workspace = workspace
+		sealed, err := engine.Seal(context.Background(), c, TurnInfo{Trigger: AgentRun})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sealed.Turn.ID == "" {
+			t.Fatal("no turn sealed")
+		}
+		if _, err := os.Stat(filepath.Join(c.Root, TurnsPath)); err != nil {
+			t.Fatalf("the chain is not in the cell: %v", err)
+		}
+		// The engine still leaves its own .furrow/ identity marker in the tree it
+		// attaches (repository.rs WORKSPACE_FILE); that is the engine's to move.
+		for _, litter := range []string{cell.StateDir, ".git"} {
+			if _, err := os.Stat(filepath.Join(workspace, litter)); err == nil {
+				t.Fatalf("the seal wrote %s into the user's workspace", litter)
+			}
+		}
+		if inside(engine.LocalDir(c), workspace) {
+			t.Fatal("the engine store must live outside the workspace")
+		}
+	})
 }
 
-func TestComposedArgsNameTheCellDirOnlyWhenTheTreeIsAWorkspace(t *testing.T) {
+func TestComposedDirIsNamedOnlyWhenTheTreeIsAWorkspace(t *testing.T) {
 	c := newCell(t)
-	if got := (Engine{}).cellDirArgs(c); got != nil {
-		t.Fatalf("a cell's own folder composes nothing, got %v", got)
+	if got := (Engine{}).cellDir(c); got != "" {
+		t.Fatalf("a cell's own folder composes nothing, got %q", got)
 	}
-	got := Engine{Workspace: "/w"}.cellDirArgs(c)
-	if len(got) != 2 || got[0] != "--cell-dir" || got[1] != filepath.Join(c.Root, cell.StateDir) {
-		t.Fatalf("args = %v", got)
+	if got := (Engine{Workspace: "/w"}).cellDir(c); got != filepath.Join(c.Root, cell.StateDir) {
+		t.Fatalf("cell dir = %q", got)
 	}
 }
 

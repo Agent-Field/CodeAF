@@ -171,35 +171,37 @@ func TestScopeIsTheNormalizedRemoteElseTheCell(t *testing.T) {
 // source file are in no object of the engine's store after sealing, and the
 // .env value is still there for the next tool call.
 func TestL3_SecretsNeverEnterTheStore(t *testing.T) {
-	e := realEngine(t)
-	r := newRig(t)
-	e.Workspace, e.Guard = r.tree, r.guard
-	r.write(".env", "OPENROUTER_API_KEY="+fakeKey+"\n")
-	r.write("src/config.py", "API = '"+fakeKey+"'\n")
-	r.write("src/main.py", "MARKER_KEPT = 1\n")
-	commitAll(t, r.tree)
+	forEachTransport(t, func(t *testing.T) {
+		e := realEngine(t)
+		r := newRig(t)
+		e.Workspace, e.Guard = r.tree, r.guard
+		r.write(".env", "OPENROUTER_API_KEY="+fakeKey+"\n")
+		r.write("src/config.py", "API = '"+fakeKey+"'\n")
+		r.write("src/main.py", "MARKER_KEPT = 1\n")
+		commitAll(t, r.tree)
 
-	if _, err := e.Seal(context.Background(), r.cell, TurnInfo{}); err != nil {
-		t.Fatal(err)
-	}
-	r.write("src/main.py", "MARKER_KEPT = 2\n")
-	commitAll(t, r.tree)
-	if _, err := e.Seal(context.Background(), r.cell, TurnInfo{Changed: []string{"src/main.py"}}); err != nil {
-		t.Fatal(err)
-	}
+		if _, err := e.Seal(context.Background(), r.cell, TurnInfo{}); err != nil {
+			t.Fatal(err)
+		}
+		r.write("src/main.py", "MARKER_KEPT = 2\n")
+		commitAll(t, r.tree)
+		if _, err := e.Seal(context.Background(), r.cell, TurnInfo{Changed: []string{"src/main.py"}}); err != nil {
+			t.Fatal(err)
+		}
 
-	if out := gitStatus(t, r.tree); out != "" {
-		t.Fatalf("the workspace has files we put there:\n%s", out)
-	}
-	if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
-		t.Fatalf("the secret is in the store: %v", hits)
-	}
-	if len(grepStore(t, e.LocalDir(r.cell), "MARKER_KEPT")) == 0 {
-		t.Skip("the store does not keep file text in the clear, so the absence above proves nothing here")
-	}
-	if got := r.guard.Env(r.cell); len(got) != 1 || got[0] != "OPENROUTER_API_KEY="+fakeKey {
-		t.Fatalf("next tool call env %v", got)
-	}
+		if out := gitStatus(t, r.tree); out != "" {
+			t.Fatalf("the workspace has files we put there:\n%s", out)
+		}
+		if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
+			t.Fatalf("the secret is in the store: %v", hits)
+		}
+		if len(grepStore(t, e.LocalDir(r.cell), "MARKER_KEPT")) == 0 {
+			t.Skip("the store does not keep file text in the clear, so the absence above proves nothing here")
+		}
+		if got := r.guard.Env(r.cell); len(got) != 1 || got[0] != "OPENROUTER_API_KEY="+fakeKey {
+			t.Fatalf("next tool call env %v", got)
+		}
+	})
 }
 
 func grepStore(t *testing.T, dir, needle string) (hits []string) {

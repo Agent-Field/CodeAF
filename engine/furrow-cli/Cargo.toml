@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 furrow-core = { path = "../furrow-core" }
+furrow-daemon = { path = "../furrow-daemon" }
 anyhow.workspace = true
 clap.workspace = true
 libc.workspace = true
