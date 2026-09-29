@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/Agent-Field/codeaf/internal/config"
+	"time"
 )
 
 // SetSpendRail binds a setting written in an open chat before the next turn
@@ -63,15 +63,13 @@ func (a *Agent) railBlockLocked() error {
 		return err
 	}
 	if !a.config.InTask && !a.config.Errand {
-		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
-			spentToday := spentTodayOnLedger()
+		if daily, err := DailySpendAt(a.config.ProfileDir, time.Now(), a.config.usageLedger); err == nil {
+			spentToday := daily.Spent
 			if a.crewDayHeld != nil {
 				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
-			if spentToday >= daily {
-				return spendRailReached{said: fmt.Sprintf(
-					"daily limit reached · %s spent of %s · /budget changes it",
-					railMoney(spentToday), railMoney(daily))}
+			if daily.Limit > 0 && spentToday >= daily.Limit {
+				return dailyBudgetReached{spend: DailySpend{Limit: daily.Limit, Spent: spentToday, Reached: true}}
 			}
 		}
 	}

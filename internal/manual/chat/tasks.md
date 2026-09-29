@@ -1728,6 +1728,7 @@ the card, the rail, the roster and in the chat:
 | its brief no longer described the world | `incomplete · its brief went stale` |
 | it would not take a step it was asked to | `incomplete · would not take a step it was asked to` |
 | a check looked and named what is missing | `incomplete · the check found gaps: <the gaps>` |
+| a fan-out check did not finish | `incomplete · unfinished checks: <the check names>` |
 | something broke | `incomplete · a fault: <the first line of the error>` |
 
 **`incomplete` is not `stopped`.** `stopped` is *you* ending the work and means nothing else
@@ -1835,12 +1836,18 @@ After the name the card carries the span, the file count, and how the branch cam
 `merged`, `in your own folder`, `conflicted · <branch>`, or `branch kept · <branch>` —
 each its own fact, so a task you ended reads `stopped · branch kept · <branch>`.
 
-`branch kept · <branch>` on a **done** task means the work finished but your checkout was
-on a protected branch, was on a different branch than when the work was cut, moved
-to a different commit by your own work after the cut, or was detached. The branch
-named there holds the finished work; the how-tasks-run page explains the exact reason.
+`branch kept · <branch> · <reason>` on a **done** task means the work finished but your
+checkout was on a protected branch, was on a different branch than when the work was
+cut, moved to a different commit by your own work after the cut, or was detached. For
+example, it can say `branch kept · task/port · your checkout is on main, which tasks do
+not merge into automatically`. The branch named there holds the finished work; the
+how-tasks-run page explains the exact reason.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
-does not by itself request a merge or a checkout change.
+does not by itself request a merge or a checkout change. If you want codeaf to bring
+the retained work into the checkout, `/land` lists the waiting folder and `/land now`
+merges the named branch, whether it came from one task or a retained run. This also
+works in an ordinary local-host conversation, before and after reopening it, including
+when the task's repository is the folder the conversation is standing in.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `enter` on the
 selected card opens the task's room instead. What the expansion holds, and in what order, is
@@ -4390,6 +4397,11 @@ today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or tur
 
 The day turns over at midnight on this machine's clock, and the spend starts again from nothing.
 
+The machine-wide daily limit in `/settings` → **Spending** and `/budget` is a separate
+rail over every chat turn and task. If it is already spent, a task opened from chat waits
+on the same card shape: `1 Raise to $X` continues with that amount for today, and `2 Stop
+for today` refuses it with `today's spending limit of $X is spent, so nothing was started`.
+
 ## Naming a model for one task
 
 You ask in words — "let opus do this one", "run that on gpt-5". There is no key, command or
@@ -4681,8 +4693,9 @@ Whenever a task stops for any reason it wears its own word — `stopped` when yo
 `incomplete · <the reason>` otherwise — with `branch kept` and the branch name beside it.
 Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
 and what the task made is committed onto that branch before it lands — so the files it
-produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
-never done for you, because only work that was checked reaches your branch.
+produced are listed under `changed:` and `git merge task/…` brings them over. A kept
+branch from either a single task or a retained run appears in the `/land` waiting list;
+`/land now` is the explicit merge door when you want that work in your checkout.
 
 ## Continue task N — keep going on a failed or finished task, No task 1 in this project
 

@@ -166,6 +166,9 @@ type TaskFacts struct {
 	// Merge and Branch are the source-control facts (TaskNotice.Merge, .Branch).
 	Merge  string
 	Branch string
+	// KeptReason is why automatic landing left Branch on its own ref. It is
+	// carried for surfaces that put the reason beside the branch handle.
+	KeptReason string
 	// Report is the landing's own account of itself (TaskNotice.Report), and it is
 	// read for exactly three things: which incomplete reason a fault or a check's
 	// finding gets ([TaskReasonOf]), the gaps a held landing names, and whether a
@@ -675,6 +678,7 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 		Stopped:    n.Stopped,
 		Merge:      n.Merge,
 		Branch:     n.Branch,
+		KeptReason: n.KeptReason,
 		Report:     n.Report,
 		Held:       n.ResultHeld,
 		Conflicts:  n.Conflicts,

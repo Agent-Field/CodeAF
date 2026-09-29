@@ -163,22 +163,33 @@ func (t taskTree) landsInThePersonsRepository() bool {
 	return true
 }
 
+// keptLandingReason is the one policy explanation automatic landing owes when
+// the checkout is not a safe destination. Both task and belt landing lines
+// carry this result, so a surface never has to infer why a branch was kept.
+func (t taskTree) keptLandingReason() string {
+	current := currentBranch(t.root)
+	switch {
+	case current == "":
+		return "your checkout is not on a branch — inspect the retained task branch without changing this checkout"
+	case t.home != "" && current != t.home:
+		return "your checkout has moved from " + t.home + " to " + current + " since the work was cut — inspect the retained task branch before choosing a destination"
+	case protectedBranch(t.root, current):
+		return "your checkout is on " + current + ", which tasks do not merge into automatically"
+	case branchMovedByPerson(t.root, current, t.homeSha):
+		return current + " has moved on since the work was cut — inspect the retained task branch before choosing a destination"
+	}
+	return ""
+}
+
 // keptLandingSentence is the one sentence a completed branch landing owes
 // when the checkout is not a safe destination. It only reads the checkout; the
 // caller has already put the task branch in the root repository before asking.
 func (t taskTree) keptLandingSentence() string {
-	current := currentBranch(t.root)
-	switch {
-	case current == "":
-		return "its branch " + t.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
-	case t.home != "" && current != t.home:
-		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — inspect the retained task branch before choosing a destination"
-	case protectedBranch(t.root, current):
-		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which tasks do not merge into automatically"
-	case branchMovedByPerson(t.root, current, t.homeSha):
-		return "its branch " + t.branch + " was kept: " + current + " has moved on since the work was cut — inspect the retained task branch before choosing a destination"
+	reason := t.keptLandingReason()
+	if reason == "" {
+		return ""
 	}
-	return ""
+	return "its branch " + t.branch + " was kept: " + reason
 }
 
 // branchMovedByPerson reports that the named branch no longer points at the

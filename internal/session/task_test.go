@@ -1826,6 +1826,42 @@ func TestAuditBeltIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestQuickWorkerCarriesReadOnlyBelt(t *testing.T) {
+	spec := newQuickTaskSpec("read the tree", nil, nil)
+	spec.readOnly = true
+	if restored := quickRecordLocked(spec).body(); restored == nil || !restored.readOnly {
+		t.Fatal("the read-only hand-off marker was not persisted")
+	}
+
+	workspace := t.TempDir()
+	node := &TaskNode{spec: taskSpec{quick: spec}}
+	belt := quickBelt(node, workspace, Place{Dir: t.TempDir()})
+	if belt == nil {
+		t.Fatal("a read-only quick worker got no belt")
+	}
+	byName := map[string]bare.Tool{}
+	for _, tool := range belt {
+		byName[tool.Name] = tool
+	}
+	for _, name := range []string{"read", "grep", "find", "ls", "bash"} {
+		if _, ok := byName[name]; !ok {
+			t.Fatalf("the reading helper cannot %q", name)
+		}
+	}
+	for _, name := range []string{"edit", "write", "commit", "merge", "propose_task", "team_start"} {
+		if _, ok := byName[name]; ok {
+			t.Fatalf("the reading helper carries %q", name)
+		}
+	}
+	text, isError, err := byName["bash"].Execute(context.Background(), json.RawMessage(`{"command":"touch forbidden.txt"}`))
+	if err != nil {
+		t.Fatalf("bash: %v", err)
+	}
+	if !isError || !strings.HasPrefix(text, "refused:") {
+		t.Fatalf("write-capable bash was not refused: %q", text)
+	}
+}
+
 // A VERDICT NOBODY GAVE IS NOT A REFUTATION. Nothing merges without the word
 // VERIFIED — the frontier still fails closed — but an answer with neither word
 // in it is read as the NON-VERDICT it is, and it carries what the auditor

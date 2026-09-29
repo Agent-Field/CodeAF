@@ -1041,6 +1041,10 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	// message is theirs to send again once the rail moves (rail.go).
 	if user.bash == "" {
 		if err := a.railBlockLocked(); err != nil {
+			var daily dailyBudgetReached
+			if errors.As(err, &daily) {
+				return a.holdDailyBudgetLocked(ctx, user, daily.spend), nil
+			}
 			a.mu.Unlock()
 			return refusedStream(err), nil
 		}
@@ -2387,6 +2391,8 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	a.closed = true
+	budgetWait := a.dailyBudget
+	a.dailyBudget = nil
 	// Nothing armed by a steer outlives the session that armed it
 	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
@@ -2449,6 +2455,9 @@ func (a *Agent) Close() error {
 	// joins from inside its own goroutine.
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
+	if budgetWait != nil {
+		budgetWait.finish(errAgentClosed)
+	}
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
 	// below can take time: a firing that lands during the quit writes to the
 	// inbox rather than onto a queue that will never be drained again

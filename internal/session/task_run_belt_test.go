@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -156,6 +157,82 @@ func registerBeltRunEngine(t *testing.T, engine RunEngine) {
 	previous := chatRunEngine
 	RegisterRunEngine(engine)
 	t.Cleanup(func() { RegisterRunEngine(previous) })
+}
+
+// A single belt task keeps its work off main, but the explicit landing door
+// must still find that branch in the conversation's own repository after a restart.
+func TestStartTaskBashBeltKeptBranchCanLandBeforeAndAfterRestart(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		t.Run(fmt.Sprintf("restart=%t", restart), func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			repo := newTestRepo(t)
+			mustGit(t, repo, "branch", "-m", "main")
+			before := gitOut(t, repo, "rev-parse", "HEAD")
+			dir := t.TempDir()
+			double := newBeltRunDouble("added README.md")
+			double.real = true
+			double.work = func(workspace string) {
+				writeFile(t, filepath.Join(workspace, "README.md"), "hello\n")
+			}
+			registerBeltRunEngine(t, double)
+			configure := func(config *Config) {
+				config.Workspace = repo
+				config.Place = Place{Dir: dir}
+				config.SessionFile = filepath.Join(dir, placeTranscript)
+				config.AskConsent = false
+			}
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "added README.md"}, configure)
+			id, _, _, err := agent.StartTask(context.Background(), "add a README.md with one line", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-double.entered
+			agent.beltMu.Lock()
+			over := agent.beltRun.over
+			agent.beltMu.Unlock()
+			close(double.release)
+			select {
+			case <-over:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the run did not finish")
+			}
+			rows := agent.tasker().runRows(id)
+			if len(rows) != 1 || rows[0].State != TaskDone || rows[0].Merge != mergeKept || rows[0].Copy == nil {
+				t.Fatalf("belt landing = %+v, want a done run with its branch kept", rows)
+			}
+			branch := rows[0].Branch
+			if got := gitOut(t, repo, "rev-parse", "HEAD"); got != before {
+				t.Fatal("automatic landing changed main")
+			}
+			if got := gitOut(t, repo, "show", branch+":README.md"); strings.TrimSpace(got) != "hello" {
+				t.Fatalf("retained branch README.md = %q", got)
+			}
+			if restart {
+				if err := agent.Close(); err != nil {
+					t.Fatal(err)
+				}
+				agent, _ = newTestAgent(t, beltRunCompleter{text: "unused"}, configure)
+			}
+			waiting := agent.UnlandedChanges()
+			if len(waiting) != 1 || waiting[0].Folder != canonicalPath(repo) || waiting[0].Files != 1 {
+				t.Fatalf("/land waiting = %+v, want the kept README.md; copy = %+v", waiting, rows[0].Copy)
+			}
+			preview, ok := agent.LandingFor(waiting[0].Folder)
+			if !ok || !reflect.DeepEqual(preview.Files, []string{"README.md"}) {
+				t.Fatalf("/land preview = %+v, %t", preview, ok)
+			}
+			landing, err := agent.Land("")
+			if err != nil || landing.Merged != mergeMerged {
+				t.Fatalf("/land now = %+v, %v", landing, err)
+			}
+			if got := readFile(t, filepath.Join(repo, "README.md")); got != "hello\n" {
+				t.Fatalf("landed README.md = %q", got)
+			}
+			if waiting := agent.UnlandedChanges(); len(waiting) != 0 {
+				t.Fatalf("landed branch still waiting: %+v", waiting)
+			}
+		})
+	}
 }
 
 // endBeltRun lets the double's run finish and WAITS FOR THE RUN TO BE OVER: its
@@ -769,6 +846,22 @@ func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
 	want := "done · landed on task/landing-digest: 1 file"
 	if got != want {
 		t.Fatalf("landing digest = %q, want byte-for-byte legacy digest %q", got, want)
+	}
+}
+
+func TestLandingDigestNamesUnfinishedChecks(t *testing.T) {
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "run", planRootID, "The run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got := beltRunOutcomeNote(store, planRootID, RunSummary{
+		Outcome: "incomplete",
+		Failure: "unfinished checks: check: leaf",
+	}, RunLanding{}, 0)
+	want := "incomplete · unfinished checks: check: leaf"
+	if got != want {
+		t.Fatalf("landing digest = %q, want %q", got, want)
 	}
 }
 

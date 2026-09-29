@@ -274,7 +274,7 @@ func TestADivisionUnderAFiringIsWaitedForAndBilledToTheRun(t *testing.T) {
 	if outcome.Text != "both parts are home and folded together" {
 		t.Fatalf("the firing came to %q, want what it said after its parts landed", outcome.Text)
 	}
-	if outcome.Kind != "landed" {
+	if outcome.Kind != "said" {
 		t.Fatalf("a firing that divided and folded came to %q", outcome.Kind)
 	}
 

@@ -574,10 +574,11 @@ type TaskNode struct {
 	// ([lastToolReceipts], task_audit.go). It is not in the checkpoint and it is
 	// not drawn anywhere — it is evidence for one question, refreshed by whichever
 	// worker spoke last, and a resumed node simply has none.
-	receipts []toolReceipt
-	branch   string
-	worktree string
-	merge    string
+	receipts   []toolReceipt
+	branch     string
+	worktree   string
+	merge      string
+	keptReason string
 	// clashing names the files that stopped this node's branch fastening onto the
 	// person's, read out of the index while the refused merge still held them and
 	// written here by the landing road ([landHome]). It is what a your-call row
@@ -2901,6 +2902,17 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	n.graph.checkpoint()
 }
 
+// setKeptReason records the policy explanation beside the branch outcome so a
+// later notice, checkpoint, or explicit /land can use the same fact.
+func (n *TaskNode) setKeptReason(reason string) {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	n.keptReason = strings.TrimSpace(reason)
+	n.graph.mu.Unlock()
+}
+
 // noteWrote records that this node has just written a path, so that this
 // session's presence can say so while the work is still going.
 //
@@ -3757,6 +3769,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Changed:     changed,
 		Branch:      n.branch,
 		Merge:       n.merge,
+		KeptReason:  n.keptReason,
 		Doing:       n.doing,
 		Context:     n.context,
 		Mending:     n.mend,
@@ -7020,6 +7033,9 @@ func readTaskDropping(dir, name string) ([]byte, error) {
 
 func isTaskDropping(path string) bool {
 	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
+	if strings.HasSuffix(clean, ".orig") {
+		return true
+	}
 	for _, name := range taskDroppingNames() {
 		if clean == name || strings.HasPrefix(clean, name+"/") {
 			return true
@@ -7506,6 +7522,16 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 	return a.newTaskAgentOn(ctx, dir, node, suffix, "", false)
 }
 
+// quickBelt narrows only a read hand-off worker. The ordinary quick task keeps
+// the belt built from its Config, while a read helper must replace that belt
+// with the existing hard read-only allowlist before its first model request.
+func quickBelt(node *TaskNode, dir string, droppings Place) []bare.Tool {
+	if node == nil || node.spec.quick == nil || !node.spec.quick.readOnly {
+		return nil
+	}
+	return quickReadOnlyBelt(dir, droppings)
+}
+
 // newTaskAgentOn is [Agent.newTaskAgent] with the model said outright, and it
 // exists for exactly one caller: the repair round, whose model is the cascade's
 // answer rather than the node's (repair_role.go, task_audit.go's repairNode).
@@ -7866,6 +7892,18 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tools := quickBelt(node, dir, parent.droppingsPlace()); tools != nil {
+		definitions, err := toolDefinitions(tools)
+		if err != nil {
+			_ = child.Close()
+			return nil, err
+		}
+		child.mu.Lock()
+		child.tools = tools
+		child.definitions = definitions
+		child.mu.Unlock()
+		child.clearShelf()
 	}
 	// AND WHAT THE PERSON IS REMEMBERED TO WANT, HANDED OVER RATHER THAN WAITED
 	// FOR. The node's brief is routed once, beside the work (memory.go's
@@ -9391,6 +9429,9 @@ func beltTreeWork(dir string) []string {
 		// `.lock` suffix here once kept every lockfile a run changed off the
 		// branch, and a `bench-results` directory is a project's own folder.
 		if harnessWrote(path) {
+			continue
+		}
+		if isTaskDropping(path) {
 			continue
 		}
 		// AN UNTRACKED BUILD CACHE IS NOT THE WORK EITHER, and it is a

@@ -18,7 +18,6 @@ func TestAsyncUserCommandResponsesStayVisibleInCleanConversation(t *testing.T) {
 	}{
 		{"cache status", "cache holds", cacheNoteMsg{line: "the cache holds 12 MB"}},
 		{"cache confirmation", "type /cache clean now", cacheNoteMsg{line: "type /cache clean now to go ahead"}},
-		{"landing", "branch landed", landNoteMsg{line: "branch landed"}},
 		{"compaction error", "compact failed", compactedMsg{err: errors.New("disk busy")}},
 		{"export", "exported", exportedMsg{path: "/tmp/conversation.md"}},
 		{"export refusal", "already there", exportedMsg{path: "/tmp/conversation.md", err: fs.ErrExist}},

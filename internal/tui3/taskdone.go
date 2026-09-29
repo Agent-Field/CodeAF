@@ -62,12 +62,12 @@ type taskDone struct {
 	// resultWhole is where the whole of a cut answer can be read, resultCut says
 	// this is only the beginning of it, and resultHeld is the landing that turned
 	// the work back: no body at all, and a pointer to where it is.
-	result, resultWhole   string
-	resultCut, resultHeld bool
-	changed               []string
-	added, removed        int
-	branch, merge         string
-	brief, acceptance     string
+	result, resultWhole       string
+	resultCut, resultHeld     bool
+	changed                   []string
+	added, removed            int
+	branch, merge, keptReason string
+	brief, acceptance         string
 	// rung is which copy of the ground the work happened in and mode what was
 	// promised about it, frozen off the node at landing with everything else on
 	// this card (session's TaskNotice.Rung). They are here so the row naming the
@@ -219,6 +219,7 @@ func (a *app) landedCard(node *taskNode) {
 		changed:     node.changed,
 		branch:      node.branch,
 		merge:       node.merge,
+		keptReason:  node.keptReason,
 		rung:        node.rung,
 		mode:        node.mode,
 		brief:       node.brief,
@@ -585,6 +586,9 @@ func (a *app) doneTail(card *taskDone) string {
 	}
 	if card.status.ChangesUnlanded() {
 		tail += " · " + card.status.Branch
+		if card.keptReason != "" {
+			tail += " · " + card.keptReason
+		}
 	}
 	return tail
 }

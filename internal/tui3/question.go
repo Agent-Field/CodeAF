@@ -4458,8 +4458,8 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// shape of a landing that has since been re-settled offered a person the
 		// wrong answers to the right question (#767, tasksettle.go).
 		return true
-	case session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict:
-		// The three lanes the audit found with a resolver and NOTHING ANYWHERE
+	case session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict, session.QuestionDailyBudget:
+		// The lanes the audit found with a resolver and NOTHING ANYWHERE
 		// that drew them: work stopped on a question no surface in this product
 		// could put to a person. They are drawn here first because there is no
 		// older block to retire — this block is the only one they have ever had.

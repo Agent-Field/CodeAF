@@ -42,9 +42,10 @@ type taskJudgeVerdict struct {
 }
 
 // StartTask starts one person-authored task without routing it through the chat
-// model or presenting the model's proposal card.
+// model or presenting the model's proposal card. If today's spending limit is
+// spent, the daily-budget card must be answered before either engine admits it.
 //
-// ── NOTHING IS WAITED FOR IN FRONT OF IT ──
+// ── NO MODEL READING IS WAITED FOR IN FRONT OF IT ──
 //
 // WHAT WAS TRUE: the surface asked the sizing judge (three seconds) and then this
 // door asked the shaper (twenty-five) before the node was admitted, in series,
@@ -75,6 +76,9 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
 		return 0, "", "", errors.New("a task needs a brief")
+	}
+	if err := a.awaitTaskDailyBudget(ctx); err != nil {
+		return 0, "", "", err
 	}
 	// WHEN THE BASH BELT IS ASKED FOR this door takes its second road: a run on
 	// the run engine, answered AT ONCE with the id the store knows the work by,

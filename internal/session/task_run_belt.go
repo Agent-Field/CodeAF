@@ -235,6 +235,8 @@ const (
 type RunSummary struct {
 	Outcome string
 	Result  string
+	// Failure is the run's own account when it did not finish.
+	Failure string
 	// Limit is empty on every run that did not end on a bound its person set.
 	Limit RunLimit
 	// Program is how a delegated run's program ended when it did not finish,
@@ -260,6 +262,8 @@ type RunLanding struct {
 	Branch  string
 	Changed []string
 	Refused string
+	// KeptReason is why automatic landing left Branch on its own ref.
+	KeptReason string
 	// Home is how the work came home, in the landing road's own outcome words
 	// ([mergeMerged] and its kin), set by this door once the run's copy has been
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
@@ -1584,8 +1588,10 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	if notice.State.settled() && notice.CostUSD == 0 {
 		notice.CostUSD = a.beltRunSpent(notice.ID)
 	}
-	a.emitTaskUpdate(notice)
+	// A host publishes the frame's facts when this update arrives, so the
+	// retained branch must already be readable from the graph at that moment.
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
+	a.emitTaskUpdate(notice)
 	a.indexRunRow(notice)
 }
 
@@ -2006,6 +2012,9 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		if said == "" {
 			said = "its work is kept on " + landing.Branch + " and did not go into " + run.ground
 		}
+		if merge == mergeKept {
+			landing.KeptReason = run.tree.keptLandingReason()
+		}
 		landing.Refused, landing.Home = said, merge
 		return landing
 	}
@@ -2262,7 +2271,8 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// the outcome sentence.
 		Ending: beltRunEnding(summary),
 		Report: report, Result: summary.Result,
-		Changed: landing.Changed,
+		Changed:    landing.Changed,
+		KeptReason: landing.KeptReason,
 		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
@@ -2314,6 +2324,9 @@ func beltRunEnding(summary RunSummary) TaskEnding {
 func runEndingWords(summary RunSummary) (string, string) {
 	if ended := summary.Program; ended != nil && summary.Outcome != beltRunOutcomeDone {
 		return strings.TrimSpace(ended.Reason), strings.TrimSpace(ended.Result)
+	}
+	if summary.Outcome != beltRunOutcomeDone && strings.TrimSpace(summary.Failure) != "" {
+		return summary.Outcome, strings.TrimSpace(summary.Failure)
 	}
 	return summary.Outcome, strings.TrimSpace(summary.Result)
 }
@@ -2471,6 +2484,9 @@ func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
 	}
 	if notice.Crew == nil && kept.Crew != nil {
 		notice.Crew = kept.Crew
+	}
+	if notice.KeptReason == "" {
+		notice.KeptReason = kept.KeptReason
 	}
 	return notice
 }

@@ -16,10 +16,16 @@ import (
 )
 
 // crewCallProbe is a provider that answers nothing and counts what it was asked.
-type crewCallProbe struct{ calls int }
+type crewCallProbe struct {
+	calls int
+	cost  float64
+}
 
 func (p *crewCallProbe) CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error) {
 	p.calls++
+	if p.cost > 0 {
+		return &ai.Response{Usage: &ai.Usage{Cost: &p.cost}}, nil
+	}
 	return &ai.Response{}, nil
 }
 
@@ -70,5 +76,50 @@ func TestCrewFactoryCarriesTheRoleSeatToTheSpendGuard(t *testing.T) {
 	var stopped session.ErrSpendStopped
 	if !errors.As(err, &stopped) || len(probes) != 2 || probes[1].calls != 0 {
 		t.Fatalf("checker crossed its line: %v, probes %+v", err, probes)
+	}
+}
+
+func TestCrewFactoryGivesEachCheckerItsOwnSpendCeiling(t *testing.T) {
+	dir := t.TempDir()
+	profile := t.TempDir()
+	rows, _ := json.Marshal(map[string]string{config.KeyTierWorkerModel: "vendor/shared", config.KeyTierHighModel: "vendor/shared"})
+	if err := os.WriteFile(config.BudgetConfigPath(profile), rows, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := plandb.Open(filepath.Join(dir, "plan.db"), "seat-test", "root", "Root", "check the seat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "review-one", Title: "Review one", Role: plandb.RoleCheck},
+		{ID: "review-two", Title: "Review two", Role: plandb.RoleCheck},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	guard := &session.SpendGuard{
+		Price:         func(string) (float64, float64, float64, bool) { return 0, 1e-6, 0, true },
+		SeatCeilings:  map[crewroute.Seat]float64{crewroute.Checker: 0.01},
+		CeilingAction: "checker ceiling $%.2f",
+	}
+	probes := []*crewCallProbe{}
+	factory := CrewFactory(store, dir, profile, Seats{}, "", func(model string) session.Completer {
+		probe := &crewCallProbe{cost: 0.01}
+		probes = append(probes, probe)
+		return guard.Wrap(model, probe)
+	})
+	call := func(id string) error {
+		worker := factory(*store.Task(id)).(*BashWorker)
+		_, err := worker.completer.CompleteWithMessages(t.Context(), []ai.Message{{Role: "user"}})
+		return err
+	}
+	if err := call("review-one"); err != nil {
+		t.Fatalf("first checker call: %v", err)
+	}
+	if err := call("review-one"); err == nil {
+		t.Fatal("second call on one checker crossed no ceiling")
+	}
+	if err := call("review-two"); err != nil {
+		t.Fatalf("first call on a second checker: %v", err)
 	}
 }
