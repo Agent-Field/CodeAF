@@ -250,6 +250,8 @@ device ids, and one machine can be told apart from another.
 A vault made before identities existed keeps working: its old key becomes the identity's
 key the first time the identity is made on that machine.
 
+## List your chats on every machine — codeaf cell list --all, and what its lines mean
+
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
 each: id, title, device, where it runs (`running on <device>`, `<device> off`,
 `<K> turns from <device>: merge / discard`, or `-` for one held here or let go), and how
@@ -282,6 +284,20 @@ Everything sent is sealed under your identity first; the relay holds no names, n
 no file content it can read. Requests are signed by this machine's own device key, so the
 relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
 show your chats on the other machines once both machines share an identity and this setting.
+## What syncing a conversation cost — codeaf cell report, and sending the numbers only if you choose
+
+Each time a conversation is synced to another machine, codeaf adds one line of counts to a file on this
+machine, `v3/sync/stats/<cell>.jsonl` in the codeaf home: how many turns, frames and objects that flush
+carried, how many bytes went up and came down, and how many put, get and has requests it made. A line holds
+counts only: no time, no file names, no titles and no content. The file never leaves the machine on its own.
+
+**`codeaf cell report [<cell>]`** (with `CODEAF_CELLS` on) prints one row per flush and a total row for the
+cell, or for the cell the current folder is in. A cell that has never been synced has no rows, and the
+report then prints nothing at all rather than a table of zeros.
+
+**`codeaf cell report --export <file>`** also writes those same lines to the file you name, and says so:
+"counts only: bytes, objects and requests per turn; no content, no paths". Nothing is exported unless you
+type `--export`, so a report on its own writes no file and sends nothing.
 
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
