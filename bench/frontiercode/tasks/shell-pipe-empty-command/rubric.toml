@@ -1,0 +1,89 @@
+# The rubric for the shell-pipe-empty-command candidate.
+# Draft rubric from PLAN-pilot.md (Candidate 2), schema rubric-schema-v1,
+# verbatim: two prompt blockers written from the brief's behaviour alone, plus
+# the classical/scope criteria the fixture's schema supports.
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "empty-command-skipped-not-crashed"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["internal/shell/shell.go"]
+question = """The brief says a pipe entry whose command list is EMPTY must be
+skipped without crashing and without failing the pipeline. Read the diff hunk
+for this file. Does the change handle the empty case where the runner would
+previously index into the empty list (the panic) by skipping it — silently or
+with a warning — rather than panicking or returning an error? A change that
+still panics, converts the skip into an error, or guards only part of the
+run path fails."""
+
+[[criterion]]
+id = "run-contract-unchanged"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["internal/shell/shell.go"]
+question = """Skipping an empty command must not change what the runner does
+with commands that are not empty. Read the diff hunk. Does a failing
+non-empty command still produce its error, and is the env/output handling
+untouched? A change that swallows failures or silences output for non-empty
+commands too fails."""
+
+[[criterion]]
+id = "regression-tests-pass"
+kind = "classical"
+blocker = false
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"
+run = "go test ./internal/shell/ -run TestRunCommand"
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "go test ./internal/shell/ -run TestRunCommand"
+revert_paths = ["internal/shell"]
+
+[[criterion]]
+id = "clean-build"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go build ./..."
+
+[[criterion]]
+id = "shell-package-tests-pass"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go test ./internal/shell/"
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 4
+max_changed_lines = 60
+allowed_paths = ["internal/"]
+forbidden_paths = [".github/", "www/"]
+
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "/solution/test-overlay.patch"
+run = "go test ./internal/shell/ -run TestRunCommand"
