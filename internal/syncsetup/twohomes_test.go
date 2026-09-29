@@ -48,6 +48,7 @@ func newTwoHomes(t *testing.T) *twoHomes {
 	h := &twoHomes{driveRig: r, rootsB: t.TempDir(), wall: &noticeLog{}}
 	h.block = &blocker{Store: r.a.Store}
 	r.a.Store = h.block
+	r.a.Dir = offlineDir{Client: r.a.Dir, down: &h.block.down}
 	h.engB = cellstore.EngineFor("")
 	h.engB.DataRoot, h.engB.Binary, h.engB.Transport = t.TempDir(), r.bin, cellstore.Spawn{Binary: r.bin}
 	r.sealMeta()
@@ -101,13 +102,28 @@ func (b *blocker) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID
 	return b.Store.PutFrame(ctx, frame)
 }
 
+// offlineDir is A's directory client while A is cut off: its heartbeats go
+// nowhere, as they do on a machine whose lid is closed. Without this a lease the
+// test lets lapse would be renewed by A's own prompt heartbeat before B took it.
+type offlineDir struct {
+	directory.Client
+	down *atomic.Bool
+}
+
+func (d offlineDir) Heartbeat(ctx context.Context, id string, b directory.Beat) (directory.CellView, error) {
+	if d.down.Load() {
+		return directory.CellView{}, blobstore.ErrUnreachable
+	}
+	return d.Client.Heartbeat(ctx, id, b)
+}
+
 // continuerA and continuerB are each machine's take side. A keeps the chat it
 // started where it started it; anything else, and everything of B's, goes under
 // a folder of that machine's own.
 func (h *twoHomes) continuerA() *Continuer {
 	base := h.engine
 	base.Workspace = ""
-	return h.a.Continuer(base, TakeOptions{DeviceName: nameA, RootFor: func(id string) string {
+	return h.a.Continuer(base, TakeOptions{DeviceName: nameA, Notify: h.wall.add, RootFor: func(id string) string {
 		if id == h.cell.ID {
 			return h.cell.Root
 		}
@@ -116,7 +132,7 @@ func (h *twoHomes) continuerA() *Continuer {
 }
 
 func (h *twoHomes) continuerB() *Continuer {
-	return h.b.Continuer(h.engB, TakeOptions{DeviceName: nameB, RootFor: func(id string) string {
+	return h.b.Continuer(h.engB, TakeOptions{DeviceName: nameB, Notify: h.wall.add, RootFor: func(id string) string {
 		return filepath.Join(h.rootsB, id)
 	}})
 }
@@ -663,5 +679,100 @@ func assertAdoptedHead(t *testing.T, h *twoHomes, c cell.Cell) {
 	turns, _ := cellstore.Turns(c)
 	if got := turns[len(turns)-1].Parent; got != aHead {
 		t.Fatalf("B's next turn has parent %s; want A's head %s", got, aHead)
+	}
+}
+
+// envBody is the .env the vault tests put in A's project folder.
+const envBody = "API_KEY=sk-test-123\nDB_URL=postgres://u:p@h/db\n"
+
+// writeEnvAndVault makes the .env in A's project folder and imports it into
+// A's vault, as the guard does at the first seal that finds one.
+func (h *twoHomes) writeEnvAndVault() {
+	h.t.Helper()
+	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(envBody), 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	h.vaultTheEnv()
+}
+
+// takeOnB releases A's chat once it is durable and continues it on B.
+func (h *twoHomes) takeOnB(a *openChat) Continued {
+	h.t.Helper()
+	h.durable(h.cell.ID, h.cell)
+	if err := a.drive.Close(context.Background()); err != nil {
+		h.t.Fatal(err)
+	}
+	got, err := h.continuerB().Take(context.Background(), h.cell.ID)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return got
+}
+
+// A .env that appears after the chat has started reaches the other machine: the
+// vault is sent again when a later turn is published, not only at chat start.
+func TestTwoHomesEnvCreatedMidChatReachesB(t *testing.T) {
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+	if err := os.Remove(filepath.Join(h.work, ".env")); err != nil {
+		t.Fatal(err)
+	}
+	a := h.openA()
+	a.mustSay("before any secret")
+	h.durable(h.cell.ID, h.cell)
+
+	h.writeEnvAndVault()
+	a.mustSay("after the .env appeared")
+
+	got := h.takeOnB(a)
+	assertEnvInjected(t, workspaceOf(got.Taken.Cell.Root))
+}
+
+// A .env that was there before the chat started is sent as it always was.
+func TestTwoHomesEnvBeforeChatReachesB(t *testing.T) {
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+	h.vaultTheEnv()
+	a := h.openA()
+	a.mustSay("first")
+
+	got := h.takeOnB(a)
+	assertEnvInjected(t, workspaceOf(got.Taken.Cell.Root))
+}
+
+// The secrets that crossed mid-chat come back to A too, and a value the person
+// changed by hand in A's own .env is kept, with the one sentence that says so.
+func TestTwoHomesMidChatEnvKeepsOwnValueOnTakeBack(t *testing.T) {
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+	if err := os.Remove(filepath.Join(h.work, ".env")); err != nil {
+		t.Fatal(err)
+	}
+	a := h.openA()
+	a.mustSay("before any secret")
+	h.writeEnvAndVault()
+	mine := "API_KEY=my-own-value\nDB_URL=postgres://u:p@h/db\n"
+	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(mine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.mustSay("after the .env appeared")
+
+	took := h.takeOnB(a)
+	assertEnvInjected(t, workspaceOf(took.Taken.Cell.Root))
+	b := h.openOn(h.b, h.engB, took.Taken.Cell, workspaceOf(took.Taken.Cell.Root), nameB)
+	b.mustSay("b one")
+	h.durable(h.cell.ID, took.Taken.Cell)
+	if err := b.drive.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := h.continuerA().Take(context.Background(), h.cell.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(h.work, ".env")); string(got) != mine {
+		t.Fatalf(".env on A = %q; want the person's own value kept", got)
+	}
+	if want := ".env keeps your own value for API_KEY"; !h.wall.has(want) {
+		t.Fatalf("notices %q; want %q", h.wall.all(), want)
 	}
 }

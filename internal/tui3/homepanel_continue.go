@@ -240,10 +240,13 @@ func (a *app) lostRace(row chatlist.Row) tea.Cmd {
 	return a.askMachines()
 }
 
-// rebuildMachines redraws home from the reading it holds.
+// rebuildMachines redraws home from the reading it holds. The compact inbox
+// draws these rows too, so it is rebuilt as well: left alone, a machine with no
+// chat of its own would keep showing `nothing here yet` over the rows that just
+// arrived.
 func (a *app) rebuildMachines() {
 	a.home.others = a.machineRead
-	if a.home.gridOn() {
+	if a.home.gridOn() || a.home.phone {
 		a.home.build()
 	}
 	a.touch()

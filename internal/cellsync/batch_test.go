@@ -280,19 +280,23 @@ func TestBatcherRunFlushesAndBeatsOnSchedule(t *testing.T) {
 
 	h1 := r.seal(map[string]string{"a": "1"})
 	note(b, h1)
-	sl.advance(7 * time.Second) // flush
+	sl.settleOn(NudgeWindow) // the first note beat at once, before any lease exists to renew
+	sl.advance(NudgeWindow)
+	sl.settle(2)
+	sl.advance(6 * time.Second) // flush at 7 s
 	sl.settle(2)
 	if r.head(cellID).Head != h1 {
 		t.Fatal("no flush after one interval")
 	}
 	h2 := r.seal(map[string]string{"a": "2"})
 	note(b, h2)
-	sl.advance(3 * time.Second) // heartbeat at 10 s
-	sl.settle(2)
+	sl.settleOn(NudgeWindow) // the noted turn beat at once, at 7 s, and did not wait for 10 s
 	if got := r.head(cellID); got.Lease.Pending != 1 || got.Head != h1 {
-		t.Fatalf("at 10 s: %+v", got)
+		t.Fatalf("at 7 s: %+v", got)
 	}
-	sl.advance(4 * time.Second) // flush at 14 s
+	sl.advance(NudgeWindow) // the window closes; the periodic wait starts again
+	sl.settle(2)
+	sl.advance(6 * time.Second) // flush at 14 s
 	sl.settle(2)
 	if r.head(cellID).Head != h2 {
 		t.Fatal("no second flush")
@@ -346,4 +350,37 @@ func TestSupersededWithNothingOrphanedNotifiesViewerOnce(t *testing.T) {
 	if len(branches) != 1 || branches[0] != "" || by[0] != devB {
 		t.Fatalf("OnSuperseded calls: %q by %q", branches, by)
 	}
+}
+
+// A noted turn reaches the directory's pending count within the coalescing
+// window, without waiting for the 10 s heartbeat; a burst costs one beat.
+func TestNotedTurnBeatsPromptlyAndCoalesces(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = time.Hour // keep the flush loop out of this test
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(2)
+	r.publishFirst(map[string]string{"a": "0"})
+
+	note(b, r.seal(map[string]string{"a": "1"}))
+	sl.settleOn(NudgeWindow) // the heartbeat loop is in its coalescing window
+	if got := r.head(cellID).Lease.Pending; got != 1 {
+		t.Fatalf("pending %d right after Note, want 1", got)
+	}
+
+	note(b, r.seal(map[string]string{"a": "2"}), r.seal(map[string]string{"a": "3"}))
+	if got := r.head(cellID).Lease.Pending; got != 1 {
+		t.Fatalf("pending %d inside the window, want the burst held back", got)
+	}
+	sl.advance(NudgeWindow)
+	sl.settleOn(NudgeWindow) // the burst's one beat was sent, and a new window opened
+	if got := r.head(cellID).Lease.Pending; got != 3 {
+		t.Fatalf("pending %d after the window, want 3", got)
+	}
+	cancel()
+	<-done
 }

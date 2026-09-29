@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -130,5 +131,33 @@ func TestHomeMachineRowsGolden(t *testing.T) {
 		if strings.Join(got, "\n") != strings.Join(want, "\n") {
 			t.Errorf("width %d:\n%s\nwant:\n%s", width, strings.Join(got, "\n"), strings.Join(want, "\n"))
 		}
+	}
+}
+
+// A machine with no chat of its own still lists the chats on the person's other
+// machines at every width, and enter on one raises the takeover question. The
+// emptiness law is about empty data: "nothing here but something elsewhere" is
+// not empty, and a narrow frame is one more place the listing lands.
+func TestFreshHomeListsRowsFromOtherMachines(t *testing.T) {
+	for _, width := range []int{200, 120, 80, 40} {
+		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			lab := newHomeLab(t)
+			a := lab.app("")
+			a.width, a.height = width, 40
+			a.taker = &fakeTaker{}
+			a.machines = chatlist.Static{
+				{Cell: "c-off", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3 * time.Hour, Pending: 2},
+			}
+			a.branches = BranchActions{Merge: func(context.Context, string) error { return nil }}
+			drain(t, a, a.openHome())
+
+			if text := homeText(a); !strings.Contains(text, "Port the picker") {
+				t.Fatalf("a fresh home does not list the chat on another machine:\n%s", text)
+			}
+			standOn(t, a, "c-off")
+			if text := homeText(a); !strings.Contains(text, "studio") || strings.Contains(text, homeEmptyWord) {
+				t.Fatalf("enter on the row raised no takeover question:\n%s", text)
+			}
+		})
 	}
 }

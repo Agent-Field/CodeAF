@@ -17,6 +17,9 @@ const (
 	DefaultInterval = 5 * time.Second
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
+	// NudgeWindow is the least time between two heartbeats that a noted turn
+	// asked for, so a burst of seals costs one request and not one each.
+	NudgeWindow = time.Second
 )
 
 // Publishing wraps the Stage 0 store: seal exactly as before, then note the
@@ -44,6 +47,9 @@ type Batcher struct {
 	noted     []string   // heads of sealed turns not yet durable, oldest first
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	skewShown bool
+
+	nudged  chan struct{} // holds one wake-up for the heartbeat loop; made by nudger
+	nudgeMu sync.Once
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
@@ -77,13 +83,25 @@ func (p *Publishing) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnI
 	return s, err
 }
 
-// Note records a sealed turn. It only takes a lock, so it is safe on the seal path.
+// Note records a sealed turn and asks the heartbeat loop for a prompt beat, so
+// the directory's pending count is current within about a second and not a
+// whole heartbeat late. It only takes a lock and never waits, so it is safe on
+// the seal path.
 func (b *Batcher) Note(t cellstore.Turn) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if n := len(b.noted); n == 0 || b.noted[n-1] != t.ID {
 		b.noted = append(b.noted, t.ID)
 	}
+	b.mu.Unlock()
+	select {
+	case b.nudger() <- struct{}{}:
+	default: // a wake-up is already waiting; it will see this turn too
+	}
+}
+
+func (b *Batcher) nudger() chan struct{} {
+	b.nudgeMu.Do(func() { b.nudged = make(chan struct{}, 1) })
+	return b.nudged
 }
 
 // Fence is the lease fence this device now holds, 0 before the cell has a record.
@@ -103,9 +121,7 @@ func (b *Batcher) Pending() uint32 {
 // ctx ends.
 func (b *Batcher) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
-	wg.Go(func() {
-		b.loop(ctx, func() time.Duration { b.beat(ctx); return directory.HeartbeatEvery })
-	})
+	wg.Go(func() { b.beats(ctx) })
 	b.loop(ctx, func() time.Duration { return b.flush(ctx) })
 	wg.Wait()
 	return ctx.Err()
@@ -113,12 +129,58 @@ func (b *Batcher) Run(ctx context.Context) error {
 
 // loop does a step, then waits as long as the step asks.
 func (b *Batcher) loop(ctx context.Context, step func() time.Duration) {
-	sleep := b.Sleep
-	if sleep == nil {
-		sleep = realSleep
-	}
+	sleep := b.sleeper()
 	for sleep(ctx, step()) == nil {
 	}
+}
+
+// beats renews the lease every HeartbeatEvery, and at once when a turn is
+// noted. After such a prompt beat it waits out the NudgeWindow, so turns noted
+// meanwhile share the next single beat.
+func (b *Batcher) beats(ctx context.Context) {
+	b.beat(ctx)
+	for {
+		nudged, err := b.nap(ctx, directory.HeartbeatEvery)
+		if err != nil {
+			return
+		}
+		b.beat(ctx)
+		if nudged && b.sleeper()(ctx, NudgeWindow) != nil {
+			return
+		}
+	}
+}
+
+// nap waits d, or until a turn is noted, and says which ended it. The sleep is
+// the injected one, so a fake clock governs it.
+func (b *Batcher) nap(ctx context.Context, d time.Duration) (bool, error) {
+	sctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	over := make(chan struct{})
+	woke := make(chan bool, 1)
+	go func() {
+		select {
+		case <-b.nudger():
+			cancel()
+			woke <- true
+		case <-over:
+			woke <- false
+		}
+	}()
+	_ = b.sleeper()(sctx, d)
+	close(over)
+	nudged := <-woke
+	if ctx.Err() != nil {
+		return nudged, ctx.Err()
+	}
+	return nudged, nil
+}
+
+func (b *Batcher) sleeper() func(context.Context, time.Duration) error {
+	if b.Sleep != nil {
+		return b.Sleep
+	}
+	return realSleep
 }
 
 func realSleep(ctx context.Context, d time.Duration) error {
