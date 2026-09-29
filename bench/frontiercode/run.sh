@@ -263,7 +263,7 @@ docker exec -i "$NAME" tee /bench/collect.sh > /dev/null <<'COLLECT'
 set -u
 base="$1"; out=/bench/candidates
 rm -rf "$out"; mkdir -p "$out"
-cd "/root/repos/$2" || exit 1
+cd "$2" || exit 1
 git add -A >/dev/null 2>&1
 git diff --cached --binary "$base" > "$out/worktree.patch" 2>/dev/null
 for ref in $(git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null); do
