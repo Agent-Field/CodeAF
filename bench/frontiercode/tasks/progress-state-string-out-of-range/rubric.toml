@@ -1,0 +1,77 @@
+# The rubric for the progress-state-string-out-of-range candidate.
+# Draft rubric from PLAN-pilot.md (Candidate 6), schema rubric-schema-v1,
+# verbatim (plus the adaptive-classical criterion the fixture's schema
+# supports): two blockers written from the brief's behaviour alone, plus the
+# classical/scope criteria the fixture's schema supports.
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "out-of-range-returns-placeholder"
+kind = "classical"
+blocker = true
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"
+run = "go test . -run TestProgressBarStateStringOutOfRange"
+
+[[criterion]]
+id = "known-names-unchanged"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["tea.go"]
+question = """Making the state name total must not change what the KNOWN
+states return. Read the diff hunk. Does every previously-known state still
+return exactly its former name — same words, same spelling — and does the
+placeholder apply only to values outside the known range? A rewrite that
+also respells a known name, reorders the mapping, or returns the placeholder
+for a known state breaks every caller that matches on these strings and
+fails."""
+
+[[criterion]]
+id = "clean-build"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go build ./..."
+
+[[criterion]]
+id = "package-tests-pass"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go test ."
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "go test . -run TestProgressBarStateStringOutOfRange"
+revert_paths = ["tea.go"]
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 3
+max_changed_lines = 50
+allowed_paths = ["tea.go", "tea_test.go"]
+forbidden_paths = [".github/"]
+
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "/solution/test-overlay.patch"
+run = "go test . -run TestProgressBarStateStringOutOfRange"

@@ -1,0 +1,56 @@
+# The task manifest for the progress-state-string-out-of-range candidate.
+# Same layout as the shell-pipe-empty-command fixture; see that file for the
+# schema comments. Mined from charmbracelet/bubbletea#1748 (merged 2026-08-19).
+schema_version = "1.3"
+artifacts = ["/logs/artifacts/model.patch"]
+
+[task]
+name = "frontiercode/progress-state-string-out-of-range"
+description = "Make bubbletea's ProgressBarState.String() return a placeholder for out-of-range values instead of panicking"
+authors = []
+keywords = ["go", "tui", "terminal"]
+
+[metadata]
+task_id = "progress-state-string-out-of-range"
+display_title = "Total ProgressBarState.String instead of panicking"
+display_description = "bubbletea's progress-bar state type implements String() by indexing an anonymous five-string array, so any value outside the five known states — reachable directly, because the State field is exported — panics with index-out-of-range. Make String() total: a human-readable name for every known state and a stable placeholder for anything else, without changing any of the known spellings."
+language = "go"
+repository_url = "https://github.com/charmbracelet/bubbletea"
+base_commit_hash = "fc707bb7ea0161405bb6c653ec93f6a9c6a72fe1"
+reference_commit_hash = "d05da3e8ad90a7489535cc28298aafde07166a65"
+reference_pr = "charmbracelet/bubbletea#1748"
+license = "MIT (upstream only; fetched at image build time)"
+# Where the task tree lives inside the container (grade.sh mounts and grades
+# it; the fixture leaves this key off and defaults to jsonschema).
+agent_repo_path = "bubbletea"
+
+[environment]
+docker_image = "frontiercode-progress-state-string-out-of-range:env"
+os = "linux"
+allow_internet = true
+network_mode = "public"
+cpus = 4
+memory_mb = 8192
+build_timeout_sec = 2400.0
+
+[agent]
+timeout_sec = 7200.0
+
+[verifier]
+# The reverse-classical criterion reverts tea.go and must test the REVERTED
+# tree: touch the package's Go sources so the incremental build cannot serve
+# stale objects, then rebuild the tree.
+rebuild_command = "find . -maxdepth 1 -name '*.go' -newer go.mod -exec touch {} + && go build ./..."
+network_mode = "no-network"
+environment_mode = "separate"
+timeout_sec = 5400.0
+cpus = 4
+memory_mb = 8192
+docker_image = "frontiercode-progress-state-string-out-of-range:verify"
+
+[[verifier.collect]]
+command = "cd /root/repos/bubbletea && git add -A && git diff --binary fc707bb7ea0161405bb6c653ec93f6a9c6a72fe1 > /logs/artifacts/model.patch"
+timeout_sec = 300.0
+
+[rubric]
+file = "rubric.toml"
