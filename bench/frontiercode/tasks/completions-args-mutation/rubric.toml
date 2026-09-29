@@ -1,0 +1,78 @@
+# The rubric for the completions-args-mutation candidate.
+# Draft rubric from PLAN-pilot.md (Candidate 4), schema rubric-schema-v1,
+# verbatim: two prompt blockers written from the brief's behaviour alone, plus
+# the classical/scope criteria the fixture's schema supports.
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "os-args-not-mutated"
+kind = "classical"
+blocker = true
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"  # the PR's regression test, test-side
+run = "go test . -run TestCompletionDoesNotMutateOsArgs"
+
+[[criterion]]
+id = "trimmed-args-are-owned-copy"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["completions.go"]
+question = """The bug is aliasing: a subslice of the caller's arguments is
+later appended to, and an append with spare capacity writes into the caller's
+backing array in place. Read the diff hunk. Is the slice handed through
+completion lookup a FRESH COPY the machinery owns (an explicit copy of the
+trimmed arguments), so that no later append anywhere in the path can write
+into the caller's array? A change that only special-cases the one append
+site, re-slices at a different length, or copies only when capacity happens
+to be exactly full leaves the shape — the next append corrupts the caller
+again — and fails."""
+
+[[criterion]]
+id = "clean-build"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go build ./..."
+
+[[criterion]]
+id = "completion-tests-pass"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go test . -run 'TestCompletion'"
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "go test . -run TestCompletionDoesNotMutateOsArgs"
+revert_paths = ["completions.go"]
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 3
+max_changed_lines = 60
+allowed_paths = [""]
+forbidden_paths = [".github/"]
+
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "/solution/test-overlay.patch"
+run = "go test . -run TestCompletionDoesNotMutateOsArgs"
