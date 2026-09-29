@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const (
@@ -17,10 +18,6 @@ const (
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
 )
-
-// ErrSkew is a refusal because this machine's clock is too far from the
-// directory's. It is shown to the person once and never retried on the backoff.
-var ErrSkew = errors.New("cellsync: this machine's clock is too far from the server's")
 
 // Publishing wraps the Stage 0 store: seal exactly as before, then note the
 // turn. A seal never waits on the network.
@@ -37,9 +34,9 @@ type Batcher struct {
 	Driving      *Driving
 	Interval     time.Duration // default DefaultInterval
 	Info         func() PublishInfo
-	OnFlush      func(Flush)         // telemetry hook
-	OnSuperseded func(branch string) // the chat becomes a viewer (L7); branch is "" when nothing was orphaned
-	OnError      func(error)         // ErrSkew and other person-facing refusals
+	OnFlush      func(Flush)      // telemetry hook
+	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
+	OnError      func(error)      // wireauth.ErrSkew and other person-facing refusals
 	// Sleep waits d or until ctx ends; tests inject a fake. Default is real time.
 	Sleep func(ctx context.Context, d time.Duration) error
 
@@ -50,6 +47,16 @@ type Batcher struct {
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
+}
+
+// Superseded says another device continued the chat.
+type Superseded struct {
+	// Branch is the new cell that holds this device's orphaned turns; empty
+	// when there were none and the chat simply becomes a viewer.
+	Branch string
+	// By is the device that took the chat, from the directory's lease holder;
+	// empty when the directory could not be asked.
+	By string
 }
 
 // Flush is what one publish sent.
@@ -234,8 +241,9 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 // just tells the caller the chat is now a viewer. The caller holds flushMu.
 func (b *Batcher) resolve(ctx context.Context) error {
 	head, n := b.newest()
+	by := b.holder(ctx)
 	if n == 0 {
-		b.superseded("")
+		b.superseded(Superseded{By: by})
 		return nil
 	}
 	id, err := b.branch(ctx, head, n)
@@ -244,8 +252,19 @@ func (b *Batcher) resolve(ctx context.Context) error {
 	}
 	b.durable(head)
 	b.clearStale()
-	b.superseded(id)
+	b.superseded(Superseded{Branch: id, By: by})
 	return nil
+}
+
+// holder names the device that now holds the lease, or "" when the directory
+// cannot say; the answer only decorates a message, so it is never an error.
+func (b *Batcher) holder(ctx context.Context) string {
+	d, _, _ := b.view()
+	v, err := b.Publisher.Dir.Cell(ctx, d.ID())
+	if err != nil {
+		return ""
+	}
+	return v.Cell.Lease.Device
 }
 
 // branch makes sure head's objects are in the store, then creates the branch
@@ -323,7 +342,7 @@ func (b *Batcher) setFlag(flag *bool, v bool) {
 // surface shows a person-facing refusal once and answers whether err was one.
 // Skew is not retried on the backoff: the next tick simply tries again.
 func (b *Batcher) surface(err error) bool {
-	if !errors.Is(err, ErrSkew) {
+	if !errors.Is(err, wireauth.ErrSkew) {
 		return false
 	}
 	b.mu.Lock()
@@ -345,8 +364,8 @@ func (b *Batcher) emit(f Flush) {
 	}
 }
 
-func (b *Batcher) superseded(branch string) {
+func (b *Batcher) superseded(s Superseded) {
 	if b.OnSuperseded != nil {
-		b.OnSuperseded(branch)
+		b.OnSuperseded(s)
 	}
 }
