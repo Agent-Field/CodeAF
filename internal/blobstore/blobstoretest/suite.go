@@ -27,13 +27,14 @@ func Run(t *testing.T, factory Factory) {
 		"idempotent put":         idempotentPut,
 		"same object two frames": sameObjectTwoFrames,
 		"conflict":               conflict,
-		"conflict stores none":   conflictStoresNone,
+		"ConflictStoresNothing":  conflictStoresNone,
+		"FullLeavesNoPointer":    fullLeavesNoPointer,
 		"not found":              notFound,
 		"bad rid":                badRID,
 		"has order":              hasOrder,
 		"has bound":              hasBound,
 		"bad frames":             badFrames,
-		"plaintext refused":      plaintextRefused,
+		"RefusesPlaintext":       plaintextRefused,
 		"vault object accepted":  vaultObjectAccepted,
 	}
 	for name, run := range cases {
@@ -104,6 +105,26 @@ func conflictStoresNone(t *testing.T, s blobstore.Store) {
 	}
 }
 
+// failer is what a fake offers so the suite can make it report a full store;
+// a real store cannot be filled on demand and has its own test instead.
+type failer interface{ FailAfter(n int, err error) }
+
+func fullLeavesNoPointer(t *testing.T, s blobstore.Store) {
+	f, ok := s.(failer)
+	if !ok {
+		t.Skip("store cannot be told to fail; its own test covers a full store")
+	}
+	a := object("a")
+	f.FailAfter(0, blobstore.ErrFull)
+	if _, err := s.PutFrame(ctx, frameOf(t, a)); !errors.Is(err, blobstore.ErrFull) {
+		t.Fatalf("PutFrame on a full store = %v, want ErrFull", err)
+	}
+	if _, err := s.Get(ctx, a.RID); !errors.Is(err, blobstore.ErrNotFound) {
+		t.Fatalf("Get after a full store refused the put = %v, want ErrNotFound", err)
+	}
+	put(t, s, frameOf(t, a)) // the failure was one call; the store carries on
+}
+
 func notFound(t *testing.T, s blobstore.Store) {
 	if _, err := s.Get(ctx, object("absent").RID); !errors.Is(err, blobstore.ErrNotFound) {
 		t.Fatalf("Get of an absent object = %v, want ErrNotFound", err)
@@ -147,8 +168,8 @@ func hasBound(t *testing.T, s blobstore.Store) {
 	if got, err := s.Has(ctx, rids); err != nil || len(got) != blobstore.MaxHas {
 		t.Fatalf("Has of MaxHas ids = %d values, %v; want %d, nil", len(got), err, blobstore.MaxHas)
 	}
-	if _, err := s.Has(ctx, append(rids, rids[0])); err == nil {
-		t.Fatal("Has of MaxHas+1 ids succeeded")
+	if _, err := s.Has(ctx, append(rids, rids[0])); !errors.Is(err, blobstore.ErrTooMany) {
+		t.Fatalf("Has of MaxHas+1 ids = %v, want ErrTooMany", err)
 	}
 	if got, err := s.Has(ctx, nil); err != nil || len(got) != 0 {
 		t.Fatalf("Has of no ids = %v, %v; want empty, nil", got, err)
@@ -187,6 +208,9 @@ func badFrameTable(a, b blobstore.Object) map[string][]byte {
 		"header runs past frame":   binary.LittleEndian.AppendUint32([]byte("AGEF\x01"), 100),
 		"header not json":          frameWith([]byte("not json"), a.Bytes),
 		"header version 2":         frameWith(mustJSON(blobstore.Header{V: 2, Objects: []blobstore.ObjectRef{ref(a, 0)}}), a.Bytes),
+		"cell key id too short":    frameWith(mustJSON(blobstore.Header{V: 1, CellKeyID: "abc", Objects: []blobstore.ObjectRef{ref(a, 0)}}), a.Bytes),
+		"cell key id uppercase":    frameWith(mustJSON(blobstore.Header{V: 1, CellKeyID: strings.Repeat("A", 32), Objects: []blobstore.ObjectRef{ref(a, 0)}}), a.Bytes),
+		"cell key id empty":        frameWith(mustJSON(blobstore.Header{V: 1, Objects: []blobstore.ObjectRef{ref(a, 0)}}), a.Bytes),
 		"header version missing":   frameWith([]byte(`{"objects":[]}`), a.Bytes),
 		"no objects":               frameWith(mustJSON(blobstore.Header{V: 1, Objects: []blobstore.ObjectRef{}}), nil),
 		"first offset not zero":    frameWith(header(ref(a, 1)), []byte("x"), a.Bytes),

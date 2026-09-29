@@ -20,6 +20,9 @@ var frameMagic = []byte("AGEF\x01")
 // headerVersion is the only header version this package reads or writes.
 const headerVersion = 1
 
+// cellKeyIDLen is the length of a cell key id in hex characters (SCHEMAS).
+const cellKeyIDLen = 32
+
 // prefixLen is the fixed part in front of the header: the magic and its length.
 var prefixLen = len(frameMagic) + 4
 
@@ -135,8 +138,8 @@ func split(frame []byte) (header, payload []byte, err error) {
 	return frame[prefixLen:end], frame[end:], nil
 }
 
-// parseHeader reads the header JSON and checks its version and that it names
-// at least one object; an empty frame would be a request that does nothing.
+// parseHeader reads the header JSON and checks its version, its cell key id and
+// that it names at least one object; an empty frame would be a request that does nothing.
 func parseHeader(raw []byte) (Header, error) {
 	var h Header
 	if err := json.Unmarshal(raw, &h); err != nil {
@@ -144,6 +147,9 @@ func parseHeader(raw []byte) (Header, error) {
 	}
 	if h.V != headerVersion {
 		return Header{}, bad("unknown header version")
+	}
+	if !isLowerHex(h.CellKeyID, cellKeyIDLen) {
+		return Header{}, bad("cell key id is not 32 lowercase hex")
 	}
 	if len(h.Objects) == 0 {
 		return Header{}, bad("frame holds no object")

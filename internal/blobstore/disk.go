@@ -122,12 +122,12 @@ func (d *Disk) Get(_ context.Context, rid string) ([]byte, error) {
 func (d *Disk) readObject(p pointer) ([]byte, error) {
 	f, err := os.Open(filepath.Join(d.frames, p.Frame))
 	if err != nil {
-		return nil, fmt.Errorf("blobstore: pointer names a missing frame: %w", err)
+		return nil, fmt.Errorf("%w: pointer names a missing frame: %v", ErrDamaged, err)
 	}
 	defer f.Close()
 	buf := make([]byte, p.Len)
 	if _, err := f.ReadAt(buf, int64(p.Off)); err != nil {
-		return nil, fmt.Errorf("blobstore: pointer runs past its frame: %w", err)
+		return nil, fmt.Errorf("%w: pointer runs past its frame: %v", ErrDamaged, err)
 	}
 	return buf, nil
 }

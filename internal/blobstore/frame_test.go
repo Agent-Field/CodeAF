@@ -10,6 +10,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 )
 
+const testKey = "00000000000000000000000000000000"
+
 func obj(name, body string) blobstore.Object {
 	sum := sha256.Sum256([]byte(name))
 	return blobstore.Object{RID: hex.EncodeToString(sum[:]), Bytes: []byte("AGEO\x01" + body)}
@@ -17,7 +19,7 @@ func obj(name, body string) blobstore.Object {
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {
 	in := []blobstore.Object{obj("a", "one"), obj("b", ""), obj("c", "three")}
-	frame, err := blobstore.Encode(strings.Repeat("0", 32), in)
+	frame, err := blobstore.Encode(testKey, in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +27,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.V != 1 || h.CellKeyID != strings.Repeat("0", 32) || len(h.Objects) != 3 {
+	if h.V != 1 || h.CellKeyID != testKey || len(h.Objects) != 3 {
 		t.Fatalf("header = %+v", h)
 	}
 	for i := range in {
@@ -36,7 +38,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 }
 
 func TestDecodeAppendCannotReachNextObject(t *testing.T) {
-	frame, _ := blobstore.Encode("", []blobstore.Object{obj("a", "one"), obj("b", "two")})
+	frame, _ := blobstore.Encode(testKey, []blobstore.Object{obj("a", "one"), obj("b", "two")})
 	_, out, err := blobstore.Decode(frame)
 	if err != nil {
 		t.Fatal(err)
@@ -55,14 +57,14 @@ func TestEncodeRefusesWhatDecodeRefuses(t *testing.T) {
 		"duplicate":  {obj("a", "x"), obj("a", "x")},
 	}
 	for name, objects := range cases {
-		if _, err := blobstore.Encode("", objects); !errors.Is(err, blobstore.ErrBadFrame) {
+		if _, err := blobstore.Encode(testKey, objects); !errors.Is(err, blobstore.ErrBadFrame) {
 			t.Errorf("%s: Encode = %v, want ErrBadFrame", name, err)
 		}
 	}
 }
 
 func TestIDOfIsSHA256OfTheFrame(t *testing.T) {
-	frame, _ := blobstore.Encode("", []blobstore.Object{obj("a", "x")})
+	frame, _ := blobstore.Encode(testKey, []blobstore.Object{obj("a", "x")})
 	sum := sha256.Sum256(frame)
 	if got := blobstore.IDOf(frame); got != hex.EncodeToString(sum[:]) {
 		t.Fatalf("IDOf = %s", got)
@@ -83,6 +85,14 @@ func TestValidRID(t *testing.T) {
 	for s, want := range cases {
 		if got := blobstore.ValidRID(s); got != want {
 			t.Errorf("ValidRID(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
+
+func TestEncodeRefusesABadCellKeyID(t *testing.T) {
+	for _, id := range []string{"", "abc", strings.Repeat("A", 32), testKey + "0"} {
+		if _, err := blobstore.Encode(id, []blobstore.Object{obj("a", "x")}); !errors.Is(err, blobstore.ErrBadFrame) {
+			t.Errorf("Encode with cell key id %q = %v, want ErrBadFrame", id, err)
 		}
 	}
 }
