@@ -216,7 +216,7 @@ while `CODEAF_CELLS` is on. Its verbs are described under "The cell verbs" below
 
 Cells are switched on by `CODEAF_CELLS=1`; with it off, `codeaf cell` is hidden from the
 help text and does not run. With it on, **`codeaf cell log [<cell>]`** lists a cell's
-turns, newest first, one line each (turn, parent, time, tools, receipt), and
+turns, newest first, one line each (turn, parent, time, trigger, tools, receipt; a setup turn says `Setup` and its calls are marked `[external]`), and
 **`codeaf cell rewind <turn> [<cell>]`** puts the cell's files and transcript back to that
 turn. A rewind adds a new turn on top of the newest one and deletes nothing, so it can be
 rewound too. It refuses while a tool call began and never finished. With no cell named,

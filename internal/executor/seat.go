@@ -38,12 +38,38 @@ type Call struct {
 }
 
 // Stance is a seat that runs every call under one declared class and records
-// none of them.
-type Stance struct{ Class Class }
+// none of them. Setup makes every call one of a setup turn (network open,
+// external); Observer, when set, sees each call that ran to a result.
+type Stance struct {
+	Class    Class
+	Setup    bool
+	Observer Observer
+}
 
 // In implements Seat.
 func (s Stance) In(dir string) Runner {
-	return Local{Root: dir, Class: s.Class, Jail: DefaultJail()}
+	return Local{Root: dir, Class: s.Class, Jail: DefaultJail(), Setup: s.Setup, Observer: s.Observer}
+}
+
+// ForSetup is the same stance for a setup turn's calls.
+func (s Stance) ForSetup() Seat {
+	s.Setup = true
+	return s
+}
+
+// SetupSeat is a seat that can run a setup turn's calls.
+type SetupSeat interface {
+	Seat
+	ForSetup() Seat
+}
+
+// ForSetup is the seat a setup turn's calls run on. A seat that cannot tell a
+// setup call apart is returned as it is.
+func ForSetup(s Seat) Seat {
+	if setup, ok := s.(SetupSeat); ok {
+		return setup.ForSetup()
+	}
+	return s
 }
 
 // Around implements Seat: a stance keeps no record, so the call just runs.
@@ -94,6 +120,10 @@ var testSeat Seat
 func UseInTests(seat Seat) { testSeat = seat }
 
 type unseated struct{ Stance }
+
+// ForSetup implements SetupSeat: a session that was lost stays lost in a setup
+// turn, so a promoted Stance form never lets its calls run.
+func (u unseated) ForSetup() Seat { return u }
 
 // In implements Seat.
 func (unseated) In(string) Runner { return refused{} }

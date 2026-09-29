@@ -257,3 +257,10 @@ func unionInts(a, b []int) []int {
 	sort.Ints(out)
 	return out
 }
+
+// Sight records the tool a name resolves to on this machine, as if a call had
+// just run it. The harness uses it to look at what a setup turn put on PATH:
+// what the inventory learns is what is really there, never what the agent said.
+func (o *Observer) Sight(name string) {
+	o.Observe(executor.ExecRequest{Argv: []string{name}}, executor.ExecResult{})
+}

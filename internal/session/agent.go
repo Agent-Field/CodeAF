@@ -1024,6 +1024,10 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 			a.mu.Unlock()
 			return nil, errors.New(BashBusyWord)
 		}
+		if user.setup {
+			a.mu.Unlock()
+			return nil, errors.New(setupBusyWord)
+		}
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
 		// between an assistant's tool_calls and their results is a shape every
@@ -1047,7 +1051,7 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 			return refusedStream(err), nil
 		}
 	}
-	events := a.startTurnLocked(ctx, user, nil)
+	events := a.startTurnLocked(user.turnContext(ctx), user, nil)
 	a.mu.Unlock()
 	return events, nil
 }
@@ -1184,6 +1188,8 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// setup marks the harness's own setup turn (setup.go); only SubmitSetup sets it.
+	setup bool
 	// bash is set only by the person's SubmitBash door; model output cannot enter it.
 	bash    string
 	message ai.Message
@@ -1798,7 +1804,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	turnCtx = withAbandon(turnCtx, gone)
 	// AND ITS TOOL CALLS RUN ON THE SESSION'S OWN EXECUTOR, carried the same way
 	// and for the same reason: the tools that spawn hold no reference to the agent.
-	turnCtx = procexec.With(turnCtx, a.config.seat())
+	turnCtx = procexec.With(turnCtx, a.config.seatFor(turnCtx))
 	// AND THE TURN IS NUMBERED, so that a turn this session has DISOWNED cannot
 	// clean up after the turn that replaced it. See [Agent.Abandon]; the cleanup
 	// below is the only reader.

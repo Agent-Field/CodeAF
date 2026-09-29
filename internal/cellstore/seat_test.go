@@ -13,7 +13,7 @@ import (
 
 func TestSeatIsPlainWhenCellsAreOff(t *testing.T) {
 	t.Setenv("CODEAF_CELLS", "")
-	seat, err := SeatFor(executor.Sandboxed, newCell(t), t.TempDir(), nil)
+	seat, err := SeatFor(executor.Sandboxed, newCell(t), t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestACallWhoseIntentCannotBeLoggedDoesNotRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	ran := false
-	err := rec.Around(context.Background(), executor.Call{Tool: "bash"}, executor.EffectLocal, func() ([]byte, bool) { ran = true; return nil, false })
+	err := rec.Around(context.Background(), executor.Call{Tool: "bash"}, executor.EffectLocal, AgentRun, func() ([]byte, bool) { ran = true; return nil, false })
 	if err == nil || ran {
 		t.Fatalf("err = %v, ran = %v; an unlogged call must not run", err, ran)
 	}
@@ -104,4 +104,30 @@ func TestACallWhoseIntentCannotBeLoggedDoesNotRun(t *testing.T) {
 func inside(parent, dir string) bool {
 	rel, err := filepath.Rel(parent, dir)
 	return err == nil && !strings.HasPrefix(rel, "..")
+}
+
+// A setup turn's call is external whatever the class, and its seal says Setup;
+// an ordinary call on the same recorder stays local and AgentRun.
+func TestSetupSeatSealsExternalCallsAsASetupTurn(t *testing.T) {
+	c := newCell(t)
+	rec, _ := newRecorder(t, c, &stubExec{}, filepath.Join(t.TempDir(), "wal"))
+	seat := sealed{Stance: executor.Stance{Class: executor.Sandboxed}, rec: rec}
+	for _, tc := range []struct {
+		name    string
+		seat    executor.Seat
+		trigger Trigger
+		effect  string
+	}{
+		{"ordinary", seat, AgentRun, "local"},
+		{"setup", executor.ForSetup(seat), Setup, "external"},
+	} {
+		err := tc.seat.Around(context.Background(), executor.Call{Tool: "bash", Args: []byte(tc.name)}, func() ([]byte, bool) { return []byte("out"), false })
+		if err != nil {
+			t.Fatal(err)
+		}
+		head, _ := Head(c)
+		if head.Turn.Trigger != tc.trigger || head.Receipt.Calls[0].SideEffect != tc.effect {
+			t.Errorf("%s: trigger %s effect %s, want %s %s", tc.name, head.Turn.Trigger, head.Receipt.Calls[0].SideEffect, tc.trigger, tc.effect)
+		}
+	}
 }

@@ -79,7 +79,7 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 // Exec, one owned by the tool through Command, or a file written directly. The
 // call is the boundary the tree is sealed at, so this is what a session uses;
 // Exec is the same record for a caller that has only an executor.
-func (r *Recorder) Around(ctx context.Context, call executor.Call, effect executor.SideEffect, run func() ([]byte, bool)) error {
+func (r *Recorder) Around(ctx context.Context, call executor.Call, effect executor.SideEffect, trigger Trigger, run func() ([]byte, bool)) error {
 	intent := Intent{V: schemaV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(), SideEffect: string(effect)}
 	if err := r.wal.Begin(intent); err != nil {
 		return fmt.Errorf("log call intent: %w", err)
@@ -87,6 +87,7 @@ func (r *Recorder) Around(ctx context.Context, call executor.Call, effect execut
 	out, failed := run()
 	done := executed(intent, executor.ExecResult{Exit: exitOfFailure(failed), Stdout: out}, nil, r.now().UnixMilli())
 	done.Changed = call.Changed
+	done.Trigger = trigger
 	r.complete(ctx, intent, done)
 	return nil
 }
@@ -172,7 +173,7 @@ func (r *Recorder) complete(ctx context.Context, i Intent, e Executed) {
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {
 	batch := r.pending
-	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Calls: batch, Changed: changedOf(batch)}); err != nil {
+	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Changed: changedOf(batch)}); err != nil {
 		r.report(err)
 		return
 	}
@@ -227,4 +228,15 @@ func changedOf(batch []Executed) []string {
 		all = append(all, e.Changed...)
 	}
 	return all
+}
+
+// triggerOfBatch is why the batch's turn exists: Setup when any call in it was a
+// setup turn's, so a setup call's seal is never labelled an ordinary run.
+func triggerOfBatch(batch []Executed) Trigger {
+	for _, e := range batch {
+		if e.Trigger == Setup {
+			return Setup
+		}
+	}
+	return AgentRun
 }

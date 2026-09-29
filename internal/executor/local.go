@@ -42,6 +42,7 @@ type Local struct {
 	Root  string
 	Class Class // the workspace's declared class; the zero value is Sandboxed
 	Jail  Jail  // nil means no confinement
+	Setup bool  // every call is a setup turn's (docs/ARCHITECTURE.md 8.4)
 
 	// Observer, when set, sees each call that ran to a result.
 	Observer Observer
@@ -51,6 +52,7 @@ type Local struct {
 // that class allows for it: the one place a policy is chosen.
 func (l Local) resolve(req ExecRequest) ExecRequest {
 	req.Class = l.Class
+	req.Setup = req.Setup || l.Setup
 	req.Net = PolicyFor(l.Class, req.Setup)
 	return req
 }

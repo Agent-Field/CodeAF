@@ -224,6 +224,9 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal(off), false
 	}
 	decision, governed := a.decide(call)
+	if governed {
+		decision = a.setupFloor(ctx, decision)
+	}
 	if !governed || decision.Action == approval.ActionAllow {
 		return toolResult{}, true
 	}

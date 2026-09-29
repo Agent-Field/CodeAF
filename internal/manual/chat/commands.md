@@ -277,6 +277,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
+| `/setup` | — | — | prepare this machine: shows what this device lacks for the conversation (present, installable, impossible), and does nothing else |
+| `/setup` | — | `now` | starts a setup turn in which the agent installs the installable items; asks first unless approvals are open |
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
@@ -2245,3 +2247,22 @@ tabs included, and opening a row brings the tab and its draft back too.
 notification and press `delete` to dismiss just that notification. Pending
 `your call` decisions stay visible. Dismissal does not stop work, accept a
 result, delete a task, or remove its output from Sessions.
+
+## /setup — prepare this machine so a conversation can run here
+
+A conversation carries a record of the tools and services it has used (codeaf builds it by
+watching what ran; the agent cannot write it). `/setup` compares that record with this
+machine and lists three kinds of line: what is already here, what the agent can install
+("needs jq — agent can set it up"), and what is impossible on this machine (a GPU, a
+Mac-only toolchain, a service on another network). Impossible lines are shown and never
+attempted. When nothing is installable, `/setup` says so and does nothing.
+
+`/setup now` starts a **setup turn**: the agent installs the installable items into user
+space, with the network open for that turn only. Every call in it is recorded as external
+and the turn is marked as a setup turn in `codeaf cell log`. Because the network is open,
+each call asks first, exactly like any other outside action, unless approvals are open
+(`--yolo` or the allow posture). Limits: a setup turn is never replayed on another machine
+(the agent does it again there), it never runs impossible items, it needs your permission
+for the network, and it can be rewound like any turn. When it ends, codeaf looks at what is
+now on this machine and updates the record. Cells must be on (`CODEAF_CELLS=1`); without a
+cell there is nothing to set up.

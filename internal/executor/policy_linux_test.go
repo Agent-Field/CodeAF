@@ -63,3 +63,38 @@ func TestClassGovernsReach(t *testing.T) {
 		}
 	}
 }
+
+// TestSetupStanceOpensTheNetworkForEveryCall: a call that states no intent of
+// its own is still a setup call on the setup form of a seat, and an ordinary
+// call on the same seat stays cut off.
+func TestSetupStanceOpensTheNetworkForEveryCall(t *testing.T) {
+	if !Probe().UserNS {
+		t.Skip("user namespaces unavailable")
+	}
+	addr := listener(t)
+	req := ExecRequest{Argv: []string{"bash", "-c", fmt.Sprintf("exec 3<>/dev/tcp/%s", strings.Replace(addr, ":", "/", 1))}, Timeout: 10 * time.Second}
+	plain := Stance{Class: Sandboxed}
+	for _, c := range []struct {
+		name    string
+		seat    Seat
+		reaches bool
+		effect  SideEffect
+	}{
+		{"ordinary", plain, false, EffectLocal},
+		{"setup", ForSetup(plain), true, EffectExternal},
+	} {
+		res, err := c.seat.In(t.TempDir()).Exec(context.Background(), req, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if (res.Exit == 0) != c.reaches || res.SideEffect != c.effect {
+			t.Errorf("%s: exit %d effect %s stderr %q", c.name, res.Exit, res.SideEffect, res.Stderr)
+		}
+	}
+}
+
+func TestForSetupLeavesASeatWithoutASetupFormAsItIs(t *testing.T) {
+	if got := ForSetup(unseated{}); got != (unseated{}) {
+		t.Fatalf("got %T", got)
+	}
+}

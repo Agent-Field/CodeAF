@@ -7844,6 +7844,11 @@ func (a *app) slash(line string) tea.Cmd {
 		a.noticeEvent(eventCostShown)
 		return nil
 
+	case "setup":
+		// "Prepare this machine": what this device lacks for the conversation,
+		// and the guarded road to the agent installing it (setupcmd.go).
+		return a.runSetupCommand(rest)
+
 	case "cache":
 		// The shared build cache — reading it, and the guarded road to deleting
 		// it. Every branch runs off the loop and answers as a note; the guard

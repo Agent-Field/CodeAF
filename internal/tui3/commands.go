@@ -372,6 +372,8 @@ var commands = []command{
 	// /clean already means "start another conversation" there, and a word that
 	// sometimes cleared the screen and sometimes deleted half a gigabyte would
 	// be the most expensive pun on the surface.
+	{name: "setup", desc: "prepare this machine · what it lacks for this conversation"},
+	{name: "setup", args: "now", desc: "…have the agent install what it can · asks first"},
 	{name: "cache", desc: "the shared build cache — how big, and where"},
 	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
 	// THE THREE DOORS ONTO GETTING TEXT OUT, and they sit beside /help because

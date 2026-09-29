@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -84,17 +85,17 @@ func openCellAbove(dir string) (cell.Cell, error) {
 	}
 }
 
-// cellLog prints one line per turn, newest first: id, parent, time, tools,
-// receipt.
+// cellLog prints one line per turn, newest first: id, parent, time, trigger,
+// tools (an external call is marked), receipt.
 func cellLog(c cell.Cell, _ []string, out io.Writer) error {
 	entries, err := cellstore.Log(c)
 	if err != nil {
 		return err
 	}
 	for _, e := range entries {
-		fmt.Fprintf(out, "%s  %s  %s  %s  %s\n", short(e.Turn.ID), orDash(short(e.Turn.Parent)),
+		fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s\n", short(e.Turn.ID), orDash(short(e.Turn.Parent)),
 			time.UnixMilli(e.Turn.SealedAtMs).UTC().Format("2006-01-02T15:04:05Z"),
-			toolSummary(e.Receipt), short(e.Turn.Receipt))
+			e.Turn.Trigger, toolSummary(e.Receipt), short(e.Turn.Receipt))
 	}
 	return nil
 }
@@ -135,6 +136,9 @@ func toolSummary(r cellstore.Receipt) string {
 	tools := make([]string, len(r.Calls))
 	for i, call := range r.Calls {
 		tools[i] = call.Tool
+		if call.SideEffect == string(executor.EffectExternal) {
+			tools[i] += "[external]"
+		}
 	}
 	return orDash(strings.Join(tools, ","))
 }

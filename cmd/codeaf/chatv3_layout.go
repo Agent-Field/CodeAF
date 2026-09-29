@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -746,7 +747,7 @@ func v3Migrated(cfg session.Config) session.Config {
 // seat is set on every call, so a config reused for the next conversation never
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
-	cfg.Seat = nil
+	cfg.Seat, cfg.Machine = nil, nil
 	if !cell.Enabled() || cfg.Place.Dir == "" || cfg.Place.Workspace == "" {
 		return cfg
 	}
@@ -758,10 +759,24 @@ func v3Seated(cfg session.Config) session.Config {
 	if !ok {
 		class = executor.HostBound
 	}
-	seat, err := cellstore.SeatFor(class, c, cfg.Place.Workspace, sealNotice.report)
+	machine, err := preflight.OpenMachine(c.Root)
+	sealNotice.report(err)
+	seat, err := cellstore.SeatFor(class, c, cfg.Place.Workspace, observerOf(machine), sealNotice.report)
 	cfg.Seat = seat
 	sealNotice.report(err)
+	if machine != nil {
+		cfg.Machine = machine
+	}
 	return cfg
+}
+
+// observerOf is the machine's observer, and no observer where the inventory
+// could not be opened: a call is never failed for want of a record.
+func observerOf(m *preflight.Machine) executor.Observer {
+	if m == nil {
+		return nil
+	}
+	return m.Observer()
 }
 
 // sealNotice tells a person once per launch that their calls are not sealed. It

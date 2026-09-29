@@ -106,6 +106,14 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 		loses: "watching one task and reading its journal; the room's steer door crosses and its two reading doors do not, so a room falls back to a read-only far reading, and a room the roster does not know meets this sentence with `· say it to main` on the end of it",
 	},
 
+	// A conversation hosted over a connection prepares the machine it runs on,
+	// which is the engine's, so the door needs its own frames (the plan, and a
+	// setup turn's stream); until they exist the surface says so in one line.
+	"setupDoor": {
+		says:  "this conversation has no machine of its own to set up",
+		loses: "/setup and /setup now, which read this device's missing tools and run the agent's setup turn; over a connection the machine is the engine's and nothing here can prepare it",
+	},
+
 	// ── SILENTLY ABSENT, which is the law obeyed. Still missing, still owed.
 	"abandonAgent":   {loses: "abandoning a turn's second stage; the surface falls back to an ordinary stop"},
 	"elsewhereAgent": {loses: "the work this conversation started that is running somewhere else"},
@@ -127,7 +135,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 21
+const surfaceDoorLedger = 22
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {
