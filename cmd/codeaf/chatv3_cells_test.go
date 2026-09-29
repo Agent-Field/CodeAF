@@ -74,3 +74,93 @@ func TestNewChatIsALegacyFolderWhenTheFlagIsOff(t *testing.T) {
 		t.Fatalf("flag off must not create .cell: %v", err)
 	}
 }
+
+// legacyFolder writes a session folder the way a build without cells does: the
+// real mint and the real agent, with a task journal beside the transcript.
+func legacyFolder(t *testing.T, bucket, workspace string) session.Place {
+	t.Helper()
+	t.Setenv(cell.EnvVar, "")
+	place, err := v3MintSession(bucket, workspace, workspace, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, _, err := openV3Agent(v3TestConfig(workspace, place), workspace, v3OpenSession)
+	if err != nil {
+		t.Fatalf("legacy session did not open: %v", err)
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(place.NodeJournals(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(place.NodeJournals(), "n1.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return place
+}
+
+func v3TestConfig(workspace string, place session.Place) session.Config {
+	return session.Config{
+		Workspace: workspace, Model: "test/model", APIKey: "test-key",
+		BaseURL: "https://example.invalid/v1",
+		Place:   place, SessionFile: place.Transcript(),
+	}
+}
+
+func TestLegacyFolderMigratesOnResumeWhenTheFlagIsOn(t *testing.T) {
+	bucket, workspace := t.TempDir(), t.TempDir()
+	place := legacyFolder(t, bucket, workspace)
+	before, err := os.ReadFile(place.Transcript())
+	if err != nil || len(before) == 0 {
+		t.Fatalf("legacy transcript: %v (%d bytes)", err, len(before))
+	}
+
+	t.Setenv(cell.EnvVar, "1")
+	cfg := v3Migrated(v3TestConfig(workspace, place))
+	want := filepath.Join(place.Dir, cell.TranscriptPath)
+	if cfg.SessionFile != want {
+		t.Fatalf("session file = %s, want %s", cfg.SessionFile, want)
+	}
+	after, err := os.ReadFile(want)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("transcript changed by migration: %v", err)
+	}
+	for _, gone := range []string{"transcript.jsonl", cell.StateDir + "-staging"} {
+		if _, err := os.Stat(filepath.Join(place.Dir, gone)); !os.IsNotExist(err) {
+			t.Errorf("%s left behind: %v", gone, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(place.NodeJournals(), "n1.jsonl")); err != nil {
+		t.Errorf("task journal lost: %v", err)
+	}
+	if filepath.Base(place.Dir) != place.ID() || len(place.ID()) != 16 {
+		t.Errorf("session id changed: %q", place.ID())
+	}
+
+	agent, _, _, err := openV3Agent(v3TestConfig(workspace, place), workspace, v3OpenSession)
+	if err != nil {
+		t.Fatalf("migrated session did not resume: %v", err)
+	}
+	_ = agent.Close()
+	spoken, empty := v3ScanBucket(bucket)
+	if len(spoken)+len(empty) != 1 {
+		t.Fatalf("listing = %v %v, want the migrated session", spoken, empty)
+	}
+}
+
+func TestLegacyFolderStaysLegacyWhenTheFlagIsOff(t *testing.T) {
+	bucket, workspace := t.TempDir(), t.TempDir()
+	place := legacyFolder(t, bucket, workspace)
+
+	cfg := v3Migrated(v3TestConfig(workspace, place))
+	if cfg.SessionFile != place.Transcript() {
+		t.Fatalf("session file moved: %s", cfg.SessionFile)
+	}
+	if _, err := os.Stat(filepath.Join(place.Dir, cell.StateDir)); !os.IsNotExist(err) {
+		t.Fatalf("flag off must not create .cell: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(place.Dir, "transcript.jsonl")); err != nil {
+		t.Fatalf("legacy transcript gone: %v", err)
+	}
+}

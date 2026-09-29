@@ -11,7 +11,8 @@
 // New chats opt in behind [Enabled] (CODEAF_CELLS=1): v3MintSession in
 // cmd/codeaf/chatv3_layout.go calls [CreateIn] on the project bucket, and
 // internal/session's layout.go recognises a folder holding .cell/ and keeps
-// the transcript there. Old sessions are not migrated.
+// the transcript there. A legacy folder is migrated in place when it is opened
+// (MigrateLegacy, hooked in openV3Agent), only while the flag is on.
 package cell
 
 import (
