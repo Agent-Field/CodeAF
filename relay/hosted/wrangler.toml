@@ -1,0 +1,11 @@
+name = "codeaf-hosted-relay"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# Local development only. No account, no deploy: `wrangler dev --local` runs it in workerd.
+[[r2_buckets]]
+binding = "FRAMES"
+bucket_name = "codeaf-frames-dev"
+
+[vars]
+DEV_TALLY = "1"

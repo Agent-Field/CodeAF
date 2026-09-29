@@ -1,0 +1,10 @@
+{
+  "name": "codeaf-hosted-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "wrangler dev --local"
+  },
+  "devDependencies": { "wrangler": "^4.144.0" }
+}

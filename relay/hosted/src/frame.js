@@ -3,7 +3,7 @@ export const MAX_FRAME = 16 << 20;
 export const MAX_HEADER = 1 << 20;
 const MAGIC = Uint8Array.of(0x41, 0x47, 0x45, 0x46, 0x01); // "AGEF" 0x01
 const OBJECT_MAGICS = [Uint8Array.of(0x41, 0x47, 0x45, 0x4f, 0x01), Uint8Array.of(0x41, 0x47, 0x45, 0x56, 0x01)];
-const PREFIX = MAGIC.length + 4;
+export const PREFIX = MAGIC.length + 4;
 const HEX = /^[0-9a-f]+$/;
 
 export class BadFrame extends Error {}
@@ -21,7 +21,7 @@ function split(frame) {
   return [frame.subarray(PREFIX, PREFIX + n), frame.subarray(PREFIX + n)];
 }
 
-function parseHeader(raw) {
+export function parseHeader(raw) {
   let h;
   try {
     h = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw));
@@ -65,4 +65,17 @@ export function decode(frame) {
   const [raw, payload] = split(frame);
   const h = parseHeader(raw);
   return { cellKeyId: h.cell_key_id, objects: carve(h.objects, payload) };
+}
+
+/**
+ * headerRefs reads only the front of a frame: the prefix and the JSON header.
+ * It answers {need} while front is too short to hold the whole header, else
+ * {base, refs}, where base is the payload's offset inside the frame.
+ */
+export function headerRefs(front) {
+  if (front.length < PREFIX || !startsWith(front, MAGIC)) throw bad('wrong magic');
+  const n = new DataView(front.buffer, front.byteOffset).getUint32(MAGIC.length, true);
+  if (n > MAX_HEADER) throw bad('header is larger than the limit');
+  if (PREFIX + n > front.length) return { need: PREFIX + n };
+  return { base: PREFIX + n, refs: parseHeader(front.subarray(PREFIX, PREFIX + n)).objects };
 }

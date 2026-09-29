@@ -13,8 +13,10 @@ function holder(c, device, fence) {
   if (c.lease.fence !== fence || c.lease.device !== device) throw refuse('fence_stale');
 }
 
-export function acquire(c, device, now) {
-  if (c.lease.expires > now && c.lease.device !== device) throw refuse('lease_held');
+// force is the Stage 1H amendment: a person who chose "continue here" takes a live lease at once.
+// The fence still goes up, so the old holder's next write is refused as before.
+export function acquire(c, device, now, force = false) {
+  if (!force && c.lease.expires > now && c.lease.device !== device) throw refuse('lease_held');
   return { ...c, lease: { device, fence: c.lease.fence + 1, expires: now + LEASE_TTL_MS, pending: 0 } };
 }
 
