@@ -17,7 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell gc [--dry-run] | codeaf cell list --all"
+const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell gc [--dry-run] | codeaf cell list --all | codeaf cell report [<cell>] [--export <file>]"
 
 // cellVerb is one word after `cell`: how many arguments of its own it takes
 // before the optional cell name, and what it does to the cell. A verb that is
@@ -26,6 +26,7 @@ const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [
 type cellVerb struct {
 	args int
 	wide bool
+	flag string // a value-taking flag the verb owns; its value is passed after the positional arguments
 	run  func(c cell.Cell, args []string, out io.Writer) error
 }
 
@@ -35,6 +36,7 @@ var cellVerbs = map[string]cellVerb{
 	"resolve": {args: 0, run: cellResolve},
 	"gc":      {wide: true, run: cellGC},
 	"list":    {wide: true, run: cellListVerb},
+	"report":  {args: 0, flag: "--export", run: cellReport},
 }
 
 // runCell is the stage 0 door onto a cell's turn chain. Like `engine` it is
@@ -54,6 +56,10 @@ func runCellIn(args []string, out io.Writer, cwd string) error {
 	if ok && verb.wide {
 		return verb.run(cell.Cell{}, rest, out)
 	}
+	rest, flagged, err := takeFlag(rest, verb.flag)
+	if err != nil {
+		return err
+	}
 	if !ok || len(rest) < verb.args || len(rest) > verb.args+1 {
 		return errors.New(cellUsage)
 	}
@@ -61,7 +67,22 @@ func runCellIn(args []string, out io.Writer, cwd string) error {
 	if err != nil {
 		return err
 	}
-	return verb.run(c, rest[:verb.args], out)
+	return verb.run(c, append(rest[:verb.args:verb.args], flagged...), out)
+}
+
+// takeFlag removes `<flag> <value>` from args and answers the value, so the
+// positional arguments that are left can be counted. An empty flag takes nothing.
+func takeFlag(args []string, flag string) (rest, value []string, err error) {
+	for i, a := range args {
+		if flag == "" || a != flag {
+			continue
+		}
+		if i+1 >= len(args) {
+			return nil, nil, fmt.Errorf("%s needs a file name", flag)
+		}
+		return append(append([]string{}, args[:i]...), args[i+2:]...), args[i+1 : i+2], nil
+	}
+	return args, nil, nil
 }
 
 // openCellNamed opens the cell an id or a folder path names, or, with no name,
