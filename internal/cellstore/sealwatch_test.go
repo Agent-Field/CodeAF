@@ -100,3 +100,17 @@ func TestRecorderFeedsTheSealWatch(t *testing.T) {
 		t.Fatal("a seal that held must clear it")
 	}
 }
+
+// A turn ending reaches whoever the door named, and costs nothing when nobody
+// listens.
+func TestSealWatchForwardsTurnEnd(t *testing.T) {
+	var w SealWatch
+	w.TurnEnded() // no listener: nothing happens
+	heard := 0
+	w.OnTurnEnd = func() { heard++ }
+	w.TurnEnded()
+	w.TurnEnded()
+	if heard != 2 {
+		t.Fatalf("heard %d turn ends, want 2", heard)
+	}
+}

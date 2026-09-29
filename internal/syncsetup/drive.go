@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
@@ -178,6 +179,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		return nil, err
 	}
 	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
+	engine.MaxFrame = blobstore.TargetFrame // a flush's objects share frames up to the size the store wants
 	d.scope = s.scope(c.ID)
 	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
 	return &cellsync.Batcher{
@@ -259,6 +261,14 @@ func (d *Drive) Gate() error {
 		return errors.New(line)
 	}
 	return nil
+}
+
+// Idle says the agent stopped to wait for the person: what is sealed and not yet
+// uploaded goes up now. A chat that only views has nothing to upload.
+func (d *Drive) Idle() {
+	if d.batcher != nil {
+		d.batcher.Idle()
+	}
 }
 
 // Store is the store a seal goes through: the engine stamped with this device
