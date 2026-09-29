@@ -38,7 +38,11 @@ type Engine struct {
 	// composed in as the tree's .cell/ entry and nothing is written into the
 	// workspace. Empty seals the cell's folder itself.
 	Workspace string
-	Identity  Identity
+	// WorkspaceOf, when set, names the tree per cell and wins over Workspace.
+	// The take side needs it: one engine serves every chat a device continues,
+	// and each chat works in its own folder.
+	WorkspaceOf func(c cell.Cell) string
+	Identity    Identity
 	// Guard screens the tree for secrets before each seal (law L3); its zero
 	// value is the working guard.
 	Guard Guard
@@ -140,8 +144,17 @@ func changedPaths(changed []string) []string {
 
 // tree is the folder the engine seals and restores.
 func (e Engine) tree(c cell.Cell) string {
-	if e.Workspace == "" {
-		return c.Root
+	if w := e.workspace(c); w != "" {
+		return w
+	}
+	return c.Root
+}
+
+// workspace is the folder the tools of c work in, "" when c's own folder is
+// what is sealed.
+func (e Engine) workspace(c cell.Cell) string {
+	if e.WorkspaceOf != nil {
+		return e.WorkspaceOf(c)
 	}
 	return e.Workspace
 }
@@ -150,7 +163,7 @@ func (e Engine) tree(c cell.Cell) string {
 // that is composed into a workspace, or the cell's own folder when that is
 // what is sealed. The engine reads a .furrowpolicy from either.
 func (e Engine) policyDir(c cell.Cell) string {
-	if e.Workspace == "" {
+	if e.workspace(c) == "" {
 		return c.Root
 	}
 	return stateDir(c)
@@ -159,7 +172,7 @@ func (e Engine) policyDir(c cell.Cell) string {
 // cellDir is the cell's private .cell/ directory when it is composed into a
 // tree that is not the cell's own folder, and empty otherwise.
 func (e Engine) cellDir(c cell.Cell) string {
-	if e.Workspace == "" {
+	if e.workspace(c) == "" {
 		return ""
 	}
 	return stateDir(c)

@@ -1,0 +1,211 @@
+package syncsetup
+
+import (
+	"context"
+	"errors"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellindex"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/handoff"
+	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/vaultsync"
+)
+
+// TakeOptions is what the surface tells the take side about this machine.
+type TakeOptions struct {
+	// DeviceName is this machine's name: the kept-edits sentence names it.
+	DeviceName string
+	// RootFor is where this machine keeps the chat with an id: the folder it
+	// already has, or the one a new copy gets.
+	RootFor func(id string) string
+	// Notify hears the one sentence the vault hook says about what it left alone.
+	Notify func(string)
+}
+
+// Continued is a takeover that worked, with what the surface says about it.
+type Continued struct {
+	Taken handoff.Taken
+	// KeptTurns is how many turns the kept branch holds, 0 when nothing was kept.
+	KeptTurns uint32
+	// Device is this machine's name.
+	Device string
+}
+
+// Continuer is the take side of one machine: `continue here`.
+type Continuer struct {
+	sync  *Sync
+	taker handoff.Taker
+	opt   TakeOptions
+}
+
+// Continuer builds the take side over eng, the engine every chat this machine
+// continues is sealed and restored by. It is the real Fetcher over the real
+// SyncEngine, and the After hooks bring the chat's derived files and its
+// secrets to the folder the tree landed in.
+func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
+	eng.WorkspaceOf = func(c cell.Cell) string { return workspaceOf(c.Root) }
+	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
+	pub := &cellsync.Publisher{Engine: engine, Store: s.Store, Dir: s.Dir}
+	// THE TAKEOVER'S BRANCHER RUNS WITH Map NIL. The chat being taken keeps its
+	// id on this machine; only the edits set aside live in the branch, and a
+	// mapping from the chat to that branch would make the chat open as the
+	// branch. (The drive side's brancher records the mapping, because there the
+	// local chat does become the branch.)
+	brancher := cellsync.Brancher{Dir: s.Dir, Publisher: pub, NewID: newCellID}
+	c := &Continuer{sync: s, opt: opt}
+	c.taker = handoff.Taker{
+		Dir:     s.Dir,
+		Fetch:   &cellsync.Fetcher{Engine: engine, Store: s.Store, Inbox: engine.Inbox},
+		Local:   engineLocal{eng},
+		Branch:  c.branch(brancher),
+		RootFor: opt.RootFor,
+		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, c.pullVault, c.injectEnv},
+	}
+	return c
+}
+
+// Take continues chat id here. Everything the surface says about it comes back
+// with it.
+func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
+	taken, err := c.taker.Take(ctx, id)
+	if err != nil {
+		return Continued{}, err
+	}
+	out := Continued{Taken: taken, Device: c.opt.DeviceName}
+	if taken.Kept != "" {
+		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
+	}
+	return out, nil
+}
+
+// orphanTurns is how many turns the directory says a branch holds.
+func (c *Continuer) orphanTurns(ctx context.Context, branch string) uint32 {
+	v, err := c.sync.Dir.Cell(ctx, branch)
+	if err != nil {
+		return 0
+	}
+	return v.Cell.OrphanTurns
+}
+
+// branch is the Taker's Branch: the Brancher, told what to say about the cell
+// the kept edits become.
+func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.Driving, string, uint32) (string, error) {
+	return func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error) {
+		opened, err := cell.OpenAt(from.Cell.Root, from.Cell.ID)
+		if err != nil {
+			return "", err
+		}
+		return b.Branch(ctx, from, head, turns, c.sync.publishInfo(opened, titleOf(opened.Root)))
+	}
+}
+
+// engineLocal is the Taker's view of a copy of the chat this machine has: what
+// the engine says differs from the newest turn, and a seal of it.
+type engineLocal struct{ eng cellstore.Engine }
+
+func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
+	return l.eng.Dirty(ctx, c)
+}
+
+func (l engineLocal) Seal(ctx context.Context, c cell.Cell) (string, uint32, error) {
+	sealed, err := l.eng.Seal(ctx, c, cellstore.TurnInfo{})
+	return sealed.Turn.ID, 1, err
+}
+
+// workspaceOf is the folder the tools of the chat kept at root work in: the
+// project folder its session names while that folder is here, and its own
+// work/ folder otherwise, which is where a copy taken from another machine
+// lands.
+func workspaceOf(root string) string {
+	if m, err := session.LoadMeta(root); err == nil && !m.Owned && dirExists(m.Workspace) {
+		return m.Workspace
+	}
+	return session.Place{Dir: root, Owned: true}.Work()
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(strings.TrimSpace(path))
+	return path != "" && err == nil && info.IsDir()
+}
+
+func titleOf(root string) string {
+	m, _ := session.LoadMeta(root)
+	return m.Title
+}
+
+// rebuildIndexes makes the session row and the other derived files of a chat
+// that just arrived, from its transcript, so this machine lists it.
+func rebuildIndexes(_ context.Context, c cell.Cell) error {
+	_, err := cellindex.Rebuild(c, workspaceOf(c.Root))
+	return err
+}
+
+// pullVault brings this identity's secrets here; injectEnv writes the chat's
+// own into its workspace.
+func (c *Continuer) pullVault(ctx context.Context, _ cell.Cell) error {
+	syncer, err := c.sync.vaultSyncer(c.opt.Notify)
+	if err != nil {
+		return err
+	}
+	return syncer.Pull(ctx)
+}
+
+func (c *Continuer) injectEnv(ctx context.Context, at cell.Cell) error {
+	syncer, err := c.sync.vaultSyncer(c.opt.Notify)
+	if err != nil {
+		return err
+	}
+	opened, err := cell.OpenAt(at.Root, at.ID)
+	if err != nil {
+		return err
+	}
+	// .env belongs in the folder the tools run in, which is not always the
+	// chat's own folder.
+	opened.Root = workspaceOf(at.Root)
+	return syncer.Inject(ctx, opened)
+}
+
+// vaultSyncer is the syncer of this machine's vault. The vault file is made if
+// it is not there yet, with this machine's identity as its key.
+func (s *Sync) vaultSyncer(notify func(string)) (vaultsync.Syncer, error) {
+	v, err := keys.Open(s.Home)
+	if err != nil {
+		return vaultsync.Syncer{}, err
+	}
+	return vaultsync.Syncer{Store: s.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(), Notify: notify}, nil
+}
+
+// Discard sets a branch aside: it is archived, not deleted, so it leaves every
+// machine's list. Only a live branch can be discarded.
+func (s *Sync) Discard(ctx context.Context, branch string) error {
+	v, err := s.Dir.Cell(ctx, branch)
+	if err != nil {
+		return err
+	}
+	if v.Cell.ParentCell == "" || v.Cell.Archived {
+		return errors.New("not a live branch: " + branch)
+	}
+	return s.Dir.Archive(ctx, branch)
+}
+
+func newCellID() (string, error) { return cell.NewID(time.Now()) }
+
+// publishInfo is what the directory is told about c: its class, its title
+// sealed under the metadata key, and who can open it.
+func (s *Sync) publishInfo(c cell.Cell, title string) cellsync.PublishInfo {
+	in := cellsync.PublishInfo{
+		Class: string(c.Meta().Class),
+		Keys:  map[string]map[string]string{c.Meta().CellKeyID: {s.Identity.ID(): ""}},
+	}
+	if title != "" {
+		in.Title, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), title)
+	}
+	return in
+}
