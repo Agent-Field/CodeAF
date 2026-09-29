@@ -4059,3 +4059,26 @@ check, and completed spending resets at the local date boundary. Calls already
 in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately.
+
+## Which budget takes precedence — daily or per conversation?
+
+**Both limits apply; neither overrides the other.** New chat turns stop when
+either limit is reached. The daily limit counts today's spending across all
+conversations on this machine. The conversation limit counts that conversation's
+recorded spending, including earlier days.
+
+- With `/budget 10` and `/budget conversation 2`, a conversation that reaches
+  $2 cannot start another turn, even if today's total is still below $10.
+- With `/budget 10` and `/budget conversation 20`, the conversation cannot start
+  another turn once today's total across conversations reaches $10, even if
+  this conversation is below $20.
+
+Raise the limit named in the error above the recorded spend, then resend your
+message: `/budget day 30` for the daily limit, or `/budget conversation 30` for
+the conversation limit. `/budget 30` also changes only the daily limit. If both
+limits are reached, raise both; changing or removing one does not bypass the
+other. These amounts set total limits, not additional credit, and do not reset
+recorded spending.
+
+A chat turn already in flight may finish above either limit; the limit blocks
+the next turn rather than interrupting the current one.

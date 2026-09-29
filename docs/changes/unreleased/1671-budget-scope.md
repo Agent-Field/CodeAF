@@ -13,3 +13,5 @@ limits and verifies that the same live agent can continue after its cap changes.
 The daily-budget tip now names its scope across all conversations, and a separate
 conversation-budget tip teaches `/budget conversation`. Each tip retires only
 when its own budget scope is used.
+The manual also explains that daily and conversation limits both apply, with
+examples of each blocking a new turn and how to recover when both are reached.
