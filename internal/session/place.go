@@ -300,10 +300,19 @@ type Meta struct {
 // LoadMeta reads a session folder's identity. A missing file, an unparsable
 // file, or a file with no id answers a zero Meta and no error — see [Meta] —
 // and only an I/O failure that is not absence is worth reporting.
-func LoadMeta(dir string) (Meta, error) {
+func LoadMeta(dir string) (Meta, error) { return LoadMetaIn(dir, "") }
+
+// LoadMetaIn is [LoadMeta] for a caller that knows where this machine keeps
+// the session's workspace: a folder whose meta.json names none (a sealed tree
+// just materialized here) resolves its sealed paths against workspace, and
+// answers it as the Meta's workspace.
+func LoadMetaIn(dir, workspace string) (Meta, error) {
 	meta, err := readMeta(dir)
 	if err != nil {
 		return Meta{}, err
+	}
+	if strings.TrimSpace(meta.Workspace) == "" {
+		meta.Workspace = workspace
 	}
 	return overlayTruth(dir, meta)
 }
@@ -400,7 +409,7 @@ func SaveMeta(dir string, meta Meta) error {
 	}
 	meta.Build = buildinfo.String()
 	if path := layoutOf(dir).metaTruth(dir); path != "" {
-		if err := writeJSONAtomic(path, meta.truth()); err != nil {
+		if err := writeTruth(dir, path, meta); err != nil {
 			return fmt.Errorf("save session meta: %w", err)
 		}
 		meta = meta.derived()

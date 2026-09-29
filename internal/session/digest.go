@@ -143,7 +143,10 @@ func (d Digest) Spend() (usd float64, tokens int) {
 // transcript cannot know (effort, approval, referred places, working copies,
 // archive marks) are m's and pass through untouched.
 func (d Digest) Derive(m Meta) Meta {
-	m.ID, m.Workspace, m.Model = d.ID, d.Workspace, d.Model
+	m.ID, m.Model = d.ID, d.Model
+	if d.Workspace != "" { // a sealed journal names none: the summary already knows where it is here
+		m.Workspace = d.Workspace
+	}
 	m.Title, m.Created, m.LastUserAt = d.Title, d.Created, d.LastUserAt
 	m.SpentUSD, m.Tokens = d.Spend()
 	return m
