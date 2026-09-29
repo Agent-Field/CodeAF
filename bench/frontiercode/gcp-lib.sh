@@ -156,8 +156,13 @@ fc_host_mem_gb() {
   fi
 }
 
-# fc_slug: a GCP-label-safe spelling of a campaign or arm name.
-fc_slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-//' -e 's/-$//'; }
+# fc_slug: a GCP-label-safe spelling of a campaign or arm name. Label values
+# are capped at 63 characters, so the slug is truncated and any trailing dash
+# the cut may have left is trimmed.
+fc_slug() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' \
+    | sed -e 's/-\{2,\}/-/g' -e 's/^-//' -e 's/-$//' | cut -c1-63 | sed -e 's/-$//'
+}
 
 # fc_secret_read: the campaign's model key from the local secret store the
 # manifest names. It returns the value on stdout and is the ONLY function that
