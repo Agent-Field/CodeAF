@@ -250,6 +250,8 @@ device ids, and one machine can be told apart from another.
 A vault made before identities existed keeps working: its old key becomes the identity's
 key the first time the identity is made on that machine.
 
+## List your chats on every machine — codeaf cell list --all, and what its lines mean
+
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
 each: id, title, device, where it runs (`running on <device>`, `<device> off`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how

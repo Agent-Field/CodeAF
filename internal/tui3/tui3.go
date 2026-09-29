@@ -312,6 +312,12 @@ type Conversation struct {
 	// Nil leaves whatever the surface holds, which is every local door — there is
 	// no link — and every door whose conversations share one connection.
 	Link *LinkSeam
+
+	// Seal is what THIS conversation's seat says about its seals ([SealSeam]).
+	// It is per conversation because a window can switch between them: the
+	// segment and the sentences are the shown session's own. The zero value is
+	// a conversation whose calls are not sealed, which draws nothing.
+	Seal SealSeam
 }
 
 // TaskOwnerAsk names the conversation a task page wants to look into.
@@ -1189,6 +1195,12 @@ type Options struct {
 	// session: no segment on the status line, no notice looked for, no question
 	// asked about. Only the --host door fills it (cmd/codeaf's chatv3_host.go).
 	Link LinkSeam
+
+	// Seal is what the door can tell this surface about the sealing of the
+	// conversation's calls: whether the last seal failed, and the sentences
+	// worth saying when that changes ([SealSeam]). The zero value is a surface
+	// whose calls are not sealed, which draws nothing.
+	Seal SealSeam
 
 	// Width and Height are the size a headless driver is pretending to be.
 	// A real terminal answers this itself and these stay zero; a pipe cannot

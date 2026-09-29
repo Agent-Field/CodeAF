@@ -193,10 +193,21 @@ impl Session {
         }
     }
 
+    /// What a client needs to know before trusting this daemon: who it is. The
+    /// engine name is the running binary's file name, which the client's
+    /// installer already makes unique per build, so an old daemon left over
+    /// from an upgrade is recognised without comparing version numbers.
+    fn health(&self) -> serde_json::Value {
+        let mut health = self.router.health();
+        health["version"] = env!("CARGO_PKG_VERSION").into();
+        health["engine"] = engine_name().into();
+        health
+    }
+
     /// The verbs about the daemon itself, which need no store.
     fn control(&self, verb: &str) -> Option<serde_json::Value> {
         match verb {
-            "health" => Some(self.router.health()),
+            "health" => Some(self.health()),
             "shutdown" => {
                 self.stop.stop();
                 Some(serde_json::json!({"stopping": true}))
@@ -214,4 +225,15 @@ impl Session {
         let target = request.target.context("verb needs a target")?;
         self.router.submit(target, verb, request.args)
     }
+}
+
+/// The file name of the running engine, empty when the OS will not say.
+fn engine_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_default()
 }

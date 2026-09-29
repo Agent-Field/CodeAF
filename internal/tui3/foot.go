@@ -103,7 +103,7 @@ func segGroup(kind hudSeg) hudGroup {
 		return groupElse
 	case segYolo:
 		return groupPosture
-	case segRate, segLink, segQuestions, segState:
+	case segRate, segLink, segQuestions, segSeal, segState:
 		return groupAlive
 	}
 	return groupOff
