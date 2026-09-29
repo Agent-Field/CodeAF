@@ -11,6 +11,7 @@ pub mod gc;
 pub mod mcp;
 pub mod merge;
 pub mod model;
+pub mod overlay;
 pub mod path_index;
 pub mod policy;
 pub mod radar;
@@ -39,6 +40,6 @@ pub use repository::{
     new_fork_id, ApplyTimings, BisectCheck, BisectOutcome, ClaimOutcome, CoordOutcome, DiffChange,
     DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval, ForkSummary, ForkUpdates,
     FurrowRepository, MaterializationReport, MergeOutcome, MissingMaterializationPath,
-    ReleaseOutcome, RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition,
+    ReleaseOutcome, RepositoryStatus, RewindPlan, SealOptions, SnapshotSummary, SyncDisposition,
     SyncFollowOutcome, SyncFollowSession, SyncPullOutcome,
 };

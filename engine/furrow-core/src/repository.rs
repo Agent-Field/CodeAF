@@ -2,7 +2,7 @@ use crate::budget::{self, BudgetStatus};
 use crate::catalog::CachedFile;
 use crate::chunker::ChunkStream;
 use crate::claims;
-use crate::content_class;
+use crate::content_class::{self, ContentClass};
 use crate::coord;
 use crate::estimate::{self, CaptureEstimate};
 use crate::fork::{fork_workspace_excluding, try_clone_file, ForkReport, ForkTier};
@@ -12,6 +12,7 @@ use crate::model::{
     id_hex, parse_id, Blob, ChunkRef, ClaimRecord, EntryKind, ObjectId, ObjectKind, SealQuality,
     Snapshot, SnapshotTrigger, SqliteBackup, TreeEntry, XattrEntry, Xattrs,
 };
+use crate::overlay::{self, Overlay, WithOverlay};
 use crate::path_index::{PathIndex, CHILD_BATCH};
 use crate::policy::{CapturePolicy, POLICY_FILE_BYTES};
 use crate::radar::{EventPage, Radar, UniverseRegistration};
@@ -49,6 +50,17 @@ pub struct FurrowRepository {
     workspace_id: String,
     family_id: String,
     store: ObjectStore,
+    overlay: Option<Overlay>,
+}
+
+/// What a seal is told beyond its label and trigger.
+#[derive(Debug, Clone, Default)]
+pub struct SealOptions {
+    /// The paths that changed since the previous seal. Without it the whole
+    /// tree is walked, and the stat cache keeps unchanged files from being read.
+    pub changed: Option<Vec<PathBuf>>,
+    /// A directory outside the workspace that is sealed as its `.cell/` entry.
+    pub overlay: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -351,13 +363,18 @@ impl FurrowRepository {
         label: Option<String>,
         existing_trigger: SnapshotTrigger,
     ) -> anyhow::Result<(Self, ObjectId)> {
+        Self::attach_and_seal(root, label, existing_trigger, SealOptions::default())
+    }
+
+    pub fn attach_and_seal(
+        root: &Path,
+        label: Option<String>,
+        existing_trigger: SnapshotTrigger,
+        options: SealOptions,
+    ) -> anyhow::Result<(Self, ObjectId)> {
         let root = root
             .canonicalize()
             .with_context(|| format!("open {}", root.display()))?;
-        anyhow::ensure!(
-            root.join(".git").exists(),
-            "furrow currently requires a Git repository"
-        );
         fs::create_dir_all(root.join(".furrow"))?;
         let workspace_path = root.join(WORKSPACE_FILE);
         let workspace_id = if workspace_path.exists() {
@@ -382,6 +399,7 @@ impl FurrowRepository {
             workspace_id,
             family_id,
             store,
+            overlay: options.overlay.map(Overlay::new),
         };
         repository.recover_interrupted_rewind()?;
         let trigger = if repository
@@ -393,7 +411,8 @@ impl FurrowRepository {
         } else {
             SnapshotTrigger::Initial
         };
-        let id = repository.snapshot(label, trigger)?;
+        let id =
+            repository.snapshot_internal(label, trigger, options.changed.as_deref(), Vec::new())?;
         Ok((repository, id))
     }
 
@@ -421,9 +440,17 @@ impl FurrowRepository {
             workspace_id,
             family_id,
             store,
+            overlay: None,
         };
         repository.recover_interrupted_rewind()?;
         Ok(repository)
+    }
+
+    /// Names the directory that stands for the tree's `.cell/` entry: seals
+    /// compose it in, and a rewind puts it back there instead of in the root.
+    pub fn with_overlay(mut self, source: Option<PathBuf>) -> Self {
+        self.overlay = source.map(Overlay::new);
+        self
     }
 
     pub fn root(&self) -> &Path {
@@ -502,17 +529,9 @@ impl FurrowRepository {
             None => self.store.workspace_head(&self.workspace_id)?,
         };
         let policy = CapturePolicy::load(&self.root)?;
-        let root_tree = match changed_paths {
-            Some(paths)
-                if !paths.is_empty()
-                    && !paths
-                        .iter()
-                        .any(|path| changed_path_matches(&self.root, path, POLICY_FILE_BYTES)) =>
-            {
-                self.capture_changed_paths_retry_with_policy(paths, &policy)?
-            }
-            _ => self.capture_root_retry_with_policy(&policy)?,
-        };
+        let root_tree = self
+            .store
+            .batched(|| self.capture_tree(changed_paths, &policy))?;
         // Continuous watcher seals keep raw database/WAL/SHM bytes (L0) and
         // avoid a second whole-tree database discovery pass. Forced boundaries
         // attach the logically consistent SQLite image (L1).
@@ -709,10 +728,6 @@ impl FurrowRepository {
 
     pub fn estimate(root: &Path) -> anyhow::Result<CaptureEstimate> {
         let root = root.canonicalize()?;
-        anyhow::ensure!(
-            root.join(".git").exists(),
-            "furrow currently requires a Git repository"
-        );
         let store = ObjectStore::open(data_root()?.join("store-v1"))?;
         estimate::calculate(&root, &store)
     }
@@ -1675,6 +1690,7 @@ impl FurrowRepository {
             workspace_id,
             family_id,
             store,
+            overlay: None,
         })
     }
 
@@ -2743,6 +2759,7 @@ impl FurrowRepository {
             change.raw_path != b".furrow"
                 && !is_identity_path(&change.raw_path)
                 && !protected.excludes_bytes(&change.raw_path)
+                && !self.in_overlay(&change.raw_path)
         });
         let target_id = id_hex(target);
         let current_tree = id_hex(&current_tree);
@@ -2824,8 +2841,67 @@ impl FurrowRepository {
         }
         self.invalidate_path_index()?;
         self.clear_restore_intent()?;
+        let overlay_restored = self.restore_overlay(&target_snapshot.root_tree);
         FileExt::unlock(&lock)?;
+        overlay_restored.context("restore the composed directory")?;
         Ok((pre, plan))
+    }
+
+    /// True for the paths that belong to the overlay, which are restored into
+    /// its own directory and never into the workspace.
+    fn in_overlay(&self, raw_path: &[u8]) -> bool {
+        self.overlay.is_some() && self.physical_path_in_overlay(raw_path)
+    }
+
+    fn physical_path_in_overlay(&self, raw_path: &[u8]) -> bool {
+        self.overlay
+            .as_ref()
+            .is_some_and(|overlay| overlay.physical(raw_path).is_some())
+    }
+
+    /// Puts the sealed `.cell/` entry back into the overlay's directory,
+    /// changing only what differs, so the directory matches the sealed tree.
+    fn restore_overlay(&self, root_tree: &ObjectId) -> anyhow::Result<()> {
+        let Some(overlay) = &self.overlay else {
+            return Ok(());
+        };
+        let target = self
+            .lookup_tree_path(root_tree, overlay::NAME)?
+            .filter(|entry| entry.kind == EntryKind::Directory)
+            .and_then(|entry| entry.target);
+        let destination = overlay.source();
+        if target.is_some() {
+            fs::create_dir_all(destination)?;
+        }
+        let current = self.capture_overlay_tree()?;
+        let mut changes = Vec::new();
+        self.diff_directory(current, target, Vec::new(), &[], &mut changes)?;
+        let plan = RewindPlan {
+            preview_digest: rewind_preview_digest("overlay", None, &changes),
+            target: "overlay".to_owned(),
+            current_tree: None,
+            changes,
+        };
+        let entries = match target {
+            Some(tree) => self.entries_for_plan(&tree, &plan)?,
+            None => BTreeMap::new(),
+        };
+        self.apply_plan_at(destination, &entries, &plan, &[])?;
+        self.verify_plan_state(destination, &entries, &plan, &[])
+    }
+
+    /// The tree of the overlay directory as it is now, or None when absent.
+    fn capture_overlay_tree(&self) -> anyhow::Result<Option<ObjectId>> {
+        let Some(overlay) = &self.overlay else {
+            return Ok(None);
+        };
+        if !overlay.source().is_dir() {
+            return Ok(None);
+        }
+        let scratch = PathIndex::open(Path::new(":memory:"))?;
+        let tree =
+            self.capture_directory_impl(overlay.source(), &scratch, &CapturePolicy::default())?;
+        Ok(Some(tree))
     }
 
     pub fn forget(self, purge: bool) -> anyhow::Result<()> {
@@ -2887,6 +2963,37 @@ impl FurrowRepository {
             fs::remove_file(pid_path)?;
         }
         Ok(())
+    }
+
+    /// Captures the tree: only `changed_paths` when the caller knows them and
+    /// the policy file is not among them, otherwise a walk of everything.
+    fn capture_tree(
+        &self,
+        changed_paths: Option<&[PathBuf]>,
+        policy: &CapturePolicy,
+    ) -> anyhow::Result<ObjectId> {
+        let Some(paths) = changed_paths else {
+            return self.capture_root_retry_with_policy(policy);
+        };
+        if paths
+            .iter()
+            .any(|path| changed_path_matches(&self.root, path, POLICY_FILE_BYTES))
+        {
+            return self.capture_root_retry_with_policy(policy);
+        }
+        let paths = self.with_overlay_path(paths);
+        self.capture_changed_paths_retry_with_policy(&paths, policy)
+    }
+
+    /// The overlay is composed at every seal, so its contents count as changed.
+    fn with_overlay_path(&self, paths: &[PathBuf]) -> Vec<PathBuf> {
+        let mut paths = paths.to_vec();
+        paths.extend(
+            self.overlay
+                .iter()
+                .map(|overlay| overlay.source().to_owned()),
+        );
+        paths
     }
 
     fn capture_root_retry(&self) -> anyhow::Result<ObjectId> {
@@ -2969,10 +3076,9 @@ impl FurrowRepository {
             } else {
                 self.root.join(changed)
             };
-            let Ok(relative) = absolute.strip_prefix(&self.root) else {
+            let Some(relative) = self.logical_path(&absolute) else {
                 continue;
             };
-            let relative = relative.as_os_str().as_bytes().to_vec();
             if relative.is_empty() {
                 index.reset()?;
                 return self.capture_directory_impl(&self.root, index, policy);
@@ -2994,7 +3100,7 @@ impl FurrowRepository {
         let mut dirty_directories = BTreeSet::new();
         for relative in paths {
             index.remove_subtree(&relative)?;
-            let absolute = safe_join(&self.root, &relative)?;
+            let absolute = self.physical_path(&relative)?;
             if !policy.excludes_bytes(&relative) && fs::symlink_metadata(&absolute).is_ok() {
                 if let Some(entry) = self.capture_path_entry(&absolute, index, policy)? {
                     let parent = relative_parent(&relative);
@@ -3023,7 +3129,7 @@ impl FurrowRepository {
                 index.remove_subtree(&relative)?;
                 continue;
             }
-            let absolute = safe_join(&self.root, &relative)?;
+            let absolute = self.physical_path(&relative)?;
             let metadata = match fs::symlink_metadata(&absolute) {
                 Ok(metadata) => metadata,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -3058,14 +3164,13 @@ impl FurrowRepository {
         index: &PathIndex,
         policy: &CapturePolicy,
     ) -> anyhow::Result<ObjectId> {
-        let relative = path.strip_prefix(&self.root)?.as_os_str().as_bytes();
-        let children = SortedDirectory::open(path)
-            .with_context(|| format!("read directory {}", path.display()))?;
+        let relative = self
+            .logical_path(path)
+            .context("directory is outside the tree")?;
         let mut tree = tree::Builder::new(&self.store);
 
-        for child_name in children {
-            let child_name = child_name?;
-            let child_path = path.join(&child_name);
+        for child_name in self.children(path)? {
+            let child_path = self.child_path(path, &child_name?);
             if child_path.starts_with(self.store.root()) {
                 continue;
             }
@@ -3078,24 +3183,69 @@ impl FurrowRepository {
             {
                 continue;
             }
-            let child_relative = child_path
-                .strip_prefix(&self.root)?
-                .as_os_str()
-                .as_bytes()
-                .to_vec();
+            let child_relative = self
+                .logical_path(&child_path)
+                .context("child is outside the tree")?;
             if policy.excludes_bytes(&child_relative) {
                 continue;
             }
             let Some(entry) = self.capture_path_entry(&child_path, index, policy)? else {
                 continue;
             };
-            index.upsert(&child_relative, relative, &entry)?;
+            index.upsert(&child_relative, &relative, &entry)?;
             tree.push(entry)?;
         }
         let tree_id = tree.finish()?;
         self.store
-            .cache_directory(&self.workspace_id, relative, &tree_id)?;
+            .cache_directory(&self.workspace_id, &relative, &tree_id)?;
         Ok(tree_id)
+    }
+
+    /// The sorted child names of a directory of the tree; the root's include
+    /// the overlay's.
+    fn children(
+        &self,
+        path: &Path,
+    ) -> anyhow::Result<Box<dyn Iterator<Item = std::io::Result<OsString>>>> {
+        let names = SortedDirectory::open(path)
+            .with_context(|| format!("read directory {}", path.display()))?;
+        Ok(match &self.overlay {
+            Some(_) if path == self.root => Box::new(WithOverlay::new(names)),
+            _ => Box::new(names),
+        })
+    }
+
+    fn child_path(&self, directory: &Path, name: &OsStr) -> PathBuf {
+        match &self.overlay {
+            Some(overlay) if directory == self.root && name.as_bytes() == overlay::NAME => {
+                overlay.source().to_owned()
+            }
+            _ => directory.join(name),
+        }
+    }
+
+    /// The tree-relative path of a place on disk, or None outside the tree.
+    fn logical_path(&self, path: &Path) -> Option<Vec<u8>> {
+        self.overlay
+            .as_ref()
+            .and_then(|overlay| overlay.logical(path))
+            .or_else(|| {
+                path.strip_prefix(&self.root)
+                    .ok()
+                    .map(|relative| relative.as_os_str().as_bytes().to_vec())
+            })
+    }
+
+    /// The place on disk of a tree-relative path.
+    fn physical_path(&self, relative: &[u8]) -> anyhow::Result<PathBuf> {
+        match self
+            .overlay
+            .as_ref()
+            .and_then(|overlay| overlay.physical(relative))
+        {
+            Some(path) => Ok(path),
+            None => safe_join(&self.root, relative),
+        }
     }
 
     fn capture_path_entry(
@@ -3108,15 +3258,22 @@ impl FurrowRepository {
             fs::symlink_metadata(path).with_context(|| format!("stat {}", path.display()))?;
         let file_type = metadata.file_type();
         let (secs, nanos) = metadata_time(&metadata);
-        let name = path
-            .file_name()
+        let relative = self
+            .logical_path(path)
+            .context("captured path is outside the tree")?;
+        let name = relative
+            .rsplit(|byte| *byte == b'/')
+            .next()
             .context("captured path has no filename")?
-            .as_bytes()
             .to_vec();
         let mode = metadata.permissions().mode();
-        let relative = path.strip_prefix(&self.root)?.as_os_str().as_bytes();
-        let class = content_class::classify(relative);
-        let xattrs = if file_type.is_file() || file_type.is_dir() {
+        let class = content_class::classify(&relative);
+        if file_type.is_file() {
+            return self
+                .capture_file_entry(path, &relative, name, class, &metadata)
+                .map(Some);
+        }
+        let xattrs = if file_type.is_dir() {
             self.capture_xattrs(path)
                 .with_context(|| format!("capture xattrs for {}", path.display()))?
         } else {
@@ -3134,22 +3291,6 @@ impl FurrowRepository {
                 link_target: Vec::new(),
                 mode,
                 size: 0,
-                mtime_secs: secs,
-                mtime_nanos: nanos,
-                xattrs,
-                class,
-            }
-        } else if file_type.is_file() {
-            let target = self
-                .capture_file(path, Some(relative))
-                .with_context(|| format!("capture file {}", path.display()))?;
-            TreeEntry {
-                name,
-                kind: EntryKind::File,
-                target: Some(target),
-                link_target: Vec::new(),
-                mode,
-                size: metadata.len(),
                 mtime_secs: secs,
                 mtime_nanos: nanos,
                 xattrs,
@@ -3185,11 +3326,14 @@ impl FurrowRepository {
     fn directory_entry(&self, path: &Path, target: ObjectId) -> anyhow::Result<TreeEntry> {
         let metadata = fs::symlink_metadata(path)?;
         let (mtime_secs, mtime_nanos) = metadata_time(&metadata);
+        let relative = self
+            .logical_path(path)
+            .context("directory is outside the tree")?;
         Ok(TreeEntry {
-            name: path
-                .file_name()
+            name: relative
+                .rsplit(|byte| *byte == b'/')
+                .next()
                 .context("directory has no filename")?
-                .as_bytes()
                 .to_vec(),
             kind: EntryKind::Directory,
             target: Some(target),
@@ -3199,7 +3343,7 @@ impl FurrowRepository {
             mtime_secs,
             mtime_nanos,
             xattrs: self.capture_xattrs(path)?,
-            class: content_class::classify(path.strip_prefix(&self.root)?.as_os_str().as_bytes()),
+            class: content_class::classify(&relative),
         })
     }
 
@@ -3244,49 +3388,98 @@ impl FurrowRepository {
         index.commit()
     }
 
-    fn capture_file(&self, path: &Path, cache_key: Option<&[u8]>) -> anyhow::Result<ObjectId> {
+    /// The tree entry of a regular file. A file whose stat still matches its
+    /// cache row costs the one stat the caller already made: no open, no read,
+    /// no xattr calls.
+    fn capture_file_entry(
+        &self,
+        path: &Path,
+        relative: &[u8],
+        name: Vec<u8>,
+        class: ContentClass,
+        metadata: &fs::Metadata,
+    ) -> anyhow::Result<TreeEntry> {
+        let row = match self.unchanged_row(relative, metadata)? {
+            Some(row) => row,
+            None => self
+                .read_file(path)
+                .with_context(|| format!("capture file {}", path.display()))
+                .and_then(|read| self.cache_read(relative, read))?,
+        };
+        Ok(file_entry(name, class, &row))
+    }
+
+    fn unchanged_row(
+        &self,
+        relative: &[u8],
+        metadata: &fs::Metadata,
+    ) -> anyhow::Result<Option<CachedFile>> {
+        Ok(self
+            .store
+            .cached_file(&self.workspace_id, relative)?
+            .filter(|row| cached_matches(row, metadata) && !row.is_racy()))
+    }
+
+    fn cache_read(&self, relative: &[u8], read: FileRead) -> anyhow::Result<CachedFile> {
+        let row = cached_from_read(&read);
+        self.store.cache_file(&self.workspace_id, relative, &row)?;
+        Ok(row)
+    }
+
+    fn capture_file(&self, path: &Path) -> anyhow::Result<ObjectId> {
+        Ok(self.read_file(path)?.blob)
+    }
+
+    /// Reads a file into the store, retrying while it changes underneath.
+    fn read_file(&self, path: &Path) -> anyhow::Result<FileRead> {
         for _ in 0..3 {
+            let (secs, nanos) = now();
+            let read_at_nanos = secs.saturating_mul(1_000_000_000) + i64::from(nanos);
             let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
             let before = file
                 .metadata()
                 .with_context(|| format!("stat open file {}", path.display()))?;
-            if let Some(key) = cache_key {
-                if let Some(cached) = self.store.cached_file(&self.workspace_id, key)? {
-                    if cached_matches(&cached, &before) {
-                        return Ok(cached.blob_id);
-                    }
-                }
-            }
-            let mut stream = ChunkStream::new(BufReader::with_capacity(256 * 1024, file));
-            let mut chunks = Vec::new();
-            let mut total_len = 0_u64;
-            while let Some(chunk) = stream.next_chunk()? {
-                let id = self.store.put_bytes(ObjectKind::Chunk, &chunk)?;
-                total_len += chunk.len() as u64;
-                chunks.push(ChunkRef {
-                    id,
-                    len: chunk.len() as u32,
-                });
-            }
+            let xattrs = self.capture_xattrs(path)?;
+            let chunked = self.store_chunks(file)?;
             let after = fs::metadata(path).with_context(|| format!("restat {}", path.display()))?;
             if stable_metadata(&before, &after) {
-                let blob_id = self
-                    .store
-                    .put_struct(ObjectKind::Blob, &Blob { chunks, total_len })?;
-                if let Some(key) = cache_key {
-                    self.store.cache_file(
-                        &self.workspace_id,
-                        key,
-                        &cached_from_metadata(&after, blob_id),
-                    )?;
-                }
-                return Ok(blob_id);
+                let blob = self.store.put_struct(
+                    ObjectKind::Blob,
+                    &Blob {
+                        chunks: chunked.chunks,
+                        total_len: chunked.total_len,
+                    },
+                )?;
+                return Ok(FileRead {
+                    blob,
+                    xattrs,
+                    sqlite: chunked.sqlite,
+                    stat: after,
+                    read_at_nanos,
+                });
             }
         }
         bail!(
             "file changed repeatedly while being captured: {}",
             path.display()
         )
+    }
+
+    fn store_chunks(&self, file: File) -> anyhow::Result<Chunked> {
+        let mut stream = ChunkStream::new(BufReader::with_capacity(256 * 1024, file));
+        let mut chunked = Chunked::default();
+        while let Some(chunk) = stream.next_chunk()? {
+            let id = self.store.put_bytes(ObjectKind::Chunk, &chunk)?;
+            if chunked.chunks.is_empty() {
+                chunked.sqlite = sqlite_adapter::has_header(&chunk);
+            }
+            chunked.total_len += chunk.len() as u64;
+            chunked.chunks.push(ChunkRef {
+                id,
+                len: chunk.len() as u32,
+            });
+        }
+        Ok(chunked)
     }
 
     fn capture_xattrs(&self, path: &Path) -> anyhow::Result<Option<ObjectId>> {
@@ -3318,20 +3511,31 @@ impl FurrowRepository {
         }
     }
 
-    fn capture_sqlite_backups(&self, policy: &CapturePolicy) -> anyhow::Result<Vec<SqliteBackup>> {
+    /// The databases of the tree, known from the stat cache rather than by
+    /// opening every file: a file is recorded as a database when it is read.
+    fn sqlite_candidates(&self, policy: &CapturePolicy) -> anyhow::Result<Vec<PathBuf>> {
         let mut candidates = Vec::new();
-        collect_sqlite_candidates(&self.root, &self.root, policy, &mut candidates)?;
+        for relative in self.store.sqlite_paths(&self.workspace_id)? {
+            let path = self.physical_path(&relative)?;
+            let present = fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_file());
+            if present && !policy.excludes_bytes(&relative) {
+                candidates.push(path);
+            }
+        }
+        Ok(candidates)
+    }
+
+    fn capture_sqlite_backups(&self, policy: &CapturePolicy) -> anyhow::Result<Vec<SqliteBackup>> {
+        let candidates = self.sqlite_candidates(policy)?;
         let mut backups = Vec::new();
         let temp_dir = self.store.root().join("tmp");
         for path in candidates {
             match sqlite_adapter::consistent_backup(&path, &temp_dir) {
                 Ok(backup) => {
-                    let blob = self.capture_file(backup.file.path(), None)?;
-                    let relative = path
-                        .strip_prefix(&self.root)?
-                        .as_os_str()
-                        .as_bytes()
-                        .to_vec();
+                    let blob = self.capture_file(backup.file.path())?;
+                    let relative = self
+                        .logical_path(&path)
+                        .context("database is outside the tree")?;
                     backups.push(SqliteBackup {
                         path: relative,
                         blob,
@@ -3568,7 +3772,7 @@ impl FurrowRepository {
             if metadata.len() != entry.size {
                 return Ok(false);
             }
-            let blob = self.capture_file(path, None)?;
+            let blob = self.capture_file(path)?;
             if Some(blob) != entry.target {
                 return Ok(false);
             }
@@ -4130,7 +4334,24 @@ fn entry_matches_metadata(entry: &TreeEntry, metadata: &fs::Metadata) -> bool {
         && (entry.kind != EntryKind::File || entry.size == metadata.len())
 }
 
-fn cached_from_metadata(metadata: &fs::Metadata, blob_id: ObjectId) -> CachedFile {
+/// What reading a regular file produced.
+struct FileRead {
+    blob: ObjectId,
+    xattrs: Option<ObjectId>,
+    sqlite: bool,
+    stat: fs::Metadata,
+    read_at_nanos: i64,
+}
+
+#[derive(Default)]
+struct Chunked {
+    chunks: Vec<ChunkRef>,
+    total_len: u64,
+    sqlite: bool,
+}
+
+fn cached_from_read(read: &FileRead) -> CachedFile {
+    let metadata = &read.stat;
     CachedFile {
         device: metadata.dev(),
         inode: metadata.ino(),
@@ -4140,7 +4361,25 @@ fn cached_from_metadata(metadata: &fs::Metadata, blob_id: ObjectId) -> CachedFil
         ctime_secs: metadata.ctime(),
         ctime_nanos: metadata.ctime_nsec(),
         mode: metadata.mode(),
-        blob_id,
+        blob_id: read.blob,
+        xattrs: read.xattrs,
+        sqlite: read.sqlite,
+        cached_at_nanos: read.read_at_nanos,
+    }
+}
+
+fn file_entry(name: Vec<u8>, class: ContentClass, row: &CachedFile) -> TreeEntry {
+    TreeEntry {
+        name,
+        kind: EntryKind::File,
+        target: Some(row.blob_id),
+        link_target: Vec::new(),
+        mode: row.mode,
+        size: row.size,
+        mtime_secs: row.mtime_secs,
+        mtime_nanos: row.mtime_nanos.max(0) as u32,
+        xattrs: row.xattrs,
+        class,
     }
 }
 
@@ -4583,32 +4822,6 @@ fn remove_path(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn collect_sqlite_candidates(
-    root: &Path,
-    directory: &Path,
-    policy: &CapturePolicy,
-    output: &mut Vec<PathBuf>,
-) -> anyhow::Result<()> {
-    for child in fs::read_dir(directory)? {
-        let child = child?;
-        let path = child.path();
-        let relative = path.strip_prefix(root)?.as_os_str().as_bytes();
-        if policy.excludes_bytes(relative) {
-            continue;
-        }
-        let metadata = fs::symlink_metadata(&path)?;
-        if metadata.file_type().is_symlink() {
-            continue;
-        }
-        if metadata.is_dir() {
-            collect_sqlite_candidates(root, &path, policy, output)?;
-        } else if metadata.is_file() && sqlite_adapter::is_sqlite(&path) {
-            output.push(path);
-        }
-    }
-    Ok(())
-}
-
 fn is_not_found(error: &anyhow::Error) -> bool {
     error.chain().any(|cause| {
         cause
@@ -4640,3 +4853,6 @@ fn sync_pull_outcome(
         apply_timings,
     }
 }
+
+#[cfg(test)]
+mod seal_tests;

@@ -10,13 +10,20 @@ pub struct ConsistentBackup {
     pub integrity_ok: bool,
 }
 
+const HEADER: &[u8; 16] = b"SQLite format 3\0";
+
+/// True when `bytes` begin the way every SQLite database file begins.
+pub fn has_header(bytes: &[u8]) -> bool {
+    bytes.starts_with(HEADER)
+}
+
 pub fn is_sqlite(path: &Path) -> bool {
     let mut header = [0_u8; 16];
     let Ok(mut file) = std::fs::File::open(path) else {
         return false;
     };
     use std::io::Read;
-    file.read_exact(&mut header).is_ok() && &header == b"SQLite format 3\0"
+    file.read_exact(&mut header).is_ok() && has_header(&header)
 }
 
 pub fn consistent_backup(path: &Path, temp_dir: &Path) -> anyhow::Result<ConsistentBackup> {

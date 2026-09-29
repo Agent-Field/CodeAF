@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use furrow::model::{id_hex, SnapshotTrigger};
-use furrow::{FurrowRepository, SyncDisposition, SyncFollowOutcome};
+use furrow::{FurrowRepository, SealOptions, SyncDisposition, SyncFollowOutcome};
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
@@ -87,6 +87,9 @@ enum Command {
         /// Restore SQLite databases from their logically consistent backup image.
         #[arg(long)]
         sqlite_consistent: bool,
+        /// Put the sealed `.cell/` entry back in this directory instead of the workspace.
+        #[arg(long, value_name = "DIR")]
+        cell_dir: Option<PathBuf>,
     },
     /// Show workspace protection, store health, and optional fidelity guarantees.
     Status {
@@ -420,6 +423,8 @@ enum HookCommand {
         agent: Option<String>,
         #[arg(long)]
         turn: Option<String>,
+        #[command(flatten)]
+        seal: SealArgs,
     },
     /// Seal after an agent tool invocation completes.
     PostTool {
@@ -429,6 +434,8 @@ enum HookCommand {
         turn: Option<String>,
         #[arg(long)]
         tool: Option<String>,
+        #[command(flatten)]
+        seal: SealArgs,
     },
     /// Seal when an agent turn ends.
     TurnEnd {
@@ -436,7 +443,52 @@ enum HookCommand {
         agent: Option<String>,
         #[arg(long)]
         turn: Option<String>,
+        #[command(flatten)]
+        seal: SealArgs,
     },
+}
+
+/// How a hook seal finds what to capture.
+#[derive(clap::Args, Default)]
+struct SealArgs {
+    /// A path that changed since the previous seal; repeatable. With any
+    /// changed-path flag only those paths are visited; without one the whole
+    /// tree is walked and the stat cache spares unchanged files.
+    #[arg(long = "changed", value_name = "PATH")]
+    changed: Vec<PathBuf>,
+    /// Read NUL-separated changed paths from standard input. An empty input
+    /// means nothing changed.
+    #[arg(long)]
+    changed_stdin: bool,
+    /// Seal this directory, which lives outside the workspace, as the tree's
+    /// `.cell/` entry.
+    #[arg(long, value_name = "DIR")]
+    cell_dir: Option<PathBuf>,
+}
+
+impl SealArgs {
+    fn options(self) -> anyhow::Result<SealOptions> {
+        let listed = !self.changed.is_empty() || self.changed_stdin;
+        let mut changed = self.changed;
+        if self.changed_stdin {
+            changed.extend(read_changed_stdin()?);
+        }
+        Ok(SealOptions {
+            changed: listed.then_some(changed),
+            overlay: self.cell_dir,
+        })
+    }
+}
+
+fn read_changed_stdin() -> anyhow::Result<Vec<PathBuf>> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut input = Vec::new();
+    io::stdin().read_to_end(&mut input)?;
+    Ok(input
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(|path| PathBuf::from(std::ffi::OsStr::from_bytes(path)))
+        .collect())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -599,8 +651,9 @@ fn main() -> anyhow::Result<()> {
             dry_run,
             yes,
             sqlite_consistent,
+            cell_dir,
         } => {
-            let mut repository = FurrowRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?.with_overlay(cell_dir);
             let target = repository.resolve_snapshot(&snapshot)?;
             let plan = repository.plan_rewind(&target, &paths)?;
             if cli.json || dry_run {
@@ -1013,14 +1066,19 @@ fn main() -> anyhow::Result<()> {
                     println!("Snapshot {}", id_hex(&snapshot));
                 }
             }
-            HookCommand::PreTurn { agent, turn } => {
-                run_hook(&cli.repo, cli.json, "pre-turn", agent, turn, None)?;
+            HookCommand::PreTurn { agent, turn, seal } => {
+                run_hook(&cli.repo, cli.json, "pre-turn", agent, turn, None, seal)?;
             }
-            HookCommand::PostTool { agent, turn, tool } => {
-                run_hook(&cli.repo, cli.json, "post-tool", agent, turn, tool)?;
+            HookCommand::PostTool {
+                agent,
+                turn,
+                tool,
+                seal,
+            } => {
+                run_hook(&cli.repo, cli.json, "post-tool", agent, turn, tool, seal)?;
             }
-            HookCommand::TurnEnd { agent, turn } => {
-                run_hook(&cli.repo, cli.json, "turn-end", agent, turn, None)?;
+            HookCommand::TurnEnd { agent, turn, seal } => {
+                run_hook(&cli.repo, cli.json, "turn-end", agent, turn, None, seal)?;
             }
         },
         Command::Run {
@@ -2177,10 +2235,6 @@ fn parse_byte_size(value: &str) -> anyhow::Result<u64> {
 
 fn install_hook_adapters(root: &std::path::Path) -> anyhow::Result<Vec<PathBuf>> {
     let root = root.canonicalize()?;
-    anyhow::ensure!(
-        root.join(".git").exists(),
-        "furrow currently requires a Git repository"
-    );
     let directory = root.join(".furrow/hooks");
     fs::create_dir_all(&directory)?;
     let mut installed = Vec::new();
@@ -2209,6 +2263,7 @@ fn run_hook(
     agent: Option<String>,
     turn: Option<String>,
     tool: Option<String>,
+    seal: SealArgs,
 ) -> anyhow::Result<()> {
     let agent = hook_value(agent, "FURROW_AGENT_ID")?.unwrap_or_else(|| "agent".to_owned());
     let turn = hook_value(turn, "FURROW_TURN_ID")?;
@@ -2222,10 +2277,11 @@ fn run_hook(
         label.push_str(" tool=");
         label.push_str(&tool);
     }
-    let (_, snapshot) = FurrowRepository::attach_and_snapshot(
+    let (_, snapshot) = FurrowRepository::attach_and_seal(
         root,
         Some(label.clone()),
         SnapshotTrigger::AgentRun,
+        seal.options()?,
     )?;
     if json {
         println!(

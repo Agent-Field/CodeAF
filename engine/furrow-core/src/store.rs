@@ -400,6 +400,16 @@ impl ObjectStore {
         self.catalog.cache_file(workspace_id, path, file)
     }
 
+    pub fn sqlite_paths(&self, workspace_id: &str) -> anyhow::Result<Vec<Vec<u8>>> {
+        self.catalog.sqlite_paths(workspace_id)
+    }
+
+    /// Runs `write` as one catalog transaction: the many small cache and index
+    /// writes of a capture become a single durable commit.
+    pub fn batched<T>(&self, write: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<T> {
+        self.catalog.batch(write)
+    }
+
     pub fn cached_directory(
         &self,
         workspace_id: &str,
@@ -634,86 +644,93 @@ impl ObjectStore {
             .as_ref()
             .filter(|_| checkpoint_valid)
             .map_or(0, |checkpoint| checkpoint.last_record_start);
-        pack.seek(SeekFrom::Start(offset))?;
-        let mut buffer = vec![0_u8; 1024 * 1024];
-        while offset < file_len {
-            let record_start = offset;
-            let mut magic = [0_u8; 4];
-            if pack.read_exact(&mut magic).is_err() {
-                self.truncate_pack_tail(&pack, record_start)?;
-                break;
+        let scanned_from = offset;
+        self.catalog.batch(|| {
+            pack.seek(SeekFrom::Start(offset))?;
+            let mut buffer = vec![0_u8; 1024 * 1024];
+            while offset < file_len {
+                let record_start = offset;
+                let mut magic = [0_u8; 4];
+                if pack.read_exact(&mut magic).is_err() {
+                    self.truncate_pack_tail(&pack, record_start)?;
+                    break;
+                }
+                anyhow::ensure!(
+                    &magic == OBJECT_MAGIC,
+                    "object pack corruption at byte {record_start}"
+                );
+                let mut meta = [0_u8; 2];
+                if pack.read_exact(&mut meta).is_err() {
+                    self.truncate_pack_tail(&pack, record_start)?;
+                    break;
+                }
+                anyhow::ensure!(meta[0] == OBJECT_VERSION, "unsupported object pack version");
+                let kind = ObjectKind::from_u8(meta[1]).context("invalid object kind in pack")?;
+                let mut len_bytes = [0_u8; 8];
+                if pack.read_exact(&mut len_bytes).is_err() {
+                    self.truncate_pack_tail(&pack, record_start)?;
+                    break;
+                }
+                let len = u64::from_le_bytes(len_bytes);
+                anyhow::ensure!(
+                    len <= MAX_OBJECT_LEN,
+                    "object pack record exceeds size limit"
+                );
+                let mut id = [0_u8; 32];
+                let mut checksum = [0_u8; 32];
+                if pack.read_exact(&mut id).is_err() || pack.read_exact(&mut checksum).is_err() {
+                    self.truncate_pack_tail(&pack, record_start)?;
+                    break;
+                }
+                let payload_offset = record_start + HEADER_LEN;
+                if file_len.saturating_sub(payload_offset) < len + OBJECT_END.len() as u64 {
+                    self.truncate_pack_tail(&pack, record_start)?;
+                    break;
+                }
+                let mut remaining = len;
+                let mut content_hasher = blake3::Hasher::new();
+                content_hasher.update(kind.domain());
+                let mut checksum_hasher = blake3::Hasher::new();
+                while remaining > 0 {
+                    let take = remaining.min(buffer.len() as u64) as usize;
+                    pack.read_exact(&mut buffer[..take])?;
+                    content_hasher.update(&buffer[..take]);
+                    checksum_hasher.update(&buffer[..take]);
+                    remaining -= take as u64;
+                }
+                let mut end = [0_u8; 4];
+                pack.read_exact(&mut end)?;
+                anyhow::ensure!(&end == OBJECT_END, "object pack trailer mismatch");
+                anyhow::ensure!(
+                    checksum_hasher.finalize().as_bytes() == &checksum,
+                    "object payload checksum mismatch"
+                );
+                anyhow::ensure!(
+                    content_hasher.finalize().as_bytes() == &id,
+                    "object ID mismatch"
+                );
+                self.catalog
+                    .insert_object(&id, kind, &pack_name, payload_offset, len)?;
+                offset = pack.stream_position()?;
+                object_count += 1;
+                last_object = Some(id);
+                last_record_start = record_start;
             }
-            anyhow::ensure!(
-                &magic == OBJECT_MAGIC,
-                "object pack corruption at byte {record_start}"
-            );
-            let mut meta = [0_u8; 2];
-            if pack.read_exact(&mut meta).is_err() {
-                self.truncate_pack_tail(&pack, record_start)?;
-                break;
+            if offset == scanned_from {
+                return Ok(());
             }
-            anyhow::ensure!(meta[0] == OBJECT_VERSION, "unsupported object pack version");
-            let kind = ObjectKind::from_u8(meta[1]).context("invalid object kind in pack")?;
-            let mut len_bytes = [0_u8; 8];
-            if pack.read_exact(&mut len_bytes).is_err() {
-                self.truncate_pack_tail(&pack, record_start)?;
-                break;
-            }
-            let len = u64::from_le_bytes(len_bytes);
-            anyhow::ensure!(
-                len <= MAX_OBJECT_LEN,
-                "object pack record exceeds size limit"
-            );
-            let mut id = [0_u8; 32];
-            let mut checksum = [0_u8; 32];
-            if pack.read_exact(&mut id).is_err() || pack.read_exact(&mut checksum).is_err() {
-                self.truncate_pack_tail(&pack, record_start)?;
-                break;
-            }
-            let payload_offset = record_start + HEADER_LEN;
-            if file_len.saturating_sub(payload_offset) < len + OBJECT_END.len() as u64 {
-                self.truncate_pack_tail(&pack, record_start)?;
-                break;
-            }
-            let mut remaining = len;
-            let mut content_hasher = blake3::Hasher::new();
-            content_hasher.update(kind.domain());
-            let mut checksum_hasher = blake3::Hasher::new();
-            while remaining > 0 {
-                let take = remaining.min(buffer.len() as u64) as usize;
-                pack.read_exact(&mut buffer[..take])?;
-                content_hasher.update(&buffer[..take]);
-                checksum_hasher.update(&buffer[..take]);
-                remaining -= take as u64;
-            }
-            let mut end = [0_u8; 4];
-            pack.read_exact(&mut end)?;
-            anyhow::ensure!(&end == OBJECT_END, "object pack trailer mismatch");
-            anyhow::ensure!(
-                checksum_hasher.finalize().as_bytes() == &checksum,
-                "object payload checksum mismatch"
-            );
-            anyhow::ensure!(
-                content_hasher.finalize().as_bytes() == &id,
-                "object ID mismatch"
-            );
-            self.catalog
-                .insert_object(&id, kind, &pack_name, payload_offset, len)?;
-            offset = pack.stream_position()?;
-            object_count += 1;
-            last_object = Some(id);
-            last_record_start = record_start;
-        }
-        pack.sync_data()?;
-        self.catalog.set_pack_checkpoint(
-            &pack_name,
-            &PackCheckpoint {
-                verified_len: offset,
-                object_count,
-                last_object,
-                last_record_start,
-            },
-        )?;
+            pack.sync_data()?;
+            self.catalog.set_pack_checkpoint(
+                &pack_name,
+                &PackCheckpoint {
+                    verified_len: offset,
+                    object_count,
+                    last_object,
+                    last_record_start,
+                },
+            )?;
+            Ok(())
+        })?;
         FileExt::unlock(&lock)?;
         Ok(())
     }

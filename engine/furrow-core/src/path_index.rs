@@ -2,6 +2,7 @@
 
 use crate::model::{EntryKind, ObjectId, TreeEntry};
 use anyhow::Context;
+use rusqlite::config::DbConfig;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 use std::time::Duration;
@@ -26,6 +27,10 @@ pub struct PathUsage {
 impl PathIndex {
     pub fn open(path: &Path) -> anyhow::Result<Self> {
         let connection = Connection::open(path)?;
+        // The index is rebuildable, so closing it need not pay two syncs to
+        // fold its log back into the database: the log is folded in when it
+        // grows, and every open reads through it.
+        connection.set_db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)?;
         connection.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
