@@ -92,6 +92,8 @@ type ExecResult struct {
 	Wall       time.Duration
 	SideEffect SideEffect
 	Services   []Service
+	// JailDegraded: the jail could not apply every limit on this kernel.
+	JailDegraded bool
 }
 
 // Executor runs a request and streams output to onOutput, which may be nil.
