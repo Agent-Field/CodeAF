@@ -413,6 +413,13 @@ type homeRowKind uint8
 // line that says nothing.
 const homeEmptyRow homeRowKind = 230
 
+// homeMachineRow is ONE CHAT ON ANOTHER MACHINE in the sessions panel
+// (homepanel_machines.go). It is numbered outside the iota block for
+// [homeEmptyRow]'s reason and it is not a cursor stop: there is no transcript on
+// this machine for enter to open, and a door that opened nothing would be a
+// dead end. What a person can do with such a row arrives with the takeover.
+const homeMachineRow homeRowKind = 231
+
 const (
 	// homeHeading is a project's name. It is not a cursor stop: there is
 	// nothing to do to a project, and a cursor that had to be walked past every
@@ -855,6 +862,9 @@ type homeView struct {
 	// instead of the door.
 	cardHover string
 	repos     map[string]homeRepoReading
+	// others is the last listing of chats on other machines, held here so a
+	// rebuild draws it without asking again (homepanel_machines.go).
+	others machineReading
 	// week is what the standing ledger says about the last seven days, by item
 	// id, and weekAt when it was read. ONE READING SERVES EVERY CARD on the
 	// screen (homestanding.go's [app.standWeek]): the ledger is a file per day,
@@ -1272,6 +1282,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },
 		why:        a.homeWhyEmpty(),
+		others:     a.machineRead,
 		world:      world,
 		known:      known,
 		far:        a.hosted(),
