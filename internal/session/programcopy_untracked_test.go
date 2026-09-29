@@ -2,12 +2,61 @@ package session
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
+
+// THE ENDING'S STASH COMMAND MUST TAKE ONLY THE INPUTS IT NAMES, because git
+// reads shell-quoted brackets and stars as pathspec patterns after the shell
+// has handed it each word.
+func TestTheEndingsStashTakesOnlyTheFilesItNames(t *testing.T) {
+	repo := newTestRepo(t)
+	inputs := []string{"notes[1].md", "notes1.md", "star*.txt", "starZ.txt", "it's two  spaces.txt"}
+	for _, path := range inputs {
+		writeFile(t, filepath.Join(repo, path), "person's "+path+"\n")
+	}
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Finish the notes")
+	want := []string{"notes[1].md", "star*.txt", "it's two  spaces.txt"}
+	for _, path := range want {
+		writeFile(t, filepath.Join(folder.Dir, path), "run's "+path+"\n")
+	}
+	end := folder.Finish("done")
+	sentence := end.Sentence()
+	prefix := "`git -C " + shellQuoted(repo) + " stash push -u -- "
+	start := strings.Index(sentence, prefix)
+	if start < 0 {
+		t.Fatalf("the ending has no stash push command: %s", sentence)
+	}
+	command := sentence[start+1:]
+	stop := strings.IndexByte(command, '`')
+	if stop < 0 {
+		t.Fatalf("the ending does not close its stash push command: %s", sentence)
+	}
+	command = command[:stop]
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ending command %q: %v\n%s", command, err, out)
+	}
+	stashed := strings.TrimSuffix(gitOut(t, repo, "show", "--name-only", "--format=", "-z", "stash@{0}^3"), "\x00")
+	got := strings.Split(stashed, "\x00")
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("the ending's stash took %q, want only %q; command: %s", got, want, command)
+	}
+	for _, path := range []string{"notes1.md", "starZ.txt"} {
+		if got := readFile(t, filepath.Join(repo, path)); got != "person's "+path+"\n" {
+			t.Fatalf("the ending changed untouched input %q to %q", path, got)
+		}
+	}
+	mustGit(t, repo, "merge", folder.Branch)
+}
 
 // AN UNTRACKED FILE THE RUN CHANGED IS ITS WORK; ONE IT LEFT ALONE IS NOT. The
 // person's untracked files are copied in as inputs without entering git; a

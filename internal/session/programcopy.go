@@ -1573,7 +1573,9 @@ func (e ProgramFolderEnd) copySentence() string {
 // any untracked file of theirs the run changed ([ProgramFolder.Inputs]), which
 // only a stash naming it with `-u` moves out of the way. Put aside, both come
 // back through the branch itself — the run began from them. The inputs it left
-// alone are not on the branch, so no stash touches them.
+// alone are not on the branch, so no stash touches them. THE STASH MUST TAKE
+// ONLY THE INPUTS IT NAMES: shell quotes keep each path one word, but git still
+// reads pathspec patterns, so names with pattern characters need literal magic.
 func (e ProgramFolderEnd) mergeWords() string {
 	f := e.Folder
 	repo := shellQuoted(f.Repo)
@@ -1586,6 +1588,9 @@ func (e ProgramFolderEnd) mergeWords() string {
 	if changed := e.changedInputs(); len(changed) > 0 {
 		quoted := make([]string, len(changed))
 		for i, path := range changed {
+			if strings.ContainsAny(path, "*?[\\") {
+				path = ":(literal)" + path
+			}
 			quoted[i] = shellQuoted(path)
 		}
 		why = append(why, "it holds its changes to your untracked "+namedFew(changed, programFolderShown))
