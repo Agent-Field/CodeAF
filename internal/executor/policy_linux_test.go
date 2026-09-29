@@ -4,6 +4,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -96,5 +97,12 @@ func TestSetupStanceOpensTheNetworkForEveryCall(t *testing.T) {
 func TestForSetupLeavesASeatWithoutASetupFormAsItIs(t *testing.T) {
 	if got := ForSetup(unseated{}); got != (unseated{}) {
 		t.Fatalf("got %T", got)
+	}
+}
+
+func TestLinuxRefusalNamesNamespaces(t *testing.T) {
+	err := refuseWithoutNamespaces(ExecRequest{Net: NetPolicy{}})
+	if !errors.Is(err, ErrNoIsolation) || !strings.Contains(err.Error(), "user namespaces") {
+		t.Fatalf("refusal = %v", err)
 	}
 }
