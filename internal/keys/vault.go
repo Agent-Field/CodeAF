@@ -11,6 +11,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
 // Entry is one secret: the env var Name injected at exec time, its Value, and
@@ -39,16 +41,14 @@ type Vault struct {
 	key  []byte
 }
 
-// Open prepares the vault under home, creating the home and key on first use.
+// Open prepares the vault under home, creating the home and the identity on
+// first use. The vault seals under the identity's cell key: one root secret.
 func Open(home string) (*Vault, error) {
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		return nil, err
-	}
-	key, err := loadKey(filepath.Join(home, "vault.key"))
+	id, err := identity.Ensure(home)
 	if err != nil {
 		return nil, err
 	}
-	return &Vault{path: filepath.Join(home, "vault.enc"), key: key}, nil
+	return &Vault{path: filepath.Join(home, "vault.enc"), key: id.CellKey()}, nil
 }
 
 // Exists reports whether a vault has been written under home. Asking does not
