@@ -20,8 +20,8 @@ func TestBranchCreatesChildWithParent(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
 	h1 := r.publishFirst(map[string]string{"a": "0"})
-	var branches []string
-	b.OnSuperseded = func(id string) { branches = append(branches, id) }
+	var branches, by []string
+	b.OnSuperseded = func(s Superseded) { branches, by = append(branches, s.Branch), append(by, s.By) }
 
 	r.store.set(blobstore.ErrUnreachable, nil)
 	var last string
@@ -38,8 +38,8 @@ func TestBranchCreatesChildWithParent(t *testing.T) {
 	r.store.set(nil, nil)
 
 	b.flush(context.Background())
-	if len(branches) != 1 {
-		t.Fatalf("OnSuperseded calls: %v", branches)
+	if len(branches) != 1 || by[0] != devB {
+		t.Fatalf("OnSuperseded calls: %v by %v", branches, by)
 	}
 	child := r.head(branches[0])
 	if child.Head != last || child.ParentCell != cellID || child.OrphanTurns != 3 ||
@@ -70,8 +70,8 @@ func TestTakeoverDuringUploadBranches(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
 	h1 := r.publishFirst(map[string]string{"a": "0"})
-	var branches []string
-	b.OnSuperseded = func(id string) { branches = append(branches, id) }
+	var branches, by []string
+	b.OnSuperseded = func(s Superseded) { branches, by = append(branches, s.Branch), append(by, s.By) }
 	h2 := r.seal(map[string]string{"a": "1"})
 	note(b, h2)
 
