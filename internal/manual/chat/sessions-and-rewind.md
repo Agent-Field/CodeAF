@@ -573,6 +573,12 @@ appear nowhere.
 The name of a conversation is the title it gave itself; failing that, the first seven words
 you said; failing that, the file name with `.jsonl` stripped.
 
+A conversation started with `/senior-dev` or `/task` is listed even if you never
+sent an ordinary chat message. Its saved task brief supplies the preview until the
+conversation has its own words or title, including after an abrupt exit. Empty-launch
+cleanup preserves saved task work. Listing the conversation does not restart or finish
+the interrupted task.
+
 There is **no argument form** of `/resume`. A conversation is named by a title the model
 wrote and lives in a timestamped file, so the only honest way to ask for one is to be shown
 them.

@@ -589,3 +589,34 @@ func TestAProgramsRunIsReadableWithTheSwitchOff(t *testing.T) {
 	}
 	endBeltRun(t, agent, double)
 }
+
+func TestStartingAProgramWithoutChatIsImmediatelyResumable(t *testing.T) {
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	workspace := newTestRepo(t)
+	bucket := t.TempDir()
+	place := Place{Dir: filepath.Join(bucket, "aaaaaaaaaaaaaaaa"), Workspace: workspace}
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(cfg *Config) {
+		cfg.Workspace = workspace
+		cfg.Place = place
+		cfg.SessionFile = place.Transcript()
+		cfg.AskConsent = false
+		cfg.Delegates = testPrograms("fake")
+	})
+	const brief = "repair the parser after the upgrade"
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", brief); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	// Read while the program is still running, without closing the agent or
+	// settling metadata writes; abrupt exit cannot supply either of those.
+	found := RecentSessions(bucket, 10)
+	rows := ReadRows([]string{place.Transcript()})
+	endBeltRun(t, agent, double)
+	if len(found) != 1 || found[0].Opening != brief {
+		t.Fatalf("program opening missing from resume: %+v", found)
+	}
+	if _, ok := rows[place.Transcript()]; !ok {
+		t.Fatal("program opening missing from home")
+	}
+}
