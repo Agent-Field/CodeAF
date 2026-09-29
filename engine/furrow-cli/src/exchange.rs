@@ -2,15 +2,11 @@
 //! come from the environment only; no flag carries one.
 
 use clap::Subcommand;
-use furrow::exchange::export::{published, ExportJob, ExportReport, DEFAULT_MAX_FRAME};
-use furrow::exchange::fetch::{want, Import};
+use furrow::exchange::export::DEFAULT_MAX_FRAME;
 use furrow::exchange::keys::keys_from_env;
-use furrow::exchange::ledger::Ledger;
-use furrow::exchange::{materialize::materialize, open_store};
-use furrow::model::{id_hex, parse_id};
+use furrow::exchange::ops;
 use furrow::repository::data_root;
-use furrow::sealer::CellSealer;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
@@ -78,45 +74,23 @@ fn execute(verb: Exchange, repo: &Path) -> anyhow::Result<Value> {
             outbox,
             ledger,
             max_frame,
-        } => {
-            let keys = keys_from_env()?;
-            let store = open_store(&data_dir)?;
-            let ledger = Ledger::named(&data_dir, &ledger)?;
-            let job = ExportJob {
-                store: &store,
-                keys: &keys,
-                head: parse_id(&head)?,
-                ledger: &ledger,
-                outbox: &outbox,
-                max_frame,
-            };
-            let report: ExportReport = job.run()?;
-            Ok(serde_json::to_value(report)?)
-        }
+        } => ops::export(
+            &data_dir,
+            &keys_from_env()?,
+            &head,
+            &ledger,
+            &outbox,
+            max_frame,
+        ),
         Exchange::Published { ledger, frames } => {
-            let recorded = published(&Ledger::named(&data_dir, &ledger)?, &frames)?;
-            Ok(json!({"recorded": recorded}))
+            ops::record_published(&data_dir, &ledger, &frames)
         }
-        Exchange::Want { head } => {
-            let sealer = CellSealer::new(&keys_from_env()?);
-            let rids = want(&open_store(&data_dir)?, &sealer, parse_id(&head)?)?;
-            Ok(json!({"want": rids.iter().map(id_hex).collect::<Vec<_>>()}))
-        }
+        Exchange::Want { head } => ops::wanted(&data_dir, &keys_from_env()?, &head),
         Exchange::Import { head, inbox } => {
-            let sealer = CellSealer::new(&keys_from_env()?);
-            let store = open_store(&data_dir)?;
-            let imported = Import {
-                store: &store,
-                sealer: &sealer,
-                head: parse_id(&head)?,
-                inbox: &inbox,
-            }
-            .run()?;
-            Ok(json!({"imported": imported}))
+            ops::import(&data_dir, &keys_from_env()?, &head, &inbox)
         }
         Exchange::Materialize { head, cell_dir } => {
-            let head = materialize(&data_dir, repo, cell_dir, parse_id(&head)?)?;
-            Ok(json!({"snapshot": id_hex(&head)}))
+            ops::restore_head(&data_dir, repo, cell_dir, &head)
         }
     }
 }
