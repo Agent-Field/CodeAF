@@ -4,13 +4,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-
-	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
-// kept is what eviction leaves in the cell's folder: the cell's own state and
-// the markers the engine needs to find its store again.
-var kept = map[string]bool{cell.StateDir: true, ".git": true, ".furrow": true}
+// kept is what eviction leaves in the workspace: the markers the engine needs
+// to find its store again.
+var kept = map[string]bool{".git": true, ".furrow": true}
 
 // removable lists the top-level entries eviction would remove.
 func removable(root string) ([]string, error) {

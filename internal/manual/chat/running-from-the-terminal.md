@@ -225,14 +225,16 @@ both use the cell the current folder is in.
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
 **`codeaf cell gc [--dry-run]`** (with `CODEAF_CELLS` on) frees disk from finished
-conversations. A conversation kept as a cell is a folder of working files, and those files
-can always be written back from what codeaf sealed. `gc` removes the working files of
+conversations. A conversation that codeaf keeps its own working folder for has files that
+can always be written back from what codeaf sealed. `gc` removes those working files of
 finished conversations, least recently opened first, until the cells fit the disk budget:
 the `cell disk budget` row in settings, or `CODEAF_CELL_BUDGET_GB` for one launch, in
 gigabytes, 20 when unset, 0 for no limit. Only a conversation nobody is using and that is
 fully sealed is touched. One that is open in any window, one opened in the last ten
 minutes, and one with a call still in flight or not yet sealed are passed over, and `gc`
-says why beside each. What stays is the conversation itself (its transcript and history),
+says why beside each. Your own project folders are never removed: a conversation
+working in a folder of yours is passed over with "workspace is yours", however much disk
+you are short of. What stays is the conversation itself (its transcript and history),
 so it still lists and opens, and opening one writes its files back, byte for byte. A start
 also looks at the budget, at most once an hour, using sizes it already knows. `--dry-run`
 removes nothing and prints what would go:

@@ -23,24 +23,36 @@ var _ Vault = cellstore.Engine{}
 const openGrace = 10 * time.Minute
 
 // Manager applies the budget to the cells whose ledgers sit under Engine.Root.
+// Engine is the store layout only; what a cell seals, and so what eviction may
+// remove and restore, is the tree Workspace names.
 type Manager struct {
 	Engine cellstore.Engine
-	Vault  Vault
+	// Workspace answers the tree a cell's session seals, "" when it has none.
+	Workspace func(cell.Cell) string
+	// Vault answers where that tree's sealed content lives.
+	Vault func(cell.Cell) Vault
 	// Busy reports whether a session holds the cell.
 	Busy  func(cell.Cell) bool
 	Limit int64
 	Now   func() time.Time
 }
 
-// New builds the stage 0 manager: the engine is both the local directory
-// layout and the vault. busy reports whether a session holds the cell.
-func New(engine cellstore.Engine, busy func(cell.Cell) bool) Manager {
-	return Manager{Engine: engine, Vault: engine, Busy: busy, Limit: Limit(), Now: time.Now}
+// New builds the stage 0 manager: the engine is the local directory layout,
+// and the vault is that engine over the cell's sealed workspace, so capture and
+// restore use the tree the seals use. busy reports whether a session holds the
+// cell.
+func New(engine cellstore.Engine, workspace func(cell.Cell) string, busy func(cell.Cell) bool) Manager {
+	vault := func(c cell.Cell) Vault {
+		e := cellstore.EngineFor(workspace(c))
+		e.Binary, e.DataRoot = engine.Binary, engine.DataRoot
+		return e
+	}
+	return Manager{Engine: engine, Workspace: workspace, Vault: vault, Busy: busy, Limit: Limit(), Now: time.Now}
 }
 
 // rules are what a cell must satisfy to be evicted, cheapest first.
 func (m Manager) rules() []Rule {
-	return []Rule{idle(m.Busy), justOpened(openGrace, m.Now), sealed(m.Engine)}
+	return []Rule{idle(m.Busy), justOpened(openGrace, m.Now), owned(m.Workspace), sealed(m.Engine)}
 }
 
 func (m Manager) nowMs() int64 { return m.Now().UnixMilli() }
@@ -75,16 +87,17 @@ func (m Manager) materialize(ctx context.Context, c cell.Cell, p Pointer) error 
 	if len(p.Paths) == 0 {
 		return nil
 	}
-	return m.Vault.Restore(ctx, c, p.Snapshot, p.Paths)
+	return m.Vault(c).Restore(ctx, c, p.Snapshot, p.Paths)
 }
 
-// evict removes the working files of a cell. The caller holds its lock.
+// evict removes the working files of a cell's workspace. The caller holds its
+// lock, and the rules have said the workspace is the harness's own.
 func (m Manager) evict(ctx context.Context, c cell.Cell, e Entry) error {
-	paths, err := removable(c.Root)
+	paths, err := removable(m.Workspace(c))
 	if err != nil {
 		return err
 	}
-	handle, err := m.Vault.Capture(ctx, c)
+	handle, err := m.Vault(c).Capture(ctx, c)
 	if err != nil {
 		return err
 	}
