@@ -446,12 +446,16 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 	a.harnessSeq++
 	id := a.harnessSeq
 	answers := make(chan harnessAnswer, 1)
-	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]harnessAsk, 1)
-	}
-	a.harnessAsks[id] = harnessAsk{answers: answers}
 	a.mu.Unlock()
 
+	// THE SENTENCE LANDS BEFORE THE LANE IS VISIBLE. waitingOnPerson reads the
+	// lane under a.mu and the sentence under the desk's own lock, one after the
+	// other. Filling harnessAsks first and banking the desk row afterwards let a
+	// reader report that a person is needed with an empty reason. The row is
+	// banked while a.mu is held and the map is filled before that lock is
+	// released, so the unlock is the first moment either half can be seen (the
+	// same order askConnect keeps).
+	//
 	// THE OFFER IS RAISED THROUGH THE ONE DOOR, with the card as its
 	// announcement (question.go's [Agent.raiseQuestion]): the question is the
 	// same object [Agent.OpenQuestions] used to derive at subscription time, and
@@ -470,7 +474,23 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 		Model:     match.Model,
 		ModelNote: match.ModelNote,
 	}
-	defer a.presenceAskingWhole(a.harnessQuestion(id, offer), func() { hub.send(offer) })()
+	q := a.harnessQuestion(id, offer)
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return harnessAnswer{}, errAgentClosed
+	}
+	forgetDesk := a.presenceAskingQuestion(q)
+	if a.harnessAsks == nil {
+		a.harnessAsks = make(map[uint64]harnessAsk, 1)
+	}
+	a.harnessAsks[id] = harnessAsk{answers: answers}
+	a.mu.Unlock()
+	letGo := a.raiseQuestion(q, func() { hub.send(offer) })
+	defer func() {
+		forgetDesk()
+		letGo()
+	}()
 
 	select {
 	case answer := <-answers:
