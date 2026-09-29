@@ -82,7 +82,7 @@ var commands = []command{
 	// on it rather than on "unknown command: /clear".
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
-	{name: "compact", desc: "summarize the conversation now"},
+	{name: "compact", desc: "shorten the conversation now"},
 	{name: "drafts", desc: "cleared-but-kept drafts · enter restores one, d lets one go"},
 	{name: "stop", desc: "stop the open task or selected work · asks first"},
 	{name: "autonomy", desc: "how questions are handled while you are away"},

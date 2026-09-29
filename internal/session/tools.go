@@ -152,6 +152,12 @@ func (a *Agent) belt() []bare.Tool {
 	if a.config.mayBashBelt() {
 		return a.bashBelt()
 	}
+	// A MODEL WITH NO TOOLS CARRIES NO BELT, and no shelf a loader could reach
+	// either: the catalog says it cannot call one (chatpage.go).
+	if a.config.promptProfile().chat() {
+		a.clearShelf()
+		return nil
+	}
 	tools := bare.AllToolsCapped(a.config.Workspace, a.resultCaps())
 	for index, tool := range tools {
 		switch tool.Name {

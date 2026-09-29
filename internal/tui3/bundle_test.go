@@ -1511,8 +1511,8 @@ func TestTheCompactionRowRunsAndThenSettlesInPlace(t *testing.T) {
 		t.Fatalf("the settle added a row: %d compaction rows, want one", n)
 	}
 	settled := findRow(t, a, "compacted from ~168k tokens")
-	if !strings.Contains(settled, "⚭") || !strings.Contains(settled, "──") {
-		t.Fatalf("a finished pass is not the divider: %q", settled)
+	if !strings.Contains(settled, "⚭") || strings.Contains(settled, "──") {
+		t.Fatalf("a finished pass is not the one quiet compaction line: %q", settled)
 	}
 	if !strings.Contains(settled, "· took 6s") {
 		t.Fatalf("the finished pass does not say what it took: %q", settled)
@@ -1541,8 +1541,8 @@ func TestACompactedEventWithNothingRunningIsBornSettled(t *testing.T) {
 	a.touch()
 
 	row := findRow(t, a, "compacted from ~84k tokens")
-	if !strings.Contains(row, "⚭") || !strings.Contains(row, "──") {
-		t.Fatalf("the replayed pass is not the divider: %q", row)
+	if !strings.Contains(row, "⚭") || strings.Contains(row, "──") {
+		t.Fatalf("the replayed pass is not the one quiet compaction line: %q", row)
 	}
 	if strings.Contains(row, "took") {
 		t.Fatalf("a pass nobody watched claimed a duration: %q", row)

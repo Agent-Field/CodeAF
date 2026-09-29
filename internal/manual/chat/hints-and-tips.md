@@ -116,7 +116,7 @@ that is true for you gets its turn before any repeats, and a tip that stops bein
 stands down at once for the next. (A conversation's keys row does not take turns: it ranks,
 and the first tip in the list that is true for you there is the one it says.) Nothing outranks anything — with one exception. **A tip
 that has just become true jumps the queue**: when a conversation crosses half its context
-window, `/compact summarizes the conversation now` is said next rather than forty minutes
+window, `/compact shortens the conversation now` is said next rather than forty minutes
 later when the ring comes round. It jumps once and then takes its turn like the rest.
 
 ## Every hint codeaf can show, and what makes each one go away
@@ -127,7 +127,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Starting work**
 
-- `/compact summarizes the conversation now` — when the conversation passes half its
+- `/compact shortens the conversation now` — when the conversation passes half its
   context window. Retired when a `/compact` finishes.
 - `/cost says what this conversation has spent` — once the conversation has spent about
   ten cents. Retired when you run `/cost`.

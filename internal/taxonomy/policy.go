@@ -534,11 +534,9 @@ func (shapePolicy) Class() Class { return Shape }
 
 func (shapePolicy) Decide(e Evidence, _ Limits) Verdict {
 	if e.Overflow {
-		// COMPACTION IS OFFERED ONCE PER TURN AND THEN NEVER AGAIN. A request
-		// that still does not fit after it was made smaller is not going to fit,
-		// and offering the same move a second time is a loop with a person
-		// watching it. The second one comes back as WORK — the honest verdict,
-		// because there is nothing left for this package to sell.
+		// The caller reports an exhausted recovery episode, not whether
+		// anything earlier in a long turn was ever compacted. Successful
+		// generations reset the episode; identical failed requests do not.
 		if e.Compacted {
 			return Verdict{Class: Work, Action: ActionReport, Reason: ReasonTooBig}
 		}

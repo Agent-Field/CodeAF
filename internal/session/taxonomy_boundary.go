@@ -429,11 +429,8 @@ func (a *Agent) readEmptyReply(model string, attempt int, outOfTime bool) taxono
 // wire, the model or the job — it is the REQUEST, and the answer is the same
 // question in fewer words ([taxonomy.Shape], [taxonomy.ActionCompact]).
 //
-// `compacted` is whether this turn has already paid for that once, and it is the
-// caller's fact because only the turn knows. The policy is what decides what to
-// do with it: a second overflow after a compaction is a request that is not
-// going to fit, and it comes back as work rather than as another round of the
-// same move.
+// `compacted` says the pending generation exhausted its recovery allowance.
+// Only the caller can know that; successful work resets the allowance.
 func (a *Agent) readOverflow(err error, model string, compacted bool) taxonomy.Verdict {
 	evidence := wireEvidence(err, 1)
 	if !evidence.Overflow {

@@ -2571,7 +2571,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return mustJSON(door.AnswerLaneOffer(yes)), nil
 
 	case MethodCompact:
-		return nil, agent.Compact(context.Background())
+		err := agent.Compact(context.Background())
+		if why, skipped := session.SummarySkippedWhy(err); skipped {
+			// An older surface ignores a successful call's optional result and
+			// still reads a true success, while a newer one can show the reason.
+			sess.announce()
+			return mustJSON(why), nil
+		}
+		// The command's reply follows the new size, so hosted surfaces show
+		// the same before/after reading as a local conversation.
+		sess.announce()
+		return nil, err
 
 	case MethodClose:
 		// The surface said goodbye politely, and it is saying it about the

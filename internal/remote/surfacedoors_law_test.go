@@ -277,7 +277,7 @@ func TestEveryStreamOpenerIsOrdered(t *testing.T) {
 	// AND NO CLASS AT ALL RUNS ON THE GOROUTINE THAT READS THE SOCKET. The road
 	// type has no third value, so this is a statement about the two it has
 	// rather than a check somebody could forget to extend.
-	for _, class := range []callClass{classOrdered, classGetter, classAct} {
+	for _, class := range []callClass{classOrdered, classGetter, classAct, classWork} {
 		if class.road() != inOrder && class.road() != onItsOwn {
 			t.Errorf("a class found a road that is not one of the two")
 		}

@@ -381,7 +381,7 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// spinning over a turn that moved on is the defect the pair exists to
 		// close.
 		f.closeLive()
-		f.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+		f.settleCompaction(firstNonEmpty(ev.Hint, "compacted"), ev.Summarized > 0)
 	}
 }
 
@@ -930,13 +930,13 @@ func (f *feed) finishTool(ev session.Event) {
 // an older session predates the start event entirely. Those get a row born
 // finished — the divider they always drew, with no duration claimed, because a
 // pass this surface did not see the start of has no honest elapsed time.
-func (f *feed) settleCompaction(text string) {
+func (f *feed) settleCompaction(text string, summarized bool) {
 	for i := len(f.entries) - 1; i >= 0; i-- {
 		e := &f.entries[i]
 		if e.kind != entryCompact || !e.ended.IsZero() {
 			continue
 		}
-		e.text, e.ended = text, f.now()
+		e.text, e.ended, e.summarized = text, f.now(), summarized
 		e.stale = true
 		// AND THE PAGE IS TOLD, HERE. Ingest is the whole of what an event does
 		// (see [feed.ingest]), so a settle that left the repaint to its caller was
@@ -947,7 +947,7 @@ func (f *feed) settleCompaction(text string) {
 	}
 	now := f.now()
 	f.entries = append(f.entries, entry{
-		kind: entryCompact, text: text, turn: f.turn, began: now, ended: now,
+		kind: entryCompact, text: text, turn: f.turn, began: now, ended: now, summarized: summarized,
 	})
 	f.follow()
 	f.touch()

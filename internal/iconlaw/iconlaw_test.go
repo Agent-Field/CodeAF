@@ -74,6 +74,7 @@ var ownedRunes = map[rune]string{
 	'⇉': "tokens.GActionCoordinate",
 	'◷': "tokens.GActionWait",
 	'▪': "tokens.GActionWork",
+	'⚭': "tokens.GCompacted",
 	'⌕': "tokens.GSearch",
 	'✎': "tokens.GWrite",
 	'⌾': "tokens.GFileImage",
