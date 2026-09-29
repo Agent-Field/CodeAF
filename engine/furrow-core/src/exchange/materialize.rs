@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 ///
 /// The folder is attached first, which seals what it holds now (nothing, for
 /// an empty one), and the head is then restored over it by the ordinary
-/// rewind, so a folder that was not empty is undoable.
+/// rewind, so a folder that was not empty is undoable. The head then becomes
+/// the workspace head, so the next seal descends from it; its own parent stays
+/// with the sender, which makes the chain shallow there.
 pub fn materialize(
     data_dir: &Path,
     target: &Path,
@@ -29,5 +31,6 @@ pub fn materialize(
         options,
     )?;
     repository.rewind(&head, &[], false)?;
+    repository.adopt_head(&head)?;
     Ok(head)
 }

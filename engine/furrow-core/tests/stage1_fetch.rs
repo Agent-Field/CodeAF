@@ -336,3 +336,117 @@ fn materialize_refuses_an_incomplete_head_and_leaves_the_folder_empty() {
     assert!(materialize(&dst.data, &dst.tree, Some(dst.cell.clone()), src.head).is_err());
     assert_eq!(fs::read_dir(&dst.tree).unwrap().count(), 0);
 }
+
+/// A sends its second snapshot only; the first stays behind on A.
+fn second_snapshot(src: &Source) -> (ObjectId, ObjectId) {
+    let mut repo =
+        FurrowRepository::open_composed_in(&src.data, &src.tree, Some(src.cell.clone())).unwrap();
+    fs::write(
+        src.tree.join("later.txt"),
+        b"written after the first snapshot\n",
+    )
+    .unwrap();
+    let second = repo
+        .snapshot(Some("second".to_owned()), SnapshotTrigger::Manual)
+        .unwrap();
+    (src.head, second)
+}
+
+fn delivered(src: &Source, head: ObjectId) -> Receiver {
+    let dst = receiver();
+    let report = export_with(
+        &src.data,
+        head,
+        &keys(),
+        LEDGER,
+        &src._temp.path().join("outbox"),
+        SMALL_FRAME,
+    )
+    .unwrap();
+    put_inbox(&dst.inbox, &objects_of(&frame_paths(&report)));
+    import_all(&dst.data, head, &dst.inbox).unwrap();
+    materialize(&dst.data, &dst.tree, Some(dst.cell.clone()), head).unwrap();
+    dst
+}
+
+fn parent_of(data: &std::path::Path, id: &ObjectId) -> Option<ObjectId> {
+    let store = furrow::exchange::open_store(data).unwrap();
+    store
+        .read_struct::<furrow::model::Snapshot>(id, ObjectKind::Snapshot)
+        .unwrap()
+        .parent
+}
+
+#[test]
+fn the_next_seal_after_materialize_descends_from_the_imported_head() {
+    let src = source();
+    let (first, second) = second_snapshot(&src);
+    let dst = delivered(&src, second);
+    let mut repo =
+        FurrowRepository::open_composed_in(&dst.data, &dst.tree, Some(dst.cell.clone())).unwrap();
+    fs::write(dst.tree.join("on-b.txt"), b"continued here\n").unwrap();
+    let next = repo.snapshot(None, SnapshotTrigger::Manual).unwrap();
+    assert_eq!(parent_of(&dst.data, &next), Some(second));
+    assert_ne!(Some(first), parent_of(&dst.data, &next));
+}
+
+#[test]
+fn log_marks_the_imported_head_shallow() {
+    let src = source();
+    let (_, second) = second_snapshot(&src);
+    let dst = delivered(&src, second);
+    let repo =
+        FurrowRepository::open_composed_in(&dst.data, &dst.tree, Some(dst.cell.clone())).unwrap();
+    let log = repo.timeline(20).unwrap();
+    assert_eq!(
+        log[0].id,
+        id_hex(&second),
+        "the imported head is the newest entry"
+    );
+    assert!(log[0].shallow);
+    assert!(
+        log[1..].iter().all(|entry| !entry.shallow),
+        "B's own snapshots have their parents"
+    );
+    let json = serde_json::to_value(&log).unwrap();
+    assert_eq!(json[0]["shallow"], true);
+    assert!(
+        json[1].get("shallow").is_none(),
+        "the field is additive: absent when false"
+    );
+}
+
+#[test]
+fn gc_keeps_everything_reachable_and_ignores_the_missing_parent() {
+    let src = source();
+    let (_, second) = second_snapshot(&src);
+    let dst = delivered(&src, second);
+    let mut repo =
+        FurrowRepository::open_composed_in(&dst.data, &dst.tree, Some(dst.cell.clone())).unwrap();
+    fs::write(dst.tree.join("on-b.txt"), b"continued here\n").unwrap();
+    let next = repo.snapshot(None, SnapshotTrigger::Manual).unwrap();
+    repo.gc(false).unwrap();
+    assert!(
+        want_of(&dst.data, second).is_empty(),
+        "the adopted head is intact"
+    );
+    assert!(want_of(&dst.data, next).is_empty());
+    assert!(repo
+        .materialization(&second)
+        .unwrap()
+        .missing_paths
+        .is_empty());
+}
+
+#[test]
+fn restore_to_an_id_from_the_senders_older_history_refuses_cleanly() {
+    let src = source();
+    let (first, second) = second_snapshot(&src);
+    let dst = delivered(&src, second);
+    let repo =
+        FurrowRepository::open_composed_in(&dst.data, &dst.tree, Some(dst.cell.clone())).unwrap();
+    let before = dump(&dst.tree);
+    let error = repo.resolve_snapshot(&id_hex(&first)).unwrap_err();
+    assert!(error.to_string().contains(&id_hex(&first)), "{error:#}");
+    assert_eq!(dump(&dst.tree), before, "nothing was restored");
+}
