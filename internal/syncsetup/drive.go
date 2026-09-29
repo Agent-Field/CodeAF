@@ -47,6 +47,8 @@ type Drive struct {
 	done   chan struct{}
 	once   sync.Once
 
+	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
+
 	mu   sync.Mutex
 	line string // the superseded line, empty while this device drives
 }
@@ -60,7 +62,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err := s.putDevice(ctx, opt.DeviceName); err != nil {
 		return nil, err
 	}
-	s.pushVault(ctx)
+	d.syncVault(ctx)
 	drv, held, err := s.driving(ctx, c)
 	if err != nil {
 		return nil, err
@@ -82,16 +84,32 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	return d, nil
 }
 
-// pushVault sends this machine's secrets along with the chat, so a machine that
-// continues the chat can put its .env back. It is best effort and says nothing
-// when it fails: the vault is sent again the next time a chat starts, and a
-// vault that was never written has nothing to send.
-func (s *Sync) pushVault(ctx context.Context) {
-	if !keys.Exists(s.Home) {
+// syncVault sends this machine's secrets along with the chat, so a machine that
+// continues the chat can put its .env back. The vault changes while a chat
+// runs (the first seal imports the project's .env), so it is sent whenever its
+// content differs from what was last sent, not once at the start. It is best
+// effort and says nothing when it fails: the fingerprint is then not recorded,
+// so the next flush tries again, and a seal never waits on it.
+func (d *Drive) syncVault(ctx context.Context) {
+	fp, ok := keys.Fingerprint(d.sync.Home)
+	if !ok || fp == d.sent {
 		return
 	}
-	if syncer, err := s.vaultSyncer(nil); err == nil {
-		_ = syncer.Push(ctx)
+	syncer, err := d.sync.vaultSyncer(nil)
+	if err != nil || syncer.Push(ctx) != nil {
+		return
+	}
+	// The push merges what the directory holds, which may rewrite the file.
+	d.sent, _ = keys.Fingerprint(d.sync.Home)
+}
+
+// flushed is what runs after each publish: the telemetry, then the vault.
+func (d *Drive) flushed(rec *cellstats.Recorder) func(cellsync.Flush) {
+	return func(f cellsync.Flush) {
+		rec.OnFlush(f)
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+		d.syncVault(ctx)
 	}
 }
 
@@ -159,7 +177,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		Driving:      &drv,
 		Interval:     s.Interval,
 		Info:         d.info,
-		OnFlush:      rec.OnFlush,
+		OnFlush:      d.flushed(rec),
 		OnSuperseded: d.becomeViewer,
 		OnError:      d.refusal,
 		Sleep:        d.opt.Sleep,
@@ -279,6 +297,7 @@ func (d *Drive) Close(ctx context.Context) error {
 		}
 		d.cancel()
 		<-d.done
+		d.syncVault(ctx)
 		err = d.batcher.Close(ctx)
 	})
 	return err

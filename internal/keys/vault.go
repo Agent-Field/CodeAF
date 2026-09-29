@@ -2,6 +2,7 @@ package keys
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -86,6 +87,18 @@ func Open(home string) (*Vault, error) {
 func Exists(home string) bool {
 	_, err := os.Stat(filepath.Join(home, "vault.enc"))
 	return err == nil
+}
+
+// Fingerprint names the vault file's current content, or answers false when no
+// vault has been written. The sealed bytes change exactly when the vault does,
+// so two equal fingerprints mean nothing new to send.
+func Fingerprint(home string) (string, bool) {
+	raw, err := os.ReadFile(filepath.Join(home, "vault.enc"))
+	if err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), true
 }
 
 // Put stores or replaces the secret under id.

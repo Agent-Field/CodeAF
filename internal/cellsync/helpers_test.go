@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -234,6 +235,7 @@ type fakeSleeper struct {
 	changed *sync.Cond
 	now     time.Duration
 	waiters []*sleeper
+	expired bool // settleOn ran out of patience
 }
 
 type sleeper struct {
@@ -257,8 +259,17 @@ func (s *fakeSleeper) Sleep(ctx context.Context, d time.Duration) error {
 	case <-w.done:
 		return nil
 	case <-ctx.Done():
+		s.forget(w)
 		return ctx.Err()
 	}
+}
+
+// forget drops a sleeper whose wait was cancelled, so settle counts live loops.
+func (s *fakeSleeper) forget(w *sleeper) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.waiters = slices.DeleteFunc(s.waiters, func(x *sleeper) bool { return x == w })
+	s.changed.Broadcast()
 }
 
 // advance moves both the directory's clock and the sleepers' time by d.
@@ -284,6 +295,27 @@ func (s *fakeSleeper) settle(n int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for len(s.waiters) != n {
+		s.changed.Wait()
+	}
+}
+
+// settleOn waits until some loop sleeps for exactly d from now: the loop has
+// finished the work before that sleep. It gives up after a real second, so a
+// loop that never gets there fails the test instead of hanging it.
+func (s *fakeSleeper) settleOn(d time.Duration) {
+	giveUp := time.AfterFunc(time.Second, func() {
+		s.mu.Lock()
+		s.expired = true
+		s.mu.Unlock()
+		s.changed.Broadcast()
+	})
+	defer giveUp.Stop()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for !slices.ContainsFunc(s.waiters, func(w *sleeper) bool { return w.wake-s.now == d }) {
+		if s.expired {
+			panic(fmt.Sprintf("no loop went to sleep for %v", d))
+		}
 		s.changed.Wait()
 	}
 }

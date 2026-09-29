@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -107,6 +108,14 @@ func (n *noticeLog) add(line string) {
 	defer n.mu.Unlock()
 	n.lines = append(n.lines, line)
 }
+
+func (n *noticeLog) all() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return slices.Clone(n.lines)
+}
+
+func (n *noticeLog) has(line string) bool { return slices.Contains(n.all(), line) }
 
 func (n *noticeLog) last() string {
 	n.mu.Lock()
