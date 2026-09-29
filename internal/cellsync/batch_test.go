@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // fakeInner is a Stage 0 store that seals instantly in the fake engine, with
@@ -168,8 +169,8 @@ func TestDirectoryDownThenFenceStale(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
 	h1 := r.publishFirst(map[string]string{"a": "0"})
-	var branches []string
-	b.OnSuperseded = func(id string) { branches = append(branches, id) }
+	var branches, by []string
+	b.OnSuperseded = func(s Superseded) { branches, by = append(branches, s.Branch), append(by, s.By) }
 	h2 := r.seal(map[string]string{"a": "1"})
 	note(b, h2)
 
@@ -201,7 +202,7 @@ func TestBatcherRidesOutRelayRestart(t *testing.T) {
 	h2 := r.seal(map[string]string{"a": "1"})
 	note(b, h2)
 	var superseded int
-	b.OnSuperseded = func(string) { superseded++ }
+	b.OnSuperseded = func(Superseded) { superseded++ }
 
 	r.dirA.set(directory.ErrUnreachable) // the relay restarts
 	r.clock.Advance(directory.HeartbeatEvery)
@@ -228,20 +229,20 @@ func TestSkewIsSurfacedOnce(t *testing.T) {
 	r.publishFirst(map[string]string{"a": "0"})
 	note(b, r.seal(map[string]string{"a": "1"}))
 
-	r.dirA.set(ErrSkew)
+	r.dirA.set(wireauth.ErrSkew)
 	for i := 0; i < 3; i++ {
 		if d := b.flush(context.Background()); d != b.Interval {
 			t.Fatalf("skew was retried on the backoff: %v", d)
 		}
 		b.beat(context.Background())
 	}
-	if len(shown) != 1 || !errors.Is(shown[0], ErrSkew) {
+	if len(shown) != 1 || !errors.Is(shown[0], wireauth.ErrSkew) {
 		t.Fatalf("OnError calls: %v", shown)
 	}
 
 	r.dirA.set(nil) // a fixed clock makes the next skew news again
 	b.flush(context.Background())
-	r.dirA.set(ErrSkew)
+	r.dirA.set(wireauth.ErrSkew)
 	note(b, r.seal(map[string]string{"a": "2"}))
 	b.flush(context.Background())
 	if len(shown) != 2 {
@@ -306,8 +307,8 @@ func TestSupersededDriverStopsAndNotifiesOnce(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
 	h1 := r.publishFirst(map[string]string{"a": "0"})
-	var branches []string
-	b.OnSuperseded = func(id string) { branches = append(branches, id) }
+	var branches, by []string
+	b.OnSuperseded = func(s Superseded) { branches, by = append(branches, s.Branch), append(by, s.By) }
 	r.takeOver()
 	r.bPublishes(h1)
 
@@ -317,8 +318,8 @@ func TestSupersededDriverStopsAndNotifiesOnce(t *testing.T) {
 		b.flush(context.Background())
 		b.beat(context.Background())
 	}
-	if len(branches) != 1 || branches[0] == "" {
-		t.Fatalf("OnSuperseded calls: %q", branches)
+	if len(branches) != 1 || branches[0] == "" || by[0] != devB {
+		t.Fatalf("OnSuperseded calls: %q by %q", branches, by)
 	}
 	if got := r.head(cellID); got.Head != otherHead {
 		t.Fatalf("the superseded driver moved the old head to %s", got.Head)
@@ -336,13 +337,13 @@ func TestSupersededWithNothingOrphanedNotifiesViewerOnce(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
 	r.publishFirst(map[string]string{"a": "0"})
-	var branches []string
-	b.OnSuperseded = func(id string) { branches = append(branches, id) }
+	var branches, by []string
+	b.OnSuperseded = func(s Superseded) { branches, by = append(branches, s.Branch), append(by, s.By) }
 	r.takeOver()
 	for i := 0; i < 3; i++ {
 		b.beat(context.Background())
 	}
-	if len(branches) != 1 || branches[0] != "" {
-		t.Fatalf("OnSuperseded calls: %q", branches)
+	if len(branches) != 1 || branches[0] != "" || by[0] != devB {
+		t.Fatalf("OnSuperseded calls: %q by %q", branches, by)
 	}
 }
