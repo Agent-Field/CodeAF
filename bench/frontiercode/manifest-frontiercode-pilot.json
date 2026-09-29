@@ -16,11 +16,11 @@
   "list_price_note": "The endpoint rate this campaign's key reaches, not the first-party rate: same figures the DeepSWE full113-v41 campaigns charged to Novita and GMICloud on 2026-09-12. The manifest price is the authority; models.dev is a cross-check when the network answers.",
   "judge_model": "openrouter/anthropic/claude-sonnet-4.5",
   "judge_prompt_version": "fc-judge-1",
-  "codeaf_commit": "293481674c8d1ea62b03f79874938c883000d37c",
-  "codeaf_sha256": "a1f88abe1a2a64cfc886c5ee3a381d4e84d05367a3c009245a050afd95d1500d",
+  "codeaf_commit": "7a5774b812ea91f0017cc00580ea13ecef6f19fc",
+  "codeaf_sha256": "fde4a42d0b77bc588c34bf827f0fd49c6c06fb937949a54efff9596404e9110a",
   "codeaf_local_binary": "bench/frontiercode/bin/codeaf-linux-amd64",
-  "rig_commit": "HEAD",
-  "rig_commit_note": "HEAD means the committed tip of the checkout being staged is the pin: a commit cannot name itself, so the sha is resolved and recorded at stage time. A frozen campaign may set a literal instead, and staging then refuses unless HEAD equals it.",
+  "rig_commit": "7a5774b812ea91f0017cc00580ea13ecef6f19fc",
+  "rig_commit_note": "The rig and the harness live in the same repository, so one literal sha pins both. Staging refuses unless HEAD equals it. (A campaign may set \"HEAD\" instead, in which case the tip of the checkout being staged is the pin and the sha is resolved and recorded at stage time.)",
   "corpus": "bench/frontiercode/tasks",
   "corpus_sha256": "9e8ff1d7a68c42b0629a4ca039a66602dd112219e3e89969a004cc7ae7873040",
   "host_shards": 1,
@@ -35,12 +35,13 @@
   "shard_sha256": {
     "1": "649e7c20f346da3fe40868dc097019fd609d3c29e62dd2acbcc720d4b88a0e01"
   },
-  "max_cost_usd": "25.00",
+  "max_cost_usd": "500.00",
+  "max_cost_note": "Per run, and enforced: launch.sh passes this to run.sh as the agent's dollar ceiling, and the judge's tokens bill against the same figure. It is not a campaign total. The campaign's provider-side spend is the delta of the key's usage counter between the baseline recorded at install and the final read at teardown.",
   "max_hours": 2,
   "hard_timeout_seconds": 7500,
   "reasoning_effort": "high",
   "gcp": {
-    "project": "codeaf-bench",
+    "project": "openaf-505800",
     "zone": "us-central1-a",
     "image": "codeaf-frontiercode-base-20260928",
     "machine_type": "e2-standard-8",
@@ -50,7 +51,8 @@
   },
   "key": {
     "store": "keychain",
-    "item": "fc-pilot-deepseek-v41-flash"
+    "item": "frontiercode-generic",
+    "reuse": "one key may serve many campaigns; this campaign's spend is the delta of the provider's usage counter between the baseline recorded at install and the final read at teardown, valid on the assumption that nothing else used the key in that window"
   },
   "recovery": {
     "note": "Declared contract exceptions live here, never hard-coded in a script. An empty list means this campaign expects no exception.",
