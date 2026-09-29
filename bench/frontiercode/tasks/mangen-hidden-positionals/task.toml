@@ -1,0 +1,57 @@
+# The task manifest for the mangen-hidden-positionals candidate.
+# Same layout as the shell-pipe-empty-command fixture; see that file for the
+# schema comments. Mined from clap-rs/clap#6482 (merged 2026-08-12).
+schema_version = "1.3"
+artifacts = ["/logs/artifacts/model.patch"]
+
+[task]
+name = "frontiercode/mangen-hidden-positionals"
+description = "Make clap's man-page generator filter hidden positionals out of the SYNOPSIS the way it already filters hidden options"
+authors = []
+keywords = ["rust", "cli", "manpage"]
+
+[metadata]
+task_id = "mangen-hidden-positionals"
+display_title = "Hide hidden positionals from the man-page SYNOPSIS"
+display_description = "clap_mangen filters hidden OPTIONS out of the SYNOPSIS but renders every POSITIONAL, hidden or not, so an application's internal positional leaks into its published man page. Make the generator filter hidden positionals exactly as hidden options already are, leaving the SYNOPSIS of a command with no hidden arguments byte-identical."
+language = "rust"
+repository_url = "https://github.com/clap-rs/clap"
+base_commit_hash = "8e50ec891e30cd2af4f9a62a405a5b7ee31aac4f"
+reference_commit_hash = "07c6fd2d7cef1601d0308d51dff9d695ff790bbc"
+reference_pr = "clap-rs/clap#6482"
+license = "Apache-2.0 (upstream only; fetched at image build time)"
+# Where the task tree lives inside the container (grade.sh mounts and grades
+# it; the fixture leaves this key off and defaults to jsonschema).
+agent_repo_path = "clap"
+
+[environment]
+docker_image = "frontiercode-mangen-hidden-positionals:env"
+os = "linux"
+allow_internet = true
+network_mode = "public"
+cpus = 4
+memory_mb = 8192
+# Rust: the toolchain download and the first workspace compile are slow.
+build_timeout_sec = 3600.0
+
+[agent]
+timeout_sec = 7200.0
+
+[verifier]
+# The reverse-classical criterion reverts clap_mangen/src and must test the
+# REVERTED tree: touch the crate's Rust sources so the incremental build
+# cannot serve stale objects, then rebuild the tree.
+rebuild_command = "find clap_mangen -name '*.rs' -exec touch {} + && cargo build -p clap_mangen"
+network_mode = "no-network"
+environment_mode = "separate"
+timeout_sec = 5400.0
+cpus = 4
+memory_mb = 8192
+docker_image = "frontiercode-mangen-hidden-positionals:verify"
+
+[[verifier.collect]]
+command = "cd /root/repos/clap && git add -A && git diff --binary 8e50ec891e30cd2af4f9a62a405a5b7ee31aac4f > /logs/artifacts/model.patch"
+timeout_sec = 300.0
+
+[rubric]
+file = "rubric.toml"
