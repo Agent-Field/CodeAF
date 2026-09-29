@@ -35,7 +35,8 @@ const (
 	IntervalVar = "CODEAF_SYNC_INTERVAL_MS"
 	// DefaultInterval is the flush interval when IntervalVar is unset.
 	DefaultInterval = 5 * time.Second
-	// requestTimeout bounds one request so a silent relay cannot hang a caller.
+	// requestTimeout bounds one directory request so a silent relay cannot hang
+	// a caller. The store sizes its own deadlines to each body.
 	requestTimeout = 30 * time.Second
 )
 
@@ -123,9 +124,10 @@ func build(home, base string, id identity.Identity, dev identity.Dev, interval t
 	sign := reqsign.SignFor(deviceSigner{id, dev}, time.Now)
 	hc := &http.Client{Timeout: requestTimeout}
 	counters := &blobstore.Counters{}
+	wire := blobstore.Counting{Inner: blobstore.NewHTTP(base, sign, &http.Client{}), C: counters}
 	return &Sync{
 		Dir:      directory.NewHTTP(base, sign, hc),
-		Store:    blobstore.Counting{Inner: blobstore.NewHTTP(base, sign, hc), C: counters},
+		Store:    blobstore.NewResuming(wire),
 		Counters: counters,
 		Device:   dev,
 		Identity: id,
