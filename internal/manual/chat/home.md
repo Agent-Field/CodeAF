@@ -340,8 +340,10 @@ on, byte for byte: text and binary files, files that were never in a git reposit
 executable bit, links. Nothing is fetched from git and no git login or remote is needed on
 the machine that continues; everything comes from your relay. The copy lives in a folder of
 its own under this machine's chats, and the chat works in a `work` folder inside it. Your
-project folder on the other machine is not touched, and if this machine has its own copy of
-the chat in one of your project folders, that project folder is left as it is.
+project folder on the other machine is not touched. If this machine already has the chat and
+it works in one of your project folders, the chat is restored into that very folder: it is
+never renamed or replaced, so an editor or git that holds it open keeps working, and it shows
+the other machine's work.
 
 **Secrets do not travel in the files.** A `.env` is kept in your key vault, and the vault
 travels with your chats. When you continue, the chat's secrets are put back as a `.env` in
@@ -349,9 +351,9 @@ the chat's work folder with the same variables, readable by you alone. A `.env` 
 already wrote here is never overwritten, and codeaf says `.env keeps your own value for
 NAME`. With no identity on this machine, no secrets are fetched and no `.env` is written.
 
-If you continue a chat on a machine that already has a copy of it, the copy is replaced by
-the chat as it was left. Anything you had changed in that copy and never saved is kept first,
-as a branch, with the sentence above; nothing is thrown away. If another machine takes the
+If you continue a chat on a machine that already has it, the chat as it was left replaces
+what is there. Anything you had changed and never saved is kept first, as a branch, with the
+sentence above; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
 
 ## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch

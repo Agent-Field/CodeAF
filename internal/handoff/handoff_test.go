@@ -293,3 +293,30 @@ func TestTakeLostRaceKeepsTheOldRoot(t *testing.T) {
 		t.Fatalf("root changed by a lost race: %v, was %v", got, before)
 	}
 }
+
+// TestTakeInPlaceKeepsThePersonsFolder: a chat whose tree is a folder the person
+// owns gets the head restored into that folder, which stays the same directory.
+func TestTakeInPlaceKeepsThePersonsFolder(t *testing.T) {
+	_, a, _ := backFromB(t)
+	before, err := os.Stat(a.root(chatID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk := a.taker()
+	tk.InPlace = func(cell.Cell) bool { return true }
+
+	taken, err := tk.Take(context.Background(), chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(taken.Cell.Root)
+	if err != nil || !os.SameFile(before, after) {
+		t.Fatalf("the folder was replaced (%v)", err)
+	}
+	if got := tree(t, taken.Cell.Root); got["b.txt"] != "from b" {
+		t.Fatalf("root = %v, want B's work restored in place", got)
+	}
+	if _, err := os.Stat(taken.Cell.Root + ".taking"); !os.IsNotExist(err) {
+		t.Fatalf("staging folder left behind (%v)", err)
+	}
+}
