@@ -21,6 +21,7 @@ serde_json.workspace = true
 tempfile.workspace = true
 
 [dev-dependencies]
+furrow-core = { path = "../furrow-core", features = ["fault-injection"] }
 assert_cmd.workspace = true
 predicates.workspace = true
 blake3.workspace = true

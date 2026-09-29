@@ -513,33 +513,34 @@ impl FurrowRepository {
             None => self.store.workspace_head(&self.workspace_id)?,
         };
         let policy = self.load_policy()?;
-        let root_tree = self
-            .store
-            .batched(|| self.capture_tree(changed_paths, &policy))?;
-        // Continuous watcher seals keep raw database/WAL/SHM bytes (L0) and
-        // avoid a second whole-tree database discovery pass. Forced boundaries
-        // attach the logically consistent SQLite image (L1).
-        let sqlite_backups = if trigger == SnapshotTrigger::Watcher {
-            Vec::new()
-        } else {
-            self.capture_sqlite_backups(&policy)?
-        };
-        let (secs, nanos) = now();
-        let claims = self.active_claims()?;
-        let snapshot = Snapshot {
-            root_tree,
-            parent,
-            merge_parents,
-            sealed_at_secs: secs,
-            sealed_at_nanos: nanos,
-            quality: SealQuality::Quiescent,
-            trigger: trigger.clone(),
-            label: label.clone(),
-            sqlite_backups,
-            claims,
-            excluded_paths: policy.rule_strings(),
-        };
-        let id = self.store.put_struct(ObjectKind::Snapshot, &snapshot)?;
+        let (id, secs) = self.store.batched(|| {
+            let root_tree = self.capture_tree(changed_paths, &policy)?;
+            // Continuous watcher seals keep raw database/WAL/SHM bytes (L0) and
+            // avoid a second whole-tree database discovery pass. Forced boundaries
+            // attach the logically consistent SQLite image (L1).
+            let sqlite_backups = if trigger == SnapshotTrigger::Watcher {
+                Vec::new()
+            } else {
+                self.capture_sqlite_backups(&policy)?
+            };
+            let (secs, nanos) = now();
+            let claims = self.active_claims()?;
+            let snapshot = Snapshot {
+                root_tree,
+                parent,
+                merge_parents,
+                sealed_at_secs: secs,
+                sealed_at_nanos: nanos,
+                quality: SealQuality::Quiescent,
+                trigger: trigger.clone(),
+                label: label.clone(),
+                sqlite_backups,
+                claims,
+                excluded_paths: policy.rule_strings(),
+            };
+            let id = self.store.put_struct(ObjectKind::Snapshot, &snapshot)?;
+            Ok((id, secs))
+        })?;
         self.store
             .publish_snapshot(&self.workspace_id, id, secs, label, trigger)?;
         Ok(id)
