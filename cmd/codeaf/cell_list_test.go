@@ -31,10 +31,10 @@ func TestCellListAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"01AAA  Nightly index rebuild  studio  running on studio                     2m",
-		"01BBB  Port the picker        studio  studio off                            3h",
-		"01CCC  Fix the flaky test     laptop  2 turns from laptop: merge / discard  5h",
-		"01DDD  Notes                  laptop  -                                     1d 2h",
+		"01AAA  Nightly index rebuild  studio  running on studio             2m",
+		"01BBB  Port the picker        studio  studio off                    3h",
+		"01CCC  Fix the flaky test     laptop  2 turns from laptop: discard  5h",
+		"01DDD  Notes                  laptop  -                             1d 2h",
 	}
 	if got := strings.TrimSpace(out.String()); got != strings.Join(want, "\n") {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, strings.Join(want, "\n"))
