@@ -22,6 +22,7 @@ pub mod remote_crypto;
 pub mod repository;
 pub mod retention;
 pub mod s3_remote;
+pub mod sealer;
 pub mod self_write;
 pub mod shrink;
 pub mod sorted_dir;
