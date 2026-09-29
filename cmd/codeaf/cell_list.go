@@ -47,7 +47,16 @@ func writeChatRows(rows []chatlist.Row, out io.Writer) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	for _, r := range rows {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Cell, r.Title, orDash(r.Device),
-			orDash(chatlist.StatusLine(r)), reltime.Elapsed(r.DurableAgo))
+			orDash(statusOf(r)), reltime.Elapsed(r.DurableAgo))
 	}
 	return w.Flush()
+}
+
+// statusOf is the status column: a branch says only what this build can do with
+// it, which is discard (there is no merge, cell_branch.go).
+func statusOf(r chatlist.Row) string {
+	if r.Status == chatlist.Branch {
+		return chatlist.BranchLine(r, false)
+	}
+	return chatlist.StatusLine(r)
 }

@@ -252,7 +252,7 @@ key the first time the identity is made on that machine.
 
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
 each: id, title, device, where it runs (`running on <device>`, `<device> off`,
-`<K> turns from <device>: merge / discard`, or `-` for one held here or let go), and how
+`<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
 `--all` it prints the usage line. With sync off (no `CODEAF_SYNC_URL`) it prints
 `sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
@@ -297,7 +297,13 @@ not run, so the two machines never both change the chat. Nothing on the other ma
 
 Turns you saved here that had not reached the relay yet are not lost. They are kept as a separate chat
 that starts from the last turn both machines share, and `codeaf cell list --all` shows it as
-`<K> turns from <device>: merge / discard`. Open this chat again and it carries on as that separate chat.
+`<K> turns from <device>: discard`. Open this chat again and it carries on as that separate chat.
+
+**`codeaf cell discard <branch> [<cell>]`** sets such a branch aside: it is archived, not deleted, and it leaves
+every machine's list. It runs on the machine that holds the chat and says `discarded <branch>`; on any other
+machine it refuses, naming the chat whose hold is missing. (The branch row on home discards from any of your
+machines.) **There is no `codeaf cell merge` in this version:** folding a branch back into its chat is not
+offered anywhere, so a branch row says `discard` alone.
 
 If this computer's clock is more than five minutes off, sync shows `this computer's clock is off by more than 5 minutes`
 once and tries again on the next round; fix the clock and it carries on. With sync off (no `CODEAF_SYNC_URL`) none of

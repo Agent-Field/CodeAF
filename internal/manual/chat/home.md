@@ -333,6 +333,27 @@ narrow frame the same question takes the whole screen, with the sentence wrapped
   part of this screen yet.
 - With no way to continue set up, an off row has no `continue here`: enter says its sentence.
 
+## What comes with a continued chat — the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
+
+Continuing a chat brings all of it: the whole conversation, and every file the chat worked
+on, byte for byte: text and binary files, files that were never in a git repository, the
+executable bit, links. Nothing is fetched from git and no git login or remote is needed on
+the machine that continues; everything comes from your relay. The copy lives in a folder of
+its own under this machine's chats, and the chat works in a `work` folder inside it. Your
+project folder on the other machine is not touched, and if this machine has its own copy of
+the chat in one of your project folders, that project folder is left as it is.
+
+**Secrets do not travel in the files.** A `.env` is kept in your key vault, and the vault
+travels with your chats. When you continue, the chat's secrets are put back as a `.env` in
+the chat's work folder with the same variables, readable by you alone. A `.env` line you
+already wrote here is never overwritten, and codeaf says `.env keeps your own value for
+NAME`. With no identity on this machine, no secrets are fetched and no `.env` is written.
+
+If you continue a chat on a machine that already has a copy of it, the copy is replaced by
+the chat as it was left. Anything you had changed in that copy and never saved is kept first,
+as a branch, with the sentence above; nothing is thrown away. If another machine takes the
+chat while you are still fetching it, this machine keeps exactly what it had.
+
 ## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
 
 A chat that was taken over while another machine still held unsent turns leaves those turns
