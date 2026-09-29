@@ -248,7 +248,7 @@ func assertStatsMatchRelay(t *testing.T, r *driveRig) {
 		t.Fatal(err)
 	}
 	total := cellstats.Total(lines)
-	got, err := r.a.Store.(blobstore.Counting).Inner.(*blobstore.HTTP).Stats(context.Background())
+	got, err := r.a.Store.(*blobstore.Resuming).Inner.(blobstore.Counting).Inner.(*blobstore.HTTP).Stats(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

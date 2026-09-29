@@ -3,9 +3,6 @@ package blobstore
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -49,11 +46,8 @@ func payloadStart(frame []byte, h Header) uint64 {
 }
 
 // writeOnce durably creates path with data, and does nothing if path exists.
-// The data goes to a temporary file in the same directory, is synced, then
-// renamed into place, so the final name never holds a partial file and an
-// existing file is never overwritten.
 func (d *Disk) writeOnce(path string, data []byte) error {
-	return asFull(d.create(path, data))
+	return d.writeAllOnce([]entry{{path, data}})
 }
 
 // asFull names a full disk or an exhausted quota ErrFull, which a caller
@@ -63,54 +57,4 @@ func asFull(err error) error {
 		return fmt.Errorf("%w: %v", ErrFull, err)
 	}
 	return err
-}
-
-func (d *Disk) create(path string, data []byte) error {
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("blobstore: create directory: %w", err)
-	}
-	if err := d.stage(dir, path, data); err != nil {
-		return err
-	}
-	return syncDir(dir)
-}
-
-// stage writes data to a temporary file beside path and renames it into place.
-func (d *Disk) stage(dir, path string, data []byte) (err error) {
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return fmt.Errorf("blobstore: create temporary file: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			os.Remove(tmp.Name())
-		}
-	}()
-	if _, err = tmp.Write(data); err == nil {
-		err = d.sync(tmp)
-	}
-	if closeErr := tmp.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return fmt.Errorf("blobstore: write %s: %w", filepath.Base(path), err)
-	}
-	return os.Rename(tmp.Name(), path)
-}
-
-// syncDir makes a rename in dir durable.
-func syncDir(dir string) error {
-	f, err := os.Open(dir)
-	if err != nil {
-		return fmt.Errorf("blobstore: open directory: %w", err)
-	}
-	defer f.Close()
-	if err := f.Sync(); err != nil && !errors.Is(err, fs.ErrInvalid) {
-		return fmt.Errorf("blobstore: sync directory: %w", err)
-	}
-	return nil
 }
