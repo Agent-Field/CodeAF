@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"sync"
 )
 
 // Runner is what a tool site needs from its seat: buffered or streamed calls
@@ -35,6 +36,10 @@ type Call struct {
 	// Changed is the workspace-relative paths the call is known to change; nil
 	// means unknown, and the whole tree is then looked at.
 	Changed []string
+	// Spawns, when set, is told of every process group the tool starts for the
+	// call, so a record of the call can name what to end if the harness dies
+	// while it runs. Nil is a call nobody follows.
+	Spawns *Spawns
 }
 
 // Stance is a seat that runs every call under one declared class and records
@@ -138,3 +143,68 @@ func (refused) Exec(context.Context, ExecRequest, func(Chunk)) (ExecResult, erro
 
 // Command implements Runner.
 func (refused) Command(context.Context, ExecRequest) (*exec.Cmd, error) { return nil, ErrNoSeat }
+
+// Spawns is where one tool call reports the process groups it starts. The call
+// owns the process (a shell tool starts it through Command), so only the tool
+// knows the moment it exists; the record around the call listens here.
+type Spawns struct {
+	mu sync.Mutex
+	on func(pgid int)
+}
+
+type spawnsKey struct{}
+
+// WithSpawns returns a context whose tool calls report into the Spawns handed
+// back, which the caller puts on the [Call] it gives the seat.
+func WithSpawns(ctx context.Context) (context.Context, *Spawns) {
+	s := &Spawns{}
+	return context.WithValue(ctx, spawnsKey{}, s), s
+}
+
+// Watch sets who is told of each group. A nil Spawns hears nobody.
+func (s *Spawns) Watch(on func(pgid int)) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.on = on
+}
+
+// Spawned is a tool's word that it started the process group pgid for the call
+// ctx belongs to. A context with no call to tell makes it a no-op.
+func Spawned(ctx context.Context, pgid int) {
+	s, _ := ctx.Value(spawnsKey{}).(*Spawns)
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	on := s.on
+	s.mu.Unlock()
+	if on != nil {
+		on(pgid)
+	}
+}
+
+// Interrupted is what a crash left unfinished on a seat: calls that began and
+// never ended. Lines are for the person, Note is for the model's next turn, and
+// Close is said once both were told, so the calls stop counting as open.
+type Interrupted interface {
+	Lines() []string
+	Note() string
+	Close() error
+}
+
+// Interruptible is a seat that can name what a crash left behind.
+type Interruptible interface {
+	Interrupted() Interrupted
+}
+
+// InterruptedOn is what the seat's last run left unfinished, and nil for a seat
+// that keeps no record.
+func InterruptedOn(s Seat) Interrupted {
+	if i, ok := s.(Interruptible); ok {
+		return i.Interrupted()
+	}
+	return nil
+}

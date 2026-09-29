@@ -1349,6 +1349,16 @@ func (f *feed) reserveResponseContinuation() {
 // deliberate command with silence.
 func (f *feed) note(text string) { f.noteWritten(text, false, nil) }
 
+// eachLine says every line of a notice as a note of its own. A door's notice is
+// one sentence to a line, and a note is one row of a sentence.
+func eachLine(text string, say func(string)) {
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			say(line)
+		}
+	}
+}
+
 // toldNote is a note ADDRESSED TO THE PERSON: same dim line, same door, and the
 // work chip may not swallow it ([entry.told]). Explicit user-directed notices
 // and asynchronous command responses use this door; optional facts retain the

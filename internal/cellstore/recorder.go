@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,6 +48,7 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 	if err != nil {
 		return nil, fmt.Errorf("open call log: %w", err)
 	}
+	reapOrphans(rec.Incomplete, reapGrace)
 	return &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
 		pending: rec.Completed, incomplete: rec.Incomplete}, nil
 }
@@ -81,10 +83,12 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 // call is the boundary the tree is sealed at, so this is what a session uses;
 // Exec is the same record for a caller that has only an executor.
 func (r *Recorder) Around(ctx context.Context, call executor.Call, effect executor.SideEffect, trigger Trigger, run func() ([]byte, bool)) error {
-	intent := Intent{V: schemaV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(), SideEffect: string(effect)}
+	intent := Intent{V: walV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(),
+		SideEffect: string(effect), Brief: briefOf(call.Args)}
 	if err := r.wal.Begin(intent); err != nil {
 		return fmt.Errorf("log call intent: %w", err)
 	}
+	call.Spawns.Watch(func(pgid int) { r.report(r.wal.Started(intent, groupRec(pgid))) })
 	out, failed := run()
 	done := executed(intent, executor.ExecResult{Exit: exitOfFailure(failed), Stdout: out}, nil, r.now().UnixMilli())
 	done.Changed = call.Changed
@@ -136,6 +140,10 @@ func without(list []Intent, gone Intent) []Intent {
 	return out
 }
 
+// Interrupted implements executor.Interruptible: what the last run left
+// unfinished, as a person and the model are told of it.
+func (r *Recorder) Interrupted() executor.Interrupted { return interrupted{r} }
+
 func (r *Recorder) now() time.Time {
 	if r.opts.Now == nil {
 		return time.Now()
@@ -151,8 +159,8 @@ func (r *Recorder) tool() string {
 }
 
 func (r *Recorder) intent(req executor.ExecRequest) Intent {
-	return Intent{V: schemaV, Tool: r.tool(), ArgsHash: argsHash(req), Started: r.now().UnixMilli(),
-		SideEffect: string(executor.Classify(req.Net))}
+	return Intent{V: walV, Tool: r.tool(), ArgsHash: argsHash(req), Started: r.now().UnixMilli(),
+		SideEffect: string(executor.Classify(req.Net)), Brief: clip(strings.Join(req.Argv, " "))}
 }
 
 // argsHash hashes the request's canonical arguments. The environment is left

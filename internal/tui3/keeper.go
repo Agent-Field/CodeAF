@@ -1105,7 +1105,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 		a.rememberOpen(key)
 	}
 	if conv.Notice != "" {
-		a.note(conv.Notice)
+		eachLine(conv.Notice, a.note)
 	}
 	// AND A DOOR THAT DID NOT ACTUALLY OPEN ONE BESIDE SAYS SO. Every caller of
 	// this function promises the conversation on screen goes on running; over a

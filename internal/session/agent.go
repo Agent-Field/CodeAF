@@ -2864,6 +2864,7 @@ func (a *Agent) landVolatileLocked() {
 	// would re-send the card each time (team.go's [teamNoteOpening]). A
 	// conversation that manages nothing has an empty block and lands nothing.
 	a.landNoteLocked(teamNoteOpening, a.teamBlockLocked())
+	a.landInterruptedLocked()
 }
 
 // landNoteLocked appends one of the session's own notes when what it says has
@@ -2929,7 +2930,8 @@ func isVolatileNote(text string) bool {
 		strings.HasPrefix(text, memoryNoteOpening) ||
 		strings.HasPrefix(text, bashBeltFrameOpening) ||
 		strings.HasPrefix(text, teamNoteOpening) ||
-		strings.HasPrefix(text, teamRoleNoteOpening)
+		strings.HasPrefix(text, teamRoleNoteOpening) ||
+		strings.HasPrefix(text, interruptedNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the

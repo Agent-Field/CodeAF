@@ -50,3 +50,28 @@ func refuse(pid int, reason string) {
 		OnRefused(pid, reason)
 	}
 }
+
+// StartOf is the identity a live pid has right now, and zero where none can be
+// read. It is what a caller stores beside a pid so that [Recorded] and
+// [Running] can prove, later and in another process, that the pid is still the
+// one that was meant.
+func StartOf(pid int) uint64 {
+	start, _ := processStart(pid)
+	return start
+}
+
+// Recorded rebuilds the group a caller stored (its leader's pid and [StartOf]
+// at launch). A zero start is an identity nobody could read, and such a group
+// is never signalled: the same one-sided rule as [CaptureGroup].
+func Recorded(pid int, start uint64) Group {
+	return Group{pid: pid, start: start, known: start != 0}
+}
+
+// Running reports whether pid is still the process [StartOf] named. A pid
+// whose identity was never read is not running as far as this answers, so a
+// caller asking "is the owner dead?" must pair it with a signal that is itself
+// gated by identity ([Group.Terminate]) and never act on the answer alone.
+func Running(pid int, start uint64) bool {
+	now, ok := processStart(pid)
+	return ok && start != 0 && now == start
+}

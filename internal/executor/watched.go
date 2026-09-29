@@ -35,6 +35,10 @@ func (w watched) ForSetup() Seat { return Watching(ForSetup(w.Seat), w.obs) }
 // NoteModelCall implements ModelNoter: the seat beneath keeps the record.
 func (w watched) NoteModelCall(m ModelCall) { NoteModelCall(w.Seat, m) }
 
+// Interrupted implements Interruptible: watching adds nothing to the record, so
+// the answer is the seat beneath's.
+func (w watched) Interrupted() Interrupted { return InterruptedOn(w.Seat) }
+
 // Around implements Seat: the call runs on the seat beneath, then the tools its
 // command line named are observed. A call the seat refused ran nothing.
 func (w watched) Around(ctx context.Context, call Call, run func() ([]byte, bool)) error {

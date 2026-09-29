@@ -650,7 +650,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
-		Notice:        joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
+		Notice:        v3Interrupted(cfg, joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice())),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
