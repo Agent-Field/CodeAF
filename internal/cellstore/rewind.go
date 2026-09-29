@@ -3,8 +3,6 @@ package cellstore
 import (
 	"context"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -47,15 +45,8 @@ func (e Engine) Rewind(ctx context.Context, c cell.Cell, ref string) (Sealed, er
 	if err != nil {
 		return Sealed{}, err
 	}
-	kept, err := readHistory(c)
-	if err != nil {
-		return Sealed{}, fmt.Errorf("rewind: read history: %w", err)
-	}
-	if err := e.Restore(ctx, c, target.ID, nil); err != nil {
+	if err := e.restoreKeepingChain(ctx, c, target.ID); err != nil {
 		return Sealed{}, fmt.Errorf("rewind: %w", err)
-	}
-	if err := kept.restore(c); err != nil {
-		return Sealed{}, fmt.Errorf("rewind: keep history: %w", err)
 	}
 	return e.Seal(ctx, c, TurnInfo{Calls: []Executed{e.rewindCall(target)}})
 }
@@ -78,48 +69,4 @@ func (e Engine) rewindCall(target Turn) Executed {
 		Tool: rewindTool, ArgsHash: hashHex([]byte(target.ID)), Started: now, Ended: now,
 		StdoutHash: hashHex(nil), StderrHash: hashHex(nil), SideEffect: "local",
 	}}
-}
-
-// history is the chain's own files, by cell-relative path. They describe the
-// past rather than belong to any turn's content, so a restore must not roll
-// them back with the tree.
-type history map[string][]byte
-
-func readHistory(c cell.Cell) (history, error) {
-	h := history{}
-	for _, root := range []string{ReceiptsDir, BlobsDir} {
-		if err := h.readTree(c, root); err != nil {
-			return nil, err
-		}
-	}
-	return h, h.readFile(c, TurnsPath)
-}
-
-func (h history) readFile(c cell.Cell, p string) error {
-	raw, err := os.ReadFile(rel(c, p))
-	h[p] = raw
-	return err
-}
-
-func (h history) readTree(c cell.Cell, root string) error {
-	err := filepath.WalkDir(rel(c, root), func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		r, _ := filepath.Rel(c.Root, path)
-		return h.readFile(c, filepath.ToSlash(r))
-	})
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
-func (h history) restore(c cell.Cell) error {
-	for p, raw := range h {
-		if err := writeFile(rel(c, p), raw); err != nil {
-			return err
-		}
-	}
-	return nil
 }

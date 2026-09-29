@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestCellLogAndRewindThroughTheDoor(t *testing.T) {
@@ -56,5 +58,42 @@ func TestCellDoorRefusesShortCommands(t *testing.T) {
 		if err := runCellIn(args, &bytes.Buffer{}, t.TempDir()); err == nil || !strings.Contains(err.Error(), "usage") {
 			t.Errorf("%v: err = %v, want usage", args, err)
 		}
+	}
+}
+
+func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
+	if _, err := furrow.ResolveBinary(); err != nil {
+		t.Skipf("no engine binary: %v", err)
+	}
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	if err := session.SaveMeta(c.Root, session.Meta{ID: "x", Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	}
+	seal := func(body string) string {
+		if err := os.WriteFile(filepath.Join(workspace, "f.txt"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s, err := cellstore.EngineFor(workspace).Seal(context.Background(), c, cellstore.TurnInfo{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s.Turn.ID
+	}
+	first := seal("one")
+	seal("two")
+
+	if err := runCellIn([]string{"rewind", first[:10]}, io.Discard, c.Root); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(workspace, "f.txt")); string(got) != "one" {
+		t.Fatalf("workspace f.txt = %q after rewind, want one", got)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, cell.StateDir)); !os.IsNotExist(err) {
+		t.Fatal("the rewind wrote .cell into the workspace")
 	}
 }

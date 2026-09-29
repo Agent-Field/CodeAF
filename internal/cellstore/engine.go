@@ -149,8 +149,15 @@ func (e Engine) cellDirArgs(c cell.Cell) []string {
 	if e.Workspace == "" {
 		return nil
 	}
-	return []string{"--cell-dir", filepath.Join(c.Root, cell.StateDir)}
+	return cellDirArg(stateDir(c))
 }
+
+// cellDirArg names the directory the engine composes in as, and restores, the
+// tree's .cell/ entry.
+func cellDirArg(dir string) []string { return []string{"--cell-dir", dir} }
+
+// stateDir is the cell's own .cell/ directory.
+func stateDir(c cell.Cell) string { return filepath.Join(c.Root, cell.StateDir) }
 
 // engine runs one engine verb in the cell's folder against the cell's store.
 func (e Engine) engine(ctx context.Context, c cell.Cell, args ...string) ([]byte, error) {
