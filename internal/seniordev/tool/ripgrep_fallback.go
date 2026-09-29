@@ -41,6 +41,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
 // binarySniffBytes mirrors rg's habit of skipping binary files: a NUL byte in
@@ -197,17 +199,14 @@ func collectSearchFiles(
 // the fallback honour .gitignore for free. ok is false whenever dir is not a
 // work tree (or git is unavailable), leaving the caller to walk instead.
 func gitTrackedFiles(ctx context.Context, dir string) (files []string, ok bool) {
-	//codeaf:tool-pending
-	command := exec.CommandContext(
-		ctx, "git", "-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
-	)
-	var stdout bytes.Buffer
-	command.Stdout = &stdout
-	command.Stderr = nil
-	if err := command.Run(); err != nil {
+	res, err := executor.In("").Exec(ctx, executor.ExecRequest{
+		Argv: []string{"git", "-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"},
+		Net:  executor.OpenNet, Group: executor.GroupInherit,
+	}, nil)
+	if err != nil || res.Failure() != nil {
 		return nil, false
 	}
-	for _, entry := range strings.Split(stdout.String(), "\x00") {
+	for _, entry := range strings.Split(string(res.Stdout), "\x00") {
 		if entry == "" {
 			continue
 		}

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
 type ProcessOptions struct {
@@ -78,6 +80,37 @@ type Child struct {
 	closed bool
 }
 
+// processEnv is the child's environment: empty when cleared, the host's with
+// the overrides merged in when given, and nil (inherit) otherwise.
+func processEnv(opt ProcessOptions) []string {
+	switch {
+	case opt.ClearEnv:
+		return []string{}
+	case opt.Env == nil:
+		return nil
+	}
+	values := map[string]string{}
+	order := []string{}
+	for _, item := range os.Environ() {
+		key, value, _ := strings.Cut(item, "=")
+		if _, ok := values[key]; !ok {
+			order = append(order, key)
+		}
+		values[key] = value
+	}
+	for key, value := range opt.Env {
+		if _, ok := values[key]; !ok {
+			order = append(order, key)
+		}
+		values[key] = value
+	}
+	merged := make([]string, 0, len(order))
+	for _, key := range order {
+		merged = append(merged, key+"="+values[key])
+	}
+	return merged
+}
+
 func SpawnProcess(ctx context.Context, command []string, options ...ProcessOptions) (*Child, error) {
 	if len(command) == 0 {
 		return nil, errors.New("Command is required")
@@ -103,35 +136,15 @@ func SpawnProcess(ctx context.Context, command []string, options ...ProcessOptio
 			args = []string{"/d", "/s", "/c", line}
 		}
 	}
-	//codeaf:tool-pending
-	cmd := exec.Command(name, args...)
-	cmd.Dir = opt.Cwd
-	switch {
-	case opt.ClearEnv:
-		cmd.Env = []string{}
-	case opt.Env != nil:
-		values := map[string]string{}
-		order := []string{}
-		for _, item := range os.Environ() {
-			key, value, _ := strings.Cut(item, "=")
-			if _, ok := values[key]; !ok {
-				order = append(order, key)
-			}
-			values[key] = value
-		}
-		for key, value := range opt.Env {
-			if _, ok := values[key]; !ok {
-				order = append(order, key)
-			}
-			values[key] = value
-		}
-		for _, key := range order {
-			cmd.Env = append(cmd.Env, key+"="+values[key])
-		}
+	cmd, err := executor.In(opt.Cwd).Command(context.Background(), executor.ExecRequest{
+		Argv: append([]string{name}, args...), Env: processEnv(opt), Net: executor.OpenNet,
+		Group: executor.GroupInherit,
+	})
+	if err != nil {
+		return nil, err
 	}
 	child := &Child{Cmd: cmd, exit: make(chan int, 1), done: make(chan struct{})}
 	child.Exited = child.exit
-	var err error
 	child.Stdin, err = configureInput(cmd, opt.Stdin)
 	if err != nil {
 		return nil, err
