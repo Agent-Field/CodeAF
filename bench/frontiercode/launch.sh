@@ -78,6 +78,7 @@ label_collision_gate() {
 if [ "$MODE" = --check-local ]; then
   model_gate
   prereg_gate
+  fc_judge_gate
   local_bin_gate "$FC_REPO_ROOT/$(fc_get '.codeaf_local_binary')"
   for s in $(jq -r '.shard_files | keys[]?' "$FC_MANIFEST_PATH"); do label_collision_gate "$s"; done
   echo "ok  local: model priced, preregistration $PREREG present, binary matches $(fc_get '.codeaf_sha256' | cut -c1-12)..., no iteration label exists yet"
