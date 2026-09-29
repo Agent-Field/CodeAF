@@ -457,7 +457,13 @@ func v3PlaceFor(dir, workspace string, owned bool) session.Place {
 // in another window sees the conversation from the moment it exists rather than
 // from the moment somebody speaks in it.
 func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Place, error) {
-	id, dir, err := v3NewFolder(bucket)
+	return v3MintSessionAs(cell.Sandboxed, bucket, workspace, launchDir, owned)
+}
+
+// v3MintSessionAs is [v3MintSession] for a session whose cell declares class:
+// a chat is sandboxed, a run whose workers reach the run's record is not.
+func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owned bool) (session.Place, error) {
+	id, dir, err := v3NewFolder(bucket, class)
 	if err != nil {
 		return session.Place{}, err
 	}
@@ -478,9 +484,9 @@ func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Pla
 // v3NewFolder makes the empty folder a new session lives in and answers its id
 // and path: a cell when CODEAF_CELLS=1 (the session package finds its
 // transcript in .cell/ by the folder's shape), a plain folder otherwise.
-func v3NewFolder(bucket string) (id, dir string, err error) {
+func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
 	if cell.Enabled() {
-		c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})
+		c, err := cell.CreateIn(bucket, cell.Options{Class: class})
 		if err != nil {
 			return "", "", fmt.Errorf("create session directory: %w", err)
 		}
@@ -677,7 +683,9 @@ func v3EmptySession(dir string) bool {
 	if spoken || !sure {
 		return false
 	}
-	for _, kept := range []string{place.Work(), place.Trees(), place.Artifacts()} {
+	// A sealed chain is something made in it: a run that worked in the cell said
+	// nothing, and its turns are the record of what it did.
+	for _, kept := range []string{place.Work(), place.Trees(), place.Artifacts(), filepath.Join(dir, cellstore.TurnsPath)} {
 		if _, err := os.Stat(kept); err == nil {
 			return false
 		}
@@ -747,26 +755,34 @@ func v3Migrated(cfg session.Config) session.Config {
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
 	cfg.Seat, cfg.Machine = nil, nil
-	if !cell.Enabled() || cfg.Place.Dir == "" || cfg.Place.Workspace == "" {
-		return cfg
+	seat, machine := v3SeatOf(cfg.Place)
+	cfg.Seat = seat
+	if machine != nil {
+		cfg.Machine = machine
 	}
-	c, err := cell.OpenAt(cfg.Place.Dir, filepath.Base(cfg.Place.Dir))
+	return cfg
+}
+
+// v3SeatOf is the seat of the cell a place names, and the machine view it was
+// built with: the one construction every door that seals its calls goes
+// through. A place that is not a readable cell answers no seat.
+func v3SeatOf(place session.Place) (executor.Seat, *preflight.Machine) {
+	if !cell.Enabled() || place.Dir == "" || place.Workspace == "" {
+		return nil, nil
+	}
+	c, err := cell.OpenAt(place.Dir, filepath.Base(place.Dir))
 	if err != nil {
-		return cfg
+		return nil, nil
 	}
 	class, ok := executor.ParseClass(string(c.Meta().Class))
 	if !ok {
 		class = executor.HostBound
 	}
-	machine, err := preflight.OpenMachine(c.Root, cfg.Place.Workspace)
+	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	sealNotice.report(err)
-	seat, err := cellstore.SeatFor(class, c, cfg.Place.Workspace, observerOf(machine), sealNotice.report)
-	cfg.Seat = seat
+	seat, err := cellstore.SeatFor(class, c, place.Workspace, observerOf(machine), sealNotice.report)
 	sealNotice.report(err)
-	if machine != nil {
-		cfg.Machine = machine
-	}
-	return cfg
+	return seat, machine
 }
 
 // observerOf is the machine's observer, and no observer where the inventory

@@ -711,6 +711,16 @@ finished cleanly keeps none unless you passed `--keep`. An id nothing matches, o
 is refused in words. Only the run engine keeps this record, so `--continue` is refused when
 `CODEAF_TASK_BELT` selects the older engine.
 
+With `CODEAF_CELLS=1`, `codeaf do` runs inside a cell, the same kind of folder a chat is, and
+every tool call the run's workers make is sealed as a turn: `codeaf cell log` lists the turns,
+and the kept record holds a `cell` file naming the cell. `codeaf do --continue <id>` then goes
+on in that same cell from its last sealed turn: its files stand as that turn left them, and the
+new run is told how many turns were sealed. A call that began and never finished (the run was
+killed in the middle of it) is listed in the new run's brief and is never run again, so the new
+run looks at what it left before relying on it. A run's cell is host-bound, so every call it
+seals counts as external. A record from a run made without the flag has no cell and continues
+from the record alone, as before. With the flag off nothing about `do` changes.
+
 That directory holds a `graph.db`, and that is what to point the reader at:
 
 ```
