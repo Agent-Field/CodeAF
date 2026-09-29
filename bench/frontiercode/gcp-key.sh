@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # The campaign's model key, out of band.
 #
+#   bench/frontiercode/gcp-key.sh --plan   [instance]   print what would happen, transfer nothing
+#   bench/frontiercode/gcp-key.sh --check  [instance]   verify the store holds the item, transfer nothing
 #   bench/frontiercode/gcp-key.sh --install <instance>   push the key, print only its length and a digest prefix
 #   bench/frontiercode/gcp-key.sh --usage   [instance]   read the provider's usage counter (local secret store unless an instance is named)
 #   bench/frontiercode/gcp-key.sh --shred   <instance>   destroy the host's copy before teardown
@@ -15,11 +17,43 @@ FC_SCRIPT=gcp-key.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gcp-lib.sh"
 
 MODE="${1:-}"; INSTANCE="${2:-}"
-case "$MODE" in --install|--shred|--usage) ;; *) sed -n '2,14p' "$0" >&2; exit 2 ;; esac
+case "$MODE" in --plan|--check|--install|--shred|--usage) ;; *) sed -n '2,16p' "$0" >&2; exit 2 ;; esac
 case "$MODE" in --install|--shred) [ -n "$INSTANCE" ] || fc_die "instance is required" ;; esac
 
 fc_load_manifest
 fc_require_keys .key.store .key.item .gcp.zone
+
+PROJECT="${GCP_PROJECT:-$(fc_get '.gcp.project')}"
+ZONE="$(fc_get '.gcp.zone')"
+
+if [ "$MODE" = --plan ]; then
+  cat <<PLAN
+secret store:    $(fc_get '.key.store') item '$(fc_get '.key.item')' (the value is never read by --plan)
+target:          ${INSTANCE:-<none named>} ($PROJECT / $ZONE)
+--install:       push the key over ssh, print only length, sha256 prefix and the provider usage counter
+--shred:         destroy the host's copy before teardown
+--usage:         read the provider's usage counter, locally or on the host
+PLAN
+  echo "PLAN ONLY: no key read, no host contacted, nothing transferred"
+  exit 0
+fi
+
+if [ "$MODE" = --check ]; then
+  # Prove the store actually holds the item without ever printing it: read it
+  # into a variable, report its length only, and drop it.
+  k="$(fc_secret_read)"
+  [ -n "$k" ] || fc_die "the secret store does not hold '$(fc_get '.key.item')'"
+  echo "secret store holds '$(fc_get '.key.item')' (length ${#k}; value not printed)"
+  unset k
+  if [ -n "$INSTANCE" ]; then
+    gcloud compute instances describe "$INSTANCE" --project="$PROJECT" --zone="$ZONE" \
+      --format='value(status)' 2>/dev/null | grep -qx RUNNING \
+      || fc_die "instance is not RUNNING: $INSTANCE"
+    echo "instance $INSTANCE is RUNNING"
+  fi
+  echo "CHECK ONLY: nothing transferred"
+  exit 0
+fi
 
 PROJECT="${GCP_PROJECT:-$(fc_get '.gcp.project')}"
 ZONE="$(fc_get '.gcp.zone')"
