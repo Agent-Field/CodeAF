@@ -124,7 +124,7 @@ func (r *Registry) executeBash(ctx context.Context, call steploop.ToolCall) (ste
 	// A plain `sleep 300 &` leaves stdout open after bash exits. Without a
 	// pipe-close bound, exec.Wait waits for that background job and turns a
 	// successful shell command into a timeout before the run can clean it up.
-	command, err := executor.In(cwd).Command(context.Background(), executor.ExecRequest{
+	command, err := executor.For(ctx).In(cwd).Command(context.Background(), executor.ExecRequest{
 		Argv: shellArgv(shell, input.Command), Env: shellEnvironment(call.SessionID),
 		WaitDelay: 100 * time.Millisecond,
 	})

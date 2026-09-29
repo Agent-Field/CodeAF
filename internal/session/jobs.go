@@ -544,6 +544,9 @@ type jobRegistry struct {
 	// to say no.
 	closed bool
 	epoch  uint64
+	// seat is the executor of the session these jobs belong to; nil is a
+	// registry that belongs to none and runs on the host.
+	seat procexec.Seat
 	// THE LOG-FOLDER SWEEP BELONGS TO THE REGISTRY AND NOT TO ANY ONE JOB'S
 	// ENDING (issue #1636). A job's end only ASKS for it; one pass at a time
 	// drains every folder asked for, off the road that publishes the ending, so
@@ -568,6 +571,15 @@ func newJobRegistry(workspace string, place Place, notify func(string), watch ..
 		registry.notifyWatch = watch[0]
 	}
 	return registry
+}
+
+// runner is the session's executor rooted at dir. Jobs and watch ticks are the
+// session's own work, so they run on its seat like every other tool call.
+func (r *jobRegistry) runner(dir string) procexec.Runner {
+	if r.seat == nil {
+		return procexec.Host.In(dir)
+	}
+	return r.seat.In(dir)
 }
 
 // errSessionClosed is what BOTH doors of a shut registry say, and they say it
@@ -819,7 +831,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// that insists on the keyboard — is refused instead of painting over the
 	// person's frame. That was measured, not imagined: two review CLIs run as
 	// jobs drew their own output across the top of a running conversation.
-	process, err := procexec.In(started.dir).Command(context.Background(), procexec.ExecRequest{
+	process, err := r.runner(started.dir).Command(context.Background(), procexec.ExecRequest{
 		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
 		Group: procexec.GroupSession,
 	})

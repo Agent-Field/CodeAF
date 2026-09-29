@@ -348,7 +348,7 @@ func runSkillCheck(ctx context.Context, skillDir string) error {
 
 	trialCtx, cancel := context.WithTimeout(ctx, skillTrialTimeout)
 	defer cancel()
-	res, runErr := procexec.In(clean).Exec(trialCtx, procexec.ExecRequest{
+	res, runErr := procexec.Host.In(clean).Exec(trialCtx, procexec.ExecRequest{
 		Argv: []string{filepath.Join(skillDir, "check.sh")}, Env: safeSkillCheckEnv(skillDir),
 		Group: procexec.GroupInherit, WaitDelay: time.Second, Combined: true,
 	}, nil)

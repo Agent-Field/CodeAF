@@ -47,11 +47,6 @@ type Local struct {
 	Observer Observer
 }
 
-// In returns a Local rooted at dir, for a caller whose working directory is
-// the tree it works in. An empty dir is the current directory. The class is
-// the one declared for the workspace holding dir ([ClassOf]).
-func In(dir string) Local { return Local{Root: dir, Class: ClassOf(dir), Jail: DefaultJail()} }
-
 // resolve stamps the request with the workspace's class and the network policy
 // that class allows for it: the one place a policy is chosen.
 func (l Local) resolve(req ExecRequest) ExecRequest {

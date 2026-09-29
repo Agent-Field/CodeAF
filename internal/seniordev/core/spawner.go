@@ -331,7 +331,7 @@ func (s *Spawner) Spawn(ctx context.Context, command Command) (*Handle, error) {
 			return nil, err
 		}
 		specs[i] = spec
-		cmd, err := executor.In(spec.Cwd).Command(context.Background(), specRequest(spec))
+		cmd, err := executor.For(ctx).In(spec.Cwd).Command(context.Background(), specRequest(spec))
 		if err != nil {
 			return nil, err
 		}

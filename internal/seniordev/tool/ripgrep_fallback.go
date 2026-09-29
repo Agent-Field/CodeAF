@@ -199,7 +199,7 @@ func collectSearchFiles(
 // the fallback honour .gitignore for free. ok is false whenever dir is not a
 // work tree (or git is unavailable), leaving the caller to walk instead.
 func gitTrackedFiles(ctx context.Context, dir string) (files []string, ok bool) {
-	res, err := executor.In("").Exec(ctx, executor.ExecRequest{
+	res, err := executor.For(ctx).In("").Exec(ctx, executor.ExecRequest{
 		Argv:  []string{"git", "-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"},
 		Group: executor.GroupInherit,
 	}, nil)

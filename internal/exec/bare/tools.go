@@ -490,7 +490,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// gone for anything that survived. The defence is internal/exec's,
 			// verbatim (tools.go, jobs.go), for a fault that was observed there
 			// first.
-			cmd, err := executor.In(cwd).Command(context.Background(), executor.ExecRequest{
+			cmd, err := executor.For(ctx).In(cwd).Command(context.Background(), executor.ExecRequest{
 				Argv: append([]string{shell}, shellArgs...), Env: StreamingEnv(),
 				Group: executor.GroupSession, WaitDelay: 3 * time.Second,
 			})

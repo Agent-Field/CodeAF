@@ -48,17 +48,12 @@ func TestExecMarksSideEffectFromClass(t *testing.T) {
 	}
 }
 
-func TestClassOfWalksUpAndDefaultsToLegacy(t *testing.T) {
-	root := t.TempDir()
-	if got := ClassOf(root); got != HostBound {
-		t.Fatalf("undeclared = %d, want host-bound", got)
-	}
-	Declare(root, Sandboxed)
-	if got := ClassOf(root + "/sub/dir"); got != Sandboxed {
-		t.Fatalf("declared subtree = %d, want sandboxed", got)
-	}
+func TestParseClass(t *testing.T) {
 	if c, ok := ParseClass("files-only"); !ok || c != FilesOnly {
 		t.Fatalf("ParseClass = %d %v", c, ok)
+	}
+	if _, ok := ParseClass("nonsense"); ok {
+		t.Fatal("an unknown class name parsed")
 	}
 }
 
@@ -72,10 +67,10 @@ func TestRefusalIsReadable(t *testing.T) {
 	}
 }
 
-// A workspace no cell declared (CODEAF_CELLS off) runs exactly as before the
-// policy existed: unjailed, network open.
-func TestUndeclaredWorkspaceRunsAsBefore(t *testing.T) {
-	res, err := In(t.TempDir()).Exec(context.Background(), sh("true"), nil)
+// The host seat (CODEAF_CELLS off) runs exactly as before the policy existed:
+// unjailed, network open.
+func TestHostSeatRunsAsBefore(t *testing.T) {
+	res, err := Host.In(t.TempDir()).Exec(context.Background(), sh("true"), nil)
 	if err != nil || res.SideEffect != EffectExternal || res.JailDegraded {
 		t.Fatalf("legacy call: %+v, %v", res, err)
 	}

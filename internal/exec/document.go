@@ -347,7 +347,7 @@ func documentMediaType(path string) (string, bool) {
 // documentCommand runs a document tool and answers its combined output, with
 // the error a failed run reports (a start failure, or the exit status).
 func documentCommand(ctx context.Context, binary string, args ...string) ([]byte, error) {
-	res, err := executor.In("").Exec(ctx, executor.ExecRequest{
+	res, err := executor.For(ctx).In("").Exec(ctx, executor.ExecRequest{
 		Argv:  append([]string{binary}, args...),
 		Group: executor.GroupInherit, Combined: true,
 	}, nil)

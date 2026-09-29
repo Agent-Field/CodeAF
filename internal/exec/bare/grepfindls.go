@@ -203,7 +203,7 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 			}
 			rgArgs = append(rgArgs, "--", p.Pattern, ".")
 
-			cmd, err := executor.In(searchPath).Command(ctx, executor.ExecRequest{
+			cmd, err := executor.For(ctx).In(searchPath).Command(ctx, executor.ExecRequest{
 				Argv: append([]string{rgPath}, rgArgs...),
 			})
 			if err != nil {
@@ -711,7 +711,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 			}
 			fdArgs = append(fdArgs, "--", effectivePattern, searchPath)
 
-			res, runErr := executor.In("").Exec(ctx, executor.ExecRequest{
+			res, runErr := executor.For(ctx).In("").Exec(ctx, executor.ExecRequest{
 				Argv:  append([]string{fdPath}, fdArgs...),
 				Group: executor.GroupInherit,
 			}, nil)

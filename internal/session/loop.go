@@ -86,6 +86,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -3526,6 +3527,22 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	return result
 }
 
+// executeRecorded runs one tool call on the session's seat, which records it
+// and seals the workspace when it returns (docs/ARCHITECTURE.md 4.3). It is the
+// one place a call crosses that boundary, so a tool that spawns nothing, or
+// owns its process, is recorded like every other. A seat that could not log the
+// call did not run it, and says so as the tool's own error.
+func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.RawMessage) (text string, isError bool, err error) {
+	logErr := procexec.For(ctx).Around(ctx, tool.Name, args, func() ([]byte, bool) {
+		text, isError, err = tool.Execute(ctx, args)
+		return []byte(text), isError || err != nil
+	})
+	if logErr != nil {
+		return "", true, logErr
+	}
+	return text, isError, err
+}
+
 // dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
 func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	for _, tool := range a.beltTools() {
@@ -3562,7 +3579,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// somehow, and the id on the row is the only handle it has (promote.go).
 		// It is set at this chokepoint rather than per tool, so the early warm
 		// start carries it exactly as the batch does.
-		text, isError, err := tool.Execute(withCallID(ctx, call.ID), args)
+		text, isError, err := a.executeRecorded(withCallID(ctx, call.ID), tool, args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is
