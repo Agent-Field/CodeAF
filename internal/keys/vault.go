@@ -23,12 +23,42 @@ type Entry struct {
 	Scope string `json:"scope"`
 }
 
+// record is one slot of the vault: a live secret, or the tombstone a delete
+// leaves so that a merge cannot bring the secret back. Updated is this slot's
+// own stamp in unix ms; a slot written before slots had stamps reads as stamped
+// by its document. A tombstone carries no name, value or scope, so a reader
+// that does not know the field sees an entry that matches no project.
+// Tombstones are never collected: pruning them is out of scope, and the cost is
+// one small record per deleted secret.
+type record struct {
+	Entry
+	Deleted bool  `json:"deleted,omitempty"`
+	Updated int64 `json:"updated,omitempty"`
+}
+
+// stampOf is the time a slot was last written, falling back to its document's.
+func (r record) stampOf(doc *vaultDoc) int64 {
+	if r.Updated != 0 {
+		return r.Updated
+	}
+	return doc.Updated
+}
+
+// live reports whether the slot holds a secret.
+func (r record) live() bool { return !r.Deleted }
+
+// nextStamp is now, or one past the slot's previous stamp when the clock has
+// not moved, so two writes to one slot in the same millisecond still order.
+func nextStamp(prev record, doc *vaultDoc) int64 {
+	return max(time.Now().UnixMilli(), prev.stampOf(doc)+1)
+}
+
 // vaultDoc is the stored object. Stage 0 has no policy: every secret is
 // available to the local devices.
 type vaultDoc struct {
-	V       uint16           `json:"V"`
-	Secrets map[string]Entry `json:"secrets"`
-	Updated int64            `json:"updated"` // unix ms
+	V       uint16            `json:"V"`
+	Secrets map[string]record `json:"secrets"`
+	Updated int64             `json:"updated"` // unix ms
 }
 
 // ErrNotFound reports an unknown secret id.
@@ -61,7 +91,7 @@ func Exists(home string) bool {
 // Put stores or replaces the secret under id.
 func (v *Vault) Put(id string, e Entry) error {
 	return v.update(func(d *vaultDoc) error {
-		d.Secrets[id] = e
+		d.Secrets[id] = record{Entry: e, Updated: nextStamp(d.Secrets[id], d)}
 		return nil
 	})
 }
@@ -72,17 +102,23 @@ func (v *Vault) Get(id string) (Entry, error) {
 	if err != nil {
 		return Entry{}, err
 	}
-	e, ok := d.Secrets[id]
-	if !ok {
+	r, ok := d.Secrets[id]
+	if !ok || !r.live() {
 		return Entry{}, ErrNotFound
 	}
-	return e, nil
+	return r.Entry, nil
 }
 
-// Delete removes the secret under id; a missing id is not an error.
+// Delete removes the secret under id and leaves a tombstone, so merging with a
+// device that still holds the secret does not bring it back. A missing id is
+// not an error and leaves nothing.
 func (v *Vault) Delete(id string) error {
 	return v.update(func(d *vaultDoc) error {
-		delete(d.Secrets, id)
+		prev, ok := d.Secrets[id]
+		if !ok || !prev.live() {
+			return errUnchanged
+		}
+		d.Secrets[id] = record{Deleted: true, Updated: nextStamp(prev, d)}
 		return nil
 	})
 }
@@ -95,9 +131,9 @@ func (v *Vault) Entries(project string) ([]Entry, error) {
 		return nil, err
 	}
 	var out []Entry
-	for _, e := range d.Secrets {
-		if e.Scope == project {
-			out = append(out, e)
+	for _, r := range d.Secrets {
+		if r.live() && r.Scope == project {
+			out = append(out, r.Entry)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -131,8 +167,8 @@ func (v *Vault) ImportDotenv(path, project string) (int, error) {
 				return err
 			}
 			next := Entry{Name: p.name, Value: p.value, Scope: project}
-			if d.Secrets[id] != next {
-				d.Secrets[id], changed = next, true
+			if prev := d.Secrets[id]; prev.Entry != next || !prev.live() {
+				d.Secrets[id], changed = record{Entry: next, Updated: nextStamp(prev, d)}, true
 			}
 		}
 		if !changed {
@@ -144,8 +180,8 @@ func (v *Vault) ImportDotenv(path, project string) (int, error) {
 }
 
 func idFor(d *vaultDoc, name, project string) (string, error) {
-	for id, e := range d.Secrets {
-		if e.Name == name && e.Scope == project {
+	for id, r := range d.Secrets {
+		if r.live() && r.Name == name && r.Scope == project {
 			return id, nil
 		}
 	}
@@ -159,7 +195,7 @@ func idFor(d *vaultDoc, name, project string) (string, error) {
 func (v *Vault) read() (*vaultDoc, error) {
 	blob, err := os.ReadFile(v.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return &vaultDoc{V: 1, Secrets: map[string]Entry{}}, nil
+		return &vaultDoc{V: 1, Secrets: map[string]record{}}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -178,7 +214,7 @@ func openDoc(key, blob []byte) (*vaultDoc, error) {
 		return nil, fmt.Errorf("keys: corrupt vault: %w", err)
 	}
 	if d.Secrets == nil {
-		d.Secrets = map[string]Entry{}
+		d.Secrets = map[string]record{}
 	}
 	return &d, nil
 }

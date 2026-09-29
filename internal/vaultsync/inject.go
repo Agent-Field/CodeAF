@@ -15,12 +15,6 @@ import (
 // of a cell's secrets.
 var ErrNoIdentity = errors.New("this machine has no identity yet: codeaf identity import")
 
-// EntrySource is what Inject reads from the vault: a project's secrets in one
-// stable order. *keys.Vault provides it.
-type EntrySource interface {
-	Entries(project string) ([]keys.Entry, error)
-}
-
 // Injection says what one Inject did, by secret name only.
 type Injection struct {
 	Written []string // names appended to .env
@@ -41,11 +35,10 @@ func (s Syncer) Inject(ctx context.Context, c cell.Cell) error {
 // disk when the machine has no identity, and it never writes when nothing is
 // missing from .env.
 func (s Syncer) Apply(_ context.Context, c cell.Cell) (Injection, error) {
-	src, ok := s.Vault.(EntrySource)
-	if s.CellKeyID == "" || !ok {
+	if s.CellKeyID == "" {
 		return Injection{}, ErrNoIdentity
 	}
-	entries, err := src.Entries(keys.ScopeOf(c))
+	entries, err := s.Vault.Entries(keys.ScopeOf(c))
 	if err != nil {
 		return Injection{}, err
 	}
