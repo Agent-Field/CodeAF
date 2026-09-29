@@ -184,9 +184,12 @@ type RunSpec struct {
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
 	// ProgramBranch and ProgramIgnoredFile fence the child's eager commits to
-	// its own branch and the ignore rules recorded before it started.
+	// its own branch and the ignore rules recorded before it started, and
+	// ProgramInputsFile to the untracked files it changed of those copied in
+	// ([ProgramFolder.InputsFile]).
 	ProgramBranch      string
 	ProgramIgnoredFile string
+	ProgramInputsFile  string
 	// ProgramBriefNote is the line a program working in a copy is told where
 	// the copy is by, ahead of its brief ([ProgramFolder.BriefNote]).
 	ProgramBriefNote string
@@ -1049,6 +1052,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 			return run.folder.Branch
 		}(),
 		ProgramIgnoredFile: run.folder.IgnoredFile(),
+		ProgramInputsFile:  run.folder.InputsFile(),
 		ProgramBriefNote:   run.folder.BriefNote(),
 		ProgramFolderHold:  run.folder.Hold(),
 		Crew:               programCrew,

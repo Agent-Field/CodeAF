@@ -66,6 +66,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			PlainFolder:  spec.PlainFolder,
 			Branch:       spec.ProgramBranch,
 			IgnoredFile:  spec.ProgramIgnoredFile,
+			InputsFile:   spec.ProgramInputsFile,
 			BriefNote:    spec.ProgramBriefNote,
 			Hold:         spec.ProgramFolderHold,
 			Crew:         spec.Crew,

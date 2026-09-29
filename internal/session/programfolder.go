@@ -152,9 +152,12 @@ type ProgramFolder struct {
 	// copied, a folder cloned — rather than linked ([carryOne]).
 	Carried    []string `json:"carried,omitempty"`
 	LeftBehind []string `json:"leftBehind,omitempty"`
-	// Untracked names the person's loose files copied as local inputs. They
-	// stay outside every automatic commit, including a resumed run's ending.
-	Untracked []string `json:"untracked,omitempty"`
+	// Untracked names the person's untracked files copied into the copy as
+	// its inputs, and Inputs is each one's fingerprint as it was copied
+	// (gitidentity.Inputs): an input the run leaves as it was stays out of
+	// every commit, and one it changes is its work and goes on its branch.
+	Untracked []string           `json:"untracked,omitempty"`
+	Inputs    gitidentity.Inputs `json:"inputs,omitempty"`
 	// Snapshot is the commit that carries those uncommitted changes into the
 	// copy, the first on the program's branch, whose parent is Start; empty
 	// when there were none, or when they could not be carried, which
@@ -221,6 +224,16 @@ func (f *ProgramFolder) IgnoredFile() string {
 		return ""
 	}
 	return filepath.Join(f.Keep, "ignored-at-start")
+}
+
+// InputsFile is the run's list of its copy's inputs and their fingerprints
+// ([ProgramFolder.Inputs]), kept beside [ProgramFolder.IgnoredFile] for the
+// child's commits to read (gitidentity.InputsEnv); "" when there is none.
+func (f *ProgramFolder) InputsFile() string {
+	if f == nil || f.Keep == "" || len(f.Inputs) == 0 {
+		return ""
+	}
+	return filepath.Join(f.Keep, "inputs-at-start")
 }
 
 // PrepareProgramFolder readies the folder a program was asked to work in, per
@@ -638,10 +651,10 @@ func (f *ProgramFolder) homeMoved() (bool, string) {
 // folder onto its branch, in one commit whose subject is the run's title and
 // whose body is result, and answers git's line when it would not go.
 //
-// TRACKED WORK IS COMMITTED AT THE START, but copied local inputs are not,
-// and ignore rules can change during the run. Those inputs, paths ignored at
-// the start and known test droppings are never
-// staged by this finishing commit. The notes are excluded for the same reason:
+// TRACKED WORK IS COMMITTED AT THE START, but the copied untracked inputs are
+// not, and ignore rules can change during the run. An input the run left as it
+// was, paths ignored at the start and known test droppings are never staged by
+// this finishing commit; an input it changed is its work and is. The notes are excluded for the same reason:
 // a program's private record must not enter the person's branch. It is only
 // ever made in a program's copy: a folder the person works in is never
 // committed by codeaf ([ProgramFolder.settleGone]).
@@ -722,7 +735,9 @@ func (f *ProgramFolder) excludedFromCommit(path string) bool {
 			return true
 		}
 	}
-	return gitidentity.GeneratedRunPath(path)
+	// AN INPUT THE RUN LEFT AS IT WAS IS NOT ITS WORK, and one it changed is
+	// (gitidentity's inputs.go).
+	return f.Inputs.LeftAlone(f.Dir, path) || gitidentity.GeneratedRunPath(path)
 }
 
 // keepNotes moves the program's notes folder out of the folder it worked in

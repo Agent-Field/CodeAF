@@ -1043,6 +1043,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which model is my senior-dev run using", "senior-dev"},
 		{"how do I read the whole brief senior-dev was given", "senior-dev"},
 		{"scroll senior-dev's brief", "senior-dev"},
+		{"senior-dev finished my new file but it is not on the branch", "senior-dev"},
+		{"will senior-dev commit my credentials.json", "senior-dev"},
 		{"what models was senior-dev launched with", "senior-dev"},
 		{"does a senior-dev run have its own dollar limit", "senior-dev"},
 		{"what flags does codeaf senior-dev take", "senior-dev"},

@@ -216,7 +216,7 @@ func TestAShellRunStartsBesideChangesThatAreNotCommitted(t *testing.T) {
 	if status := shellGit(t, repo, "status", "--porcelain"); status != "A  draft.md\n?? credentials.json" || shellGit(t, repo, "branch", "--show-current") != "main" {
 		t.Fatalf("the person's checkout was touched: %q", status)
 	}
-	if !strings.Contains(printed.String(), "copied as local inputs, not committed") {
+	if !strings.Contains(printed.String(), "any it changes are committed as its work, and the rest stay off its branch") {
 		t.Fatalf("the shell receipt did not distinguish the untracked input:\n%s", printed)
 	}
 }

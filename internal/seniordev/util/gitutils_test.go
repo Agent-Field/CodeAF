@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
 
 func gitTestRun(t *testing.T, dir string, args ...string) string {
@@ -126,7 +128,9 @@ func TestEagerCommitSkipsAHeadMovedOffTheRunBranch(t *testing.T) {
 }
 
 // An eager file write cannot admit an initially ignored secret after the run
-// removes its ignore rule, nor a Python cache created by the run's test suite.
+// removes its ignore rule, nor a Python cache created by the run's test suite,
+// nor an untracked input codeaf copied in that the write left as it was; an
+// input the write changed is the run's work and is committed.
 func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 	dir := initGitRepo(t)
 	gitTestRun(t, dir, "switch", "-q", "-c", "task/run")
@@ -142,11 +146,23 @@ func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte("local input\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(ignored, []byte(".env\x00credentials.json\x00"), 0o600); err != nil {
+	if err := os.WriteFile(ignored, []byte(".env\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "parser.py"), []byte("half\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inputs := gitidentity.Inputs{}
+	for _, name := range []string{"credentials.json", "parser.py"} {
+		inputs[name], _ = gitidentity.Fingerprint(filepath.Join(dir, name))
+	}
+	list := filepath.Join(t.TempDir(), "inputs-at-start")
+	if err := gitidentity.WriteInputs(list, inputs); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SENIOR_DEV_EXPECTED_BRANCH", "task/run")
 	t.Setenv("SENIOR_DEV_IGNORED_AT_START", ignored)
+	t.Setenv(gitidentity.InputsEnv, list)
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -171,6 +187,13 @@ func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
 			t.Fatalf("%s was removed: %v", file, err)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "parser.py"), []byte("finished\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	EagerCommit(context.Background(), EagerCommitOptions{Cwd: dir, FilePath: filepath.Join(dir, "parser.py"), Label: "write"})
+	if got := gitTestRun(t, dir, "show", "HEAD:parser.py"); strings.TrimSpace(got) != "finished" {
+		t.Fatalf("the input the write finished was not committed: %q", got)
 	}
 }
 

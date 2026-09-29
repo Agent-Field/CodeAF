@@ -129,7 +129,7 @@ func programOutcomeNote(outcome programOutcome, line string, costUSD float64) st
 	}
 	b.WriteString("\n")
 	b.WriteString(programNextStep(outcome))
-	b.WriteString("\n\nBefore any checks or edits, locate the run's code. If the ending names a branch whose copy was removed, create a temporary worktree with `git -C <repository> worktree add <tmp> <branch>`, then run every check from that folder (`cd <tmp> && <check command>`), and remove the worktree when done. Do not run checks in the person's checkout: it still holds their code, not the run's result, and tests can leave files there. If the ending says its copy was kept, or the run worked in a folder with no git history, use the folder it names instead.")
+	b.WriteString("\n\nBefore any checks or edits, locate the run's code. If the ending names a branch whose copy was removed, run each check in a temporary worktree that one command adds and always removes: `tmp=$(mktemp -d) && git -C <repository> worktree add -q --detach \"$tmp\" <branch> && (cd \"$tmp\" && <check command>); status=$?; git -C <repository> worktree remove --force \"$tmp\"; exit $status`. A worktree left behind stays registered in the person's repository. Do not run checks in the person's checkout: it still holds their code, not the run's result, and tests can leave files there. If the ending says its copy was kept, or the run worked in a folder with no git history, use the folder it names instead.")
 	return b.String()
 }
 

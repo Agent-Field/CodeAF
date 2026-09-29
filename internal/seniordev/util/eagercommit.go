@@ -64,7 +64,7 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 		return
 	}
 	relative := repositoryRelative(root, options.Cwd, options.FilePath)
-	if GeneratedRunPath(relative) || IgnoredAtStart(relative) {
+	if GeneratedRunPath(relative) || IgnoredAtStart(relative) || InputLeftAlone(root, relative) {
 		return
 	}
 	add, _ := RunProcess(ctx, []string{"git", "add", "--", relative}, RunOptions{
@@ -102,6 +102,29 @@ func IgnoredAtStart(path string) bool {
 		return true
 	}
 	return PathIgnoredAtStart(path, paths)
+}
+
+// InputLeftAlone says relative is one of the person's untracked files codeaf
+// copied in as an input and this write left it as it was, so it is not the
+// run's work and is never staged (gitidentity's inputs.go): staging it would
+// write it into git's object store. An unreadable list never permits the
+// commit, as an unreadable ignore list does not.
+func InputLeftAlone(root, relative string) bool {
+	inputs, err := InitialInputs()
+	if err != nil {
+		return true
+	}
+	return inputs.LeftAlone(root, relative)
+}
+
+// InitialInputs reads the list of inputs codeaf copied into the run's copy,
+// with their fingerprints; none for a run started any other way.
+func InitialInputs() (gitidentity.Inputs, error) {
+	inputs, err := gitidentity.ReadInputs(os.Getenv(gitidentity.InputsEnv))
+	if err != nil {
+		return nil, fmt.Errorf("read the copy's inputs: %w", err)
+	}
+	return inputs, nil
 }
 
 // InitialIgnoredPaths reads the one list codeaf captured before the run.

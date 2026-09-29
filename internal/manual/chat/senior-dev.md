@@ -538,8 +538,8 @@ at once and your checkout is never touched, and it is removed the moment senior-
 another account made, is refused rather than used.
 
 **It starts from your folder as it stands**: your last commit, and your uncommitted changes
-in tracked or staged files as the branch's first commit. Untracked files are copied as
-local inputs without being committed. What git ignores is not in a fresh checkout, so a few ignored
+in tracked or staged files as the branch's first commit. Untracked files are copied in as
+they are, and only the ones it changes go on its branch. What git ignores is not in a fresh checkout, so a few ignored
 things at the top of your repository are carried in (next section); nothing else is, and
 build output such as `bin/`, `dist/` or `target/` never is, because two runs building into
 one folder corrupt each other.
@@ -649,10 +649,11 @@ and a run that adds nothing to them changed nothing.
 
 **Bringing it in**: `git merge` will not overwrite files you have uncommitted, and the branch
 begins with those very files, so the ending says ``put yours aside with `git -C '<folder>'
-stash` and `git -C '<folder>' merge <branch>` brings in both``. If you changed nothing
-after the run began, `git stash drop` then discards the tracked changes you put aside; if
-you did, `git stash pop` puts those later edits back on top. Keep untracked inputs in place:
-they are absent from the branch, so do not include them in a stash you plan to discard.
+stash` and `git -C '<folder>' merge <branch>` brings in both``. When it also changed an
+untracked file of yours, the ending adds ``then `git -C '<folder>' stash push -u --
+'parser.py'` `` for exactly those files, which the branch holds. If you changed nothing
+after the run began, `git stash drop` then discards what you put aside; if you did, `git
+stash pop` puts those later edits back on top.
 
 **A merge, rebase or cherry-pick in progress is not carried**, because its files hold
 conflict markers: `Your uncommitted changes (…) are not in its copy: your checkout is in the
@@ -661,18 +662,27 @@ middle of a merge.` The run still starts, from your last commit.
 Until 2026-09-28 senior-dev worked in your checkout itself and refused to start with
 `<folder> has changes that are not committed (…); commit or stash them, then ask again`.
 
-## Untracked files, credentials and large local inputs — copied without being committed
+## Untracked files, a new file I started, credentials and large files — what goes on the branch
 
-Files that were untracked when the run began are copied into its worktree as local inputs.
-They are absent from the initial commit, eager checkpoints, submitted snapshots and final
-cleanup commits, even if the run edits them. Copying them does not write their contents as
-git objects. Your originals remain where they were, untracked. The receipt says
-`Your untracked files (…) are copied as local inputs, not committed.`
+Files that were untracked when the run began (a new `parser.py` you started, a
+`credentials.json`, a large local file) are copied into its copy as they are, without
+entering git. **The ones senior-dev changes are its work**: finish your half-written
+`parser.py` and the finished file is committed on its branch, like any file it writes.
+**The ones it leaves as they were stay off its branch** and are never written into git's
+object store, so a secret or a large file you never asked about is not kept on a branch.
+codeaf tells the two apart by a fingerprint of each file taken as it is copied in.
 
-To include a new file in the branch, stage it before starting a new run. Files senior-dev
-creates during the run can still enter its branch normally. Automatic retries copy only
-the original input names again from your checkout; newly untracked files are not added.
-Edits to copied inputs stay local to the temporary worktree and disappear when it is removed.
+Your originals stay where they were, untracked. The receipt says `Your untracked files (…)
+are copied in as they are: any it changes are committed as its work, and the rest stay off
+its branch.` The ending names the untracked files it changed and how to move yours aside
+before merging (previous section).
+
+A run codeaf sends back copies the same files again from your checkout; one the earlier run
+already put on its branch is not copied over. An untracked file created after the run began
+is not copied.
+
+Until 2026-09-29 every untracked file stayed off the branch even when senior-dev finished
+it, so a new file you asked it to finish was lost with its copy.
 
 ## Two senior-dev runs on one repository, the folder is busy — runs side by side, one run per plain folder, another window, a shell run
 

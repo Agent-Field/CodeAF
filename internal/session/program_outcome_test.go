@@ -70,7 +70,7 @@ func TestTheOutcomeNoteSaysWhatToDoNowAndKeepsBothBounds(t *testing.T) {
 		t.Fatalf("a pass is not told to offer the merge:\n%s", passed)
 	}
 	for _, verdict := range []programVerdict{programPassed, programUnverified, programFailed, programCrashed} {
-		for _, want := range []string{"worktree add <tmp> <branch>", "cd <tmp> && <check command>", "Do not run checks in the person's checkout", "copy was kept", "no git history"} {
+		for _, want := range []string{"worktree add -q --detach \"$tmp\" <branch>", "cd \"$tmp\" && <check command>", "worktree remove --force \"$tmp\"", "Do not run checks in the person's checkout", "copy was kept", "no git history"} {
 			if got := note(verdict, 0); !strings.Contains(got, want) {
 				t.Errorf("%s landing lacks %q:\n%s", verdict, want, got)
 			}

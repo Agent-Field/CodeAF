@@ -42,6 +42,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -386,7 +387,8 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		Args: carriedInFolder(carriedChildLine(inv), inv, folder),
 		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the engine
 		// gets the loopback token it needs, and model commands lose that token.
-		Env:        append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+folder.Branch, "SENIOR_DEV_IGNORED_AT_START="+folder.IgnoredFile()),
+		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+folder.Branch, "SENIOR_DEV_IGNORED_AT_START="+folder.IgnoredFile(),
+			gitidentity.InputsEnv+"="+folder.InputsFile()),
 		Dir:        here,
 		StderrPath: filepath.Join(record, carriedStderrName),
 		Grace:      grace,

@@ -176,8 +176,9 @@ hand-off starts a run of its own.
 
 **Uncommitted changes do not refuse it.** In a repository its copy starts from your folder
 as it stands: modified tracked files and staged additions form the first commit on its
-branch. Untracked files are copied as local inputs and excluded from automatic commits,
-even if the run edits them. Your files stay untouched; the receipt distinguishes the two. A merge,
+branch. Untracked files are copied in as they are: any the run changes are committed as
+its work, and the rest stay off its branch. Your files stay untouched; the receipt names
+both. A merge,
 rebase or cherry-pick half done is not carried, and the run starts from your last commit.
 
 **Runs on one repository work side by side**, each in a copy of its own. **A folder with
@@ -209,7 +210,8 @@ commits what it left uncommitted onto that branch (the task's title, with the pr
 own account of the ending as the body) and removes the copy, so **the branch is kept and
 checked out nowhere**, even when the run changed nothing. **Your checkout is never
 touched**: tracked edits and staged additions become its branch's first commit while staying
-uncommitted in your folder. Untracked files are copied without being committed (senior-dev's page says how to bring the branch in).
+uncommitted in your folder. Untracked files it changed go on its branch; the rest stay off it
+(senior-dev's page says how to bring the branch in).
 The task's page and the conversation say ``its work is on the branch <branch> in <folder>,
 N files; your checkout was not touched, and `git -C '<folder>' merge <branch>` brings it
 in``. Ask the chat to merge it, or run that yourself, when you are ready.

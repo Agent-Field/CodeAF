@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
@@ -26,6 +27,9 @@ type gitRecorder struct {
 	note         func(string)
 	startRules   *ignoreRules
 	startTracked map[string]bool
+	// inputs is the person's untracked files codeaf copied in, with their
+	// fingerprints, as [gitRecorder.startLists] last read them.
+	inputs gitidentity.Inputs
 }
 
 func newGitRecorder(workspace string, note func(string)) *gitRecorder {
@@ -42,8 +46,31 @@ func newGitRecorder(workspace string, note func(string)) *gitRecorder {
 
 // Git still tracks a path after an ignore rule matches it. Such a path is
 // part of the candidate and must never be filtered as ignored-at-start.
+//
+// AN INPUT THE RUN LEFT AS IT WAS IS FILTERED THE SAME WAY, and one it changed
+// is not: the person's untracked file it finished is its work, and the rest are
+// only what it was given (gitidentity's inputs.go). That holds for the
+// candidate, the clean-tree check and a restore alike.
 func (recorder *gitRecorder) ignoredAtStart(path string, paths []string) bool {
-	return !recorder.startTracked[path] && ignoredAtStart(path, recorder.startRules, paths)
+	return !recorder.startTracked[path] &&
+		(ignoredAtStart(path, recorder.startRules, paths) || recorder.inputs.LeftAlone(recorder.workspace, path))
+}
+
+// startLists reads the two lists codeaf wrote before the run — the paths git
+// ignored, and the inputs it copied in — keeping the inputs for
+// [gitRecorder.ignoredAtStart], and fails when either cannot be read, because
+// a check that cannot tell an input from work must not stage anything.
+func (recorder *gitRecorder) startLists() ([]string, error) {
+	paths, err := util.InitialIgnoredPaths()
+	if err != nil {
+		return nil, err
+	}
+	inputs, err := util.InitialInputs()
+	if err != nil {
+		return nil, err
+	}
+	recorder.inputs = inputs
+	return paths, nil
 }
 
 func (recorder *gitRecorder) Kind() string         { return "git" }
@@ -137,13 +164,14 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	if out, err := read.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git read-tree HEAD: %v: %s", err, strings.TrimSpace(string(out)))
 	}
-	startPaths, err := util.InitialIgnoredPaths()
+	startPaths, err := recorder.startLists()
 	if err != nil {
 		return "", err
 	}
-	// LOCAL INPUTS NEVER ENTER GIT'S OBJECT STORE. Resetting them after a
-	// blanket add keeps them out of the tree but still writes their contents
-	// as blobs. Exclude them before staging, including literal unusual names.
+	// AN INPUT THE RUN LEFT ALONE NEVER ENTERS GIT'S OBJECT STORE. Resetting
+	// it after a blanket add keeps it out of the tree but still writes its
+	// contents as a blob. Exclude it before staging, including literal unusual
+	// names; an input the run changed is its work and is staged.
 	paths, err := recorder.git("ls-files", "--cached", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return "", err
@@ -232,7 +260,7 @@ func (recorder *gitRecorder) Restore(handle, wantTree string) error {
 	if err != nil {
 		return err
 	}
-	startPaths, err := util.InitialIgnoredPaths()
+	startPaths, err := recorder.startLists()
 	if err != nil {
 		return err
 	}
@@ -268,7 +296,7 @@ func (recorder *gitRecorder) DifferentPaths(handle string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	startPaths, err := util.InitialIgnoredPaths()
+	startPaths, err := recorder.startLists()
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +478,7 @@ func (recorder *gitRecorder) statusFindings() []string {
 	if err != nil {
 		return nil
 	}
-	startPaths, err := util.InitialIgnoredPaths()
+	startPaths, err := recorder.startLists()
 	if err != nil {
 		return []string{err.Error()}
 	}
