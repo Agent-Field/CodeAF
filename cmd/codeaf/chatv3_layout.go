@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellindex"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -730,6 +731,7 @@ func v3Migrated(cfg session.Config) session.Config {
 		return cfg
 	}
 	_ = cell.MigrateLegacy(cfg.Place.Dir)
+	_, _ = cellindex.RebuildAt(cfg.Place.Dir)
 	cfg.SessionFile = cfg.Place.Transcript()
 	declareClass(cfg)
 	return cfg
