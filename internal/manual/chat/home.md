@@ -301,7 +301,7 @@ happened. The row says where the chat is only where that tells you something:
 | a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
 | held by this machine, or let go by everyone | nothing |
 
-The device is the name you gave that machine. A chat whose name will not open shows
+A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
