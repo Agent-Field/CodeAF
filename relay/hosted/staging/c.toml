@@ -1,0 +1,8 @@
+# Staging deploy of option (c). Run from relay/hosted: wrangler deploy -c staging/c.toml
+name = "caf-relay-c"
+main = "../src/worker.js"
+compatibility_date = "2026-09-01"
+
+[[r2_buckets]]
+binding = "FRAMES"
+bucket_name = "caf-staging-relay-c"
