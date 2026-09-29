@@ -228,3 +228,25 @@ func (s *Sync) publishInfo(c cell.Cell, title string) cellsync.PublishInfo {
 	}
 	return in
 }
+
+// Driving is how this device drives c now: the directory id it drives (the
+// branch a death made it, when there was one), the fence it holds and the head.
+// A device that does not hold the lease answers fence 0, which nothing accepts.
+func (s *Sync) Driving(ctx context.Context, c cell.Cell) (*cellsync.Driving, error) {
+	branches, err := cellsync.OpenBranchMap(s.Home)
+	if err != nil {
+		return nil, err
+	}
+	d := &cellsync.Driving{Cell: c}
+	if id := branches.Resolve(c.ID); id != c.ID {
+		d.Remote = id
+	}
+	v, err := s.Dir.Cell(ctx, d.ID())
+	if err != nil {
+		return nil, err
+	}
+	if v.Cell.Lease.Device == s.Device.ID() {
+		d.Fence, d.Head = v.Cell.Lease.Fence, v.Cell.Head
+	}
+	return d, nil
+}

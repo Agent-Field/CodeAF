@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -36,39 +37,6 @@ type fixedDriver struct{ d *cellsync.Driving }
 
 func (f fixedDriver) Driving(context.Context, cell.Cell) (*cellsync.Driving, error) { return f.d, nil }
 
-// unionMerger is a merge that keeps both sides' files, sealed through the fake engine.
-type unionMerger struct {
-	eng  *cellsync.FakeEngine
-	fail error
-}
-
-func (m unionMerger) Merge(_ context.Context, parent, branch cell.Cell, _ string) (string, error) {
-	if m.fail != nil {
-		return "", m.fail
-	}
-	files := map[string]string{}
-	for _, root := range []string{parent.Root, branch.Root} {
-		for p, body := range readTree(root) {
-			files[p] = body
-		}
-	}
-	return m.eng.Seal(parent, files), nil
-}
-
-func readTree(root string) map[string]string {
-	out := map[string]string{}
-	_ = filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
-		if err != nil || e.IsDir() {
-			return err
-		}
-		rel, _ := filepath.Rel(root, p)
-		raw, err := os.ReadFile(p)
-		out[rel] = string(raw)
-		return err
-	})
-	return out
-}
-
 func newBranchRig(t *testing.T) *branchRig {
 	t.Helper()
 	ctx := context.Background()
@@ -86,14 +54,7 @@ func newBranchRig(t *testing.T) *branchRig {
 		t.Fatal(err)
 	}
 	r.makeBranch(map[string]string{"branch.txt": "branch"})
-	r.door = branchDoor{
-		Dir:     dirA,
-		Fetch:   &cellsync.Fetcher{Engine: r.engA, Store: r.store, Inbox: func(c cell.Cell) string { return filepath.Join(t.TempDir(), c.ID) }},
-		Driver:  fixedDriver{r.drv},
-		Merger:  unionMerger{eng: r.engA},
-		Pub:     pub,
-		Scratch: func(id string) cell.Cell { return cell.Cell{ID: id, Root: filepath.Join(t.TempDir(), "scratch", id)} },
-	}
+	r.door = branchDoor{Dir: dirA, Driver: fixedDriver{r.drv}}
 	return r
 }
 
@@ -138,45 +99,7 @@ func (r *branchRig) loseLease() {
 	}
 }
 
-func TestCellMergeDiscard(t *testing.T) {
-	t.Run("merge keeps both sides files", func(t *testing.T) {
-		r := newBranchRig(t)
-		var out bytes.Buffer
-		before := r.rec(parentID).Head
-		if err := r.door.merge(context.Background(), r.parent, branchID, &out); err != nil {
-			t.Fatal(err)
-		}
-		if got := r.rec(parentID).Head; got == before {
-			t.Fatal("the parent's head did not move")
-		}
-		if !r.rec(branchID).Archived {
-			t.Fatal("the merged branch was not archived")
-		}
-		// A reader on a fresh device sees both sides in the published head.
-		reader := cell.Cell{ID: parentID, Root: t.TempDir()}
-		f := &cellsync.Fetcher{Engine: cellsync.NewFakeEngine(t.TempDir()), Store: r.store, Inbox: func(c cell.Cell) string { return t.TempDir() }}
-		if err := f.Fetch(context.Background(), reader, r.rec(parentID).Head); err != nil {
-			t.Fatal(err)
-		}
-		got := readTree(reader.Root)
-		if got["parent.txt"] != "parent" || got["branch.txt"] != "branch" {
-			t.Fatalf("merged tree = %v, want both sides", got)
-		}
-	})
-
-	t.Run("merge conflict leaves the branch alive", func(t *testing.T) {
-		r := newBranchRig(t)
-		boom := errors.New("conflict in parent.txt")
-		r.door.Merger = unionMerger{eng: r.engA, fail: boom}
-		before := r.rec(parentID).Head
-		if err := r.door.merge(context.Background(), r.parent, branchID, &bytes.Buffer{}); !errors.Is(err, boom) {
-			t.Fatalf("err = %v, want the conflict", err)
-		}
-		if r.rec(branchID).Archived || r.rec(parentID).Head != before {
-			t.Fatal("a failed merge changed the directory")
-		}
-	})
-
+func TestCellDiscard(t *testing.T) {
 	t.Run("discard archives", func(t *testing.T) {
 		r := newBranchRig(t)
 		before := r.rec(parentID).Head
@@ -188,20 +111,14 @@ func TestCellMergeDiscard(t *testing.T) {
 		}
 	})
 
-	t.Run("neither runs without the parent's lease", func(t *testing.T) {
+	t.Run("discard does not run without the parent's lease", func(t *testing.T) {
 		r := newBranchRig(t)
 		r.loseLease()
 		before := r.rec(parentID).Head
-		puts := len(r.store.Log())
-		for name, run := range map[string]func() error{
-			"merge":   func() error { return r.door.merge(context.Background(), r.parent, branchID, &bytes.Buffer{}) },
-			"discard": func() error { return r.door.discard(context.Background(), r.parent, branchID, &bytes.Buffer{}) },
-		} {
-			if err := run(); !errors.Is(err, directory.ErrFenceStale) {
-				t.Errorf("%s: err = %v, want ErrFenceStale", name, err)
-			}
+		if err := r.door.discard(context.Background(), r.parent, branchID, &bytes.Buffer{}); !errors.Is(err, directory.ErrFenceStale) {
+			t.Errorf("discard: err = %v, want ErrFenceStale", err)
 		}
-		if r.rec(branchID).Archived || r.rec(parentID).Head != before || len(r.store.Log()) != puts {
+		if r.rec(branchID).Archived || r.rec(parentID).Head != before {
 			t.Fatal("a device without the lease changed something")
 		}
 	})
@@ -217,12 +134,22 @@ func TestCellMergeDiscard(t *testing.T) {
 	})
 }
 
-func TestCellMergeDiscardNeedSyncSetUp(t *testing.T) {
-	for _, verb := range []string{"merge", "discard"} {
-		err := runCellIn([]string{verb, branchID, mustCellRoot(t)}, &bytes.Buffer{}, t.TempDir())
-		if err == nil {
-			t.Errorf("%s ran on a device with no sync", verb)
-		}
+func TestCellDiscardNeedsSyncSetUp(t *testing.T) {
+	t.Setenv("CODEAF_SYNC_URL", "")
+	if err := runCellIn([]string{"discard", branchID, mustCellRoot(t)}, &bytes.Buffer{}, t.TempDir()); err == nil {
+		t.Error("discard ran on a device with no sync")
+	}
+}
+
+// TestThereIsNoCellMerge pins that the verb is absent, not broken: it is not in
+// the usage line and asking for it is the usage line.
+func TestThereIsNoCellMerge(t *testing.T) {
+	if strings.Contains(cellUsage, "merge") {
+		t.Errorf("the usage line still offers merge: %s", cellUsage)
+	}
+	err := runCellIn([]string{"merge", branchID, mustCellRoot(t)}, &bytes.Buffer{}, t.TempDir())
+	if err == nil || err.Error() != cellUsage {
+		t.Errorf("cell merge answered %v, want the usage line", err)
 	}
 }
 
