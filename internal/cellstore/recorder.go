@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -58,7 +57,7 @@ func Wrap(inner executor.Executor, c cell.Cell) (executor.Executor, error) {
 		return inner, nil
 	}
 	engine := Engine{}
-	r, err := NewRecorder(inner, engine, c, filepath.Join(engine.LocalDir(c), "wal.jsonl"), Options{})
+	r, err := NewRecorder(inner, engine, c, engine.WALPath(c), Options{})
 	if err != nil {
 		return nil, err
 	}
