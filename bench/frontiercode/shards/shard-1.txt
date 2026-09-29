@@ -1,3 +1,6 @@
-# FrontierCode pilot shard 1/1 (1 task, 1 wave of at most 2).
-# The sample campaign's single fixture, run in order.
+# Built tasks only: a task whose controls have not reproduced is not usable.
+# The six remaining candidates (kong, cobra, headscale, bubbletea, clap,
+# goreleaser) join when built and calibrated.
 jsonschema-log-warning
+conflicted-files-refname-crash
+shell-pipe-empty-command
