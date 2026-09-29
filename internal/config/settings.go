@@ -1066,6 +1066,10 @@ var OperatorEnvPins = []string{
 	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
 	"CODEAF_FURROW",
+	// CODEAF_ENGINE_DAEMON=0 makes every engine verb spawn the engine instead
+	// of asking its long-lived daemon (internal/cellstore). It is an escape
+	// hatch that changes speed and never results, so it is plumbing.
+	"CODEAF_ENGINE_DAEMON",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
 	// this binary reports as is a constant in internal/provider that nothing
