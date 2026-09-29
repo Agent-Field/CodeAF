@@ -351,10 +351,44 @@ the chat's work folder with the same variables, readable by you alone. A `.env` 
 already wrote here is never overwritten, and codeaf says `.env keeps your own value for
 NAME`. With no identity on this machine, no secrets are fetched and no `.env` is written.
 
+**Your keys travel too, through the same encrypted vault.** Two things are sealed in the
+vault with your identity key and sent when they change, so a machine you continue on does not
+ask you to enter keys again. One is `credentials.json`, the keys of every account you
+connected. The other is the model keys stored in your profile's `config.json`: the model key,
+the search keys, the app secret and the key of any model service that keeps its key in the
+file. Each key is sent on its own: when two machines both changed the same key the one changed last
+wins, changing a budget or any other setting never makes a key look newer, and removing a key on
+one machine removes it on the other. A key that comes from an environment variable such as
+`OPENROUTER_API_KEY` is never sent. A damaged `credentials.json` or `config.json` is never
+sent and never replaces a good copy; when a good `credentials.json` arrives, the damaged file
+is kept beside it as `credentials.json.damaged`.
+
+**Budgets stay per machine.** Only the key fields of `config.json` travel. Your budgets and
+limits, model picks and every other setting are not sent, and a key arriving never changes them,
+so a limit you set here is not applied to your other machine. A service's key lands only on a
+machine that already has that service listed, and a machine without it never removes it for
+your other machines.
+
 If you continue a chat on a machine that already has it, the chat as it was left replaces
 what is there. Anything you had changed and never saved is kept first, as a branch, with the
 sentence above; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
+
+## Tasks that had not landed when a chat moved — working copy, uncommitted task edits, unmerged task branch, worktree
+
+A task works in a
+copy of your repository on its own branch. When the chat moves, each copy still at work comes
+along: its branch and commits arrive with the project, and the files the task had changed but
+not yet committed (edited, added, and the ones it deleted) are carried beside them and laid back
+over a fresh copy on the same branch, in this machine's own folder for that chat. Home says
+`the working copy of a task came along: <task>`, or `working copies of tasks came along:
+<task>, <task>` for several. A task that has finished has no copy, so nothing comes for it.
+What the repository's own `.gitignore` names (build output, a `.env`) and any file that looks
+like it holds a secret stay behind. Copies the other machine registered in the repository are
+forgotten here, so `git worktree list` shows only what this machine has. If a copy cannot be set
+up again (say its branch is checked out somewhere else), the sentence `a task's working copy
+could not be set up again here` names why, and the task's files are still in its folder under
+the chat's `trees` folder.
 
 ## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
 

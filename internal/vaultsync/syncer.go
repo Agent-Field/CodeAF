@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -24,6 +25,12 @@ type VaultFile interface {
 	Merge(enc []byte) error  // per secret id the newer slot wins, a delete included
 	// Entries lists a project's live secrets in stable name order; Inject writes them.
 	Entries(project string) ([]keys.Entry, error)
+	// Get, Put, Delete and Deleted address one slot by id; the credentials
+	// file rides in one such slot (credentials.go).
+	Get(id string) (keys.Entry, error)
+	PutAt(id string, e keys.Entry, at time.Time) error
+	Delete(id string) error
+	Deleted(id string) (bool, error)
 }
 
 // ErrTampered reports a vault object whose bytes do not hash to its id.
@@ -36,6 +43,10 @@ type Syncer struct {
 	Dir       directory.Client
 	Vault     VaultFile
 	CellKeyID string // this identity's cell key id; empty on a machine with no identity
+	// Carry is the state that rides in the vault beside the secrets, each kept
+	// here in its own Medium (credentials.go, and the provider keys of the
+	// profile config).
+	Carry []Carrier
 	// Notify, when set, receives one plain sentence about what Inject skipped.
 	// A sentence names secrets, never their values.
 	Notify func(string)
@@ -47,6 +58,9 @@ type Syncer struct {
 // third device pushed in between, pulls again and pushes once more; a second
 // loss is returned, since looping would only hide a busy directory.
 func (s Syncer) Push(ctx context.Context) error {
+	if err := s.Capture(); err != nil {
+		return err
+	}
 	err := s.pullThenPublish(ctx)
 	if errors.Is(err, directory.ErrCAS) {
 		err = s.pullThenPublish(ctx)
@@ -88,6 +102,9 @@ func (s Syncer) put(ctx context.Context, rid string, obj []byte) error {
 // Pull fetches the vault the directory names, checks it hashes to that name and
 // merges it. Nothing reaches the local vault before the check passes.
 func (s Syncer) Pull(ctx context.Context) error {
+	if err := s.Capture(); err != nil {
+		return err
+	}
 	_, err := s.pull(ctx)
 	return err
 }
@@ -108,7 +125,10 @@ func (s Syncer) pull(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return rid, s.Vault.Merge(enc)
+	if err := s.Vault.Merge(enc); err != nil {
+		return "", err
+	}
+	return rid, s.restoreCarried()
 }
 
 // verified returns the vault.enc inside obj when obj hashes to rid.
@@ -122,4 +142,25 @@ func verified(rid string, obj []byte) ([]byte, error) {
 func ridOf(obj []byte) string {
 	sum := sha256.Sum256(obj)
 	return hex.EncodeToString(sum[:])
+}
+
+// Capture stores every changed carried medium in the vault without any network,
+// so a caller that fingerprints the vault sees the change.
+func (s Syncer) Capture() error {
+	for _, c := range s.Carry {
+		if err := c.capture(s.Vault); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreCarried writes what a merge brought in back to each medium.
+func (s Syncer) restoreCarried() error {
+	for _, c := range s.Carry {
+		if err := c.restore(s.Vault); err != nil {
+			return err
+		}
+	}
+	return nil
 }

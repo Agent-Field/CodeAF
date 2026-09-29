@@ -37,6 +37,8 @@ type Taken struct {
 	Kept      string
 	KeptTurns uint32
 	Device    string
+	// TaskCopies names the tasks whose working copies came along with the chat.
+	TaskCopies []string
 }
 
 // Taker continues a chat here. `handoff.Taker` is what stands behind it; the
@@ -257,10 +259,7 @@ func (a *app) rebuildMachines() {
 // the list yet stays on home and the listing is asked for again.
 func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	a.refreshHome()
-	kept := ""
-	if msg.taken.Kept != "" {
-		kept = chatlist.KeptEdits(msg.taken.KeptTurns, msg.taken.Device)
-	}
+	kept := takenSaid(msg.taken)
 	line, ok := a.homeLineOf(msg.row.Cell)
 	if !ok {
 		a.home.say(kept, "")
@@ -271,6 +270,19 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		a.note(kept)
 	}
 	return tea.Batch(cmd, a.askMachines())
+}
+
+// takenSaid is the one line a takeover says about what it brought or kept,
+// empty when it did neither.
+func takenSaid(t Taken) string {
+	var said []string
+	if t.Kept != "" {
+		said = append(said, chatlist.KeptEdits(t.KeptTurns, t.Device))
+	}
+	if copies := chatlist.CopiesCame(t.TaskCopies); copies != "" {
+		said = append(said, copies)
+	}
+	return strings.Join(said, "; ")
 }
 
 // homeLineOf is the conversation line of a chat this machine lists.

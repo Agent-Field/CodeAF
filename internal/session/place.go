@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // The names inside a session folder. They are constants and not configuration:
@@ -44,7 +45,7 @@ const (
 	placeMetaLock     = "meta.lock"
 	placeNodeJournals = "tasks"
 	placeLogs         = "logs"
-	placeTrees        = "trees"
+	placeTrees        = cell.TreesDir
 	placeWork         = "work"
 	placeArtifacts    = "artifacts"
 	// placeTeamCursors is how far into each of its teams' Traffic this
