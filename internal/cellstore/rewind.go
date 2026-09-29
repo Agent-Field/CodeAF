@@ -51,8 +51,8 @@ func (e Engine) Rewind(ctx context.Context, c cell.Cell, ref string) (Sealed, er
 	if err != nil {
 		return Sealed{}, fmt.Errorf("rewind: read history: %w", err)
 	}
-	if _, err := e.engine(ctx, c, "--json", "rewind", target.ID, "--yes"); err != nil {
-		return Sealed{}, fmt.Errorf("rewind: restore: %w", err)
+	if err := e.Restore(ctx, c, target.ID, nil); err != nil {
+		return Sealed{}, fmt.Errorf("rewind: %w", err)
 	}
 	if err := kept.restore(c); err != nil {
 		return Sealed{}, fmt.Errorf("rewind: keep history: %w", err)

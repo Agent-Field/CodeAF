@@ -15,18 +15,22 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>]"
+const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell gc [--dry-run]"
 
 // cellVerb is one word after `cell`: how many arguments of its own it takes
-// before the optional cell name, and what it does to the cell.
+// before the optional cell name, and what it does to the cell. A verb that is
+// about every cell on the device (wide) takes no cell name and gets all its
+// arguments.
 type cellVerb struct {
 	args int
+	wide bool
 	run  func(c cell.Cell, args []string, out io.Writer) error
 }
 
 var cellVerbs = map[string]cellVerb{
-	"log":    {0, cellLog},
-	"rewind": {1, cellRewind},
+	"log":    {args: 0, run: cellLog},
+	"rewind": {args: 1, run: cellRewind},
+	"gc":     {wide: true, run: cellGC},
 }
 
 // runCell is the stage 0 door onto a cell's turn chain. Like `engine` it is
@@ -43,6 +47,9 @@ func runCellIn(args []string, out io.Writer, cwd string) error {
 	}
 	verb, ok := cellVerbs[args[0]]
 	rest := args[1:]
+	if ok && verb.wide {
+		return verb.run(cell.Cell{}, rest, out)
+	}
 	if !ok || len(rest) < verb.args || len(rest) > verb.args+1 {
 		return errors.New(cellUsage)
 	}
