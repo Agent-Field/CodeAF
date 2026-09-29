@@ -189,6 +189,43 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 	}
 }
 
+func TestSubTeamManagerNamingItsOwnTeamGetsTheRule(t *testing.T) {
+	n := newTeamTree(t, "boss", "api")
+	harbor := n.team(t, "harbor", "", "boss", n.member(t, "boss", "boss"))
+	boss := n.agent(t, "boss")
+	boss.teamBoundary()
+	if said, failed := callTool(t, boss.teamStartTool, `{"handle":"api","brief":"Run the API.","kind":"team","name":"backend"}`); failed {
+		t.Fatalf("team_start failed: %q", said)
+	}
+	f := n.file(t)
+	var backend teams.Team
+	for _, team := range f.Teams {
+		if team.Name == "backend" {
+			backend = team
+			break
+		}
+	}
+	if backend.ID == "" {
+		t.Fatal("the child team was not made")
+	}
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		m := n.member(t, "api", "api")
+		m.Started = true
+		if err := f.AddMember(harbor, m); err != nil {
+			return err
+		}
+		return f.SetManager(backend.ID, m.Key)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	api := n.agent(t, "api")
+	api.teamBoundary()
+	said, failed := callTool(t, api.teamPostTool, `{"team":"backend","to":"manager","text":"status"}`)
+	if !failed || said != `You manage "backend"; team_post is for the team above you, "harbor".` {
+		t.Fatalf("the own-team refusal was %q (failed=%v)", said, failed)
+	}
+}
+
 // PAST THE DEPTH LIMIT, a sub-team is refused with the reason, and nothing is
 // made.
 func TestASubTeamPastTheDepthLimitIsRefusedWithTheReason(t *testing.T) {
