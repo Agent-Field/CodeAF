@@ -19,17 +19,21 @@ func SeatFor(class executor.Class, c cell.Cell, workspace string, report func(er
 	if !cell.Enabled() {
 		return base, nil
 	}
-	rec, err := recorderFor(base.In(workspace), sealTree(workspace), c, Options{Report: report})
+	rec, err := recorderFor(base.In(workspace), EngineFor(workspace), c, Options{Report: report})
 	if err != nil {
 		return base, err
 	}
 	return sealed{Stance: base, rec: rec}, nil
 }
 
-// sealTree is the store that seals the whole workspace. The cell's own .cell/
-// directory is composed in as the tree's .cell/ entry, so the receipts and the
-// chain live in the cell and nothing is written into the workspace.
-func sealTree(workspace string) Engine { return Engine{Workspace: workspace} }
+// EngineFor is the store of a cell whose session works in workspace: it seals
+// the whole workspace, with the cell's own .cell/ directory composed in as the
+// tree's .cell/ entry, so the receipts and the chain live in the cell and
+// nothing is written into the workspace. An empty workspace seals the cell's
+// folder itself. It is the one place an Engine is derived for a cell: the
+// session's seat and the `cell` verbs both come here, so a rewind restores the
+// tree that was sealed.
+func EngineFor(workspace string) Engine { return Engine{Workspace: workspace} }
 
 func recorderFor(inner executor.Executor, store Store, c cell.Cell, opts Options) (*Recorder, error) {
 	return NewRecorder(inner, store, c, Engine{}.WALPath(c), opts)

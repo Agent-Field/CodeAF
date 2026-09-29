@@ -20,9 +20,15 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 }
 
 // Restore writes the snapshot back into the cell's folder, byte for byte:
-// only the named top-level paths, or the whole tree when none are named.
+// only the named top-level paths, or the whole tree when none are named. A
+// composed .cell/ is restored in place, chain files included, so this is for a
+// snapshot that is the cell's newest state; a rewind uses restoreKeepingChain.
 func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths []string) error {
-	args := append([]string{"--json", "rewind", snapshot, "--yes"}, e.cellDirArgs(c)...)
+	return e.restore(ctx, c, snapshot, paths, e.cellDirArgs(c))
+}
+
+func (e Engine) restore(ctx context.Context, c cell.Cell, snapshot string, paths, cellDir []string) error {
+	args := append([]string{"--json", "rewind", snapshot, "--yes"}, cellDir...)
 	for _, p := range paths {
 		args = append(args, "--paths="+p)
 	}

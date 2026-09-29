@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell gc [--dry-run]"
@@ -100,12 +101,19 @@ func cellLog(c cell.Cell, _ []string, out io.Writer) error {
 
 // cellRewind restores the cell to a turn and prints the turn that records it.
 func cellRewind(c cell.Cell, args []string, out io.Writer) error {
-	sealed, err := cellstore.Engine{}.Rewind(context.Background(), c, args[0])
+	sealed, err := cellEngine(c).Rewind(context.Background(), c, args[0])
 	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(out, "rewound to %s as new turn %s\n", args[0], short(sealed.Turn.ID))
 	return err
+}
+
+// cellEngine is the engine of a cell opened from a verb: built from the
+// session place the cell's meta records, exactly as the session's seat builds it.
+func cellEngine(c cell.Cell) cellstore.Engine {
+	meta, _ := session.LoadMeta(c.Root)
+	return cellstore.EngineFor(v3PlaceFor(c.Root, meta.Workspace, meta.Owned).Workspace)
 }
 
 const shortIDLen = 12

@@ -3,7 +3,9 @@ package cellstore
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -141,4 +143,104 @@ func mustRewind(t *testing.T, e Engine, c cell.Cell, ref string) Sealed {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// chainBytes is every chain file's content by cell-relative path.
+func chainBytes(t *testing.T, c cell.Cell) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, p := range []string{TurnsPath, ReceiptsDir, BlobsDir} {
+		_ = filepath.WalkDir(rel(c, p), func(path string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				raw, _ := os.ReadFile(path)
+				out[path] = string(raw)
+			}
+			return nil
+		})
+	}
+	return out
+}
+
+// dyingSeal is a runner that behaves like the engine except that the seal
+// never happens: the process is gone after the restore.
+func dyingSeal(e Engine) Engine {
+	e.Run = func(ctx context.Context, dir string, env []string, argv ...string) ([]byte, error) {
+		if strings.Contains(strings.Join(argv, " "), "turn-end") {
+			return nil, errors.New("killed before the seal")
+		}
+		return spawn(ctx, dir, env, argv...)
+	}
+	return e
+}
+
+func TestCrashBetweenRestoreAndSealLeavesTheChainWhole(t *testing.T) {
+	e, c, s, digests := threeTurns(t)
+	before := chainBytes(t, c)
+
+	if _, err := dyingSeal(e).Rewind(context.Background(), c, s[0].Turn.ID); err == nil {
+		t.Fatal("rewind reported success though the seal died")
+	}
+	// The seal wrote the rewind's receipt before it died: an unreferenced,
+	// content-addressed file. Everything that was there stays byte for byte.
+	after := chainBytes(t, c)
+	for p, want := range before {
+		if after[p] != want {
+			t.Fatalf("%s changed by a rewind that never sealed", p)
+		}
+	}
+	if log, err := Log(c); err != nil || len(log) != 3 {
+		t.Fatalf("log after the crash: %d turns, %v; want the 3 sealed ones", len(log), err)
+	}
+	if got := contentDigest(t, c.Root); got != digests[0] {
+		t.Fatal("the restore itself did not land before the crash")
+	}
+	// The next open is consistent: sealing what is on disk extends the old head.
+	next, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("edit", "after crash")}})
+	if err != nil || next.Turn.Parent != s[2].Turn.ID {
+		t.Fatalf("next seal = %+v, %v; want a child of turn 3", next.Turn, err)
+	}
+}
+
+func TestRewindOfAWorkspaceSealedCellRestoresTheWorkspace(t *testing.T) {
+	c := newCell(t)
+	ws := t.TempDir()
+	e := realEngine(t)
+	e.Workspace = ws
+	step := func(files map[string]string, line string) Sealed {
+		writeTree(t, ws, files, 0o644)
+		f, err := os.OpenFile(rel(c, cell.TranscriptPath), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = f.WriteString(line + "\n")
+		_ = f.Close()
+		s, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("edit", line)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	first := step(map[string]string{"a.txt": "one\n"}, `{"n":1}`)
+	step(map[string]string{"a.txt": "two\n", "b.txt": "new\n"}, `{"n":2}`)
+
+	rewound := mustRewind(t, e, c, first.Turn.ID)
+
+	if raw, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(raw) != "one\n" {
+		t.Fatalf("workspace a.txt = %q, want turn 1's", raw)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "b.txt")); !os.IsNotExist(err) {
+		t.Fatal("a file made after turn 1 survived the rewind")
+	}
+	if _, err := os.Stat(filepath.Join(ws, cell.StateDir)); !os.IsNotExist(err) {
+		t.Fatal("the rewind wrote .cell into the workspace")
+	}
+	if tr, _ := os.ReadFile(rel(c, cell.TranscriptPath)); string(tr) != "{\"n\":1}\n" {
+		t.Fatalf("transcript %q, want turn 1's", tr)
+	}
+	if log, err := Log(c); err != nil || len(log) != 3 || log[0].Turn.ID != rewound.Turn.ID {
+		t.Fatalf("log = %d turns, %v; want the rewind on top of 2", len(log), err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(e.LocalDir(c), "rewind-*")); len(left) != 0 {
+		t.Fatalf("scratch left behind: %v", left)
+	}
 }
