@@ -53,6 +53,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -539,12 +540,29 @@ type recallAside struct {
 // outlive this turn, and even inside it a line sent before the turn's stream is
 // subscribed is a line its reader never gets, so every line goes through
 // [Agent.sayMemory], which reads whichever stream is live under the same lock.
+//
+// AND THE READING MAY OUTLIVE ITS TURN BUT NEVER ITS SESSION. It reads the
+// brain, and with a router command it writes it, so it is one of the background
+// memory passes [Agent.Close] joins ([Agent.startMemoryJob]) — counted here,
+// under the lock that makes "closed, therefore no new pass" atomic, and let go
+// of the instant its answer is settled. It used to be the one reader of the
+// store nothing waited for: a recall the scheduler left behind its own turn was
+// still inside SQLite after Close returned, while the door that owns the store
+// closed it and a test's cleanup removed the folder under it (`TempDir
+// RemoveAll cleanup: directory not empty`, on PR #1658's gate).
+//
+// The count is released beside the reading rather than inside its ask, because
+// whatever an ask calls is a reading to sidecar_law_test.go, and the group's
+// release is not one.
 func (a *Agent) startRecallLocked(ctx context.Context, cue string) {
 	a.recall = nil
 	// [Agent.remembers] takes no lock — it reads two pointers fixed at
 	// construction — so it is legal under a.mu and is the same gate the routing
 	// pass itself keeps.
 	if !a.remembers() || strings.TrimSpace(cue) == "" {
+		return
+	}
+	if !a.startMemoryJobLocked() {
 		return
 	}
 	aside := &recallAside{agent: a}
@@ -559,6 +577,11 @@ func (a *Agent) startRecallLocked(ctx context.Context, cue string) {
 				aside.applyOrDefer()
 			}
 		})
+	settled := aside.reading.settled
+	go func() {
+		<-settled
+		a.memoryJobs.Done()
+	}()
 	a.recall = aside
 }
 
@@ -932,6 +955,12 @@ func (a *Agent) recordMemoryOutcome(injected []reflex.Stub, used []string) {
 func (a *Agent) startMemoryJob() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.startMemoryJobLocked()
+}
+
+// startMemoryJobLocked is [Agent.startMemoryJob] for a caller already holding
+// a.mu — the recall, which is started from inside [Agent.startTurnLocked].
+func (a *Agent) startMemoryJobLocked() bool {
 	if a.closed || a.memoryCtx == nil {
 		return false
 	}
@@ -1485,7 +1514,7 @@ func (a *Agent) mergeStateCard(delta reflex.StateDelta) {
 }
 
 // waitForMemory gives every background memory pass a bounded moment to land,
-// and then cuts whatever is left.
+// then cuts whatever is left, and then JOINS what it cut.
 //
 // IT WAITS BEFORE IT CANCELS, which is the opposite order to the turn's own
 // shutdown and is deliberate. A turn that is cancelled has a person watching who
@@ -1493,17 +1522,43 @@ func (a *Agent) mergeStateCard(delta reflex.StateDelta) {
 // keeping something the person said. Losing that to save two seconds on a quit
 // is the wrong trade — and the grace is the same closeGrace the journal gets, so
 // a wedged pass still cannot hold the process.
+//
+// AND IT WAITS AGAIN AFTER THE CANCEL, because a cancel is a request and not a
+// join. A pass the grace ran out on may be past its provider call and inside a
+// store write, which no context reaches; returning at the cancel handed that
+// write to whoever closes the store next, and the door that owns the store
+// closes it the moment Close returns. After the cancel everything a pass can
+// still be doing is bounded by a clock of its own — a reflex call by its
+// context, a store write by [store]'s write lock — so the second wait is
+// normally a moment, and it carries the same grace only so that a callee which
+// ignores its context still cannot hold a quit forever. A pass that outlives
+// even that is SAID, as the chat log's close says one ([chatJournal.close]).
 func (a *Agent) waitForMemory(stop context.CancelFunc) {
 	settled := make(chan struct{})
 	go func() {
 		a.memoryJobs.Wait()
 		close(settled)
 	}()
+	if memoryJoined(settled) {
+		stop()
+		return
+	}
+	stop()
+	if !memoryJoined(settled) {
+		log.Printf("session: a memory pass was still running %s after it was cancelled; "+
+			"closing without it", closeGrace)
+	}
+}
+
+// memoryJoined waits up to [closeGrace] for settled and answers whether it
+// closed.
+func memoryJoined(settled <-chan struct{}) bool {
 	timer := time.NewTimer(closeGrace)
 	defer timer.Stop()
 	select {
 	case <-settled:
+		return true
 	case <-timer.C:
+		return false
 	}
-	stop()
 }
