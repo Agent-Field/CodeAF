@@ -226,6 +226,8 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 	total := a.transcriptTokensLocked()
 	type cut struct{ end, tokens, answer int }
 	var fallback, chosen *cut
+	protected := min(summaryKeepPersonMessages, len(persons))
+	protectedWhy := ""
 	// What the most a summary could have taken came to, for the sentence a
 	// pass that takes nothing says about itself.
 	freshest, noted, closed, kept := 0, false, false, 1
@@ -252,6 +254,9 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 		freshest = EstimateTokens(fresh)
 		noted = end > 1 && strings.HasPrefix(messageContentText(a.messages[1]), summaryNotePrefix)
 		if !summaryWorthIt(policy, tokens, EstimateTokens(fresh)) {
+			if kept == protected {
+				protectedWhy = summaryTooLittle(true, noted, freshest, kept)
+			}
 			// A CUT WITH NOTHING WORTH A REQUEST IS NOT A REASON TO KEEP LESS.
 			// Fewer of the person's messages are kept only when keeping more
 			// cannot get under the line; a conversation already under it has
@@ -263,7 +268,7 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 			continue
 		}
 		candidate := &cut{end: end, tokens: tokens, answer: summaryTargetTokens(most, tokens)}
-		if fallback == nil || policy.recovering {
+		if policy.recovering || (fallback == nil && kept == protected) {
 			fallback = candidate
 		}
 		if total-tokens+candidate.answer+summaryNoteTokens <= policy.summarizeTo {
@@ -275,6 +280,9 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 		chosen = fallback
 	}
 	if chosen == nil {
+		if protectedWhy != "" && !policy.recovering {
+			return summaryPlan{}, protectedWhy, false
+		}
 		return summaryPlan{}, summaryTooLittle(closed, noted, freshest, kept), false
 	}
 	end := chosen.end
@@ -460,8 +468,15 @@ func (a *Agent) regionClosedLocked(end int) bool {
 func (a *Agent) writeSummary(ctx context.Context, plan summaryPlan) (string, error) {
 	summary := plan.previous
 	lines := summaryLines(plan.region)
+	reserve := plan.ceiling
+	if a.config.ReasoningProfile != nil {
+		if profile, known := a.config.ReasoningProfile(plan.model); known {
+			reserve = max(reserve, provider.SummaryOutputReserve(profile, plan.ceiling))
+		}
+	}
+	reserve = min(reserve, plan.window-provider.ContextSafetyTokens(plan.window)-summaryPromptTokens-summaryMinRegionTokens)
 	for len(lines) > 0 {
-		budget := summaryChunkTokens(plan.window, plan.ceiling, EstimateTokens(len(summary))) * bytesPerToken
+		budget := summaryChunkTokens(plan.window, reserve, EstimateTokens(len(summary))) * bytesPerToken
 		if budget <= 0 {
 			return "", errors.New("session: the summary no longer fits the window")
 		}
@@ -495,11 +510,9 @@ func summaryChunkTokens(window, answer, previous int) int {
 	return window - answer - provider.ContextSafetyTokens(window) - summaryPromptTokens - previous
 }
 
-// askForSummary is one request. It rides the conversation's own model with no
-// tools and no stream, and it is billed as the summary it is.
+// askForSummary asks the conversation's own model with no tools or stream. An
+// empty length finish gets one larger request; both calls are billed.
 func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, chunk string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, summaryCallWindow)
-	defer cancel()
 	ctx = provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary)
 	ctx = provider.WithReasoningEffort(ctx, provider.EffortLow)
 	ctx = provider.WithContextBudget(ctx, provider.ContextBudget{Window: plan.window, Reserve: plan.ceiling})
@@ -513,24 +526,52 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	}
 	ask.WriteString(chunk)
 	ask.WriteString("\n\nWrite the summary now.")
-	response, answered, err := a.completeWithNamedModel(ctx, purposeSummary, []ai.Message{
+	messages := []ai.Message{
 		textMessage("system", summaryInstruction(plan.answer)),
 		textMessage("user", ask.String()),
-	}, plan.model, ai.WithMaxTokens(plan.ceiling))
+	}
+	call := func(ceiling int) (*ai.Response, error) {
+		callCtx, cancel := context.WithTimeout(ctx, summaryCallWindow)
+		response, answered, err := a.completeWithNamedModel(callCtx, purposeSummary, messages, plan.model, ai.WithMaxTokens(ceiling))
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		if response == nil {
+			return nil, errEmptyAnswer
+		}
+		a.mu.Lock()
+		running := a.running
+		a.mu.Unlock()
+		if running {
+			a.addAuxiliaryUsageAs(response, answered, 1, auxRoleSummary)
+		} else {
+			a.addDetachedUsageAs(response, answered, 1, auxRoleSummary)
+		}
+		return response, nil
+	}
+	response, err := call(plan.ceiling)
 	if err != nil {
 		return "", err
 	}
-	if response == nil {
-		return "", errEmptyAnswer
+	if provider.EmptyAtCeiling(response, plan.ceiling) {
+		// TWICE THE ALLOWANCE, NOT A SHARE OF THE WINDOW. The provider already
+		// sizes the thinking room above the answer for the level the model runs
+		// at, so what came back empty is the rare pass that thought past it; a
+		// window-sized ceiling on a million-token model would ask endpoints for
+		// more completion than any of them serves and be refused instead.
+		retryCeiling := min(plan.window-provider.ContextSafetyTokens(plan.window)-summaryPromptTokens, 2*plan.ceiling)
+		if retryCeiling > plan.ceiling {
+			response, err = call(retryCeiling)
+			if err != nil {
+				return "", err
+			}
+		}
 	}
-	a.mu.Lock()
-	running := a.running
-	a.mu.Unlock()
-	if running {
-		a.addAuxiliaryUsageAs(response, answered, 1, auxRoleSummary)
-	} else {
-		a.addDetachedUsageAs(response, answered, 1, auxRoleSummary)
-	}
+	return summaryAnswer(response, chunk, plan.ceiling)
+}
+
+func summaryAnswer(response *ai.Response, chunk string, ceiling int) (string, error) {
 	text := strings.TrimSpace(response.Text())
 	if strings.EqualFold(strings.TrimSpace(provider.FinishReason(response)), "content_filter") || summaryRefusalWithoutSubstance(text, chunk) {
 		return "", errSummaryDeclined
@@ -540,7 +581,7 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	if !briefIsProse(text) || briefRepeats(text) {
 		return "", errEmptyAnswer
 	}
-	return clip(text, plan.ceiling*bytesPerToken), nil
+	return clip(text, ceiling*bytesPerToken), nil
 }
 
 var errSummaryDeclined = errors.New("session: the model declined to write a summary")
@@ -592,7 +633,7 @@ Cover, in this order of importance:
 - facts learned about the project or the world that the work depends on;
 - what is unfinished or still open, and what was about to happen next.
 
-Keep file paths, names, identifiers, numbers and error messages exact. Drop pleasantries, false starts and anything later superseded. Copy any line that begins with "[folded" verbatim: it points at the full record. Write in the third person ("the person asked", "the assistant changed"), as plain prose and short lists, with no preamble. Use at most about %d words.`, answer*3/4)
+Carry every specific fact, name, number, code, path and decision from the previous summary forward word for word unless the newer conversation explicitly supersedes it. Keep file paths, names, identifiers, numbers and error messages exact. Drop pleasantries, false starts and anything later superseded. Copy any line that begins with "[folded" verbatim: it points at the full record. Write in the third person ("the person asked", "the assistant changed"), as plain prose and short lists, with no preamble. Use at most about %d words.`, answer*3/4)
 }
 
 // summaryLines renders the region as the text the summarizer reads, one entry
