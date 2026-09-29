@@ -1,0 +1,3 @@
+# FrontierCode pilot shard 1/1 (1 task, 1 wave of at most 2).
+# The sample campaign's single fixture, run in order.
+jsonschema-log-warning
