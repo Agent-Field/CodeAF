@@ -781,6 +781,17 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			if text == "" {
 				continue
 			}
+			// AN INTERRUPTED OPERATIONAL PARTIAL IS STILL THE MODEL'S WORK.
+			// The journal gives it an aside audience so it cannot stand as an
+			// answer, but a generic note at the end of a stopped turn is left
+			// outside the fold as news from the surface. Keep the partial as cut
+			// assistant work so the stopped chip can disclose its exact words.
+			if e.Interrupted {
+				blocks = append(blocks, entry{
+					kind: entryAssistant, text: text, turn: turn, settled: true, cut: true,
+				})
+				continue
+			}
 			// A LINE THE TEAM SENT IS A CARD, headed by who said it to whom
 			// (teamcard.go), and never the person's `›`. A TEAM WAKE WITH
 			// NOTHING DELIVERED IN IT IS NOT DRAWN: it is the sentence that told
