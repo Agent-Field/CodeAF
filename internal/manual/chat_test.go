@@ -3554,3 +3554,26 @@ func TestTheCellReportQuestionsReachTheAnswer(t *testing.T) {
 		}
 	}
 }
+
+// A person whose chat was continued on another machine must reach the section
+// that says what the window shows and what became of the turns not yet sent.
+func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"another machine continued my chat and this window only shows it", "this window now only shows it"},
+		{"why did my tool call not run after I continued the chat on my laptop", "a tool call the model tries here answers with that same line"},
+		{"what happens to the turns I had not synced when another computer took over the conversation", "`<K> turns from <device>: merge / discard`"},
+		{"does closing the chat let another machine take it over", "lets go of it"},
+		{"sync says my computer's clock is off", "clock is off by more than 5 minutes"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a running-from-the-terminal section that says %q", probe.asked, probe.says)
+		}
+	}
+}

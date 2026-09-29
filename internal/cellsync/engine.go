@@ -25,8 +25,8 @@ type Engine interface {
 	Materialize(ctx context.Context, c cell.Cell, head string) error
 }
 
-// Export and FrameFile are the cellstore shapes, named here so the Engine seam
-// and cellstore.SyncEngine agree on one definition.
+// Export and FrameFile are cellstore's own types under the seam's names: one
+// definition, so cellstore.SyncEngine satisfies Engine with no adapter.
 type (
 	Export    = cellstore.Export
 	FrameFile = cellstore.FrameFile
