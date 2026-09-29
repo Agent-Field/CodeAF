@@ -18,11 +18,14 @@ import "sync"
 // happen instead of waiting to be taken.
 type SealWatch struct {
 	// Say, when set, receives each sentence as it happens.
-	Say     func(string)
-	mu      sync.Mutex
-	cause   string
-	said    []string
-	failing bool
+	Say func(string)
+	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
+	// sets it to the sync side's idle call.
+	OnTurnEnd func()
+	mu        sync.Mutex
+	cause     string
+	said      []string
+	failing   bool
 }
 
 // Report takes the outcome of one seal: nil when it held, the error when it did
@@ -60,6 +63,14 @@ func (w *SealWatch) say(sentence string) {
 		return
 	}
 	w.said = append(w.said, sentence)
+}
+
+// TurnEnded is the session's word that the agent finished a turn. It only
+// forwards, so a watch without a listener costs nothing.
+func (w *SealWatch) TurnEnded() {
+	if w.OnTurnEnd != nil {
+		w.OnTurnEnd()
+	}
 }
 
 // Failing reports whether the most recent seal failed.

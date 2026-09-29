@@ -384,3 +384,66 @@ func TestNotedTurnBeatsPromptlyAndCoalesces(t *testing.T) {
 	cancel()
 	<-done
 }
+
+// Sealing stays immediate and the takeover card stays truthful while uploads
+// wait for the window: the directory's pending count is current within the
+// nudge window, nothing goes up before the window ends, and Idle sends every
+// noted turn in one publish at once and brings the count back to zero.
+func TestIdleUploadsAtOnceWhileBusyWaitsForTheWindow(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = 7 * time.Second // apart from the 10 s heartbeat, so each wake is its own
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	first := r.publishFirst(map[string]string{"a": "0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(2)
+	puts := r.puts()
+
+	h1, h2 := r.seal(map[string]string{"a": "1"}), r.seal(map[string]string{"a": "2"})
+	note(b, h1, h2)
+	sl.settleOn(NudgeWindow)
+	sl.advance(NudgeWindow)
+	sl.settleOn(NudgeWindow)
+	got := r.head(cellID)
+	if got.Head != first || got.Lease.Pending != 2 || r.puts() != puts {
+		t.Fatalf("busy, inside the window: head %s, pending %d, %d new puts; want the old head, 2 pending, none", got.Head, got.Lease.Pending, r.puts()-puts)
+	}
+
+	b.Idle()
+	sl.settleOn(b.Interval) // the flush loop uploaded and went back to waiting a whole window
+	if got := r.head(cellID); got.Head != h2 || r.puts() != puts+1 || b.Pending() != 0 {
+		t.Fatalf("after idle: head %s, %d new puts, %d pending; want the newest head in one put", got.Head, r.puts()-puts, b.Pending())
+	}
+	b.beat(context.Background())
+	if got := r.head(cellID).Lease.Pending; got != 0 {
+		t.Fatalf("the takeover card still counts %d turns after they went up", got)
+	}
+	cancel()
+	<-done
+}
+
+// Idle with nothing sealed since the last upload asks the relay for nothing.
+func TestIdleWithNothingNewIsFree(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = 7 * time.Second
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	r.publishFirst(map[string]string{"a": "0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(2)
+	puts := r.puts()
+	sl.advance(time.Second) // so a new wait of a whole window can only be the one after the idle flush
+	b.Idle()
+	sl.settleOn(b.Interval)
+	if r.puts() != puts {
+		t.Fatalf("an idle with nothing new made %d puts", r.puts()-puts)
+	}
+	cancel()
+	<-done
+}

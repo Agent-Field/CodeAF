@@ -50,7 +50,7 @@ type exportOp struct {
 	Head     string `json:"head"`
 	Outbox   string `json:"outbox"`
 	Ledger   string `json:"ledger"`
-	MaxFrame int    `json:"max_frame"`
+	MaxFrame int    `json:"max_frame,omitempty"` // omitted when 0, so the engine picks its default: a literal 0 would give every object its own frame
 	keyArgs
 }
 

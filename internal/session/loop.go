@@ -1768,7 +1768,16 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// transcript to find it (placemeta.go's [Agent.stampSpend]).
 	a.stampSpend()
 	a.noticeNewerBuild()
+	a.tellTurnEnded()
 	return turn
+}
+
+// tellTurnEnded lets the seat's seal watch know the agent has stopped to wait
+// for the person, when it wants to know.
+func (a *Agent) tellTurnEnded() {
+	if e, ok := a.config.Seals.(TurnEnder); ok {
+		e.TurnEnded()
+	}
 }
 
 // completeWithRetry sends one provider request and asks again while the
