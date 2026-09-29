@@ -191,6 +191,7 @@ func seniorDevChangedFiles(ctx context.Context, workspace string) []string {
 	}
 	git := func(args ...string) ([]string, bool) {
 		argv := util.GitArgv(args...)
+		//codeaf:plumbing git read of changed files
 		command := exec.CommandContext(ctx, argv[0], argv[1:]...)
 		command.Dir = workspace
 		out, err := command.Output()

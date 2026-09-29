@@ -142,6 +142,7 @@ func RunReading(
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	//codeaf:tool-pending
 	command := exec.CommandContext(ctx, shell, "-c", strictPreamble+strategy.Command)
 	command.Dir = filepath.Join(workspace, strategy.Workdir)
 	// A suite spawns children — a test server, a browser, a compiler — and

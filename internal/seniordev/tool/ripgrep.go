@@ -24,6 +24,7 @@ type ripgrepRunner interface {
 type execRipgrepRunner struct{}
 
 func (execRipgrepRunner) Run(ctx context.Context, cwd string, args []string) (ripgrepResult, error) {
+	//codeaf:tool-pending
 	command := exec.CommandContext(ctx, "rg", args...)
 	command.Dir = cwd
 	command.Env = withoutEnv(os.Environ(), "RIPGREP_CONFIG_PATH")

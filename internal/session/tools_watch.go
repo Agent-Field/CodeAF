@@ -658,6 +658,7 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	defer cancel()
 
 	shell, shellArgs := jobShell()
+	//codeaf:tool-pending
 	process := exec.CommandContext(tickCtx, shell, append(shellArgs, spec.command)...)
 	process.Dir = r.workspace
 	process.Env = os.Environ()

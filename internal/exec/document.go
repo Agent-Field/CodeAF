@@ -355,6 +355,7 @@ func extractLocalPDF(ctx context.Context, path string, pages documentPageRange) 
 	args = append(args, path, "-")
 	commandCtx, cancel := context.WithTimeout(ctx, documentCommandTimeout)
 	defer cancel()
+	//codeaf:tool-pending
 	output, err := osexec.CommandContext(commandCtx, binary, args...).CombinedOutput()
 	if commandCtx.Err() != nil {
 		return "", true, commandCtx.Err()
@@ -392,6 +393,7 @@ func usableDocumentText(text string, pages int) bool {
 func estimatePDFPages(ctx context.Context, path string, size int64) int {
 	if binary, err := osexec.LookPath("pdfinfo"); err == nil {
 		commandCtx, cancel := context.WithTimeout(ctx, documentCommandTimeout)
+		//codeaf:tool-pending
 		output, commandErr := osexec.CommandContext(commandCtx, binary, path).CombinedOutput()
 		cancel()
 		if commandErr == nil {

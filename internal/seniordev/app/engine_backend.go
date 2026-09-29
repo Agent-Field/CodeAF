@@ -169,6 +169,7 @@ func turnSystemContext(ctx context.Context, workspace string) systemprompt.Conte
 		}
 	}
 	if vcs == "" && directory != "" {
+		//codeaf:plumbing git probe of the workspace
 		command := exec.CommandContext(ctx, "git", "-C", directory, "rev-parse", "--is-inside-work-tree")
 		if output, err := command.Output(); err == nil && strings.TrimSpace(string(output)) == "true" {
 			vcs = "git"

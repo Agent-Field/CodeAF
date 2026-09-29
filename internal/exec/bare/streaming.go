@@ -141,6 +141,7 @@ var stdbufPrefix = sync.OnceValue(func() []string {
 	if err != nil {
 		return nil
 	}
+	//codeaf:plumbing capability probe of a helper binary
 	probe := exec.Command(path, "-oL", "-eL", "true")
 	probe.Env = os.Environ()
 	output, err := probe.CombinedOutput()

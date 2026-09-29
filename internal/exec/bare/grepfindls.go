@@ -201,6 +201,7 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 			}
 			rgArgs = append(rgArgs, "--", p.Pattern, ".")
 
+			//codeaf:tool-pending
 			cmd := exec.CommandContext(ctx, rgPath, rgArgs...)
 			cmd.Dir = searchPath
 			var stderr grepErrorBuffer
@@ -705,6 +706,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 			}
 			fdArgs = append(fdArgs, "--", effectivePattern, searchPath)
 
+			//codeaf:tool-pending
 			cmd := exec.CommandContext(ctx, fdPath, fdArgs...)
 			var stdout, stderr strings.Builder
 			cmd.Stdout = &stdout

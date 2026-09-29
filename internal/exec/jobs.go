@@ -173,6 +173,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	}
 
 	jobCtx, cancel := context.WithCancel(context.Background())
+	//codeaf:tool-pending
 	cmd := exec.CommandContext(jobCtx, "bash", "-lc", command)
 	configureDetachedCommand(cmd, r.workspace.Root(), logFile)
 	cmd.Env = environment

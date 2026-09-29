@@ -103,6 +103,7 @@ func SpawnProcess(ctx context.Context, command []string, options ...ProcessOptio
 			args = []string{"/d", "/s", "/c", line}
 		}
 	}
+	//codeaf:tool-pending
 	cmd := exec.Command(name, args...)
 	cmd.Dir = opt.Cwd
 	switch {
