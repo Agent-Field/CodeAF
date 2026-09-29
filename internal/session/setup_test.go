@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
@@ -135,5 +136,23 @@ func TestSetupCallsAskAboutTheNetworkUnlessApprovalsAreOpen(t *testing.T) {
 		if _, allowed := agent.approve(tc.ctx, nil, bash); allowed != tc.allowed {
 			t.Errorf("%s: allowed = %v, want %v", tc.name, allowed, tc.allowed)
 		}
+	}
+}
+
+// A setup turn is the harness's own bounded request; whatever it costs, it is
+// never handed to a task.
+func TestSetupTurnIsNeverHandedToATask(t *testing.T) {
+	ask := "install jq and yq into this folder, then check each runs, and report the versions"
+	agent := checkpointAgent(t, &scriptedCompleter{})
+	agent.personAsk = ask
+	ctx := userMessage{setup: true}.turnContext(context.Background())
+	over := agent.handOverRunningTurn(ctx, newEventHub(), &Usage{},
+		time.Time{}, agent.model, checkpointCeilingNote, checkpointSeamCeiling, 0, nil,
+		routeVerdict{Work: true, Goal: ask}, checkpointRead{}, nil)
+	if over.moved || over.decision != checkpointCeilingSetup {
+		t.Fatalf("the handover decided %q (moved %v), want %q", over.decision, over.moved, checkpointCeilingSetup)
+	}
+	if agent.graph().node(1) != nil {
+		t.Fatal("the handover admitted a node for a setup turn")
 	}
 }

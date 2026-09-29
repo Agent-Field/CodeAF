@@ -13,11 +13,12 @@ var serviceBinaries = []string{"postgres", "psql", "mysqld", "redis-server"}
 
 // Local gathers the capabilities of this machine for the tools the probe table
 // knows.
-func Local() Capabilities { return LocalFor(inventory.Inventory{}) }
+func Local() Capabilities { return LocalFor(inventory.Inventory{}, os.Getenv("PATH")) }
 
 // LocalFor is Local that also looks for every tool and service the inventory
-// names, so a tool outside the probe table is found when it is really there.
-func LocalFor(inv inventory.Inventory) Capabilities {
+// names, so a tool outside the probe table is found when it is really there,
+// and looks on pathList rather than the process's own PATH.
+func LocalFor(inv inventory.Inventory, pathList string) Capabilities {
 	c := Capabilities{
 		Platform: Platform{OS: runtime.GOOS, Arch: runtime.GOARCH},
 		Tools:    map[string]string{},
@@ -25,7 +26,7 @@ func LocalFor(inv inventory.Inventory) Capabilities {
 		GPU:      localGPU(),
 	}
 	for _, name := range lookupNames(inv) {
-		if path, err := exec.LookPath(name); err == nil {
+		if path, ok := inventory.Resolve(name, pathList); ok {
 			c.Tools[name] = inventory.Version(name, path)
 		}
 	}

@@ -56,8 +56,10 @@ func (r Report) Lines() []string {
 // within. It never names an impossible item, so nothing impossible is tried.
 func (r Report) SetupBrief() string {
 	var b strings.Builder
-	b.WriteString("This chat needs the following on this machine so it can run here. Install each one, " +
-		"keep to user space (no root), check that it now runs, then stop:\n")
+	b.WriteString("This chat needs the following on this machine so it can run here. Install each one " +
+		"in user space, without root. Only this folder is writable, so put programs in ./bin " +
+		"(./.venv/bin and ./node_modules/.bin work too). Check that each now runs, then stop; " +
+		"do not explore the machine beyond that:\n")
 	for _, it := range r.Pending() {
 		b.WriteString("- " + it.Line() + "\n")
 	}

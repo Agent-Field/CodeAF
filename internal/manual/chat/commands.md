@@ -2263,6 +2263,6 @@ and the turn is marked as a setup turn in `codeaf cell log`. Because the network
 each call asks first, exactly like any other outside action, unless approvals are open
 (`--yolo` or the allow posture). Limits: a setup turn is never replayed on another machine
 (the agent does it again there), it never runs impossible items, it needs your permission
-for the network, and it can be rewound like any turn. When it ends, codeaf looks at what is
+for the network, a sandboxed conversation can install only inside its own folder (`bin/`, `.venv/bin` and `node_modules/.bin` there count as this machine's tools), and it can be rewound like any turn. When it ends, codeaf looks at what is
 now on this machine and updates the record. Cells must be on (`CODEAF_CELLS=1`); without a
 cell there is nothing to set up.
