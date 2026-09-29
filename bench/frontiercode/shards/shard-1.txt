@@ -1,6 +1,12 @@
 # Built tasks only: a task whose controls have not reproduced is not usable.
-# The six remaining candidates (kong, cobra, headscale, bubbletea, clap,
-# goreleaser) join when built and calibrated.
+# All seven candidates from PLAN-pilot.md are built and calibrated; goreleaser's
+# shell-pipe-empty-command and pre-commit's conflicted-files-refname-crash came
+# first, then the five candidates below (kong, cobra, headscale, bubbletea, clap).
 jsonschema-log-warning
 conflicted-files-refname-crash
 shell-pipe-empty-command
+subcommand-single-char-alias-leak
+completions-args-mutation
+dns-extra-records-lowercase
+progress-state-string-out-of-range
+mangen-hidden-positionals

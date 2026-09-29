@@ -41,7 +41,7 @@
   "1": "bench/frontiercode/shards/shard-1.txt"
  },
  "shard_sha256": {
-  "1": "080eaa812acb69b12ccc25c2270e5efa247114eefb1b5ce57d4cd0404180514d"
+  "1": "2c461ae1b07eb142e6b86aca620ebebff87da329225c21ef946bf8b57637fb52"
  },
  "max_cost_usd": "500.00",
  "max_cost_note": "Per run, and enforced: launch.sh passes this to run.sh as the agent's dollar ceiling, and the judge's tokens bill against the same figure. It is not a campaign total. The campaign's provider-side spend is the delta of the key's usage counter between the baseline recorded at install and the final read at teardown.",
