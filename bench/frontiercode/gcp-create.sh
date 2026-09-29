@@ -22,7 +22,7 @@ MODE="${1:-}"
 case "$MODE" in --plan|--create) ;; *) sed -n '2,12p' "$0" >&2; exit 2 ;; esac
 
 fc_load_manifest
-fc_require_keys .campaign_name .arm .seed_id .model .gcp.instance_prefix \
+fc_require_keys .campaign_name .arm .model .gcp.instance_prefix \
   .gcp.zone .gcp.image .gcp.machine_type .gcp.boot_disk_gb .gcp.max_run_duration
 
 PROJECT="${GCP_PROJECT:-$(fc_get '.gcp.project')}"
@@ -50,7 +50,7 @@ for ((s = 1; s <= SHARDS; s++)); do names+=("$PREFIX-s$s"); done
 cat <<PLAN
 campaign:        $CAMPAIGN
 arm:             $ARM
-seed:            $(fc_get '.seed_id')
+seed:            $(fc_seeds)
 model:           $(fc_get '.model')
 list price:      input \$$(fc_get '.list_price_per_mtok.input')/Mtok  output \$$(fc_get '.list_price_per_mtok.output')/Mtok
 codeaf commit:   $(fc_get '.codeaf_commit')  (bin/codeaf sha256 $(fc_get '.codeaf_sha256'))
