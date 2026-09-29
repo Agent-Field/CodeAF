@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -241,7 +242,8 @@ func (s *Sync) vaultSyncer(notify func(string)) (vaultsync.Syncer, error) {
 	if err != nil {
 		return vaultsync.Syncer{}, err
 	}
-	return vaultsync.Syncer{Store: s.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(), Notify: notify}, nil
+	return vaultsync.Syncer{Store: s.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
+		CredentialsPath: filepath.Join(s.Home, vaultsync.CredentialsFile), Notify: notify}, nil
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every

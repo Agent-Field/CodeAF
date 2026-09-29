@@ -351,6 +351,16 @@ the chat's work folder with the same variables, readable by you alone. A `.env` 
 already wrote here is never overwritten, and codeaf says `.env keeps your own value for
 NAME`. With no identity on this machine, no secrets are fetched and no `.env` is written.
 
+**Your connected accounts travel too, through the same encrypted vault.** `credentials.json`,
+the file that holds the keys of every account you connected, is sealed in the vault with
+your identity key and sent when it changes, so a machine you continue on does not ask you to
+connect again. When two machines both changed it, the copy saved last wins whole, and
+removing it on one machine removes it on the other. A `credentials.json` that is damaged is
+never sent and never replaces a good copy; when a good copy arrives, the damaged file is kept
+beside it as `credentials.json.damaged`. What stays on each machine on purpose is
+`config.json`: your budgets and limits, and the model-provider settings and keys in it, are
+per machine, so a limit you set here is not applied to your other machine.
+
 If you continue a chat on a machine that already has it, the chat as it was left replaces
 what is there. Anything you had changed and never saved is kept first, as a branch, with the
 sentence above; nothing is thrown away. If another machine takes the

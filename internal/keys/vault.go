@@ -50,8 +50,11 @@ func (r record) live() bool { return !r.Deleted }
 
 // nextStamp is now, or one past the slot's previous stamp when the clock has
 // not moved, so two writes to one slot in the same millisecond still order.
-func nextStamp(prev record, doc *vaultDoc) int64 {
-	return max(time.Now().UnixMilli(), prev.stampOf(doc)+1)
+func nextStamp(prev record, doc *vaultDoc) int64 { return stampAt(time.Now(), prev, doc) }
+
+// stampAt is nextStamp for an edit made at a known time.
+func stampAt(at time.Time, prev record, doc *vaultDoc) int64 {
+	return max(at.UnixMilli(), prev.stampOf(doc)+1)
 }
 
 // vaultDoc is the stored object. Stage 0 has no policy: every secret is
@@ -102,9 +105,15 @@ func Fingerprint(home string) (string, bool) {
 }
 
 // Put stores or replaces the secret under id.
-func (v *Vault) Put(id string, e Entry) error {
+func (v *Vault) Put(id string, e Entry) error { return v.PutAt(id, e, time.Now()) }
+
+// PutAt is Put for an edit that was made earlier than it is being recorded, such
+// as a file saved before the vault heard of it. The slot is stamped with the
+// time of the edit, so recording an old edit late never beats a newer one that
+// another machine has already sent.
+func (v *Vault) PutAt(id string, e Entry, at time.Time) error {
 	return v.update(func(d *vaultDoc) error {
-		d.Secrets[id] = record{Entry: e, Updated: nextStamp(d.Secrets[id], d)}
+		d.Secrets[id] = record{Entry: e, Updated: stampAt(at, d.Secrets[id], d)}
 		return nil
 	})
 }
@@ -120,6 +129,13 @@ func (v *Vault) Get(id string) (Entry, error) {
 		return Entry{}, ErrNotFound
 	}
 	return r.Entry, nil
+}
+
+// Deleted reports whether id holds a tombstone, so a reader can tell a secret
+// that was removed from one that was never there.
+func (v *Vault) Deleted(id string) (bool, error) {
+	d, err := v.read()
+	return d.Secrets[id].Deleted, err
 }
 
 // Delete removes the secret under id and leaves a tombstone, so merging with a
