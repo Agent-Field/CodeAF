@@ -48,9 +48,16 @@ type programRoom struct {
 	readAt  time.Time
 	reading bool
 	// briefFull says the head's dropdown is open: the whole brief the program
-	// was handed, drawn between the head's rules ([app.programHeadBriefRows]).
-	// It opens shut, and `ctrl+o` or a press on the dropdown turns it.
+	// was handed is the room's body, as a document (programbrief.go). It opens
+	// shut, and `ctrl+o` or a press on the dropdown turns it
+	// ([app.turnProgramBrief]).
 	briefFull bool
+	// steps is where the room's scroll stood on the steps when the brief was
+	// opened over them, for the brief to hand back when it shuts.
+	steps struct {
+		offset int
+		stick  bool
+	}
 	// briefSpan is where the dropdown was drawn on the title row, for the
 	// press that turns it ([app.programBriefPress]).
 	briefSpan hudSpan
@@ -305,9 +312,18 @@ func (a *app) programRoomRows(width int) []row {
 	p.inner = inner
 	pal := a.pal
 	var out []row
-	// THE BRIEF IS THE HEAD'S (its dropdown), so the actions open the body; and
-	// every action with more to show is a press that opens its whole step.
-	lines, keys := a.programBodyRows(p.page, inner, p.briefFull, p.calls, !a.programHeadsRoom(), p.open)
+	// THE BRIEF IS THE HEAD'S DROPDOWN, and while it is open the brief IS the
+	// body, whole, as a document the room's scroll reads (programbrief.go). Shut,
+	// the actions open the body, and every action with more to show is a press
+	// that opens its whole step.
+	var lines []string
+	var keys []int64
+	if a.programBriefShown() {
+		lines = a.programBriefDocument(p.page.Description, inner)
+		keys = make([]int64, len(lines))
+	} else {
+		lines, keys = a.programBodyRows(p.page, inner, p.briefFull, p.calls, !a.programHeadsRoom(), p.open)
+	}
 	for i, line := range lines {
 		r := row{text: line, entry: -1}
 		if keys[i] != 0 {
@@ -516,13 +532,16 @@ func (a *app) programRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case "ctrl+o":
 		// THE KEY TURNS THE HEAD'S DROPDOWN, whatever the brief's length: the
-		// brief is drawn whole up there or not at all ([app.programHeadBriefRows]).
-		// On the raw calls it still unfolds the brief those draw in their body.
-		p.briefFull = !p.briefFull
-		a.room.dirty = true
-		a.touch()
+		// brief is the body, whole, or not drawn at all ([app.turnProgramBrief]).
+		// On a frame too short for the head it unfolds the brief the body draws.
+		a.turnProgramBrief()
 		return nil, true
 	case programCallsKey:
+		// THE CALLS ARE A VIEW OF THE STEPS, so asking for them over the open
+		// brief shuts the brief first: the key always shows what it names.
+		if a.programBriefShown() {
+			a.turnProgramBrief()
+		}
 		p.calls = !p.calls
 		a.room.dirty = true
 		a.touch()
@@ -540,9 +559,16 @@ func (a *app) programRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // same as the task — and the task's own bold title under it, and a third in the
 // box's `Reading:` label. The owner asked on 2026-09-25 for one: the head is
 // the title row alone (the task's name, its badge, the dropdown, the pinned
-// facts), and the brief the program was handed is behind the dropdown, drawn
-// whole in the dim ink between the head's rules. The way back is `esc`, named
-// on the key line, and the side list's `‹ Back to main`.
+// facts), and the brief the program was handed is behind the dropdown. The
+// way back is `esc`, named on the key line, and the side list's `‹ Back to
+// main`.
+//
+// THE OPEN BRIEF IS THE BODY, NOT THE HEAD. It was drawn between the head's
+// rules, pinned and cut to half the frame, and a brief of a few thousand words
+// — which is what codeaf hands a program — was mostly a count of lines not
+// shown. The owner asked on 2026-09-28 for all of it, scrollable: so it takes
+// the body the steps were in, the room's wheel and page keys read it, and the
+// steps come back where they were (programbrief.go).
 
 // programBriefChevron is the dropdown on the title row: shut, or open.
 func programBriefChevron(open bool) string {
@@ -560,30 +586,33 @@ func (a *app) programHeadsRoom() bool {
 	return a.programOf() != nil && a.roomOrganized()
 }
 
-// programHeadBriefRows is the brief, whole, between the head's rules while the
-// dropdown is open, and nothing while it is shut. It is pinned with the head,
-// so a brief longer than half the frame gives up its tail to a count rather
-// than the body its rows.
-func (a *app) programHeadBriefRows(width int) []string {
+// programBriefShown says the open brief is the room's body: its dropdown is
+// open on a frame that draws the head. A shorter frame has no dropdown, and
+// `ctrl+o` there unfolds the brief its body draws above the steps.
+func (a *app) programBriefShown() bool {
 	p := a.programOf()
-	if p == nil || !p.briefFull || !a.roomOrganized() {
-		return nil
+	return p != nil && p.briefFull && a.programHeadsRoom()
+}
+
+// turnProgramBrief opens or shuts the brief. Opening it keeps where the steps
+// were scrolled and reads the brief from its top; shutting it puts the steps
+// back exactly there, following the run again if they were.
+func (a *app) turnProgramBrief() {
+	p := a.programOf()
+	if p == nil {
+		return
 	}
-	text := max(width-headLabelAt-2, 1)
-	lines := planBriefRows(p.page.Description, text)
-	if len(lines) == 0 {
-		return nil
+	if a.programHeadsRoom() {
+		if !p.briefFull {
+			p.steps.offset, p.steps.stick = a.room.offset, a.room.stick
+			a.room.offset, a.room.stick = 0, false
+		} else {
+			a.room.offset, a.room.stick = p.steps.offset, p.steps.stick
+		}
 	}
-	_, height := a.size()
-	if most := max(height/2, 3); len(lines) > most {
-		cut := len(lines) - (most - 1)
-		lines = append(append([]string(nil), lines[:most-1]...), bandFoldWord(cut, briefFoldWhat, true))
-	}
-	rows := make([]string, len(lines))
-	for i, line := range lines {
-		rows[i] = strings.Repeat(" ", headLabelAt) + a.pal.dim(fit(line, text))
-	}
-	return rows
+	p.briefFull = !p.briefFull
+	a.room.dirty = true
+	a.touch()
 }
 
 // programBriefPress turns the dropdown when the press landed on it.
@@ -592,9 +621,7 @@ func (a *app) programBriefPress(x, y int) bool {
 	if p == nil || !a.programHeadsRoom() || a.headHeight() == 0 || y != a.roomHeadRow() || !p.briefSpan.holds(x) {
 		return false
 	}
-	p.briefFull = !p.briefFull
-	a.room.dirty = true
-	a.touch()
+	a.turnProgramBrief()
 	return true
 }
 

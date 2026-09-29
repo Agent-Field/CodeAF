@@ -2252,7 +2252,7 @@ func (a *app) roomHint() string {
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		if p := a.programOf(); p != nil {
-			return roomStopHint + railSep + programCallsHint(p.calls)
+			return roomStopHint + railSep + a.programViewHint()
 		}
 		return roomStopHint
 	case a.roomLandingAsking():
@@ -2269,8 +2269,8 @@ func (a *app) roomHint() string {
 	}
 	// A PROGRAM'S ROOM WITH NOTHING TO STOP still turns between its actions and
 	// its raw calls, and says the key that does it.
-	if p := a.programOf(); p != nil {
-		return programCallsHint(p.calls)
+	if a.programOf() != nil {
+		return a.programViewHint()
 	}
 	return ""
 }
@@ -2720,7 +2720,7 @@ func (a *app) roomHeadRows(width int) []string {
 	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
 	switch {
 	case a.programHeadsRoom():
-		head = append([]string{a.roomTitleRow(width)}, a.programHeadBriefRows(width)...)
+		head = []string{a.roomTitleRow(width)}
 	case a.roomOrganized():
 		head = []string{a.roomTrailRow(width), a.roomTitleRow(width)}
 	}
@@ -2743,8 +2743,7 @@ const roomHeadRowCount = 2
 // Compact frames already name the task in their navigation row.
 func (a *app) roomHeadCount() int {
 	if a.programHeadsRoom() {
-		width, _ := a.size()
-		return 1 + len(a.programHeadBriefRows(width))
+		return 1
 	}
 	if a.roomOrganized() {
 		return roomHeadRowCount

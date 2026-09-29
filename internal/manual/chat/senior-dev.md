@@ -74,8 +74,8 @@ The one line over it is the task's title with its `[senior-dev]` badge, a `▸ b
 dropdown, and the step, the spend of the run's ceiling, the number of model calls and how
 long the run has been going — the same time the side list and the landed card show,
 counted from the moment codeaf handed the work over. **The brief is behind the dropdown**:
-click `▸ brief`, or press `ctrl+o`, and the whole brief senior-dev was handed is drawn in
-grey under the title; the same again hides it. While the
+click `▸ brief`, or press `ctrl+o`, and the page shows the whole brief senior-dev was
+handed (next section). While the
 task is open, its row on the side list leaves its clock out rather than show a time that
 stopped when you clicked; the true time is back on the row the moment you leave.
 
@@ -87,6 +87,30 @@ turns it back; the key row says `ctrl+y calls` or `ctrl+y actions`.
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
 Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
 it to main`, and `enter` says the same line and keeps your words in the box.
+
+## Reading senior-dev's whole brief — ▸ brief, what senior-dev was told, scroll the brief
+
+Open the run's task and click `▸ brief` beside its title, or press `ctrl+o`. The page's
+body becomes **the whole brief** senior-dev was handed, from its first line, as a
+document. Nothing is folded away or cut to a count. Scroll it the way you scroll the
+page: the mouse wheel, `pgup` and `pgdown`.
+
+A brief codeaf wrote is shown in parts under plain bold headings. The work comes first as
+`Task request`, then `Deliverable`, `Completion criteria` and `Workspace`, then
+`Original request` (your own words) and what it carried over from the conversation. Every line of the brief keeps its own line. A
+list item's wrapped lines are indented under its text. Words in capitals that open a line
+(`FIRST ACTION:`, `DONE WHEN`) are bold. Lines are at most 100 columns wide. The brief is
+shown as plain text, not markdown, so a file name such as `__init__.py` reads exactly as
+written. A brief you typed yourself is shown exactly as you gave it, laid out the same
+way.
+
+While the brief is open the key row says `ctrl+o close brief`. `ctrl+o` or a click on
+`▾ brief` closes it; `ctrl+y` closes it and shows the raw calls. The steps come back scrolled where you left them and,
+if you were following the run's latest step, they follow it again. The run goes on while
+you read.
+
+On a window too short for the page's side column there is no dropdown: the brief's
+first lines sit at the top of the page, and `ctrl+o` unfolds the rest there.
 
 ## What is senior-dev doing — the steps on senior-dev's page, what spec, explore, pin, checklist, implement, submit, verify mean
 
