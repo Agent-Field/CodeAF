@@ -45,8 +45,8 @@ func TestCellListAllSyncOff(t *testing.T) {
 	old := cellListSource
 	t.Cleanup(func() { cellListSource = old })
 	err := runCellIn([]string{"list", "--all"}, &bytes.Buffer{}, t.TempDir())
-	if err == nil || err.Error() != chatlist.NoIdentity {
-		t.Fatalf("err = %v, want %q", err, chatlist.NoIdentity)
+	if err == nil || err.Error() != chatlist.SyncOff {
+		t.Fatalf("err = %v, want %q", err, chatlist.SyncOff)
 	}
 }
 

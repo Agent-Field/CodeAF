@@ -16,13 +16,9 @@ import (
 // than hanging an ssh session.
 const cellListAsk = 10 * time.Second
 
-// cellListSource is where `cell list --all` reads chats from. It is a seam
-// because the directory is reached through the sync setup, which is wired in a
-// later change; until then a machine has no source and says so in the frozen
-// words for it.
-var cellListSource = func() (chatlist.Source, error) {
-	return nil, errors.New(chatlist.NoIdentity)
-}
+// cellListSource is where `cell list --all` reads chats from. It is a seam so
+// a test can stand in any source; the real one is the sync setup (syncwire.go).
+var cellListSource = syncListSource
 
 // cellList prints every chat this person has, on any machine, one per line:
 // id, title, device, what §8.1 says about where it runs, and the age of its
