@@ -39,9 +39,11 @@ Egress is open and logged, never an allowlist: the agent container exits through
 `proxy/egress-proxy.go` on its own internal network, and `grade/scanner.py`
 reads the proxy log and the harness transcript afterwards. A run that visited
 the task's upstream repository or its patch shapes scores 0 and counts toward
-flag rate. The model key is held by the credential guard, one key per campaign,
-so its provider usage counter isolates this campaign's spend; that counter is
-recorded at key install and beside the grade.
+flag rate. The model key is held by the credential guard; the key may be shared
+with other work, so this campaign's provider-side spend is the delta of the
+usage counter between the baseline recorded at install and the final read at
+teardown — valid on the assumption that nothing else used the key in that
+window. The baseline and the final reading are recorded beside the grade.
 
 ## Controls and failure law
 

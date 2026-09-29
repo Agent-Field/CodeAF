@@ -7,11 +7,13 @@
 #   bench/frontiercode/gcp-key.sh --usage   [instance]   read the provider's usage counter (local secret store unless an instance is named)
 #   bench/frontiercode/gcp-key.sh --shred   <instance>   destroy the host's copy before teardown
 #
-# The key lives in the local secret store the manifest names — one key per
-# campaign, so the provider's meter isolates that campaign's spend. NO PATH IN
-# THIS SCRIPT EVER PRINTS THE VALUE: --install prints its length, a SHA-256
-# prefix and the provider's usage counter; --shred prints only that the copy is
-# gone. The counter this prints is the number the preregistration records.
+# The key lives in the local secret store the manifest names and may be reused
+# across campaigns. A campaign's provider-side spend is the DELTA of the usage
+# counter --install prints (the baseline) and the one --usage prints at
+# teardown, which is this campaign's share only while nothing else uses the key
+# in that window. NO PATH IN THIS SCRIPT EVER PRINTS THE VALUE: --install prints
+# its length, a SHA-256 prefix and the usage counter; --shred prints only that
+# the copy is gone.
 set -euo pipefail
 FC_SCRIPT=gcp-key.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gcp-lib.sh"
