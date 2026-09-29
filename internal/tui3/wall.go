@@ -710,7 +710,7 @@ func (a *app) wallAskName(marked []chatTab) tea.Cmd {
 		name, err := namer.NameTeam(ctx, titles)
 		return func(bool) tea.Cmd {
 			a.wallTeamNamed(gen, name, err)
-			return nil
+			return a.wake()
 		}
 	})
 	wait := tea.Tick(teamNameWait, func(time.Time) tea.Msg { return wallNameTimeMsg{gen: gen} })
