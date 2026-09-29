@@ -350,6 +350,8 @@ fn a_composed_workspace_keeps_its_ids_in_the_store_and_a_plain_one_in_the_tree()
     assert_eq!((again.workspace_id, again.family_id), (workspace, family));
     assert!(!setup.root.join(".furrow").exists());
 
+    // Setups take turns (one data directory at a time), so release this one.
+    drop(setup);
     let plain = Setup::new();
     plain.write("a.txt", "a\n");
     plain.seal(SealOptions::default());

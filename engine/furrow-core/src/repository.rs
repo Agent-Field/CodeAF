@@ -3206,7 +3206,8 @@ impl FurrowRepository {
     }
 
     /// The sorted child names of a directory of the tree; the root's include
-    /// the overlay's.
+    /// the overlay's when its directory exists (an absent one is not a tree
+    /// that changed under the walk, it is an entry that is not there).
     fn children(
         &self,
         path: &Path,
@@ -3214,7 +3215,9 @@ impl FurrowRepository {
         let names = SortedDirectory::open(path)
             .with_context(|| format!("read directory {}", path.display()))?;
         Ok(match &self.overlay {
-            Some(_) if path == self.root => Box::new(WithOverlay::new(names)),
+            Some(overlay) if path == self.root && overlay.source().is_dir() => {
+                Box::new(WithOverlay::new(names))
+            }
             _ => Box::new(names),
         })
     }
