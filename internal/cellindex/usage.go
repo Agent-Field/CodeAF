@@ -6,18 +6,22 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // usageIndex is this session's share of the machine-wide usage ledger: one row
-// per usage line the transcript journaled.
+// per model call the receipt chain sealed, so a rewind never drops spend. A cell
+// sealed before receipts carried model calls falls back to the usage lines the
+// transcript journaled.
 //
 // The ledger row a live call writes also carries lane timings, seat and task
-// ids that no transcript line holds; a rebuilt row leaves them absent, which
-// the ledger reads as "nobody said". Totals match; row granularity is the
-// transcript's.
+// ids that no receipt holds; a rebuilt row leaves them absent, which the ledger
+// reads as "nobody said". Totals match; a receipt keeps cost in whole micro
+// dollars, so a rebuilt row is the live one rounded to that unit.
 type usageIndex struct{}
 
 func (usageIndex) Name() string { return "usage.jsonl" }
@@ -27,13 +31,40 @@ func (usageIndex) Present(c cell.Cell) bool {
 	return ledgerNames(session.UsageLedgerPath(), []byte(`"session":"`+c.ID+`"`))
 }
 
-func (usageIndex) Build(_ cell.Cell, d session.Digest) error {
+func (usageIndex) Build(c cell.Cell, d session.Digest) error {
+	lines, err := usageLines(c, d)
+	if err != nil {
+		return err
+	}
 	path := session.UsageLedgerPath()
-	for _, line := range d.Usage {
+	for _, line := range lines {
 		session.RecordUsage(path, line)
 	}
 	session.FlushUsage()
 	return nil
+}
+
+// usageLines is what the session spent: the receipt chain's model calls, which
+// no rewind removes; and, for a cell sealed before receipts carried them, the
+// transcript's usage lines.
+func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
+	sealed, err := cellstore.ModelCalls(c)
+	if err != nil || len(sealed) == 0 {
+		return d.Usage, err
+	}
+	lines := make([]session.UsageLine, len(sealed))
+	for i, s := range sealed {
+		lines[i] = usageOfCall(c, d, s)
+	}
+	return lines, nil
+}
+
+func usageOfCall(c cell.Cell, d session.Digest, s cellstore.SealedCall) session.UsageLine {
+	return session.UsageLine{
+		At: time.UnixMilli(s.SealedAtMs), Model: s.Model, Role: s.Role, Calls: 1,
+		Input: int(s.TokensIn), Output: int(s.TokensOut), USD: float64(s.CostMicroUSD) / 1e6,
+		Session: c.ID, Workspace: d.Workspace,
+	}
 }
 
 // ledgerNames scans the ledger for a marker without parsing any row.

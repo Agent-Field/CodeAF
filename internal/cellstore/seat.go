@@ -70,3 +70,6 @@ func (s sealed) trigger() Trigger {
 	}
 	return AgentRun
 }
+
+// NoteModelCall implements executor.ModelNoter.
+func (s sealed) NoteModelCall(m executor.ModelCall) { s.rec.NoteModelCall(m) }

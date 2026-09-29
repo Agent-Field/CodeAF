@@ -33,6 +33,7 @@ type Recorder struct {
 
 	mu         sync.Mutex // serialises seals; guards pending and incomplete
 	pending    []Executed
+	models     []ModelCall // model calls since the last seal
 	incomplete []Intent
 }
 
@@ -97,6 +98,14 @@ func exitOfFailure(failed bool) int {
 		return 1
 	}
 	return 0
+}
+
+// NoteModelCall implements executor.ModelNoter: the call rides the next seal,
+// in the receipt of the turn it was made in.
+func (r *Recorder) NoteModelCall(m executor.ModelCall) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.models = append(r.models, modelCallOf(m))
 }
 
 // Incomplete lists the calls that were started and never finished, oldest first.
@@ -173,11 +182,11 @@ func (r *Recorder) complete(ctx context.Context, i Intent, e Executed) {
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {
 	batch := r.pending
-	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Changed: changedOf(batch)}); err != nil {
+	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Models: r.models, Changed: changedOf(batch)}); err != nil {
 		r.report(err)
 		return
 	}
-	r.pending = nil
+	r.pending, r.models = nil, nil
 	r.report(r.wal.Sealed(batch))
 }
 
