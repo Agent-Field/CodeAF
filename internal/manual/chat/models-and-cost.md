@@ -3002,7 +3002,7 @@ one it was:
   it first` as the two answers. Answered once, the decision stands for that job. Set the
   row to `none` and it never asks.
 - **`per conversation` — it stops.** `conversation limit reached · $2.05 spent of $2 ·
-  /budget changes it`. The section on that below has the whole of it.
+  /budget conversation changes it`. The section on that below has the whole of it.
 - **`per day` — the day's work waits.** When the day's calls reach the daily limit, new
   work waits for midnight or for you to raise it. `/budget 800` raises it where you stand.
 - **A task's own cap.** A task started from the composer layer (`alt+enter`) carries the
@@ -3076,7 +3076,7 @@ When `per conversation` is set and this conversation has spent it, the next turn
 refused before it starts, with exactly this line:
 
 ```
-conversation limit reached · $2.05 spent of $2 · /budget changes it
+conversation limit reached · $2.05 spent of $2 · /budget conversation changes it
 ```
 
 The figures are yours; whole dollars are written without cents.
@@ -3110,7 +3110,7 @@ colour.
 
 **A task started after this conversation's dollar limit is already spent still gets
 one paid call before it ends.** `/task` is not a turn, so the refusal that stops the
-next turn — `conversation limit reached · … · /budget changes it` — is not asked in
+next turn — `conversation limit reached · … · /budget conversation changes it` — is not asked in
 front of it. The run is handed the smallest figure above nothing rather than zero,
 because zero would mean no limit at all. Its first worker makes one model call, that
 call puts the run over the figure, and the run ends there: its row says
