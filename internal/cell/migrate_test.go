@@ -7,6 +7,9 @@ import (
 	"testing"
 )
 
+// carried is what the interrupted-state tests stage: the journal and one more file.
+var carried = []Carrier{Files(legacyTranscript, "state.json")}
+
 const journal = "{\"v\":1}\n{\"role\":\"user\"}\n"
 
 func legacyDir(t *testing.T) string {
@@ -18,6 +21,9 @@ func legacyDir(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(journal), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return dir
 }
 
@@ -27,7 +33,10 @@ func wantMigrated(t *testing.T, dir string) {
 	if err != nil || string(got) != journal {
 		t.Fatalf("cell transcript = %q, %v", got, err)
 	}
-	for _, gone := range []string{"transcript.jsonl", stagingDir} {
+	if got, err := os.ReadFile(filepath.Join(dir, StateDir, "state.json")); err != nil || string(got) != "{}\n" {
+		t.Fatalf("carried file = %q, %v", got, err)
+	}
+	for _, gone := range []string{"transcript.jsonl", "state.json", stagingDir} {
 		if _, err := os.Stat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
 			t.Errorf("%s left behind: %v", gone, err)
 		}
@@ -52,12 +61,12 @@ func wantMigrated(t *testing.T, dir string) {
 
 func TestMigrateLegacy(t *testing.T) {
 	dir := legacyDir(t)
-	if err := MigrateLegacy(dir); err != nil {
+	if err := MigrateLegacy(dir, Files("state.json")); err != nil {
 		t.Fatal(err)
 	}
 	wantMigrated(t, dir)
 	first, _ := os.ReadFile(filepath.Join(dir, MetaPath))
-	if err := MigrateLegacy(dir); err != nil {
+	if err := MigrateLegacy(dir, Files("state.json")); err != nil {
 		t.Fatal(err)
 	}
 	wantMigrated(t, dir)
@@ -71,12 +80,12 @@ func TestMigrateLegacy(t *testing.T) {
 func TestMigrateInterruptedStates(t *testing.T) {
 	for name, stop := range map[string]func(t *testing.T, dir string){
 		"after staging": func(t *testing.T, dir string) {
-			if err := stageCell(dir); err != nil {
+			if err := stageCell(dir, carried); err != nil {
 				t.Fatal(err)
 			}
 		},
 		"after the rename": func(t *testing.T, dir string) {
-			if err := stageCell(dir); err != nil {
+			if err := stageCell(dir, carried); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.Rename(filepath.Join(dir, stagingDir, StateDir), filepath.Join(dir, StateDir)); err != nil {
@@ -90,7 +99,7 @@ func TestMigrateInterruptedStates(t *testing.T) {
 			if got, err := os.ReadFile(journalPath(dir)); err != nil || string(got) != journal {
 				t.Fatalf("journal = %q, %v", got, err)
 			}
-			if err := MigrateLegacy(dir); err != nil {
+			if err := MigrateLegacy(dir, Files("state.json")); err != nil {
 				t.Fatal(err)
 			}
 			wantMigrated(t, dir)

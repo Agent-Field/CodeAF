@@ -910,7 +910,7 @@ func cutRunesTeam(text string, n int) string {
 // A session with no folder keeps it in memory, and a restart of one starts
 // again from [Agent.firstTeamCursor].
 func (a *Agent) teamCursorFile() string {
-	return a.config.Place.join(placeTeamCursors)
+	return a.config.Place.truth(placeTeamCursors)
 }
 
 func (a *Agent) readTeamCursorsLocked() {

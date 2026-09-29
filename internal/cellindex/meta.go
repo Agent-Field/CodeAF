@@ -25,5 +25,6 @@ func (metaIndex) Build(c cell.Cell, d session.Digest) error {
 	if d.ID == "" {
 		return nil // no header yet: nothing has been said, so there is no row
 	}
-	return session.SaveMeta(c.Root, d.Derive(session.Meta{}))
+	held, _ := session.LoadMeta(c.Root) // the sealed truth the summary is written beside
+	return session.SaveMeta(c.Root, d.Derive(held))
 }

@@ -731,7 +731,7 @@ func v3Migrated(cfg session.Config) session.Config {
 	if !cell.Enabled() || cfg.Place.Dir == "" {
 		return cfg
 	}
-	_ = cell.MigrateLegacy(cfg.Place.Dir)
+	_ = cell.MigrateLegacy(cfg.Place.Dir, session.TruthCarriers()...)
 	budgetOnOpen(cfg.Place.Dir)
 	_, _ = cellindex.RebuildAt(cfg.Place.Dir)
 	cfg.SessionFile = cfg.Place.Transcript()

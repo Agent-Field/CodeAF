@@ -76,6 +76,15 @@ func (p Place) join(parts ...string) string {
 	return filepath.Join(append([]string{p.Dir}, parts...)...)
 }
 
+// truth answers a truth file of the session folder: at the top in the legacy
+// layout, inside .cell/ in the cell layout, or "" on the legacy zero Place.
+func (p Place) truth(name string) string {
+	if strings.TrimSpace(p.Dir) == "" {
+		return ""
+	}
+	return truthPath(p.Dir, name)
+}
+
 // canonicalPath gives every repository and worktree path one spelling.
 //
 // GIT RECORDS THE RESOLVED SPELLING. On macOS, for example, a directory made
@@ -129,7 +138,7 @@ func (p Place) Transcript() string {
 }
 
 // State is the BPE working-state file (Decision 22).
-func (p Place) State() string { return p.join(placeState) }
+func (p Place) State() string { return p.truth(placeState) }
 
 // Card is the state card: what the work is FOR and where it stands, maintained
 // by the post-turn extractor and rendered into every system prompt (card.go).
@@ -140,7 +149,7 @@ func (p Place) State() string { return p.join(placeState) }
 func (p Place) Card() string { return p.join(placeCard) }
 
 // Tasks is the live graph checkpoint (Decision 19).
-func (p Place) Tasks() string { return p.join(placeTasks) }
+func (p Place) Tasks() string { return p.truth(placeTasks) }
 
 // MetaPath is the identity file a picker reads without opening the journal.
 func (p Place) MetaPath() string { return p.join(placeMeta) }
@@ -291,6 +300,16 @@ type Meta struct {
 // file, or a file with no id answers a zero Meta and no error — see [Meta] —
 // and only an I/O failure that is not absence is worth reporting.
 func LoadMeta(dir string) (Meta, error) {
+	meta, err := readMeta(dir)
+	if err != nil {
+		return Meta{}, err
+	}
+	return overlayTruth(dir, meta)
+}
+
+// readMeta reads meta.json alone: the derived summary, plus whatever truth a
+// legacy folder keeps beside it.
+func readMeta(dir string) (Meta, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, placeMeta))
 	if errors.Is(err, fs.ErrNotExist) {
 		return Meta{}, nil
@@ -368,36 +387,52 @@ func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
 }
 
 // SaveMeta writes the identity whole, temp-and-rename, never partially: a
-// picker that reads a half-written meta.json would draw a phantom row.
+// picker that reads a half-written meta.json would draw a phantom row. In the
+// cell layout the truth-only fields go to .cell/ first and meta.json keeps the
+// summary alone, so no field lives in two files.
 func SaveMeta(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")
 	}
-	meta.Build = buildinfo.String()
-	raw, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return fmt.Errorf("save session meta: %w", err)
-	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("save session meta: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".meta-*.json")
-	if err != nil {
+	meta.Build = buildinfo.String()
+	if path := layoutOf(dir).metaTruth(dir); path != "" {
+		if err := writeJSONAtomic(path, meta.truth()); err != nil {
+			return fmt.Errorf("save session meta: %w", err)
+		}
+		meta = meta.derived()
+	}
+	if err := writeJSONAtomic(filepath.Join(dir, placeMeta), meta); err != nil {
 		return fmt.Errorf("save session meta: %w", err)
+	}
+	return nil
+}
+
+// writeJSONAtomic replaces path with v's JSON, temp-and-rename beside it.
+func writeJSONAtomic(path string, v any) error {
+	raw, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".meta-*.json")
+	if err != nil {
+		return err
 	}
 	name := tmp.Name()
 	if _, err := tmp.Write(append(raw, '\n')); err != nil {
 		tmp.Close()
 		os.Remove(name)
-		return fmt.Errorf("save session meta: %w", err)
+		return err
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(name)
-		return fmt.Errorf("save session meta: %w", err)
+		return err
 	}
-	if err := os.Rename(name, filepath.Join(dir, placeMeta)); err != nil {
+	if err := os.Rename(name, path); err != nil {
 		os.Remove(name)
-		return fmt.Errorf("save session meta: %w", err)
+		return err
 	}
 	return nil
 }
