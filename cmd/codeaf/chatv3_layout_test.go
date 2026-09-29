@@ -373,3 +373,23 @@ func TestTheReaperKeepsEveryFolderItCannotSettle(t *testing.T) {
 		})
 	}
 }
+
+func TestLaunchKeepsTaskOnlyConversationFolders(t *testing.T) {
+	for _, name := range []string{"plandb.db", "plandb.db.1", "tasks.json", "tasks/1/transcript.jsonl"} {
+		t.Run(name, func(t *testing.T) {
+			bucket := t.TempDir()
+			dir := writeV3Session(t, bucket, "aaaaaaaaaaaaaaaa", "", time.Time{})
+			path := filepath.Join(dir, name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			// Even a torn store is evidence of work, never permission to reap it.
+			if err := os.WriteFile(path, []byte("partial saved work"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if v3EmptySession(dir) {
+				t.Fatal("launch would reuse or reap saved task work")
+			}
+		})
+	}
+}

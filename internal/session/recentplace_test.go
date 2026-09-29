@@ -1,10 +1,13 @@
 package session
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // A directory holding both shapes at once is the state every machine passes
@@ -104,5 +107,54 @@ func TestADirectoryWithNoTranscriptIsNotListed(t *testing.T) {
 	found := RecentSessions(dir, 10)
 	if len(found) != 1 || found[0].File != place.Transcript() {
 		t.Fatalf("the listing is %+v", found)
+	}
+}
+
+// A program can persist its work before any ordinary chat turn exists. These
+// are the files left by an abrupt exit, with no close or metadata flush.
+func TestTaskOnlyConversationSurvivesInConversationLists(t *testing.T) {
+	for _, archived := range []bool{false, true} {
+		t.Run(fmt.Sprint(archived), func(t *testing.T) {
+			bucket := t.TempDir()
+			place := Place{Dir: filepath.Join(bucket, "aaaaaaaaaaaaaaaa")}
+			writeTranscript(t, place.Transcript(), `{"type":"session","version":1}`)
+			if err := SaveMeta(place.Dir, Meta{ID: filepath.Base(place.Dir)}); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(place.Dir, planStoreFilename)
+			if archived {
+				path += ".1"
+			}
+			const brief = "repair the parser after the upgrade"
+			store, err := plandb.Open(path, "program run", "1", brief, brief, filepath.Base(place.Dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantAt := store.Task("1").CreatedAt
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			found := RecentSessions(bucket, 10)
+			if len(found) != 1 || found[0].File != place.Transcript() || found[0].Opening != brief || !found[0].At.Equal(wantAt) {
+				t.Fatalf("resume lost the task-only conversation: %+v", found)
+			}
+			row, ok := ReadRows([]string{place.Transcript()})[place.Transcript()]
+			if !ok || row.Title != brief || !row.At.Equal(wantAt) {
+				t.Fatalf("home lost the task-only conversation: %+v", row)
+			}
+			// Reading does not invent a chat message or mark an interrupted task done.
+			spoken, sure := SpokeIn(place.Transcript())
+			if spoken || !sure {
+				t.Fatalf("listing changed the journal: spoken=%v sure=%v", spoken, sure)
+			}
+			reopened, err := plandb.Open(path, "", "", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			if reopened.Task("1").Status != plandb.StatusRunning {
+				t.Fatal("listing settled the task")
+			}
+		})
 	}
 }

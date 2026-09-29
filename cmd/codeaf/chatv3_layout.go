@@ -660,7 +660,7 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 func v3EmptySession(dir string) bool {
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
-	if spoken || !sure {
+	if spoken || !sure || session.HasSavedTasks(dir) {
 		return false
 	}
 	for _, kept := range []string{place.Work(), place.Trees(), place.Artifacts()} {

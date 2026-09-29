@@ -163,12 +163,21 @@ func waitTitle(ch <-chan session.Event, gen int) tea.Cmd {
 // [idShaped] is the guard that tells the two apart.
 func listName(title, transcript string) string {
 	if name := strings.TrimSpace(title); name != "" {
-		return titleCase(unpackName(name))
+		return listTitle(name)
 	}
 	if stem := strings.TrimSuffix(sessionStem(transcript), ".jsonl"); stem != "" && !idShaped(stem) {
 		return titleCase(unpackName(stem))
 	}
 	return unnamedConversationWord
+}
+
+// listTitle leaves shell placeholders literal: capitalization and slug expansion
+// can change a command's meaning. Ordinary conversation names keep their style.
+func listTitle(name string) string {
+	if _, shell := session.BashCommand(name); shell {
+		return strings.TrimSpace(name)
+	}
+	return titleCase(unpackName(name))
 }
 
 // idShaped reports whether a name is a MACHINE'S name rather than a person's:
