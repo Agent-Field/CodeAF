@@ -105,9 +105,9 @@ var tuiWords = map[string]tuiWord{
 		screen: "filter · ↑↓ · enter connect · esc close",
 		why:    "the local connection catalog opened as its searchable panel",
 	},
-	"connectModelsGroup": {
-		screen: "models",
-		why:    "the connection panel includes model services rather than only account rows",
+	"connectProvidersGroup": {
+		screen: "providers",
+		why:    "the connection panel includes model providers before the connected account rows",
 	},
 	"connectUnavailableWord": {
 		screen: "connections are unavailable here",
@@ -154,10 +154,9 @@ var tuiWords = map[string]tuiWord{
 	"skillsCarriedWord": {
 		screen: "skills · ",
 		pkg:    "internal/tui3",
-		why: "the dim note under a message naming the skills its turn carried, kept above the turn's " +
-			"`▸ worked` chip — the only screen evidence that a skill from another tool's folder reached " +
-			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
-			"engine's own `skills carried: ` sentence instead",
+		why: "the dim note naming the skills a turn carried inside its opened `▸ worked` chip, " +
+			"which proves a skill from another tool's folder reached the turn by itself or by /skill " +
+			"([testForeignSkills]); the headless --once door prints the engine's own `skills carried: ` sentence instead",
 	},
 	"skillNoShelfWord": {
 		screen: "this conversation has no skill shelf",
@@ -514,6 +513,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "you said it is not finished",
 		pkg:    "internal/session",
 		why:    "the receipt proving the not-right answer reached the engine's settle door",
+	},
+	"doneRollupWord": {
+		screen: " tasks done",
+		why:    "the folded completion batch counts both seeded tasks after the nested landing is accepted",
 	},
 	"taskIncompleteWord": {
 		screen: " · incomplete",
