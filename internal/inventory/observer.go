@@ -68,7 +68,12 @@ func (o *Observer) Observe(req executor.ExecRequest, res executor.ExecResult) {
 
 // tool resolves argv[0] through PATH, hashes it and finds its version once.
 func (o *Observer) tool(req executor.ExecRequest) (Tool, bool) {
-	path, ok := resolveTool(req.Argv[0], pathOf(req.Env))
+	return o.toolOn(req.Argv[0], pathOf(req.Env))
+}
+
+// toolOn is [Observer.tool] for a name and the PATH it is looked up on.
+func (o *Observer) toolOn(name, pathList string) (Tool, bool) {
+	path, ok := resolveTool(name, pathList)
 	if !ok {
 		return Tool{}, false
 	}
@@ -76,7 +81,7 @@ func (o *Observer) tool(req executor.ExecRequest) (Tool, bool) {
 	if !ok {
 		return Tool{}, false
 	}
-	name := filepath.Base(path)
+	name = filepath.Base(path)
 	return Tool{Name: name, BinaryHash: hash, VersionString: o.version(name, path, hash)}, true
 }
 
@@ -258,9 +263,14 @@ func unionInts(a, b []int) []int {
 	return out
 }
 
-// Sight records the tool a name resolves to on this machine, as if a call had
-// just run it. The harness uses it to look at what a setup turn put on PATH:
-// what the inventory learns is what is really there, never what the agent said.
-func (o *Observer) Sight(name string) {
-	o.Observe(executor.ExecRequest{Argv: []string{name}}, executor.ExecResult{})
+// Sight records the tool a name resolves to on pathList, as if a call had just
+// run it. The harness uses it to look at what a setup turn installed: what the
+// inventory learns is what is really there, never what the agent said.
+func (o *Observer) Sight(name, pathList string) {
+	if tool, ok := o.toolOn(name, pathList); ok {
+		_ = o.store.Update(func(inv *Inventory) { putTool(inv, tool) })
+	}
 }
+
+// Resolve finds the executable a name means on pathList.
+func Resolve(name, pathList string) (string, bool) { return resolveTool(name, pathList) }

@@ -13,8 +13,11 @@ import (
 // is really on PATH; after a setup turn the machine looks and the inventory
 // takes this machine's binary, by observation alone.
 func TestSettleLearnsWhatASetupTurnInstalled(t *testing.T) {
-	root, bin := t.TempDir(), t.TempDir()
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	root, workspace := t.TempDir(), t.TempDir()
+	bin := filepath.Join(workspace, ".venv", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	seed, err := inventory.Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +27,7 @@ func TestSettleLearnsWhatASetupTurnInstalled(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	m, err := OpenMachine(root)
+	m, err := OpenMachine(root, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}

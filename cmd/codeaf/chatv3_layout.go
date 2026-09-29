@@ -759,7 +759,7 @@ func v3Seated(cfg session.Config) session.Config {
 	if !ok {
 		class = executor.HostBound
 	}
-	machine, err := preflight.OpenMachine(c.Root)
+	machine, err := preflight.OpenMachine(c.Root, cfg.Place.Workspace)
 	sealNotice.report(err)
 	seat, err := cellstore.SeatFor(class, c, cfg.Place.Workspace, observerOf(machine), sealNotice.report)
 	cfg.Seat = seat
