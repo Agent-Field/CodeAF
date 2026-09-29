@@ -901,7 +901,8 @@ the same row the Spending tab writes through.
 | `/budget plan` | a row named with no figure opens the tab on that row |
 
 If a turn says `conversation limit reached`, use `/budget conversation 20`
-(or another amount above the recorded spend), then resend the message. `/budget 20`
+(or another amount above the recorded spend), then send the message again — `↑`
+brings it back, since the box is cleared on enter. `/budget 20`
 changes only the daily limit and cannot release a conversation's separate cap.
 The refusal names `/budget conversation`; a daily refusal names `/budget day`.
 With no amount, either command opens settings on the corresponding row. A failed

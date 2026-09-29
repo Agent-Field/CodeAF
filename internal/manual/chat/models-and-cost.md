@@ -2956,7 +2956,7 @@ the same registry row, so what you set through one is what the others show:
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
 | the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits`, the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
-| a refused turn | the message names `/budget` |
+| a refused turn | the message names the limit that stopped it — `/budget conversation` or `/budget day` |
 | the first-run setup | its `Models and spending` screen, whose **Daily limit** row writes this same row. It asks about the day's limit only — `per plan` and `per conversation` keep their defaults there and are changed here |
 
 `ctrl+,` opens the panel itself, and `←`/`→` walk to **Spending** from wherever it opened.
@@ -3086,8 +3086,8 @@ Four things are true of that refusal, and each is deliberate:
 - **The turn in flight always finishes.** The limit stops the *next* turn. A turn with
   tool calls out is never cut in half.
 - **The refused message is still yours.** Nothing was journaled, no request was sent, no
-  tool ran — your text stays in the box, and sending it again once you raise the limit
-  runs it for the first time.
+  tool ran. The box is cleared when you press enter, but `↑` brings the text back, and
+  sending it again once you raise the limit runs it for the first time.
 - **It reads the recorded bill, not an estimate.** The figure is the provider's own cost
   numbers, folded in per answer.
 - **It counts what this conversation spent before you resumed it.** The total is rebuilt
@@ -4063,20 +4063,24 @@ apply separately.
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
 **Both limits apply; neither overrides the other.** New chat turns stop when
-either limit is reached. The daily limit counts today's spending across all
-conversations on this machine. The conversation limit counts that conversation's
-recorded spending, including earlier days.
+either limit is reached. The daily limit counts all of today's spending on this
+machine — every conversation and every task, not only this conversation. The
+conversation limit counts that conversation's recorded spending, including
+earlier days.
 
 - With `/budget 10` and `/budget conversation 2`, a conversation that reaches
   $2 cannot start another turn, even if today's total is still below $10.
 - With `/budget 10` and `/budget conversation 20`, the conversation cannot start
-  another turn once today's total across conversations reaches $10, even if
-  this conversation is below $20.
+  another turn once today's total reaches $10, even if this conversation is
+  below $20.
 
-Raise the limit named in the error above the recorded spend, then resend your
-message: `/budget day 30` for the daily limit, or `/budget conversation 30` for
-the conversation limit. `/budget 30` also changes only the daily limit. If both
-limits are reached, raise both; changing or removing one does not bypass the
+Raise the limit named in the error above the recorded spend, then send your
+message again: `/budget day 30` for the daily limit, or `/budget conversation 30`
+for the conversation limit. Bare `/budget 30` is the daily form and never changes
+the conversation limit. The refused text is not left in the box — `↑` walks back
+through what you sent, `/budget` lines included, to bring it back. When both
+limits are reached the error names the daily one first; raising it shows the
+conversation one, so raise both. Changing or removing one does not bypass the
 other. These amounts set total limits, not additional credit, and do not reset
 recorded spending.
 
