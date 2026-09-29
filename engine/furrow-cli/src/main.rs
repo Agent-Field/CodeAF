@@ -8,6 +8,8 @@ use std::io::{self, IsTerminal, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
+mod exchange;
+
 #[derive(Parser)]
 #[command(
     name = "furrow",
@@ -52,6 +54,8 @@ enum Command {
         #[arg(long, default_value_t = 10)]
         idle_minutes: u64,
     },
+    #[command(flatten)]
+    Exchange(exchange::Exchange),
     #[command(name = "__remote", hide = true)]
     RemoteHelper { namespace: String },
     #[command(name = "__namespace-probe", hide = true)]
@@ -571,6 +575,7 @@ fn main() -> anyhow::Result<()> {
             socket,
             idle_minutes,
         } => serve(socket, idle_minutes)?,
+        Command::Exchange(verb) => exchange::run(verb, &cli.repo, cli.json)?,
         Command::RemoteHelper { namespace } => {
             furrow::remote::serve(&namespace)?;
         }
