@@ -61,7 +61,7 @@ func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) 
 	if err := l.confine(cmd, req); err != nil {
 		return ExecResult{}, err
 	}
-	res, err := run(ctx, cmd, req, onOutput)
+	res, err := run(ctx, cmd, req, l.Root, onOutput)
 	res.JailDegraded = degraded(l.Jail, req)
 	if err == nil && l.Observer != nil {
 		l.Observer.Observe(req, res)
@@ -135,7 +135,7 @@ func withTimeout(ctx context.Context, d time.Duration) (context.Context, context
 	return context.WithTimeout(ctx, d)
 }
 
-func run(ctx context.Context, cmd *exec.Cmd, req ExecRequest, onOutput func(Chunk)) (ExecResult, error) {
+func run(ctx context.Context, cmd *exec.Cmd, req ExecRequest, root string, onOutput func(Chunk)) (ExecResult, error) {
 	var out, errb bytes.Buffer
 	emit := serialized(onOutput)
 	cmd.Stdout = io.MultiWriter(&out, chunkWriter{Stdout, emit})
@@ -149,7 +149,7 @@ func run(ctx context.Context, cmd *exec.Cmd, req ExecRequest, onOutput func(Chun
 		Exit: cmd.ProcessState.ExitCode(), Stdout: out.Bytes(), Stderr: errb.Bytes(),
 		Wall: time.Since(start), SideEffect: classify(req.Net),
 		TimedOut: errors.Is(ctx.Err(), context.DeadlineExceeded),
-		Services: services(ctx, cmd),
+		Services: services(ctx, cmd, req, root),
 	}
 	return res, outcome(ctx, waitErr)
 }
@@ -166,16 +166,6 @@ func outcome(ctx context.Context, waitErr error) error {
 		return nil
 	}
 	return waitErr
-}
-
-// services reports the process group when something in it outlived the leader.
-// A call that was killed leaves none.
-func services(ctx context.Context, cmd *exec.Cmd) []Service {
-	pid := cmd.Process.Pid
-	if ctx.Err() != nil || !processgroup.Alive(pid) {
-		return nil
-	}
-	return []Service{{PGID: pid}}
 }
 
 // chunkWriter turns writes on one stream into Chunks.

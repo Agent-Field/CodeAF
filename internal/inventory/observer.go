@@ -176,11 +176,19 @@ func envNames(env []string) []string {
 // its version from that tool. A data directory that is not cell-relative is
 // dropped: it would not travel (L1).
 func serviceOf(req executor.ExecRequest, tool Tool, s executor.Service) Service {
-	out := Service{Name: filepath.Base(req.Argv[0]), Version: tool.VersionString, Ports: s.Ports}
+	out := Service{Name: nameOf(req, s), Version: tool.VersionString, Ports: s.Ports}
 	if dir := filepath.ToSlash(filepath.Clean(s.DataDir)); s.DataDir != "" && relative(dir) {
 		out.DataDir = dir
 	}
 	return out
+}
+
+// nameOf prefers the name the executor read from the surviving process.
+func nameOf(req executor.ExecRequest, s executor.Service) string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return filepath.Base(req.Argv[0])
 }
 
 func relative(p string) bool {
