@@ -12,7 +12,8 @@ import (
 // takes one just before it removes a working tree, so nothing the tree held
 // since the last seal is lost.
 func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
-	out, err := e.engine(ctx, c, "--json", "snap", "-m", "materialization capture")
+	args := append([]string{"--json", "snap", "-m", "materialization capture"}, e.cellDirArgs(c)...)
+	out, err := e.engine(ctx, c, args...)
 	if err != nil {
 		return "", fmt.Errorf("capture: %w", err)
 	}

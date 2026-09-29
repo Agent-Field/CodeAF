@@ -375,24 +375,16 @@ impl FurrowRepository {
         let root = root
             .canonicalize()
             .with_context(|| format!("open {}", root.display()))?;
-        fs::create_dir_all(root.join(".furrow"))?;
-        let workspace_path = root.join(WORKSPACE_FILE);
-        let workspace_id = if workspace_path.exists() {
-            fs::read_to_string(&workspace_path)?.trim().to_owned()
-        } else {
-            let id = new_workspace_id(&root);
-            atomic_write(&workspace_path, format!("{id}\n").as_bytes())?;
-            id
-        };
-
+        let home = IdentityHome::of(options.overlay.is_some());
         let store_root = data_root()?.join("store-v1");
         anyhow::ensure!(
             !root.starts_with(&store_root),
             "workspace cannot contain the furrow store"
         );
         let mut store = ObjectStore::open(store_root)?;
+        let workspace_id = home.attach_id(&root, &store)?;
         store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
-        let family_id = ensure_family_id(&root, &store, &workspace_id)?;
+        let family_id = ensure_family_id(home, &root, &store, &workspace_id)?;
         coord::reconcile(&root, &store, &family_id)?;
         let mut repository = Self {
             root,
@@ -417,40 +409,32 @@ impl FurrowRepository {
     }
 
     pub fn open(root: &Path) -> anyhow::Result<Self> {
+        Self::open_composed(root, None)
+    }
+
+    /// Opens a watched workspace with `overlay` standing for the tree's
+    /// `.cell/` entry: seals compose it in, and a rewind puts it back there
+    /// instead of in the root. A composed workspace keeps its identity in the
+    /// store, so nothing is written into the tree.
+    pub fn open_composed(root: &Path, overlay: Option<PathBuf>) -> anyhow::Result<Self> {
         let root = root
             .canonicalize()
             .with_context(|| format!("open {}", root.display()))?;
+        let home = IdentityHome::of(overlay.is_some());
         let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
-        let workspace_path = root.join(WORKSPACE_FILE);
-        let workspace_id = if workspace_path.exists() {
-            fs::read_to_string(&workspace_path)?.trim().to_owned()
-        } else {
-            let id = store
-                .find_workspace(root.as_os_str().as_bytes())?
-                .context("this repository is not watched; run `furrow watch` first")?;
-            fs::create_dir_all(root.join(".furrow"))?;
-            atomic_write(&workspace_path, format!("{id}\n").as_bytes())?;
-            id
-        };
+        let workspace_id = home.open_id(&root, &store)?;
         store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
-        let family_id = ensure_family_id(&root, &store, &workspace_id)?;
+        let family_id = ensure_family_id(home, &root, &store, &workspace_id)?;
         coord::reconcile(&root, &store, &family_id)?;
         let repository = Self {
             root,
             workspace_id,
             family_id,
             store,
-            overlay: None,
+            overlay: overlay.map(Overlay::new),
         };
         repository.recover_interrupted_rewind()?;
         Ok(repository)
-    }
-
-    /// Names the directory that stands for the tree's `.cell/` entry: seals
-    /// compose it in, and a rewind puts it back there instead of in the root.
-    pub fn with_overlay(mut self, source: Option<PathBuf>) -> Self {
-        self.overlay = source.map(Overlay::new);
-        self
     }
 
     pub fn root(&self) -> &Path {
@@ -876,7 +860,14 @@ impl FurrowRepository {
         hasher.update(b"furrow:paired-family:v1\0");
         hasher.update(namespace.as_bytes());
         let family_id = hex::encode(&hasher.finalize().as_bytes()[..16]);
-        write_family_id(&self.root, &self.store, &self.workspace_id, &family_id)?;
+        let home = IdentityHome::of(self.overlay.is_some());
+        write_family_id(
+            home,
+            &self.root,
+            &self.store,
+            &self.workspace_id,
+            &family_id,
+        )?;
         let state = self.sync_state_path();
         if state.exists() {
             fs::remove_file(state)?;
@@ -1677,7 +1668,7 @@ impl FurrowRepository {
         let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
         let snapshot: Snapshot = store.read_struct(&snapshot_id, ObjectKind::Snapshot)?;
         store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
-        let family_id = ensure_family_id(&root, &store, &workspace_id)?;
+        let family_id = ensure_family_id(IdentityHome::Workspace, &root, &store, &workspace_id)?;
         store.publish_snapshot(
             &workspace_id,
             snapshot_id,
@@ -4141,6 +4132,7 @@ fn data_root() -> anyhow::Result<PathBuf> {
 }
 
 fn ensure_family_id(
+    home: IdentityHome,
     root: &Path,
     store: &ObjectStore,
     workspace_id: &str,
@@ -4149,7 +4141,7 @@ fn ensure_family_id(
     let external_path = store.workspace_data_dir(workspace_id).join("family.id");
     let family_id = if external_path.exists() {
         fs::read_to_string(&external_path)?.trim().to_owned()
-    } else if repository_path.exists() {
+    } else if home.in_workspace() && repository_path.exists() {
         fs::read_to_string(&repository_path)?.trim().to_owned()
     } else {
         let mut random = [0_u8; 16];
@@ -4157,11 +4149,12 @@ fn ensure_family_id(
             .map_err(|error| anyhow::anyhow!("generate workspace family ID: {error}"))?;
         hex::encode(random)
     };
-    write_family_id(root, store, workspace_id, &family_id)?;
+    write_family_id(home, root, store, workspace_id, &family_id)?;
     Ok(family_id)
 }
 
 fn write_family_id(
+    home: IdentityHome,
     root: &Path,
     store: &ObjectStore,
     workspace_id: &str,
@@ -4179,7 +4172,9 @@ fn write_family_id(
     if !external_path.exists() || fs::read_to_string(&external_path)?.trim() != family_id {
         atomic_write(&external_path, format!("{family_id}\n").as_bytes())?;
     }
-    if !repository_path.exists() || fs::read_to_string(&repository_path)?.trim() != family_id {
+    if home.in_workspace()
+        && (!repository_path.exists() || fs::read_to_string(&repository_path)?.trim() != family_id)
+    {
         fs::create_dir_all(
             repository_path
                 .parent()
@@ -4188,6 +4183,81 @@ fn write_family_id(
         atomic_write(&repository_path, format!("{family_id}\n").as_bytes())?;
     }
     Ok(())
+}
+
+/// Where the ids that name a workspace are kept. An ordinary workspace carries
+/// them in its own `.furrow/` folder, which survives the store being moved. A
+/// composed workspace belongs to a caller that owns a store of its own and
+/// wants nothing of the engine's in the tree, so its ids live only in the
+/// store and the workspace is found there by its path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IdentityHome {
+    Workspace,
+    Store,
+}
+
+impl IdentityHome {
+    fn of(composed: bool) -> Self {
+        if composed {
+            Self::Store
+        } else {
+            Self::Workspace
+        }
+    }
+
+    fn in_workspace(self) -> bool {
+        self == Self::Workspace
+    }
+
+    /// The workspace's id, minted when it has none yet.
+    fn attach_id(self, root: &Path, store: &ObjectStore) -> anyhow::Result<String> {
+        match self {
+            Self::Store => Ok(match store.find_workspace(root.as_os_str().as_bytes())? {
+                Some(id) => id,
+                None => new_workspace_id(root),
+            }),
+            Self::Workspace => {
+                fs::create_dir_all(root.join(".furrow"))?;
+                match read_workspace_file(root)? {
+                    Some(id) => Ok(id),
+                    None => {
+                        let id = new_workspace_id(root);
+                        write_workspace_file(root, &id)?;
+                        Ok(id)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The id of a workspace that must already be watched.
+    fn open_id(self, root: &Path, store: &ObjectStore) -> anyhow::Result<String> {
+        if self == Self::Workspace {
+            if let Some(id) = read_workspace_file(root)? {
+                return Ok(id);
+            }
+        }
+        let id = store
+            .find_workspace(root.as_os_str().as_bytes())?
+            .context("this repository is not watched; run `furrow watch` first")?;
+        if self == Self::Workspace {
+            write_workspace_file(root, &id)?;
+        }
+        Ok(id)
+    }
+}
+
+fn read_workspace_file(root: &Path) -> anyhow::Result<Option<String>> {
+    let path = root.join(WORKSPACE_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(fs::read_to_string(path)?.trim().to_owned()))
+}
+
+fn write_workspace_file(root: &Path, id: &str) -> anyhow::Result<()> {
+    fs::create_dir_all(root.join(".furrow"))?;
+    atomic_write(&root.join(WORKSPACE_FILE), format!("{id}\n").as_bytes())
 }
 
 fn new_workspace_id(root: &Path) -> String {

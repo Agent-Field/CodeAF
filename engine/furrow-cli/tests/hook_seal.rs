@@ -131,3 +131,23 @@ fn the_cell_directory_is_sealed_and_restored_outside_the_workspace() {
     assert_eq!(read(&folder.root.join("a.txt")), "one");
     assert!(!folder.root.join(".cell").exists());
 }
+
+#[test]
+fn a_composed_workspace_never_gets_an_engine_folder() {
+    let folder = Folder::new();
+    fs::write(folder.root.join("a.txt"), "one").unwrap();
+    fs::create_dir_all(&folder.cell).unwrap();
+    let cell = folder.cell.to_str().unwrap();
+
+    let sealed = folder.turn_end(&["--cell-dir", cell], b"");
+    folder
+        .furrow()
+        .args(["snap", "--cell-dir", cell])
+        .assert()
+        .success();
+    fs::write(folder.root.join("a.txt"), "damaged").unwrap();
+    folder.rewind(&sealed, &["--cell-dir", cell]);
+
+    assert_eq!(read(&folder.root.join("a.txt")), "one");
+    assert!(!folder.root.join(".furrow").exists());
+}
