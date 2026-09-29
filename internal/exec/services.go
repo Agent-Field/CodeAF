@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -65,10 +67,11 @@ func StartDetachedService(command, dir, logPath string) (int, time.Time, error) 
 	if err != nil {
 		return 0, time.Time{}, err
 	}
-	//codeaf:tool-pending
-	cmd := exec.Command("bash", "-lc", command)
-	configureDetachedCommand(cmd, dir, logFile)
-	if err := cmd.Start(); err != nil {
+	cmd, err := detachedCommand(context.Background(), dir, command, nil, logFile, 0)
+	if err == nil {
+		err = cmd.Start()
+	}
+	if err != nil {
 		_ = logFile.Close()
 		return 0, time.Time{}, err
 	}
@@ -84,13 +87,22 @@ func StartDetachedService(command, dir, logPath string) (int, time.Time, error) 
 	return pid, started, nil
 }
 
-func configureDetachedCommand(cmd *exec.Cmd, dir string, output io.Writer) {
-	cmd.Dir = dir
-	cmd.Stdout = output
-	cmd.Stderr = output
-	// A new session is also a new process group. It preserves group-wide job
-	// teardown and lets an adopted service survive the chat terminal closing.
-	processgroup.ConfigureDetached(cmd)
+// detachedCommand builds the shell command a background job or service runs
+// as: a login bash in dir, in a session of its own, writing to one shared
+// output. A new session is also a new process group; it preserves group-wide
+// job teardown and lets an adopted service survive the chat terminal closing.
+func detachedCommand(
+	ctx context.Context, dir, command string, environment []string, output io.Writer, wait time.Duration,
+) (*exec.Cmd, error) {
+	cmd, err := executor.In(dir).Command(ctx, executor.ExecRequest{
+		Argv: []string{"bash", "-lc", command}, Env: environment, Net: executor.OpenNet,
+		Group: executor.GroupSession, WaitDelay: wait,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cmd.Stdout, cmd.Stderr = output, output
+	return cmd, nil
 }
 
 // StopServiceProcess terminates the whole detached session, preserving the
