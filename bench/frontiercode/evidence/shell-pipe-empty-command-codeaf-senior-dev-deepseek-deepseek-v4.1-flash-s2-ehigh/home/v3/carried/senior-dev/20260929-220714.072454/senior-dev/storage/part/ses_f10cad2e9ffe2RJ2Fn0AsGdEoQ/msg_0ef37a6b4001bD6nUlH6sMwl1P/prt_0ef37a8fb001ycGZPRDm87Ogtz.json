@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef37a8fb001ycGZPRDm87Ogtz",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef37a6b4001bD6nUlH6sMwl1P",
+  "type": "tool",
+  "callID": "call_01a0ef37a7f277eba8605203",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && (command -v golangci-lint && timeout 300 golangci-lint run ./internal/shell/... 2>&1 | tail -30) || echo \"golangci-lint not available\"; echo \"exit=$?\"",
+      "timeout_ms": 340000
+    },
+    "output": "golangci-lint not available\nexit=0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && (command -v golangci-lint && ti",
+    "time": {
+      "start": 1790719797503,
+      "end": 1790719797515
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Full build passes. Now lint. Check golangci-lint available.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

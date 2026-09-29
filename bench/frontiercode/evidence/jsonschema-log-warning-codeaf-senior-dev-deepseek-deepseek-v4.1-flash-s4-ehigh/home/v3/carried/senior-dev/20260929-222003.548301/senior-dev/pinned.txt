@@ -1,0 +1,1 @@
+make configure compile && ctest --test-dir build -R 'pass_jsonl_empty|pass_without_id|pass_with_invalid_template|fail_lint_disable_unknown' --output-on-failure

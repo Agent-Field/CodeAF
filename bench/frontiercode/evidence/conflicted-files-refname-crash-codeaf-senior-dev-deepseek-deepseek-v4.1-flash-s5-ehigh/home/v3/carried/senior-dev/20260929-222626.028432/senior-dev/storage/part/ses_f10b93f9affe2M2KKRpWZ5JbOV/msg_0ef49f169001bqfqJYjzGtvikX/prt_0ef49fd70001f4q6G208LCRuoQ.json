@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef49fd70001f4q6G208LCRuoQ",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef49f169001bqfqJYjzGtvikX",
+  "type": "text",
+  "text": "Summary of the change:\n\n**Root cause:** `get_conflicted_files()` passed the refnames `HEAD`/`MERGE_HEAD` to `git diff` bare. If the worktree contained a tracked file with the same name, git couldn't disambiguate revision vs. path and aborted with `fatal: ambiguous argument 'HEAD': both revision and filename`, crashing mid-merge.\n\n**Fix** (`pre_commit/git.py`): appended `'--'` after the refnames in the `git diff` invocation:\n\n```python\n'-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\n```\n\nThis puts the revisions before the separator and leaves pathspecs after it. The `--` goes *after* the refs; placing it before would turn `HEAD`/`MERGE_HEAD` into pathspecs and silently yield an empty result — the failure mode called out in the spec.\n\n**Regression test** (`tests/git_test.py`): added `test_get_conflicted_files_refname_collision`, riding on the existing `in_merge_conflict` fixture, which adds tracked files named `HEAD` and `MERGE_HEAD` and asserts the full set `{'conflict_file', 'HEAD', 'MERGE_HEAD'}` is returned.\n\n**Evidence:**\n- Pinned command `python -m pytest tests/git_test.py` → **33 passed** (baseline was 32), exit 0.\n- The new test failed before the fix with the exact `ambiguous argument` error (return code 128), and passes after.\n- In a scratch merge repo, output was identical with and without `--` when no collision existed (`conflict_file extra_file`), confirming nothing is added or lost.\n- Broader `python -m pytest tests --ignore=tests/languages` → 625 passed, 3 failed; the 3 are unrelated pre-existing read-only-filesystem tests that fail under root.",
+  "time": {
+    "start": 1790720998768,
+    "end": 1790720999016
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3897100019KPoznMpofsmv9",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef388921001nYLT7bZiVdFLUM",
+  "type": "tool",
+  "callID": "call_00_0szqpyr66h6fs40829p1avv7",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Separated the refnames from pathspecs by appending `--` to the `git diff` invocation in `get_conflicted_files`, so a tracked file named HEAD/MERGE_HEAD no longer makes git report `ambiguous argument`, while the full merge-diff set is still returned.",
+      "evidence": "Pinned command `python -m pytest tests/git_test.py` -> 34 passed, exit 0. Added regression test `test_get_conflicted_files_refname_collision[HEAD]` and `[MERGE_HEAD]`, which asserts the exact set {'conflict_file', refname} (proving the colliding file is included, not a silent empty/partial result); with the `--` temporarily removed the same test fails with CalledProcessError `fatal: ambiguous argument 'HEAD': both revision and filename`, and passes with the fix. Full suite `python -m pytest tests --ignore=tests/languages` -> 626 passed, 1 skipped, 3 xfailed, 3 failed; all 3 failures (read-only/unreadable permission tests) reproduce identically on the starting commit 7b88c63 because the run is uid 0, so they are pre-existing and unrelated. `python -m flake8 pre_commit/git.py tests/git_test.py` -> exit 0; no lines > 79 chars.",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 1834 bytes across 3 file(s), tree 297e29e18c9c\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790719858454,
+      "end": 1790719858523
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Everything looks good. Let me submit.\n\nEvidence should name the pinned command and its exit status, and test counts. Let me include:\n- `python -m pytest tests/git_test.py` → 34 passed (exit 0)\n- Regression test `test_get_conflicted_files_refname_collision[HEAD]` and `[MERGE_HEAD]` pass with fix; without the `--` the same test fails with `CalledProcessError: ... fatal: ambiguous argument 'HEAD': both revision and filename`\n- full suite `python -m pytest tests --ignore=tests/languages` → 626 passed, 1 skipped, 3 xfailed, 3 failed; the 3 failures reproduce at starting commit 7b88c63 (root bypasses read-only permissions)\n- flake8 pre_commit/git.py tests/git_test.py → exit 0\n\nchecklist_satisfied true.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

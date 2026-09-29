@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b290d001slbgoMbgavq2Tn",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3b205f001btu1j8gxmYRNS3",
+  "type": "tool",
+  "callID": "call_01_k8pnyzff7fp44ijisgwekvgs",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && rg -n \"shell.Run\" --type go"
+    },
+    "output": "internal/shell/shell_test.go:17:\t\trequire.NoError(t, shell.Run(\ninternal/shell/shell_test.go:27:\t\trequire.Error(t, shell.Run(\ninternal/shell/shell_test.go:38:\t\terr := shell.Run(\ninternal/shell/shell_test.go:56:\t\terr = shell.Run(\ninternal/pipe/before/before.go:39:\t\tif err := shell.Run(ctx, \"\", args, ctx.Env.Strings(), false); err != nil {\ninternal/pipe/build/build.go:204:\t\tif err := shell.Run(ctx, dir, cmd, env, hook.Output); err != nil {\ninternal/pipe/universalbinary/universalbinary.go:119:\t\tif err := shell.Run(ctx, dir, cmd, envs, hook.Output); err != nil {\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && rg -n \"shell.Run\" --type go",
+    "time": {
+      "start": 1790720026896,
+      "end": 1790720026919
+    }
+  }
+}

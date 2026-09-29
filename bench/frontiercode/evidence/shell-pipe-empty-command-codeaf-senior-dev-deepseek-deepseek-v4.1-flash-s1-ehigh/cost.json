@@ -1,0 +1,17 @@
+{
+  "cost_usd": 0.008727012,
+  "prompt_tokens": 184003,
+  "completion_tokens": 3890,
+  "calls": 21,
+  "models": "deepseek/deepseek-v4.1-flash",
+  "cost_usd_guard": 0.008727012,
+  "guard_unknown_cost_calls": 0,
+  "guard_prompt_tokens": 184003,
+  "guard_completion_tokens": 3890,
+  "guard_calls": 21,
+  "cost_usd_final": 0.008727012,
+  "tokens_final": {
+    "in": 184003,
+    "out": 3890
+  }
+}

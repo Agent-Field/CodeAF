@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef37bedb0014JHE0MwTZ2978H",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef37ba610011ptvh0uJOshYkX",
+  "type": "text",
+  "text": "Done.\n\n## What I changed\n\n**`internal/shell/shell.go`** — Added a length guard at the top of `Run`:\n\n```go\nif len(command) == 0 {\n    log.Warn(\"no command to run, skipping\")\n    return nil\n}\n```\n\nThis prevents the panic from indexing `command[0]` when a pipe entry has no command. It returns `nil` (no error) and uses the project's existing `log.Warn` convention. Nothing else in the function was touched — environment setup, output writers, dir handling, and the error path are unchanged.\n\n**`internal/shell/shell_test.go`** — Added an `empty command` subtest alongside the existing subtests, using testify `require` and the project's `testctx.New()` helper.\n\n## Evidence\n\n- `go build ./...` → exit 0\n- `go vet ./internal/shell/` → clean\n- `go test ./internal/shell/ -run TestRunCommand -v` → 5 subtests pass, including the new `TestRunCommand/empty_command`\n- Grep confirmed `log.Warn` is already the project's warning-logging convention\n\nThe `golangci-lint` binary is not installed in this environment, so lint was verified via `go vet` only; the diff is a small guard using existing imports and conventions.\n\nNo upstream project sources were consulted.",
+  "time": {
+    "start": 1790719803099,
+    "end": 1790719803103
+  }
+}

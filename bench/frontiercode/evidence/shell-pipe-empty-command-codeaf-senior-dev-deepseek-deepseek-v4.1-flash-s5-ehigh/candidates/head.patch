@@ -1,0 +1,36 @@
+diff --git a/internal/shell/shell.go b/internal/shell/shell.go
+index fb5c051a..6203d719 100644
+--- a/internal/shell/shell.go
++++ b/internal/shell/shell.go
+@@ -18,6 +18,10 @@ import (
+ 
+ // Run a shell command with given arguments and envs
+ func Run(ctx *context.Context, dir string, command, env []string, output bool) error {
++	if len(command) == 0 {
++		return nil
++	}
++
+ 	/* #nosec */
+ 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+ 	cmd.Env = env
+diff --git a/internal/shell/shell_test.go b/internal/shell/shell_test.go
+index df89faf8..55e3fc89 100644
+--- a/internal/shell/shell_test.go
++++ b/internal/shell/shell_test.go
+@@ -23,6 +23,16 @@ func TestRunCommand(t *testing.T) {
+ 		))
+ 	})
+ 
++	t.Run("empty command", func(t *testing.T) {
++		require.NoError(t, shell.Run(
++			testctx.New(),
++			"",
++			[]string{},
++			[]string{},
++			false,
++		))
++	})
++
+ 	t.Run("cmd failed", func(t *testing.T) {
+ 		require.Error(t, shell.Run(
+ 			testctx.New(),

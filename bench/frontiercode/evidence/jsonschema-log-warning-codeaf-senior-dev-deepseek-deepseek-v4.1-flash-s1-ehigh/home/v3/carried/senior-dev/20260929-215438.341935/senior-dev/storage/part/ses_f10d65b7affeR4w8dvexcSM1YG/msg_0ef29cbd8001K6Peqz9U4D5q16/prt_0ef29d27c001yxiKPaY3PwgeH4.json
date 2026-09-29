@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29d27c001yxiKPaY3PwgeH4",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef29cbd8001K6Peqz9U4D5q16",
+  "type": "reasoning",
+  "text": "Let me read these test scripts to understand expected stderr output.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me read these test scripts to understand expected stderr output.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718890620,
+    "end": 1790718890638
+  }
+}

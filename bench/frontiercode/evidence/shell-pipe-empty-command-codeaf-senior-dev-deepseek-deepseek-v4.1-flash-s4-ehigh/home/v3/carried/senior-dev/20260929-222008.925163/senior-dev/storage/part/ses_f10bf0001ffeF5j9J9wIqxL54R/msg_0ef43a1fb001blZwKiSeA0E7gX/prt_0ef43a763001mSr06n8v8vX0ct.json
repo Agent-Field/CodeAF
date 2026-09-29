@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef43a763001mSr06n8v8vX0ct",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef43a1fb001blZwKiSeA0E7gX",
+  "type": "tool",
+  "callID": "call_00_g1s1gbiuw1s8hgsecyogsuib",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && git --no-pager diff --stat && echo \"---\" && git --no-pager diff -- internal/shell/shell.go"
+    },
+    "output": "---\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && git --no-pager diff --stat && e",
+    "time": {
+      "start": 1790720583526,
+      "end": 1790720583547
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "git diff didn't show output? That's odd. Maybe the diff got swallowed. Let me run git status/diff separately.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

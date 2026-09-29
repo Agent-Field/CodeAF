@@ -163,8 +163,8 @@ done
 # whole canary's artifacts twice. evidence/ is tracked, so the fetch commits it
 # and the run survives in the branch. Explicit paths only; never `git add -A`.
 if git -C "$FC_REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-  if [ -n "$(git -C "$FC_REPO_ROOT" status --porcelain -- evidence/ 2>/dev/null)" ]; then
-    ( cd "$FC_REPO_ROOT" && git add -- evidence/ && git commit -q \
+  if [ -n "$(git -C "$FC_REPO_ROOT" status --porcelain -- bench/frontiercode/evidence/ 2>/dev/null)" ]; then
+    ( cd "$FC_REPO_ROOT" && git add -- bench/frontiercode/evidence/ && git commit -q \
       -m "bench/frontiercode: fetch evidence for ${dirs[*]}" \
       -m "Raw artifacts for ${#dirs[@]} fetched run(s), committed so they outlive the checkout that fetched them. results/ stays ignored; this is tracked." \
       -m "Assisted-by: CodeAF (deepseek-v4.1-flash)" \

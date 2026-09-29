@@ -1,0 +1,24 @@
+{
+  "id": "prt_0ef3d8d8a001Ee4EziUT5EJ1u1",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3d85b5001kABt3l7I2y3U2U",
+  "type": "tool",
+  "callID": "call_01_zzf23efduuan27k63oe9t7ck",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && (command -v golangci-lint >/dev/null && golangci-lint run ./internal/shell/ 2>&1 | tail -20 || echo \"golangci-lint not installed\")",
+      "timeout_ms": 300000
+    },
+    "output": "golangci-lint not installed\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && (command -v golangci-lint >/dev",
+    "time": {
+      "start": 1790720183694,
+      "end": 1790720183706
+    }
+  }
+}

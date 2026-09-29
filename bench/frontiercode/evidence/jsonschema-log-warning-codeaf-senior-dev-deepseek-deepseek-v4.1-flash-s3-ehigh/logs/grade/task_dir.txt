@@ -1,0 +1,1 @@
+/home/ara/codeaf-rig/bench/frontiercode/results/jsonschema-log-warning-codeaf-senior-dev-deepseek-deepseek-v4.1-flash-s3-ehigh/rig/tasks/jsonschema-log-warning

@@ -1,0 +1,23 @@
+--- a/tests/git_test.py
++++ b/tests/git_test.py
+@@ -141,6 +141,20 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):
+     assert ret == {'conflict_file'}
+ 
+ 
++@pytest.mark.parametrize('refname', ('HEAD', 'MERGE_HEAD'))
++def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):
++    """A tracked file sharing a refname must not make `git diff` ambiguous."""
++    resolve_conflict()
++
++    # a tracked file whose name collides with a refname passed to `git diff`
++    with open(refname, 'w') as ref_file:
++        ref_file.write('not a ref\n')
++    cmd_output('git', 'add', refname)
++
++    ret = set(git.get_conflicted_files())
++    assert ret == {'conflict_file', refname}
++
++
+ MERGE_MSG = b"Merge branch 'foo' into bar\n\nConflicts:\n\tconflict_file\n"
+ OTHER_MERGE_MSG = MERGE_MSG + b'\tother_conflict_file\n'
+ 

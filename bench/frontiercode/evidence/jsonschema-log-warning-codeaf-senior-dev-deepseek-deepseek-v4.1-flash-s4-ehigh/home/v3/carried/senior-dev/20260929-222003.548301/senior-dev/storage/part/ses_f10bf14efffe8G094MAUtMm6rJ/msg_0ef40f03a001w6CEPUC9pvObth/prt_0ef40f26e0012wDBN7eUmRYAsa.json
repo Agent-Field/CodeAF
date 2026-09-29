@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef40f26e0012wDBN7eUmRYAsa",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef40f03a001w6CEPUC9pvObth",
+  "type": "reasoning",
+  "text": "Let me look at the relevant warning sites. First command_lint.cc, command_validate.cc, resolver.h, command_bundle.cc.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the relevant warning sites. First command_lint.cc, command_validate.cc, resolver.h, command_bundle.cc.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720406126,
+    "end": 1790720406149
+  }
+}

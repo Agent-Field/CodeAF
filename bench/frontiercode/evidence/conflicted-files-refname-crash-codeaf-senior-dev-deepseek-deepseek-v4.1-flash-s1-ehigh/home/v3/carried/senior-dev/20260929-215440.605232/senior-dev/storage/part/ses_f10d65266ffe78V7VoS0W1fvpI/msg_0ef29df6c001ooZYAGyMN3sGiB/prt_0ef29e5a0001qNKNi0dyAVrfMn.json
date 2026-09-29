@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef29e5a0001qNKNi0dyAVrfMn",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29df6c001ooZYAGyMN3sGiB",
+  "type": "tool",
+  "callID": "call_00_zl8k9eqrotef3gjwicg7altu",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && grep -n \"in_merge_conflict\\|in_conflicting_submodule\" tests/conftest.py"
+    },
+    "output": "74:def in_merge_conflict(tempdir_factory):\n78:    git_commit(msg=in_merge_conflict.__name__, cwd=path)\n88:def in_conflicting_submodule(tempdir_factory):\n91:    git_commit(msg=in_conflicting_submodule.__name__, cwd=git_dir_2)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && grep -n \"in_merge_conflict\\|in_",
+    "time": {
+      "start": 1790718895524,
+      "end": 1790718895538
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the conftest fixtures for in_merge_conflict and in_conflicting_submodule.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

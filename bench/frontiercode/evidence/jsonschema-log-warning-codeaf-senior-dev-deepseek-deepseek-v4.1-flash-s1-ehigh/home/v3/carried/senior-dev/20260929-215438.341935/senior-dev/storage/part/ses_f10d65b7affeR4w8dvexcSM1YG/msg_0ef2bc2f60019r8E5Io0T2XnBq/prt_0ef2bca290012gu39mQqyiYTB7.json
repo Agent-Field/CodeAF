@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2bca290012gu39mQqyiYTB7",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2bc2f60019r8E5Io0T2XnBq",
+  "type": "reasoning",
+  "text": "Now compile. Let me run `make compile`. Might take a while but incremental. Let's go with 600000ms timeout.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now compile. Let me run `make compile`. Might take a while but incremental. Let's go with 600000ms timeout.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719019561,
+    "end": 1790719019571
+  }
+}

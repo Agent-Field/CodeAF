@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef41d647001RA9yZSYBB5KpLD",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef41cde30015RJwu7xKTqQhNu",
+  "type": "tool",
+  "callID": "call_00_wc5775xt80s6vxq4mnpjt28o",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "newString": "def test_get_conflicted_files_refname_collision(in_merge_conflict):\n    \"\"\"A tracked file named like a refname must not make git ambiguous\"\"\"\n    resolve_conflict()\n\n    with open('HEAD', 'w') as head_file:\n        head_file.write('head')\n    cmd_output('git', 'add', 'HEAD')\n\n    ret = set(git.get_conflicted_files())\n    assert ret == {'HEAD', 'conflict_file'}\n\n\ndef test_get_conflicted_files_in_submodule(in_conflicting_submodule):",
+      "oldString": "def test_get_conflicted_files_in_submodule(in_conflicting_submodule):"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -123,8 +123,20 @@\n     ret = set(git.get_conflicted_files())\n     assert ret == {'conflict_file', 'other_file'}\n \n \n+def test_get_conflicted_files_refname_collision(in_merge_conflict):\n+    \"\"\"A tracked file named like a refname must not make git ambiguous\"\"\"\n+    resolve_conflict()\n+\n+    with open('HEAD', 'w') as head_file:\n+        head_file.write('head')\n+    cmd_output('git', 'add', 'HEAD')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'HEAD', 'conflict_file'}\n+\n+\n def test_get_conflicted_files_in_submodule(in_conflicting_submodule):\n     resolve_conflict()\n     assert set(git.get_conflicted_files()) == {'conflict_file'}\n \n",
+      "filediff": {
+        "file": "/root/repos/pre-commit/tests/git_test.py",
+        "patch": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -123,8 +123,20 @@\n     ret = set(git.get_conflicted_files())\n     assert ret == {'conflict_file', 'other_file'}\n \n \n+def test_get_conflicted_files_refname_collision(in_merge_conflict):\n+    \"\"\"A tracked file named like a refname must not make git ambiguous\"\"\"\n+    resolve_conflict()\n+\n+    with open('HEAD', 'w') as head_file:\n+        head_file.write('head')\n+    cmd_output('git', 'add', 'HEAD')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'HEAD', 'conflict_file'}\n+\n+\n def test_get_conflicted_files_in_submodule(in_conflicting_submodule):\n     resolve_conflict()\n     assert set(git.get_conflicted_files()) == {'conflict_file'}\n \n",
+        "additions": 12,
+        "deletions": 0
+      }
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790720464459,
+      "end": 1790720464501
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now add the regression test first and run to confirm it fails. Let me add after `test_get_conflicted_files`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

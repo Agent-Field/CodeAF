@@ -1,0 +1,27 @@
+{
+  "id": "prt_0ef46fbb4001EWT4Ic8kVYzg61",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46eb1f0018ZIyKEYI4eGTCi",
+  "type": "tool",
+  "callID": "call_01a0ef46fafb778082953b2c",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/command_validate.cc",
+      "limit": 30,
+      "offset": 1
+    },
+    "output": "<path>/root/repos/jsonschema/src/command_validate.cc</path>\n<type>file</type>\n<content>\n1: #include <sourcemeta/core/io.h>\n2: #include <sourcemeta/core/json.h>\n3: #include <sourcemeta/core/jsonl.h>\n4: #include <sourcemeta/core/jsonschema.h>\n5: #include <sourcemeta/core/yaml.h>\n6: \n7: #include <sourcemeta/blaze/compiler.h>\n8: #include <sourcemeta/blaze/evaluator.h>\n9: #include <sourcemeta/blaze/output.h>\n10: \n11: #include <chrono>   // std::chrono\n12: #include <cmath>    // std::sqrt\n13: #include <iostream> // std::cerr\n14: #include <string>   // std::string\n15: \n16: #include \"command.h\"\n17: #include \"configuration.h\"\n18: #include \"error.h\"\n19: #include \"input.h\"\n20: #include \"logger.h\"\n21: #include \"resolver.h\"\n22: #include \"utils.h\"\n23: \n24: namespace {\n25: \n26: auto get_precompiled_schema_template_path(\n27:     const sourcemeta::core::Options &options)\n28:     -> std::optional<std::filesystem::path> {\n29:   if (options.contains(\"template\") && !options.at(\"template\").empty()) {\n30:     return options.at(\"template\").front();\n\n(Showing lines 1-30 of 358. Use offset=31 to continue.)\n</content>",
+    "metadata": {
+      "preview": "#include <sourcemeta/core/io.h>\n#include <sourcemeta/core/json.h>\n#include <sourcemeta/core/jsonl.h>\n#include <sourcemeta/core/jsonschema.h>\n#include <sourcemeta/core/yaml.h>\n\n#include <sourcemeta/blaze/compiler.h>\n#include <sourcemeta/blaze/evaluator.h>\n#include <sourcemeta/blaze/output.h>\n\n#include <chrono>   // std::chrono\n#include <cmath>    // std::sqrt\n#include <iostream> // std::cerr\n#include <string>   // std::string\n\n#include \"command.h\"\n#include \"configuration.h\"\n#include \"error.h\"\n#include \"input.h\"\n#include \"logger.h\"",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "src/command_validate.cc",
+    "time": {
+      "start": 1790720801720,
+      "end": 1790720801735
+    }
+  }
+}

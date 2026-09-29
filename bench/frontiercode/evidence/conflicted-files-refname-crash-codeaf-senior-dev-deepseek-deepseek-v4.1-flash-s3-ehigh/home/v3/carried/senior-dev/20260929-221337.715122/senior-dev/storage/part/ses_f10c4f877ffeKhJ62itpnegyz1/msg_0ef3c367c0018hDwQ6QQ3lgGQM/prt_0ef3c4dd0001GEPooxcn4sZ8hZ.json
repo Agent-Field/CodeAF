@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef3c4dd0001GEPooxcn4sZ8hZ",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3c367c0018hDwQ6QQ3lgGQM",
+  "type": "text",
+  "text": "Confirmed the regression test fails without the fix with the exact ambiguity crash. Let me broaden it to cover both refnames.",
+  "time": {
+    "start": 1790720101840,
+    "end": 1790720101850
+  }
+}

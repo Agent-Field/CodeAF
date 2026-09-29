@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef2d3ab2001odwwgoLGIvu55v",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2d2b75001Bxhx5pC4gJQnX3",
+  "type": "text",
+  "text": "Change complete and submitted.\n\n## Summary\n\nAdded a centralized warning logger and routed every CLI warning through it.\n\n**`src/logger.h`**\n- Added `inline auto LOG_WARNING() -> std::ostream &`, next to `LOG_VERBOSE`. It always writes `warning: ` to `std::cerr` and returns it, ignoring `--verbose` and all other options. Added `<iostream>` to the std include block.\n\n**Converted all five warning sites** (searched the tree to confirm none remained):\n- `src/command_lint.cc` — unknown-exclude warning (was `LOG_VERBOSE`, now always emits).\n- `src/command_validate.cc` — invalid pre-compiled template, and the empty-JSONL warning (was `LOG_VERBOSE`, now always emits).\n- `src/resolver.h` — the three-line \"No schema resources…\" warning chained under one `LOG_WARNING()` so the whole message carries one prefix.\n- `src/command_bundle.cc` — the six-line `--without-id` warning chained under one `LOG_WARNING()`; added the `\"logger.h\"` include.\n\n**Test**\n- Updated `test/validate/pass_jsonl_empty.sh`'s expected stderr, since the empty-JSONL warning is now unconditional (registered test, unchanged registration).\n\n## Evidence\n- `make configure` / `make compile` — succeeded (clang-format + shellcheck + build + install + cpack), `Built target jsonschema_cli`.\n- `cmake --build build --target clang_format_test` — clean, exit 0.\n- `cmake --build build --target shellcheck` — clean, exit 0.\n- `ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure` — 2/2 passed.\n- Full `ctest --test-dir build --output-on-failure -j4` — 301/301 passed.\n- Manual checks confirmed unconditional warnings in non-verbose mode and a single `warning: ` prefix on multi-line warnings.",
+  "time": {
+    "start": 1790719113906,
+    "end": 1790719113910
+  }
+}

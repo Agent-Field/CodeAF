@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef4714ae001iuJHZaC45V3IYu",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef4711c6001AaYXFo7WR1Wyw0",
+  "type": "tool",
+  "callID": "call_01a0ef47139a71e5bf1d509f",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rln \"without-id\\|exclude foo_bar\\|template.json\" test/ | sort"
+    },
+    "output": "test/bundle/pass_without_id.sh\ntest/bundle/pass_without_id_verbose.sh\ntest/compile/pass.sh\ntest/compile/pass_default_dialect.sh\ntest/compile/pass_default_dialect_config.sh\ntest/compile/pass_default_dialect_config_relative.sh\ntest/compile/pass_fast.sh\ntest/compile/pass_minify.sh\ntest/compile/pass_no_identifier.sh\ntest/compile/pass_patternproperties.sh\ntest/compile/pass_resolve_remap.sh\ntest/compile/pass_resolve_remap_relative.sh\ntest/compile/pass_yaml.sh\ntest/lint/fail_lint_disable_unknown_verbose.sh\ntest/validate/pass_2020_12_fast_with_template.sh\ntest/validate/pass_2020_12_with_template.sh\ntest/validate/pass_trace_with_template.sh\ntest/validate/pass_verbose_with_template.sh\ntest/validate/pass_with_invalid_template.sh\ntest/validate/pass_with_invalid_template_verbose.sh\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rln \"without-id\\|exclude ",
+    "time": {
+      "start": 1790720808114,
+      "end": 1790720808138
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now, are there other tests whose stderr includes these warnings? Let me search for the specific substrings across test dir - already did. Also check tests that validate empty jsonl indirectly or lint unknown rule. Also, are there other bundle tests with --without-id? Let's search \"without-id\".",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

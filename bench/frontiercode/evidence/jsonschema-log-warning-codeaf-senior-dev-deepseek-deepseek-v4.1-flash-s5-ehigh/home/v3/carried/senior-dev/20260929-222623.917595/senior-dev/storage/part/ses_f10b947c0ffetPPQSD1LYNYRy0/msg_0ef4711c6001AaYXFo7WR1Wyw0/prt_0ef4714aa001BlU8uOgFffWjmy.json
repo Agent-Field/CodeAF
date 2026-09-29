@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4714aa001BlU8uOgFffWjmy",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef4711c6001AaYXFo7WR1Wyw0",
+  "type": "reasoning",
+  "text": "Now, are there other tests whose stderr includes these warnings? Let me search for the specific substrings across test dir - already did. Also check tests that validate empty jsonl indirectly or lint unknown rule. Also, are there other bundle tests with --without-id? Let's search \"without-id\".",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now, are there other tests whose stderr includes these warnings? Let me search for the specific substrings across test dir - already did. Also check tests that validate empty jsonl indirectly or lint unknown rule. Also, are there other bundle tests with --without-id? Let's search \"without-id\".",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720808106,
+    "end": 1790720808123
+  }
+}

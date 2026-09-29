@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef341a4c001Sb9N8rwG61Hqt4",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef3413bf001L4po4aEEf2LiaF",
+  "type": "tool",
+  "callID": "call_00_eqysm8za3m5swah55ju5ka3d",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && python -m pytest tests/git_test.py::test_get_conflicted_files_refname_collision -q 2>&1 | tail -12"
+    },
+    "output": "E         'HEAD'\nE         'MERGE_HEAD'\nE         Use -v to get more diff\n\n/home/agent/repos/pre-commit/tests/git_test.py:158: AssertionError\n----------------------------- Captured stdout call -----------------------------\n[INFO] Checking merge-conflict files only.\n------------------------------ Captured log call -------------------------------\nINFO     pre_commit.git:git.py:115 Checking merge-conflict files only.\n=========================== short test summary info ============================\nFAILED tests/git_test.py::test_get_conflicted_files_refname_collision - Asser...\n1 failed in 6.70s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && python -m pytest tests/git_test",
+    "time": {
+      "start": 1790719564368,
+      "end": 1790719571518
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

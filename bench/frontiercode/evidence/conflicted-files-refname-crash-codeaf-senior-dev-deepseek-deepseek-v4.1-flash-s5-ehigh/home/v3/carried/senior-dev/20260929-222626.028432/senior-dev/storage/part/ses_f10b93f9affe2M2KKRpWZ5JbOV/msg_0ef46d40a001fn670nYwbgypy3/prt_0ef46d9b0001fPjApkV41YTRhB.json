@@ -1,0 +1,27 @@
+{
+  "id": "prt_0ef46d9b0001fPjApkV41YTRhB",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46d40a001fn670nYwbgypy3",
+  "type": "tool",
+  "callID": "call_01_l4ppcg63po0lgfg78427qx5o",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/pre_commit/git.py",
+      "limit": 40,
+      "offset": 1
+    },
+    "output": "<path>/root/repos/pre-commit/pre_commit/git.py</path>\n<type>file</type>\n<content>\n1: from __future__ import annotations\n2: \n3: import logging\n4: import os.path\n5: import sys\n6: from collections.abc import Mapping\n7: \n8: from pre_commit.errors import FatalError\n9: from pre_commit.util import CalledProcessError\n10: from pre_commit.util import cmd_output\n11: from pre_commit.util import cmd_output_b\n12: \n13: logger = logging.getLogger(__name__)\n14: \n15: # see #2046\n16: NO_FS_MONITOR = ('-c', 'core.useBuiltinFSMonitor=false')\n17: \n18: \n19: def zsplit(s: str) -> list[str]:\n20:     s = s.strip('\\0')\n21:     if s:\n22:         return s.split('\\0')\n23:     else:\n24:         return []\n25: \n26: \n27: def no_git_env(_env: Mapping[str, str] | None = None) -> dict[str, str]:\n28:     # Too many bugs dealing with environment variables and GIT:\n29:     # https://github.com/pre-commit/pre-commit/issues/300\n30:     # In git 2.6.3 (maybe others), git exports GIT_WORK_TREE while running\n31:     # pre-commit hooks\n32:     # In git 1.9.1 (maybe others), git exports GIT_DIR and GIT_INDEX_FILE\n33:     # while running pre-commit hooks in submodules.\n34:     # GIT_DIR: Causes git clone to clone wrong thing\n35:     # GIT_INDEX_FILE: Causes 'error invalid object ...' during commit\n36:     _env = _env if _env is not None else os.environ\n37:     return {\n38:         k: v for k, v in _env.items()\n39:         if not k.startswith('GIT_') or\n40:         k.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_')) or\n\n(Showing lines 1-40 of 245. Use offset=41 to continue.)\n</content>",
+    "metadata": {
+      "preview": "from __future__ import annotations\n\nimport logging\nimport os.path\nimport sys\nfrom collections.abc import Mapping\n\nfrom pre_commit.errors import FatalError\nfrom pre_commit.util import CalledProcessError\nfrom pre_commit.util import cmd_output\nfrom pre_commit.util import cmd_output_b\n\nlogger = logging.getLogger(__name__)\n\n# see #2046\nNO_FS_MONITOR = ('-c', 'core.useBuiltinFSMonitor=false')\n\n\ndef zsplit(s: str) -> list[str]:\n    s = s.strip('\\0')",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "pre_commit/git.py",
+    "time": {
+      "start": 1790720793011,
+      "end": 1790720793025
+    }
+  }
+}

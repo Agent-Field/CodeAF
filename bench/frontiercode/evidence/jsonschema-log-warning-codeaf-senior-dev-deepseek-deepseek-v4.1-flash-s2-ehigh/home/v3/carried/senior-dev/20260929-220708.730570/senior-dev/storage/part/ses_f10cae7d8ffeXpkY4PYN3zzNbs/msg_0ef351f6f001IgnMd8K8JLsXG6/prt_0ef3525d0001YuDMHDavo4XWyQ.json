@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3525d0001YuDMHDavo4XWyQ",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef351f6f001IgnMd8K8JLsXG6",
+  "type": "reasoning",
+  "text": "Let me look at the warning sites. Note LOG_VERBOSE returns std::cerr without including <iostream>, presumably via options.h. Let me search.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the warning sites. Note LOG_VERBOSE returns std::cerr without including \u003ciostream\u003e, presumably via options.h. Let me search.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719632848,
+    "end": 1790719632866
+  }
+}

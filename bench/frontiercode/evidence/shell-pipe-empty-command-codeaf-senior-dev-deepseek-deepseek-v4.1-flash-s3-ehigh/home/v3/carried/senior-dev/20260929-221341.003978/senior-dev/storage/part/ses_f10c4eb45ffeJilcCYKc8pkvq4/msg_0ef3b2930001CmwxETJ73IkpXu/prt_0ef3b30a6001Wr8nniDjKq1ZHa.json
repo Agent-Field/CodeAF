@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3b30a6001Wr8nniDjKq1ZHa",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3b2930001CmwxETJ73IkpXu",
+  "type": "tool",
+  "callID": "call_00_98yx6rtddhgqqpepc8kggnf1",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && sed -n '1,60p' internal/pipe/before/before.go && echo \"-----\" && sed -n '190,215p' internal/pipe/build/build.go"
+    },
+    "output": "// Package before provides the pipe implementation that runs before all other pipes.\npackage before\n\nimport (\n\t\"fmt\"\n\n\t\"github.com/caarlos0/go-shellwords\"\n\t\"github.com/caarlos0/log\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/shell\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/skips\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/tmpl\"\n\t\"github.com/goreleaser/goreleaser/v2/pkg/context\"\n)\n\n// Pipe is a global hook pipe.\ntype Pipe struct{}\n\nfunc (Pipe) String() string { return \"running before hooks\" }\n\nfunc (Pipe) Skip(ctx *context.Context) bool {\n\treturn len(ctx.Config.Before.Hooks) == 0 || skips.Any(ctx, skips.Before)\n}\n\n// Run executes the hooks.\nfunc (Pipe) Run(ctx *context.Context) error {\n\ttmpl := tmpl.New(ctx)\n\t/* #nosec */\n\tfor _, step := range ctx.Config.Before.Hooks {\n\t\ts, err := tmpl.Apply(step)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\targs, err := shellwords.Parse(s)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\n\t\tlog.WithField(\"hook\", s).Info(\"running\")\n\t\tif err := shell.Run(ctx, \"\", args, ctx.Env.Strings(), false); err != nil {\n\t\t\treturn fmt.Errorf(\"hook failed: %w\", err)\n\t\t}\n\t}\n\treturn nil\n}\n-----\n\n\t\tsh, err := tmpl.New(ctx).WithBuildOptions(opts).\n\t\t\tWithEnvS(env).\n\t\t\tApply(hook.Cmd)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\n\t\tlog.WithField(\"hook\", sh).Info(\"running hook\")\n\t\tcmd, err := shellwords.Parse(sh)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\n\t\tif err := shell.Run(ctx, dir, cmd, env, hook.Output); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\n\treturn nil\n}\n\nfunc doBuild(ctx *context.Context, build config.Build, opts builders.Options) error {\n\treturn builders.For(build.Builder).Build(ctx, build, opts)\n}\n\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && sed -n '1,60p' internal/pipe/be",
+    "time": {
+      "start": 1790720028843,
+      "end": 1790720028858
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me check the before pipe to see conventions. Also check if there's logging convention around empty entries. Let's look at before.go and build.go.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

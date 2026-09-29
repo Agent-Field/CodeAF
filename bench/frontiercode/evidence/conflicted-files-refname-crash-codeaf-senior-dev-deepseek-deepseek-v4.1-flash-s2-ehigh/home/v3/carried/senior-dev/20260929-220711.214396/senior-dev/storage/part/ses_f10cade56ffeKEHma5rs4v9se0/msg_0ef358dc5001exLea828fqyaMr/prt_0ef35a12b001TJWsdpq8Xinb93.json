@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef35a12b001TJWsdpq8Xinb93",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef358dc5001exLea828fqyaMr",
+  "type": "tool",
+  "callID": "call_00_46p85vwzbz0344788reubm4w",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && cat > /tmp/test_repro.py <<'EOF'\nfrom __future__ import annotations\n\nimport os\n\nimport pytest\n\nfrom pre_commit import git\nfrom pre_commit.util import cmd_output\n\n\ndef test_repro(in_merge_conflict):\n    # resolve the conflict so write-tree works\n    with open('conflict_file', 'w') as f:\n        f.write('herp\\nderp\\n')\n    cmd_output('git', 'add', 'conflict_file')\n\n    # a tracked file whose name collides with a refname\n    with open('HEAD', 'w') as f:\n        f.write('not a ref\\n')\n    cmd_output('git', 'add', 'HEAD')\n\n    print('RESULT', git.get_conflicted_files())\nEOF\ncp /tmp/test_repro.py tests/test_repro_tmp.py && python -m pytest tests/test_repro_tmp.py -s -q 2>&1 | tail -20; rm -f tests/test_repro_tmp.py"
+    },
+    "output": "[INFO] Checking merge-conflict files only.\nRESULT {'conflict_file', 'HEAD'}\n.\n1 passed in 0.15s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && cat > /tmp/test_repro.py <<'EOF",
+    "time": {
+      "start": 1790719664430,
+      "end": 1790719665371
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me add a regression test. I need to follow the fixture style. The `in_merge_conflict` fixture sets up a merge conflict. To reproduce the crash, I need a tracked file named `HEAD` (or MERGE_HEAD) that exists in the worktree.\n\nLet me think about how to add it in the test. The fixture `in_merge_conflict` yields the path. Within the test, cwd is the conflict_path. I can create a file named `HEAD`, add it to the index, resolve the conflict, then call get_conflicted_files.\n\nBut wait, if I create a file named HEAD and `git add HEAD`, then `git write-tree` includes it. Then `git diff -m \u003ctree\u003e HEAD MERGE_HEAD` would be ambiguous. Good.\n\nBut what's the expected set? Let's reason. In `in_merge_conflict`:\n- foo branch: conflict_file (herp), foo_only_file\n- bar branch: conflict_file (harp), bar_only_file\n- merge foo into bar -\u003e conflict on conflict_file\n\nAfter resolving conflict and adding HEAD file:\n- merge_conflict_filenames from MERGE_MSG = ['conflict_file']\n- merge_diff_filenames = diff of tree vs HEAD/MERGE_HEAD.\n\nThe tree includes resolved conflict_file, HEAD file, and all base files. HEAD = bar branch tip (bar_only_file, conflict_file harp/base...). MERGE_HEAD = foo (foo_only_file, conflict_file herp).\n\nHmm, `git diff -m \u003ctree\u003e HEAD MERGE_HEAD` semantics. Let me just run the test empirically.\n\nActually, let me write a test that creates a file named `HEAD` and asserts the result includes 'HEAD' and 'conflict_file' maybe. But I need to know exactly. Let me reproduce with the actual package function using the fixtures.\n\nLet me write a quick test addition and run it to see. First, let me understand what the expected output is.\n\nLet me just create the test based on `test_get_conflicted_files_unstaged_files` style but adding a tracked HEAD file.\n\nActually, more careful: creating a file named `HEAD` via `open('HEAD','w')` and `git add HEAD` — will git complain about adding a file named HEAD? Let me test. Git may refuse to add `.git` but a file literally named `HEAD` at root should be fine.\n\nLet me add a regression test. Let me first use a scratch test to determine output.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

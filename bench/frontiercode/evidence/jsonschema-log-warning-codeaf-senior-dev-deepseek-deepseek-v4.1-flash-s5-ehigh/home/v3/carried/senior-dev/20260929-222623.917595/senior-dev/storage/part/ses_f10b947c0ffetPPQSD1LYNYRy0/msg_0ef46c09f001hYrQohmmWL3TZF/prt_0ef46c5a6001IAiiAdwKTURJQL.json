@@ -1,0 +1,27 @@
+{
+  "id": "prt_0ef46c5a6001IAiiAdwKTURJQL",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46c09f001hYrQohmmWL3TZF",
+  "type": "tool",
+  "callID": "call_01a0ef46c50a747fb703d706",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/command_validate.cc",
+      "limit": 30,
+      "offset": 275
+    },
+    "output": "<path>/root/repos/jsonschema/src/command_validate.cc</path>\n<type>file</type>\n<content>\n275:             std::cerr << \"\\n\\n\";\n276:             std::cerr << error.str();\n277:             print(output, tracker, std::cerr);\n278:             result = false;\n279:             break;\n280:           }\n281:         }\n282:       } catch (const sourcemeta::core::JSONParseError &error) {\n283:         // For producing better error messages\n284:         throw sourcemeta::core::JSONFileParseError(instance_path, error);\n285:       }\n286: \n287:       if (index == 0) {\n288:         LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\n289:       }\n290:     } else {\n291:       sourcemeta::core::PointerPositionTracker tracker;\n292:       const auto instance{sourcemeta::core::read_yaml_or_json(\n293:           instance_path, std::ref(tracker))};\n294:       std::ostringstream error;\n295:       sourcemeta::blaze::SimpleOutput output{instance};\n296:       sourcemeta::blaze::TraceOutput trace_output{\n297:           sourcemeta::core::schema_official_walker, custom_resolver,\n298:           sourcemeta::core::empty_weak_pointer, frame};\n299:       bool subresult{true};\n300:       if (benchmark) {\n301:         subresult = run_loop(evaluator, schema_template, instance,\n302:                              instance_path, (int64_t)-1, benchmark_loop);\n303:         if (!subresult) {\n304:           error << \"error: Schema validation failure\\n\";\n\n(Showing lines 275-304 of 358. Use offset=305 to continue.)\n</content>",
+    "metadata": {
+      "preview": "            std::cerr << \"\\n\\n\";\n            std::cerr << error.str();\n            print(output, tracker, std::cerr);\n            result = false;\n            break;\n          }\n        }\n      } catch (const sourcemeta::core::JSONParseError &error) {\n        // For producing better error messages\n        throw sourcemeta::core::JSONFileParseError(instance_path, error);\n      }\n\n      if (index == 0) {\n        LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\n      }\n    } else {\n      sourcemeta::core::PointerPositionTracker tracker;\n      const auto instance{sourcemeta::core::read_yaml_or_json(\n          instance_path, std::ref(tracker))};\n      std::ostringstream error;",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "src/command_validate.cc",
+    "time": {
+      "start": 1790720787880,
+      "end": 1790720787888
+    }
+  }
+}

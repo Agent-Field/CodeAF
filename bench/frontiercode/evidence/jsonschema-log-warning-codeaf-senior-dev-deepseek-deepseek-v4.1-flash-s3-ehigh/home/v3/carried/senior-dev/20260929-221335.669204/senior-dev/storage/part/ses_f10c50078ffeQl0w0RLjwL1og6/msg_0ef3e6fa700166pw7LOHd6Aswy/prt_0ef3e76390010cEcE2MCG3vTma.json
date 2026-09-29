@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3e76390010cEcE2MCG3vTma",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3e6fa700166pw7LOHd6Aswy",
+  "type": "reasoning",
+  "text": "Matches.\n\nNow let's verify the bundle output and resolver warning behavior manually too, to make sure prefix only once. Bundle test already passed. Resolver: no test but let's manually trigger. Create a schema with no identifiers in a resolve directory? Actually resolver warning appears when importing a file that sets no identifiers. Let's test quickly via `validate --resolve` with a file without $id. Hmm, the resolver is used for external refs. Let me just trust the chain.\n\nActually let me verify with a quick scenario: validate a schema that $refs a local file lacking $id. The imported file fails to add => warning. Let me try.\n\nActually, the resolve warning happens in `resolver()` when reading files from a --resolve directory. Let me create dir with a schema without $id.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Matches.\n\nNow let's verify the bundle output and resolver warning behavior manually too, to make sure prefix only once. Bundle test already passed. Resolver: no test but let's manually trigger. Create a schema with no identifiers in a resolve directory? Actually resolver warning appears when importing a file that sets no identifiers. Let's test quickly via `validate --resolve` with a file without $id. Hmm, the resolver is used for external refs. Let me just trust the chain.\n\nActually let me verify with a quick scenario: validate a schema that $refs a local file lacking $id. The imported file fails to add =\u003e warning. Let me try.\n\nActually, the resolve warning happens in `resolver()` when reading files from a --resolve directory. Let me create dir with a schema without $id.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720243257,
+    "end": 1790720243269
+  }
+}

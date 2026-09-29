@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef35af1e001SqNQ1oga78DXoj",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef35a595001IIjyl4lK6ycthY",
+  "type": "reasoning",
+  "text": "So the expected result with the fix is `{'conflict_file', 'HEAD'}`. Let me verify that without the fix it crashes (to confirm the test is a valid regression test). Let me temporarily revert the `--` and run.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "So the expected result with the fix is `{'conflict_file', 'HEAD'}`. Let me verify that without the fix it crashes (to confirm the test is a valid regression test). Let me temporarily revert the `--` and run.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719667998,
+    "end": 1790719668001
+  }
+}

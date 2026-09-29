@@ -1,0 +1,32 @@
+{
+  "id": "prt_0ef3538300017y8e01SUUbusp7",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef353249001Y3nDSpDWL21tkJ",
+  "type": "tool",
+  "callID": "call_01a0ef3536c371cc870cc359",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell_test.go",
+      "newString": "\tt.Run(\"empty command\", func(t *testing.T) {\n\t\trequire.NoError(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\t[]string{},\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})\n\n\tt.Run(\"cmd failed\", func(t *testing.T) {",
+      "oldString": "\tt.Run(\"cmd failed\", func(t *testing.T) {"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,8 +22,18 @@\n \t\tfalse,\n \t))\n })\n \n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n t.Run(\"cmd failed\", func(t *testing.T) {\n \trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n",
+      "filediff": {
+        "file": "/root/repos/goreleaser/internal/shell/shell_test.go",
+        "patch": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,8 +22,18 @@\n \t\tfalse,\n \t))\n })\n \n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n t.Run(\"cmd failed\", func(t *testing.T) {\n \trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n",
+        "additions": 10,
+        "deletions": 0
+      }
+    },
+    "title": "internal/shell/shell_test.go",
+    "time": {
+      "start": 1790719637555,
+      "end": 1790719637581
+    }
+  }
+}

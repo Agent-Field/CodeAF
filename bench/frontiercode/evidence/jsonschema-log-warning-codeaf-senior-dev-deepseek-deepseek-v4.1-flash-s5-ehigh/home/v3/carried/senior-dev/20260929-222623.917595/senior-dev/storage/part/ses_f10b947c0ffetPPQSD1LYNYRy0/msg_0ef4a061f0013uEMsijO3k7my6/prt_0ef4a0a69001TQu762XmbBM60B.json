@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef4a0a69001TQu762XmbBM60B",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef4a061f0013uEMsijO3k7my6",
+  "type": "text",
+  "text": "Done. Summary of the change:\n\n- **`src/logger.h`**: added `inline auto LOG_WARNING() -> std::ostream &` next to `LOG_VERBOSE`. It writes the `warning: ` prefix itself and always returns `std::cerr`, so it is unaffected by `--verbose`; added `<iostream>` to the existing include block.\n- **`src/command_lint.cc`**: unknown-rule warning now goes through `LOG_WARNING()`.\n- **`src/command_validate.cc`**: both warnings (pre-compiled template parse failure, empty JSONL) now use `LOG_WARNING()`.\n- **`src/resolver.h`**: all three lines of the “No schema resources were imported” warning go through `LOG_WARNING()`, so each carries the prefix.\n- **`src/command_bundle.cc`**: all six lines of the `--without-id` warning go through `LOG_WARNING()`; added the direct `logger.h` include.\n- **Tests**: updated `pass_jsonl_empty.sh` (warning now always printed) and `pass_without_id.sh` / `pass_without_id_verbose.sh` (every continuation line now carries the prefix).\n\nEvidence: `make configure compile` succeeded; full suite `ctest --test-dir build --output-on-failure --parallel 4` passed 301/301; targeted warning tests 11/11; `clang_format_test` and `shellcheck` targets clean.",
+  "time": {
+    "start": 1790721002089,
+    "end": 1790721002094
+  }
+}

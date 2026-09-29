@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46e504001h4J9b6AaKN7Pwd",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46df2200119h30RqY8TVPQV",
+  "type": "reasoning",
+  "text": "Let me see the `_make_conflict` function fully.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me see the `_make_conflict` function fully.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720795908,
+    "end": 1790720795918
+  }
+}

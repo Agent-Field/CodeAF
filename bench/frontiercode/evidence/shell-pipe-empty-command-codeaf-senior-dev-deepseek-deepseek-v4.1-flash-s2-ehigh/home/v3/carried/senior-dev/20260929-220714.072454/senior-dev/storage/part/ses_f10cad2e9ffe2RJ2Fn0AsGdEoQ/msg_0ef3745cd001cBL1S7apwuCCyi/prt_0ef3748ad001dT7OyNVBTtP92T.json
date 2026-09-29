@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef3748ad001dT7OyNVBTtP92T",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef3745cd001cBL1S7apwuCCyi",
+  "type": "tool",
+  "callID": "call_01a0ef3747a77289840da877",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && timeout 200 go build ./internal/... 2>&1 | tail -20; echo \"exit=$?\"",
+      "timeout_ms": 220000
+    },
+    "output": "exit=0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && timeout 200 go build ./internal",
+    "time": {
+      "start": 1790719772849,
+      "end": 1790719789073
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Tests pass, vet clean. Let me try go build ./internal/... with longer timeout maybe. The full build may need network download; it timed out. Let me try `go build ./internal/shell/` quickly. And maybe golangci-lint availability.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

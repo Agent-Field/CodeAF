@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2a525a001snXZLm1h1R7EvE",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2a409d001lyQblgwjppVUg9",
+  "type": "reasoning",
+  "text": "So in the normal case only {conflict_file, other_file}. Interesting. So `-m <tree> HEAD MERGE_HEAD` means something specific. Let me figure out. It seems git treats `<tree> HEAD MERGE_HEAD` as a merge: perhaps it's `git diff -m` where the arguments are treated as a merge commit with tree as result and HEAD/MERGE_HEAD as parents? Actually `git diff -m <tree> HEAD MERGE_HEAD` — hmm, maybe git diff with 3 commits and -m treats the first as the merge result tree and HEAD, MERGE_HEAD as parents, showing combined diff? But combined diff would prefix with two columns.\n\nActually the output is just names. Let me think: git diff can take `--cc` or `-c` for combined. `-m` shows diff against each parent. With `<tree> HEAD MERGE_HEAD`, maybe git interprets as `git diff <commit> <commit> <commit>` and considers HEAD as merge commit? No.\n\nHmm actually, maybe git's argument parsing: with more than 2 commits, git diff treats the last one as... Let me not overanalyze. The key: adding `--` yields the exact same output in the non-ambiguous case and fixes the ambiguous case. Let me verify in the ambiguous fixture too — it gave HEAD, MERGE_HEAD, conflict_file. But in the fixture with HEAD file, would output differ? In /tmp/ambig I added both HEAD and MERGE_HEAD files. Let me redo with only HEAD file to know the expected regression test result.\n\nActually, let me replicate the exact fixture + only HEAD file and run both original and fixed, to determine what get_conflicted_files would return after fix. But the original crashes. So I need to know what complete set is: merge_conflict_filenames from MERGE_MSG + diff output.\n\nThe MERGE_MSG in the fixture: let's check its content. Git writes Conflicts: section. So merge_conflict_filenames = {conflict_file}. Then diff with `--` returns... let's determine.\n\nLet me set up fixture + HEAD file.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "So in the normal case only {conflict_file, other_file}. Interesting. So `-m \u003ctree\u003e HEAD MERGE_HEAD` means something specific. Let me figure out. It seems git treats `\u003ctree\u003e HEAD MERGE_HEAD` as a merge: perhaps it's `git diff -m` where the arguments are treated as a merge commit with tree as result and HEAD/MERGE_HEAD as parents? Actually `git diff -m \u003ctree\u003e HEAD MERGE_HEAD` — hmm, maybe git diff with 3 commits and -m treats the first as the merge result tree and HEAD, MERGE_HEAD as parents, showing combined diff? But combined diff would prefix with two columns.\n\nActually the output is just names. Let me think: git diff can take `--cc` or `-c` for combined. `-m` shows diff against each parent. With `\u003ctree\u003e HEAD MERGE_HEAD`, maybe git interprets as `git diff \u003ccommit\u003e \u003ccommit\u003e \u003ccommit\u003e` and considers HEAD as merge commit? No.\n\nHmm actually, maybe git's argument parsing: with more than 2 commits, git diff treats the last one as... Let me not overanalyze. The key: adding `--` yields the exact same output in the non-ambiguous case and fixes the ambiguous case. Let me verify in the ambiguous fixture too — it gave HEAD, MERGE_HEAD, conflict_file. But in the fixture with HEAD file, would output differ? In /tmp/ambig I added both HEAD and MERGE_HEAD files. Let me redo with only HEAD file to know the expected regression test result.\n\nActually, let me replicate the exact fixture + only HEAD file and run both original and fixed, to determine what get_conflicted_files would return after fix. But the original crashes. So I need to know what complete set is: merge_conflict_filenames from MERGE_MSG + diff output.\n\nThe MERGE_MSG in the fixture: let's check its content. Git writes Conflicts: section. So merge_conflict_filenames = {conflict_file}. Then diff with `--` returns... let's determine.\n\nLet me set up fixture + HEAD file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718923354,
+    "end": 1790718923547
+  }
+}

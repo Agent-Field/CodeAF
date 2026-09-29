@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef29d368001KZvxrQKbsPzq6C",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29d107001elVGYrIKTj0xga",
+  "type": "tool",
+  "callID": "call_01a0ef29d1fb754ea3180982",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell_test.go",
+      "newString": "\tt.Run(\"empty command\", func(t *testing.T) {\n\t\trequire.NoError(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\t[]string{},\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})\n\n\tt.Run(\"cmd failed\", func(t *testing.T) {\n\t\trequire.Error(t, shell.Run(",
+      "oldString": "\tt.Run(\"cmd failed\", func(t *testing.T) {\t\trequire.Error(t, shell.Run("
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,9 +22,20 @@\n \t\tfalse,\n \t))\n })\n \n-t.Run(\"cmd failed\", func(t *testing.T) {\t\trequire.Error(t, shell.Run(\n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n+t.Run(\"cmd failed\", func(t *testing.T) {\n+\trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n \t\tstrings.Fields(testlib.Exit(1)),\n \t\t[]string{},\n",
+      "filediff": {
+        "file": "/root/repos/goreleaser/internal/shell/shell_test.go",
+        "patch": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,9 +22,20 @@\n \t\tfalse,\n \t))\n })\n \n-t.Run(\"cmd failed\", func(t *testing.T) {\t\trequire.Error(t, shell.Run(\n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n+t.Run(\"cmd failed\", func(t *testing.T) {\n+\trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n \t\tstrings.Fields(testlib.Exit(1)),\n \t\t[]string{},\n",
+        "additions": 12,
+        "deletions": 1
+      }
+    },
+    "title": "internal/shell/shell_test.go",
+    "time": {
+      "start": 1790718890859,
+      "end": 1790718890903
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "My edit mangled line 26. Fix it and add empty test.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

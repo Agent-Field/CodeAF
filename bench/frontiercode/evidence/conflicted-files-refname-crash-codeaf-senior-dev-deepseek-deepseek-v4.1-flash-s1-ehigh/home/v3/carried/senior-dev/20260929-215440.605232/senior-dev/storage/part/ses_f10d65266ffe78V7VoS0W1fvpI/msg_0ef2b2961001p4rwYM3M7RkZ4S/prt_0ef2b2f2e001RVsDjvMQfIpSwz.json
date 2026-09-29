@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef2b2f2e001RVsDjvMQfIpSwz",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2b2961001p4rwYM3M7RkZ4S",
+  "type": "tool",
+  "callID": "call_00_72jjbl7c119h12ci3ptycjgy",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && python -m pytest tests/git_test.py::test_get_conflicted_files_refname_collision -q 2>&1 | tail -25"
+    },
+    "output": "                proc = subprocess.Popen(cmd, **kwargs)\n            except OSError as e:\n                returncode, stdout_b, stderr_b = _oserror_to_output(e)\n            else:\n                stdout_b, stderr_b = proc.communicate()\n                returncode = proc.returncode\n    \n        if check and returncode:\n>           raise CalledProcessError(returncode, cmd, stdout_b, stderr_b)\nE           pre_commit.util.CalledProcessError: command: ('/usr/bin/git', 'diff', '--name-only', '--no-ext-diff', '-z', '-m', 'c0c7efb26d27c862f43c9e1a9e3271f5ba3246b0', 'HEAD', 'MERGE_HEAD')\nE           return code: 128\nE           stdout: (none)\nE           stderr:\nE               fatal: ambiguous argument 'HEAD': both revision and filename\nE               Use '--' to separate paths from revisions, like this:\nE               'git <command> [<revision>...] -- [<file>...]'\n\n/home/agent/repos/pre-commit/pre_commit/util.py:111: CalledProcessError\n----------------------------- Captured stdout call -----------------------------\n[INFO] Checking merge-conflict files only.\n------------------------------ Captured log call -------------------------------\nINFO     pre_commit.git:git.py:115 Checking merge-conflict files only.\n=========================== short test summary info ============================\nFAILED tests/git_test.py::test_get_conflicted_files_refname_collision - pre_c...\n1 failed in 0.20s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && python -m pytest tests/git_test",
+    "time": {
+      "start": 1790718979889,
+      "end": 1790718980550
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

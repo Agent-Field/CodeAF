@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef2b2804001nVBkP2uzLNJ7Jq",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2b1fcc001BKFfcno87fkfxU",
+  "type": "tool",
+  "callID": "call_00_1fwv6gwkz6hc5vvyacbdiiv0",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/pre_commit/git.py",
+      "newString": "            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',",
+      "oldString": "            '-m', tree_hash,\n            # pull the refs in front of the `--` so they are unambiguously\n            # revisions even if the worktree has a tracked file named HEAD\n            'HEAD', 'MERGE_HEAD', '--',"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/pre_commit/git.py\n===================================================================\n--- /root/repos/pre-commit/pre_commit/git.py\n+++ /root/repos/pre-commit/pre_commit/git.py\n@@ -125,12 +125,9 @@\n tree_hash = cmd_output('git', 'write-tree')[1].strip()\n merge_diff_filenames = zsplit(\n     cmd_output(\n         'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-        '-m', tree_hash,\n-        # pull the refs in front of the `--` so they are unambiguously\n-        # revisions even if the worktree has a tracked file named HEAD\n-        'HEAD', 'MERGE_HEAD', '--',\n+        '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n     )[1],\n )\n return set(merge_conflict_filenames) | set(merge_diff_filenames)\n \n",
+      "filediff": {
+        "file": "/root/repos/pre-commit/pre_commit/git.py",
+        "patch": "Index: /root/repos/pre-commit/pre_commit/git.py\n===================================================================\n--- /root/repos/pre-commit/pre_commit/git.py\n+++ /root/repos/pre-commit/pre_commit/git.py\n@@ -125,12 +125,9 @@\n tree_hash = cmd_output('git', 'write-tree')[1].strip()\n merge_diff_filenames = zsplit(\n     cmd_output(\n         'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-        '-m', tree_hash,\n-        # pull the refs in front of the `--` so they are unambiguously\n-        # revisions even if the worktree has a tracked file named HEAD\n-        'HEAD', 'MERGE_HEAD', '--',\n+        '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n     )[1],\n )\n return set(merge_conflict_filenames) | set(merge_diff_filenames)\n \n",
+        "additions": 1,
+        "deletions": 4
+      }
+    },
+    "title": "pre_commit/git.py",
+    "time": {
+      "start": 1790718978156,
+      "end": 1790718978378
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The harness auto-commits each edit. Now revert git.py to test failure. I'll edit it.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

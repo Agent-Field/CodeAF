@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef40f6c0001E5cVEm8NjgqQrV",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef40f2980018hcSQj8X28WIMZ",
+  "type": "tool",
+  "callID": "call_01a0ef40f6117107b1206080",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && sed -n '20,40p' src/command_lint.cc && echo ---RESOLVER--- && sed -n '88,108p' src/resolver.h && echo ---BUNDLE--- && sed -n '30,52p' src/command_bundle.cc && echo ---INCLUDES--- && sed -n '1,20p' src/command_lint.cc"
+    },
+    "output": "#include \"utils.h\"\n\ntemplate <typename Options, typename Iterator>\nstatic auto disable_lint_rules(sourcemeta::core::SchemaTransformer &bundle,\n                               const Options &options, Iterator first,\n                               Iterator last) -> void {\n  for (auto iterator = first; iterator != last; ++iterator) {\n    if (bundle.remove(std::string{*iterator})) {\n      sourcemeta::jsonschema::LOG_VERBOSE(options)\n          << \"Disabling rule: \" << *iterator << \"\\n\";\n    } else {\n      sourcemeta::jsonschema::LOG_VERBOSE(options)\n          << \"warning: Cannot exclude unknown rule: \" << *iterator << \"\\n\";\n    }\n  }\n}\n\nstatic auto reindent(const std::string_view &value,\n                     const std::string &indentation, std::ostream &stream)\n    -> void {\n  if (!value.empty()) {\n---RESOLVER---\n        }\n\n        const auto result =\n            this->add(entry.second, default_dialect,\n                      sourcemeta::core::URI::from_path(entry.first).recompose(),\n                      [&options](const auto &identifier) {\n                        LOG_VERBOSE(options)\n                            << \"Importing schema into the resolution context: \"\n                            << identifier << \"\\n\";\n                      });\n        if (!result) {\n          std::cerr\n              << \"warning: No schema resources were imported from this file\\n\";\n          std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n          std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n        }\n      }\n    }\n  }\n\n  auto add(const sourcemeta::core::JSON &schema,\n---BUNDLE---\n\n  sourcemeta::core::bundle(schema, sourcemeta::core::schema_official_walker,\n                           custom_resolver, dialect,\n                           sourcemeta::core::URI::from_path(\n                               sourcemeta::core::weakly_canonical(schema_path))\n                               .recompose());\n\n  if (options.contains(\"without-id\")) {\n    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n                 \"the bundled schema.\\n\";\n    std::cerr << \"The only legit use case of this advanced feature we know of \"\n                 \"is to workaround\\n\";\n    std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n                 \"Studio Code.\\n\";\n    std::cerr << \"Otherwise, this is not needed and may harm other use \"\n                 \"cases. For example,\\n\";\n    std::cerr << \"you will be unable to reference the resulting schema from \"\n                 \"other schemas\\n\";\n    std::cerr << \"using the --resolve/-r option.\\n\";\n    sourcemeta::core::for_editor(schema,\n                                 sourcemeta::core::schema_official_walker,\n                                 custom_resolver, dialect);\n  }\n---INCLUDES---\n#include <sourcemeta/core/alterschema.h>\n#include <sourcemeta/core/json.h>\n#include <sourcemeta/core/jsonpointer.h>\n#include <sourcemeta/core/jsonschema.h>\n\n#include <sourcemeta/blaze/linter.h>\n\n#include <cstdlib>  // EXIT_FAILURE\n#include <fstream>  // std::ofstream\n#include <iostream> // std::cerr, std::cout\n#include <numeric>  // std::accumulate\n#include <sstream>  // std::ostringstream\n\n#include \"command.h\"\n#include \"configuration.h\"\n#include \"error.h\"\n#include \"input.h\"\n#include \"logger.h\"\n#include \"resolver.h\"\n#include \"utils.h\"\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && sed -n '20,40p' src/command_lin",
+    "time": {
+      "start": 1790720407235,
+      "end": 1790720407252
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2b39dc0019WL9bhMfZ2kgRP",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2b3239001FLNBJnt9jh2DAR",
+  "type": "reasoning",
+  "text": "The regression test fails without the fix (the exact ambiguous argument crash) and passes with it. Now re-apply the fix.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The regression test fails without the fix (the exact ambiguous argument crash) and passes with it. Now re-apply the fix.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718982620,
+    "end": 1790718982631
+  }
+}

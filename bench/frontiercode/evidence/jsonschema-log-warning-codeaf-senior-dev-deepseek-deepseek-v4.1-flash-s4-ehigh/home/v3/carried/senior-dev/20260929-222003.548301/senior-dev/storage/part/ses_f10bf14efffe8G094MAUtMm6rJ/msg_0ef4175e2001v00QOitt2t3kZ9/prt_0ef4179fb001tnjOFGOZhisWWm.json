@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef4179fb001tnjOFGOZhisWWm",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef4175e2001v00QOitt2t3kZ9",
+  "type": "tool",
+  "callID": "call_01a0ef417a5a7658abc2142a",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -n \"warning\" test/bundle/pass_without_id.sh test/bundle/pass_without_id_verbose.sh test/validate/pass_jsonl_empty.sh && echo --- && cat test/validate/pass_jsonl_empty.sh | tail -8"
+    },
+    "output": "test/bundle/pass_without_id.sh:43:warning: You are opting in to remove schema identifiers in the bundled schema.\ntest/bundle/pass_without_id.sh:44:warning: The only legit use case of this advanced feature we know of is to workaround\ntest/bundle/pass_without_id.sh:45:warning: non-compliant JSON Schema implementations such as Visual Studio Code.\ntest/bundle/pass_without_id.sh:46:warning: Otherwise, this is not needed and may harm other use cases. For example,\ntest/bundle/pass_without_id.sh:47:warning: you will be unable to reference the resulting schema from other schemas\ntest/bundle/pass_without_id.sh:48:warning: using the --resolve/-r option.\ntest/bundle/pass_without_id_verbose.sh:33:warning: You are opting in to remove schema identifiers in the bundled schema.\ntest/bundle/pass_without_id_verbose.sh:34:warning: The only legit use case of this advanced feature we know of is to workaround\ntest/bundle/pass_without_id_verbose.sh:35:warning: non-compliant JSON Schema implementations such as Visual Studio Code.\ntest/bundle/pass_without_id_verbose.sh:36:warning: Otherwise, this is not needed and may harm other use cases. For example,\ntest/bundle/pass_without_id_verbose.sh:37:warning: you will be unable to reference the resulting schema from other schemas\ntest/bundle/pass_without_id_verbose.sh:38:warning: using the --resolve/-r option.\ntest/validate/pass_jsonl_empty.sh:26:warning: The JSONL file is empty\n---\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" 2> \"$TMP/output.txt\" 1>&2\n\ncat << EOF > \"$TMP/expected.txt\"\nwarning: The JSONL file is empty\nEOF\n\ndiff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -n \"warning\" test/bundle/p",
+    "time": {
+      "start": 1790720440830,
+      "end": 1790720440855
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Wait! I made an error in the second bundle edit: the oldString appears in both files? No, I edited each file separately. But in pass_without_id.sh the old block I replaced is now already prefixed (from first edit? No, first edit was on pass_without_id.sh). Let me re-check: The first `edit` targeted test/bundle/pass_without_id.sh with oldString unprefixed → newString prefixed. The second edit targeted pass_without_id_verbose.sh with oldString unprefixed. But wait, the oldString for the verbose file includes `warning: You are...` on first line — in the verbose file the first line already has `warning:`. Yes, and I replaced it. Good.\n\nBut hold on, I passed the same newString and oldString; both unique within their files. Good.\n\nLet me verify the files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

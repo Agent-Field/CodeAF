@@ -1,0 +1,32 @@
+{
+  "id": "prt_0ef2b269e001g16OASU9u287ts",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2b1cc0001xU7s1CwlFgeiSD",
+  "type": "tool",
+  "callID": "call_01_dxd2o6z7q550wgm8hoq0r47w",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/resolver.h",
+      "newString": "        if (!result) {\n          LOG_WARNING()\n              << \"No schema resources were imported from this file\\n\"\n              << \"  at \" << entry.first.string() << \"\\n\"\n              << \"Are you sure this schema sets any identifiers?\\n\";\n        }",
+      "oldString": "        if (!result) {\n          std::cerr\n              << \"warning: No schema resources were imported from this file\\n\";\n          std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n          std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n        }"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/jsonschema/src/resolver.h\n===================================================================\n--- /root/repos/jsonschema/src/resolver.h\n+++ /root/repos/jsonschema/src/resolver.h\n@@ -95,12 +95,12 @@\n                           << \"Importing schema into the resolution context: \"\n                           << identifier << \"\\n\";\n                     });\n       if (!result) {\n-        std::cerr\n-            << \"warning: No schema resources were imported from this file\\n\";\n-        std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n-        std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n+        LOG_WARNING()\n+            << \"No schema resources were imported from this file\\n\"\n+            << \"  at \" << entry.first.string() << \"\\n\"\n+            << \"Are you sure this schema sets any identifiers?\\n\";\n       }\n     }\n   }\n }\n",
+      "filediff": {
+        "file": "/root/repos/jsonschema/src/resolver.h",
+        "patch": "Index: /root/repos/jsonschema/src/resolver.h\n===================================================================\n--- /root/repos/jsonschema/src/resolver.h\n+++ /root/repos/jsonschema/src/resolver.h\n@@ -95,12 +95,12 @@\n                           << \"Importing schema into the resolution context: \"\n                           << identifier << \"\\n\";\n                     });\n       if (!result) {\n-        std::cerr\n-            << \"warning: No schema resources were imported from this file\\n\";\n-        std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n-        std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n+        LOG_WARNING()\n+            << \"No schema resources were imported from this file\\n\"\n+            << \"  at \" << entry.first.string() << \"\\n\"\n+            << \"Are you sure this schema sets any identifiers?\\n\";\n       }\n     }\n   }\n }\n",
+        "additions": 4,
+        "deletions": 4
+      }
+    },
+    "title": "src/resolver.h",
+    "time": {
+      "start": 1790718977698,
+      "end": 1790718977737
+    }
+  }
+}

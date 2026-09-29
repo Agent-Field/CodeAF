@@ -1,0 +1,32 @@
+{
+  "id": "prt_0ef41749c001yCV5MERAFdjssC",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef416b26001u7AGu2kHjWeFOA",
+  "type": "tool",
+  "callID": "call_01a0ef4171d174bb87c245dd",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh",
+      "newString": "warning: You are opting in to remove schema identifiers in the bundled schema.\nwarning: The only legit use case of this advanced feature we know of is to workaround\nwarning: non-compliant JSON Schema implementations such as Visual Studio Code.\nwarning: Otherwise, this is not needed and may harm other use cases. For example,\nwarning: you will be unable to reference the resulting schema from other schemas\nwarning: using the --resolve/-r option.",
+      "oldString": "warning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option."
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh\n===================================================================\n--- /root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh\n+++ /root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh\n@@ -30,13 +30,13 @@\n Detecting schema resources from file: $(realpath \"$TMP\")/schemas/remote.json\n Importing schema into the resolution context: file://$(realpath \"$TMP\")/schemas/remote.json\n Importing schema into the resolution context: https://example.com/nested\n warning: You are opting in to remove schema identifiers in the bundled schema.\n-The only legit use case of this advanced feature we know of is to workaround\n-non-compliant JSON Schema implementations such as Visual Studio Code.\n-Otherwise, this is not needed and may harm other use cases. For example,\n-you will be unable to reference the resulting schema from other schemas\n-using the --resolve/-r option.\n+warning: The only legit use case of this advanced feature we know of is to workaround\n+warning: non-compliant JSON Schema implementations such as Visual Studio Code.\n+warning: Otherwise, this is not needed and may harm other use cases. For example,\n+warning: you will be unable to reference the resulting schema from other schemas\n+warning: using the --resolve/-r option.\n {\n   \"\\$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n   \"\\$ref\": \"#/\\$defs/https:~1~1example.com~1nested\",\n   \"\\$defs\": {\n",
+      "filediff": {
+        "file": "/root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh",
+        "patch": "Index: /root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh\n===================================================================\n--- /root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh\n+++ /root/repos/jsonschema/test/bundle/pass_without_id_verbose.sh\n@@ -30,13 +30,13 @@\n Detecting schema resources from file: $(realpath \"$TMP\")/schemas/remote.json\n Importing schema into the resolution context: file://$(realpath \"$TMP\")/schemas/remote.json\n Importing schema into the resolution context: https://example.com/nested\n warning: You are opting in to remove schema identifiers in the bundled schema.\n-The only legit use case of this advanced feature we know of is to workaround\n-non-compliant JSON Schema implementations such as Visual Studio Code.\n-Otherwise, this is not needed and may harm other use cases. For example,\n-you will be unable to reference the resulting schema from other schemas\n-using the --resolve/-r option.\n+warning: The only legit use case of this advanced feature we know of is to workaround\n+warning: non-compliant JSON Schema implementations such as Visual Studio Code.\n+warning: Otherwise, this is not needed and may harm other use cases. For example,\n+warning: you will be unable to reference the resulting schema from other schemas\n+warning: using the --resolve/-r option.\n {\n   \"\\$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n   \"\\$ref\": \"#/\\$defs/https:~1~1example.com~1nested\",\n   \"\\$defs\": {\n",
+        "additions": 5,
+        "deletions": 5
+      }
+    },
+    "title": "test/bundle/pass_without_id_verbose.sh",
+    "time": {
+      "start": 1790720439549,
+      "end": 1790720439749
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef444e12001WpQGkJCqDRb6qx",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef4449230014363PJZd0oZUWD",
+  "type": "reasoning",
+  "text": "Ah, the environment auto-commits work-in-progress edits with messages like \"wip(edit): ...\". So my edits are being committed automatically by some harness. The starting commit was fc0dd94. Now there are commits. `git status` shows the remaining uncommitted changes. Interesting — apparently each edit tool call commits? Or some hook. Regardless, the tree contains all changes. submit considers the working tree, committed or not.\n\nBut wait: the submit tool refuses when \"the tree is unchanged from the starting commit\". It's changed (new commits). Good.\n\nNow, the `git status --porcelain` shows 5 modified but logger.h, command_lint.cc, pass_jsonl_empty.sh were committed in wip commits. Fine.\n\nLet me verify all changes are present by diffing against starting commit fc0dd94.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Ah, the environment auto-commits work-in-progress edits with messages like \"wip(edit): ...\". So my edits are being committed automatically by some harness. The starting commit was fc0dd94. Now there are commits. `git status` shows the remaining uncommitted changes. Interesting — apparently each edit tool call commits? Or some hook. Regardless, the tree contains all changes. submit considers the working tree, committed or not.\n\nBut wait: the submit tool refuses when \"the tree is unchanged from the starting commit\". It's changed (new commits). Good.\n\nNow, the `git status --porcelain` shows 5 modified but logger.h, command_lint.cc, pass_jsonl_empty.sh were committed in wip commits. Fine.\n\nLet me verify all changes are present by diffing against starting commit fc0dd94.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720626194,
+    "end": 1790720626204
+  }
+}

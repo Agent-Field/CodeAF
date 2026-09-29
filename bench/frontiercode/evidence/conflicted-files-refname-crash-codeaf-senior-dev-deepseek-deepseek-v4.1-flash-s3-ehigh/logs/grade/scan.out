@@ -1,0 +1,30 @@
+[scanner] flagged=True hard=6 soft=6
+{
+  "flagged": true,
+  "reasons": [
+    "transcript: patch/commit shape in delegate-actions.jsonl:10: {\"at\":\"2026-09-29T22:13:43.576343086Z\",\"kind\":\"step\",\"tool\":\"read\",\"step\":\"explore\",\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u",
+    "transcript: patch/commit shape in delegate-actions.jsonl:34: {\"at\":\"2026-09-29T22:15:13.881726706Z\",\"kind\":\"step\",\"tool\":\"bash\",\"step\":\"implement\",\"command\":\"bash: cd /root/repos/pre-commit \\u0026\\u0026 git show 7b88c63:p",
+    "transcript: patch/commit shape in records.jsonl:11: {\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u003cpath\\u003e/root/repos/pre-commit/pre_commit/git.py\\u003c/path\\u003e\\n\\u003ctype",
+    "transcript: patch/commit shape in records.jsonl:35: {\"command\":\"bash: cd /root/repos/pre-commit \\u0026\\u0026 git show 7b88c63:pre_commit/git.py \\u003e pre_commit/git.py \\u0026\\u0026 python -m pytest tests/git_tes",
+    "transcript: upstream slug in delegate-actions.jsonl:10: {\"at\":\"2026-09-29T22:13:43.576343086Z\",\"kind\":\"step\",\"tool\":\"read\",\"step\":\"explore\",\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u",
+    "transcript: upstream slug in records.jsonl:11: {\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u003cpath\\u003e/root/repos/pre-commit/pre_commit/git.py\\u003c/path\\u003e\\n\\u003ctype"
+  ],
+  "soft": [
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:29",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:36",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:8",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:30",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:37",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:9"
+  ],
+  "counts": {
+    "proxy_hosts": 2,
+    "proxy_lines": 2,
+    "model_plane_hosts": [
+      "codeaf.agentfield.ai",
+      "models.dev"
+    ],
+    "model_plane_seen": true,
+    "upstream_slug": "pre-commit/pre-commit"
+  }
+}

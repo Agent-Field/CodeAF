@@ -1,0 +1,14 @@
+{
+  "program": "senior-dev",
+  "title": "# Do not crash when a tracked file",
+  "dir": "/root/repos/pre-commit",
+  "branch": "task/do-not-crash-when-a-tracked-file-7ed0c9",
+  "start": "7b88c63ae691cb243c3137bce8fb870523e0a884",
+  "notes": ".senior-dev",
+  "keep": "/bench/home/v3/carried/senior-dev/20260929-221337.715122",
+  "signModel": "deepseek-v4.1-flash",
+  "ended": "its work is on the branch task/do-not-crash-when-a-tracked-file-7ed0c9 in /root/repos/pre-commit, 2 files, and that branch is checked out there; your checkout was on no branch, at 7b88c63ae691, and `git -C '/root/repos/pre-commit' switch --detach 7b88c63ae691` goes back to it; its notes (.senior-dev/) are kept in /bench/home/v3/carried/senior-dev/20260929-221337.715122/senior-dev",
+  "ignoredAtStart": [
+    "pre_commit.egg-info/"
+  ]
+}

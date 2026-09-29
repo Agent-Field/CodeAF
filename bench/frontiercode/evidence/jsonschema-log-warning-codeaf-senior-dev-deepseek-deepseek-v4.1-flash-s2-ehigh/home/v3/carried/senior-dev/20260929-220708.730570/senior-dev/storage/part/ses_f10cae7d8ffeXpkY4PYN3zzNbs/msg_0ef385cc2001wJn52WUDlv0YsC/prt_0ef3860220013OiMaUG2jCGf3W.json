@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3860220013OiMaUG2jCGf3W",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef385cc2001wJn52WUDlv0YsC",
+  "type": "tool",
+  "callID": "call_01a0ef385e94779c92ea00aa",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && git diff"
+    },
+    "output": "diff --git a/src/command_bundle.cc b/src/command_bundle.cc\nindex be961cd..fe27bc0 100644\n--- a/src/command_bundle.cc\n+++ b/src/command_bundle.cc\n@@ -9,6 +9,7 @@\n #include \"command.h\"\n #include \"configuration.h\"\n #include \"error.h\"\n+#include \"logger.h\"\n #include \"resolver.h\"\n #include \"utils.h\"\n \n@@ -35,17 +36,18 @@ auto sourcemeta::jsonschema::bundle(const sourcemeta::core::Options &options)\n                                .recompose());\n \n   if (options.contains(\"without-id\")) {\n-    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n-                 \"the bundled schema.\\n\";\n-    std::cerr << \"The only legit use case of this advanced feature we know of \"\n-                 \"is to workaround\\n\";\n-    std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n-                 \"Studio Code.\\n\";\n-    std::cerr << \"Otherwise, this is not needed and may harm other use \"\n-                 \"cases. For example,\\n\";\n-    std::cerr << \"you will be unable to reference the resulting schema from \"\n-                 \"other schemas\\n\";\n-    std::cerr << \"using the --resolve/-r option.\\n\";\n+    LOG_WARNING()\n+        << \"You are opting in to remove schema identifiers in the bundled \"\n+           \"schema.\\n\"\n+        << \"The only legit use case of this advanced feature we know of is to \"\n+           \"workaround\\n\"\n+        << \"non-compliant JSON Schema implementations such as Visual Studio \"\n+           \"Code.\\n\"\n+        << \"Otherwise, this is not needed and may harm other use cases. For \"\n+           \"example,\\n\"\n+        << \"you will be unable to reference the resulting schema from other \"\n+           \"schemas\\n\"\n+        << \"using the --resolve/-r option.\\n\";\n     sourcemeta::core::for_editor(schema,\n                                  sourcemeta::core::schema_official_walker,\n                                  custom_resolver, dialect);\ndiff --git a/src/resolver.h b/src/resolver.h\nindex 1d1a4d2..5d537cd 100644\n--- a/src/resolver.h\n+++ b/src/resolver.h\n@@ -96,10 +96,9 @@ public:\n                             << identifier << \"\\n\";\n                       });\n         if (!result) {\n-          std::cerr\n-              << \"warning: No schema resources were imported from this file\\n\";\n-          std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n-          std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n+          LOG_WARNING() << \"No schema resources were imported from this file\\n\"\n+                        << \"  at \" << entry.first.string() << \"\\n\"\n+                        << \"Are you sure this schema sets any identifiers?\\n\";\n         }\n       }\n     }\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && git diff",
+    "time": {
+      "start": 1790719844390,
+      "end": 1790719844415
+    }
+  }
+}

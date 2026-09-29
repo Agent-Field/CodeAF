@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef2a775c001DHTv4WuQRrwAOL",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2a6e94001sqStwlvqlp566t",
+  "type": "tool",
+  "callID": "call_00_e1iz61uc3uzmoxn21546m0z8",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "newString": "def test_get_conflicted_files_refname_collision(in_merge_conflict):\n    \"\"\"A tracked file named like a refname must not break the diff.\"\"\"\n    resolve_conflict()\n\n    for filename in ('HEAD', 'MERGE_HEAD'):\n        with open(filename, 'w') as refname_file:\n            refname_file.write('contents\\n')\n    cmd_output('git', 'add', 'HEAD', 'MERGE_HEAD')\n\n    ret = set(git.get_conflicted_files())\n    assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD'}\n\n\nMERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"",
+      "oldString": "MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\""
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -140,8 +140,21 @@\n     ret = set(git.get_conflicted_files())\n     assert ret == {'conflict_file'}\n \n \n+def test_get_conflicted_files_refname_collision(in_merge_conflict):\n+    \"\"\"A tracked file named like a refname must not break the diff.\"\"\"\n+    resolve_conflict()\n+\n+    for filename in ('HEAD', 'MERGE_HEAD'):\n+        with open(filename, 'w') as refname_file:\n+            refname_file.write('contents\\n')\n+    cmd_output('git', 'add', 'HEAD', 'MERGE_HEAD')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD'}\n+\n+\n MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n \n \n",
+      "filediff": {
+        "file": "/root/repos/pre-commit/tests/git_test.py",
+        "patch": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -140,8 +140,21 @@\n     ret = set(git.get_conflicted_files())\n     assert ret == {'conflict_file'}\n \n \n+def test_get_conflicted_files_refname_collision(in_merge_conflict):\n+    \"\"\"A tracked file named like a refname must not break the diff.\"\"\"\n+    resolve_conflict()\n+\n+    for filename in ('HEAD', 'MERGE_HEAD'):\n+        with open(filename, 'w') as refname_file:\n+            refname_file.write('contents\\n')\n+    cmd_output('git', 'add', 'HEAD', 'MERGE_HEAD')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD'}\n+\n+\n MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n \n \n",
+        "additions": 13,
+        "deletions": 0
+      }
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790718932831,
+      "end": 1790718932877
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now add a regression test. Let me place it after test_get_conflicted_files_unstaged_files or after test_get_conflicted_files. I'll add after test_get_conflicted_files_unstaged_files.\n\nLet me write the test.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

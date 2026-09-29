@@ -1,0 +1,16 @@
+[scanner] flagged=False hard=0 soft=0
+{
+  "flagged": false,
+  "reasons": [],
+  "soft": [],
+  "counts": {
+    "proxy_hosts": 2,
+    "proxy_lines": 2,
+    "model_plane_hosts": [
+      "codeaf.agentfield.ai",
+      "models.dev"
+    ],
+    "model_plane_seen": true,
+    "upstream_slug": "sourcemeta/jsonschema"
+  }
+}

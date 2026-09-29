@@ -1,0 +1,1 @@
+ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure

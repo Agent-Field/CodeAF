@@ -1,0 +1,26 @@
+{
+  "id": "prt_0ef3b320c0019fE0baZIs3M6RK",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3b2ac8001hwamc2jln4UFM5",
+  "type": "tool",
+  "callID": "call_01_8380fhqbnjt3eazl2fb7r6c4",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "offset": 229
+    },
+    "output": "<path>/root/repos/pre-commit/tests/git_test.py</path>\n<type>file</type>\n<content>\n229: \n230: def test_get_conflicted_files_non_ascii(in_merge_conflict):\n231:     open('интервью', 'a').close()\n232:     cmd_output('git', 'add', '.')\n233:     ret = git.get_conflicted_files()\n234:     assert ret == {'conflict_file', 'интервью'}\n235: \n236: \n237: def test_intent_to_add(in_git_dir):\n238:     in_git_dir.join('a').ensure()\n239:     cmd_output('git', 'add', '--intent-to-add', 'a')\n240: \n241:     assert git.intent_to_add_files() == ['a']\n242: \n243: \n244: def test_status_output_with_rename(in_git_dir):\n245:     in_git_dir.join('a').write('1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n')\n246:     cmd_output('git', 'add', 'a')\n247:     git_commit()\n248:     cmd_output('git', 'mv', 'a', 'b')\n249:     in_git_dir.join('c').ensure()\n250:     cmd_output('git', 'add', '--intent-to-add', 'c')\n251: \n252:     assert git.intent_to_add_files() == ['c']\n253: \n254: \n255: def test_no_git_env():\n256:     env = {\n257:         'http_proxy': 'http://myproxy:80',\n258:         'GIT_EXEC_PATH': '/some/git/exec/path',\n259:         'GIT_SSH': '/usr/bin/ssh',\n260:         'GIT_SSH_COMMAND': 'ssh -o',\n261:         'GIT_DIR': '/none/shall/pass',\n262:         'GIT_CONFIG_KEY_0': 'user.name',\n263:         'GIT_CONFIG_VALUE_0': 'anthony',\n264:         'GIT_CONFIG_KEY_1': 'user.email',\n265:         'GIT_CONFIG_VALUE_1': 'asottile@example.com',\n266:         'GIT_CONFIG_COUNT': '2',\n267:     }\n268:     no_git_env = git.no_git_env(env)\n269:     assert no_git_env == {\n270:         'http_proxy': 'http://myproxy:80',\n271:         'GIT_EXEC_PATH': '/some/git/exec/path',\n272:         'GIT_SSH': '/usr/bin/ssh',\n273:         'GIT_SSH_COMMAND': 'ssh -o',\n274:         'GIT_CONFIG_KEY_0': 'user.name',\n275:         'GIT_CONFIG_VALUE_0': 'anthony',\n276:         'GIT_CONFIG_KEY_1': 'user.email',\n277:         'GIT_CONFIG_VALUE_1': 'asottile@example.com',\n278:         'GIT_CONFIG_COUNT': '2',\n279:     }\n280: \n281: \n282: def test_init_repo_no_hooks(tmpdir):\n283:     git.init_repo(str(tmpdir), remote='dne')\n284:     assert not tmpdir.join('.git/hooks').exists()\n\n(End of file - total 284 lines)\n</content>",
+    "metadata": {
+      "preview": "\ndef test_get_conflicted_files_non_ascii(in_merge_conflict):\n    open('интервью', 'a').close()\n    cmd_output('git', 'add', '.')\n    ret = git.get_conflicted_files()\n    assert ret == {'conflict_file', 'интервью'}\n\n\ndef test_intent_to_add(in_git_dir):\n    in_git_dir.join('a').ensure()\n    cmd_output('git', 'add', '--intent-to-add', 'a')\n\n    assert git.intent_to_add_files() == ['a']\n\n\ndef test_status_output_with_rename(in_git_dir):\n    in_git_dir.join('a').write('1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n')\n    cmd_output('git', 'add', 'a')\n    git_commit()\n    cmd_output('git', 'mv', 'a', 'b')",
+      "truncated": false,
+      "loaded": []
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790720029199,
+      "end": 1790720029207
+    }
+  }
+}

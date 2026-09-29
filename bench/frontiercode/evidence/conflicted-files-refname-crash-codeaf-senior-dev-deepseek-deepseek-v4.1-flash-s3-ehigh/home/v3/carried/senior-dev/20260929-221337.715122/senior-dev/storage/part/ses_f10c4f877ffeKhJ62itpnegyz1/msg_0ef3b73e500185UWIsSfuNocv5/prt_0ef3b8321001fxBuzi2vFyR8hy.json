@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3b8321001fxBuzi2vFyR8hy",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3b73e500185UWIsSfuNocv5",
+  "type": "tool",
+  "callID": "call_00_t193sox9e131ra3l08jxqls3",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp && rm -rf difftest2 && mkdir difftest2 && cd difftest2 && git init -q && git config user.email a@b.c && git config user.name a && echo base > conflict_file && echo h > HEAD && git add . && git commit -qm base && git checkout -qb foo && echo foo > conflict_file && git add . && git commit -qm foo && git checkout -q master && echo bar > conflict_file && git add . && git commit -qm bar && git merge foo -q; echo 'herp' > conflict_file && git add conflict_file && echo f > foo_only_file && git add foo_only_file && T=$(git write-tree) && echo \"MERGE_HEAD=$(cat .git/MERGE_HEAD)\"; echo \"--- bare\"; git diff --name-only --no-ext-diff -z -m $T HEAD MERGE_HEAD | tr '\\0' '\\n'; echo \"rc=${PIPESTATUS[0]}\"; echo \"--- with -- .\"; git diff --name-only --no-ext-diff -z -m $T HEAD MERGE_HEAD -- . | tr '\\0' '\\n'; echo \"rc=${PIPESTATUS[0]}\"; echo \"--- resolve via rev-parse\"; H=$(git rev-parse HEAD); M=$(git rev-parse MERGE_HEAD); echo \"$H $M\"; git diff --name-only --no-ext-diff -z -m $T $H $M | tr '\\0' '\\n'; echo \"rc=${PIPESTATUS[0]}\""
+    },
+    "output": "Auto-merging conflict_file\nCONFLICT (content): Merge conflict in conflict_file\nAutomatic merge failed; fix conflicts and then commit the result.\nMERGE_HEAD=b860cf855c2f6e6e1d0718b310c27bab7e4336ee\n--- bare\nfatal: ambiguous argument 'HEAD': both revision and filename\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nrc=128\n--- with -- .\nconflict_file\nfoo_only_file\nrc=0\n--- resolve via rev-parse\n202a05d05045aa80a2b7ccffb8fc82d5674178f8 b860cf855c2f6e6e1d0718b310c27bab7e4336ee\nconflict_file\nfoo_only_file\nrc=0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp && rm -rf difftest2 && mkdir difftest2 && cd difftes",
+    "time": {
+      "start": 1790720049957,
+      "end": 1790720050049
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Interesting: with `-- .`, HEAD parsed fine (because `-- .` disambiguated?) but MERGE_HEAD is \"bad revision\". Wait after adding `-- .`, git treats... hmm, actually MERGE_HEAD isn't a valid ref after we committed (merge is complete). Right! Because after `git commit -qm 'add HEAD file'`, the merge completed and MERGE_HEAD no longer exists. My repro moved past the merge. That's why MERGE_HEAD bad. The HEAD ambiguity was the original error before commit. Let me redo without committing, but with a tracked HEAD file. But I can't add a tracked HEAD file without committing... I can `git add HEAD` without commit (staged). Would `git diff` consider a staged file as a pathname? The ambiguity check uses the index/filesystem? Let me test in a fresh merge with `git add HEAD`.\n\nActually in the original test, the collision is \"tracked FILE whose name collides\". Tracked means committed. In a merge conflict state, can you have a tracked file named HEAD? Yes, if it existed before the merge on both branches. Let me build a better scenario: create a file named HEAD and commit it on both branches before the merge.\n\nLet me redo.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

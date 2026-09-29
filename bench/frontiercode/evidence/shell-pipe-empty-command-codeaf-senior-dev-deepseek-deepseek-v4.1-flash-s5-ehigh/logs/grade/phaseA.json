@@ -1,0 +1,94 @@
+{
+  "criteria": {
+    "empty-command-skipped-not-crashed": {
+      "status": "host",
+      "note": "answered on the host"
+    },
+    "run-contract-unchanged": {
+      "status": "host",
+      "note": "answered on the host"
+    },
+    "reference-tests-pass": {
+      "status": "pass",
+      "note": "overlay applied; tests exit 0",
+      "exit_code": 0
+    },
+    "clean-build": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "shell-package-tests-pass": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "reverse-tests-fail": {
+      "status": "pass",
+      "note": "tests exit 1 after revert (fail expected)",
+      "exit_code": 1
+    },
+    "scope-focused": {
+      "status": "pass",
+      "note": "14+/0- in 2 files",
+      "stats": {
+        "files": [
+          "internal/shell/shell.go",
+          "internal/shell/shell_test.go"
+        ],
+        "added": 14,
+        "removed": 0,
+        "binary": false
+      }
+    },
+    "adapted-tests-pass": {
+      "status": "host",
+      "note": "answered on the host"
+    }
+  },
+  "judge_input": {
+    "base": "21eefb16cfc5346f9cbe8fb0513ee1840353c324",
+    "criteria": {
+      "empty-command-skipped-not-crashed": {
+        "question": "The brief says a pipe entry whose command list is EMPTY must be\nskipped without crashing and without failing the pipeline. Read the diff hunk\nfor this file. Does the change handle the empty case where the runner would\npreviously index into the empty list (the panic) by skipping it \u2014 silently or\nwith a warning \u2014 rather than panicking or returning an error? A change that\nstill panics, converts the skip into an error, or guards only part of the\nrun path fails.",
+        "paths": [
+          "internal/shell/shell.go"
+        ],
+        "hunks": {
+          "internal/shell/shell.go": "diff --git a/internal/shell/shell.go b/internal/shell/shell.go\nindex fb5c051a..6203d719 100644\n--- a/internal/shell/shell.go\n+++ b/internal/shell/shell.go\n@@ -18,6 +18,10 @@ import (\n \n // Run a shell command with given arguments and envs\n func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n+\tif len(command) == 0 {\n+\t\treturn nil\n+\t}\n+\n \t/* #nosec */\n \tcmd := exec.CommandContext(ctx, command[0], command[1:]...)\n \tcmd.Env = env\n"
+        },
+        "mechanical": {
+          "internal/shell/shell.go": {
+            "exists": true,
+            "std_cerr_statements": 0,
+            "std_cerr_lines": [],
+            "log_warning_calls": 0
+          }
+        }
+      },
+      "run-contract-unchanged": {
+        "question": "Skipping an empty command must not change what the runner does\nwith commands that are not empty. Read the diff hunk. Does a failing\nnon-empty command still produce its error, and is the env/output handling\nuntouched? A change that swallows failures or silences output for non-empty\ncommands too fails.",
+        "paths": [
+          "internal/shell/shell.go"
+        ],
+        "hunks": {
+          "internal/shell/shell.go": "diff --git a/internal/shell/shell.go b/internal/shell/shell.go\nindex fb5c051a..6203d719 100644\n--- a/internal/shell/shell.go\n+++ b/internal/shell/shell.go\n@@ -18,6 +18,10 @@ import (\n \n // Run a shell command with given arguments and envs\n func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n+\tif len(command) == 0 {\n+\t\treturn nil\n+\t}\n+\n \t/* #nosec */\n \tcmd := exec.CommandContext(ctx, command[0], command[1:]...)\n \tcmd.Env = env\n"
+        },
+        "mechanical": {
+          "internal/shell/shell.go": {
+            "exists": true,
+            "std_cerr_statements": 0,
+            "std_cerr_lines": [],
+            "log_warning_calls": 0
+          }
+        }
+      }
+    },
+    "test_files": {
+      "internal/shell/shell_test.go": "package shell_test\n\nimport (\n\t\"os/exec\"\n\t\"path/filepath\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/goreleaser/goreleaser/v2/internal/shell\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/testctx\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/testlib\"\n\t\"github.com/stretchr/testify/require\"\n)\n\nfunc TestRunCommand(t *testing.T) {\n\tt.Run(\"simple\", func(t *testing.T) {\n\t\trequire.NoError(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\tstrings.Fields(testlib.Echo(\"oi\")),\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})\n\n\tt.Run(\"cmd failed\", func(t *testing.T) {\n\t\trequire.Error(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\tstrings.Fields(testlib.Exit(1)),\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})\n\n\tt.Run(\"cmd with output\", func(t *testing.T) {\n\t\ttestlib.SkipIfWindows(t, \"what would be a similar behavior in windows?\")\n\t\terr := shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\".\",\n\t\t\t[]string{\"sh\", \"-c\", `echo something; exit 1`},\n\t\t\t[]string{},\n\t\t\ttrue,\n\t\t)\n\t\trequire.EqualError(\n\t\t\tt, err,\n\t\t\t`shell: 'sh -c echo something; exit 1': exit status 1: something`,\n\t\t)\n\t})\n\n\tt.Run(\"with env and dir\", func(t *testing.T) {\n\t\ttestlib.SkipIfWindows(t, \"what would be a similar behavior in windows?\")\n\t\tdir := t.TempDir()\n\t\ttouch, err := exec.LookPath(\"touch\")\n\t\trequire.NoError(t, err)\n\t\terr = shell.Run(\n\t\t\ttestctx.New(),\n\t\t\tdir,\n\t\t\t[]string{\"sh\", \"-c\", touch + \" $FOO\"},\n\t\t\t[]string{\"FOO=bar\"},\n\t\t\tfalse,\n\t\t)\n\t\trequire.NoError(t, err)\n\t\trequire.FileExists(t, filepath.Join(dir, \"bar\"))\n\t})\n}\n"
+    },
+    "overlay": "diff --git a/internal/shell/shell_test.go b/internal/shell/shell_test.go\nindex df89faf8..55e3fc89 100644\n--- a/internal/shell/shell_test.go\n+++ b/internal/shell/shell_test.go\n@@ -23,6 +23,16 @@ func TestRunCommand(t *testing.T) {\n \t\t))\n \t})\n \n+\tt.Run(\"empty command\", func(t *testing.T) {\n+\t\trequire.NoError(t, shell.Run(\n+\t\t\ttestctx.New(),\n+\t\t\t\"\",\n+\t\t\t[]string{},\n+\t\t\t[]string{},\n+\t\t\tfalse,\n+\t\t))\n+\t})\n+\n \tt.Run(\"cmd failed\", func(t *testing.T) {\n \t\trequire.Error(t, shell.Run(\n \t\t\ttestctx.New(),\n"
+  },
+  "apply_ok": true,
+  "apply_note": ""
+}

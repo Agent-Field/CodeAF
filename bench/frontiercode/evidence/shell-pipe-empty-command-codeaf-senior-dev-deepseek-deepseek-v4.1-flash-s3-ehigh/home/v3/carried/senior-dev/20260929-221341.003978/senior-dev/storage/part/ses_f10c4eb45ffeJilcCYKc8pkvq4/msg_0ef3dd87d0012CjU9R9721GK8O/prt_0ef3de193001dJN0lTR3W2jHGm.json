@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef3de193001dJN0lTR3W2jHGm",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3dd87d0012CjU9R9721GK8O",
+  "type": "text",
+  "text": "Done. Summary:\n\n**Change** — `internal/shell/shell.go`: `Run` now starts with a guard:\n```go\nif len(command) == 0 {\n    log.Warn(\"no command to run, skipping\")\n    return nil\n}\n```\nso a pipe entry with no command is skipped (warning logged, no error) instead of panicking on `command[0]`. Environment, output, and error behaviour for non-empty commands are untouched.\n\n**Test** — `internal/shell/shell_test.go`: added an `empty command` subtest to the existing `TestRunCommand` subtest table, using `testctx.New()` and `require.NoError`.\n\n**Evidence**\n- Pinned command `go test ./internal/shell/` → `ok ... 0.012s` (exit 0)\n- `go test -v -run TestRunCommand ./internal/shell/` → all 5 subtests pass, including `empty_command`\n- `go build ./...` → exit 0\n- `gofmt -l internal/shell/` → no output\n- Diff confined to the internal shell package and its test",
+  "time": {
+    "start": 1790720205203,
+    "end": 1790720205206
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "prt_0ef46d3f1001dE13RGSbgrbbPc",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46cf0c001FFR3bgHxXFshnx",
+  "type": "tool",
+  "callID": "call_00_qrm7hrr7vkwxyxj5xbljqsyb",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "limit": 120
+    },
+    "output": "<path>/root/repos/pre-commit/tests/git_test.py</path>\n<type>file</type>\n<content>\n1: from __future__ import annotations\n2: \n3: import os.path\n4: \n5: import pytest\n6: \n7: from pre_commit import git\n8: from pre_commit.error_handler import FatalError\n9: from pre_commit.util import cmd_output\n10: from testing.util import git_commit\n11: \n12: \n13: def test_get_root_at_root(in_git_dir):\n14:     expected = os.path.normcase(in_git_dir.strpath)\n15:     assert os.path.normcase(git.get_root()) == expected\n16: \n17: \n18: def test_get_root_deeper(in_git_dir):\n19:     expected = os.path.normcase(in_git_dir.strpath)\n20:     with in_git_dir.join('foo').ensure_dir().as_cwd():\n21:         assert os.path.normcase(git.get_root()) == expected\n22: \n23: \n24: def test_get_root_in_git_sub_dir(in_git_dir):\n25:     expected = os.path.normcase(in_git_dir.strpath)\n26:     with pytest.raises(FatalError):\n27:         with in_git_dir.join('.git/objects').ensure_dir().as_cwd():\n28:             assert os.path.normcase(git.get_root()) == expected\n29: \n30: \n31: def test_get_root_not_in_working_dir(in_git_dir):\n32:     expected = os.path.normcase(in_git_dir.strpath)\n33:     with pytest.raises(FatalError):\n34:         with in_git_dir.join('..').ensure_dir().as_cwd():\n35:             assert os.path.normcase(git.get_root()) == expected\n36: \n37: \n38: def test_in_exactly_dot_git(in_git_dir):\n39:     with in_git_dir.join('.git').as_cwd(), pytest.raises(FatalError):\n40:         git.get_root()\n41: \n42: \n43: def test_get_root_bare_worktree(tmpdir):\n44:     src = tmpdir.join('src').ensure_dir()\n45:     cmd_output('git', 'init', str(src))\n46:     git_commit(cwd=str(src))\n47: \n48:     bare = tmpdir.join('bare.git').ensure_dir()\n49:     cmd_output('git', 'clone', '--bare', str(src), str(bare))\n50: \n51:     cmd_output('git', 'worktree', 'add', 'foo', 'HEAD', cwd=bare)\n52: \n53:     with bare.join('foo').as_cwd():\n54:         assert git.get_root() == os.path.abspath('.')\n55: \n56: \n57: def test_get_git_dir(tmpdir):\n58:     \"\"\"Regression test for #1972\"\"\"\n59:     src = tmpdir.join('src').ensure_dir()\n60:     cmd_output('git', 'init', str(src))\n61:     git_commit(cwd=str(src))\n62: \n63:     worktree = tmpdir.join('worktree').ensure_dir()\n64:     cmd_output('git', 'worktree', 'add', '../worktree', cwd=src)\n65: \n66:     with worktree.as_cwd():\n67:         assert git.get_git_dir() == src.ensure_dir(\n68:             '.git/worktrees/worktree',\n69:         )\n70:         assert git.get_git_common_dir() == src.ensure_dir('.git')\n71: \n72: \n73: def test_get_root_worktree_in_git(tmpdir):\n74:     src = tmpdir.join('src').ensure_dir()\n75:     cmd_output('git', 'init', str(src))\n76:     git_commit(cwd=str(src))\n77: \n78:     cmd_output('git', 'worktree', 'add', '.git/trees/foo', 'HEAD', cwd=src)\n79: \n80:     with src.join('.git/trees/foo').as_cwd():\n81:         assert git.get_root() == os.path.abspath('.')\n82: \n83: \n84: def test_get_staged_files_deleted(in_git_dir):\n85:     in_git_dir.join('test').ensure()\n86:     cmd_output('git', 'add', 'test')\n87:     git_commit()\n88:     cmd_output('git', 'rm', '--cached', 'test')\n89:     assert git.get_staged_files() == []\n90: \n91: \n92: def test_is_not_in_merge_conflict(in_git_dir):\n93:     assert git.is_in_merge_conflict() is False\n94: \n95: \n96: def test_is_in_merge_conflict(in_merge_conflict):\n97:     assert git.is_in_merge_conflict() is True\n98: \n99: \n100: def test_is_in_merge_conflict_submodule(in_conflicting_submodule):\n101:     assert git.is_in_merge_conflict() is True\n102: \n103: \n104: def test_cherry_pick_conflict(in_merge_conflict):\n105:     cmd_output('git', 'merge', '--abort')\n106:     foo_ref = cmd_output('git', 'rev-parse', 'foo')[1].strip()\n107:     cmd_output('git', 'cherry-pick', foo_ref, check=False)\n108:     assert git.is_in_merge_conflict() is False\n109: \n110: \n111: def resolve_conflict():\n112:     with open('conflict_file', 'w') as conflicted_file:\n113:         conflicted_file.write('herp\\nderp\\n')\n114:     cmd_output('git', 'add', 'conflict_file')\n115: \n116: \n117: def test_get_conflicted_files(in_merge_conflict):\n118:     resolve_conflict()\n119:     with open('other_file', 'w') as other_file:\n120:         other_file.write('oh hai')\n\n(Showing lines 1-120 of 284. Use offset=121 to continue.)\n</content>",
+    "metadata": {
+      "preview": "from __future__ import annotations\n\nimport os.path\n\nimport pytest\n\nfrom pre_commit import git\nfrom pre_commit.error_handler import FatalError\nfrom pre_commit.util import cmd_output\nfrom testing.util import git_commit\n\n\ndef test_get_root_at_root(in_git_dir):\n    expected = os.path.normcase(in_git_dir.strpath)\n    assert os.path.normcase(git.get_root()) == expected\n\n\ndef test_get_root_deeper(in_git_dir):\n    expected = os.path.normcase(in_git_dir.strpath)\n    with in_git_dir.join('foo').ensure_dir().as_cwd():",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790720791540,
+      "end": 1790720791547
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me see the fixtures at the top of the test file and the rest of the test file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

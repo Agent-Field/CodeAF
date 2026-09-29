@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef3713b1001J2SXMlUvlG6YuA",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef371147001PGQ9tIv3EqbKJK",
+  "type": "tool",
+  "callID": "call_01a0ef37129575cfaaa06de2",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && go vet ./internal/shell/ 2>&1 | tail -20; echo \"=== test ===\"; go test ./internal/shell/ -run TestRunCommand -v 2>&1 | tail -40",
+      "timeout_ms": 300000
+    },
+    "output": "=== test ===\n=== RUN   TestRunCommand\n=== RUN   TestRunCommand/simple\n=== RUN   TestRunCommand/empty_command\n=== RUN   TestRunCommand/cmd_failed\n=== RUN   TestRunCommand/cmd_with_output\n=== RUN   TestRunCommand/with_env_and_dir\n--- PASS: TestRunCommand (0.00s)\n    --- PASS: TestRunCommand/simple (0.00s)\n    --- PASS: TestRunCommand/empty_command (0.00s)\n    --- PASS: TestRunCommand/cmd_failed (0.00s)\n    --- PASS: TestRunCommand/cmd_with_output (0.00s)\n    --- PASS: TestRunCommand/with_env_and_dir (0.00s)\nPASS\nok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.013s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && go vet ./internal/shell/ 2>&1 |",
+    "time": {
+      "start": 1790719759284,
+      "end": 1790719772095
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Build timed out, probably because build ./... is large. Let me run tests separately with longer timeout and build the shell package only.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

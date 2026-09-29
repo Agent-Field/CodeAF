@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef4704780014IW2NUWi60LquF",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46fded001fL2VzcSg8ljjaP",
+  "type": "tool",
+  "callID": "call_00_3e5ps18ppen3oxxos1myb5ii",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/ambig && echo refname > HEAD && git add HEAD && echo \"=== no separator ===\"; git write-tree > /tmp/th; TH=$(cat /tmp/th); git diff --name-only --no-ext-diff -m $TH HEAD MERGE_HEAD; echo \"exit=$?\"; echo \"=== with trailing -- ===\"; git diff --name-only --no-ext-diff -m $TH HEAD MERGE_HEAD --; echo \"exit=$?\""
+    },
+    "output": "=== no separator ===\nconflict_file: unmerged (f719efd430d52bcfc8566a43b2eb655688d38871)\nconflict_file: unmerged (5626abf0f72e58d7a153368ba57db4c673c0e171)\nfatal: git-write-tree: error building trees\nfatal: ambiguous argument 'HEAD': both revision and filename\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nexit=128\n=== with trailing -- ===\nconflict_file\nexit=0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/ambig && echo refname > HEAD && git add HEAD && echo",
+    "time": {
+      "start": 1790720803963,
+      "end": 1790720803986
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let's reproduce the ambiguity. Create a tracked file named HEAD.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4976d00012l4nQ2vAw0monC",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef496ff1001IxTy88pUOy6I6n",
+  "type": "reasoning",
+  "text": "git diff empty? That means it's not tracked? Wait, I edited the files. git diff shows nothing? Let me check git status. Perhaps files are gitignored? No. Let me look.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "git diff empty? That means it's not tracked? Wait, I edited the files. git diff shows nothing? Let me check git status. Perhaps files are gitignored? No. Let me look.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720964304,
+    "end": 1790720964315
+  }
+}

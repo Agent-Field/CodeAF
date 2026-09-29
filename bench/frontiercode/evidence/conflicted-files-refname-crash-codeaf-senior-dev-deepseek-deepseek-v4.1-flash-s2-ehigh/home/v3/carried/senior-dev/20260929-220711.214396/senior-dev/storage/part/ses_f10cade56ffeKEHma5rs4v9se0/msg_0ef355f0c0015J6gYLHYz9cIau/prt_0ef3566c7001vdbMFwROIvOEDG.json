@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3566c7001vdbMFwROIvOEDG",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef355f0c0015J6gYLHYz9cIau",
+  "type": "reasoning",
+  "text": "write-tree failed because conflict_file is unmerged. I need to resolve the conflict first (like `resolve_conflict()` in tests). Let me do that.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "write-tree failed because conflict_file is unmerged. I need to resolve the conflict first (like `resolve_conflict()` in tests). Let me do that.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719649479,
+    "end": 1790719649490
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2cdf90001UTKYiJ5xDNnyH4",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2cd38f001IR8LkjtJ65Dg6P",
+  "type": "reasoning",
+  "text": "The bundle test with my schema failed because it needs --resolve. Let me redo bundle with a resolvable nested schema to see the warning. Use the same setup as the bundle test.\n\nFor resolver warning, need a scenario where `result` is false. Let me look at `add` function to understand when it returns false. Let me read resolver.h add function.\n\nActually not essential — the formatting of the multiline is mechanical. But let me verify bundle multiline output one prefix.\n\nLet me replicate the bundle test exactly.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The bundle test with my schema failed because it needs --resolve. Let me redo bundle with a resolvable nested schema to see the warning. Use the same setup as the bundle test.\n\nFor resolver warning, need a scenario where `result` is false. Let me look at `add` function to understand when it returns false. Let me read resolver.h add function.\n\nActually not essential — the formatting of the multiline is mechanical. But let me verify bundle multiline output one prefix.\n\nLet me replicate the bundle test exactly.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719090576,
+    "end": 1790719090847
+  }
+}

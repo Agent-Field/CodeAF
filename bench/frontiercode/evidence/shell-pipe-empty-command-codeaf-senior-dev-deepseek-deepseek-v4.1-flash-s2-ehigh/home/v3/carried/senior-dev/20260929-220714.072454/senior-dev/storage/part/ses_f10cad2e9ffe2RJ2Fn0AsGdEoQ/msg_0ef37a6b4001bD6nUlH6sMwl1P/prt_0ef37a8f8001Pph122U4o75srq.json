@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef37a8f8001Pph122U4o75srq",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef37a6b4001bD6nUlH6sMwl1P",
+  "type": "reasoning",
+  "text": "Full build passes. Now lint. Check golangci-lint available.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Full build passes. Now lint. Check golangci-lint available.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719797496,
+    "end": 1790719797507
+  }
+}

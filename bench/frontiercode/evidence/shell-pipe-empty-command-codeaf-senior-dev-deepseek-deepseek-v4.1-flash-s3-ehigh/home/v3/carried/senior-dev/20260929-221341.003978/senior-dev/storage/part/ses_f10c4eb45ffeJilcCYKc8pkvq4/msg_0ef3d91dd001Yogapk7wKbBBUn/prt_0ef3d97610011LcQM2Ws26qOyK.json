@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3d97610011LcQM2Ws26qOyK",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3d91dd001Yogapk7wKbBBUn",
+  "type": "tool",
+  "callID": "call_00_wqhv6gbtjwtsp7gnu2ytmubj",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && git diff -- internal/shell/ && git status --short"
+    },
+    "output": "M  internal/shell/shell_test.go\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && git diff -- internal/shell/ && ",
+    "time": {
+      "start": 1790720186213,
+      "end": 1790720186240
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "All good. Let me double-check the final diff and verify git status.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

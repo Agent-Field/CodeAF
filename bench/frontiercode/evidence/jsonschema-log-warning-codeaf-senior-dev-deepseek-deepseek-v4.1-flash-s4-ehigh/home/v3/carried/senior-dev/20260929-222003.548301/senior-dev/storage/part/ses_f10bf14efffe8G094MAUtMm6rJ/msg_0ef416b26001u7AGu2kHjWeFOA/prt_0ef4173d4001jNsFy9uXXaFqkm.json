@@ -1,0 +1,32 @@
+{
+  "id": "prt_0ef4173d4001jNsFy9uXXaFqkm",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef416b26001u7AGu2kHjWeFOA",
+  "type": "tool",
+  "callID": "call_01a0ef416f2b744a9b956595",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/test/bundle/pass_without_id.sh",
+      "newString": "warning: You are opting in to remove schema identifiers in the bundled schema.\nwarning: The only legit use case of this advanced feature we know of is to workaround\nwarning: non-compliant JSON Schema implementations such as Visual Studio Code.\nwarning: Otherwise, this is not needed and may harm other use cases. For example,\nwarning: you will be unable to reference the resulting schema from other schemas\nwarning: using the --resolve/-r option.",
+      "oldString": "warning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option."
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/jsonschema/test/bundle/pass_without_id.sh\n===================================================================\n--- /root/repos/jsonschema/test/bundle/pass_without_id.sh\n+++ /root/repos/jsonschema/test/bundle/pass_without_id.sh\n@@ -40,13 +40,13 @@\n EOF\n \n cat << 'EOF' > \"$TMP/expected-stderr.txt\"\n warning: You are opting in to remove schema identifiers in the bundled schema.\n-The only legit use case of this advanced feature we know of is to workaround\n-non-compliant JSON Schema implementations such as Visual Studio Code.\n-Otherwise, this is not needed and may harm other use cases. For example,\n-you will be unable to reference the resulting schema from other schemas\n-using the --resolve/-r option.\n+warning: The only legit use case of this advanced feature we know of is to workaround\n+warning: non-compliant JSON Schema implementations such as Visual Studio Code.\n+warning: Otherwise, this is not needed and may harm other use cases. For example,\n+warning: you will be unable to reference the resulting schema from other schemas\n+warning: using the --resolve/-r option.\n EOF\n \n diff \"$TMP/result.json\" \"$TMP/expected.json\"\n diff \"$TMP/stderr.txt\" \"$TMP/expected-stderr.txt\"\n",
+      "filediff": {
+        "file": "/root/repos/jsonschema/test/bundle/pass_without_id.sh",
+        "patch": "Index: /root/repos/jsonschema/test/bundle/pass_without_id.sh\n===================================================================\n--- /root/repos/jsonschema/test/bundle/pass_without_id.sh\n+++ /root/repos/jsonschema/test/bundle/pass_without_id.sh\n@@ -40,13 +40,13 @@\n EOF\n \n cat << 'EOF' > \"$TMP/expected-stderr.txt\"\n warning: You are opting in to remove schema identifiers in the bundled schema.\n-The only legit use case of this advanced feature we know of is to workaround\n-non-compliant JSON Schema implementations such as Visual Studio Code.\n-Otherwise, this is not needed and may harm other use cases. For example,\n-you will be unable to reference the resulting schema from other schemas\n-using the --resolve/-r option.\n+warning: The only legit use case of this advanced feature we know of is to workaround\n+warning: non-compliant JSON Schema implementations such as Visual Studio Code.\n+warning: Otherwise, this is not needed and may harm other use cases. For example,\n+warning: you will be unable to reference the resulting schema from other schemas\n+warning: using the --resolve/-r option.\n EOF\n \n diff \"$TMP/result.json\" \"$TMP/expected.json\"\n diff \"$TMP/stderr.txt\" \"$TMP/expected-stderr.txt\"\n",
+        "additions": 5,
+        "deletions": 5
+      }
+    },
+    "title": "test/bundle/pass_without_id.sh",
+    "time": {
+      "start": 1790720439348,
+      "end": 1790720439653
+    }
+  }
+}

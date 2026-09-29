@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3da811001X5uXEYIdnl8iVh",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3d9faa001NUiNLdBZgqqDcT",
+  "type": "tool",
+  "callID": "call_00_wokstmra88yy3cga96h3x5ac",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && sed -n '19,30p' internal/shell/shell.go && echo \"=== cached ===\" && git diff --cached --stat && echo \"=== ls-files stage ===\" && git ls-files -s internal/shell/"
+    },
+    "output": "// Run a shell command with given arguments and envs\nfunc Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n\tif len(command) == 0 {\n\t\tlog.Warn(\"no command to run, skipping\")\n\t\treturn nil\n\t}\n\n\t/* #nosec */\n\tcmd := exec.CommandContext(ctx, command[0], command[1:]...)\n\tcmd.Env = env\n\n\tvar b bytes.Buffer\n=== cached ===\n internal/shell/shell_test.go | 10 ++++++++++\n 1 file changed, 10 insertions(+)\n=== ls-files stage ===\n100644 f066d8ba92f3f65d864d71471be8c73ba6e9488c 0\tinternal/shell/shell.go\n100644 55e3fc89490303b23eae9e325cde9f31248e4d3d 0\tinternal/shell/shell_test.go\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && sed -n '19,30p' internal/shell/",
+    "time": {
+      "start": 1790720190485,
+      "end": 1790720190509
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Interesting - shell.go change isn't showing in git diff HEAD. That means shell.go is somehow assumed unchanged? Did my edit maybe go to a different file? Let me read shell.go. Also shell_test.go is staged but not shell.go. Weird. Maybe there's a pre-existing staged state? Let me check git diff --cached and read the file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

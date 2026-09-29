@@ -1,0 +1,65 @@
+{
+  "criteria": {
+    "empty-command-skipped-not-crashed": {
+      "pass": false,
+      "reasoning": "The change adds a guard that returns nil (no error) when the command list is empty, which prevents the panic from indexing into an empty list. However, the criterion explicitly requires that the skip be done 'silently or with a warning' and states that 'a change that still panics, converts the skip into an error... fails.' While returning nil is not technically returning an error, the mechanical excerpts show 0 log_warning_calls and 0 std_cerr_statements, meaning there is no warning. The criterion's phrasing 'silently or with a warning' suggests these are two acceptable alternatives. Since the",
+      "usage": {
+        "prompt_tokens": 561,
+        "completion_tokens": 269,
+        "total_tokens": 830,
+        "cost": 0.005718,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.005718,
+          "upstream_inference_prompt_cost": 0.001683,
+          "upstream_inference_completions_cost": 0.004035
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    },
+    "run-contract-unchanged": {
+      "pass": true,
+      "reasoning": "The change adds an early return when command is empty (len(command) == 0), returning nil immediately. This occurs BEFORE any command execution logic. For non-empty commands, the code path is completely unchanged - it proceeds to exec.CommandContext with the same arguments, environment handling (cmd.Env = env), and output handling as before. The early return only affects empty commands and does not alter error propagation, environment setup, or output handling for non-empty commands. A failing non-empty command will still produce its error through the unchanged execution path below the new chec",
+      "usage": {
+        "prompt_tokens": 527,
+        "completion_tokens": 134,
+        "total_tokens": 661,
+        "cost": 0.003591,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.003591,
+          "upstream_inference_prompt_cost": 0.001581,
+          "upstream_inference_completions_cost": 0.00201
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 1088,
+    "completion_tokens": 403,
+    "calls": 1
+  }
+}

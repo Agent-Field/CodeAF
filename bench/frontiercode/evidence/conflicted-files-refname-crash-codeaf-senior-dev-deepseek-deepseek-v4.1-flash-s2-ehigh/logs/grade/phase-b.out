@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/rig/grade/rubric.py", line 452, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/rig/grade/rubric.py", line 444, in main
+    return phase_b(args.task, args.repo, args.base, args.out)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/rig/grade/rubric.py", line 419, in phase_b
+    (grade_dir / "phaseB.json").write_text(json.dumps({"criteria": results}, indent=2))
+  File "/usr/local/lib/python3.12/pathlib.py", line 1047, in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/logs/grade/phaseB.json'

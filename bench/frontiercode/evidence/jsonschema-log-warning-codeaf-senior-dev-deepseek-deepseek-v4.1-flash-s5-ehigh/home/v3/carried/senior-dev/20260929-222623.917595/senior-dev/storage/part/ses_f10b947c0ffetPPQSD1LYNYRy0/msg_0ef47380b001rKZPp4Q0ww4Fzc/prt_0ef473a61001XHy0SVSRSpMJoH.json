@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef473a61001XHy0SVSRSpMJoH",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef47380b001rKZPp4Q0ww4Fzc",
+  "type": "tool",
+  "callID": "call_01a0ef47398a77ab948f1dc2",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && find vendor -iname \"*clang*\" 2>/dev/null | head; find / -name \".clang-format\" 2>/dev/null | grep -v proc | head"
+    },
+    "output": "vendor/core/cmake/common/targets/clang-format.cmake\nvendor/core/cmake/common/targets/clang-format.json\nvendor/core/cmake/common/clang-tidy.json\nvendor/core/cmake/common/clang-tidy.cmake\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && find vendor -iname \"*clang*\" 2>",
+    "time": {
+      "start": 1790720817765,
+      "end": 1790720817996
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

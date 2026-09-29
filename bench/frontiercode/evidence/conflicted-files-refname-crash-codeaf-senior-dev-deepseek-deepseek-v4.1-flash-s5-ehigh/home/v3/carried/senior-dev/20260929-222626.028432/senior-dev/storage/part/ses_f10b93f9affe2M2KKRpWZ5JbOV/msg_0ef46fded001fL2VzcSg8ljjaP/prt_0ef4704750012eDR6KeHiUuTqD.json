@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4704750012eDR6KeHiUuTqD",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46fded001fL2VzcSg8ljjaP",
+  "type": "reasoning",
+  "text": "Now let's reproduce the ambiguity. Create a tracked file named HEAD.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let's reproduce the ambiguity. Create a tracked file named HEAD.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720803957,
+    "end": 1790720803967
+  }
+}

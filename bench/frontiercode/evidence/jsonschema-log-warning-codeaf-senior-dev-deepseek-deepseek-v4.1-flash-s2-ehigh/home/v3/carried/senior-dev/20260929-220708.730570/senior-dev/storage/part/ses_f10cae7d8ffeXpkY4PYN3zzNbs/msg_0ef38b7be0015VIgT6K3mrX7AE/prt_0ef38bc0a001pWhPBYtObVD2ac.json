@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef38bc0a001pWhPBYtObVD2ac",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef38b7be0015VIgT6K3mrX7AE",
+  "type": "tool",
+  "callID": "call_01a0ef38b9747118824c0c37",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && TMP=$(mktemp -d) && printf '{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$ref\":\"#/$defs/x\"}' > $TMP/s.json && ./build/bin/jsonschema bundle $TMP/s.json --without-id 2>&1 >/dev/null | head -8; rm -rf $TMP"
+    },
+    "output": "/usr/bin/bash: line 1: ./build/bin/jsonschema: No such file or directory\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && TMP=$(mktemp -d) && printf '{\"$",
+    "time": {
+      "start": 1790719867918,
+      "end": 1790719867943
+    }
+  }
+}

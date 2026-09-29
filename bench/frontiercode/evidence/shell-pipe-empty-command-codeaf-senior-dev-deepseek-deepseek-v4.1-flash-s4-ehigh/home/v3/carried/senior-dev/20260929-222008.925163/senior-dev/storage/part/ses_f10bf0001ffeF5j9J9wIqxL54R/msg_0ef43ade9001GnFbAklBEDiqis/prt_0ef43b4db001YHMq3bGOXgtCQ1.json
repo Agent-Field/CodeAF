@@ -1,0 +1,38 @@
+{
+  "id": "prt_0ef43b4db001YHMq3bGOXgtCQ1",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef43ade9001GnFbAklBEDiqis",
+  "type": "tool",
+  "callID": "call_00_czws4y8ztc4zsuo81j2lfthr",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell.go",
+      "limit": 30
+    },
+    "output": "<path>/root/repos/goreleaser/internal/shell/shell.go</path>\n<type>file</type>\n<content>\n1: // Package shell handles shell commands.\n2: package shell\n3: \n4: import (\n5: \t\"bytes\"\n6: \t\"cmp\"\n7: \t\"fmt\"\n8: \t\"io\"\n9: \t\"os/exec\"\n10: \t\"strings\"\n11: \t\"time\"\n12: \n13: \t\"github.com/caarlos0/log\"\n14: \t\"github.com/goreleaser/goreleaser/v2/internal/gio\"\n15: \t\"github.com/goreleaser/goreleaser/v2/internal/logext\"\n16: \t\"github.com/goreleaser/goreleaser/v2/pkg/context\"\n17: )\n18: \n19: // Run a shell command with given arguments and envs\n20: func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n21: \tif len(command) == 0 {\n22: \t\tlog.Warn(\"no command given, skipping\")\n23: \t\treturn nil\n24: \t}\n25: \n26: \t/* #nosec */\n27: \tcmd := exec.CommandContext(ctx, command[0], command[1:]...)\n28: \tcmd.Env = env\n29: \n30: \tvar b bytes.Buffer\n\n(Showing lines 1-30 of 57. Use offset=31 to continue.)\n</content>",
+    "metadata": {
+      "preview": "// Package shell handles shell commands.\npackage shell\n\nimport (\n\t\"bytes\"\n\t\"cmp\"\n\t\"fmt\"\n\t\"io\"\n\t\"os/exec\"\n\t\"strings\"\n\t\"time\"\n\n\t\"github.com/caarlos0/log\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/gio\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/logext\"\n\t\"github.com/goreleaser/goreleaser/v2/pkg/context\"\n)\n\n// Run a shell command with given arguments and envs\nfunc Run(ctx *context.Context, dir string, command, env []string, output bool) error {",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "internal/shell/shell.go",
+    "time": {
+      "start": 1790720586974,
+      "end": 1790720586985
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The working tree is clean! But I edited files. That means... my edits matched exactly files that were already committed? No, I added code. Let me re-read the file.\n\nWait, maybe the edits were applied but then git says clean because... Let me read the file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

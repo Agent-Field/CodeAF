@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2a640c001fD1WJvcG6PHJ0p",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2a58a1001XO4bJTrw2ChqN4",
+  "type": "tool",
+  "callID": "call_00_5fpv6wwjhquhwco86ga74mif",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat test/validate/pass_resolve_without_identifier.sh; echo \"=====only_with_exclude=====\"; cat test/lint/fail_lint_only_with_exclude.sh; echo \"=====grep exclude=====\"; grep -rn \"\\-\\-exclude\" test/ | grep -v verbose"
+    },
+    "output": "#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"string\"\n}\nEOF\n\ncat << 'EOF' > \"$TMP/instance.json\"\n\"foo\"\nEOF\n\ncat << 'EOF' > \"$TMP/no-id.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"boolean\"\n}\nEOF\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.json\" \\\n  --resolve \"$TMP/no-id.json\" --verbose 2>\"$TMP/stderr.txt\"\n\ncat << EOF > \"$TMP/expected.txt\"\nDetecting schema resources from file: $(realpath \"$TMP\")/no-id.json\nImporting schema into the resolution context: file://$(realpath \"$TMP\")/no-id.json\nok: $(realpath \"$TMP\")/instance.json\n  matches $(realpath \"$TMP\")/schema.json\nEOF\n\ndiff \"$TMP/stderr.txt\" \"$TMP/expected.txt\"\n=====only_with_exclude=====\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"string\",\n  \"enum\": [ \"foo\" ]\n}\nEOF\n\n\"$1\" lint \"$TMP/schema.json\" \\\n  --only enum_with_type --exclude const_with_type --verbose \\\n  >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest \"$CODE\" = \"1\" || exit 1\n\ncat << EOF > \"$TMP/expected.txt\"\nerror: Cannot use --only and --exclude at the same time\nEOF\n\ndiff \"$TMP/stderr.txt\" \"$TMP/expected.txt\"\n=====grep exclude=====\ntest/lint/pass_lint_list_exclude.sh:10:\"$1\" lint --list --exclude blaze/valid_default --exclude blaze/valid_examples > \"$TMP/output.txt\"\ntest/lint/fail_lint_disable_many.sh:20:\"$1\" lint \"$TMP/schema.json\" --exclude enum_to_const -x enum_with_type >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest/lint/fail_lint_disable_one.sh:20:\"$1\" lint \"$TMP/schema.json\" --exclude enum_to_const >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest/lint/fail_lint_only_with_exclude.sh:24:error: Cannot use --only and --exclude at the same time\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat test/validate/pass_resolve_",
+    "time": {
+      "start": 1790718927887,
+      "end": 1790718927911
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "There's a test `pass_resolve_without_identifier` which likely covers the resolver.h warning. Let me check it.\n\nAlso there's no non-verbose test for the lint unknown rule warning (`fail_lint_disable_unknown_verbose` only). But wait, `fail_lint_only_with_exclude.sh` maybe excludes a known rule. Let me check.\n\nLet me check `test/validate/pass_resolve_without_identifier.sh`.\n\nAlso need to check whether a non-verbose lint test would now produce an extra warning. Let me search for tests using `--exclude` without `--verbose`.\n\nLet me look at those.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

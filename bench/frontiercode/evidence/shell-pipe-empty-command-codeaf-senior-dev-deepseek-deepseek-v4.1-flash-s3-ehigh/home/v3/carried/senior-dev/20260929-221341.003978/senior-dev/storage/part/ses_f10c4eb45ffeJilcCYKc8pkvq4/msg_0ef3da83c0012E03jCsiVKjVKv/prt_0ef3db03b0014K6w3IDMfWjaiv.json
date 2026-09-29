@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3db03b0014K6w3IDMfWjaiv",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3da83c0012E03jCsiVKjVKv",
+  "type": "reasoning",
+  "text": "The shell.go has my change but git diff HEAD shows nothing? That means the working tree shell.go matches HEAD? No — the change is there. Wait, maybe shell.go was already modified in HEAD? Let me check git show HEAD:internal/shell/shell.go. Perhaps the starting commit already had the guard? No, I read it at start without guard. Hmm, but the index blob hash for shell.go is f066d... and HEAD? Let me compare.\n\nActually wait — maybe the file got committed by something? No. Let me check `git diff HEAD` overall and `git show HEAD:...`.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The shell.go has my change but git diff HEAD shows nothing? That means the working tree shell.go matches HEAD? No — the change is there. Wait, maybe shell.go was already modified in HEAD? Let me check git show HEAD:internal/shell/shell.go. Perhaps the starting commit already had the guard? No, I read it at start without guard. Hmm, but the index blob hash for shell.go is f066d... and HEAD? Let me compare.\n\nActually wait — maybe the file got committed by something? No. Let me check `git diff HEAD` overall and `git show HEAD:...`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720192571,
+    "end": 1790720192582
+  }
+}

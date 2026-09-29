@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3c5931001q5ydglYBgLFYe5",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3c4e1d001D7ptqCzw9zMmLv",
+  "type": "reasoning",
+  "text": "Wait, I added a redundant duplicate test. That's not clean. Let me just have one parametrized test, removing the non-parametrized one. Let me redo.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Wait, I added a redundant duplicate test. That's not clean. Let me just have one parametrized test, removing the non-parametrized one. Let me redo.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720104753,
+    "end": 1790720105194
+  }
+}

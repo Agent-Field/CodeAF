@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef417f00001fdmwjFjkCnXBlH",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef417ae7001BoEObvQjvuSd1N",
+  "type": "reasoning",
+  "text": "Now let's check resolver warning tests. Search for tests that produce the resolver warning. The resolver add failure occurs when a schema file fails to import. Search for \"Are you sure this schema\" in tests.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let's check resolver warning tests. Search for tests that produce the resolver warning. The resolver add failure occurs when a schema file fails to import. Search for \"Are you sure this schema\" in tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720442112,
+    "end": 1790720442122
+  }
+}

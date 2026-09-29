@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef35774e0016WSnKgUb3E1OQ7",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef3566f1001F17kr39sq9HUO2",
+  "type": "tool",
+  "callID": "call_00_43d7l4ndls0a52z9wlu2l05s",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp && rm -rf repro2 && mkdir repro2 && cd repro2 && git init -q && git config user.email t@t && git config user.name t && echo base > base && git add . && git commit -qm base && git checkout -qb foo && echo f > conflict_file && echo f > foo_only && git add . && git commit -qm foo && git checkout -q master && echo b > conflict_file && echo b > bar_only && git add . && git commit -qm bar && git merge foo >/dev/null 2>&1; printf 'resolved\\n' > conflict_file && git add conflict_file && tree=$(git write-tree) && echo \"--- bare ---\"; git diff --name-only --no-ext-diff -m \"$tree\" HEAD MERGE_HEAD; echo \"exit: $?\"; echo \"--- with -- ---\"; git diff --name-only --no-ext-diff -m \"$tree\" HEAD MERGE_HEAD --; echo \"exit: $?\"; echo \"--- tree HEAD (2 revs) ---\"; git diff --name-only \"$tree\" HEAD --"
+    },
+    "output": "--- bare ---\nconflict_file\nexit: 0\n--- with -- ---\nconflict_file\nexit: 0\n--- tree HEAD (2 revs) ---\nconflict_file\nfoo_only\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp && rm -rf repro2 && mkdir repro2 && cd repro2 && git",
+    "time": {
+      "start": 1790719653713,
+      "end": 1790719653799
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Adding `--` at the end works. It now returns HEAD (the file) and conflict_file. Wait, where's bar_only/foo_only? The `-m` flag with multiple merge parents... Let me think. Actually `git diff -m \u003ctree\u003e HEAD MERGE_HEAD` — hmm, that's a 3-way diff? Actually the `-m` option makes `git diff` produce diffs for merge commits. But here we have explicit refs.\n\nWait the result with `--` was just `HEAD` and `conflict_file`. Let me check the expected set. The test `test_get_conflicted_files` resolves conflict then creates other_file unstaged and expects `{'conflict_file', 'other_file'}`. Hmm, that's a different setup.\n\nLet me check `test_get_conflicted_files_unstaged_files`: resolve_conflict(); make bar_only_file unstaged; expects {'conflict_file'}. So the merge diff catches staged changes (foo_only / bar_only were committed before merge... wait).\n\nHmm let me not overanalyze; the key result is `--` fixes the ambiguity and returns HEAD file + conflict_file. Let me check what the bare command returns when there's no HEAD file to make sure `--` doesn't change results.\n\nActually wait, `git diff \u003ctree\u003e HEAD MERGE_HEAD` with three commits? That's likely diffing tree against the merge base? Let me understand. Actually the command has 3 tree-ish args and `-m`. Hmm. Let me compare outputs without the HEAD file.\n\nLet me test in a clean repro without the HEAD file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

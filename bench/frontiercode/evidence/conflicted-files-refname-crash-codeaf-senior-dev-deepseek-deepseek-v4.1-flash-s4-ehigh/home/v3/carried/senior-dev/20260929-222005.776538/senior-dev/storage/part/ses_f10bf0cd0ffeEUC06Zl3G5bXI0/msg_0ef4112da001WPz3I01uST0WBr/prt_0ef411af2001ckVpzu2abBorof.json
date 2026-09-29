@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef411af2001ckVpzu2abBorof",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef4112da001WPz3I01uST0WBr",
+  "type": "tool",
+  "callID": "call_01a0ef4117da774f84aa8ced",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/gtest && git checkout -q master 2>/dev/null; git reset -q --hard master 2>/dev/null\n# redo fresh without conflict\nrm -rf /tmp/g2 && mkdir /tmp/g2 && cd /tmp/g2 && git init -q && git config user.email a@b.c && git config user.name test\nprintf 'base\\n' > conflict_file && git add . && git commit -qm base\ngit checkout -qb foo && printf 'foo\\n' > conflict_file && printf 'foo\\n' > foo_only_file && git add . && git commit -qm foo\ngit checkout -q master && printf 'bar\\n' > conflict_file && printf 'bar\\n' > bar_only_file && git add . && git commit -qm bar\ngit merge foo >/dev/null 2>&1\nprintf 'resolved\\n' > conflict_file && git add conflict_file\ntree=$(git write-tree)\necho \"===== git diff -m tree HEAD MERGE_HEAD raw =====\"\ngit diff --raw -m \"$tree\" HEAD MERGE_HEAD\necho \"===== name-only =====\"\ngit diff --name-only -m \"$tree\" HEAD MERGE_HEAD\necho \"===== merge-base info =====\"\ngit log --oneline --all --graph | head"
+    },
+    "output": "===== git diff -m tree HEAD MERGE_HEAD raw =====\n::100644 100644 100644 5716ca5 257cc56 2ab19ae MM\tconflict_file\n===== name-only =====\nconflict_file\n===== merge-base info =====\n* b890e92 foo\n| * c937604 bar\n|/  \n* e68fa70 base\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/gtest && git checkout -q master 2>/dev/null; git res",
+    "time": {
+      "start": 1790720416501,
+      "end": 1790720416586
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Reproduced. Note: without the file named HEAD, the normal command returns only `conflict_file`. Hmm, but the test expects `{'conflict_file', 'other_file'}` when other_file is added. Here foo_only_file and bar_only_file... The `-m` logic: it diffs tree against HEAD and MERGE_HEAD?\n\nWait \"normal command\" returned only conflict_file. Interesting. But `foo_only_file` was added from foo branch, `bar_only_file` from bar. Hmm. Actually the command is `git diff -m tree HEAD MERGE_HEAD`. With `-m`, git treats this as a merge diff? Let me understand: Actually git command form with three commits is `git diff \u003ccommit\u003e \u003ccommit\u003e \u003ccommit\u003e` where the last two are the merge parents and the first is... no.\n\nLet me check git docs for `-m`. `-m` is \"show individual diffs for merge commits\" applying to `git diff \u003ccommit\u003e`. Actually the form `git diff -m \u003ctree\u003e HEAD MERGE_HEAD` — I think git interprets: first arg `\u003ctree\u003e` is a commit, and remaining are... hmm.\n\nLet me test with `git diff --name-only -m HEAD MERGE_HEAD` and `--raw`.\n\nActually wait, maybe the semantics: `-m` with `git diff \u003ccommit1\u003e \u003ccommit2\u003e \u003ccommit3\u003e` isn't valid. Let me check git version and what it's doing. Let's run with `--raw` to see.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

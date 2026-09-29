@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef413405001Ds7QHP4YkMsELK",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef412c1b001P4aIlJraHUAbRO",
+  "type": "tool",
+  "callID": "call_00_fnzqlnhg5z8am6i9kdhl0yq4",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell_test.go",
+      "newString": "\tt.Run(\"cmd failed\", func(t *testing.T) {\n\t\trequire.Error(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\tstrings.Fields(testlib.Exit(1)),\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})\n\n\tt.Run(\"empty command\", func(t *testing.T) {\n\t\trequire.NoError(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\t[]string{},\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})",
+      "oldString": "\tt.Run(\"cmd failed\", func(t *testing.T) {\n\t\trequire.Error(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\tstrings.Fields(testlib.Exit(1)),\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -32,8 +32,18 @@\n \t\tfalse,\n \t))\n })\n \n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n t.Run(\"cmd with output\", func(t *testing.T) {\n \ttestlib.SkipIfWindows(t, \"what would be a similar behavior in windows?\")\n \terr := shell.Run(\n \t\ttestctx.New(),\n",
+      "filediff": {
+        "file": "/root/repos/goreleaser/internal/shell/shell_test.go",
+        "patch": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -32,8 +32,18 @@\n \t\tfalse,\n \t))\n })\n \n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n t.Run(\"cmd with output\", func(t *testing.T) {\n \ttestlib.SkipIfWindows(t, \"what would be a similar behavior in windows?\")\n \terr := shell.Run(\n \t\ttestctx.New(),\n",
+        "additions": 10,
+        "deletions": 0
+      }
+    },
+    "title": "internal/shell/shell_test.go",
+    "time": {
+      "start": 1790720422920,
+      "end": 1790720422961
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46cee90015KwcIAwGtn7xNZ",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46c84d0010DmKL56YfoACXW",
+  "type": "reasoning",
+  "text": "Let me read the git.py file around the relevant code and the test file.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me read the git.py file around the relevant code and the test file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720790249,
+    "end": 1790720790267
+  }
+}

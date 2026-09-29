@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef4116a7001nIiYvObHkTnea2",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef4112bb001a0njhX0gVjIU1c",
+  "type": "tool",
+  "callID": "call_01a0ef41168c70b8891765ec",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat test/bundle/pass_without_id.sh && echo ===VERBOSE=== && cat test/bundle/pass_without_id_verbose.sh"
+    },
+    "output": "#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com\",\n  \"$ref\": \"nested\"\n}\nEOF\n\nmkdir \"$TMP/schemas\"\ncat << 'EOF' > \"$TMP/schemas/remote.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com/nested\",\n  \"type\": \"string\"\n}\nEOF\n\n\"$1\" bundle \"$TMP/schema.json\" --resolve \"$TMP/schemas\" --without-id > \"$TMP/result.json\" 2> \"$TMP/stderr.txt\"\n\ncat << 'EOF' > \"$TMP/expected.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$ref\": \"#/$defs/https:~1~1example.com~1nested\",\n  \"$defs\": {\n    \"https://example.com/nested\": {\n      \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ncat << 'EOF' > \"$TMP/expected-stderr.txt\"\nwarning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option.\nEOF\n\ndiff \"$TMP/result.json\" \"$TMP/expected.json\"\ndiff \"$TMP/stderr.txt\" \"$TMP/expected-stderr.txt\"\n\n# Must come out formatted\n\"$1\" fmt \"$TMP/result.json\" --check\n===VERBOSE===\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com\",\n  \"$ref\": \"nested\"\n}\nEOF\n\nmkdir \"$TMP/schemas\"\ncat << 'EOF' > \"$TMP/schemas/remote.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com/nested\",\n  \"type\": \"string\"\n}\nEOF\n\n\"$1\" bundle \"$TMP/schema.json\" --resolve \"$TMP/schemas\" --without-id --verbose 1> \"$TMP/result.json\" 2>&1\n\ncat << EOF > \"$TMP/expected.json\"\nDetecting schema resources from file: $(realpath \"$TMP\")/schemas/remote.json\nImporting schema into the resolution context: file://$(realpath \"$TMP\")/schemas/remote.json\nImporting schema into the resolution context: https://example.com/nested\nwarning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option.\n{\n  \"\\$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"\\$ref\": \"#/\\$defs/https:~1~1example.com~1nested\",\n  \"\\$defs\": {\n    \"https://example.com/nested\": {\n      \"\\$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ndiff \"$TMP/result.json\" \"$TMP/expected.json\"\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat test/bundle/pass_without_id",
+    "time": {
+      "start": 1790720415402,
+      "end": 1790720415415
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "There's no non-verbose `fail_lint_disable_unknown` test. Let me check fail_lint_disable_one_verbose and fail_lint_only_unknown_verbose etc. But the warning site at lint is currently LOG_VERBOSE-gated. Converting to LOG_WARNING always prints. Is there a non-verbose test that exercises the unknown-rule warning? Search tests for \"Cannot exclude unknown rule\" only found the verbose one. So no non-verbose test. Good.\n\nNow the bundle multi-line test: `pass_without_id.sh` and `_verbose.sh` expect warning with only the first line prefixed. If we route every continuation through LOG_WARNING, the output changes to each line prefixed. Let me look at both tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

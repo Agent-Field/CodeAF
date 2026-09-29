@@ -1,0 +1,14 @@
+{
+  "program": "senior-dev",
+  "title": "# Add a warning logger and route every",
+  "dir": "/root/repos/jsonschema",
+  "branch": "task/add-a-warning-logger-and-route-e-1e23e6",
+  "start": "fc0dd94d716e87a0373091e9946b1011d4ac682c",
+  "notes": ".senior-dev",
+  "keep": "/bench/home/v3/carried/senior-dev/20260929-222623.917595",
+  "signModel": "deepseek-v4.1-flash",
+  "ended": "its work is on the branch task/add-a-warning-logger-and-route-e-1e23e6 in /root/repos/jsonschema, 8 files, and that branch is checked out there; your checkout was on no branch, at fc0dd94d716e, and `git -C '/root/repos/jsonschema' switch --detach fc0dd94d716e` goes back to it; its notes (.senior-dev/) are kept in /bench/home/v3/carried/senior-dev/20260929-222623.917595/senior-dev",
+  "ignoredAtStart": [
+    "build/"
+  ]
+}

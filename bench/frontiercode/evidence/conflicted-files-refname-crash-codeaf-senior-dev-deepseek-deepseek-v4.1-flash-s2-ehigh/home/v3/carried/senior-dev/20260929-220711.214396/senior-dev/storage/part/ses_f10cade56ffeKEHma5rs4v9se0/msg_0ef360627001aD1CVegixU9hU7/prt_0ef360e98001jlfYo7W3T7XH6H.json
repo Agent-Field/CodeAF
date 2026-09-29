@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef360e98001jlfYo7W3T7XH6H",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef360627001aD1CVegixU9hU7",
+  "type": "tool",
+  "callID": "call_00_8j6v93z5earkbz9zd5vauwg4",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && python - <<'EOF'\nfor n in ['test_get_conflicted_files_with_refname_collision','test_get_conflicted_files_refname_collision','test_get_conflicted_files_ref_collision','test_get_conflicted_files_ambiguous_refname']:\n    line=f'def {n}(in_merge_conflict, refname):'\n    print(len(line), line)\nEOF"
+    },
+    "output": "81 def test_get_conflicted_files_with_refname_collision(in_merge_conflict, refname):\n76 def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):\n72 def test_get_conflicted_files_ref_collision(in_merge_conflict, refname):\n76 def test_get_conflicted_files_ambiguous_refname(in_merge_conflict, refname):\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && python - <<'EOF'\nfor n in ['tes",
+    "time": {
+      "start": 1790719692444,
+      "end": 1790719692589
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "My test function def line is 81 chars, exceeding flake8's 79. I need to shorten it. Rename to `test_get_conflicted_files_with_refname` or wrap. Since the repo uses flake8 default (79), let me shorten. Rename to `test_get_conflicted_files_refname_collision`? Count:\n\n\"def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):\" = let's count. \"def \" 4 + \"test_get_conflicted_files_refname_collision\" = 43? Let me just compute with python.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef439d95001p9Qegjr9jm8mAu",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef4398190014w27FamsUrBiS4",
+  "type": "tool",
+  "callID": "call_00_ttr4arey2oyy24o2vonn00wt",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && git diff && echo \"=== TEST ===\" && go test ./internal/shell/ -run TestRunCommand -v 2>&1 | tail -20",
+      "timeout_ms": 300000
+    },
+    "output": "=== TEST ===\n=== RUN   TestRunCommand\n=== RUN   TestRunCommand/simple\n=== RUN   TestRunCommand/cmd_failed\n=== RUN   TestRunCommand/empty_command\n=== RUN   TestRunCommand/cmd_with_output\n=== RUN   TestRunCommand/with_env_and_dir\n--- PASS: TestRunCommand (0.00s)\n    --- PASS: TestRunCommand/simple (0.00s)\n    --- PASS: TestRunCommand/cmd_failed (0.00s)\n    --- PASS: TestRunCommand/empty_command (0.00s)\n    --- PASS: TestRunCommand/cmd_with_output (0.00s)\n    --- PASS: TestRunCommand/with_env_and_dir (0.00s)\nPASS\nok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.012s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && git diff && echo \"=== TEST ===\"",
+    "time": {
+      "start": 1790720581016,
+      "end": 1790720582124
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me verify the final diff and re-run tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

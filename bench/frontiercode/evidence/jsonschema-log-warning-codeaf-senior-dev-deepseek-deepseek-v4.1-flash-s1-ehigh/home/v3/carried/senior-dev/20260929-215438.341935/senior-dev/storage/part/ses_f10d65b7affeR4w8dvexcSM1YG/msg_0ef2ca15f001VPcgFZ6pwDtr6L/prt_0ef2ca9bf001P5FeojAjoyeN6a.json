@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2ca9bf001P5FeojAjoyeN6a",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2ca15f001VPcgFZ6pwDtr6L",
+  "type": "reasoning",
+  "text": "Let me run the clang_format_test and shellcheck targets to be certain.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me run the clang_format_test and shellcheck targets to be certain.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719076799,
+    "end": 1790719076810
+  }
+}

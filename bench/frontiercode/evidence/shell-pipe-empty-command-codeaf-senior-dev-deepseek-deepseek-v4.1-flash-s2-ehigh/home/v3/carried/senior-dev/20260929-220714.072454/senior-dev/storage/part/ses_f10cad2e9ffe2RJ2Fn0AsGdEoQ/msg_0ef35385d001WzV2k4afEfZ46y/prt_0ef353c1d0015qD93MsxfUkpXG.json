@@ -1,0 +1,29 @@
+{
+  "id": "prt_0ef353c1d0015qD93MsxfUkpXG",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef35385d001WzV2k4afEfZ46y",
+  "type": "tool",
+  "callID": "call_01a0ef353b60753da9c61423",
+  "tool": "write",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/.senior-dev/pinned.txt",
+      "content": "go test ./internal/shell/\n"
+    },
+    "output": "Wrote file successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/goreleaser/.senior-dev/pinned.txt\n===================================================================\n--- /root/repos/goreleaser/.senior-dev/pinned.txt\n+++ /root/repos/goreleaser/.senior-dev/pinned.txt\n@@ -0,0 +1,1 @@\n+go test ./internal/shell/\n",
+      "filepath": "/root/repos/goreleaser/.senior-dev/pinned.txt",
+      "exists": false,
+      "additions": 1,
+      "deletions": 0
+    },
+    "title": ".senior-dev/pinned.txt",
+    "time": {
+      "start": 1790719638560,
+      "end": 1790719638578
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef35a128001mXY2KGMApJ9JEo",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef358dc5001exLea828fqyaMr",
+  "type": "text",
+  "text": "Now let me create a regression test. First, let me determine the expected behavior empirically using the existing fixture:",
+  "time": {
+    "start": 1790719664424,
+    "end": 1790719664433
+  }
+}

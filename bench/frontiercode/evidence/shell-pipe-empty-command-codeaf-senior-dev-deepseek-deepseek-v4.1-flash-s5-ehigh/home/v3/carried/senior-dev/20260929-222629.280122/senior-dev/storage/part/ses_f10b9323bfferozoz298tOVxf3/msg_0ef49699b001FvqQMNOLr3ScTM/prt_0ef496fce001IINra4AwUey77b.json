@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef496fce001IINra4AwUey77b",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef49699b001FvqQMNOLr3ScTM",
+  "type": "tool",
+  "callID": "call_00_b95qdx0m0qi86lsp16unysnc",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && git diff"
+    },
+    "output": "",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && git diff",
+    "time": {
+      "start": 1790720962513,
+      "end": 1790720962533
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "golangci-lint not installed. That's fine; gofmt clean, vet ok. Let me check the diff.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

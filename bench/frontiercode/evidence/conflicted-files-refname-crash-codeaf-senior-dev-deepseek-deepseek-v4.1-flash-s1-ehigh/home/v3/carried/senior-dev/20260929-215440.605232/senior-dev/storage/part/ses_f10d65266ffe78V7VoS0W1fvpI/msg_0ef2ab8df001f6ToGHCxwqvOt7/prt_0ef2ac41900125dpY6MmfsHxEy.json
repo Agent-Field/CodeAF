@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2ac41900125dpY6MmfsHxEy",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2ab8df001f6ToGHCxwqvOt7",
+  "type": "reasoning",
+  "text": "So same file, modified. But `git hash-object pre_commit/git.py` returned HEAD hash. That's bizarre. Unless git is configured with a clean filter that reverts? Let me check `.gitattributes` / `filter`. Or maybe `git hash-object` without `--no-filters` applies a clean filter. Let me check git config for filter and .gitattributes.\n\nActually, `git hash-object` applies filters by default? Docs: \"hash-object ... --no-filters: Hash the contents as is, ignoring any input filter\". So filters could make the hashed content differ from disk. Let me check for a clean filter.\n\nBut more important: `git status` says clean. That means after filters, the content matches HEAD. A clean filter could be normalizing something. But that would be unusual.\n\nWait — maybe there's a filter that strips trailing content? Let me check .gitattributes.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "So same file, modified. But `git hash-object pre_commit/git.py` returned HEAD hash. That's bizarre. Unless git is configured with a clean filter that reverts? Let me check `.gitattributes` / `filter`. Or maybe `git hash-object` without `--no-filters` applies a clean filter. Let me check git config for filter and .gitattributes.\n\nActually, `git hash-object` applies filters by default? Docs: \"hash-object ... --no-filters: Hash the contents as is, ignoring any input filter\". So filters could make the hashed content differ from disk. Let me check for a clean filter.\n\nBut more important: `git status` says clean. That means after filters, the content matches HEAD. A clean filter could be normalizing something. But that would be unusual.\n\nWait — maybe there's a filter that strips trailing content? Let me check .gitattributes.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718952473,
+    "end": 1790718952483
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b5632001sScOdlT26Mukhi",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3b4d92001fKbQ5vY2fF9bae",
+  "type": "reasoning",
+  "text": "The write-tree failed because conflict unresolved. In the test they resolve conflict before calling. Let me resolve.\n\nActually the `git diff` output was still `conflict_file`. Let me now add a file named HEAD and reproduce the ambiguity.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The write-tree failed because conflict unresolved. In the test they resolve conflict before calling. Let me resolve.\n\nActually the `git diff` output was still `conflict_file`. Let me now add a file named HEAD and reproduce the ambiguity.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720038450,
+    "end": 1790720038463
+  }
+}

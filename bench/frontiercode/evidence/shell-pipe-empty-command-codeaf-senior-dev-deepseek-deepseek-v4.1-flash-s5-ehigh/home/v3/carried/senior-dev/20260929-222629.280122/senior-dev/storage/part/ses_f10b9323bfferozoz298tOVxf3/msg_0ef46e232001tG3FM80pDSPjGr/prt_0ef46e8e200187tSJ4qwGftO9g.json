@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46e8e200187tSJ4qwGftO9g",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef46e232001tG3FM80pDSPjGr",
+  "type": "tool",
+  "callID": "call_01_nbjwvoa8tg0oq3gi56o27dyw",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && cat .golangci.yml 2>/dev/null | head -60; ls .golangci*"
+    },
+    "output": ".golangci.yaml\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && cat .golangci.yml 2>/dev/null |",
+    "time": {
+      "start": 1790720796901,
+      "end": 1790720796913
+    }
+  }
+}

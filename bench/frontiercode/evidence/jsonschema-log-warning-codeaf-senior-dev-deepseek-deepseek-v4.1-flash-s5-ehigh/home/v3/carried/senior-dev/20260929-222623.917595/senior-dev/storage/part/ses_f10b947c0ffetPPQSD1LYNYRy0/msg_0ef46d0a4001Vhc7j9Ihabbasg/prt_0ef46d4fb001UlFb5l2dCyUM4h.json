@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46d4fb001UlFb5l2dCyUM4h",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46d0a4001Vhc7j9Ihabbasg",
+  "type": "reasoning",
+  "text": "Interesting - there are already tests expecting warnings even without verbose for the std::cerr sites (pass_without_id, pass_with_invalid_template). And fail_lint_disable_unknown_verbose only has the verbose variant. Let me check: after converting lint's warning to LOG_WARNING, the non-verbose variant doesn't exist? Let's look for fail_lint_disable_unknown.sh.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Interesting - there are already tests expecting warnings even without verbose for the std::cerr sites (pass_without_id, pass_with_invalid_template). And fail_lint_disable_unknown_verbose only has the verbose variant. Let me check: after converting lint's warning to LOG_WARNING, the non-verbose variant doesn't exist? Let's look for fail_lint_disable_unknown.sh.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720791803,
+    "end": 1790720791818
+  }
+}

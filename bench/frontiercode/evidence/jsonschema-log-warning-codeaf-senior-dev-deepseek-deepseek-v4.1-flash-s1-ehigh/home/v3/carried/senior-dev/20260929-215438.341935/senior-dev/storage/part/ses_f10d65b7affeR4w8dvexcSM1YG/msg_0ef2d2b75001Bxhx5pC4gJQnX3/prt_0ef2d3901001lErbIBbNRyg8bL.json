@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2d3901001lErbIBbNRyg8bL",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2d2b75001Bxhx5pC4gJQnX3",
+  "type": "reasoning",
+  "text": "Done. Provide a short summary.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Done. Provide a short summary.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719113473,
+    "end": 1790719113751
+  }
+}

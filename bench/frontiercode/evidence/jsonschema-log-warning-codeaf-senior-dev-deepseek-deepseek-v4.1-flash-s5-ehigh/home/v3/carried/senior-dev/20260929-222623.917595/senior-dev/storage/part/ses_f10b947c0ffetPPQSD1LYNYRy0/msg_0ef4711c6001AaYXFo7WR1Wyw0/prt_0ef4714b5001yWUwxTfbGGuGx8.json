@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4714b5001yWUwxTfbGGuGx8",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef4711c6001AaYXFo7WR1Wyw0",
+  "type": "tool",
+  "callID": "call_01a0ef4713ee72d2af1aaf2b",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && which clang-format || ls /usr/bin/clang-format* 2>/dev/null; git diff --stat"
+    },
+    "output": "/usr/local/bin/clang-format\n test/bundle/pass_without_id.sh         | 10 +++++-----\n test/bundle/pass_without_id_verbose.sh | 10 +++++-----\n 2 files changed, 10 insertions(+), 10 deletions(-)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && which clang-format || ls /usr/b",
+    "time": {
+      "start": 1790720808120,
+      "end": 1790720808145
+    }
+  }
+}

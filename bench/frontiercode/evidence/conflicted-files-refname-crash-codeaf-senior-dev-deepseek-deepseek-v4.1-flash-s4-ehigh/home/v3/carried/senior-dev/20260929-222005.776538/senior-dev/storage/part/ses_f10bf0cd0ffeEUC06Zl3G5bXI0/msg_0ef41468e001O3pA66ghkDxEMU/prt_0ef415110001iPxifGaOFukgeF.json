@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef415110001iPxifGaOFukgeF",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef41468e001O3pA66ghkDxEMU",
+  "type": "tool",
+  "callID": "call_00_cm60mj91fjcaniieolbqnptd",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/g2 && tree=$(git write-tree)\necho \"=== A: -m tree HEAD ===\"; git diff --raw -m \"$tree\" HEAD\necho \"=== B: -m tree MERGE_HEAD ===\"; git diff --raw -m \"$tree\" MERGE_HEAD\necho \"=== C: -m tree HEAD MERGE_HEAD ===\"; git diff --raw -m \"$tree\" HEAD MERGE_HEAD\necho \"=== D: -m tree HEAD MERGE_HEAD -- ===\"; git diff --raw -m \"$tree\" HEAD MERGE_HEAD --\necho \"=== E: no-m tree HEAD MERGE_HEAD ===\"; git diff --raw \"$tree\" HEAD MERGE_HEAD\necho \"=== F: no-m tree HEAD -- MERGE_HEAD ===\"; git diff --raw \"$tree\" HEAD -- MERGE_HEAD"
+    },
+    "output": "=== A: -m tree HEAD ===\n:100644 100644 2ab19ae 5716ca5 M\tconflict_file\n:100644 000000 257cc56 0000000 D\tfoo_only_file\n=== B: -m tree MERGE_HEAD ===\n:100644 000000 5716ca5 0000000 D\tbar_only_file\n:100644 100644 2ab19ae 257cc56 M\tconflict_file\n=== C: -m tree HEAD MERGE_HEAD ===\n::100644 100644 100644 5716ca5 257cc56 2ab19ae MM\tconflict_file\n=== D: -m tree HEAD MERGE_HEAD -- ===\n::100644 100644 100644 5716ca5 257cc56 2ab19ae MM\tconflict_file\n=== E: no-m tree HEAD MERGE_HEAD ===\n::100644 100644 100644 5716ca5 257cc56 2ab19ae MM\tconflict_file\n=== F: no-m tree HEAD -- MERGE_HEAD ===\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/g2 && tree=$(git write-tree)\necho \"=== A: -m tree HE",
+    "time": {
+      "start": 1790720430356,
+      "end": 1790720430391
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "My substitution broke. Let me redo carefully with actual tree variable in each.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

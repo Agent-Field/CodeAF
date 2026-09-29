@@ -1,0 +1,27 @@
+{
+  "id": "prt_0ef46c082001A1EPgKYAtCc4Wj",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46bd42001fGsVYpxo6iM0WF",
+  "type": "tool",
+  "callID": "call_01a0ef46bfb373358e35111c",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/command_validate.cc",
+      "offset": 40,
+      "limit": 30
+    },
+    "output": "<path>/root/repos/jsonschema/src/command_validate.cc</path>\n<type>file</type>\n<content>\n40:                          const std::optional<std::string> &default_id,\n41:                          const bool fast_mode,\n42:                          const sourcemeta::core::Options &options)\n43:     -> sourcemeta::blaze::Template {\n44:   const auto precompiled{get_precompiled_schema_template_path(options)};\n45:   if (precompiled.has_value()) {\n46:     sourcemeta::jsonschema::LOG_VERBOSE(options)\n47:         << \"Parsing pre-compiled schema template: \"\n48:         << sourcemeta::core::weakly_canonical(precompiled.value()).string()\n49:         << \"\\n\";\n50:     const auto schema_template{\n51:         sourcemeta::core::read_yaml_or_json(precompiled.value())};\n52:     const auto precompiled_result{\n53:         sourcemeta::blaze::from_json(schema_template)};\n54:     if (precompiled_result.has_value()) {\n55:       return precompiled_result.value();\n56:     } else {\n57:       std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\n58:                    \"Compiling from scratch\\n\";\n59:     }\n60:   }\n61: \n62:   return sourcemeta::blaze::compile(\n63:       bundled, sourcemeta::core::schema_official_walker, resolver,\n64:       sourcemeta::blaze::default_schema_compiler, frame,\n65:       fast_mode ? sourcemeta::blaze::Mode::FastValidation\n66:                 : sourcemeta::blaze::Mode::Exhaustive,\n67:       default_dialect, default_id);\n68: }\n69: \n\n(Showing lines 40-69 of 358. Use offset=70 to continue.)\n</content>",
+    "metadata": {
+      "preview": "                         const std::optional<std::string> &default_id,\n                         const bool fast_mode,\n                         const sourcemeta::core::Options &options)\n    -> sourcemeta::blaze::Template {\n  const auto precompiled{get_precompiled_schema_template_path(options)};\n  if (precompiled.has_value()) {\n    sourcemeta::jsonschema::LOG_VERBOSE(options)\n        << \"Parsing pre-compiled schema template: \"\n        << sourcemeta::core::weakly_canonical(precompiled.value()).string()\n        << \"\\n\";\n    const auto schema_template{\n        sourcemeta::core::read_yaml_or_json(precompiled.value())};\n    const auto precompiled_result{\n        sourcemeta::blaze::from_json(schema_template)};\n    if (precompiled_result.has_value()) {\n      return precompiled_result.value();\n    } else {\n      std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\n                   \"Compiling from scratch\\n\";\n    }",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "src/command_validate.cc",
+    "time": {
+      "start": 1790720786566,
+      "end": 1790720786577
+    }
+  }
+}

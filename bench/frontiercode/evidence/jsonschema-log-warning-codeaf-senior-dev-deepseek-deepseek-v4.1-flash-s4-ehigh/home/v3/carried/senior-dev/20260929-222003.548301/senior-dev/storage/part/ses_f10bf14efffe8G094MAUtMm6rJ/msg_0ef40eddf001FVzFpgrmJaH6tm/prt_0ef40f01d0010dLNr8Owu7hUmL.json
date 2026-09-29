@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef40f01d0010dLNr8Owu7hUmL",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef40eddf001FVzFpgrmJaH6tm",
+  "type": "tool",
+  "callID": "call_01a0ef40efde7167af6162d6",
+  "tool": "grep",
+  "state": {
+    "status": "completed",
+    "input": {
+      "pattern": "std::cerr",
+      "path": "/root/repos/jsonschema/src"
+    },
+    "output": "Found 83 matches\n/root/repos/jsonschema/src/resolver.h:\n  Line 25: #include <iostream>    // std::cerr\n\n  Line 99:           std::cerr\n\n  Line 101:           std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n\n  Line 102:           std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n\n\n/root/repos/jsonschema/src/command_fmt.cc:\n  Line 5: #include <iostream> // std::cerr\n\n  Line 48:         std::cerr << \"FAIL: \" << entry.first.string() << \"\\n\";\n\n  Line 49:         std::cerr << \"Got:\\n\"\n\n\n/root/repos/jsonschema/src/logger.h:\n  Line 14:     return std::cerr;\n\n\n/root/repos/jsonschema/src/error.h:\n  Line 13: #include <iostream>     // std::cout, std::cerr\n\n  Line 165:       std::cerr << \"error: \" << exception.code().message() << \"\\n\";\n\n  Line 167:       std::cerr << \"error: The input was supposed to be a file but it is a \"\n\n  Line 170:       std::cerr << \"error: \" << exception.what() << \"\\n\";\n\n  Line 173:     std::cerr << \"error: \" << exception.what() << \"\\n\";\n\n  Line 177:     std::cerr << \"  at identifier \" << exception.id() << \"\\n\";\n\n  Line 182:       std::cerr << \"  at test case #\" << exception.test_number().value()\n\n  Line 188:     std::cerr << \"  at line \" << exception.line() << \"\\n\";\n\n  Line 192:     std::cerr << \"  at column \" << exception.column() << \"\\n\";\n\n  Line 200:     std::cerr << \"  at file path \"\n\n  Line 208:     std::cerr << \"  at file path \"\n\n  Line 214:     std::cerr << \"  at location \\\"\"\n\n  Line 219:     std::cerr << \"  at uri \" << exception.uri() << \"\\n\";\n\n  Line 225:     std::cerr << \"  at rule \" << exception.rule() << \"\\n\";\n\n  Line 231:     std::cerr << \"  at command \" << exception.command() << \"\\n\";\n\n  Line 237:     std::cerr << \"  at option \" << exception.option() << \"\\n\";\n\n  Line 257:     std::cerr << \"\\n\";\n\n  Line 258:     std::cerr << \"This is an unexpected error, as making the auto-fix \"\n\n  Line 260:     std::cerr << \"cases is tricky. We are working hard to improve the \"\n\n  Line 262:     std::cerr << \"to handle all possible edge cases, but for now, try again \"\n\n  Line 264:     std::cerr << \"and apply the suggestions by hand.\\n\\n\";\n\n  Line 265:     std::cerr << \"Also consider consider reporting this problematic case to \"\n\n  Line 267:     std::cerr << \"so we can add it to the test suite and fix it:\\n\\n\";\n\n  Line 268:     std::cerr << \"https://github.com/sourcemeta/jsonschema/issues\\n\";\n\n  Line 272:     std::cerr << \"\\n\";\n\n  Line 273:     std::cerr << \"Learn more here: \"\n\n  Line 296:       std::cerr << \"\\nThis is likely because the file does not exist\\n\";\n\n  Line 298:       std::cerr << \"\\nThis is likely because you forgot to import such schema \"\n\n  Line 307:       std::cerr << \"\\nThis is likely because the file does not exist\\n\";\n\n  Line 309:       std::cerr << \"\\nThis is likely because you forgot to import such schema \"\n\n  Line 316:     std::cerr\n\n  Line 323:     std::cerr << \"\\nAre you sure the input is a valid JSON Schema and its \"\n\n  Line 325:     std::cerr\n\n  Line 328:     std::cerr << \"explicitly declare a default dialect using \"\n\n  Line 333:     std::cerr << \"\\nAre you sure the input is a valid JSON Schema and its \"\n\n  Line 335:     std::cerr\n\n  Line 338:     std::cerr << \"explicitly declare a default dialect using \"\n\n  Line 349:     std::cerr << \"\\nTo request support for it, please open an issue \"\n\n  Line 368:     std::cerr << \"\\nFor example: \" << error.example() << \"\\n\";\n\n  Line 372:     std::cerr << \"\\nRun the `help` command for usage information\\n\";\n\n  Line 376:     std::cerr << \"\\nRun the `help` command for usage information\\n\";\n\n  Line 380:     std::cerr << \"\\nRun the `help` command for usage information\\n\";\n\n  Line 384:     std::cerr << \"\\nRun the `help` command for usage information\\n\";\n\n  Line 395:     std::cerr << \"unexpected error: \" << error.what()\n\n\n/root/repos/jsonschema/src/command_validate.cc:\n  Line 13: #include <iostream> // std::cerr\n\n  Line 57:       std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\n\n  Line 268:             print_annotations(output, options, tracker, std::cerr);\n\n  Line 270:             std::cerr\n\n  Line 274:             sourcemeta::core::prettify(instance, std::cerr);\n\n  Line 275:             std::cerr << \"\\n\\n\";\n\n  Line 276:             std::cerr << error.str();\n\n  Line 277:             print(output, tracker, std::cerr);\n\n  Line 341:         print_annotations(output, options, tracker, std::cerr);\n\n  Line 343:         std::cerr << \"fail: \"\n\n  Line 346:         std::cerr << error.str();\n\n  Line 347:         print(output, tracker, std::cerr);\n\n\n/root/repos/jsonschema/src/command_compile.cc:\n  Line 8: #include <iostream> // std::cerr, std::cout\n\n\n/root/repos/jsonschema/src/command_metaschema.cc:\n  Line 11: #include <iostream> // std::cerr\n\n  Line 82:         std::cerr << entry.first.string() << \"\\n\";\n\n  Line 104:           std::cerr << \"fail: \"\n\n  Line 107:           print(output, entry.positions, std::cerr);\n\n\n/root/repos/jsonschema/src/command_test.cc:\n  Line 13: #include <iostream>   // std::cerr, std::cout\n\n\n/root/repos/jsonschema/src/main.cc:\n  Line 6: #include <iostream>    // std::cerr, std::cout\n\n\n/root/repos/jsonschema/src/command_bundle.cc:\n  Line 38:     std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n\n  Line 40:     std::cerr << \"The only legit use case of this advanced feature we know of \"\n\n  Line 42:     std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n\n  Line 44:     std::cerr << \"Otherwise, this is not needed and may harm other use \"\n\n  Line 46:     std::cerr << \"you will be unable to reference the resulting schema from \"\n\n  Line 48:     std::cerr << \"using the --resolve/-r option.\\n\";\n\n\n/root/repos/jsonschema/src/command_lint.cc:\n  Line 10: #include <iostream> // std::cerr, std::cout\n\n\n/root/repos/jsonschema/src/command_encode.cc:\n  Line 48:   std::cerr << \"original file size: \" << original_size << \" bytes\\n\";\n\n  Line 71:     std::cerr << \"encoded file size: \" << total_size << \" bytes\\n\";\n\n  Line 72:     std::cerr << \"compression ratio: \"\n\n  Line 87:     std::cerr << \"encoded file size: \" << total_size << \" bytes\\n\";\n\n  Line 88:     std::cerr << \"compression ratio: \"\n",
+    "metadata": {
+      "matches": 83,
+      "truncated": false
+    },
+    "title": "std::cerr",
+    "time": {
+      "start": 1790720405536,
+      "end": 1790720405553
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me search for warnings.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3d0bb5001QLi9OLgIxwWE5O",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3cfdf7001wmVAMy4TTbaGHL",
+  "type": "tool",
+  "callID": "call_00_e9n8yra69vggdzy3by3d0sjk",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Appended an explicit `--` separator to the `git diff` invocation in `get_conflicted_files` so `HEAD`/`MERGE_HEAD` are parsed unambiguously as revisions even when tracked files share those names, preserving the full union of conflict and merge-diff filenames; added a regression test riding the existing `in_merge_conflict` fixture.",
+      "evidence": "Pinned command `python -m pytest tests/git_test.py` -> 34 passed, exit 0 (configfile tox.ini). The new parametrized cases `test_get_conflicted_files_tracked_file_named_like_ref[HEAD]` and `[MERGE_HEAD]` assert the complete set {'conflict_file', <refname>}. Reverting only pre_commit/git.py to the starting commit 7b88c63 makes both cases fail with the original `fatal: ambiguous argument 'HEAD': both revision and filename` (returncode 128), proving the test catches the bug. Related `tests/commands/run_test.py -k conflict` -> 4 passed. `git diff 7b88c63 --stat` shows only pre_commit/git.py (+3/-1) and tests/git_test.py (+16).",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 1556 bytes across 2 file(s), tree eddf841463f3\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790720150457,
+      "end": 1790720150890
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Note: rootdir is /home/agent/repos/pre-commit while cwd is /root/repos/pre-commit. Likely /root/repos/pre-commit is a symlink to /home/agent/repos/pre-commit. Fine.\n\nEverything passes. Now submit.\n\nEvidence: command `python -m pytest tests/git_test.py` -\u003e 34 passed, exit 0. Also demonstrated failure without fix: reverting pre_commit/git.py to 7b88c63 makes the two new parametrized cases fail with `fatal: ambiguous argument 'HEAD': both revision and filename`. Checklist satisfied true.\n\nLet me submit.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

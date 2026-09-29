@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3544b9001rqezpsDXYlRinb",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef3537b3001THAk6s1JG1R0hc",
+  "type": "reasoning",
+  "text": "Now let me understand the fix. We need to separate refnames from pathspecs. In git diff, `--` separates paths. But the issue is: `git diff --name-only -m <tree_hash> HEAD MERGE_HEAD` — git is trying to resolve `HEAD` and `MERGE_HEAD` as revisions. If a file named `HEAD` exists in the worktree, git can't tell if `HEAD` is a rev or a path. Adding `--` after the refs declares the rest as pathspecs. But then `MERGE_HEAD` would become a pathspec, not a ref!\n\nSo the natural shape: separate refs from pathspecs. `git diff ... <tree_hash> HEAD MERGE_HEAD --` — wait, the issue is we need all three: tree_hash, HEAD, MERGE_HEAD as revisions. The `--` at the end says everything before it are revs. Actually the ambiguity arises because git doesn't know whether `HEAD`/`MERGE_HEAD` are revs or paths.\n\nLet me reproduce. With `git diff --name-only -m <tree> HEAD MERGE_HEAD`, if a tracked file named `HEAD` exists, git says ambiguous argument 'HEAD': both revision and filename.\n\nThe fix: use `--` to separate revisions from pathspecs, and pass an empty pathspec? Let's think. `git diff <tree> HEAD MERGE_HEAD -- ` — with `--` at the end, everything before is treated as revision. Actually git's disambiguation: arguments before `--` are revs, after are paths. So `git diff --name-only -m <tree> HEAD MERGE_HEAD --` should treat HEAD and MERGE_HEAD as revisions unambiguously. Let me verify.\n\nActually wait — the `--` with nothing after means no pathspec, and git knows HEAD/MERGE_HEAD are revs. Let me test in a temp repo.\n\nLet me look at the tests setup fixtures first.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me understand the fix. We need to separate refnames from pathspecs. In git diff, `--` separates paths. But the issue is: `git diff --name-only -m \u003ctree_hash\u003e HEAD MERGE_HEAD` — git is trying to resolve `HEAD` and `MERGE_HEAD` as revisions. If a file named `HEAD` exists in the worktree, git can't tell if `HEAD` is a rev or a path. Adding `--` after the refs declares the rest as pathspecs. But then `MERGE_HEAD` would become a pathspec, not a ref!\n\nSo the natural shape: separate refs from pathspecs. `git diff ... \u003ctree_hash\u003e HEAD MERGE_HEAD --` — wait, the issue is we need all three: tree_hash, HEAD, MERGE_HEAD as revisions. The `--` at the end says everything before it are revs. Actually the ambiguity arises because git doesn't know whether `HEAD`/`MERGE_HEAD` are revs or paths.\n\nLet me reproduce. With `git diff --name-only -m \u003ctree\u003e HEAD MERGE_HEAD`, if a tracked file named `HEAD` exists, git says ambiguous argument 'HEAD': both revision and filename.\n\nThe fix: use `--` to separate revisions from pathspecs, and pass an empty pathspec? Let's think. `git diff \u003ctree\u003e HEAD MERGE_HEAD -- ` — with `--` at the end, everything before is treated as revision. Actually git's disambiguation: arguments before `--` are revs, after are paths. So `git diff --name-only -m \u003ctree\u003e HEAD MERGE_HEAD --` should treat HEAD and MERGE_HEAD as revisions unambiguously. Let me verify.\n\nActually wait — the `--` with nothing after means no pathspec, and git knows HEAD/MERGE_HEAD are revs. Let me test in a temp repo.\n\nLet me look at the tests setup fixtures first.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719640761,
+    "end": 1790719640785
+  }
+}

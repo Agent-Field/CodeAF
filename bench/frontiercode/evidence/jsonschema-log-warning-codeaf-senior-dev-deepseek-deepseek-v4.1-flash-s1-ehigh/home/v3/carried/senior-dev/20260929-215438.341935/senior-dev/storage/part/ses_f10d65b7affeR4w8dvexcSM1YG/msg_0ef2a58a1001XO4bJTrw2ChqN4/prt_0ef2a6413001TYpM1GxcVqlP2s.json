@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2a6413001TYpM1GxcVqlP2s",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2a58a1001XO4bJTrw2ChqN4",
+  "type": "tool",
+  "callID": "call_01_lc2e4u3xdii8482j3l0a04ek",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rln \"resolve\" test/validate test/bundle test/lint test/inspect 2>/dev/null; echo \"---pass_no_identifier*---\"; cat test/validate/pass_no_identifier_ref_without_resolve.sh 2>/dev/null | head -60"
+    },
+    "output": "test/validate/fail_invalid_ref.sh\ntest/validate/pass_json_ref_yaml.sh\ntest/validate/pass_resolve_without_identifier.sh\ntest/validate/pass_resolve_custom_extension.sh\ntest/validate/fail_resolve_invalid_json.sh\ntest/validate/fail_relative_external_ref_missing.sh\ntest/validate/pass_resolve_remap.sh\ntest/validate/pass_resolve_verbose.sh\ntest/validate/pass_resolve_remap_relative.sh\ntest/validate/fail_schema_unknown_dialect.sh\ntest/validate/pass_no_identifier_half_ref.sh\ntest/validate/fail_resolve_directory_with_invalid_json.sh\ntest/validate/pass_no_identifier_ref.sh\ntest/validate/pass_resolve.sh\ntest/validate/fail_no_identifier_ref_without_resolve.sh\ntest/validate/fail_resolve_enoent.sh\ntest/validate/fail_resolve_missing_open_brace.sh\ntest/bundle/pass_resolve_directory.sh\ntest/bundle/fail_resolve_invalid_json.sh\ntest/bundle/pass_without_id_verbose.sh\ntest/bundle/fail_relative_external_ref_missing.sh\ntest/bundle/pass_resolve_directory_verbose.sh\ntest/bundle/pass_resolve_metaschema.sh\ntest/bundle/pass_resolve_single_default_dialect.sh\ntest/bundle/pass_resolve_single_remap.sh\ntest/bundle/pass_without_id.sh\ntest/bundle/fail_resolve_duplicate.sh\ntest/bundle/pass_resolve_yaml.sh\ntest/bundle/pass_resolve_single.sh\ntest/bundle/pass_resolve_single_remap_relative.sh\ntest/bundle/fail_unknown_metaschema.sh\ntest/bundle/pass_into_resolve_directory.sh\ntest/bundle/pass_resolve_default_dialect_config.sh\ntest/bundle/pass_resolve_no_identifier.sh\ntest/bundle/pass_resolve_default_dialect_config_relative.sh\ntest/bundle/pass_resolve_with_ignore.sh\ntest/bundle/fail_bigint.sh\ntest/lint/pass_lint_anonymous_default_with_ref.sh\ntest/lint/pass_lint_anonymous_nested_default_with_ref.sh\ntest/lint/fail_lint_directory_unresolvable_dialect.sh\ntest/lint/fail_lint_directory_unresolvable.sh\ntest/lint/fail_lint_directory_unresolvable_fix.sh\ntest/lint/pass_lint_direct_custom_extension.sh\ntest/lint/pass_lint_directory_resolve_many.sh\ntest/inspect/fail_relative_file_metaschema_ref.sh\ntest/inspect/fail_unknown_metaschema.sh\n---pass_no_identifier*---\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$ref\": \"./schemas/other.json\"\n}\nEOF\n\nmkdir -p \"$TMP/schemas\"\n\ncat << 'EOF' > \"$TMP/schemas/other.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"string\"\n}\nEOF\n\ncat << 'EOF' > \"$TMP/instance.json\"\n\"foo bar\"\nEOF\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.json\" --verbose > \"$TMP/output.txt\" 2>&1\n\ncat << EOF > \"$TMP/expected.txt\"\nAttempting to read file reference from disk: $(realpath \"$TMP\")/schemas/other.json\nok: $(realpath \"$TMP\")/instance.json\n  matches $(realpath \"$TMP\")/schema.json\nEOF\n\ndiff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rln \"resolve\" test/valida",
+    "time": {
+      "start": 1790718927894,
+      "end": 1790718927916
+    }
+  }
+}

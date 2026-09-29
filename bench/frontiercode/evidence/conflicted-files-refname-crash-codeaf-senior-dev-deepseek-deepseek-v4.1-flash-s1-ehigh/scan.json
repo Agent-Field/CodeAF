@@ -1,0 +1,32 @@
+{
+  "flagged": true,
+  "reasons": [
+    "transcript: upstream slug present alongside github-family egress in the proxy log"
+  ],
+  "soft": [
+    "proxy: connection to github.com",
+    "proxy: registry host files.pythonhosted.org",
+    "proxy: registry host proxy.golang.org",
+    "proxy: registry host pypi.org",
+    "proxy: registry host registry.npmjs.org",
+    "proxy: registry host static.crates.io",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:37",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:42",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:43",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:7",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:38",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:43",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:44",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:8"
+  ],
+  "counts": {
+    "proxy_hosts": 18,
+    "proxy_lines": 87,
+    "model_plane_hosts": [
+      "codeaf.agentfield.ai",
+      "models.dev"
+    ],
+    "model_plane_seen": true,
+    "upstream_slug": "pre-commit/pre-commit"
+  }
+}

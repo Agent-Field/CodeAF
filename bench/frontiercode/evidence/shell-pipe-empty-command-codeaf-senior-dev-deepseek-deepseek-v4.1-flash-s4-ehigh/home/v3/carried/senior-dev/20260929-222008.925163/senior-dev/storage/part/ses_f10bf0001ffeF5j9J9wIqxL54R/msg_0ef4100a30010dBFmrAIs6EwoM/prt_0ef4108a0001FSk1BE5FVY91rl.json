@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4108a0001FSk1BE5FVY91rl",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef4100a30010dBFmrAIs6EwoM",
+  "type": "reasoning",
+  "text": "Let me start by exploring the repository structure, particularly the internal/shell package.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me start by exploring the repository structure, particularly the internal/shell package.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720411808,
+    "end": 1790720411830
+  }
+}

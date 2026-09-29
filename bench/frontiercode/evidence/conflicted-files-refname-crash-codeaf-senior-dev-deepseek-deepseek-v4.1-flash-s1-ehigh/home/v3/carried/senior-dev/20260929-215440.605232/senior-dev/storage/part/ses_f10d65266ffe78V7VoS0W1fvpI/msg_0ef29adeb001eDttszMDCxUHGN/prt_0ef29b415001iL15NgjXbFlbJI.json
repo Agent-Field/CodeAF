@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29b415001iL15NgjXbFlbJI",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29adeb001eDttszMDCxUHGN",
+  "type": "tool",
+  "callID": "call_01_6t1i5np6cm0wy73q3m0gm1sn",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && ls .senior-dev/ 2>/dev/null; cat .senior-dev/pinned.txt 2>/dev/null"
+    },
+    "output": "projection.lock\nsenior-dev.db\nsenior-dev.db-shm\nsenior-dev.db-wal\nspec.md\nstorage\nexit status 1",
+    "metadata": {
+      "exitCode": 1
+    },
+    "title": "cd /root/repos/pre-commit && ls .senior-dev/ 2>/dev/null; ca",
+    "time": {
+      "start": 1790718882841,
+      "end": 1790718882858
+    }
+  }
+}

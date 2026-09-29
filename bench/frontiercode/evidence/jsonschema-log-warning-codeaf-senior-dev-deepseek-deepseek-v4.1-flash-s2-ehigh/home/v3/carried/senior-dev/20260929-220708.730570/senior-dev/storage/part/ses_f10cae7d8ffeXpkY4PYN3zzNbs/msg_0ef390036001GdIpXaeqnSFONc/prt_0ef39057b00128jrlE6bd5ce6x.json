@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef39057b00128jrlE6bd5ce6x",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef390036001GdIpXaeqnSFONc",
+  "type": "text",
+  "text": "Done. Summary of the change:\n\n- **`src/logger.h`**: added `inline auto LOG_WARNING() -> std::ostream &`, which writes `warning: ` to `std::cerr` and returns it, independent of `--verbose`.\n- **`src/command_lint.cc`**: unknown-rule warning now uses `LOG_WARNING()` (previously `LOG_VERBOSE`), so it is no longer verbose-gated.\n- **`src/command_validate.cc`**: both warning sites (invalid pre-compiled template, empty JSONL file) use `LOG_WARNING()`; the JSONL one is no longer verbose-gated.\n- **`src/resolver.h`**: the three-statement \"no schema resources imported\" warning is collapsed into one `LOG_WARNING()` chain, so the whole message carries a single prefix.\n- **`src/command_bundle.cc`**: the six-statement `--without-id` warning is collapsed into one `LOG_WARNING()` chain (single prefix), and `logger.h` was added to the local include block.\n- **`test/validate/pass_jsonl_empty.sh`**: expected stderr now includes `warning: The JSONL file is empty`, since that warning is now unconditional.\n\nEvidence:\n- `make configure compile` exited 0, including `clang_format` and `shellcheck` targets.\n- Full suite `ctest --test-dir build --output-on-failure`: **301/301 passed**.\n- Targeted `ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure`: **2/2 passed**.\n- `grep '\"warning: ' src/` now matches only the helper in `src/logger.h`; a manual `bundle --without-id` run prints the multi-line warning with exactly one `warning: ` prefix.",
+  "time": {
+    "start": 1790719886715,
+    "end": 1790719886719
+  }
+}

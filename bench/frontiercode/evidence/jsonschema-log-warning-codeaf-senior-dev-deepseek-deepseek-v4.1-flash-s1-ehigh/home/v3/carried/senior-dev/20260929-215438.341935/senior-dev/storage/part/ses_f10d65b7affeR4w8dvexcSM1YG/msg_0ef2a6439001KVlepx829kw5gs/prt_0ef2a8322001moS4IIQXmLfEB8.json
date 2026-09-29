@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2a8322001moS4IIQXmLfEB8",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2a6439001KVlepx829kw5gs",
+  "type": "tool",
+  "callID": "call_01_z00vmcxnnz99agar4mvh0w1g",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rin \"warn\" src/ | grep -iv \"warning: \\|LOG_VERBOSE\\|std::cerr\" ; echo \"---clang-format---\"; ls -a | grep clang; cat .clang-format 2>/dev/null; echo \"---cmake clang format---\"; grep -n \"clang_format\\|clang-format\\|shellcheck\" CMakeLists.txt cmake/*.cmake 2>/dev/null | head -40"
+    },
+    "output": "---clang-format---\n---cmake clang format---\nCMakeLists.txt:29:  sourcemeta_target_clang_format(SOURCES\nCMakeLists.txt:31:  sourcemeta_target_shellcheck(SOURCES\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rin \"warn\" src/ | grep -i",
+    "time": {
+      "start": 1790718935847,
+      "end": 1790718936057
+    }
+  }
+}

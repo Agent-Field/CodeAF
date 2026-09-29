@@ -1,0 +1,19 @@
+{
+  "id": "prt_0ef4999a6001ZlZHvQwq7l3Rl6",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef4992f2001e6Jg4xWQahZGZa",
+  "type": "step-finish",
+  "reason": "tool-calls",
+  "cost": 0.0002326284,
+  "tokens": {
+    "total": 11082,
+    "input": 451,
+    "output": 135,
+    "reasoning": 0,
+    "cache": {
+      "read": 10496,
+      "write": 0
+    }
+  },
+  "upstream": "AtlasCloud"
+}

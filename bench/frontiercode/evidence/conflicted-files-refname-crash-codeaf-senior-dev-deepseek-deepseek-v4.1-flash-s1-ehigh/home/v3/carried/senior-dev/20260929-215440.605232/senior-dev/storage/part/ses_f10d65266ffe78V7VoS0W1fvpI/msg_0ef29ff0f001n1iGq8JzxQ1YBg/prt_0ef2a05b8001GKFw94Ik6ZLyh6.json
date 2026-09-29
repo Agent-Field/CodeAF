@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2a05b8001GKFw94Ik6ZLyh6",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29ff0f001n1iGq8JzxQ1YBg",
+  "type": "reasoning",
+  "text": "Now resolve conflict, get tree_hash.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now resolve conflict, get tree_hash.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718903736,
+    "end": 1790718903747
+  }
+}

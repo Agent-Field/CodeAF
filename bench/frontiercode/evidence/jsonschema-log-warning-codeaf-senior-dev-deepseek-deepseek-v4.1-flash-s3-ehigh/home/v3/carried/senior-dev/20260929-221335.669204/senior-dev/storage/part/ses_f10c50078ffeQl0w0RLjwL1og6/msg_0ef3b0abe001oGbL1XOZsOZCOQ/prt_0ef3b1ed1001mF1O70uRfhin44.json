@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b1ed1001mF1O70uRfhin44",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3b0abe001oGbL1XOZsOZCOQ",
+  "type": "tool",
+  "callID": "call_01a0ef3b1de770b49a2b28ef",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rln 'warning' test/ | head -50"
+    },
+    "output": "test/lint/fail_lint_disable_unknown_verbose.sh\ntest/bundle/pass_without_id_verbose.sh\ntest/bundle/pass_without_id.sh\ntest/validate/pass_jsonl_empty_verbose.sh\ntest/validate/pass_with_invalid_template_verbose.sh\ntest/validate/pass_with_invalid_template.sh\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rln 'warning' test/ | hea",
+    "time": {
+      "start": 1790720024276,
+      "end": 1790720024294
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef42e9a3001E0p6Vp8PeMg2th",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef42e188001zaTBDrNYzUdJJz",
+  "type": "tool",
+  "callID": "call_00_1c0kiwtgo2qwubfcbvuruvl2",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && git diff 7b88c63 --stat && echo \"=== diff ===\" && git diff 7b88c63 -- pre_commit/git.py tests/git_test.py && echo \"=== untracked ===\" && git status --porcelain"
+    },
+    "output": " pre_commit/git.py |  3 +++\n tests/git_test.py | 16 ++++++++++++++++\n 2 files changed, 19 insertions(+)\n=== diff ===\ndiff --git a/pre_commit/git.py b/pre_commit/git.py\nindex 19aac38..a511504 100644\n--- a/pre_commit/git.py\n+++ b/pre_commit/git.py\n@@ -127,6 +127,9 @@ def get_conflicted_files() -> set[str]:\n         cmd_output(\n             'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n             '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+            # `HEAD` / `MERGE_HEAD` are revisions, not pathspecs -- without\n+            # this separator a tracked file sharing their name is ambiguous\n+            '--',\n         )[1],\n     )\n     return set(merge_conflict_filenames) | set(merge_diff_filenames)\ndiff --git a/tests/git_test.py b/tests/git_test.py\nindex 93f5a1c..19caadb 100644\n--- a/tests/git_test.py\n+++ b/tests/git_test.py\n@@ -124,6 +124,22 @@ def test_get_conflicted_files(in_merge_conflict):\n     assert ret == {'conflict_file', 'other_file'}\n \n \n+def test_get_conflicted_files_refname_collision(in_merge_conflict):\n+    \"\"\"A tracked file named like a refname must not make git ambiguous\"\"\"\n+    resolve_conflict()\n+\n+    with open('HEAD', 'w') as head_file:\n+        head_file.write('head')\n+    cmd_output('git', 'add', 'HEAD')\n+\n+    with open('other_file', 'w') as other_file:\n+        other_file.write('oh hai')\n+    cmd_output('git', 'add', 'other_file')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'HEAD', 'conflict_file', 'other_file'}\n+\n+\n def test_get_conflicted_files_in_submodule(in_conflicting_submodule):\n     resolve_conflict()\n     assert set(git.get_conflicted_files()) == {'conflict_file'}\n=== untracked ===\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && git diff 7b88c63 --stat && echo",
+    "time": {
+      "start": 1790720534954,
+      "end": 1790720535166
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me verify the final diff between starting commit and HEAD to ensure only the intended files changed. Starting commit 7b88c63. `git diff 7b88c63 --stat`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

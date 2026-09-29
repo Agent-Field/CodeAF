@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef473d58001IXLsjhaIS8pkcA",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef473b66001gKFGbGJn3eKw7M",
+  "type": "reasoning",
+  "text": "Style config is clang-format.json. Let me look at the cmake target to see how it invokes clang-format (--style=file:.clang-format? or JSON).",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Style config is clang-format.json. Let me look at the cmake target to see how it invokes clang-format (--style=file:.clang-format? or JSON).",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720818520,
+    "end": 1790720818530
+  }
+}

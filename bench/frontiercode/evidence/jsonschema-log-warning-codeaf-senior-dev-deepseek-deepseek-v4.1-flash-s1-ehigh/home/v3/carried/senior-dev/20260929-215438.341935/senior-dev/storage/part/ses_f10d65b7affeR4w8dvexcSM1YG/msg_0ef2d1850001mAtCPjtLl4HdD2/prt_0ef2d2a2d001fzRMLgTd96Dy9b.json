@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2d2a2d001fzRMLgTd96Dy9b",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2d1850001mAtCPjtLl4HdD2",
+  "type": "reasoning",
+  "text": "Now submit with reason and evidence.\n\nEvidence: \n- `make configure` succeeded\n- `make compile` succeeded (clang_format + shellcheck + build + install + cpack all passed)\n- `cmake --build build --target clang_format_test` exit 0\n- `cmake --build build --target shellcheck` exit 0\n- `ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure`: 2/2 passed\n- full `ctest --test-dir build --output-on-failure -j4`: 301/301 passed\n- manual checks: non-verbose lint and empty jsonl now emit warning; bundle multiline has single prefix\n\nLet me submit.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now submit with reason and evidence.\n\nEvidence: \n- `make configure` succeeded\n- `make compile` succeeded (clang_format + shellcheck + build + install + cpack all passed)\n- `cmake --build build --target clang_format_test` exit 0\n- `cmake --build build --target shellcheck` exit 0\n- `ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure`: 2/2 passed\n- full `ctest --test-dir build --output-on-failure -j4`: 301/301 passed\n- manual checks: non-verbose lint and empty jsonl now emit warning; bundle multiline has single prefix\n\nLet me submit.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719109677,
+    "end": 1790719109690
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef351f4e001bRdtlxAb7adQ7i",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef35192f001QxHf1lnWg5MYGc",
+  "type": "tool",
+  "callID": "call_01_mqpkbvrpwvs4wwbz5qudkwcb",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat src/logger.h"
+    },
+    "output": "#ifndef SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n#define SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n\n#include <sourcemeta/core/options.h>\n\n#include <fstream> // std::ofstream\n#include <ostream> // std::ostream\n\nnamespace sourcemeta::jsonschema {\n\ninline auto LOG_VERBOSE(const sourcemeta::core::Options &options)\n    -> std::ostream & {\n  if (options.contains(\"verbose\")) {\n    return std::cerr;\n  }\n\n  static std::ofstream null_stream;\n  return null_stream;\n}\n\n} // namespace sourcemeta::jsonschema\n\n#endif\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat src/logger.h",
+    "time": {
+      "start": 1790719631185,
+      "end": 1790719631196
+    }
+  }
+}

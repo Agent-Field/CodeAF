@@ -192,3 +192,75 @@ runs 5: 4 pass, 1 flagged, 5 graded, 0 rig; total $0.268 (harness-reported)
    teardown, which this task's budget could not guarantee, so it was not
    started; launch is `gcp-stage.sh` → `gcp-key.sh` → `gcp-create.sh` →
    `launch.sh` → `fetch-results.sh` → teardown.
+
+## Full pilot run (3 tasks × 5 seeds)
+
+First campaign to use more than one task. Instance `fc-pilot-s1`
+(`e2-standard-32`, us-central1-a, 120 GB, 6h self-stop), shard-1 = the three
+calibrated tasks, seeds s1–s5, effort `high`, model
+`deepseek/deepseek-v4.1-flash`, judge `openrouter/anthropic/claude-sonnet-4.5`
+(`fc-judge-1`). Ran 2026-09-29, 19:17Z–22:57Z (3h40m wall). Raw artifacts are
+committed under `bench/frontiercode/evidence/` (15 run dirs); `results/` stays
+ignored.
+
+**Controls (host, pre-rollout) — all green, all three tasks:**
+gold 1.00, negative 0.0 with both blockers failed, seal fixture flagged and
+scored 0.0, for jsonschema-log-warning, conflicted-files-refname-crash and
+shell-pipe-empty-command (`fc-controls-host.log`, 19:44–19:49Z).
+
+**Per-task × per-seed (harness-reported cost = guard-measured model $):**
+
+| task | seed | score | pass | flagged | blockers | cost $ | out tok |
+|---|---|---|---|---|---|---|---|
+| conflicted-files-refname-crash | s1 | — (rig) | 3/6 | yes | rig: refname-collision-no-crash, adapted-tests-pass | 0.0244 | 17730 |
+| conflicted-files-refname-crash | s2 | — (rig) | 3/6 | yes | rig: same two | 0.0172 | 13541 |
+| conflicted-files-refname-crash | s3 | — (rig) | 4/6 | yes | rig: same two | 0.0188 | 15113 |
+| conflicted-files-refname-crash | s4 | 1.00 | 6/6 | no | — | 0.0277 | 17049 |
+| conflicted-files-refname-crash | s5 | 0.75 | 5/6 | yes | one criterion failed | 0.0144 | 12944 |
+| jsonschema-log-warning | s1–s5 | 1.00 each | 12/12 each | no | — | 0.0350/0.0249/0.0441/0.0292/0.0300 | 26558/10878/21139/15530/14090 |
+| shell-pipe-empty-command | s1 | 1.00 | 8/8 | yes | — | 0.0087 | 3890 |
+| shell-pipe-empty-command | s2 | 1.00 | 8/8 | yes | — | 0.0054 | 2927 |
+| shell-pipe-empty-command | s3 | 1.00 | 8/8 | yes | — | 0.0047 | 4107 |
+| shell-pipe-empty-command | s4 | 1.00 | 8/8 | yes | — | 0.0043 | 3497 |
+| shell-pipe-empty-command | s5 | 0.00 | 7/8 | yes | empty-command-skipped-not-crashed | 0.0042 | 3794 |
+
+**Aggregate (per-level):** 15 trials, 11 passing (5/5 jsonschema-log-warning,
+4/5 shell-pipe-empty-command, 1/5 conflicted-files-refname-crash); mean score
+0.83 over the 13 trials with a numeric score (mean output tokens 12,186;
+total output 182,787).
+
+**Cost.** Guard-measured harness spend across the 15 rollouts: **$0.2928**.
+Provider key counter: baseline at install $0.469695, final at shred
+$1.699604 → **key delta $1.2299** (harness + judge spend + the discarded first
+execute wave, which burned a wave's worth of model calls before its failure
+was diagnosed). Compute: the instance ran 3h40m ≈ **$5.6–5.8** at the
+e2-standard-32 on-demand rate plus the 120 GB disk — well over the $0.60–0.90
+estimate, entirely because of the failed first wave and its re-run; a clean
+run would have been roughly $2.5–3.0. Per-run ceiling $500 not approached.
+
+**Failures, plainly:**
+
+1. **First execute wave produced empty `model.patch` for every run** — a rig
+   bug, not a model result: `collect.sh` still hardcoded the single-task-era
+   checkout path. Fixed (commits `609c0d279`, `f8c0f64f7`, and `3d19ba65f`,
+   which also keys per-rollout guard/egress/network names on the task so a
+   multi-task wave cannot collide), and the wave was re-run from scratch.
+2. **conflicted-files-refname-crash scored "rig" on 3 of 5 seeds** (s1, s2,
+   s3): the adaptive test-overlay path failed with `patch does not apply:
+   tests/git_test.py` on two criteria, so those trials have no numeric score.
+   The judge DID grade the primary criterion; the overlay conflict is a rig
+   defect in the adaptive-test path, left untouched per the no-scoring-change
+   rule. Those seeds are not measurable as 0; treat the task's pilot numbers
+   (1 pass, 1 partial) as an underestimate.
+3. **`fetch-results.sh` committed no evidence on the first fetch** — its
+   pathspec was `evidence/` from the repo root, but the evidence lives at
+   `bench/frontiercode/evidence/`, so the porcelain check saw nothing and the
+   "commits it" guarantee silently degraded to "on disk only". Fixed to the
+   full path; this fetch's 15 runs were then committed (see git log).
+4. **shell-pipe-empty-command s5 failed honestly**: the agent skipped the
+   empty-command case instead of crashing-vs-erroring on it — blocker
+   `empty-command-skipped-not-crashed`, score 0.0.
+
+**Teardown:** key shredded on the host, instance and boot disk deleted;
+`gcloud compute instances list` (the GCP project id, as in the <!-- legacy-name --> lines above) is empty and no
+orphan disk remains.

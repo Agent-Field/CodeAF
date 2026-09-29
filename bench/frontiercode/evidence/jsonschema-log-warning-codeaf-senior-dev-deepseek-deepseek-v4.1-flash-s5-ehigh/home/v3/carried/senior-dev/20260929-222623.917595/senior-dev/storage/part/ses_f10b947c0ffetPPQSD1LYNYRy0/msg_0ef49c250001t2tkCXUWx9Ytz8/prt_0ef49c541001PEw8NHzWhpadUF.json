@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef49c541001PEw8NHzWhpadUF",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef49c250001t2tkCXUWx9Ytz8",
+  "type": "tool",
+  "callID": "call_01a0ef49c43277a5988869ac",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && ctest --test-dir build --output-on-failure --parallel 4 2>&1 | tail -30",
+      "timeout_ms": 600000
+    },
+    "output": "287/301 Test #285: JSONSchema.lint/pass_lint_directory_resolve_many ......................   Passed    0.03 sec\n        Start 291: JSONSchema.lint/pass_config_path\n288/301 Test #287: JSONSchema.lint/fail_lint_only ........................................   Passed    0.02 sec\n        Start 292: JSONSchema.encode/pass_schema_less\n289/301 Test #289: JSONSchema.lint/fail_lint_only_unknown ................................   Passed    0.01 sec\n        Start 293: JSONSchema.encode/pass_schema_less_jsonl\n290/301 Test #290: JSONSchema.lint/fail_lint_only_unknown_verbose ........................   Passed    0.01 sec\n        Start 294: JSONSchema.encode/pass_schema_less_jsonl_verbose\n291/301 Test #291: JSONSchema.lint/pass_config_path ......................................   Passed    0.03 sec\n        Start 295: JSONSchema.encode/fail_no_document\n292/301 Test #295: JSONSchema.encode/fail_no_document ....................................   Passed    0.01 sec\n        Start 296: JSONSchema.encode/fail_no_output\n293/301 Test #296: JSONSchema.encode/fail_no_output ......................................   Passed    0.01 sec\n        Start 297: JSONSchema.decode/pass_schema_less\n294/301 Test #292: JSONSchema.encode/pass_schema_less ....................................   Passed    0.07 sec\n        Start 298: JSONSchema.decode/pass_schema_less_jsonl\n295/301 Test #293: JSONSchema.encode/pass_schema_less_jsonl ..............................   Passed    0.07 sec\n        Start 299: JSONSchema.decode/pass_schema_less_jsonl_verbose\n296/301 Test #294: JSONSchema.encode/pass_schema_less_jsonl_verbose ......................   Passed    0.07 sec\n        Start 300: JSONSchema.decode/fail_no_document\n297/301 Test #300: JSONSchema.decode/fail_no_document ....................................   Passed    0.01 sec\n        Start 301: JSONSchema.decode/fail_no_output\n298/301 Test #301: JSONSchema.decode/fail_no_output ......................................   Passed    0.07 sec\n299/301 Test #297: JSONSchema.decode/pass_schema_less ....................................   Passed    0.12 sec\n300/301 Test #298: JSONSchema.decode/pass_schema_less_jsonl ..............................   Passed    0.12 sec\n301/301 Test #299: JSONSchema.decode/pass_schema_less_jsonl_verbose ......................   Passed    0.12 sec\n\n100% tests passed, 0 tests failed out of 301\n\nTotal Test time (real) =   3.14 sec\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && ctest --test-dir build --output",
+    "time": {
+      "start": 1790720984388,
+      "end": 1790720987564
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "All pass. Now run full suite to catch any other stderr-comparing tests affected by the lint warning now being always-on or other changes. Full suite maybe ~300 tests, fast (shell tests). Let's run.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

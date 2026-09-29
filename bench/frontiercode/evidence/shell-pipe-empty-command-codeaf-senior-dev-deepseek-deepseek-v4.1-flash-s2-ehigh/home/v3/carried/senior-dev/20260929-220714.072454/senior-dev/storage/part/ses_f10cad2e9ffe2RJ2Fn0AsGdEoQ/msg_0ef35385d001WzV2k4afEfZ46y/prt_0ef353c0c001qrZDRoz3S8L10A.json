@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef353c0c001qrZDRoz3S8L10A",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef35385d001WzV2k4afEfZ46y",
+  "type": "reasoning",
+  "text": "Now write checklist and pinned. Then verify.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now write checklist and pinned. Then verify.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719638540,
+    "end": 1790719638564
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "prt_0ef35a077001Asyj4mQifi7h5H",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef358425001Yc7ruwd7td4hxl",
+  "type": "tool",
+  "callID": "call_02_65le1vytat4gwsp8ga0hjxb0",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/command_bundle.cc",
+      "newString": "    LOG_WARNING()\n        << \"You are opting in to remove schema identifiers in the bundled \"\n           \"schema.\\n\"\n        << \"The only legit use case of this advanced feature we know of is to \"\n           \"workaround\\n\"\n        << \"non-compliant JSON Schema implementations such as Visual Studio \"\n           \"Code.\\n\"\n        << \"Otherwise, this is not needed and may harm other use cases. For \"\n           \"example,\\n\"\n        << \"you will be unable to reference the resulting schema from other \"\n           \"schemas\\n\"\n        << \"using the --resolve/-r option.\\n\";",
+      "oldString": "    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n                 \"the bundled schema.\\n\";\n    std::cerr << \"The only legit use case of this advanced feature we know of \"\n                 \"is to workaround\\n\";\n    std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n                 \"Studio Code.\\n\";\n    std::cerr << \"Otherwise, this is not needed and may harm other use \"\n                 \"cases. For example,\\n\";\n    std::cerr << \"you will be unable to reference the resulting schema from \"\n                 \"other schemas\\n\";\n    std::cerr << \"using the --resolve/-r option.\\n\";"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/jsonschema/src/command_bundle.cc\n===================================================================\n--- /root/repos/jsonschema/src/command_bundle.cc\n+++ /root/repos/jsonschema/src/command_bundle.cc\n@@ -34,19 +34,20 @@\n                              sourcemeta::core::weakly_canonical(schema_path))\n                              .recompose());\n \n if (options.contains(\"without-id\")) {\n-  std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n-               \"the bundled schema.\\n\";\n-  std::cerr << \"The only legit use case of this advanced feature we know of \"\n-               \"is to workaround\\n\";\n-  std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n-               \"Studio Code.\\n\";\n-  std::cerr << \"Otherwise, this is not needed and may harm other use \"\n-               \"cases. For example,\\n\";\n-  std::cerr << \"you will be unable to reference the resulting schema from \"\n-               \"other schemas\\n\";\n-  std::cerr << \"using the --resolve/-r option.\\n\";\n+  LOG_WARNING()\n+      << \"You are opting in to remove schema identifiers in the bundled \"\n+         \"schema.\\n\"\n+      << \"The only legit use case of this advanced feature we know of is to \"\n+         \"workaround\\n\"\n+      << \"non-compliant JSON Schema implementations such as Visual Studio \"\n+         \"Code.\\n\"\n+      << \"Otherwise, this is not needed and may harm other use cases. For \"\n+         \"example,\\n\"\n+      << \"you will be unable to reference the resulting schema from other \"\n+         \"schemas\\n\"\n+      << \"using the --resolve/-r option.\\n\";\n   sourcemeta::core::for_editor(schema,\n                                sourcemeta::core::schema_official_walker,\n                                custom_resolver, dialect);\n }\n",
+      "filediff": {
+        "file": "/root/repos/jsonschema/src/command_bundle.cc",
+        "patch": "Index: /root/repos/jsonschema/src/command_bundle.cc\n===================================================================\n--- /root/repos/jsonschema/src/command_bundle.cc\n+++ /root/repos/jsonschema/src/command_bundle.cc\n@@ -34,19 +34,20 @@\n                              sourcemeta::core::weakly_canonical(schema_path))\n                              .recompose());\n \n if (options.contains(\"without-id\")) {\n-  std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n-               \"the bundled schema.\\n\";\n-  std::cerr << \"The only legit use case of this advanced feature we know of \"\n-               \"is to workaround\\n\";\n-  std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n-               \"Studio Code.\\n\";\n-  std::cerr << \"Otherwise, this is not needed and may harm other use \"\n-               \"cases. For example,\\n\";\n-  std::cerr << \"you will be unable to reference the resulting schema from \"\n-               \"other schemas\\n\";\n-  std::cerr << \"using the --resolve/-r option.\\n\";\n+  LOG_WARNING()\n+      << \"You are opting in to remove schema identifiers in the bundled \"\n+         \"schema.\\n\"\n+      << \"The only legit use case of this advanced feature we know of is to \"\n+         \"workaround\\n\"\n+      << \"non-compliant JSON Schema implementations such as Visual Studio \"\n+         \"Code.\\n\"\n+      << \"Otherwise, this is not needed and may harm other use cases. For \"\n+         \"example,\\n\"\n+      << \"you will be unable to reference the resulting schema from other \"\n+         \"schemas\\n\"\n+      << \"using the --resolve/-r option.\\n\";\n   sourcemeta::core::for_editor(schema,\n                                sourcemeta::core::schema_official_walker,\n                                custom_resolver, dialect);\n }\n",
+        "additions": 12,
+        "deletions": 11
+      }
+    },
+    "title": "src/command_bundle.cc",
+    "time": {
+      "start": 1790719664258,
+      "end": 1790719664281
+    }
+  }
+}

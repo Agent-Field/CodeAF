@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46e20f001Jg6SGY3KJ0AcxY",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef46db1c001DXSEBDE3sUkfOC",
+  "type": "tool",
+  "callID": "call_01_n7pcupg3ufs852oxqoch1fcb",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && grep -rn \"command\" internal/pipe/*.go | grep -i \"shell.Run\" | head -20"
+    },
+    "output": "",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && grep -rn \"command\" internal/pip",
+    "time": {
+      "start": 1790720795154,
+      "end": 1790720795165
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef352e4f001Rl5vUfAjOqGner",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef3525f9001MXXbZLuiZTH7mY",
+  "type": "reasoning",
+  "text": "Now let me look at each warning site in detail.\n\n1. `src/command_lint.cc:32` - multi-line? Let's see.\n2. `src/command_bundle.cc:38-48`\n3. `src/command_validate.cc:57`, 288\n4. `src/resolver.h:99-102`\n\nLet me read those regions.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me look at each warning site in detail.\n\n1. `src/command_lint.cc:32` - multi-line? Let's see.\n2. `src/command_bundle.cc:38-48`\n3. `src/command_validate.cc:57`, 288\n4. `src/resolver.h:99-102`\n\nLet me read those regions.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719635023,
+    "end": 1790719635041
+  }
+}

@@ -1,0 +1,32 @@
+[scanner] flagged=True hard=4 soft=10
+{
+  "flagged": true,
+  "reasons": [
+    "transcript: patch/commit shape in delegate-actions.jsonl:14: {\"at\":\"2026-09-29T22:07:20.797036951Z\",\"kind\":\"step\",\"tool\":\"bash\",\"step\":\"explore\",\"command\":\"bash: cd /root/repos/pre-commit \\u0026\\u0026 sed -n '1,80p' pre_c",
+    "transcript: patch/commit shape in records.jsonl:15: {\"command\":\"bash: cd /root/repos/pre-commit \\u0026\\u0026 sed -n '1,80p' pre_commit/git.py\",\"exit\":0,\"observation\":\"from __future__ import annotations\\n\\nimport ",
+    "transcript: upstream slug in delegate-actions.jsonl:14: {\"at\":\"2026-09-29T22:07:20.797036951Z\",\"kind\":\"step\",\"tool\":\"bash\",\"step\":\"explore\",\"command\":\"bash: cd /root/repos/pre-commit \\u0026\\u0026 sed -n '1,80p' pre_c",
+    "transcript: upstream slug in records.jsonl:15: {\"command\":\"bash: cd /root/repos/pre-commit \\u0026\\u0026 sed -n '1,80p' pre_commit/git.py\",\"exit\":0,\"observation\":\"from __future__ import annotations\\n\\nimport "
+  ],
+  "soft": [
+    "proxy: registry host files.pythonhosted.org",
+    "proxy: registry host pypi.org",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:27",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:38",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:39",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:8",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:28",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:39",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:40",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:9"
+  ],
+  "counts": {
+    "proxy_hosts": 4,
+    "proxy_lines": 11,
+    "model_plane_hosts": [
+      "codeaf.agentfield.ai",
+      "models.dev"
+    ],
+    "model_plane_seen": true,
+    "upstream_slug": "pre-commit/pre-commit"
+  }
+}

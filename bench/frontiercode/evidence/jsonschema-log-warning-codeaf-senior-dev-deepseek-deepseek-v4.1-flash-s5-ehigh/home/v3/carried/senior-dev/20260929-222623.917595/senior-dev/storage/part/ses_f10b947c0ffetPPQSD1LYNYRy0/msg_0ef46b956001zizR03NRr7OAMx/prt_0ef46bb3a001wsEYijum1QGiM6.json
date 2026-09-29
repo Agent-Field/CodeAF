@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46bb3a001wsEYijum1QGiM6",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46b956001zizR03NRr7OAMx",
+  "type": "reasoning",
+  "text": "Let me start by exploring the repository.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me start by exploring the repository.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720785210,
+    "end": 1790720785227
+  }
+}

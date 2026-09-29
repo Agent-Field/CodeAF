@@ -1,0 +1,25 @@
+{
+  "id": "prt_0ef3b2046001Tw1hYCYNzrkYMX",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3b1b09001aXjdwtgOw1k1kP",
+  "type": "tool",
+  "callID": "call_01_g4jxdp5g20cyueem1u7ebvgc",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell_test.go"
+    },
+    "output": "<path>/root/repos/goreleaser/internal/shell/shell_test.go</path>\n<type>file</type>\n<content>\n1: package shell_test\n2: \n3: import (\n4: \t\"os/exec\"\n5: \t\"path/filepath\"\n6: \t\"strings\"\n7: \t\"testing\"\n8: \n9: \t\"github.com/goreleaser/goreleaser/v2/internal/shell\"\n10: \t\"github.com/goreleaser/goreleaser/v2/internal/testctx\"\n11: \t\"github.com/goreleaser/goreleaser/v2/internal/testlib\"\n12: \t\"github.com/stretchr/testify/require\"\n13: )\n14: \n15: func TestRunCommand(t *testing.T) {\n16: \tt.Run(\"simple\", func(t *testing.T) {\n17: \t\trequire.NoError(t, shell.Run(\n18: \t\t\ttestctx.New(),\n19: \t\t\t\"\",\n20: \t\t\tstrings.Fields(testlib.Echo(\"oi\")),\n21: \t\t\t[]string{},\n22: \t\t\tfalse,\n23: \t\t))\n24: \t})\n25: \n26: \tt.Run(\"cmd failed\", func(t *testing.T) {\n27: \t\trequire.Error(t, shell.Run(\n28: \t\t\ttestctx.New(),\n29: \t\t\t\"\",\n30: \t\t\tstrings.Fields(testlib.Exit(1)),\n31: \t\t\t[]string{},\n32: \t\t\tfalse,\n33: \t\t))\n34: \t})\n35: \n36: \tt.Run(\"cmd with output\", func(t *testing.T) {\n37: \t\ttestlib.SkipIfWindows(t, \"what would be a similar behavior in windows?\")\n38: \t\terr := shell.Run(\n39: \t\t\ttestctx.New(),\n40: \t\t\t\".\",\n41: \t\t\t[]string{\"sh\", \"-c\", `echo something; exit 1`},\n42: \t\t\t[]string{},\n43: \t\t\ttrue,\n44: \t\t)\n45: \t\trequire.EqualError(\n46: \t\t\tt, err,\n47: \t\t\t`shell: 'sh -c echo something; exit 1': exit status 1: something`,\n48: \t\t)\n49: \t})\n50: \n51: \tt.Run(\"with env and dir\", func(t *testing.T) {\n52: \t\ttestlib.SkipIfWindows(t, \"what would be a similar behavior in windows?\")\n53: \t\tdir := t.TempDir()\n54: \t\ttouch, err := exec.LookPath(\"touch\")\n55: \t\trequire.NoError(t, err)\n56: \t\terr = shell.Run(\n57: \t\t\ttestctx.New(),\n58: \t\t\tdir,\n59: \t\t\t[]string{\"sh\", \"-c\", touch + \" $FOO\"},\n60: \t\t\t[]string{\"FOO=bar\"},\n61: \t\t\tfalse,\n62: \t\t)\n63: \t\trequire.NoError(t, err)\n64: \t\trequire.FileExists(t, filepath.Join(dir, \"bar\"))\n65: \t})\n66: }\n\n(End of file - total 66 lines)\n</content>",
+    "metadata": {
+      "preview": "package shell_test\n\nimport (\n\t\"os/exec\"\n\t\"path/filepath\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/goreleaser/goreleaser/v2/internal/shell\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/testctx\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/testlib\"\n\t\"github.com/stretchr/testify/require\"\n)\n\nfunc TestRunCommand(t *testing.T) {\n\tt.Run(\"simple\", func(t *testing.T) {\n\t\trequire.NoError(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\tstrings.Fields(testlib.Echo(\"oi\")),",
+      "truncated": false,
+      "loaded": []
+    },
+    "title": "internal/shell/shell_test.go",
+    "time": {
+      "start": 1790720024650,
+      "end": 1790720024657
+    }
+  }
+}

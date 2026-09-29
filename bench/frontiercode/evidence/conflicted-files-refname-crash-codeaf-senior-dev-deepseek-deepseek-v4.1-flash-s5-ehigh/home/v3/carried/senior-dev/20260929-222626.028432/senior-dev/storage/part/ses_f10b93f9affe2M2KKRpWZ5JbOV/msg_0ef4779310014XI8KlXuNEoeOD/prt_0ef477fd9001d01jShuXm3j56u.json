@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef477fd9001d01jShuXm3j56u",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef4779310014XI8KlXuNEoeOD",
+  "type": "tool",
+  "callID": "call_00_rx4h63ikk8qtfaiv6c8ujy99",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "newString": "def test_get_conflicted_files_refname_collision(in_merge_conflict):",
+      "oldString": "od\ndef test_get_conflicted_files_refname_collision(in_merge_conflict):"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -233,9 +233,8 @@\n     ret = git.get_conflicted_files()\n     assert ret == {'conflict_file', 'интервью'}\n \n \n-od\n def test_get_conflicted_files_refname_collision(in_merge_conflict):\n     open('HEAD', 'a').close()\n     open('MERGE_HEAD', 'a').close()\n     cmd_output('git', 'add', '.')\n",
+      "filediff": {
+        "file": "/root/repos/pre-commit/tests/git_test.py",
+        "patch": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -233,9 +233,8 @@\n     ret = git.get_conflicted_files()\n     assert ret == {'conflict_file', 'интервью'}\n \n \n-od\n def test_get_conflicted_files_refname_collision(in_merge_conflict):\n     open('HEAD', 'a').close()\n     open('MERGE_HEAD', 'a').close()\n     cmd_output('git', 'add', '.')\n",
+        "additions": 0,
+        "deletions": 1
+      }
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790720835549,
+      "end": 1790720835689
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

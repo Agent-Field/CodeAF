@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef38f3a9001IXlkRTI41LDfGI",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef38f09f0018Kqb1IEJ0Wy5ut",
+  "type": "reasoning",
+  "text": "Binary is at build/dist/bin/jsonschema or build/src/jsonschema. Let me find it. Not critical; tests passed. But let me manually verify multi-line output.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Binary is at build/dist/bin/jsonschema or build/src/jsonschema. Let me find it. Not critical; tests passed. But let me manually verify multi-line output.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719882153,
+    "end": 1790719882165
+  }
+}

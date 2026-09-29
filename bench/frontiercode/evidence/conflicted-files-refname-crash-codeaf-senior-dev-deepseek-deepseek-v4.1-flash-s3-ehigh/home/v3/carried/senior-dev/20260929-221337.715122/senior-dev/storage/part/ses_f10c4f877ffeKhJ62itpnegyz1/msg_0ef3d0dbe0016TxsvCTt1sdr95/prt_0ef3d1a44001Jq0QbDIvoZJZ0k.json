@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef3d1a44001Jq0QbDIvoZJZ0k",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3d0dbe0016TxsvCTt1sdr95",
+  "type": "text",
+  "text": "Fixed the latent mid-merge crash in `pre_commit/git.py`.\n\n**Change**\n- In `get_conflicted_files()`, the merge-diff command was `git diff --name-only --no-ext-diff -z -m <tree> HEAD MERGE_HEAD`. Those refnames were passed bare, so a tracked file named `HEAD` or `MERGE_HEAD` made git report `fatal: ambiguous argument ... both revision and filename`.\n- Added an explicit `--` after the refnames: `'-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--'`. This separates the revisions from the (empty) pathspec list so the refs are unambiguously interpreted as revisions. It does not swallow errors, does not produce an empty-but-successful result, and preserves the exact full set returned by the union of `MERGE_MSG` conflicts and merge-diff filenames.\n\n**Test**\n- Added a parametrized regression test in `tests/git_test.py`, `test_get_conflicted_files_tracked_file_named_like_ref[HEAD|MERGE_HEAD]`, using the existing `in_merge_conflict` fixture and `resolve_conflict()` style; it asserts the result is `{'conflict_file', refname}`.\n\n**Evidence**\n- `python -m pytest tests/git_test.py` → **34 passed**, exit 0.\n- Reverting only `pre_commit/git.py` to the starting commit makes the two new cases fail with the original returncode-128 ambiguity error, confirming the test catches the bug.\n- `tests/commands/run_test.py -k conflict` → 4 passed; diff is limited to the two files (+3/−1 in git.py, +16 in git_test.py).",
+  "time": {
+    "start": 1790720154180,
+    "end": 1790720154184
+  }
+}

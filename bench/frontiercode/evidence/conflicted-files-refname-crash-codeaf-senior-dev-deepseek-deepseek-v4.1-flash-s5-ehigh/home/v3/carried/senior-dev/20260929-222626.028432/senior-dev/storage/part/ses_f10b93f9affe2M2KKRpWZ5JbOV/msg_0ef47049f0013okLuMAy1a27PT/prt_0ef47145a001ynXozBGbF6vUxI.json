@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef47145a001ynXozBGbF6vUxI",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef47049f0013okLuMAy1a27PT",
+  "type": "tool",
+  "callID": "call_00_33en1vqzc1zrkhpqy5wp57o0",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/ambig && git add conflict_file && TH=$(git write-tree) && echo \"tree=$TH\"; echo \"=== no separator ===\"; git diff --name-only --no-ext-diff -m \"$TH\" HEAD MERGE_HEAD; echo \"exit=$?\"; echo \"=== with trailing -- ===\"; git diff --name-only --no-ext-diff -m \"$TH\" HEAD MERGE_HEAD --; echo \"exit=$?\"; echo \"=== ls-tree ===\"; git ls-tree --name-only \"$TH\""
+    },
+    "output": "tree=fa4842cf11b9f4bc695d6cb4919e794b0b0fe140\n=== no separator ===\nfatal: ambiguous argument 'HEAD': both revision and filename\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nexit=128\n=== with trailing -- ===\nHEAD\nconflict_file\nexit=0\n=== ls-tree ===\nHEAD\na.txt\nconflict_file\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/ambig && git add conflict_file && TH=$(git write-tre",
+    "time": {
+      "start": 1790720808030,
+      "end": 1790720808054
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Interesting! But note: `git write-tree` fails because of the unmerged conflict_file. In the real code `tree_hash = cmd_output('git', 'write-tree')[1].strip()`. Wait, but `write-tree` fails on unmerged index... Hmm, in the real test `in_merge_conflict`, they call `resolve_conflict()` first (in `test_get_conflicted_files`), which `git add conflict_file`. So the tree can be written.\n\nIn my reproduction, HEAD file is tracked AND there's an unmerged conflict_file. Let me resolve the conflict first to be realistic.\n\nActually wait — in the test `test_get_conflicted_files`, `resolve_conflict()` is called before, which resolves conflict_file. So the index has no unmerged entries, and `write-tree` works.\n\nBut for the refname-collision test, the collision file would be added ... hmm. Let's think about the scenario. A tracked file named `HEAD` exists in the worktree. For `write-tree` to work, the index must be fully merged (no unmerged entries). But if a tracked file named HEAD exists, how did it get added during a merge? It could have existed from before the merge, on both sides or one side, and not be conflicted. So it's in the index cleanly.\n\nActually the key point: for the crash to happen, `write-tree` must succeed (no unmerged paths) OR at least the diff runs. Wait, if `write-tree` fails, cmd_output raises before diff. But the crash described is the diff ambiguous error. So we need a scenario where write-tree succeeds — meaning all conflicts resolved — but a tracked file named HEAD exists.\n\nLet me set that up: resolve conflict_file (git add), and have HEAD tracked (added earlier and not conflicted). Let me redo.\n\nActually in my repro I have HEAD added but there's a resolve. Let me do `git add conflict_file` then write-tree, then diff.\n\nBut wait: I `git add HEAD` after the merge started. That works. Let's resolve conflict_file too.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

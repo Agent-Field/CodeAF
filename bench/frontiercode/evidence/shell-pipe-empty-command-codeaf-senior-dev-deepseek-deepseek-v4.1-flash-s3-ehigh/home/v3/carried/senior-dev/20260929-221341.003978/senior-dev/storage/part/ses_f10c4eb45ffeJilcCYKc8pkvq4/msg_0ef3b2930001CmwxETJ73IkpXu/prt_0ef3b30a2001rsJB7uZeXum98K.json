@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b30a2001rsJB7uZeXum98K",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3b2930001CmwxETJ73IkpXu",
+  "type": "reasoning",
+  "text": "Let me check the before pipe to see conventions. Also check if there's logging convention around empty entries. Let's look at before.go and build.go.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me check the before pipe to see conventions. Also check if there's logging convention around empty entries. Let's look at before.go and build.go.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720028834,
+    "end": 1790720028854
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef2c45ca001ZfXTItPog4iOEC",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef2c419c001Ja1W6qD9COMZMS",
+  "type": "text",
+  "text": "Done. The run is submitted and the tree is frozen.\n\n## What changed\n\n**`internal/shell/shell.go`** — added a length guard at the top of `Run`, before the first index of the command slice:\n\n```go\nif len(command) == 0 {\n    log.Warn(\"skipping empty shell command\")\n    return nil\n}\n```\n\nIt follows the file's existing `log` convention (`github.com/caarlos0/log`, already imported) and prevents the panic on `command[0]`. Everything else — the `exec.CommandContext` call, env wiring, output writers, dir handling, and the error path for failing commands — is untouched.\n\n**`internal/shell/shell_test.go`** — added an `empty command` subtest to the existing `TestRunCommand` table-style subtests using `testctx.New()` and `require`, asserting `NoError`.\n\n## Evidence\n\n- Pinned command `go build ./... && go test ./internal/shell/` exited `0`.\n- Output: `ok github.com/goreleaser/goreleaser/v2/internal/shell 0.013s`, with all subtests passing (simple, empty command, cmd failed, cmd with output, with env and dir).\n- `gofmt -l internal/shell/` reported no files.\n- `golangci-lint` is not installed in this environment, but the change adds no new imports and matches existing logging style.",
+  "time": {
+    "start": 1790719051210,
+    "end": 1790719051214
+  }
+}

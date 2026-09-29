@@ -1,0 +1,14 @@
+{
+  "id": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "slug": "0ef29ba55001C65WDsejwdGznt",
+  "projectID": "8b63e6555be45234c4c2a69576ca2ddab705302c",
+  "directory": "/root/repos/goreleaser",
+  "path": ".",
+  "title": "# Skip empty shell-pipe commands instead of panicking\n\n## Ta",
+  "agent": "coder",
+  "version": "c24796937 built 2026-09-29 19:13",
+  "time": {
+    "created": 1790718884437,
+    "updated": 1790718884598
+  }
+}

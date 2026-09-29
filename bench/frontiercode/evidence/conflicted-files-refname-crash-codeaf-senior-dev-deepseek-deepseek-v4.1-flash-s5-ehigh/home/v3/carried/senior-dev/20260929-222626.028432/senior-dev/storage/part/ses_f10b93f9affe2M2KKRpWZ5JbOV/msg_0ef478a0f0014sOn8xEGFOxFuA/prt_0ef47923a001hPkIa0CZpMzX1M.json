@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef47923a001hPkIa0CZpMzX1M",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef478a0f0014sOn8xEGFOxFuA",
+  "type": "tool",
+  "callID": "call_00_xbohr2o4ge9l9woauca7oznv",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/pre_commit/git.py",
+      "newString": "    merge_diff_filenames = zsplit(\n        cmd_output(\n            'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n            '-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\n        )[1],\n    )",
+      "oldString": "    merge_diff_filenames = zsplit(\n        cmd_output(\n            'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n        )[1],\n    )"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/pre_commit/git.py\n===================================================================\n--- /root/repos/pre-commit/pre_commit/git.py\n+++ /root/repos/pre-commit/pre_commit/git.py\n@@ -125,9 +125,9 @@\n tree_hash = cmd_output('git', 'write-tree')[1].strip()\n merge_diff_filenames = zsplit(\n     cmd_output(\n         'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-        '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+        '-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\n     )[1],\n )\n return set(merge_conflict_filenames) | set(merge_diff_filenames)\n \n",
+      "filediff": {
+        "file": "/root/repos/pre-commit/pre_commit/git.py",
+        "patch": "Index: /root/repos/pre-commit/pre_commit/git.py\n===================================================================\n--- /root/repos/pre-commit/pre_commit/git.py\n+++ /root/repos/pre-commit/pre_commit/git.py\n@@ -125,9 +125,9 @@\n tree_hash = cmd_output('git', 'write-tree')[1].strip()\n merge_diff_filenames = zsplit(\n     cmd_output(\n         'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-        '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+        '-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\n     )[1],\n )\n return set(merge_conflict_filenames) | set(merge_diff_filenames)\n \n",
+        "additions": 1,
+        "deletions": 1
+      }
+    },
+    "title": "pre_commit/git.py",
+    "time": {
+      "start": 1790720840255,
+      "end": 1790720840568
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Good, reproduced. Now apply the fix: append `--` to the git diff command.\n\nLet me look at the exact code and edit.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

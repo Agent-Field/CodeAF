@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef41510c00179JiiBBl6SqEa4",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef41468e001O3pA66ghkDxEMU",
+  "type": "reasoning",
+  "text": "My substitution broke. Let me redo carefully with actual tree variable in each.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "My substitution broke. Let me redo carefully with actual tree variable in each.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720430348,
+    "end": 1790720430359
+  }
+}

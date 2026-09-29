@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b48c5001KM41FpeoaJT9vk",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3b407a001P1MuRhrDiMKf38",
+  "type": "reasoning",
+  "text": "Now build and test. Also gofmt. Let me create the checklist and pinned.txt first, then run.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now build and test. Also gofmt. Let me create the checklist and pinned.txt first, then run.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720035013,
+    "end": 1790720035030
+  }
+}

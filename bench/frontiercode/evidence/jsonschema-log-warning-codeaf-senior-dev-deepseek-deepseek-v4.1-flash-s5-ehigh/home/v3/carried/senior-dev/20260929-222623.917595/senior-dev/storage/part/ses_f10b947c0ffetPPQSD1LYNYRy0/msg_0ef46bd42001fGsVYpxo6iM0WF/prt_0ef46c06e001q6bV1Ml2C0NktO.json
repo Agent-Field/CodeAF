@@ -1,0 +1,27 @@
+{
+  "id": "prt_0ef46c06e001q6bV1Ml2C0NktO",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46bd42001fGsVYpxo6iM0WF",
+  "type": "tool",
+  "callID": "call_01a0ef46bef9738e87974967",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/resolver.h",
+      "offset": 85,
+      "limit": 30
+    },
+    "output": "<path>/root/repos/jsonschema/src/resolver.h</path>\n<type>file</type>\n<content>\n85:           throw FileError<sourcemeta::core::SchemaError>(\n86:               entry.first,\n87:               \"The file you provided does not represent a valid JSON Schema\");\n88:         }\n89: \n90:         const auto result =\n91:             this->add(entry.second, default_dialect,\n92:                       sourcemeta::core::URI::from_path(entry.first).recompose(),\n93:                       [&options](const auto &identifier) {\n94:                         LOG_VERBOSE(options)\n95:                             << \"Importing schema into the resolution context: \"\n96:                             << identifier << \"\\n\";\n97:                       });\n98:         if (!result) {\n99:           std::cerr\n100:               << \"warning: No schema resources were imported from this file\\n\";\n101:           std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n102:           std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n103:         }\n104:       }\n105:     }\n106:   }\n107: \n108:   auto add(const sourcemeta::core::JSON &schema,\n109:            const std::optional<std::string> &default_dialect = std::nullopt,\n110:            const std::optional<std::string> &default_id = std::nullopt,\n111:            const std::function<void(const sourcemeta::core::JSON::String &)>\n112:                &callback = nullptr) -> bool {\n113:     assert(sourcemeta::core::is_schema(schema));\n114: \n\n(Showing lines 85-114 of 234. Use offset=115 to continue.)\n</content>",
+    "metadata": {
+      "preview": "          throw FileError<sourcemeta::core::SchemaError>(\n              entry.first,\n              \"The file you provided does not represent a valid JSON Schema\");\n        }\n\n        const auto result =\n            this->add(entry.second, default_dialect,\n                      sourcemeta::core::URI::from_path(entry.first).recompose(),\n                      [&options](const auto &identifier) {\n                        LOG_VERBOSE(options)\n                            << \"Importing schema into the resolution context: \"\n                            << identifier << \"\\n\";\n                      });\n        if (!result) {\n          std::cerr\n              << \"warning: No schema resources were imported from this file\\n\";\n          std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n          std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n        }\n      }",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "src/resolver.h",
+    "time": {
+      "start": 1790720786545,
+      "end": 1790720786559
+    }
+  }
+}

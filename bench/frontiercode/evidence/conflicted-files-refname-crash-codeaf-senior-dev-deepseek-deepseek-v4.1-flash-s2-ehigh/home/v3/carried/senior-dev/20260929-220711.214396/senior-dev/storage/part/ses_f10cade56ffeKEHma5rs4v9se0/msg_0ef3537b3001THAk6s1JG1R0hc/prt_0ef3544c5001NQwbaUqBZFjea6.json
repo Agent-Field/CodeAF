@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3544c5001NQwbaUqBZFjea6",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef3537b3001THAk6s1JG1R0hc",
+  "type": "tool",
+  "callID": "call_01_6h9r8auxpqm452eape70hdge",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && sed -n '1,80p' pre_commit/git.py"
+    },
+    "output": "from __future__ import annotations\n\nimport logging\nimport os.path\nimport sys\nfrom collections.abc import Mapping\n\nfrom pre_commit.errors import FatalError\nfrom pre_commit.util import CalledProcessError\nfrom pre_commit.util import cmd_output\nfrom pre_commit.util import cmd_output_b\n\nlogger = logging.getLogger(__name__)\n\n# see #2046\nNO_FS_MONITOR = ('-c', 'core.useBuiltinFSMonitor=false')\n\n\ndef zsplit(s: str) -> list[str]:\n    s = s.strip('\\0')\n    if s:\n        return s.split('\\0')\n    else:\n        return []\n\n\ndef no_git_env(_env: Mapping[str, str] | None = None) -> dict[str, str]:\n    # Too many bugs dealing with environment variables and GIT:\n    # https://github.com/pre-commit/pre-commit/issues/300\n    # In git 2.6.3 (maybe others), git exports GIT_WORK_TREE while running\n    # pre-commit hooks\n    # In git 1.9.1 (maybe others), git exports GIT_DIR and GIT_INDEX_FILE\n    # while running pre-commit hooks in submodules.\n    # GIT_DIR: Causes git clone to clone wrong thing\n    # GIT_INDEX_FILE: Causes 'error invalid object ...' during commit\n    _env = _env if _env is not None else os.environ\n    return {\n        k: v for k, v in _env.items()\n        if not k.startswith('GIT_') or\n        k.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_')) or\n        k in {\n            'GIT_EXEC_PATH', 'GIT_SSH', 'GIT_SSH_COMMAND', 'GIT_SSL_CAINFO',\n            'GIT_SSL_NO_VERIFY', 'GIT_CONFIG_COUNT',\n            'GIT_HTTP_PROXY_AUTHMETHOD',\n            'GIT_ALLOW_PROTOCOL',\n            'GIT_ASKPASS',\n        }\n    }\n\n\ndef get_root() -> str:\n    # Git 2.25 introduced a change to \"rev-parse --show-toplevel\" that exposed\n    # underlying volumes for Windows drives mapped with SUBST.  We use\n    # \"rev-parse --show-cdup\" to get the appropriate path, but must perform\n    # an extra check to see if we are in the .git directory.\n    try:\n        root = os.path.abspath(\n            cmd_output('git', 'rev-parse', '--show-cdup')[1].strip(),\n        )\n        inside_git_dir = cmd_output(\n            'git', 'rev-parse', '--is-inside-git-dir',\n        )[1].strip()\n    except CalledProcessError:\n        raise FatalError(\n            'git failed. Is it installed, and are you in a Git repository '\n            'directory?',\n        )\n    if inside_git_dir != 'false':\n        raise FatalError(\n            'git toplevel unexpectedly empty! make sure you are not '\n            'inside the `.git` directory of your repository.',\n        )\n    return root\n\n\ndef get_git_dir(git_root: str = '.') -> str:\n    opt = '--git-dir'\n    _, out, _ = cmd_output('git', 'rev-parse', opt, cwd=git_root)\n    git_dir = out.strip()\n    if git_dir != opt:\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && sed -n '1,80p' pre_commit/git.p",
+    "time": {
+      "start": 1790719640777,
+      "end": 1790719640789
+    }
+  }
+}

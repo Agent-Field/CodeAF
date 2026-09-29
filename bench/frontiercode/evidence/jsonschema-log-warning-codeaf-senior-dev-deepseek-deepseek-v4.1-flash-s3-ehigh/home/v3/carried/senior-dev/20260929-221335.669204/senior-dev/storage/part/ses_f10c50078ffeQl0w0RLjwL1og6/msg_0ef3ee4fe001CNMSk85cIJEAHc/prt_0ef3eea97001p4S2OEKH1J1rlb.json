@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef3eea97001p4S2OEKH1J1rlb",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3ee4fe001CNMSk85cIJEAHc",
+  "type": "text",
+  "text": "Done.\n\n## What changed\n\n**`src/logger.h`** — added `LOG_WARNING()`, declared `inline auto LOG_WARNING() -> std::ostream &` next to `LOG_VERBOSE`. It always writes `\"warning: \"` to `std::cerr` and returns `std::cerr`, independent of `--verbose` or any option. Added `<iostream> // std::cerr` to the existing include block.\n\n**Warning sites converted to `LOG_WARNING() << <message>`:**\n- `src/command_lint.cc` — unknown-rule warning (was `LOG_VERBOSE`-gated)\n- `src/command_validate.cc` — invalid pre-compiled template warning, and the empty-JSONL warning (was `LOG_VERBOSE`-gated), so both now always print\n- `src/resolver.h` — multi-line \"No schema resources…\" warning merged into one `LOG_WARNING()` chain (one prefix, continuation lines follow it)\n- `src/command_bundle.cc` — six-line `--without-id` warning merged into one `LOG_WARNING()` chain; added `#include \"logger.h\"`\n\n**`test/validate/pass_jsonl_empty.sh`** — expected stderr now includes `warning: The JSONL file is empty`, since that warning is no longer suppressed by non-verbose (the file is already registered in `test/CMakeLists.txt`).\n\nNo source hand-spells `warning: ` anymore; the only occurrence in `src/` is inside `LOG_WARNING()`.\n\n## Evidence\n\n- `make configure compile` → exit 0 (clang-format and shellcheck targets clean, binary built/installed/packaged).\n- `ctest --test-dir build -R 'pass_jsonl_empty' --output-on-failure` → 2/2 passed.\n- Full `ctest --test-dir build --output-on-failure --parallel 4` → 301/301 passed.",
+  "time": {
+    "start": 1790720273047,
+    "end": 1790720273051
+  }
+}

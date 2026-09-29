@@ -1,0 +1,120 @@
+{
+  "criteria": {
+    "resolver-multiline-converted": {
+      "status": "host",
+      "note": "answered on the host"
+    },
+    "bundle-multiline-converted": {
+      "status": "host",
+      "note": "answered on the host"
+    },
+    "helper-added": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "lint-site-converted": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "validate-precompiled-site-converted": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "validate-jsonl-site-converted": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "format-clean": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "clean-build": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "reference-tests-pass": {
+      "status": "pass",
+      "note": "overlay already in the tree (reverse-applies cleanly); tests exit 0",
+      "exit_code": 0
+    },
+    "reverse-tests-fail": {
+      "status": "pass",
+      "note": "tests exit 8 after revert (fail expected)",
+      "exit_code": 8
+    },
+    "scope-focused": {
+      "status": "pass",
+      "note": "31+/22- in 6 files",
+      "stats": {
+        "files": [
+          "src/command_bundle.cc",
+          "src/command_lint.cc",
+          "src/command_validate.cc",
+          "src/logger.h",
+          "src/resolver.h",
+          "test/validate/pass_jsonl_empty.sh"
+        ],
+        "added": 31,
+        "removed": 22,
+        "binary": false
+      }
+    },
+    "adapted-tests-pass": {
+      "status": "host",
+      "note": "answered on the host"
+    }
+  },
+  "judge_input": {
+    "base": "fc0dd94d716e87a0373091e9946b1011d4ac682c",
+    "criteria": {
+      "resolver-multiline-converted": {
+        "question": "The change was meant to convert EVERY statement of the multi-line\nwarning in this file to the new logging helper, so that no statement writes to\nstd::cerr directly any more. A conversion that rewrote only the first statement\n(or only the first line) and left the continuation statements on std::cerr is\nNOT fully converted, and is exactly the failure this criterion exists to catch.\nRead the diff hunk for this file. Does it convert every statement of the\nmulti-line warning block \u2014 every former std::cerr line \u2014 to the helper? The\nmechanical excerpt underneath counts the std::cerr statements left in the file.\nAnswer pass only if none remain in that block.",
+        "paths": [
+          "src/resolver.h"
+        ],
+        "hunks": {
+          "src/resolver.h": "diff --git a/src/resolver.h b/src/resolver.h\nindex 1d1a4d2..5d537cd 100644\n--- a/src/resolver.h\n+++ b/src/resolver.h\n@@ -96,10 +96,9 @@ public:\n                             << identifier << \"\\n\";\n                       });\n         if (!result) {\n-          std::cerr\n-              << \"warning: No schema resources were imported from this file\\n\";\n-          std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n-          std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n+          LOG_WARNING() << \"No schema resources were imported from this file\\n\"\n+                        << \"  at \" << entry.first.string() << \"\\n\"\n+                        << \"Are you sure this schema sets any identifiers?\\n\";\n         }\n       }\n     }\n"
+        },
+        "mechanical": {
+          "src/resolver.h": {
+            "exists": true,
+            "std_cerr_statements": 1,
+            "std_cerr_lines": [
+              "25: #include <iostream>    // std::cerr"
+            ],
+            "log_warning_calls": 1
+          }
+        }
+      },
+      "bundle-multiline-converted": {
+        "question": "The change was meant to convert EVERY statement of the multi-line\nwarning in this file to the new logging helper, so that no statement writes to\nstd::cerr directly any more. A conversion that rewrote only the first statement\n(or only the first line) and left the continuation statements on std::cerr is\nNOT fully converted, and is exactly the failure this criterion exists to catch.\nRead the diff hunk for this file. Does it convert every statement of the\nmulti-line warning block \u2014 every former std::cerr line \u2014 to the helper? The\nmechanical excerpt underneath counts the std::cerr statements left in the file.\nAnswer pass only if none remain in that block.",
+        "paths": [
+          "src/command_bundle.cc"
+        ],
+        "hunks": {
+          "src/command_bundle.cc": "diff --git a/src/command_bundle.cc b/src/command_bundle.cc\nindex be961cd..826b8a9 100644\n--- a/src/command_bundle.cc\n+++ b/src/command_bundle.cc\n@@ -9,6 +9,7 @@\n #include \"command.h\"\n #include \"configuration.h\"\n #include \"error.h\"\n+#include \"logger.h\"\n #include \"resolver.h\"\n #include \"utils.h\"\n \n@@ -35,17 +36,18 @@ auto sourcemeta::jsonschema::bundle(const sourcemeta::core::Options &options)\n                                .recompose());\n \n   if (options.contains(\"without-id\")) {\n-    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n-                 \"the bundled schema.\\n\";\n-    std::cerr << \"The only legit use case of this advanced feature we know of \"\n-                 \"is to workaround\\n\";\n-    std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n-                 \"Studio Code.\\n\";\n-    std::cerr << \"Otherwise, this is not needed and may harm other use \"\n-                 \"cases. For example,\\n\";\n-    std::cerr << \"you will be unable to reference the resulting schema from \"\n-                 \"other schemas\\n\";\n-    std::cerr << \"using the --resolve/-r option.\\n\";\n+    LOG_WARNING()\n+        << \"You are opting in to remove schema identifiers in the bundled \"\n+           \"schema.\\n\"\n+        << \"The only legit use case of this advanced feature we know of is \"\n+           \"to workaround\\n\"\n+        << \"non-compliant JSON Schema implementations such as Visual Studio \"\n+           \"Code.\\n\"\n+        << \"Otherwise, this is not needed and may harm other use cases. For \"\n+           \"example,\\n\"\n+        << \"you will be unable to reference the resulting schema from other \"\n+           \"schemas\\n\"\n+        << \"using the --resolve/-r option.\\n\";\n     sourcemeta::core::for_editor(schema,\n                                  sourcemeta::core::schema_official_walker,\n                                  custom_resolver, dialect);\n"
+        },
+        "mechanical": {
+          "src/command_bundle.cc": {
+            "exists": true,
+            "std_cerr_statements": 0,
+            "std_cerr_lines": [],
+            "log_warning_calls": 1
+          }
+        }
+      }
+    },
+    "test_files": {
+      "test/validate/pass_jsonl_empty.sh": "#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"properties\": {\n    \"foo\": {\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ntouch \"$TMP/instance.jsonl\"\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" 2> \"$TMP/output.txt\" 1>&2\n\ncat << EOF > \"$TMP/expected.txt\"\nEOF\n\ndiff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n"
+    },
+    "overlay": "diff --git a/test/validate/pass_jsonl_empty.sh b/test/validate/pass_jsonl_empty.sh\nindex 15526a96..9f8dbad4 100755\n--- a/test/validate/pass_jsonl_empty.sh\n+++ b/test/validate/pass_jsonl_empty.sh\n@@ -23,6 +23,7 @@ touch \"$TMP/instance.jsonl\"\n \"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" 2> \"$TMP/output.txt\" 1>&2\n \n cat << EOF > \"$TMP/expected.txt\"\n+warning: The JSONL file is empty\n EOF\n \n diff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n"
+  },
+  "apply_ok": true,
+  "apply_note": ""
+}

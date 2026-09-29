@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef49bf32001rfsnsLN9HDF7ua",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef49b656001EmXLyi9ERCmT64",
+  "type": "tool",
+  "callID": "call_00_p6w9ewkil5kd4tuizdqnms7v",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Added a length guard at the top of shell.Run so an empty pipe command is skipped returning nil instead of panicking, with a regression subtest; all other behavior untouched.",
+      "evidence": "Pinned command `go test ./internal/shell/` -> ok github.com/goreleaser/goreleaser/v2/internal/shell, exit 0. Verbose run showed all 5 subtests PASS including the new TestRunCommand/empty_command; pre-existing cmd_failed still returns an error. `go build ./...` exit 0. `gofmt -l internal/shell/` produced no output and `go vet ./internal/shell/` passed.",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 962 bytes across 2 file(s), tree ee04293d5a66\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790720982837,
+      "end": 1790720982946
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

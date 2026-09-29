@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef496fca001fh7UybLwww73Nn",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef49699b001FvqQMNOLr3ScTM",
+  "type": "reasoning",
+  "text": "golangci-lint not installed. That's fine; gofmt clean, vet ok. Let me check the diff.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "golangci-lint not installed. That's fine; gofmt clean, vet ok. Let me check the diff.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720962506,
+    "end": 1790720962517
+  }
+}

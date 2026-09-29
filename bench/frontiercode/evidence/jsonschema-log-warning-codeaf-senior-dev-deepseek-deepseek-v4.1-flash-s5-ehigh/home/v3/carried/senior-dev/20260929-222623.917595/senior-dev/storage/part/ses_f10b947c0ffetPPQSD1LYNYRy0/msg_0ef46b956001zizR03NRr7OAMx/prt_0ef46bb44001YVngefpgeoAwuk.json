@@ -1,0 +1,25 @@
+{
+  "id": "prt_0ef46bb44001YVngefpgeoAwuk",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46b956001zizR03NRr7OAMx",
+  "type": "tool",
+  "callID": "call_01a0ef46babd70379a0c633b",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/logger.h"
+    },
+    "output": "<path>/root/repos/jsonschema/src/logger.h</path>\n<type>file</type>\n<content>\n1: #ifndef SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n2: #define SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n3: \n4: #include <sourcemeta/core/options.h>\n5: \n6: #include <fstream> // std::ofstream\n7: #include <ostream> // std::ostream\n8: \n9: namespace sourcemeta::jsonschema {\n10: \n11: inline auto LOG_VERBOSE(const sourcemeta::core::Options &options)\n12:     -> std::ostream & {\n13:   if (options.contains(\"verbose\")) {\n14:     return std::cerr;\n15:   }\n16: \n17:   static std::ofstream null_stream;\n18:   return null_stream;\n19: }\n20: \n21: } // namespace sourcemeta::jsonschema\n22: \n23: #endif\n\n(End of file - total 23 lines)\n</content>",
+    "metadata": {
+      "preview": "#ifndef SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n#define SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n\n#include <sourcemeta/core/options.h>\n\n#include <fstream> // std::ofstream\n#include <ostream> // std::ostream\n\nnamespace sourcemeta::jsonschema {\n\ninline auto LOG_VERBOSE(const sourcemeta::core::Options &options)\n    -> std::ostream & {\n  if (options.contains(\"verbose\")) {\n    return std::cerr;\n  }\n\n  static std::ofstream null_stream;\n  return null_stream;\n}\n",
+      "truncated": false,
+      "loaded": []
+    },
+    "title": "src/logger.h",
+    "time": {
+      "start": 1790720785223,
+      "end": 1790720785238
+    }
+  }
+}

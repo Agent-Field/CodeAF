@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef29ced5001vFveu2bxjzpQkP",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29cc8f001phRQHTJrLVN0lf",
+  "type": "tool",
+  "callID": "call_01a0ef29cde975bebe7a961c",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell_test.go",
+      "newString": "\tt.Run(\"cmd failed\", func(t *testing.T) {",
+      "oldString": "\tt.Run(\"cmd failed\", func(t *testing.T) {\n"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,10 +22,9 @@\n \t\tfalse,\n \t))\n })\n \n-t.Run(\"cmd failed\", func(t *testing.T) {\n-\trequire.Error(t, shell.Run(\n+t.Run(\"cmd failed\", func(t *testing.T) {\t\trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n \t\tstrings.Fields(testlib.Exit(1)),\n \t\t[]string{},\n",
+      "filediff": {
+        "file": "/root/repos/goreleaser/internal/shell/shell_test.go",
+        "patch": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,10 +22,9 @@\n \t\tfalse,\n \t))\n })\n \n-t.Run(\"cmd failed\", func(t *testing.T) {\n-\trequire.Error(t, shell.Run(\n+t.Run(\"cmd failed\", func(t *testing.T) {\t\trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n \t\tstrings.Fields(testlib.Exit(1)),\n \t\t[]string{},\n",
+        "additions": 1,
+        "deletions": 2
+      }
+    },
+    "title": "internal/shell/shell_test.go",
+    "time": {
+      "start": 1790718889689,
+      "end": 1790718889733
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2a05bc001D2DUOPvdxNedrB",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29ff0f001n1iGq8JzxQ1YBg",
+  "type": "tool",
+  "callID": "call_00_s917516109n4sa9is9ul3qyw",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/ambig && echo resolved > conflict_file && git add conflict_file && tree=$(git write-tree) && echo \"tree=$tree\" && echo \"--- original command ---\" && git diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD; echo \"exit: $?\""
+    },
+    "output": "tree=9d9713386beb87617eaae8a9e416f6005bc87633\n--- original command ---\nfatal: ambiguous argument 'HEAD': both revision and filename\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nexit: 128\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/ambig && echo resolved > conflict_file && git add co",
+    "time": {
+      "start": 1790718903743,
+      "end": 1790718903764
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now resolve conflict, get tree_hash.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef43d27e001SsFf8s78VysX66",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef43c903001nKxiBA7nyOMO1w",
+  "type": "tool",
+  "callID": "call_00_5qp2436hm6eb4hz27u8bnblo",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Added a length guard at the top of shell.Run so an empty pipe command is logged and skipped instead of panicking, plus a regression subtest, with all other behaviour untouched.",
+      "evidence": "Pinned command `go test ./internal/shell/` exits 0 (\"ok github.com/goreleaser/goreleaser/v2/internal/shell\"). Verbose run shows 5/5 subtests passing including new \"empty_command\". `go build ./...` exits 0. `go vet ./internal/shell/` and `gofmt -l internal/shell/` are clean. Diff is +5 lines in shell.go (guard: len(command)==0 -> log.Warn + return nil) and +10 lines test in shell_test.go; no other files touched.",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 1056 bytes across 2 file(s), tree ed8227d6abc8\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790720594562,
+      "end": 1790720594678
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Everything is good. Now submit. Evidence: `go build ./...` succeeded, `go test ./internal/shell/` ok, subtests 5 passed including empty_command, gofmt clean, go vet clean.\n\nThe checklist file exists with items ticked. Let me submit.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

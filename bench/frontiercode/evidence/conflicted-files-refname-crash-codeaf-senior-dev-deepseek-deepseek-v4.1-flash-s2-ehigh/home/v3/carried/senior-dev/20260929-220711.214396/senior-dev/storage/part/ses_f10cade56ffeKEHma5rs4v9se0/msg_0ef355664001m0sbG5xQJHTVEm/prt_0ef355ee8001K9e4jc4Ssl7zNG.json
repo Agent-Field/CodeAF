@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef355ee8001K9e4jc4Ssl7zNG",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef355664001m0sbG5xQJHTVEm",
+  "type": "tool",
+  "callID": "call_00_nydk338wpio7g26jtufbu6d4",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/repro && echo x > HEAD && git add HEAD && tree=$(git write-tree) && echo \"--- bare ---\"; git diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD; echo \"exit: $?\"; echo \"--- with -- ---\"; git diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD --; echo \"exit: $?\""
+    },
+    "output": "conflict_file: unmerged (61780798228d17af2d34fce4cfbdf35556832472)\nconflict_file: unmerged (6a69f92020f5df77af6e8813ff1232493383b708)\nfatal: git-write-tree: error building trees\nfatal: ambiguous argument '': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nexit: 128\n--- with -- ---\nfatal: bad revision ''\nexit: 128\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/repro && echo x > HEAD && git add HEAD && tree=$(git",
+    "time": {
+      "start": 1790719647468,
+      "end": 1790719647488
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now add a tracked file named HEAD that is part of the merge... Actually the ambiguity happens if there's a file named HEAD in the working tree/index. Let me add one in the merge-diff. Let me create a file named `HEAD` tracked.\n\nActually, the merge-diff command is `git diff --name-only -m \u003ctree_hash\u003e HEAD MERGE_HEAD`. The `\u003ctree_hash\u003e` is write-tree of the current index (with resolved conflicts). Let's reproduce:\n\nAdd a tracked file named HEAD on the bar branch before merge? Let's just create it and add it in the current state.\n\nLet me test.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

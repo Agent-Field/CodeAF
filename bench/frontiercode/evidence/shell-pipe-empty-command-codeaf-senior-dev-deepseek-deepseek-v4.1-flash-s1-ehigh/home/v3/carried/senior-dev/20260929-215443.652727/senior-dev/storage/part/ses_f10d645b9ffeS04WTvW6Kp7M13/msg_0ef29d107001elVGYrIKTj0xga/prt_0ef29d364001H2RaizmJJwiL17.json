@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29d364001H2RaizmJJwiL17",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29d107001elVGYrIKTj0xga",
+  "type": "reasoning",
+  "text": "My edit mangled line 26. Fix it and add empty test.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "My edit mangled line 26. Fix it and add empty test.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718890852,
+    "end": 1790718890863
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef41736a001ZlNFEdeeLIfedY",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef416b26001u7AGu2kHjWeFOA",
+  "type": "tool",
+  "callID": "call_01a0ef416e52711cb1211cfa",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/test/validate/pass_jsonl_empty.sh",
+      "newString": "cat << EOF > \"$TMP/expected.txt\"\nwarning: The JSONL file is empty\nEOF",
+      "oldString": "cat << EOF > \"$TMP/expected.txt\"\nEOF"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/jsonschema/test/validate/pass_jsonl_empty.sh\n===================================================================\n--- /root/repos/jsonschema/test/validate/pass_jsonl_empty.sh\n+++ /root/repos/jsonschema/test/validate/pass_jsonl_empty.sh\n@@ -22,7 +22,8 @@\n \n \"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" 2> \"$TMP/output.txt\" 1>&2\n \n cat << EOF > \"$TMP/expected.txt\"\n+warning: The JSONL file is empty\n EOF\n \n diff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n",
+      "filediff": {
+        "file": "/root/repos/jsonschema/test/validate/pass_jsonl_empty.sh",
+        "patch": "Index: /root/repos/jsonschema/test/validate/pass_jsonl_empty.sh\n===================================================================\n--- /root/repos/jsonschema/test/validate/pass_jsonl_empty.sh\n+++ /root/repos/jsonschema/test/validate/pass_jsonl_empty.sh\n@@ -22,7 +22,8 @@\n \n \"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" 2> \"$TMP/output.txt\" 1>&2\n \n cat << EOF > \"$TMP/expected.txt\"\n+warning: The JSONL file is empty\n EOF\n \n diff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n",
+        "additions": 1,
+        "deletions": 0
+      }
+    },
+    "title": "test/validate/pass_jsonl_empty.sh",
+    "time": {
+      "start": 1790720439247,
+      "end": 1790720439759
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "All excludes are known rules. Good.\n\nNow update the tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2a5b2f001oSz3k71J0NbA5J",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2a53e2001dF4hDf2tRzJszC",
+  "type": "tool",
+  "callID": "call_00_rmgiglxx7cnm6k7mrvfcc0y9",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/fx2 && echo mh > MERGE_HEAD && git add MERGE_HEAD && tree=$(git write-tree) && echo \"with -- both:\" && git diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD --; echo \"exit: $?\""
+    },
+    "output": "with -- both:\nHEAD\u0000MERGE_HEAD\u0000conflict_file\u0000exit: 0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/fx2 && echo mh > MERGE_HEAD && git add MERGE_HEAD &&",
+    "time": {
+      "start": 1790718925618,
+      "end": 1790718925641
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "So with fix, diff output = {HEAD, conflict_file}. merge_conflict_filenames from MERGE_MSG = {conflict_file}. Union = {HEAD, conflict_file}.\n\nNow let me also consider the case of a file named MERGE_HEAD. Similar. The regression test could include both HEAD and MERGE_HEAD files. Let's test both.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

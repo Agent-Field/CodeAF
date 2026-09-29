@@ -1,0 +1,53 @@
+diff --git a/pre_commit/git.py b/pre_commit/git.py
+index 19aac38..2f424f8 100644
+--- a/pre_commit/git.py
++++ b/pre_commit/git.py
+@@ -126,7 +126,7 @@ def get_conflicted_files() -> set[str]:
+     merge_diff_filenames = zsplit(
+         cmd_output(
+             'git', 'diff', '--name-only', '--no-ext-diff', '-z',
+-            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',
++            '-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',
+         )[1],
+     )
+     return set(merge_conflict_filenames) | set(merge_diff_filenames)
+diff --git a/testing/resources/python_hooks_repo/build/lib/foo.py b/testing/resources/python_hooks_repo/build/lib/foo.py
+new file mode 100644
+index 0000000..40efde3
+--- /dev/null
++++ b/testing/resources/python_hooks_repo/build/lib/foo.py
+@@ -0,0 +1,9 @@
++from __future__ import annotations
++
++import sys
++
++
++def main():
++    print(repr(sys.argv[1:]))
++    print('Hello World')
++    return 0
+diff --git a/tests/git_test.py b/tests/git_test.py
+index 93f5a1c..a15f142 100644
+--- a/tests/git_test.py
++++ b/tests/git_test.py
+@@ -141,6 +141,20 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):
+     assert ret == {'conflict_file'}
+ 
+ 
++@pytest.mark.parametrize('refname', ('HEAD', 'MERGE_HEAD'))
++def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):
++    """A tracked file sharing a refname must not make `git diff` ambiguous."""
++    resolve_conflict()
++
++    # a tracked file whose name collides with a refname passed to `git diff`
++    with open(refname, 'w') as ref_file:
++        ref_file.write('not a ref\n')
++    cmd_output('git', 'add', refname)
++
++    ret = set(git.get_conflicted_files())
++    assert ret == {'conflict_file', refname}
++
++
+ MERGE_MSG = b"Merge branch 'foo' into bar\n\nConflicts:\n\tconflict_file\n"
+ OTHER_MERGE_MSG = MERGE_MSG + b'\tother_conflict_file\n'
+ 

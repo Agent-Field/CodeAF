@@ -1,0 +1,15 @@
+{
+  "branch": "task/add-a-warning-logger-and-route-e-125516",
+  "kept": true,
+  "changed": [
+    "src/command_bundle.cc",
+    "src/command_lint.cc",
+    "src/command_validate.cc",
+    "src/logger.h",
+    "src/resolver.h",
+    "test/bundle/pass_without_id.sh",
+    "test/bundle/pass_without_id_verbose.sh",
+    "test/validate/pass_jsonl_empty.sh"
+  ],
+  "said": "its work is on the branch task/add-a-warning-logger-and-route-e-125516 in /root/repos/jsonschema, 8 files, and that branch is checked out there; your checkout was on no branch, at fc0dd94d716e, and `git -C '/root/repos/jsonschema' switch --detach fc0dd94d716e` goes back to it; its notes (.senior-dev/) are kept in /bench/home/v3/carried/senior-dev/20260929-222003.548301/senior-dev"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "prt_0ef3e94c6001CjGMNkLcSvJtRO",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3e91dc001cMcr1PAkIlIZXK",
+  "type": "step-finish",
+  "reason": "tool-calls",
+  "cost": 0.00046272,
+  "tokens": {
+    "total": 46902,
+    "input": 40,
+    "output": 142,
+    "reasoning": 0,
+    "cache": {
+      "read": 46720,
+      "write": 0
+    }
+  },
+  "upstream": "Together"
+}

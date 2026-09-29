@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3824f8001GLwwPacdDY16S6",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef381fb5001L517WCOG6lBksq",
+  "type": "tool",
+  "callID": "call_01a0ef3825ad7451aed62930",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && ctest --test-dir build -R 'without_id|invalid_template|disable_unknown|jsonl' --output-on-failure 2>&1 | tail -30"
+    },
+    "output": "      Start  96: JSONSchema.validate/pass_with_invalid_template_verbose\n13/25 Test  #96: JSONSchema.validate/pass_with_invalid_template_verbose ...   Passed    0.02 sec\n      Start 105: JSONSchema.validate/pass_jsonl_json\n14/25 Test #105: JSONSchema.validate/pass_jsonl_json ......................   Passed    0.02 sec\n      Start 106: JSONSchema.validate/pass_jsonl_json_verbose\n15/25 Test #106: JSONSchema.validate/pass_jsonl_json_verbose ..............   Passed    0.02 sec\n      Start 107: JSONSchema.validate/fail_jsonl_one_json\n16/25 Test #107: JSONSchema.validate/fail_jsonl_one_json ..................   Passed    0.02 sec\n      Start 108: JSONSchema.validate/fail_jsonl_one_json_verbose\n17/25 Test #108: JSONSchema.validate/fail_jsonl_one_json_verbose ..........   Passed    0.02 sec\n      Start 112: JSONSchema.validate/pass_benchmark_loop_jsonl\n18/25 Test #112: JSONSchema.validate/pass_benchmark_loop_jsonl ............   Passed    0.02 sec\n      Start 199: JSONSchema.bundle/pass_without_id\n19/25 Test #199: JSONSchema.bundle/pass_without_id ........................   Passed    0.02 sec\n      Start 200: JSONSchema.bundle/pass_without_id_verbose\n20/25 Test #200: JSONSchema.bundle/pass_without_id_verbose ................   Passed    0.02 sec\n      Start 260: JSONSchema.lint/fail_lint_disable_unknown_verbose\n21/25 Test #260: JSONSchema.lint/fail_lint_disable_unknown_verbose ........   Passed    0.01 sec\n      Start 293: JSONSchema.encode/pass_schema_less_jsonl\n22/25 Test #293: JSONSchema.encode/pass_schema_less_jsonl .................   Passed    0.07 sec\n      Start 294: JSONSchema.encode/pass_schema_less_jsonl_verbose\n23/25 Test #294: JSONSchema.encode/pass_schema_less_jsonl_verbose .........   Passed    0.07 sec\n      Start 298: JSONSchema.decode/pass_schema_less_jsonl\n24/25 Test #298: JSONSchema.decode/pass_schema_less_jsonl .................   Passed    0.13 sec\n      Start 299: JSONSchema.decode/pass_schema_less_jsonl_verbose\n25/25 Test #299: JSONSchema.decode/pass_schema_less_jsonl_verbose .........   Passed    0.12 sec\n\n100% tests passed, 0 tests failed out of 25\n\nTotal Test time (real) =   0.84 sec\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && ctest --test-dir build -R 'with",
+    "time": {
+      "start": 1790719829244,
+      "end": 1790719830119
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b2116001xVcTVWCCpXs76w",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3b1ef0001swzv8SIrdQmviZ",
+  "type": "reasoning",
+  "text": "Let me read these tests, especially pass_jsonl_empty (non-verbose) and verbose.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me read these tests, especially pass_jsonl_empty (non-verbose) and verbose.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720024854,
+    "end": 1790720024865
+  }
+}

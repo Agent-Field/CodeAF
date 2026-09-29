@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef33bed60015QkcW4ZfdOr6gF",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef33b68c001oPk9nPMZ61TV2O",
+  "type": "tool",
+  "callID": "call_00_2obp6q755wazm9veqnl5xs1p",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && git diff 7b88c63 -- pre_commit/git.py tests/git_test.py"
+    },
+    "output": "diff --git a/pre_commit/git.py b/pre_commit/git.py\nindex 19aac38..cb3c273 100644\n--- a/pre_commit/git.py\n+++ b/pre_commit/git.py\n@@ -126,7 +126,10 @@ def get_conflicted_files() -> set[str]:\n     merge_diff_filenames = zsplit(\n         cmd_output(\n             'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+            '-m', tree_hash,\n+            # pull the refs in front of the `--` so they are unambiguously\n+            # revisions even if the worktree has a tracked file named HEAD\n+            'HEAD', 'MERGE_HEAD', '--',\n         )[1],\n     )\n     return set(merge_conflict_filenames) | set(merge_diff_filenames)\ndiff --git a/tests/git_test.py b/tests/git_test.py\nindex 93f5a1c..9bd275c 100644\n--- a/tests/git_test.py\n+++ b/tests/git_test.py\n@@ -141,6 +141,19 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):\n     assert ret == {'conflict_file'}\n \n \n+def test_get_conflicted_files_refname_collision(in_merge_conflict):\n+    \"\"\"A tracked file named like a refname must not break the diff.\"\"\"\n+    resolve_conflict()\n+\n+    for filename in ('HEAD', 'MERGE_HEAD'):\n+        with open(filename, 'w') as refname_file:\n+            refname_file.write('contents\\n')\n+    cmd_output('git', 'add', 'HEAD', 'MERGE_HEAD')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD'}\n+\n+\n MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n \n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && git diff 7b88c63 -- pre_commit/",
+    "time": {
+      "start": 1790719540954,
+      "end": 1790719540980
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Good. Now let me view the final diff of the two files to make sure it's clean and focused. Since edits auto-commit, `git diff HEAD~2` might not be reliable. Let me diff against the original base commit 7b88c63.\n\nActually `git log` shows my wip commits. `git diff 7b88c63 -- pre_commit/git.py tests/git_test.py`. But note the harness may also auto-commit .senior-dev? Let's see. Let me view diff.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

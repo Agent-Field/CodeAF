@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef43fc320018kltofQVP2nfRt",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef43f759001BNRpEz85At1AA7",
+  "type": "tool",
+  "callID": "call_01a0ef43f71673bd992d740a",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && sed -n '1,25p' src/logger.h && echo ===LINT=== && sed -n '20,36p' src/command_lint.cc && echo ===VALIDATE57=== && sed -n '54,60p' src/command_validate.cc && echo ===VALIDATE288=== && sed -n '286,290p' src/command_validate.cc && echo ===BUNDLE=== && sed -n '36,53p' src/command_bundle.cc && echo ===RESOLVER=== && sed -n '96,104p' src/resolver.h"
+    },
+    "output": "#ifndef SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n#define SOURCEMETA_JSONSCHEMA_CLI_LOGGER_H_\n\n#include <sourcemeta/core/options.h>\n\n#include <fstream> // std::ofstream\n#include <ostream> // std::ostream\n\nnamespace sourcemeta::jsonschema {\n\ninline auto LOG_WARNING() -> std::ostream & {\n  std::cerr << \"warning: \";\n  return std::cerr;\n}\n\ninline auto LOG_VERBOSE(const sourcemeta::core::Options &options)\n    -> std::ostream & {\n  if (options.contains(\"verbose\")) {\n    return std::cerr;\n  }\n\n  static std::ofstream null_stream;\n  return null_stream;\n}\n\n===LINT===\n#include \"utils.h\"\n\ntemplate <typename Options, typename Iterator>\nstatic auto disable_lint_rules(sourcemeta::core::SchemaTransformer &bundle,\n                               const Options &options, Iterator first,\n                               Iterator last) -> void {\n  for (auto iterator = first; iterator != last; ++iterator) {\n    if (bundle.remove(std::string{*iterator})) {\n      sourcemeta::jsonschema::LOG_VERBOSE(options)\n          << \"Disabling rule: \" << *iterator << \"\\n\";\n    } else {\n      sourcemeta::jsonschema::LOG_WARNING()\n          << \"Cannot exclude unknown rule: \" << *iterator << \"\\n\";\n    }\n  }\n}\n\n===VALIDATE57===\n    if (precompiled_result.has_value()) {\n      return precompiled_result.value();\n    } else {\n      sourcemeta::jsonschema::LOG_WARNING()\n          << \"Failed to parse pre-compiled schema template. \"\n             \"Compiling from scratch\\n\";\n    }\n===VALIDATE288===\n      }\n\n      if (index == 0) {\n        sourcemeta::jsonschema::LOG_WARNING() << \"The JSONL file is empty\\n\";\n      }\n===BUNDLE===\n                               .recompose());\n\n  if (options.contains(\"without-id\")) {\n    sourcemeta::jsonschema::LOG_WARNING()\n        << \"You are opting in to remove schema identifiers in \"\n           \"the bundled schema.\\n\";\n    sourcemeta::jsonschema::LOG_WARNING()\n        << \"The only legit use case of this advanced feature we know \"\n           \"of is to workaround\\n\";\n    sourcemeta::jsonschema::LOG_WARNING()\n        << \"non-compliant JSON Schema implementations such as Visual \"\n           \"Studio Code.\\n\";\n    sourcemeta::jsonschema::LOG_WARNING()\n        << \"Otherwise, this is not needed and may harm other use \"\n           \"cases. For example,\\n\";\n    sourcemeta::jsonschema::LOG_WARNING()\n        << \"you will be unable to reference the resulting schema from \"\n           \"other schemas\\n\";\n===RESOLVER===\n                            << identifier << \"\\n\";\n                      });\n        if (!result) {\n          LOG_WARNING() << \"No schema resources were imported from this file\\n\";\n          LOG_WARNING() << \"  at \" << entry.first.string() << \"\\n\";\n          LOG_WARNING() << \"Are you sure this schema sets any identifiers?\\n\";\n        }\n      }\n    }\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && sed -n '1,25p' src/logger.h && ",
+    "time": {
+      "start": 1790720605238,
+      "end": 1790720605276
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Build succeeded. clang-format ran as part of compile target; let me check the resulting source formatting. Let me view the changed files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

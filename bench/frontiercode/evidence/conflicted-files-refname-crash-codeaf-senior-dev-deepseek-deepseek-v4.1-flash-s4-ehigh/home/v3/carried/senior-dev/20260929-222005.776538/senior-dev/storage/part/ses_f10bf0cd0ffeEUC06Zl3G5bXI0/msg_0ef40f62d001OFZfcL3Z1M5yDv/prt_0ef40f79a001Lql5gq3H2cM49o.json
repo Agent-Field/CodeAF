@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef40f79a001Lql5gq3H2cM49o",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef40f62d001OFZfcL3Z1M5yDv",
+  "type": "reasoning",
+  "text": "Let me look at the git module.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the git module.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720407450,
+    "end": 1790720407459
+  }
+}

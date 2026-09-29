@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef499996001kpmioLTaU1f7MN",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef4992f2001e6Jg4xWQahZGZa",
+  "type": "reasoning",
+  "text": "Let me do a final full-ish test for internal/shell plus build, and confirm gofmt. Already done. Let me run pinned command once more and capture exit status precisely, plus test counts.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me do a final full-ish test for internal/shell plus build, and confirm gofmt. Already done. Let me run pinned command once more and capture exit status precisely, plus test counts.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720973206,
+    "end": 1790720973217
+  }
+}

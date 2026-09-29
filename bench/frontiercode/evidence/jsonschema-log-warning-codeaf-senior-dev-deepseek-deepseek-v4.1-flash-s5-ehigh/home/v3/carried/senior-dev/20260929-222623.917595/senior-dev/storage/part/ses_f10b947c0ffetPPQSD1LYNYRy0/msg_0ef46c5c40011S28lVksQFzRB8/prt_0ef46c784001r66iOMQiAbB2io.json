@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46c784001r66iOMQiAbB2io",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46c5c40011S28lVksQFzRB8",
+  "type": "reasoning",
+  "text": "Let me look at the per-test directories/shell files.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the per-test directories/shell files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720788356,
+    "end": 1790720788367
+  }
+}

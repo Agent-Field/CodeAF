@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef41129a001uHQDTqbJF2KFn5",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef410f6a001I5iDYkWkQ6KyOh",
+  "type": "tool",
+  "callID": "call_01a0ef41125d7126a4df6afe",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && ls test/lint/ | grep -i \"unknown\\|disable\" && echo ---- && cat test/lint/fail_lint_disable_unknown_verbose.sh && echo ===NONVERBOSE=== && find test -name \"*lint_disable_unknown*\" -not -name \"*verbose*\" -exec cat {} \\;"
+    },
+    "output": "fail_lint_disable_many.sh\nfail_lint_disable_one.sh\nfail_lint_disable_one_verbose.sh\nfail_lint_disable_unknown_verbose.sh\nfail_lint_only_unknown.sh\nfail_lint_only_unknown_verbose.sh\n----\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"string\",\n  \"contentMediaType\": \"application/json\",\n  \"enum\": [ \"foo\" ]\n}\nEOF\n\ncd \"$TMP\"\n\"$1\" lint \"$TMP/schema.json\" --verbose --exclude foo_bar >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest \"$CODE\" = \"1\" || exit 1\n\ncat << EOF > \"$TMP/expected.txt\"\nwarning: Cannot exclude unknown rule: foo_bar\nLinting: $(realpath \"$TMP\")/schema.json\nschema.json:4:3:\n  The \\`contentMediaType\\` keyword is meaningless without the presence of the \\`contentEncoding\\` keyword (content_media_type_without_encoding)\n    at location \"/contentMediaType\"\nschema.json:5:3:\n  An \\`enum\\` of a single value can be expressed as \\`const\\` (enum_to_const)\n    at location \"/enum\"\nschema.json:5:3:\n  Setting \\`type\\` alongside \\`enum\\` is considered an anti-pattern, as the enumeration choices already imply their respective types (enum_with_type)\n    at location \"/enum\"\nEOF\n\ndiff \"$TMP/stderr.txt\" \"$TMP/expected.txt\"\n===NONVERBOSE===\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && ls test/lint/ | grep -i \"unknow",
+    "time": {
+      "start": 1790720414365,
+      "end": 1790720414383
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at these tests and other warning-related tests. Notably `bundle/pass_without_id.sh` already expects warning without verbose? But the bundle warning is currently unconditional `std::cerr`. So yes. And `lint/fail_lint_disable_unknown_verbose.sh` expects it in verbose. Is there a non-verbose lint test expecting nothing? Let me search lint tests.\n\nAlso `validate/pass_with_invalid_template.sh` expects the warning non-verbose already (line 57 unconditional std::cerr). Good.\n\nLet me check all tests that reference warnings and see which involve LOG_VERBOSE-gated warnings:\n- lint/fail_lint_disable_unknown_verbose.sh: verbose expects warning. There might be a non-verbose counterpart.\nLet me look.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

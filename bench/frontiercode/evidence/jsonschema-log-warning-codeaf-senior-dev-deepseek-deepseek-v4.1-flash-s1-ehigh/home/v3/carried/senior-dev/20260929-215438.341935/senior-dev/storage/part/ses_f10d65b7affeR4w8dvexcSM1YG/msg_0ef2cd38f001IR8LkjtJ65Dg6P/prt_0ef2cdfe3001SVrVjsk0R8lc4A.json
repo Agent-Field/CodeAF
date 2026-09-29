@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2cdfe3001SVrVjsk0R8lc4A",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2cd38f001IR8LkjtJ65Dg6P",
+  "type": "tool",
+  "callID": "call_01_81pzbg409im1011ao2v1vcaq",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /home/agent/repos/jsonschema && sed -n '110,175p' src/resolver.h"
+    },
+    "output": "           const std::function<void(const sourcemeta::core::JSON::String &)>\n               &callback = nullptr) -> bool {\n    assert(sourcemeta::core::is_schema(schema));\n\n    // Registering the top-level schema is not enough. We need to check\n    // and register every embedded schema resource too\n    sourcemeta::core::SchemaFrame frame{\n        sourcemeta::core::SchemaFrame::Mode::References};\n    frame.analyse(schema, sourcemeta::core::schema_official_walker, *this,\n                  default_dialect, default_id);\n\n    bool added_any_schema{false};\n    for (const auto &[key, entry] : frame.locations()) {\n      if (entry.type != sourcemeta::core::SchemaFrame::LocationType::Resource) {\n        continue;\n      }\n\n      auto subschema{sourcemeta::core::get(schema, entry.pointer)};\n      const auto subschema_vocabularies{frame.vocabularies(entry, *this)};\n\n      // Given we might be resolving embedded resources, we fully\n      // resolve their dialect and identifiers, otherwise the\n      // consumer might have no idea what to do with them\n      subschema.assign(\"$schema\", sourcemeta::core::JSON{entry.dialect});\n      sourcemeta::core::reidentify(subschema, key.second, entry.base_dialect);\n\n      const auto result{this->schemas.emplace(key.second, subschema)};\n      if (!result.second && result.first->second != schema) {\n        std::ostringstream error;\n        error << \"Cannot register the same identifier twice: \" << key.second;\n        throw sourcemeta::core::SchemaError(error.str());\n      }\n\n      if (callback) {\n        callback(key.second);\n      }\n\n      added_any_schema = true;\n    }\n\n    return added_any_schema;\n  }\n\n  auto operator()(std::string_view identifier) const\n      -> std::optional<sourcemeta::core::JSON> {\n    const std::string string_identifier{identifier};\n    if (this->configuration_.has_value()) {\n      const auto match{\n          this->configuration_.value().resolve.find(string_identifier)};\n      if (match != this->configuration_.value().resolve.cend()) {\n        const sourcemeta::core::URI new_uri{match->second};\n        if (new_uri.is_relative()) {\n          const auto file_uri{sourcemeta::core::URI::from_path(\n              this->configuration_.value().absolute_path / new_uri.to_path())};\n          const auto result{file_uri.recompose()};\n          LOG_VERBOSE(this->options_)\n              << \"Resolving \" << identifier << \" as \" << result\n              << \" given the configuration file\\n\";\n          return this->operator()(result);\n        } else {\n          LOG_VERBOSE(this->options_)\n              << \"Resolving \" << identifier << \" as \" << match->second\n              << \" given the configuration file\\n\";\n          return this->operator()(match->second);\n        }\n      }\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /home/agent/repos/jsonschema && sed -n '110,175p' src/res",
+    "time": {
+      "start": 1790719090751,
+      "end": 1790719090878
+    }
+  }
+}

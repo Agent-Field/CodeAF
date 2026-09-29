@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3e260e001FiLpWDdYBXMtiw",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3e23e3001mPMKI3DhhJdImH",
+  "type": "reasoning",
+  "text": "Hmm, it says \"Formatting sources\" — does it modify files? Let me check git diff to see if clang-format changed my formatting.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Hmm, it says \"Formatting sources\" — does it modify files? Let me check git diff to see if clang-format changed my formatting.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720222734,
+    "end": 1790720222744
+  }
+}

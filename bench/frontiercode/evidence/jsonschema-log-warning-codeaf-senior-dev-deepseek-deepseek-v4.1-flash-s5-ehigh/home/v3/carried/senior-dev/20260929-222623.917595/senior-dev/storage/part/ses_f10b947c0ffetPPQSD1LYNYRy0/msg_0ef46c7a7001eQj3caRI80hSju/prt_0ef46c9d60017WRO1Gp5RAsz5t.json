@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef46c9d60017WRO1Gp5RAsz5t",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46c7a7001eQj3caRI80hSju",
+  "type": "tool",
+  "callID": "call_01a0ef46c89774e1af2ff48e",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat test/validate/pass_jsonl_empty.sh && echo \"=====\" && cat test/validate/pass_jsonl_empty_verbose.sh && echo \"=====\" && sed -n '80,110p' test/CMakeLists.txt"
+    },
+    "output": "#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"properties\": {\n    \"foo\": {\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ntouch \"$TMP/instance.jsonl\"\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" 2> \"$TMP/output.txt\" 1>&2\n\ncat << EOF > \"$TMP/expected.txt\"\nEOF\n\ndiff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n=====\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"properties\": {\n    \"foo\": {\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ntouch \"$TMP/instance.jsonl\"\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" --verbose 2> \"$TMP/output.txt\" 1>&2\n\ncat << EOF > \"$TMP/expected.txt\"\nInterpreting input as JSONL: $(realpath \"$TMP\")/instance.jsonl\nwarning: The JSONL file is empty\nEOF\n\ndiff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n=====\nadd_jsonschema_test_unix(validate/pass_draft7_top_level_ref)\nadd_jsonschema_test_unix(validate/pass_2019_09)\nadd_jsonschema_test_unix(validate/pass_2020_12)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect_config)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect_config_relative)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect_config_parent)\nadd_jsonschema_test_unix(validate/pass_2020_12_fast)\nadd_jsonschema_test_unix(validate/fail_invalid_config)\nadd_jsonschema_test_unix(validate/fail_draft4)\nadd_jsonschema_test_unix(validate/fail_draft6)\nadd_jsonschema_test_unix(validate/fail_draft7)\nadd_jsonschema_test_unix(validate/fail_2019_09)\nadd_jsonschema_test_unix(validate/fail_2020_12)\nadd_jsonschema_test_unix(validate/fail_2020_12_fast)\nadd_jsonschema_test_unix(validate/pass_jsonl)\nadd_jsonschema_test_unix(validate/pass_jsonl_empty)\nadd_jsonschema_test_unix(validate/pass_jsonl_empty_verbose)\nadd_jsonschema_test_unix(validate/pass_jsonl_verbose)\nadd_jsonschema_test_unix(validate/fail_jsonl_invalid_entry)\nadd_jsonschema_test_unix(validate/fail_jsonl_one)\nadd_jsonschema_test_unix(validate/fail_jsonl_one_verbose)\nadd_jsonschema_test_unix(validate/fail_jsonl_all)\nadd_jsonschema_test_unix(validate/fail_jsonl_all_verbose)\nadd_jsonschema_test_unix(validate/pass_many)\nadd_jsonschema_test_unix(validate/pass_many_verbose)\nadd_jsonschema_test_unix(validate/fail_many)\nadd_jsonschema_test_unix(validate/fail_many_verbose)\nadd_jsonschema_test_unix(validate/fail_yaml)\nadd_jsonschema_test_unix(validate/pass_json_ref_yaml)\nadd_jsonschema_test_unix(validate/pass_process_substitution)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat test/validate/pass_jsonl_em",
+    "time": {
+      "start": 1790720788954,
+      "end": 1790720788971
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

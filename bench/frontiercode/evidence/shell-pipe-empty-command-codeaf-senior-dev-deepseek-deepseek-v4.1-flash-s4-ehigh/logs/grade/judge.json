@@ -1,0 +1,65 @@
+{
+  "criteria": {
+    "empty-command-skipped-not-crashed": {
+      "pass": true,
+      "reasoning": "The change adds a guard at the beginning of the Run function that checks if the command slice is empty (len(command) == 0). When empty, it logs a warning ('no command given, skipping') and returns nil (no error). This prevents the subsequent line 'command[0]' from panicking on an empty slice. The change handles the empty case by skipping execution silently (returning nil) with a warning log, rather than panicking or returning an error. This satisfies the criterion's requirement to skip empty command lists without crashing and without failing the pipeline.",
+      "usage": {
+        "prompt_tokens": 579,
+        "completion_tokens": 135,
+        "total_tokens": 714,
+        "cost": 0.003762,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.003762,
+          "upstream_inference_prompt_cost": 0.001737,
+          "upstream_inference_completions_cost": 0.002025
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    },
+    "run-contract-unchanged": {
+      "pass": true,
+      "reasoning": "The change adds an early return that only executes when len(command) == 0. For non-empty commands (len(command) > 0), the new conditional block is skipped entirely, and execution proceeds to the existing code path unchanged. The original error handling (exec.CommandContext and subsequent operations), environment variable handling (cmd.Env = env), and output handling (output parameter) remain completely untouched for non-empty commands. A failing non-empty command will still produce its error through the unchanged execution path below the new guard clause.",
+      "usage": {
+        "prompt_tokens": 545,
+        "completion_tokens": 129,
+        "total_tokens": 674,
+        "cost": 0.00357,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.00357,
+          "upstream_inference_prompt_cost": 0.001635,
+          "upstream_inference_completions_cost": 0.001935
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 1124,
+    "completion_tokens": 264,
+    "calls": 1
+  }
+}

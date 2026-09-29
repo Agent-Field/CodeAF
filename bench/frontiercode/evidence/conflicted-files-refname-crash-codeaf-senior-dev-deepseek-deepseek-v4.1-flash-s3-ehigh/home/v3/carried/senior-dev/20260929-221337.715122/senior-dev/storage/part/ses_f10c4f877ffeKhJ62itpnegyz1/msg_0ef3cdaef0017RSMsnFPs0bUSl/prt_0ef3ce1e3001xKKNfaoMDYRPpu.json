@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3ce1e3001xKKNfaoMDYRPpu",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3cdaef0017RSMsnFPs0bUSl",
+  "type": "tool",
+  "callID": "call_00_37vxu3tc00nthhl9w0ybly2y",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && git diff 7b88c63 -- pre_commit/git.py tests/git_test.py | cat && echo \"=== status ===\" && git status --short"
+    },
+    "output": "diff --git a/pre_commit/git.py b/pre_commit/git.py\nindex 19aac38..e00e38d 100644\n--- a/pre_commit/git.py\n+++ b/pre_commit/git.py\n@@ -126,7 +126,9 @@ def get_conflicted_files() -> set[str]:\n     merge_diff_filenames = zsplit(\n         cmd_output(\n             'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+            # refnames and pathspecs are separated by '--' so that a tracked\n+            # file named like a ref (eg. HEAD) is not ambiguous\n+            '-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\n         )[1],\n     )\n     return set(merge_conflict_filenames) | set(merge_diff_filenames)\ndiff --git a/tests/git_test.py b/tests/git_test.py\nindex 93f5a1c..66e6a53 100644\n--- a/tests/git_test.py\n+++ b/tests/git_test.py\n@@ -141,6 +141,22 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):\n     assert ret == {'conflict_file'}\n \n \n+@pytest.mark.parametrize('refname', ('HEAD', 'MERGE_HEAD'))\n+def test_get_conflicted_files_tracked_file_named_like_ref(\n+        in_merge_conflict, refname,\n+):\n+    resolve_conflict()\n+\n+    # A tracked file whose name collides with a refname must not make the\n+    # merge-diff enumeration ambiguous.\n+    with open(refname, 'w') as ref_file:\n+        ref_file.write('x')\n+    cmd_output('git', 'add', refname)\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'conflict_file', refname}\n+\n+\n MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n \n=== status ===\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && git diff 7b88c63 -- pre_commit/",
+    "time": {
+      "start": 1790720139751,
+      "end": 1790720139787
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me review the final diff (against starting commit 7b88c63) to ensure it's clean and focused. Note the edits were auto-committed as wip commits. Let me see the full diff.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

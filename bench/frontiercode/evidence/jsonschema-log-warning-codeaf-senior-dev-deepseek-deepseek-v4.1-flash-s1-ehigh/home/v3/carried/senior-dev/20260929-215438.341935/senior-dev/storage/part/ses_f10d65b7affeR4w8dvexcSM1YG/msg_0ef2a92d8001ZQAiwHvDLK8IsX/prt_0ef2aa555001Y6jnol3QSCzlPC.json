@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2aa555001Y6jnol3QSCzlPC",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2a92d8001ZQAiwHvDLK8IsX",
+  "type": "tool",
+  "callID": "call_01_0n1ktxujcfxhqritsw225g6e",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rn \"namespace\" src/command_bundle.cc; echo \"---head bundle---\"; sed -n '1,14p' src/command_bundle.cc; echo \"---build dir---\"; ls build/ 2>/dev/null | head -30"
+    },
+    "output": "---head bundle---\n#include <sourcemeta/core/editorschema.h>\n#include <sourcemeta/core/io.h>\n#include <sourcemeta/core/json.h>\n#include <sourcemeta/core/jsonschema.h>\n#include <sourcemeta/core/yaml.h>\n\n#include <iostream> // std::cout\n\n#include \"command.h\"\n#include \"configuration.h\"\n#include \"error.h\"\n#include \"resolver.h\"\n#include \"utils.h\"\n\n---build dir---\nCMakeCache.txt\nCMakeFiles\nCPackConfig.cmake\nCPackSourceConfig.cmake\nCTestTestfile.cmake\nMakefile\nbin\nclang-format\ncmake_install.cmake\ncompile_commands.json\ndist\ninstall_manifest.txt\ninstall_manifest_sourcemeta_jsonschema.txt\nout\nsrc\ntest\nvendor\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rn \"namespace\" src/comman",
+    "time": {
+      "start": 1790718944600,
+      "end": 1790718944623
+    }
+  }
+}

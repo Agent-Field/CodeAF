@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef473552001c35I3yBvBlQ1B4",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef47336c001ui5kpON9dexWsr",
+  "type": "reasoning",
+  "text": "No .clang-format in root? Maybe it's in CMake or a hidden file. Let me search.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "No .clang-format in root? Maybe it's in CMake or a hidden file. Let me search.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720816466,
+    "end": 1790720816478
+  }
+}

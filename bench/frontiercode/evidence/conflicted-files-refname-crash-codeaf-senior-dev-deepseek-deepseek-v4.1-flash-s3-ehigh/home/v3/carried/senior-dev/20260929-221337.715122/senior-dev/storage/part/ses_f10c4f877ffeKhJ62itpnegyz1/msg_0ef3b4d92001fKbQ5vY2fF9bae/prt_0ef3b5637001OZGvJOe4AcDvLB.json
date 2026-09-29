@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3b5637001OZGvJOe4AcDvLB",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3b4d92001fKbQ5vY2fF9bae",
+  "type": "tool",
+  "callID": "call_00_fxpkqklb8a91c3v19v595i3e",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/difftest && echo 'herp\\nderp' > conflict_file && git add conflict_file && echo foo > foo_only_file && git add foo_only_file && echo bar > bar_only_file && git add bar_only_file && T=$(git write-tree) && echo \"tree=$T\" && echo \"--- normal\"; git diff --name-only --no-ext-diff -z -m $T HEAD MERGE_HEAD | tr '\\0' '\\n'; echo \"exit=$?\"; echo \"--- create tracked file HEAD\"; echo x > HEAD && git add HEAD && git commit -qm 'add HEAD file' ; echo \"now HEAD? git ls-files:\"; git ls-files | tr '\\n' ' '; echo; echo \"--- diff with HEAD file\"; git diff --name-only --no-ext-diff -z -m $T HEAD MERGE_HEAD | tr '\\0' '\\n'; echo \"exit=$?\""
+    },
+    "output": "tree=3aa1861bb45d4625481d40b3d80b0b5581fe53a3\n--- normal\nbar_only_file\nconflict_file\nfoo_only_file\nexit=0\n--- create tracked file HEAD\nnow HEAD? git ls-files:\nHEAD bar_only_file conflict_file foo_only_file \n--- diff with HEAD file\nfatal: ambiguous argument 'HEAD': both revision and filename\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nexit=0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/difftest && echo 'herp\\nderp' > conflict_file && git",
+    "time": {
+      "start": 1790720038459,
+      "end": 1790720038500
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The write-tree failed because conflict unresolved. In the test they resolve conflict before calling. Let me resolve.\n\nActually the `git diff` output was still `conflict_file`. Let me now add a file named HEAD and reproduce the ambiguity.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

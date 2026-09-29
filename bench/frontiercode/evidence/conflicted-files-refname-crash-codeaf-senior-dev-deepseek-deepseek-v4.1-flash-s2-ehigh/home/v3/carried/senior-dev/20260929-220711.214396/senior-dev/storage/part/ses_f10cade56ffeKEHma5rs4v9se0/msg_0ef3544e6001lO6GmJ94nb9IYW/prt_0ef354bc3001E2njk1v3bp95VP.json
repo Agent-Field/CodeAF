@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef354bc3001E2njk1v3bp95VP",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef3544e6001lO6GmJ94nb9IYW",
+  "type": "reasoning",
+  "text": "Now let me look at the conftest fixtures for `in_merge_conflict`.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me look at the conftest fixtures for `in_merge_conflict`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719642563,
+    "end": 1790719642580
+  }
+}

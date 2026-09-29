@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4958550013h1JLKOPk5uZEV",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef49565f0016CKh0zm18uhety",
+  "type": "reasoning",
+  "text": "Good, clang-format clean now. Rebuild.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Good, clang-format clean now. Rebuild.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720956501,
+    "end": 1790720956512
+  }
+}

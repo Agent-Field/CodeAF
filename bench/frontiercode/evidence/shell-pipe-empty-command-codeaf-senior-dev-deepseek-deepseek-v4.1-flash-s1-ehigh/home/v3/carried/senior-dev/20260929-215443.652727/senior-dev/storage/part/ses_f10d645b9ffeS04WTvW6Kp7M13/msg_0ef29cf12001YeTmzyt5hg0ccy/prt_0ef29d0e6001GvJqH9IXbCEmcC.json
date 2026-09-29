@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29d0e6001GvJqH9IXbCEmcC",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29cf12001YeTmzyt5hg0ccy",
+  "type": "reasoning",
+  "text": "Oops that edit did nothing useful (removed a newline). Let me instead add a subtest properly. Let me re-read the file around.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Oops that edit did nothing useful (removed a newline). Let me instead add a subtest properly. Let me re-read the file around.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718890214,
+    "end": 1790718890225
+  }
+}

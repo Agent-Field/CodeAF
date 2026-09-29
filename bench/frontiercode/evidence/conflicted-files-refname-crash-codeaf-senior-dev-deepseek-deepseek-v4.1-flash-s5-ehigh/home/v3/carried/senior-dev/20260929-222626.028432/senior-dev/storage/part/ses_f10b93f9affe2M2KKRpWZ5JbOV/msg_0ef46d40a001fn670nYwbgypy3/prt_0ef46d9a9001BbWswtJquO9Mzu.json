@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef46d9a9001BbWswtJquO9Mzu",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46d40a001fn670nYwbgypy3",
+  "type": "tool",
+  "callID": "call_00_0y13o1hm3wvy45cc6h4bnxyo",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && grep -rn \"in_merge_conflict\\|in_conflicting_submodule\" tests/conftest.py testing/ | head -40"
+    },
+    "output": "tests/conftest.py:74:def in_merge_conflict(tempdir_factory):\ntests/conftest.py:78:    git_commit(msg=in_merge_conflict.__name__, cwd=path)\ntests/conftest.py:88:def in_conflicting_submodule(tempdir_factory):\ntests/conftest.py:91:    git_commit(msg=in_conflicting_submodule.__name__, cwd=git_dir_2)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && grep -rn \"in_merge_conflict\\|in",
+    "time": {
+      "start": 1790720793004,
+      "end": 1790720793018
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me find the `in_merge_conflict` fixture. It's probably in `tests/conftest.py`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

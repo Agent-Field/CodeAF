@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef352e53001aiYhpWydZqwaTA",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef3525f9001MXXbZLuiZTH7mY",
+  "type": "tool",
+  "callID": "call_00_rh38amrtoy4d09oh4i1g12qn",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && sed -n '20,45p' src/command_lint.cc; echo ---; sed -n '25,55p' src/command_bundle.cc; echo ---; sed -n '45,70p' src/command_validate.cc; echo ---; sed -n '280,295p' src/command_validate.cc; echo ---; sed -n '90,110p' src/resolver.h"
+    },
+    "output": "#include \"utils.h\"\n\ntemplate <typename Options, typename Iterator>\nstatic auto disable_lint_rules(sourcemeta::core::SchemaTransformer &bundle,\n                               const Options &options, Iterator first,\n                               Iterator last) -> void {\n  for (auto iterator = first; iterator != last; ++iterator) {\n    if (bundle.remove(std::string{*iterator})) {\n      sourcemeta::jsonschema::LOG_VERBOSE(options)\n          << \"Disabling rule: \" << *iterator << \"\\n\";\n    } else {\n      sourcemeta::jsonschema::LOG_VERBOSE(options)\n          << \"warning: Cannot exclude unknown rule: \" << *iterator << \"\\n\";\n    }\n  }\n}\n\nstatic auto reindent(const std::string_view &value,\n                     const std::string &indentation, std::ostream &stream)\n    -> void {\n  if (!value.empty()) {\n    stream << indentation;\n  }\n\n  for (std::size_t index = 0; index < value.size(); index++) {\n    const auto character{value[index]};\n---\n  const auto &configuration{read_configuration(options, configuration_path)};\n  const auto dialect{default_dialect(options, configuration)};\n  const auto &custom_resolver{\n      resolver(options, options.contains(\"http\"), dialect, configuration)};\n  auto schema{sourcemeta::core::read_yaml_or_json(schema_path)};\n\n  sourcemeta::core::bundle(schema, sourcemeta::core::schema_official_walker,\n                           custom_resolver, dialect,\n                           sourcemeta::core::URI::from_path(\n                               sourcemeta::core::weakly_canonical(schema_path))\n                               .recompose());\n\n  if (options.contains(\"without-id\")) {\n    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n                 \"the bundled schema.\\n\";\n    std::cerr << \"The only legit use case of this advanced feature we know of \"\n                 \"is to workaround\\n\";\n    std::cerr << \"non-compliant JSON Schema implementations such as Visual \"\n                 \"Studio Code.\\n\";\n    std::cerr << \"Otherwise, this is not needed and may harm other use \"\n                 \"cases. For example,\\n\";\n    std::cerr << \"you will be unable to reference the resulting schema from \"\n                 \"other schemas\\n\";\n    std::cerr << \"using the --resolve/-r option.\\n\";\n    sourcemeta::core::for_editor(schema,\n                                 sourcemeta::core::schema_official_walker,\n                                 custom_resolver, dialect);\n  }\n\n  sourcemeta::core::prettify(schema, std::cout,\n                             sourcemeta::core::schema_format_compare);\n---\n  if (precompiled.has_value()) {\n    sourcemeta::jsonschema::LOG_VERBOSE(options)\n        << \"Parsing pre-compiled schema template: \"\n        << sourcemeta::core::weakly_canonical(precompiled.value()).string()\n        << \"\\n\";\n    const auto schema_template{\n        sourcemeta::core::read_yaml_or_json(precompiled.value())};\n    const auto precompiled_result{\n        sourcemeta::blaze::from_json(schema_template)};\n    if (precompiled_result.has_value()) {\n      return precompiled_result.value();\n    } else {\n      std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\n                   \"Compiling from scratch\\n\";\n    }\n  }\n\n  return sourcemeta::blaze::compile(\n      bundled, sourcemeta::core::schema_official_walker, resolver,\n      sourcemeta::blaze::default_schema_compiler, frame,\n      fast_mode ? sourcemeta::blaze::Mode::FastValidation\n                : sourcemeta::blaze::Mode::Exhaustive,\n      default_dialect, default_id);\n}\n\nauto parse_loop(const sourcemeta::core::Options &options) -> std::uint64_t {\n---\n          }\n        }\n      } catch (const sourcemeta::core::JSONParseError &error) {\n        // For producing better error messages\n        throw sourcemeta::core::JSONFileParseError(instance_path, error);\n      }\n\n      if (index == 0) {\n        LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\n      }\n    } else {\n      sourcemeta::core::PointerPositionTracker tracker;\n      const auto instance{sourcemeta::core::read_yaml_or_json(\n          instance_path, std::ref(tracker))};\n      std::ostringstream error;\n      sourcemeta::blaze::SimpleOutput output{instance};\n---\n        const auto result =\n            this->add(entry.second, default_dialect,\n                      sourcemeta::core::URI::from_path(entry.first).recompose(),\n                      [&options](const auto &identifier) {\n                        LOG_VERBOSE(options)\n                            << \"Importing schema into the resolution context: \"\n                            << identifier << \"\\n\";\n                      });\n        if (!result) {\n          std::cerr\n              << \"warning: No schema resources were imported from this file\\n\";\n          std::cerr << \"  at \" << entry.first.string() << \"\\n\";\n          std::cerr << \"Are you sure this schema sets any identifiers?\\n\";\n        }\n      }\n    }\n  }\n\n  auto add(const sourcemeta::core::JSON &schema,\n           const std::optional<std::string> &default_dialect = std::nullopt,\n           const std::optional<std::string> &default_id = std::nullopt,\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && sed -n '20,45p' src/command_lin",
+    "time": {
+      "start": 1790719635030,
+      "end": 1790719635048
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me look at each warning site in detail.\n\n1. `src/command_lint.cc:32` - multi-line? Let's see.\n2. `src/command_bundle.cc:38-48`\n3. `src/command_validate.cc:57`, 288\n4. `src/resolver.h:99-102`\n\nLet me read those regions.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

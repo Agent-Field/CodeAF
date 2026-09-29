@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b30af001nmcYA6qRrnwobN",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3b2930001CmwxETJ73IkpXu",
+  "type": "tool",
+  "callID": "call_01_8fipbredz28k8r5z3z8pt7u6",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && rg -n \"log\\.Warn|log\\.Debug|WithField\" internal/ --type go | head -30"
+    },
+    "output": "internal/middleware/errhandler/error.go:21:\t\t\tlog.WithField(\"reason\", err.Error()).Warn(\"pipe skipped or partially skipped\")\ninternal/middleware/errhandler/error.go:54:\t\tlog.WithField(\"reason\", err.Error()).Warn(\"pipe skipped\")\ninternal/middleware/skip/skip.go:39:\t\t\t\tlog.Debugf(\"skipped %s\", skipper.String())\ninternal/client/gitlab.go:141:\t\tlog := log.WithField(\"projectID\", projectID)\ninternal/client/gitlab.go:143:\t\t\tlog = log.WithField(\"statusCode\", res.StatusCode)\ninternal/client/gitlab.go:219:\t\tWithField(\"projectID\", projectID).\ninternal/client/gitlab.go:242:\t\t\tWithField(\"projectID\", projectID).\ninternal/client/gitlab.go:243:\t\t\tWithField(\"branch\", branch).\ninternal/client/gitlab.go:244:\t\t\tWithField(\"branchExists\", branchExists).\ninternal/client/gitlab.go:257:\t\t\tWithField(\"projectID\", projectID).\ninternal/client/gitlab.go:258:\t\t\tWithField(\"branch\", branch).\ninternal/client/gitlab.go:274:\t\t\tWithField(\"fileName\", fileName).\ninternal/client/gitlab.go:275:\t\t\tWithField(\"branch\", branch).\ninternal/client/gitlab.go:276:\t\t\tWithField(\"projectID\", projectID)\ninternal/client/gitlab.go:278:\t\t\tlog = log.WithField(\"statusCode\", res.StatusCode)\ninternal/client/gitlab.go:286:\t\tWithField(\"projectID\", projectID).\ninternal/client/gitlab.go:287:\t\tWithField(\"branch\", branch).\ninternal/client/gitlab.go:288:\t\tWithField(\"fileName\", fileName).\ninternal/client/gitlab.go:296:\t\t\tWithField(\"projectID\", projectID).\ninternal/client/gitlab.go:297:\t\t\tWithField(\"branch\", branch).\ninternal/client/gitlab.go:298:\t\t\tWithField(\"fileName\", fileName).\ninternal/client/gitlab.go:317:\t\t\t\tWithField(\"fileName\", fileName).\ninternal/client/gitlab.go:318:\t\t\t\tWithField(\"branch\", branch).\ninternal/client/gitlab.go:319:\t\t\t\tWithField(\"projectID\", projectID)\ninternal/client/gitlab.go:321:\t\t\t\tlog = log.WithField(\"statusCode\", res.StatusCode)\ninternal/client/gitlab.go:329:\t\t\tWithField(\"fileName\", fileName).\ninternal/client/gitlab.go:330:\t\t\tWithField(\"branch\", branch).\ninternal/client/gitlab.go:331:\t\t\tWithField(\"projectID\", projectID).\ninternal/client/gitlab.go:332:\t\t\tWithField(\"filePath\", fileInfo.FilePath).\ninternal/client/gitlab.go:339:\t\tWithField(\"fileName\", fileName).\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && rg -n \"log\\.Warn|log\\.Debug|Wit",
+    "time": {
+      "start": 1790720028850,
+      "end": 1790720028866
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2a0d5c001shdh35E0jromdh",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2a05e1001QeX20rNZ5sh09B",
+  "type": "reasoning",
+  "text": "Reproduced. Now test the fix: append `--`.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Reproduced. Now test the fix: append `--`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718905692,
+    "end": 1790718905703
+  }
+}
