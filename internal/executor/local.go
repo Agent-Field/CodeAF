@@ -20,9 +20,15 @@ import (
 const settleDelay = 200 * time.Millisecond
 
 // Jail is the single seam for confinement: it may rewrite the command (wrap it,
-// set attributes) before it starts. Jails are not built yet.
+// set attributes) before it starts. See jail_linux.go for the Linux jail; other systems keep no confinement.
 type Jail interface {
 	Confine(cmd *exec.Cmd, req ExecRequest) error
+}
+
+// Degrader is optionally implemented by a jail that may run with fewer
+// limits than asked for on this kernel; the result then says so.
+type Degrader interface {
+	Degraded(req ExecRequest) bool
 }
 
 type noJail struct{}
@@ -48,10 +54,17 @@ func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) 
 	processgroup.Configure(cmd)
 	cmd.Cancel = func() error { return processgroup.Kill(cmd.Process.Pid) }
 	cmd.WaitDelay = settleDelay
-	if err := l.jail().Confine(cmd, req); err != nil {
+	if err := l.confine(cmd, req); err != nil {
 		return ExecResult{}, err
 	}
-	return run(ctx, cmd, req, onOutput)
+	res, err := run(ctx, cmd, req, onOutput)
+	res.JailDegraded = degraded(l.Jail, req)
+	return res, err
+}
+
+func degraded(j Jail, req ExecRequest) bool {
+	d, ok := j.(Degrader)
+	return ok && req.Class == Sandboxed && d.Degraded(req)
 }
 
 // check validates a request and returns the directory it runs in.
@@ -63,6 +76,14 @@ func (l Local) check(req ExecRequest) (string, error) {
 		return "", errors.New("executor: empty argv")
 	}
 	return resolve(l.Root, req.Dir)
+}
+
+// confine applies the jail to sandboxed calls only.
+func (l Local) confine(cmd *exec.Cmd, req ExecRequest) error {
+	if req.Class != Sandboxed {
+		return nil
+	}
+	return l.jail().Confine(cmd, req)
 }
 
 func (l Local) jail() Jail {
