@@ -436,7 +436,9 @@ Your three most recent messages and
 everything after them stay word for word unless a cut that keeps fewer is what reaches the
 line: codeaf chooses the cut that keeps the most and still gets under it — three, two, your
 latest with the reply before it, or your latest alone. When no cut can reach the line,
-`/compact` keeps all three, since summarizing more would not reach it either; only recovery
+`/compact` keeps all of your last three messages that exist, since summarizing more
+would not reach it either. With only two since the last summary, it keeps both; if
+there is too little before them, it writes no summary and says why. Only recovery
 from a refused request then keeps fewer. The
 latest message and the system prompt always stay word for word. The full record
 stays in the session journal, and the summary names that file.

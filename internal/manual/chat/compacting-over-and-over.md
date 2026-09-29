@@ -229,10 +229,13 @@ oldest part of the conversation — your older messages and the assistant's work
 with one note that starts `[context compacted]`. It never touches:
 
 - the system prompt;
-- your **three most recent messages** and everything after them. If a cut can reach
+- your **up to three most recent messages** and everything after them. If a cut can reach
   the line, codeaf keeps as many of those messages as that cut allows. If no cut can
-  reach it, an automatic pass or `/compact` still keeps all three: summarizing more
-  would not reach the line either. Recovery from a refused request tries two, then
+  reach it, an automatic pass or `/compact` still keeps all of the most recent three
+  that exist: summarizing more would not reach the line either. With only two messages
+  since the last summary, `/compact` leaves both word for word when neither can reach
+  the line; if there is too little older conversation, it writes no summary and says why.
+  Recovery from a refused request tries two, then
   your latest message **with the reply just before it** (what "translate it" or
   "keep going" is about), then your latest alone — the message being answered always stays;
 - the turn that is running.

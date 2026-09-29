@@ -21,6 +21,9 @@ invalidates:
   - "An unobserved helper call could consume a tool-less model's one visible notice. The notice is now spent only on a call with a stream observer."
   - "A strict endpoint pin could resend the same oversized tool request to that endpoint and ignore its learned limit on later tool requests. It now pays one refusal and sizes the next request against the pinned endpoint's limit. A routed resend logs its first 400 as well as the answer. Equal limits refresh their disk date, and future dates are clamped."
   - "An ordinary request could send `max_tokens` even when its computed output ceiling did not bind. It now omits that field until the ceiling actually binds."
+  - "A summary on a model whose lowest listed thinking effort was high could spend its whole output cap thinking and return empty. The effort word still travels as asked, but the provider now sizes the thinking room for the lowest level the model lists (a model that lists only high and xhigh runs at high at the least); an empty length finish gets one retry at twice the answer allowance, and both attempts are counted."
+  - "When no cut could reach the line and only two person messages remained after a summary, /compact could summarize away one of them to reach the minimum worth a call. Ordinary and manual passes now keep every recent person message the three-message ladder protects; only refusal recovery may keep fewer."
+  - "A rolling summary could omit specific facts from the previous summary. Its instruction now explicitly carries those facts forward word for word unless newer conversation supersedes them."
 ---
 
 A conversation could fill its window and then be stuck: the request was refused
