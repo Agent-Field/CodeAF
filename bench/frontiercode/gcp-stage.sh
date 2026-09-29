@@ -57,7 +57,7 @@ if [ "$rig_commit" = "HEAD" ]; then rig_commit="$(git -C "$FC_REPO_ROOT" rev-par
 git -C "$FC_REPO_ROOT" cat-file -e "$rig_commit^{commit}" 2>/dev/null || fc_die "rig commit $rig_commit is not in this checkout"
 head_commit="$(git -C "$FC_REPO_ROOT" rev-parse HEAD)"
 [ "$head_commit" = "$rig_commit" ] || fc_die "HEAD $head_commit is not the pinned rig commit $rig_commit — commit the rig, or update the manifest"
-bundle_ref="$(git -C "$FC_REPO_ROOT" for-each-ref --format='%(refname)' --contains "$rig_commit" refs/heads | head -1)"
+bundle_ref="$(git -C "$FC_REPO_ROOT" for-each-ref --format='%(refname)' --contains "$rig_commit" refs/heads | awk 'NR==1{print}')"
 [ -n "$bundle_ref" ] || fc_die "no branch contains the pinned rig commit $rig_commit; a bundle must name a ref"
 
 local_bin="$FC_REPO_ROOT/$(fc_get '.codeaf_local_binary')"
