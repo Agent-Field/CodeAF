@@ -158,3 +158,36 @@ runs 5: 4 pass, 1 flagged, 5 graded, 0 rig; total $0.268 (harness-reported)
   2. **Seal-scanner false positive on s1.** The agent worked in the task's own repo (`~/repos/jsonschema`, as its instructions say), running `cd ~/repos/jsonschema && grep … src/error.h`. `src/error.h` embeds the repo's own issues URL `https://github.com/sourcemeta/jsonschema`. The scanner treats that as an upstream-slug leak and flags the run → zeroed to 0.0. The egress proxy log shows only model-plane hosts (codeaf.agentfield.ai, models.dev) — no external fetch; judge already scored 1.00 with all criteria met. The flagged text is the task's own source and path. Not patched — reported per policy (do not change rig scripts to make a failure go away); recommend the scanner exclude the run's own task repository path/slug when the URL only appears inside source fetched by the task itself.
 - **Teardown:** key shredded (`--shred fc-pilot-s1`), instance and boot disk deleted (`gcloud compute instances delete fc-pilot-s1 --delete-disks=all`); `gcloud compute instances list --project openaf-505800` (the project id) lists 0 items, no orphan disk. Nothing bills after the run. <!-- legacy-name -->
 - **Artifacts fetched home:** `bench/frontiercode/results/jsonschema-log-warning-codeaf-senior-dev-deepseek-deepseek-v4.1-flash-s1..s5-ehigh/`, each with grade.json, scan.json, record.jsonl, cost.json, meta.json and DONE sentinel, verified by `fetch-results.sh` (`fetched 5 run(s); --keep-host set`). Raw `--controls` and `--execute` transcripts preserved in this run's task log and `fc-controls.txt`.
+
+## Plan steps 1–4 status (2026-09-29, branch bench/frontiercode)
+
+1. **D4 merge — done.** The three conflicts were union-merged and committed
+   (the changelog resolution completed in `0f3e86d84`); gates green
+   (namelaw — after marking the GCP project id in this report with the
+   sanctioned `legacy-name` marker —, changes check, script syntax).
+2. **Candidate environments — 2 of 7 built and calibrated.**
+   `shell-pipe-empty-command` (goreleaser, Go) and
+   `conflicted-files-refname-crash` (pre-commit, Python) each have a full
+   task directory, built environment and verifier images, and reproduce both
+   controls: gold 1.00, negative 0.0 with both blockers failed. Building them
+   surfaced and fixed four rig-generalization bugs (grade.sh repo path and
+   mountless phase execution, judge reply parsing and adapt-shape, per-task
+   reverse rebuild, generic adaptive trigger); the fixture's gold control was
+   re-run under the changed grader and still scores 1.00. The remaining five
+   candidates (kong, cobra, headscale, bubbletea, clap) are unstarted; their
+   PR head/base commits are verified and recorded above, and the pipeline is
+   now mechanical.
+3. **Scanner false positive — fixed.** A bare upstream-slug mention in the
+   transcript is a SOFT note unless there is fetch evidence in the line
+   (clone/fetch command, `.git` URL, upstream-history or archive URL shape)
+   or any github-family egress in the proxy log. Four probe cases verified:
+   the s1 shape (slug inside source, clean proxy log) no longer flags; a
+   clone command, slug-plus-github-egress, and a PR URL still hard-flag.
+4. **Full benchmark run — staged, not launched.** The manifest carries the
+   agreed design (5 seeds in one wave, 4 CPU/8 GiB per container,
+   `e2-standard-32`, 120 GB, 6h self-stop); `launch.sh --check-local` and
+   `gcp-create.sh --plan` both pass with the three calibrated tasks in
+   shard-1. The run itself needs a supervised ~6h window and mandatory
+   teardown, which this task's budget could not guarantee, so it was not
+   started; launch is `gcp-stage.sh` → `gcp-key.sh` → `gcp-create.sh` →
+   `launch.sh` → `fetch-results.sh` → teardown.
