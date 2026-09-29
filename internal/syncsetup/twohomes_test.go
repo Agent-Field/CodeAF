@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -88,20 +89,13 @@ func appendTo(t *testing.T, path, text string) {
 // for this machine only.
 type blocker struct {
 	blobstore.Store
-	down chan struct{} // closed while uploads are refused
+	down atomic.Bool
 }
 
-func (b *blocker) set(down bool) {
-	if down {
-		b.down = make(chan struct{})
-		close(b.down)
-		return
-	}
-	b.down = nil
-}
+func (b *blocker) set(down bool) { b.down.Store(down) }
 
 func (b *blocker) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
-	if b.down != nil {
+	if b.down.Load() {
 		return "", blobstore.ErrUnreachable
 	}
 	return b.Store.PutFrame(ctx, frame)
@@ -141,7 +135,8 @@ type openChat struct {
 func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string) *openChat {
 	h.t.Helper()
 	eng.Workspace = work
-	drive, err := s.Drive(context.Background(), eng, c, DriveOptions{DeviceName: device, OnNotice: h.wall.add})
+	title := func() string { m, _ := session.LoadMeta(c.Root); return m.Title }
+	drive, err := s.Drive(context.Background(), eng, c, DriveOptions{DeviceName: device, Title: title, OnNotice: h.wall.add})
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -370,8 +365,8 @@ func TestTwoHomesL8ByteIdentical(t *testing.T) {
 	}
 
 	row, ok := rowOf(t, h.b, h.cell.ID)
-	if !ok || row.Status != chatlist.Idle || row.Title != "" && row.Title != "untitled" && row.Title != "two homes" {
-		t.Fatalf("B lists %+v, %v; want A's released chat", row, ok)
+	if !ok || row.Status != chatlist.Idle || row.Title != "two homes" {
+		t.Fatalf("B lists %+v, %v; want A's released chat under the title it was sealed with", row, ok)
 	}
 
 	got, err := h.continuerB().Take(ctx, h.cell.ID)
