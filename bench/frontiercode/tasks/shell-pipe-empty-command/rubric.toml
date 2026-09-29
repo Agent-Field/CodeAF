@@ -35,22 +35,13 @@ untouched? A change that swallows failures or silences output for non-empty
 commands too fails."""
 
 [[criterion]]
-id = "regression-tests-pass"
+id = "reference-tests-pass"
 kind = "classical"
 blocker = false
 weight = 1
 [criterion.classical]
 overlay = "/solution/test-overlay.patch"
 run = "go test ./internal/shell/ -run TestRunCommand"
-
-[[criterion]]
-id = "reverse-tests-fail"
-kind = "reverse-classical"
-blocker = false
-weight = 1
-[criterion.reverse_classical]
-run = "go test ./internal/shell/ -run TestRunCommand"
-revert_paths = ["internal/shell"]
 
 [[criterion]]
 id = "clean-build"
@@ -67,6 +58,15 @@ blocker = false
 weight = 1
 [criterion.command]
 command = "go test ./internal/shell/"
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "go test ./internal/shell/ -run TestRunCommand"
+revert_paths = ["internal/shell/shell.go"]
 
 [[criterion]]
 id = "scope-focused"

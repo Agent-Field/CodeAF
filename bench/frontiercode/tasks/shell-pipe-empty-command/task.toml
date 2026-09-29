@@ -20,6 +20,9 @@ base_commit_hash = "21eefb16cfc5346f9cbe8fb0513ee1840353c324"
 reference_commit_hash = "1d569f4a85c9477f0fc2e13508a82ace8b124c90"
 reference_pr = "goreleaser/goreleaser#5929"
 license = "MIT (upstream only; fetched at image build time)"
+# Where the task tree lives inside the container (grade.sh mounts and grades
+# it; the fixture leaves this key off and defaults to jsonschema).
+agent_repo_path = "goreleaser"
 
 [environment]
 docker_image = "frontiercode-shell-pipe-empty-command:env"
@@ -34,6 +37,10 @@ build_timeout_sec = 2400.0
 timeout_sec = 7200.0
 
 [verifier]
+# The reverse-classical criterion reverts internal/shell and must test the
+# REVERTED tree: touch the package's Go sources so the incremental build
+# cannot serve stale objects, then rebuild the tree.
+rebuild_command = "find internal -name '*.go' -newer go.mod -exec touch {} + && go build ./..."
 network_mode = "no-network"
 environment_mode = "separate"
 timeout_sec = 5400.0
