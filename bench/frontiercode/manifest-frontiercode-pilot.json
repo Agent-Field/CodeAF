@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "campaign_name": "FrontierCode GCP pilot — codeaf senior-dev on the jsonschema fixture",
+  "preregistration": "bench/frontiercode/PREREGISTRATION-frontiercode-pilot.md",
+  "label_prefix": "fc-pilot-s1",
+  "arm": "codeaf-senior-dev",
+  "seed_id": "s1",
+  "hypothesis": "codeaf senior-dev, at reasoning effort high under the campaign's cost and hour caps, clears every blocker and scores 1.00 on the jsonschema-log-warning fixture through the GCP host path, with open-and-logged egress unflagged and the judge's model and prompt version recorded; a scored run is the delivery gate, the controls (gold 1.00, negative 0.0, seal flagged) are the grading gate, and one fixture is a working slice rather than a rate.",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "provider": "openrouter",
+  "list_price_per_mtok": {
+    "input": 0.3,
+    "cache_read": 0.006,
+    "output": 1.2
+  },
+  "list_price_note": "The endpoint rate this campaign's key reaches, not the first-party rate: same figures the DeepSWE full113-v41 campaigns charged to Novita and GMICloud on 2026-09-12. The manifest price is the authority; models.dev is a cross-check when the network answers.",
+  "judge_model": "openrouter/anthropic/claude-sonnet-4.5",
+  "judge_prompt_version": "fc-judge-1",
+  "codeaf_commit": "293481674c8d1ea62b03f79874938c883000d37c",
+  "codeaf_sha256": "a1f88abe1a2a64cfc886c5ee3a381d4e84d05367a3c009245a050afd95d1500d",
+  "codeaf_local_binary": "bench/frontiercode/bin/codeaf-linux-amd64",
+  "rig_commit": "HEAD",
+  "rig_commit_note": "HEAD means the committed tip of the checkout being staged is the pin: a commit cannot name itself, so the sha is resolved and recorded at stage time. A frozen campaign may set a literal instead, and staging then refuses unless HEAD equals it.",
+  "corpus": "bench/frontiercode/tasks",
+  "corpus_sha256": "9e8ff1d7a68c42b0629a4ca039a66602dd112219e3e89969a004cc7ae7873040",
+  "host_shards": 1,
+  "wave_capacity": 2,
+  "per_container": {
+    "cpus": 2,
+    "memory_gb": 8
+  },
+  "shard_files": {
+    "1": "bench/frontiercode/shards/shard-1.txt"
+  },
+  "shard_sha256": {
+    "1": "649e7c20f346da3fe40868dc097019fd609d3c29e62dd2acbcc720d4b88a0e01"
+  },
+  "max_cost_usd": "25.00",
+  "max_hours": 2,
+  "hard_timeout_seconds": 7500,
+  "reasoning_effort": "high",
+  "gcp": {
+    "project": "codeaf-bench",
+    "zone": "us-central1-a",
+    "image": "codeaf-frontiercode-base-20260928",
+    "machine_type": "e2-standard-8",
+    "boot_disk_gb": 120,
+    "instance_prefix": "fc-pilot",
+    "max_run_duration": "6h"
+  },
+  "key": {
+    "store": "keychain",
+    "item": "fc-pilot-deepseek-v41-flash"
+  },
+  "recovery": {
+    "note": "Declared contract exceptions live here, never hard-coded in a script. An empty list means this campaign expects no exception.",
+    "profiles": [],
+    "label_prefixes": []
+  }
+}
