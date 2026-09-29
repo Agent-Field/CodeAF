@@ -32,6 +32,9 @@ type watched struct {
 // ForSetup implements SetupSeat: the setup form of the seat is watched too.
 func (w watched) ForSetup() Seat { return Watching(ForSetup(w.Seat), w.obs) }
 
+// NoteModelCall implements ModelNoter: the seat beneath keeps the record.
+func (w watched) NoteModelCall(m ModelCall) { NoteModelCall(w.Seat, m) }
+
 // Around implements Seat: the call runs on the seat beneath, then the tools its
 // command line named are observed. A call the seat refused ran nothing.
 func (w watched) Around(ctx context.Context, call Call, run func() ([]byte, bool)) error {

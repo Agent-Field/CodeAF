@@ -78,11 +78,13 @@ type ServiceRec struct {
 // ModelCall is one model call of the turn, by hashes.
 type ModelCall struct {
 	Model        string `json:"model"`
+	Role         string `json:"role,omitempty"`
 	ParamsHash   string `json:"params_hash"`
 	RequestHash  string `json:"request_hash"`
 	ResponseHash string `json:"response_hash"`
 	TokensIn     uint32 `json:"tokens_in"`
 	TokensOut    uint32 `json:"tokens_out"`
+	TokensCached uint32 `json:"tokens_cached,omitempty"`
 	CostMicroUSD int64  `json:"cost_micro_usd"`
 }
 
