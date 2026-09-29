@@ -113,7 +113,12 @@ func (a *app) machineScreen(width int) []string {
 
 // remoteOffers answers each offer with what enter does on it. A table rather
 // than a switch, so a new offer is a new entry.
+//
+// A CHAT ANOTHER MACHINE LET GO OF (`Open`, which is what a released chat offers
+// where it is held) IS CONTINUED THE WAY A CHAT THAT WENT OFF IS: it is not on
+// this machine, so opening it is continuing it, and the lease is free.
 var remoteOffers = map[chatlist.OfferKind]func(*app, chatlist.Row, chatlist.Offer) tea.Cmd{
+	chatlist.Open:         (*app).offerContinue,
 	chatlist.ContinueHere: (*app).offerContinue,
 	chatlist.Merge:        (*app).offerBranch,
 	chatlist.Watching:     (*app).sayOffer,
@@ -146,17 +151,17 @@ func (a *app) sayOffer(_ chatlist.Row, offer chatlist.Offer) tea.Cmd {
 // ── continue here ───────────────────────────────────────────────────────────
 
 // offerContinue raises the takeover screen.
-func (a *app) offerContinue(row chatlist.Row, offer chatlist.Offer) tea.Cmd {
+func (a *app) offerContinue(row chatlist.Row, _ chatlist.Offer) tea.Cmd {
 	if a.taker == nil {
 		return a.sayOffer(row, chatlist.Offer{Line: chatlist.StatusLine(row)})
 	}
-	a.raiseMachineAsk(row, a.continueShown(row, offer))
+	a.raiseMachineAsk(row, a.continueShown(row))
 	return nil
 }
 
-// continueShown is the takeover question: the offer's own words as the yes, and
-// the takeover sentence as the reason. The cursor starts on `leave it there`.
-func (a *app) continueShown(row chatlist.Row, offer chatlist.Offer) questionShown {
+// continueShown is the takeover question: `continue here` as the yes, and the
+// takeover sentence as the reason. The cursor starts on `leave it there`.
+func (a *app) continueShown(row chatlist.Row) questionShown {
 	return questionShown{
 		question: session.Question{
 			Kind:    homeContinueKind,
@@ -167,7 +172,7 @@ func (a *app) continueShown(row chatlist.Row, offer chatlist.Offer) questionShow
 			Reason:  chatlist.TakeoverLine(row),
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: []session.AnswerOption{
-				{Key: "1", Label: offer.Line},
+				{Key: "1", Label: chatlist.OfferContinue},
 				{Key: "2", Label: continueStay, Safe: true},
 			},
 			Stakes: session.StakesReversible,
