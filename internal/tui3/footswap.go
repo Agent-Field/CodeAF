@@ -178,7 +178,7 @@ func (a *app) seamShrink(ledger, alive *[]hudPart) bool {
 	if a.shrink(ledger, alive, len(dropOrder)) {
 		return true
 	}
-	return dropKind(alive, segLink) || dropKind(ledger, segYolo) || dropKind(alive, segQuestions)
+	return dropKind(alive, segLink) || dropKind(ledger, segYolo) || dropKind(alive, segSeal) || dropKind(alive, segQuestions)
 }
 
 // seamRungParts is one rung's two runs, built again from the parts the ladder

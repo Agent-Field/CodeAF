@@ -39,6 +39,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // v3Dir is ~/.codeaf/v3: the directory this surface keeps its own files in —
@@ -755,7 +756,7 @@ func v3Migrated(cfg session.Config) session.Config {
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
 	cfg.Seat, cfg.Machine = nil, nil
-	seat, machine := v3SeatOf(cfg.Place)
+	seat, machine := v3SeatOf(cfg.Place, sealWatch)
 	cfg.Seat = seat
 	if machine != nil {
 		cfg.Machine = machine
@@ -766,7 +767,7 @@ func v3Seated(cfg session.Config) session.Config {
 // v3SeatOf is the seat of the cell a place names, and the machine view it was
 // built with: the one construction every door that seals its calls goes
 // through. A place that is not a readable cell answers no seat.
-func v3SeatOf(place session.Place) (executor.Seat, *preflight.Machine) {
+func v3SeatOf(place session.Place, watch *cellstore.SealWatch) (executor.Seat, *preflight.Machine) {
 	if !cell.Enabled() || place.Dir == "" || place.Workspace == "" {
 		return nil, nil
 	}
@@ -779,9 +780,9 @@ func v3SeatOf(place session.Place) (executor.Seat, *preflight.Machine) {
 		class = executor.HostBound
 	}
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
-	sealNotice.report(err)
-	seat, err := cellstore.SeatFor(class, c, place.Workspace, observerOf(machine), sealNotice.report)
-	sealNotice.report(err)
+	failed(watch, err)
+	seat, err := cellstore.SeatFor(class, c, place.Workspace, observerOf(machine), watch.Report)
+	failed(watch, err)
 	return seat, machine
 }
 
@@ -794,15 +795,25 @@ func observerOf(m *preflight.Machine) executor.Observer {
 	return m.Observer()
 }
 
-// sealNotice tells a person once per launch that their calls are not sealed. It
-// is stderr, not the surface's notice row, until the launch has one for it.
-var sealNotice onceNotice
+// sealWatch is what this process's conversations know about their seals: the
+// chat's status line draws a segment from it while the last seal failed, and
+// says the sentences it queues (chatv3_seal.go).
+var sealWatch = &cellstore.SealWatch{}
 
-type onceNotice struct{ once sync.Once }
+// sealSeam is what a watch tells the chat surface.
+func sealSeam(watch *cellstore.SealWatch) tui3.SealSeam {
+	return tui3.SealSeam{Failing: watch.Failing, Notice: watch.Take}
+}
 
-func (n *onceNotice) report(err error) {
+// errandSeals is the same watch for a run with no surface: its sentences go to
+// stderr as they happen.
+var errandSeals = &cellstore.SealWatch{Say: func(sentence string) { fmt.Fprintln(os.Stderr, "codeaf: "+sentence) }}
+
+// failed tells the watch about a seat that could not be built, and is silent
+// about one that could: a nil error there is no seal having held.
+func failed(watch *cellstore.SealWatch, err error) {
 	if err != nil {
-		n.once.Do(func() { fmt.Fprintln(os.Stderr, "codeaf: "+err.Error()) })
+		watch.Report(err)
 	}
 }
 
