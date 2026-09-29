@@ -112,7 +112,7 @@ bundle="$(mktemp "${TMPDIR:-/tmp}/fc-rig.XXXXXX")"
 remote_cfg="$(mktemp "${TMPDIR:-/tmp}/fc-stage.XXXXXX")"
 remote_script="$(mktemp "${TMPDIR:-/tmp}/fc-stage-remote.XXXXXX.sh")"
 trap 'rm -f "$bundle" "$remote_cfg" "$remote_script"' EXIT
-git -C "$FC_REPO_ROOT" bundle create "$bundle" "$bundle_ref" >/dev/null
+git -C "$FC_REPO_ROOT" bundle create "$bundle" HEAD "$bundle_ref" >/dev/null
 
 {
   printf 'FC_RIG_COMMIT=%s\n' "$rig_commit"
