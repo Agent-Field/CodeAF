@@ -2,11 +2,12 @@ package cellstore
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
@@ -21,33 +22,44 @@ func TestSeatIsPlainWhenCellsAreOff(t *testing.T) {
 	}
 }
 
-func TestAPlainUserFolderIsNotSealed(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
+func TestComposedEngineSealsTheWorkspaceAndKeepsTheCellOutOfIt(t *testing.T) {
+	c := newCell(t)
 	workspace := t.TempDir()
-	seat, err := SeatFor(executor.HostBound, newCell(t), workspace, nil)
-	if !errors.Is(err, ErrNotSealable) {
-		t.Fatalf("err = %v, want ErrNotSealable", err)
+	if err := os.WriteFile(filepath.Join(workspace, "a.txt"), []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := seat.(executor.Stance); !ok {
-		t.Fatalf("an unsealable folder still needs its class: got %T", seat)
+	engine := realEngine(t)
+	engine.Workspace = workspace
+	sealed, err := engine.Seal(context.Background(), c, TurnInfo{Trigger: AgentRun})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, statErr := os.Stat(filepath.Join(workspace, repositoryMarker)); statErr == nil {
-		t.Fatal("a user's folder was made a repository")
+	if sealed.Turn.ID == "" {
+		t.Fatal("no turn sealed")
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, TurnsPath)); err != nil {
+		t.Fatalf("the chain is not in the cell: %v", err)
+	}
+	// The engine still leaves its own .furrow/ identity marker in the tree it
+	// attaches (repository.rs WORKSPACE_FILE); that is the engine's to move.
+	for _, litter := range []string{cell.StateDir, ".git"} {
+		if _, err := os.Stat(filepath.Join(workspace, litter)); err == nil {
+			t.Fatalf("the seal wrote %s into the user's workspace", litter)
+		}
+	}
+	if inside(engine.LocalDir(c), workspace) {
+		t.Fatal("the engine store must live outside the workspace")
 	}
 }
 
-func TestSealTreeIsTheWorkspaceForARepositoryAndAnOwnedFolder(t *testing.T) {
+func TestComposedArgsNameTheCellDirOnlyWhenTheTreeIsAWorkspace(t *testing.T) {
 	c := newCell(t)
-	repo := t.TempDir()
-	if err := os.Mkdir(filepath.Join(repo, repositoryMarker), 0o700); err != nil {
-		t.Fatal(err)
+	if got := (Engine{}).cellDirArgs(c); got != nil {
+		t.Fatalf("a cell's own folder composes nothing, got %v", got)
 	}
-	owned := filepath.Join(c.Root, "work")
-	for _, workspace := range []string{repo, owned} {
-		tree, err := sealTree(c, workspace)
-		if err != nil || tree.Root != workspace || tree.ID != c.ID {
-			t.Fatalf("sealTree(%s) = %+v, %v", workspace, tree, err)
-		}
+	got := Engine{Workspace: "/w"}.cellDirArgs(c)
+	if len(got) != 2 || got[0] != "--cell-dir" || got[1] != filepath.Join(c.Root, cell.StateDir) {
+		t.Fatalf("args = %v", got)
 	}
 }
 
@@ -59,7 +71,7 @@ func TestSealedSeatRecordsEachToolCallAsOneReceipt(t *testing.T) {
 	rec, fake := newRecorder(t, c, &stubExec{}, filepath.Join(t.TempDir(), "wal"))
 	seat := sealed{Stance: executor.Stance{Class: executor.HostBound}, rec: rec}
 	for _, failed := range []bool{false, true} {
-		err := seat.Around(context.Background(), "bash", []byte(`{"command":"x"}`), func() ([]byte, bool) { return []byte("out"), failed })
+		err := seat.Around(context.Background(), executor.Call{Tool: "bash", Args: []byte(`{"command":"x"}`)}, func() ([]byte, bool) { return []byte("out"), failed })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,8 +95,13 @@ func TestACallWhoseIntentCannotBeLoggedDoesNotRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	ran := false
-	err := rec.Around(context.Background(), "bash", nil, executor.EffectLocal, func() ([]byte, bool) { ran = true; return nil, false })
+	err := rec.Around(context.Background(), executor.Call{Tool: "bash"}, executor.EffectLocal, func() ([]byte, bool) { ran = true; return nil, false })
 	if err == nil || ran {
 		t.Fatalf("err = %v, ran = %v; an unlogged call must not run", err, ran)
 	}
+}
+
+func inside(parent, dir string) bool {
+	rel, err := filepath.Rel(parent, dir)
+	return err == nil && !strings.HasPrefix(rel, "..")
 }

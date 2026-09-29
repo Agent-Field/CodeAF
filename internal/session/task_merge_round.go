@@ -537,7 +537,7 @@ func (a *Agent) ResolveConflict(id uint64) error {
 		return fmt.Errorf("task %d has no working copy to resolve in — its work is on %s, and merging it is yours to do",
 			id, strings.TrimSpace(tree.branch))
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.rootContext())
 	// NO JOB ROW, NO ROUND. The registry is where the cancel is registered, so a
 	// goroutine started without one would run on a bare context: no `jobs kill`,
 	// no death at [Agent.Close], and a worker still editing a working copy in a

@@ -25,9 +25,9 @@ func (s *countingSeat) In(dir string) procexec.Runner {
 	return s.Stance.In(dir)
 }
 
-func (s *countingSeat) Around(_ context.Context, tool string, _ []byte, run func() ([]byte, bool)) error {
+func (s *countingSeat) Around(_ context.Context, call procexec.Call, run func() ([]byte, bool)) error {
 	s.mu.Lock()
-	s.tools = append(s.tools, tool)
+	s.tools = append(s.tools, call.Tool)
 	s.mu.Unlock()
 	run()
 	return nil

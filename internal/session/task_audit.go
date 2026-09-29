@@ -2912,7 +2912,7 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.rootContext())
 	// NO JOB ROW, NO RE-AUDIT. The registry is where the cancel is registered, so
 	// a goroutine started without one would run on a bare context: no `jobs kill`,
 	// no death at [Agent.Close], and a landing that finishes a node into a session

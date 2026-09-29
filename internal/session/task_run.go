@@ -1597,7 +1597,7 @@ func (g *TaskGraph) runFrontier() {
 		// graph believes a node is running and has no handle on it. A node
 		// belongs to the process and not to a turn or a surface, so the parent
 		// is Background — detaching a renderer ends nothing here.
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(g.rootContext())
 		node.ctx, node.cancel = ctx, cancel
 		starting = append(starting, node)
 		// The handle is kept here as well as on the node, because the goroutine
@@ -2866,7 +2866,7 @@ func (n *TaskNode) runContext() (context.Context, context.CancelFunc) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	if n.ctx == nil {
-		n.ctx, n.cancel = context.WithCancel(context.Background())
+		n.ctx, n.cancel = context.WithCancel(n.graph.rootContext())
 	}
 	return n.ctx, n.cancel
 }
