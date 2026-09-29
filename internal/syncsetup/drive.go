@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -59,6 +60,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err := s.putDevice(ctx, opt.DeviceName); err != nil {
 		return nil, err
 	}
+	s.pushVault(ctx)
 	drv, held, err := s.driving(ctx, c)
 	if err != nil {
 		return nil, err
@@ -78,6 +80,19 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 		_ = d.batcher.Run(run)
 	}()
 	return d, nil
+}
+
+// pushVault sends this machine's secrets along with the chat, so a machine that
+// continues the chat can put its .env back. It is best effort and says nothing
+// when it fails: the vault is sent again the next time a chat starts, and a
+// vault that was never written has nothing to send.
+func (s *Sync) pushVault(ctx context.Context) {
+	if !keys.Exists(s.Home) {
+		return
+	}
+	if syncer, err := s.vaultSyncer(nil); err == nil {
+		_ = syncer.Push(ctx)
+	}
 }
 
 // putDevice upserts this device's record with its sealed name and what it can do.
@@ -134,10 +149,11 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 	}
 	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	rec := cellstats.NewRecorder(s.Home, c.ID, meter(s.Counters))
+	pub := &cellsync.Publisher{Engine: engine, Store: s.Store, Dir: s.Dir}
 	return &cellsync.Batcher{
-		Publisher: &cellsync.Publisher{Engine: engine, Store: s.Store, Dir: s.Dir},
+		Publisher: pub,
 		Brancher: cellsync.Brancher{
-			Dir: s.Dir, Map: branches,
+			Dir: s.Dir, Publisher: pub, Map: branches,
 			NewID: func() (string, error) { return cell.NewID(time.Now()) },
 		},
 		Driving:      &drv,
@@ -162,14 +178,11 @@ func meter(c *blobstore.Counters) cellstats.Meter {
 
 // info is what a publish tells the directory about this chat.
 func (d *Drive) info() cellsync.PublishInfo {
-	in := cellsync.PublishInfo{
-		Class: string(d.cell.Meta().Class),
-		Keys:  map[string]map[string]string{d.cell.Meta().CellKeyID: {d.sync.Identity.ID(): ""}},
-	}
+	title := ""
 	if d.opt.Title != nil {
-		in.Title, _ = directory.SealTitle(directory.MetadataKey(d.sync.Identity.CellKey()), d.opt.Title())
+		title = d.opt.Title()
 	}
-	return in
+	return d.sync.publishInfo(d.cell, title)
 }
 
 // becomeViewer is the Batcher's word that another device took the chat over:
