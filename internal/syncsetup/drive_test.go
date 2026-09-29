@@ -417,3 +417,31 @@ func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 		t.Fatalf("a viewer disturbed the lease: %+v", v.Cell.Lease)
 	}
 }
+
+// TestDriveSidePublishesOverTheDefaultDaemon is the same publish with the
+// transport nobody chose: no CODEAF_ENGINE_DAEMON=0 and no Runner, so the sync
+// verbs go to the versioned daemon and the spawn is only its fallback. The
+// daemon's socket appearing shows the daemon, and not the spawn, served them.
+func TestDriveSidePublishesOverTheDefaultDaemon(t *testing.T) {
+	r := newDriveRig(t)
+	t.Setenv("CODEAF_ENGINE_DAEMON", "")
+	r.engine.Transport = nil
+	t.Cleanup(func() { stopDaemons(t) })
+	var notices noticeLog
+	c := r.startChat(&notices)
+	c.mustSay()
+	waitFor(t, "the directory head to reach the chat's head", func() bool { return r.directoryHead(r.cell.ID) == r.head() })
+	if socks, _ := filepath.Glob(home.Join("v3", "engine-*.sock")); len(socks) == 0 {
+		t.Fatal("no engine daemon socket: the sync verbs did not go through the daemon")
+	}
+}
+
+// stopDaemons ends the daemons this test started: their sockets live in the
+// test's own home, so none is anyone else's.
+func stopDaemons(t *testing.T) {
+	t.Helper()
+	socks, _ := filepath.Glob(home.Join("v3", "engine-*.sock"))
+	for _, s := range socks {
+		_ = cellstore.Daemon{Socket: s}.Stop(context.Background())
+	}
+}

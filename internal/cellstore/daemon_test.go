@@ -1,8 +1,11 @@
 package cellstore
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -93,5 +96,53 @@ func TestDaemonOfANonEngineIsUnavailable(t *testing.T) {
 	_, err = d.Do(context.Background(), Target{}, snapOp{})
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("err = %v, want ErrUnavailable", err)
+	}
+}
+
+// Two engine builds never share a daemon: the socket is named after the binary.
+func TestSocketIsKeyedToTheEngineBinary(t *testing.T) {
+	a := socketFor("/x/furrow-0.1.0-aaaaaaaaaaaa")
+	b := socketFor("/x/furrow-0.1.0-bbbbbbbbbbbb")
+	if a == b || filepath.Base(a) != "engine-0.1.0-aaaaaaaaaaaa.sock" {
+		t.Errorf("sockets %q and %q must differ by build", a, b)
+	}
+}
+
+// serveHealth answers every request on socket as a daemon of the named engine.
+func serveHealth(t *testing.T, socket, engine string) {
+	ln, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			var req wireRequest
+			line, _ := bufio.NewReader(conn).ReadBytes('\n')
+			_ = json.Unmarshal(line, &req)
+			ok, _ := json.Marshal(map[string]string{"engine": engine})
+			reply, _ := json.Marshal(wireResponse{ID: req.ID, Ok: ok})
+			conn.Write(append(reply, '\n'))
+			conn.Close()
+		}
+	}()
+}
+
+// A daemon of another engine build is not used: the verb goes to the spawn.
+func TestDaemonOfAnotherEngineIsNotUsed(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "e.sock")
+	serveHealth(t, socket, "furrow-0.0.9-oldoldoldold")
+	d := Daemon{Socket: socket, Binary: "/x/furrow-0.1.0-newnewnewnew"}
+	if _, err := d.Do(context.Background(), Target{}, snapOp{}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("err = %v, want ErrUnavailable", err)
+	}
+	spawned := &fixedTransport{out: "spawned"}
+	out, err := Fallback{d, spawned}.Do(context.Background(), Target{}, snapOp{})
+	if err != nil || string(out) != "spawned" || spawned.calls != 1 {
+		t.Fatalf("got %q, %v with %d spawns", out, err, spawned.calls)
 	}
 }

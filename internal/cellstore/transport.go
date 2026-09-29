@@ -136,5 +136,16 @@ func transportFor(binary string, run Runner) Transport {
 	if run != nil || env.Get(daemonEnv) == "0" {
 		return direct
 	}
-	return Fallback{Primary: Daemon{Socket: home.Join("v3", "engine.sock"), Binary: binary}, Secondary: direct}
+	// With no engine to name, the daemon cannot start and the spawn reports the
+	// missing engine in its own words.
+	bin, _ := Spawn{Binary: binary}.program()
+	return Fallback{Primary: Daemon{Socket: socketFor(bin), Binary: bin}, Secondary: direct}
+}
+
+// socketFor names the daemon's socket after the engine binary, whose file name
+// is already unique per build (furrow-<version>-<hash>). Two engine builds then
+// never share a daemon, so a daemon left over from an upgrade is never asked
+// to run the new store logic; it idles out on its own.
+func socketFor(bin string) string {
+	return home.Join("v3", "engine-"+strings.TrimPrefix(filepath.Base(bin), "furrow-")+".sock")
 }

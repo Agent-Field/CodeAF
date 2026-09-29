@@ -33,7 +33,7 @@ type driveBook struct {
 // chat runs exactly as it did before sync existed, when sync is off, or when it
 // cannot start: a relay setting must never stop a conversation from opening.
 // A nil book answers nil, which is how a door that never syncs asks.
-func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine) *syncsetup.Drive {
+func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(error)) *syncsetup.Drive {
 	if b == nil {
 		return nil
 	}
@@ -42,7 +42,7 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine) *syncsetup.Dri
 	if d := b.drive[c.ID]; d != nil {
 		return d
 	}
-	d := startDrive(c, engine)
+	d := startDrive(c, engine, report)
 	if d != nil {
 		if b.drive == nil {
 			b.drive = map[string]*syncsetup.Drive{}
@@ -52,10 +52,10 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine) *syncsetup.Dri
 	return d
 }
 
-func startDrive(c cell.Cell, engine cellstore.Engine) *syncsetup.Drive {
+func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) *syncsetup.Drive {
 	s, ok, err := syncsetup.Open(home.Dir())
 	if err != nil || !ok {
-		sealNotice.report(err)
+		report(err)
 		return nil
 	}
 	d, err := s.Drive(context.Background(), engine, c, syncsetup.DriveOptions{
@@ -66,7 +66,7 @@ func startDrive(c cell.Cell, engine cellstore.Engine) *syncsetup.Drive {
 		// A line is said by the surface the moment it happens (tui3/notices.go).
 		OnNotice: surfaceNotices.Say,
 	})
-	sealNotice.report(err)
+	report(err)
 	return d
 }
 
