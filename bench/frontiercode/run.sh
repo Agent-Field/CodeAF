@@ -51,7 +51,7 @@ if [ -z "${BENCH_SNAPSHOT:-}" ]; then
   [ $# -eq 3 ] || { echo "usage: run.sh <task-id> <model-id> <seed-tag>" >&2; exit 2; }
   __slug="$(printf '%s' "$2" | tr '/:' '--')"
   export RESULTS="${RESULTS:-$__RIG_SRC/results}"
-  __out="$RESULTS/$1-codeaf-senior-dev-$__slug-$3"
+  __out="$RESULTS/$1-codeaf-senior-dev-$__slug-$3-e${VARIANT:-high}"
   rm -rf "$__out"; mkdir -p "$__out/rig"
   cp -R "$__RIG_SRC/lib.sh" "$__RIG_SRC/run.sh" "$__RIG_SRC/grade.sh" "$__RIG_SRC/gold.sh" \
         "$__RIG_SRC/negative.sh" "$__RIG_SRC/seal.sh" "$__out/rig/"
@@ -89,9 +89,9 @@ BIN="${CODEAF_BIN:-}"
 load_key || { echo "run.sh: no provider key (API_KEY / OPENROUTER_API_KEY / keychain)" >&2; exit 2; }
 
 load_task "$TASK" || exit 1
-OUT="$RESULTS/$TASK-codeaf-senior-dev-$SLUG-$SEED"
+OUT="$RESULTS/$TASK-codeaf-senior-dev-$SLUG-$SEED-e$VARIANT"
 mkdir -p "$OUT"
-NAME="fc-$TASK-seniordev-$SEED"
+NAME="fc-$TASK-seniordev-$SEED-$VARIANT"
 SENTINEL="bench-sentinel-$RANDOM$RANDOM"
 
 # Build the environment image before anything else: the run is dead without it.
@@ -122,16 +122,16 @@ python3 "$RIG_DIR/grade/record.py" start --run-dir "$OUT" \
   --json "{\"task\":\"$TASK\",\"arm\":\"codeaf-senior-dev\",\"model\":\"$MODEL\",\"variant\":\"$VARIANT\",\"seed\":\"$SEED\",\"base_commit\":\"$TASK_BASE\"}"
 
 cleanup() {
-  for c in "$NAME" fc-egress-$SEED fc-guard-$SEED; do
+  for c in "$NAME" fc-egress-$SEED-$VARIANT fc-guard-$SEED-$VARIANT; do
     docker rm -f "$c" >/dev/null 2>&1
   done
-  docker network rm "fc-in-$SEED" >/dev/null 2>&1
+  docker network rm "fc-in-$SEED-$VARIANT" >/dev/null 2>&1
   return 0
 }
 trap cleanup EXIT
 
 # ── the network: an internal net with two exits, guard and proxy ────────────
-docker network create --internal "fc-in-$SEED" > /dev/null 2>&1
+docker network create --internal "fc-in-$SEED-$VARIANT" > /dev/null 2>&1
 
 log "$TASK: starting the credential guard (holds the key, meters every call)"
 # The guard binds loopback by design; the run's frozen copy of it is widened
@@ -139,7 +139,7 @@ log "$TASK: starting the credential guard (holds the key, meters every call)"
 # copy is transformed, never the shared file.
 sed 's/("127.0.0.1", args.port)/("0.0.0.0", args.port)/' \
   "$RIG_DIR/guard.py" > "$OUT/rig/guard-container.py"
-docker run -d --name "fc-guard-$SEED" --network "fc-in-$SEED" --network-alias guard \
+docker run -d --name "fc-guard-$SEED-$VARIANT" --network "fc-in-$SEED-$VARIANT" --network-alias guard \
   -e "GUARD_UPSTREAM_KEY=$KEY" \
   -v "$OUT:/audit" \
   --entrypoint python3 python:3.12-slim \
@@ -147,10 +147,10 @@ docker run -d --name "fc-guard-$SEED" --network "fc-in-$SEED" --network-alias gu
   --audit /audit/guard-audit.jsonl --usage /audit/guard-usage.jsonl \
   --sentinel "$SENTINEL" --scope "fc-$TASK-$SEED" > "$OUT/guard-start.log" 2>&1 || {
   log "$TASK: guard failed to start — see $OUT/guard-start.log"; meta "stage=guard-failed"; exit 1; }
-docker network connect bridge "fc-guard-$SEED" > /dev/null 2>&1
+docker network connect bridge "fc-guard-$SEED-$VARIANT" > /dev/null 2>&1
 GUARD_PORT=""
 for _ in $(seq 1 60); do
-  GUARD_PORT="$(docker logs "fc-guard-$SEED" 2>/dev/null | sed -n 's/^PORT //p' | tail -1)"
+  GUARD_PORT="$(docker logs "fc-guard-$SEED-$VARIANT" 2>/dev/null | sed -n 's/^PORT //p' | tail -1)"
   [ -n "$GUARD_PORT" ] && break
   sleep 1
 done
@@ -158,18 +158,18 @@ done
 log "$TASK: guard listening on port $GUARD_PORT"
 
 log "$TASK: starting the egress proxy (open and logged)"
-docker run -d --name "fc-egress-$SEED" --network "fc-in-$SEED" --network-alias egress \
+docker run -d --name "fc-egress-$SEED-$VARIANT" --network "fc-in-$SEED-$VARIANT" --network-alias egress \
   -v "$RIG_DIR/bin:/rigbin:ro" -v "$OUT:/logs" \
   --entrypoint /rigbin/egress-proxy-$([ "$PLATFORM" = linux/amd64 ] && echo amd64 || echo arm64) \
   alpine:3.20 -addr :3128 -resolver 1.1.1.1:53 -log /logs/egress-proxy.log > "$OUT/egress-start.log" 2>&1 || {
   log "$TASK: egress proxy failed to start — see $OUT/egress-start.log"; meta "stage=egress-failed"; exit 1; }
-docker network connect bridge "fc-egress-$SEED" > /dev/null 2>&1
+docker network connect bridge "fc-egress-$SEED-$VARIANT" > /dev/null 2>&1
 sleep 2
 
 log "$TASK: starting agent container"
 emu_args
 if ! docker run -d --platform "$PLATFORM" --name "$NAME" \
-     --network "fc-in-$SEED" \
+     --network "fc-in-$SEED-$VARIANT" \
      --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" \
      "$TASK_IMAGE" sleep infinity >> "$OUT/docker.log" 2>&1; then
   meta "stage=start-failed"; log "$TASK: docker run failed"; exit 1

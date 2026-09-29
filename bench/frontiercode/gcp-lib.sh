@@ -213,10 +213,30 @@ fc_judge_gate() {
 
 # fc_wave_labels <shard> prints the label for each wave of that shard, in order.
 fc_wave_labels() {
-  local shard="$1" cap n waves prefix w
+  # One label per (reasoning effort, seed, wave): the campaign sweeps
+  # reasoning_efforts x seed_ids from the manifest, so the label names the
+  # level and the trial it is an attempt of.
+  local shard="$1" cap n waves prefix w e s
   prefix="$(fc_get '.label_prefix')"
   cap="$(fc_get '.wave_capacity')"
   n="$(fc_shard_tasks "$FC_REPO_ROOT/$(jq -r --arg s "$shard" '.shard_files[$s] // empty' "$FC_MANIFEST_PATH")" | wc -l | tr -d ' ')"
   waves=$(( (n + cap - 1) / cap ))
-  for ((w = 1; w <= waves; w++)); do printf '%s-shard%s-wave%s\n' "$prefix" "$shard" "$w"; done
+  local effort seed
+  for effort in $(fc_efforts); do
+    for seed in $(fc_seeds); do
+      for ((w = 1; w <= waves; w++)); do
+  printf '%s-shard%s-e%s-s%s-wave%s\n' "$prefix" "$shard" "$effort" "$seed" "$w"
+      done
+    done
+  done
+}
+
+# fc_efforts / fc_seeds: the swept levels, one per line. A scalar manifest key
+# (reasoning_effort / seed_id) still works, so an old manifest or a hand-pinned
+# canary keeps running.
+fc_efforts() {
+  jq -r '.reasoning_efforts // [.reasoning_effort] | .[]' "$FC_MANIFEST_PATH"
+}
+fc_seeds() {
+  jq -r '.seed_ids // [.seed_id] | .[]' "$FC_MANIFEST_PATH"
 }

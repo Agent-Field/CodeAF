@@ -238,8 +238,15 @@ the adaptation branch.
   --max-hours … --variant … --high <model> --asked "<brief>"`), and the
   baselines `mini-swe-agent` / `codex` through Pier on the same task
   directory, same model, same rubric, same grader.
-- **Seeds**: 5 per arm per effort for anything quoted; one seed is enough for
-  a working slice. The variant (reasoning effort) is recorded per row.
+- **Seeds and reasoning effort are the two swept dimensions** (the official
+  protocol runs 5 trials per model per reasoning-effort level, averages the
+  metric across the trials of a level, then reports each model's score at its
+  best-performing level). The campaign manifest lists them as `seed_ids`
+  (default 5) and `reasoning_efforts`; `launch.sh` enumerates every
+  effort × seed × wave, one iteration label each, and `grade/report.py`
+  prints the per-level mean score and mean output tokens and names the
+  best-performing level. A one-element list pins a single trial — that is a
+  canary, not the protocol. Results to date are single-trial (§12).
 - **Columns**: score, pass (cleared every blocker), flag (scanner), cost per
   rollout — **harness-reported AND guard-metered, never an account-balance
   difference** — output tokens, wall seconds. `grade/report.py` prints the
@@ -277,9 +284,11 @@ the adaptation branch.
   expect roughly $0.2–1.5 per rollout on a C++ task of this size (the
   DeepSWE full113 campaign's median was lower — this task builds a C++
   project). The judge adds ~$0.02–0.05 per grade.
-- **A pilot** (8 tasks × 2 arms × 2 seeds, §10/PLAN-pilot.md): ~$5–15 of model
-  spend at open-model prices, within the $20 cap the brief sets. Any campaign
-  beyond that waits for the owner's approval.
+- **A pilot** (8 tasks × 2 arms, PLAN-pilot.md): ~$5–15 of model spend at
+  2 seeds, within the $20 cap the brief set. Running the official protocol's
+  5 trials per model per effort multiplies the rollouts (80 at one effort) and
+  waits for the owner's budget approval. Any campaign beyond that waits for
+  the owner's approval.
 
 ## 10. The D2 acceptance checks and where their evidence lives
 
@@ -337,5 +346,34 @@ rather than deleted — the append-only records still carry them.
   in PLAN-pilot.md, not a corpus.
 - **MITM-level (path-level) egress logging**: hostname + transcript only, by
   design (§4).
-- **One seed per arm**: each arm ran once on this fixture. The pilot plan
-  (PLAN-pilot.md) sets the seed budget per task.
+- **One trial per arm so far**: each arm ran once on this fixture, at effort
+  `high`. The rig now sweeps `seed_ids` × `reasoning_efforts` and averages per
+  level (§7), but no campaign has run the official 5-trials-per-level protocol
+  yet; PLAN-pilot.md sets the seed budget per task.
+## 13. Conformance with FrontierCode
+
+The official specification is Cognition's announcement,
+<https://cognition.com/blog/frontiercode>. The requirements below were read
+there on 2026-06-08; a re-fetch from this environment on 2026-09-29 returned
+404, so this table rests on that capture and should be re-checked against the
+live page when it answers again. One row per official requirement; a row is **conformant** (we do the same thing),
+**adapted** (the same intent, different mechanism, stated) or
+**not-closable** (we cannot honestly produce it, and will not pretend to).
+
+| official requirement | our status |
+|---|---|
+| Endpoint: mergeability — "would the maintainer actually merge this PR", judged on correctness, test quality, scope discipline, style and adherence to codebase standards | **conformant** — the six-kind rubric (§3) grades exactly those five facets on the agent's patch |
+| Grading ensemble: unit tests, rubrics, and "new types of verifiers" | **adapted** — unit tests are the classical/reverse-classical/adaptive-classical verifiers and the rubric is the prompt + scope criteria; we have no mechanism beyond those two families |
+| Two metrics: pass (cleared all blocker criteria) and score (weighted aggregate of rubric items, 0 when a blocker fails) | **conformant** in rule — `grade/rubric.py combine` gates on blockers and computes the weighted mean (§3); both metrics are in every `grade.json` row and in `grade/report.py` |
+| Rubric weights | **adapted** — FrontierCode publishes no weights; ours are recorded per criterion and are uniformly 1 in the fixture, so our score is a plain mean. The scoring rule (weighted aggregate, blockers gate to 0) matches the official semantics; the specific weights are ours |
+| Protocol: 5 runs per model at every available reasoning effort, metric averaged per effort, best-performing level reported | **conformant in mechanism, not yet exercised** — `seed_ids` (default 5) and `reasoning_efforts` are swept dimensions of a campaign (§7); every campaign so far ran one trial at one effort. No 5-trial result exists yet |
+| Output tokens reported as the mean per rollout | **conformant** — `completion_tokens` per run off the final record row; `grade/report.py` prints it per run and as a per-level mean |
+| Internet: runs flagged for unfair internet use receive zero | **adapted** — our egress is open and logged (§4) and the scanner flags upstream-diff evidence, patch shape and registry leaks; a flagged run scores 0 and a seal control proves it (§6) |
+| Task provenance: 20+ open-source maintainers authored the tasks from repos they maintain, 40+ hours per task, each repo's own definition of mergeable | **not-closable** — our tasks are mined from merged PRs of repos we do not maintain; nobody with maintainer authority defined what "mergeable" means for them |
+| Task count and subsets: Extended 150, Main 100, Diamond 50 | **not-closable** — one built fixture (`tasks/jsonschema-log-warning`) and seven unbuilt candidates (PLAN-pilot.md); no subset structure, no rate is estimable |
+| Quality control: adversarial testing, calibration, multi-stage review, a manual researcher review per task | **not-closable** — we have three automated controls (gold, negative, seal, §6) and no human review pipeline; they calibrate the grader, they do not validate the task |
+| Task rubric authorship: the repo's maintainer writes the rubric | **not-closable** — our rubrics are written by us, the harness developers, from reading the upstream change |
+
+The judge — model `openrouter/anthropic/claude-sonnet-4.5`, prompt `fc-judge-1`
+— is our own choice, pinned and recorded per grade (§3, §8): the official
+specification does not name a judge model.
