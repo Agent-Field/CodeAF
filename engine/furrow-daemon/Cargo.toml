@@ -17,3 +17,5 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+blake3.workspace = true
+hex.workspace = true

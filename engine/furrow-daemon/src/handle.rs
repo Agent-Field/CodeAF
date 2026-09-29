@@ -17,6 +17,16 @@ impl Handle {
         Self { target, repo: None }
     }
 
+    pub fn target(&self) -> &Target {
+        &self.target
+    }
+
+    /// Closes the open repository. A verb that changes the store behind its
+    /// back calls this, so the next verb opens the store as it now is.
+    pub fn release(&mut self) {
+        self.repo = None;
+    }
+
     /// The open repository, opened on first use. The workspace must already
     /// be attached: only a seal attaches.
     pub fn repo(&mut self) -> anyhow::Result<&mut FurrowRepository> {
