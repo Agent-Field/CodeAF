@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,9 @@ func (noJail) Confine(*exec.Cmd, ExecRequest) error { return nil }
 type Local struct {
 	Root string
 	Jail Jail // nil means no confinement
+
+	// Observer, when set, sees each call that ran to a result.
+	Observer Observer
 }
 
 // Exec implements Executor.
@@ -59,6 +63,9 @@ func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) 
 	}
 	res, err := run(ctx, cmd, req, onOutput)
 	res.JailDegraded = degraded(l.Jail, req)
+	if err == nil && l.Observer != nil {
+		l.Observer.Observe(req, res)
+	}
 	return res, err
 }
 
@@ -75,6 +82,9 @@ func (l Local) check(req ExecRequest) (string, error) {
 	if len(req.Argv) == 0 {
 		return "", errors.New("executor: empty argv")
 	}
+	if arg, hit := cellArg(req.Argv); hit {
+		return "", fmt.Errorf("executor: argument %q reaches into the harness-owned .cell directory", arg)
+	}
 	return resolve(l.Root, req.Dir)
 }
 
@@ -84,6 +94,20 @@ func (l Local) confine(cmd *exec.Cmd, req ExecRequest) error {
 		return nil
 	}
 	return l.jail().Confine(cmd, req)
+}
+
+// cellRef matches ".cell" as a whole path segment anywhere in an argument,
+// including inside a shell command line or a --flag=path.
+var cellRef = regexp.MustCompile(`(^|[/=\s'"])\.cell($|[/\s'"])`)
+
+// cellArg returns the first argument that names the .cell directory.
+func cellArg(argv []string) (string, bool) {
+	for _, a := range argv {
+		if cellRef.MatchString(filepath.ToSlash(a)) {
+			return a, true
+		}
+	}
+	return "", false
 }
 
 func (l Local) jail() Jail {
