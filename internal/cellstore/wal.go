@@ -23,6 +23,12 @@ type Intent struct {
 	ArgsHash   string `json:"args_hash"`
 	Started    int64  `json:"started"`
 	SideEffect string `json:"side_effect"`
+	// Brief is the call's arguments in a few words, for a person to recognise it
+	// by; the hash cannot be read back. Version 2.
+	Brief string `json:"brief,omitempty"`
+	// Groups are the process groups the call started, filled in by replay from
+	// the records that named them. Version 2.
+	Groups []GroupRec `json:"-"`
 }
 
 // key is the join between an intent, its completion and its receipt row.
@@ -50,12 +56,17 @@ type Recovery struct {
 	Completed []Executed
 }
 
+// walV is the version of the lines this log writes. Version 2 added the intent's
+// brief and the group record; a version 1 line reads as one with neither.
+const walV = 2
+
 // record is one WAL line. V is first (L11).
 type record struct {
 	V      uint16    `json:"V"`
 	Op     string    `json:"op"`
 	Intent Intent    `json:"intent"`
 	Done   *Executed `json:"done,omitempty"`
+	Group  *GroupRec `json:"group,omitempty"`
 }
 
 // WAL is the device-local call-intent log: append-only JSON lines, outside the
@@ -76,16 +87,22 @@ func OpenWAL(path string) (*WAL, Recovery, error) {
 }
 
 // Begin logs the intent to run a call.
-func (w *WAL) Begin(i Intent) error { return w.append(record{V: schemaV, Op: opIntent, Intent: i}) }
+func (w *WAL) Begin(i Intent) error { return w.append(record{V: walV, Op: opIntent, Intent: i}) }
+
+// Started logs a process group the call has started, so a reopen can end it if
+// the session that owned it is gone.
+func (w *WAL) Started(i Intent, g GroupRec) error {
+	return w.append(record{V: walV, Op: opGroup, Intent: i, Group: &g})
+}
 
 // Finish logs a call's completion with what it produced.
 func (w *WAL) Finish(i Intent, e Executed) error {
-	return w.append(record{V: schemaV, Op: opDone, Intent: i, Done: &e})
+	return w.append(record{V: walV, Op: opDone, Intent: i, Done: &e})
 }
 
 // Resolve closes an incomplete intent once the model or the person has dealt
 // with it. It is the only way an incomplete intent leaves the log.
-func (w *WAL) Resolve(i Intent) error { return w.append(record{V: schemaV, Op: opResolved, Intent: i}) }
+func (w *WAL) Resolve(i Intent) error { return w.append(record{V: walV, Op: opResolved, Intent: i}) }
 
 // Sealed drops the records of calls whose turn has sealed, keeping every other
 // record: an intent still in flight, a completion the seal did not take.
@@ -113,6 +130,7 @@ const (
 	opIntent   = "intent"
 	opDone     = "done"
 	opResolved = "resolved"
+	opGroup    = "group"
 )
 
 func (w *WAL) append(r record) error {
@@ -189,13 +207,25 @@ func replay(recs []record) Recovery {
 		opIntent:   func(r record) { st.open[r.Intent.key()] = r.Intent; st.order = append(st.order, r.Intent.key()) },
 		opDone:     func(r record) { delete(st.open, r.Intent.key()); st.finish(r) },
 		opResolved: func(r record) { delete(st.open, r.Intent.key()) },
+		opGroup:    st.group,
 	}
 	for _, r := range recs {
-		if step, ok := steps[r.Op]; ok && r.V <= schemaV {
+		if step, ok := steps[r.Op]; ok && r.V <= walV {
 			step(r)
 		}
 	}
 	return st.result()
+}
+
+// group attaches a started process group to the intent it belongs to. A group
+// for a call that is no longer open is dropped: nothing will ask about it.
+func (s *replayState) group(r record) {
+	in, ok := s.open[r.Intent.key()]
+	if !ok || r.Group == nil {
+		return
+	}
+	in.Groups = append(in.Groups, *r.Group)
+	s.open[r.Intent.key()] = in
 }
 
 func (s *replayState) finish(r record) {

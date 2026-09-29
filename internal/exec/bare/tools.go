@@ -514,6 +514,10 @@ func newBashTool(cwd string, caps Caps) Tool {
 				return "Failed to start command: " + err.Error(), true, nil
 			}
 
+			// THE SEAT IS TOLD WHICH GROUP THIS IS, so a record of the call can end
+			// it if codeaf dies before the call does (executor.Spawned).
+			executor.Spawned(ctx, cmd.Process.Pid)
+
 			// The call is now a thing somebody else could take (promote.go).
 			// Everything that can end it goes through this handle from here on,
 			// so exactly one of the four racers wins.

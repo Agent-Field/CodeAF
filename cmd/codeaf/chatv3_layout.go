@@ -754,9 +754,9 @@ func v3Migrated(cfg session.Config) session.Config {
 // seat is set on every call, so a config reused for the next conversation never
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
-	cfg.Seat, cfg.Machine = nil, nil
+	cfg.Seat, cfg.Machine, cfg.Interrupted = nil, nil, nil
 	seat, machine := v3SeatOf(cfg.Place)
-	cfg.Seat = seat
+	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	if machine != nil {
 		cfg.Machine = machine
 	}
@@ -811,4 +811,15 @@ func (n *onceNotice) report(err error) {
 // say so here once instead of at every site.
 func hostSeated(ctx context.Context) context.Context {
 	return executor.With(ctx, executor.Host)
+}
+
+// v3Interrupted is the entry notice with what a person reads about a last run
+// that was cut off mid-call added under it: one line for each call, and nothing
+// added when none was.
+func v3Interrupted(cfg session.Config, notice string) string {
+	if cfg.Interrupted == nil {
+		return notice
+	}
+	lines := append([]string{notice}, cfg.Interrupted.Lines()...)
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }

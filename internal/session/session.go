@@ -1192,6 +1192,10 @@ type Config struct {
 	// session and never a path. Nil is a session with no cell, whose calls run
 	// on the host; see [Config.seat].
 	Seat procexec.Seat
+	// Interrupted is what the last run of this conversation's cell left
+	// unfinished: the model is told once, on its next turn, that those calls were
+	// cut off (interrupted.go). Nil is nothing to tell.
+	Interrupted procexec.Interrupted
 	// Machine is the session's view of the device it runs on, for the setup
 	// turn (setup.go). Nil is a session with no cell: it has nothing to set up.
 	Machine Machine

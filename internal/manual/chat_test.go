@@ -2064,6 +2064,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"all my tasks disappeared after a restart", "tasks"},
 		{"does a quick task come back after I close codeaf", "tasks"},
 		{"does a quick task resume when I reopen the conversation", "tasks"},
+		{"codeaf was killed while a command was running, will it run again when I come back", "sessions-and-rewind"},
+		{"I killed codeaf and a command it started is still running", "sessions-and-rewind"},
 		// The sixteenth wave, and every one of these is a real model choosing
 		// wrongly before the wording was fixed: a READ-ONLY survey that got a
 		// branch, a quick task cut at twenty files that ran out of rounds, and

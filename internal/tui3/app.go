@@ -3175,7 +3175,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
-		a.note(notice)
+		eachLine(notice, a.note)
 	}
 	if a.resumed && a.file != "" {
 		a.note(a.resumedNote())
@@ -8232,7 +8232,7 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		// open — "session open elsewhere — started a new one" is the sentence
 		// that exists — and the entry line is where the first conversation's own
 		// notice lands too ([Options.Notice]).
-		a.toldNote(conv.Notice)
+		eachLine(conv.Notice, func(line string) { a.toldNote(line) })
 	}
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)

@@ -758,6 +758,29 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
+## A command was running when codeaf was killed — what the chat says when you come back, and whether it runs again
+
+When codeaf is killed hard (`kill -9`, a crash, a power cut) while a command is running,
+the conversation is kept up to the last finished step. The command that was running is
+**never run again on its own**: it may have stopped part way or have finished, and running
+it twice could do the same thing twice.
+
+Opening the conversation again says so, one plain line for each command that was cut off:
+
+```
+bash: sleep 150 — stopped when codeaf was killed — not run again. Ask me to run it again if you still want it.
+```
+
+The model is told the same thing on its next turn, so it does not assume the command worked.
+It looks at what the command touches before relying on it, and runs it again only if you ask.
+Once you and the model have both been told, the command counts as dealt with and going back
+to an earlier point works again.
+
+**Nothing is left running behind you.** If the killed codeaf had a command still going, it is
+stopped when the conversation is opened again: asked to stop first, then ended a moment later
+if it will not. Only commands that conversation itself started are ever stopped, and one
+whose codeaf is still alive is left alone.
+
 ## Does codeaf save my API keys — a token or password a command printed, and whether it is in the transcript
 
 **A secret is taken out of a tool result before anything keeps it.** When output comes

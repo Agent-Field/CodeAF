@@ -58,6 +58,9 @@ func (s sealed) ForSetup() executor.Seat {
 	return s
 }
 
+// Interrupted implements executor.Interruptible.
+func (s sealed) Interrupted() executor.Interrupted { return s.rec.Interrupted() }
+
 // Around implements executor.Seat.
 func (s sealed) Around(ctx context.Context, call executor.Call, run func() ([]byte, bool)) error {
 	effect := executor.Classify(executor.PolicyFor(s.Class, s.Setup))
