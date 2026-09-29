@@ -30,7 +30,7 @@ func TestAFreshStateRootGetsTheBinaryStampedWithItsVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extract into a fresh root: %v", err)
 	}
-	if want := filepath.Join(dir, "furrow-1.2.3"); path != want {
+	if want := installPath(dir, "1.2.3", archiveOf(t, "I am furrow")); path != want {
 		t.Fatalf("extracted to %s; want %s — the name carries the version or an upgrade overwrites a running binary", path, want)
 	}
 
@@ -64,7 +64,7 @@ func TestAFreshStateRootGetsTheBinaryStampedWithItsVersion(t *testing.T) {
 
 func TestTheVERSIONALREADYTHEREIsLeftExactlyAsItIs(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "furrow-1.2.3")
+	path := installPath(dir, "1.2.3", archiveOf(t, "different bytes entirely"))
 	if err := os.WriteFile(path, []byte("the furrow that is already here"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -175,8 +175,8 @@ func TestEnsureAgreesWithWhatThisBuildActuallyCarries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a build carrying furrow could not extract it: %v", err)
 	}
-	if base := filepath.Base(path); base != "furrow-"+Version() {
-		t.Fatalf("extracted as %s; want furrow-%s, the version the pin names", base, Version())
+	if base := filepath.Base(path); !strings.HasPrefix(base, "furrow-"+Version()+"-") {
+		t.Fatalf("extracted as %s; want furrow-%s-<stamp>, the version the pin names", base, Version())
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -238,5 +238,59 @@ func TestThePinIsWholeAndIsTheOnlyPlaceTheVersionIsWritten(t *testing.T) {
 
 	if _, err := pin.ArtifactFor("plan9-riscv64"); err == nil {
 		t.Fatal("a platform with no artifact answered happily; the build must refuse it by name")
+	}
+}
+
+func TestDifferentArchivesExtractToDifferentPaths(t *testing.T) {
+	dir := t.TempDir()
+	old, err := extractInto(dir, "1.2.3", archiveOf(t, "old engine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := extractInto(dir, "1.2.3", archiveOf(t, "new engine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old == fresh {
+		t.Fatal("two engines with one version shared a path; the old one would run forever")
+	}
+	if body, _ := os.ReadFile(fresh); string(body) != "new engine" {
+		t.Fatalf("the new path holds %q", body)
+	}
+}
+
+func TestTheSameArchiveTwiceIsNotRewritten(t *testing.T) {
+	dir := t.TempDir()
+	archive := archiveOf(t, "one engine")
+	path, err := extractInto(dir, "1.2.3", archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.Stat(path)
+	again, err := extractInto(dir, "1.2.3", archive)
+	if err != nil || again != path {
+		t.Fatalf("second extract gave %q, %v; want %q", again, err, path)
+	}
+	after, _ := os.Stat(path)
+	if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("the same archive was written twice")
+	}
+}
+
+func TestAStaleFileAtTheUnstampedNameIsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	stale := filepath.Join(dir, "furrow-1.2.3")
+	if err := os.WriteFile(stale, []byte("old engine"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, err := extractInto(dir, "1.2.3", archiveOf(t, "new engine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path == stale {
+		t.Fatal("the stale unstamped furrow was trusted")
+	}
+	if body, _ := os.ReadFile(path); string(body) != "new engine" {
+		t.Fatalf("ran %q; want the embedded engine", body)
 	}
 }
