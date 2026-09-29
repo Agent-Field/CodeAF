@@ -398,12 +398,8 @@ func v3PlaceOf(transcript, workspace string) session.Place {
 	if transcript == "" || !ok {
 		return session.Place{}
 	}
-	meta, _ := session.LoadMeta(dir)
-	root := strings.TrimSpace(meta.Workspace)
-	if root == "" {
-		root = workspace
-	}
-	return v3PlaceFor(dir, root, meta.Owned)
+	meta, _ := session.LoadMetaIn(dir, workspace)
+	return v3PlaceFor(dir, strings.TrimSpace(meta.Workspace), meta.Owned)
 }
 
 // v3PointAt aims one launch's config at a session folder: the journal inside

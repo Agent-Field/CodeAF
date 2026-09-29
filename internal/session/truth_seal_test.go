@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,12 +12,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/lawcheck"
 )
 
 // In the cell layout every truth file sits under .cell/, and meta.json keeps
 // the summary alone: no field is in both files.
 func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
-	dir := sessionInCell(t)
+	dir := sessionInCell(t, newSealMachine(t))
 	place := Place{Dir: dir}
 	for _, path := range []string{place.State(), place.Tasks(), place.truth(placeTeamCursors), layoutOf(dir).metaTruth(dir)} {
 		if filepath.Dir(path) != filepath.Join(dir, cellStateDir) {
@@ -48,12 +50,15 @@ func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
 		t.Skipf("no engine binary: %v", err)
 	}
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	dir := sessionInCell(t)
+	here := newSealMachine(t)
+	there := newSealMachine(t)
+	dir := sessionInCell(t, here)
+	RunLandedTasks(t, dir, "map the parser") // tasks.json holds journal paths the law must see
 	c, err := cell.OpenAt(dir, filepath.Base(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	freshDir, freshWorkspace := sealAndMaterialize(t, bin, dir, c)
+	freshDir, freshWorkspace := sealAndMaterialize(t, bin, dir, c, here, there)
 	if got := slurp(t, filepath.Join(freshWorkspace, "main.go")); got != "package main\n" {
 		t.Fatalf("workspace not restored: %q", got)
 	}
@@ -67,10 +72,13 @@ func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
 			t.Errorf("%s differs after the round trip:\nwant %s\ngot  %s", name, want, got)
 		}
 	}
-	meta, err := LoadMeta(freshDir)
+	there.live(t)
+	meta, err := LoadMetaIn(freshDir, freshWorkspace)
 	if err != nil || meta.Effort != "high" || meta.Approval != "allow" || !meta.Archived || len(meta.ArchivedTasks) != 1 {
 		t.Errorf("truth meta = %+v, %v", meta, err)
 	}
+	assertResolvedHere(t, meta, freshDir, there)
+	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir))
 	place := Place{Dir: freshDir}
 	a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
 		cfg.Place = Place{Dir: freshDir, Workspace: freshWorkspace}
@@ -87,9 +95,9 @@ func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
 // sealAndMaterialize seals the cell c at dir, then brings ONLY the sealed tree
 // (workspace plus .cell/) to a fresh folder on an empty workspace, as a machine
 // that never ran the session would. It answers the fresh folder and workspace.
-func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell) (freshDir, freshWorkspace string) {
+func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell, from, to sealMachine) (freshDir, freshWorkspace string) {
 	t.Helper()
-	workspace := t.TempDir()
+	workspace := from.workspace
 	putFile(t, filepath.Join(workspace, "main.go"), "package main\n")
 	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir(), Workspace: workspace}
 	sealed, err := e.Seal(context.Background(), c, cellstore.TurnInfo{})
@@ -99,7 +107,7 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell) (freshDir, f
 
 	// A fresh machine: an empty workspace and an empty cell, attached to the
 	// same store, then restored to the sealed turn.
-	freshWorkspace = t.TempDir()
+	freshWorkspace = to.workspace
 	freshDir = filepath.Join(t.TempDir(), c.ID)
 	if err := os.MkdirAll(filepath.Join(freshDir, cellStateDir), 0o700); err != nil {
 		t.Fatal(err)
@@ -120,11 +128,62 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell) (freshDir, f
 	return freshDir, freshWorkspace
 }
 
+// sealMachine is one computer's folders as a session sees them: the home
+// directory, the project it
+// borrows, and a folder under neither.
+type sealMachine struct{ home, workspace, other string }
+
+func newSealMachine(t *testing.T) sealMachine {
+	t.Helper()
+	return sealMachine{t.TempDir(), t.TempDir(), t.TempDir()}
+}
+
+// live makes m the machine the process runs on: $HOME is its home.
+func (m sealMachine) live(t *testing.T) { t.Setenv("HOME", m.home) }
+
+// The sealed truth names folders by base, so opened on another sealMachine it
+// stands on THAT sealMachine's folders; a place under no base was not persisted.
+func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine) {
+	t.Helper()
+	if want := filepath.Join(m.workspace, "cmd"); meta.LaunchDir != want {
+		t.Errorf("launchDir = %q, want %q", meta.LaunchDir, want)
+	}
+	var places []string
+	for _, p := range meta.Places {
+		places = append(places, p.Path)
+	}
+	if want := []string{filepath.Join(m.home, "proj"), filepath.Join(m.workspace, "sub")}; !reflect.DeepEqual(places, want) {
+		t.Errorf("places = %q, want %q", places, want)
+	}
+	want := StandingTree{Folder: filepath.Join(m.home, "proj"), Dir: filepath.Join(dir, placeTrees, "a"),
+		Mode: TaskModeWorktree, Branch: "b", Root: filepath.Join(m.home, "proj")}
+	if len(meta.Trees) != 1 || !reflect.DeepEqual(meta.Trees[0], want) {
+		t.Errorf("trees = %+v, want %+v", meta.Trees, want)
+	}
+}
+
+// L1 over the sealed directory: no file the harness wrote there names an
+// absolute path. The transcript is the journal of what was said and is exempt
+// from being rewritten; everything else is state the harness owns.
+func assertNoAbsolutePaths(t *testing.T, stateDir string) {
+	t.Helper()
+	found, err := lawcheck.NoAbsolutePathsUnder(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for file, bad := range found {
+		if len(bad) > 0 {
+			t.Errorf(".cell/%s persists absolute paths: %q", file, bad)
+		}
+	}
+}
+
 // sessionInCell runs a real session inside a fresh cell, then sets the truth
 // fields and files a person would have accrued.
-func sessionInCell(t *testing.T) string {
+func sessionInCell(t *testing.T, m sealMachine) string {
 	t.Helper()
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	m.live(t)
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +195,17 @@ func sessionInCell(t *testing.T) string {
 	}
 	meta.Effort, meta.Approval, meta.Archived = "high", "allow", true
 	meta.ArchivedTasks = map[string]bool{"t1": true}
-	meta.LaunchDir = "/launch/here"
+	meta.Workspace = m.workspace
+	meta.LaunchDir = filepath.Join(m.workspace, "cmd")
+	meta.Places = []PlaceRef{
+		{Path: filepath.Join(m.home, "proj"), Arrival: PlaceSaid},
+		{Path: filepath.Join(m.workspace, "sub"), Arrival: PlaceKept},
+		{Path: filepath.Join(m.other, "elsewhere"), Arrival: PlaceKept}, // under no base: not persisted
+	}
+	meta.Trees = []StandingTree{{
+		Folder: filepath.Join(m.home, "proj"), Dir: filepath.Join(c.Root, placeTrees, "a"),
+		Mode: TaskModeWorktree, Branch: "b", Root: filepath.Join(m.home, "proj"),
+	}}
 	if err := SaveMeta(c.Root, meta); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +245,8 @@ func TestSealedTreeCarriesTaskHistory(t *testing.T) {
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	dir := sessionInCell(t)
+	here, there := newSealMachine(t), newSealMachine(t)
+	dir := sessionInCell(t, here)
 	RunLandedTasks(t, dir, "map the parser", "fix the reconciler")
 	c, err := cell.OpenAt(dir, filepath.Base(dir))
 	if err != nil {
@@ -187,7 +257,7 @@ func TestSealedTreeCarriesTaskHistory(t *testing.T) {
 		t.Fatalf("the source session holds %d landed rows, want 2", len(want))
 	}
 
-	freshDir, workspace := sealAndMaterialize(t, bin, dir, c)
+	freshDir, workspace := sealAndMaterialize(t, bin, dir, c, here, there)
 	fresh := Place{Dir: freshDir, Workspace: workspace}
 	a := journalAgent(t, fresh)
 	got := a.TaskIndex()
@@ -198,12 +268,19 @@ func TestSealedTreeCarriesTaskHistory(t *testing.T) {
 	for _, row := range got {
 		byID[row.ID] = row
 	}
+	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir))
 	for _, row := range want {
 		moved := byID[row.ID]
 		if moved.Title != row.Title || moved.Status != row.Status || moved.Outcome != row.Outcome {
 			t.Errorf("task %s moved as %+v, was %+v", row.ID, moved, row)
 		}
+		if !strings.Contains(moved.TranscriptURI, fresh.NodeJournals()) {
+			t.Errorf("task %s row names %q, outside %q", row.ID, moved.TranscriptURI, fresh.NodeJournals())
+		}
 		id, _ := strconv.ParseUint(row.ID, 10, 64)
+		if got := filepath.Dir(a.TaskJournal(id)); got != fresh.NodeJournals() {
+			t.Errorf("task %s resumes on a journal in %q, want %q", row.ID, got, fresh.NodeJournals())
+		}
 		journal := filepath.Base(a.TaskJournal(id))
 		if journal != filepath.Base(row.TranscriptURI) {
 			t.Errorf("task %s resumes on journal %q, was %q", row.ID, journal, row.TranscriptURI)

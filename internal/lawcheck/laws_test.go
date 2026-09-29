@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/inventory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE PERSISTED-OBJECT TABLE ──────────────────────────────────────────────
@@ -28,6 +29,13 @@ var persisted = []struct {
 	{"cell.Meta", cell.Meta{
 		V: 1, Class: cell.FilesOnly, CellKeyID: "00112233445566778899aabbccddeeff",
 		Base: &cell.Base{Remote: "https://example.test/repo.git", SHA: "abc123"},
+	}},
+	{"session.SessionTruth", session.SessionTruth{
+		V: 1, LaunchDir: "workspace:cmd", Owned: true, Effort: "high", Approval: "allow",
+		Places:        []session.PlaceRef{{Path: "home:proj", Arrival: session.PlaceSaid}},
+		Trees:         []session.StandingTree{{Folder: "home:proj", Dir: "session:trees/a", Root: "home:proj", Wrote: []string{"a.go"}}},
+		Archived:      true,
+		ArchivedTasks: map[string]bool{"t1": true},
 	}},
 	{"inventory.Inventory", inventory.Inventory{
 		V:        1,
@@ -88,6 +96,26 @@ func TestCheckersBite(t *testing.T) {
 	}
 	if VersionFirst([]byte(`{"class":"x","V":1}`)) {
 		t.Error("VersionFirst accepted V that is not first")
+	}
+}
+
+func TestNoAbsolutePathsUnderBites(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("clean.json", `{"p":"a/b"}`)
+	write("bad.json", `{"p":"/etc/x"}`)
+	write("lines.jsonl", "{\"p\":\"a\"}\n\n{\"p\":\"/etc/y\"}\n")
+	write("note.txt", "/etc/z")
+	found, err := NoAbsolutePathsUnder(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found["bad.json"]) != 1 || len(found["lines.jsonl"]) != 1 || len(found["clean.json"]) != 0 || len(found["note.txt"]) != 0 {
+		t.Errorf("findings = %v", found)
 	}
 }
 

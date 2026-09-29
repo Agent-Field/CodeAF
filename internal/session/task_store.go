@@ -902,6 +902,9 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if s.duringWrite != nil {
 		s.duringWrite()
 	}
+	if codec, sealed := checkpointCodec(s.path); sealed {
+		document = document.mapPaths(codec.encode)
+	}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return err
@@ -1338,6 +1341,9 @@ func loadTaskCheckpoint(path string) (taskDocument, bool) {
 	if err != nil {
 		log.Printf("session: ignoring corrupt task checkpoint %s: %v", path, err)
 		return taskDocument{}, false
+	}
+	if codec, sealed := checkpointCodec(path); sealed {
+		document = document.mapPaths(codec.resolve)
 	}
 	return document, true
 }

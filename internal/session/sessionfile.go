@@ -1720,12 +1720,22 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 			Type:      "session",
 			Version:   sessionFileVersion,
 			ID:        journal.id,
-			Cwd:       cwd,
+			Cwd:       headerCwd(path, cwd),
 			Model:     model,
 			Timestamp: stamp(),
 		})
 	}
 	return journal, replayed, nil
+}
+
+// headerCwd is the working directory a new journal's header records. A cell's
+// journal is sealed and travels, so it names no folder of this machine (L1);
+// the workspace is the summary's to know ([Digest.Derive] keeps it).
+func headerCwd(path, cwd string) string {
+	if _, sealed := (cellLayout{}).folder(path); sealed {
+		return ""
+	}
+	return cwd
 }
 
 // lockSessionFile claims the journal for this process with a non-blocking

@@ -9,7 +9,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -31,6 +33,49 @@ func NoAbsolutePaths(doc []byte) []string {
 		}
 	})
 	return bad
+}
+
+// NoAbsolutePathsUnder applies [NoAbsolutePaths] to every JSON file (and every
+// line of every JSON-lines file) under dir, and answers the findings keyed by
+// file path relative to dir. It is L1 for a whole sealed directory: a file the
+// build starts writing there is covered without a registration.
+func NoAbsolutePathsUnder(dir string) (map[string][]string, error) {
+	found := map[string][]string{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		docs, err := jsonDocs(path)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, path)
+		for _, doc := range docs {
+			found[rel] = append(found[rel], NoAbsolutePaths(doc)...)
+		}
+		return nil
+	})
+	return found, err
+}
+
+// jsonDocs is the JSON documents a file holds: itself for .json, each
+// non-blank line for .jsonl, nothing for any other file.
+func jsonDocs(path string) ([][]byte, error) {
+	ext := filepath.Ext(path)
+	if ext != ".json" && ext != ".jsonl" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || ext == ".json" {
+		return [][]byte{raw}, err
+	}
+	var docs [][]byte
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) > 0 {
+			docs = append(docs, line)
+		}
+	}
+	return docs, nil
 }
 
 func isAbsolute(s string) bool {
