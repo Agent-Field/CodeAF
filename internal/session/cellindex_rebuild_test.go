@@ -37,12 +37,13 @@ func TestDerivedIndexesRebuildFromTheTranscript(t *testing.T) {
 		t.Fatal("real writer left no ledger rows for the session")
 	}
 
+	workspace := wantMeta.Workspace // the opener knows it; a sealed transcript does not
 	if err := os.Remove(filepath.Join(c.Root, "meta.json")); err != nil {
 		t.Fatal(err)
 	}
 	dropLedger(t)
 
-	built, err := cellindex.Rebuild(c)
+	built, err := cellindex.Rebuild(c, workspace)
 	// No task landed, so the task index has nothing to build.
 	if err != nil || len(built) != len(cellindex.Indexes)-1 {
 		t.Fatalf("Rebuild built %v, err %v", built, err)
@@ -50,7 +51,7 @@ func TestDerivedIndexesRebuildFromTheTranscript(t *testing.T) {
 	assertMetaEquivalent(t, wantMeta, c.Root)
 	assertSameTotals(t, wantRows, ledgerRows(t, c.ID))
 
-	again, err := cellindex.Rebuild(c)
+	again, err := cellindex.Rebuild(c, workspace)
 	if err != nil || len(again) != 0 {
 		t.Fatalf("second Rebuild built %v, want nothing (err %v)", again, err)
 	}
@@ -130,14 +131,14 @@ func TestTaskIndexRebuildsFromTheCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	built, err := cellindex.Rebuild(c)
+	built, err := cellindex.Rebuild(c, "")
 	if err != nil || !slices.Contains(built, "tasks.jsonl") {
 		t.Fatalf("Rebuild built %v, err %v", built, err)
 	}
 	if got := session.ReadTaskIndex(index); !reflect.DeepEqual(got, want) {
 		t.Fatalf("rebuilt rows differ:\n got  %+v\n want %+v", got, want)
 	}
-	if again, err := cellindex.Rebuild(c); err != nil || slices.Contains(again, "tasks.jsonl") {
+	if again, err := cellindex.Rebuild(c, ""); err != nil || slices.Contains(again, "tasks.jsonl") {
 		t.Fatalf("second Rebuild built %v, want no task index (err %v)", again, err)
 	}
 }

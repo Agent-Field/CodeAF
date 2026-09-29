@@ -730,7 +730,7 @@ func v3Migrated(cfg session.Config) session.Config {
 	}
 	_ = cell.MigrateLegacy(cfg.Place.Dir, session.TruthCarriers()...)
 	budgetOnOpen(cfg.Place.Dir)
-	_, _ = cellindex.RebuildAt(cfg.Place.Dir)
+	_, _ = cellindex.RebuildAt(cfg.Place.Dir, cfg.Place.Workspace)
 	cfg.SessionFile = cfg.Place.Transcript()
 	return cfg
 }

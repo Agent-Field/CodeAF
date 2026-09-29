@@ -18,20 +18,24 @@ type Index interface {
 // Indexes is the registry, in build order.
 var Indexes = []Index{metaIndex{}, usageIndex{}, taskIndex{}}
 
-// RebuildAt opens the cell at dir and rebuilds its missing indexes.
-func RebuildAt(dir string) ([]string, error) {
+// RebuildAt opens the cell at dir and rebuilds its missing indexes, for a
+// session whose workspace is where workspace says on this machine.
+func RebuildAt(dir, workspace string) ([]string, error) {
 	c, err := cell.OpenAt(dir, baseName(dir))
 	if err != nil {
 		return nil, err
 	}
-	return Rebuild(c)
+	return Rebuild(c, workspace)
 }
 
 // Rebuild builds every missing index of the cell from its transcript and
 // returns the names it built. An index already present is left alone: what is
 // there was written by the session itself and may hold more than the
 // transcript can say. The transcript is read only when something is missing.
-func Rebuild(c cell.Cell) ([]string, error) {
+//
+// A sealed transcript names no folder of any machine, so the opener says where
+// the workspace is HERE; when it does, that answer is the digest's workspace.
+func Rebuild(c cell.Cell, workspace string) ([]string, error) {
 	missing := missingOf(c)
 	if len(missing) == 0 {
 		return nil, nil
@@ -39,6 +43,9 @@ func Rebuild(c cell.Cell) ([]string, error) {
 	d, err := session.ReadDigest(session.Place{Dir: c.Root}.Transcript())
 	if err != nil {
 		return nil, err
+	}
+	if workspace != "" {
+		d.Workspace = workspace
 	}
 	var built []string
 	for _, ix := range missing {
