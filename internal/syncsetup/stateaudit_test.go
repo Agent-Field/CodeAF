@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
 // The state audit: what a chat carries over the Stage 1 sync and what it leaves
@@ -69,6 +70,9 @@ type audited struct {
 	workB        string
 }
 
+// auditCredentials is a fake connections file, obviously not a key.
+const auditCredentials = `{"mail":{"key":"FAKE-not-a-real-key"}}`
+
 func TestTwoHomesStateAudit(t *testing.T) {
 	h := newTwoHomes(t)
 	seedTree(t, h.work)
@@ -113,6 +117,7 @@ func TestTwoHomesStateAudit(t *testing.T) {
 	t.Run("task worktree registration is not stale on B", au.registrationClean)
 	t.Run("artifact file travels", au.artifactFileTravels)
 	t.Run("artifacts index row is on B", au.artifactRowOnB)
+	t.Run("credentials travel through the vault", func(t *testing.T) { au.credentialsTravel(t, h.b.Home) })
 }
 
 // keepOnA makes the four kinds of state on A, before the chat's turn is sealed.
@@ -141,6 +146,10 @@ func (au *audited) keepOnA(t *testing.T, h *twoHomes) {
 	appendTo(t, journal, `{"type":"message","role":"assistant","content":"working"}`+"\n")
 	// a memory, written through the store the way the chat writes it.
 	au.memoryID = au.remember(t, h)
+	// a connections file in A's state root, which the vault carries.
+	if err := os.WriteFile(filepath.Join(h.a.Home, vaultsync.CredentialsFile), []byte(auditCredentials), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	// an artifact: a file in the session's artifacts/ and its row in the index.
 	au.artifactPath = filepath.Join(au.placeA.Artifacts(), "report.md")
 	appendTo(t, au.artifactPath, "# report\n")
@@ -251,5 +260,15 @@ func (au *audited) artifactRowOnB(t *testing.T) {
 	want := filepath.Join(au.placeB.Artifacts(), "report.md")
 	if len(rows) != 1 || rows[0].Title != "report" || rows[0].Path != want {
 		t.Fatalf("B's artifact index = %+v, want one row for %s", rows, want)
+	}
+}
+
+// credentialsTravel: credentials.json rides in the vault (vaultsync/credentials.go),
+// so B holds A's connection keys after the take without asking for them again.
+// The value is an obvious fake and is never printed.
+func (au *audited) credentialsTravel(t *testing.T, homeB string) {
+	got, err := os.ReadFile(filepath.Join(homeB, vaultsync.CredentialsFile))
+	if err != nil || string(got) != auditCredentials {
+		t.Fatalf("B has no credentials.json from A (read error %v, content matches %v)", err, string(got) == auditCredentials)
 	}
 }

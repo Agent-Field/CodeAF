@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
 )
@@ -203,4 +204,39 @@ func statMod(path string) (int64, error) {
 		return 0, err
 	}
 	return i.ModTime().UnixNano(), nil
+}
+
+// PutAt stamps a slot with the time of the edit, so an old edit recorded late
+// loses to a newer edit from another machine, and Deleted tells a tombstone from
+// a secret that never existed.
+func TestPutAtStampsWithTheEditTimeAndDeletedSeesTombstones(t *testing.T) {
+	a, b := twoHomes(t)
+	now := time.Now()
+	put := func(v *Vault, value string, at time.Time) {
+		if err := v.PutAt("s", Entry{Name: "N", Value: value, Scope: "p"}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(b, "newer", now.Add(-time.Minute))
+	put(a, "older", now.Add(-time.Hour))
+	enc, err := b.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Merge(enc); err != nil {
+		t.Fatal(err)
+	}
+	if e, _ := a.Get("s"); e.Value != "newer" {
+		t.Fatalf("the older edit recorded later won: %q", e.Value)
+	}
+	if gone, _ := a.Deleted("s"); gone {
+		t.Fatal("a live secret reads as deleted")
+	}
+	_ = a.Delete("s")
+	if gone, _ := a.Deleted("s"); !gone {
+		t.Fatal("a tombstone is not seen")
+	}
+	if gone, _ := a.Deleted("never"); gone {
+		t.Fatal("an unknown id reads as deleted")
+	}
 }
