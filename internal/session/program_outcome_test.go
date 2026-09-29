@@ -78,6 +78,23 @@ func TestTheOutcomeNoteSaysWhatToDoNowAndKeepsBothBounds(t *testing.T) {
 	}
 }
 
+// A passed program's branch was merged into the person's main by the wake
+// turn, even though nobody had asked to bring it over. The instruction must
+// govern every ending, before the verdict-specific next steps.
+func TestAProgramOutcomeLeavesBringingItsBranchOverToThePerson(t *testing.T) {
+	for _, want := range []string{
+		"For every outcome",
+		"merge, rebase, cherry-pick",
+		"the person's call",
+		"offer it and stop",
+		"only when the person asks in a later message",
+	} {
+		if !strings.Contains(programOutcomePrompt, want) {
+			t.Errorf("program outcome prompt does not teach %q", want)
+		}
+	}
+}
+
 // THE BOUNDS ARE CODE. A program ending keeps its retry cap until the person
 // speaks, including across an unrelated automatic turn.
 func TestARetryPastTheCapOrAfterALimitIsRefusedUntilThePersonSpeaks(t *testing.T) {
