@@ -583,6 +583,12 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	if cell.path {
 		title, pad = homeCellPathTitle(cell, width)
 	}
+	// A NOTE THAT HAS A NARROWER SPELLING SAYS THAT BEFORE IT GIVES WAY WHOLE, so
+	// a fact a person acts on (a branch row's `2 turns · laptop`) shrinks to the
+	// room the name leaves rather than vanishing with the sentence it belongs to.
+	if cell.noteShort != "" && homeCellWidth(title, pad, note, tag, right) > width {
+		note = cell.noteShort
+	}
 	for _, fact := range []*string{&note, &tag} {
 		if homeCellWidth(title, pad, note, tag, right) <= width {
 			break
@@ -769,7 +775,7 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 			if line == homeNoLine || line < 0 || line >= len(h.lines) {
 				continue
 			}
-			if h.lines[line].kind == homeSession && strings.TrimSpace(h.lines[line].row.Transcript) == armed {
+			if h.lines[line].armedBy(armed) {
 				at = y
 				break
 			}
