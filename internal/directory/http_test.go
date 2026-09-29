@@ -161,7 +161,7 @@ func TestHTTPErrorsRoundTrip(t *testing.T) {
 	for _, want := range []error{
 		directory.ErrNotFound, directory.ErrExists, directory.ErrLeaseHeld,
 		directory.ErrFenceStale, directory.ErrHeadMoved, directory.ErrCAS,
-		directory.ErrUnauthorized,
+		directory.ErrUnauthorized, directory.ErrRevoked,
 	} {
 		t.Run(want.Error(), func(t *testing.T) {
 			srv := httptest.NewServer(directory.Handler(fakeAuth, func(string) (directory.Directory, error) {
