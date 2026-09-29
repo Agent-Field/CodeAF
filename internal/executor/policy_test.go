@@ -22,8 +22,8 @@ func TestPolicyTable(t *testing.T) {
 	}
 	for _, c := range cases {
 		p := PolicyFor(c.class, c.setup)
-		if p.Denies() != c.denies || classify(p) != c.effect {
-			t.Errorf("class %d setup %v: denies %v effect %s", c.class, c.setup, p.Denies(), classify(p))
+		if p.Denies() != c.denies || Classify(p) != c.effect {
+			t.Errorf("class %d setup %v: denies %v effect %s", c.class, c.setup, p.Denies(), Classify(p))
 		}
 	}
 }

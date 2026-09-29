@@ -51,8 +51,9 @@ const (
 	EffectExternal SideEffect = "external"
 )
 
-// classify is the whole rule: no network, no external effect.
-func classify(p NetPolicy) SideEffect {
+// Classify is the whole rule: no network, no external effect. It is exported
+// so a caller can decide the side effect before the call runs (the WAL intent).
+func Classify(p NetPolicy) SideEffect {
 	if p.Denies() {
 		return EffectLocal
 	}

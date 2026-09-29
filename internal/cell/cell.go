@@ -16,6 +16,7 @@
 package cell
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,7 +133,7 @@ func (c *Cell) WriteMeta(m Meta) error {
 	if err := m.validate(); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(m, "", "  ")
+	raw, err := encodeMeta(m)
 	if err != nil {
 		return err
 	}
@@ -141,6 +142,22 @@ func (c *Cell) WriteMeta(m Meta) error {
 	}
 	c.meta = m
 	return nil
+}
+
+func encodeMeta(m Meta) ([]byte, error) { return json.MarshalIndent(m, "", "  ") }
+
+// RestoreMeta makes meta.json on disk equal the meta this handle holds, and
+// writes nothing when it already does. The harness calls it before each seal
+// so a tool that edited the file cannot reach a sealed tree (L10).
+func (c *Cell) RestoreMeta() error {
+	raw, err := encodeMeta(c.meta)
+	if err != nil {
+		return err
+	}
+	if cur, err := os.ReadFile(c.abs(MetaPath)); err == nil && bytes.Equal(cur, raw) {
+		return nil
+	}
+	return c.WriteMeta(c.meta)
 }
 
 func writeAtomic(path string, data []byte) (err error) {
