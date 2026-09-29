@@ -1,0 +1,867 @@
+{
+ "frames": [
+  {
+   "name": "cell key short",
+   "frame": "QUdFRgGDAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6ImFiY2QiLCJvYmplY3RzIjpbeyJyaWQiOiIwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxIiwib2ZmIjowLCJsZW4iOjZ9XX1BR0VPAXg=",
+   "ok": false
+  },
+  {
+   "name": "cell key uppercase",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlBQkNERUYwMTIzNDU2Nzg5QUJDREVGIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": false
+  },
+  {
+   "name": "duplicate rid",
+   "frame": "QUdFRgH6AAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fSx7InJpZCI6IjAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEiLCJvZmYiOjYsImxlbiI6Nn1dfUFHRU8BYUFHRU8BYg==",
+   "ok": false
+  },
+  {
+   "name": "gap between objects",
+   "frame": "QUdFRgH6AAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fSx7InJpZCI6IjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIiLCJvZmYiOjcsImxlbiI6Nn1dfUFHRU8BYVhBR0VPAWI=",
+   "ok": false
+  },
+  {
+   "name": "header not json",
+   "frame": "QUdFRgEEAAAAbm9wZQ==",
+   "ok": false
+  },
+  {
+   "name": "header over limit",
+   "frame": "QUdFRgEBABAAe30=",
+   "ok": false
+  },
+  {
+   "name": "header past frame",
+   "frame": "QUdFRgH/AAAAe30=",
+   "ok": false
+  },
+  {
+   "name": "no objects",
+   "frame": "QUdFRgFFAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W119",
+   "ok": false
+  },
+  {
+   "name": "object past payload",
+   "frame": "QUdFRgGgAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2MH1dfUFHRU8BeA==",
+   "ok": false
+  },
+  {
+   "name": "object too short",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjozfV19QUdF",
+   "ok": false
+  },
+  {
+   "name": "plaintext object",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo1fV19aGVsbG8=",
+   "ok": false
+  },
+  {
+   "name": "rid not hex",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZyIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": false
+  },
+  {
+   "name": "too short",
+   "frame": "QUdFRg==",
+   "ok": false
+  },
+  {
+   "name": "unknown version",
+   "frame": "QUdFRgGfAAAAeyJWIjoyLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": false
+  },
+  {
+   "name": "unnamed trailing",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4SlVOSw==",
+   "ok": false
+  },
+  {
+   "name": "valid three objects",
+   "frame": "QUdFRgFXAQAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo4fSx7InJpZCI6IjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIiLCJvZmYiOjgsImxlbiI6NX0seyJyaWQiOiIwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzIiwib2ZmIjoxMywibGVuIjoxMH1dfUFHRU8Bb25lQUdFTwFBR0VPAXRocmVl",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0101010101010101010101010101010101010101010101010101010101010101",
+    "0202020202020202020202020202020202020202020202020202020202020202",
+    "0303030303030303030303030303030303030303030303030303030303030303"
+   ],
+   "lens": [
+    8,
+    5,
+    10
+   ],
+   "frame_id": "2a658f60d2a65bf6cccb72e5639aab7c7c453ad8e2024972529b5277e1d91af9"
+  },
+  {
+   "name": "valid vault object",
+   "frame": "QUdFRgGgAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOSIsIm9mZiI6MCwibGVuIjoxMH1dfUFHRVYBdmF1bHQ=",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0909090909090909090909090909090909090909090909090909090909090909"
+   ],
+   "lens": [
+    10
+   ],
+   "frame_id": "3790ec9558ee129e38d5f790c4adec13e155dea9cb57cbbfc425116a84ed35f6"
+  },
+  {
+   "name": "wrong magic",
+   "frame": "WFhYWFhXAQAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo4fSx7InJpZCI6IjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIiLCJvZmYiOjgsImxlbiI6NX0seyJyaWQiOiIwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzIiwib2ZmIjoxMywibGVuIjoxMH1dfUFHRU8Bb25lQUdFTwFBR0VPAXRocmVl",
+   "ok": false
+  }
+ ],
+ "requests": [
+  {
+   "name": "valid get",
+   "method": "GET",
+   "uri": "/v1/store/stats",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "E1sjC_JzjqhVZhirHFlZ80qDTALZoy7wyUPODDsCGDZEkivJgn3q636NP4Jm1aKl7kWaTJEyyhwhnGDNTh0MBg",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "identity": "id_c2127435c77a3a4f52bbd1b498eca496",
+   "device": "dev_f4877743199f2fa89f01df9ea6bbf86e"
+  },
+  {
+   "name": "valid post with query",
+   "method": "POST",
+   "uri": "/v1/store/has?x=1",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "TXQbjG_Q1L5Q76qKcSPP0fy-gJ4jhN3e6TP2OLjQf9hN1R_MXexBjVzoAaED-Jw0uARuOOxirJCksiKccGOyBA",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "eyJyaWRzIjpbIngiXX0=",
+   "now_ms": 1759049990000,
+   "identity": "id_c2127435c77a3a4f52bbd1b498eca496",
+   "device": "dev_f4877743199f2fa89f01df9ea6bbf86e"
+  },
+  {
+   "name": "body changed in flight",
+   "method": "POST",
+   "uri": "/v1/store/has",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "RXRDedkxZwKe9uUAtBqG1oPdIc3GlqxhCqagnYasZ2DqRzvAigscFpkZTFCYP1DI8K-UNtmQpUPv-dr-24NHBA",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "e30=",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "skew five minutes ok",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "YaCnHfvrkuyi_ONhbuKM84tVYhdDpZd1ytcIHwNXesxYH8RrE84n0Vv6arQNcXroVmAEz8amt5cYup8S9T5BBg",
+    "Codeaf-Time": "1759049690000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "identity": "id_c2127435c77a3a4f52bbd1b498eca496",
+   "device": "dev_f4877743199f2fa89f01df9ea6bbf86e"
+  },
+  {
+   "name": "skew six minutes past",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "1RL5aHCUx8nkrApiqJL4vEv8FvLWGMVYToccQFQoeL5O8NPjhltzcwhaqwBgSFp7ve3kpI3zpZ6lrWNafw3wAg",
+    "Codeaf-Time": "1759049630000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "skew"
+  },
+  {
+   "name": "skew six minutes ahead",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "hHMzyvb9n8Ha2OZSAXXJyYTfGKsrBnFxnzVWnsiFt7CmjIZTq7JEyCdzCTKGxuniAtgv3vcfFTjNmjZQFNeDCg",
+    "Codeaf-Time": "1759050350000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "skew"
+  },
+  {
+   "name": "foreign cert",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI2YWNiOWQ2ZjRhNWYwYWQyYzBiNzNlNmI5NTk2ZTZmODc3ZGY0MjlmZTJjMTYyMzVlMTdkN2I2YWQ5OWQ5NTBmIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDk0OCwic2lnIjoiODBhMDhkY2E3Nzg3MzY3NDdiMTVjNjVmY2RmNzUyOTQzZWUxMjY0ZjIwOGZjOTg3ZTdhNWFhMzAzODc2OWM3ZDJiODI5ZmY3OGM0ZmFjYzY5ODg5YWI3NmUyYThmMDg3ZGM5NDUyNWYyY2M2NWUyMDJiZWZjN2EzYWNkMzZiMGEifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "B9HZxLLWV4_4Uc14fL9HmE1_NTnna2_ZYDfZFrwyQd5um3qUctkqbUXr5GfazLIoExVRPGBYMujsAjJKhpHCDA",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "signature by another device key",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "ijQczR2cw8h_sJv_XuuiaQ4FNvEbVZprspl5oy3ar4qaeuLk7fRIP03Eg_UR4RqJ-WmmGi2mD6T9YGjP1VMSCA",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "missing signature",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "identity key truncated",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3F",
+    "Codeaf-Sig": "B9HZxLLWV4_4Uc14fL9HmE1_NTnna2_ZYDfZFrwyQd5um3qUctkqbUXr5GfazLIoExVRPGBYMujsAjJKhpHCDA",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "path changed after signing",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
+    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Sig": "E1sjC_JzjqhVZhirHFlZ80qDTALZoy7wyUPODDsCGDZEkivJgn3q636NP4Jm1aKl7kWaTJEyyhwhnGDNTh0MBg",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  }
+ ],
+ "rules": [
+  {
+   "name": "acquire free cell",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 31000,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "acquire live lease of another",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "err": "lease_held"
+  },
+  {
+   "name": "acquire own live lease",
+   "op": "acquire",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 4,
+     "expires": 31000,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "acquire expired lease of another",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 501,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 30501,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "acquire at exact expiry",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 500,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 30500,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "heartbeat holder",
+   "op": "heartbeat",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "pending": 7
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 31000,
+     "pending": 7
+    }
+   }
+  },
+  {
+   "name": "heartbeat stale fence",
+   "op": "heartbeat",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 2,
+    "pending": 0
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "heartbeat other device",
+   "op": "heartbeat",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "pending": 0
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "heartbeat expired same fence",
+   "op": "heartbeat",
+   "device": "dev_a",
+   "now": 9999,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "pending": 0
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 39999,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "publish holder",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "title": "t2",
+    "pending": 1
+   },
+   "want": {
+    "V": 1,
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "durable_at": 2000,
+    "class": "chat",
+    "size": 20,
+    "title": "t2",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 1
+    }
+   }
+  },
+  {
+   "name": "publish empty title keeps",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "want": {
+    "V": 1,
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "durable_at": 2000,
+    "class": "chat",
+    "size": 20,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 1
+    }
+   }
+  },
+  {
+   "name": "publish stale fence beats moved head",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 2,
+    "old_head": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "publish head moved",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "err": "head_moved"
+  },
+  {
+   "name": "publish after takeover",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "release holder",
+   "op": "release",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 0,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "release stale",
+   "op": "release",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 1
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "create",
+   "op": "create",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 0,
+    "head": "",
+    "durable_at": 0,
+    "class": "",
+    "size": 0,
+    "keys": null,
+    "lease": {
+     "device": "",
+     "fence": 0,
+     "expires": 0,
+     "pending": 0
+    }
+   },
+   "arg": {
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "class": "chat",
+    "title": "t",
+    "size": 5,
+    "keys": {
+     "k": {
+      "id_x": "w"
+     }
+    },
+    "orphan_turns": 1
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 5,
+    "title": "t",
+    "keys": {
+     "k": {
+      "id_x": "w"
+     }
+    },
+    "lease": {
+     "device": "dev_a",
+     "fence": 1,
+     "expires": 31000,
+     "pending": 0
+    },
+    "orphan_turns": 1
+   }
+  }
+ ]
+}
