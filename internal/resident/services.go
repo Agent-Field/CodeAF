@@ -112,6 +112,7 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 		}
 		return nil
 	case store.ServiceHealthCmd:
+		//codeaf:tool-pending
 		command := osexec.CommandContext(ctx, "bash", "-lc", service.Health.Value)
 		command.Dir = service.Dir
 		return command.Run()

@@ -313,6 +313,7 @@ func (s *Spawner) Spawn(ctx context.Context, command Command) (*Handle, error) {
 			return nil, err
 		}
 		specs[i] = spec
+		//codeaf:tool-pending
 		cmd := exec.Command(spec.Path, spec.Args...)
 		cmd.Dir = spec.Cwd
 		if spec.EnvSet {

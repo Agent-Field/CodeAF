@@ -197,6 +197,7 @@ func collectSearchFiles(
 // the fallback honour .gitignore for free. ok is false whenever dir is not a
 // work tree (or git is unavailable), leaving the caller to walk instead.
 func gitTrackedFiles(ctx context.Context, dir string) (files []string, ok bool) {
+	//codeaf:tool-pending
 	command := exec.CommandContext(
 		ctx, "git", "-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
 	)

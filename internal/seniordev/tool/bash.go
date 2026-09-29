@@ -252,10 +252,13 @@ func (r *Registry) bashResult(
 func shellExecCommand(shell, command string) *exec.Cmd {
 	switch ShellName(shell) {
 	case "cmd":
+		//codeaf:tool-pending
 		return exec.Command(shell, "/c", command)
 	case "powershell", "pwsh":
+		//codeaf:tool-pending
 		return exec.Command(shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command)
 	default:
+		//codeaf:tool-pending
 		return exec.Command(shell, "-c", command)
 	}
 }

@@ -362,6 +362,7 @@ func splitModelID(value string) (providerID, modelID string) {
 }
 
 func gitOutput(ctx context.Context, workspace string, args ...string) string {
+	//codeaf:plumbing git read of the workspace
 	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = workspace
 	output, err := command.Output()

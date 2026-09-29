@@ -1593,6 +1593,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// names a private socket directory even in that nil case (tools.go).
 	environment = JobShellEnv(environment)
 
+	//codeaf:tool-pending
 	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)
 	cmd.Dir = t.workspace.Root()
 	cmd.Env = environment

@@ -102,6 +102,7 @@ var ErrNoTerminal = errors.New("the program exited without a terminal record")
 // terminal. The error answered is the context's own, so a run supervisor that
 // reads `context.Canceled` off a worker knows its own ending cut the task.
 func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
+	//codeaf:tool-pending
 	cmd := exec.Command(launch.Bin, launch.Args...)
 	// The marker is a last-resort Linux sweep after SIGKILL stops the engine
 	// before its own subreaper can clean up its descendants.

@@ -809,6 +809,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// and this used to be a hand-copied three-line shell choice with no
 	// buffering fix in it at all.
 	shell, shellArgs := bare.StreamingShell(command)
+	//codeaf:tool-pending
 	process := exec.Command(shell, shellArgs...)
 	process.Dir = started.dir
 	process.Env = bare.StreamingEnv()

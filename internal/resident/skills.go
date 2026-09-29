@@ -348,6 +348,7 @@ func runSkillCheck(ctx context.Context, skillDir string) error {
 
 	trialCtx, cancel := context.WithTimeout(ctx, skillTrialTimeout)
 	defer cancel()
+	//codeaf:tool-pending
 	cmd := exec.CommandContext(trialCtx, filepath.Join(skillDir, "check.sh"))
 	cmd.Dir = clean
 	cmd.Env = safeSkillCheckEnv(skillDir)

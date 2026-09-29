@@ -470,6 +470,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// turn, and fatal for one that has been PROMOTED into a job that is
 			// supposed to outlive it (promote.go). The cancel semantics are
 			// unchanged: SIGKILL to the whole group, the moment ctx is done.
+			//codeaf:tool-pending
 			cmd := exec.Command(shell, shellArgs...)
 			cmd.Dir = cwd
 			cmd.Env = StreamingEnv()

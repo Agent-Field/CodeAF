@@ -25,6 +25,7 @@ func ProcessStartTime(pid int) (time.Time, error) {
 	if pid <= 0 {
 		return time.Time{}, errors.New("invalid pid")
 	}
+	//codeaf:plumbing ps read of a process start time
 	command := exec.Command("ps", "-o", "lstart=", "-p", fmt.Sprint(pid))
 	// ps renders lstart in the caller's locale, which reorders month and day.
 	// Asking for C makes the one format we depend on the one we get; the
@@ -64,6 +65,7 @@ func StartDetachedService(command, dir, logPath string) (int, time.Time, error) 
 	if err != nil {
 		return 0, time.Time{}, err
 	}
+	//codeaf:tool-pending
 	cmd := exec.Command("bash", "-lc", command)
 	configureDetachedCommand(cmd, dir, logFile)
 	if err := cmd.Start(); err != nil {
