@@ -115,8 +115,8 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 		baseEnv = os.Environ()
 	}
 	cmd, err := executor.In(launch.Dir).Command(context.Background(), executor.ExecRequest{
-		Argv: append([]string{launch.Bin}, launch.Args...), Net: executor.OpenNet,
-		Env: append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
+		Argv: append([]string{launch.Bin}, launch.Args...),
+		Env:  append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
 	})
 	if err != nil {
 		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)

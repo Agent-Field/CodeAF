@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -162,5 +163,22 @@ func TestLegacyFolderStaysLegacyWhenTheFlagIsOff(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(place.Dir, "transcript.jsonl")); err != nil {
 		t.Fatalf("legacy transcript gone: %v", err)
+	}
+}
+
+func TestDeclareClassFollowsTheCell(t *testing.T) {
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	declareClass(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}})
+	if got := executor.ClassOf(workspace); got != executor.Sandboxed {
+		t.Fatalf("class = %d, want sandboxed", got)
+	}
+	other := t.TempDir()
+	declareClass(session.Config{Place: session.Place{Dir: t.TempDir(), Workspace: other}})
+	if got := executor.ClassOf(other); got != executor.HostBound {
+		t.Fatalf("a folder that is no cell declared %d, want the legacy rule", got)
 	}
 }

@@ -95,7 +95,7 @@ func detachedCommand(
 	ctx context.Context, dir, command string, environment []string, output io.Writer, wait time.Duration,
 ) (*exec.Cmd, error) {
 	cmd, err := executor.In(dir).Command(ctx, executor.ExecRequest{
-		Argv: []string{"bash", "-lc", command}, Env: environment, Net: executor.OpenNet,
+		Argv: []string{"bash", "-lc", command}, Env: environment,
 		Group: executor.GroupSession, WaitDelay: wait,
 	})
 	if err != nil {

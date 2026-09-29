@@ -126,7 +126,7 @@ func (r *Registry) executeBash(ctx context.Context, call steploop.ToolCall) (ste
 	// successful shell command into a timeout before the run can clean it up.
 	command, err := executor.In(cwd).Command(context.Background(), executor.ExecRequest{
 		Argv: shellArgv(shell, input.Command), Env: shellEnvironment(call.SessionID),
-		Net: executor.OpenNet, WaitDelay: 100 * time.Millisecond,
+		WaitDelay: 100 * time.Millisecond,
 	})
 	if err != nil {
 		return steploop.ToolResult{}, fmt.Errorf("start shell command: %w", err)

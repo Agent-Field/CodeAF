@@ -47,7 +47,7 @@ func TestDenyPolicyBlocksNetwork(t *testing.T) {
 		t.Fatal("dial succeeded inside a deny jail")
 	}
 	open := dial
-	open.Net = NetPolicy{Open: true}
+	open.Setup = true
 	if r := jailed(t, t.TempDir(), open); r.Exit != 0 {
 		t.Skipf("host itself cannot reach 1.1.1.1: %s", r.Stderr)
 	}
@@ -90,9 +90,8 @@ func TestCellIsUnreadable(t *testing.T) {
 
 func TestHostBoundRunsUnjailed(t *testing.T) {
 	req := dial
-	req.Class = HostBound
 	req.Timeout = 10 * time.Second
-	res, err := Local{Root: t.TempDir(), Jail: LinuxJail{}}.Exec(context.Background(), req, nil)
+	res, err := Local{Root: t.TempDir(), Class: HostBound, Jail: LinuxJail{}}.Exec(context.Background(), req, nil)
 	if err != nil || res.JailDegraded {
 		t.Fatalf("host-bound call was jailed: %+v %v", res, err)
 	}

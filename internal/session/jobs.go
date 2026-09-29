@@ -821,7 +821,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// jobs drew their own output across the top of a running conversation.
 	process, err := procexec.In(started.dir).Command(context.Background(), procexec.ExecRequest{
 		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
-		Net: procexec.OpenNet, Group: procexec.GroupSession,
+		Group: procexec.GroupSession,
 	})
 	if err != nil {
 		started.sink.close()

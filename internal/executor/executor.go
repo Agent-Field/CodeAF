@@ -29,7 +29,9 @@ const (
 	HostBound
 )
 
-// NetPolicy is the side-effect oracle. The zero value denies the network.
+// NetPolicy is the side-effect oracle. The zero value denies the network. It is
+// never chosen at a call site: the executor derives it from the class the
+// workspace declared (see policy.go).
 type NetPolicy struct {
 	// Open grants the whole network; Allow grants named hosts only.
 	Open  bool
@@ -71,17 +73,22 @@ const (
 	GroupInherit
 )
 
-// OpenNet is the policy of a call that may reach the whole network.
-var OpenNet = NetPolicy{Open: true}
-
 // ExecRequest is one process to run.
 type ExecRequest struct {
 	Argv    []string
 	Env     []string      // nil inherits the host environment
 	Dir     string        // relative to the workspace root, never under .cell/
 	Timeout time.Duration // zero means no limit beyond the context
-	Class   Class
-	Net     NetPolicy
+
+	// Setup marks a setup turn's call (docs/ARCHITECTURE.md 8.4): the network
+	// is open and the result is external. It is the only intent a caller states.
+	Setup bool
+
+	// Class and Net are filled in by Local from the workspace's declared class
+	// (policy.go); a value a caller sets is overwritten. They are exported so
+	// a Jail and an Observer can read them.
+	Class Class
+	Net   NetPolicy
 
 	Stdin     io.Reader     // nil reads nothing
 	Group     Group         // where the child sits; the zero value is its own group

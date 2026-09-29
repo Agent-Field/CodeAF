@@ -113,7 +113,7 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 		return nil
 	case store.ServiceHealthCmd:
 		res, err := procexec.In(service.Dir).Exec(ctx, procexec.ExecRequest{
-			Argv: []string{"bash", "-lc", service.Health.Value}, Net: procexec.OpenNet,
+			Argv:  []string{"bash", "-lc", service.Health.Value},
 			Group: procexec.GroupInherit,
 		}, nil)
 		if err != nil {

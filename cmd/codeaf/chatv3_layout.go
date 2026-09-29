@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -480,7 +481,7 @@ func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Pla
 // transcript in .cell/ by the folder's shape), a plain folder otherwise.
 func v3NewFolder(bucket string) (id, dir string, err error) {
 	if cell.Enabled() {
-		c, err := cell.CreateIn(bucket, cell.Options{Class: cell.FilesOnly})
+		c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})
 		if err != nil {
 			return "", "", fmt.Errorf("create session directory: %w", err)
 		}
@@ -730,5 +731,19 @@ func v3Migrated(cfg session.Config) session.Config {
 	}
 	_ = cell.MigrateLegacy(cfg.Place.Dir)
 	cfg.SessionFile = cfg.Place.Transcript()
+	declareClass(cfg)
 	return cfg
+}
+
+// declareClass tells the executor which class the cell declared for the
+// workspace its tools run in, so network policy follows it. A folder that is
+// not a readable cell declares nothing and keeps the legacy rule.
+func declareClass(cfg session.Config) {
+	c, err := cell.OpenAt(cfg.Place.Dir, filepath.Base(cfg.Place.Dir))
+	if err != nil || cfg.Place.Workspace == "" {
+		return
+	}
+	if class, ok := executor.ParseClass(string(c.Meta().Class)); ok {
+		executor.Declare(cfg.Place.Workspace, class)
+	}
 }

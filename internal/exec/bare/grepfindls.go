@@ -204,7 +204,7 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 			rgArgs = append(rgArgs, "--", p.Pattern, ".")
 
 			cmd, err := executor.In(searchPath).Command(ctx, executor.ExecRequest{
-				Argv: append([]string{rgPath}, rgArgs...), Net: executor.OpenNet,
+				Argv: append([]string{rgPath}, rgArgs...),
 			})
 			if err != nil {
 				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
@@ -712,7 +712,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 			fdArgs = append(fdArgs, "--", effectivePattern, searchPath)
 
 			res, runErr := executor.In("").Exec(ctx, executor.ExecRequest{
-				Argv: append([]string{fdPath}, fdArgs...), Net: executor.OpenNet,
+				Argv:  append([]string{fdPath}, fdArgs...),
 				Group: executor.GroupInherit,
 			}, nil)
 			stdout, stderr := string(res.Stdout), string(res.Stderr)
