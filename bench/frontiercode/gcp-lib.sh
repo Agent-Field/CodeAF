@@ -96,10 +96,11 @@ fc_frozen_check() {
   want="$(fc_get '.corpus_sha256')"
   got="$(fc_corpus_sha "$corpus")"
   [ "$got" = "$want" ] || fc_die "corpus $corpus hash $got != manifest $want"
-  local s p wp gp tasks
-  tasks=0
+  local s p wp gp tasks nshards
+  tasks=0; nshards=0
   while IFS= read -r s; do
     [ -n "$s" ] || continue
+    nshards=$(( nshards + 1 ))
     p="$(jq -r --arg s "$s" '.shard_files[$s] // empty' "$FC_MANIFEST_PATH")"
     wp="$(jq -r --arg s "$s" '.shard_sha256[$s] // empty' "$FC_MANIFEST_PATH")"
     [ -n "$p" ] || fc_die "manifest names no file for shard $s"
