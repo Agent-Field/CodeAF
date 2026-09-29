@@ -441,6 +441,12 @@ type Options struct {
 	// machine that syncs nothing, and home then draws nothing extra: the
 	// sessions panel is exactly what it was (homepanel_machines.go).
 	Machines chatlist.Source
+	// Takeover continues a chat from another machine here. Nil is a machine
+	// that cannot, and the offer is then absent rather than failing
+	// (homepanel_continue.go).
+	Takeover Taker
+	// Branches is what a branch row can do. A nil verb is absent from the row.
+	Branches BranchActions
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 	// EngineRoad says the conversation is in a daemon on this machine. It is

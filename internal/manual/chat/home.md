@@ -298,20 +298,51 @@ happened. The row says where the chat is only where that tells you something:
 | --- | --- |
 | running on another machine | `running on <device>` |
 | on a machine that went off or to sleep without letting go | `<device> off` |
-| a branch left by a takeover | `<K> turns from <device>: merge / discard` |
+| a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
 | held by this machine, or let go by everyone | nothing |
 
-The device is the name you gave that machine. A chat whose name will not open shows
+A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
-its id. On a narrow frame the sentence gives way whole before the chat's name is cut, so a
-row may show only the name and its age. Those rows are read-only for now: enter does not
-open them, and the takeover that would continue one here is not part of this screen yet.
+its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
+even that will not fit the sentence gives way whole before the chat's name is cut, so a
+row may show only the name and its age. These rows are stops for the cursor: enter runs
+what the row offers, described in the next two sections.
 
 If the other machines cannot be reached, the last list stays on screen and the line
 `other machines unreachable` stands under it. With no connection set up at all (no
 `CODEAF_SYNC_URL`, see "Sync your chats between machines" in running-from-the-terminal), nothing
 extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
+
+## Continue a chat here that another machine left — "studio off", takeover, "continue here", the chat is running on another computer
+
+Press enter on a row that says `<device> off` and home asks **Continue this chat here?**
+with the answer under the cursor on `leave it there`, so leaning on enter loses nothing.
+The card says how fresh the copy is: `last durable turn <N>s ago; up to <K> turns may still
+be on <device>`. The `up to` clause is left out when nothing is waiting there. Press `1`,
+then enter, to continue: the chat is fetched, this machine takes it over and it opens. On a
+narrow frame the same question takes the whole screen, with the sentence wrapped.
+
+- If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
+  branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
+- If another machine took the chat first, the row goes back to `running on <device>` with one
+  line saying another device continued it first. Nothing was changed.
+- If the other machines cannot be reached, enter says `other machines unreachable` and asks
+  nothing: no chat can be taken without them.
+- A row that says `running on <device>` only says so on enter; watching it from here is not
+  part of this screen yet.
+- With no way to continue set up, an off row has no `continue here`: enter says its sentence.
+
+## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
+
+A chat that was taken over while another machine still held unsent turns leaves those turns
+as a branch. Press enter on its row to be asked **What should happen to these turns?** and
+answer `discard` (or `merge`, where it is offered), then enter; the cursor starts on `leave
+them`. **Discard archives** the branch: it leaves this list and is not deleted. **Merge is
+not offered on this build**: nothing here can merge a branch yet, so the row says
+`<K> turns from <device>: discard` and the card has only discard and leave them. Where a
+build can merge, the row says `<K> turns from <device>: merge / discard`. If the other
+machines cannot be reached, enter says `other machines unreachable` and does nothing.
 
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
