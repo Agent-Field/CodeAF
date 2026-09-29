@@ -158,7 +158,7 @@ echo "rig at $(git -C "$REMOTE_ROOT" rev-parse --short HEAD)"
 
 # Install the pinned binary and re-hash it on the host: a transfer that
 # corrupted a byte must refuse rather than run a different harness.
-install -m 755 "$BIN" "$RIG/bin/codeaf" || { echo "binary install failed" >&2; exit 3; }
+install -D -m 755 "$BIN" "$RIG/bin/codeaf" || { echo "binary install failed" >&2; exit 3; }
 [ "$(sha256sum "$RIG/bin/codeaf" | cut -d' ' -f1)" = "$FC_CODEAF_SHA" ] || { echo "binary hash mismatch after copy" >&2; exit 3; }
 echo "binary installed and re-hashed"
 
