@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
 // magic leads every vault object; the store refuses any object without a known
@@ -20,7 +21,9 @@ var magic = []byte("AGEV\x01")
 // methods to *keys.Vault).
 type VaultFile interface {
 	Export() ([]byte, error) // the vault.enc envelope bytes
-	Merge(enc []byte) error  // union by secret id; on the same id the newer document `updated` wins
+	Merge(enc []byte) error  // per secret id the newer slot wins, a delete included
+	// Entries lists a project's live secrets in stable name order; Inject writes them.
+	Entries(project string) ([]keys.Entry, error)
 }
 
 // ErrTampered reports a vault object whose bytes do not hash to its id.

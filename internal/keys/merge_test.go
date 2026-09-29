@@ -27,15 +27,17 @@ func twoHomes(t *testing.T) (a, b *Vault) {
 	return a, b
 }
 
-// setUpdated rewrites the vault document with a chosen `updated`, so a test does
-// not depend on the wall clock.
-func setUpdated(t *testing.T, v *Vault, updated int64) {
+// setStamp rewrites one slot's stamp (and the document's, when later), so a
+// test does not depend on the wall clock.
+func setStamp(t *testing.T, v *Vault, id string, ts int64) {
 	t.Helper()
 	d, err := v.read()
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Updated = updated
+	r := d.Secrets[id]
+	r.Updated = ts
+	d.Secrets[id], d.Updated = r, max(d.Updated, ts)
 	if err := v.write(d); err != nil {
 		t.Fatal(err)
 	}
@@ -63,23 +65,18 @@ func TestMergeIsTheUnionByID(t *testing.T) {
 	}
 }
 
-func TestMergeNewerUpdatedWinsOnTheSameID(t *testing.T) {
+func TestMergeNewerStampWinsOnTheSameID(t *testing.T) {
 	a, b := twoHomes(t)
 	a.Put("s1", Entry{"K", "old", "p"})
 	b.Put("s1", Entry{"K", "new", "p"})
-	setUpdated(t, a, 100)
-	setUpdated(t, b, 200)
+	setStamp(t, a, "s1", 100)
+	setStamp(t, b, "s1", 200)
 	mergeFrom(t, a, b)
 	if e, _ := a.Get("s1"); e.Value != "new" {
 		t.Fatalf("the newer copy must win, got %q", e.Value)
 	}
-	setUpdated(t, a, 300) // now a is newer, and b's older copy must lose
-	mergeFrom(t, a, b)
-	if e, _ := a.Get("s1"); e.Value != "new" {
-		t.Fatalf("an older copy must not win, got %q", e.Value)
-	}
 	b.Put("s1", Entry{"K", "older", "p"})
-	setUpdated(t, b, 50)
+	setStamp(t, b, "s1", 50)
 	mergeFrom(t, a, b)
 	if e, _ := a.Get("s1"); e.Value != "new" {
 		t.Fatalf("an older copy must not win, got %q", e.Value)
@@ -89,15 +86,71 @@ func TestMergeNewerUpdatedWinsOnTheSameID(t *testing.T) {
 func TestMergeKeepsTheNewerStampAndIsIdempotent(t *testing.T) {
 	a, b := twoHomes(t)
 	b.Put("s1", Entry{"K", "v", "p"})
-	setUpdated(t, b, 500)
+	setStamp(t, b, "s1", 500)
 	mergeFrom(t, a, b)
-	if d, _ := a.read(); d.Updated != 500 {
-		t.Fatalf("merge must keep the newer stamp, got %d", d.Updated)
+	if d, _ := a.read(); d.Secrets["s1"].Updated != 500 {
+		t.Fatalf("merge must keep the slot stamp, got %d", d.Secrets["s1"].Updated)
 	}
 	first, _ := statMod(a.path)
 	mergeFrom(t, a, b)
 	if again, _ := statMod(a.path); again != first {
 		t.Fatal("a merge that changes nothing must not rewrite the vault")
+	}
+}
+
+func TestDeleteSurvivesMergeWithAnOlderCopy(t *testing.T) {
+	a, b := twoHomes(t)
+	a.Put("leaked", Entry{"KEY", "v", "p"})
+	mergeFrom(t, b, a) // b holds the secret too
+	must(t, a.Delete("leaked"))
+	mergeFrom(t, a, b) // b's older copy must not resurrect it
+	if _, err := a.Get("leaked"); err != ErrNotFound {
+		t.Fatalf("a deleted secret came back: %v", err)
+	}
+	mergeFrom(t, b, a) // and the delete travels
+	if got, _ := b.Entries("p"); len(got) != 0 {
+		t.Fatalf("the delete must reach b, got %+v", got)
+	}
+	if env, _ := b.Env("p"); len(env) != 0 {
+		t.Fatalf("Env must not surface a tombstone: %v", env)
+	}
+}
+
+func TestReAddedSecretLivesAfterADelete(t *testing.T) {
+	a, b := twoHomes(t)
+	a.Put("s1", Entry{"KEY", "v1", "p"})
+	mergeFrom(t, b, a)
+	must(t, a.Delete("s1"))
+	// The same id written again with a newer stamp.
+	b.Put("s1", Entry{"KEY", "v2", "p"})
+	setStamp(t, b, "s1", 1<<50)
+	mergeFrom(t, a, b)
+	if e, err := a.Get("s1"); err != nil || e.Value != "v2" {
+		t.Fatalf("a newer re-add must live: %+v %v", e, err)
+	}
+	// The same name under a fresh id, through the dotenv import, also lives.
+	must(t, a.Delete("s1"))
+	path := filepath.Join(t.TempDir(), ".env")
+	must(t, os.WriteFile(path, []byte("KEY=v3\n"), 0o600))
+	if _, err := a.ImportDotenv(path, "p"); err != nil {
+		t.Fatal(err)
+	}
+	if env, _ := a.Env("p"); len(env) != 1 || env[0] != "KEY=v3" {
+		t.Fatalf("got %v", env)
+	}
+}
+
+func TestTombstoneCarriesNoSecret(t *testing.T) {
+	a, _ := twoHomes(t)
+	a.Put("s1", Entry{"KEY", "topsecret", "p"})
+	must(t, a.Delete("s1"))
+	d, _ := a.read()
+	if r := d.Secrets["s1"]; !r.Deleted || r.Entry != (Entry{}) || r.Updated == 0 {
+		t.Fatalf("got %+v", r)
+	}
+	must(t, a.Delete("missing")) // leaves nothing behind
+	if d, _ := a.read(); len(d.Secrets) != 1 {
+		t.Fatal("deleting an unknown id must not write a tombstone")
 	}
 }
 
@@ -134,6 +187,13 @@ func TestEntriesAreSortedByName(t *testing.T) {
 	got, _ := v.Entries("p")
 	if len(got) != 2 || got[0].Name != "A" || got[1].Name != "A0" {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

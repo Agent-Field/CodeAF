@@ -371,3 +371,22 @@ func TestNothingLogsASecretValue(t *testing.T) {
 		t.Fatalf("a secret value leaked: %q", out.String())
 	}
 }
+
+func TestDeleteTravelsAndIsNeverInjected(t *testing.T) {
+	r := newRig(t)
+	a, b, c := r.machine(), r.machine(), newCell(t)
+	a.putIn(t, c, "LEAKED", "v")
+	must(t, a.Push(ctx))
+	must(t, b.Pull(ctx))
+	must(t, a.vault.Delete("id-LEAKED"))
+	must(t, a.Push(ctx))
+	must(t, b.Push(ctx)) // b still held the old copy; its push must not resurrect it
+	must(t, a.Pull(ctx))
+	for _, m := range []*machine{a, b} {
+		must(t, m.Pull(ctx))
+		must(t, m.Inject(ctx, c))
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, ".env")); !os.IsNotExist(err) {
+		t.Fatal("a deleted secret must never be written to .env")
+	}
+}
