@@ -3,6 +3,7 @@
 #
 #   bench/frontiercode/launch.sh --check-local             gates that run on the Mac, no host, no launch
 #   bench/frontiercode/launch.sh --check    <shard>        every gate but the launch, on the staged host
+#   bench/frontiercode/launch.sh --controls <shard>        gold/negative/seal through this host's grader, no attempt
 #   bench/frontiercode/launch.sh --execute  <shard>        run the shard's tasks as sequential waves
 #   bench/frontiercode/launch.sh --replace  <shard> <task> the single preregistered re-run path
 #
@@ -21,7 +22,7 @@ FC_SCRIPT=launch.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gcp-lib.sh"
 
 MODE="${1:-}"; SHARD="${2:-}"; REPLACE_TASK="${3:-}"
-case "$MODE" in --check-local|--check|--execute|--replace) ;; *) sed -n '2,17p' "$0" >&2; exit 2 ;; esac
+case "$MODE" in --check-local|--check|--controls|--execute|--replace) ;; *) sed -n '2,18p' "$0" >&2; exit 2 ;; esac
 if [ "$MODE" != --check-local ]; then
   case "$SHARD" in ''|*[!0-9]*) fc_die "shard must be a number: $SHARD" ;; esac
 fi
@@ -130,6 +131,27 @@ if [ -f "$HOME/.codeaf-key" ]; then
   . "$HOME/.codeaf-key"
 fi
 [ -n "${OPENROUTER_API_KEY:-}" ] || fc_die "no model key on the host; install it with gcp-key.sh --install"
+
+# The host-path controls. The grader, the judge, the scanner and the proxy are
+# the parts a launch is scored BY, so a rollout graded on a host nobody has
+# exercised is uninterpretable: a 0.0 cannot be told from a broken grader. This
+# grades the reference solution and the labelled negative through THIS host's
+# own grading path and runs the planted leak through ITS scanner, and spends no
+# provider token on an attempt -- only the judge's own calls. It is the
+# prerequisite of the first wave of a campaign, not a substitute for it.
+if [ "$MODE" = --controls ]; then
+  ctl_ok=1
+  for t in "${tasks[@]}"; do
+    for c in gold negative seal; do
+      echo "── control: $c $t ($(date -u +%H:%M:%SZ))"
+      bash "$FC_RIG_DIR/$c.sh" "$t" || { echo "control $c FAILED for $t" >&2; ctl_ok=0; }
+    done
+  done
+  [ "$ctl_ok" = 1 ] || fc_die "host-path controls did not pass; fix the grading path before launching"
+  echo "ok  controls on $(hostname): gold 1.00, negative 0.0 with both blockers, seal flagged"
+  echo "CONTROLS ONLY: no attempt launched"
+  exit 0
+fi
 
 wave_count=$(( (${#tasks[@]} + WAVE_CAP - 1) / WAVE_CAP ))
 if [ "$MODE" = --check ]; then
