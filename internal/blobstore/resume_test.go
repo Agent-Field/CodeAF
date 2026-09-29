@@ -2,10 +2,10 @@ package blobstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,50 +13,108 @@ import (
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
-// A large publish over a slow disk must send every frame's bytes exactly once.
-// Each fsync sleeps, so a frame outlasts the client's deadline and the client
-// gives up on a put the relay then finishes. Without Resuming that put, and
-// every frame before it on the next flush, would be sent again.
-func TestSlowDiskPublishSendsEveryFrameOnce(t *testing.T) {
+// slowRelay is a relay whose puts can be held at the moment they are received,
+// with no wall-clock guess about how slow a disk is. Every put blocks in
+// authentication, which is after its body has been read and before the store
+// sees it, until the test lets it go; every Has announces itself on hasSeen.
+type slowRelay struct {
+	srv     *httptest.Server
+	counts  *Counters
+	putSeen chan struct{}
+	hasSeen chan struct{}
+	release chan struct{}
+}
+
+func newSlowRelay(t *testing.T) *slowRelay {
+	t.Helper()
 	disk, err := NewDisk(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	disk.sync = func(f []*os.File) error { time.Sleep(60 * time.Millisecond); return flushFiles(f) }
-	relay := Counting{Inner: disk, C: &Counters{}}
-	srv := httptest.NewServer(Handler(
-		func(*http.Request, []byte) (string, string, error) { return "id", "dev", nil },
-		func(string) (Store, error) { return relay, nil }))
-	t.Cleanup(srv.Close)
+	g := &slowRelay{
+		counts:  &Counters{},
+		putSeen: make(chan struct{}, 64),
+		hasSeen: make(chan struct{}, 64),
+		release: make(chan struct{}, 64),
+	}
+	store := Counting{Inner: disk, C: g.counts}
+	g.srv = httptest.NewServer(Handler(g.auth, func(string) (Store, error) { return store, nil }))
+	t.Cleanup(g.srv.Close)
+	return g
+}
 
-	wire := NewHTTP(srv.URL, wireauth.Sign(func(*http.Request, []byte) {}), nil)
-	wire.deadline = func(int) time.Duration { return 100 * time.Millisecond }
-	client := NewResuming(wire)
+func (g *slowRelay) auth(r *http.Request, _ []byte) (string, string, error) {
+	switch r.URL.Path {
+	case pathFrames:
+		g.putSeen <- struct{}{}
+		<-g.release
+	case pathHas:
+		g.hasSeen <- struct{}{}
+	}
+	return "id", "dev", nil
+}
 
-	frames := manyFrames(t, 6, 8)
+// client dials the relay with a put deadline short enough to fire while the put
+// is held, and a Has deadline of hasWithin.
+func (g *slowRelay) client(hasWithin time.Duration) *HTTP {
+	c := NewHTTP(g.srv.URL, wireauth.Sign(func(*http.Request, []byte) {}), nil)
+	c.deadline = func(body int) time.Duration {
+		if body > 1000 {
+			return 30 * time.Millisecond
+		}
+		return hasWithin
+	}
+	return c
+}
+
+// A large publish must send every frame's bytes exactly once. Each put is held
+// until the client has given up on it and asked whether it landed; Has must
+// wait for the held put and answer yes, so nothing is sent a second time, and a
+// flush that restarts from the first frame skips what was delivered.
+func TestSlowDiskPublishSendsEveryFrameOnce(t *testing.T) {
+	g := newSlowRelay(t)
+	client := NewResuming(g.client(5 * time.Second))
+	frames := manyFrames(t, 4, 8)
 	var total int64
 	for _, f := range frames {
 		total += int64(len(f))
-	}
-	publish := func() error {
-		for _, f := range frames {
-			if _, err := client.PutFrame(context.Background(), f); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	// A failed flush is retried from the first frame, as the Batcher does.
-	for attempt := 0; publish() != nil; attempt++ {
-		if attempt > len(frames) {
-			t.Fatal("publish never completed")
+		put := make(chan error, 1)
+		go func() { _, err := client.PutFrame(context.Background(), f); put <- err }()
+		<-g.putSeen
+		<-g.hasSeen // the client timed out and now asks whether the put landed
+		time.Sleep(20 * time.Millisecond)
+		g.release <- struct{}{}
+		if err := <-put; err != nil {
+			t.Fatalf("put of a held frame failed: %v", err)
 		}
 	}
-	if got := relay.C.BytesUp.Load(); got != total {
+	for _, f := range frames { // the next flush starts again from the first frame
+		if _, err := client.PutFrame(context.Background(), f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := g.counts.BytesUp.Load(); got != total {
 		t.Fatalf("relay received %d bytes for frames totalling %d", got, total)
 	}
-	if got := relay.C.Puts.Load(); got != int64(len(frames)) {
-		t.Fatalf("relay received %d puts for %d frames", got, len(frames))
+}
+
+// A put that never ends must not hang Has, and Has must not answer no for it:
+// it fails, and the client learns nothing rather than something false.
+func TestHasFailsRatherThanAnswerNoWhilePutIsStuck(t *testing.T) {
+	g := newSlowRelay(t)
+	c := g.client(50 * time.Millisecond)
+	frame := manyFrames(t, 1, 2)[0]
+	go func() { _, _ = c.PutFrame(context.Background(), frame) }()
+	<-g.putSeen
+	defer func() { g.release <- struct{}{} }()
+
+	start := time.Now()
+	have, err := c.Has(context.Background(), []string{fmt.Sprintf("%064x", 1)})
+	if !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("Has = %v, %v; want ErrUnreachable while a put is stuck", have, err)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatal("Has hung on a stuck put")
 	}
 }
 
