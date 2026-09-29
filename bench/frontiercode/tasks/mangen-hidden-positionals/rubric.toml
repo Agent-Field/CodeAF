@@ -1,0 +1,58 @@
+# The rubric for the mangen-hidden-positionals candidate.
+# Draft rubric from PLAN-pilot.md (Candidate 7), schema rubric-schema-v1,
+# verbatim: two blockers written from the brief's behaviour alone — hidden
+# positionals disappear from the SYNOPSIS, visible content is untouched —
+# plus the classical/scope criteria the fixture's schema supports.
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "hidden-positional-absent-from-synopsis"
+kind = "classical"
+blocker = true
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"  # the PR's snapshot + test, test-side
+run = "cargo test -p clap_mangen hidden_positionals"
+
+[[criterion]]
+id = "visible-content-unchanged"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["clap_mangen/src/render.rs"]
+question = """The SYNOPSIS of a command with NO hidden arguments must be
+unchanged, and visible positionals must still render. Read the diff hunk.
+Does the filter apply to the positional loop only, leaving the option and
+flag rendering and the argument-group handling untouched? A change that
+drops visible positionals too, hides everything after the first hidden arg,
+or alters how groups are skipped is a wider change than the brief asks for
+and fails."""
+
+[[criterion]]
+id = "mangen-suite-pass"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "cargo test -p clap_mangen"
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "cargo test -p clap_mangen hidden_positionals"
+revert_paths = ["clap_mangen/src"]
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 5
+max_changed_lines = 60
