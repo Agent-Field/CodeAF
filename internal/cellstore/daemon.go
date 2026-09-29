@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"path/filepath"
 	"sync/atomic"
 )
 
@@ -54,6 +55,9 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		return nil, unavailable(err)
 	}
 	defer conn.Close()
+	if err := d.verify(conn); err != nil {
+		return nil, unavailable(err)
+	}
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
 	response, err := exchange(conn, newRequest(t, op))
@@ -64,6 +68,26 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		return nil, fmt.Errorf("engine %s: %s", op.Verb(), response.Err)
 	}
 	return response.Ok, nil
+}
+
+// verify is the once-per-dial check that the daemon behind the socket is this
+// engine and not a stale one from before an upgrade: any other identity is
+// treated as no daemon at all, so the caller falls back to spawning. It only
+// checks when the engine's name is known (d.Binary set).
+func (d Daemon) verify(conn net.Conn) error {
+	if d.Binary == "" {
+		return nil
+	}
+	response, err := exchange(conn, wireRequest{V: wireVersion, ID: nextID.Add(1), Verb: "health"})
+	if err != nil {
+		return err
+	}
+	var health struct{ Engine string }
+	_ = json.Unmarshal(response.Ok, &health)
+	if want := filepath.Base(d.Binary); health.Engine != want {
+		return fmt.Errorf("daemon is engine %q, want %q", health.Engine, want)
+	}
+	return nil
 }
 
 // Stop asks the daemon to finish what it is doing and exit. A daemon that is
