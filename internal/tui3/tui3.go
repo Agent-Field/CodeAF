@@ -311,6 +311,12 @@ type Conversation struct {
 	// Nil leaves whatever the surface holds, which is every local door — there is
 	// no link — and every door whose conversations share one connection.
 	Link *LinkSeam
+
+	// Seal is what THIS conversation's seat says about its seals ([SealSeam]).
+	// It is per conversation because a window can switch between them: the
+	// segment and the sentences are the shown session's own. The zero value is
+	// a conversation whose calls are not sealed, which draws nothing.
+	Seal SealSeam
 }
 
 // TaskOwnerAsk names the conversation a task page wants to look into.

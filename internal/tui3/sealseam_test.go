@@ -90,3 +90,35 @@ func TestASurfaceWithNoSealSeamDrawsNothing(t *testing.T) {
 		t.Fatal("a surface with no seam drew a segment")
 	}
 }
+
+// TWO CELLS IN ONE PROCESS: one chat's failed seal is not another chat's. The
+// window shows the seam of the conversation in front, so switching to the
+// healthy one draws nothing and switching back brings the segment back.
+func TestOneChatsFailedSealIsNotAnothers(t *testing.T) {
+	var broken, healthy cellstore.SealWatch
+	broken.Report(errString("disk full"))
+	seamOf := func(w *cellstore.SealWatch) SealSeam { return SealSeam{Failing: w.Failing, Notice: w.Take} }
+
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width = 200
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}, Seal: seamOf(&broken)}, true)
+	drive(t, a, key("a"))
+	if !strings.Contains(plain(a.legend(a.width)), "not sealed") {
+		t.Fatal("the failing conversation does not show it")
+	}
+
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}, Seal: seamOf(&healthy)}, true)
+	drive(t, a, key("b"))
+	if got := plain(a.legend(a.width)); strings.Contains(got, "not sealed") {
+		t.Fatalf("the healthy conversation shows the other one's failure:\n%s", got)
+	}
+
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}, Seal: seamOf(&broken)}, true)
+	if !strings.Contains(plain(a.legend(a.width)), "not sealed") {
+		t.Fatal("going back to the failing conversation lost the segment")
+	}
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}}, true)
+	if a.sealSegment() != "" {
+		t.Fatal("a conversation with no seam kept the last one's segment")
+	}
+}

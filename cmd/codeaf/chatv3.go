@@ -491,7 +491,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	err = runSurface(ctx, tui3.Options{
 		Agent:             agent,
 		Build:             buildinfo.String(),
-		Seal:              sealSeam(sealWatch),
+		Seal:              sealSeamOf(cfg.Seals),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
 		// The memory place reads the conversation's store; memory off supplies no seam.
 		Memory:       v3MemorySeam(cfg.Memory),

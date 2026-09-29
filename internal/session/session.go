@@ -1199,6 +1199,11 @@ type Config struct {
 	// Machine is the session's view of the device it runs on, for the setup
 	// turn (setup.go). Nil is a session with no cell: it has nothing to set up.
 	Machine Machine
+	// Seals is what this session's seat says about its seals, so a surface
+	// showing this session reads this session's own state. It belongs to the
+	// seat: whoever builds one builds the other, and a config with no seat has
+	// none. Nil draws and says nothing.
+	Seals   SealState
 	Model   string
 	APIKey  string
 	BaseURL string
