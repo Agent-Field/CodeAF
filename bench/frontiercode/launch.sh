@@ -66,11 +66,12 @@ local_bin_gate() {
 label_collision_gate() {
   local shard="$1" lbl
   while IFS= read -r lbl; do
-    [ -e "$FC_RIG_DIR/results/_iterations/$lbl/meta.txt" ] && fc_die "iteration already exists: $lbl"
+    if [ -e "$FC_RIG_DIR/results/_iterations/$lbl/meta.txt" ]; then
+      fc_die "iteration already exists: $lbl"
+    fi
   done < <(fc_wave_labels "$shard")
-  if [ "$MODE" = --replace ]; then
-    [ -e "$FC_RIG_DIR/results/_iterations/$PREFIX-shard$shard-replacement1/meta.txt" ] \
-      && fc_die "replacement already exists: $PREFIX-shard$shard-replacement1"
+  if [ "$MODE" = --replace ] && [ -e "$FC_RIG_DIR/results/_iterations/$PREFIX-shard$shard-replacement1/meta.txt" ]; then
+    fc_die "replacement already exists: $PREFIX-shard$shard-replacement1"
   fi
 }
 
