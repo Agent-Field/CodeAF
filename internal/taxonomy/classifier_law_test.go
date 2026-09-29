@@ -56,7 +56,7 @@ func walkSources(t *testing.T, visit func(rel string, fset *token.FileSet, file 
 		if entry.IsDir() {
 			// Vendored and generated trees are nobody's law to keep.
 			switch entry.Name() {
-			case ".git", "vendor", "node_modules", "testdata", "bin":
+			case ".git", ".claude", "vendor", "node_modules", "testdata", "bin":
 				return filepath.SkipDir
 			}
 			return nil

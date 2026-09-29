@@ -548,7 +548,7 @@ func walkBuildSources(t *testing.T, visit func(path string, file *ast.File)) {
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "testdata", "node_modules", "vendor", "bin":
+			case ".git", ".claude", "testdata", "node_modules", "vendor", "bin":
 				return fs.SkipDir
 			}
 			return nil

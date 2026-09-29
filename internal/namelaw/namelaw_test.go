@@ -381,7 +381,7 @@ func coveredFile(rel string) bool {
 
 func exemptDir(rel string) bool {
 	for _, dir := range []string{
-		".git", "docs/changes", "docs/design", "bench-results", "audit-notes",
+		".git", ".claude", "docs/changes", "docs/design", "bench-results", "audit-notes",
 		"third_party", "bin", "internal/furrowbin", "internal/namelaw",
 	} {
 		if rel == dir || hasPathPrefix(rel, dir) {

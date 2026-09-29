@@ -138,7 +138,7 @@ func TestTheControllerActedListLivesNowhereElse(t *testing.T) {
 			return err
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" {
+			if entry.Name() == ".git" || entry.Name() == ".claude" {
 				return filepath.SkipDir
 			}
 			return nil
