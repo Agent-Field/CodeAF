@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
 // grepMaxLineLength mirrors pi's truncate.js:GREP_MAX_LINE_LENGTH.
@@ -201,9 +203,12 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 			}
 			rgArgs = append(rgArgs, "--", p.Pattern, ".")
 
-			//codeaf:tool-pending
-			cmd := exec.CommandContext(ctx, rgPath, rgArgs...)
-			cmd.Dir = searchPath
+			cmd, err := executor.In(searchPath).Command(ctx, executor.ExecRequest{
+				Argv: append([]string{rgPath}, rgArgs...), Net: executor.OpenNet,
+			})
+			if err != nil {
+				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
+			}
 			var stderr grepErrorBuffer
 			cmd.Stderr = &stderr
 			stdout, err := cmd.StdoutPipe()
@@ -706,19 +711,20 @@ func newFindTool(cwd string, caps Caps) Tool {
 			}
 			fdArgs = append(fdArgs, "--", effectivePattern, searchPath)
 
-			//codeaf:tool-pending
-			cmd := exec.CommandContext(ctx, fdPath, fdArgs...)
-			var stdout, stderr strings.Builder
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-
-			runErr := cmd.Run()
+			res, runErr := executor.In("").Exec(ctx, executor.ExecRequest{
+				Argv: append([]string{fdPath}, fdArgs...), Net: executor.OpenNet,
+				Group: executor.GroupInherit,
+			}, nil)
+			stdout, stderr := string(res.Stdout), string(res.Stderr)
+			if runErr == nil {
+				runErr = res.Failure()
+			}
 
 			if ctx.Err() != nil {
 				return "Operation aborted", true, nil
 			}
 
-			output := strings.TrimSpace(stdout.String())
+			output := strings.TrimSpace(stdout)
 			if output == "" {
 				return "No files found matching pattern", false, nil
 			}
@@ -765,7 +771,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 
 			// Check for fd error with non-zero exit and no output.
 			if runErr != nil {
-				errMsg := strings.TrimSpace(stderr.String())
+				errMsg := strings.TrimSpace(stderr)
 				if errMsg != "" && resultOutput == "" {
 					return errMsg, true, nil
 				}
