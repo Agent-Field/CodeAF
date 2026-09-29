@@ -21,6 +21,13 @@ type Memory struct {
 	mu      sync.Mutex
 	objects map[string][]byte
 	log     []Op
+	fail    *failure // the next call to fail, if any
+}
+
+// failure is a call that will fail on purpose: after skip more calls succeed.
+type failure struct {
+	skip int
+	err  error
 }
 
 // NewMemory returns an empty store.
@@ -35,6 +42,28 @@ func (m *Memory) Log() []Op {
 	return append([]Op(nil), m.log...)
 }
 
+// FailAfter makes the call after the next n successful ones return err, once,
+// so a test can watch a caller meet ErrFull or ErrUnreachable and then carry on.
+func (m *Memory) FailAfter(n int, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fail = &failure{skip: n, err: err}
+}
+
+// due reports the injected error when it is this call's turn, and spends it.
+func (m *Memory) due() error {
+	f := m.fail
+	if f == nil {
+		return nil
+	}
+	if f.skip > 0 {
+		f.skip--
+		return nil
+	}
+	m.fail = nil
+	return f.err
+}
+
 // PutFrame implements Store. It checks every object before it stores any, so a
 // conflicting frame leaves the store exactly as it was.
 func (m *Memory) PutFrame(_ context.Context, frame []byte) (FrameID, error) {
@@ -43,6 +72,9 @@ func (m *Memory) PutFrame(_ context.Context, frame []byte) (FrameID, error) {
 	op := Op{Kind: "put", Bytes: int64(len(frame))}
 	defer func() { m.log = append(m.log, op) }()
 
+	if err := m.due(); err != nil {
+		return "", err
+	}
 	_, objects, err := Decode(frame)
 	if err != nil {
 		return "", err
@@ -75,6 +107,9 @@ func (m *Memory) Get(_ context.Context, rid string) ([]byte, error) {
 	op := Op{Kind: "get", RIDs: []string{rid}}
 	defer func() { m.log = append(m.log, op) }()
 
+	if err := m.due(); err != nil {
+		return nil, err
+	}
 	if err := checkGet(rid); err != nil {
 		return nil, err
 	}
@@ -92,6 +127,9 @@ func (m *Memory) Has(_ context.Context, rids []string) ([]bool, error) {
 	defer m.mu.Unlock()
 	m.log = append(m.log, Op{Kind: "has", RIDs: append([]string(nil), rids...)})
 
+	if err := m.due(); err != nil {
+		return nil, err
+	}
 	if err := checkHas(rids); err != nil {
 		return nil, err
 	}
