@@ -69,10 +69,12 @@ const (
 // truthNames are the files, and truthTrees the directories, a legacy folder
 // carries into .cell/ when it migrates (session.TruthCarriers). The node
 // journals are truth: the checkpoint names them, and a chat moved without them
-// keeps its task list but loses what each task said and did.
+// keeps its task list but loses what each task said and did. The artifacts are
+// truth for the same reason: a chat moved without them keeps the rows a person
+// finds its deliverables by and loses the deliverables.
 var (
 	truthNames = []string{placeState, placeTasks, placeTeamCursors, placeMemories}
-	truthTrees = []string{placeNodeJournals}
+	truthTrees = []string{placeNodeJournals, placeArtifacts}
 )
 
 func (cellLayout) holds(dir string) bool {

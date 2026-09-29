@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -120,13 +119,7 @@ func (a *Agent) speakTool(client MediaGenerator, defaultModel string) bare.Tool 
 			if err := os.WriteFile(path, response.Audio, 0o644); err != nil {
 				return "Could not save the generated audio: " + err.Error(), true, nil
 			}
-			RecordArtifact(a.config.ArtifactsIndex, Artifact{
-				Path:    path,
-				Session: a.journalID(),
-				Title:   mediaTitle(text, path),
-				Kind:    "audio",
-				Created: time.Now(),
-			})
+			a.recordArtifact(path, mediaTitle(text, path), "audio")
 			return describeGeneratedAudio(a.config.Workspace, path, len(response.Audio), model), false, nil
 		},
 	}
