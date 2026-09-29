@@ -1,0 +1,84 @@
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "mixed-case-records-normalized"
+kind = "classical"
+blocker = true
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"  # the PR's regression test, test-side
+run = "go test ./hscontrol/types/ -run TestExtraRecordsAreLowercased"
+
+[[criterion]]
+id = "every-entry-point-lowercases"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["hscontrol/types/config.go"]
+question = """The brief says extra records reach the tailcfg DNS config from
+MORE THAN ONE path — the conversion of the configured DNS block, and the
+runtime setter used when records are updated while the server is up. Read
+the diff hunk. Is the name normalization applied on EVERY path that writes
+extra records into that config, or only on one of them? A fix that
+lowercases in one place and leaves the other path passing mixed-case names
+through is exactly the partial fix this criterion exists to catch."""
+
+[[criterion]]
+id = "only-names-normalized"
+kind = "prompt"
+blocker = false
+weight = 1
+[criterion.prompt]
+paths = ["hscontrol/types/config.go"]
+question = """Only the record NAME may be normalized. Read the diff hunk. Do
+record types (A, AAAA, CNAME…) and record values pass through untouched, and
+is the empty-record list handled without allocating or erroring? A change
+that lowercases values, mangles types, or errors on an empty list fails."""
+
+[[criterion]]
+id = "clean-build"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go build ./..."
+
+[[criterion]]
+id = "types-package-tests-pass"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go test ./hscontrol/types/"
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "go test ./hscontrol/types/ -run TestExtraRecordsAreLowercased"
+revert_paths = ["hscontrol/types/config.go"]
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 4
+max_changed_lines = 80
+allowed_paths = ["hscontrol/"]
+forbidden_paths = [".github/"]
+
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "/solution/test-overlay.patch"
+run = "go test ./hscontrol/types/ -run TestExtraRecordsAreLowercased"
