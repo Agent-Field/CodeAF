@@ -12,11 +12,19 @@ import (
 // comment is worth nothing; an import that does not exist is worth something.
 // This package must not be able to reach the session wire or the crypto that
 // rides it, because a package that cannot name a type cannot decode one.
+// The cell packages are on the list for the same reason: they hold what a
+// frame would reveal (turns and receipts, the vault's secrets, the tool
+// inventory, the call log, session ids), so a relay that could name them
+// could read or write a cell.
 func TestTheRelayCannotEvenNameTheThingsItCarries(t *testing.T) {
-	forbidden := []string{
-		"github.com/Agent-Field/codeaf/internal/remote",
-		"github.com/Agent-Field/codeaf/internal/pair",
-		"github.com/Agent-Field/codeaf/internal/session",
+	const module = "github.com/Agent-Field/codeaf/internal/"
+	var forbidden []string
+	for _, name := range []string{
+		"remote", "pair", "session",
+		"cell", "cellstore", "cellbudget", "cellindex", "keys",
+		"executor", "inventory", "preflight", "sessionid",
+	} {
+		forbidden = append(forbidden, module+name)
 	}
 	set := token.NewFileSet()
 	packages, err := parser.ParseDir(set, ".", func(info fs.FileInfo) bool {
