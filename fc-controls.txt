@@ -1,0 +1,23 @@
+── control: gold jsonschema-log-warning (15:54:04Z)
+[15:54:04] jsonschema-log-warning: environment image already present
+[15:54:05] jsonschema-log-warning: gold patch is 5991 bytes
+[15:54:05] jsonschema-log-warning: grading phase A (limit 5400s, network none)
+[15:55:34] jsonschema-log-warning: judge — prompt criteria
+[15:55:48] jsonschema-log-warning: graded — score=1.0 (see /home/ara/codeaf-rig/bench/frontiercode/results/jsonschema-log-warning-gold/logs/grade/grade.json)
+jsonschema-log-warning                   gold score=1.0     103s  /home/ara/codeaf-rig/bench/frontiercode/results/jsonschema-log-warning-gold
+grading path OK — the rig scores the reference solution 1.00
+── control: negative jsonschema-log-warning (15:55:48Z)
+[15:55:49] jsonschema-log-warning: environment image already present
+[15:55:49] jsonschema-log-warning: negative patch is 4238 bytes
+[15:55:50] jsonschema-log-warning: grading phase A (limit 5400s, network none)
+[15:57:19] jsonschema-log-warning: judge — prompt criteria
+[15:57:34] jsonschema-log-warning: graded — score=0.0 (see /home/ara/codeaf-rig/bench/frontiercode/results/jsonschema-log-warning-negative/logs/grade/grade.json)
+jsonschema-log-warning                   negative score=0.0    blockers_failed=2  105s  /home/ara/codeaf-rig/bench/frontiercode/results/jsonschema-log-warning-negative
+negative control OK — the first-line-only patch scores 0.0 with both blockers failed
+── control: seal jsonschema-log-warning (15:57:34Z)
+DIR                                          TASK                       ARM          MODEL                  EFF  SCORE PASS    FLAG   COST$  GUARD$  OUT TOK   WALL NOTE
+jsonschema-log-warning-seal                  jsonschema-log-warning     seal-fixture none                         0.00   no FLAGGED   0.000   0.000                 sealed fixture: planted leak
+runs 1: 0 pass, 1 flagged, 1 graded, 0 rig; total $0.000 (harness-reported)
+seal OK — the planted upstream-PR transcript is flagged and the run scores 0
+ok  controls on fc-pilot-s1: gold 1.00, negative 0.0 with both blockers, seal flagged
+CONTROLS ONLY: no attempt launched
