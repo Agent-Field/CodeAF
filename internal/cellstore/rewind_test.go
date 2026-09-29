@@ -66,65 +66,71 @@ func threeTurns(t *testing.T) (Engine, cell.Cell, []Sealed, []string) {
 }
 
 func TestRewindRestoresFilesAndTranscriptAsANewTurn(t *testing.T) {
-	e, c, s, digests := threeTurns(t)
-	rewound := mustRewind(t, e, c, s[0].Turn.ID)
+	forEachTransport(t, func(t *testing.T) {
+		e, c, s, digests := threeTurns(t)
+		rewound := mustRewind(t, e, c, s[0].Turn.ID)
 
-	if got := contentDigest(t, c.Root); got != digests[0] {
-		t.Fatalf("content differs from turn 1.\nwant:\n%s\ngot:\n%s", digests[0], got)
-	}
-	if tr, _ := os.ReadFile(rel(c, cell.TranscriptPath)); string(tr) != "{\"n\":1}\n" {
-		t.Fatalf("transcript %q, want turn 1's", tr)
-	}
-	log, err := Log(c)
-	if err != nil || len(log) != 4 {
-		t.Fatalf("log has %d turns (%v), want 4", len(log), err)
-	}
-	if log[0].Turn.ID != rewound.Turn.ID || log[0].Turn.Parent != s[2].Turn.ID || log[0].Receipt.Calls[0].Tool != rewindTool {
-		t.Fatalf("newest %+v, want the rewind with turn 3 as parent", log[0].Turn)
-	}
-	for i, want := range []string{s[2].Turn.ID, s[1].Turn.ID, s[0].Turn.ID} {
-		if log[i+1].Turn.ID != want {
-			t.Fatalf("history entry %d is %s, want %s: rewind must not rewrite the chain", i+1, log[i+1].Turn.ID, want)
+		if got := contentDigest(t, c.Root); got != digests[0] {
+			t.Fatalf("content differs from turn 1.\nwant:\n%s\ngot:\n%s", digests[0], got)
 		}
-	}
+		if tr, _ := os.ReadFile(rel(c, cell.TranscriptPath)); string(tr) != "{\"n\":1}\n" {
+			t.Fatalf("transcript %q, want turn 1's", tr)
+		}
+		log, err := Log(c)
+		if err != nil || len(log) != 4 {
+			t.Fatalf("log has %d turns (%v), want 4", len(log), err)
+		}
+		if log[0].Turn.ID != rewound.Turn.ID || log[0].Turn.Parent != s[2].Turn.ID || log[0].Receipt.Calls[0].Tool != rewindTool {
+			t.Fatalf("newest %+v, want the rewind with turn 3 as parent", log[0].Turn)
+		}
+		for i, want := range []string{s[2].Turn.ID, s[1].Turn.ID, s[0].Turn.ID} {
+			if log[i+1].Turn.ID != want {
+				t.Fatalf("history entry %d is %s, want %s: rewind must not rewrite the chain", i+1, log[i+1].Turn.ID, want)
+			}
+		}
+	})
 }
 
 func TestRewindOfARewind(t *testing.T) {
-	e, c, s, digests := threeTurns(t)
-	back := mustRewind(t, e, c, s[0].Turn.ID)
-	mustRewind(t, e, c, s[2].Turn.ID)
-	if got := contentDigest(t, c.Root); got != digests[2] {
-		t.Fatalf("content differs from turn 3.\nwant:\n%s\ngot:\n%s", digests[2], got)
-	}
-	again := mustRewind(t, e, c, back.Turn.ID)
-	if got := contentDigest(t, c.Root); got != digests[0] {
-		t.Fatal("rewinding the rewind did not return to turn 1's content")
-	}
-	if log, _ := Log(c); len(log) != 6 || log[0].Turn.ID != again.Turn.ID {
-		t.Fatalf("log has %d turns, want 6", len(log))
-	}
+	forEachTransport(t, func(t *testing.T) {
+		e, c, s, digests := threeTurns(t)
+		back := mustRewind(t, e, c, s[0].Turn.ID)
+		mustRewind(t, e, c, s[2].Turn.ID)
+		if got := contentDigest(t, c.Root); got != digests[2] {
+			t.Fatalf("content differs from turn 3.\nwant:\n%s\ngot:\n%s", digests[2], got)
+		}
+		again := mustRewind(t, e, c, back.Turn.ID)
+		if got := contentDigest(t, c.Root); got != digests[0] {
+			t.Fatal("rewinding the rewind did not return to turn 1's content")
+		}
+		if log, _ := Log(c); len(log) != 6 || log[0].Turn.ID != again.Turn.ID {
+			t.Fatalf("log has %d turns, want 6", len(log))
+		}
+	})
 }
 
 func TestRewindRefusedWhileACallIsIncomplete(t *testing.T) {
-	e, c, s, digests := threeTurns(t)
-	wal, _, err := OpenWAL(e.WALPath(c))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := wal.Begin(Intent{Tool: "deploy", ArgsHash: hashHex([]byte("x")), Started: 5, SideEffect: "external"}); err != nil {
-		t.Fatal(err)
-	}
-	_, err = e.Rewind(context.Background(), c, s[0].Turn.ID)
-	var incomplete IncompleteError
-	if !errors.As(err, &incomplete) || !strings.Contains(err.Error(), "deploy") {
-		t.Fatalf("err = %v, want an IncompleteError naming deploy", err)
-	}
-	if got := contentDigest(t, c.Root); got != digests[2] {
-		t.Fatal("a refused rewind changed the tree")
-	}
-	if log, _ := Log(c); len(log) != 3 {
-		t.Fatalf("a refused rewind sealed a turn: %d turns", len(log))
-	}
+	forEachTransport(t, func(t *testing.T) {
+		e, c, s, digests := threeTurns(t)
+		wal, _, err := OpenWAL(e.WALPath(c))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wal.Begin(Intent{Tool: "deploy", ArgsHash: hashHex([]byte("x")), Started: 5, SideEffect: "external"}); err != nil {
+			t.Fatal(err)
+		}
+		_, err = e.Rewind(context.Background(), c, s[0].Turn.ID)
+		var incomplete IncompleteError
+		if !errors.As(err, &incomplete) || !strings.Contains(err.Error(), "deploy") {
+			t.Fatalf("err = %v, want an IncompleteError naming deploy", err)
+		}
+		if got := contentDigest(t, c.Root); got != digests[2] {
+			t.Fatal("a refused rewind changed the tree")
+		}
+		if log, _ := Log(c); len(log) != 3 {
+			t.Fatalf("a refused rewind sealed a turn: %d turns", len(log))
+		}
+	})
 }
 
 func TestResolveNeedsExactlyOneMatch(t *testing.T) {
@@ -161,86 +167,94 @@ func chainBytes(t *testing.T, c cell.Cell) map[string]string {
 	return out
 }
 
-// dyingSeal is a runner that behaves like the engine except that the seal
+// dyingSeal is an engine that behaves like the real one except that the seal
 // never happens: the process is gone after the restore.
 func dyingSeal(e Engine) Engine {
-	e.Run = func(ctx context.Context, dir string, env []string, argv ...string) ([]byte, error) {
-		if strings.Contains(strings.Join(argv, " "), "turn-end") {
-			return nil, errors.New("killed before the seal")
-		}
-		return spawn(ctx, dir, env, argv...)
-	}
+	e.Transport = sealKiller{e.transport()}
 	return e
 }
 
-func TestCrashBetweenRestoreAndSealLeavesTheChainWhole(t *testing.T) {
-	e, c, s, digests := threeTurns(t)
-	before := chainBytes(t, c)
+type sealKiller struct{ Transport }
 
-	if _, err := dyingSeal(e).Rewind(context.Background(), c, s[0].Turn.ID); err == nil {
-		t.Fatal("rewind reported success though the seal died")
+func (k sealKiller) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
+	if _, sealing := op.(sealOp); sealing {
+		return nil, errors.New("killed before the seal")
 	}
-	// The seal wrote the rewind's receipt before it died: an unreferenced,
-	// content-addressed file. Everything that was there stays byte for byte.
-	after := chainBytes(t, c)
-	for p, want := range before {
-		if after[p] != want {
-			t.Fatalf("%s changed by a rewind that never sealed", p)
+	return k.Transport.Do(ctx, t, op)
+}
+
+func TestCrashBetweenRestoreAndSealLeavesTheChainWhole(t *testing.T) {
+	forEachTransport(t, func(t *testing.T) {
+		e, c, s, digests := threeTurns(t)
+		before := chainBytes(t, c)
+
+		if _, err := dyingSeal(e).Rewind(context.Background(), c, s[0].Turn.ID); err == nil {
+			t.Fatal("rewind reported success though the seal died")
 		}
-	}
-	if log, err := Log(c); err != nil || len(log) != 3 {
-		t.Fatalf("log after the crash: %d turns, %v; want the 3 sealed ones", len(log), err)
-	}
-	if got := contentDigest(t, c.Root); got != digests[0] {
-		t.Fatal("the restore itself did not land before the crash")
-	}
-	// The next open is consistent: sealing what is on disk extends the old head.
-	next, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("edit", "after crash")}})
-	if err != nil || next.Turn.Parent != s[2].Turn.ID {
-		t.Fatalf("next seal = %+v, %v; want a child of turn 3", next.Turn, err)
-	}
+		// The seal wrote the rewind's receipt before it died: an unreferenced,
+		// content-addressed file. Everything that was there stays byte for byte.
+		after := chainBytes(t, c)
+		for p, want := range before {
+			if after[p] != want {
+				t.Fatalf("%s changed by a rewind that never sealed", p)
+			}
+		}
+		if log, err := Log(c); err != nil || len(log) != 3 {
+			t.Fatalf("log after the crash: %d turns, %v; want the 3 sealed ones", len(log), err)
+		}
+		if got := contentDigest(t, c.Root); got != digests[0] {
+			t.Fatal("the restore itself did not land before the crash")
+		}
+		// The next open is consistent: sealing what is on disk extends the old head.
+		next, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("edit", "after crash")}})
+		if err != nil || next.Turn.Parent != s[2].Turn.ID {
+			t.Fatalf("next seal = %+v, %v; want a child of turn 3", next.Turn, err)
+		}
+	})
 }
 
 func TestRewindOfAWorkspaceSealedCellRestoresTheWorkspace(t *testing.T) {
-	c := newCell(t)
-	ws := t.TempDir()
-	e := realEngine(t)
-	e.Workspace = ws
-	step := func(files map[string]string, line string) Sealed {
-		writeTree(t, ws, files, 0o644)
-		f, err := os.OpenFile(rel(c, cell.TranscriptPath), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			t.Fatal(err)
+	forEachTransport(t, func(t *testing.T) {
+		c := newCell(t)
+		ws := t.TempDir()
+		e := realEngine(t)
+		e.Workspace = ws
+		step := func(files map[string]string, line string) Sealed {
+			writeTree(t, ws, files, 0o644)
+			f, err := os.OpenFile(rel(c, cell.TranscriptPath), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = f.WriteString(line + "\n")
+			_ = f.Close()
+			s, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("edit", line)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return s
 		}
-		_, _ = f.WriteString(line + "\n")
-		_ = f.Close()
-		s, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("edit", line)}})
-		if err != nil {
-			t.Fatal(err)
+		first := step(map[string]string{"a.txt": "one\n"}, `{"n":1}`)
+		step(map[string]string{"a.txt": "two\n", "b.txt": "new\n"}, `{"n":2}`)
+
+		rewound := mustRewind(t, e, c, first.Turn.ID)
+
+		if raw, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(raw) != "one\n" {
+			t.Fatalf("workspace a.txt = %q, want turn 1's", raw)
 		}
-		return s
-	}
-	first := step(map[string]string{"a.txt": "one\n"}, `{"n":1}`)
-	step(map[string]string{"a.txt": "two\n", "b.txt": "new\n"}, `{"n":2}`)
-
-	rewound := mustRewind(t, e, c, first.Turn.ID)
-
-	if raw, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(raw) != "one\n" {
-		t.Fatalf("workspace a.txt = %q, want turn 1's", raw)
-	}
-	if _, err := os.Stat(filepath.Join(ws, "b.txt")); !os.IsNotExist(err) {
-		t.Fatal("a file made after turn 1 survived the rewind")
-	}
-	if _, err := os.Stat(filepath.Join(ws, cell.StateDir)); !os.IsNotExist(err) {
-		t.Fatal("the rewind wrote .cell into the workspace")
-	}
-	if tr, _ := os.ReadFile(rel(c, cell.TranscriptPath)); string(tr) != "{\"n\":1}\n" {
-		t.Fatalf("transcript %q, want turn 1's", tr)
-	}
-	if log, err := Log(c); err != nil || len(log) != 3 || log[0].Turn.ID != rewound.Turn.ID {
-		t.Fatalf("log = %d turns, %v; want the rewind on top of 2", len(log), err)
-	}
-	if left, _ := filepath.Glob(filepath.Join(e.LocalDir(c), "rewind-*")); len(left) != 0 {
-		t.Fatalf("scratch left behind: %v", left)
-	}
+		if _, err := os.Stat(filepath.Join(ws, "b.txt")); !os.IsNotExist(err) {
+			t.Fatal("a file made after turn 1 survived the rewind")
+		}
+		if _, err := os.Stat(filepath.Join(ws, cell.StateDir)); !os.IsNotExist(err) {
+			t.Fatal("the rewind wrote .cell into the workspace")
+		}
+		if tr, _ := os.ReadFile(rel(c, cell.TranscriptPath)); string(tr) != "{\"n\":1}\n" {
+			t.Fatalf("transcript %q, want turn 1's", tr)
+		}
+		if log, err := Log(c); err != nil || len(log) != 3 || log[0].Turn.ID != rewound.Turn.ID {
+			t.Fatalf("log = %d turns, %v; want the rewind on top of 2", len(log), err)
+		}
+		if left, _ := filepath.Glob(filepath.Join(e.LocalDir(c), "rewind-*")); len(left) != 0 {
+			t.Fatalf("scratch left behind: %v", left)
+		}
+	})
 }

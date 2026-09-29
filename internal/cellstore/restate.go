@@ -34,7 +34,7 @@ func (e Engine) restoreKeepingChain(ctx context.Context, c cell.Cell, snapshot s
 		return err
 	}
 	defer os.RemoveAll(scratch)
-	if err := e.restore(ctx, c, snapshot, nil, cellDirArg(scratch)); err != nil {
+	if err := e.restore(ctx, c, snapshot, nil, scratch); err != nil {
 		return err
 	}
 	return syncState(scratch, stateDir(c))

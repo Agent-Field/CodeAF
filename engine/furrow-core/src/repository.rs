@@ -38,6 +38,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+const STORE_DIR: &str = "store-v1";
 const WORKSPACE_FILE: &str = ".furrow/workspace-id";
 const WORKSPACE_FILE_BYTES: &[u8] = b".furrow/workspace-id";
 const FAMILY_FILE: &str = ".furrow/family-id";
@@ -71,6 +72,10 @@ pub struct SnapshotSummary {
     pub trigger: String,
     pub materialization: MaterializationReport,
     pub pinned: bool,
+    /// True when the snapshot names a parent this store does not hold, as an
+    /// imported head does. Absent from the JSON when false.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub shallow: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -372,11 +377,24 @@ impl FurrowRepository {
         existing_trigger: SnapshotTrigger,
         options: SealOptions,
     ) -> anyhow::Result<(Self, ObjectId)> {
+        Self::attach_and_seal_in(&data_root()?, root, label, existing_trigger, options)
+    }
+
+    /// As [`Self::attach_and_seal`], with the engine's data directory named
+    /// instead of read from the process environment, so one process can serve
+    /// many stores.
+    pub fn attach_and_seal_in(
+        data_dir: &Path,
+        root: &Path,
+        label: Option<String>,
+        existing_trigger: SnapshotTrigger,
+        options: SealOptions,
+    ) -> anyhow::Result<(Self, ObjectId)> {
         let root = root
             .canonicalize()
             .with_context(|| format!("open {}", root.display()))?;
         let home = IdentityHome::of(options.overlay.is_some());
-        let store_root = data_root()?.join("store-v1");
+        let store_root = data_dir.join(STORE_DIR);
         anyhow::ensure!(
             !root.starts_with(&store_root),
             "workspace cannot contain the furrow store"
@@ -394,18 +412,24 @@ impl FurrowRepository {
             overlay: options.overlay.map(Overlay::new),
         };
         repository.recover_interrupted_rewind()?;
-        let trigger = if repository
-            .store
-            .workspace_head(&repository.workspace_id)?
-            .is_some()
-        {
+        let id = repository.seal(label, existing_trigger, options.changed.as_deref())?;
+        Ok((repository, id))
+    }
+
+    /// Seals the attached workspace: the first seal of a workspace is its
+    /// initial snapshot, every later one carries `existing_trigger`.
+    pub fn seal(
+        &mut self,
+        label: Option<String>,
+        existing_trigger: SnapshotTrigger,
+        changed: Option<&[PathBuf]>,
+    ) -> anyhow::Result<ObjectId> {
+        let trigger = if self.store.workspace_head(&self.workspace_id)?.is_some() {
             existing_trigger
         } else {
             SnapshotTrigger::Initial
         };
-        let id =
-            repository.snapshot_internal(label, trigger, options.changed.as_deref(), Vec::new())?;
-        Ok((repository, id))
+        self.snapshot_internal(label, trigger, changed, Vec::new())
     }
 
     pub fn open(root: &Path) -> anyhow::Result<Self> {
@@ -417,11 +441,20 @@ impl FurrowRepository {
     /// instead of in the root. A composed workspace keeps its identity in the
     /// store, so nothing is written into the tree.
     pub fn open_composed(root: &Path, overlay: Option<PathBuf>) -> anyhow::Result<Self> {
+        Self::open_composed_in(&data_root()?, root, overlay)
+    }
+
+    /// As [`Self::open_composed`], with the data directory named.
+    pub fn open_composed_in(
+        data_dir: &Path,
+        root: &Path,
+        overlay: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         let root = root
             .canonicalize()
             .with_context(|| format!("open {}", root.display()))?;
         let home = IdentityHome::of(overlay.is_some());
-        let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
+        let mut store = ObjectStore::open(data_dir.join(STORE_DIR))?;
         let workspace_id = home.open_id(&root, &store)?;
         store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
         let family_id = ensure_family_id(home, &root, &store, &workspace_id)?;
@@ -559,9 +592,33 @@ impl FurrowRepository {
                     trigger: row.trigger,
                     materialization: self.materialization(&row.id)?,
                     pinned: pinned.contains(&row.id),
+                    shallow: self.is_shallow(&row.id)?,
                 })
             })
             .collect()
+    }
+
+    /// True when the snapshot's parent is not in this store.
+    fn is_shallow(&self, id: &ObjectId) -> anyhow::Result<bool> {
+        let snapshot: Snapshot = self.store.read_struct(id, ObjectKind::Snapshot)?;
+        match snapshot.parent {
+            Some(parent) => Ok(!self.store.contains_object(&parent)?),
+            None => Ok(false),
+        }
+    }
+
+    /// Makes an imported snapshot the workspace head, recorded in the ref log
+    /// the way a seal records one, so the next seal takes it as its parent.
+    /// The snapshot's own parent may be absent from this store.
+    pub fn adopt_head(&mut self, id: &ObjectId) -> anyhow::Result<()> {
+        let snapshot: Snapshot = self.store.read_struct(id, ObjectKind::Snapshot)?;
+        self.store.publish_snapshot(
+            &self.workspace_id,
+            *id,
+            snapshot.sealed_at_secs,
+            snapshot.label,
+            snapshot.trigger,
+        )
     }
 
     pub fn status(&self) -> anyhow::Result<RepositoryStatus> {
@@ -684,7 +741,7 @@ impl FurrowRepository {
     }
 
     pub fn gc_global(dry_run: bool) -> anyhow::Result<GcReport> {
-        let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
+        let mut store = ObjectStore::open(data_root()?.join(STORE_DIR))?;
         let report = gc::collect(&mut store, dry_run)?;
         if !dry_run {
             let status = store.budget_status()?;
@@ -697,7 +754,7 @@ impl FurrowRepository {
         max_store_bytes: Option<u64>,
         reserved_free_bytes: Option<u64>,
     ) -> anyhow::Result<BudgetStatus> {
-        let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
+        let mut store = ObjectStore::open(data_root()?.join(STORE_DIR))?;
         if max_store_bytes.is_some() || reserved_free_bytes.is_some() {
             store.configure_budget(max_store_bytes, reserved_free_bytes)
         } else {
@@ -706,14 +763,14 @@ impl FurrowRepository {
     }
 
     pub fn global_store_physical_bytes() -> anyhow::Result<u64> {
-        Ok(ObjectStore::open(data_root()?.join("store-v1"))?
+        Ok(ObjectStore::open(data_root()?.join(STORE_DIR))?
             .stats()?
             .physical_bytes)
     }
 
     pub fn estimate(root: &Path) -> anyhow::Result<CaptureEstimate> {
         let root = root.canonicalize()?;
-        let store = ObjectStore::open(data_root()?.join("store-v1"))?;
+        let store = ObjectStore::open(data_root()?.join(STORE_DIR))?;
         estimate::calculate(&root, &store)
     }
 
@@ -1666,7 +1723,7 @@ impl FurrowRepository {
             &root.join(WORKSPACE_FILE),
             format!("{workspace_id}\n").as_bytes(),
         )?;
-        let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
+        let mut store = ObjectStore::open(data_root()?.join(STORE_DIR))?;
         let snapshot: Snapshot = store.read_struct(&snapshot_id, ObjectKind::Snapshot)?;
         store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
         let family_id = ensure_family_id(IdentityHome::Workspace, &root, &store, &workspace_id)?;
@@ -2695,7 +2752,9 @@ impl FurrowRepository {
     pub fn resolve_snapshot(&self, value: &str) -> anyhow::Result<ObjectId> {
         if value.len() == 64 {
             let id = parse_id(value)?;
-            self.store.read_bytes(&id, ObjectKind::Snapshot)?;
+            self.store
+                .read_bytes(&id, ObjectKind::Snapshot)
+                .with_context(|| format!("snapshot {value} is not held in this store"))?;
             return Ok(id);
         }
         anyhow::ensure!(
@@ -2869,10 +2928,10 @@ impl FurrowRepository {
         let Some(overlay) = &self.overlay else {
             return Ok(());
         };
-        let target = self
+        let sealed = self
             .lookup_tree_path(root_tree, overlay::NAME)?
-            .filter(|entry| entry.kind == EntryKind::Directory)
-            .and_then(|entry| entry.target);
+            .filter(|entry| entry.kind == EntryKind::Directory);
+        let target = sealed.as_ref().and_then(|entry| entry.target);
         let destination = overlay.source();
         if target.is_some() {
             fs::create_dir_all(destination)?;
@@ -2891,7 +2950,8 @@ impl FurrowRepository {
             None => BTreeMap::new(),
         };
         self.apply_plan_at(destination, &entries, &plan, &[])?;
-        self.verify_plan_state(destination, &entries, &plan, &[])
+        self.verify_plan_state(destination, &entries, &plan, &[])?;
+        sealed.map_or(Ok(()), |entry| pin_directory(destination, &entry))
     }
 
     /// The tree of the overlay directory as it is now, or None when absent.
@@ -4138,7 +4198,13 @@ impl FurrowRepository {
     }
 }
 
-fn data_root() -> anyhow::Result<PathBuf> {
+/// Where the object store lives inside a data directory.
+pub fn store_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(STORE_DIR)
+}
+
+/// The engine's data directory: `FURROW_DATA_DIR`, else the platform default.
+pub fn data_root() -> anyhow::Result<PathBuf> {
     if let Some(path) = std::env::var_os("FURROW_DATA_DIR") {
         return Ok(PathBuf::from(path));
     }
@@ -4261,6 +4327,15 @@ impl IdentityHome {
         }
         Ok(id)
     }
+}
+
+/// Gives the overlay directory itself the mode and mtime its `.cell/` entry
+/// recorded; the plan restores everything inside it, never the directory.
+fn pin_directory(destination: &Path, entry: &TreeEntry) -> anyhow::Result<()> {
+    fs::set_permissions(destination, fs::Permissions::from_mode(entry.mode & 0o7777))?;
+    let mtime = FileTime::from_unix_time(entry.mtime_secs, entry.mtime_nanos);
+    filetime::set_file_mtime(destination, mtime)?;
+    Ok(())
 }
 
 fn read_workspace_file(root: &Path) -> anyhow::Result<Option<String>> {

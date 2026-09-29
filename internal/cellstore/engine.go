@@ -5,10 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -45,8 +42,12 @@ type Engine struct {
 	// Guard screens the tree for secrets before each seal (law L3); its zero
 	// value is the working guard.
 	Guard Guard
-	Run   Runner
-	Now   func() time.Time
+	// Run runs the engine program for the spawn transport; setting it means
+	// every verb spawns, and the caller sees each spawn.
+	Run Runner
+	// Transport carries the engine's verbs; nil means transportFor's choice.
+	Transport Transport
+	Now       func() time.Time
 }
 
 var _ Store = Engine{}
@@ -115,30 +116,26 @@ func (e Engine) identity() Identity {
 }
 
 // snapshot takes one snapshot of the folder through the engine's turn-end
-// hook verb, which attaches a folder it has not seen and seals it in one spawn
-// with the agent-run trigger. The label carries the receipt id, which is what
-// ties a snapshot to its receipt until the engine has a receipt field of its
-// own.
+// seal, which attaches a folder it has not seen and seals it in one verb with
+// the agent-run trigger. The label carries the receipt id, which is what ties
+// a snapshot to its receipt until the engine has a receipt field of its own.
 func (e Engine) snapshot(ctx context.Context, c cell.Cell, receipt string, changed []string) (string, error) {
-	out, err := e.engine(ctx, c, e.turnEndArgs(c, receipt, changed)...)
+	out, err := e.do(ctx, c, e.cellDir(c), sealOp{Turn: receipt, Changed: changedPaths(changed)})
 	if err != nil {
 		return "", fmt.Errorf("seal: snapshot: %w", err)
 	}
 	return parseSnapshot(out)
 }
 
-// turnEndArgs is the turn-end verb and, when the caller knows what changed,
-// the paths the engine should visit instead of walking the folder. The seal's
-// own writes under the state directory always count as changed.
-func (e Engine) turnEndArgs(c cell.Cell, receipt string, changed []string) []string {
-	args := append([]string{"--json", "hook", "turn-end", "--turn", receipt}, e.cellDirArgs(c)...)
+// changedPaths is the paths the engine should visit instead of walking the
+// folder, or nil when the caller does not know or the list is too long to
+// send. The seal's own writes under the state directory always count as
+// changed.
+func changedPaths(changed []string) []string {
 	if changed == nil || len(changed) > maxChangedArgs {
-		return args
+		return nil
 	}
-	for _, path := range append([]string{cell.StateDir}, changed...) {
-		args = append(args, "--changed", path)
-	}
-	return args
+	return append([]string{cell.StateDir}, changed...)
 }
 
 // tree is the folder the engine seals and restores.
@@ -159,13 +156,13 @@ func (e Engine) policyDir(c cell.Cell) string {
 	return stateDir(c)
 }
 
-// cellDirArgs composes the cell's private .cell/ directory into the tree when
-// the tree is not the cell's own folder.
-func (e Engine) cellDirArgs(c cell.Cell) []string {
+// cellDir is the cell's private .cell/ directory when it is composed into a
+// tree that is not the cell's own folder, and empty otherwise.
+func (e Engine) cellDir(c cell.Cell) string {
 	if e.Workspace == "" {
-		return nil
+		return ""
 	}
-	return cellDirArg(stateDir(c))
+	return stateDir(c)
 }
 
 // cellDirArg names the directory the engine composes in as, and restores, the
@@ -175,38 +172,18 @@ func cellDirArg(dir string) []string { return []string{"--cell-dir", dir} }
 // stateDir is the cell's own .cell/ directory.
 func stateDir(c cell.Cell) string { return filepath.Join(c.Root, cell.StateDir) }
 
-// engine runs one engine verb in the cell's folder against the cell's store.
-func (e Engine) engine(ctx context.Context, c cell.Cell, args ...string) ([]byte, error) {
-	bin := e.Binary
-	if bin == "" {
-		resolved, err := sealingEngine()
-		if err != nil {
-			return nil, err
-		}
-		bin = resolved
-	}
-	env := append(os.Environ(), dataDirEnv+"="+e.LocalDir(c))
-	return e.exec(ctx, e.tree(c), env, append([]string{bin}, args...)...)
+// do runs one engine verb on the cell's folder against the cell's store, with
+// cellDir composed in as the tree's .cell/ entry.
+func (e Engine) do(ctx context.Context, c cell.Cell, cellDir string, op Op) ([]byte, error) {
+	target := Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: cellDir}
+	return e.transport().Do(ctx, target, op)
 }
 
-func (e Engine) exec(ctx context.Context, dir string, env []string, argv ...string) ([]byte, error) {
-	if e.Run != nil {
-		return e.Run(ctx, dir, env, argv...)
+func (e Engine) transport() Transport {
+	if e.Transport != nil {
+		return e.Transport
 	}
-	return spawn(ctx, dir, env, argv...)
-}
-
-// spawn is the default Runner. Stderr comes back in the error, because the
-// engine's own wording is what a person will act on.
-func spawn(ctx context.Context, dir string, env []string, argv ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //codeaf:plumbing the seal drives the embedded engine
-	cmd.Dir, cmd.Env = dir, env
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%s: %w: %s", filepath.Base(argv[0]), err, strings.TrimSpace(errb.String()))
-	}
-	return out.Bytes(), nil
+	return transportFor(e.Binary, e.Run)
 }
 
 func parseSnapshot(out []byte) (string, error) {

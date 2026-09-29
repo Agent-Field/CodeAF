@@ -8,6 +8,8 @@ use std::io::{self, IsTerminal, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
+mod exchange;
+
 #[derive(Parser)]
 #[command(
     name = "furrow",
@@ -43,6 +45,17 @@ enum Command {
         #[arg(long, default_value_t = 500)]
         debounce_ms: u64,
     },
+    /// Serve seal, restore and log requests on a unix socket, keeping each
+    /// store's repository open between requests.
+    Serve {
+        #[arg(long)]
+        socket: PathBuf,
+        /// Exit after this many minutes with no client.
+        #[arg(long, default_value_t = 10)]
+        idle_minutes: u64,
+    },
+    #[command(flatten)]
+    Exchange(exchange::Exchange),
     #[command(name = "__remote", hide = true)]
     RemoteHelper { namespace: String },
     #[command(name = "__namespace-probe", hide = true)]
@@ -558,6 +571,11 @@ fn main() -> anyhow::Result<()> {
                 std::time::Duration::from_millis(debounce_ms.max(10)),
             )?;
         }
+        Command::Serve {
+            socket,
+            idle_minutes,
+        } => serve(socket, idle_minutes)?,
+        Command::Exchange(verb) => exchange::run(verb, &cli.repo, cli.json)?,
         Command::RemoteHelper { namespace } => {
             furrow::remote::serve(&namespace)?;
         }
@@ -2260,6 +2278,19 @@ fn install_hook_adapters(root: &std::path::Path) -> anyhow::Result<Vec<PathBuf>>
     Ok(installed)
 }
 
+fn serve(socket: PathBuf, idle_minutes: u64) -> anyhow::Result<()> {
+    let config = furrow_daemon::Config {
+        socket,
+        idle: std::time::Duration::from_secs(idle_minutes.saturating_mul(60)),
+    };
+    // Another daemon already serves this socket: that is the goal met.
+    let Some(server) = furrow_daemon::Server::bind(config)? else {
+        return Ok(());
+    };
+    furrow_daemon::signals::install();
+    server.run()
+}
+
 fn run_hook(
     root: &std::path::Path,
     json: bool,
@@ -2272,15 +2303,7 @@ fn run_hook(
     let agent = hook_value(agent, "FURROW_AGENT_ID")?.unwrap_or_else(|| "agent".to_owned());
     let turn = hook_value(turn, "FURROW_TURN_ID")?;
     let tool = hook_value(tool, "FURROW_TOOL_NAME")?;
-    let mut label = format!("hook {event} agent={agent}");
-    if let Some(turn) = turn {
-        label.push_str(" turn=");
-        label.push_str(&turn);
-    }
-    if let Some(tool) = tool {
-        label.push_str(" tool=");
-        label.push_str(&tool);
-    }
+    let label = furrow_daemon::hook_label(event, &agent, turn.as_deref(), tool.as_deref());
     let (_, snapshot) = FurrowRepository::attach_and_seal(
         root,
         Some(label.clone()),
