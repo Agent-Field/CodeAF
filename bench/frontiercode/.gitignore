@@ -3,6 +3,10 @@
 # build time; gold.sh reads it from the image).
 tasks/*/solution/
 
+# Local build products (the codeaf binary run.sh copies into the container, the
+# egress-proxy binaries) — untracked.
+bin/
+
 # results/ is scratch: a local working area for a run in progress. It is NOT
 # durable — a task that fetches a run here loses it when the task's checkout is
 # discarded, which has happened twice. fetch-results.sh therefore lands evidence
