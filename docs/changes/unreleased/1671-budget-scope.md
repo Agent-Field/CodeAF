@@ -10,3 +10,6 @@ invalidates:
 The manual explains how to raise the running conversation's limit and retry the
 refused message. A regression reproduces the separate daily and conversation
 limits and verifies that the same live agent can continue after its cap changes.
+The daily-budget tip now names its scope across all conversations, and a separate
+conversation-budget tip teaches `/budget conversation`. Each tip retires only
+when its own budget scope is used.
