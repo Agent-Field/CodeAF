@@ -64,6 +64,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -809,20 +810,23 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// and this used to be a hand-copied three-line shell choice with no
 	// buffering fix in it at all.
 	shell, shellArgs := bare.StreamingShell(command)
-	//codeaf:tool-pending
-	process := exec.Command(shell, shellArgs...)
-	process.Dir = started.dir
-	process.Env = bare.StreamingEnv()
-	// Setsid puts the job and everything it spawns in one process group, so a
-	// kill reaches the whole tree — the leader of a new session leads its own
-	// group, so every `kill -pgid` here works exactly as it did under Setpgid.
-	// A dev server that forks a compiler must not survive the kill of its
-	// parent. AND IT TAKES THE TERMINAL AWAY: a job has no controlling tty, so
-	// a child that opens /dev/tty — a CLI that is itself a screen, a prompt
+	// A new session puts the job and everything it spawns in one process group,
+	// so a kill reaches the whole tree — the leader of a new session leads its
+	// own group, so every `kill -pgid` here works exactly as it did under
+	// Setpgid. A dev server that forks a compiler must not survive the kill of
+	// its parent. AND IT TAKES THE TERMINAL AWAY: a job has no controlling tty,
+	// so a child that opens /dev/tty — a CLI that is itself a screen, a prompt
 	// that insists on the keyboard — is refused instead of painting over the
 	// person's frame. That was measured, not imagined: two review CLIs run as
 	// jobs drew their own output across the top of a running conversation.
-	processgroup.ConfigureDetached(process)
+	process, err := procexec.In(started.dir).Command(context.Background(), procexec.ExecRequest{
+		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
+		Net: procexec.OpenNet, Group: procexec.GroupSession,
+	})
+	if err != nil {
+		started.sink.close()
+		return nil, fmt.Errorf("could not start the command: %w", err)
+	}
 	process.Stdout = started.sink
 	process.Stderr = started.sink
 
