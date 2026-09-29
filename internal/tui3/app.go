@@ -1472,7 +1472,11 @@ type app struct {
 	// provider listing that a launch warm or a ctrl+r walk stocked behind the
 	// frame (servicelands.go). Made with the surface for the same reason news
 	// is — the fan-out may ring before Init — and read only on the loop.
-	landedBell   *doorbell
+	landedBell *doorbell
+	// outsideDesk is the desk sentences from outside the loop are put on, and
+	// noticeBell the door that brings the loop to read it (notices.go).
+	outsideDesk  *Notices
+	noticeBell   *doorbell
 	serviceLands *serviceLands
 	// frontGen counts the conversations this window has taken up, and it is
 	// WHICH ONE IS IN FRONT rather than how many there have been: a door asked
@@ -2913,6 +2917,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
 		news:                newDoorbell(newsMsg{}),
+		noticeBell:          newDoorbell(noticesMsg{}),
 		leaving:             newDoorbell(sigQuitMsg{}),
 		agent:               opts.Agent,
 		fresh:               opts.Fresh,
@@ -3253,6 +3258,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	// and from then on [app.retitle] sends it again only when it moves.
 	a.titleSent = terminalTitle(a)
 	a.refreshCreditWarnings()
+	// AND THE NOTICE DESK, once the surface can say a note (notices.go).
+	a.useNotices(opts.Notices)
 	return a
 }
 
@@ -3417,7 +3424,7 @@ func (a *app) Init() tea.Cmd {
 		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
+		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(), a.noticeBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
 		a.teamsWrite()}
@@ -3623,6 +3630,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// this loop, which is the whole of that file's law; what comes back
 		// here is the piece of work that was waiting on the answer.
 		return a, a.doorSaid(msg)
+
+	case noticesMsg:
+		// A SENTENCE FROM OUTSIDE THE LOOP IS ON THE DESK (notices.go). It is
+		// said as a note now, and the door is parked again in the same breath.
+		a.saidNotices()
+		return a, a.noticeBell.waitRing()
 
 	case newsMsg:
 		// THE LANE LAYER OR THE PHASE CLOCK SAID SOMETHING (tui3.go's

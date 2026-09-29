@@ -441,6 +441,11 @@ type Options struct {
 	Takeover Taker
 	// Branches is what a branch row can do. A nil verb is absent from the row.
 	Branches BranchActions
+	// Notices is the desk a goroutine outside the surface puts a sentence on
+	// when the person has to read it at once: another machine took the chat
+	// over, the computer's clock is off (notices.go). Nil is a door that has
+	// none.
+	Notices *Notices
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 	// EngineRoad says the conversation is in a daemon on this machine. It is
@@ -1416,6 +1421,7 @@ func Run(ctx context.Context, opts Options) error {
 	// a second surface in one process cannot inherit the first one's desk.
 	defer listenForNews(surface.news)()
 	defer surface.news.close()
+	defer surface.noticeBell.close()
 	defer surface.leaving.close()
 	// AND THE DOOR LINE ENDS WITH THE WINDOW, after what is already in it has
 	// been asked (offloop.go): a person's last keystroke before they close a
