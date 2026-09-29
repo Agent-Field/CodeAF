@@ -50,3 +50,13 @@ func execProbe(path string, args []string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 	return strings.TrimSpace(line)
 }
+
+// Version prints the version line of the binary at path using the default
+// probe for name, or "" when the tool has no probe or does not answer.
+func Version(name, path string) string {
+	args, ok := DefaultProbes[name]
+	if !ok {
+		return ""
+	}
+	return execProbe(path, args)
+}

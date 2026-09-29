@@ -1,0 +1,49 @@
+package preflight
+
+import "fmt"
+
+// Line is the one-line text for the chat list.
+func (it Item) Line() string {
+	switch {
+	case it.Bucket == Impossible:
+		return fmt.Sprintf("%s — not possible here", it.Reason)
+	case it.Bucket == Installable:
+		return fmt.Sprintf("needs %s — agent can set it up", it.label(it.Want, it.need()))
+	case it.Severity == Blocking:
+		return fmt.Sprintf("needs %s; %s here — cannot take over", it.label(it.Want, it.need()), major(it.Have))
+	case it.Severity == Advisory && it.Name == "platform":
+		return fmt.Sprintf("%s used; %s here", it.Want, it.Have)
+	case it.Severity == Advisory:
+		return fmt.Sprintf("%s used; %s here", it.label(it.Want, short), short(it.Have))
+	}
+	return fmt.Sprintf("%s here", it.label(it.Have, short))
+}
+
+// need is the version form for a requirement: major for a locked service
+// family (only the major matters), major.minor otherwise.
+func (it Item) need() func(string) string {
+	if lockedFamily(it.Name) {
+		return major
+	}
+	return short
+}
+
+func (it Item) label(version string, form func(string) string) string {
+	name := it.Name
+	if fam, ok := lockedFamilies[name]; ok {
+		name = fam
+	}
+	if v := form(version); v != "" {
+		return name + " " + v
+	}
+	return name
+}
+
+// Lines renders every item in order.
+func (r Report) Lines() []string {
+	out := make([]string, len(r.Items))
+	for i, it := range r.Items {
+		out[i] = it.Line()
+	}
+	return out
+}
