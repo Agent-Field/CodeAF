@@ -190,6 +190,27 @@ fc_secret_read() {
   esac
 }
 
+# fc_judge_gate: the manifest's pinned judge must be the judge the corpus is
+# graded with. Every task's rubric carries its own judge model and prompt
+# version; this refuses a campaign whose pin disagrees with any of them, and
+# refuses a prompt version the grader does not know.
+fc_judge_gate() {
+  local jm jv corpus t rjm rjv problem=0
+  jm="$(fc_get '.judge_model')"
+  jv="$(fc_get '.judge_prompt_version')"
+  corpus="$(fc_get '.corpus')"
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    rjm="$(sed -n 's/^judge_model[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$t" | head -1)"
+    rjv="$(sed -n 's/^judge_prompt_version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$t" | head -1)"
+    if [ -n "$rjm" ] && [ "$rjm" != "$jm" ]; then echo "  $t judge_model $rjm != manifest $jm" >&2; problem=1; fi
+    if [ -n "$rjv" ] && [ "$rjv" != "$jv" ]; then echo "  $t judge_prompt_version $rjv != manifest $jv" >&2; problem=1; fi
+  done < <(cd "$FC_REPO_ROOT" && find "$corpus" -name rubric.toml | LC_ALL=C sort)
+  [ "$problem" = 0 ] || fc_die "a task's rubric disagrees with the manifest's pinned judge"
+  grep -q "\"$jv\":" "$FC_RIG_DIR/grade/judge.py" || fc_die "judge prompt version $jv is not in grade/judge.py"
+  fc_note "judge pinned: $jm / $jv (manifest, task rubrics and grade/judge.py agree)"
+}
+
 # fc_wave_labels <shard> prints the label for each wave of that shard, in order.
 fc_wave_labels() {
   local shard="$1" cap n waves prefix w
