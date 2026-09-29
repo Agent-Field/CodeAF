@@ -90,7 +90,12 @@ func Open(home, id string) (Cell, error) {
 	if !ValidID(id) {
 		return Cell{}, fmt.Errorf("open cell: invalid id %q", id)
 	}
-	c := Cell{ID: id, Root: filepath.Join(Dir(home), id)}
+	return OpenAt(filepath.Join(Dir(home), id), id)
+}
+
+// OpenAt loads the cell whose folder is root, wherever it lives.
+func OpenAt(root, id string) (Cell, error) {
+	c := Cell{ID: id, Root: root}
 	raw, err := os.ReadFile(c.abs(MetaPath))
 	if err != nil {
 		return Cell{}, fmt.Errorf("open cell %s: %w", id, err)

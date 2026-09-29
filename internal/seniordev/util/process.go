@@ -137,7 +137,7 @@ func SpawnProcess(ctx context.Context, command []string, options ...ProcessOptio
 		}
 	}
 	cmd, err := executor.In(opt.Cwd).Command(context.Background(), executor.ExecRequest{
-		Argv: append([]string{name}, args...), Env: processEnv(opt), Net: executor.OpenNet,
+		Argv: append([]string{name}, args...), Env: processEnv(opt),
 		Group: executor.GroupInherit,
 	})
 	if err != nil {

@@ -491,7 +491,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// verbatim (tools.go, jobs.go), for a fault that was observed there
 			// first.
 			cmd, err := executor.In(cwd).Command(context.Background(), executor.ExecRequest{
-				Argv: append([]string{shell}, shellArgs...), Env: StreamingEnv(), Net: executor.OpenNet,
+				Argv: append([]string{shell}, shellArgs...), Env: StreamingEnv(),
 				Group: executor.GroupSession, WaitDelay: 3 * time.Second,
 			})
 			if err != nil {

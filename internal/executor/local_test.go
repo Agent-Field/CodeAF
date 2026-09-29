@@ -68,24 +68,6 @@ func TestLocalCleanExitLeavesNoServices(t *testing.T) {
 	}
 }
 
-func TestSideEffectFollowsNetworkPolicy(t *testing.T) {
-	cases := map[string]struct {
-		net  NetPolicy
-		want SideEffect
-	}{
-		"zero value denies": {NetPolicy{}, EffectLocal},
-		"allowlist":         {NetPolicy{Allow: []string{"registry.example"}}, EffectExternal},
-		"open":              {NetPolicy{Open: true}, EffectExternal},
-	}
-	for name, c := range cases {
-		req := sh("true")
-		req.Net = c.net
-		if got := exec1(t, req, nil).SideEffect; got != c.want {
-			t.Errorf("%s: got %s, want %s", name, got, c.want)
-		}
-	}
-}
-
 func TestLocalRunsInTheRelativeDirectory(t *testing.T) {
 	root := t.TempDir()
 	req := sh("pwd")
@@ -102,12 +84,14 @@ func TestLocalRefusesBadRequests(t *testing.T) {
 		"absolute":   {Argv: []string{"true"}, Dir: "/etc"},
 		"cell":       {Argv: []string{"true"}, Dir: ".cell/env"},
 		"empty argv": {},
-		"files only": {Argv: []string{"true"}, Class: FilesOnly},
 	}
 	for name, req := range bad {
 		if _, err := (Local{Root: t.TempDir()}).Exec(context.Background(), req, nil); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
+	}
+	if _, err := (Local{Root: t.TempDir(), Class: FilesOnly}).Exec(context.Background(), sh("true"), nil); err == nil {
+		t.Error("files only: want an error")
 	}
 }
 

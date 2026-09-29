@@ -200,8 +200,8 @@ func collectSearchFiles(
 // work tree (or git is unavailable), leaving the caller to walk instead.
 func gitTrackedFiles(ctx context.Context, dir string) (files []string, ok bool) {
 	res, err := executor.In("").Exec(ctx, executor.ExecRequest{
-		Argv: []string{"git", "-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"},
-		Net:  executor.OpenNet, Group: executor.GroupInherit,
+		Argv:  []string{"git", "-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"},
+		Group: executor.GroupInherit,
 	}, nil)
 	if err != nil || res.Failure() != nil {
 		return nil, false

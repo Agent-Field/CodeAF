@@ -39,19 +39,30 @@ func (noJail) Confine(*exec.Cmd, ExecRequest) error { return nil }
 
 // Local spawns processes on this device, rooted at one workspace directory.
 type Local struct {
-	Root string
-	Jail Jail // nil means no confinement
+	Root  string
+	Class Class // the workspace's declared class; the zero value is Sandboxed
+	Jail  Jail  // nil means no confinement
 
 	// Observer, when set, sees each call that ran to a result.
 	Observer Observer
 }
 
 // In returns a Local rooted at dir, for a caller whose working directory is
-// the tree it works in. An empty dir is the current directory.
-func In(dir string) Local { return Local{Root: dir} }
+// the tree it works in. An empty dir is the current directory. The class is
+// the one declared for the workspace holding dir ([ClassOf]).
+func In(dir string) Local { return Local{Root: dir, Class: ClassOf(dir), Jail: DefaultJail()} }
+
+// resolve stamps the request with the workspace's class and the network policy
+// that class allows for it: the one place a policy is chosen.
+func (l Local) resolve(req ExecRequest) ExecRequest {
+	req.Class = l.Class
+	req.Net = PolicyFor(l.Class, req.Setup)
+	return req
+}
 
 // Exec implements Executor.
 func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) (ExecResult, error) {
+	req = l.resolve(req)
 	ctx, cancel := withTimeout(ctx, req.Timeout)
 	defer cancel()
 	if req.WaitDelay == 0 {
@@ -81,6 +92,7 @@ func degraded(j Jail, req ExecRequest) bool {
 // interactive children); Timeout is not applied here, and ctx ends the process
 // only when it is cancelled.
 func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) {
+	req = l.resolve(req)
 	dir, err := l.check(req)
 	if err != nil {
 		return nil, err
@@ -121,7 +133,7 @@ func canceller(cmd *exec.Cmd, g Group) func() error {
 
 // check validates a request and returns the directory it runs in.
 func (l Local) check(req ExecRequest) (string, error) {
-	if req.Class == FilesOnly {
+	if !req.Class.rule().Spawns {
 		return "", errors.New("executor: a files-only workspace runs no process")
 	}
 	if len(req.Argv) == 0 {

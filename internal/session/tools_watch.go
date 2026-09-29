@@ -668,7 +668,7 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	var captured bytes.Buffer
 	res, err := procexec.In(r.workspace).Exec(tickCtx, procexec.ExecRequest{
 		Argv: append([]string{shell}, append(shellArgs, spec.command)...), Env: os.Environ(),
-		Net: procexec.OpenNet, Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
+		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
 		Combined: true, Stream: true,
 	}, func(c procexec.Chunk) { captured.Write(c.Data) })
 	if res.Status != "" {

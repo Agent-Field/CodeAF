@@ -304,7 +304,7 @@ type Handle struct {
 // its own process group, any other stays in the caller's.
 func specRequest(spec SpawnSpec) executor.ExecRequest {
 	req := executor.ExecRequest{
-		Argv: append([]string{spec.Path}, spec.Args...), Net: executor.OpenNet,
+		Argv:  append([]string{spec.Path}, spec.Args...),
 		Group: executor.GroupInherit,
 	}
 	if spec.EnvSet {
