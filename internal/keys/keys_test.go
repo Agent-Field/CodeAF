@@ -1,6 +1,9 @@
 package keys
 
 import (
+	"encoding/hex"
+	"encoding/json"
+	"golang.org/x/crypto/chacha20poly1305"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -145,4 +148,64 @@ func TestScanTree(t *testing.T) {
 			t.Errorf("%s: rule %q, want %q", c.file, got[c.file], c.rule)
 		}
 	}
+}
+
+// A vault sealed before the schema freeze names its key as 16 hex under
+// "key_id". It still opens, and the next write names the key as 32 hex under
+// "cell_key_id".
+func TestLegacyEnvelopeReadsOnceThenMigrates(t *testing.T) {
+	v, home := mustOpen(t)
+	plain := []byte(`{"V":1,"secrets":{"id1":{"name":"K","value":"v","scope":"p"}},"updated":1}`)
+	legacy := legacyID(v.key)
+	blob := sealAs(t, v.key, plain, legacy)
+	if err := os.WriteFile(filepath.Join(home, "vault.enc"), blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := v.Get("id1"); err != nil || got.Value != "v" {
+		t.Fatalf("legacy read: %+v %v", got, err)
+	}
+	if err := v.Put("id2", Entry{Name: "K2", Value: "w", Scope: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(home, "vault.enc"))
+	var env envelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.CellKeyID) != 32 || env.KeyID != "" {
+		t.Fatalf("envelope not migrated: %s", raw)
+	}
+	if !strings.HasPrefix(env.CellKeyID, legacy) {
+		t.Fatalf("new id %s does not extend legacy id %s", env.CellKeyID, legacy)
+	}
+}
+
+func TestEnvelopeRefusesForeignKeyID(t *testing.T) {
+	v, home := mustOpen(t)
+	if err := v.Put("id1", Entry{Name: "K", Value: "v", Scope: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(home, "vault.enc"))
+	var env envelope
+	_ = json.Unmarshal(raw, &env)
+	env.CellKeyID = strings.Repeat("ab", 16)
+	bad, _ := json.Marshal(env)
+	if _, err := open(v.key, bad); err == nil {
+		t.Fatal("opened an envelope naming another key")
+	}
+}
+
+func legacyID(key []byte) string { return keyID(key)[:16] }
+
+// sealAs seals plain the way the pre-freeze build did, naming the key by id.
+func sealAs(t *testing.T, key, plain []byte, id string) []byte {
+	t.Helper()
+	aead, _ := chacha20poly1305.New(key)
+	nonce := make([]byte, aead.NonceSize())
+	blob, err := json.Marshal(map[string]any{"V": 1, "key_id": id, "nonce": hex.EncodeToString(nonce),
+		"data": hex.EncodeToString(aead.Seal(nil, nonce, plain, []byte(id)))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return blob
 }
