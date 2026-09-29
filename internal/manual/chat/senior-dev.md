@@ -548,6 +548,7 @@ or edits reaches your folder**:
 - `node_modules` is cloned copy-on-write where your disk can (APFS on a Mac; btrfs or XFS
   on Linux), which costs no space and no time; where it cannot, it is left out and
   senior-dev installs it (`npm ci`);
+- a `node_modules` that is itself a link is left out for senior-dev to install into its own copy;
 - a Python `.venv` or `venv` is never carried: an editable install in it points at your
   own source, so the copy's tests would run your code, not senior-dev's. senior-dev makes
   one of its own in the copy when the tests need one.

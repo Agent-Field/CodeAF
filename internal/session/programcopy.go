@@ -152,7 +152,7 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 	if hold, busy := programHoldNear(canonicalPath(repo), ""); busy {
 		return nil, fmt.Errorf("%s", programFolderBusy(repo, hold))
 	}
-	links, err := programCopyLinks(repo)
+	links, projectListed, err := programCopyLinks(repo)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 		return nil, fmt.Errorf("%s", refusal)
 	}
 	offline := programNetworkOff()
-	folder.Linked, folder.Carried = carryIgnored(repo, dir, folder.Notes, links, offline)
+	folder.Linked, folder.Carried = carryIgnored(repo, dir, folder.Notes, links, offline, projectListed)
 	excludeLinkedNames(dir, folder.Linked, programEnvironmentFolders(offline))
 	ignored, err := git(dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 	if err != nil {
@@ -451,26 +451,26 @@ func privateCopyRoot(root string) error {
 // law): a project file that cannot be read, a list in a shape codeaf does not
 // take, or a name that is not at the top of the repository refuses the run
 // with the file named, rather than quietly linking the defaults instead.
-func programCopyLinks(repo string) ([]string, error) {
+func programCopyLinks(repo string) ([]string, bool, error) {
 	project, err := config.LoadProjectConfig(repo)
 	if err != nil {
-		return nil, fmt.Errorf("%s; codeaf reads which ignored folders to link into the program's copy there, so fix it, then ask again", err)
+		return nil, false, fmt.Errorf("%s; codeaf reads which ignored folders to link into the program's copy there, so fix it, then ask again", err)
 	}
 	listed, found, err := project.Names(config.ProjectProgramLinks)
 	if err != nil {
-		return nil, fmt.Errorf("%s; fix it, then ask again", err)
+		return nil, false, fmt.Errorf("%s; fix it, then ask again", err)
 	}
 	if found {
 		names := make([]string, 0, len(listed))
 		for _, name := range listed {
 			name = strings.Trim(name, "/")
 			if name == "" || strings.Contains(name, "/") || name == "." || name == ".." || name == ".git" {
-				return nil, fmt.Errorf("%s: %s names %q, which is not a folder or file at the top of the repository, and a copy links only those; fix it, then ask again",
+				return nil, false, fmt.Errorf("%s: %s names %q, which is not a folder or file at the top of the repository, and a copy links only those; fix it, then ask again",
 					project.Path(), config.ProjectProgramLinks, name)
 			}
 			names = append(names, name)
 		}
-		return names, nil
+		return names, true, nil
 	}
 	names := append([]string(nil), programCopyLinked...)
 	if matches, err := filepath.Glob(filepath.Join(repo, ".env.*")); err == nil {
@@ -478,7 +478,7 @@ func programCopyLinks(repo string) ([]string, error) {
 			names = append(names, filepath.Base(match))
 		}
 	}
-	return names, nil
+	return names, false, nil
 }
 
 // programNetworkOff says a program runs with its network off: SENIOR_DEV_NET
@@ -524,7 +524,7 @@ func programEnvironmentFolders(offline bool) []string {
 // that can be had another way is linked ([carryOne]); with it off nothing can
 // be installed, and linking is the only way the copy has what the project's
 // build and tests need.
-func carryIgnored(repo, dir, notes string, names []string, offline bool) (linked, carried []string) {
+func carryIgnored(repo, dir, notes string, names []string, offline, projectListed bool) (linked, carried []string) {
 	for _, name := range names {
 		if name == "" || strings.Contains(name, "/") || name == ".git" || name == "." || name == ".." ||
 			(notes != "" && name == strings.Trim(notes, "/")) {
@@ -541,7 +541,7 @@ func carryIgnored(repo, dir, notes string, names []string, offline bool) (linked
 		if _, err := os.Lstat(target); err == nil {
 			continue
 		}
-		switch carryOne(source, target, name, offline) {
+		switch carryOne(source, target, name, offline, projectListed) {
 		case carryLinked:
 			linked = append(linked, name)
 		case carryOwn:
@@ -568,15 +568,35 @@ const (
 //   - a Python virtual environment is left out: an editable install in it
 //     points at the person's source, so the copy's tests would import the
 //     person's code, and the program builds one of its own;
+//   - a folder that is itself a link is left out for dependencies, or linked
+//     only when the project explicitly listed its name;
 //   - any other folder is cloned copy-on-write where the disk can (APFS, a
 //     reflinking Linux filesystem), which costs no space and no time;
 //   - where it cannot, `node_modules` is left out for the program to install,
 //     and a folder the project listed itself is linked, as the project asked.
-func carryOne(source, target, name string, offline bool) carryWay {
-	info, err := os.Stat(source)
-	switch {
-	case offline || err != nil:
+func carryOne(source, target, name string, offline, projectListed bool) carryWay {
+	if offline {
 		return linkInto(source, target)
+	}
+	link, err := os.Lstat(source)
+	if err != nil {
+		return carryNone
+	}
+	info, err := os.Stat(source)
+	if link.Mode()&os.ModeSymlink != 0 {
+		if err != nil {
+			return carryNone
+		}
+		if info.IsDir() {
+			if name == "node_modules" || isVirtualEnv(source) || !projectListed {
+				return carryNone
+			}
+			return linkInto(source, target)
+		}
+	}
+	switch {
+	case err != nil:
+		return carryNone
 	case info.Mode().IsRegular():
 		if copyFileInto(source, target, info.Mode().Perm()) == nil {
 			return carryOwn

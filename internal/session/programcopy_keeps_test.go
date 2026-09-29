@@ -519,6 +519,32 @@ func TestTheSnapshotCarriesAStagedRenameAsARename(t *testing.T) {
 	}
 }
 
+// A LINKED DEPENDENCY FOLDER CANNOT BE CLONED SAFELY. With the network on,
+// the program installs into its own copy and never writes through that link.
+func TestANetworkOnCopyNeverLinksToAPersonsLinkedNodeModules(t *testing.T) {
+	t.Setenv(programNetworkEnv, "allow")
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, ".gitignore"), "node_modules\n")
+	mustGit(t, repo, "add", ".gitignore")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "ignore dependencies")
+	personDeps := t.TempDir()
+	writeFile(t, filepath.Join(personDeps, "installed.txt"), "original\n")
+	if err := os.Symlink(personDeps, filepath.Join(repo, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Read dependencies")
+	copyDeps := filepath.Join(folder.Dir, "node_modules")
+	if info, err := os.Lstat(copyDeps); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	} else if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("the copy's node_modules is a link to the person's folder")
+	}
+	folder.Finish("")
+	if got := readFile(t, filepath.Join(personDeps, "installed.txt")); got != "original\n" {
+		t.Fatalf("the person's installed.txt = %q", got)
+	}
+}
+
 // A RUN SENT BACK COUNTS FROM WHERE THE LINE'S FIRST RUN FOUND THE PERSON. It
 // takes the branch up, the person's changes already its first commit, and
 // neither those changes nor the person's newer ones are carried again.
