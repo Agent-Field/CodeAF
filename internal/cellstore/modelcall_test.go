@@ -53,20 +53,22 @@ func TestReceiptCarriesEveryModelCallSinceThePreviousSeal(t *testing.T) {
 // A rewind restores an earlier turn, and the chain still holds what the
 // rewound-past turns spent.
 func TestRewindKeepsSpendAlreadyPaid(t *testing.T) {
-	e := realEngine(t)
-	c := newCell(t)
-	seat := seatWith(t, c, e)
-	for i, micro := range []int64{100, 200, 400} {
-		executor.NoteModelCall(seat, noted("m", 10*(i+1), i+1, micro))
-		writeTree(t, c.Root, map[string]string{"f.txt": string(rune('a' + i))}, 0o644)
-		toolCall(t, seat)
-	}
-	before := micros(t, c)
-	turns, _ := Turns(c)
-	mustRewind(t, e, c, turns[0].ID)
-	if after := micros(t, c); after != before || after != 700 {
-		t.Fatalf("spend %d before rewind, %d after", before, after)
-	}
+	forEachTransport(t, func(t *testing.T) {
+		e := realEngine(t)
+		c := newCell(t)
+		seat := seatWith(t, c, e)
+		for i, micro := range []int64{100, 200, 400} {
+			executor.NoteModelCall(seat, noted("m", 10*(i+1), i+1, micro))
+			writeTree(t, c.Root, map[string]string{"f.txt": string(rune('a' + i))}, 0o644)
+			toolCall(t, seat)
+		}
+		before := micros(t, c)
+		turns, _ := Turns(c)
+		mustRewind(t, e, c, turns[0].ID)
+		if after := micros(t, c); after != before || after != 700 {
+			t.Fatalf("spend %d before rewind, %d after", before, after)
+		}
+	})
 }
 
 func micros(t *testing.T, c cell.Cell) (sum int64) {
