@@ -1,6 +1,7 @@
 # Final report — the FrontierCode-style rig
 
-Written 2026-09-28 against brief §12's six points. Everything below is about
+Written 2026-09-28 against brief §8's six points (the list of what the report
+must carry). Everything below is about
 `bench/frontiercode/` at commit `b61a1c5d8` (branch `task/build-frontiercode-style-bench-r-18f40e`,
 **not pushed** — per the brief, no push, no PR; the head hash is the hand-over).
 
