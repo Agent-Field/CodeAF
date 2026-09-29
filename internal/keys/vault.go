@@ -87,21 +87,32 @@ func (v *Vault) Delete(id string) error {
 	})
 }
 
-// Env returns NAME=value pairs for the project, sorted by name, ready to
-// append to an exec environment.
-func (v *Vault) Env(project string) ([]string, error) {
+// Entries returns the project's secrets sorted by name, the one stable order
+// every reader of the vault shares.
+func (v *Vault) Entries(project string) ([]Entry, error) {
 	d, err := v.read()
 	if err != nil {
 		return nil, err
 	}
-	var out []string
+	var out []Entry
 	for _, e := range d.Secrets {
 		if e.Scope == project {
-			out = append(out, e.Name+"="+e.Value)
+			out = append(out, e)
 		}
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// Env returns NAME=value pairs for the project, sorted by name, ready to
+// append to an exec environment.
+func (v *Vault) Env(project string) ([]string, error) {
+	entries, err := v.Entries(project)
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name+"="+e.Value)
+	}
+	return out, err
 }
 
 // ImportDotenv reads a .env file into entries scoped to project. A name
@@ -153,7 +164,12 @@ func (v *Vault) read() (*vaultDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	plain, err := open(v.key, blob)
+	return openDoc(v.key, blob)
+}
+
+// openDoc opens a sealed vault envelope and decodes the document inside.
+func openDoc(key, blob []byte) (*vaultDoc, error) {
+	plain, err := open(key, blob)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +199,12 @@ func (v *Vault) update(fn func(*vaultDoc) error) error {
 		return ignoreUnchanged(err)
 	}
 	d.Updated = time.Now().UnixMilli()
+	return v.write(d)
+}
+
+// write seals the document and replaces the vault file atomically. The caller
+// holds the lock and has already set the document's Updated stamp.
+func (v *Vault) write(d *vaultDoc) error {
 	plain, err := json.Marshal(d)
 	if err != nil {
 		return err
