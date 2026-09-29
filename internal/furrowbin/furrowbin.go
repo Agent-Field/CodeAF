@@ -85,22 +85,29 @@ func Embedded() bool {
 }
 
 var (
-	ensureOnce sync.Once
+	ensureMu   sync.Mutex
 	ensurePath string
-	ensureErr  error
 )
 
 // Ensure puts the embedded furrow on disk if it is not already there and
 // returns the path to it.
 //
-// It is memoised for the life of the process because it sits in front of belt
-// construction, where it is asked once per session and would otherwise cost a
-// stat each time; the first call in a fresh state root costs one decompression
-// and one six-megabyte write, and every call after that on every later boot
-// costs one stat.
+// The answer is remembered for the life of the process because it sits in front
+// of belt construction, where it is asked once per session, and the first call
+// in a fresh state root costs one decompression and one six-megabyte write. A
+// remembered path is only trusted while its file is still there: a state root
+// that was cleaned or replaced under a long-lived process would otherwise leave
+// every later seal spawning a program that no longer exists. The steady state
+// is one stat.
 func Ensure() (string, error) {
-	ensureOnce.Do(func() { ensurePath, ensureErr = extract() })
-	return ensurePath, ensureErr
+	ensureMu.Lock()
+	defer ensureMu.Unlock()
+	if ensurePath != "" && installed(ensurePath) {
+		return ensurePath, nil
+	}
+	path, err := extract()
+	ensurePath = path
+	return path, err
 }
 
 // extract is Ensure's one-time body: find the carried bytes, then put them
@@ -135,7 +142,7 @@ func extractInto(dir, version string, archive []byte) (string, error) {
 	// its executable bit are the whole check. Hashing six megabytes on every
 	// boot to re-learn what the build already verified against the pin would
 	// be paying twice for one fact.
-	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 && info.Size() > 0 {
+	if installed(path) {
 		return path, nil
 	}
 
@@ -172,6 +179,13 @@ func extractInto(dir, version string, archive []byte) (string, error) {
 		return "", fmt.Errorf("put furrow at %s: %w", path, err)
 	}
 	return path, nil
+}
+
+// installed says the file at path is a complete furrow: an ordinary,
+// executable, non-empty file.
+func installed(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 && info.Size() > 0
 }
 
 // installPath is the one place the extracted file's name is decided:
