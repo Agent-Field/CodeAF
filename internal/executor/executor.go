@@ -80,10 +80,17 @@ type Chunk struct {
 
 // Service is a process group still alive after its call returned.
 type Service struct {
+	Name    string   // basename of the first member's argv[0]
+	Argv    []string // the first member's command line (the request's off Linux)
 	PGID    int
-	Ports   []int  // listening ports, when known
+	Ports   []int  // listening TCP ports, when known (Linux only)
 	DataDir string // cell-relative data directory, when the service keeps one
 }
+
+// SnapshotExact is the seal's quality rule (docs/ARCHITECTURE.md 4.3, derived,
+// never stored): a snapshot is exact iff the call left no process alive.
+// Anything still running may be writing, so the seal is best effort.
+func SnapshotExact(res ExecResult) bool { return len(res.Services) == 0 }
 
 // ExecResult is what one call did.
 type ExecResult struct {
