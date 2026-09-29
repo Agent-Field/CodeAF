@@ -1158,6 +1158,11 @@ func steerRepeatKnown(agent any) bool {
 	return ok && door.SteerRepeatKnown()
 }
 
+func memoryCommandsKnown(agent any) bool {
+	door, ok := agent.(MemoryCommands)
+	return ok && door.Remembers()
+}
+
 func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
@@ -1194,6 +1199,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.
 		Folders: keepsFolders(sess.agent),
+		Memory:  memoryCommandsKnown(sess.agent),
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.
 		Teams: true,

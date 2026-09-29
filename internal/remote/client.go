@@ -1326,6 +1326,36 @@ func (c *Client) MemoryProvenance(id string) (string, string, time.Time, error) 
 	return out.Session, out.Title, out.At, nil
 }
 
+func (c *Client) Remember(text string) (string, error) {
+	payload, err := c.call(nil, MethodMemoryRemember, text)
+	if err != nil {
+		return "", err
+	}
+	var title string
+	err = json.Unmarshal(payload, &title)
+	return title, err
+}
+
+func (c *Client) ForgetQuery(query string) (string, error) {
+	payload, err := c.call(nil, MethodMemoryForgetQuery, query)
+	if err != nil {
+		return "", err
+	}
+	var title string
+	err = json.Unmarshal(payload, &title)
+	return title, err
+}
+
+func (c *Client) Memories(query string) ([]session.MemoryLine, error) {
+	payload, err := c.call(nil, MethodMemoryMemories, query)
+	if err != nil {
+		return nil, err
+	}
+	var lines []session.MemoryLine
+	err = json.Unmarshal(payload, &lines)
+	return lines, err
+}
+
 func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
 	payload, err := c.call(nil, MethodStandingItems, workspace)
 	if err != nil {

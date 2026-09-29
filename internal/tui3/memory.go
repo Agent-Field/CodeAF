@@ -43,10 +43,13 @@ type memoryAgent interface {
 // brain is the agent under this surface, when it has one at all.
 func (a *app) brain() (memoryAgent, bool) {
 	agent, ok := a.agent.(memoryAgent)
-	if !ok || !agent.Remembers() {
-		return nil, false
+	if ok && agent.Remembers() {
+		return agent, true
 	}
-	return agent, true
+	if memory, ok := a.memory.(memoryAgent); ok && memory.Remembers() {
+		return memory, true
+	}
+	return nil, false
 }
 
 // memoryOffNote is the one line every one of the three prints when this build
@@ -58,10 +61,6 @@ const memoryOffNote = "memory is off for this session · turn it on under /setti
 // runRemember is /remember: keep one thing across conversations.
 func (a *app) runRemember(text string) {
 	a.noticeEvent(eventRemembered)
-	if a.hosted() {
-		a.note(memoryRemoteWord)
-		return
-	}
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
@@ -86,10 +85,6 @@ func (a *app) runRemember(text string) {
 // the recovery — the store keeps a tombstone, not the row's contents in any
 // place a surface can reach — is a database question rather than a keystroke.
 func (a *app) runForget(query string) {
-	if a.hosted() {
-		a.note(memoryRemoteWord)
-		return
-	}
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
@@ -113,10 +108,6 @@ func (a *app) runForget(query string) {
 
 // runMemories is /memories: the whole list, or the ones matching a word.
 func (a *app) runMemories(query string) {
-	if a.hosted() {
-		a.note(memoryRemoteWord)
-		return
-	}
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
