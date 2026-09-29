@@ -647,13 +647,8 @@ Files your index hides with skip-worktree or assume-unchanged are not carried.
 **Its work is counted from that commit**, so your changes are never reported as its files,
 and a run that adds nothing to them changed nothing.
 
-**Bringing it in**: `git merge` will not overwrite files you have uncommitted, and the branch
-begins with those very files, so the ending says ``put yours aside with `git -C '<folder>'
-stash` and `git -C '<folder>' merge <branch>` brings in both``. When it also changed an
-untracked file of yours, the ending adds ``then `git -C '<folder>' stash push -u --
-'parser.py'` `` for exactly those files, which the branch holds. If you changed nothing
-after the run began, `git stash drop` then discards what you put aside; if you did, `git
-stash pop` puts those later edits back on top.
+**Bringing it in**: the ending names the exact commands to put your changes aside and merge;
+"Bringing senior-dev's branch in" says what to do with the stashes afterwards.
 
 **A merge, rebase or cherry-pick in progress is not carried**, because its files hold
 conflict markers: `Your uncommitted changes (…) are not in its copy: your checkout is in the
@@ -661,6 +656,27 @@ middle of a merge.` The run still starts, from your last commit.
 
 Until 2026-09-28 senior-dev worked in your checkout itself and refused to start with
 `<folder> has changes that are not committed (…); commit or stash them, then ask again`.
+
+## Bringing senior-dev's branch in — merge, stash, stash pop, parser.py already exists
+
+`git merge` will not overwrite files you have uncommitted, and the branch begins with your
+uncommitted changes, so the ending says ``put yours aside with `git -C '<folder>' stash` and
+`git -C '<folder>' merge <branch>` brings in both``. When it also changed an untracked file
+of yours, the ending adds ``then `git -C '<folder>' stash push -u -- 'parser.py'` `` for
+exactly those files, which the branch holds; a name with `[`, `*`, `?` or a leading `:` is
+written `':(literal)app/[slug]/page.tsx'` so the stash takes that file and no other.
+
+Both commands together leave **two stashes**: your tracked changes, and on top your
+untracked files. After the merge:
+
+- **You changed nothing after the run began**: the branch holds all of it, so `git stash
+  drop` once for each stash you made.
+- **You kept working meanwhile**: `git stash pop` cannot put back an untracked file the
+  branch now holds; it says `parser.py already exists, no checkout` and keeps the stash.
+  Read your later version with `git show 'stash@{0}^3:parser.py'`, carry what you need into
+  the merged file, then `git stash drop`. A second `git stash pop` puts your later tracked
+  edits back on top, and git marks any line both you and senior-dev changed as a conflict
+  to settle by hand.
 
 ## Untracked files, a new file I started, credentials and large files — what goes on the branch
 
