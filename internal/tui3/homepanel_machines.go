@@ -31,6 +31,9 @@ import (
 type machineReading struct {
 	rows []chatlist.Row
 	down bool
+	// merge says a branch row can be merged from here, which decides the
+	// sentence it says (chatlist.BranchLine).
+	merge bool
 }
 
 // homeMachinesMsg is one listing, coming BACK from the source.
@@ -69,11 +72,8 @@ func (a *app) tookMachines(msg homeMachinesMsg) {
 	} else {
 		a.machineRead = machineReading{rows: msg.rows}
 	}
-	a.home.others = a.machineRead
-	if a.home.gridOn() {
-		a.home.build()
-	}
-	a.touch()
+	a.machineRead.merge = a.branches.Merge != nil
+	a.rebuildMachines()
 }
 
 // into merges the other machines' chats into the panel's own lines, newest
@@ -99,18 +99,24 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 	var out []homeLine
 	for _, row := range m.rows {
 		if row.Status != chatlist.Here && !local[row.Cell] {
-			out = append(out, machineLine(row, in.now))
+			out = append(out, machineLine(row, in.now, m.merge))
 		}
 	}
 	return out
 }
 
 // machineLine is one chat on another machine as a row of the sessions panel.
-func machineLine(row chatlist.Row, now time.Time) homeLine {
+func machineLine(row chatlist.Row, now time.Time, merge bool) homeLine {
 	at := now.Add(-row.DurableAgo)
-	return homeLine{kind: homeMachineRow, since: at, cell: &homeCell{
+	note, short := chatlist.StatusLine(row), ""
+	if row.Status == chatlist.Branch {
+		// A branch's sentence names what can be done with it and has a narrow
+		// spelling for frames that cannot hold the whole.
+		note, short = chatlist.BranchLine(row, merge), chatlist.BranchShort(row)
+	}
+	return homeLine{kind: homeMachineRow, since: at, remote: &row, cell: &homeCell{
 		kind: cellRow, panel: panelSessions, title: row.Title,
-		note: chatlist.StatusLine(row), right: sinceAt(at, now),
+		note: note, noteShort: short, right: sinceAt(at, now),
 		key: "machine:" + row.Cell,
 	}}
 }

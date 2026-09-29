@@ -1972,7 +1972,7 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// find out — [app.sayHomeAsk] runs on a key, and a person who made the window
 	// smaller has pressed none. That left the decision on no part of the screen
 	// at all, which is the one state a question may never be in.
-	if msg == "" && a.at(pageHome) && !a.homeAskFitsColumn() {
+	if msg == "" && a.at(pageHome) && !a.homeAskFitsColumn() && a.machineScreen(width) == nil {
 		msg = a.homeAskFoot()
 	}
 	if msg == "" {

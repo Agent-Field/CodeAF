@@ -159,7 +159,7 @@ func (a *app) sayHomeAsk() {
 	// on one screen — the defect the whole block exists to end. Narrower than
 	// that the grid has nowhere to put a card, so the foot is where the question
 	// is said, as it is on every narrow frame.
-	if a.homeAskFitsColumn() {
+	if a.homeAskFitsColumn() || a.machineScreen(a.width) != nil {
 		return
 	}
 	if a.homeTierNow() != homeTierList && !a.home.gridOn() {
