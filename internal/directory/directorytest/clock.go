@@ -7,6 +7,15 @@ import (
 	"time"
 )
 
+// Clock is the directory's time as a suite may observe and wait on it. The
+// fake clock moves when a case waits; a live relay's clock moves by itself and
+// waiting is real.
+type Clock interface {
+	Now() time.Time
+	// Wait returns once the directory's clock has moved on by d.
+	Wait(d time.Duration)
+}
+
 // FakeClock is a clock that moves only when a test says so.
 type FakeClock struct {
 	mu sync.Mutex
@@ -29,3 +38,6 @@ func (c *FakeClock) Advance(d time.Duration) {
 	defer c.mu.Unlock()
 	c.t = c.t.Add(d)
 }
+
+// Wait moves the clock forward by d, so it is Advance under the Clock name.
+func (c *FakeClock) Wait(d time.Duration) { c.Advance(d) }

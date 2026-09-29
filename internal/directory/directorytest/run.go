@@ -19,9 +19,22 @@ type Devices func(device string) directory.Client
 type Factory func(t *testing.T, clock *FakeClock) Devices
 
 type env struct {
-	clock *FakeClock
+	clock Clock
 	as    Devices
+	id    func(name string) string // the device id the directory knows a named device by
 }
+
+// Rig is one fresh, empty directory as a suite sees it. A live relay decides
+// device ids from keys and keeps its own clock, so a Rig carries both.
+type Rig struct {
+	Clock   Clock
+	Devices Devices
+	// ID answers the device id a named device acts as; nil means the name is the id.
+	ID func(name string) string
+}
+
+// RigFactory builds a fresh Rig for one test.
+type RigFactory func(t *testing.T) Rig
 
 const (
 	cell = "01J0000000000000000000000A"
@@ -33,14 +46,28 @@ const (
 
 var ctx = context.Background()
 
-// Run runs every conformance case against a fresh directory from factory.
+// Run runs every conformance case against a fresh directory from factory, on a
+// clock that moves only when a case waits.
 func Run(t *testing.T, factory Factory) {
+	RunRigs(t, func(t *testing.T) Rig {
+		clock := NewFakeClock()
+		return Rig{Clock: clock, Devices: factory(t, clock)}
+	})
+}
+
+// RunRigs runs every conformance case against a fresh Rig each.
+func RunRigs(t *testing.T, factory RigFactory) {
 	for name, fn := range cases {
-		t.Run(name, func(t *testing.T) {
-			clock := NewFakeClock()
-			fn(t, env{clock: clock, as: factory(t, clock)})
-		})
+		t.Run(name, func(t *testing.T) { fn(t, envOf(factory(t))) })
 	}
+}
+
+func envOf(r Rig) env {
+	id := r.ID
+	if id == nil {
+		id = func(name string) string { return name }
+	}
+	return env{clock: r.Clock, as: r.Devices, id: id}
 }
 
 var cases = map[string]func(*testing.T, env){
@@ -73,7 +100,7 @@ func start(t *testing.T, e env) directory.CellView {
 	return v
 }
 
-func expire(e env) { e.clock.Advance(directory.LeaseTTL + time.Second) }
+func expire(e env) { e.clock.Wait(directory.LeaseTTL + time.Second) }
 
 func must(t *testing.T, err error) {
 	t.Helper()
@@ -99,7 +126,7 @@ func get(t *testing.T, e env) directory.Cell {
 func createHoldsLease(t *testing.T, e env) {
 	v := start(t, e)
 	l := v.Cell.Lease
-	if l.Device != devA || l.Fence != 1 || l.Expires != v.Now+directory.LeaseTTL.Milliseconds() {
+	if l.Device != e.id(devA) || l.Fence != 1 || l.Expires != v.Now+directory.LeaseTTL.Milliseconds() {
 		t.Fatalf("lease = %+v at now %d", l, v.Now)
 	}
 	if v.Cell.DurableAt != v.Now || v.Cell.Head != head {
@@ -131,7 +158,7 @@ func acquireAfterExpiry(t *testing.T, e env) {
 	expire(e)
 	v, err := e.as(devB).Acquire(ctx, cell)
 	must(t, err)
-	if v.Cell.Lease.Device != devB || v.Cell.Lease.Fence != 2 || v.Cell.Lease.Pending != 0 {
+	if v.Cell.Lease.Device != e.id(devB) || v.Cell.Lease.Fence != 2 || v.Cell.Lease.Pending != 0 {
 		t.Fatalf("lease = %+v", v.Cell.Lease)
 	}
 }
@@ -147,7 +174,7 @@ func acquireOwnLeaseRaisesFence(t *testing.T, e env) {
 
 func heartbeatRenews(t *testing.T, e env) {
 	start(t, e)
-	e.clock.Advance(directory.HeartbeatEvery)
+	e.clock.Wait(directory.HeartbeatEvery)
 	v, err := e.as(devA).Heartbeat(ctx, cell, directory.Beat{Fence: 1, Pending: 3})
 	must(t, err)
 	if v.Cell.Lease.Expires != v.Now+directory.LeaseTTL.Milliseconds() || v.Cell.Lease.Pending != 3 {
@@ -175,7 +202,7 @@ func heartbeatWrongFenceRefused(t *testing.T, e env) {
 
 func publishMovesHead(t *testing.T, e env) {
 	start(t, e)
-	e.clock.Advance(time.Second)
+	e.clock.Wait(time.Second)
 	v, err := e.as(devA).Publish(ctx, cell, directory.Publish{
 		Fence: 1, OldHead: head, Head: next, Size: 20, Class: "chat", Title: "u", Pending: 2,
 	})
@@ -229,7 +256,7 @@ func releaseFreesLeaseKeepsFence(t *testing.T, e env) {
 	start(t, e)
 	must(t, e.as(devA).Release(ctx, cell, 1))
 	l := get(t, e).Lease
-	if l.Expires != 0 || l.Pending != 0 || l.Fence != 1 || l.Device != devA {
+	if l.Expires != 0 || l.Pending != 0 || l.Fence != 1 || l.Device != e.id(devA) {
 		t.Fatalf("lease = %+v", l)
 	}
 	v, err := e.as(devB).Acquire(ctx, cell)
@@ -257,11 +284,11 @@ func archiveIsIdempotent(t *testing.T, e env) {
 
 func putDeviceUpserts(t *testing.T, e env) {
 	c := e.as(devA)
-	must(t, c.PutDevice(ctx, devA, directory.Device{V: 1, Name: "one"}))
-	must(t, c.PutDevice(ctx, devA, directory.Device{V: 1, Name: "two"}))
+	must(t, c.PutDevice(ctx, e.id(devA), directory.Device{V: 1, Name: "one"}))
+	must(t, c.PutDevice(ctx, e.id(devA), directory.Device{V: 1, Name: "two"}))
 	l, err := c.List(ctx)
 	must(t, err)
-	if len(l.Devices) != 1 || l.Devices[devA].Name != "two" {
+	if len(l.Devices) != 1 || l.Devices[e.id(devA)].Name != "two" {
 		t.Fatalf("devices = %+v", l.Devices)
 	}
 }
@@ -279,15 +306,17 @@ func setVaultIsCompareAndSwap(t *testing.T, e env) {
 }
 
 // directoryClockStampsEverything: devices never send a time, so every time in
-// a record is the directory clock's.
+// a record is the directory clock's. The clock is read before and after, so a
+// clock that keeps moving is held to "between the two" and a fake to "exactly".
 func directoryClockStampsEverything(t *testing.T, e env) {
-	e.clock.Advance(time.Hour)
+	e.clock.Wait(time.Second)
+	before := e.clock.Now().UnixMilli()
 	v := start(t, e)
-	want := e.clock.Now().UnixMilli()
 	l, err := e.as(devA).List(ctx)
 	must(t, err)
-	if v.Now != want || v.Cell.DurableAt != want || l.Now != want {
-		t.Fatalf("now %d, durable_at %d, list now %d, want %d", v.Now, v.Cell.DurableAt, l.Now, want)
+	after := e.clock.Now().UnixMilli()
+	if v.Cell.DurableAt != v.Now || v.Now < before || l.Now < v.Now || l.Now > after {
+		t.Fatalf("now %d, durable_at %d, list now %d, want %d..%d", v.Now, v.Cell.DurableAt, l.Now, before, after)
 	}
 }
 
