@@ -36,12 +36,16 @@ func percentile(d []time.Duration, p float64) float64 {
 
 // timeSeals runs n seals, each after changing one file, and reports the
 // distribution. The first seal (attach + first capture) is outside the loop.
-func timeSeals(b *testing.B, e Engine, c cell.Cell) {
+func timeSeals(b *testing.B, e Engine, c cell.Cell, listChanged bool) {
 	ctx := context.Background()
 	if _, err := e.Seal(ctx, c, TurnInfo{}); err != nil {
 		b.Fatal(err)
 	}
 	victim := filepath.Join(c.Root, "src", "d005", "f005.txt")
+	info := TurnInfo{Calls: []Executed{exec1("edit", "")}}
+	if listChanged {
+		info.Changed = []string{filepath.Join("src", "d005", "f005.txt")}
+	}
 	took := make([]time.Duration, 0, b.N)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -49,7 +53,7 @@ func timeSeals(b *testing.B, e Engine, c cell.Cell) {
 			b.Fatal(err)
 		}
 		start := time.Now()
-		if _, err := e.Seal(ctx, c, TurnInfo{Calls: []Executed{exec1("edit", "")}}); err != nil {
+		if _, err := e.Seal(ctx, c, info); err != nil {
 			b.Fatal(err)
 		}
 		took = append(took, time.Since(start))
@@ -61,15 +65,23 @@ func timeSeals(b *testing.B, e Engine, c cell.Cell) {
 }
 
 // BenchmarkSealDelta10k is the task 0.7 number: p50 seal latency on a 10,000
-// file tree with one changed file, through the real engine.
-func BenchmarkSealDelta10k(b *testing.B) {
+// file tree with one changed file, through the real engine, when the caller
+// does not say what changed and the engine walks the tree (the stat cache
+// spares every unchanged file an open and a read).
+func BenchmarkSealDelta10k(b *testing.B) { benchSealDelta10k(b, false) }
+
+// BenchmarkSealDelta10kChanged is the same tree when the caller lists the one
+// changed path and the engine visits only it.
+func BenchmarkSealDelta10kChanged(b *testing.B) { benchSealDelta10k(b, true) }
+
+func benchSealDelta10k(b *testing.B, listChanged bool) {
 	e := realEngineB(b)
 	c, err := cell.CreateIn(b.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		b.Fatal(err)
 	}
 	fillTree(b, c.Root, 10000)
-	timeSeals(b, e, c)
+	timeSeals(b, e, c, listChanged)
 }
 
 // BenchmarkSealComposeOnly is everything a seal does except the engine spawn,
@@ -82,7 +94,7 @@ func BenchmarkSealComposeOnly(b *testing.B) {
 		b.Fatal(err)
 	}
 	fillTree(b, c.Root, 10000)
-	timeSeals(b, e, c)
+	timeSeals(b, e, c, false)
 }
 
 // BenchmarkSpawnBaseline is the cost of starting the engine and doing nothing.

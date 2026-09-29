@@ -21,8 +21,10 @@ import (
 // other and never share a store.
 const dataDirEnv = "FURROW_DATA_DIR"
 
-// repositoryMarker exists inside a folder the engine will accept.
-const repositoryMarker = ".git"
+// maxChangedArgs bounds the changed-path list passed on the command line. A
+// longer list is not sent: the engine then walks the tree, which its stat cache
+// keeps cheap, and that is always correct.
+const maxChangedArgs = 512
 
 // Runner runs one program and returns its stdout. Engine spawns through it so
 // tests can count and fake spawns.
@@ -68,7 +70,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := compose(c, raw, rid, info); err != nil {
 		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
 	}
-	snapshot, err := e.snapshot(ctx, c, rid)
+	snapshot, err := e.snapshot(ctx, c, rid, info.Changed)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -106,27 +108,26 @@ func (e Engine) identity() Identity {
 // with the agent-run trigger. The label carries the receipt id, which is what
 // ties a snapshot to its receipt until the engine has a receipt field of its
 // own.
-func (e Engine) snapshot(ctx context.Context, c cell.Cell, receipt string) (string, error) {
-	if err := e.ensureRepository(ctx, c); err != nil {
-		return "", err
-	}
-	out, err := e.engine(ctx, c, "--json", "hook", "turn-end", "--turn", receipt)
+func (e Engine) snapshot(ctx context.Context, c cell.Cell, receipt string, changed []string) (string, error) {
+	out, err := e.engine(ctx, c, snapshotArgs(receipt, changed)...)
 	if err != nil {
 		return "", fmt.Errorf("seal: snapshot: %w", err)
 	}
 	return parseSnapshot(out)
 }
 
-// ensureRepository gives the folder the .git directory the engine insists on,
-// once. One stat per seal is the whole check.
-func (e Engine) ensureRepository(ctx context.Context, c cell.Cell) error {
-	if _, err := os.Stat(filepath.Join(c.Root, repositoryMarker)); err == nil {
-		return nil
+// snapshotArgs is the turn-end verb and, when the caller knows what changed,
+// the paths the engine should visit instead of walking the folder. The seal's
+// own writes under the state directory always count as changed.
+func snapshotArgs(receipt string, changed []string) []string {
+	args := []string{"--json", "hook", "turn-end", "--turn", receipt}
+	if changed == nil || len(changed) > maxChangedArgs {
+		return args
 	}
-	if _, err := e.exec(ctx, c.Root, nil, "git", "init", "-q", "."); err != nil { //codeaf:plumbing the engine requires a git repository to attach a folder
-		return fmt.Errorf("seal: prepare folder: %w", err)
+	for _, path := range append([]string{cell.StateDir}, changed...) {
+		args = append(args, "--changed", path)
 	}
-	return nil
+	return args
 }
 
 // engine runs one engine verb in the cell's folder against the cell's store.

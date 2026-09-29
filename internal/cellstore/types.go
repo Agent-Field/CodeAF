@@ -110,6 +110,11 @@ type TurnInfo struct {
 	Trigger Trigger
 	Calls   []Executed
 	Models  []ModelCall
+	// Changed lists the cell-relative paths that changed since the previous
+	// seal. Nil means unknown: the engine walks the whole folder, and its stat
+	// cache keeps that to one stat per unchanged file. Non-nil is a promise
+	// that nothing else changed, and the engine visits only these paths.
+	Changed []string
 }
 
 // Sealed is a finished seal.

@@ -54,8 +54,28 @@ func TestSealRoundTripAndChain(t *testing.T) {
 	if second.Turn.SealedAtMs != 1759049990120 || second.Turn.Device != zeroDevice || second.Turn.Quality != Quiescent || second.Turn.Trigger != AgentRun {
 		t.Fatalf("turn fields %+v", second.Turn)
 	}
-	if got := fake.count("git init"); got != 1 {
-		t.Fatalf("git init ran %d times, want once", got)
+	if got := fake.count("git"); got != 0 {
+		t.Fatalf("git ran %d times; the engine seals a folder that is not a repository", got)
+	}
+	if _, err := os.Stat(rel(c, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("the seal left a .git directory in the folder: %v", err)
+	}
+}
+
+func TestChangedPathsAreHandedToTheEngineOrTheWalkIsLeftToIt(t *testing.T) {
+	cases := map[string]struct {
+		changed []string
+		want    string
+	}{
+		"unknown":  {nil, "--json hook turn-end --turn r"},
+		"listed":   {[]string{"a.txt", "d/b.txt"}, "--json hook turn-end --turn r --changed .cell --changed a.txt --changed d/b.txt"},
+		"nothing":  {[]string{}, "--json hook turn-end --turn r --changed .cell"},
+		"too long": {make([]string, maxChangedArgs+1), "--json hook turn-end --turn r"},
+	}
+	for name, tc := range cases {
+		if got := strings.Join(snapshotArgs("r", tc.changed), " "); got != tc.want {
+			t.Errorf("%s: args %q, want %q", name, got, tc.want)
+		}
 	}
 }
 
