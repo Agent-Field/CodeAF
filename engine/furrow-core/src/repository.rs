@@ -2750,6 +2750,15 @@ impl FurrowRepository {
     }
 
     pub fn resolve_snapshot(&self, value: &str) -> anyhow::Result<ObjectId> {
+        // `head` is the workspace's own newest snapshot: a sealed one, or the
+        // imported one a materialize adopted. Callers that need "what this tree
+        // was last known to be" ask for it by that word instead of tracking ids.
+        if value == "head" {
+            return self
+                .store
+                .workspace_head(&self.workspace_id)?
+                .context("workspace has no sealed snapshot");
+        }
         if value.len() == 64 {
             let id = parse_id(value)?;
             self.store
