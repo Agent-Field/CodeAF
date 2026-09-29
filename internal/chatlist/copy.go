@@ -2,6 +2,7 @@ package chatlist
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -23,6 +24,8 @@ const (
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	supersededLine = "%s continued this chat; this window now only shows it"
+	copiesCame     = "working copies of tasks came along: %s"
+	copyCame       = "the working copy of a task came along: %s"
 )
 
 // StatusLine is what a list row says beside the title. Idle and Here say
@@ -68,6 +71,19 @@ func TakeoverLine(r Row) string {
 // KeptEdits is said after a takeover kept local edits as a branch.
 func KeptEdits(n uint32, device string) string {
 	return fmt.Sprintf(keptEdits, turns(n), device)
+}
+
+// CopiesCame is said after a takeover brought the working copies of tasks that
+// had not landed, named by task. It says nothing when none came (the emptiness
+// law), so the caller can join it to other sentences without a test.
+func CopiesCame(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf(copyCame, names[0])
+	}
+	return fmt.Sprintf(copiesCame, strings.Join(names, ", "))
 }
 
 // Superseded is said to a driver whose lease another device took over.

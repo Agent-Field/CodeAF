@@ -34,6 +34,10 @@ const (
 	TranscriptPath = StateDir + "/transcript.jsonl"
 	EnvPath        = StateDir + "/env"
 	MetaPath       = StateDir + "/meta.json"
+	// TreesDir is the folder of a session where its task working copies live,
+	// and CarriedTreesPath is where a seal carries their uncommitted files.
+	TreesDir         = "trees"
+	CarriedTreesPath = StateDir + "/" + TreesDir
 
 	schemaV = 1
 )

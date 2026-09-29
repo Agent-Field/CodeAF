@@ -36,6 +36,18 @@ func gapOr(t *testing.T, present bool, followUp string) {
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
+// gitOut is the output of one git command in dir.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // git runs one git command in dir for the test's own setup.
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -60,6 +72,7 @@ type audited struct {
 func TestTwoHomesStateAudit(t *testing.T) {
 	h := newTwoHomes(t)
 	seedTree(t, h.work)
+	appendTo(t, filepath.Join(h.work, ".gitignore"), "build/\n")
 	git(t, h.work, "init", "-q")
 	git(t, h.work, "add", ".")
 	git(t, h.work, "commit", "-q", "-m", "base")
@@ -82,16 +95,16 @@ func TestTwoHomesStateAudit(t *testing.T) {
 	if err := os.Rename(h.work, filepath.Join(t.TempDir(), "a-project")); err != nil {
 		t.Fatal(err)
 	}
+	// A's disk is not B's: what A's trees/ held is gone from where B looks.
+	if err := os.RemoveAll(au.placeA.Trees()); err != nil {
+		t.Fatal(err)
+	}
 	got, err := h.continuerB().Take(context.Background(), h.cell.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	au.placeB = session.Place{Dir: got.Taken.Cell.Root}
 	au.workB = workspaceOf(got.Taken.Cell.Root)
-	// A's disk is not B's: what A's trees/ held is gone from where B looks.
-	if err := os.RemoveAll(au.placeA.Trees()); err != nil {
-		t.Fatal(err)
-	}
 
 	t.Run("node journal travels", au.journalTravels)
 	t.Run("memory is rebuilt into B's graph", au.memoryRebuilt)
@@ -117,6 +130,11 @@ func (au *audited) keepOnA(t *testing.T, h *twoHomes) {
 	if err := os.WriteFile(filepath.Join(tree, "wip.txt"), []byte("not committed\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// the copy also deleted a tracked file and holds ignored build output.
+	if err := os.Remove(filepath.Join(tree, "README.md")); err != nil {
+		t.Fatal(err)
+	}
+	appendTo(t, filepath.Join(tree, "build", "out.bin"), "ignored\n")
 	// the node's journal, which the checkpoint names and the cell carries.
 	au.journalName = "20260929T100000_1.jsonl"
 	journal := filepath.Join(au.placeA.NodeJournals(), au.journalName)
@@ -166,11 +184,26 @@ func (au *audited) memoryRebuilt(t *testing.T) {
 	}
 }
 
-// worktreeTravels: trees/ sits in the session folder outside the sealed tree
-// (session/place.go Trees, cell/migrate.go: "trees/ stay where they are").
+// worktreeTravels: the seal carries a task's working copy inside .cell/trees/,
+// and the takeover cuts the worktree again on the task's branch at B's own path
+// and lays the carried files over it (taskcopy).
 func (au *audited) worktreeTravels(t *testing.T) {
-	gapOr(t, exists(filepath.Join(au.placeB.Trees(), "1", "wip.txt")),
-		"a task's working copy (trees/<id>) is outside the sealed tree: its uncommitted files are lost on move; follow-up: seal trees/ as child cells (ARCHITECTURE section 14)")
+	tree := filepath.Join(au.placeB.Trees(), "1")
+	for path, want := range map[string]string{"wip.txt": "not committed\n", "done.txt": "committed\n"} {
+		got, err := os.ReadFile(filepath.Join(tree, path))
+		if err != nil || string(got) != want {
+			t.Errorf("B's task copy %s = %q, %v; want %q", path, got, err, want)
+		}
+	}
+	if exists(filepath.Join(tree, "README.md")) {
+		t.Error("the file the task deleted is back in B's copy")
+	}
+	if exists(filepath.Join(tree, "build", "out.bin")) {
+		t.Error("ignored build output travelled")
+	}
+	if out := gitOut(t, tree, "rev-parse", "--abbrev-ref", "HEAD"); out != "task/one" {
+		t.Errorf("B's task copy is on %q, want task/one", out)
+	}
 }
 
 // branchTravels: the task branch lives in the project's own .git, and the
@@ -195,8 +228,12 @@ func (au *audited) registrationClean(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git worktree list on B: %v\n%s", err, out)
 	}
-	gapOr(t, !strings.Contains(string(out), "prunable"),
-		"the sealed .git registers a worktree at A's absolute trees/1 path, dangling on B; follow-up: prune on take (cell/migrate.go keeps trees/ machine-local)")
+	if strings.Contains(string(out), "prunable") {
+		t.Fatalf("B's repository still registers a worktree at a path that is not here:\n%s", out)
+	}
+	if got := strings.Count(string(out), "worktree "); got != 2 {
+		t.Fatalf("B's repository registers %d worktrees, want the project and the task copy:\n%s", got, out)
+	}
 }
 
 // artifactFileTravels: a borrowed chat's artifacts/ is inside .cell/, so the

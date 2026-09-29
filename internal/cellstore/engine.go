@@ -43,6 +43,9 @@ type Engine struct {
 	// and each chat works in its own folder.
 	WorkspaceOf func(c cell.Cell) string
 	Identity    Identity
+	// Compose, when set, adds files to the cell's .cell/ directory just before
+	// each seal captures it. Nil adds none.
+	Compose Composer
 	// Guard screens the tree for secrets before each seal (law L3); its zero
 	// value is the working guard.
 	Guard Guard
@@ -55,6 +58,13 @@ type Engine struct {
 }
 
 var _ Store = Engine{}
+
+// Composer adds what a seal must carry that lives outside the sealed tree, such
+// as the task working copies under the session folder's trees/. It writes into
+// the cell's own .cell/ directory, which the engine captures with the tree.
+type Composer interface {
+	Compose(c cell.Cell) error
+}
 
 // LocalDir is the device-local directory of a cell: the engine store and the
 // call WAL. It is never inside the cell and never synced.
@@ -83,7 +93,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: encode receipt: %w", err)
 	}
-	if err := compose(c, raw, rid, info); err != nil {
+	if err := e.compose(c, raw, rid, info); err != nil {
 		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
 	}
 	snapshot, err := e.snapshot(ctx, c, rid, info.Changed)
