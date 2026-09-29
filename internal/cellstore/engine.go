@@ -42,8 +42,11 @@ type Engine struct {
 	// workspace. Empty seals the cell's folder itself.
 	Workspace string
 	Identity  Identity
-	Run       Runner
-	Now       func() time.Time
+	// Guard screens the tree for secrets before each seal (law L3); its zero
+	// value is the working guard.
+	Guard Guard
+	Run   Runner
+	Now   func() time.Time
 }
 
 var _ Store = Engine{}
@@ -66,6 +69,9 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	head, err := Head(c)
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: read head: %w", err)
+	}
+	if err := e.Guard.Screen(c, e.tree(c), e.policyDir(c), info.Changed); err != nil {
+		return Sealed{}, fmt.Errorf("seal: %w", err)
 	}
 	receipt := newReceipt(info, transcriptRange(c, head))
 	raw, rid, err := receipt.encode()
@@ -141,6 +147,16 @@ func (e Engine) tree(c cell.Cell) string {
 		return c.Root
 	}
 	return e.Workspace
+}
+
+// policyDir is where the harness keeps its exclusions: the cell's directory
+// that is composed into a workspace, or the cell's own folder when that is
+// what is sealed. The engine reads a .furrowpolicy from either.
+func (e Engine) policyDir(c cell.Cell) string {
+	if e.Workspace == "" {
+		return c.Root
+	}
+	return stateDir(c)
 }
 
 // cellDirArgs composes the cell's private .cell/ directory into the tree when

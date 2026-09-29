@@ -51,6 +51,13 @@ func Open(home string) (*Vault, error) {
 	return &Vault{path: filepath.Join(home, "vault.enc"), key: key}, nil
 }
 
+// Exists reports whether a vault has been written under home. Asking does not
+// create one.
+func Exists(home string) bool {
+	_, err := os.Stat(filepath.Join(home, "vault.enc"))
+	return err == nil
+}
+
 // Put stores or replaces the secret under id.
 func (v *Vault) Put(id string, e Entry) error {
 	return v.update(func(d *vaultDoc) error {
@@ -105,13 +112,20 @@ func (v *Vault) ImportDotenv(path, project string) (int, error) {
 		return 0, err
 	}
 	pairs := parseDotenv(string(raw))
+	changed := false
 	err = v.update(func(d *vaultDoc) error {
 		for _, p := range pairs {
 			id, err := idFor(d, p.name, project)
 			if err != nil {
 				return err
 			}
-			d.Secrets[id] = Entry{Name: p.name, Value: p.value, Scope: project}
+			next := Entry{Name: p.name, Value: p.value, Scope: project}
+			if d.Secrets[id] != next {
+				d.Secrets[id], changed = next, true
+			}
+		}
+		if !changed {
+			return errUnchanged
 		}
 		return nil
 	})
@@ -153,6 +167,10 @@ func (v *Vault) read() (*vaultDoc, error) {
 	return &d, nil
 }
 
+// errUnchanged is what an update function returns when it made no change: the
+// vault is then not rewritten and the caller sees no error.
+var errUnchanged = errors.New("keys: nothing to write")
+
 // update applies fn to the stored document and writes it back atomically.
 func (v *Vault) update(fn func(*vaultDoc) error) error {
 	v.mu.Lock()
@@ -162,7 +180,7 @@ func (v *Vault) update(fn func(*vaultDoc) error) error {
 		return err
 	}
 	if err := fn(d); err != nil {
-		return err
+		return ignoreUnchanged(err)
 	}
 	d.Updated = time.Now().UnixMilli()
 	plain, err := json.Marshal(d)
@@ -174,4 +192,11 @@ func (v *Vault) update(fn func(*vaultDoc) error) error {
 		return err
 	}
 	return writeAtomic(v.path, blob)
+}
+
+func ignoreUnchanged(err error) error {
+	if errors.Is(err, errUnchanged) {
+		return nil
+	}
+	return err
 }

@@ -445,7 +445,7 @@ impl FurrowRepository {
         &self,
         paths: impl IntoIterator<Item = PathBuf>,
     ) -> anyhow::Result<Vec<PathBuf>> {
-        let policy = CapturePolicy::load(&self.root)?;
+        let policy = self.load_policy()?;
         Ok(paths
             .into_iter()
             .filter(|path| {
@@ -512,7 +512,7 @@ impl FurrowRepository {
             Some(parent) => Some(parent),
             None => self.store.workspace_head(&self.workspace_id)?,
         };
-        let policy = CapturePolicy::load(&self.root)?;
+        let policy = self.load_policy()?;
         let root_tree = self
             .store
             .batched(|| self.capture_tree(changed_paths, &policy))?;
@@ -579,7 +579,7 @@ impl FurrowRepository {
     }
 
     pub fn fidelity(&self) -> anyhow::Result<FidelityReport> {
-        let policy = CapturePolicy::load(&self.root)?;
+        let policy = self.load_policy()?;
         Ok(FidelityReport {
             platform: std::env::consts::OS,
             grade: "partial",
@@ -1027,7 +1027,7 @@ impl FurrowRepository {
         let local = &local_snapshot;
         let lock = self.acquire_mutation_lock()?;
         let diff_started = Instant::now();
-        let policy = CapturePolicy::load(&self.root)?;
+        let policy = self.load_policy()?;
         let protected = policy.union(&CapturePolicy::from_rules(&incoming.excluded_paths)?);
         let mut changes = Vec::new();
         self.diff_directory(
@@ -1704,7 +1704,7 @@ impl FurrowRepository {
             .saturating_add(usage.symlinks)
             .saturating_add(usage.fifos)
             .saturating_add(usage.special);
-        let policy = CapturePolicy::load(&self.root)?;
+        let policy = self.load_policy()?;
         let counts_match = report.files == usage.files
             && report.directories == usage.directories
             && report.symlinks == usage.symlinks
@@ -2293,7 +2293,7 @@ impl FurrowRepository {
         dry_run: bool,
     ) -> anyhow::Result<MergeOutcome> {
         let mut merge_plan = merge::plan_trees(&self.store, &base_root, &ours_root, &theirs_root)?;
-        let policy = CapturePolicy::load(&self.root)?;
+        let policy = self.load_policy()?;
         merge_plan.changes.retain(|change| {
             merge_path_allowed(&change.path) && !policy.excludes_bytes(&change.path)
         });
@@ -2734,7 +2734,7 @@ impl FurrowRepository {
                 .join(", ")
         );
         let target_snapshot: Snapshot = self.store.read_struct(target, ObjectKind::Snapshot)?;
-        let current_policy = CapturePolicy::load(&self.root)?;
+        let current_policy = self.load_policy()?;
         let target_policy = CapturePolicy::from_rules(&target_snapshot.excluded_paths)?;
         let protected = current_policy.union(&target_policy);
         let current_tree = self.capture_root_retry_with_policy(&current_policy)?;
@@ -2840,6 +2840,18 @@ impl FurrowRepository {
 
     /// True for the paths that belong to the overlay, which are restored into
     /// its own directory and never into the workspace.
+    /// The capture policy: the workspace's own `.furrowpolicy` and, for a
+    /// composed workspace, the one kept in the composed directory. The harness
+    /// writes its exclusions to the second so nothing of its own lands in the
+    /// person's tree.
+    fn load_policy(&self) -> anyhow::Result<CapturePolicy> {
+        let own = CapturePolicy::load(&self.root)?;
+        match &self.overlay {
+            Some(overlay) => Ok(own.union(&CapturePolicy::load(overlay.source())?)),
+            None => Ok(own),
+        }
+    }
+
     fn in_overlay(&self, raw_path: &[u8]) -> bool {
         self.overlay.is_some() && self.physical_path_in_overlay(raw_path)
     }
@@ -2988,7 +3000,7 @@ impl FurrowRepository {
     }
 
     fn capture_root_retry(&self) -> anyhow::Result<ObjectId> {
-        let policy = CapturePolicy::load(&self.root)?;
+        let policy = self.load_policy()?;
         self.capture_root_retry_with_policy(&policy)
     }
 
