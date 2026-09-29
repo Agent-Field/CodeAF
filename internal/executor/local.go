@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -45,20 +46,19 @@ type Local struct {
 	Observer Observer
 }
 
+// In returns a Local rooted at dir, for a caller whose working directory is
+// the tree it works in. An empty dir is the current directory.
+func In(dir string) Local { return Local{Root: dir} }
+
 // Exec implements Executor.
 func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) (ExecResult, error) {
-	dir, err := l.check(req)
-	if err != nil {
-		return ExecResult{}, err
-	}
 	ctx, cancel := withTimeout(ctx, req.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, req.Argv[0], req.Argv[1:]...) //codeaf:plumbing the executor is the spawn seam
-	cmd.Dir, cmd.Env = dir, req.Env
-	processgroup.Configure(cmd)
-	cmd.Cancel = func() error { return processgroup.Kill(cmd.Process.Pid) }
-	cmd.WaitDelay = settleDelay
-	if err := l.confine(cmd, req); err != nil {
+	if req.WaitDelay == 0 {
+		req.WaitDelay = settleDelay
+	}
+	cmd, err := l.Command(ctx, req)
+	if err != nil {
 		return ExecResult{}, err
 	}
 	res, err := run(ctx, cmd, req, l.Root, onOutput)
@@ -72,6 +72,51 @@ func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) 
 func degraded(j Jail, req ExecRequest) bool {
 	d, ok := j.(Degrader)
 	return ok && req.Class == Sandboxed && d.Degraded(req)
+}
+
+// Command builds the one confined, unstarted command for a request: class and
+// directory checked, environment, group and cancellation set, the jail applied.
+// The caller wires the streams it needs, starts it and waits. It is for
+// processes whose lifetime the caller owns (background jobs, pipelines,
+// interactive children); Timeout is not applied here, and ctx ends the process
+// only when it is cancelled.
+func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) {
+	dir, err := l.check(req)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, req.Argv[0], req.Argv[1:]...) //codeaf:plumbing the executor is the spawn seam
+	cmd.Dir, cmd.Env, cmd.Stdin = dir, req.Env, req.Stdin
+	configureGroup(cmd, req.Group)
+	cmd.Cancel = canceller(cmd, req.Group)
+	cmd.WaitDelay = req.WaitDelay
+	if err := l.confine(cmd, req); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
+func configureGroup(cmd *exec.Cmd, g Group) {
+	switch g {
+	case GroupOwn:
+		processgroup.Configure(cmd)
+	case GroupSession:
+		processgroup.ConfigureDetached(cmd)
+	}
+}
+
+// canceller ends the whole group the child leads, or the child alone when it
+// shares the harness's group.
+func canceller(cmd *exec.Cmd, g Group) func() error {
+	return func() error {
+		switch {
+		case cmd.Process == nil:
+			return os.ErrProcessDone
+		case g == GroupInherit:
+			return cmd.Process.Kill()
+		}
+		return processgroup.Kill(cmd.Process.Pid)
+	}
 }
 
 // check validates a request and returns the directory it runs in.
@@ -137,21 +182,35 @@ func withTimeout(ctx context.Context, d time.Duration) (context.Context, context
 
 func run(ctx context.Context, cmd *exec.Cmd, req ExecRequest, root string, onOutput func(Chunk)) (ExecResult, error) {
 	var out, errb bytes.Buffer
-	emit := serialized(onOutput)
-	cmd.Stdout = io.MultiWriter(&out, chunkWriter{Stdout, emit})
-	cmd.Stderr = io.MultiWriter(&errb, chunkWriter{Stderr, emit})
+	cmd.Stdout, cmd.Stderr = sinks(req, &out, &errb, serialized(onOutput))
 	start := time.Now()
 	if err := cmd.Start(); err != nil {
 		return ExecResult{}, err
 	}
 	waitErr := cmd.Wait()
 	res := ExecResult{
-		Exit: cmd.ProcessState.ExitCode(), Stdout: out.Bytes(), Stderr: errb.Bytes(),
+		Exit: cmd.ProcessState.ExitCode(), Status: cmd.ProcessState.String(),
+		Stdout: out.Bytes(), Stderr: errb.Bytes(),
 		Wall: time.Since(start), SideEffect: classify(req.Net),
-		TimedOut: errors.Is(ctx.Err(), context.DeadlineExceeded),
-		Services: services(ctx, cmd, req, root),
+		TimedOut:    errors.Is(ctx.Err(), context.DeadlineExceeded),
+		PipesForced: errors.Is(waitErr, exec.ErrWaitDelay),
+		Services:    services(ctx, cmd, req, root),
 	}
 	return res, outcome(ctx, waitErr)
+}
+
+// sinks picks the writers a run's streams go to: the chunk callback always,
+// the result's buffers unless the call streams, and one shared writer when
+// stderr is combined into stdout.
+func sinks(req ExecRequest, out, errb *bytes.Buffer, emit func(Chunk)) (io.Writer, io.Writer) {
+	stdout, stderr := io.Writer(&chunkWriter{Stdout, emit}), io.Writer(&chunkWriter{Stderr, emit})
+	if !req.Stream {
+		stdout, stderr = io.MultiWriter(out, stdout), io.MultiWriter(errb, stderr)
+	}
+	if req.Combined {
+		return stdout, stdout
+	}
+	return stdout, stderr
 }
 
 // outcome separates "the process exited" (a result) from "the call failed".
@@ -174,7 +233,7 @@ type chunkWriter struct {
 	emit   func(Chunk)
 }
 
-func (w chunkWriter) Write(p []byte) (int, error) {
+func (w *chunkWriter) Write(p []byte) (int, error) {
 	w.emit(Chunk{Stream: w.stream, Data: append([]byte(nil), p...)})
 	return len(p), nil
 }
