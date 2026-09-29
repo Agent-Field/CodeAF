@@ -36,11 +36,14 @@ const helpLineCap = 117
 //   - `engine`, `tick`, `cell` and `identity` are machinery a surface dials, not things a person
 //     runs by hand; main.go says so where it dispatches them and
 //     internal/manual's running-from-the-terminal page says so again.
+//   - `relay` is the program whoever hosts a relay runs (`codeaf relay --listen
+//     :8787 --store <dir>`, the same relayserve.Main as cmd/relay); nobody types
+//     it in a conversation, and internal/manual's reaching-this-machine page names it.
 //   - `show` and `revise` are the old top-level spellings of `plan show` and
 //     `plan revise`; the page names the commands they became.
 //   - `help` is the alias for `--help` itself.
 var doorsOffThePage = map[string]bool{
-	"engine": true, "tick": true, "cell": true, "identity": true, "show": true, "revise": true, "help": true,
+	"engine": true, "tick": true, "cell": true, "identity": true, "relay": true, "show": true, "revise": true, "help": true,
 }
 
 // THE FIRST GESTURE ON AN UNFAMILIAR DOOR IS `-h`, and it must not be a
