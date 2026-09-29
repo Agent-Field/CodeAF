@@ -143,7 +143,8 @@ func TestContinueCarriesAFailedRunToDone(t *testing.T) {
 		t.Fatalf("stderr does not say how to continue:\n%s", stderr.String())
 	}
 
-	brief, assignment, err := continuedBrief(recordID(folder), "and say so")
+	got, err := continuedBrief(recordID(folder), "and say so")
+	brief, assignment := got.brief, got.assignment
 	if err != nil || assignment != "write out.txt" {
 		t.Fatalf("continuedBrief = %q, %q, %v", brief, assignment, err)
 	}
@@ -169,7 +170,7 @@ func TestContinueCarriesAFailedRunToDone(t *testing.T) {
 
 func TestContinueRefusesAnUnknownRun(t *testing.T) {
 	beltRunEnv(t)
-	if _, _, err := continuedBrief("nope", ""); err == nil || !strings.Contains(err.Error(), `"nope"`) {
+	if _, err := continuedBrief("nope", ""); err == nil || !strings.Contains(err.Error(), `"nope"`) {
 		t.Fatalf("unknown id error = %v", err)
 	}
 }

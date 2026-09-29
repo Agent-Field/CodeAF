@@ -36,6 +36,7 @@ const (
 		continueAssignmentHeader
 	continueEndingHeader  = "How the previous run ended: "
 	continueReachedHeader = "What the previous run's plan reached:"
+	continueSealedHeader  = "What the previous run sealed:"
 	continueAskedHeader   = "What is asked of this round, in the person's words (the assignment above is unchanged):"
 	// resultClip bounds one task's result in the carried account.
 	resultClip = 400
@@ -43,7 +44,7 @@ const (
 
 // continueSections is every block the wrapper writes AFTER the assignment, so
 // [assignmentOf] knows where an assignment stops.
-var continueSections = []string{continueEndingHeader, continueReachedHeader, continueAskedHeader}
+var continueSections = []string{continueEndingHeader, continueReachedHeader, continueSealedHeader, continueAskedHeader}
 
 // endingWords is the root's status in the product's own words.
 var endingWords = map[plandb.Status]string{
@@ -59,6 +60,10 @@ type priorRun struct {
 	assignment string
 	ending     string
 	reached    []string
+	// cellRoot is the cell the run worked in, and sealed what that cell's chain
+	// holds; both are empty for a pre-cell record.
+	cellRoot string
+	sealed   sealedState
 }
 
 // assignmentOf recovers the innermost assignment from a brief that may itself
@@ -88,6 +93,9 @@ func continuationBrief(prior priorRun, words string) string {
 	brief.WriteString("\n\n" + continueEndingHeader + prior.ending + ".")
 	if len(prior.reached) > 0 {
 		brief.WriteString("\n\n" + continueReachedHeader + "\n" + strings.Join(prior.reached, "\n"))
+	}
+	if !prior.sealed.empty() {
+		brief.WriteString("\n\n" + prior.sealed.words())
 	}
 	if words = strings.TrimSpace(words); words != "" {
 		brief.WriteString("\n\n" + continueAskedHeader + "\n" + words)
@@ -119,6 +127,9 @@ func readPriorRun(folder string) (priorRun, error) {
 		if task.ID != root.ID {
 			prior.reached = append(prior.reached, reachedLine(task))
 		}
+	}
+	if prior.cellRoot = cellOf(folder); prior.cellRoot != "" {
+		prior.sealed = sealedStateOf(prior.cellRoot)
 	}
 	return prior, nil
 }
@@ -182,18 +193,25 @@ func continueHint(folder string) string {
 	return "continue it with: codeaf do --continue " + recordID(folder)
 }
 
-// continuedBrief is the whole door: an id and the person's words in, the brief
-// of the next round out.
-func continuedBrief(id, words string) (brief, assignment string, err error) {
+// continuation is what a continued run is handed: the brief of the next round,
+// the assignment it carries on, and the cell it goes on working in ("" when the
+// record has none).
+type continuation struct {
+	brief, assignment, cellRoot string
+}
+
+// continuedBrief is the whole door: an id and the person's words in, the next
+// round out.
+func continuedBrief(id, words string) (continuation, error) {
 	folder, err := resolveRecord(id)
 	if err != nil {
-		return "", "", err
+		return continuation{}, err
 	}
 	prior, err := readPriorRun(folder)
 	if err != nil {
-		return "", "", err
+		return continuation{}, err
 	}
-	return continuationBrief(prior, words), prior.assignment, nil
+	return continuation{continuationBrief(prior, words), prior.assignment, prior.cellRoot}, nil
 }
 
 // continuesOnRunRoad says the run road can carry this request on: the older engine

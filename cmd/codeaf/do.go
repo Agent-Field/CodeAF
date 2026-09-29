@@ -382,7 +382,7 @@ func runDo(args []string) error {
 	// the model-call log carries, and a second reading could name a different
 	// run in a process that had opened two.
 	run := trace.RunFrom(ctx)
-	task, assignment, err := errandTask(flags, *continueID)
+	next, err := errandTask(flags, *continueID)
 	if err != nil {
 		return err
 	}
@@ -398,7 +398,7 @@ func runDo(args []string) error {
 	}
 	return doErrand(doRequest{
 		effort: effort, pins: pins.pins,
-		task: task, assignment: assignment, run: run, database: *database, keep: *keep, workspace: *workspace,
+		task: next.brief, assignment: next.assignment, cellRoot: next.cellRoot, run: run, database: *database, keep: *keep, workspace: *workspace,
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
 		contextFill: *contextFill, completionReserve: *completionReserve, slots: slots,
@@ -413,6 +413,9 @@ type doRequest struct {
 	// assignment is what the person first asked for, when task is a
 	// continuation of it. It names the run; empty is a fresh run, named by task.
 	assignment string
+	// cellRoot is the cell a continuation goes on working in; empty mints one
+	// (with CODEAF_CELLS=1) or runs on the host.
+	cellRoot string
 	// run is the id this invocation minted at the door ([trace.Begin]). It goes
 	// out on the `--json` envelope, where it is the join to the model-call log
 	// and to the debug record's folder, both of which are named by it.
@@ -474,13 +477,13 @@ func (r doRequest) headline() string {
 
 // errandTask is the task text of this invocation and, on a continuation, the
 // assignment it carries on. The words after --continue are the finding.
-func errandTask(flags *flag.FlagSet, continueID string) (task, assignment string, err error) {
+func errandTask(flags *flag.FlagSet, continueID string) (continuation, error) {
 	if continueID == "" {
-		task, err = readText(flags.Name(), flags.Args())
-		return task, "", err
+		task, err := readText(flags.Name(), flags.Args())
+		return continuation{brief: task}, err
 	}
 	if err := continuesOnRunRoad(); err != nil {
-		return "", "", err
+		return continuation{}, err
 	}
 	return continuedBrief(continueID, strings.Join(flags.Args(), " "))
 }
@@ -3690,6 +3693,13 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 		}
 		outcome.recordKept = recordDir
 	}()
+	inCell, err := openErrandCell(workspace, request.cellRoot)
+	if err == nil {
+		err = inCell.pointFrom(recordDir)
+	}
+	if err != nil {
+		return headlessOutcome{}, err
+	}
 	store, err := session.OpenRunPlanAt(filepath.Join(recordDir, "plandb.db"), title, request.task)
 	if err != nil {
 		return headlessOutcome{}, err
@@ -3744,7 +3754,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, doStanding(workspace), completerFor),
+		}, doStanding(workspace), completerFor, inCell.workerOptions()...),
 	})
 	errand := headlessOutcome{
 		Artifacts: []string{},
