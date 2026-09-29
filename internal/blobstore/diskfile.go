@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // pointer says where one object lies inside a stored frame.
@@ -27,12 +28,12 @@ func (p pointer) line() []byte {
 func parsePointer(line []byte) (pointer, error) {
 	parts := strings.Fields(string(line))
 	if len(parts) != 3 || !ValidRID(parts[0]) {
-		return pointer{}, errors.New("blobstore: malformed pointer")
+		return pointer{}, fmt.Errorf("%w: malformed pointer", ErrDamaged)
 	}
 	off, offErr := strconv.ParseUint(parts[1], 10, 63)
 	n, lenErr := strconv.ParseUint(parts[2], 10, 32)
 	if offErr != nil || lenErr != nil {
-		return pointer{}, errors.New("blobstore: malformed pointer")
+		return pointer{}, fmt.Errorf("%w: malformed pointer", ErrDamaged)
 	}
 	return pointer{Frame: parts[0], Off: off, Len: uint32(n)}, nil
 }
@@ -52,6 +53,19 @@ func payloadStart(frame []byte, h Header) uint64 {
 // renamed into place, so the final name never holds a partial file and an
 // existing file is never overwritten.
 func (d *Disk) writeOnce(path string, data []byte) error {
+	return asFull(d.create(path, data))
+}
+
+// asFull names a full disk or an exhausted quota ErrFull, which a caller
+// answers by retrying later, and leaves every other error as it is.
+func asFull(err error) error {
+	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
+		return fmt.Errorf("%w: %v", ErrFull, err)
+	}
+	return err
+}
+
+func (d *Disk) create(path string, data []byte) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	}
