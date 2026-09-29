@@ -81,6 +81,33 @@ func TestTheFinishingCommitWritesNoBlobForAnInputLeftAlone(t *testing.T) {
 	}
 }
 
+// A CHANGED INPUT'S RAW NAME MUST REACH THE ENDING. Git quotes non-ASCII names
+// in line output, so a quoted name cannot match the person's untracked input.
+func TestTheEndingNamesAChangedInputWithANonASCIIName(t *testing.T) {
+	repo := newTestRepo(t)
+	name := "résumé.md"
+	writeFile(t, filepath.Join(repo, name), "person's draft\n")
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Finish the résumé")
+	writeFile(t, filepath.Join(folder.Dir, name), "run's draft\n")
+	end := folder.Finish("done")
+	if !slices.Contains(end.Changed, name) {
+		t.Fatalf("ending changed paths = %q, want %q", end.Changed, name)
+	}
+	stash := "git -C " + shellQuoted(repo) + " stash push -u -- " + shellQuoted(name)
+	if sentence := end.Sentence(); !strings.Contains(sentence, stash) {
+		t.Fatalf("ending does not name %q in its stash command: %s", name, sentence)
+	}
+	command := exec.Command("sh", "-c", stash)
+	command.Dir = repo
+	if out, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("ending command %q: %v\n%s", stash, err, out)
+	}
+	mustGit(t, repo, "merge", folder.Branch)
+	if got := readFile(t, filepath.Join(repo, name)); got != "run's draft\n" {
+		t.Fatalf("merged %q = %q, want the run's draft", name, got)
+	}
+}
+
 // AN UNTRACKED FILE THE RUN CHANGED IS ITS WORK; ONE IT LEFT ALONE IS NOT. The
 // person's untracked files are copied in as inputs without entering git; a
 // half-written parser.py the run finishes goes on its branch, and a

@@ -1002,19 +1002,20 @@ func changedSince(dir, sha string) []string {
 	return changedBetween(dir, sha, "HEAD")
 }
 
-// changedBetween is every path two commits' trees differ in.
+// changedBetween is every raw path two commits' trees differ in. NUL output
+// keeps Git from quoting non-ASCII names or splitting a name with a newline.
 func changedBetween(dir, from, to string) []string {
 	if strings.TrimSpace(from) == "" || strings.TrimSpace(to) == "" {
 		return nil
 	}
-	out, err := git(dir, "diff", "--name-only", from, to)
+	out, err := git(dir, "diff", "--name-only", "-z", from, to)
 	if err != nil {
 		return nil
 	}
 	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			paths = append(paths, line)
+	for _, path := range strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") {
+		if path != "" {
+			paths = append(paths, path)
 		}
 	}
 	return paths
