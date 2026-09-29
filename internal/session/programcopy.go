@@ -1054,7 +1054,8 @@ func (f *ProgramFolder) keepOwnRefs() ([]programKeptRef, []string) {
 }
 
 // branchHolds says the branch whose tip is tip already holds what ref names:
-// the commit itself, or a tree the same as its own.
+// the commit itself, or a tree matching any commit from the run's base through
+// the tip, because a saved ref with that tree adds no work to the branch.
 func (f *ProgramFolder) branchHolds(ref, tip string) bool {
 	if tip == "" {
 		return false
@@ -1067,7 +1068,28 @@ func (f *ProgramFolder) branchHolds(ref, tip string) bool {
 		return false
 	}
 	ours, err := git(f.Dir, "rev-parse", tip+"^{tree}")
-	return err == nil && strings.TrimSpace(theirs) == strings.TrimSpace(ours)
+	theirs = strings.TrimSpace(theirs)
+	if err == nil && theirs == strings.TrimSpace(ours) {
+		return true
+	}
+	base := f.base()
+	if base == "" {
+		return false
+	}
+	baseTree, err := git(f.Dir, "rev-parse", base+"^{tree}")
+	if err == nil && theirs == strings.TrimSpace(baseTree) {
+		return true
+	}
+	trees, err := git(f.Dir, "log", "--format=%T", base+".."+tip)
+	if err != nil {
+		return false
+	}
+	for _, tree := range nonEmptyLines(trees) {
+		if theirs == tree {
+			return true
+		}
+	}
+	return false
 }
 
 // freeBranchName is base, or base with the first number after it that no

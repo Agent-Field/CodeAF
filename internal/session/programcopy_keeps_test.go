@@ -181,6 +181,34 @@ func TestARunFoundGoneKeepsTheCandidateItSubmitted(t *testing.T) {
 	}
 }
 
+// A STARTING TREE ALREADY ON THE BRANCH NEEDS NO RESCUE BRANCH. The saved
+// start commit is not an ancestor of the branch tip, but its tree is the base
+// tree, so keeping it would claim the run left work its branch lacks.
+func TestASweptCopyPutsNoBranchOnItsStartingTree(t *testing.T) {
+	repo := newTestRepo(t)
+	dead := deadProgramFolder(t, repo, t.TempDir())
+	base := dead.base()
+	commitIn(t, dead.Dir, "committed.txt")
+	tree := strings.TrimSpace(gitOut(t, dead.Dir, "rev-parse", base+"^{tree}"))
+	start := strings.TrimSpace(gitOut(t, dead.Dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit-tree", tree, "-p", base, "-m", "starting tree"))
+	ref := "refs/worktree/senior-dev/start"
+	mustGit(t, dead.Dir, "update-ref", ref, start)
+	if _, err := git(dead.Dir, "merge-base", "--is-ancestor", start, dead.Branch); err == nil {
+		t.Fatal("the saved start commit is an ancestor of the branch")
+	}
+	sweepProgramCopies(repo)
+	if branchCommit(repo, dead.Branch+"-start") != "" {
+		t.Fatal("a branch was put on the starting tree already held by the run's branch")
+	}
+	if _, err := os.Stat(dead.Dir); !os.IsNotExist(err) {
+		t.Fatalf("the swept copy is still there: %v", err)
+	}
+	ending, ok := keptProgramFolderEnd(dead.Keep)
+	if !ok || strings.Contains(ending.Sentence(), ref) {
+		t.Fatalf("the ending = %q, want no saved start ref named", ending.Sentence())
+	}
+}
+
 // A RUN FOUND GONE WITH NOTHING LEFT TO COMMIT SAYS SO. Its work is on its
 // branch as it committed it itself, and the ending does not claim a commit
 // codeaf never made.
