@@ -34,12 +34,17 @@ type programWish struct {
 // Fresh says the run takes the work up on a new branch of its own cut from
 // that one's tip rather than on that branch itself, because the earlier run's
 // work passed: its branch is left holding exactly what passed.
+//
+// Snapshot is the commit the line's first run carried the person's uncommitted
+// changes in on ([ProgramFolder.Snapshot]), which a run that carries the
+// branch on counts its work from.
 type programCarry struct {
-	Branch string
-	Root   string
-	Home   string
-	Start  string
-	Fresh  bool
+	Branch   string
+	Root     string
+	Home     string
+	Start    string
+	Snapshot string
+	Fresh    bool
 }
 
 type programWishKey struct{}
@@ -82,7 +87,8 @@ func (a *Agent) programCarryOf(prior *programOutcome, program string) *programCa
 	if record == nil || strings.TrimSpace(record.Branch) == "" || strings.TrimSpace(record.Root) == "" {
 		return nil
 	}
-	return &programCarry{Branch: record.Branch, Root: record.Root, Home: record.Home, Start: record.HomeSha, Fresh: prior.verdict == programPassed}
+	return &programCarry{Branch: record.Branch, Root: record.Root, Home: record.Home, Start: record.HomeSha, Snapshot: record.Snapshot,
+		Fresh: prior.verdict == programPassed}
 }
 
 // programEffort is the rung a program's working model is asked for, as its

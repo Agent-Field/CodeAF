@@ -554,7 +554,8 @@ block in the conversation shows:
 - the facts about the work: which other window is already in these files, `where:` it will
   run, and `from your folder as it stands — unsaved edits included` (not on a program's
   card: its `where:` names the folder and says `in a copy of its own on a branch of its
-  own` in a repository, which senior-dev cuts from your last commit);
+  own` in a repository, which senior-dev starts from your folder as it stands, uncommitted
+  changes included);
 - a dim meta line reading `model <full id> · ctrl+e for the brief`. The model id leads
   because it is the one fact nothing else on screen will say again; on a narrow frame the
   hint is dropped and the model kept.

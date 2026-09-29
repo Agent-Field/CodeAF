@@ -67,6 +67,9 @@ type TaskCopyRecord struct {
 	// receipt says both.
 	Continues bool   `json:"continues,omitempty"`
 	From      string `json:"from,omitempty"`
+	// Snapshot is the commit a program's branch begins with that carries the
+	// person's uncommitted changes into its copy ([ProgramFolder.Snapshot]).
+	Snapshot string `json:"snapshot,omitempty"`
 }
 
 // runCopyOf writes a live run's copy down. It is taken from the tree the run is
@@ -89,6 +92,7 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		Seal:      tree.seal,
 		Continues: tree.continues,
 		From:      tree.from,
+		Snapshot:  tree.snapshot,
 	}
 }
 

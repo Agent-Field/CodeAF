@@ -8145,6 +8145,9 @@ type taskTree struct {
 	// it was ([ProgramFolder.From]).
 	continues bool
 	from      string
+	// snapshot is the commit a program's branch begins with that carries the
+	// person's uncommitted changes ([ProgramFolder.Snapshot]).
+	snapshot string
 	// base is the machine commit the parent's world was sealed into, when a rung
 	// made one. It is the replay point the landing takes the inheritance back out
 	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing

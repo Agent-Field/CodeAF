@@ -39,11 +39,14 @@ func worktreeCount(t *testing.T, repo string) int {
 	return strings.Count(gitOut(t, repo, "worktree", "list", "--porcelain"), "worktree ")
 }
 
-// A REPOSITORY'S PROGRAM WORKS IN A COPY OF ITS OWN, AND THE PERSON'S CHECKOUT
-// IS NEVER TOUCHED. Uncommitted changes — a modified file, an untracked one, a
-// staged one — used to refuse the run; they are left where they are now, not
-// in the copy, and named on the receipt. When the run ends its work is on its
-// branch, the copy is gone and the branch is checked out nowhere.
+// A REPOSITORY'S PROGRAM WORKS IN A COPY OF ITS OWN, WHICH STARTS WHERE THE
+// PERSON IS, AND THE PERSON'S CHECKOUT IS NEVER TOUCHED. Uncommitted changes —
+// a modified file, an untracked one, a staged one — used to refuse the run, and
+// then were left out of the copy, so "finish what I'm in the middle of" was
+// handed the last commit; they are the first commit on the program's branch
+// now, and stay uncommitted and staged in the person's folder exactly as they
+// were. When the run ends its work is on its branch, counted from that commit,
+// the copy is gone, and putting the person's changes aside brings in both.
 func TestAProgramWorksInACopyAndLeavesTheCheckoutAlone(t *testing.T) {
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own line\n")
@@ -76,28 +79,45 @@ func TestAProgramWorksInACopyAndLeavesTheCheckoutAlone(t *testing.T) {
 	if spec.PlainFolder || !strings.HasPrefix(spec.ProgramBranch, "task/") || currentBranch(copyDir) != spec.ProgramBranch {
 		t.Fatalf("the copy is on %q (plain %v), want the program's own branch %q", currentBranch(copyDir), spec.PlainFolder, spec.ProgramBranch)
 	}
-	for _, left := range []string{"notes/draft.md", "new.go"} {
-		if _, err := os.Stat(filepath.Join(copyDir, left)); !os.IsNotExist(err) {
-			t.Fatalf("the person's uncommitted %s is in the copy: %v", left, err)
+	for name, want := range map[string]string{"shared.txt": "the person's own line\n", "notes/draft.md": "draft\n", "new.go": "package x\n"} {
+		if body := readFile(t, filepath.Join(copyDir, name)); body != want {
+			t.Fatalf("the copy's %s = %q, want the person's uncommitted %q", name, body, want)
 		}
 	}
-	if !strings.Contains(spec.ProgramBriefNote, "private copy of the repository at "+canonicalPath(repo)) || !strings.Contains(spec.ProgramBriefNote, copyDir) {
-		t.Fatalf("the brief does not say where the copy is: %q", spec.ProgramBriefNote)
+	snapshot := strings.TrimSpace(gitOut(t, copyDir, "rev-parse", "HEAD"))
+	if parent := strings.TrimSpace(gitOut(t, copyDir, "rev-parse", "HEAD^")); parent != head || snapshot == head {
+		t.Fatalf("the copy's branch begins at %s (parent %s), want one commit on top of the person's %s", snapshot, parent, head)
+	}
+	if !strings.Contains(spec.ProgramBriefNote, "private copy of the repository at "+canonicalPath(repo)) || !strings.Contains(spec.ProgramBriefNote, copyDir) ||
+		!strings.Contains(spec.ProgramBriefNote, "begins with the person's own uncommitted work") {
+		t.Fatalf("the brief does not say where the copy is and what it begins with: %q", spec.ProgramBriefNote)
 	}
 	receipt := delegateReceipt(repo, testPrograms("fake")[0], agent.runRowCopy(id))
-	if !strings.Contains(receipt, "a private copy of "+repo) || !strings.Contains(receipt, "Your uncommitted changes (") ||
+	if !strings.Contains(receipt, "a private copy of "+repo) || !strings.Contains(receipt, "are in its copy, as the first commit on its branch") ||
 		strings.Contains(receipt, "codeaf's own tools write nothing") {
-		t.Fatalf("the receipt = %q, want the copy and the changes it does not have", receipt)
+		t.Fatalf("the receipt = %q, want the copy and the changes it carried in", receipt)
 	}
 	endBeltRun(t, agent, double)
 	if currentBranch(repo) != "work" || strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")) != head || gitOut(t, repo, "status", "--porcelain") != status {
 		t.Fatalf("the person's checkout was touched: on %q\n%s", currentBranch(repo), gitOut(t, repo, "status", "--porcelain"))
 	}
-	if files := gitOut(t, repo, "ls-tree", "-r", "--name-only", spec.ProgramBranch); !strings.Contains(files, "fix.go") || strings.Contains(files, "draft.md") {
-		t.Fatalf("the branch holds %q, want the program's work and none of the person's", files)
+	if staged := strings.TrimSpace(gitOut(t, repo, "diff", "--cached", "--name-only")); staged != "new.go" {
+		t.Fatalf("the person's index moved: staged %q, want new.go alone", staged)
+	}
+	if own := strings.TrimSpace(gitOut(t, repo, "diff", "--name-only", snapshot, spec.ProgramBranch)); own != "fix.go" {
+		t.Fatalf("the program's own work past the person's = %q, want fix.go", own)
 	}
 	if _, err := os.Stat(copyDir); !os.IsNotExist(err) || worktreeCount(t, repo) != 1 {
 		t.Fatalf("the copy was not removed (%v), %d worktrees", err, worktreeCount(t, repo))
+	}
+	// THE ENDING'S WAY IN WORKS: put the person's changes aside, and the merge
+	// brings them back through the branch, with the program's work on top.
+	mustGit(t, repo, "stash", "-u", "-q")
+	mustGit(t, repo, "merge", "-q", spec.ProgramBranch)
+	for name, want := range map[string]string{"shared.txt": "the person's own line\n", "notes/draft.md": "draft\n", "new.go": "package x\n", "fix.go": "package fix\n"} {
+		if body := readFile(t, filepath.Join(repo, name)); body != want {
+			t.Fatalf("after the merge %s = %q, want %q", name, body, want)
+		}
 	}
 }
 
@@ -116,6 +136,14 @@ func TestAProgramStartsBesideACheckoutInTheMiddleOfAMerge(t *testing.T) {
 	}
 	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Fix the parser")
+	// ITS FILES HOLD CONFLICT MARKERS, so they are not carried into the copy,
+	// and the receipt says why.
+	if folder.Snapshot != "" || !strings.Contains(folder.LeftBehindWords(), "are not in its copy: your checkout is in the middle of a merge") {
+		t.Fatalf("a checkout mid-merge was carried: %q, %q", folder.Snapshot, folder.LeftBehindWords())
+	}
+	if receipt := delegateReceipt(repo, testPrograms("fake")[0], runCopyOf(folder.tree())); !strings.Contains(receipt, "not in its copy: your checkout is in the middle of a merge.") {
+		t.Fatalf("the receipt = %q", receipt)
+	}
 	folder.Finish("")
 	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); after != head {
 		t.Fatalf("the person's merge was concluded: HEAD moved from %s to %s", head, after)

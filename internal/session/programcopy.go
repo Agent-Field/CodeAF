@@ -13,10 +13,17 @@ package session
 //     not for the person to open: it exists so that several runs can work on
 //     one repository at once, and so that the person's own checkout, index and
 //     branch are never touched.
-//  2. WHAT IS NOT COMMITTED IN THE PERSON'S CHECKOUT IS NOT IN THE COPY. A copy
-//     is cut from a commit, so their uncommitted changes stay theirs, unread,
-//     and the run is not refused for them: the receipt and a shell run's first
-//     lines say they were left behind ([ProgramFolder.LeftBehindWords]).
+//  2. THE COPY STARTS WHERE THE PERSON IS, UNCOMMITTED CHANGES AND ALL. What
+//     their checkout has not committed — edits, staged or not, and new files
+//     git does not ignore — is written into one commit on top of the one their
+//     checkout stands on, through an index of codeaf's own, and the program's
+//     branch begins with it ([ProgramFolder.snapshotLeftBehind]). Their index,
+//     their files and their branch are only read, and the changes stay
+//     uncommitted in their folder as they were. A checkout in the middle of a
+//     merge or a rebase is not carried — its files hold conflict markers — and
+//     neither is anything when git cannot read it; the run is not refused for
+//     either, and the receipt and a shell run's first lines say which it was
+//     ([ProgramFolder.LeftBehindWords]).
 //  3. A FEW FOLDERS GIT IGNORES ARE LINKED IN, NOT COPIED ([programCopyLinks]):
 //     installed dependencies and environment files the project's own build
 //     and tests need and a fresh checkout does not have — `node_modules`, a
@@ -153,8 +160,8 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 		return nil, fmt.Errorf("%s has no commit to cut a branch from: %s", repo, firstLine(start))
 	}
 	folder.Start, folder.Home = strings.TrimSpace(start), currentBranch(repo)
-	folder.LeftBehind = uncommittedPaths(repo, "")
 	folder.takeCarry(order.Carry)
+	folder.snapshotLeftBehind()
 	sweepProgramCopies(repo)
 	dir, err := newProgramCopyDir(repo)
 	if err != nil {
@@ -212,8 +219,105 @@ func (f *ProgramFolder) takeCarry(carry *programCarry) {
 		// THE LINE'S START, NOT THIS RUN'S. "Changed nothing" and the files the
 		// ending counts are measured from where the first run of the line began,
 		// so a sent-back run can never read the earlier runs' work as none.
-		f.Branch, f.Home, f.Start, f.Continues = carry.Branch, carry.Home, carry.Start, true
+		f.Branch, f.Home, f.Start, f.Snapshot, f.Continues = carry.Branch, carry.Home, carry.Start, carry.Snapshot, true
 	}
+}
+
+// base is the commit the program's own work is counted from: the one carrying
+// the person's uncommitted changes when its branch begins with one, and the
+// one it was cut from otherwise. What the person had not committed is never
+// counted as the program's work, and a run that added nothing to it changed
+// nothing.
+func (f *ProgramFolder) base() string {
+	if f.Snapshot != "" {
+		return f.Snapshot
+	}
+	return f.Start
+}
+
+// snapshotLeftBehind carries what the person's checkout has not committed
+// into the run's copy, per the second point of the contract at the top of this
+// file: the paths read, and — unless the checkout is in the middle of a merge
+// or a rebase — the commit that holds them made, for the branch to begin with.
+// A run that carries on an earlier run's branch carries nothing new: its
+// branch already begins where the line's first run found the person.
+func (f *ProgramFolder) snapshotLeftBehind() {
+	if f.Continues || f.From != "" {
+		return
+	}
+	f.LeftBehind = uncommittedPaths(f.Repo, f.Notes)
+	if len(f.LeftBehind) == 0 {
+		return
+	}
+	if half := halfDone(f.Repo); half != "" {
+		f.LeftBehindWhy = "your checkout is in the middle of a " + half
+		return
+	}
+	snapshot, err := snapshotCheckout(f.Repo, f.Start, f.Notes, f.Program)
+	if err != nil {
+		f.LeftBehindWhy = "they could not be read (" + err.Error() + ")"
+		return
+	}
+	f.Snapshot = snapshot
+}
+
+// snapshotCheckout writes what the checkout at repo has not committed into one
+// commit whose parent is start, and answers it; "" when there is nothing, and
+// git's line when git would not.
+//
+// NOTHING OF THE PERSON'S IS WRITTEN. The staging happens in an index of
+// codeaf's own (`GIT_INDEX_FILE`), read from start's tree, beside the real one
+// and removed after; the tree is written from it and the commit with
+// `commit-tree`, which moves no ref. Their index, their files, HEAD and every
+// branch are as they were: what is new is objects, and the program's branch
+// once the copy is cut from the commit. It is [sealGroundWork]'s way, which a
+// task grounded on a checkout with work in it has used since #578; the
+// program's notes are what it leaves out instead of a task's droppings.
+//
+// `git add -A` IS WHAT A PERSON'S OWN COMMIT OF EVERYTHING WOULD TAKE: tracked
+// edits, staged or not, deletions, and new files .gitignore does not cover.
+// What it covers is not in git's world, and the copy links the few such
+// folders a build needs instead ([programCopyLinks]).
+func snapshotCheckout(repo, start, notes, program string) (string, error) {
+	gitDir, err := git(repo, "rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return "", errors.New(firstLine(gitDir))
+	}
+	index := filepath.Join(strings.TrimSpace(gitDir), "codeaf-program-index-"+shortID())
+	defer func() { _ = os.Remove(index) }()
+	withIndex := func(args ...string) (string, error) {
+		out, err := gitWith(repo, []string{"GIT_INDEX_FILE=" + index}, args...)
+		if err != nil {
+			return "", errors.New(firstLine(out))
+		}
+		return strings.TrimSpace(out), nil
+	}
+	if _, err := withIndex("read-tree", start); err != nil {
+		return "", err
+	}
+	if _, err := withIndex("add", "-A", "--", "."); err != nil {
+		return "", err
+	}
+	if notes = strings.Trim(notes, "/"); notes != "" {
+		if _, err := withIndex("rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", notes); err != nil {
+			return "", err
+		}
+	}
+	tree, err := withIndex("write-tree")
+	if err != nil {
+		return "", err
+	}
+	if was, err := git(repo, "rev-parse", start+"^{tree}"); err == nil && strings.TrimSpace(was) == tree {
+		return "", nil
+	}
+	message := "Your uncommitted changes when " + program + "'s run began\n\n" +
+		"codeaf carried them into " + program + "'s copy of this repository, as they were, so its work starts where yours stood; they are still uncommitted in your own folder."
+	commit, err := git(repo, append(append([]string{"-c", "commit.gpgsign=false"}, codeafGitIdentity()...),
+		"commit-tree", tree, "-p", start, "-m", message)...)
+	if err != nil {
+		return "", errors.New(firstLine(commit))
+	}
+	return strings.TrimSpace(commit), nil
 }
 
 // cutCopy adds the copy as a worktree of the person's repository, on the
@@ -241,10 +345,10 @@ func (f *ProgramFolder) cutCopy() string {
 		}
 		return ""
 	}
-	if out, err := git(f.Repo, append(head, "-b", f.Branch, f.Dir, f.Start)...); err != nil {
+	if out, err := git(f.Repo, append(head, "-b", f.Branch, f.Dir, f.base())...); err != nil {
 		// A BRANCH MADE BY A CUT THAT FAILED IS DELETED, so nothing is left in
 		// the person's repository that nothing knows about.
-		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.Start {
+		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.base() {
 			_, _ = git(f.Repo, "branch", "-q", "-D", f.Branch)
 		}
 		return fmt.Sprintf("could not cut %s's copy of %s: %s", f.Program, f.Repo, copyCutWords(out))
@@ -276,7 +380,7 @@ func (f *ProgramFolder) forget() {
 	f.unlinkCopy()
 	f.removeCopy()
 	if !f.Continues {
-		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.Start {
+		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.base() {
 			_, _ = git(f.Repo, "branch", "-q", "-D", f.Branch)
 		}
 	}
@@ -613,8 +717,8 @@ func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 		stays = f.settleCopyWork(&end, result, gone)
 	}
 	if tip := branchCommit(f.Repo, f.Branch); tip != "" {
-		end.Changed = changedBetween(f.Repo, f.Start, tip)
-		end.Kept = tip != f.Start
+		end.Changed = changedBetween(f.Repo, f.base(), tip)
+		end.Kept = tip != f.base()
 		end.Committed = tip != before
 	}
 	if stays != "" {
@@ -986,21 +1090,39 @@ func uncommittedList(dir, notes string) ([]string, error) {
 }
 
 // LeftBehindWords is what a run in a copy says, as it starts, about the
-// changes the person's checkout had not committed, which its copy does not
-// have; "" when there were none, and for every run not in a copy.
+// changes the person's checkout had not committed: carried into its copy, or
+// not and why; "" when there were none, and for every run not in a copy.
 func (f *ProgramFolder) LeftBehindWords() string {
 	if !f.Copied() {
 		return ""
 	}
-	return leftBehindWords(f.LeftBehind)
+	if f.Snapshot != "" {
+		return carriedInWords(f.LeftBehind)
+	}
+	return leftBehindWords(f.LeftBehind, f.LeftBehindWhy)
 }
 
-// leftBehindWords is that sentence for a list of paths.
-func leftBehindWords(paths []string) string {
+// carriedInWords is the sentence for uncommitted changes a copy begins with
+// ([ProgramFolder.Snapshot]).
+func carriedInWords(paths []string) string {
+	named := "Your uncommitted changes"
+	if len(paths) > 0 {
+		named += " (" + namedFew(paths, programFolderShown) + ")"
+	}
+	return named + " are in its copy, as the first commit on its branch; in your folder they stay uncommitted, as they are."
+}
+
+// leftBehindWords is the sentence for uncommitted changes a copy does not
+// have, and why when there is a reason to say; "" for none.
+func leftBehindWords(paths []string, why string) string {
 	if len(paths) == 0 {
 		return ""
 	}
-	return "Your uncommitted changes (" + namedFew(paths, programFolderShown) + ") are not in its copy."
+	said := "Your uncommitted changes (" + namedFew(paths, programFolderShown) + ") are not in its copy"
+	if why != "" {
+		said += ": " + why
+	}
+	return said + "."
 }
 
 // BriefNote is the line a program's brief opens with when it works in a copy:
@@ -1015,9 +1137,16 @@ func (f *ProgramFolder) BriefNote() string {
 	if !f.Copied() {
 		return ""
 	}
-	return "You work in a private copy of the repository at " + f.Repo + ", checked out at " + f.Dir +
+	said := "You work in a private copy of the repository at " + f.Repo + ", checked out at " + f.Dir +
 		" on the branch " + f.Branch + ". A path this brief names under " + f.Repo + " is the same file under " +
 		f.Dir + ": read and change it there, and nowhere else."
+	if f.Snapshot != "" {
+		// A BRIEF THAT SAYS "FINISH IT" MEANS WHAT THE PERSON HAS SO FAR, and a
+		// program that read the first commit as somebody else's to undo would
+		// start again from the last one.
+		said += " Its branch begins with the person's own uncommitted work, committed there as it stood when this run began: it is the work so far, yours to build on."
+	}
+	return said
 }
 
 // copySentence is how a run left its copy, in the sentence every surface says
@@ -1026,6 +1155,13 @@ func (f *ProgramFolder) BriefNote() string {
 func (e ProgramFolderEnd) copySentence() string {
 	f := e.Folder
 	merge := "`git -C " + shellQuoted(f.Repo) + " merge " + f.Branch + "` brings it in"
+	if f.Snapshot != "" {
+		// A MERGE REFUSES A CHECKOUT WHOSE UNCOMMITTED FILES IT WOULD WRITE, and
+		// the branch begins with those very files. Put aside, they come back
+		// through the branch itself, as they were when the run began.
+		merge = "its branch begins with your uncommitted changes as they were when it started, so put yours aside with `git -C " +
+			shellQuoted(f.Repo) + " stash -u` and `git -C " + shellQuoted(f.Repo) + " merge " + f.Branch + "` brings in both"
+	}
 	var said string
 	switch {
 	case e.Dropped:

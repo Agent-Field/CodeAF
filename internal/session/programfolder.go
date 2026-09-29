@@ -148,6 +148,14 @@ type ProgramFolder struct {
 	Repo       string   `json:"repo,omitempty"`
 	Linked     []string `json:"linked,omitempty"`
 	LeftBehind []string `json:"leftBehind,omitempty"`
+	// Snapshot is the commit that carries those uncommitted changes into the
+	// copy, the first on the program's branch, whose parent is Start; empty
+	// when there were none, or when they could not be carried, which
+	// LeftBehindWhy then says ([ProgramFolder.snapshotLeftBehind]). A run that
+	// carries on an earlier run's branch carries its snapshot too, so the work
+	// it counts is the programs' and never the person's.
+	Snapshot      string `json:"snapshot,omitempty"`
+	LeftBehindWhy string `json:"leftBehindWhy,omitempty"`
 	// Branch is the program's own branch, cut by codeaf; empty for a folder the
 	// program works in without git. Home is the branch the person had checked
 	// out, empty when their checkout was on no branch, and Start is the commit
@@ -763,7 +771,7 @@ func (f *ProgramFolder) abandon() {
 	}
 	end := f.settleCopy("", false)
 	if !f.Continues && !end.Kept && end.CopyLeft == "" {
-		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.Start {
+		if tip := branchCommit(f.Repo, f.Branch); tip != "" && tip == f.base() {
 			if _, err := git(f.Repo, "branch", "-q", "-D", f.Branch); err == nil {
 				end.Dropped = true
 			}
@@ -786,7 +794,7 @@ func (f *ProgramFolder) tree() taskTree {
 		// THE ROOT IS THE PERSON'S REPOSITORY, where the branch lives and
 		// outlives the copy, which is gone by the time anybody reads the row.
 		tree.root, tree.branch, tree.home, tree.homeSha = f.Ground(), f.Branch, f.Home, f.Start
-		tree.continues, tree.from = f.Continues, f.From
+		tree.continues, tree.from, tree.snapshot = f.Continues, f.From, f.Snapshot
 	}
 	return tree
 }

@@ -313,7 +313,7 @@ func TestAQueuedRunsReceiptInARepositorySaysItWillWorkInACopy(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's edit\n")
 	said := delegateReceipt(repo, testPrograms("fake")[0], nil)
 	if !strings.Contains(said, "when it starts it works alone in a private copy of "+repo) ||
-		!strings.Contains(said, "Your uncommitted changes (shared.txt) are not in its copy.") ||
+		!strings.Contains(said, "Your uncommitted changes (shared.txt) go into its copy as they are when it starts, as the first commit on its branch") ||
 		strings.Contains(said, "no git history") || strings.Contains(said, "write nothing") {
 		t.Fatalf("the queued run's receipt = %q", said)
 	}
@@ -416,5 +416,64 @@ func TestACutWithNoGitLFSNamesTheCause(t *testing.T) {
 	}
 	if said := copyCutWords("fatal: invalid reference: nope"); said != "fatal: invalid reference: nope" {
 		t.Fatalf("an ordinary refusal = %q", said)
+	}
+}
+
+// A RUN THAT ADDS NOTHING TO THE PERSON'S UNCOMMITTED WORK CHANGED NOTHING.
+// Their changes are the first commit on its branch and are never counted as
+// its work; the program's notes folder is never carried in; and a run that
+// never started deletes its branch, snapshot and all, leaving the person's
+// changes where they always were.
+func TestUncommittedWorkCarriedInIsNeverCountedAsTheProgramsOwn(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "half.go"), "package half\n")
+	writeFile(t, filepath.Join(repo, ".fake-notes", "old.md"), "a notes folder of the person's\n")
+	program := notesProgram()
+	folder := prepareIn(t, program, repo, "Finish it")
+	if folder.Snapshot == "" || folder.base() != folder.Snapshot {
+		t.Fatalf("the person's work was not carried in: %+v", folder)
+	}
+	if files := gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Snapshot); strings.Contains(files, ".fake-notes") || !strings.Contains(files, "half.go") {
+		t.Fatalf("the carried-in commit holds %q", files)
+	}
+	end := folder.Finish("")
+	if end.Kept || len(end.Changed) != 0 || !strings.HasPrefix(end.Sentence(), "it changed nothing") {
+		t.Fatalf("a run that added nothing = %q", end.Sentence())
+	}
+
+	never := prepareIn(t, program, repo, "Never started")
+	never.abandon()
+	if branchCommit(repo, never.Branch) != "" {
+		t.Fatal("a run that never started kept its branch")
+	}
+	if body := readFile(t, filepath.Join(repo, "half.go")); body != "package half\n" {
+		t.Fatalf("the person's file = %q", body)
+	}
+}
+
+// A RUN SENT BACK COUNTS FROM WHERE THE LINE'S FIRST RUN FOUND THE PERSON. It
+// takes the branch up, the person's changes already its first commit, and
+// neither those changes nor the person's newer ones are carried again.
+func TestARunSentBackCountsFromThePersonsCarriedInWork(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "half.go"), "package half\n")
+	program := testPrograms("fake")[0]
+	first := prepareIn(t, program, repo, "Finish it")
+	commitIn(t, first.Dir, "done.go")
+	first.Finish("")
+	writeFile(t, filepath.Join(repo, "later.go"), "package later\n")
+	carry := &programCarry{Branch: first.Branch, Root: repo, Home: first.Home, Start: first.Start, Snapshot: first.Snapshot}
+	second, err := PrepareProgramFolder(ProgramFolderOrder{Program: program, Dir: repo, Title: "Finish it", Holder: "task 2", Keep: t.TempDir(), Carry: carry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Snapshot != first.Snapshot || len(second.LeftBehind) != 0 {
+		t.Fatalf("the sent-back run = snapshot %q left %q, want the first run's %q and nothing new", second.Snapshot, second.LeftBehind, first.Snapshot)
+	}
+	if _, err := os.Stat(filepath.Join(second.Dir, "later.go")); !os.IsNotExist(err) {
+		t.Fatal("the person's newer change was carried into a sent-back run")
+	}
+	if end := second.Finish(""); !end.Kept || strings.Join(end.Changed, " ") != "done.go" {
+		t.Fatalf("the sent-back run counts %q, want the line's own done.go", end.Changed)
 	}
 }

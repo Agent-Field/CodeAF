@@ -210,18 +210,26 @@ func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecor
 	// read a branch off, and a repository is still a repository: it is told
 	// where the run will work, not that it works in the folder itself.
 	if _, repo, _, _ := programFolderOf(ground); repo {
-		return "It is " + via.Name + "'s: when it starts it works alone in a private copy of " + ground +
-			", on a new branch of its own cut from your last commit; your checkout is not touched, and when it ends that branch holds its work, checked out nowhere." +
-			leftBehindReceipt(ground, via)
+		said := "It is " + via.Name + "'s: when it starts it works alone in a private copy of " + ground +
+			", on a new branch of its own cut from your last commit; your checkout is not touched, and when it ends that branch holds its work, checked out nowhere."
+		if left := uncommittedPaths(ground, via.Notes); len(left) > 0 && halfDone(ground) == "" {
+			return said + " Your uncommitted changes (" + namedFew(left, programFolderShown) +
+				") go into its copy as they are when it starts, as the first commit on its branch; in your folder they stay uncommitted."
+		}
+		return said + leftBehindReceipt(ground, via)
 	}
 	return delegateFolderReceipt(ground, via) + " Until it ends, codeaf's own tools write nothing in " + ground + "."
 }
 
 // leftBehindReceipt is the receipt's sentence about the changes the person's
-// checkout has not committed, which a copy does not have, read now without
+// checkout has not committed that a copy does not have, read now without
 // refreshing anything of git's; "" when there are none.
 func leftBehindReceipt(ground string, via delegate.Delegate) string {
-	if words := leftBehindWords(uncommittedPaths(ground, via.Notes)); words != "" {
+	why := ""
+	if half := halfDone(ground); half != "" {
+		why = "your checkout is in the middle of a " + half
+	}
+	if words := leftBehindWords(uncommittedPaths(ground, via.Notes), why); words != "" {
 		return " " + words
 	}
 	return ""
@@ -245,6 +253,14 @@ func programCopyReceipt(ground string, via delegate.Delegate, record *TaskCopyRe
 	}
 	said := "It is " + via.Name + "'s: it works alone in a private copy of " + ground + ", " + on +
 		"; your checkout is not touched, and when it ends " + record.Branch + " holds its work, checked out nowhere."
+	switch {
+	case record.Continues || record.From != "":
+		// A RUN THAT TAKES UP AN EARLIER RUN'S BRANCH starts from that branch,
+		// which began where the line's first run found the person.
+		return said
+	case record.Snapshot != "":
+		return said + " " + carriedInWords(uncommittedPaths(ground, via.Notes))
+	}
 	return said + leftBehindReceipt(ground, via)
 }
 

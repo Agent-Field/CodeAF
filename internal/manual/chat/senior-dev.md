@@ -227,18 +227,6 @@ hand-off you ask for yourself is yours, and starts the count again. This count h
 through wake turns and a reopened conversation until you send a message. Each hand-off still
 shows its card, with the same countdown as any other, so you can stop one.
 
-**A run codeaf sends back carries on on the last run's branch.** When the chat hands the
-work back after an ending, before you have said anything, the new run is cut in a copy of
-its own on the branch the last run left, and its receipt says `carrying on on its branch
-<branch>, where the last run left it`. What earlier runs committed is counted as the line's
-work, so a run that adds nothing never reads it as nothing. **A branch whose work passed is
-never written again**: the next hand-off before you speak — the rest of the work, or the
-next piece — is cut on a new branch from its tip, and says `on a new branch <new> cut from
-<branch>, whose work passed and which it leaves as it is`; its ending says its branch is
-`on top of <branch>, whose work it holds too`. A hand-off made after you have spoken starts
-fresh, on a new branch cut from your checkout's last commit: check an earlier run's branch
-out first and the new run is cut from its work.
-
 **The card stays quiet.** senior-dev's landed card says `done` when the run finished,
 `stopped` when you stopped it, and `ended` when it ended without finishing (never a red
 cross), and `senior-dev's ending went to the chat`; the chat's own reply is where you read
@@ -273,6 +261,20 @@ not a git repository).
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
+
+## A run codeaf sends back — carries on on the last run's branch, a new branch after a pass
+
+**A run codeaf sends back carries on on the last run's branch.** When the chat hands the
+work back after an ending, before you have said anything, the new run is cut in a copy of
+its own on the branch the last run left, and its receipt says `carrying on on its branch
+<branch>, where the last run left it`. What earlier runs committed is counted as the line's
+work, so a run that adds nothing never reads it as nothing. **A branch whose work passed is
+never written again**: the next hand-off before you speak — the rest of the work, or the
+next piece — is cut on a new branch from its tip, and says `on a new branch <new> cut from
+<branch>, whose work passed and which it leaves as it is`; its ending says its branch is
+`on top of <branch>, whose work it holds too`. A hand-off made after you have spoken starts
+fresh, on a new branch cut from your folder as it stands: check an earlier run's branch out
+first and the new run is cut from its work.
 
 ## Can senior-dev use the internet — webfetch, websearch, models.dev, network off
 
@@ -435,7 +437,8 @@ left where it is, and never ends up on a branch either.
 ## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, not squashed
 
 In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`) from
-the commit your checkout stands on, checked out in a private copy of the repository
+the commit your checkout stands on — with your uncommitted changes as its first commit, when
+you have some (see uncommitted changes) — checked out in a private copy of the repository
 (see where senior-dev's copy is), and senior-dev works there. senior-dev commits each file
 it writes, except initially ignored files and test caches (`wip(write): <path>`,
 `wip(edit): <path>`), on that branch, which is how it keeps a record to restore from; they
@@ -480,7 +483,8 @@ at once and your checkout is never touched, and it is removed the moment senior-
 `git worktree list` shows it while the run works. A copies folder that is a link, or that
 another account made, is refused rather than used.
 
-**It is cut from your last commit**, so what you have not committed is not in it. **A few
+**It starts from your folder as it stands**: your last commit, and your uncommitted changes
+as the branch's first commit. **A few
 folders git ignores are linked in from your folder**, because a fresh checkout lacks them
 and a project's build and tests need them: `node_modules`, `.venv`, `venv`, `.env`,
 `.envrc` and every `.env.*`, when they sit at the top of your repository and git ignores
@@ -552,15 +556,34 @@ same way.
 **Your own branch may move freely**: you committing on it while senior-dev works is what
 the copy is for, and nothing about it is reported or undone.
 
-## Uncommitted changes, a dirty checkout, a merge in progress — senior-dev starts anyway and leaves them alone
+## Uncommitted changes, work in progress, finish what I started — senior-dev starts from where you are
 
-senior-dev is no longer refused over changes you have not committed. It works in a copy cut
-from the commit your checkout stands on, so **modified, staged or untracked files — and a
-merge, rebase or cherry-pick in progress — stay in your folder, untouched, and are not in
-its copy**. The receipt names them: `Your uncommitted changes (a.go, b.go, c.go and 2 more)
-are not in its copy.` Commit them first if senior-dev's work needs them.
+**senior-dev starts from your folder as it stands, uncommitted changes included**, so "finish
+the implementation" hands it what you have so far. Modified files (staged or not), deleted
+files and new files git does not ignore are written into one commit on top of the commit
+your checkout stands on — `Your uncommitted changes when senior-dev's run began` — and its
+branch begins with it. codeaf only reads your folder to do this: your files, your index
+(what you staged stays staged) and your branch are exactly as they were, and your changes
+stay uncommitted there. Its notes folder (`.senior-dev/`) is never carried in, and neither
+is anything `.gitignore` covers. The receipt says `Your uncommitted changes (a.go, b.go,
+c.go and 2 more) are in its copy, as the first commit on its branch; in your folder they
+stay uncommitted, as they are.` senior-dev's brief tells it that first commit is the work
+so far, to build on.
 
-Until 2026-09-28 senior-dev worked in your checkout itself, and refused to start with
+**Its work is counted from that commit**, so your changes are never reported as its files,
+and a run that adds nothing to them changed nothing.
+
+**Bringing it in**: `git merge` will not overwrite files you have uncommitted, and the branch
+begins with those very files, so the ending says ``put yours aside with `git -C '<folder>'
+stash -u` and `git -C '<folder>' merge <branch>` brings in both``. If you changed nothing
+after the run began, `git stash drop` then discards the copy you put aside; if you did,
+`git stash pop` puts those later edits back on top.
+
+**A merge, rebase or cherry-pick in progress is not carried**, because its files hold
+conflict markers: `Your uncommitted changes (…) are not in its copy: your checkout is in the
+middle of a merge.` The run still starts, from your last commit.
+
+Until 2026-09-28 senior-dev worked in your checkout itself and refused to start with
 `<folder> has changes that are not committed (…); commit or stash them, then ask again`.
 
 ## Two senior-dev runs on one repository, the folder is busy — runs side by side, one run per plain folder, another window, a shell run
