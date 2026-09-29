@@ -2106,6 +2106,7 @@ func v3Memory(profileDir string) *store.Store {
 		fmt.Fprintln(os.Stderr, "memory is off for this session: "+err.Error())
 		return nil
 	}
+	brain.SetMemoryLedger(session.CellMemories)
 	return brain
 }
 

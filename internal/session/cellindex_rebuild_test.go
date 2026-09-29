@@ -44,8 +44,8 @@ func TestDerivedIndexesRebuildFromTheTranscript(t *testing.T) {
 	dropLedger(t)
 
 	built, err := cellindex.Rebuild(c, workspace)
-	// No task landed, so the task index has nothing to build.
-	if err != nil || len(built) != len(cellindex.Indexes)-1 {
+	// No task landed and no memory was said, so those two have nothing to build.
+	if err != nil || len(built) != len(cellindex.Indexes)-2 {
 		t.Fatalf("Rebuild built %v, err %v", built, err)
 	}
 	assertMetaEquivalent(t, wantMeta, c.Root)

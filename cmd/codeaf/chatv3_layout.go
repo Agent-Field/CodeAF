@@ -730,6 +730,9 @@ func v3Migrated(cfg session.Config) session.Config {
 	}
 	_ = cell.MigrateLegacy(cfg.Place.Dir, session.TruthCarriers()...)
 	budgetOnOpen(cfg.Place.Dir)
+	if cfg.Memory != nil {
+		_ = session.SealMemories(cfg.Place.Dir, cfg.Memory)
+	}
 	_, _ = cellindex.RebuildAt(cfg.Place.Dir, cfg.Place.Workspace)
 	cfg.SessionFile = cfg.Place.Transcript()
 	return cfg
