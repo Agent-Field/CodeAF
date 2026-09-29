@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2212,6 +2213,12 @@ type app struct {
 	// down twenty rows of one project forks one command and not twenty
 	// (homeband_repo.go's [app.refreshRepoOf]).
 	repoAsking map[string]bool
+	// machines is where chats on other machines are listed from, machineRead the
+	// last listing it gave, and machinesAsking that an ask is in flight
+	// (homepanel_machines.go).
+	machines       chatlist.Source
+	machineRead    machineReading
+	machinesAsking bool
 	// newsAsking and leftOffAsking are the same idea for the two readings a card
 	// takes of its own row (homecardread.go).
 	newsAsking    map[string]bool
@@ -2898,6 +2905,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	shown := placeShown(place, opts.Owned, host)
 	a := &app{
+		machines:            opts.Machines,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
 		news:                newDoorbell(newsMsg{}),
@@ -4967,6 +4975,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case homeLeftOffMsg:
 		a.tookHomeLeftOff(msg)
+		return a, nil
+
+	case homeMachinesMsg:
+		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
+		// reason the repository's reading is (homepanel_machines.go).
+		a.tookMachines(msg)
 		return a, nil
 
 	case homeRepoMsg:

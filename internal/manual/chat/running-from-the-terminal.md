@@ -250,6 +250,74 @@ device ids, and one machine can be told apart from another.
 A vault made before identities existed keeps working: its old key becomes the identity's
 key the first time the identity is made on that machine.
 
+**`codeaf cell list --all`** prints every chat you have on any of your machines, one line
+each: id, title, device, where it runs (`running on <device>`, `<device> off`,
+`<K> turns from <device>: merge / discard`, or `-` for one held here or let go), and how
+long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
+`--all` it prints the usage line. With sync off (no `CODEAF_SYNC_URL`) it prints
+`sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
+set but no identity on this machine it prints
+`this machine has no identity yet: codeaf identity import` and lists nothing, and when the
+other machines cannot be reached it starts with `other machines unreachable`.
+
+## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
+
+Two settings, both read from the environment, point this machine at a relay so your chats
+can follow you from one computer to another. Neither is a row in `/settings`: unset, sync is
+off and codeaf behaves exactly as it does without it.
+
+**`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`. Plain `http` is for
+trying it out inside an ssh tunnel; later the relay needs TLS. Unset means sync is off.
+Set to something that is not a web address, it stops with
+`CODEAF_SYNC_URL is not a web address like http://host:8787`. Set on a machine with no
+identity it stops with `this machine has no identity yet: codeaf identity import`; it never
+makes an identity for you, because a fresh one would be an identity none of your other
+machines know.
+
+**`CODEAF_SYNC_INTERVAL_MS`** is how often unsaved turns are sent to the relay, in
+milliseconds. The default is `5000`. A longer interval means fewer requests and more turns
+that only this machine has if it goes to sleep. It must be a positive number.
+
+Everything sent is sealed under your identity first; the relay holds no names, no titles and
+no file content it can read. Requests are signed by this machine's own device key, so the
+relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
+show your chats on the other machines once both machines share an identity and this setting.
+
+## When another machine continues your chat — the window that only shows it, and the turns kept as a branch
+
+With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
+for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
+other machine can pick it up at once. If this machine sleeps or loses its connection, the hold runs
+out after about thirty seconds and another machine may take the chat over.
+
+When another machine does, this window says `<device> continued this chat; this window now only shows it`,
+with the name of the machine that took over (or the first digits of its id when it has no name). From then on
+this window only shows the conversation: a tool call the model tries here answers with that same line and does
+not run, so the two machines never both change the chat. Nothing on the other machine is overwritten.
+
+Turns you saved here that had not reached the relay yet are not lost. They are kept as a separate chat
+that starts from the last turn both machines share, and `codeaf cell list --all` shows it as
+`<K> turns from <device>: merge / discard`. Open this chat again and it carries on as that separate chat.
+
+If this computer's clock is more than five minutes off, sync shows `this computer's clock is off by more than 5 minutes`
+once and tries again on the next round; fix the clock and it carries on. With sync off (no `CODEAF_SYNC_URL`) none of
+this exists and the chat behaves as it always did.
+
+## What syncing a conversation cost — codeaf cell report, and sending the numbers only if you choose
+
+Each time a conversation is synced to another machine, codeaf adds one line of counts to a file on this
+machine, `v3/sync/stats/<cell>.jsonl` in the codeaf home: how many turns, frames and objects that flush
+carried, how many bytes went up and came down, and how many put, get and has requests it made. A line holds
+counts only: no time, no file names, no titles and no content. The file never leaves the machine on its own.
+
+**`codeaf cell report [<cell>]`** (with `CODEAF_CELLS` on) prints one row per flush and a total row for the
+cell, or for the cell the current folder is in. A cell that has never been synced has no rows, and the
+report then prints nothing at all rather than a table of zeros.
+
+**`codeaf cell report --export <file>`** also writes those same lines to the file you name, and says so:
+"counts only: bytes, objects and requests per turn; no content, no paths". Nothing is exported unless you
+type `--export`, so a report on its own writes no file and sends nothing.
+
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
 **`codeaf cell gc [--dry-run]`** (with `CODEAF_CELLS` on) frees disk from finished
