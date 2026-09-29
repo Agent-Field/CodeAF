@@ -136,3 +136,37 @@ func TestCellResolveClosesACrashedCallAndFindsBucketedCells(t *testing.T) {
 		t.Fatalf("rewind after resolve: %v", err)
 	}
 }
+
+// A CALL THAT FINISHED AND WAS NEVER SEALED IS A GAP THE CHAIN CANNOT SHOW, so
+// the log says so, and stops saying so once a seal has taken the call.
+func TestCellLogMarksCallsThatWereNeverSealed(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	c, err := cell.CreateIn(filepath.Join(home.Join("v3", "projects"), "-work"), cell.Options{Class: cell.Sandboxed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wal, _, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := cellstore.Intent{V: 1, Tool: "bash", ArgsHash: "ab", Started: 1, SideEffect: "local"}
+	done := cellstore.Executed{Call: cellstore.Call{Tool: "bash", ArgsHash: "ab", Started: 1}}
+	if err := wal.Begin(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := wal.Finish(in, done); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := writeGaps(c, &out); err != nil || !strings.Contains(out.String(), "unsealed  1 call(s)") {
+		t.Fatalf("log after an unsealed call: %v\n%s", err, out.String())
+	}
+	if err := wal.Sealed([]cellstore.Executed{done}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := writeGaps(c, &out); err != nil || out.Len() != 0 {
+		t.Fatalf("log after the call was sealed: %v\n%s", err, out.String())
+	}
+}

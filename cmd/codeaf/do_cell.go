@@ -48,7 +48,7 @@ func openErrandCell(workspace, resume string) (errandCell, error) {
 	if err != nil {
 		return errandCell{}, err
 	}
-	seat, _ := v3SeatOf(place)
+	seat, _ := v3SeatOf(place, errandSeals)
 	return errandCell{root: place.Dir, seat: seat}, nil
 }
 
