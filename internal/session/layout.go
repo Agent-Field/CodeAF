@@ -71,7 +71,7 @@ const (
 // journals are truth: the checkpoint names them, and a chat moved without them
 // keeps its task list but loses what each task said and did.
 var (
-	truthNames = []string{placeState, placeTasks, placeTeamCursors}
+	truthNames = []string{placeState, placeTasks, placeTeamCursors, placeMemories}
 	truthTrees = []string{placeNodeJournals}
 )
 
