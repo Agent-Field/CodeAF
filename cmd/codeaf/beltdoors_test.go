@@ -33,14 +33,14 @@ const helpLineCap = 117
 // deliberately does NOT name, so the check below does not demand a line for
 // them:
 //
-//   - `engine`, `tick` and `cell` are machinery a surface dials, not things a person
+//   - `engine`, `tick`, `cell` and `identity` are machinery a surface dials, not things a person
 //     runs by hand; main.go says so where it dispatches them and
 //     internal/manual's running-from-the-terminal page says so again.
 //   - `show` and `revise` are the old top-level spellings of `plan show` and
 //     `plan revise`; the page names the commands they became.
 //   - `help` is the alias for `--help` itself.
 var doorsOffThePage = map[string]bool{
-	"engine": true, "tick": true, "cell": true, "show": true, "revise": true, "help": true,
+	"engine": true, "tick": true, "cell": true, "identity": true, "show": true, "revise": true, "help": true,
 }
 
 // THE FIRST GESTURE ON AN UNFAMILIAR DOOR IS `-h`, and it must not be a
