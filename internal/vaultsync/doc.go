@@ -11,17 +11,16 @@
 // name only) through Syncer.Notify. When nothing is missing the file is not
 // touched. A new file is mode 0600.
 //
-// The credentials rule. credentials.json rides in the vault as one reserved
-// slot, so it is sealed with the cell key, pushed when it changes, deleted by a
+// The carried-state rule. credentials.json, and the provider keys of the
+// profile config (syncsetup), each ride in the vault as one reserved slot, so
+// they are sealed with the cell key, pushed when they change, deleted by a
 // tombstone and merged by the newer slot stamp exactly like a secret: the last
-// machine to save it wins whole, and a delete beats an older copy. The file is
-// captured into the slot before every push and pull, stamped with the file's
-// modification time so a late look never beats a newer edit sent by another
-// machine, and restored from the slot
-// after every merge. A file that is not valid JSON is never captured, so a
-// damaged copy cannot bury a good one, and it is set aside, not overwritten,
-// when a good copy arrives. config.json (budgets, rails) is never carried: those
-// limits belong to the machine they were set on.
+// machine to save one wins whole, and a delete beats an older copy. Each is
+// captured into its slot before every push and pull, stamped with its save time
+// so a late look never beats a newer edit sent by another machine, and restored
+// from the slot after every merge. A damaged copy is never captured, so it
+// cannot bury a good one. The rest of config.json (budgets, rails, model picks)
+// is never carried: those belong to the machine they were set on.
 //
 // Nothing here ever logs, returns or notifies a secret value; only names.
 package vaultsync

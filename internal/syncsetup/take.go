@@ -243,7 +243,22 @@ func (s *Sync) vaultSyncer(notify func(string)) (vaultsync.Syncer, error) {
 		return vaultsync.Syncer{}, err
 	}
 	return vaultsync.Syncer{Store: s.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
-		CredentialsPath: filepath.Join(s.Home, vaultsync.CredentialsFile), Notify: notify}, nil
+		Carry: s.carried(), Notify: notify}, nil
+}
+
+// profile is the directory the product reads config.json and credentials.json
+// from, the same one its own stores resolve.
+func (s *Sync) profile() string {
+	if s.ProfileDir != "" {
+		return s.ProfileDir
+	}
+	return s.Home
+}
+
+// carried is the profile state that travels in the vault beside the secrets.
+func (s *Sync) carried() []vaultsync.Carried {
+	dir := s.profile()
+	return []vaultsync.Carried{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir)}
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every

@@ -22,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -50,10 +51,13 @@ type Sync struct {
 	Counters *blobstore.Counters // what Store has been asked to move
 	Device   identity.Dev
 	Identity identity.Identity
-	Relay    string        // the normalized relay address every client and the ledger name are built from
-	Home     string        // the codeaf home: where the branch map and the stats files live
-	Ledger   string        // cellstore.LedgerName of Relay and the identity
-	Interval time.Duration // flush interval
+	Relay    string // the normalized relay address every client and the ledger name are built from
+	Home     string // the codeaf home: where the branch map and the stats files live
+	// ProfileDir is where the product keeps its profile files (config.json,
+	// credentials.json): CODEAF_PROFILE_DIR when set, else empty, which means Home.
+	ProfileDir string
+	Ledger     string        // cellstore.LedgerName of Relay and the identity
+	Interval   time.Duration // flush interval
 }
 
 // Open builds the clients for the relay named by CODEAF_SYNC_URL. It answers
@@ -124,15 +128,16 @@ func build(home, base string, id identity.Identity, dev identity.Dev, interval t
 	hc := &http.Client{Timeout: requestTimeout}
 	counters := &blobstore.Counters{}
 	return &Sync{
-		Dir:      directory.NewHTTP(base, sign, hc),
-		Store:    blobstore.Counting{Inner: blobstore.NewHTTP(base, sign, hc), C: counters},
-		Counters: counters,
-		Device:   dev,
-		Identity: id,
-		Relay:    base,
-		Home:     home,
-		Ledger:   cellstore.LedgerName(base, id.ID()),
-		Interval: interval,
+		Dir:        directory.NewHTTP(base, sign, hc),
+		Store:      blobstore.Counting{Inner: blobstore.NewHTTP(base, sign, hc), C: counters},
+		Counters:   counters,
+		Device:     dev,
+		Identity:   id,
+		Relay:      base,
+		Home:       home,
+		ProfileDir: strings.TrimSpace(env.Get(config.ProfileDirEnv)),
+		Ledger:     cellstore.LedgerName(base, id.ID()),
+		Interval:   interval,
 	}
 }
 

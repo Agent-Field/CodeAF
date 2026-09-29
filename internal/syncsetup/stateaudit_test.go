@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -73,6 +74,9 @@ type audited struct {
 // auditCredentials is a fake connections file, obviously not a key.
 const auditCredentials = `{"mail":{"key":"FAKE-not-a-real-key"}}`
 
+// auditConfig is a fake profile config: a model key and a budget.
+const auditConfig = `{"api_key":"FAKE-model-key","daily_budget":42}`
+
 func TestTwoHomesStateAudit(t *testing.T) {
 	h := newTwoHomes(t)
 	seedTree(t, h.work)
@@ -117,7 +121,8 @@ func TestTwoHomesStateAudit(t *testing.T) {
 	t.Run("task worktree registration is not stale on B", au.registrationClean)
 	t.Run("artifact file travels", au.artifactFileTravels)
 	t.Run("artifacts index row is on B", au.artifactRowOnB)
-	t.Run("credentials travel through the vault", func(t *testing.T) { au.credentialsTravel(t, h.b.Home) })
+	t.Run("model keys travel and budgets stay", func(t *testing.T) { au.modelKeysTravel(t, h.b.profile()) })
+	t.Run("credentials travel through the vault", func(t *testing.T) { au.credentialsTravel(t, h.b.profile()) })
 }
 
 // keepOnA makes the four kinds of state on A, before the chat's turn is sealed.
@@ -147,7 +152,12 @@ func (au *audited) keepOnA(t *testing.T, h *twoHomes) {
 	// a memory, written through the store the way the chat writes it.
 	au.memoryID = au.remember(t, h)
 	// a connections file in A's state root, which the vault carries.
-	if err := os.WriteFile(filepath.Join(h.a.Home, vaultsync.CredentialsFile), []byte(auditCredentials), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.a.profile(), vaultsync.CredentialsFile), []byte(auditCredentials), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// and a profile config with a model key and a budget, of which only the key
+	// travels.
+	if err := os.WriteFile(config.BudgetConfigPath(h.a.profile()), []byte(auditConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// an artifact: a file in the session's artifacts/ and its row in the index.
@@ -272,3 +282,16 @@ func (au *audited) credentialsTravel(t *testing.T, homeB string) {
 		t.Fatalf("B has no credentials.json from A (read error %v, content matches %v)", err, string(got) == auditCredentials)
 	}
 }
+
+// modelKeysTravel: the model key in config.json rides in the vault, and the
+// budget beside it stays on the machine it was set on.
+func (au *audited) modelKeysTravel(t *testing.T, profileB string) {
+	if got := config.PersistedAPIKey(profileB); got != "FAKE-model-key" {
+		t.Fatal("B does not hold A's model key")
+	}
+	if config.BudgetConfigPath(profileB) == "" || strings.Contains(readFileOrEmpty(config.BudgetConfigPath(profileB)), "daily_budget") {
+		t.Fatal("A's budget travelled")
+	}
+}
+
+func readFileOrEmpty(path string) string { raw, _ := os.ReadFile(path); return string(raw) }

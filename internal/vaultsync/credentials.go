@@ -8,120 +8,74 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
-	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
 const (
 	// CredentialsFile is the name the connections store keeps its keys under.
 	CredentialsFile = "credentials.json"
-	// credentialsID is the vault slot that holds the file. It is not a random
-	// secret id, so every machine addresses the same slot and merge compares
-	// their copies of it.
-	credentialsID = "home:" + CredentialsFile
-	// credentialsScope matches no project (a project is a remote or a cell id),
-	// so Entries never offers the file to a workspace's .env.
-	credentialsScope = "home:credentials"
+	// homeScope matches no project (a project is a remote or a cell id), so
+	// Entries never offers a carried slot to a workspace's .env.
+	homeScope = "home:carried"
 )
 
-// credentials moves the one credentials.json between the disk and the vault.
-type credentials struct {
-	path  string
-	vault VaultFile
+// Credentials carries the connections store at path. The slot id is not a random
+// secret id, so every machine addresses the same slot.
+func Credentials(path string) Carried {
+	return Carried{ID: "home:" + CredentialsFile, Scope: homeScope, Name: CredentialsFile, Medium: credentialsFile{path}}
 }
 
-func (s Syncer) credentials() credentials {
-	return credentials{path: s.CredentialsPath, vault: s.Vault}
-}
+// credentialsFile is the connections file as a Medium.
+type credentialsFile struct{ path string }
 
-// Capture stores a changed credentials.json in the vault without any network,
-// so a caller that fingerprints the vault sees the change.
-func (s Syncer) Capture() error { return s.credentials().capture() }
-
-// capture copies the file into the vault slot when it differs from the slot,
-// stamped with the file's modification time rather than the time of capture: an
-// edit made here yesterday must not beat a newer one another machine sent today
-// just because this machine looked at the file later. A
-// missing file tombstones the slot, which is how a removal travels; the vault
-// leaves an already absent slot alone. A damaged file is left out, because
-// storing it would replace a good copy with one nobody can read.
-func (c credentials) capture() error {
-	raw, at, err := c.read()
-	if errors.Is(err, os.ErrNotExist) {
-		return c.vault.Delete(credentialsID)
-	}
-	if err != nil || !json.Valid(raw) {
-		return err
-	}
-	if held, err := c.vault.Get(credentialsID); err == nil && held.Value == string(raw) {
-		return nil
-	}
-	return c.vault.PutAt(credentialsID, keys.Entry{Name: CredentialsFile, Value: string(raw), Scope: credentialsScope}, at)
-}
-
-// read answers the file and when it was last saved.
-func (c credentials) read() ([]byte, time.Time, error) {
-	info, err := os.Stat(c.path)
+func (f credentialsFile) Read() (string, time.Time, error) {
+	info, err := os.Stat(f.path)
 	if err != nil {
-		return nil, time.Time{}, err
+		return "", time.Time{}, err
 	}
-	raw, err := os.ReadFile(c.path)
-	return raw, info.ModTime(), err
+	raw, err := os.ReadFile(f.path)
+	if err == nil && !json.Valid(raw) {
+		err = ErrDamaged
+	}
+	return string(raw), info.ModTime(), err
 }
 
-// restore makes the file match the slot: a live slot is written, a tombstone
-// removes the file, and a slot that never existed leaves the file alone.
-func (c credentials) restore() error {
-	held, err := c.vault.Get(credentialsID)
-	if errors.Is(err, keys.ErrNotFound) {
-		return c.restoreAbsence()
-	}
-	if err != nil {
-		return err
-	}
-	return c.write([]byte(held.Value))
-}
+func (f credentialsFile) Realized(content string) string { return content }
 
-func (c credentials) restoreAbsence() error {
-	gone, err := c.vault.Deleted(credentialsID)
-	if err != nil || !gone {
-		return err
-	}
-	return ignoreMissing(os.Remove(c.path))
-}
+func (f credentialsFile) Clear() error { return ignoreMissing(os.Remove(f.path)) }
 
-// write replaces the file with raw under the lock the connections store takes,
-// so a save in another process is not overwritten between its read and its
-// rename. A damaged file already there is kept beside it first: the person may
-// have been mid-edit.
-func (c credentials) write(raw []byte) error {
-	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
+// Write replaces the file under the lock the connections store takes, so a save
+// in another process is not overwritten between its read and its rename. A
+// damaged file already there is kept beside it first: the person may have been
+// mid-edit.
+func (f credentialsFile) Write(content string) error {
+	if err := os.MkdirAll(filepath.Dir(f.path), 0o700); err != nil {
 		return err
 	}
-	unlock, err := lockFile(c.path + ".lock")
+	unlock, err := lockFile(f.path + ".lock")
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	if same, err := c.holds(raw); same || err != nil {
+	if same, err := f.holds(content); same || err != nil {
 		return err
 	}
-	return writeAtomic(c.path, raw)
+	return writeAtomic(f.path, []byte(content))
 }
 
-// holds reports whether the file already has raw, and sets a damaged file aside
-// so the write that follows does not destroy it.
-func (c credentials) holds(raw []byte) (bool, error) {
-	have, err := os.ReadFile(c.path)
+// holds reports whether the file already has content, and sets a damaged file
+// aside so the write that follows does not destroy it.
+func (f credentialsFile) holds(content string) (bool, error) {
+	have, err := os.ReadFile(f.path)
 	if err != nil {
 		return false, ignoreMissing(err)
 	}
-	if string(have) == string(raw) {
+	if string(have) == content {
 		return true, nil
 	}
 	if json.Valid(have) {
 		return false, nil
 	}
-	return false, os.Rename(c.path, c.path+".damaged")
+	return false, os.Rename(f.path, f.path+".damaged")
 }
 
 func lockFile(path string) (func(), error) {
