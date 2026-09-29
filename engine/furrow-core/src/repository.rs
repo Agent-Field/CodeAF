@@ -72,6 +72,10 @@ pub struct SnapshotSummary {
     pub trigger: String,
     pub materialization: MaterializationReport,
     pub pinned: bool,
+    /// True when the snapshot names a parent this store does not hold, as an
+    /// imported head does. Absent from the JSON when false.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub shallow: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -588,9 +592,33 @@ impl FurrowRepository {
                     trigger: row.trigger,
                     materialization: self.materialization(&row.id)?,
                     pinned: pinned.contains(&row.id),
+                    shallow: self.is_shallow(&row.id)?,
                 })
             })
             .collect()
+    }
+
+    /// True when the snapshot's parent is not in this store.
+    fn is_shallow(&self, id: &ObjectId) -> anyhow::Result<bool> {
+        let snapshot: Snapshot = self.store.read_struct(id, ObjectKind::Snapshot)?;
+        match snapshot.parent {
+            Some(parent) => Ok(!self.store.contains_object(&parent)?),
+            None => Ok(false),
+        }
+    }
+
+    /// Makes an imported snapshot the workspace head, recorded in the ref log
+    /// the way a seal records one, so the next seal takes it as its parent.
+    /// The snapshot's own parent may be absent from this store.
+    pub fn adopt_head(&mut self, id: &ObjectId) -> anyhow::Result<()> {
+        let snapshot: Snapshot = self.store.read_struct(id, ObjectKind::Snapshot)?;
+        self.store.publish_snapshot(
+            &self.workspace_id,
+            *id,
+            snapshot.sealed_at_secs,
+            snapshot.label,
+            snapshot.trigger,
+        )
     }
 
     pub fn status(&self) -> anyhow::Result<RepositoryStatus> {
@@ -2724,7 +2752,9 @@ impl FurrowRepository {
     pub fn resolve_snapshot(&self, value: &str) -> anyhow::Result<ObjectId> {
         if value.len() == 64 {
             let id = parse_id(value)?;
-            self.store.read_bytes(&id, ObjectKind::Snapshot)?;
+            self.store
+                .read_bytes(&id, ObjectKind::Snapshot)
+                .with_context(|| format!("snapshot {value} is not held in this store"))?;
             return Ok(id);
         }
         anyhow::ensure!(
