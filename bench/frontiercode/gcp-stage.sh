@@ -53,7 +53,7 @@ foreign="$(git -C "$FC_REPO_ROOT" ls-files --others --exclude-standard | grep -v
 # refs, not bare revisions, so the commit must be the tip of a branch the
 # bundle will carry — which is the committed HEAD of the checkout being staged.
 rig_commit="$(fc_get '.rig_commit')"
-[ "$rig_commit" = "HEAD" ] && rig_commit="$(git -C "$FC_REPO_ROOT" rev-parse HEAD)"
+if [ "$rig_commit" = "HEAD" ]; then rig_commit="$(git -C "$FC_REPO_ROOT" rev-parse HEAD)"; fi
 git -C "$FC_REPO_ROOT" cat-file -e "$rig_commit^{commit}" 2>/dev/null || fc_die "rig commit $rig_commit is not in this checkout"
 head_commit="$(git -C "$FC_REPO_ROOT" rev-parse HEAD)"
 [ "$head_commit" = "$rig_commit" ] || fc_die "HEAD $head_commit is not the pinned rig commit $rig_commit — commit the rig, or update the manifest"
