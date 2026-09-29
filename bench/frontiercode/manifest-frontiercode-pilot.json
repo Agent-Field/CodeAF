@@ -30,7 +30,7 @@
  "rig_commit": "HEAD",
  "rig_commit_note": "HEAD means the committed tip of the checkout being staged is the pin: a commit cannot name itself, so a literal here is refused the moment the rig is committed again. The sha is resolved and recorded at stage time, and staging refuses a dirty checkout or a commit no branch contains. codeaf_commit above stays literal because it names the revision the shipped binary was built from.",
  "corpus": "bench/frontiercode/tasks",
- "corpus_sha256": "9e8ff1d7a68c42b0629a4ca039a66602dd112219e3e89969a004cc7ae7873040",
+ "corpus_sha256": "49f18e045a8b82fb448219264ddaa11ffe1dfe3492ef3ea454a28aafd11a7ccc",
  "host_shards": 1,
  "wave_capacity": 5,
  "per_container": {
@@ -41,7 +41,7 @@
   "1": "bench/frontiercode/shards/shard-1.txt"
  },
  "shard_sha256": {
-  "1": "649e7c20f346da3fe40868dc097019fd609d3c29e62dd2acbcc720d4b88a0e01"
+  "1": "080eaa812acb69b12ccc25c2270e5efa247114eefb1b5ce57d4cd0404180514d"
  },
  "max_cost_usd": "500.00",
  "max_cost_note": "Per run, and enforced: launch.sh passes this to run.sh as the agent's dollar ceiling, and the judge's tokens bill against the same figure. It is not a campaign total. The campaign's provider-side spend is the delta of the key's usage counter between the baseline recorded at install and the final read at teardown.",
