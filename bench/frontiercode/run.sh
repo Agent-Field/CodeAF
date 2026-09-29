@@ -199,10 +199,10 @@ docker cp "$TASK_DIR/instruction.md" "$NAME:/bench/instruction.md" >> "$OUT/dock
 cp "$TASK_DIR/instruction.md" "$OUT/prompt.md"
 # The repo must be clean before a run can start (senior-dev refuses a dirty
 # tree — the folder is readied, not worked over) and the base asserted.
-docker exec -w /root/repos/jsonschema "$NAME" sh -c \
-  'git config --global --add safe.directory /root/repos/jsonschema; git status --porcelain | wc -l' \
+docker exec -w /root/repos/$TASK_AGENT_REPO "$NAME" sh -c \
+  "git config --global --add safe.directory /root/repos/$TASK_AGENT_REPO; git status --porcelain | wc -l" \
   > "$OUT/base-status.txt" 2>> "$OUT/docker.log"
-docker exec -w /root/repos/jsonschema "$NAME" git rev-parse HEAD > "$OUT/base-head.txt" 2>> "$OUT/docker.log"
+docker exec -w /root/repos/$TASK_AGENT_REPO "$NAME" git rev-parse HEAD > "$OUT/base-head.txt" 2>> "$OUT/docker.log"
 if [ "$(cat "$OUT/base-head.txt")" != "$TASK_BASE" ] || [ "$(tr -d '[:space:]' < "$OUT/base-status.txt")" != "0" ]; then
   meta "stage=base-not-pristine"
   log "$TASK: the task tree is not pristine at the base commit — refusing to run"
@@ -217,7 +217,7 @@ docker exec -i "$NAME" tee /bench/drive.sh > /dev/null <<INNER
 set -u
 exec /usr/local/bin/codeaf senior-dev run \\
   --json \\
-  --dir /root/repos/jsonschema \\
+  --dir /root/repos/$TASK_AGENT_REPO \\
   --max-cost "$MAX_COST" \\
   --max-hours "$MAX_HOURS" \\
   --variant "$VARIANT" \\
@@ -263,7 +263,7 @@ docker exec -i "$NAME" tee /bench/collect.sh > /dev/null <<'COLLECT'
 set -u
 base="$1"; out=/bench/candidates
 rm -rf "$out"; mkdir -p "$out"
-cd /root/repos/jsonschema || exit 1
+cd "/root/repos/$2" || exit 1
 git add -A >/dev/null 2>&1
 git diff --cached --binary "$base" > "$out/worktree.patch" 2>/dev/null
 for ref in $(git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null); do
@@ -277,7 +277,7 @@ for f in "$out"/*.patch; do
 done
 COLLECT
 docker exec "$NAME" chmod +x /bench/collect.sh >> "$OUT/docker.log" 2>&1
-docker exec "$NAME" /bench/collect.sh "$TASK_BASE" > "$OUT/candidates.tsv" 2>> "$OUT/docker.log"
+docker exec "$NAME" /bench/collect.sh "$TASK_BASE" "/root/repos/$TASK_AGENT_REPO" > "$OUT/candidates.tsv" 2>> "$OUT/docker.log"
 BEST=$(sort -t"$(printf '\t')" -k1,1nr "$OUT/candidates.tsv" 2>/dev/null | head -1 | cut -f2)
 BEST="${BEST:-worktree.patch}"
 docker exec "$NAME" cat "/bench/candidates/$BEST" > "$OUT/model.patch" 2>> "$OUT/docker.log"
