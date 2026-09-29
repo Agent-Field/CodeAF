@@ -256,9 +256,9 @@ func (s *Sync) profile() string {
 }
 
 // carried is the profile state that travels in the vault beside the secrets.
-func (s *Sync) carried() []vaultsync.Carried {
+func (s *Sync) carried() []vaultsync.Carrier {
 	dir := s.profile()
-	return []vaultsync.Carried{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir)}
+	return []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home)}
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every

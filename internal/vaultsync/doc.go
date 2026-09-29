@@ -11,16 +11,19 @@
 // name only) through Syncer.Notify. When nothing is missing the file is not
 // touched. A new file is mode 0600.
 //
-// The carried-state rule. credentials.json, and the provider keys of the
-// profile config (syncsetup), each ride in the vault as one reserved slot, so
-// they are sealed with the cell key, pushed when they change, deleted by a
-// tombstone and merged by the newer slot stamp exactly like a secret: the last
-// machine to save one wins whole, and a delete beats an older copy. Each is
-// captured into its slot before every push and pull, stamped with its save time
-// so a late look never beats a newer edit sent by another machine, and restored
-// from the slot after every merge. A damaged copy is never captured, so it
-// cannot bury a good one. The rest of config.json (budgets, rails, model picks)
-// is never carried: those belong to the machine they were set on.
+// The carried-state rule. Two kinds of profile state ride in the vault beside
+// the secrets, sealed with the cell key, pushed when they change, deleted by a
+// tombstone and merged by the newer stamp exactly like a secret. credentials.json
+// is one whole-file slot, stamped with the file's save time. The provider keys of
+// the profile config (syncsetup) are one entry per key, like .env names: a key is
+// stamped only when its value changed since the last capture (a local ledger of
+// digests remembers), so an edit to anything else in config.json never ages a
+// key; a machine with no place for a key has no opinion on it, and only a key
+// this machine once shared can be tombstoned by it. Everything is captured
+// before every push and pull and restored after every merge. A damaged copy is
+// never captured, so it cannot bury a good one. The rest of config.json
+// (budgets, rails, model picks) is never carried: those belong to the machine
+// they were set on.
 //
 // Nothing here ever logs, returns or notifies a secret value; only names.
 package vaultsync
