@@ -8,6 +8,10 @@
 //
 //	go run ./internal/furrowbin/cmd/fetch
 //	go run ./internal/furrowbin/cmd/fetch -from ~/.agentfield/bin/furrow
+//	go run ./internal/furrowbin/cmd/fetch -built engine/target/release/furrow
+//
+// -built stages a furrow compiled from engine/ in this tree. The tree is its
+// own provenance, so nothing is checked against the pin.
 //
 // A build machine with no network is the case worth spelling out: -from takes
 // the artifact off local disk and checks it against the same pin, so an air
@@ -40,6 +44,7 @@ func main() {
 	var (
 		cache = flag.String("cache", filepath.Join("third_party", "furrow"), "where verified artifacts are kept between builds")
 		stage = flag.String("stage", filepath.Join("internal", "furrowbin", "cache"), "the embedded folder to stage this platform's furrow into")
+		built = flag.String("built", "", "stage this furrow, compiled from engine/ in this tree, without consulting the pin")
 		from  = flag.String("from", "", "read the artifact from this local file instead of downloading it")
 		goos  = flag.String("goos", envOr("GOOS", runtime.GOOS), "the platform being built for")
 		arch  = flag.String("goarch", envOr("GOARCH", runtime.GOARCH), "the architecture being built for")
@@ -47,6 +52,13 @@ func main() {
 	flag.Parse()
 
 	platform := furrowbin.Platform(*goos, *arch)
+	if *built != "" {
+		if err := stageBuilt(*stage, platform, *built); err != nil {
+			fmt.Fprintf(os.Stderr, "stage the built furrow: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := fetch(furrowbin.ReadPin(), platform, *cache, *stage, *from); err != nil {
 		fmt.Fprint(os.Stderr, refusal(furrowbin.ReadPin(), platform, err))
 		os.Exit(1)
@@ -102,6 +114,15 @@ func fetch(pin furrowbin.Pin, platform, cache, stage, from string) error {
 
 	if err := writeFile(cached, binary, 0o644); err != nil {
 		return err
+	}
+	return stageInto(stage, platform, binary)
+}
+
+// stageBuilt stages a furrow compiled from this tree's engine/.
+func stageBuilt(stage, platform, path string) error {
+	binary, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
 	}
 	return stageInto(stage, platform, binary)
 }

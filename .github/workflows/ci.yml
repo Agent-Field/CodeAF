@@ -73,6 +73,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Build furrow from engine/
+        working-directory: engine
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          cargo build --release --locked -p furrow-cli
 
       # Several sessions work this tree at once and a half-finished file breaks
       # the build for everyone. This is the cheapest way to find that out, and
