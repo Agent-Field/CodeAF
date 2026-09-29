@@ -198,6 +198,10 @@ func TestAShellRunStartsBesideChangesThatAreNotCommitted(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "draft.md"), []byte("mine\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	shellGit(t, repo, "add", "draft.md")
+	if err := os.WriteFile(filepath.Join(repo, "credentials.json"), []byte("local input\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	err := runCarried(fakeFolderProgram(), []string{"--dir", repo, "make a file"})
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("the shell run left with %d (%v):\n%s", code, err, printed)
@@ -209,8 +213,11 @@ func TestAShellRunStartsBesideChangesThatAreNotCommitted(t *testing.T) {
 	if first := shellGit(t, repo, "log", "--format=%s", "--reverse", "main.."+branch); !strings.HasPrefix(first, "Your uncommitted changes when ") {
 		t.Fatalf("the branch does not open on the person's changes:\n%s", first)
 	}
-	if status := shellGit(t, repo, "status", "--porcelain"); status != "?? draft.md" || shellGit(t, repo, "branch", "--show-current") != "main" {
+	if status := shellGit(t, repo, "status", "--porcelain"); status != "A  draft.md\n?? credentials.json" || shellGit(t, repo, "branch", "--show-current") != "main" {
 		t.Fatalf("the person's checkout was touched: %q", status)
+	}
+	if !strings.Contains(printed.String(), "copied as local inputs, not committed") {
+		t.Fatalf("the shell receipt did not distinguish the untracked input:\n%s", printed)
 	}
 }
 

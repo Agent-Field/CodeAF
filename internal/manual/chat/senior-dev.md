@@ -538,7 +538,8 @@ at once and your checkout is never touched, and it is removed the moment senior-
 another account made, is refused rather than used.
 
 **It starts from your folder as it stands**: your last commit, and your uncommitted changes
-as the branch's first commit. What git ignores is not in a fresh checkout, so a few ignored
+in tracked or staged files as the branch's first commit. Untracked files are copied as
+local inputs without being committed. What git ignores is not in a fresh checkout, so a few ignored
 things at the top of your repository are carried in (next section); nothing else is, and
 build output such as `bin/`, `dist/` or `target/` never is, because two runs building into
 one folder corrupt each other.
@@ -632,7 +633,7 @@ the copy is for, and nothing about it is reported or undone.
 
 **senior-dev starts from your folder as it stands, uncommitted changes included**, so "finish
 the implementation" hands it what you have so far. Modified files (staged or not), deleted
-files and new files git does not ignore are written into one commit on top of the commit
+files and explicitly staged new files are written into one commit on top of the commit
 your checkout stands on — `Your uncommitted changes when senior-dev's run began` — and its
 branch begins with it. codeaf only reads your folder to do this: your files, your index
 (what you staged stays staged) and your branch are exactly as they were, and your changes
@@ -648,9 +649,10 @@ and a run that adds nothing to them changed nothing.
 
 **Bringing it in**: `git merge` will not overwrite files you have uncommitted, and the branch
 begins with those very files, so the ending says ``put yours aside with `git -C '<folder>'
-stash -u` and `git -C '<folder>' merge <branch>` brings in both``. If you changed nothing
-after the run began, `git stash drop` then discards the copy you put aside; if you did,
-`git stash pop` puts those later edits back on top.
+stash` and `git -C '<folder>' merge <branch>` brings in both``. If you changed nothing
+after the run began, `git stash drop` then discards the tracked changes you put aside; if
+you did, `git stash pop` puts those later edits back on top. Keep untracked inputs in place:
+they are absent from the branch, so do not include them in a stash you plan to discard.
 
 **A merge, rebase or cherry-pick in progress is not carried**, because its files hold
 conflict markers: `Your uncommitted changes (…) are not in its copy: your checkout is in the
@@ -658,6 +660,19 @@ middle of a merge.` The run still starts, from your last commit.
 
 Until 2026-09-28 senior-dev worked in your checkout itself and refused to start with
 `<folder> has changes that are not committed (…); commit or stash them, then ask again`.
+
+## Untracked files, credentials and large local inputs — copied without being committed
+
+Files that were untracked when the run began are copied into its worktree as local inputs.
+They are absent from the initial commit, eager checkpoints, submitted snapshots and final
+cleanup commits, even if the run edits them. Copying them does not write their contents as
+git objects. Your originals remain where they were, untracked. The receipt says
+`Your untracked files (…) are copied as local inputs, not committed.`
+
+To include a new file in the branch, stage it before starting a new run. Files senior-dev
+creates during the run can still enter its branch normally. Automatic retries copy only
+the original input names again from your checkout; newly untracked files are not added.
+Edits to copied inputs stay local to the temporary worktree and disappear when it is removed.
 
 ## Two senior-dev runs on one repository, the folder is busy — runs side by side, one run per plain folder, another window, a shell run
 

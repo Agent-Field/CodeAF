@@ -14,8 +14,8 @@ package session
 //     one repository at once, and so that the person's own checkout, index and
 //     branch are never touched.
 //  2. THE COPY STARTS WHERE THE PERSON IS, UNCOMMITTED CHANGES AND ALL. What
-//     their checkout has not committed — edits, staged or not, and new files
-//     git does not ignore — is written into one commit on top of the one their
+//     their checkout tracks but has not committed — edits, staged or not,
+//     and staged new files — is written into one commit on top of the one their
 //     checkout stands on, through an index of codeaf's own, and the program's
 //     branch begins with it ([ProgramFolder.snapshotLeftBehind]). Their index,
 //     their files and their branch are only read, and the changes stay
@@ -23,7 +23,8 @@ package session
 //     merge or a rebase is not carried — its files hold conflict markers — and
 //     neither is anything when git cannot read it; the run is not refused for
 //     either, and the receipt and a shell run's first lines say which it was
-//     ([ProgramFolder.LeftBehindWords]).
+//     ([ProgramFolder.LeftBehindWords]). Untracked files are copied as local
+//     inputs, excluded from automatic commits and submission snapshots.
 //  3. A FEW FOLDERS GIT IGNORES ARE LINKED IN, NOT COPIED ([programCopyLinks]):
 //     installed dependencies and environment files the project's own build
 //     and tests need and a fresh checkout does not have — `node_modules`, a
@@ -177,6 +178,7 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 		return nil, fmt.Errorf("%s", programFolderBusy(dir, hold))
 	}
 	folder.lock = lock
+	folder.IgnoredAtStart = slices.Clone(folder.Untracked)
 	// THE RECORD IS WRITTEN BEFORE THE COPY IS CUT, so a process that goes
 	// away between the two leaves a record the next codeaf can finish from
 	// rather than a worktree nothing knows about.
@@ -184,6 +186,10 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 	if refusal := folder.cutCopy(); refusal != "" {
 		folder.forget()
 		return nil, fmt.Errorf("%s", refusal)
+	}
+	if err := folder.copyUntracked(); err != nil {
+		folder.forget()
+		return nil, err
 	}
 	offline := programNetworkOff()
 	folder.Linked, folder.Carried = carryIgnored(repo, dir, folder.Notes, links, offline, projectListed)
@@ -195,6 +201,7 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 	}
 	listed := strings.Split(strings.TrimSuffix(ignored, "\x00"), "\x00")
 	folder.IgnoredAtStart = append(listed, folder.Linked...)
+	folder.IgnoredAtStart = append(folder.IgnoredAtStart, folder.Untracked...)
 	if err := folder.writeIgnoredAtStart([]byte(strings.Join(folder.IgnoredAtStart, "\x00"))); err != nil {
 		folder.forget()
 		return nil, err
@@ -216,10 +223,12 @@ func (f *ProgramFolder) takeCarry(carry *programCarry) {
 	switch {
 	case tip == "":
 	case carry.Fresh:
+		f.Untracked = slices.Clone(carry.Untracked)
 		// THIS RUN'S START IS THE PASSED WORK'S TIP, so the files its ending
 		// counts are its own; its branch holds the passed work too, and says so.
 		f.Home, f.Start, f.From = carry.Home, tip, carry.Branch
 	default:
+		f.Untracked = slices.Clone(carry.Untracked)
 		// THE LINE'S START, NOT THIS RUN'S. "Changed nothing" and the files the
 		// ending counts are measured from where the first run of the line began,
 		// so a sent-back run can never read the earlier runs' work as none.
@@ -257,12 +266,64 @@ func (f *ProgramFolder) snapshotLeftBehind() {
 		f.LeftBehindWhy = "your checkout is in the middle of a " + half
 		return
 	}
+	untracked, err := git(f.Repo, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		f.LeftBehindWhy = "they could not be read (" + firstLine(untracked) + ")"
+		return
+	}
+	for _, name := range strings.Split(untracked, "\x00") {
+		if name != "" && slices.Contains(f.LeftBehind, name) {
+			f.Untracked = append(f.Untracked, name)
+		}
+	}
+	f.LeftBehind = withoutUntracked(f.LeftBehind, f.Untracked)
 	snapshot, err := snapshotCheckout(f.Repo, f.Start, f.Notes, f.Program)
 	if err != nil {
 		f.LeftBehindWhy = "they could not be read (" + err.Error() + ")"
 		return
 	}
 	f.Snapshot = snapshot
+}
+
+// copyUntracked carries local inputs as files rather than git objects. A
+// retry copies only its original input list, and never overwrites a path the
+// earlier run has already added to its branch.
+func (f *ProgramFolder) copyUntracked() error {
+	var copied []string
+	for _, name := range f.Untracked {
+		source, target := filepath.Join(f.Repo, name), filepath.Join(f.Dir, name)
+		if _, err := os.Lstat(source); errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if _, err := os.Lstat(target); err == nil {
+			continue
+		}
+		parent := canonicalPath(filepath.Dir(target))
+		if parent != canonicalPath(f.Dir) && !strings.HasPrefix(parent, canonicalPath(f.Dir)+string(filepath.Separator)) {
+			return fmt.Errorf("copy untracked %s: its parent is outside the run's copy", name)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		if err := copyPath(source, target); err != nil {
+			return fmt.Errorf("copy untracked %s: %w", name, err)
+		}
+		copied = append(copied, name)
+	}
+	f.Untracked = copied
+	return nil
+}
+
+// withoutUntracked separates the tracked snapshot's receipt from the local
+// inputs that are copied without entering history.
+func withoutUntracked(paths, untracked []string) []string {
+	var tracked []string
+	for _, name := range paths {
+		if !slices.Contains(untracked, name) {
+			tracked = append(tracked, name)
+		}
+	}
+	return tracked
 }
 
 // snapshotCheckout writes what the checkout at repo has not committed into one
@@ -279,7 +340,8 @@ func (f *ProgramFolder) snapshotLeftBehind() {
 // program's notes are what it leaves out instead of a task's droppings.
 //
 // ONLY WHAT GIT STATUS NAMES IS STAGED: tracked edits, staged or not,
-// deletions, and new files .gitignore does not cover. A path hidden by the
+// deletions, and explicitly staged new files. Untracked files are copied as
+// local inputs without entering this commit. A path hidden by the
 // person's index must stay at its committed bytes in the copy. What git
 // ignores is not in its world, and the copy carries the few such folders a
 // build needs instead ([programCopyLinks]).
@@ -1344,7 +1406,11 @@ func uncommittedSnapshotList(dir, notes string) ([]string, error) {
 // uncommittedStatusList reads the same status for the receipt and snapshot;
 // only the snapshot needs both paths from a rename or copy record.
 func uncommittedStatusList(dir, notes string, snapshot bool) ([]string, error) {
-	out, err := git(dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "-z")
+	untracked := "--untracked-files=all"
+	if snapshot {
+		untracked = "--untracked-files=no"
+	}
+	out, err := git(dir, "--no-optional-locks", "status", "--porcelain", untracked, "-z")
 	if err != nil {
 		return nil, errors.New(firstLine(out))
 	}
@@ -1383,10 +1449,22 @@ func (f *ProgramFolder) LeftBehindWords() string {
 	if !f.Copied() {
 		return ""
 	}
+	var said string
 	if f.Snapshot != "" {
-		return carriedInWords(f.LeftBehind)
+		said = carriedInWords(f.LeftBehind)
+	} else {
+		said = leftBehindWords(f.LeftBehind, f.LeftBehindWhy)
 	}
-	return leftBehindWords(f.LeftBehind, f.LeftBehindWhy)
+	return strings.TrimSpace(said + " " + copiedUntrackedWords(f.Untracked))
+}
+
+// copiedUntrackedWords says why local inputs are available but absent from
+// the branch, so a receipt never promises to merge files it did not commit.
+func copiedUntrackedWords(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return "Your untracked files (" + namedFew(paths, programFolderShown) + ") are copied as local inputs, not committed. Stage a file before starting a new run if it should be included in the branch."
 }
 
 // carriedInWords is the sentence for uncommitted changes a copy begins with
@@ -1433,6 +1511,9 @@ func (f *ProgramFolder) BriefNote() string {
 		// start again from the last one.
 		said += " Its branch begins with the person's own uncommitted work, committed there as it stood when this run began: it is the work so far, yours to build on."
 	}
+	if len(f.Untracked) > 0 {
+		said += " Files that were untracked in the person's checkout are copied here as local inputs, not deliverables: do not stage or commit them. Automatic checkpoints and the final commit leave them out, even if you edit them."
+	}
 	return said
 }
 
@@ -1447,7 +1528,7 @@ func (e ProgramFolderEnd) copySentence() string {
 		// the branch begins with those very files. Put aside, they come back
 		// through the branch itself, as they were when the run began.
 		merge = "its branch begins with your uncommitted changes as they were when it started, so put yours aside with `git -C " +
-			shellQuoted(f.Repo) + " stash -u` and `git -C " + shellQuoted(f.Repo) + " merge " + f.Branch + "` brings in both"
+			shellQuoted(f.Repo) + " stash` and `git -C " + shellQuoted(f.Repo) + " merge " + f.Branch + "` brings in both"
 	}
 	var said string
 	switch {

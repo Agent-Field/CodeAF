@@ -137,7 +137,29 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	if out, err := read.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git read-tree HEAD: %v: %s", err, strings.TrimSpace(string(out)))
 	}
-	add := exec.Command("git", "add", "-A", ".")
+	startPaths, err := util.InitialIgnoredPaths()
+	if err != nil {
+		return "", err
+	}
+	// LOCAL INPUTS NEVER ENTER GIT'S OBJECT STORE. Resetting them after a
+	// blanket add keeps them out of the tree but still writes their contents
+	// as blobs. Exclude them before staging, including literal unusual names.
+	paths, err := recorder.git("ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return "", err
+	}
+	pathspecs := []string{"."}
+	for _, path := range strings.Split(paths, "\x00") {
+		if path != "" && (recorder.ignoredAtStart(path, startPaths) || gitRunArtifact(path)) {
+			pathspecs = append(pathspecs, ":(top,exclude,literal)"+path)
+		}
+	}
+	pathspecFile := tmpIndex + ".paths"
+	defer os.Remove(pathspecFile)
+	if err := os.WriteFile(pathspecFile, []byte(strings.Join(pathspecs, "\x00")+"\x00"), 0o600); err != nil {
+		return "", err
+	}
+	add := exec.Command("git", "add", "-A", "--pathspec-from-file="+pathspecFile, "--pathspec-file-nul")
 	add.Dir, add.Env = recorder.workspace, env
 	if out, err := add.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git add -A: %v: %s", err, strings.TrimSpace(string(out)))
@@ -150,10 +172,6 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	staged, err := listed.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git ls-files in temporary index: %v: %s", err, strings.TrimSpace(string(staged)))
-	}
-	startPaths, err := util.InitialIgnoredPaths()
-	if err != nil {
-		return "", err
 	}
 	var excluded []string
 	for _, path := range strings.Split(string(staged), "\x00") {
@@ -428,18 +446,35 @@ func (recorder *gitRecorder) Summary(
 // only under the git recorder: the advice it gives -- commit before verifying
 // -- is meaningless where nothing commits.
 func (recorder *gitRecorder) statusFindings() []string {
-	status, err := recorder.git("status", "--porcelain")
+	status, err := recorder.git("status", "--porcelain", "--untracked-files=all", "-z")
 	if err != nil {
 		return nil
 	}
-	entries := nonEmptyLines(status)
-	if len(entries) == 0 {
+	startPaths, err := util.InitialIgnoredPaths()
+	if err != nil {
+		return []string{err.Error()}
+	}
+	entries := 0
+	fields := strings.Split(status, "\x00")
+	for i := 0; i < len(fields); i++ {
+		entry := fields[i]
+		if len(entry) < 4 {
+			continue
+		}
+		if entry[0] == 'R' || entry[0] == 'C' || entry[1] == 'R' || entry[1] == 'C' {
+			i++
+		}
+		if path := entry[3:]; !recorder.ignoredAtStart(path, startPaths) && !gitRunArtifact(path) {
+			entries++
+		}
+	}
+	if entries == 0 {
 		return nil
 	}
 	return []string{fmt.Sprintf(
 		"git status is not clean (%d uncommitted entr%s) — the pinned command must pass "+
 			"on the COMMITTED tree, so commit before verifying",
-		len(entries), plural(len(entries), "y", "ies"),
+		entries, plural(entries, "y", "ies"),
 	)}
 }
 

@@ -175,8 +175,9 @@ hand-off starts a run of its own.
 ## Why was the delegate refused — uncommitted changes, the folder is busy, it runs alone, no such program
 
 **Uncommitted changes do not refuse it.** In a repository its copy starts from your folder
-as it stands: modified, staged and untracked files are carried in as the first commit on its
-branch, and stay uncommitted and untouched in your folder; the receipt names them. A merge,
+as it stands: modified tracked files and staged additions form the first commit on its
+branch. Untracked files are copied as local inputs and excluded from automatic commits,
+even if the run edits them. Your files stay untouched; the receipt distinguishes the two. A merge,
 rebase or cherry-pick half done is not carried, and the run starts from your last commit.
 
 **Runs on one repository work side by side**, each in a copy of its own. **A folder with
@@ -207,9 +208,8 @@ nothing squashes them. When it ends — finished, stopped, crashed, or codeaf go
 commits what it left uncommitted onto that branch (the task's title, with the program's
 own account of the ending as the body) and removes the copy, so **the branch is kept and
 checked out nowhere**, even when the run changed nothing. **Your checkout is never
-touched**: not your branch, not your uncommitted changes, which the copy starts from as its
-branch's first commit and which stay uncommitted in your folder (senior-dev's page says how
-to bring both in).
+touched**: tracked edits and staged additions become its branch's first commit while staying
+uncommitted in your folder. Untracked files are copied without being committed (senior-dev's page says how to bring the branch in).
 The task's page and the conversation say ``its work is on the branch <branch> in <folder>,
 N files; your checkout was not touched, and `git -C '<folder>' merge <branch>` brings it
 in``. Ask the chat to merge it, or run that yourself, when you are ready.

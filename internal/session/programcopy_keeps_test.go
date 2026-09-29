@@ -519,6 +519,7 @@ func TestACutWithNoGitLFSNamesTheCause(t *testing.T) {
 func TestUncommittedWorkCarriedInIsNeverCountedAsTheProgramsOwn(t *testing.T) {
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, "half.go"), "package half\n")
+	mustGit(t, repo, "add", "half.go")
 	writeFile(t, filepath.Join(repo, ".fake-notes", "old.md"), "a notes folder of the person's\n")
 	program := notesProgram()
 	folder := prepareIn(t, program, repo, "Finish it")
@@ -708,12 +709,14 @@ func TestASweptCopyStaysWhenItsCandidateCannotBeKept(t *testing.T) {
 func TestARunSentBackCountsFromThePersonsCarriedInWork(t *testing.T) {
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, "half.go"), "package half\n")
+	mustGit(t, repo, "add", "half.go")
+	writeFile(t, filepath.Join(repo, "credentials.json"), "local input\n")
 	program := testPrograms("fake")[0]
 	first := prepareIn(t, program, repo, "Finish it")
 	commitIn(t, first.Dir, "done.go")
 	first.Finish("")
 	writeFile(t, filepath.Join(repo, "later.go"), "package later\n")
-	carry := &programCarry{Branch: first.Branch, Root: repo, Home: first.Home, Start: first.Start, Snapshot: first.Snapshot}
+	carry := &programCarry{Branch: first.Branch, Root: repo, Home: first.Home, Start: first.Start, Snapshot: first.Snapshot, Untracked: first.Untracked}
 	second, err := PrepareProgramFolder(ProgramFolderOrder{Program: program, Dir: repo, Title: "Finish it", Holder: "task 2", Keep: t.TempDir(), Carry: carry})
 	if err != nil {
 		t.Fatal(err)
@@ -723,6 +726,9 @@ func TestARunSentBackCountsFromThePersonsCarriedInWork(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(second.Dir, "later.go")); !os.IsNotExist(err) {
 		t.Fatal("the person's newer change was carried into a sent-back run")
+	}
+	if got := readFile(t, filepath.Join(second.Dir, "credentials.json")); got != "local input\n" {
+		t.Fatalf("the retry lost its original local input: %q", got)
 	}
 	if end := second.Finish(""); !end.Kept || strings.Join(end.Changed, " ") != "done.go" {
 		t.Fatalf("the sent-back run counts %q, want the line's own done.go", end.Changed)

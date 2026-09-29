@@ -253,13 +253,19 @@ func programCopyReceipt(ground string, via delegate.Delegate, record *TaskCopyRe
 	}
 	said := "It is " + via.Name + "'s: it works alone in a private copy of " + ground + ", " + on +
 		"; your checkout is not touched, and when it ends " + record.Branch + " holds its work, checked out nowhere."
+	if words := copiedUntrackedWords(record.Untracked); words != "" {
+		said += " " + words
+	}
 	switch {
 	case record.Continues || record.From != "":
 		// A RUN THAT TAKES UP AN EARLIER RUN'S BRANCH starts from that branch,
 		// which began where the line's first run found the person.
 		return said
 	case record.Snapshot != "":
-		return said + " " + carriedInWords(uncommittedPaths(ground, via.Notes))
+		return said + " " + carriedInWords(withoutUntracked(uncommittedPaths(ground, via.Notes), record.Untracked))
+	}
+	if len(record.Untracked) > 0 {
+		return strings.TrimSpace(said + " " + leftBehindWords(withoutUntracked(uncommittedPaths(ground, via.Notes), record.Untracked), ""))
 	}
 	return said + leftBehindReceipt(ground, via)
 }

@@ -70,6 +70,8 @@ type TaskCopyRecord struct {
 	// Snapshot is the commit a program's branch begins with that carries the
 	// person's uncommitted changes into its copy ([ProgramFolder.Snapshot]).
 	Snapshot string `json:"snapshot,omitempty"`
+	// Untracked files are local inputs, never part of the program's branch.
+	Untracked []string `json:"untracked,omitempty"`
 }
 
 // runCopyOf writes a live run's copy down. It is taken from the tree the run is
@@ -93,6 +95,7 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		Continues: tree.continues,
 		From:      tree.from,
 		Snapshot:  tree.snapshot,
+		Untracked: append([]string(nil), tree.untracked...),
 	}
 }
 

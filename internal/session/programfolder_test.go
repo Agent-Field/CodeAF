@@ -43,9 +43,10 @@ func worktreeCount(t *testing.T, repo string) int {
 // PERSON IS, AND THE PERSON'S CHECKOUT IS NEVER TOUCHED. Uncommitted changes —
 // a modified file, an untracked one, a staged one — used to refuse the run, and
 // then were left out of the copy, so "finish what I'm in the middle of" was
-// handed the last commit; they are the first commit on the program's branch
-// now, and stay uncommitted and staged in the person's folder exactly as they
-// were. When the run ends its work is on its branch, counted from that commit,
+// handed the last commit. Tracked edits and staged additions are its first
+// commit now; untracked inputs are copied without entering history. They stay
+// uncommitted and staged in the person's folder exactly as they were. When
+// the run ends its work is on its branch, counted from that commit,
 // the copy is gone, and putting the person's changes aside brings in both.
 func TestAProgramWorksInACopyAndLeavesTheCheckoutAlone(t *testing.T) {
 	repo := newTestRepo(t)
@@ -112,12 +113,17 @@ func TestAProgramWorksInACopyAndLeavesTheCheckoutAlone(t *testing.T) {
 	}
 	// THE ENDING'S WAY IN WORKS: put the person's changes aside, and the merge
 	// brings them back through the branch, with the program's work on top.
-	mustGit(t, repo, "stash", "-u", "-q")
+	// Untracked inputs stay in place because the branch does not hold them.
+	mustGit(t, repo, "stash", "-q")
 	mustGit(t, repo, "merge", "-q", spec.ProgramBranch)
+	mustGit(t, repo, "stash", "drop", "-q")
 	for name, want := range map[string]string{"shared.txt": "the person's own line\n", "notes/draft.md": "draft\n", "new.go": "package x\n", "fix.go": "package fix\n"} {
 		if body := readFile(t, filepath.Join(repo, name)); body != want {
 			t.Fatalf("after the merge %s = %q, want %q", name, body, want)
 		}
+	}
+	if _, err := git(repo, "cat-file", "-e", spec.ProgramBranch+":notes/draft.md"); err == nil {
+		t.Fatal("the branch includes the person's untracked draft")
 	}
 }
 

@@ -74,6 +74,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
@@ -151,6 +152,9 @@ type ProgramFolder struct {
 	// copied, a folder cloned — rather than linked ([carryOne]).
 	Carried    []string `json:"carried,omitempty"`
 	LeftBehind []string `json:"leftBehind,omitempty"`
+	// Untracked names the person's loose files copied as local inputs. They
+	// stay outside every automatic commit, including a resumed run's ending.
+	Untracked []string `json:"untracked,omitempty"`
 	// Snapshot is the commit that carries those uncommitted changes into the
 	// copy, the first on the program's branch, whose parent is Start; empty
 	// when there were none, or when they could not be carried, which
@@ -196,7 +200,8 @@ type ProgramFolder struct {
 	// ([programCarry.Fresh]). Start is then that branch's tip, so the files the
 	// ending counts are this run's own.
 	From string `json:"from,omitempty"`
-	// IgnoredAtStart keeps paths git ignored before the run changed its rules.
+	// IgnoredAtStart keeps paths git ignored before the run changed its rules,
+	// together with the person's untracked inputs copied into the worktree.
 	IgnoredAtStart []string `json:"ignoredAtStart,omitempty"`
 	// IgnoredOuter is the enclosing repository when Dir itself is ignored by it.
 	IgnoredOuter string `json:"ignoredOuter,omitempty"`
@@ -633,8 +638,9 @@ func (f *ProgramFolder) homeMoved() (bool, string) {
 // folder onto its branch, in one commit whose subject is the run's title and
 // whose body is result, and answers git's line when it would not go.
 //
-// THE CHECKOUT WAS CLEAN AT THE START, but its ignore rules can change during
-// the run. Paths ignored at the start and known test droppings are never
+// TRACKED WORK IS COMMITTED AT THE START, but copied local inputs are not,
+// and ignore rules can change during the run. Those inputs, paths ignored at
+// the start and known test droppings are never
 // staged by this finishing commit. The notes are excluded for the same reason:
 // a program's private record must not enter the person's branch. It is only
 // ever made in a program's copy: a folder the person works in is never
@@ -798,6 +804,7 @@ func (f *ProgramFolder) tree() taskTree {
 		// outlives the copy, which is gone by the time anybody reads the row.
 		tree.root, tree.branch, tree.home, tree.homeSha = f.Ground(), f.Branch, f.Home, f.Start
 		tree.continues, tree.from, tree.snapshot = f.Continues, f.From, f.Snapshot
+		tree.untracked = slices.Clone(f.Untracked)
 	}
 	return tree
 }

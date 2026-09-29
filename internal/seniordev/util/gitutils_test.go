@@ -139,7 +139,10 @@ func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	ignored := filepath.Join(t.TempDir(), "ignored-at-start")
-	if err := os.WriteFile(ignored, []byte(".env\x00"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte("local input\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ignored, []byte(".env\x00credentials.json\x00"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SENIOR_DEV_EXPECTED_BRANCH", "task/run")
@@ -158,13 +161,13 @@ func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 	previous := skipEagerCommit.Load()
 	skipEagerCommit.Store(false)
 	defer skipEagerCommit.Store(previous)
-	for _, file := range []string{filepath.Join(dir, ".env"), cache} {
+	for _, file := range []string{filepath.Join(dir, ".env"), filepath.Join(dir, "credentials.json"), cache} {
 		EagerCommit(context.Background(), EagerCommitOptions{Cwd: dir, FilePath: file, Label: "write"})
 	}
 	if after := strings.TrimSpace(gitTestRun(t, dir, "rev-parse", "HEAD")); after != before {
 		t.Fatalf("eager commit moved the task branch from %s to %s", before, after)
 	}
-	for _, file := range []string{".env", "__pycache__/module.pyc"} {
+	for _, file := range []string{".env", "credentials.json", "__pycache__/module.pyc"} {
 		if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
 			t.Fatalf("%s was removed: %v", file, err)
 		}

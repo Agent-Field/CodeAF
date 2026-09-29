@@ -39,12 +39,13 @@ type programWish struct {
 // changes in on ([ProgramFolder.Snapshot]), which a run that carries the
 // branch on counts its work from.
 type programCarry struct {
-	Branch   string
-	Root     string
-	Home     string
-	Start    string
-	Snapshot string
-	Fresh    bool
+	Branch    string
+	Root      string
+	Home      string
+	Start     string
+	Snapshot  string
+	Untracked []string
+	Fresh     bool
 }
 
 type programWishKey struct{}
@@ -88,7 +89,7 @@ func (a *Agent) programCarryOf(prior *programOutcome, program string) *programCa
 		return nil
 	}
 	return &programCarry{Branch: record.Branch, Root: record.Root, Home: record.Home, Start: record.HomeSha, Snapshot: record.Snapshot,
-		Fresh: prior.verdict == programPassed}
+		Untracked: append([]string(nil), record.Untracked...), Fresh: prior.verdict == programPassed}
 }
 
 // programEffort is the rung a program's working model is asked for, as its
