@@ -80,9 +80,10 @@ func readTruth(path string) (metaTruth, error) {
 }
 
 // TruthCarriers is what a legacy folder carries into .cell/ when it migrates:
-// the state, task and team files, and the truth half of its meta.
+// the state, task and team files, the node journals, and the truth half of
+// its meta.
 func TruthCarriers() []cell.Carrier {
-	return []cell.Carrier{cell.Files(truthNames...), metaCarrier{}}
+	return []cell.Carrier{cell.Files(truthNames...), cell.Tree(truthTrees...), metaCarrier{}}
 }
 
 // metaCarrier stages the truth fields of the legacy meta.json into the new

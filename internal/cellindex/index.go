@@ -16,7 +16,7 @@ type Index interface {
 }
 
 // Indexes is the registry, in build order.
-var Indexes = []Index{metaIndex{}, usageIndex{}}
+var Indexes = []Index{metaIndex{}, usageIndex{}, taskIndex{}}
 
 // RebuildAt opens the cell at dir and rebuilds its missing indexes.
 func RebuildAt(dir string) ([]string, error) {

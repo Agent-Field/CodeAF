@@ -155,8 +155,9 @@ func (p Place) Tasks() string { return p.truth(placeTasks) }
 func (p Place) MetaPath() string { return p.join(placeMeta) }
 
 // NodeJournals is where task nodes and their audits keep their transcripts —
-// beside the conversation that commissioned them, not in a parallel tree.
-func (p Place) NodeJournals() string { return p.join(placeNodeJournals) }
+// beside the conversation that commissioned them, not in a parallel tree. They
+// are truth, so in the cell layout they sit inside .cell/ and travel with it.
+func (p Place) NodeJournals() string { return p.truth(placeNodeJournals) }
 
 // Logs holds the droppings — job logs and stubbed tool results. Everything in it is
 // re-creatable and carries the sweep's 7-day TTL; nothing in it is a

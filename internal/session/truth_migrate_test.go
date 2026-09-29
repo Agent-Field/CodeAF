@@ -66,3 +66,87 @@ func TestMigrationFinishesAFolderThatMovedOnlyItsJournal(t *testing.T) {
 	}
 	wantTruthMoved(t, dir)
 }
+
+// legacyWithJournals is a legacy folder that also ran two tasks, one of them
+// with a nested audit directory.
+func legacyWithJournals(t *testing.T) (dir string, journals map[string]string) {
+	t.Helper()
+	dir = legacySession(t)
+	journals = map[string]string{
+		"20260824-100000_1.jsonl":            "{\"n\":1}\n",
+		"20260824-100100_2.jsonl":            "{\"n\":2}\n",
+		"audit/20260824-100200_2-audit.json": "{\"a\":2}\n",
+	}
+	for name, body := range journals {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, placeNodeJournals, name)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		putFile(t, filepath.Join(dir, placeNodeJournals, name), body)
+	}
+	return dir, journals
+}
+
+func wantJournalsMoved(t *testing.T, dir string, journals map[string]string) {
+	t.Helper()
+	for name, want := range journals {
+		if got := slurp(t, filepath.Join(dir, cellStateDir, placeNodeJournals, name)); got != want {
+			t.Errorf(".cell/tasks/%s = %q", name, got)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, placeNodeJournals)); !os.IsNotExist(err) {
+		t.Errorf("tasks/ left at the top: %v", err)
+	}
+	if got := (Place{Dir: dir}).NodeJournals(); got != filepath.Join(dir, cellStateDir, placeNodeJournals) {
+		t.Errorf("NodeJournals = %s", got)
+	}
+}
+
+func TestMigrationCarriesTheNodeJournals(t *testing.T) {
+	dir, journals := legacyWithJournals(t)
+	for range 2 {
+		if err := cell.MigrateLegacy(dir, TruthCarriers()...); err != nil {
+			t.Fatal(err)
+		}
+		wantJournalsMoved(t, dir, journals)
+	}
+}
+
+// Every crash point of a migration opens and the next call finishes it: with
+// the cell renamed into place and the journals still linked at both names, and
+// with a journal a window wrote at the old name after the link.
+func TestInterruptedMigrationFinishesTheNodeJournals(t *testing.T) {
+	dir, journals := legacyWithJournals(t)
+	if err := cell.MigrateLegacy(dir); err != nil { // the journal moved, nothing else
+		t.Fatal(err)
+	}
+	late := "20260824-100300_3.jsonl"
+	putFile(t, filepath.Join(dir, placeNodeJournals, late), "{\"n\":3}\n")
+	journals[late] = "{\"n\":3}\n"
+	if err := cell.MigrateLegacy(dir, TruthCarriers()...); err != nil {
+		t.Fatal(err)
+	}
+	wantJournalsMoved(t, dir, journals)
+}
+
+// A crash after every file is linked but before the legacy names go leaves two
+// names for one file; the next call removes the legacy ones.
+func TestMigrationDropsTheSecondNameOfALinkedJournal(t *testing.T) {
+	dir, journals := legacyWithJournals(t)
+	if err := cell.MigrateLegacy(dir, TruthCarriers()...); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range journals { // put the legacy names back as links
+		to := filepath.Join(dir, placeNodeJournals, name)
+		if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Link(filepath.Join(dir, cellStateDir, placeNodeJournals, name), to); err != nil {
+			t.Fatal(err)
+		}
+		_ = body
+	}
+	if err := cell.MigrateLegacy(dir, TruthCarriers()...); err != nil {
+		t.Fatal(err)
+	}
+	wantJournalsMoved(t, dir, journals)
+}

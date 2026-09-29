@@ -18,7 +18,7 @@ const stagingDir = ".cell-staging"
 // MigrateLegacy turns a legacy session folder into a cell in place. The
 // folder keeps its name, so a session keeps its id. The truth moves into .cell/
 // with the journal (internal/session/layout.go): state.json, tasks.json,
-// team.json and the truth half of the session meta. tasks/ (node journals),
+// team.json, tasks/ (node journals) and the truth half of the session meta.
 // trees/ (git worktrees, which record absolute paths) and the derived files
 // (meta.json summary, card.json) stay where they are. What appears is .cell/
 // with those, an env/ directory and a meta.json that holds no absolute path.
@@ -145,6 +145,9 @@ func dropLegacyName(dir, name string) error {
 	}
 	held, err := os.Stat(kept)
 	if errors.Is(err, fs.ErrNotExist) {
+		if err := os.MkdirAll(filepath.Dir(kept), 0o700); err != nil {
+			return err
+		}
 		return os.Rename(legacy, kept)
 	}
 	if err != nil || !os.SameFile(old, held) {
