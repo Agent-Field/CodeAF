@@ -45,8 +45,19 @@ impl RemoteCrypto {
             object_id(kind, bytes) == *id,
             "object ID does not match bytes"
         );
-        let nonce = self.object_nonce(id);
-        let remote_id = self.remote_id(id);
+        self.seal_with(&self.remote_id(id), &self.object_nonce(id), id, kind, bytes)
+    }
+
+    /// Frames `kind ‖ id ‖ bytes` under an explicit remote id and nonce.
+    /// The caller has already checked that `id` names `bytes`.
+    pub(crate) fn seal_with(
+        &self,
+        remote_id: &ObjectId,
+        nonce: &[u8; NONCE_LEN],
+        id: &ObjectId,
+        kind: ObjectKind,
+        bytes: &[u8],
+    ) -> anyhow::Result<Vec<u8>> {
         let mut plaintext = Zeroizing::new(Vec::with_capacity(1 + id.len() + bytes.len()));
         plaintext.push(kind as u8);
         plaintext.extend_from_slice(id);
@@ -54,22 +65,39 @@ impl RemoteCrypto {
         let ciphertext = self
             .cipher()
             .encrypt(
-                XNonce::from_slice(&nonce),
+                XNonce::from_slice(nonce),
                 Payload {
                     msg: &plaintext,
-                    aad: &remote_id,
+                    aad: remote_id,
                 },
             )
             .map_err(|_| anyhow::anyhow!("encrypt remote object"))?;
         let mut framed = Vec::with_capacity(OBJECT_MAGIC.len() + NONCE_LEN + ciphertext.len());
         framed.extend_from_slice(OBJECT_MAGIC);
-        framed.extend_from_slice(&nonce);
+        framed.extend_from_slice(nonce);
         framed.extend_from_slice(&ciphertext);
         Ok(framed)
     }
 
     pub fn decrypt_object(
         &self,
+        expected_id: &ObjectId,
+        framed: &[u8],
+    ) -> anyhow::Result<(ObjectKind, Vec<u8>)> {
+        let remote_id = self.remote_id(expected_id);
+        self.open_with(
+            &remote_id,
+            &self.object_nonce(expected_id),
+            expected_id,
+            framed,
+        )
+    }
+
+    /// Opens a frame made by `seal_with`, checking the nonce, the id and the content.
+    pub(crate) fn open_with(
+        &self,
+        remote_id: &ObjectId,
+        expected_nonce: &[u8; NONCE_LEN],
         expected_id: &ObjectId,
         framed: &[u8],
     ) -> anyhow::Result<(ObjectKind, Vec<u8>)> {
@@ -82,18 +110,14 @@ impl RemoteCrypto {
             "invalid encrypted object header"
         );
         let nonce = &framed[OBJECT_MAGIC.len()..OBJECT_MAGIC.len() + NONCE_LEN];
-        anyhow::ensure!(
-            nonce == self.object_nonce(expected_id),
-            "object nonce mismatch"
-        );
-        let remote_id = self.remote_id(expected_id);
+        anyhow::ensure!(nonce == expected_nonce, "object nonce mismatch");
         let plaintext = Zeroizing::new(
             self.cipher()
                 .decrypt(
                     XNonce::from_slice(nonce),
                     Payload {
                         msg: &framed[OBJECT_MAGIC.len() + NONCE_LEN..],
-                        aad: &remote_id,
+                        aad: remote_id,
                     },
                 )
                 .map_err(|_| anyhow::anyhow!("remote object authentication failed"))?,
@@ -181,7 +205,7 @@ impl RemoteCrypto {
         XChaCha20Poly1305::new(Key::from_slice(&self.key))
     }
 
-    fn object_nonce(&self, id: &ObjectId) -> [u8; NONCE_LEN] {
+    pub(crate) fn object_nonce(&self, id: &ObjectId) -> [u8; NONCE_LEN] {
         let mut hasher = blake3::Hasher::new_keyed(&self.key);
         hasher.update(b"furrow:object-nonce:v1\0");
         hasher.update(id);
