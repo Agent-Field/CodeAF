@@ -1,5 +1,12 @@
-# This rig's working tree keeps its evidence local, and keeps the upstream
-# reference solution out of the repository entirely (the verify image fetches
-# it from the pinned commit at build time; gold.sh reads it from the image).
-results/
+# This rig's working tree keeps the upstream reference solution out of the
+# repository entirely (the verify image fetches it from the pinned commit at
+# build time; gold.sh reads it from the image).
 tasks/*/solution/
+
+# results/ is scratch: a local working area for a run in progress. It is NOT
+# durable — a task that fetches a run here loses it when the task's checkout is
+# discarded, which has happened twice. fetch-results.sh therefore lands evidence
+# in evidence/, which IS tracked and IS committed, so a run survives in the
+# branch. Do not move evidence back under results/.
+results/
+!evidence/
