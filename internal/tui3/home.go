@@ -3922,7 +3922,7 @@ func homeSessionDirOf(transcript string) string {
 	if transcript == "" {
 		return ""
 	}
-	return filepath.Clean(filepath.Dir(transcript))
+	return filepath.Clean(session.DirOf(transcript))
 }
 
 // homeBucketOf is the project directory a transcript belongs to. A session
@@ -3934,11 +3934,7 @@ func homeBucketOf(transcript string) string {
 	if transcript == "" {
 		return ""
 	}
-	dir := filepath.Dir(transcript)
-	if filepath.Base(transcript) == "transcript.jsonl" {
-		return filepath.Clean(filepath.Dir(dir))
-	}
-	return filepath.Clean(dir)
+	return filepath.Clean(session.BucketOf(transcript))
 }
 
 // ── the door from inside a conversation ─────────────────────────────────────

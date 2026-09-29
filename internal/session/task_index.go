@@ -425,8 +425,8 @@ func TaskIndexPath(sessionFile string) string {
 	if directory == "" || directory == "." {
 		return ""
 	}
-	if filepath.Base(sessionFile) == placeTranscript {
-		bucket := filepath.Dir(directory)
+	if _, ok := FolderOf(sessionFile); ok {
+		bucket := BucketOf(sessionFile)
 		if bucket == "" || bucket == "." {
 			return ""
 		}

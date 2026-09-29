@@ -534,7 +534,7 @@ func standingSessionDir(item standing.Item) string {
 	if transcript == "" {
 		return ""
 	}
-	return filepath.Dir(transcript)
+	return DirOf(transcript)
 }
 
 // Run is one firing's work: a fresh headless session in the run folder, a turn

@@ -121,7 +121,12 @@ func (p Place) ID() string {
 }
 
 // Transcript is the journal, and the flock that guards the session lives on it.
-func (p Place) Transcript() string { return p.join(placeTranscript) }
+func (p Place) Transcript() string {
+	if strings.TrimSpace(p.Dir) == "" {
+		return ""
+	}
+	return layoutOf(p.Dir).transcript(p.Dir)
+}
 
 // State is the BPE working-state file (Decision 22).
 func (p Place) State() string { return p.join(placeState) }

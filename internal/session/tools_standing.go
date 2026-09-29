@@ -1061,7 +1061,7 @@ func (a *Agent) standingAskedFromHome(store standingStore) bool {
 	if root == "" {
 		return false
 	}
-	return filepath.Clean(filepath.Dir(filepath.Dir(transcript))) ==
+	return filepath.Clean(BucketOf(transcript)) ==
 		filepath.Clean(standing.ExchangesRoot(root))
 }
 

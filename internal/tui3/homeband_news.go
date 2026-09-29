@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
@@ -73,7 +73,7 @@ func newsNotesOf(a *app, subject bandSubject) []standing.Note {
 		}
 		return standing.PeekProjectInbox(a.standingHome(), project.Path)
 	}
-	return readHomeNews(filepath.Dir(subject.row.Transcript))
+	return readHomeNews(session.DirOf(subject.row.Transcript))
 }
 
 func readHomeNews(dir string) []standing.Note {

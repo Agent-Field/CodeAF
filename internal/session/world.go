@@ -453,13 +453,13 @@ func ReadRows(transcripts []string) map[string]SessionRow {
 	rows := make(map[string]SessionRow, len(transcripts))
 	for _, name := range transcripts {
 		transcript := filepath.Clean(strings.TrimSpace(name))
-		if transcript == "." || filepath.Base(transcript) != placeTranscript {
+		dir, isFolder := FolderOf(transcript)
+		if transcript == "." || !isFolder {
 			continue
 		}
 		if _, done := rows[transcript]; done {
 			continue
 		}
-		dir := filepath.Dir(transcript)
 		if row, ok := readSessionRow(dir, filepath.Base(dir), now); ok {
 			rows[transcript] = row
 		}
@@ -487,10 +487,10 @@ func ReadRows(transcripts []string) map[string]SessionRow {
 // A conversation the walk already found is left exactly as the walk read it.
 func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 	transcript := filepath.Clean(strings.TrimSpace(seed.Transcript))
-	if transcript == "." || filepath.Base(transcript) != placeTranscript {
+	dir, isFolder := FolderOf(transcript)
+	if transcript == "." || !isFolder {
 		return false
 	}
-	dir := filepath.Dir(transcript)
 	bucketDir := filepath.Dir(dir)
 	if filepath.Dir(bucketDir) != filepath.Clean(strings.TrimSpace(root)) {
 		return false

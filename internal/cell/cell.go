@@ -8,10 +8,10 @@
 // Every path this package persists is cell-relative; absolute paths exist
 // only transiently, as the answer to Cell.Path.
 //
-// SEAM: new chats opt in behind [Enabled] (CODEAF_CELLS=1). The single place
-// to call [Create] is v3MintSession in cmd/codeaf/chatv3_layout.go, but
-// session.Place still derives <dir>/transcript.jsonl, so wiring needs Place
-// to learn the .cell/ names first. Until then nothing calls this package.
+// New chats opt in behind [Enabled] (CODEAF_CELLS=1): v3MintSession in
+// cmd/codeaf/chatv3_layout.go calls [CreateIn] on the project bucket, and
+// internal/session's layout.go recognises a folder holding .cell/ and keeps
+// the transcript there. Old sessions are not migrated.
 package cell
 
 import (
@@ -60,7 +60,12 @@ type Cell struct {
 func Dir(home string) string { return filepath.Join(home, "v3", "cells") }
 
 // Create makes a new cell folder and writes its meta.json.
-func Create(home string, opts Options) (Cell, error) {
+func Create(home string, opts Options) (Cell, error) { return CreateIn(Dir(home), opts) }
+
+// CreateIn makes a new cell folder directly under parent. A caller that
+// already groups its conversations in a directory (a project bucket) uses it
+// so the cell is found where that grouping looks.
+func CreateIn(parent string, opts Options) (Cell, error) {
 	m, err := opts.meta()
 	if err != nil {
 		return Cell{}, err
@@ -69,7 +74,7 @@ func Create(home string, opts Options) (Cell, error) {
 	if err != nil {
 		return Cell{}, err
 	}
-	c := Cell{ID: id, Root: filepath.Join(Dir(home), id), meta: m}
+	c := Cell{ID: id, Root: filepath.Join(parent, id), meta: m}
 	if err := os.MkdirAll(c.Root+"/"+EnvPath, 0o700); err != nil {
 		return Cell{}, fmt.Errorf("create cell: %w", err)
 	}
