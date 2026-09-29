@@ -500,3 +500,49 @@ func planBeat(t *testing.T, a *app) {
 	a.clock = func() time.Time { return at }
 	drive(t, a, frameMsg{})
 }
+
+// THE SEAM NAMES WHAT THE RUN WAS LAUNCHED ON. On a program's organized room the
+// seam's left is the program and the models it said it works on, with its
+// effort, in place of the conversation-totals label; a run that has not said
+// yet keeps the label. A narrow seam gives the list up from its tail into a
+// `+N`, then the program's name, and keeps the first model and the effort.
+func TestAProgramRoomsSeamNamesTheModelsItsRunWasLaunchedOn(t *testing.T) {
+	a, agent := programRoomApp(t, 160, 40)
+	openProgramRoomNow(t, a)
+	if !a.roomOrganized() {
+		t.Fatal("the fixture's room is not organized; the seam under test is not drawn")
+	}
+	if frame, _, _ := a.frame(); !strings.Contains(plain(frame), roomTotalsWord) {
+		t.Fatalf("a run that named no models lost the seam's label:\n%s", plain(frame))
+	}
+	page := agent.planFake.pages["7"]
+	program := *page.Program
+	program.Models = []string{"deepseek/deepseek-v4-pro", "moonshotai/kimi-k2.6", "z-ai/glm-5.1"}
+	program.Effort = "high"
+	page.Program = &program
+	agent.planFake.pages["7"] = page
+	a.closeRoom()
+	openProgramRoomNow(t, a)
+	frame, _, _ := a.frame()
+	want := "senior-dev on deepseek-v4-pro, kimi-k2.6, glm-5.1 · high"
+	if !strings.Contains(plain(frame), want) || strings.Contains(plain(frame), roomTotalsWord) {
+		t.Fatalf("the seam does not say %q in place of its label:\n%s", want, plain(frame))
+	}
+	cells := ansi.StringWidth
+	for _, c := range []struct {
+		width int
+		want  string
+	}{
+		{cells(want), want},
+		{cells(want) - 1, "senior-dev on deepseek-v4-pro, kimi-k2.6 +1 · high"},
+		{cells("senior-dev on deepseek-v4-pro +2 · high") + 1, "senior-dev on deepseek-v4-pro +2 · high"},
+		{cells("deepseek-v4-pro +2 · high"), "deepseek-v4-pro +2 · high"},
+	} {
+		if got := a.programModelsWord(c.width); got != c.want {
+			t.Fatalf("at %d cells the seam says %q, want %q", c.width, got, c.want)
+		}
+	}
+	if got := a.programModelsWord(10); ansi.StringWidth(got) > 10 || !strings.HasPrefix(got, "deepseek") {
+		t.Fatalf("at 10 cells the seam says %q", got)
+	}
+}

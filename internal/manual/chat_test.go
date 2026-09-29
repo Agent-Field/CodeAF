@@ -1040,6 +1040,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will senior-dev stop and ask me questions while it works", "senior-dev"},
 		{"where did senior-dev's commits go", "senior-dev"},
 		{"how much does a senior-dev run cost", "senior-dev"},
+		{"which model is my senior-dev run using", "senior-dev"},
+		{"what models was senior-dev launched with", "senior-dev"},
 		{"does a senior-dev run have its own dollar limit", "senior-dev"},
 		{"what flags does codeaf senior-dev take", "senior-dev"},
 		{"why is there no /senior-dev on windows", "senior-dev"},

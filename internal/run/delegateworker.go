@@ -277,6 +277,12 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 
 func (s *delegateSink) Stage(record delegate.StageRecord) {
 	s.remember(delegate.StageAction(time.Now(), record))
+	// THE MODELS THE PROGRAM SAYS IT RUNS ON go on its record the moment it
+	// says them, for the task's page to name ([delegate.StageRecord.Models]).
+	// A child of another build is not this run's program ([delegateSink.Hello]).
+	if s.mismatch == "" && s.record.Heard(record) {
+		_ = delegate.WriteProgram(s.taskDir, s.record)
+	}
 }
 
 func (s *delegateSink) Step(record delegate.StepRecord) {

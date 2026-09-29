@@ -746,6 +746,25 @@ work or a history summary.
 A crew model senior-dev's model catalog cannot size is left out, and its log says so;
 if that leaves no working model, it uses its own list instead.
 
+## Which model is my senior-dev run on — the models it was launched with, the foot of its task page
+
+Open the run's task. On a window tall enough for the task page's side column, the
+line at the foot of the page — where an ordinary task's page says `Conversation
+totals` — names the program, the models it works on and its effort:
+`senior-dev on deepseek-v4-pro, kimi-k2.6 · high`. senior-dev says these itself
+once it has started. They are what its calls go to: your crew, or the models you
+asked for, or its own list when nothing was named, less any model its catalog
+could not size. They are not only what was asked. A narrow window keeps the first
+models and a `+N` for the rest, then drops the name `senior-dev`.
+
+For the first seconds, before senior-dev has said, the line still reads
+`Conversation totals`. It does the same for a run from an older build that never
+said. The figures at the right of that line are the conversation's totals either
+way. The run's own spend of its ceiling is on the line beside the task's title.
+
+A shell run keeps the same two facts, `models` and `effort`, in
+`delegate-program.json` in its record folder.
+
 ## Which models does a senior-dev shell run use — --high, fresh profile, no crew
 
 **The same as the chat's.** A shell run without `--high` works on your profile's worker

@@ -787,6 +787,16 @@ func (v *carriedView) opened(at time.Time) {
 	})
 }
 
+// heard writes the models the program says it runs on onto its record, when a
+// stage names them ([delegate.StageRecord.Models]).
+func (v *carriedView) heard(record delegate.StageRecord) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.program.Heard(record) {
+		v.write()
+	}
+}
+
 // closed writes the instant the program's process was gone.
 func (v *carriedView) closed(at time.Time) {
 	v.remember(func(record *delegate.ProgramRecord) { record.EndedAt = at })
@@ -798,6 +808,12 @@ func (v *carriedView) remember(change func(record *delegate.ProgramRecord)) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	change(&v.program)
+	v.write()
+}
+
+// write writes the program record whole, naming the program when nothing has
+// yet. Its caller holds the lock.
+func (v *carriedView) write() {
 	if v.program.Name == "" {
 		v.program.Name = v.inv.Program.Name
 	}
@@ -817,6 +833,7 @@ func (v *carriedView) kept(action delegate.Action) {
 
 func (v *carriedView) Stage(record delegate.StageRecord) {
 	v.kept(delegate.StageAction(time.Now(), record))
+	v.heard(record)
 	if v.records != nil {
 		_ = v.records.Stage(record)
 		return

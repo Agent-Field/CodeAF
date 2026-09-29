@@ -390,6 +390,53 @@ func (a *app) programFactsWord(width int) (string, int) {
 	return line, ansi.StringWidth(lead)
 }
 
+// programModelsWord is the seam's left on a program's room: the program and
+// the models it said it works on, with the effort it asks of them —
+//
+//	senior-dev on deepseek-v4-pro, kimi-k2.6 +2 · high
+//
+// — and "" until the program has said (session.PlanProgram.Models), which
+// leaves the seam its ordinary label.
+//
+// THE MODELS A RUN WAS LAUNCHED ON ARE WHAT A PERSON LOOKS FOR HERE. The seam
+// used to say only whose numbers ride its right, and the one setting that
+// decides what a program's run costs and how it codes was on no line of the
+// page: a person who launched it on the wrong model found out from the bill.
+//
+// THE LIST GIVES WAY FROM ITS TAIL, one model at a time into a `+N`, then the
+// program's name goes, and only then is the rest cut — the first model and the
+// effort are the reading a narrow frame keeps.
+func (a *app) programModelsWord(width int) string {
+	p := a.programOf()
+	if p == nil || p.page.Program == nil || len(p.page.Program.Models) == 0 || width < 1 {
+		return ""
+	}
+	models := make([]string, len(p.page.Program.Models))
+	for i, model := range p.page.Program.Models {
+		models[i] = modelBase(model)
+	}
+	effort := ""
+	if rung := strings.TrimSpace(p.page.Program.Effort); rung != "" {
+		effort = legendJoin + rung
+	}
+	lead := ""
+	if name := pageProgram(p.page); name != "" {
+		lead = name + " on "
+	}
+	for _, head := range []string{lead, ""} {
+		for shown := len(models); shown >= 1; shown-- {
+			word := head + strings.Join(models[:shown], ", ")
+			if rest := len(models) - shown; rest > 0 {
+				word += " +" + strconv.Itoa(rest)
+			}
+			if word += effort; ansi.StringWidth(word) <= width {
+				return word
+			}
+		}
+	}
+	return fit(models[0]+effort, width)
+}
+
 // programRoomClock is the age the program room's facts row draws: the span
 // the program ran once its process has ended, the node's clock when this
 // conversation holds one for it, and the stored page's own stamps otherwise.
