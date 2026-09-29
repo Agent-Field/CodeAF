@@ -2217,6 +2217,8 @@ type app struct {
 	// last listing it gave, and machinesAsking that an ask is in flight
 	// (homepanel_machines.go).
 	machines       chatlist.Source
+	taker          Taker
+	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
 	// newsAsking and leftOffAsking are the same idea for the two readings a card
@@ -2906,6 +2908,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	shown := placeShown(place, opts.Owned, host)
 	a := &app{
 		machines:            opts.Machines,
+		taker:               opts.Takeover,
+		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
 		news:                newDoorbell(newsMsg{}),
@@ -4976,6 +4980,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeLeftOffMsg:
 		a.tookHomeLeftOff(msg)
 		return a, nil
+
+	case homeTakenMsg:
+		return a, a.tookTakeover(msg)
+
+	case homeBranchMsg:
+		return a, a.tookBranch(msg)
 
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
