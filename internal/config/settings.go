@@ -1325,6 +1325,13 @@ var OperatorEnvPins = []string{
 	// row — a persisted row would arm half-built machinery on a machine
 	// where the variable is nowhere in sight. It goes the day cells ship.
 	"CODEAF_CELLS",
+	// CODEAF_SYNC_URL names the relay that syncs cells between this person's
+	// machines (internal/syncsetup), and CODEAF_SYNC_INTERVAL_MS is how often
+	// unsaved turns are flushed to it. Like CODEAF_CELLS they are plumbing, never
+	// a row: unset, sync is off and nothing changes. A persisted row would point
+	// a machine at a relay it was never told about.
+	"CODEAF_SYNC_URL",
+	"CODEAF_SYNC_INTERVAL_MS",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
