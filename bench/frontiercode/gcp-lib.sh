@@ -201,8 +201,8 @@ fc_judge_gate() {
   corpus="$(fc_get '.corpus')"
   while IFS= read -r t; do
     [ -n "$t" ] || continue
-    rjm="$(sed -n 's/^judge_model[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$t" | head -1)"
-    rjv="$(sed -n 's/^judge_prompt_version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$t" | head -1)"
+    rjm="$(sed -n 's/^judge_model[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$FC_REPO_ROOT/$t" 2>/dev/null | head -1)"
+    rjv="$(sed -n 's/^judge_prompt_version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$FC_REPO_ROOT/$t" 2>/dev/null | head -1)"
     if [ -n "$rjm" ] && [ "$rjm" != "$jm" ]; then echo "  $t judge_model $rjm != manifest $jm" >&2; problem=1; fi
     if [ -n "$rjv" ] && [ "$rjv" != "$jv" ]; then echo "  $t judge_prompt_version $rjv != manifest $jv" >&2; problem=1; fi
   done < <(cd "$FC_REPO_ROOT" && find "$corpus" -name rubric.toml | LC_ALL=C sort)
