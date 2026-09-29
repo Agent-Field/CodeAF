@@ -75,40 +75,42 @@ func writeTree(t *testing.T, root string, files map[string]string, mode os.FileM
 // L8 (local half): a sealed turn restores byte-for-byte, mode-for-mode, after
 // the tree was damaged. The bucket-only half lands with the store in stage 1.
 func TestL8SealedTurnRestoresByteIdentical(t *testing.T) {
-	e := realEngine(t)
-	c := newCell(t)
-	writeTree(t, c.Root, map[string]string{
-		"src/main.go":       "package main\n",
-		"src/deep/a/b/c.md": "# deep\n",
-		"empty":             "",
-		"bin/blob":          string([]byte{0, 1, 2, 0xff, 0xfe, 0}),
-		"café/naïve.txt":    "unicode names\n",
-	}, 0o644)
-	writeTree(t, c.Root, map[string]string{"run.sh": "#!/bin/sh\necho hi\n"}, 0o755)
-	if err := os.Symlink("src/main.go", filepath.Join(c.Root, "link")); err != nil {
-		t.Fatal(err)
-	}
-	transcript, _ := c.Path(cell.TranscriptPath)
-	if err := os.WriteFile(transcript, []byte(`{"role":"user"}`+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	forEachTransport(t, func(t *testing.T) {
+		e := realEngine(t)
+		c := newCell(t)
+		writeTree(t, c.Root, map[string]string{
+			"src/main.go":       "package main\n",
+			"src/deep/a/b/c.md": "# deep\n",
+			"empty":             "",
+			"bin/blob":          string([]byte{0, 1, 2, 0xff, 0xfe, 0}),
+			"café/naïve.txt":    "unicode names\n",
+		}, 0o644)
+		writeTree(t, c.Root, map[string]string{"run.sh": "#!/bin/sh\necho hi\n"}, 0o755)
+		if err := os.Symlink("src/main.go", filepath.Join(c.Root, "link")); err != nil {
+			t.Fatal(err)
+		}
+		transcript, _ := c.Path(cell.TranscriptPath)
+		if err := os.WriteFile(transcript, []byte(`{"role":"user"}`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 
-	sealed, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("bash", "")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := treeDigest(t, c.Root)
+		sealed, err := e.Seal(context.Background(), c, TurnInfo{Calls: []Executed{exec1("bash", "")}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := treeDigest(t, c.Root)
 
-	damage(t, c.Root)
-	if got := treeDigest(t, c.Root); strings.Join(got, "\n") == strings.Join(want, "\n") {
-		t.Fatal("damage changed nothing; the test proves nothing")
-	}
-	if _, err := e.engine(context.Background(), c, "--json", "rewind", sealed.Turn.ID, "--yes"); err != nil {
-		t.Fatal(err)
-	}
-	if got := treeDigest(t, c.Root); strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("restored tree differs.\nwant:\n%s\ngot:\n%s", strings.Join(want, "\n"), strings.Join(got, "\n"))
-	}
+		damage(t, c.Root)
+		if got := treeDigest(t, c.Root); strings.Join(got, "\n") == strings.Join(want, "\n") {
+			t.Fatal("damage changed nothing; the test proves nothing")
+		}
+		if _, err := e.do(context.Background(), c, e.cellDir(c), restoreOp{Snapshot: sealed.Turn.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if got := treeDigest(t, c.Root); strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Fatalf("restored tree differs.\nwant:\n%s\ngot:\n%s", strings.Join(want, "\n"), strings.Join(got, "\n"))
+		}
+	})
 }
 
 func damage(t *testing.T, root string) {

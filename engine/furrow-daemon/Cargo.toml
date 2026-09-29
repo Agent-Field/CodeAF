@@ -3,6 +3,17 @@ name = "furrow-daemon"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Placeholder for the furrow daemon"
+description = "The furrow daemon: one long-lived process holding open repositories behind a unix socket"
 license.workspace = true
 repository.workspace = true
+
+[dependencies]
+furrow-core = { path = "../furrow-core" }
+anyhow.workspace = true
+fs2.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -3,9 +3,13 @@
 // engine, and records the result as a Turn (docs/ARCHITECTURE.md 3.1, 4.3;
 // docs/SCHEMAS.md 1, 5, 6).
 //
-// The seam is [Store]. Stage 0 implements it by spawning the engine once per
-// seal ([Engine]); stage 1 replaces it with a daemon behind the same interface,
-// and nothing above the interface changes.
+// The seam is [Store]; [Engine] implements it. Engine composes the harness's
+// files and hands the engine's verbs to a [Transport]: [Spawn] runs the engine
+// once per verb, [Daemon] asks its long-lived process over a unix socket (the
+// repository stays open, so a seal pays no store open), and [Fallback] uses the
+// daemon and falls back to the spawn only when the daemon is absent
+// (transportFor is the one place that chooses). Nothing above the interface
+// knows which one answered.
 //
 // THE PIECES, EACH ONE JOB:
 //
@@ -19,11 +23,14 @@
 //     that logs intent, runs the call, logs completion, and seals. It exists
 //     only when CODEAF_CELLS is on ([Wrap]); off, the executor is returned
 //     untouched.
-//   - Engine (engine.go) is the Store that spawns the engine, one data
-//     directory per cell so writers never share a catalog lock. A seal is one
-//     spawn of `hook turn-end --turn <receipt id>`, which attaches a folder the
-//     engine has not seen and snapshots it with the agent-run trigger. The
-//     folder need not be a git repository, and none is ever created in it.
+//   - Engine (engine.go) is the Store over the engine, one data directory per
+//     cell so writers never share a catalog lock. A seal is one turn-end verb
+//     (`hook turn-end --turn <receipt id>` on the command line), which attaches
+//     a folder the engine has not seen and snapshots it with the agent-run
+//     trigger. The folder need not be a git repository, and none is ever
+//     created in it.
+//   - Transport (transport.go, daemon.go, ops.go) is how a verb reaches the
+//     engine; an Op is one verb in both its spellings.
 //
 // DEATH CREATES A BRANCH (L12). Every seal appends a Turn to .cell/turns.jsonl
 // naming its parent, and engine snapshots are immutable, so a chain that a dead
