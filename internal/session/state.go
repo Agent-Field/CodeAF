@@ -213,7 +213,7 @@ func statePath(sessionFile string) string {
 		return ""
 	}
 	if dir, ok := FolderOf(sessionFile); ok {
-		return filepath.Join(dir, placeState)
+		return truthPath(dir, placeState)
 	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".state.json"
 }

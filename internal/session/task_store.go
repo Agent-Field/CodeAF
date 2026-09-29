@@ -115,7 +115,7 @@ func taskCheckpointPath(sessionFile string) string {
 		return ""
 	}
 	if dir, ok := FolderOf(sessionFile); ok {
-		return filepath.Join(dir, placeTasks)
+		return truthPath(dir, placeTasks)
 	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".tasks.json"
 }
