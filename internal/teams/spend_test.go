@@ -84,3 +84,19 @@ func (m *spendMemory) bytes() int64 {
 	defer m.mu.Unlock()
 	return m.reads
 }
+
+// A CELL SESSION IS A TEAM MEMBER LIKE ANY OTHER: its folder is a ULID, and its
+// ledger lines are attributed to the team that holds it.
+func TestTeamSpendAttributesACellSession(t *testing.T) {
+	dir := t.TempDir()
+	ulid := "01J8ZQ4W5M3T7N9B2C6D8F0GHK"
+	key := filepath.Join("/srv/cells", ulid, "transcript.jsonl")
+	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Name: "harbor", Members: []Member{{Key: key}}}}))
+	ledger := filepath.Join(dir, "usage.jsonl")
+	writeLedger(t, ledger, line("2026-09-24", 1.50, ulid, ""), line("2026-09-24", 9.00, "01J8ZQ4W5M3T7N9B2C6D8F0GHM", ""))
+
+	got, err := TeamSpendIn(dir, ledger, "aaaaaaaaaaaa", "2026-09-24")
+	if err != nil || fmt.Sprintf("%.2f", got.USD) != "1.50" || got.Calls != 1 {
+		t.Fatalf("cell session spend: %+v, %v", got, err)
+	}
+}
