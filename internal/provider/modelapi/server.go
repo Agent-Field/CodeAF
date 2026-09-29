@@ -44,6 +44,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"io"
 	"math"
 	"net"
@@ -121,6 +122,9 @@ type Config struct {
 	// reading, which is a run's worker, and an attended one for a shell run a
 	// person is watching. Empty is unattended.
 	Role lanes.Role
+	// AuthKeySource is the safe person-facing name of the key used by the
+	// completer. It is added to 401/403 failures, never the key itself.
+	AuthKeySource string
 	// Node names the work the calls belong to in the model-call log — the
 	// program's name — so `codeaf logs --node <name>` reads one program's calls.
 	// Their tag is `task`, the word every call made inside a piece of work
@@ -1038,9 +1042,8 @@ var (
 // is answered with and the turn is written with.
 //
 // AN ACCOUNT REFUSED UPSTREAM IS NOT THE PROGRAM'S TOKEN BEING WRONG. A 401 or
-// 403 from the model's service is codeaf's own account being refused, and on
-// this API those two statuses mean the run's token; the program is told 502,
-// a gateway whose far side said no, with the far side's sentence.
+// 403 from the model's service is codeaf's own account being refused, so those
+// statuses stay 401/403 and cannot become a retryable gateway failure.
 func (s *Server) failure(err error, request context.Context, model string) (int, string) {
 	switch {
 	case s.ctx.Err() != nil:
@@ -1056,12 +1059,25 @@ func (s *Server) failure(err error, request context.Context, model string) (int,
 	}
 	if refusal, ok := provider.RefusalFrom(err); ok {
 		status := refusal.Status
-		if status == http.StatusUnauthorized || status == http.StatusForbidden || status < 400 || status > 599 {
+		if status < 400 || status > 599 {
 			status = http.StatusBadGateway
 		}
-		return status, firstLine(refusal.Error())
+		return status, authSourceSentence(refusal.Error(), status, s.config.AuthKeySource)
+	}
+	if status, ok := provider.StatusOf(err); ok {
+		return status, authSourceSentence(err.Error(), status, s.config.AuthKeySource)
 	}
 	return http.StatusBadGateway, firstLine(err.Error())
+}
+
+func authSourceSentence(message string, status int, source string) string {
+	// A refusal may echo the key it refused; the sentence is scrubbed before it
+	// is written anywhere a person or a log reads it.
+	message = firstLine(redact.Secrets(message))
+	if (status == http.StatusUnauthorized || status == http.StatusForbidden) && strings.TrimSpace(source) != "" {
+		message += " · the key used was " + strings.TrimSpace(source)
+	}
+	return message
 }
 
 // ceilingSentence is the refusal for a call that would cross the ceiling.

@@ -930,6 +930,20 @@ func TestTransientTurnErrorUsesStructuredProviderStatusAndExcludesQuota(t *testi
 	}
 }
 
+func TestTransientTurnErrorRejectsTextOnlyAuthenticationStatuses(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprintf("status-%d", status), func(t *testing.T) {
+			failure := &modelTurnError{
+				kind: "APIError", message: fmt.Sprintf("API error (%d): key rejected", status),
+				retryable: true,
+			}
+			if info, transient := transientTurnError(failure); transient || info.Class != "" {
+				t.Fatalf("text-only auth classification = %#v,%v; want terminal", info, transient)
+			}
+		})
+	}
+}
+
 func TestSubmitRefusalsAreCountableEvents(t *testing.T) {
 	// A refusal that travels only as tool-call error text cannot be counted
 	// without opening a log. Every refusal is an event with a reason class.

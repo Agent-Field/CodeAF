@@ -51,6 +51,22 @@ func TestParseRunsTheDefaultCommandOnABareBrief(t *testing.T) {
 	}
 }
 
+func TestParseReadsFlagsAfterTheBrief(t *testing.T) {
+	inv, err := Parse(testProgram(nil), []string{"brief", "--max-cost", "0.5"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Brief() != "brief" || inv.Ceilings.CostUSD != 0.5 {
+		t.Fatalf("invocation = %+v, want brief and max-cost 0.5", inv)
+	}
+}
+
+func TestParseRefusesAnUnknownFlagAfterTheBrief(t *testing.T) {
+	if _, err := Parse(testProgram(nil), []string{"brief", "--not-a-flag"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("an unknown flag after the brief was folded into the brief")
+	}
+}
+
 func TestParseTakesANamedCommandAndItsOwnFlags(t *testing.T) {
 	inv, err := Parse(testProgram(nil), []string{"run", "--variant", "high", "--dir", "/tmp", "--", "--not-a-flag"}, &bytes.Buffer{})
 	if err != nil {

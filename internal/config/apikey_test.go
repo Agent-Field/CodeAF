@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,38 @@ func TestPersistedAPIKeyIsTheLastRungOfLoadResolution(t *testing.T) {
 	}
 	if settings.APIKey != "sk-env" {
 		t.Fatalf("environment must outrank the persisted key: %q", settings.APIKey)
+	}
+}
+
+func TestAPIKeySourceMatchesAPIKeyAtWithoutExposingTheKey(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteAPIKey(dir, "sk-profile-source-123"); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		name   string
+		router string
+		openai string
+		want   string
+		source string
+	}{
+		{"shell OpenRouter", "sk-router-source-123", "sk-openai-source-123", "sk-router-source-123", "the shell's OPENROUTER_API_KEY"},
+		{"shell OpenAI", "", "sk-openai-source-123", "sk-openai-source-123", "the shell's OPENAI_API_KEY"},
+		{"profile", "", "", "sk-profile-source-123", "the key saved in your profile"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			t.Setenv(APIKeyEnv, row.router)
+			t.Setenv("OPENAI_API_KEY", row.openai)
+			if got := APIKeyAt(dir); got != row.want {
+				t.Fatalf("APIKeyAt = %q, want %q", got, row.want)
+			}
+			if got := APIKeySourceAt(dir); got != row.source {
+				t.Fatalf("APIKeySourceAt = %q, want %q", got, row.source)
+			}
+			if strings.Contains(row.source, row.want) {
+				t.Fatalf("source %q exposes the key", row.source)
+			}
+		})
 	}
 }
 

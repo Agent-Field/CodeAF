@@ -317,12 +317,13 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// name it has, so its rows are filed as one piece of work under it.
 	subject := filepath.Base(record)
 	api, err := modelapi.Open(modelapi.Config{
-		TaskDir:      record,
-		CompleterFor: road.completerFor,
-		Serves:       road.serves,
-		ModelPrice:   road.modelPrice,
-		Seat:         road.seat,
-		Ceiling:      inv.Ceilings.CostUSD,
+		TaskDir:       record,
+		CompleterFor:  road.completerFor,
+		AuthKeySource: config.APIKeySourceAt(config.ProfileDir()),
+		Serves:        road.serves,
+		ModelPrice:    road.modelPrice,
+		Seat:          road.seat,
+		Ceiling:       inv.Ceilings.CostUSD,
 		Bank: func(charge modelapi.Charge) {
 			// THE MACHINE'S SPENDING LEDGER, one row per call, written here and
 			// nowhere else: nothing else in this process meters these calls.
