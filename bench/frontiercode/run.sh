@@ -122,16 +122,16 @@ python3 "$RIG_DIR/grade/record.py" start --run-dir "$OUT" \
   --json "{\"task\":\"$TASK\",\"arm\":\"codeaf-senior-dev\",\"model\":\"$MODEL\",\"variant\":\"$VARIANT\",\"seed\":\"$SEED\",\"base_commit\":\"$TASK_BASE\"}"
 
 cleanup() {
-  for c in "$NAME" fc-egress-$SEED-$VARIANT fc-guard-$SEED-$VARIANT; do
+  for c in "$NAME" fc-egress-$TASK-$SEED-$VARIANT fc-guard-$TASK-$SEED-$VARIANT; do
     docker rm -f "$c" >/dev/null 2>&1
   done
-  docker network rm "fc-in-$SEED-$VARIANT" >/dev/null 2>&1
+  docker network rm "fc-in-$TASK-$SEED-$VARIANT" >/dev/null 2>&1
   return 0
 }
 trap cleanup EXIT
 
 # ── the network: an internal net with two exits, guard and proxy ────────────
-docker network create --internal "fc-in-$SEED-$VARIANT" > /dev/null 2>&1
+docker network create --internal "fc-in-$TASK-$SEED-$VARIANT" > /dev/null 2>&1
 
 log "$TASK: starting the credential guard (holds the key, meters every call)"
 # The guard binds loopback by design; the run's frozen copy of it is widened
@@ -139,7 +139,7 @@ log "$TASK: starting the credential guard (holds the key, meters every call)"
 # copy is transformed, never the shared file.
 sed 's/("127.0.0.1", args.port)/("0.0.0.0", args.port)/' \
   "$RIG_DIR/guard.py" > "$OUT/rig/guard-container.py"
-docker run -d --name "fc-guard-$SEED-$VARIANT" --network "fc-in-$SEED-$VARIANT" --network-alias guard \
+docker run -d --name "fc-guard-$TASK-$SEED-$VARIANT" --network "fc-in-$TASK-$SEED-$VARIANT" --network-alias guard \
   -e "GUARD_UPSTREAM_KEY=$KEY" \
   -v "$OUT:/audit" \
   --entrypoint python3 python:3.12-slim \
@@ -147,10 +147,10 @@ docker run -d --name "fc-guard-$SEED-$VARIANT" --network "fc-in-$SEED-$VARIANT" 
   --audit /audit/guard-audit.jsonl --usage /audit/guard-usage.jsonl \
   --sentinel "$SENTINEL" --scope "fc-$TASK-$SEED" > "$OUT/guard-start.log" 2>&1 || {
   log "$TASK: guard failed to start — see $OUT/guard-start.log"; meta "stage=guard-failed"; exit 1; }
-docker network connect bridge "fc-guard-$SEED-$VARIANT" > /dev/null 2>&1
+docker network connect bridge "fc-guard-$TASK-$SEED-$VARIANT" > /dev/null 2>&1
 GUARD_PORT=""
 for _ in $(seq 1 60); do
-  GUARD_PORT="$(docker logs "fc-guard-$SEED-$VARIANT" 2>/dev/null | sed -n 's/^PORT //p' | tail -1)"
+  GUARD_PORT="$(docker logs "fc-guard-$TASK-$SEED-$VARIANT" 2>/dev/null | sed -n 's/^PORT //p' | tail -1)"
   [ -n "$GUARD_PORT" ] && break
   sleep 1
 done
@@ -158,18 +158,18 @@ done
 log "$TASK: guard listening on port $GUARD_PORT"
 
 log "$TASK: starting the egress proxy (open and logged)"
-docker run -d --name "fc-egress-$SEED-$VARIANT" --network "fc-in-$SEED-$VARIANT" --network-alias egress \
+docker run -d --name "fc-egress-$TASK-$SEED-$VARIANT" --network "fc-in-$TASK-$SEED-$VARIANT" --network-alias egress \
   -v "$RIG_DIR/bin:/rigbin:ro" -v "$OUT:/logs" \
   --entrypoint /rigbin/egress-proxy-$([ "$PLATFORM" = linux/amd64 ] && echo amd64 || echo arm64) \
   alpine:3.20 -addr :3128 -resolver 1.1.1.1:53 -log /logs/egress-proxy.log > "$OUT/egress-start.log" 2>&1 || {
   log "$TASK: egress proxy failed to start — see $OUT/egress-start.log"; meta "stage=egress-failed"; exit 1; }
-docker network connect bridge "fc-egress-$SEED-$VARIANT" > /dev/null 2>&1
+docker network connect bridge "fc-egress-$TASK-$SEED-$VARIANT" > /dev/null 2>&1
 sleep 2
 
 log "$TASK: starting agent container"
 emu_args
 if ! docker run -d --platform "$PLATFORM" --name "$NAME" \
-     --network "fc-in-$SEED-$VARIANT" \
+     --network "fc-in-$TASK-$SEED-$VARIANT" \
      --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" \
      "$TASK_IMAGE" sleep infinity >> "$OUT/docker.log" 2>&1; then
   meta "stage=start-failed"; log "$TASK: docker run failed"; exit 1
