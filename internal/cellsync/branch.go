@@ -16,17 +16,25 @@ import (
 // overwritten: the old cell keeps its head and the new one names the old as
 // its parent.
 type Brancher struct {
-	Dir   directory.Client
-	NewID func() (string, error) // cell.NewID
+	Dir directory.Client
+	// Publisher uploads the branch head's objects before the branch exists, so
+	// no caller can forget that a branch whose head nobody can fetch is worse
+	// than none. It is required.
+	Publisher *Publisher
+	NewID     func() (string, error) // cell.NewID
 	// Map records old id -> new id on this device so the local chat opens as
 	// the branch. Nil records nothing.
 	Map *BranchMap
 }
 
-// Branch creates the child cell for head, whose objects are already in the
-// store, and points from at it. turns is how many turns the branch holds that
-// the parent does not.
+// Branch uploads what head needs, creates the child cell for it, and points
+// from at it. turns is how many turns the branch holds that the parent does
+// not. What an earlier refused publish already uploaded is reused, because
+// objects are content-addressed.
 func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns uint32, in PublishInfo) (string, error) {
+	if _, err := b.Publisher.Upload(ctx, from.Cell, head); err != nil {
+		return "", err
+	}
 	id, err := b.NewID()
 	if err != nil {
 		return "", err

@@ -131,7 +131,7 @@ func TestBranchMapPersists(t *testing.T) {
 func TestBranchWithoutMapStillCreates(t *testing.T) {
 	r := newRig(t)
 	h1 := r.publishFirst(map[string]string{"a": "0"})
-	id, err := Brancher{Dir: r.dirA, NewID: r.newID}.Branch(context.Background(), r.drv, h1, 2, r.info())
+	id, err := Brancher{Dir: r.dirA, Publisher: r.pub, NewID: r.newID}.Branch(context.Background(), r.drv, h1, 2, r.info())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,5 +140,30 @@ func TestBranchWithoutMapStillCreates(t *testing.T) {
 	}
 	if _, err := r.dir.For(devB).Acquire(context.Background(), id); err != directory.ErrLeaseHeld {
 		t.Fatalf("the branch is held by A: %v", err)
+	}
+}
+
+// TestBranchUploadsItsOwnHead pins ruling (a): a caller that seals a head and
+// branches it without ever publishing gets a branch whose head is fetchable,
+// because the Brancher uploads first. No caller can forget.
+func TestBranchUploadsItsOwnHead(t *testing.T) {
+	r := newRig(t)
+	r.publishFirst(map[string]string{"a": "0"})
+	kept := r.seal(map[string]string{"a": "hand edit"})
+	sent := r.puts()
+
+	id, err := Brancher{Dir: r.dirA, Publisher: r.pub, NewID: r.newID}.Branch(context.Background(), r.drv, kept, 1, r.info())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.puts() == sent {
+		t.Fatal("the branch uploaded nothing")
+	}
+	f, c := fetcherFor(t, r.mem)
+	if err := f.Fetch(context.Background(), c, r.head(id).Head); err != nil {
+		t.Fatalf("the branch head is not in the store: %v", err)
+	}
+	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, map[string]string{"a": "hand edit"}) {
+		t.Fatalf("branch files %v", got)
 	}
 }

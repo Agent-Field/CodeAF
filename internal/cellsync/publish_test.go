@@ -81,7 +81,7 @@ func TestRefusedAfterPartialUploadLeavesNoOrphanHead(t *testing.T) {
 	r.requireHeld(h2)
 
 	sent := r.puts()
-	id, err := Brancher{Dir: r.dirA, NewID: r.newID}.Branch(ctx, r.drv, h2, 1, r.info())
+	id, err := Brancher{Dir: r.dirA, Publisher: r.pub, NewID: r.newID}.Branch(ctx, r.drv, h2, 1, r.info())
 	if err != nil {
 		t.Fatal(err)
 	}

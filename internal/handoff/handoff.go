@@ -1,7 +1,9 @@
 // Package handoff is the takeover: one device continues a chat another device
 // was driving. Its one promise is that a takeover never destroys work: local
 // edits that were never sealed are sealed and kept in a branch before anything
-// is fetched, and a lease is taken only once everything it needs is on disk.
+// is fetched, a lease is taken only once everything it needs is on disk, and
+// the fetched tree reaches the chat's root only once the lease is held, so a
+// lost race leaves nothing behind.
 package handoff
 
 import (
@@ -34,13 +36,14 @@ type Taker struct {
 	Dir   directory.Client
 	Fetch Fetch
 	Local Local
-	// Branch turns sealed local work into a cell of its own. The objects of
-	// head must be in the store before the branch exists (a branch whose head
-	// nobody can fetch is worse than none), so the function given here uploads
-	// first. It should record no old-id to new-id mapping: the chat being
-	// taken keeps its id, and only the kept edits live in the branch.
+	// Branch turns sealed local work into a cell of its own; it is
+	// cellsync.Brancher.Branch, which uploads the head's objects first. Its
+	// Brancher must run with Map nil: the chat being taken keeps its id, and
+	// only the kept edits live in the branch, so no old-id to new-id mapping
+	// may be recorded.
 	Branch func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error)
-	// RootFor is where this device materializes the cell.
+	// RootFor is where this device keeps the cell. The takeover materializes
+	// beside it and moves the result into place once the lease is held.
 	RootFor func(id string) string
 	// After hooks run in order once the tree is on disk, for example
 	// vaultsync.Inject. Each may refuse the takeover.
@@ -56,11 +59,12 @@ type Taken struct {
 }
 
 // Take makes this device the driver of chat id. The order is fixed: the
-// directory's record, then keep local edits, then fetch, then the lease, then
-// (only if the head moved meanwhile) one more fetch, then the After hooks,
-// then open. Fetch precedes acquire, so a failed fetch never takes a lease.
-// A refused lease is directory.ErrLeaseHeld, and nothing on disk has changed
-// beyond the kept branch.
+// directory's record, then keep local edits, then fetch into a staging folder,
+// then the lease, then (only if the head moved meanwhile) one more fetch, then
+// the staging folder becomes the root, then the After hooks, then open. Fetch
+// precedes acquire, so a failed fetch never takes a lease, and the root
+// changes only after the acquire, so a lost race (directory.ErrLeaseHeld)
+// leaves nothing on disk beyond the kept branch.
 func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 	view, err := t.Dir.Cell(ctx, id)
 	if err != nil {
@@ -104,23 +108,79 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (s
 	return kept, nil
 }
 
-// claim fetches head, takes the lease, and fetches again if the head moved
-// while the fetch ran. It answers the head that is on disk and the fence.
+// claim fetches head into the staging folder, takes the lease, fetches again
+// if the head moved while the fetch ran, and only then puts the staging folder
+// in place of c's root. It answers the head that is on disk and the fence. The
+// staging folder never outlives a failed claim.
 func (t Taker) claim(ctx context.Context, c cell.Cell, head string) (string, uint64, error) {
-	if err := t.Fetch.Fetch(ctx, c, head); err != nil {
+	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
+	head, fence, err := t.fetchAndAcquire(ctx, stage, head)
+	if err == nil {
+		if err = install(stage.Root, c.Root); err != nil {
+			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
+		}
+	}
+	if err != nil {
+		return "", 0, errors.Join(err, os.RemoveAll(stage.Root))
+	}
+	return head, fence, nil
+}
+
+// fetchAndAcquire is the part of a claim that touches only the staging folder
+// and the directory.
+func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, head string) (string, uint64, error) {
+	if err := freshDir(stage.Root); err != nil {
+		return "", 0, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
+	}
+	if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
 		return "", 0, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
 	}
-	got, err := t.Dir.Acquire(ctx, c.ID)
+	got, err := t.Dir.Acquire(ctx, stage.ID)
 	if err != nil {
-		return "", 0, fmt.Errorf("handoff: take %s: %w", c.ID, err)
+		return "", 0, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
-		if err := t.Fetch.Fetch(ctx, c, head); err != nil {
-			return "", 0, t.giveBack(ctx, c.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: fetch %s: %w", short(head), err))
+		if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
+			return "", 0, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: fetch %s: %w", short(head), err))
 		}
 	}
 	return head, got.Cell.Lease.Fence, nil
+}
+
+// stagingOf is the folder a takeover materializes into: beside the root, so
+// the final move is a rename on one filesystem.
+func stagingOf(root string) string { return root + ".taking" }
+
+// freshDir makes dir exist and be empty, whatever a crashed takeover left.
+func freshDir(dir string) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	return os.MkdirAll(dir, 0o700)
+}
+
+// install puts stage in place of root. What was at root is sealed in the store
+// (any unsealed edit went to a branch first), so it is set aside for the move
+// and removed once the new root is in place; a failed move puts it back.
+func install(stage, root string) error {
+	aside := root + ".replaced"
+	if err := os.RemoveAll(aside); err != nil {
+		return err
+	}
+	had := exists(root)
+	if had {
+		if err := os.Rename(root, aside); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(stage, root); err != nil {
+		if had {
+			err = errors.Join(err, os.Rename(aside, root))
+		}
+		return err
+	}
+	return os.RemoveAll(aside)
 }
 
 // open runs the hooks and opens the cell. Once the lease is ours, a failure

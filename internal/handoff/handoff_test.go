@@ -251,3 +251,45 @@ func TestTakeFailingHookFailsBeforeOpenAndFreesLease(t *testing.T) {
 		t.Fatalf("lease expires %d after a failed take, want it released", got)
 	}
 }
+
+// TestTakeLostRaceLeavesNoTreeInTheRoot pins ruling (b): the fetched tree lives
+// in a staging folder until the lease is ours, so a device that loses the race
+// has neither a root nor a staging folder afterwards.
+func TestTakeLostRaceLeavesNoTreeInTheRoot(t *testing.T) {
+	w := newWorld(t)
+	a, b, c := w.device(devA), w.device(devB), w.device("dev_c")
+	a.release(a.start(map[string]string{"a.txt": "one"}))
+	c.onFetc = func() {
+		if _, err := b.dir.Client.Acquire(context.Background(), chatID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := c.taker().Take(context.Background(), chatID)
+	if !errors.Is(err, directory.ErrLeaseHeld) {
+		t.Fatalf("err = %v, want ErrLeaseHeld", err)
+	}
+	for _, path := range []string{c.root(chatID), c.root(chatID) + ".taking"} {
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Fatalf("%s exists after a lost race", path)
+		}
+	}
+}
+
+// TestTakeLostRaceKeepsTheOldRoot is the same law for a device that already has
+// the chat: the tree it had stays exactly as it was.
+func TestTakeLostRaceKeepsTheOldRoot(t *testing.T) {
+	_, a, b := backFromB(t)
+	before := tree(t, a.root(chatID))
+	a.onFetc = func() {
+		if _, err := b.dir.Client.Acquire(context.Background(), chatID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.taker().Take(context.Background(), chatID); !errors.Is(err, directory.ErrLeaseHeld) {
+		t.Fatalf("err = %v, want ErrLeaseHeld", err)
+	}
+	if got := tree(t, a.root(chatID)); !reflect.DeepEqual(got, before) {
+		t.Fatalf("root changed by a lost race: %v, was %v", got, before)
+	}
+}
