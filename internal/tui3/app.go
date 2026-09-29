@@ -8052,6 +8052,9 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	// the door's per-workspace read of the same two rows).
 	a.draftFile = conv.DraftFile
 	a.history = conv.History
+	// AND THE SEALS ARE THIS CONVERSATION'S OWN, cleared by a zero for the same
+	// reason: one chat's failed seal is not another's (sealseam.go).
+	a.seal = conv.Seal
 	a.saveApproval = conv.SaveApproval
 	a.saveBashApproval = conv.SaveBashApproval
 	a.applyApprovals = conv.ApplyApprovals

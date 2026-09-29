@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -168,5 +169,35 @@ func TestCellLogMarksCallsThatWereNeverSealed(t *testing.T) {
 	out.Reset()
 	if err := writeGaps(c, &out); err != nil || out.Len() != 0 {
 		t.Fatalf("log after the call was sealed: %v\n%s", err, out.String())
+	}
+}
+
+// EACH CELL'S SEAT OWNS ITS OWN WATCH: a failure on one is not on the other.
+func TestEachSeatOwnsItsSealWatch(t *testing.T) {
+	if _, err := furrow.ResolveBinary(); err != nil {
+		t.Skipf("no engine binary: %v", err)
+	}
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_CELLS", "1")
+	bucket := filepath.Join(home.Join("v3", "projects"), "-work")
+	seatOf := func() *cellstore.SealWatch {
+		c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := v3Seated(session.Config{Place: session.Place{Dir: c.Root, Workspace: t.TempDir()}})
+		watch, ok := cfg.Seals.(*cellstore.SealWatch)
+		if !ok {
+			t.Fatalf("no watch on a sealed session: %T", cfg.Seals)
+		}
+		return watch
+	}
+	first, second := seatOf(), seatOf()
+	if first == second {
+		t.Fatal("two cells share one watch")
+	}
+	first.Report(errors.New("disk full"))
+	if !first.Failing() || second.Failing() {
+		t.Fatal("a failure on one cell showed on the other")
 	}
 }
