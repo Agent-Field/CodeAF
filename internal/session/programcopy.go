@@ -294,9 +294,6 @@ func snapshotCheckout(repo, start, notes, program string) (string, error) {
 	defer func() { _ = os.Remove(index) }()
 	pathspec := index + ".paths"
 	defer func() { _ = os.Remove(pathspec) }()
-	if err := os.WriteFile(pathspec, []byte(strings.Join(paths, "\x00")+"\x00"), 0o600); err != nil {
-		return "", err
-	}
 	withIndex := func(args ...string) (string, error) {
 		out, err := gitWith(repo, []string{"GIT_INDEX_FILE=" + index, "GIT_LITERAL_PATHSPECS=1"}, args...)
 		if err != nil {
@@ -305,6 +302,12 @@ func snapshotCheckout(repo, start, notes, program string) (string, error) {
 		return strings.TrimSpace(out), nil
 	}
 	if _, err := withIndex("read-tree", start); err != nil {
+		return "", err
+	}
+	if paths, err = snapshotPathsWithSomething(repo, index, paths); err != nil || len(paths) == 0 {
+		return "", err
+	}
+	if err := os.WriteFile(pathspec, []byte(strings.Join(paths, "\x00")+"\x00"), 0o600); err != nil {
 		return "", err
 	}
 	if _, err := withIndex("add", "-A", "--pathspec-from-file="+pathspec, "--pathspec-file-nul"); err != nil {
@@ -330,6 +333,49 @@ func snapshotCheckout(repo, start, notes, program string) (string, error) {
 		return "", errors.New(firstLine(commit))
 	}
 	return strings.TrimSpace(commit), nil
+}
+
+// snapshotPathsWithSomething keeps the paths git status named that are on disk
+// or in the private index read from the starting tree, in their order.
+//
+// A PATH ON NEITHER SIDE HAS NOTHING TO CARRY, AND GIT REFUSES IT. A file added
+// to the index and deleted since ("AD"), or the new name of a staged rename
+// deleted since ("RD"), is named by git status but matches nothing, and `git
+// add` fails the whole list on one such pathspec — which left every other
+// uncommitted change out of the copy. Only the paths missing from disk are
+// asked about, a bounded number at a time so no argument list outgrows the
+// system's.
+func snapshotPathsWithSomething(repo, index string, paths []string) ([]string, error) {
+	const perAsk = 512
+	var missing []string
+	for _, path := range paths {
+		if _, err := os.Lstat(filepath.Join(repo, filepath.FromSlash(path))); err != nil {
+			missing = append(missing, path)
+		}
+	}
+	if len(missing) == 0 {
+		return paths, nil
+	}
+	indexed := map[string]bool{}
+	for len(missing) > 0 {
+		ask := missing[:min(perAsk, len(missing))]
+		missing = missing[len(ask):]
+		out, err := gitWith(repo, []string{"GIT_INDEX_FILE=" + index, "GIT_LITERAL_PATHSPECS=1"},
+			append([]string{"ls-files", "-z", "--"}, ask...)...)
+		if err != nil {
+			return nil, errors.New(firstLine(out))
+		}
+		for _, path := range strings.Split(out, "\x00") {
+			indexed[path] = true
+		}
+	}
+	kept := paths[:0:0]
+	for _, path := range paths {
+		if _, err := os.Lstat(filepath.Join(repo, filepath.FromSlash(path))); err == nil || indexed[path] {
+			kept = append(kept, path)
+		}
+	}
+	return kept, nil
 }
 
 // cutCopy adds the copy as a worktree of the person's repository, on the

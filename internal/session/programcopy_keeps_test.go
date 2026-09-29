@@ -547,6 +547,51 @@ func TestTheSnapshotCarriesAStagedRenameAsARename(t *testing.T) {
 	}
 }
 
+// A PATH GIT STATUS NAMES THAT IS ON NEITHER SIDE COSTS NONE OF THE WORK. A
+// file added to the index and deleted since ("AD"), or the new name of a staged
+// rename deleted since ("RD"), is not on disk and not in the starting tree; git
+// refuses a pathspec that matches nothing, and that one refusal used to leave
+// every other uncommitted change out of the copy.
+func TestTheSnapshotCarriesTheWorkBesideAStagedFileDeletedSince(t *testing.T) {
+	for name, stage := range map[string]func(t *testing.T, repo string) string{
+		"added": func(t *testing.T, repo string) string {
+			writeFile(t, filepath.Join(repo, "gone.txt"), "staged, then deleted\n")
+			mustGit(t, repo, "add", "gone.txt")
+			if err := os.Remove(filepath.Join(repo, "gone.txt")); err != nil {
+				t.Fatal(err)
+			}
+			return "M\tshared.txt"
+		},
+		"renamed": func(t *testing.T, repo string) string {
+			writeFile(t, filepath.Join(repo, "a.txt"), "rename me\n")
+			mustGit(t, repo, "add", "a.txt")
+			mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "file to rename")
+			mustGit(t, repo, "mv", "a.txt", "b.txt")
+			if err := os.Remove(filepath.Join(repo, "b.txt")); err != nil {
+				t.Fatal(err)
+			}
+			return "D\ta.txt\nM\tshared.txt"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := newTestRepo(t)
+			want := stage(t, repo)
+			writeFile(t, filepath.Join(repo, "shared.txt"), "visible edit\n")
+			folder := prepareIn(t, testPrograms("fake")[0], repo, "Read the visible work")
+			defer folder.Finish("")
+			if folder.LeftBehindWhy != "" {
+				t.Fatalf("the work was left behind: %s", folder.LeftBehindWhy)
+			}
+			if changes := strings.TrimSpace(gitOut(t, repo, "diff-tree", "--no-commit-id", "--name-status", "-r", folder.Snapshot)); changes != want {
+				t.Fatalf("the snapshot changed %q, want %q", changes, want)
+			}
+			if got := readFile(t, filepath.Join(folder.Dir, "shared.txt")); got != "visible edit\n" {
+				t.Fatalf("the copy's shared.txt = %q", got)
+			}
+		})
+	}
+}
+
 // A LINKED DEPENDENCY FOLDER CANNOT BE CLONED SAFELY. With the network on,
 // the program installs into its own copy and never writes through that link.
 func TestANetworkOnCopyNeverLinksToAPersonsLinkedNodeModules(t *testing.T) {
