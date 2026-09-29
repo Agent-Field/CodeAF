@@ -34,6 +34,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellindex"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -734,19 +735,43 @@ func v3Migrated(cfg session.Config) session.Config {
 	budgetOnOpen(cfg.Place.Dir)
 	_, _ = cellindex.RebuildAt(cfg.Place.Dir)
 	cfg.SessionFile = cfg.Place.Transcript()
-	declareClass(cfg)
 	return cfg
 }
 
-// declareClass tells the executor which class the cell declared for the
-// workspace its tools run in, so network policy follows it. A folder that is
-// not a readable cell declares nothing and keeps the legacy rule.
-func declareClass(cfg session.Config) {
-	c, err := cell.OpenAt(cfg.Place.Dir, filepath.Base(cfg.Place.Dir))
-	if err != nil || cfg.Place.Workspace == "" {
-		return
+// v3Seated gives the session the executor it owns, built once here from the
+// class the cell declared and the workspace its tools run in.
+//
+// A folder that is not a readable cell gets no seat and its calls run on the
+// host as they always did, and so does every folder while cells are off. The
+// seat is set on every call, so a config reused for the next conversation never
+// carries the last one's executor.
+func v3Seated(cfg session.Config) session.Config {
+	cfg.Seat = nil
+	if !cell.Enabled() || cfg.Place.Dir == "" || cfg.Place.Workspace == "" {
+		return cfg
 	}
-	if class, ok := executor.ParseClass(string(c.Meta().Class)); ok {
-		executor.Declare(cfg.Place.Workspace, class)
+	c, err := cell.OpenAt(cfg.Place.Dir, filepath.Base(cfg.Place.Dir))
+	if err != nil {
+		return cfg
+	}
+	class, ok := executor.ParseClass(string(c.Meta().Class))
+	if !ok {
+		class = executor.HostBound
+	}
+	seat, err := cellstore.SeatFor(class, c, cfg.Place.Workspace, sealNotice.report)
+	cfg.Seat = seat
+	sealNotice.report(err)
+	return cfg
+}
+
+// sealNotice tells a person once per launch that their calls are not sealed. It
+// is stderr, not the surface's notice row, until the launch has one for it.
+var sealNotice onceNotice
+
+type onceNotice struct{ once sync.Once }
+
+func (n *onceNotice) report(err error) {
+	if err != nil {
+		n.once.Do(func() { fmt.Fprintln(os.Stderr, "codeaf: "+err.Error()) })
 	}
 }

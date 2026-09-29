@@ -114,7 +114,7 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	if baseEnv == nil {
 		baseEnv = os.Environ()
 	}
-	cmd, err := executor.In(launch.Dir).Command(context.Background(), executor.ExecRequest{
+	cmd, err := executor.For(ctx).In(launch.Dir).Command(context.Background(), executor.ExecRequest{
 		Argv: append([]string{launch.Bin}, launch.Args...),
 		Env:  append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
 	})

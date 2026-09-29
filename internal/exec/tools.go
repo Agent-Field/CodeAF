@@ -1616,7 +1616,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// than that. Everything past the first is teed to a file as it arrives, so
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
-	res, err := executor.In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
+	res, err := executor.For(runCtx).In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
 		Argv: []string{"bash", "-lc", command}, Env: environment,
 		WaitDelay: 3 * time.Second, Combined: true, Stream: true,
 	}, func(c executor.Chunk) { _, _ = collected.Write(c.Data) })

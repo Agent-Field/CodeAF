@@ -1,10 +1,5 @@
 package executor
 
-import (
-	"path/filepath"
-	"sync"
-)
-
 // rule is what one class allows (docs/ARCHITECTURE.md section 8.3). Network
 // policy is the side-effect oracle: a call with the network denied is provably
 // local, one with it open is external.
@@ -40,44 +35,4 @@ func PolicyFor(c Class, setup bool) NetPolicy {
 func ParseClass(name string) (Class, bool) {
 	c, ok := classNames[name]
 	return c, ok
-}
-
-// A workspace without a declared class is a legacy one: it runs as it always
-// has, unjailed with the network open, which is exactly the host-bound rule.
-const undeclared = HostBound
-
-var declared = struct {
-	sync.RWMutex
-	byRoot map[string]Class
-}{byRoot: map[string]Class{}}
-
-// Declare records the class a workspace root was declared with. It is called
-// when a cell is opened; workspaces never declared keep the legacy rule.
-func Declare(root string, c Class) {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		return
-	}
-	declared.Lock()
-	declared.byRoot[abs] = c
-	declared.Unlock()
-}
-
-// ClassOf is the class declared for the workspace that holds dir, found by
-// walking up from dir; an undeclared tree is legacy.
-func ClassOf(dir string) Class {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return undeclared
-	}
-	declared.RLock()
-	defer declared.RUnlock()
-	for p := abs; ; p = filepath.Dir(p) {
-		if c, ok := declared.byRoot[p]; ok {
-			return c
-		}
-		if p == filepath.Dir(p) {
-			return undeclared
-		}
-	}
 }

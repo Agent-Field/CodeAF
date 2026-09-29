@@ -56,8 +56,7 @@ func Wrap(inner executor.Executor, c cell.Cell) (executor.Executor, error) {
 	if !cell.Enabled() {
 		return inner, nil
 	}
-	engine := Engine{}
-	r, err := NewRecorder(inner, engine, c, engine.WALPath(c), Options{})
+	r, err := recorderFor(inner, c, Options{})
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +73,27 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 	res, err := r.inner.Exec(ctx, req, onOutput)
 	r.complete(ctx, intent, res, err)
 	return res, err
+}
+
+// Around records one whole tool call, whatever it did inside: a process through
+// Exec, one owned by the tool through Command, or a file written directly. The
+// call is the boundary the tree is sealed at, so this is what a session uses;
+// Exec is the same record for a caller that has only an executor.
+func (r *Recorder) Around(ctx context.Context, tool string, args []byte, effect executor.SideEffect, run func() ([]byte, bool)) error {
+	intent := Intent{V: schemaV, Tool: tool, ArgsHash: hashHex(args), Started: r.now().UnixMilli(), SideEffect: string(effect)}
+	if err := r.wal.Begin(intent); err != nil {
+		return fmt.Errorf("log call intent: %w", err)
+	}
+	out, failed := run()
+	r.complete(ctx, intent, executor.ExecResult{Exit: exitOfFailure(failed), Stdout: out}, nil)
+	return nil
+}
+
+func exitOfFailure(failed bool) int {
+	if failed {
+		return 1
+	}
+	return 0
 }
 
 // Incomplete lists the calls that were started and never finished, oldest first.

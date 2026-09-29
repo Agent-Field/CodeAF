@@ -136,7 +136,7 @@ func SpawnProcess(ctx context.Context, command []string, options ...ProcessOptio
 			args = []string{"/d", "/s", "/c", line}
 		}
 	}
-	cmd, err := executor.In(opt.Cwd).Command(context.Background(), executor.ExecRequest{
+	cmd, err := executor.For(ctx).In(opt.Cwd).Command(context.Background(), executor.ExecRequest{
 		Argv: append([]string{name}, args...), Env: processEnv(opt),
 		Group: executor.GroupInherit,
 	})

@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -189,6 +190,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.seat = config.Seat
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -1794,6 +1796,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	gone := make(chan struct{})
 	a.abandon = gone
 	turnCtx = withAbandon(turnCtx, gone)
+	// AND ITS TOOL CALLS RUN ON THE SESSION'S OWN EXECUTOR, carried the same way
+	// and for the same reason: the tools that spawn hold no reference to the agent.
+	turnCtx = procexec.With(turnCtx, a.config.Seat)
 	// AND THE TURN IS NUMBERED, so that a turn this session has DISOWNED cannot
 	// clean up after the turn that replaced it. See [Agent.Abandon]; the cleanup
 	// below is the only reader.

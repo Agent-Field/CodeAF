@@ -147,7 +147,7 @@ func RunReading(
 	// wait on the pipes after it does, which is exec's one remaining way to
 	// block forever on a process it has already killed.
 	captured := &tailBuffer{limit: capturedOutputLimit}
-	run, err := executor.In(filepath.Join(workspace, strategy.Workdir)).Exec(ctx, executor.ExecRequest{
+	run, err := executor.For(ctx).In(filepath.Join(workspace, strategy.Workdir)).Exec(ctx, executor.ExecRequest{
 		Argv:      []string{shell, "-c", strictPreamble + strategy.Command},
 		WaitDelay: 2 * time.Second, Combined: true, Stream: true,
 	}, func(c executor.Chunk) { _, _ = captured.Write(c.Data) })

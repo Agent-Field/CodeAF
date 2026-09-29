@@ -67,7 +67,7 @@ func StartDetachedService(command, dir, logPath string) (int, time.Time, error) 
 	if err != nil {
 		return 0, time.Time{}, err
 	}
-	cmd, err := detachedCommand(context.Background(), dir, command, nil, logFile, 0)
+	cmd, err := detachedCommand(executor.Host, context.Background(), dir, command, nil, logFile, 0)
 	if err == nil {
 		err = cmd.Start()
 	}
@@ -92,9 +92,9 @@ func StartDetachedService(command, dir, logPath string) (int, time.Time, error) 
 // output. A new session is also a new process group; it preserves group-wide
 // job teardown and lets an adopted service survive the chat terminal closing.
 func detachedCommand(
-	ctx context.Context, dir, command string, environment []string, output io.Writer, wait time.Duration,
+	seat executor.Seat, ctx context.Context, dir, command string, environment []string, output io.Writer, wait time.Duration,
 ) (*exec.Cmd, error) {
-	cmd, err := executor.In(dir).Command(ctx, executor.ExecRequest{
+	cmd, err := seat.In(dir).Command(ctx, executor.ExecRequest{
 		Argv: []string{"bash", "-lc", command}, Env: environment,
 		Group: executor.GroupSession, WaitDelay: wait,
 	})

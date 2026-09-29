@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -173,7 +174,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	}
 
 	jobCtx, cancel := context.WithCancel(context.Background())
-	cmd, err := detachedCommand(jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)
+	cmd, err := detachedCommand(executor.For(ctx), jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)
 	if err == nil {
 		err = cmd.Start()
 	}

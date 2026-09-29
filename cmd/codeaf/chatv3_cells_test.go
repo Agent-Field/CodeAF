@@ -170,19 +170,61 @@ func TestLegacyFolderStaysLegacyWhenTheFlagIsOff(t *testing.T) {
 	}
 }
 
-func TestDeclareClassFollowsTheCell(t *testing.T) {
+func seatClass(t *testing.T, cfg session.Config, dir string) executor.Class {
+	t.Helper()
+	if cfg.Seat == nil {
+		t.Fatal("the session has no seat")
+	}
+	local, ok := cfg.Seat.In(dir).(executor.Local)
+	if !ok {
+		t.Fatalf("seat runner is %T; an unsealed workspace must hand out a plain local", cfg.Seat.In(dir))
+	}
+	return local.Class
+}
+
+func TestSeatFollowsTheCellsClass(t *testing.T) {
+	t.Setenv(cell.EnvVar, "1")
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	declareClass(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}})
-	if got := executor.ClassOf(workspace); got != executor.Sandboxed {
+	cfg := v3Seated(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}})
+	if got := seatClass(t, cfg, workspace); got != executor.Sandboxed {
 		t.Fatalf("class = %d, want sandboxed", got)
 	}
-	other := t.TempDir()
-	declareClass(session.Config{Place: session.Place{Dir: t.TempDir(), Workspace: other}})
-	if got := executor.ClassOf(other); got != executor.HostBound {
-		t.Fatalf("a folder that is no cell declared %d, want the legacy rule", got)
+}
+
+// Two sessions in one process on the same path each keep the class their own
+// cell declared: nothing is looked up by path.
+func TestTwoSessionsOnOnePathKeepTheirOwnClasses(t *testing.T) {
+	t.Setenv(cell.EnvVar, "1")
+	workspace := t.TempDir()
+	seated := func(class cell.Class) session.Config {
+		c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: class})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v3Seated(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}})
+	}
+	sandboxed, host := seated(cell.Sandboxed), seated(cell.HostBound)
+	if a, b := seatClass(t, sandboxed, workspace), seatClass(t, host, workspace); a != executor.Sandboxed || b != executor.HostBound {
+		t.Fatalf("classes = %d and %d, want sandboxed and host-bound", a, b)
+	}
+}
+
+func TestNoSeatWhenCellsAreOffOrTheFolderIsNoCell(t *testing.T) {
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	place := session.Place{Dir: c.Root, Workspace: t.TempDir()}
+	if cfg := v3Seated(session.Config{Place: place, Seat: executor.Host}); cfg.Seat != nil {
+		t.Fatal("flag off must leave the session on the host, and clear a stale seat")
+	}
+	t.Setenv(cell.EnvVar, "1")
+	other := session.Place{Dir: t.TempDir(), Workspace: t.TempDir()}
+	if cfg := v3Seated(session.Config{Place: other}); cfg.Seat != nil {
+		t.Fatal("a folder that is no cell must keep the legacy host rule")
 	}
 }

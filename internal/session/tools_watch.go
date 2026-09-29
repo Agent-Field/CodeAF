@@ -666,7 +666,7 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	// per tick, forever. And the wait is bounded too, because output is copied
 	// from a pipe a grandchild may still hold open after its parent died.
 	var captured bytes.Buffer
-	res, err := procexec.In(r.workspace).Exec(tickCtx, procexec.ExecRequest{
+	res, err := r.runner(r.workspace).Exec(tickCtx, procexec.ExecRequest{
 		Argv: append([]string{shell}, append(shellArgs, spec.command)...), Env: os.Environ(),
 		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
 		Combined: true, Stream: true,

@@ -34,6 +34,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -1186,10 +1187,14 @@ type Config struct {
 	WaitForBeltSteps bool
 
 	Workspace string // tools root here; all relative paths resolve inside it
-	Model     string
-	APIKey    string
-	BaseURL   string
-	Sources   modelsource.Set
+	// Seat is the executor this session owns: every tool call runs on it, so
+	// the class the workspace declared and the seal after each call follow the
+	// session and never a path. Nil runs the session's calls on the host.
+	Seat    procexec.Seat
+	Model   string
+	APIKey  string
+	BaseURL string
+	Sources modelsource.Set
 
 	// There is no app-attribution field here any more. The three that used to
 	// be forwarded to the provider client — a referer, a title, a category
