@@ -1,0 +1,56 @@
+# The task manifest for the subcommand-single-char-alias-leak candidate.
+# Same layout as the shell-pipe-empty-command fixture; see that file for the
+# schema comments. Mined from alecthomas/kong#637 (merged 2026-08-05).
+schema_version = "1.3"
+artifacts = ["/logs/artifacts/model.patch"]
+
+[task]
+name = "frontiercode/subcommand-single-char-alias-leak"
+description = "Make kong's sibling-subcommand alias bookkeeping delete an alias under the form it is invoked as"
+authors = []
+keywords = ["go", "cli", "flag-parsing"]
+
+[metadata]
+task_id = "subcommand-single-char-alias-leak"
+display_title = "Single-character aliases leak between sibling subcommands"
+display_description = "kong's flag bookkeeping deletes every alias under its long form (--name) only, so two sibling subcommands that each declare a single-character alias appear to conflict: parsing sub2 -f hello errors as a duplicate alias even though the subcommands are separate. Make the bookkeeping delete an alias under the form it is actually invoked as - one character under -x, longer under --x - while duplicate detection for long aliases keeps working."
+language = "go"
+repository_url = "https://github.com/alecthomas/kong"
+base_commit_hash = "a5c96268805994e92822673b24553196694fdda1"
+reference_commit_hash = "4621d8ceb43e85c773df47ea65269b7bc5aa2592"
+reference_pr = "alecthomas/kong#637"
+license = "MIT (upstream only; fetched at image build time)"
+# Where the task tree lives inside the container (grade.sh mounts and grades
+# it; the fixture leaves this key off and defaults to jsonschema).
+agent_repo_path = "kong"
+
+[environment]
+docker_image = "frontiercode-subcommand-single-char-alias-leak:env"
+os = "linux"
+allow_internet = true
+network_mode = "public"
+cpus = 4
+memory_mb = 8192
+build_timeout_sec = 2400.0
+
+[agent]
+timeout_sec = 7200.0
+
+[verifier]
+# The reverse-classical criterion reverts build.go and must test the REVERTED
+# tree: touch the package's Go sources so the incremental build cannot serve
+# stale objects, then rebuild the tree.
+rebuild_command = "find . -name '*.go' -newer go.mod -exec touch {} + && go build ./..."
+network_mode = "no-network"
+environment_mode = "separate"
+timeout_sec = 5400.0
+cpus = 4
+memory_mb = 8192
+docker_image = "frontiercode-subcommand-single-char-alias-leak:verify"
+
+[[verifier.collect]]
+command = "cd /root/repos/kong && git add -A && git diff --binary a5c96268805994e92822673b24553196694fdda1 > /logs/artifacts/model.patch"
+timeout_sec = 300.0
+
+[rubric]
+file = "rubric.toml"
