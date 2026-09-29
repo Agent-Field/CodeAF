@@ -48,6 +48,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
@@ -430,6 +431,10 @@ type CodexFlow interface {
 
 // Options configures one surface.
 type Options struct {
+	// Machines lists this person's chats on their other machines. Nil is a
+	// machine that syncs nothing, and home then draws nothing extra: the
+	// sessions panel is exactly what it was (homepanel_machines.go).
+	Machines chatlist.Source
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 	// EngineRoad says the conversation is in a daemon on this machine. It is

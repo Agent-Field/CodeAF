@@ -17,7 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell gc [--dry-run]"
+const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell gc [--dry-run] | codeaf cell list --all"
 
 // cellVerb is one word after `cell`: how many arguments of its own it takes
 // before the optional cell name, and what it does to the cell. A verb that is
@@ -34,6 +34,7 @@ var cellVerbs = map[string]cellVerb{
 	"rewind":  {args: 1, run: cellRewind},
 	"resolve": {args: 0, run: cellResolve},
 	"gc":      {wide: true, run: cellGC},
+	"list":    {wide: true, run: cellListVerb},
 }
 
 // runCell is the stage 0 door onto a cell's turn chain. Like `engine` it is
@@ -188,3 +189,6 @@ func toolSummary(r cellstore.Receipt) string {
 	}
 	return orDash(strings.Join(tools, ","))
 }
+
+// cellListVerb adapts cellList to the verb table, which hands every verb a cell.
+func cellListVerb(_ cell.Cell, args []string, out io.Writer) error { return cellList(args, out) }
