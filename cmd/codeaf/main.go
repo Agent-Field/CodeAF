@@ -359,6 +359,11 @@ func run() error {
 		// while cells are behind CODEAF_CELLS, so DELIBERATELY ABSENT from the
 		// usage text below, like `engine` and `tick`.
 		return runCell(os.Args[2:])
+	case "identity":
+		// The person's one root secret and its passphrase-wrapped export
+		// (identity.go). Machinery while cells are behind CODEAF_CELLS, so
+		// DELIBERATELY ABSENT from the usage text below, like `cell`.
+		return runIdentity(os.Args[2:])
 	case "tick":
 		// One bounded pass over the standing items — the reminders, watches and
 		// routines a conversation left behind (tick.go). It is what the OS
