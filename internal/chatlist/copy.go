@@ -15,6 +15,8 @@ const (
 	runningOn      = "running on %s"
 	deviceOff      = "%s off"
 	branchLine     = "%d turns from %s: merge / discard"
+	branchKeep     = "%d turns from %s: discard"
+	branchShort    = "%d turns · %s"
 	takeoverLine   = "last durable turn %ds ago"
 	takeoverMore   = "; up to %d turns may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %d turns from %s"
@@ -34,6 +36,22 @@ func StatusLine(r Row) string {
 	}
 	return ""
 }
+
+// BranchLine is a branch row's sentence for what the surface can do with it.
+// Merge is offered only where a surface has a way to merge, so a surface
+// without one says the sentence without it rather than promising the verb
+// (a capability that cannot work is absent, not broken).
+func BranchLine(r Row, merge bool) string {
+	if merge {
+		return fmt.Sprintf(branchLine, r.OrphanTurns, r.Device)
+	}
+	return fmt.Sprintf(branchKeep, r.OrphanTurns, r.Device)
+}
+
+// BranchShort is the branch row's narrow spelling (ruling 2026-09-29, §8.1):
+// the shared row fitter takes it below the width the full sentence needs, so
+// the row never loses the fact that it is a branch and where it came from.
+func BranchShort(r Row) string { return fmt.Sprintf(branchShort, r.OrphanTurns, r.Device) }
 
 // TakeoverLine is the takeover screen's sentence; the clause about turns still
 // on the other machine is left out when none are.

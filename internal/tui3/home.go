@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -415,9 +416,9 @@ const homeEmptyRow homeRowKind = 230
 
 // homeMachineRow is ONE CHAT ON ANOTHER MACHINE in the sessions panel
 // (homepanel_machines.go). It is numbered outside the iota block for
-// [homeEmptyRow]'s reason and it is not a cursor stop: there is no transcript on
-// this machine for enter to open, and a door that opened nothing would be a
-// dead end. What a person can do with such a row arrives with the takeover.
+// [homeEmptyRow]'s reason. A row that carries its chat ([homeLine.remote]) is a
+// cursor stop and enter runs the offer it makes ([app.homeMachineEnter]); the
+// dim `other machines unreachable` line under the list carries none and is not.
 const homeMachineRow homeRowKind = 231
 
 const (
@@ -504,6 +505,9 @@ type homeLine struct {
 	says string
 	// row is the conversation, for [homeSession].
 	row session.SessionRow
+	// remote is the chat on another machine a [homeMachineRow] stands for, and
+	// nil on the line that only says the machines cannot be reached.
+	remote *chatlist.Row
 	// quiet is how many conversations the collapsed line stands for, and since
 	// when nobody has been in them. folded says the line is hiding them right
 	// now; an expanded project keeps the line as the way back.
@@ -2095,6 +2099,8 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.project != "" && l.project == other.project && l.dir == other.dir
 	case homeAction, homeAskHere:
 		return true
+	case homeMachineRow:
+		return l.remote != nil && other.remote != nil && l.remote.Cell == other.remote.Cell
 	}
 	return false
 }
@@ -2397,6 +2403,10 @@ func (l homeLine) stop() bool {
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
 		return true
+	// a chat on another machine is a door into what can be done with it; the
+	// sentence saying the machines cannot be reached is only read.
+	case homeMachineRow:
+		return l.remote != nil
 	// the switcher's own: a `since you left` line is a door into the place that
 	// owns it. Its headings are not, for [homeHeading]'s reason (place_home.go),
 	// and neither is a [homeReadout] — spend's lines are read, not stood on.
@@ -3241,6 +3251,10 @@ func (a *app) homeEnter() tea.Cmd {
 		// here: there is no one conversation a project line stands for.
 		h.foldProject(line.dir, line.folded)
 		return nil
+	case homeMachineRow:
+		// A CHAT ON ANOTHER MACHINE ANSWERS WITH THE OFFER IT MAKES
+		// (homepanel_continue.go): continue it here, or what to do with a branch.
+		return a.homeMachineEnter(line)
 	case homeLedger:
 		// A `since you left` LINE IS A DOOR INTO THE PLACE THAT OWNS IT
 		// (place_home.go). It is the whole discoverability mechanism of this

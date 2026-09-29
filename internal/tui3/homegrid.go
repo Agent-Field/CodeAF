@@ -462,6 +462,9 @@ type homeCell struct {
 	// note is a dim clause after the title; tag and right are the dim facts
 	// at the right margin, the tag giving way first.
 	note, tag, right string
+	// noteShort is the note's narrower spelling, taken before the note gives
+	// way whole ([homeCellBody]); "" for a note with only one.
+	noteShort string
 	// bold is this window's own conversation.
 	bold bool
 	// underline marks a hovered project name without lighting its facts.
