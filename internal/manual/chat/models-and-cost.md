@@ -4060,7 +4060,7 @@ in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately.
 
-## Which budget takes precedence — daily or per conversation?
+## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
 **Both limits apply; neither overrides the other.** New chat turns stop when
 either limit is reached. The daily limit counts today's spending across all

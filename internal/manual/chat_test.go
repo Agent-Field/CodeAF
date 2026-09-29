@@ -1537,6 +1537,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the money on the status line include what my tasks are spending", "models-and-cost"},
 		{"is a task's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
+		// #1671: a daily limit and a conversation limit both apply, and the
+		// person who raised the wrong one says the command does not work.
+		{"my budget command doesn't work", "models-and-cost"},
+		{"why is my conversation blocked", "models-and-cost"},
+		{"I raised the budget but my conversation is still blocked", "models-and-cost"},
+		{"conversation limit vs daily limit", "models-and-cost"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
 		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},
