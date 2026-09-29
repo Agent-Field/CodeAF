@@ -43,12 +43,14 @@ var _ Store = Engine{}
 
 // LocalDir is the device-local directory of a cell: the engine store and the
 // call WAL. It is never inside the cell and never synced.
-func (e Engine) LocalDir(c cell.Cell) string {
-	root := e.DataRoot
-	if root == "" {
-		root = home.Join("v3", "stores")
+func (e Engine) LocalDir(c cell.Cell) string { return filepath.Join(e.Root(), c.ID) }
+
+// Root is the directory that holds one local directory per cell.
+func (e Engine) Root() string {
+	if e.DataRoot == "" {
+		return home.Join("v3", "stores")
 	}
-	return filepath.Join(root, c.ID)
+	return e.DataRoot
 }
 
 // Seal implements Store: compose the harness-owned files, snapshot the folder,
