@@ -355,7 +355,7 @@ func (h *twoHomes) fetchInto(head string) map[string]entry {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		h.t.Fatal(err)
 	}
-	if err := fetcher.taker.Fetch.Fetch(context.Background(), stage, head); err != nil {
+	if err := fetcher.taker(h.b.scope(h.cell.ID)).Fetch.Fetch(context.Background(), stage, head); err != nil {
 		h.t.Fatalf("the head is not in the store: %v", err)
 	}
 	return readTree(h.t, workspaceOf(root))

@@ -31,6 +31,11 @@ type Line struct {
 // Version is the only line version there is.
 const Version = 1
 
+// VaultScope names the machine-level scope that holds what carrying the vault
+// cost. It is not a cell id and never can be (those are ULIDs), so its lines sit
+// beside the cells' in the same folder and are read the same way.
+const VaultScope = "vault"
+
 // Path is where one cell's lines live under a home directory.
 func Path(home, cellID string) string {
 	return filepath.Join(home, "v3", "sync", "stats", cellID+".jsonl")

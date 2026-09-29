@@ -116,3 +116,42 @@ func TestCountersMatchRelayStats(t *testing.T) {
 		t.Fatalf("the comparison is empty: %+v", got)
 	}
 }
+
+func TestStatsSettleCarriesWhatNoFlushDid(t *testing.T) {
+	m := &fakeMeter{}
+	home := t.TempDir()
+	r := cellstats.NewRecorder(home, "c1", m)
+	r.Settle()
+	if _, err := os.Stat(r.Path); err == nil {
+		t.Fatal("settling with nothing counted wrote a line")
+	}
+	m.c = cellstats.Counts{Gets: 5, BytesDown: 900}
+	r.Settle()
+	r.Settle() // the second settle has nothing new to say
+	lines, err := cellstats.Read(home, "c1")
+	if err != nil || len(lines) != 1 {
+		t.Fatalf("lines = %v, err = %v; want one", lines, err)
+	}
+	if l := lines[0]; l.Turn != "" || l.Gets != 5 || l.BytesDown != 900 {
+		t.Fatalf("settled line = %+v", l)
+	}
+}
+
+func TestStatsReportShowsTheVaultAsItsOwnRow(t *testing.T) {
+	cell := []cellstats.Line{{V: 1, Turn: "abcdefghijklmnop", Puts: 2, BytesUp: 100}}
+	vault := []cellstats.Line{{V: 1, Puts: 1, BytesUp: 30}, {V: 1, Gets: 1, BytesDown: 7}}
+	var out strings.Builder
+	cellstats.RenderScopes(&out, cell, vault)
+	rows := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(rows) != 4 || !strings.HasPrefix(rows[2], "total") || !strings.HasPrefix(rows[3], "vault") {
+		t.Fatalf("report rows = %q; want a flush row, total, then vault", rows)
+	}
+	if !strings.Contains(rows[2], " 100 ") || !strings.Contains(rows[3], " 30 ") || !strings.Contains(rows[3], " 7") {
+		t.Fatalf("the vault row is not kept out of the cell's total:\n%s", out.String())
+	}
+	out.Reset()
+	cellstats.RenderScopes(&out, nil, nil)
+	if out.Len() != 0 {
+		t.Fatalf("an empty report printed %q", out.String())
+	}
+}

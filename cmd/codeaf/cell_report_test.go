@@ -43,6 +43,20 @@ func TestCellReport(t *testing.T) {
 	}
 }
 
+func TestCellReportShowsTheVaultRow(t *testing.T) {
+	c := reportCell(t, cellsync.Flush{Head: "aaaaaaaaaaaaaaaa", Turns: 1})
+	cellstats.NewRecorder(home.Dir(), cellstats.VaultScope, cellstats.MeterFunc(func() cellstats.Counts {
+		return cellstats.Counts{Puts: 3, BytesUp: 4242}
+	})).Settle()
+	var out bytes.Buffer
+	if err := runCellIn([]string{"report", c.ID}, &out, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "vault") || !strings.Contains(out.String(), "4242") {
+		t.Fatalf("report lacks the vault row:\n%s", out.String())
+	}
+}
+
 func TestCellReportPrintsNothingWithoutRows(t *testing.T) {
 	c := reportCell(t)
 	file := filepath.Join(t.TempDir(), "out.jsonl")

@@ -12,8 +12,13 @@ const ExportNotice = "counts only: bytes, objects and requests per turn; no cont
 
 // Render prints one row per flush and a total row. With no lines it prints
 // nothing at all: an empty report is silence, not a table of zeros.
-func Render(w io.Writer, lines []Line) {
-	if len(lines) == 0 {
+func Render(w io.Writer, lines []Line) { RenderScopes(w, lines, nil) }
+
+// RenderScopes prints a cell's rows and, as a row of its own, what carrying the
+// vault cost on this device. The vault serves every chat, so it is never folded
+// into one cell's total. With nothing in either scope it prints nothing.
+func RenderScopes(w io.Writer, lines, vault []Line) {
+	if len(lines)+len(vault) == 0 {
 		return
 	}
 	fmt.Fprintf(w, "%-12s %5s %6s %7s %10s %5s %5s %5s %10s\n",
@@ -21,7 +26,15 @@ func Render(w io.Writer, lines []Line) {
 	for _, l := range lines {
 		row(w, shortID(l.Turn), l)
 	}
-	row(w, "total", Total(lines))
+	rowIfAny(w, "total", lines)
+	rowIfAny(w, VaultScope, vault)
+}
+
+// rowIfAny prints the sum of lines under name, or nothing for no lines.
+func rowIfAny(w io.Writer, name string, lines []Line) {
+	if len(lines) > 0 {
+		row(w, name, Total(lines))
+	}
 }
 
 func row(w io.Writer, name string, l Line) {
@@ -29,7 +42,12 @@ func row(w io.Writer, name string, l Line) {
 		name, l.Turns, l.Frames, l.Objects, l.BytesUp, l.Puts, l.Gets, l.Has, l.BytesDown)
 }
 
+// shortID is the first ten characters of a turn id; a line no flush carried has
+// no turn and shows a dash.
 func shortID(id string) string {
+	if id == "" {
+		return "-"
+	}
 	if len(id) > 10 {
 		return id[:10]
 	}

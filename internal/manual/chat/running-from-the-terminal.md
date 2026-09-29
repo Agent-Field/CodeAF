@@ -315,12 +315,18 @@ this exists and the chat behaves as it always did.
 
 Each time a conversation is synced to another machine, codeaf adds one line of counts to a file on this
 machine, `v3/sync/stats/<cell>.jsonl` in the codeaf home: how many turns, frames and objects that flush
-carried, how many bytes went up and came down, and how many put, get and has requests it made. A line holds
+carried, how many bytes went up and came down, and how many put, get and has requests it made. Requests that
+no flush carries are counted too, in a line with a dash for its turn: what it cost to fetch a conversation
+when you continue it here, and what a publish that failed had already sent. Sending your secrets along with
+a conversation is counted apart, in `v3/sync/stats/vault.jsonl`, because it serves every conversation. A line holds
 counts only: no time, no file names, no titles and no content. The file never leaves the machine on its own.
 
 **`codeaf cell report [<cell>]`** (with `CODEAF_CELLS` on) prints one row per flush and a total row for the
-cell, or for the cell the current folder is in. A cell that has never been synced has no rows, and the
-report then prints nothing at all rather than a table of zeros.
+cell, or for the cell the current folder is in, then a `vault` row for what carrying your secrets cost on this
+machine. The vault row is never added into the cell's total. Every request this machine made to the relay is
+in exactly one row, so the rows of all conversations plus the vault add up to what the relay counted for
+this machine. A cell that has never been synced has no rows, and
+with no vault row either the report prints nothing at all rather than a table of zeros.
 
 **`codeaf cell report --export <file>`** also writes those same lines to the file you name, and says so:
 "counts only: bytes, objects and requests per turn; no content, no paths". Nothing is exported unless you

@@ -45,9 +45,8 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
-	Dir      directory.Client    // bound to this device by its signer
-	Store    blobstore.Store     // the store wire, counted
-	Counters *blobstore.Counters // what Store has been asked to move
+	Dir      directory.Client // bound to this device by its signer
+	Store    blobstore.Store  // the bare store wire; every use of it goes through a Scope so it is counted
 	Device   identity.Dev
 	Identity identity.Identity
 	Relay    string        // the normalized relay address every client and the ledger name are built from
@@ -118,15 +117,13 @@ func flushInterval() (time.Duration, error) {
 	return time.Duration(ms) * time.Millisecond, nil
 }
 
-// build binds both wires to one signer and one client, and counts the store.
+// build binds both wires to one signer and one client, and leaves the store to be counted by scope.
 func build(home, base string, id identity.Identity, dev identity.Dev, interval time.Duration) *Sync {
 	sign := reqsign.SignFor(deviceSigner{id, dev}, time.Now)
 	hc := &http.Client{Timeout: requestTimeout}
-	counters := &blobstore.Counters{}
 	return &Sync{
 		Dir:      directory.NewHTTP(base, sign, hc),
-		Store:    blobstore.Counting{Inner: blobstore.NewHTTP(base, sign, hc), C: counters},
-		Counters: counters,
+		Store:    blobstore.NewHTTP(base, sign, hc),
 		Device:   dev,
 		Identity: id,
 		Relay:    base,

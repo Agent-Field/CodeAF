@@ -50,6 +50,19 @@ func (r *Recorder) OnFlush(f cellsync.Flush) {
 	r.err = appendLine(r.Path, r.line(f))
 }
 
+// Settle writes what the meter has counted since the last line as a line of its
+// own with no turn, and writes nothing when nothing was counted. It is how
+// requests that no flush carries (a takeover's fetches, the vault's send, a
+// publish that failed) still reach the file, so the lines add up to everything
+// the store was asked and never to less.
+func (r *Recorder) Settle() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if l := r.line(cellsync.Flush{}); l != (Line{V: Version}) {
+		r.err = appendLine(r.Path, l)
+	}
+}
+
 // Err is the outcome of the latest write, nil when it worked.
 func (r *Recorder) Err() error {
 	r.mu.Lock()
