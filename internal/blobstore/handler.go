@@ -24,12 +24,12 @@ func Handler(auth wireauth.Authenticate, open func(identity string) (Store, erro
 
 // HandlerAt is Handler with an injected clock for the Codeaf-Now header.
 func HandlerAt(now func() time.Time, auth wireauth.Authenticate, open func(identity string) (Store, error)) http.Handler {
-	h := &handler{now: now, auth: auth, open: open, tenants: map[string]*tenant{}}
+	h := &handler{now: now, auth: auth, open: open, tenants: map[string]*tenant{}, arriving: newFlight()}
 	mux := http.NewServeMux()
-	mux.Handle("POST "+pathFrames, h.route(MaxFrame, (*tenant).putFrame))
-	mux.Handle("GET "+pathObjects+"{rid}", h.route(maxSmallBody, (*tenant).getObject))
-	mux.Handle("POST "+pathHas, h.route(maxSmallBody, (*tenant).has))
-	mux.Handle("GET "+pathStats, h.route(maxSmallBody, (*tenant).statsReply))
+	mux.Handle("POST "+pathFrames, h.route(MaxFrame, (*tenant).putFrame, true))
+	mux.Handle("GET "+pathObjects+"{rid}", h.route(maxSmallBody, (*tenant).getObject, false))
+	mux.Handle("POST "+pathHas, h.route(maxSmallBody, (*tenant).has, false))
+	mux.Handle("GET "+pathStats, h.route(maxSmallBody, (*tenant).statsReply, false))
 	return h.stamped(mux)
 }
 
@@ -40,6 +40,10 @@ type handler struct {
 
 	mu      sync.Mutex
 	tenants map[string]*tenant
+
+	// arriving counts puts whose identity is not known yet: the signature
+	// covers the body, so a put cannot be attributed until it has been read.
+	arriving *flight
 }
 
 // tenant is one identity's namespace: its store and the server's own count of
@@ -47,6 +51,8 @@ type handler struct {
 // so it equals what a Memory store logs for the same requests.
 type tenant struct {
 	store             Store
+	inflight          *flight // puts of this identity being received or stored
+	arriving          *flight // the handler's puts that belong to no identity yet
 	puts, gets, hases atomic.Int64
 	bytesIn, bytesOut atomic.Int64
 }
@@ -75,8 +81,14 @@ func (h *handler) stamped(next http.Handler) http.Handler {
 // route wraps a verb in the steps every verb shares, in the order that keeps
 // an unauthenticated caller cheap: cap the body, read it, prove the sender,
 // find the namespace, serve.
-func (h *handler) route(limit int64, serve serveFunc) http.Handler {
+//
+// A put counts as arriving from its first byte, and becomes its identity's
+// in-flight put the moment the identity is known, with no gap between the two,
+// so Has can wait for it (see flight).
+func (h *handler) route(limit int64, serve serveFunc, isPut bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		unattributed := h.arrive(isPut)
+		defer unattributed()
 		body, err := readCapped(w, r, limit)
 		if err != nil {
 			writeErr(w, err)
@@ -87,6 +99,10 @@ func (h *handler) route(limit int64, serve serveFunc) http.Handler {
 			writeErr(w, err)
 			return
 		}
+		if isPut {
+			defer t.inflight.enter()()
+		}
+		unattributed()
 		out, err := serve(t, r.Context(), r, body)
 		if err != nil {
 			writeErr(w, err)
@@ -95,6 +111,15 @@ func (h *handler) route(limit int64, serve serveFunc) http.Handler {
 		w.Header().Set("Content-Type", out.ctype)
 		_, _ = w.Write(out.body)
 	})
+}
+
+// arrive records a put's arrival, and answers the function that ends it. Any
+// other verb has nothing to record.
+func (h *handler) arrive(isPut bool) func() {
+	if !isPut {
+		return func() {}
+	}
+	return h.arriving.enter()
 }
 
 // errTooLarge marks a body over its cap; it is the one refusal with its own status.
@@ -130,7 +155,7 @@ func (h *handler) tenantFor(r *http.Request, body []byte) (*tenant, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := &tenant{store: s}
+	t := &tenant{store: s, inflight: newFlight(), arriving: h.arriving}
 	h.tenants[id] = t
 	return t, nil
 }
@@ -176,11 +201,26 @@ func (t *tenant) has(ctx context.Context, _ *http.Request, body []byte) (reply, 
 		return reply{}, errBadRequest
 	}
 	t.hases.Add(1)
+	if err := t.settle(ctx); err != nil {
+		return reply{}, err
+	}
 	have, err := t.store.Has(ctx, req.Rids)
 	if err != nil {
 		return reply{}, err
 	}
 	return jsonReply(hasAnswer{Have: have}), nil
+}
+
+// settle waits for the puts Has must not overtake, for at most BaseTimeout
+// or until the caller gives up, and then reports the relay as unreachable
+// rather than answer no: a stuck put must not hang Has, and must not make it lie.
+func (t *tenant) settle(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, BaseTimeout)
+	defer cancel()
+	if err := waitIdle(ctx, t.inflight, t.arriving); err != nil {
+		return ErrUnreachable
+	}
+	return nil
 }
 
 func (t *tenant) statsReply(context.Context, *http.Request, []byte) (reply, error) {
