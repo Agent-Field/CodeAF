@@ -391,6 +391,19 @@ fn the_next_seal_after_materialize_descends_from_the_imported_head() {
 }
 
 #[test]
+fn the_word_head_names_the_imported_head_and_then_the_next_seal() {
+    let src = source();
+    let (_, second) = second_snapshot(&src);
+    let dst = delivered(&src, second);
+    let mut repo =
+        FurrowRepository::open_composed_in(&dst.data, &dst.tree, Some(dst.cell.clone())).unwrap();
+    assert_eq!(repo.resolve_snapshot("head").unwrap(), second);
+    fs::write(dst.tree.join("on-b.txt"), b"continued here\n").unwrap();
+    let next = repo.snapshot(None, SnapshotTrigger::Manual).unwrap();
+    assert_eq!(repo.resolve_snapshot("head").unwrap(), next);
+}
+
+#[test]
 fn log_marks_the_imported_head_shallow() {
     let src = source();
     let (_, second) = second_snapshot(&src);
