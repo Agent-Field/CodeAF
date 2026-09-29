@@ -60,6 +60,10 @@ enum Command {
     Snap {
         #[arg(short, long)]
         message: Option<String>,
+        /// Seal this directory, which lives outside the workspace, as the
+        /// tree's `.cell/` entry.
+        #[arg(long, value_name = "DIR")]
+        cell_dir: Option<PathBuf>,
     },
     /// List recent workspace snapshots.
     Timeline {
@@ -567,8 +571,8 @@ fn main() -> anyhow::Result<()> {
         } => {
             furrow::universe::exec_linux_namespace(&source, &target, &command)?;
         }
-        Command::Snap { message } => {
-            let mut repository = FurrowRepository::open(&cli.repo)?;
+        Command::Snap { message, cell_dir } => {
+            let mut repository = FurrowRepository::open_composed(&cli.repo, cell_dir)?;
             let id = repository.snapshot(message, SnapshotTrigger::Manual)?;
             if cli.json {
                 println!("{}", serde_json::json!({"snapshot": id_hex(&id)}));
@@ -653,7 +657,7 @@ fn main() -> anyhow::Result<()> {
             sqlite_consistent,
             cell_dir,
         } => {
-            let mut repository = FurrowRepository::open(&cli.repo)?.with_overlay(cell_dir);
+            let mut repository = FurrowRepository::open_composed(&cli.repo, cell_dir)?;
             let target = repository.resolve_snapshot(&snapshot)?;
             let plan = repository.plan_rewind(&target, &paths)?;
             if cli.json || dry_run {

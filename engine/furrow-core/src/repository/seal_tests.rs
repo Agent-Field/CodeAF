@@ -52,6 +52,10 @@ impl Setup {
         .unwrap()
     }
 
+    fn reopen(&self) -> FurrowRepository {
+        FurrowRepository::open_composed(&self.root, Some(self.cell.clone())).unwrap()
+    }
+
     fn overlay(&self) -> SealOptions {
         SealOptions {
             overlay: Some(self.cell.clone()),
@@ -302,7 +306,7 @@ fn the_composed_tree_restores_byte_identical_into_two_places() {
         fs::Permissions::from_mode(0o600),
     )
     .unwrap();
-    let (mut repository, id) = setup.seal(setup.overlay());
+    let (repository, id) = setup.seal(setup.overlay());
     let (work, private) = (digest(&setup.root), digest(&setup.cell));
 
     fs::remove_dir_all(setup.root.join("src")).unwrap();
@@ -310,7 +314,8 @@ fn the_composed_tree_restores_byte_identical_into_two_places() {
     fs::remove_dir_all(setup.cell.join("turns")).unwrap();
     setup.write_cell("receipts/extra.json", "unsealed\n");
     fs::write(setup.cell.join("receipts/a.json"), "damaged").unwrap();
-    repository = repository.with_overlay(Some(setup.cell.clone()));
+    drop(repository);
+    let mut repository = setup.reopen();
     repository.rewind(&id, &[], false).unwrap();
 
     assert_eq!(digest(&setup.root), work);
@@ -325,8 +330,43 @@ fn a_composed_directory_that_did_not_exist_at_the_seal_is_emptied_on_restore() {
     let (repository, id) = setup.seal(SealOptions::default());
     setup.write_cell("late.json", "{}\n");
 
-    let mut repository = repository.with_overlay(Some(setup.cell.clone()));
+    drop(repository);
+    let mut repository = setup.reopen();
     repository.rewind(&id, &[], false).unwrap();
 
     assert!(digest(&setup.cell).is_empty());
+}
+
+#[test]
+fn a_composed_workspace_keeps_its_ids_in_the_store_and_a_plain_one_in_the_tree() {
+    let setup = Setup::new();
+    setup.write("a.txt", "a\n");
+    let (first, _) = setup.seal(setup.overlay());
+    assert!(!setup.root.join(".furrow").exists());
+    let (workspace, family) = (first.workspace_id.clone(), first.family_id.clone());
+    drop(first);
+
+    let (again, _) = setup.seal(setup.overlay());
+    assert_eq!((again.workspace_id, again.family_id), (workspace, family));
+    assert!(!setup.root.join(".furrow").exists());
+
+    let plain = Setup::new();
+    plain.write("a.txt", "a\n");
+    plain.seal(SealOptions::default());
+    assert!(plain.root.join(WORKSPACE_FILE).exists());
+    assert!(plain.root.join(FAMILY_FILE).exists());
+}
+
+#[test]
+fn a_composed_workspace_is_reopened_by_its_path() {
+    let setup = Setup::new();
+    setup.write("a.txt", "a\n");
+    let (sealed, id) = setup.seal(setup.overlay());
+    let workspace = sealed.workspace_id.clone();
+    drop(sealed);
+
+    let reopened = setup.reopen();
+    assert_eq!(reopened.workspace_id, workspace);
+    assert_eq!(reopened.store.workspace_head(&workspace).unwrap(), Some(id));
+    assert!(!setup.root.join(".furrow").exists());
 }

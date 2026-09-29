@@ -30,7 +30,7 @@ func realEngineB(b *testing.B) Engine { return engineFor(b, b.TempDir()) }
 
 func engineFor(t testing.TB, dataRoot string) Engine {
 	t.Helper()
-	bin, err := furrow.ResolveBinary()
+	bin, err := furrow.ResolveOwned()
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}

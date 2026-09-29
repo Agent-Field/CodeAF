@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -32,7 +31,8 @@ type Runner func(ctx context.Context, dir string, env []string, argv ...string) 
 
 // Engine is the stage 0 Store: one engine spawn per seal.
 type Engine struct {
-	// Binary is the engine program; empty means whatever internal/furrow resolves.
+	// Binary is the engine program; empty means the configured or embedded
+	// engine, checked to be able to seal (see sealingEngine).
 	Binary string
 	// DataRoot holds one store directory per cell; empty means the state root's.
 	DataRoot string
@@ -163,7 +163,7 @@ func stateDir(c cell.Cell) string { return filepath.Join(c.Root, cell.StateDir) 
 func (e Engine) engine(ctx context.Context, c cell.Cell, args ...string) ([]byte, error) {
 	bin := e.Binary
 	if bin == "" {
-		resolved, err := furrow.ResolveBinary()
+		resolved, err := sealingEngine()
 		if err != nil {
 			return nil, err
 		}
