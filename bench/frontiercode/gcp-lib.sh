@@ -111,7 +111,7 @@ fc_frozen_check() {
     tasks=$(( tasks + $(fc_shard_tasks "$FC_REPO_ROOT/$p" | wc -l | tr -d ' ') ))
   done < <(jq -r '.shard_files | keys[]?' "$FC_MANIFEST_PATH")
   [ "$tasks" -gt 0 ] || fc_die "the shards carry no tasks"
-  fc_note "frozen population ok: $tasks task(s) across $FC_manifest_nshards shard(s), corpus $corpus at ${want:0:12}"
+  fc_note "frozen population ok: $tasks task(s) across $nshards shard(s), corpus $corpus at ${want:0:12}"
 }
 
 # fc_model_priced: the served model must carry a positive list price in the
