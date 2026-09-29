@@ -71,16 +71,7 @@ func TestRunEndsItsBashBackgroundProcesses(t *testing.T) {
 					}, nil)
 					ended <- err
 				}()
-				var pid int
-				deadline := time.Now().Add(5 * time.Second)
-				for time.Now().Before(deadline) {
-					data, readErr := os.ReadFile(pidFile)
-					if readErr == nil {
-						pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
-						break
-					}
-					time.Sleep(10 * time.Millisecond)
-				}
+				pid := awaitPID(pidFile, 5*time.Second)
 				if pid <= 0 {
 					cancel()
 					<-ended
@@ -115,6 +106,19 @@ func TestRunEndsItsBashBackgroundProcesses(t *testing.T) {
 			})
 		}
 	}
+}
+
+// awaitPID waits until the shell has written a whole pid. The file exists
+// (empty) as soon as the shell opens its redirect, so existence alone proves
+// nothing; only a parsed positive pid does. It returns 0 on timeout.
+func awaitPID(path string, within time.Duration) int {
+	for deadline := time.Now().Add(within); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		data, err := os.ReadFile(path)
+		if pid, _ := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
+			return pid
+		}
+	}
+	return 0
 }
 
 func processStillRunning(pid int) bool {
