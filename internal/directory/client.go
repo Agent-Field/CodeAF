@@ -24,6 +24,12 @@ type Client interface {
 	Archive(ctx context.Context, id string) error                         // idempotent
 }
 
+// Directory is one identity's shared directory; For gives each device its own
+// Client. The relay handler calls For(deviceFromSignature) once per request.
+type Directory interface {
+	For(device string) Client
+}
+
 // The lease timings every device and the directory agree on.
 const (
 	LeaseTTL       = 30 * time.Second
