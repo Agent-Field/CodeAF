@@ -2,15 +2,15 @@ package keys
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"golang.org/x/crypto/chacha20poly1305"
+
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
 // envelope is the plaintext wrapper: readers pick the key by CellKeyID
@@ -26,11 +26,6 @@ type envelope struct {
 	KeyID     string `json:"key_id,omitempty"`
 }
 
-func keyID(key []byte) string {
-	sum := sha256.Sum256(key)
-	return hex.EncodeToString(sum[:16])
-}
-
 // idOf is the key id an envelope names, in either spelling.
 func (e envelope) idOf() string {
 	if e.CellKeyID != "" {
@@ -42,32 +37,8 @@ func (e envelope) idOf() string {
 // namesKey reports whether id is the current id of key or its legacy form,
 // the first 8 bytes of the same hash.
 func namesKey(id string, key []byte) bool {
-	cur := keyID(key)
+	cur := identity.CellKeyID(key)
 	return id == cur || id == cur[:16]
-}
-
-// loadKey returns the vault key, creating it on first use.
-func loadKey(path string) ([]byte, error) {
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return newKey(path)
-	}
-	if err != nil {
-		return nil, err
-	}
-	key, err := hex.DecodeString(string(raw))
-	if err != nil || len(key) != chacha20poly1305.KeySize {
-		return nil, fmt.Errorf("keys: %s is not a valid key file", filepath.Base(path))
-	}
-	return key, nil
-}
-
-func newKey(path string) ([]byte, error) {
-	key := make([]byte, chacha20poly1305.KeySize)
-	if _, err := rand.Read(key); err != nil {
-		return nil, err
-	}
-	return key, writeAtomic(path, []byte(hex.EncodeToString(key)))
 }
 
 func seal(key, plain []byte) ([]byte, error) {
@@ -79,8 +50,8 @@ func seal(key, plain []byte) ([]byte, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	env := envelope{V: 1, CellKeyID: keyID(key), Nonce: hex.EncodeToString(nonce),
-		Data: hex.EncodeToString(aead.Seal(nil, nonce, plain, []byte(keyID(key))))}
+	env := envelope{V: 1, CellKeyID: identity.CellKeyID(key), Nonce: hex.EncodeToString(nonce),
+		Data: hex.EncodeToString(aead.Seal(nil, nonce, plain, []byte(identity.CellKeyID(key))))}
 	return json.Marshal(env)
 }
 
