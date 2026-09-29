@@ -115,7 +115,7 @@ func TestAdoptRefusesADifferentIdentityWithoutReplace(t *testing.T) {
 func TestGoldenDeviceCert(t *testing.T) {
 	lawcheck.Golden(t, filepath.Join("testdata", "device.golden.json"), Cert{V: 1,
 		Device: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
-		Name:   "spark", Made: 1759049990000, Sig: "cafe"})
+		Made:   1759049990000, Sig: "cafe"})
 }
 
 func TestTwoMachinesShareIdentityNotDevice(t *testing.T) {
@@ -164,7 +164,7 @@ func TestCertVerifiesOnlyUnderItsIdentityAndUntampered(t *testing.T) {
 		t.Fatal("cert verified under a different identity")
 	}
 	tampered := d.Cert
-	tampered.Name = "evil"
+	tampered.Made++
 	if err := tampered.Verify(root.PublicKey()); err == nil {
 		t.Fatal("tampered cert verified")
 	}

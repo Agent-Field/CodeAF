@@ -63,8 +63,8 @@ func identityShow(d identityDoor, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(d.out, "id           %s\nfingerprint  %s\ncell key id  %s\ndevice       %s (%s)\n",
-		id.ID(), id.Fingerprint(), id.CellKeyID(), dev.ID(), dev.Cert.Name)
+	fmt.Fprintf(d.out, "id           %s\nfingerprint  %s\ncell key id  %s\ndevice       %s\n",
+		id.ID(), id.Fingerprint(), id.CellKeyID(), dev.ID())
 	return nil
 }
 
