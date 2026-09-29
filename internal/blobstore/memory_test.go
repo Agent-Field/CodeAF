@@ -2,6 +2,7 @@ package blobstore_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -12,7 +13,7 @@ func TestMemoryLogRecordsEveryCallInOrder(t *testing.T) {
 	ctx := context.Background()
 	m := blobstore.NewMemory()
 	a, b := obj("a", "one"), obj("b", "two")
-	frame, _ := blobstore.Encode("", []blobstore.Object{a, b})
+	frame, _ := blobstore.Encode(testKey, []blobstore.Object{a, b})
 
 	id, err := m.PutFrame(ctx, frame)
 	if err != nil {
@@ -48,7 +49,7 @@ func TestMemoryStoresACopyOfTheFrame(t *testing.T) {
 	ctx := context.Background()
 	m := blobstore.NewMemory()
 	a := obj("a", "one")
-	frame, _ := blobstore.Encode("", []blobstore.Object{a})
+	frame, _ := blobstore.Encode(testKey, []blobstore.Object{a})
 	if _, err := m.PutFrame(ctx, frame); err != nil {
 		t.Fatal(err)
 	}
@@ -57,5 +58,20 @@ func TestMemoryStoresACopyOfTheFrame(t *testing.T) {
 	}
 	if got, err := m.Get(ctx, a.RID); err != nil || string(got) != string(a.Bytes) {
 		t.Fatalf("Get after the caller reused its buffer = %q, %v", got, err)
+	}
+}
+
+func TestMemoryFailAfterFailsOnceAtTheChosenCall(t *testing.T) {
+	ctx := context.Background()
+	m := blobstore.NewMemory()
+	m.FailAfter(1, blobstore.ErrUnreachable)
+	if _, err := m.Has(ctx, nil); err != nil {
+		t.Fatalf("first call = %v, want success", err)
+	}
+	if _, err := m.Has(ctx, nil); !errors.Is(err, blobstore.ErrUnreachable) {
+		t.Fatalf("second call = %v, want ErrUnreachable", err)
+	}
+	if _, err := m.Has(ctx, nil); err != nil {
+		t.Fatalf("third call = %v, want success", err)
 	}
 }

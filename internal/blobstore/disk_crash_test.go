@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -21,7 +22,7 @@ func newCrashDisk(t *testing.T) (*Disk, string, []byte, Object) {
 		t.Fatal(err)
 	}
 	o := sealedObject(strings.Repeat("ab", 32), "body")
-	frame, err := Encode("", []Object{o})
+	frame, err := Encode(strings.Repeat("0", 32), []Object{o})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +44,7 @@ func pointers(t *testing.T, root string) int {
 
 // The crash between "frame is durable" and "pointer is written" must leave a
 // store that says not found, never one that answers with garbage.
-func TestDiskCrashAfterFrameBeforePointer(t *testing.T) {
+func TestDiskResumesPointersAfterCrash(t *testing.T) {
 	ctx := context.Background()
 	d, root, frame, o := newCrashDisk(t)
 	crash := errors.New("power cut")
@@ -102,7 +103,24 @@ func TestDiskDanglingPointerIsNotNotFound(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, "frames", IDOf(frame))); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Get(ctx, o.RID); err == nil || errors.Is(err, ErrNotFound) {
-		t.Fatalf("Get with a missing frame = %v, want a damage error", err)
+	if _, err := d.Get(ctx, o.RID); !errors.Is(err, ErrDamaged) {
+		t.Fatalf("Get with a missing frame = %v, want ErrDamaged", err)
+	}
+}
+
+// A full disk or an exhausted quota is ErrFull, and leaves no pointer behind.
+func TestDiskENOSPC(t *testing.T) {
+	for _, errno := range []error{syscall.ENOSPC, syscall.EDQUOT} {
+		d, root, frame, o := newCrashDisk(t)
+		d.sync = func(*os.File) error { return errno }
+		if _, err := d.PutFrame(context.Background(), frame); !errors.Is(err, ErrFull) {
+			t.Fatalf("PutFrame with %v = %v, want ErrFull", errno, err)
+		}
+		if n := pointers(t, root); n != 0 {
+			t.Fatalf("%d pointers after %v", n, errno)
+		}
+		if _, err := d.Get(context.Background(), o.RID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("Get = %v, want ErrNotFound", err)
+		}
 	}
 }

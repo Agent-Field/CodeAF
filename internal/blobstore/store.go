@@ -39,11 +39,17 @@ var (
 	ErrBadRID      = errors.New("blobstore: bad remote id")
 	ErrConflict    = errors.New("blobstore: rid exists with different bytes")
 	ErrUnreachable = errors.New("blobstore: unreachable") // transport; callers degrade
+	ErrFull        = errors.New("blobstore: full")        // quota or disk; retry later
+	ErrTooMany     = errors.New("blobstore: too many rids")
+	ErrDamaged     = errors.New("blobstore: stored data is damaged")
 )
 
 // ValidRID reports whether s is 64 lowercase hex characters.
-func ValidRID(s string) bool {
-	if len(s) != 64 {
+func ValidRID(s string) bool { return isLowerHex(s, 64) }
+
+// isLowerHex reports whether s is exactly n lowercase hex characters.
+func isLowerHex(s string, n int) bool {
+	if len(s) != n {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
@@ -56,10 +62,10 @@ func ValidRID(s string) bool {
 
 // checkHas is the one place the Has argument rules live, so every
 // implementation refuses the same requests the same way: too many ids is a
-// caller bug, and an id that is not a remote id could never be stored.
+// caller bug (ErrTooMany), and an id that is not a remote id could never be stored.
 func checkHas(rids []string) error {
 	if len(rids) > MaxHas {
-		return fmt.Errorf("blobstore: has: %d ids exceed the limit of %d", len(rids), MaxHas)
+		return fmt.Errorf("%w: %d ids, the limit is %d", ErrTooMany, len(rids), MaxHas)
 	}
 	for _, rid := range rids {
 		if !ValidRID(rid) {

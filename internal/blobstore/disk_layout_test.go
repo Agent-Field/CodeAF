@@ -44,7 +44,7 @@ func TestDiskCreatesOnlyFramesAndObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame, _ := blobstore.Encode("", []blobstore.Object{obj("a", "one"), obj("b", "two")})
+	frame, _ := blobstore.Encode(testKey, []blobstore.Object{obj("a", "one"), obj("b", "two")})
 	if _, err := d.PutFrame(context.Background(), frame); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestDiskCreatesOnlyFramesAndObjects(t *testing.T) {
 func TestDiskLeavesNoTemporaryFiles(t *testing.T) {
 	root := t.TempDir()
 	d, _ := blobstore.NewDisk(root)
-	frame, _ := blobstore.Encode("", []blobstore.Object{obj("a", "one")})
+	frame, _ := blobstore.Encode(testKey, []blobstore.Object{obj("a", "one")})
 	if _, err := d.PutFrame(context.Background(), frame); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestDiskNeverOverwritesAnExistingFile(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	d, _ := blobstore.NewDisk(root)
-	first, _ := blobstore.Encode("", []blobstore.Object{obj("a", "one"), obj("b", "two")})
+	first, _ := blobstore.Encode(testKey, []blobstore.Object{obj("a", "one"), obj("b", "two")})
 	if _, err := d.PutFrame(ctx, first); err != nil {
 		t.Fatal(err)
 	}
@@ -85,8 +85,8 @@ func TestDiskNeverOverwritesAnExistingFile(t *testing.T) {
 
 	// The same frame again, then a new frame that shares an object with it, then
 	// a frame that conflicts: none may change a byte that was already written.
-	again, _ := blobstore.Encode("", []blobstore.Object{obj("b", "two"), obj("c", "three")})
-	conflicting, _ := blobstore.Encode("", []blobstore.Object{{RID: obj("a", "").RID, Bytes: []byte("AGEO\x01other")}})
+	again, _ := blobstore.Encode(testKey, []blobstore.Object{obj("b", "two"), obj("c", "three")})
+	conflicting, _ := blobstore.Encode(testKey, []blobstore.Object{{RID: obj("a", "").RID, Bytes: []byte("AGEO\x01other")}})
 	for _, f := range [][]byte{first, again, conflicting} {
 		_, _ = d.PutFrame(ctx, f)
 	}
