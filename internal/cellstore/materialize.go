@@ -20,16 +20,12 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 	return parseSnapshot(out)
 }
 
-// Restore writes the snapshot back into the tree, byte for byte: only the
-// named top-level paths, or the whole tree when none are named. Named paths
-// are the tree's own, so the composed .cell/ is left as it is. Whole, it is
-// restored in place, chain files included, so that is for a snapshot that is
-// the cell's newest state; a rewind uses restoreKeepingChain.
+// Restore writes the snapshot back into the cell's folder, byte for byte:
+// only the named top-level paths, or the whole tree when none are named. A
+// composed .cell/ is restored in place, chain files included, so this is for a
+// snapshot that is the cell's newest state; a rewind uses restoreKeepingChain.
 func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths []string) error {
-	if len(paths) > 0 {
-		return e.restore(ctx, c, snapshot, paths, nil)
-	}
-	return e.restore(ctx, c, snapshot, nil, e.cellDirArgs(c))
+	return e.restore(ctx, c, snapshot, paths, e.cellDirArgs(c))
 }
 
 func (e Engine) restore(ctx context.Context, c cell.Cell, snapshot string, paths, cellDir []string) error {
