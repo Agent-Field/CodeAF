@@ -177,12 +177,14 @@ echo "corpus pinned at ${FC_CORPUS_SHA:0:12}"
 # uses; this campaign-level instance is the harness's logged exit.
 bridge="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null || true)"
 [ -n "$bridge" ] || bridge="172.17.0.1"
+campaign_dir="$HOME/.fc-campaign"
+mkdir -p "$campaign_dir"
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$RIG/bin/egress-proxy-amd64" "$RIG/proxy/egress-proxy.go" || { echo "egress proxy build failed" >&2; exit 3; }
-pidf="$HOME/.fc-egress.pid"
+pidf="$campaign_dir/egress.pid"
 if [ -s "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
   echo "egress proxy already running (pid $(cat "$pidf"))"
 else
-  setsid nohup bash -c "echo \$\$ > '$pidf'; exec '$RIG/bin/egress-proxy-amd64' -addr '$bridge:3128' -resolver 1.1.1.1:53 -log '$RIG/egress-proxy.log'" </dev/null >>"$RIG/egress.log" 2>&1 &
+  setsid nohup bash -c "echo \$\$ > '$pidf'; exec '$RIG/bin/egress-proxy-amd64' -addr '$bridge:3128' -resolver 1.1.1.1:53 -log '$campaign_dir/egress-proxy.log'" </dev/null >>"$campaign_dir/egress.log" 2>&1 &
 fi
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   ss -lnt 2>/dev/null | grep -q "$bridge:3128" && break
@@ -197,8 +199,9 @@ echo "egress proxy listening on $bridge:3128 (verified)"
 # arrives as one ssh command whose text contains the warm invocation, so
 # 'pgrep -f ...' would match the shell evaluating it and report a running loop
 # that was never started. The child writes its own PID, so liveness is a fact
-# about the process rather than about text.
-cat > "$RIG/.fc-warm-images.sh" <<'WARM'
+# about the process rather than about text. The loop's own files live outside
+# the rig checkout so a staged worktree stays clean.
+cat > "$campaign_dir/warm-images.sh" <<'WARM'
 #!/usr/bin/env bash
 set -uo pipefail
 RIG="$1"; SHARD="$2"
@@ -214,14 +217,14 @@ while IFS= read -r t; do
   fi
 done < "$SHARD"
 WARM
-chmod +x "$RIG/.fc-warm-images.sh"
-warm_pidf="$HOME/.fc-pull.pid"
+chmod +x "$campaign_dir/warm-images.sh"
+warm_pidf="$campaign_dir/pull.pid"
 if [ -s "$warm_pidf" ] && kill -0 "$(cat "$warm_pidf")" 2>/dev/null; then
   echo "image warm loop already running (pid $(cat "$warm_pidf"))"
 else
   shard_file="${FC_SHARD_REL:-}"
   [ -n "$shard_file" ] || shard_file="$(ls "$RIG"/shards/shard-*.txt 2>/dev/null | head -1)"
-  setsid nohup bash -c "echo \$\$ > '$warm_pidf'; exec '$RIG/.fc-warm-images.sh' '$RIG' '$REMOTE_ROOT/$shard_file'" </dev/null >>"$RIG/warm.log" 2>&1 &
+  setsid nohup bash -c "echo \$\$ > '$warm_pidf'; exec '$campaign_dir/warm-images.sh' '$RIG' '$REMOTE_ROOT/$shard_file'" </dev/null >>"$campaign_dir/warm.log" 2>&1 &
   echo "image warm loop started in the background"
 fi
 
