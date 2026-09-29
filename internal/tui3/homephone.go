@@ -625,6 +625,9 @@ func headingKind(kind homeRowKind) bool {
 // band across both, and the pointer's lead are decided in one place for every
 // list on this surface (palette.go).
 func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
+	if line.kind == homeMachineRow {
+		return a.machineRowTexts(line, at, width, pal)
+	}
 	if line.kind == homeSession && line.cell != nil && (line.cell.panel == panelRecent || line.cell.panel == panelSessions) {
 		return a.homeCellRow(line, at, width, pal, at == a.home.cursor)
 	}
