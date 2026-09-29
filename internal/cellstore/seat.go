@@ -12,19 +12,20 @@ import (
 // workspace sealed when it returns. This is the one place a session's
 // executor is made.
 //
-// obs, when set, sees every process the seat ran (the inventory's observer).
+// obs, when set, sees every process the seat ran and every tool a shell call's
+// command line started (the inventory's observer).
 // report is told of a seal that failed; the call it followed is never failed
 // by it.
 func SeatFor(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error)) (executor.Seat, error) {
 	base := executor.Stance{Class: class, Observer: obs}
 	if !cell.Enabled() {
-		return base, nil
+		return executor.Watching(base, obs), nil
 	}
 	rec, err := recorderFor(base.In(workspace), EngineFor(workspace), c, Options{Report: report})
 	if err != nil {
-		return base, err
+		return executor.Watching(base, obs), err
 	}
-	return sealed{Stance: base, rec: rec}, nil
+	return executor.Watching(sealed{Stance: base, rec: rec}, obs), nil
 }
 
 // EngineFor is the store of a cell whose session works in workspace: it seals
