@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -163,7 +162,7 @@ func TestEnsureAgreesWithWhatThisBuildActuallyCarries(t *testing.T) {
 	// branches on; a build after `make furrow` carries the real furrow and must
 	// put it under the state root and nowhere else.
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	ensureOnce = sync.Once{}
+	forgetEnsured()
 
 	path, err := Ensure()
 	if !Embedded() {
@@ -184,6 +183,35 @@ func TestEnsureAgreesWithWhatThisBuildActuallyCarries(t *testing.T) {
 	}
 	if info.Size() == 0 || info.Mode().Perm()&0o111 == 0 {
 		t.Fatalf("the extracted furrow is %d bytes with mode %v; want an executable file", info.Size(), info.Mode())
+	}
+}
+
+// forgetEnsured drops the remembered path, the way a fresh process starts.
+func forgetEnsured() {
+	ensureMu.Lock()
+	defer ensureMu.Unlock()
+	ensurePath = ""
+}
+
+func TestEnsureReextractsWhenTheRememberedFileIsGone(t *testing.T) {
+	if !Embedded() {
+		t.Skip("this build carries no furrow")
+	}
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	forgetEnsured()
+	first, err := Ensure()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(first); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Ensure()
+	if err != nil {
+		t.Fatalf("a removed engine was not put back: %v", err)
+	}
+	if !installed(second) {
+		t.Fatalf("Ensure answered %s, which is not a runnable file", second)
 	}
 }
 
