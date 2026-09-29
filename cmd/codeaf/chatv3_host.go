@@ -250,13 +250,20 @@ func sshControlPath() string {
 		return ""
 	}
 	path := filepath.Join(dir, "ctl-%C")
-	// OpenSSH expands %C to a 40-character SHA-1 digest before bind(2), so the
-	// expanded path is the one that must fit the shared macOS/Linux ceiling.
-	expanded := strings.Replace(path, "%C", strings.Repeat("0", 40), 1)
-	if !enginehost.SocketPathFits(expanded) {
+	if !sshControlPathFits(path) {
 		return ""
 	}
 	return path
+}
+
+// sshControlPathFits accounts for OpenSSH's temporary control-master name as
+// well as the final hashed path, so a path accepted here cannot fail at bind.
+func sshControlPathFits(path string) bool {
+	// OpenSSH expands %C to a 40-character SHA-1 digest and briefly appends a
+	// 17-character suffix before bind(2), so both forms must fit the shared
+	// macOS/Linux ceiling.
+	expanded := strings.Replace(path, "%C", strings.Repeat("0", 40), 1)
+	return enginehost.SocketPathFits(expanded) && enginehost.SocketPathFits(expanded+strings.Repeat("0", 17))
 }
 
 // hold takes the new child and lets go of the old one. THE PREVIOUS SSH IS
