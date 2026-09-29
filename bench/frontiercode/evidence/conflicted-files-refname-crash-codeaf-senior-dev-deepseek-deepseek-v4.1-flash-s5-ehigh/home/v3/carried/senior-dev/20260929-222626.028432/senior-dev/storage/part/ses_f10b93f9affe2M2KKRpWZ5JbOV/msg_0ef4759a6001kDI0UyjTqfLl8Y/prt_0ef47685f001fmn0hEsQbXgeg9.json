@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef47685f001fmn0hEsQbXgeg9",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef4759a6001kDI0UyjTqfLl8Y",
+  "type": "reasoning",
+  "text": "Now let me add a regression test. I'll model it on `test_get_conflicted_files_non_ascii`. Let me first test what the expected result is with the fix.\n\nThe non-ascii test:\n```python\ndef test_get_conflicted_files_non_ascii(in_merge_conflict):\n    open('интервью', 'a').close()\n    cmd_output('git', 'add', '.')\n    ret = git.get_conflicted_files()\n    assert ret == {'conflict_file', 'интервью'}\n```\n\nInteresting - here they don't call resolve_conflict(); instead `git add .` which resolves the conflict_file (adds current content) plus adds интервью. So write-tree works. Output = {conflict_file, интервью}. Note интервью is a new file in the merged tree relative to HEAD/MERGE_HEAD.\n\nSo for the HEAD collision test, similarly:\n```python\ndef test_get_conflicted_files_head(in_merge_conflict):\n    open('HEAD', 'a').close()\n    cmd_output('git', 'add', '.')\n    ret = git.get_conflicted_files()\n    assert ret == {'conflict_file', 'HEAD'}\n```\n\nWait but `git add .` might behave weirdly with a file named HEAD? Let's test. Also there's the concern: creating a file named `HEAD` in the repo root — does `git add .` add it? Let's test in the fixture by adding the test.\n\nAlso, note MERGE_HEAD collision: we might add a file named `MERGE_HEAD` too. The description mentions both HEAD and MERGE_HEAD. Perhaps parametrize over ('HEAD', 'MERGE_HEAD').\n\nLet me write the test and run against buggy code to confirm crash. Then apply fix.\n\nActually, careful: file named `MERGE_MSG`? no.\n\nLet me add a parametrized regression test. But need to be careful: `open('HEAD', 'a')` then `git add .`. Let's test.\n\nLet me first just experiment by adding a test temporarily.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me add a regression test. I'll model it on `test_get_conflicted_files_non_ascii`. Let me first test what the expected result is with the fix.\n\nThe non-ascii test:\n```python\ndef test_get_conflicted_files_non_ascii(in_merge_conflict):\n    open('интервью', 'a').close()\n    cmd_output('git', 'add', '.')\n    ret = git.get_conflicted_files()\n    assert ret == {'conflict_file', 'интервью'}\n```\n\nInteresting - here they don't call resolve_conflict(); instead `git add .` which resolves the conflict_file (adds current content) plus adds интервью. So write-tree works. Output = {conflict_file, интервью}. Note интервью is a new file in the merged tree relative to HEAD/MERGE_HEAD.\n\nSo for the HEAD collision test, similarly:\n```python\ndef test_get_conflicted_files_head(in_merge_conflict):\n    open('HEAD', 'a').close()\n    cmd_output('git', 'add', '.')\n    ret = git.get_conflicted_files()\n    assert ret == {'conflict_file', 'HEAD'}\n```\n\nWait but `git add .` might behave weirdly with a file named HEAD? Let's test. Also there's the concern: creating a file named `HEAD` in the repo root — does `git add .` add it? Let's test in the fixture by adding the test.\n\nAlso, note MERGE_HEAD collision: we might add a file named `MERGE_HEAD` too. The description mentions both HEAD and MERGE_HEAD. Perhaps parametrize over ('HEAD', 'MERGE_HEAD').\n\nLet me write the test and run against buggy code to confirm crash. Then apply fix.\n\nActually, careful: file named `MERGE_MSG`? no.\n\nLet me add a parametrized regression test. But need to be careful: `open('HEAD', 'a')` then `git add .`. Let's test.\n\nLet me first just experiment by adding a test temporarily.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720829535,
+    "end": 1790720829539
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef29fee7001pRfYcXeBqi87KC",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29f59a001WebYaYE32gkU2d",
+  "type": "tool",
+  "callID": "call_00_am4yoosy4tayrd0zj2184llt",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/ambig && echo x > HEAD && git add HEAD && echo y > MERGE_HEAD && git add MERGE_HEAD && git commit -qm 'add refname files' 2>&1 | head; echo \"commit exit: $?\"; git status --short; git ls-files"
+    },
+    "output": "error: Committing is not possible because you have unmerged files.\nhint: Fix them up in the work tree, and then use 'git add/rm <file>'\nhint: as appropriate to mark resolution and make a commit.\nfatal: Exiting because of an unresolved conflict.\nU\tconflict_file\ncommit exit: 0\nA  HEAD\nA  MERGE_HEAD\nUU conflict_file\nHEAD\nMERGE_HEAD\nconflict_file\nconflict_file\nconflict_file\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/ambig && echo x > HEAD && git add HEAD && echo y > M",
+    "time": {
+      "start": 1790718901994,
+      "end": 1790718902019
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let's create a tracked file named HEAD to trigger ambiguity. Actually wait, the ambiguity is in the `git diff` invocation. The command runs `git diff --name-only --no-ext-diff -z -m \u003ctree_hash\u003e HEAD MERGE_HEAD`. If a file named `HEAD` is tracked and exists in worktree, git sees `HEAD` as ambiguous.\n\nLet me test. But a file literally named `HEAD` in worktree — git tracks paths, `git add HEAD` works? Let's try. Actually the ambiguity arises because git tries to resolve `HEAD` as revisions on the command line, but there's also a path `HEAD`. Let's test.\n\nNote: tree_hash = git write-tree after resolving conflict. Let's simulate.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

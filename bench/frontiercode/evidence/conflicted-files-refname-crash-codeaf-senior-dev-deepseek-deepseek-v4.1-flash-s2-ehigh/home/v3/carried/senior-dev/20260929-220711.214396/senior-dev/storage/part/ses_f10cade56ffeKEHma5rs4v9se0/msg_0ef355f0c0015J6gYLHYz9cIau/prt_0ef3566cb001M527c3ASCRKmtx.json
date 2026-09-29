@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3566cb001M527c3ASCRKmtx",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef355f0c0015J6gYLHYz9cIau",
+  "type": "tool",
+  "callID": "call_00_de4ygd8leg0e55840acuu5vr",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/repro && printf 'resolved\\n' > conflict_file && git add conflict_file HEAD && tree=$(git write-tree) && echo \"tree=$tree\" && echo \"--- bare ---\"; git diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD; echo \"exit: $?\"; echo \"--- with -- ---\"; git diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD -- | tr '\\0' '\\n'; echo \"exit: $?\""
+    },
+    "output": "tree=03fd08c3bb36a3672bfb1fb038188dce1515119c\n--- bare ---\nfatal: ambiguous argument 'HEAD': both revision and filename\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nexit: 128\n--- with -- ---\nHEAD\nconflict_file\nexit: 0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/repro && printf 'resolved\\n' > conflict_file && git ",
+    "time": {
+      "start": 1790719649486,
+      "end": 1790719649508
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "write-tree failed because conflict_file is unmerged. I need to resolve the conflict first (like `resolve_conflict()` in tests). Let me do that.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

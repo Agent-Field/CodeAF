@@ -1,0 +1,65 @@
+{
+  "criteria": {
+    "empty-command-skipped-not-crashed": {
+      "pass": true,
+      "reasoning": "The change adds a guard at the beginning of the Run function that checks if the command slice is empty (len(command) == 0). When empty, it logs a warning and returns nil (success) rather than continuing to the line that would panic by indexing command[0]. This satisfies the criterion: it handles the empty case that would previously cause a panic by skipping execution with a warning, without returning an error or allowing the panic to occur. The guard is placed before any indexing operation, so it protects the entire run path.",
+      "usage": {
+        "prompt_tokens": 582,
+        "completion_tokens": 126,
+        "total_tokens": 708,
+        "cost": 0.003636,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.003636,
+          "upstream_inference_prompt_cost": 0.001746,
+          "upstream_inference_completions_cost": 0.00189
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    },
+    "run-contract-unchanged": {
+      "pass": true,
+      "reasoning": "The change adds an early return when command is empty (len(command) == 0), logging a warning and returning nil. This occurs BEFORE any command execution logic. For non-empty commands, the code path is unchanged: it proceeds to exec.CommandContext with the same arguments, environment, and output handling as before. The early return does not wrap or modify the error handling for non-empty commands - they still execute through cmd.Run() or cmd.CombinedOutput() (not shown but implied by the output parameter) and any errors from those operations would still be returned unchanged. The change only af",
+      "usage": {
+        "prompt_tokens": 548,
+        "completion_tokens": 155,
+        "total_tokens": 703,
+        "cost": 0.003969,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.003969,
+          "upstream_inference_prompt_cost": 0.001644,
+          "upstream_inference_completions_cost": 0.002325
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 1130,
+    "completion_tokens": 281,
+    "calls": 1
+  }
+}

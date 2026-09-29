@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef40f279001TfP7A97qpTU2D5",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef40f03a001w6CEPUC9pvObth",
+  "type": "tool",
+  "callID": "call_01a0ef40f21a7314b3f16ab3",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && sed -n '40,70p' src/command_validate.cc && echo ---- && sed -n '255,285p' src/command_validate.cc && echo ---- && sed -n '330,352p' src/command_validate.cc"
+    },
+    "output": "                         const std::optional<std::string> &default_id,\n                         const bool fast_mode,\n                         const sourcemeta::core::Options &options)\n    -> sourcemeta::blaze::Template {\n  const auto precompiled{get_precompiled_schema_template_path(options)};\n  if (precompiled.has_value()) {\n    sourcemeta::jsonschema::LOG_VERBOSE(options)\n        << \"Parsing pre-compiled schema template: \"\n        << sourcemeta::core::weakly_canonical(precompiled.value()).string()\n        << \"\\n\";\n    const auto schema_template{\n        sourcemeta::core::read_yaml_or_json(precompiled.value())};\n    const auto precompiled_result{\n        sourcemeta::blaze::from_json(schema_template)};\n    if (precompiled_result.has_value()) {\n      return precompiled_result.value();\n    } else {\n      std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\n                   \"Compiling from scratch\\n\";\n    }\n  }\n\n  return sourcemeta::blaze::compile(\n      bundled, sourcemeta::core::schema_official_walker, resolver,\n      sourcemeta::blaze::default_schema_compiler, frame,\n      fast_mode ? sourcemeta::blaze::Mode::FastValidation\n                : sourcemeta::blaze::Mode::Exhaustive,\n      default_dialect, default_id);\n}\n\nauto parse_loop(const sourcemeta::core::Options &options) -> std::uint64_t {\n----\n\n            if (!suboutput.at(\"valid\").to_boolean()) {\n              result = false;\n              break;\n            }\n          } else if (subresult) {\n            LOG_VERBOSE(options)\n                << \"ok: \"\n                << sourcemeta::core::weakly_canonical(instance_path).string()\n                << \" (entry #\" << index << \")\"\n                << \"\\n  matches \"\n                << sourcemeta::core::weakly_canonical(schema_path).string()\n                << \"\\n\";\n            print_annotations(output, options, tracker, std::cerr);\n          } else {\n            std::cerr\n                << \"fail: \"\n                << sourcemeta::core::weakly_canonical(instance_path).string()\n                << \" (entry #\" << index << \")\\n\\n\";\n            sourcemeta::core::prettify(instance, std::cerr);\n            std::cerr << \"\\n\\n\";\n            std::cerr << error.str();\n            print(output, tracker, std::cerr);\n            result = false;\n            break;\n          }\n        }\n      } catch (const sourcemeta::core::JSONParseError &error) {\n        // For producing better error messages\n        throw sourcemeta::core::JSONFileParseError(instance_path, error);\n      }\n----\n          result = false;\n        }\n\n        sourcemeta::core::prettify(suboutput, std::cout);\n        std::cout << \"\\n\";\n      } else if (subresult) {\n        LOG_VERBOSE(options)\n            << \"ok: \"\n            << sourcemeta::core::weakly_canonical(instance_path).string()\n            << \"\\n  matches \"\n            << sourcemeta::core::weakly_canonical(schema_path).string() << \"\\n\";\n        print_annotations(output, options, tracker, std::cerr);\n      } else {\n        std::cerr << \"fail: \"\n                  << sourcemeta::core::weakly_canonical(instance_path).string()\n                  << \"\\n\";\n        std::cerr << error.str();\n        print(output, tracker, std::cerr);\n        result = false;\n      }\n    }\n  }\n\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && sed -n '40,70p' src/command_val",
+    "time": {
+      "start": 1790720406140,
+      "end": 1790720406155
+    }
+  }
+}

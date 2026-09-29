@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2ac41d001H7kXw4dMJKLARV",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2ab8df001f6ToGHCxwqvOt7",
+  "type": "tool",
+  "callID": "call_00_my888c58p22wl0fdc1sm5oko",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && ls -la && echo \"---attributes---\" && cat .gitattributes 2>/dev/null; cat .git/info/attributes 2>/dev/null; echo \"---config---\" && git config --list | grep -i \"filter\\|diff\\|attribute\" ; echo \"---global---\" && git config --global --list 2>/dev/null | grep -i filter"
+    },
+    "output": "total 176\ndrwxr-xr-x 1 agent agent  4096 Sep 29 21:55 .\ndrwxr-xr-x 1 root  root   4096 Sep 29 19:28 ..\ndrwxr-xr-x 1 agent agent  4096 Sep 29 21:55 .git\ndrwxr-xr-x 1 agent agent  4096 Sep 29 19:28 .github\n-rw-r--r-- 1 agent agent    52 Sep 29 19:28 .gitignore\n-rw-r--r-- 1 agent agent  1299 Sep 29 19:28 .pre-commit-config.yaml\n-rw-r--r-- 1 agent agent   239 Sep 29 19:28 .pre-commit-hooks.yaml\ndrwxr-xr-x 3 root  root   4096 Sep 29 21:55 .pytest_cache\ndrwxr-xr-x 3 root  root   4096 Sep 29 21:54 .senior-dev\n-rw-r--r-- 1 agent agent 69882 Sep 29 19:28 CHANGELOG.md\n-rw-r--r-- 1 agent agent  5378 Sep 29 19:28 CONTRIBUTING.md\n-rw-r--r-- 1 agent agent  1092 Sep 29 19:28 LICENSE\n-rw-r--r-- 1 agent agent   480 Sep 29 19:28 README.md\ndrwxr-xr-x 1 agent agent  4096 Sep 29 21:55 pre_commit\ndrwxr-xr-x 2 agent agent  4096 Sep 29 19:28 pre_commit.egg-info\n-rw-r--r-- 1 agent agent    62 Sep 29 19:28 requirements-dev.txt\n-rw-r--r-- 1 agent agent  1402 Sep 29 19:28 setup.cfg\n-rw-r--r-- 1 agent agent    73 Sep 29 19:28 setup.py\ndrwxr-xr-x 1 agent agent  4096 Sep 29 21:55 testing\ndrwxr-xr-x 1 agent agent  4096 Sep 29 21:55 tests\n-rw-r--r-- 1 agent agent   660 Sep 29 19:28 tox.ini\n---attributes---\n---config---\n---global---\nexit status 1",
+    "metadata": {
+      "exitCode": 1
+    },
+    "title": "cd /root/repos/pre-commit && ls -la && echo \"---attributes--",
+    "time": {
+      "start": 1790718952480,
+      "end": 1790718952508
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "So same file, modified. But `git hash-object pre_commit/git.py` returned HEAD hash. That's bizarre. Unless git is configured with a clean filter that reverts? Let me check `.gitattributes` / `filter`. Or maybe `git hash-object` without `--no-filters` applies a clean filter. Let me check git config for filter and .gitattributes.\n\nActually, `git hash-object` applies filters by default? Docs: \"hash-object ... --no-filters: Hash the contents as is, ignoring any input filter\". So filters could make the hashed content differ from disk. Let me check for a clean filter.\n\nBut more important: `git status` says clean. That means after filters, the content matches HEAD. A clean filter could be normalizing something. But that would be unusual.\n\nWait — maybe there's a filter that strips trailing content? Let me check .gitattributes.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

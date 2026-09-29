@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef4737b7001GQsY18s47jYH7h",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef4735a1001zwiOl0cTOCbQQB",
+  "type": "tool",
+  "callID": "call_01a0ef4736ba763796bea1c7",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && find . -name \"*.clang-format\" -o -name \".clang-format\" 2>/dev/null | grep -v build | head; ls vendor | head; grep -rn \"clang_format\" CMakeLists.txt | head; grep -rn \"clang-format\\|clang_format\" vendor/sourcemeta/cmake/*.cmake 2>/dev/null | head"
+    },
+    "output": "blaze\ncore\nhydra\njsonbinpack\nvendorpull\n29:  sourcemeta_target_clang_format(SOURCES\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && find . -name \"*.clang-format\" -",
+    "time": {
+      "start": 1790720817082,
+      "end": 1790720817135
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

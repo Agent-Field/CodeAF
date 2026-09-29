@@ -1,0 +1,14 @@
+{
+  "id": "msg_0ef29baee001UC0yLJ2nH92YHs",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "role": "user",
+  "time": {
+    "created": 1790718884590
+  },
+  "agent": "coder",
+  "model": {
+    "providerID": "openrouter",
+    "modelID": "deepseek/deepseek-v4.1-flash",
+    "variant": "high"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29bce6001wxMOuQl22t7jOO",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29b437001GW4lyLJ4lUqCjA",
+  "type": "tool",
+  "callID": "call_01_17veosew5fwiw2uysoybwodh",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && grep -rn \"conflict\\|merge\" pre_commit/*.py | head -40"
+    },
+    "output": "pre_commit/clientlib.py:29:    'post-merge',\npre_commit/clientlib.py:32:    'pre-merge-commit',\npre_commit/clientlib.py:65:    'merge-commit': 'pre-merge-commit',\npre_commit/clientlib.py:397:    # No defaults are provided here as the config is merged on top of the\npre_commit/git.py:96:def is_in_merge_conflict() -> bool:\npre_commit/git.py:104:def parse_merge_msg_for_conflicts(merge_msg: bytes) -> list[str]:\npre_commit/git.py:108:        for line in merge_msg.splitlines()\npre_commit/git.py:114:def get_conflicted_files() -> set[str]:\npre_commit/git.py:115:    logger.info('Checking merge-conflict files only.')\npre_commit/git.py:116:    # Need to get the conflicted files from the MERGE_MSG because they could\npre_commit/git.py:117:    # have resolved the conflict by choosing one side or the other\npre_commit/git.py:119:        merge_msg = f.read()\npre_commit/git.py:120:    merge_conflict_filenames = parse_merge_msg_for_conflicts(merge_msg)\npre_commit/git.py:122:    # This will get the rest of the changes made after the merge.\npre_commit/git.py:123:    # If they resolved the merge conflict by choosing a mesh of both sides\npre_commit/git.py:124:    # this will also include the conflicted files\npre_commit/git.py:126:    merge_diff_filenames = zsplit(\npre_commit/git.py:132:    return set(merge_conflict_filenames) | set(merge_diff_filenames)\npre_commit/git.py:163:        # on newer git where old and new do not have a merge base git fails\npre_commit/main.py:155:        '--is-squash-merge',\npre_commit/main.py:157:            'During a post-merge hook, indicates whether the merge was a '\npre_commit/main.py:158:            'squash merge'\npre_commit/staged_files_only.py:89:                    'Stashed changes conflicted with hook auto-fixes... '\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && grep -rn \"conflict\\|merge\" pre_",
+    "time": {
+      "start": 1790718885098,
+      "end": 1790718885113
+    }
+  }
+}

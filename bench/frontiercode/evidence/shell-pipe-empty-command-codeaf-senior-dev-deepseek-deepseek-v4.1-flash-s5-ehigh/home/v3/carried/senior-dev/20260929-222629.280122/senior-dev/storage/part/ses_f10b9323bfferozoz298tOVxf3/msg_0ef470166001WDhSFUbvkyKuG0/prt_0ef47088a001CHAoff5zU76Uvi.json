@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef47088a001CHAoff5zU76Uvi",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef470166001WDhSFUbvkyKuG0",
+  "type": "tool",
+  "callID": "call_00_wqpplxjwfauq0r28wwp339z2",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell_test.go",
+      "newString": "\tt.Run(\"empty command\", func(t *testing.T) {\n\t\trequire.NoError(t, shell.Run(\n\t\t\ttestctx.New(),\n\t\t\t\"\",\n\t\t\t[]string{},\n\t\t\t[]string{},\n\t\t\tfalse,\n\t\t))\n\t})\n\n\tt.Run(\"cmd failed\", func(t *testing.T) {",
+      "oldString": "\tt.Run(\"cmd failed\", func(t *testing.T) {"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,8 +22,18 @@\n \t\tfalse,\n \t))\n })\n \n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n t.Run(\"cmd failed\", func(t *testing.T) {\n \trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n",
+      "filediff": {
+        "file": "/root/repos/goreleaser/internal/shell/shell_test.go",
+        "patch": "Index: /root/repos/goreleaser/internal/shell/shell_test.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell_test.go\n+++ /root/repos/goreleaser/internal/shell/shell_test.go\n@@ -22,8 +22,18 @@\n \t\tfalse,\n \t))\n })\n \n+t.Run(\"empty command\", func(t *testing.T) {\n+\trequire.NoError(t, shell.Run(\n+\t\ttestctx.New(),\n+\t\t\"\",\n+\t\t[]string{},\n+\t\t[]string{},\n+\t\tfalse,\n+\t))\n+})\n+\n t.Run(\"cmd failed\", func(t *testing.T) {\n \trequire.Error(t, shell.Run(\n \t\ttestctx.New(),\n \t\t\"\",\n",
+        "additions": 10,
+        "deletions": 0
+      }
+    },
+    "title": "internal/shell/shell_test.go",
+    "time": {
+      "start": 1790720805006,
+      "end": 1790720805046
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now add the regression test. Insert after \"simple\" or \"cmd failed\". Register as subtest. I'll add a t.Run(\"empty\", ...) after \"cmd failed\" perhaps, or at the end. Let me add after \"simple\".",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

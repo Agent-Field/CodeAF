@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29bd61001QR4MQshoqRBS5S",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29bafe001u5o14OAH019tfI",
+  "type": "reasoning",
+  "text": "Let me start by exploring the repository, particularly internal/shell.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me start by exploring the repository, particularly internal/shell.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718885217,
+    "end": 1790718885236
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef3dd7f80011fVBs5TjKsti35",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3dca8e001aTPP4S9sx1JG0n",
+  "type": "text",
+  "text": "Everything builds and passes. Final verification summary:\n\n- `internal/shell/shell.go`: added an early length guard in `Run` — `if len(command) == 0 { log.Warn(\"no command to run, skipping\"); return nil }` — matching the file's existing `github.com/caarlos0/log` convention (lowercase message, warning used elsewhere in the project).\n- `internal/shell/shell_test.go`: added an `empty command` subtest in the existing `TestRunCommand` table-style structure using `testctx.New()` and `require.NoError`.",
+  "time": {
+    "start": 1790720202744,
+    "end": 1790720202753
+  }
+}

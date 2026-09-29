@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4112a400196t1vOfmuKjElS",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef411083001ZhHM5O8wjY6y0b",
+  "type": "reasoning",
+  "text": "The write-tree fails when unresolved conflict. In the test `resolve_conflict()` resolves it first. Let me resolve.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The write-tree fails when unresolved conflict. In the test `resolve_conflict()` resolves it first. Let me resolve.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720414372,
+    "end": 1790720414384
+  }
+}

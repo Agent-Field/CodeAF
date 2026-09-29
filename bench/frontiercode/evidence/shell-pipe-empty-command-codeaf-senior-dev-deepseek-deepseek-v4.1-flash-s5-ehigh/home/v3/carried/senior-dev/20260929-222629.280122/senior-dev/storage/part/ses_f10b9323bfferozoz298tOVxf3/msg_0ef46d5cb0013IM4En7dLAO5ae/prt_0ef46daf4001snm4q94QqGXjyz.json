@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46daf4001snm4q94QqGXjyz",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef46d5cb0013IM4En7dLAO5ae",
+  "type": "reasoning",
+  "text": "Let me read the shell package files.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me read the shell package files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720793332,
+    "end": 1790720793354
+  }
+}

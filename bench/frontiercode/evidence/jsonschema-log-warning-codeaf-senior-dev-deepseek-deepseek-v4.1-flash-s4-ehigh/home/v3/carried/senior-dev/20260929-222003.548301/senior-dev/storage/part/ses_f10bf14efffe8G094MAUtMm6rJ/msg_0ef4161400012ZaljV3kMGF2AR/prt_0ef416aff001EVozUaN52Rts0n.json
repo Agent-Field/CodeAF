@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef416aff001EVozUaN52Rts0n",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef4161400012ZaljV3kMGF2AR",
+  "type": "tool",
+  "callID": "call_01a0ef416b8175a480038e33",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rn \"exclude\\|--only\" test/lint/ | grep -v \"verbose\" "
+    },
+    "output": "test/lint/pass_lint_list_exclude.sh:10:\"$1\" lint --list --exclude blaze/valid_default --exclude blaze/valid_examples > \"$TMP/output.txt\"\ntest/lint/fail_lint_disable_many.sh:20:\"$1\" lint \"$TMP/schema.json\" --exclude enum_to_const -x enum_with_type >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest/lint/pass_lint_list_only_many.sh:10:\"$1\" lint --list --only then_empty --only then_without_if > \"$TMP/output.txt\"\ntest/lint/fail_lint_only_unknown.sh:18:\"$1\" lint \"$TMP/schema.json\" --only foobarbaz \\\ntest/lint/pass_lint_list_only_one.sh:10:\"$1\" lint --list --only definitions_to_defs > \"$TMP/output.txt\"\ntest/lint/fail_lint_disable_one.sh:20:\"$1\" lint \"$TMP/schema.json\" --exclude enum_to_const >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest/lint/fail_lint_only.sh:34:\"$1\" lint \"$TMP/schema.json\" --only content_media_type_without_encoding >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest/lint/fail_lint_only_with_exclude.sh:24:error: Cannot use --only and --exclude at the same time\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rn \"exclude\\|--only\" test",
+    "time": {
+      "start": 1790720436994,
+      "end": 1790720437014
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now update tests. But first, let me build to verify compile. Actually let me check the Makefile targets and whether build dir already configured. Let me run make configure compile. This may take a while.\n\nBefore that, let me handle tests.\n\n1. test/validate/pass_jsonl_empty.sh: expected should now include warning. The non-verbose output: does it include \"Interpreting input as JSONL:\"? That's LOG_VERBOSE, so no. So expected:\n```\nwarning: The JSONL file is empty\n```\n\nWait, but need to confirm ordering. In parse_loop, when JSONL detected, index 0 loop then `if (index == 0) LOG_VERBOSE...`. So warning printed. Yes.\n\nActually, let me double-check: is there anything else printed to stderr non-verbose for empty jsonl? The test currently expects empty, so no. Good.\n\n2. test/validate/pass_jsonl_empty_verbose.sh: still expects:\n```\nInterpreting input as JSONL: $(realpath \"$TMP\")/instance.jsonl\nwarning: The JSONL file is empty\n```\nUnchanged. Good.\n\n3. test/bundle/pass_without_id.sh and _verbose.sh: update expected-stderr to prefix each line.\n\n4. test/validate/pass_with_invalid_template.sh and _verbose.sh: single-line warning, unchanged expected (`warning: Failed to parse...`). The conversion changes from std::cerr to LOG_WARNING but output identical. Good.\n\n5. test/lint/fail_lint_disable_unknown_verbose.sh: unchanged output (warning still prefix). Good.\n\nNow, are there other tests that might now show the lint warning in non-verbose? We checked none. But what about tests not containing \"Cannot exclude unknown\" text but that exclude unknown rules implicitly? E.g., fail_lint_disable_one excludes a known rule. fail_lint_only_unknown uses --only, different path. Let me grep for `--exclude` in lint tests to be safe.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

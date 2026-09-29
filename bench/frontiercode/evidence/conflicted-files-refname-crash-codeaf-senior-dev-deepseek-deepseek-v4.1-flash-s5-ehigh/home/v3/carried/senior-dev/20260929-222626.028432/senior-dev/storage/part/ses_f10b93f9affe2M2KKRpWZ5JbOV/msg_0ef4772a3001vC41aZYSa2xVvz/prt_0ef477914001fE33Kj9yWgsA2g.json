@@ -1,0 +1,26 @@
+{
+  "id": "prt_0ef477914001fE33Kj9yWgsA2g",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef4772a3001vC41aZYSa2xVvz",
+  "type": "tool",
+  "callID": "call_00_4jffxgd46gxr6aafnelc728d",
+  "tool": "edit",
+  "state": {
+    "status": "error",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "newString": "od\ndef test_get_conflicted_files_refname_collision",
+      "oldString": "od\ndef test_get_conflicted_files_refname_collision"
+    },
+    "error": "No changes to apply: oldString and newString are identical.",
+    "time": {
+      "start": 1790720833815,
+      "end": 1790720833827
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

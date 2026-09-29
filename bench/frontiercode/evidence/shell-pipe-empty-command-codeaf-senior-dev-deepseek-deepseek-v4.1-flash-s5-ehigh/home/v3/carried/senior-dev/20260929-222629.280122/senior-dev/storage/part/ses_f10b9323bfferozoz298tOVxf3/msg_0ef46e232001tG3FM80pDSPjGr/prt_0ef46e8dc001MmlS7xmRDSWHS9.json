@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef46e8dc001MmlS7xmRDSWHS9",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef46e232001tG3FM80pDSPjGr",
+  "type": "tool",
+  "callID": "call_00_ji952yd03h1n602govcgrxna",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && grep -rn \"shell.Run\" --include=*.go . | head -20"
+    },
+    "output": "./internal/pipe/universalbinary/universalbinary.go:119:\t\tif err := shell.Run(ctx, dir, cmd, envs, hook.Output); err != nil {\n./internal/pipe/build/build.go:204:\t\tif err := shell.Run(ctx, dir, cmd, env, hook.Output); err != nil {\n./internal/pipe/before/before.go:39:\t\tif err := shell.Run(ctx, \"\", args, ctx.Env.Strings(), false); err != nil {\n./internal/shell/shell_test.go:17:\t\trequire.NoError(t, shell.Run(\n./internal/shell/shell_test.go:27:\t\trequire.Error(t, shell.Run(\n./internal/shell/shell_test.go:38:\t\terr := shell.Run(\n./internal/shell/shell_test.go:56:\t\terr = shell.Run(\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && grep -rn \"shell.Run\" --include=",
+    "time": {
+      "start": 1790720796895,
+      "end": 1790720796922
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me check how shell.Run is called to understand whether command could be empty at callers.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

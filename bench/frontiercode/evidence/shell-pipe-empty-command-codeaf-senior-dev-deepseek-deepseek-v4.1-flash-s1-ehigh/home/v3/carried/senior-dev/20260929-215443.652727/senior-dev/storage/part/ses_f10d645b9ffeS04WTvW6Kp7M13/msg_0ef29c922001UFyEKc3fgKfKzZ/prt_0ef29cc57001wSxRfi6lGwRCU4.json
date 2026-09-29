@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef29cc57001wSxRfi6lGwRCU4",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29c922001UFyEKc3fgKfKzZ",
+  "type": "tool",
+  "callID": "call_01a0ef29cae8721db5eb4070",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell.go",
+      "oldString": "func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n\t/* #nosec */\n\tcmd := exec.CommandContext(ctx, command[0], command[1:]...)",
+      "newString": "func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n\tif len(command) == 0 {\n\t\tlog.Warn(\"skipping empty shell command\")\n\t\treturn nil\n\t}\n\n\t/* #nosec */\n\tcmd := exec.CommandContext(ctx, command[0], command[1:]...)"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/goreleaser/internal/shell/shell.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell.go\n+++ /root/repos/goreleaser/internal/shell/shell.go\n@@ -17,8 +17,13 @@\n )\n \n // Run a shell command with given arguments and envs\n func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n+\tif len(command) == 0 {\n+\t\tlog.Warn(\"skipping empty shell command\")\n+\t\treturn nil\n+\t}\n+\n \t/* #nosec */\n \tcmd := exec.CommandContext(ctx, command[0], command[1:]...)\n \tcmd.Env = env\n \n",
+      "filediff": {
+        "file": "/root/repos/goreleaser/internal/shell/shell.go",
+        "patch": "Index: /root/repos/goreleaser/internal/shell/shell.go\n===================================================================\n--- /root/repos/goreleaser/internal/shell/shell.go\n+++ /root/repos/goreleaser/internal/shell/shell.go\n@@ -17,8 +17,13 @@\n )\n \n // Run a shell command with given arguments and envs\n func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n+\tif len(command) == 0 {\n+\t\tlog.Warn(\"skipping empty shell command\")\n+\t\treturn nil\n+\t}\n+\n \t/* #nosec */\n \tcmd := exec.CommandContext(ctx, command[0], command[1:]...)\n \tcmd.Env = env\n \n",
+        "additions": 5,
+        "deletions": 0
+      }
+    },
+    "title": "internal/shell/shell.go",
+    "time": {
+      "start": 1790718889050,
+      "end": 1790718889090
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Indeed, an empty hook -\u003e shellwords.Parse(\"\") returns empty slice -\u003e shell.Run panics at command[0]. So the natural fix is in shell.Run. A warning log is reasonable. I'll add warning using log.Warn.\n\nLet me write the guard.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

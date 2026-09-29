@@ -1,0 +1,38 @@
+{
+  "id": "prt_0ef3b2aac001DT8oWWqoRoxrcS",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3b22cd001t8wrF5KPrdcQ54",
+  "type": "tool",
+  "callID": "call_00_7fjrgbl5bqebahanwg6qptw8",
+  "tool": "grep",
+  "state": {
+    "status": "completed",
+    "input": {
+      "path": "/root/repos/pre-commit",
+      "pattern": "def in_merge_conflict|in_merge_conflict",
+      "include": "*.py"
+    },
+    "output": "Found 24 matches\n/root/repos/pre-commit/tests/commands/run_test.py:\n  Line 527: def test_has_unmerged_paths(in_merge_conflict):\n\n  Line 533: def test_merge_conflict(cap_out, store, in_merge_conflict):\n\n  Line 534:     ret, printed = _do_run(cap_out, store, in_merge_conflict, run_opts())\n\n  Line 539: def test_files_during_merge_conflict(cap_out, store, in_merge_conflict):\n\n  Line 541:     ret, printed = _do_run(cap_out, store, in_merge_conflict, opts)\n\n  Line 546: def test_merge_conflict_modified(cap_out, store, in_merge_conflict):\n\n  Line 552:     ret, printed = _do_run(cap_out, store, in_merge_conflict, run_opts())\n\n  Line 557: def test_merge_conflict_resolved(cap_out, store, in_merge_conflict):\n\n  Line 559:     ret, printed = _do_run(cap_out, store, in_merge_conflict, run_opts())\n\n\n/root/repos/pre-commit/tests/conftest.py:\n  Line 74: def in_merge_conflict(tempdir_factory):\n\n  Line 78:     git_commit(msg=in_merge_conflict.__name__, cwd=path)\n\n\n/root/repos/pre-commit/tests/git_test.py:\n  Line 92: def test_is_not_in_merge_conflict(in_git_dir):\n\n  Line 93:     assert git.is_in_merge_conflict() is False\n\n  Line 96: def test_is_in_merge_conflict(in_merge_conflict):\n\n  Line 97:     assert git.is_in_merge_conflict() is True\n\n  Line 100: def test_is_in_merge_conflict_submodule(in_conflicting_submodule):\n\n  Line 101:     assert git.is_in_merge_conflict() is True\n\n  Line 104: def test_cherry_pick_conflict(in_merge_conflict):\n\n  Line 108:     assert git.is_in_merge_conflict() is False\n\n  Line 117: def test_get_conflicted_files(in_merge_conflict):\n\n  Line 132: def test_get_conflicted_files_unstaged_files(in_merge_conflict):\n\n  Line 230: def test_get_conflicted_files_non_ascii(in_merge_conflict):\n\n\n/root/repos/pre-commit/pre_commit/commands/run.py:\n  Line 268:     elif git.is_in_merge_conflict():\n\n\n/root/repos/pre-commit/pre_commit/git.py:\n  Line 96: def is_in_merge_conflict() -> bool:\n",
+    "metadata": {
+      "matches": 24,
+      "truncated": false
+    },
+    "title": "def in_merge_conflict|in_merge_conflict",
+    "time": {
+      "start": 1790720027311,
+      "end": 1790720027327
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let's find the `in_merge_conflict` fixture. Probably in testing/util.py or conftest.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

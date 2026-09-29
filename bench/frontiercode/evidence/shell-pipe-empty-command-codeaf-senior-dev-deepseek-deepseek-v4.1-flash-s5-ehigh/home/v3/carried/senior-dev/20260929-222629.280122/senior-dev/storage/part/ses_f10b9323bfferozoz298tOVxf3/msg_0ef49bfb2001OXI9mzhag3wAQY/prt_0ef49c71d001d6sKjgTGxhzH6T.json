@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef49c71d001d6sKjgTGxhzH6T",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef49bfb2001OXI9mzhag3wAQY",
+  "type": "text",
+  "text": "Done. \n\n**Change:** In `internal/shell/shell.go`, added a guard at the top of `Run`:\n\n```go\nif len(command) == 0 {\n    return nil\n}\n```\n\nso a pipe entry with an empty command list is skipped silently rather than indexing `command[0]` and panicking. No other behavior changed.\n\n**Test:** Added a `t.Run(\"empty command\", ...)` subtest in `internal/shell/shell_test.go` calling `shell.Run(testctx.New(), \"\", []string{}, []string{}, false)` and asserting `require.NoError`, matching the file's existing subtest/testctx/require conventions.\n\n**Evidence:** `go test ./internal/shell/` → ok, exit 0; verbose run shows all 5 subtests PASS (including the new empty-command case, and the pre-existing `cmd_failed` still erroring). `go build ./...` exit 0; `gofmt -l` clean and `go vet` passes. The diff is confined to `internal/shell/shell.go` and its test.",
+  "time": {
+    "start": 1790720984861,
+    "end": 1790720984864
+  }
+}

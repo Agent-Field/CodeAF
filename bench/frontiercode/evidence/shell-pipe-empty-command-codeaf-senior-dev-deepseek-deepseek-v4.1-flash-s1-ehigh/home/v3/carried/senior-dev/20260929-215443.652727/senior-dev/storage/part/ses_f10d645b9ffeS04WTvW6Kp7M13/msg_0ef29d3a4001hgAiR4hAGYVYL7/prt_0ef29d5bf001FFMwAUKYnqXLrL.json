@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef29d5bf001FFMwAUKYnqXLrL",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29d3a4001hgAiR4hAGYVYL7",
+  "type": "tool",
+  "callID": "call_01a0ef29d4f1703091e1cead",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && gofmt -l internal/shell/ && go build ./... && go test ./internal/shell/ -v 2>&1 | tail -30",
+      "timeout_ms": 600000
+    },
+    "output": "=== RUN   TestRunCommand\n=== RUN   TestRunCommand/simple\n=== RUN   TestRunCommand/empty_command\n=== RUN   TestRunCommand/cmd_failed\n=== RUN   TestRunCommand/cmd_with_output\n=== RUN   TestRunCommand/with_env_and_dir\n--- PASS: TestRunCommand (0.00s)\n    --- PASS: TestRunCommand/simple (0.00s)\n    --- PASS: TestRunCommand/empty_command (0.00s)\n    --- PASS: TestRunCommand/cmd_failed (0.00s)\n    --- PASS: TestRunCommand/cmd_with_output (0.00s)\n    --- PASS: TestRunCommand/with_env_and_dir (0.00s)\nPASS\nok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.012s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && gofmt -l internal/shell/ && go ",
+    "time": {
+      "start": 1790718891458,
+      "end": 1790719034391
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now the log.Warn uses `log` already imported in shell.go. Yes, log is imported. Good.\n\nRun gofmt, build, tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

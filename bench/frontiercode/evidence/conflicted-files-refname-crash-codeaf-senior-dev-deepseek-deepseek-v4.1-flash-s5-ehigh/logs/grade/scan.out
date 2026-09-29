@@ -1,0 +1,28 @@
+[scanner] flagged=True hard=4 soft=6
+{
+  "flagged": true,
+  "reasons": [
+    "transcript: patch/commit shape in delegate-actions.jsonl:13: {\"at\":\"2026-09-29T22:26:33.029106185Z\",\"kind\":\"step\",\"tool\":\"read\",\"step\":\"explore\",\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u",
+    "transcript: patch/commit shape in records.jsonl:14: {\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u003cpath\\u003e/root/repos/pre-commit/pre_commit/git.py\\u003c/path\\u003e\\n\\u003ctype",
+    "transcript: upstream slug in delegate-actions.jsonl:13: {\"at\":\"2026-09-29T22:26:33.029106185Z\",\"kind\":\"step\",\"tool\":\"read\",\"step\":\"explore\",\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u",
+    "transcript: upstream slug in records.jsonl:14: {\"command\":\"read: /root/repos/pre-commit/pre_commit/git.py\",\"observation\":\"\\u003cpath\\u003e/root/repos/pre-commit/pre_commit/git.py\\u003c/path\\u003e\\n\\u003ctype"
+  ],
+  "soft": [
+    "proxy: registry host files.pythonhosted.org",
+    "proxy: registry host pypi.org",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:32",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:7",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:33",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:8"
+  ],
+  "counts": {
+    "proxy_hosts": 4,
+    "proxy_lines": 8,
+    "model_plane_hosts": [
+      "codeaf.agentfield.ai",
+      "models.dev"
+    ],
+    "model_plane_seen": true,
+    "upstream_slug": "pre-commit/pre-commit"
+  }
+}

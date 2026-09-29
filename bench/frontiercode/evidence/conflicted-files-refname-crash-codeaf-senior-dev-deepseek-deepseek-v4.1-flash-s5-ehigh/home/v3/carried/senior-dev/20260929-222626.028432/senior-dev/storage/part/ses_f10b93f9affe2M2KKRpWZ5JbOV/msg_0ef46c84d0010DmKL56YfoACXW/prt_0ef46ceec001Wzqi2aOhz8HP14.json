@@ -1,0 +1,39 @@
+{
+  "id": "prt_0ef46ceec001Wzqi2aOhz8HP14",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46c84d0010DmKL56YfoACXW",
+  "type": "tool",
+  "callID": "call_00_ok8ljov7522vb2ojbe4jlfje",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/pre_commit/git.py",
+      "offset": 80,
+      "limit": 80
+    },
+    "output": "<path>/root/repos/pre-commit/pre_commit/git.py</path>\n<type>file</type>\n<content>\n80:     if git_dir != opt:\n81:         return os.path.normpath(os.path.join(git_root, git_dir))\n82:     else:\n83:         raise AssertionError('unreachable: no git dir')\n84: \n85: \n86: def get_git_common_dir(git_root: str = '.') -> str:\n87:     opt = '--git-common-dir'\n88:     _, out, _ = cmd_output('git', 'rev-parse', opt, cwd=git_root)\n89:     git_common_dir = out.strip()\n90:     if git_common_dir != opt:\n91:         return os.path.normpath(os.path.join(git_root, git_common_dir))\n92:     else:  # pragma: no cover (git < 2.5)\n93:         return get_git_dir(git_root)\n94: \n95: \n96: def is_in_merge_conflict() -> bool:\n97:     git_dir = get_git_dir('.')\n98:     return (\n99:         os.path.exists(os.path.join(git_dir, 'MERGE_MSG')) and\n100:         os.path.exists(os.path.join(git_dir, 'MERGE_HEAD'))\n101:     )\n102: \n103: \n104: def parse_merge_msg_for_conflicts(merge_msg: bytes) -> list[str]:\n105:     # Conflicted files start with tabs\n106:     return [\n107:         line.lstrip(b'#').strip().decode()\n108:         for line in merge_msg.splitlines()\n109:         # '#\\t' for git 2.4.1\n110:         if line.startswith((b'\\t', b'#\\t'))\n111:     ]\n112: \n113: \n114: def get_conflicted_files() -> set[str]:\n115:     logger.info('Checking merge-conflict files only.')\n116:     # Need to get the conflicted files from the MERGE_MSG because they could\n117:     # have resolved the conflict by choosing one side or the other\n118:     with open(os.path.join(get_git_dir('.'), 'MERGE_MSG'), 'rb') as f:\n119:         merge_msg = f.read()\n120:     merge_conflict_filenames = parse_merge_msg_for_conflicts(merge_msg)\n121: \n122:     # This will get the rest of the changes made after the merge.\n123:     # If they resolved the merge conflict by choosing a mesh of both sides\n124:     # this will also include the conflicted files\n125:     tree_hash = cmd_output('git', 'write-tree')[1].strip()\n126:     merge_diff_filenames = zsplit(\n127:         cmd_output(\n128:             'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n129:             '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n130:         )[1],\n131:     )\n132:     return set(merge_conflict_filenames) | set(merge_diff_filenames)\n133: \n134: \n135: def get_staged_files(cwd: str | None = None) -> list[str]:\n136:     return zsplit(\n137:         cmd_output(\n138:             'git', 'diff', '--staged', '--name-only', '--no-ext-diff', '-z',\n139:             # Everything except for D\n140:             '--diff-filter=ACMRTUXB',\n141:             cwd=cwd,\n142:         )[1],\n143:     )\n144: \n145: \n146: def intent_to_add_files() -> list[str]:\n147:     _, stdout, _ = cmd_output(\n148:         'git', 'diff', '--no-ext-diff', '--ignore-submodules',\n149:         '--diff-filter=A', '--name-only', '-z',\n150:     )\n151:     return zsplit(stdout)\n152: \n153: \n154: def get_all_files() -> list[str]:\n155:     return zsplit(cmd_output('git', 'ls-files', '-z')[1])\n156: \n157: \n158: def get_changed_files(old: str, new: str) -> list[str]:\n159:     diff_cmd = ('git', 'diff', '--name-only', '--no-ext-diff', '-z')\n\n(Showing lines 80-159 of 245. Use offset=160 to continue.)\n</content>",
+    "metadata": {
+      "preview": "    if git_dir != opt:\n        return os.path.normpath(os.path.join(git_root, git_dir))\n    else:\n        raise AssertionError('unreachable: no git dir')\n\n\ndef get_git_common_dir(git_root: str = '.') -> str:\n    opt = '--git-common-dir'\n    _, out, _ = cmd_output('git', 'rev-parse', opt, cwd=git_root)\n    git_common_dir = out.strip()\n    if git_common_dir != opt:\n        return os.path.normpath(os.path.join(git_root, git_common_dir))\n    else:  # pragma: no cover (git < 2.5)\n        return get_git_dir(git_root)\n\n\ndef is_in_merge_conflict() -> bool:\n    git_dir = get_git_dir('.')\n    return (\n        os.path.exists(os.path.join(git_dir, 'MERGE_MSG')) and",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "pre_commit/git.py",
+    "time": {
+      "start": 1790720790255,
+      "end": 1790720790264
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me read the git.py file around the relevant code and the test file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

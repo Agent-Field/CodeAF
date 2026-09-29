@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef414830001uzUxApoVbhFmMB",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef41352b001pxdghcjyPE7ze6",
+  "type": "tool",
+  "callID": "call_01a0ef41482474f8b3536e48",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && sed -n '1,30p' src/resolver.h && echo ===BUNDLE-INCLUDES=== && sed -n '1,25p' src/command_bundle.cc && echo ===VALIDATE-INCLUDES=== && sed -n '1,20p' src/command_validate.cc"
+    },
+    "output": "#ifndef SOURCEMETA_JSONSCHEMA_CLI_RESOLVER_H_\n#define SOURCEMETA_JSONSCHEMA_CLI_RESOLVER_H_\n\n#ifndef NOMINMAX\n#define NOMINMAX\n#endif\n\n#include <cpr/cpr.h>\n\n#include <sourcemeta/core/io.h>\n#include <sourcemeta/core/json.h>\n#include <sourcemeta/core/jsonschema.h>\n#include <sourcemeta/core/options.h>\n#include <sourcemeta/core/schemaconfig.h>\n#include <sourcemeta/core/uri.h>\n#include <sourcemeta/core/yaml.h>\n\n#include \"error.h\"\n#include \"input.h\"\n#include \"logger.h\"\n\n#include <cassert>     // assert\n#include <filesystem>  // std::filesystem\n#include <functional>  // std::function, std::ref\n#include <iostream>    // std::cerr\n#include <map>         // std::map\n#include <optional>    // std::optional\n#include <sstream>     // std::ostringstream\n#include <stdexcept>   // std::runtime_error\n#include <string>      // std::string\n===BUNDLE-INCLUDES===\n#include <sourcemeta/core/editorschema.h>\n#include <sourcemeta/core/io.h>\n#include <sourcemeta/core/json.h>\n#include <sourcemeta/core/jsonschema.h>\n#include <sourcemeta/core/yaml.h>\n\n#include <iostream> // std::cout\n\n#include \"command.h\"\n#include \"configuration.h\"\n#include \"error.h\"\n#include \"resolver.h\"\n#include \"utils.h\"\n\nauto sourcemeta::jsonschema::bundle(const sourcemeta::core::Options &options)\n    -> void {\n\n  if (options.positional().size() < 1) {\n    throw PositionalArgumentError{\"This command expects a path to a schema\",\n                                  \"jsonschema bundle path/to/schema.json\"};\n  }\n\n  const std::filesystem::path schema_path{options.positional().front()};\n  const auto configuration_path{find_configuration(schema_path)};\n  const auto &configuration{read_configuration(options, configuration_path)};\n===VALIDATE-INCLUDES===\n#include <sourcemeta/core/io.h>\n#include <sourcemeta/core/json.h>\n#include <sourcemeta/core/jsonl.h>\n#include <sourcemeta/core/jsonschema.h>\n#include <sourcemeta/core/yaml.h>\n\n#include <sourcemeta/blaze/compiler.h>\n#include <sourcemeta/blaze/evaluator.h>\n#include <sourcemeta/blaze/output.h>\n\n#include <chrono>   // std::chrono\n#include <cmath>    // std::sqrt\n#include <iostream> // std::cerr\n#include <string>   // std::string\n\n#include \"command.h\"\n#include \"configuration.h\"\n#include \"error.h\"\n#include \"input.h\"\n#include \"logger.h\"\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && sed -n '1,30p' src/resolver.h &",
+    "time": {
+      "start": 1790720428084,
+      "end": 1790720428105
+    }
+  }
+}

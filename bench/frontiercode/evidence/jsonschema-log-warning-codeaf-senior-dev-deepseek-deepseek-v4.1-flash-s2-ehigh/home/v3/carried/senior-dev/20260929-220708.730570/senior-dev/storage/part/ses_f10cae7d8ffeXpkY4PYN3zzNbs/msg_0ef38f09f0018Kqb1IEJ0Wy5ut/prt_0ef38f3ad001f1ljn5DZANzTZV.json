@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef38f3ad001f1ljn5DZANzTZV",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef38f09f0018Kqb1IEJ0Wy5ut",
+  "type": "tool",
+  "callID": "call_01a0ef38f0d97287b8f8d902",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && BIN=$(find build -maxdepth 3 -name jsonschema -type f | head -1) && echo \"bin=$BIN\" && TMP=$(mktemp -d) && printf '{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}' > $TMP/s.json && \"$BIN\" bundle $TMP/s.json --without-id 2>&1 >/dev/null; rm -rf $TMP"
+    },
+    "output": "bin=build/dist/bin/jsonschema\nwarning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option.\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && BIN=$(find build -maxdepth 3 -n",
+    "time": {
+      "start": 1790719882162,
+      "end": 1790719882194
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Binary is at build/dist/bin/jsonschema or build/src/jsonschema. Let me find it. Not critical; tests passed. But let me manually verify multi-line output.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

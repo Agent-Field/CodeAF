@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef29bcdf00179jtqQgpwv4eyB",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29b437001GW4lyLJ4lUqCjA",
+  "type": "tool",
+  "callID": "call_00_6sllvf7x8sysibpbgtskf2vt",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && grep -rn \"MERGE_MSG\\|MERGE_HEAD\\|--name-only\" pre_commit/ | head -40"
+    },
+    "output": "pre_commit/git.py:99:        os.path.exists(os.path.join(git_dir, 'MERGE_MSG')) and\npre_commit/git.py:100:        os.path.exists(os.path.join(git_dir, 'MERGE_HEAD'))\npre_commit/git.py:116:    # Need to get the conflicted files from the MERGE_MSG because they could\npre_commit/git.py:118:    with open(os.path.join(get_git_dir('.'), 'MERGE_MSG'), 'rb') as f:\npre_commit/git.py:128:            'git', 'diff', '--name-only', '--no-ext-diff', '-z',\npre_commit/git.py:129:            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\npre_commit/git.py:138:            'git', 'diff', '--staged', '--name-only', '--no-ext-diff', '-z',\npre_commit/git.py:149:        '--diff-filter=A', '--name-only', '-z',\npre_commit/git.py:159:    diff_cmd = ('git', 'diff', '--name-only', '--no-ext-diff', '-z')\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && grep -rn \"MERGE_MSG\\|MERGE_HEAD",
+    "time": {
+      "start": 1790718885090,
+      "end": 1790718885106
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me find the merge conflict enumeration code.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

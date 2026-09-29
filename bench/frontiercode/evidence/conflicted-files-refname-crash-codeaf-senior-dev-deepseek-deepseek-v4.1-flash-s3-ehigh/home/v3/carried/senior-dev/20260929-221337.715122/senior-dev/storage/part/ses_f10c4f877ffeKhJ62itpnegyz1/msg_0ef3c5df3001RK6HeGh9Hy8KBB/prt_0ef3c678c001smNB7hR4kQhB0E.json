@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3c678c001smNB7hR4kQhB0E",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3c5df3001RK6HeGh9Hy8KBB",
+  "type": "tool",
+  "callID": "call_00_c9vstf1hfgmebkp90pnymnm2",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && python -m pytest tests/git_test.py -q 2>&1 | tail -15"
+    },
+    "output": "..................................                                       [100%]\n34 passed in 1.68s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && python -m pytest tests/git_test",
+    "time": {
+      "start": 1790720108431,
+      "end": 1790720110600
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Wait, but there could be an issue with the `MERGE_HEAD` file: when the fixture is set up, and we create a file named MERGE_HEAD, then `git add MERGE_HEAD`. But git's `git add` with `MERGE_HEAD`... let me just run.\n\nActually another concern: for the `MERGE_HEAD` case, the file `MERGE_HEAD` is new (not in HEAD or MERGE_HEAD commit), so it appears in the diff result. Expected `{'conflict_file', 'MERGE_HEAD'}`. But does the merge-conflict parser also add anything? merge_conflict_filenames = ['conflict_file']. Good.\n\nLet me run the tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

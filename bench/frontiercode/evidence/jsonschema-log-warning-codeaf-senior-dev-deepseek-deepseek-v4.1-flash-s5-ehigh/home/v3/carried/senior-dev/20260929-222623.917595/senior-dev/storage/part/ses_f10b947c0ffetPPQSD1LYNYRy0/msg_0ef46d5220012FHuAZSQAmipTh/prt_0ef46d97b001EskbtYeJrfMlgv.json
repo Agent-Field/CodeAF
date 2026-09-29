@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef46d97b001EskbtYeJrfMlgv",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46d5220012FHuAZSQAmipTh",
+  "type": "tool",
+  "callID": "call_01a0ef46d8a775aaa145d88d",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat test/bundle/pass_without_id.sh && echo \"======VERBOSE\" && cat test/bundle/pass_without_id_verbose.sh"
+    },
+    "output": "#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com\",\n  \"$ref\": \"nested\"\n}\nEOF\n\nmkdir \"$TMP/schemas\"\ncat << 'EOF' > \"$TMP/schemas/remote.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com/nested\",\n  \"type\": \"string\"\n}\nEOF\n\n\"$1\" bundle \"$TMP/schema.json\" --resolve \"$TMP/schemas\" --without-id > \"$TMP/result.json\" 2> \"$TMP/stderr.txt\"\n\ncat << 'EOF' > \"$TMP/expected.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$ref\": \"#/$defs/https:~1~1example.com~1nested\",\n  \"$defs\": {\n    \"https://example.com/nested\": {\n      \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ncat << 'EOF' > \"$TMP/expected-stderr.txt\"\nwarning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option.\nEOF\n\ndiff \"$TMP/result.json\" \"$TMP/expected.json\"\ndiff \"$TMP/stderr.txt\" \"$TMP/expected-stderr.txt\"\n\n# Must come out formatted\n\"$1\" fmt \"$TMP/result.json\" --check\n======VERBOSE\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com\",\n  \"$ref\": \"nested\"\n}\nEOF\n\nmkdir \"$TMP/schemas\"\ncat << 'EOF' > \"$TMP/schemas/remote.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://example.com/nested\",\n  \"type\": \"string\"\n}\nEOF\n\n\"$1\" bundle \"$TMP/schema.json\" --resolve \"$TMP/schemas\" --without-id --verbose 1> \"$TMP/result.json\" 2>&1\n\ncat << EOF > \"$TMP/expected.json\"\nDetecting schema resources from file: $(realpath \"$TMP\")/schemas/remote.json\nImporting schema into the resolution context: file://$(realpath \"$TMP\")/schemas/remote.json\nImporting schema into the resolution context: https://example.com/nested\nwarning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option.\n{\n  \"\\$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"\\$ref\": \"#/\\$defs/https:~1~1example.com~1nested\",\n  \"\\$defs\": {\n    \"https://example.com/nested\": {\n      \"\\$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ndiff \"$TMP/result.json\" \"$TMP/expected.json\"\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat test/bundle/pass_without_id",
+    "time": {
+      "start": 1790720792958,
+      "end": 1790720792974
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Interesting. The existing tests show warnings expected even in non-verbose cases where source uses std::cerr. Good.\n\nNow, the key test that covers the change: pass_jsonl_empty, which currently expects empty stderr. After change, JSONL empty warning goes through LOG_WARNING and always prints. Hmm, but wait: maybe the intended design is that LOG_WARNING always prints. Then pass_jsonl_empty test must be updated to expect the warning. The task says \"the tests that cover this change are the validate suite's pass_jsonl_empty tests, which run the built CLI against an empty JSONL file and compare its stderr\". Plural \"tests\" — pass_jsonl_empty and pass_jsonl_empty_verbose. Currently pass_jsonl_empty expects nothing, verbose expects warning. After change both should expect warning. So update pass_jsonl_empty.sh expected.\n\nLet me check the bundle tests too—the multi-line warning. pass_without_id.sh currently expects the first line only? Let me look.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

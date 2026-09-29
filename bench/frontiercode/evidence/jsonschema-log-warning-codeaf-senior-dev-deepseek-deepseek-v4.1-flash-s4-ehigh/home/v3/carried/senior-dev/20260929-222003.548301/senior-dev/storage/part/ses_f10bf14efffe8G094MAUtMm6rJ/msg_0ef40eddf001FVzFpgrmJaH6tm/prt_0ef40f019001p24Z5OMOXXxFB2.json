@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef40f019001p24Z5OMOXXxFB2",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef40eddf001FVzFpgrmJaH6tm",
+  "type": "reasoning",
+  "text": "Let me search for warnings.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me search for warnings.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720405529,
+    "end": 1790720405540
+  }
+}

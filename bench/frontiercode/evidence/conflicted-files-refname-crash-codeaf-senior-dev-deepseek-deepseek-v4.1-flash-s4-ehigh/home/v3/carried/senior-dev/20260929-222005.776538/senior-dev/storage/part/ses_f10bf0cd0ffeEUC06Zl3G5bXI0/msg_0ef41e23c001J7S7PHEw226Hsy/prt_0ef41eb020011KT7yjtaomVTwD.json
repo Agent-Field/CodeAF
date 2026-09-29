@@ -1,0 +1,44 @@
+{
+  "id": "prt_0ef41eb020011KT7yjtaomVTwD",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef41e23c001J7S7PHEw226Hsy",
+  "type": "tool",
+  "callID": "call_00_jgn49avl5ms940k30ltbaodf",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/pre_commit/git.py",
+      "newString": "            'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n            # `HEAD` / `MERGE_HEAD` are revisions, not pathspecs -- without\n            # this separator a tracked file sharing their name is ambiguous\n            '--',\n        )[1],",
+      "oldString": "            'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n        )[1],"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/pre_commit/git.py\n===================================================================\n--- /root/repos/pre-commit/pre_commit/git.py\n+++ /root/repos/pre-commit/pre_commit/git.py\n@@ -126,8 +126,11 @@\n merge_diff_filenames = zsplit(\n     cmd_output(\n         'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n         '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+        # `HEAD` / `MERGE_HEAD` are revisions, not pathspecs -- without\n+        # this separator a tracked file sharing their name is ambiguous\n+        '--',\n     )[1],\n )\n return set(merge_conflict_filenames) | set(merge_diff_filenames)\n \n",
+      "filediff": {
+        "file": "/root/repos/pre-commit/pre_commit/git.py",
+        "patch": "Index: /root/repos/pre-commit/pre_commit/git.py\n===================================================================\n--- /root/repos/pre-commit/pre_commit/git.py\n+++ /root/repos/pre-commit/pre_commit/git.py\n@@ -126,8 +126,11 @@\n merge_diff_filenames = zsplit(\n     cmd_output(\n         'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n         '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+        # `HEAD` / `MERGE_HEAD` are revisions, not pathspecs -- without\n+        # this separator a tracked file sharing their name is ambiguous\n+        '--',\n     )[1],\n )\n return set(merge_conflict_filenames) | set(merge_diff_filenames)\n \n",
+        "additions": 3,
+        "deletions": 0
+      }
+    },
+    "title": "pre_commit/git.py",
+    "time": {
+      "start": 1790720469766,
+      "end": 1790720469808
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Confirmed failure reproduces with the exact error. Now apply the fix.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

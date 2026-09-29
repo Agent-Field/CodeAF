@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef353158001PHax44jtfeH3vl",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef3527e20013IadHZDxoUv8bw",
+  "type": "tool",
+  "callID": "call_00_6z58rtvtp8mcu4a2tqwntw1a",
+  "tool": "grep",
+  "state": {
+    "status": "completed",
+    "input": {
+      "pattern": "MERGE_MSG",
+      "path": "/root/repos/pre-commit"
+    },
+    "output": "Found 7 matches\n/root/repos/pre-commit/tests/git_test.py:\n  Line 144: MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n\n  Line 145: OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n\n  Line 151:         (MERGE_MSG, ['conflict_file']),\n\n  Line 152:         (OTHER_MERGE_MSG, ['conflict_file', 'other_conflict_file']),\n\n\n/root/repos/pre-commit/pre_commit/git.py:\n  Line 99:         os.path.exists(os.path.join(git_dir, 'MERGE_MSG')) and\n\n  Line 116:     # Need to get the conflicted files from the MERGE_MSG because they could\n\n  Line 118:     with open(os.path.join(get_git_dir('.'), 'MERGE_MSG'), 'rb') as f:\n",
+    "metadata": {
+      "matches": 7,
+      "truncated": false
+    },
+    "title": "MERGE_MSG",
+    "time": {
+      "start": 1790719635804,
+      "end": 1790719635819
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me find the relevant code.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

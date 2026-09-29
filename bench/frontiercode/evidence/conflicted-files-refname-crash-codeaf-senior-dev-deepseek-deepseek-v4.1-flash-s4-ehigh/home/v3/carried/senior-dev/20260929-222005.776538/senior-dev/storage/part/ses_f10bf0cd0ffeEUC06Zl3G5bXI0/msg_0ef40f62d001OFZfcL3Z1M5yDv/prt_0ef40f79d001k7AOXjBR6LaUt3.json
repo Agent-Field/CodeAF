@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef40f79d001k7AOXjBR6LaUt3",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef40f62d001OFZfcL3Z1M5yDv",
+  "type": "tool",
+  "callID": "call_01a0ef40f76777d8807e17de",
+  "tool": "grep",
+  "state": {
+    "status": "completed",
+    "input": {
+      "pattern": "MERGE_MSG|MERGE_HEAD|--name-only",
+      "path": "/root/repos/pre-commit/pre_commit"
+    },
+    "output": "Found 9 matches\n/root/repos/pre-commit/pre_commit/git.py:\n  Line 99:         os.path.exists(os.path.join(git_dir, 'MERGE_MSG')) and\n\n  Line 100:         os.path.exists(os.path.join(git_dir, 'MERGE_HEAD'))\n\n  Line 116:     # Need to get the conflicted files from the MERGE_MSG because they could\n\n  Line 118:     with open(os.path.join(get_git_dir('.'), 'MERGE_MSG'), 'rb') as f:\n\n  Line 128:             'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n\n  Line 129:             '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n\n  Line 138:             'git', 'diff', '--staged', '--name-only', '--no-ext-diff', '-z',\n\n  Line 149:         '--diff-filter=A', '--name-only', '-z',\n\n  Line 159:     diff_cmd = ('git', 'diff', '--name-only', '--no-ext-diff', '-z')\n",
+    "metadata": {
+      "matches": 9,
+      "truncated": false
+    },
+    "title": "MERGE_MSG|MERGE_HEAD|--name-only",
+    "time": {
+      "start": 1790720407456,
+      "end": 1790720407470
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the git module.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

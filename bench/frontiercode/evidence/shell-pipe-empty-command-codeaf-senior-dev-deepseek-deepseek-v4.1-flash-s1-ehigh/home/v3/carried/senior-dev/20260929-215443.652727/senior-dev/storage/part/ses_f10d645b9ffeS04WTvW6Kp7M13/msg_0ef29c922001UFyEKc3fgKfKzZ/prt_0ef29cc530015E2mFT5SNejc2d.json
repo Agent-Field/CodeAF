@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29cc530015E2mFT5SNejc2d",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29c922001UFyEKc3fgKfKzZ",
+  "type": "reasoning",
+  "text": "Indeed, an empty hook -> shellwords.Parse(\"\") returns empty slice -> shell.Run panics at command[0]. So the natural fix is in shell.Run. A warning log is reasonable. I'll add warning using log.Warn.\n\nLet me write the guard.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Indeed, an empty hook -\u003e shellwords.Parse(\"\") returns empty slice -\u003e shell.Run panics at command[0]. So the natural fix is in shell.Run. A warning log is reasonable. I'll add warning using log.Warn.\n\nLet me write the guard.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718889043,
+    "end": 1790718889054
+  }
+}

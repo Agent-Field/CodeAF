@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef3dca6d001xXE5OMGx1XeD2d",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3dc46c001va8KH68vtbJCyE",
+  "type": "tool",
+  "callID": "call_00_vmuwvqhhqtdma0fircheyyja",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && sed -n '1,80p' .golangci.yaml"
+    },
+    "output": "version: \"2\"\nrun:\n  go: \"1.24\"\nlinters:\n  enable:\n    - bodyclose\n    - copyloopvar\n    - depguard\n    - forbidigo\n    - gocritic\n    - misspell\n    - noctx\n    - nolintlint\n    - perfsprint\n    - revive\n    - tagliatelle\n    - testifylint\n    - thelper\n    - tparallel\n    - unconvert\n    - unparam\n    - usetesting\n    - wastedassign\n  settings:\n    depguard:\n      rules:\n        main:\n          deny:\n            - pkg: github.com/pkg/errors\n              desc: use stdlib instead\n            - pkg: math/rand$\n              desc: use math/rand/v2 instead\n            - pkg: github.com/apex/log\n              desc: use caarlos0/log instead\n    forbidigo:\n      forbid:\n        - pattern: ioutil\\.*\n    gocritic:\n      disabled-checks:\n        - appendAssign\n    perfsprint:\n      int-conversion: false\n      err-error: false\n      errorf: true\n      sprintf1: false\n      strconcat: false\n    revive:\n      enable-all-rules: false\n      rules:\n        - name: blank-imports\n        - name: context-as-argument\n        - name: context-keys-type\n        - name: comment-spacings\n        - name: dot-imports\n        - name: empty-block\n        - name: empty-lines\n        - name: error-naming\n        - name: error-return\n        - name: error-strings\n        - name: errorf\n        - name: increment-decrement\n        - name: indent-error-flow\n        - name: modifies-value-receiver\n        - name: range\n        - name: receiver-naming\n        - name: redefines-builtin-id\n        - name: superfluous-else\n        - name: time-naming\n        - name: unexported-return\n        - name: unreachable-code\n        - name: unused-parameter\n        - name: var-declaration\n        - name: var-naming\n        # we are not providing an API anyway... maybe someday...\n        # - name: exported\n        # - name: package-comments\n    staticcheck:\n      checks:\n        - all\n        - -SA1019\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && sed -n '1,80p' .golangci.yaml",
+    "time": {
+      "start": 1790720199281,
+      "end": 1790720199296
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

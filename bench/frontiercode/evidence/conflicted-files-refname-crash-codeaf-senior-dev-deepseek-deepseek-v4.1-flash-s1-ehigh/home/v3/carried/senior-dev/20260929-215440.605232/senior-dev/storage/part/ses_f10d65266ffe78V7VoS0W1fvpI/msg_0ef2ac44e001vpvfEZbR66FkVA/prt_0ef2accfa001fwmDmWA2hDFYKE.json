@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2accfa001fwmDmWA2hDFYKE",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2ac44e001vpvfEZbR66FkVA",
+  "type": "tool",
+  "callID": "call_00_4q3vulpt9jkartqssuoqh82f",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && md5sum pre_commit/git.py && git hash-object pre_commit/git.py && git rev-parse HEAD:pre_commit/git.py && git status --porcelain; echo \"status exit: $?\""
+    },
+    "output": "5063a4b6908677ccb5d3ae7798e21c25  pre_commit/git.py\ncb3c2732a534a7a1f1d2817b8fadaa933838a57e\ncb3c2732a534a7a1f1d2817b8fadaa933838a57e\nstatus exit: 0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && md5sum pre_commit/git.py && git",
+    "time": {
+      "start": 1790718954750,
+      "end": 1790718954783
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "No filters. Then why did git hash-object return the HEAD hash? Let me re-run the hash-object directly now.\n\nOh wait! I bet the earlier command `git stash push` actually stashed my changes and then... no, it said \"No local changes to save\". Hmm but after that, `git stash pop` said no stash. And the file still shows modified.\n\nWait, actually the previous hash check command was run in the same shell as the stash. Let me re-run hash-object now carefully.\n\nActually — could there be a race where the edit tool's write is buffered? No.\n\nLet me just re-run.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

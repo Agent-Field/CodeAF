@@ -1,0 +1,29 @@
+{
+  "id": "prt_0ef33cb02001r2vG5039Uqcczx",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef33bf0f001eXuN397ma9Jq4p",
+  "type": "tool",
+  "callID": "call_01_yunxnptprjz0035rx3z23mip",
+  "tool": "write",
+  "state": {
+    "status": "completed",
+    "input": {
+      "content": "[x] get_conflicted_files no longer crashes when a tracked file is named like a refname such as HEAD or MERGE_HEAD\n[x] refnames (HEAD, MERGE_HEAD) are separated from pathspecs with a `--` separator before invoking `git diff`\n[x] the returned set is complete: it still contains both the merge-conflict filenames from MERGE_MSG and the merge-diff filenames, with nothing added or lost\n[x] a regression test for the refname collision is added to tests/git_test.py in the existing merge-conflict fixture style\n[x] python -m pytest tests/git_test.py passes\n",
+      "filePath": "/root/repos/pre-commit/.senior-dev/checklist.md"
+    },
+    "output": "Wrote file successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/.senior-dev/checklist.md\n===================================================================\n--- /root/repos/pre-commit/.senior-dev/checklist.md\n+++ /root/repos/pre-commit/.senior-dev/checklist.md\n@@ -0,0 +1,5 @@\n+[x] get_conflicted_files no longer crashes when a tracked file is named like a refname such as HEAD or MERGE_HEAD\n+[x] refnames (HEAD, MERGE_HEAD) are separated from pathspecs with a `--` separator before invoking `git diff`\n+[x] the returned set is complete: it still contains both the merge-conflict filenames from MERGE_MSG and the merge-diff filenames, with nothing added or lost\n+[x] a regression test for the refname collision is added to tests/git_test.py in the existing merge-conflict fixture style\n+[x] python -m pytest tests/git_test.py passes\n",
+      "filepath": "/root/repos/pre-commit/.senior-dev/checklist.md",
+      "exists": false,
+      "additions": 5,
+      "deletions": 0
+    },
+    "title": ".senior-dev/checklist.md",
+    "time": {
+      "start": 1790719544069,
+      "end": 1790719544103
+    }
+  }
+}

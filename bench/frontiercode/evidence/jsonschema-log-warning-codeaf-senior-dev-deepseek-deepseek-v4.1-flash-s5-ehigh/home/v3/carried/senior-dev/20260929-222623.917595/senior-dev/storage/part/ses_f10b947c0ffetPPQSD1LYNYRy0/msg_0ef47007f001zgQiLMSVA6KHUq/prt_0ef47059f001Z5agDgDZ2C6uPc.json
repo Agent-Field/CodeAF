@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef47059f001Z5agDgDZ2C6uPc",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef47007f001zgQiLMSVA6KHUq",
+  "type": "reasoning",
+  "text": "Now command_lint.cc.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now command_lint.cc.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720804255,
+    "end": 1790720804290
+  }
+}

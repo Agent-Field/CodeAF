@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef4115dc001L2MSYkBr0Rj5Jy",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef410e0d001pf1SHKtkfGGo7M",
+  "type": "tool",
+  "callID": "call_00_yomyj1add45xntxoyorrykq9",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && grep -rn \"log.Warn\" internal/ | head -20 && echo \"---logext---\" && ls internal/logext && grep -rn \"func \" internal/logext/*.go | head -40"
+    },
+    "output": "internal/pipe/sbom/sbom.go:117:\t\t\tlog.Warn(\"when artifacts is `source`, `ids` has no effect. ignoring\")\ninternal/pipe/sbom/sbom.go:143:\t\tlog.Warn(\"no artifacts matching current filters\")\ninternal/pipe/gomod/gomod_proxy.go:53:\t\t\tlog.Warnf(\ninternal/pipe/gomod/gomod_proxy.go:59:\t\t\tlog.Warnf(\"the offending line is %s\", logext.Keyword(strings.TrimSpace(line)))\ninternal/pipe/gomod/gomod_proxy.go:127:\t\tlog.Warnf(\"guessing package of '%s' to be '%s', if this is incorrect, setup 'build.%s.main' to be the correct package\", build.Main, pkg, build.ID)\ninternal/pipe/git/git.go:69:\t\tlog.Warn(\"accepting to run without a git repository because this is a snapshot\")\ninternal/pipe/git/git.go:168:\t\tlog.Warnf(\"couldn't find any tags before %q\", tag)\ninternal/pipe/git/git.go:197:\t\tlog.Warn(\"running against a shallow clone - check your CI documentation at https://goreleaser.com/ci\")\ninternal/pipe/archive/archive.go:324:\t\t\tlog.Warn(\"override has no goos, ignoring\")\ninternal/pipe/sign/sign.go:94:\t\t\t\t\tlog.Warn(\"when artifacts is `checksum`, `ids` has no effect. ignoring\")\ninternal/pipe/sign/sign.go:99:\t\t\t\t\tlog.Warn(\"when artifacts is `source`, `ids` has no effect. ignoring\")\ninternal/pipe/sign/sign.go:141:\t\tlog.Warn(\"no artifacts matching the given filters found\")\ninternal/pipe/cask/cask.go:68:\t\t\tlog.Warnf(\"%q might not work properly for your end users, for reference, the default is \\\"Casks\\\"\", brew.Directory)\ninternal/pipe/chocolatey/chocolatey.go:192:\t\tlog.Warn(\"skip pushing: no api key\")\ninternal/pipe/aur/aur.go:159:\t\tlog.Warnf(\"guessing package to be %q\", pkg)\ninternal/pipe/changelog/changelog.go:340:\t\t\tlog.Warnf(\"there's no previous tag, using 'git' instead of '%s'\", ctx.Config.Changelog.Use)\ninternal/pipe/changelog/changelog.go:410:\t\t\tlog.Warnf(\"loaded %q, but it evaluates to an empty string\", tmplName)\ninternal/pipe/changelog/changelog.go:419:\t\t\tlog.Warnf(\"loaded %q, but it is empty\", fileName)\ninternal/pipe/brew/brew.go:65:\t\t\tlog.Warn(\ninternal/pipe/docker/docker.go:165:\t\tlog.Warn(\"no binaries or packages found for the given platform - COPY/ADD may not work\")\n---logext---\nstyles.go\nstyles_test.go\ntestdata\nwriter.go\nwriter_test.go\ninternal/logext/styles.go:37:func Duration(start time.Time, threshold time.Duration) {\ninternal/logext/styles_test.go:13:func TestDuration(t *testing.T) {\ninternal/logext/writer.go:12:func NewWriter() io.Writer {\ninternal/logext/writer.go:17:func NewConditionalWriter(condition bool) io.Writer {\ninternal/logext/writer.go:28:func isDebug() bool {\ninternal/logext/writer.go:32:func logLevel() log.Level {\ninternal/logext/writer_test.go:14:func TestWriter(t *testing.T) {\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && grep -rn \"log.Warn\" internal/ |",
+    "time": {
+      "start": 1790720415200,
+      "end": 1790720415231
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me check the logging conventions. The function uses `log.WithField(...).Debug(...)`. The spec says silently or with warning log if project already has convention. Let's look at how logext works and whether there's Warn convention.\n\nLet me check the logext package and other usages of `log.Warn`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2c410d0012nJa11rKKdBDfV",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef2c3e20001QTWXtyzNFCIwy4",
+  "type": "tool",
+  "callID": "call_01a0ef2c3f78742bbe5efa08",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Added a length guard at the top of shell.Run that logs a warning and returns nil for an empty command list, plus a regression subtest, leaving all other behaviour untouched.",
+      "evidence": "Pinned command `go build ./... && go test ./internal/shell/` exited 0; go test reported `ok github.com/goreleaser/goreleaser/v2/internal/shell 0.013s` with subtests simple, empty command, cmd failed, cmd with output, with env and dir all PASS. gofmt -l internal/shell/ returned no files.",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 1006 bytes across 2 file(s), tree 26063229f0db\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790719050002,
+      "end": 1790719050119
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Good. Now submit. But note checklist counted. Let me verify final files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3e9192001PKnA3h0ojdTxtk",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3e8e8a0019lXu7hKusCP42A",
+  "type": "reasoning",
+  "text": "Oops, I typed \"cerr,independent\" missing space. Let me fix for cleanliness.\n\nAlso, let me reconsider item about test. Fine.\n\nLet me fix the typo.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Oops, I typed \"cerr,independent\" missing space. Let me fix for cleanliness.\n\nAlso, let me reconsider item about test. Fine.\n\nLet me fix the typo.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720250258,
+    "end": 1790720250268
+  }
+}

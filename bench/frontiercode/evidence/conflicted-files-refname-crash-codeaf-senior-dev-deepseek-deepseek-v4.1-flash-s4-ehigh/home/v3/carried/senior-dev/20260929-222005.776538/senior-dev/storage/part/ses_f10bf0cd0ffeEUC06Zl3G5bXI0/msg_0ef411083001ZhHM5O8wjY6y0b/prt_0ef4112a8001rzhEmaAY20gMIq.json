@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef4112a8001rzhEmaAY20gMIq",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef411083001ZhHM5O8wjY6y0b",
+  "type": "tool",
+  "callID": "call_01a0ef41121270c09ab5cfca",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/gtest && printf 'resolved\\n' > conflict_file && git add conflict_file\ntree=$(git write-tree); echo \"tree=$tree\"\necho \"--- normal command ---\"\ngit diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD | tr '\\0' '\\n'; echo \"rc=${PIPESTATUS[0]}\"\necho \"--- with file named HEAD ---\"\nprintf 'x\\n' > HEAD && git add HEAD && git commit -qm 'add HEAD file'\ngit diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD; echo \"rc=$?\""
+    },
+    "output": "tree=5a44cc0eae60d49091783581c2a7571b610d2179\n--- normal command ---\nconflict_file\nrc=0\n--- with file named HEAD ---\nfatal: ambiguous argument 'HEAD': both revision and filename\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nrc=128\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/gtest && printf 'resolved\\n' > conflict_file && git ",
+    "time": {
+      "start": 1790720414380,
+      "end": 1790720414414
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The write-tree fails when unresolved conflict. In the test `resolve_conflict()` resolves it first. Let me resolve.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

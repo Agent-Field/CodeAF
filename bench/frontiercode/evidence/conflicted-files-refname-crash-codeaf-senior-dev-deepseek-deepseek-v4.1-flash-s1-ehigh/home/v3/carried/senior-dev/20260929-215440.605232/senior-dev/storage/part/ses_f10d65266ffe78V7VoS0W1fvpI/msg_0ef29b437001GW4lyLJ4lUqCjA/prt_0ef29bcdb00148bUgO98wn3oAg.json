@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29bcdb00148bUgO98wn3oAg",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29b437001GW4lyLJ4lUqCjA",
+  "type": "reasoning",
+  "text": "Let me find the merge conflict enumeration code.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me find the merge conflict enumeration code.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718885083,
+    "end": 1790718885102
+  }
+}

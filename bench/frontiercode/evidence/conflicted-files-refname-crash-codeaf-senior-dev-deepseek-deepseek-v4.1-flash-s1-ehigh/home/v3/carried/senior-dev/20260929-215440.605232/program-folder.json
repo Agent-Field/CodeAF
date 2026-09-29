@@ -1,0 +1,9 @@
+{
+  "branch": "task/do-not-crash-when-a-tracked-file-5c95ef",
+  "kept": true,
+  "changed": [
+    "pre_commit/git.py",
+    "tests/git_test.py"
+  ],
+  "said": "its work is on the branch task/do-not-crash-when-a-tracked-file-5c95ef in /root/repos/pre-commit, 2 files, and that branch is checked out there; your checkout was on no branch, at 7b88c63ae691, and `git -C '/root/repos/pre-commit' switch --detach 7b88c63ae691` goes back to it; its notes (.senior-dev/) are kept in /bench/home/v3/carried/senior-dev/20260929-215440.605232/senior-dev"
+}

@@ -1,0 +1,1 @@
+[grade] combine: score=None failed_blockers=[] rig=['refname-collision-no-crash', 'adapted-tests-pass']

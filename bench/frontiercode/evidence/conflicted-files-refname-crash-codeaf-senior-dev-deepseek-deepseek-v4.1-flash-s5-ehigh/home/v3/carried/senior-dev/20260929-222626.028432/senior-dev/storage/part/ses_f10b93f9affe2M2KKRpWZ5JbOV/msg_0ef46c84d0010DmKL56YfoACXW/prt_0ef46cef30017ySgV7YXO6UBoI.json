@@ -1,0 +1,27 @@
+{
+  "id": "prt_0ef46cef30017ySgV7YXO6UBoI",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46c84d0010DmKL56YfoACXW",
+  "type": "tool",
+  "callID": "call_01_129f3a1wednilrna1b2v56lj",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "offset": 120,
+      "limit": 100
+    },
+    "output": "<path>/root/repos/pre-commit/tests/git_test.py</path>\n<type>file</type>\n<content>\n120:         other_file.write('oh hai')\n121:     cmd_output('git', 'add', 'other_file')\n122: \n123:     ret = set(git.get_conflicted_files())\n124:     assert ret == {'conflict_file', 'other_file'}\n125: \n126: \n127: def test_get_conflicted_files_in_submodule(in_conflicting_submodule):\n128:     resolve_conflict()\n129:     assert set(git.get_conflicted_files()) == {'conflict_file'}\n130: \n131: \n132: def test_get_conflicted_files_unstaged_files(in_merge_conflict):\n133:     \"\"\"This case no longer occurs, but it is a useful test nonetheless\"\"\"\n134:     resolve_conflict()\n135: \n136:     # Make unstaged file.\n137:     with open('bar_only_file', 'w') as bar_only_file:\n138:         bar_only_file.write('new contents!\\n')\n139: \n140:     ret = set(git.get_conflicted_files())\n141:     assert ret == {'conflict_file'}\n142: \n143: \n144: MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n145: OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n146: \n147: \n148: @pytest.mark.parametrize(\n149:     ('input', 'expected_output'),\n150:     (\n151:         (MERGE_MSG, ['conflict_file']),\n152:         (OTHER_MERGE_MSG, ['conflict_file', 'other_conflict_file']),\n153:     ),\n154: )\n155: def test_parse_merge_msg_for_conflicts(input, expected_output):\n156:     ret = git.parse_merge_msg_for_conflicts(input)\n157:     assert ret == expected_output\n158: \n159: \n160: def test_get_changed_files(in_git_dir):\n161:     git_commit()\n162:     in_git_dir.join('a.txt').ensure()\n163:     in_git_dir.join('b.txt').ensure()\n164:     cmd_output('git', 'add', '.')\n165:     git_commit()\n166:     files = git.get_changed_files('HEAD^', 'HEAD')\n167:     assert files == ['a.txt', 'b.txt']\n168: \n169:     # files changed in source but not in origin should not be returned\n170:     files = git.get_changed_files('HEAD', 'HEAD^')\n171:     assert files == []\n172: \n173: \n174: def test_get_changed_files_disparate_histories(in_git_dir):\n175:     \"\"\"in modern versions of git, `...` does not fall back to full diff\"\"\"\n176:     git_commit()\n177:     in_git_dir.join('a.txt').ensure()\n178:     cmd_output('git', 'add', '.')\n179:     git_commit()\n180:     cmd_output('git', 'branch', '-m', 'branch1')\n181: \n182:     cmd_output('git', 'checkout', '--orphan', 'branch2')\n183:     cmd_output('git', 'rm', '-rf', '.')\n184:     in_git_dir.join('a.txt').ensure()\n185:     in_git_dir.join('b.txt').ensure()\n186:     cmd_output('git', 'add', '.')\n187:     git_commit()\n188: \n189:     assert git.get_changed_files('branch1', 'branch2') == ['b.txt']\n190: \n191: \n192: @pytest.mark.parametrize(\n193:     ('s', 'expected'),\n194:     (\n195:         ('foo\\0bar\\0', ['foo', 'bar']),\n196:         ('foo\\0', ['foo']),\n197:         ('', []),\n198:         ('foo', ['foo']),\n199:     ),\n200: )\n201: def test_zsplit(s, expected):\n202:     assert git.zsplit(s) == expected\n203: \n204: \n205: @pytest.fixture\n206: def non_ascii_repo(in_git_dir):\n207:     git_commit()\n208:     in_git_dir.join('интервью').ensure()\n209:     cmd_output('git', 'add', '.')\n210:     git_commit()\n211:     yield in_git_dir\n212: \n213: \n214: def test_all_files_non_ascii(non_ascii_repo):\n215:     ret = git.get_all_files()\n216:     assert ret == ['интервью']\n217: \n218: \n219: def test_staged_files_non_ascii(non_ascii_repo):\n\n(Showing lines 120-219 of 284. Use offset=220 to continue.)\n</content>",
+    "metadata": {
+      "preview": "        other_file.write('oh hai')\n    cmd_output('git', 'add', 'other_file')\n\n    ret = set(git.get_conflicted_files())\n    assert ret == {'conflict_file', 'other_file'}\n\n\ndef test_get_conflicted_files_in_submodule(in_conflicting_submodule):\n    resolve_conflict()\n    assert set(git.get_conflicted_files()) == {'conflict_file'}\n\n\ndef test_get_conflicted_files_unstaged_files(in_merge_conflict):\n    \"\"\"This case no longer occurs, but it is a useful test nonetheless\"\"\"\n    resolve_conflict()\n\n    # Make unstaged file.\n    with open('bar_only_file', 'w') as bar_only_file:\n        bar_only_file.write('new contents!\\n')\n",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790720790262,
+      "end": 1790720790271
+    }
+  }
+}

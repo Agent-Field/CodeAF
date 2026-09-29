@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef470f18001Bw81nD8FcrslyR",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef4708c1001Gz3ciNtvDp5IhV",
+  "type": "tool",
+  "callID": "call_00_iir149n6ijh7ucj5z4rz3ub3",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && go build ./... && go test ./internal/shell/ 2>&1 | tail -20",
+      "timeout_ms": 300000
+    },
+    "output": "ok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.011s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && go build ./... && go test ./int",
+    "time": {
+      "start": 1790720806683,
+      "end": 1790720951967
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me verify they didn't want nil vs empty. Note the caller may pass `nil`. len works for both. Good.\n\nNow run build and test. Also lint if available.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

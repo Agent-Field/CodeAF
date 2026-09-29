@@ -1,0 +1,27 @@
+{
+  "id": "prt_0ef46c9de001hyeNFPTwq8tLqL",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46c7a7001eQj3caRI80hSju",
+  "type": "tool",
+  "callID": "call_01a0ef46c916714faac2f619",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/jsonschema/src/resolver.h",
+      "limit": 30,
+      "offset": 1
+    },
+    "output": "<path>/root/repos/jsonschema/src/resolver.h</path>\n<type>file</type>\n<content>\n1: #ifndef SOURCEMETA_JSONSCHEMA_CLI_RESOLVER_H_\n2: #define SOURCEMETA_JSONSCHEMA_CLI_RESOLVER_H_\n3: \n4: #ifndef NOMINMAX\n5: #define NOMINMAX\n6: #endif\n7: \n8: #include <cpr/cpr.h>\n9: \n10: #include <sourcemeta/core/io.h>\n11: #include <sourcemeta/core/json.h>\n12: #include <sourcemeta/core/jsonschema.h>\n13: #include <sourcemeta/core/options.h>\n14: #include <sourcemeta/core/schemaconfig.h>\n15: #include <sourcemeta/core/uri.h>\n16: #include <sourcemeta/core/yaml.h>\n17: \n18: #include \"error.h\"\n19: #include \"input.h\"\n20: #include \"logger.h\"\n21: \n22: #include <cassert>     // assert\n23: #include <filesystem>  // std::filesystem\n24: #include <functional>  // std::function, std::ref\n25: #include <iostream>    // std::cerr\n26: #include <map>         // std::map\n27: #include <optional>    // std::optional\n28: #include <sstream>     // std::ostringstream\n29: #include <stdexcept>   // std::runtime_error\n30: #include <string>      // std::string\n\n(Showing lines 1-30 of 234. Use offset=31 to continue.)\n</content>",
+    "metadata": {
+      "preview": "#ifndef SOURCEMETA_JSONSCHEMA_CLI_RESOLVER_H_\n#define SOURCEMETA_JSONSCHEMA_CLI_RESOLVER_H_\n\n#ifndef NOMINMAX\n#define NOMINMAX\n#endif\n\n#include <cpr/cpr.h>\n\n#include <sourcemeta/core/io.h>\n#include <sourcemeta/core/json.h>\n#include <sourcemeta/core/jsonschema.h>\n#include <sourcemeta/core/options.h>\n#include <sourcemeta/core/schemaconfig.h>\n#include <sourcemeta/core/uri.h>\n#include <sourcemeta/core/yaml.h>\n\n#include \"error.h\"\n#include \"input.h\"\n#include \"logger.h\"",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "src/resolver.h",
+    "time": {
+      "start": 1790720788961,
+      "end": 1790720788975
+    }
+  }
+}

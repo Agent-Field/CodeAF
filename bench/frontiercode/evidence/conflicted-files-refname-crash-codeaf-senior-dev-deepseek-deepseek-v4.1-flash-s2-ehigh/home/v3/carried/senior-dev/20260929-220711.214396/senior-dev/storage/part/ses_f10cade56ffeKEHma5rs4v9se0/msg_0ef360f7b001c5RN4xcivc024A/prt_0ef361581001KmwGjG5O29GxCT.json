@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef361581001KmwGjG5O29GxCT",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef360f7b001c5RN4xcivc024A",
+  "type": "tool",
+  "callID": "call_00_23u90hhzj2ufdb9znzabj991",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "newString": "def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):",
+      "oldString": "def test_get_conflicted_files_with_refname_collision(in_merge_conflict, refname):"
+    },
+    "output": "Edit applied successfully.",
+    "metadata": {
+      "diagnostics": {},
+      "diff": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -141,9 +141,9 @@\n     assert ret == {'conflict_file'}\n \n \n @pytest.mark.parametrize('refname', ('HEAD', 'MERGE_HEAD'))\n-def test_get_conflicted_files_with_refname_collision(in_merge_conflict, refname):\n+def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):\n     \"\"\"A tracked file sharing a refname must not make `git diff` ambiguous.\"\"\"\n     resolve_conflict()\n \n     # a tracked file whose name collides with a refname passed to `git diff`\n",
+      "filediff": {
+        "file": "/root/repos/pre-commit/tests/git_test.py",
+        "patch": "Index: /root/repos/pre-commit/tests/git_test.py\n===================================================================\n--- /root/repos/pre-commit/tests/git_test.py\n+++ /root/repos/pre-commit/tests/git_test.py\n@@ -141,9 +141,9 @@\n     assert ret == {'conflict_file'}\n \n \n @pytest.mark.parametrize('refname', ('HEAD', 'MERGE_HEAD'))\n-def test_get_conflicted_files_with_refname_collision(in_merge_conflict, refname):\n+def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):\n     \"\"\"A tracked file sharing a refname must not make `git diff` ambiguous.\"\"\"\n     resolve_conflict()\n \n     # a tracked file whose name collides with a refname passed to `git diff`\n",
+        "additions": 1,
+        "deletions": 1
+      }
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790719694212,
+      "end": 1790719694261
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

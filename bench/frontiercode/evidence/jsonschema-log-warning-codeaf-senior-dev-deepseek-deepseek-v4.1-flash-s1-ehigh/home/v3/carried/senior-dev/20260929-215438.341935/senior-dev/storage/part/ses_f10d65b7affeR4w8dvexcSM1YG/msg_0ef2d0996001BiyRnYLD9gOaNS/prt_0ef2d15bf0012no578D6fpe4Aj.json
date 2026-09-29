@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2d15bf0012no578D6fpe4Aj",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2d0996001BiyRnYLD9gOaNS",
+  "type": "reasoning",
+  "text": "Everything is good. Now update the checklist to tick all items.\n\nLet me write the final checklist.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Everything is good. Now update the checklist to tick all items.\n\nLet me write the final checklist.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719104447,
+    "end": 1790719104454
+  }
+}

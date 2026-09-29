@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2c13b9001JnCYHMFwh2sg6i",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef2c1038001lpMb3F20e378TS",
+  "type": "reasoning",
+  "text": "`git ls-files -v` shows `H` = cached/normal (not assume-unchanged, which would be lowercase h). Yet git status shows clean. Weird. Maybe the index already contains the modified content? Possibly there is a git filter? Or maybe the repo's .git is a symlink to elsewhere and the tool writes... no.\n\nWait, maybe the working tree was modified and the index got updated by some background process? Unlikely.\n\nLet me check `git diff --no-index` between HEAD version and working file. Or `git show HEAD:internal/shell/shell.go | grep len`.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "`git ls-files -v` shows `H` = cached/normal (not assume-unchanged, which would be lowercase h). Yet git status shows clean. Weird. Maybe the index already contains the modified content? Possibly there is a git filter? Or maybe the repo's .git is a symlink to elsewhere and the tool writes... no.\n\nWait, maybe the working tree was modified and the index got updated by some background process? Unlikely.\n\nLet me check `git diff --no-index` between HEAD version and working file. Or `git show HEAD:internal/shell/shell.go | grep len`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719038393,
+    "end": 1790719038405
+  }
+}

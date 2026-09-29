@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef356cb3001KPP9herkzgEw1O",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef3552f3001SEiBXSP2JfhZpg",
+  "type": "tool",
+  "callID": "call_01_eebvlspnxa3jek046xkdtxug",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rn \"LOG_VERBOSE\\|LOG_WARNING\\|LOG_\" src/logger.h src/*.h src/*.cc | grep -v \"//\" | head -40"
+    },
+    "output": "src/logger.h:11:inline auto LOG_VERBOSE(const sourcemeta::core::Options &options)\nsrc/configuration.h:39:    LOG_VERBOSE(options) << \"Using configuration file: \"\nsrc/input.h:39:      LOG_VERBOSE(options) << \"Using extension: \" << extension << \"\\n\";\nsrc/input.h:66:      LOG_VERBOSE(options) << \"Ignoring path: \" << canonical << \"\\n\";\nsrc/logger.h:11:inline auto LOG_VERBOSE(const sourcemeta::core::Options &options)\nsrc/resolver.h:52:  LOG_VERBOSE(options) << \"Resolving over HTTP: \" << identifier << \"\\n\";\nsrc/resolver.h:80:        LOG_VERBOSE(options)\nsrc/resolver.h:94:                        LOG_VERBOSE(options)\nsrc/resolver.h:166:          LOG_VERBOSE(this->options_)\nsrc/resolver.h:171:          LOG_VERBOSE(this->options_)\nsrc/resolver.h:187:      LOG_VERBOSE(this->options_)\nsrc/command_decode.cc:70:    LOG_VERBOSE(options) << \"Interpreting input as JSONL: \"\nsrc/command_decode.cc:78:      LOG_VERBOSE(options) << \"Decoding entry #\" << count << \"\\n\";\nsrc/command_encode.cc:51:    LOG_VERBOSE(options)\nsrc/command_encode.cc:63:      LOG_VERBOSE(options) << \"Encoding entry #\" << count << \"\\n\";\nsrc/command_fmt.cc:29:      LOG_VERBOSE(options) << \"Checking: \" << entry.first.string() << \"\\n\";\nsrc/command_fmt.cc:31:      LOG_VERBOSE(options) << \"Formatting: \" << entry.first.string() << \"\\n\";\nsrc/command_fmt.cc:46:        LOG_VERBOSE(options) << \"PASS: \" << entry.first.string() << \"\\n\";\nsrc/command_lint.cc:28:      sourcemeta::jsonschema::LOG_VERBOSE(options)\nsrc/command_lint.cc:31:      sourcemeta::jsonschema::LOG_VERBOSE(options)\nsrc/command_lint.cc:140:      LOG_VERBOSE(options) << \"Only enabling rule: \" << only << \"\\n\";\nsrc/command_lint.cc:195:      LOG_VERBOSE(options) << \"Linting: \" << entry.first.string() << \"\\n\";\nsrc/command_lint.cc:247:      LOG_VERBOSE(options) << \"Linting: \" << entry.first.string() << \"\\n\";\nsrc/command_metaschema.cc:99:          LOG_VERBOSE(options)\nsrc/command_test.cc:40:  sourcemeta::jsonschema::LOG_VERBOSE(options)\nsrc/command_test.cc:102:    LOG_VERBOSE(options) << \"Looking for target: \" << schema_uri.recompose()\nsrc/command_validate.cc:46:    sourcemeta::jsonschema::LOG_VERBOSE(options)\nsrc/command_validate.cc:195:      LOG_VERBOSE(options)\nsrc/command_validate.cc:261:            LOG_VERBOSE(options)\nsrc/command_validate.cc:288:        LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\nsrc/command_validate.cc:336:        LOG_VERBOSE(options)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rn \"LOG_VERBOSE\\|LOG_WARN",
+    "time": {
+      "start": 1790719650998,
+      "end": 1790719651012
+    }
+  }
+}

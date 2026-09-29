@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef44a6f3001L1af5qOrHstw2S",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef44a089001085X4mEGlNbJJk",
+  "type": "text",
+  "text": "Done. Summary of the change:\n\n**`src/logger.h`** — added `inline auto LOG_WARNING() -> std::ostream &` next to `LOG_VERBOSE`. It prints `warning: ` to `std::cerr` and returns `std::cerr`, unconditionally (not gated on `--verbose`).\n\n**Warning sites converted:**\n- `src/command_lint.cc` — unknown-rule warning now `LOG_WARNING() << \"Cannot exclude unknown rule: \" ...`\n- `src/command_validate.cc` — both the pre-compiled-template failure and the empty-JSONL warning\n- `src/resolver.h` — all three lines of the multi-line warning\n- `src/command_bundle.cc` — all six lines of the `--without-id` warning, plus a direct `#include \"logger.h\"` in the include block\n\n**Tests updated** (kept registered as before): `test/validate/pass_jsonl_empty.sh` now expects the now-unconditional empty-JSONL warning; `test/bundle/pass_without_id.sh` and `test/bundle/pass_without_id_verbose.sh` expect the `warning: ` prefix on every continuation line.\n\n**Evidence:** `make configure compile` succeeds (exit 0, clang-format and shellcheck targets clean). The targeted command returned 7/7 passed, and the full `ctest --test-dir build --output-on-failure` suite passed 301/301.",
+  "time": {
+    "start": 1790720648947,
+    "end": 1790720649047
+  }
+}

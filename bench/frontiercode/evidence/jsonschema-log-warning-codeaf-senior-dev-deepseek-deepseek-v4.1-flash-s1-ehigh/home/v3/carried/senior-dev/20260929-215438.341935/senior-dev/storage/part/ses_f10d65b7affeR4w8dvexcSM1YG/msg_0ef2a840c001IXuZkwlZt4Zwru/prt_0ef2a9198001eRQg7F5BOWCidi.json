@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2a9198001eRQg7F5BOWCidi",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2a840c001IXuZkwlZt4Zwru",
+  "type": "tool",
+  "callID": "call_01_t4iz3xdvgfvo3vmzu1fmwp1l",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && ls cmake/ && grep -rn \"clang_format\\|clang-format\" cmake/ | head; echo \"---style file---\"; find . -maxdepth 2 -name \"*.clang-format\" -o -maxdepth 2 -name \".clang-format\" 2>/dev/null; echo \"---\"; grep -rn \"sourcemeta_target_clang_format\" cmake/ CMakeLists.txt"
+    },
+    "output": "FindBlaze.cmake\nFindCore.cmake\nFindHydra.cmake\nFindJSONBinPack.cmake\n---style file---\n---\nCMakeLists.txt:29:  sourcemeta_target_clang_format(SOURCES\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && ls cmake/ && grep -rn \"clang_fo",
+    "time": {
+      "start": 1790718939547,
+      "end": 1790718939752
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef47117a001HthwKziglKrTjv",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef470bf2001MFZvdVIq3S8N5P",
+  "type": "tool",
+  "callID": "call_01a0ef470f49772aa753372b",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && python3 - <<'PY'\nimport re\nfor f in [\"test/bundle/pass_without_id.sh\",\"test/bundle/pass_without_id_verbose.sh\"]:\n    s=open(f).read()\n    old=\"\"\"warning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option.\"\"\"\n    new=\"\"\"warning: You are opting in to remove schema identifiers in the bundled schema.\nwarning: The only legit use case of this advanced feature we know of is to workaround\nwarning: non-compliant JSON Schema implementations such as Visual Studio Code.\nwarning: Otherwise, this is not needed and may harm other use cases. For example,\nwarning: you will be unable to reference the resulting schema from other schemas\nwarning: using the --resolve/-r option.\"\"\"\n    assert old in s, f\n    open(f,\"w\").write(s.replace(old,new))\n    print(\"done\",f)\nPY"
+    },
+    "output": "done test/bundle/pass_without_id.sh\ndone test/bundle/pass_without_id_verbose.sh\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && python3 - <<'PY'\nimport re\nfor ",
+    "time": {
+      "start": 1790720807293,
+      "end": 1790720807338
+    }
+  }
+}

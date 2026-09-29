@@ -1,0 +1,9 @@
+{
+  "branch": "task/skip-empty-shell-pipe-commands-i-1ce8cc",
+  "kept": true,
+  "changed": [
+    "internal/shell/shell.go",
+    "internal/shell/shell_test.go"
+  ],
+  "said": "its work is on the branch task/skip-empty-shell-pipe-commands-i-1ce8cc in /root/repos/goreleaser, 2 files, and that branch is checked out there; your checkout was on no branch, at 21eefb16cfc5, and `git -C '/root/repos/goreleaser' switch --detach 21eefb16cfc5` goes back to it; its notes (.senior-dev/) are kept in /bench/home/v3/carried/senior-dev/20260929-222008.925163/senior-dev"
+}

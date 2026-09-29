@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2aed84001XIda9DW8drT5n8",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2add19001YCjq40XxIF8JqG",
+  "type": "reasoning",
+  "text": "`git hash-object` (with and without filters) on disk returns HEAD hash cb3c, but `cat | md5sum` gives 5063 (modified). And `git hash-object --stdin < file` gives cb3c too! So git reads the file differently than cat. Wait, `--stdin` reads stdin, which is the file piped. That gave cb3c. But cat piped to md5sum gave 5063. Contradiction!\n\nUnless... `git` is being intercepted and reading the file from git object store / index? Or there's a git config `core.attributesFile`? No.\n\nHmm, could there be an environment variable like `GIT_WORK_TREE` pointing elsewhere? Let me check env.\n\nActually! Maybe there's a bash function or something that transforms arguments? `type git` says /usr/bin/git. But maybe there's a shim earlier in PATH for the shell? `which git` = /usr/bin/git.\n\nWait, the pipeline: `cat pre_commit/git.py | md5sum` gave 5063. `git hash-object --stdin < pre_commit/git.py` gave cb3c. If both read the same file contents, they'd give corresponding hashes. md5 5063 vs git blob cb3c — can't directly compare (different hash algos), but the fact that hash-object double-check equals `git rev-parse HEAD:...` strongly suggests git sees original content.\n\nCould it be that /usr/bin/git is actually a wrapper script that does something? Let me check `file /usr/bin/git`, and run `/usr/bin/git hash-object --stdin < file`.\n\nAlso, maybe git is using a clean filter configured via `filter.*`? We grepped config but maybe `git config --list` includes something. Let me look at full git config.\n\nActually wait — maybe there's a `core.fsmonitor` or an object cache... no.\n\nHmm, actually maybe git has `grafts`/replace? No.\n\nLet me check environment variables git-related and the actual binary.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "`git hash-object` (with and without filters) on disk returns HEAD hash cb3c, but `cat | md5sum` gives 5063 (modified). And `git hash-object --stdin \u003c file` gives cb3c too! So git reads the file differently than cat. Wait, `--stdin` reads stdin, which is the file piped. That gave cb3c. But cat piped to md5sum gave 5063. Contradiction!\n\nUnless... `git` is being intercepted and reading the file from git object store / index? Or there's a git config `core.attributesFile`? No.\n\nHmm, could there be an environment variable like `GIT_WORK_TREE` pointing elsewhere? Let me check env.\n\nActually! Maybe there's a bash function or something that transforms arguments? `type git` says /usr/bin/git. But maybe there's a shim earlier in PATH for the shell? `which git` = /usr/bin/git.\n\nWait, the pipeline: `cat pre_commit/git.py | md5sum` gave 5063. `git hash-object --stdin \u003c pre_commit/git.py` gave cb3c. If both read the same file contents, they'd give corresponding hashes. md5 5063 vs git blob cb3c — can't directly compare (different hash algos), but the fact that hash-object double-check equals `git rev-parse HEAD:...` strongly suggests git sees original content.\n\nCould it be that /usr/bin/git is actually a wrapper script that does something? Let me check `file /usr/bin/git`, and run `/usr/bin/git hash-object --stdin \u003c file`.\n\nAlso, maybe git is using a clean filter configured via `filter.*`? We grepped config but maybe `git config --list` includes something. Let me look at full git config.\n\nActually wait — maybe there's a `core.fsmonitor` or an object cache... no.\n\nHmm, actually maybe git has `grafts`/replace? No.\n\nLet me check environment variables git-related and the actual binary.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718963076,
+    "end": 1790718963086
+  }
+}

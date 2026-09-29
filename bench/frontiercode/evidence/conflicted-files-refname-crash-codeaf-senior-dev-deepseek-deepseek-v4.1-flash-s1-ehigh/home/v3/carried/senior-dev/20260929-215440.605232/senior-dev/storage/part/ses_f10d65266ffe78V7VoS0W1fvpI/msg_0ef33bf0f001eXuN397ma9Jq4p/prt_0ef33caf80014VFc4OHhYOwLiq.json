@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef33caf80014VFc4OHhYOwLiq",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef33bf0f001eXuN397ma9Jq4p",
+  "type": "reasoning",
+  "text": "The diff is focused. Now write checklist and pinned.\n\nChecklist items for the request:\n1. get_conflicted_files must not crash when a tracked file's name collides with a refname (HEAD/MERGE_HEAD).\n2. It must return the complete set: merge-conflict filenames AND merge-diff filenames, nothing added/lost.\n3. Refnames separated from pathspecs.\n4. Regression test added following fixture style, passing.\n\nLet me write checklist.md with [x] all.\n\npinned.txt: `python -m pytest tests/git_test.py`.\n\nLet me write both.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The diff is focused. Now write checklist and pinned.\n\nChecklist items for the request:\n1. get_conflicted_files must not crash when a tracked file's name collides with a refname (HEAD/MERGE_HEAD).\n2. It must return the complete set: merge-conflict filenames AND merge-diff filenames, nothing added/lost.\n3. Refnames separated from pathspecs.\n4. Regression test added following fixture style, passing.\n\nLet me write checklist.md with [x] all.\n\npinned.txt: `python -m pytest tests/git_test.py`.\n\nLet me write both.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719544056,
+    "end": 1790719544072
+  }
+}

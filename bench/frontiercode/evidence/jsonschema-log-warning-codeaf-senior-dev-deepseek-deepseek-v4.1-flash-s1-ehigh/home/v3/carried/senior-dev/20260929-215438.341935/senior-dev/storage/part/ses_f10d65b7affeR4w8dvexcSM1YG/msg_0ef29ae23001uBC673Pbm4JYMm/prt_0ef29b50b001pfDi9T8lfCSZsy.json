@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29b50b001pfDi9T8lfCSZsy",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef29ae23001uBC673Pbm4JYMm",
+  "type": "reasoning",
+  "text": "Let me read the logger.h file and search for all warning sites.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me read the logger.h file and search for all warning sites.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718883083,
+    "end": 1790718883110
+  }
+}

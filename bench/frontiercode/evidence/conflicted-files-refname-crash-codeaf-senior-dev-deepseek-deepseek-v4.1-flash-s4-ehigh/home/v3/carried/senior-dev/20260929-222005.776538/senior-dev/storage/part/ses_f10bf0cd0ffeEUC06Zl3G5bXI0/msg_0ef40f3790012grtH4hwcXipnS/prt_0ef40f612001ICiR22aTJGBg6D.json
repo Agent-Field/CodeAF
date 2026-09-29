@@ -1,0 +1,25 @@
+{
+  "id": "prt_0ef40f612001ICiR22aTJGBg6D",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef40f3790012grtH4hwcXipnS",
+  "type": "tool",
+  "callID": "call_01a0ef40f57e72a1903fc327",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/.senior-dev/spec.md"
+    },
+    "output": "<path>/root/repos/pre-commit/.senior-dev/spec.md</path>\n<type>file</type>\n<content>\n1: # Do not crash when a tracked file shares a refname\n2: \n3: ## Task description\n4: \n5: This repository is a git hook framework. When a merge is in progress it\n6: enumerates the merge's conflicted files so hooks can skip or handle them. The\n7: enumeration reads the merge's conflict list from `MERGE_MSG` and then runs a\n8: `git diff --name-only -m <tree> HEAD MERGE_HEAD` over the user's worktree to\n9: collect the rest of the merge's changes.\n10: \n11: There is a latent crash: those refnames are passed to `git diff` bare. If the\n12: worktree happens to contain a tracked FILE whose name collides with a refname\n13: (`HEAD`, `MERGE_HEAD`), git cannot tell the ref from the pathspec and the\n14: whole command dies with `error: ambiguous argument` — taking the tool down at\n15: the worst possible moment, mid-merge.\n16: \n17: Fix it: the enumeration must not crash when a tracked file's name collides\n18: with a refname, and it must still return the complete set — the\n19: merge-conflict filenames AND the merge-diff filenames, nothing added, nothing\n20: lost. Separating the refnames from pathspecs is the natural shape; beware the\n21: silent failure: an empty-but-successful result is worse than the crash it\n22: replaced, and catching the error to return a partial set is not a fix.\n23: \n24: The repository to work in is `~/repos/pre-commit`, already checked out for\n25: you. Work from the commit that is checked out; do not rebase and do not fetch\n26: newer history.\n27: \n28: ## Test guidelines\n29: \n30: The project is a standard Python package, installed editable into the image's\n31: environment:\n32: \n33: - the tests that cover this change live in `tests/git_test.py`, which drives\n34:   real git in temporary repositories (the suite has its own merge-conflict\n35:   fixture the new behaviour should ride on)\n36: - run the relevant tests with `python -m pytest tests/git_test.py`\n37: - if you add a regression test, follow the file's existing fixture style\n38: \n39: Tests that cover your change must keep passing.\n40: \n41: ## Style guidelines\n42: \n43: - keep the diff focused on the change; the project's own pre-commit hooks and\n44:   its flake8 config run over the tree\n45: - follow the file's existing conventions (single-quoted strings, no\n46:   f-strings where the file does not use them)\n47: \n48: ---\n49: \n50: ## Internet use\n51: \n52: This task runs with internet access. What it is for: reading documentation,\n53: API references, error messages and background concepts — the material any\n54: engineer would consult while doing this work on their own machine.\n55: \n56: What it is not for, and what we scan for after every run: anything that could\n57: hand you the fix for this specific task. That means the repository this task\n58: is cut from, and any mirror, fork, vendored copy, issue tracker, pull request,\n59: commit, patch, diff, changelog or CI log of it; and searching for phrasings\n60: likely to surface the bug or the patch itself. Finding this task's own\n61: upstream change is a flagged run: it scores zero regardless of the rest.\n62: \n63: If a page you land on turns out to be from the task's own upstream project,\n64: stop using it, say so in your final answer, and carry on from what you already\n65: had.\n\n(End of file - total 65 lines)\n</content>",
+    "metadata": {
+      "preview": "# Do not crash when a tracked file shares a refname\n\n## Task description\n\nThis repository is a git hook framework. When a merge is in progress it\nenumerates the merge's conflicted files so hooks can skip or handle them. The\nenumeration reads the merge's conflict list from `MERGE_MSG` and then runs a\n`git diff --name-only -m <tree> HEAD MERGE_HEAD` over the user's worktree to\ncollect the rest of the merge's changes.\n\nThere is a latent crash: those refnames are passed to `git diff` bare. If the\nworktree happens to contain a tracked FILE whose name collides with a refname\n(`HEAD`, `MERGE_HEAD`), git cannot tell the ref from the pathspec and the\nwhole command dies with `error: ambiguous argument` — taking the tool down at\nthe worst possible moment, mid-merge.\n\nFix it: the enumeration must not crash when a tracked file's name collides\nwith a refname, and it must still return the complete set — the\nmerge-conflict filenames AND the merge-diff filenames, nothing added, nothing\nlost. Separating the refnames from pathspecs is the natural shape; beware the",
+      "truncated": false,
+      "loaded": []
+    },
+    "title": ".senior-dev/spec.md",
+    "time": {
+      "start": 1790720407061,
+      "end": 1790720407069
+    }
+  }
+}

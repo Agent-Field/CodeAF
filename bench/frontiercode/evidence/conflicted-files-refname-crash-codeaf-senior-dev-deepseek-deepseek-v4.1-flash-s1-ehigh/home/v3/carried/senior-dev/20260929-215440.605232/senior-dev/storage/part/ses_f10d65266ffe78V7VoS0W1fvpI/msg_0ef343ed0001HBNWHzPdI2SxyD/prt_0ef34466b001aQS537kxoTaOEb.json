@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef34466b001aQS537kxoTaOEb",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef343ed0001HBNWHzPdI2SxyD",
+  "type": "tool",
+  "callID": "call_00_iq4lf8fxkbeb5cta5ym3r86o",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && python -m pytest tests/git_test.py 2>&1 | tail -4 && echo \"=== diff vs base ===\" && git diff 7b88c63 -- pre_commit/git.py tests/git_test.py && echo \"=== long lines ===\" && awk 'length>79{print FILENAME\":\"FNR}' pre_commit/git.py tests/git_test.py; echo done"
+    },
+    "output": "\ntests/git_test.py .................................                      [100%]\n\n============================== 33 passed in 1.40s ==============================\n=== diff vs base ===\ndiff --git a/pre_commit/git.py b/pre_commit/git.py\nindex 19aac38..cb3c273 100644\n--- a/pre_commit/git.py\n+++ b/pre_commit/git.py\n@@ -126,7 +126,10 @@ def get_conflicted_files() -> set[str]:\n     merge_diff_filenames = zsplit(\n         cmd_output(\n             'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+            '-m', tree_hash,\n+            # pull the refs in front of the `--` so they are unambiguously\n+            # revisions even if the worktree has a tracked file named HEAD\n+            'HEAD', 'MERGE_HEAD', '--',\n         )[1],\n     )\n     return set(merge_conflict_filenames) | set(merge_diff_filenames)\ndiff --git a/tests/git_test.py b/tests/git_test.py\nindex 93f5a1c..da71900 100644\n--- a/tests/git_test.py\n+++ b/tests/git_test.py\n@@ -141,6 +141,23 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):\n     assert ret == {'conflict_file'}\n \n \n+def test_get_conflicted_files_refname_collision(in_merge_conflict):\n+    \"\"\"A tracked file named like a refname must not break the diff.\"\"\"\n+    resolve_conflict()\n+    with open('other_file', 'w') as other_file:\n+        other_file.write('oh hai\\n')\n+    cmd_output('git', 'add', 'other_file')\n+\n+    # tracked files whose names collide with the refnames passed to git diff\n+    for filename in ('HEAD', 'MERGE_HEAD'):\n+        with open(filename, 'w') as refname_file:\n+            refname_file.write('contents\\n')\n+    cmd_output('git', 'add', 'HEAD', 'MERGE_HEAD')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD', 'other_file'}\n+\n+\n MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n \n=== long lines ===\ndone\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && python -m pytest tests/git_test",
+    "time": {
+      "start": 1790719575662,
+      "end": 1790719577531
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

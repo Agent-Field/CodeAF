@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46d9a5001nmrmxYoKTJlMn7",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46d40a001fn670nYwbgypy3",
+  "type": "reasoning",
+  "text": "Now let me find the `in_merge_conflict` fixture. It's probably in `tests/conftest.py`.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me find the `in_merge_conflict` fixture. It's probably in `tests/conftest.py`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720792997,
+    "end": 1790720793014
+  }
+}

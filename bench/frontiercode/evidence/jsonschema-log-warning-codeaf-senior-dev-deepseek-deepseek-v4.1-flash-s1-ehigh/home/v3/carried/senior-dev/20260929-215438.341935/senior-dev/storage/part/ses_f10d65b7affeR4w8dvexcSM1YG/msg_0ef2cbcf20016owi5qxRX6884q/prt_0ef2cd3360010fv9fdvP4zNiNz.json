@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2cd3360010fv9fdvP4zNiNz",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2cbcf20016owi5qxRX6884q",
+  "type": "tool",
+  "callID": "call_01_jxhwicx1ychf6p412bxgy7o1",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /home/agent/repos/jsonschema && BIN=build/src/jsonschema; TMP=$(mktemp -d)\ncat > \"$TMP/schema.json\" <<'EOF'\n{ \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"$id\": \"https://example.com\", \"$ref\": \"nested\" }\nEOF\necho \"===== bundle --without-id stderr =====\"; \"$BIN\" bundle \"$TMP/schema.json\" --without-id 2>&1 >/dev/null || true\n# resolver warning: resolve a schema file with no identifiers at all\nmkdir \"$TMP/emptyres\"\ncat > \"$TMP/emptyres/no-id.json\" <<'EOF'\n{ \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"type\": \"string\" }\nEOF\ncat > \"$TMP/inst.json\" <<'EOF'\n\"x\"\nEOF\necho \"===== validate --resolve no-id (likely warning) =====\"; \"$BIN\" validate \"$TMP/schema.json\" \"$TMP/inst.json\" --resolve \"$TMP/emptyres\" 2>&1 >/dev/null || true\nrm -rf \"$TMP\""
+    },
+    "output": "===== bundle --without-id stderr =====\nerror: Could not resolve the reference to an external schema\n  at identifier https://example.com/nested\n\nThis is likely because you forgot to import such schema using `--resolve/-r`\n===== validate --resolve no-id (likely warning) =====\nerror: Could not resolve the reference to an external schema\n  at identifier https://example.com/nested\n\nThis is likely because you forgot to import such schema using `--resolve/-r`\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /home/agent/repos/jsonschema && BIN=build/src/jsonschema;",
+    "time": {
+      "start": 1790719087418,
+      "end": 1790719087474
+    }
+  }
+}

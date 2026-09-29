@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef43dd48001AyT1DGwwsigBR0",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef43d306001ioXjBlujUcUo60",
+  "type": "text",
+  "text": "Done.\n\n## What changed\n\n**`internal/shell/shell.go`** — added a guard at the top of `Run`, before `command[0]` is indexed:\n\n```go\nif len(command) == 0 {\n    log.Warn(\"no command given, skipping\")\n    return nil\n}\n```\n\nAn empty command list is now skipped with a warning log (the project's existing `log.Warn` convention, using the `github.com/caarlos0/log` package the file already imports) and no error. Everything else — env handling, stdout/stderr wiring, the `cmd.Run()` error formatting — is untouched.\n\n**`internal/shell/shell_test.go`** — added an `empty command` subtest to the existing `TestRunCommand` table, registered like the others with `testctx.New()` and testify `require.NoError`.\n\n## Evidence\n\n- `go build ./...` — exit 0\n- `go test ./internal/shell/` — exit 0, `ok github.com/goreleaser/goreleaser/v2/internal/shell`\n- Verbose run: 5/5 subtests pass (`simple`, `cmd_failed`, `empty_command`, `cmd_with_output`, `with_env_and_dir`)\n- `go vet ./internal/shell/` and `gofmt -l internal/shell/` — clean\n- Diff is confined to the two `internal/shell` files (+5 / +10 lines)\n\n`golangci-lint` was not installed in the environment, so I couldn't run it directly; the change follows the file's existing import and logging conventions.",
+  "time": {
+    "start": 1790720597320,
+    "end": 1790720597323
+  }
+}

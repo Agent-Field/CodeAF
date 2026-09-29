@@ -1,0 +1,32 @@
+{
+  "id": "msg_0ef37b228001Owm2iX6oKGZPZm",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "role": "assistant",
+  "time": {
+    "created": 1790719799848,
+    "completed": 1790719801105
+  },
+  "parentID": "msg_0ef3519220014GB7t62NFlTnP2",
+  "modelID": "deepseek/deepseek-v4.1-flash",
+  "providerID": "openrouter",
+  "mode": "coder",
+  "agent": "coder",
+  "path": {
+    "cwd": "/root/repos/jsonschema",
+    "root": "/root/repos/jsonschema"
+  },
+  "cost": 0.001020696,
+  "tokens": {
+    "total": 27118,
+    "input": 1570,
+    "output": 332,
+    "reasoning": 0,
+    "cache": {
+      "read": 25216,
+      "write": 0
+    }
+  },
+  "variant": "high",
+  "finish": "tool-calls",
+  "upstream": "Together"
+}

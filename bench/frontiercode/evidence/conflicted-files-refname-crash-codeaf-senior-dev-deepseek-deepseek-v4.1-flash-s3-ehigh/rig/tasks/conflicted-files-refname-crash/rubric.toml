@@ -1,0 +1,69 @@
+# The rubric for the conflicted-files-refname-crash candidate.
+# Draft rubric from PLAN-pilot.md (Candidate 8), schema rubric-schema-v1,
+# verbatim, with the reverse-classical criterion ordered after the command
+# criteria (it reverts pre_commit/ and must not poison them).
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "refname-collision-no-crash"
+kind = "classical"
+blocker = true
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"
+run = "python -m pytest tests/git_test.py -k conflicted_files"
+
+[[criterion]]
+id = "conflict-set-still-complete"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["pre_commit/git.py"]
+question = """The brief says the enumeration must return BOTH kinds of
+files: the merge-conflict filenames and the merge-diff filenames, nothing
+added, nothing lost. Read the diff hunk. Does the fix separate the refnames
+from pathspecs without narrowing the diff — an empty-but-successful result
+would be silent data loss, worse than the crash it replaced? A change that
+silences the ambiguity by moving a separator to the wrong position, dropping
+one of the two diff modes, or catching the error and returning a partial set
+fails."""
+
+[[criterion]]
+id = "git-test-suite-pass"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "python -m pytest tests/git_test.py"
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "python -m pytest tests/git_test.py -k conflicted_files"
+revert_paths = ["pre_commit/git.py"]
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 3
+max_changed_lines = 20
+allowed_paths = ["pre_commit/", "tests/"]
+forbidden_paths = [".github/"]
+
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "/solution/test-overlay.patch"
+run = "python -m pytest tests/git_test.py -k conflicted_files"

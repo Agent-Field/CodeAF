@@ -1,0 +1,65 @@
+{
+  "criteria": {
+    "resolver-multiline-converted": {
+      "pass": true,
+      "reasoning": "The diff shows a multi-line warning block that originally had 3 std::cerr statements (lines writing the warning message, the file location, and the question). All 3 statements have been converted to LOG_WARNING() calls. The mechanical excerpt shows 1 std::cerr remaining in the file, but this is on line 25 in an #include comment ('// std::cerr'), not an actual std::cerr statement in the warning block. The warning block itself has been fully converted with no std::cerr statements remaining in it.",
+      "usage": {
+        "prompt_tokens": 679,
+        "completion_tokens": 131,
+        "total_tokens": 810,
+        "cost": 0.004002,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.004002,
+          "upstream_inference_prompt_cost": 0.002037,
+          "upstream_inference_completions_cost": 0.001965
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    },
+    "bundle-multiline-converted": {
+      "pass": true,
+      "reasoning": "The diff shows that all 6 std::cerr statements in the multi-line warning block (lines 38-48 in the original) have been converted to LOG_WARNING() calls. The mechanical excerpt confirms that 0 std::cerr statements remain in the file and 6 LOG_WARNING calls are present, matching the number of original std::cerr statements. Every statement of the multi-line warning block has been fully converted to the new logging helper.",
+      "usage": {
+        "prompt_tokens": 1089,
+        "completion_tokens": 112,
+        "total_tokens": 1201,
+        "cost": 0.004947,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.004947,
+          "upstream_inference_prompt_cost": 0.003267,
+          "upstream_inference_completions_cost": 0.00168
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 1768,
+    "completion_tokens": 243,
+    "calls": 1
+  }
+}

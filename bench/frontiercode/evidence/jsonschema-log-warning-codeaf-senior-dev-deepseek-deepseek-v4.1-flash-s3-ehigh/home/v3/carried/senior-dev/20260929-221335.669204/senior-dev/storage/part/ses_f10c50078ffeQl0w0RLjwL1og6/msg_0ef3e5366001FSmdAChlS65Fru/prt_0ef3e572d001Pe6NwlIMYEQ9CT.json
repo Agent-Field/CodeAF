@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef3e572d001Pe6NwlIMYEQ9CT",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3e5366001FSmdAChlS65Fru",
+  "type": "tool",
+  "callID": "call_01a0ef3e56607446838f7743",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && ctest --test-dir build --output-on-failure --parallel 4 2>&1 | tail -40",
+      "timeout_ms": 600000
+    },
+    "output": "282/301 Test #282: JSONSchema.lint/pass_lint_list_only_one ...............................   Passed    0.01 sec\n        Start 286: JSONSchema.lint/pass_lint_direct_custom_extension\n283/301 Test #283: JSONSchema.lint/pass_lint_list_only_many ..............................   Passed    0.01 sec\n        Start 287: JSONSchema.lint/fail_lint_only\n284/301 Test #284: JSONSchema.lint/pass_lint_fix_no_reformat .............................   Passed    0.01 sec\n        Start 288: JSONSchema.lint/fail_lint_only_with_exclude\n285/301 Test #288: JSONSchema.lint/fail_lint_only_with_exclude ...........................   Passed    0.01 sec\n        Start 289: JSONSchema.lint/fail_lint_only_unknown\n286/301 Test #286: JSONSchema.lint/pass_lint_direct_custom_extension .....................   Passed    0.02 sec\n        Start 290: JSONSchema.lint/fail_lint_only_unknown_verbose\n287/301 Test #285: JSONSchema.lint/pass_lint_directory_resolve_many ......................   Passed    0.02 sec\n        Start 291: JSONSchema.lint/pass_config_path\n288/301 Test #287: JSONSchema.lint/fail_lint_only ........................................   Passed    0.02 sec\n        Start 292: JSONSchema.encode/pass_schema_less\n289/301 Test #289: JSONSchema.lint/fail_lint_only_unknown ................................   Passed    0.01 sec\n        Start 293: JSONSchema.encode/pass_schema_less_jsonl\n290/301 Test #290: JSONSchema.lint/fail_lint_only_unknown_verbose ........................   Passed    0.01 sec\n        Start 294: JSONSchema.encode/pass_schema_less_jsonl_verbose\n291/301 Test #291: JSONSchema.lint/pass_config_path ......................................   Passed    0.04 sec\n        Start 295: JSONSchema.encode/fail_no_document\n292/301 Test #295: JSONSchema.encode/fail_no_document ....................................   Passed    0.01 sec\n        Start 296: JSONSchema.encode/fail_no_output\n293/301 Test #296: JSONSchema.encode/fail_no_output ......................................   Passed    0.01 sec\n        Start 297: JSONSchema.decode/pass_schema_less\n294/301 Test #292: JSONSchema.encode/pass_schema_less ....................................   Passed    0.07 sec\n        Start 298: JSONSchema.decode/pass_schema_less_jsonl\n295/301 Test #294: JSONSchema.encode/pass_schema_less_jsonl_verbose ......................   Passed    0.07 sec\n        Start 299: JSONSchema.decode/pass_schema_less_jsonl_verbose\n296/301 Test #293: JSONSchema.encode/pass_schema_less_jsonl ..............................   Passed    0.07 sec\n        Start 300: JSONSchema.decode/fail_no_document\n297/301 Test #300: JSONSchema.decode/fail_no_document ....................................   Passed    0.01 sec\n        Start 301: JSONSchema.decode/fail_no_output\n298/301 Test #301: JSONSchema.decode/fail_no_output ......................................   Passed    0.07 sec\n299/301 Test #297: JSONSchema.decode/pass_schema_less ....................................   Passed    0.12 sec\n300/301 Test #298: JSONSchema.decode/pass_schema_less_jsonl ..............................   Passed    0.13 sec\n301/301 Test #299: JSONSchema.decode/pass_schema_less_jsonl_verbose ......................   Passed    0.12 sec\n\n100% tests passed, 0 tests failed out of 301\n\nTotal Test time (real) =   3.19 sec\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && ctest --test-dir build --output",
+    "time": {
+      "start": 1790720235313,
+      "end": 1790720238539
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now run full ctest suite. First need test executable rebuilt? The install step copies binary; tests refer to $\u003cTARGET_FILE:jsonschema_cli\u003e which is build/src/jsonschema. Already built. Run full ctest.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

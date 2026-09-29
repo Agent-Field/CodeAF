@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b372b001qDPbmETgg0gPCX",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3b3473001RH9iNi2vXI10zd",
+  "type": "reasoning",
+  "text": "Let me check the resolver warning tests. Search test for \"are imported\" or \"sets any identifiers\".",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me check the resolver warning tests. Search test for \"are imported\" or \"sets any identifiers\".",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720030507,
+    "end": 1790720030523
+  }
+}

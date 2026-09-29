@@ -1,0 +1,30 @@
+{
+  "id": "prt_0ef29c907001ov5jEUPRSAhGbD",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef29c7ac001rchW3p5KMeAssX",
+  "type": "tool",
+  "callID": "call_01a0ef29c87d73de8e54caa0",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/pipe/before/before.go"
+    },
+    "output": "<path>/root/repos/goreleaser/internal/pipe/before/before.go</path>\n<type>file</type>\n<content>\n1: // Package before provides the pipe implementation that runs before all other pipes.\n2: package before\n3: \n4: import (\n5: \t\"fmt\"\n6: \n7: \t\"github.com/caarlos0/go-shellwords\"\n8: \t\"github.com/caarlos0/log\"\n9: \t\"github.com/goreleaser/goreleaser/v2/internal/shell\"\n10: \t\"github.com/goreleaser/goreleaser/v2/internal/skips\"\n11: \t\"github.com/goreleaser/goreleaser/v2/internal/tmpl\"\n12: \t\"github.com/goreleaser/goreleaser/v2/pkg/context\"\n13: )\n14: \n15: // Pipe is a global hook pipe.\n16: type Pipe struct{}\n17: \n18: func (Pipe) String() string { return \"running before hooks\" }\n19: \n20: func (Pipe) Skip(ctx *context.Context) bool {\n21: \treturn len(ctx.Config.Before.Hooks) == 0 || skips.Any(ctx, skips.Before)\n22: }\n23: \n24: // Run executes the hooks.\n25: func (Pipe) Run(ctx *context.Context) error {\n26: \ttmpl := tmpl.New(ctx)\n27: \t/* #nosec */\n28: \tfor _, step := range ctx.Config.Before.Hooks {\n29: \t\ts, err := tmpl.Apply(step)\n30: \t\tif err != nil {\n31: \t\t\treturn err\n32: \t\t}\n33: \t\targs, err := shellwords.Parse(s)\n34: \t\tif err != nil {\n35: \t\t\treturn err\n36: \t\t}\n37: \n38: \t\tlog.WithField(\"hook\", s).Info(\"running\")\n39: \t\tif err := shell.Run(ctx, \"\", args, ctx.Env.Strings(), false); err != nil {\n40: \t\t\treturn fmt.Errorf(\"hook failed: %w\", err)\n41: \t\t}\n42: \t}\n43: \treturn nil\n44: }\n\n(End of file - total 44 lines)\n</content>",
+    "metadata": {
+      "preview": "// Package before provides the pipe implementation that runs before all other pipes.\npackage before\n\nimport (\n\t\"fmt\"\n\n\t\"github.com/caarlos0/go-shellwords\"\n\t\"github.com/caarlos0/log\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/shell\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/skips\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/tmpl\"\n\t\"github.com/goreleaser/goreleaser/v2/pkg/context\"\n)\n\n// Pipe is a global hook pipe.\ntype Pipe struct{}\n\nfunc (Pipe) String() string { return \"running before hooks\" }\n\nfunc (Pipe) Skip(ctx *context.Context) bool {",
+      "truncated": false,
+      "loaded": []
+    },
+    "title": "internal/pipe/before/before.go",
+    "time": {
+      "start": 1790718888203,
+      "end": 1790718888211
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

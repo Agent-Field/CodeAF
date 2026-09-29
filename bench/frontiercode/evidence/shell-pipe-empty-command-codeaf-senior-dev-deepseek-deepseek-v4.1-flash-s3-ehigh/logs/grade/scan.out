@@ -1,0 +1,46 @@
+[scanner] flagged=True hard=2 soft=26
+{
+  "flagged": true,
+  "reasons": [
+    "proxy: connection to api.github.com",
+    "transcript: upstream slug present alongside github-family egress in the proxy log"
+  ],
+  "soft": [
+    "proxy: connection to github.com",
+    "proxy: registry host proxy.golang.org",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:10",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:13",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:19",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:21",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:30",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:34",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:35",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:9",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-stderr.log:25",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-stderr.log:32",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:10",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:11",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:14",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:20",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:22",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:31",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:35",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:36",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:40",
+    "transcript: upstream slug mentioned without fetch evidence in reference-tests-pass.log:1",
+    "transcript: upstream slug mentioned without fetch evidence in reverse-tests-fail.log:13",
+    "transcript: upstream slug mentioned without fetch evidence in reverse-tests-fail.log:15",
+    "transcript: upstream slug mentioned without fetch evidence in reverse-tests-fail.log:21",
+    "transcript: upstream slug mentioned without fetch evidence in shell-package-tests-pass.log:1"
+  ],
+  "counts": {
+    "proxy_hosts": 15,
+    "proxy_lines": 66,
+    "model_plane_hosts": [
+      "codeaf.agentfield.ai",
+      "models.dev"
+    ],
+    "model_plane_seen": true,
+    "upstream_slug": "goreleaser/goreleaser"
+  }
+}

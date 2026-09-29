@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef36361c001VDUrskoHcWxnLy",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef36288200125MzNomkE4Vw5t",
+  "type": "tool",
+  "callID": "call_00_a6c28vpt1iaqlzg417it0j19",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && python -m pytest tests/git_test.py -q --collect-only 2>/dev/null | grep -i refname; echo \"---\"; python -m pytest \"tests/git_test.py::test_get_conflicted_files_refname_collision\" -v 2>&1 | tail -8"
+    },
+    "output": "tests/git_test.py::test_get_conflicted_files_refname_collision[HEAD]\ntests/git_test.py::test_get_conflicted_files_refname_collision[MERGE_HEAD]\n---\nconfigfile: tox.ini\nplugins: platformdirs-4.12.2, env-1.7.1\ncollecting ... collected 2 items\n\ntests/git_test.py::test_get_conflicted_files_refname_collision[HEAD] PASSED [ 50%]\ntests/git_test.py::test_get_conflicted_files_refname_collision[MERGE_HEAD] PASSED [100%]\n\n============================== 2 passed in 0.37s ===============================\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && python -m pytest tests/git_test",
+    "time": {
+      "start": 1790719702672,
+      "end": 1790719704211
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Wait 34 passed but before my test added it was 34 too? Let me recount: originally there were 32 tests? Let me check. Earlier run after adding regression test said 34 passed. Hmm actually earlier when I ran with the temp test file it was separate. Let me check: the first full git_test run after adding the test said \"34 passed\". Before adding? Let me verify test count includes my 2 parametrized tests. Let me run with -v filtering.\n\nActually, before I added any test, I didn't run the full git_test.py. Let me just confirm my tests are collected.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

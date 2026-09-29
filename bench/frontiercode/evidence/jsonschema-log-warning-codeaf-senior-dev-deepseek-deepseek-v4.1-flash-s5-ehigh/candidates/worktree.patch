@@ -1,0 +1,186 @@
+diff --git a/src/command_bundle.cc b/src/command_bundle.cc
+index be961cd..d77d40f 100644
+--- a/src/command_bundle.cc
++++ b/src/command_bundle.cc
+@@ -9,6 +9,7 @@
+ #include "command.h"
+ #include "configuration.h"
+ #include "error.h"
++#include "logger.h"
+ #include "resolver.h"
+ #include "utils.h"
+ 
+@@ -35,17 +36,22 @@ auto sourcemeta::jsonschema::bundle(const sourcemeta::core::Options &options)
+                                .recompose());
+ 
+   if (options.contains("without-id")) {
+-    std::cerr << "warning: You are opting in to remove schema identifiers in "
+-                 "the bundled schema.\n";
+-    std::cerr << "The only legit use case of this advanced feature we know of "
+-                 "is to workaround\n";
+-    std::cerr << "non-compliant JSON Schema implementations such as Visual "
+-                 "Studio Code.\n";
+-    std::cerr << "Otherwise, this is not needed and may harm other use "
+-                 "cases. For example,\n";
+-    std::cerr << "you will be unable to reference the resulting schema from "
+-                 "other schemas\n";
+-    std::cerr << "using the --resolve/-r option.\n";
++    LOG_WARNING()
++        << "You are opting in to remove schema identifiers in the bundled "
++           "schema.\n";
++    LOG_WARNING()
++        << "The only legit use case of this advanced feature we know of is to "
++           "workaround\n";
++    LOG_WARNING()
++        << "non-compliant JSON Schema implementations such as Visual Studio "
++           "Code.\n";
++    LOG_WARNING()
++        << "Otherwise, this is not needed and may harm other use cases. For "
++           "example,\n";
++    LOG_WARNING()
++        << "you will be unable to reference the resulting schema from other "
++           "schemas\n";
++    LOG_WARNING() << "using the --resolve/-r option.\n";
+     sourcemeta::core::for_editor(schema,
+                                  sourcemeta::core::schema_official_walker,
+                                  custom_resolver, dialect);
+diff --git a/src/command_lint.cc b/src/command_lint.cc
+index 88ad262..97558ba 100644
+--- a/src/command_lint.cc
++++ b/src/command_lint.cc
+@@ -28,8 +28,8 @@ static auto disable_lint_rules(sourcemeta::core::SchemaTransformer &bundle,
+       sourcemeta::jsonschema::LOG_VERBOSE(options)
+           << "Disabling rule: " << *iterator << "\n";
+     } else {
+-      sourcemeta::jsonschema::LOG_VERBOSE(options)
+-          << "warning: Cannot exclude unknown rule: " << *iterator << "\n";
++      sourcemeta::jsonschema::LOG_WARNING()
++          << "Cannot exclude unknown rule: " << *iterator << "\n";
+     }
+   }
+ }
+diff --git a/src/command_validate.cc b/src/command_validate.cc
+index ed89de7..15d187b 100644
+--- a/src/command_validate.cc
++++ b/src/command_validate.cc
+@@ -54,8 +54,9 @@ auto get_schema_template(const sourcemeta::core::JSON &bundled,
+     if (precompiled_result.has_value()) {
+       return precompiled_result.value();
+     } else {
+-      std::cerr << "warning: Failed to parse pre-compiled schema template. "
+-                   "Compiling from scratch\n";
++      sourcemeta::jsonschema::LOG_WARNING()
++          << "Failed to parse pre-compiled schema template. "
++             "Compiling from scratch\n";
+     }
+   }
+ 
+@@ -285,7 +286,7 @@ auto sourcemeta::jsonschema::validate(const sourcemeta::core::Options &options)
+       }
+ 
+       if (index == 0) {
+-        LOG_VERBOSE(options) << "warning: The JSONL file is empty\n";
++        LOG_WARNING() << "The JSONL file is empty\n";
+       }
+     } else {
+       sourcemeta::core::PointerPositionTracker tracker;
+diff --git a/src/logger.h b/src/logger.h
+index ac183d5..2790255 100644
+--- a/src/logger.h
++++ b/src/logger.h
+@@ -3,8 +3,9 @@
+ 
+ #include <sourcemeta/core/options.h>
+ 
+-#include <fstream> // std::ofstream
+-#include <ostream> // std::ostream
++#include <fstream>  // std::ofstream
++#include <iostream> // std::cerr
++#include <ostream>  // std::ostream
+ 
+ namespace sourcemeta::jsonschema {
+ 
+@@ -18,6 +19,11 @@ inline auto LOG_VERBOSE(const sourcemeta::core::Options &options)
+   return null_stream;
+ }
+ 
++inline auto LOG_WARNING() -> std::ostream & {
++  std::cerr << "warning: ";
++  return std::cerr;
++}
++
+ } // namespace sourcemeta::jsonschema
+ 
+ #endif
+diff --git a/src/resolver.h b/src/resolver.h
+index 1d1a4d2..f3dc176 100644
+--- a/src/resolver.h
++++ b/src/resolver.h
+@@ -96,10 +96,9 @@ public:
+                             << identifier << "\n";
+                       });
+         if (!result) {
+-          std::cerr
+-              << "warning: No schema resources were imported from this file\n";
+-          std::cerr << "  at " << entry.first.string() << "\n";
+-          std::cerr << "Are you sure this schema sets any identifiers?\n";
++          LOG_WARNING() << "No schema resources were imported from this file\n";
++          LOG_WARNING() << "  at " << entry.first.string() << "\n";
++          LOG_WARNING() << "Are you sure this schema sets any identifiers?\n";
+         }
+       }
+     }
+diff --git a/test/bundle/pass_without_id.sh b/test/bundle/pass_without_id.sh
+index 35b2a57..fee1de8 100755
+--- a/test/bundle/pass_without_id.sh
++++ b/test/bundle/pass_without_id.sh
+@@ -41,11 +41,11 @@ EOF
+ 
+ cat << 'EOF' > "$TMP/expected-stderr.txt"
+ warning: You are opting in to remove schema identifiers in the bundled schema.
+-The only legit use case of this advanced feature we know of is to workaround
+-non-compliant JSON Schema implementations such as Visual Studio Code.
+-Otherwise, this is not needed and may harm other use cases. For example,
+-you will be unable to reference the resulting schema from other schemas
+-using the --resolve/-r option.
++warning: The only legit use case of this advanced feature we know of is to workaround
++warning: non-compliant JSON Schema implementations such as Visual Studio Code.
++warning: Otherwise, this is not needed and may harm other use cases. For example,
++warning: you will be unable to reference the resulting schema from other schemas
++warning: using the --resolve/-r option.
+ EOF
+ 
+ diff "$TMP/result.json" "$TMP/expected.json"
+diff --git a/test/bundle/pass_without_id_verbose.sh b/test/bundle/pass_without_id_verbose.sh
+index 03a453a..28dffcd 100755
+--- a/test/bundle/pass_without_id_verbose.sh
++++ b/test/bundle/pass_without_id_verbose.sh
+@@ -31,11 +31,11 @@ Detecting schema resources from file: $(realpath "$TMP")/schemas/remote.json
+ Importing schema into the resolution context: file://$(realpath "$TMP")/schemas/remote.json
+ Importing schema into the resolution context: https://example.com/nested
+ warning: You are opting in to remove schema identifiers in the bundled schema.
+-The only legit use case of this advanced feature we know of is to workaround
+-non-compliant JSON Schema implementations such as Visual Studio Code.
+-Otherwise, this is not needed and may harm other use cases. For example,
+-you will be unable to reference the resulting schema from other schemas
+-using the --resolve/-r option.
++warning: The only legit use case of this advanced feature we know of is to workaround
++warning: non-compliant JSON Schema implementations such as Visual Studio Code.
++warning: Otherwise, this is not needed and may harm other use cases. For example,
++warning: you will be unable to reference the resulting schema from other schemas
++warning: using the --resolve/-r option.
+ {
+   "\$schema": "https://json-schema.org/draft/2020-12/schema",
+   "\$ref": "#/\$defs/https:~1~1example.com~1nested",
+diff --git a/test/validate/pass_jsonl_empty.sh b/test/validate/pass_jsonl_empty.sh
+index 15526a9..9f8dbad 100755
+--- a/test/validate/pass_jsonl_empty.sh
++++ b/test/validate/pass_jsonl_empty.sh
+@@ -23,6 +23,7 @@ touch "$TMP/instance.jsonl"
+ "$1" validate "$TMP/schema.json" "$TMP/instance.jsonl" 2> "$TMP/output.txt" 1>&2
+ 
+ cat << EOF > "$TMP/expected.txt"
++warning: The JSONL file is empty
+ EOF
+ 
+ diff "$TMP/output.txt" "$TMP/expected.txt"

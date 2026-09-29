@@ -1,0 +1,24 @@
+{
+  "id": "prt_0ef494e4f001BCOuAMTxLjr5lr",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef4946b0001EDMzt5SokBiM6I",
+  "type": "tool",
+  "callID": "call_01_t456onr37q8xly9ne8lz7jh7",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && gofmt -l internal/shell/ && go vet ./internal/shell/ && echo VET_OK; which golangci-lint || true",
+      "timeout_ms": 120000
+    },
+    "output": "VET_OK\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && gofmt -l internal/shell/ && go ",
+    "time": {
+      "start": 1790720953938,
+      "end": 1790720960906
+    }
+  }
+}

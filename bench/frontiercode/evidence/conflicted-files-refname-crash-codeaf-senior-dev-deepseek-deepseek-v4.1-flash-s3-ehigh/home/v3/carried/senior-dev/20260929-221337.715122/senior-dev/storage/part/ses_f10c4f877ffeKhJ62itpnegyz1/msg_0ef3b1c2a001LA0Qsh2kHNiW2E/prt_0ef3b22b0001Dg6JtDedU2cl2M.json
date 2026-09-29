@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b22b0001Dg6JtDedU2cl2M",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3b1c2a001LA0Qsh2kHNiW2E",
+  "type": "reasoning",
+  "text": "Let me look at the beginning of the test file for the fixture `in_merge_conflict`.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the beginning of the test file for the fixture `in_merge_conflict`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720025264,
+    "end": 1790720025274
+  }
+}

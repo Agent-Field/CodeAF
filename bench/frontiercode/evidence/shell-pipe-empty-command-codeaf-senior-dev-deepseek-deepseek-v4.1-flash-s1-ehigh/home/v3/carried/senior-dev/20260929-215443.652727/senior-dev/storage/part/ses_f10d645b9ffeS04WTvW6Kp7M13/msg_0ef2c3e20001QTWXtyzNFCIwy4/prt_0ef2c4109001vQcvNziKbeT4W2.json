@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef2c4109001vQcvNziKbeT4W2",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef2c3e20001QTWXtyzNFCIwy4",
+  "type": "reasoning",
+  "text": "Good. Now submit. But note checklist counted. Let me verify final files.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Good. Now submit. But note checklist counted. Let me verify final files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719049993,
+    "end": 1790719050006
+  }
+}

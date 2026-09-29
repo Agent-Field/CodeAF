@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46c0630011DhbK2zu76uGgd",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46bd42001fGsVYpxo6iM0WF",
+  "type": "reasoning",
+  "text": "Let me look at each warning site in detail. Note command_lint.cc line 32 uses `<< \"warning: ...` but what's the stream? Let me read those files.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at each warning site in detail. Note command_lint.cc line 32 uses `\u003c\u003c \"warning: ...` but what's the stream? Let me read those files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720786531,
+    "end": 1790720786573
+  }
+}

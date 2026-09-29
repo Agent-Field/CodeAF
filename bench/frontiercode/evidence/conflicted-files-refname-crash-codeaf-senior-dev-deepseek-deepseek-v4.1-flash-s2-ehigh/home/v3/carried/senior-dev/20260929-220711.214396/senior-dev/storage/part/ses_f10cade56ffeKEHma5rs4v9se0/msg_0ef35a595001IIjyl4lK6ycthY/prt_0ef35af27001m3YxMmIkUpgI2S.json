@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef35af27001m3YxMmIkUpgI2S",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef35a595001IIjyl4lK6ycthY",
+  "type": "tool",
+  "callID": "call_00_vw4aanswxyqyi829jpag9myx",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && python - <<'EOF'\nimport re\np='pre_commit/git.py'\ns=open(p).read()\ns2=s.replace(\"'-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\", \"'-m', tree_hash, 'HEAD', 'MERGE_HEAD',\")\nopen(p,'w').write(s2)\nEOF\ncp /tmp/test_repro.py tests/test_repro_tmp.py && python -m pytest tests/test_repro_tmp.py -q 2>&1 | tail -20; rm -f tests/test_repro_tmp.py\npython - <<'EOF'\np='/root/repos/pre-commit/pre_commit/git.py'\ns=open(p).read()\ns=s.replace(\"'-m', tree_hash, 'HEAD', 'MERGE_HEAD',\", \"'-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\")\nopen(p,'w').write(s)\nEOF\ngrep -n \"MERGE_HEAD\" /root/repos/pre-commit/pre_commit/git.py"
+    },
+    "output": "                returncode = proc.returncode\n    \n        if check and returncode:\n>           raise CalledProcessError(returncode, cmd, stdout_b, stderr_b)\nE           pre_commit.util.CalledProcessError: command: ('/usr/bin/git', 'diff', '--name-only', '--no-ext-diff', '-z', '-m', '2c1b2e53d5e55b3917b304c1f1b56d82d82d18ac', 'HEAD', 'MERGE_HEAD')\nE           return code: 128\nE           stdout: (none)\nE           stderr:\nE               fatal: ambiguous argument 'HEAD': both revision and filename\nE               Use '--' to separate paths from revisions, like this:\nE               'git <command> [<revision>...] -- [<file>...]'\n\n/home/agent/repos/pre-commit/pre_commit/util.py:111: CalledProcessError\n----------------------------- Captured stdout call -----------------------------\n[INFO] Checking merge-conflict files only.\n------------------------------ Captured log call -------------------------------\nINFO     pre_commit.git:git.py:115 Checking merge-conflict files only.\n=========================== short test summary info ============================\nFAILED tests/test_repro_tmp.py::test_repro - pre_commit.util.CalledProcessErr...\n1 failed in 0.18s\n100:        os.path.exists(os.path.join(git_dir, 'MERGE_HEAD'))\n129:            '-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && python - <<'EOF'\nimport re\np='p",
+    "time": {
+      "start": 1790719668010,
+      "end": 1790719668741
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "So the expected result with the fix is `{'conflict_file', 'HEAD'}`. Let me verify that without the fix it crashes (to confirm the test is a valid regression test). Let me temporarily revert the `--` and run.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

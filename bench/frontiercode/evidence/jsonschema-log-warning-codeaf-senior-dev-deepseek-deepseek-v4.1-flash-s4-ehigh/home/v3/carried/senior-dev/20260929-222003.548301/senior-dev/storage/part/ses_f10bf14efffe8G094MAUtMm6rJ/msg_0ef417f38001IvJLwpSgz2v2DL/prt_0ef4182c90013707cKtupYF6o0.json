@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4182c90013707cKtupYF6o0",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef417f38001IvJLwpSgz2v2DL",
+  "type": "reasoning",
+  "text": "No test for resolver warning. Good.\n\nNow build. Check make targets.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "No test for resolver warning. Good.\n\nNow build. Check make targets.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720443081,
+    "end": 1790720443084
+  }
+}

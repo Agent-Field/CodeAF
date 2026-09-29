@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4172a4001mwqjgJ53EPQY1Q",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef416b26001u7AGu2kHjWeFOA",
+  "type": "reasoning",
+  "text": "All excludes are known rules. Good.\n\nNow update the tests.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "All excludes are known rules. Good.\n\nNow update the tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720438948,
+    "end": 1790720439049
+  }
+}

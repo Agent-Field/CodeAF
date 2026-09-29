@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef49999a001RwtXzITLpjgKpZ",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef4992f2001e6Jg4xWQahZGZa",
+  "type": "tool",
+  "callID": "call_00_ziny726qjfv5lkzmgilb5dde",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && go test -count=1 ./internal/shell/; echo \"exit=$?\"; go build ./...; echo \"build_exit=$?\"",
+      "timeout_ms": 300000
+    },
+    "output": "ok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.012s\nexit=0\nbuild_exit=0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && go test -count=1 ./internal/she",
+    "time": {
+      "start": 1790720973213,
+      "end": 1790720980545
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me do a final full-ish test for internal/shell plus build, and confirm gofmt. Already done. Let me run pinned command once more and capture exit status precisely, plus test counts.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

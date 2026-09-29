@@ -1,0 +1,33 @@
+{
+  "id": "prt_0ef353c0f001Nd61F9YpG3ssYd",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef35385d001WzV2k4afEfZ46y",
+  "type": "tool",
+  "callID": "call_01a0ef35395d74a3a443bc15",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && go build ./... && go test ./internal/shell/ 2>&1 | tail -20"
+    },
+    "output": "command timed out after 120000ms\n\n<shell_metadata>\n[environment-signal] this command timed out while still producing output — it may simply need more time; raise timeout only if this command is genuinely required, otherwise prefer a cheaper verification.\n</shell_metadata>",
+    "metadata": {},
+    "title": "cd /root/repos/goreleaser && go build ./... && go test ./int",
+    "time": {
+      "start": 1790719638546,
+      "end": 1790719758651
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now write checklist and pinned. Then verify.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

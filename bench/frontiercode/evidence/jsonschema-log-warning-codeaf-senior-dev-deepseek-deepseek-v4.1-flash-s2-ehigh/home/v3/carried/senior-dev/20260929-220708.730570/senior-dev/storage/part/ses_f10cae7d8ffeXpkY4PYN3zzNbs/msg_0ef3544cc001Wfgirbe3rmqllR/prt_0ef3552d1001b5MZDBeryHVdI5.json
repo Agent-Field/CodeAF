@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3552d1001b5MZDBeryHVdI5",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef3544cc001Wfgirbe3rmqllR",
+  "type": "tool",
+  "callID": "call_01_j4ij9z2n40sqs0f7ixkvdzfu",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat test/validate/pass_jsonl_empty_verbose.sh >/dev/null; sed -n '1,40p' test/lint/fail_lint_disable_unknown_verbose.sh; echo ===; cat test/validate/pass_with_invalid_template.sh; echo ===; cat test/validate/pass_with_invalid_template_verbose.sh"
+    },
+    "output": "#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"string\",\n  \"contentMediaType\": \"application/json\",\n  \"enum\": [ \"foo\" ]\n}\nEOF\n\ncd \"$TMP\"\n\"$1\" lint \"$TMP/schema.json\" --verbose --exclude foo_bar >\"$TMP/stderr.txt\" 2>&1 && CODE=\"$?\" || CODE=\"$?\"\ntest \"$CODE\" = \"1\" || exit 1\n\ncat << EOF > \"$TMP/expected.txt\"\nwarning: Cannot exclude unknown rule: foo_bar\nLinting: $(realpath \"$TMP\")/schema.json\nschema.json:4:3:\n  The \\`contentMediaType\\` keyword is meaningless without the presence of the \\`contentEncoding\\` keyword (content_media_type_without_encoding)\n    at location \"/contentMediaType\"\nschema.json:5:3:\n  An \\`enum\\` of a single value can be expressed as \\`const\\` (enum_to_const)\n    at location \"/enum\"\nschema.json:5:3:\n  Setting \\`type\\` alongside \\`enum\\` is considered an anti-pattern, as the enumeration choices already imply their respective types (enum_with_type)\n    at location \"/enum\"\nEOF\n\ndiff \"$TMP/stderr.txt\" \"$TMP/expected.txt\"\n===\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"properties\": {\n    \"foo\": {\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ncat << 'EOF' > \"$TMP/instance.json\"\n{ \"foo\": \"bar\" }\nEOF\n\ncat << 'EOF' > \"$TMP/template.json\"\n{ \"foo\": 1 }\nEOF\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.json\" \\\n  --template \"$TMP/template.json\" 2> \"$TMP/stderr.txt\"\n\ncat << EOF > \"$TMP/expected.txt\"\nwarning: Failed to parse pre-compiled schema template. Compiling from scratch\nEOF\n\ndiff \"$TMP/stderr.txt\" \"$TMP/expected.txt\"\n===\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"properties\": {\n    \"foo\": {\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ncat << 'EOF' > \"$TMP/instance.json\"\n{ \"foo\": \"bar\" }\nEOF\n\ncat << 'EOF' > \"$TMP/template.json\"\n{ \"foo\": 1 }\nEOF\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.json\" \\\n  --verbose --template \"$TMP/template.json\" 2> \"$TMP/stderr.txt\"\n\ncat << EOF > \"$TMP/expected.txt\"\nParsing pre-compiled schema template: $(realpath \"$TMP\")/template.json\nwarning: Failed to parse pre-compiled schema template. Compiling from scratch\nok: $(realpath \"$TMP\")/instance.json\n  matches $(realpath \"$TMP\")/schema.json\nannotation: \"foo\"\n  at instance location \"\" (line 1, column 1)\n  at evaluate path \"/properties\"\nEOF\n\ndiff \"$TMP/stderr.txt\" \"$TMP/expected.txt\"\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat test/validate/pass_jsonl_em",
+    "time": {
+      "start": 1790719644372,
+      "end": 1790719644389
+    }
+  }
+}

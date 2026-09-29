@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef368d05001ch0eA31tAPM8DD",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef368452001FA8P0qA3R9cD4a",
+  "type": "reasoning",
+  "text": "The tox pytest command ignores tests/languages. Let me run the same suite without coverage: `python -m pytest tests --ignore=tests/languages -q`. That's the project test entrypoint. Let me run it with a long timeout.\n\nNote: tests/languages likely need network. The pinned command should be the project's test command. Let me use `python -m pytest tests --ignore=tests/languages`.\n\nLet me run it.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The tox pytest command ignores tests/languages. Let me run the same suite without coverage: `python -m pytest tests --ignore=tests/languages -q`. That's the project test entrypoint. Let me run it with a long timeout.\n\nNote: tests/languages likely need network. The pinned command should be the project's test command. Let me use `python -m pytest tests --ignore=tests/languages`.\n\nLet me run it.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719724805,
+    "end": 1790719724809
+  }
+}

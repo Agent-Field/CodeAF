@@ -1,0 +1,65 @@
+{
+  "criteria": {
+    "conflict-set-still-complete": {
+      "pass": true,
+      "reasoning": "The diff adds '--' as a separator between refnames (tree_hash, 'HEAD', 'MERGE_HEAD') and pathspecs in the git diff command. This is the standard git convention to disambiguate refs from paths. The change does not narrow the diff - it still uses the same '-m' flag with the same three refs (tree_hash, HEAD, MERGE_HEAD) that will produce the merge-diff filenames. The '--' separator is placed AFTER all refnames and before where pathspecs would go (currently none), which is the correct position. The function still returns the union of both merge_conflict_filenames and merge_diff_filenames (set unio",
+      "usage": {
+        "prompt_tokens": 635,
+        "completion_tokens": 206,
+        "total_tokens": 841,
+        "cost": 0.004995,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.004995,
+          "upstream_inference_prompt_cost": 0.001905,
+          "upstream_inference_completions_cost": 0.00309
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 5311,
+    "completion_tokens": 1026,
+    "calls": 2
+  },
+  "adaptive": {
+    "adapted": true,
+    "reasoning": "The reference test checks that a file named 'HEAD' is properly included in conflicted files. The agent's solution fixes this exact issue by adding '--' separator in the git diff command and includes a more comprehensive parametrized test. The reference test can be adapted to work alongside the agent's test - both test the same correct behavior. I'll adapt the reference test to use the same naming convention and structure as the agent's existing test.",
+    "usage": {
+      "prompt_tokens": 4676,
+      "completion_tokens": 820,
+      "total_tokens": 5496,
+      "cost": 0.026328,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.026328,
+        "upstream_inference_prompt_cost": 0.014028,
+        "upstream_inference_completions_cost": 0.0123
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  }
+}

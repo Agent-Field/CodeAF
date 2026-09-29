@@ -1,0 +1,14 @@
+{
+  "id": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "slug": "0ef46c074001tAjhx39GcgRWx0",
+  "projectID": "7bb7f4a4838dbd5d52873187cc9b1b51b83cf0ba",
+  "directory": "/root/repos/pre-commit",
+  "path": ".",
+  "title": "# Do not crash when a tracked file shares a refname\n\n## Task",
+  "agent": "coder",
+  "version": "c24796937 built 2026-09-29 19:13",
+  "time": {
+    "created": 1790720786548,
+    "updated": 1790720786600
+  }
+}

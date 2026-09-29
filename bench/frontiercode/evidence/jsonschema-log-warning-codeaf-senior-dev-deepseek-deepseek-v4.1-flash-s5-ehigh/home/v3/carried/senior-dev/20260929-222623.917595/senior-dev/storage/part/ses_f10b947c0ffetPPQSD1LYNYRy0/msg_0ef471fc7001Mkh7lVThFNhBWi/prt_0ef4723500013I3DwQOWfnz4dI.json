@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4723500013I3DwQOWfnz4dI",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef471fc7001Mkh7lVThFNhBWi",
+  "type": "reasoning",
+  "text": "Content is edited. Why doesn't git status show them? Possibly `git update-index --assume-unchanged` or skip-worktree set on src files? Let me check `git ls-files -v src/`. The lowercase letters indicate assume-unchanged. command_validate shows as staged M, weird.\n\nActually earlier git status showed `M  src/command_validate.cc` — staged modification. That suggests maybe the index already differs from HEAD for command_validate. Perhaps the starting tree had staged changes? But then my edits to other files should still show unstaged M. Unless skip-worktree is set.\n\nLet me check git ls-files -v and git diff.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Content is edited. Why doesn't git status show them? Possibly `git update-index --assume-unchanged` or skip-worktree set on src files? Let me check `git ls-files -v src/`. The lowercase letters indicate assume-unchanged. command_validate shows as staged M, weird.\n\nActually earlier git status showed `M  src/command_validate.cc` — staged modification. That suggests maybe the index already differs from HEAD for command_validate. Perhaps the starting tree had staged changes? But then my edits to other files should still show unstaged M. Unless skip-worktree is set.\n\nLet me check git ls-files -v and git diff.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720811856,
+    "end": 1790720811867
+  }
+}

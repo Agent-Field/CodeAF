@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef49a2ca001UYPb1MB4QbgTwO",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef498e86001nMlBHpaZVMpaD2",
+  "type": "tool",
+  "callID": "call_01_vw7935rt0gzp4z34x71i67ur",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && git show 7b88c63:pre_commit/git.py | sed -n '122,133p'"
+    },
+    "output": "    # This will get the rest of the changes made after the merge.\n    # If they resolved the merge conflict by choosing a mesh of both sides\n    # this will also include the conflicted files\n    tree_hash = cmd_output('git', 'write-tree')[1].strip()\n    merge_diff_filenames = zsplit(\n        cmd_output(\n            'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n        )[1],\n    )\n    return set(merge_conflict_filenames) | set(merge_diff_filenames)\n\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && git show 7b88c63:pre_commit/git",
+    "time": {
+      "start": 1790720975566,
+      "end": 1790720975592
+    }
+  }
+}

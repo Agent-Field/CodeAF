@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3544a6001NACTdDm0AjJ4fX",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef35379f001s9PA52HXBPSXZi",
+  "type": "tool",
+  "callID": "call_01_tsnq5hlkhjdikkj4blpbbxpb",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rn \"disable_unknown\\|only_unknown\\|unknown rule\" test/*/*.sh | head; echo ---; grep -rln \"foo_bar\" test/lint/ ; echo ---; ls test/lint/ | grep -i unknown"
+    },
+    "output": "test/lint/fail_lint_disable_unknown_verbose.sh:24:warning: Cannot exclude unknown rule: foo_bar\n---\ntest/lint/fail_lint_disable_unknown_verbose.sh\n---\nfail_lint_disable_unknown_verbose.sh\nfail_lint_only_unknown.sh\nfail_lint_only_unknown_verbose.sh\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rn \"disable_unknown\\|only",
+    "time": {
+      "start": 1790719640746,
+      "end": 1790719640767
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3525d30013LA46EppsUtABS",
+  "sessionID": "ses_f10cae7d8ffeXpkY4PYN3zzNbs",
+  "messageID": "msg_0ef351f6f001IgnMd8K8JLsXG6",
+  "type": "tool",
+  "callID": "call_00_2dac3fqnetewva0zkvyfq7wy",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rn \"warning:\" src/ test/ | head -50"
+    },
+    "output": "src/command_lint.cc:32:          << \"warning: Cannot exclude unknown rule: \" << *iterator << \"\\n\";\nsrc/command_bundle.cc:38:    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\nsrc/command_validate.cc:57:      std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\nsrc/command_validate.cc:288:        LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\nsrc/resolver.h:100:              << \"warning: No schema resources were imported from this file\\n\";\ntest/lint/fail_lint_disable_unknown_verbose.sh:24:warning: Cannot exclude unknown rule: foo_bar\ntest/bundle/pass_without_id_verbose.sh:33:warning: You are opting in to remove schema identifiers in the bundled schema.\ntest/bundle/pass_without_id.sh:43:warning: You are opting in to remove schema identifiers in the bundled schema.\ntest/validate/pass_jsonl_empty_verbose.sh:27:warning: The JSONL file is empty\ntest/validate/pass_with_invalid_template_verbose.sh:34:warning: Failed to parse pre-compiled schema template. Compiling from scratch\ntest/validate/pass_with_invalid_template.sh:33:warning: Failed to parse pre-compiled schema template. Compiling from scratch\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rn \"warning:\" src/ test/ ",
+    "time": {
+      "start": 1790719632855,
+      "end": 1790719632870
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the warning sites. Note LOG_VERBOSE returns std::cerr without including \u003ciostream\u003e, presumably via options.h. Let me search.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef40f2720019WQr1GSkGT9jPD",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef40f03a001w6CEPUC9pvObth",
+  "type": "tool",
+  "callID": "call_01a0ef40f1b17367af81817a",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -n \"warning\" src/command_lint.cc src/command_validate.cc src/resolver.h src/command_bundle.cc src/*.cc src/*.h"
+    },
+    "output": "src/command_lint.cc:32:          << \"warning: Cannot exclude unknown rule: \" << *iterator << \"\\n\";\nsrc/command_validate.cc:57:      std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\nsrc/command_validate.cc:288:        LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\nsrc/resolver.h:100:              << \"warning: No schema resources were imported from this file\\n\";\nsrc/command_bundle.cc:38:    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\nsrc/command_bundle.cc:38:    std::cerr << \"warning: You are opting in to remove schema identifiers in \"\nsrc/command_lint.cc:32:          << \"warning: Cannot exclude unknown rule: \" << *iterator << \"\\n\";\nsrc/command_validate.cc:57:      std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\nsrc/command_validate.cc:288:        LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\nsrc/resolver.h:100:              << \"warning: No schema resources were imported from this file\\n\";\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -n \"warning\" src/command_l",
+    "time": {
+      "start": 1790720406133,
+      "end": 1790720406144
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me look at the relevant warning sites. First command_lint.cc, command_validate.cc, resolver.h, command_bundle.cc.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

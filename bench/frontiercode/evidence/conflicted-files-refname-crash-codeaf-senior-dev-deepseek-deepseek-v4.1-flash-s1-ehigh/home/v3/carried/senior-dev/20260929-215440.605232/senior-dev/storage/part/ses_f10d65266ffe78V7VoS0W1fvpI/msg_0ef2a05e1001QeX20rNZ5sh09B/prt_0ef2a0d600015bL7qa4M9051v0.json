@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2a0d600015bL7qa4M9051v0",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef2a05e1001QeX20rNZ5sh09B",
+  "type": "tool",
+  "callID": "call_00_sh8eithsiu8j4u9x1skseahg",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /tmp/ambig && tree=$(git write-tree) && echo \"--- with trailing -- ---\" && git diff --name-only --no-ext-diff -z -m \"$tree\" HEAD MERGE_HEAD --; echo \"exit: $?\""
+    },
+    "output": "--- with trailing -- ---\nHEAD\u0000MERGE_HEAD\u0000conflict_file\u0000exit: 0\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /tmp/ambig && tree=$(git write-tree) && echo \"--- with tr",
+    "time": {
+      "start": 1790718905699,
+      "end": 1790718905717
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Reproduced. Now test the fix: append `--`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

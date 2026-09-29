@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef410577001BcDlQwMy6yyWmm",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef4103d4001dXeKs6gSPC8WD2",
+  "type": "tool",
+  "callID": "call_01a0ef41050477d0b49f2ff0",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat test/validate/pass_jsonl_empty.sh && echo ===VERBOSE=== && cat test/validate/pass_jsonl_empty_verbose.sh && echo ===CMAKE=== && sed -n '70,110p' test/CMakeLists.txt"
+    },
+    "output": "#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"properties\": {\n    \"foo\": {\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ntouch \"$TMP/instance.jsonl\"\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" 2> \"$TMP/output.txt\" 1>&2\n\ncat << EOF > \"$TMP/expected.txt\"\nEOF\n\ndiff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n===VERBOSE===\n#!/bin/sh\n\nset -o errexit\nset -o nounset\n\nTMP=\"$(mktemp -d)\"\nclean() { rm -rf \"$TMP\"; }\ntrap clean EXIT\n\ncat << 'EOF' > \"$TMP/schema.json\"\n{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"properties\": {\n    \"foo\": {\n      \"type\": \"string\"\n    }\n  }\n}\nEOF\n\ntouch \"$TMP/instance.jsonl\"\n\n\"$1\" validate \"$TMP/schema.json\" \"$TMP/instance.jsonl\" --verbose 2> \"$TMP/output.txt\" 1>&2\n\ncat << EOF > \"$TMP/expected.txt\"\nInterpreting input as JSONL: $(realpath \"$TMP\")/instance.jsonl\nwarning: The JSONL file is empty\nEOF\n\ndiff \"$TMP/output.txt\" \"$TMP/expected.txt\"\n===CMAKE===\nadd_jsonschema_test_unix(validate/pass_trace_fast)\nadd_jsonschema_test_unix(validate/pass_trace_unknown_keyword)\nadd_jsonschema_test_unix(validate/pass_resolve)\nadd_jsonschema_test_unix(validate/pass_resolve_custom_extension)\nadd_jsonschema_test_unix(validate/pass_resolve_without_identifier)\nadd_jsonschema_test_unix(validate/pass_resolve_verbose)\nadd_jsonschema_test_unix(validate/pass_verbose)\nadd_jsonschema_test_unix(validate/pass_draft4)\nadd_jsonschema_test_unix(validate/pass_draft6)\nadd_jsonschema_test_unix(validate/pass_draft7)\nadd_jsonschema_test_unix(validate/pass_draft7_top_level_ref)\nadd_jsonschema_test_unix(validate/pass_2019_09)\nadd_jsonschema_test_unix(validate/pass_2020_12)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect_config)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect_config_relative)\nadd_jsonschema_test_unix(validate/pass_2020_12_default_dialect_config_parent)\nadd_jsonschema_test_unix(validate/pass_2020_12_fast)\nadd_jsonschema_test_unix(validate/fail_invalid_config)\nadd_jsonschema_test_unix(validate/fail_draft4)\nadd_jsonschema_test_unix(validate/fail_draft6)\nadd_jsonschema_test_unix(validate/fail_draft7)\nadd_jsonschema_test_unix(validate/fail_2019_09)\nadd_jsonschema_test_unix(validate/fail_2020_12)\nadd_jsonschema_test_unix(validate/fail_2020_12_fast)\nadd_jsonschema_test_unix(validate/pass_jsonl)\nadd_jsonschema_test_unix(validate/pass_jsonl_empty)\nadd_jsonschema_test_unix(validate/pass_jsonl_empty_verbose)\nadd_jsonschema_test_unix(validate/pass_jsonl_verbose)\nadd_jsonschema_test_unix(validate/fail_jsonl_invalid_entry)\nadd_jsonschema_test_unix(validate/fail_jsonl_one)\nadd_jsonschema_test_unix(validate/fail_jsonl_one_verbose)\nadd_jsonschema_test_unix(validate/fail_jsonl_all)\nadd_jsonschema_test_unix(validate/fail_jsonl_all_verbose)\nadd_jsonschema_test_unix(validate/pass_many)\nadd_jsonschema_test_unix(validate/pass_many_verbose)\nadd_jsonschema_test_unix(validate/fail_many)\nadd_jsonschema_test_unix(validate/fail_many_verbose)\nadd_jsonschema_test_unix(validate/fail_yaml)\nadd_jsonschema_test_unix(validate/pass_json_ref_yaml)\nadd_jsonschema_test_unix(validate/pass_process_substitution)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat test/validate/pass_jsonl_em",
+    "time": {
+      "start": 1790720411002,
+      "end": 1790720411019
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

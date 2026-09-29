@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2cdfd7001nRHvn1Dp90RiuD",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2cd38f001IR8LkjtJ65Dg6P",
+  "type": "tool",
+  "callID": "call_00_n0j7nzf5869jevh7hy9lfr3q",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /home/agent/repos/jsonschema && BIN=build/src/jsonschema; TMP=$(mktemp -d)\ncat > \"$TMP/schema.json\" <<'EOF'\n{ \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"$id\": \"https://example.com\", \"$ref\": \"nested\" }\nEOF\nmkdir \"$TMP/schemas\"\ncat > \"$TMP/schemas/remote.json\" <<'EOF'\n{ \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"$id\": \"https://example.com/nested\", \"type\": \"string\" }\nEOF\necho \"===== bundle --without-id stderr =====\"; \"$BIN\" bundle \"$TMP/schema.json\" --resolve \"$TMP/schemas\" --without-id 2>&1 >/dev/null\nrm -rf \"$TMP\""
+    },
+    "output": "===== bundle --without-id stderr =====\nwarning: You are opting in to remove schema identifiers in the bundled schema.\nThe only legit use case of this advanced feature we know of is to workaround\nnon-compliant JSON Schema implementations such as Visual Studio Code.\nOtherwise, this is not needed and may harm other use cases. For example,\nyou will be unable to reference the resulting schema from other schemas\nusing the --resolve/-r option.\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /home/agent/repos/jsonschema && BIN=build/src/jsonschema;",
+    "time": {
+      "start": 1790719090654,
+      "end": 1790719090859
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "The bundle test with my schema failed because it needs --resolve. Let me redo bundle with a resolvable nested schema to see the warning. Use the same setup as the bundle test.\n\nFor resolver warning, need a scenario where `result` is false. Let me look at `add` function to understand when it returns false. Let me read resolver.h add function.\n\nActually not essential — the formatting of the multiline is mechanical. But let me verify bundle multiline output one prefix.\n\nLet me replicate the bundle test exactly.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

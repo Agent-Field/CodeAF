@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef46daf8001xywrmynE0J4HBm",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef46d5cb0013IM4En7dLAO5ae",
+  "type": "tool",
+  "callID": "call_00_9f9nb2equffuvvvj6x6mwk87",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/goreleaser/internal/shell/shell.go"
+    },
+    "output": "<path>/root/repos/goreleaser/internal/shell/shell.go</path>\n<type>file</type>\n<content>\n1: // Package shell handles shell commands.\n2: package shell\n3: \n4: import (\n5: \t\"bytes\"\n6: \t\"cmp\"\n7: \t\"fmt\"\n8: \t\"io\"\n9: \t\"os/exec\"\n10: \t\"strings\"\n11: \t\"time\"\n12: \n13: \t\"github.com/caarlos0/log\"\n14: \t\"github.com/goreleaser/goreleaser/v2/internal/gio\"\n15: \t\"github.com/goreleaser/goreleaser/v2/internal/logext\"\n16: \t\"github.com/goreleaser/goreleaser/v2/pkg/context\"\n17: )\n18: \n19: // Run a shell command with given arguments and envs\n20: func Run(ctx *context.Context, dir string, command, env []string, output bool) error {\n21: \t/* #nosec */\n22: \tcmd := exec.CommandContext(ctx, command[0], command[1:]...)\n23: \tcmd.Env = env\n24: \n25: \tvar b bytes.Buffer\n26: \tw := gio.Safe(&b)\n27: \n28: \tcmd.Stderr = io.MultiWriter(logext.NewConditionalWriter(output), w)\n29: \tcmd.Stdout = io.MultiWriter(logext.NewConditionalWriter(output), w)\n30: \n31: \tif dir != \"\" {\n32: \t\tcmd.Dir = dir\n33: \t}\n34: \n35: \tlog.WithField(\"cmd\", command).\n36: \t\tWithField(\"dir\", dir).\n37: \t\tDebug(\"running\")\n38: \n39: \tstart := time.Now()\n40: \tdefer logext.Duration(start, time.Second*5)\n41: \n42: \tif err := cmd.Run(); err != nil {\n43: \t\treturn fmt.Errorf(\n44: \t\t\t\"shell: '%s': %w: %s\",\n45: \t\t\tstrings.Join(command, \" \"),\n46: \t\t\terr,\n47: \t\t\tcmp.Or(strings.TrimSpace(b.String()), \"[no output]\"),\n48: \t\t)\n49: \t}\n50: \n51: \treturn nil\n52: }\n\n(End of file - total 52 lines)\n</content>",
+    "metadata": {
+      "preview": "// Package shell handles shell commands.\npackage shell\n\nimport (\n\t\"bytes\"\n\t\"cmp\"\n\t\"fmt\"\n\t\"io\"\n\t\"os/exec\"\n\t\"strings\"\n\t\"time\"\n\n\t\"github.com/caarlos0/log\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/gio\"\n\t\"github.com/goreleaser/goreleaser/v2/internal/logext\"\n\t\"github.com/goreleaser/goreleaser/v2/pkg/context\"\n)\n\n// Run a shell command with given arguments and envs\nfunc Run(ctx *context.Context, dir string, command, env []string, output bool) error {",
+      "truncated": false,
+      "loaded": []
+    },
+    "title": "internal/shell/shell.go",
+    "time": {
+      "start": 1790720793339,
+      "end": 1790720793349
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me read the shell package files.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

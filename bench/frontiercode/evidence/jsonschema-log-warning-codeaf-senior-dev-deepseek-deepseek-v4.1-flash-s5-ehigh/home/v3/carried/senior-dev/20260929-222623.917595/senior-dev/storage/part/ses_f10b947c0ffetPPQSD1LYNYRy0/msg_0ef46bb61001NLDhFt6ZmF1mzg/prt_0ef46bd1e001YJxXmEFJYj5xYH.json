@@ -1,0 +1,37 @@
+{
+  "id": "prt_0ef46bd1e001YJxXmEFJYj5xYH",
+  "sessionID": "ses_f10b947c0ffetPPQSD1LYNYRy0",
+  "messageID": "msg_0ef46bb61001NLDhFt6ZmF1mzg",
+  "type": "tool",
+  "callID": "call_01a0ef46bc4971d8bb3c0260",
+  "tool": "grep",
+  "state": {
+    "status": "completed",
+    "input": {
+      "pattern": "warning:",
+      "path": "/root/repos/jsonschema/src"
+    },
+    "output": "Found 5 matches\n/root/repos/jsonschema/src/resolver.h:\n  Line 100:               << \"warning: No schema resources were imported from this file\\n\";\n\n\n/root/repos/jsonschema/src/command_validate.cc:\n  Line 57:       std::cerr << \"warning: Failed to parse pre-compiled schema template. \"\n\n  Line 288:         LOG_VERBOSE(options) << \"warning: The JSONL file is empty\\n\";\n\n\n/root/repos/jsonschema/src/command_bundle.cc:\n  Line 38:     std::cerr << \"warning: You are opting in to remove schema identifiers in \"\n\n\n/root/repos/jsonschema/src/command_lint.cc:\n  Line 32:           << \"warning: Cannot exclude unknown rule: \" << *iterator << \"\\n\";\n",
+    "metadata": {
+      "matches": 5,
+      "truncated": false
+    },
+    "title": "warning:",
+    "time": {
+      "start": 1790720785698,
+      "end": 1790720785711
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me search for warning sites.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

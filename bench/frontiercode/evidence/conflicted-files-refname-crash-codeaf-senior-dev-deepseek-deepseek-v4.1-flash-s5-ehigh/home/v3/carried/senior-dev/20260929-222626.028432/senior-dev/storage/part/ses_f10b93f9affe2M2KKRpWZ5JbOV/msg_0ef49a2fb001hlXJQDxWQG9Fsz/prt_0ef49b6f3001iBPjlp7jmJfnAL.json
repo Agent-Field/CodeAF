@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef49b6f3001iBPjlp7jmJfnAL",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef49a2fb001hlXJQDxWQG9Fsz",
+  "type": "text",
+  "text": "Let me verify adding `--` doesn't alter output in the normal (no-collision) case, to ensure nothing is lost.",
+  "time": {
+    "start": 1790720980723,
+    "end": 1790720980733
+  }
+}

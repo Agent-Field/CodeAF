@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef3478a4001nqnAsZtYpjUsTX",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef346bb1001hrIOU9RxPKSxLp",
+  "type": "text",
+  "text": "Done. Summary:\n\n**Change** (`pre_commit/git.py`, `get_conflicted_files`): appended a `--` separator after the `HEAD`/`MERGE_HEAD` refnames in the `git diff --name-only --no-ext-diff -z -m <tree> HEAD MERGE_HEAD` call. This tells git those arguments are unambiguously revisions, not pathspecs, so a tracked worktree file named `HEAD` or `MERGE_HEAD` no longer causes `fatal: ambiguous argument`. The enumeration still returns the full union of MERGE_MSG conflict filenames and merge-diff filenames — nothing caught, nothing dropped.\n\n**Regression test** (`tests/git_test.py`): `test_get_conflicted_files_refname_collision` rides the existing `in_merge_conflict` fixture, creates tracked files named `HEAD`, `MERGE_HEAD`, and `other_file`, and asserts the complete set `{conflict_file, HEAD, MERGE_HEAD, other_file}`.\n\n**Evidence**\n- Pinned command `python -m pytest tests/git_test.py` → **33 passed**.\n- Before the fix the new test fails with exit 128 and `fatal: ambiguous argument 'HEAD': both revision and filename`.\n- A wrong \"fix\" placing `--` before the refnames also fails the test (silent partial set missing `other_file`), so the test guards the silent-failure mode too.\n- No lines over 79 chars, no double quotes/f-strings added. The broader suite's failures are environmental (missing rust/swift/docker/r toolchains and root-user permission tests) and unrelated.",
+  "time": {
+    "start": 1790719588516,
+    "end": 1790719588520
+  }
+}

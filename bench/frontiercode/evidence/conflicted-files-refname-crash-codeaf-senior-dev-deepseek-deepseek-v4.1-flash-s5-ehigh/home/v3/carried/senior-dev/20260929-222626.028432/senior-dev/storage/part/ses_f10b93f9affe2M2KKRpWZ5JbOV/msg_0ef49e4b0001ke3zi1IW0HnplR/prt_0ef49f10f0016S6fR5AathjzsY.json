@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef49f10f0016S6fR5AathjzsY",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef49e4b0001ke3zi1IW0HnplR",
+  "type": "tool",
+  "callID": "call_00_b1vd7ep0jv1k8gguww2unh5r",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Separated the refnames from pathspecs in get_conflicted_files by appending `--` to the `git diff` invocation, so a tracked file named HEAD/MERGE_HEAD no longer makes the command die with \"ambiguous argument\", while still returning the full union of merge-conflict and merge-diff filenames; added a regression test riding on the existing in_merge_conflict fixture.",
+      "evidence": "Pinned command `python -m pytest tests/git_test.py` => 33 passed (was 32 baseline; new test included), exit 0. Before the fix the new test failed with `pre_commit.util.CalledProcessError: command: (..., '-m', <tree>, 'HEAD', 'MERGE_HEAD')` / `fatal: ambiguous argument 'HEAD': both revision and filename`, return code 128. After appending `'--'`, the test asserts the complete set {'conflict_file', 'HEAD', 'MERGE_HEAD'}. Verified in a scratch merge repo that adding `--` leaves the diff output unchanged in the no-collision case (`conflict_file extra_file` both before and after). Broader run `python -m pytest tests --ignore=tests/languages` gave 625 passed, 3 failed, 1 skipped, 3 xfailed; the 3 failures (error_handler_test.py::test_error_handler_read_only_filesystem, staged_files_only_test.py::test_failed_diff_does_not_discard_changes, store_test.py::test_mark_config_as_used_readonly) are pre-existing read-only-filesystem assertions that fail because tests run as root and are unrelated to this change.",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 1575 bytes across 3 file(s), tree a8ced3a48ca7\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790720995603,
+      "end": 1790720995665
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

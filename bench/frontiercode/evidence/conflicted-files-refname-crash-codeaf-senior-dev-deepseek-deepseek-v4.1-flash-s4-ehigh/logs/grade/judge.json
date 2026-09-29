@@ -1,0 +1,38 @@
+{
+  "criteria": {
+    "conflict-set-still-complete": {
+      "pass": true,
+      "reasoning": "The diff adds a '--' separator after 'HEAD' and 'MERGE_HEAD' arguments in the git diff command. This separator disambiguates revisions from pathspecs without changing the command's scope. The command still requests both merge-conflict filenames (via '-m' flag with tree_hash, HEAD, MERGE_HEAD) and merge-diff filenames (the diff between HEAD and MERGE_HEAD). The '--' separator is placed after all revisions and before any potential pathspecs, which is the correct position according to git conventions. The change does not drop either diff mode, does not narrow the diff scope, and does not catch/su",
+      "usage": {
+        "prompt_tokens": 604,
+        "completion_tokens": 235,
+        "total_tokens": 839,
+        "cost": 0.005337,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.005337,
+          "upstream_inference_prompt_cost": 0.001812,
+          "upstream_inference_completions_cost": 0.003525
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 604,
+    "completion_tokens": 235,
+    "calls": 1
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef42b363001939CXDQsdukrtA",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef42ad2b001B2i2qDLovYm5i0",
+  "type": "tool",
+  "callID": "call_00_b3afueaxjfbtexsrj8cyu2z8",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && cat tox.ini"
+    },
+    "output": "[tox]\nenvlist = py,pypy3,pre-commit\n\n[testenv]\ndeps = -rrequirements-dev.txt\npassenv = *\ncommands =\n    coverage erase\n    coverage run -m pytest {posargs:tests} --ignore=tests/languages --durations=20\n    coverage report --omit=pre_commit/languages/*,tests/languages/*\n\n[testenv:pre-commit]\nskip_install = true\ndeps = pre-commit\ncommands = pre-commit run --all-files --show-diff-on-failure\n\n[pep8]\nignore = E265,E501,W504\n\n[pytest]\nenv =\n    GIT_AUTHOR_NAME=test\n    GIT_COMMITTER_NAME=test\n    GIT_AUTHOR_EMAIL=test@example.com\n    GIT_COMMITTER_EMAIL=test@example.com\n    GIT_ALLOW_PROTOCOL=file\n    VIRTUALENV_NO_DOWNLOAD=1\n    PRE_COMMIT_NO_CONCURRENCY=1\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && cat tox.ini",
+    "time": {
+      "start": 1790720521063,
+      "end": 1790720521085
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "flake8 config is in tox.ini perhaps. Let me check.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

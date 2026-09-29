@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3c7972001fNz9TNqs5YlrFF",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3c7022001RnVT1DVtKH9f72",
+  "type": "tool",
+  "callID": "call_00_4hfbs1d5hrezlsbtvgajz42u",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/pre-commit && git show 7b88c63:pre_commit/git.py > pre_commit/git.py && python -m pytest tests/git_test.py -q -k tracked_file_named_like_ref 2>&1 | tail -8; git checkout HEAD -- pre_commit/git.py && echo \"restored\"; git status --short"
+    },
+    "output": "----------------------------- Captured stdout call -----------------------------\n[INFO] Checking merge-conflict files only.\n------------------------------ Captured log call -------------------------------\nINFO     pre_commit.git:git.py:115 Checking merge-conflict files only.\n=========================== short test summary info ============================\nFAILED tests/git_test.py::test_get_conflicted_files_tracked_file_named_like_ref[HEAD]\nFAILED tests/git_test.py::test_get_conflicted_files_tracked_file_named_like_ref[MERGE_HEAD]\n2 failed, 32 deselected in 0.37s\nrestored\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/pre-commit && git show 7b88c63:pre_commit/git",
+    "time": {
+      "start": 1790720113014,
+      "end": 1790720113874
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "34 passed (33 + 1 new parametrized = 2 test cases added, so 35? Wait originally 33 tests. I added a parametrized test with 2 cases = 2 tests, so 35. But shows 34. Hmm, maybe originally 32? Let me check: earlier run after adding one test showed 33 passed. Then I replaced with parametrized 2 cases, so should be 33 - 1 + 2 = 34. Yes correct: original was 32, +1 = 33, then -1 +2 = 34. Good.\n\nNow verify without fix the parametrized test fails. Let me test quickly by reverting git.py from 7b88c63.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "prt_0ef3d8d83001QtLRFGDwO1qJeL",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3d85b5001kABt3l7I2y3U2U",
+  "type": "tool",
+  "callID": "call_00_5dfncaff8qus9ipaw8hslcjr",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && go test -v -run TestRunCommand ./internal/shell/ 2>&1 | tail -25",
+      "timeout_ms": 120000
+    },
+    "output": "=== RUN   TestRunCommand\n=== RUN   TestRunCommand/simple\n=== RUN   TestRunCommand/empty_command\n=== RUN   TestRunCommand/cmd_failed\n=== RUN   TestRunCommand/cmd_with_output\n=== RUN   TestRunCommand/with_env_and_dir\n--- PASS: TestRunCommand (0.01s)\n    --- PASS: TestRunCommand/simple (0.00s)\n    --- PASS: TestRunCommand/empty_command (0.00s)\n    --- PASS: TestRunCommand/cmd_failed (0.00s)\n    --- PASS: TestRunCommand/cmd_with_output (0.00s)\n    --- PASS: TestRunCommand/with_env_and_dir (0.00s)\nPASS\nok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.013s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && go test -v -run TestRunCommand ",
+    "time": {
+      "start": 1790720183687,
+      "end": 1790720184782
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Build and tests pass. gofmt reported nothing. Let me run with -v to confirm the new subtest runs. Also check golangci-lint if available.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

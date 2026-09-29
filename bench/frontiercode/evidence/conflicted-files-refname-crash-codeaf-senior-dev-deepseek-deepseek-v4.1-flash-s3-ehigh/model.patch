@@ -1,0 +1,42 @@
+diff --git a/pre_commit/git.py b/pre_commit/git.py
+index 19aac38..e00e38d 100644
+--- a/pre_commit/git.py
++++ b/pre_commit/git.py
+@@ -126,7 +126,9 @@ def get_conflicted_files() -> set[str]:
+     merge_diff_filenames = zsplit(
+         cmd_output(
+             'git', 'diff', '--name-only', '--no-ext-diff', '-z',
+-            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',
++            # refnames and pathspecs are separated by '--' so that a tracked
++            # file named like a ref (eg. HEAD) is not ambiguous
++            '-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',
+         )[1],
+     )
+     return set(merge_conflict_filenames) | set(merge_diff_filenames)
+diff --git a/tests/git_test.py b/tests/git_test.py
+index 93f5a1c..66e6a53 100644
+--- a/tests/git_test.py
++++ b/tests/git_test.py
+@@ -141,6 +141,22 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):
+     assert ret == {'conflict_file'}
+ 
+ 
++@pytest.mark.parametrize('refname', ('HEAD', 'MERGE_HEAD'))
++def test_get_conflicted_files_tracked_file_named_like_ref(
++        in_merge_conflict, refname,
++):
++    resolve_conflict()
++
++    # A tracked file whose name collides with a refname must not make the
++    # merge-diff enumeration ambiguous.
++    with open(refname, 'w') as ref_file:
++        ref_file.write('x')
++    cmd_output('git', 'add', refname)
++
++    ret = set(git.get_conflicted_files())
++    assert ret == {'conflict_file', refname}
++
++
+ MERGE_MSG = b"Merge branch 'foo' into bar\n\nConflicts:\n\tconflict_file\n"
+ OTHER_MERGE_MSG = MERGE_MSG + b'\tother_conflict_file\n'
+ 

@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef4342b2001eZ10rSx0T7YUgg",
+  "sessionID": "ses_f10bf0cd0ffeEUC06Zl3G5bXI0",
+  "messageID": "msg_0ef4337cd0017i8wpQZNO4bO5d",
+  "type": "text",
+  "text": "Done.\n\n**What I changed**\n\n- `pre_commit/git.py` — in `get_conflicted_files()`, appended the `--` separator to the `git diff --name-only --no-ext-diff -z -m <tree> HEAD MERGE_HEAD` invocation. This tells git the preceding `HEAD`/`MERGE_HEAD` tokens are revisions, not pathspecs, so a tracked file with a colliding name can no longer trigger `fatal: ambiguous argument`. The refs stay *before* `--`, so the combined-diff semantics and full result set are unchanged (no empty/partial success).\n- `tests/git_test.py` — added `test_get_conflicted_files_refname_collision`, parametrized over `HEAD` and `MERGE_HEAD`, reusing the existing `in_merge_conflict` fixture. It resolves the conflict, stages a tracked file named after the refname plus `other_file`, and asserts the full set `{refname, 'conflict_file', 'other_file'}`.\n\n**Evidence**\n\n- Before the fix, the new test failed with `fatal: ambiguous argument 'HEAD': both revision and filename` (rc 128).\n- After: `python -m pytest tests/git_test.py` → **34 passed**, exit 0.\n- `tests/commands/run_test.py -k \"merge or unmerged\"` → 6 passed; combined `tests/git_test.py tests/commands/run_test.py` → 129 passed.\n- `git diff 7b88c63 --stat` shows only the two intended files (+3 / +17), no long lines or trailing whitespace.",
+  "time": {
+    "start": 1790720557746,
+    "end": 1790720557749
+  }
+}

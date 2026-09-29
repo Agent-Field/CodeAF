@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef4116a3001CLl2nTiskGzqD0",
+  "sessionID": "ses_f10bf14efffe8G094MAUtMm6rJ",
+  "messageID": "msg_0ef4112bb001a0njhX0gVjIU1c",
+  "type": "reasoning",
+  "text": "There's no non-verbose `fail_lint_disable_unknown` test. Let me check fail_lint_disable_one_verbose and fail_lint_only_unknown_verbose etc. But the warning site at lint is currently LOG_VERBOSE-gated. Converting to LOG_WARNING always prints. Is there a non-verbose test that exercises the unknown-rule warning? Search tests for \"Cannot exclude unknown rule\" only found the verbose one. So no non-verbose test. Good.\n\nNow the bundle multi-line test: `pass_without_id.sh` and `_verbose.sh` expect warning with only the first line prefixed. If we route every continuation through LOG_WARNING, the output changes to each line prefixed. Let me look at both tests.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "There's no non-verbose `fail_lint_disable_unknown` test. Let me check fail_lint_disable_one_verbose and fail_lint_only_unknown_verbose etc. But the warning site at lint is currently LOG_VERBOSE-gated. Converting to LOG_WARNING always prints. Is there a non-verbose test that exercises the unknown-rule warning? Search tests for \"Cannot exclude unknown rule\" only found the verbose one. So no non-verbose test. Good.\n\nNow the bundle multi-line test: `pass_without_id.sh` and `_verbose.sh` expect warning with only the first line prefixed. If we route every continuation through LOG_WARNING, the output changes to each line prefixed. Let me look at both tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720415395,
+    "end": 1790720415406
+  }
+}

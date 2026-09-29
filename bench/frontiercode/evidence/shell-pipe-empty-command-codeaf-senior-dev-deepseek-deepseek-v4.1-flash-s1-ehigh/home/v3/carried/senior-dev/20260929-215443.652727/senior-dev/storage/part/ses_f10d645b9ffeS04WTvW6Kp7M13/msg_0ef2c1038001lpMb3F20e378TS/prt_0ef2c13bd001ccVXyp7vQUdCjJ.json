@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2c13bd001ccVXyp7vQUdCjJ",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "messageID": "msg_0ef2c1038001lpMb3F20e378TS",
+  "type": "tool",
+  "callID": "call_01a0ef2c12dc7635bdf6991f",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && git show HEAD:internal/shell/shell.go | grep -n \"len(command)\"; echo \"HEAD exit\"; git hash-object internal/shell/shell.go; git rev-parse HEAD:internal/shell/shell.go"
+    },
+    "output": "21:\tif len(command) == 0 {\nHEAD exit\nfc4bd3b74aaacaa6b711856d653d0a82f0ed4adc\nfc4bd3b74aaacaa6b711856d653d0a82f0ed4adc\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && git show HEAD:internal/shell/sh",
+    "time": {
+      "start": 1790719038401,
+      "end": 1790719038423
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "`git ls-files -v` shows `H` = cached/normal (not assume-unchanged, which would be lowercase h). Yet git status shows clean. Weird. Maybe the index already contains the modified content? Possibly there is a git filter? Or maybe the repo's .git is a symlink to elsewhere and the tool writes... no.\n\nWait, maybe the working tree was modified and the index got updated by some background process? Unlikely.\n\nLet me check `git diff --no-index` between HEAD version and working file. Or `git show HEAD:internal/shell/shell.go | grep len`.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

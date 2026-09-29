@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3713ad001VPf9ZgEnDnVrJw",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef371147001PGQ9tIv3EqbKJK",
+  "type": "reasoning",
+  "text": "Build timed out, probably because build ./... is large. Let me run tests separately with longer timeout and build the shell package only.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Build timed out, probably because build ./... is large. Let me run tests separately with longer timeout and build the shell package only.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719759277,
+    "end": 1790719759288
+  }
+}

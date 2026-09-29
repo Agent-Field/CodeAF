@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef2cd32e0012v4ojWP3XNTs52",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef2cbcf20016owi5qxRX6884q",
+  "type": "tool",
+  "callID": "call_00_x62yf5pkb942vc1j12brz4xi",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /home/agent/repos/jsonschema && BIN=build/src/jsonschema; TMP=$(mktemp -d)\ncat > \"$TMP/schema.json\" <<'EOF'\n{ \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"type\": \"string\", \"enum\": [\"foo\"] }\nEOF\necho \"===== lint unknown exclude, NON-verbose stderr =====\"; \"$BIN\" lint \"$TMP/schema.json\" --exclude foo_bar 2>&1 >/dev/null || true\necho \"===== validate empty jsonl, NON-verbose stderr =====\"; touch \"$TMP/empty.jsonl\"; \"$BIN\" validate \"$TMP/schema.json\" \"$TMP/empty.jsonl\" 2>&1 >/dev/null || true\nrm -rf \"$TMP\""
+    },
+    "output": "===== lint unknown exclude, NON-verbose stderr =====\nwarning: Cannot exclude unknown rule: foo_bar\n===== validate empty jsonl, NON-verbose stderr =====\nwarning: The JSONL file is empty\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /home/agent/repos/jsonschema && BIN=build/src/jsonschema;",
+    "time": {
+      "start": 1790719087410,
+      "end": 1790719087465
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Both clean. Now let me verify the actual behaviors manually for the multi-line warnings and always-on warning:\n- bundle without-id output one prefix.\n- resolver warning.\n- lint unknown rule non-verbose now emits warning.\n- validate empty jsonl non-verbose emits warning.\n\nThe full test suite already covers bundle and validate verbose; but let me verify a couple manually to be confident, especially the resolver multiline and the lint non-verbose.\n\nLet me construct quick manual tests.\n\nActually, the full ctest passing covers bundle pass_without_id (one prefix) and validate tests. For resolver warning, there's no test; let me create a quick manual scenario.\n\nScenario for resolver warning: validate with --resolve pointing to a schema file with no identifiers. Draft-04 schema without $id. Actually in `pass_resolve_without_identifier.sh` they validate with a draft-04 no-id schema and --verbose; expected no warning. Wait, that test expects no \"No schema resources\" warning! Let me re-check: the schema `{ \"$schema\": \"http://json-schema.org/draft-04/schema#\", \"type\": \"boolean\" }` has no id. `this-\u003eadd(...)` returns result. If result is false, warning. But test expected output has no warning. So `result` must be true (the top-level schema gets registered under the file URI). So the warning triggers only when no resources at all imported.\n\nLet me not worry; the conversion preserves exact output.\n\nLet me do a manual check of the lint non-verbose behavior to ensure warning appears unconditionally and output format is right.\n\nRun:\n```\ntmp=$(mktemp -d)\ncat schema\njsonschema lint schema --exclude foo_bar 2\u003eerr\ncat err\n```\nExpect \"warning: Cannot exclude unknown rule: foo_bar\" plus lint findings. The verbose test expects warning first then lint output. Non-verbose should now include warning too. Let's verify.\n\nAlso check there's no duplicate prefix.\n\nLet me run manual checks.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

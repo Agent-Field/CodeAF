@@ -1,0 +1,22 @@
+{
+  "flagged": false,
+  "reasons": [],
+  "soft": [
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:39",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:40",
+    "transcript: upstream slug mentioned without fetch evidence in delegate-actions.jsonl:8",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:40",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:41",
+    "transcript: upstream slug mentioned without fetch evidence in records.jsonl:9"
+  ],
+  "counts": {
+    "proxy_hosts": 2,
+    "proxy_lines": 2,
+    "model_plane_hosts": [
+      "codeaf.agentfield.ai",
+      "models.dev"
+    ],
+    "model_plane_seen": true,
+    "upstream_slug": "pre-commit/pre-commit"
+  }
+}

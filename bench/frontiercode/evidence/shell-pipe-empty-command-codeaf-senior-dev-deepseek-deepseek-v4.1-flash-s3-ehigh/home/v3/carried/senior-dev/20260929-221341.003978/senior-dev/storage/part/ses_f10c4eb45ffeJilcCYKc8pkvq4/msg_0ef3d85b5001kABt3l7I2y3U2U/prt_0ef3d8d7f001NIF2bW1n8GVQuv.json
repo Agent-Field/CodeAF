@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3d8d7f001NIF2bW1n8GVQuv",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3d85b5001kABt3l7I2y3U2U",
+  "type": "reasoning",
+  "text": "Build and tests pass. gofmt reported nothing. Let me run with -v to confirm the new subtest runs. Also check golangci-lint if available.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Build and tests pass. gofmt reported nothing. Let me run with -v to confirm the new subtest runs. Also check golangci-lint if available.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720183679,
+    "end": 1790720183699
+  }
+}

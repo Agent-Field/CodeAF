@@ -1,0 +1,39 @@
+{
+  "id": "prt_0ef477169001vGP5kq14IsGQ5m",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef476ad8001Hp02l34tORT6Io",
+  "type": "tool",
+  "callID": "call_00_p36aorxzyunuuiq48hnebkou",
+  "tool": "read",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "/root/repos/pre-commit/tests/git_test.py",
+      "limit": 15,
+      "offset": 235
+    },
+    "output": "<path>/root/repos/pre-commit/tests/git_test.py</path>\n<type>file</type>\n<content>\n235: \n236: \n237: od\n238: def test_get_conflicted_files_refname_collision(in_merge_conflict):\n239:     open('HEAD', 'a').close()\n240:     open('MERGE_HEAD', 'a').close()\n241:     cmd_output('git', 'add', '.')\n242:     ret = git.get_conflicted_files()\n243:     assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD'}\n244: \n245: \n246: def test_intent_to_add(in_git_dir):\n247:     in_git_dir.join('a').ensure()\n248:     cmd_output('git', 'add', '--intent-to-add', 'a')\n249: \n\n(Showing lines 235-249 of 293. Use offset=250 to continue.)\n</content>",
+    "metadata": {
+      "preview": "\n\nod\ndef test_get_conflicted_files_refname_collision(in_merge_conflict):\n    open('HEAD', 'a').close()\n    open('MERGE_HEAD', 'a').close()\n    cmd_output('git', 'add', '.')\n    ret = git.get_conflicted_files()\n    assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD'}\n\n\ndef test_intent_to_add(in_git_dir):\n    in_git_dir.join('a').ensure()\n    cmd_output('git', 'add', '--intent-to-add', 'a')\n",
+      "truncated": true,
+      "loaded": []
+    },
+    "title": "tests/git_test.py",
+    "time": {
+      "start": 1790720831856,
+      "end": 1790720832047
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Oops, I accidentally wrote \"od\" at the start of the newString. Let me fix that. The output shows \"od\\ndef test_...\" — that inserted a stray \"od\" line. Let me view.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

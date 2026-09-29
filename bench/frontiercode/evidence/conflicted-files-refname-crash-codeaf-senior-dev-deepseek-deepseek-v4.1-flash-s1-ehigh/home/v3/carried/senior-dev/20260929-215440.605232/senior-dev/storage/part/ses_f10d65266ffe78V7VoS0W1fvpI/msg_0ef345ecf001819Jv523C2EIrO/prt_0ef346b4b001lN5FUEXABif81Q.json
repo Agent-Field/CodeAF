@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef346b4b001lN5FUEXABif81Q",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef345ecf001819Jv523C2EIrO",
+  "type": "tool",
+  "callID": "call_00_nui1uzm53c31cw1pcixn3go6",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Separated the refnames HEAD and MERGE_HEAD from pathspecs in get_conflicted_files by appending a `--` separator, so git diff no longer dies with \"ambiguous argument\" when a tracked file is named like a refname, while still returning the full union of MERGE_MSG conflicts and merge-diff filenames; added a fixture-based regression test that covers both the crash and the silent-partial-set failure mode.",
+      "evidence": "Pinned command `python -m pytest tests/git_test.py` -> 33 passed (was 32 before adding the regression test). New test `test_get_conflicted_files_refname_collision` creates tracked files named HEAD, MERGE_HEAD plus other_file in the in_merge_conflict fixture and asserts the complete set {'conflict_file', 'HEAD', 'MERGE_HEAD', 'other_file'}. I verified the test fails (exit 128, `fatal: ambiguous argument 'HEAD': both revision and filename`) with the pre-fix code, and also fails when `--` is placed before the refnames (silent partial-set pathspec interpretation, missing other_file), then passes after the fix. `awk 'length>79'` reports no long lines; no double quotes or f-strings introduced. The wider suite failure set (rust/swift/docker/r toolchains, read-only/log-permission tests run as root) is environmental and unrelated to this change.",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 1762 bytes across 2 file(s), tree fa0550ea82df\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790719585103,
+      "end": 1790719585170
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Clean. Now submit.\n\nEvidence: pinned command `python -m pytest tests/git_test.py` → 33 passed. Also showed regression test fails on unfixed code (ambiguous argument, exit 128) and fails on wrong pathspec-separator variant (missing other_file), and full suite failures are environmental (root/rust/docker).\n\nLet me submit with checklist_satisfied true.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "prt_0ef494e46001m4YORQHU5yTSYl",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef4946b0001EDMzt5SokBiM6I",
+  "type": "tool",
+  "callID": "call_00_deo9q9jwwzqydvl8g5rabupm",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && go test -run TestRunCommand -v ./internal/shell/ 2>&1 | tail -25",
+      "timeout_ms": 120000
+    },
+    "output": "=== RUN   TestRunCommand\n=== RUN   TestRunCommand/simple\n=== RUN   TestRunCommand/empty_command\n=== RUN   TestRunCommand/cmd_failed\n=== RUN   TestRunCommand/cmd_with_output\n=== RUN   TestRunCommand/with_env_and_dir\n--- PASS: TestRunCommand (0.09s)\n    --- PASS: TestRunCommand/simple (0.08s)\n    --- PASS: TestRunCommand/empty_command (0.00s)\n    --- PASS: TestRunCommand/cmd_failed (0.00s)\n    --- PASS: TestRunCommand/cmd_with_output (0.00s)\n    --- PASS: TestRunCommand/with_env_and_dir (0.00s)\nPASS\nok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.096s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && go test -run TestRunCommand -v ",
+    "time": {
+      "start": 1790720953931,
+      "end": 1790720956158
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

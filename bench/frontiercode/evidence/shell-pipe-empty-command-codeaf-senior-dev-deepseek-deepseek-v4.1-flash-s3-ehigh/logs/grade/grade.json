@@ -1,0 +1,112 @@
+{
+  "task": "shell-pipe-empty-command",
+  "rubric_schema": 1,
+  "judge_model": "openrouter/anthropic/claude-sonnet-4.5",
+  "judge_prompt_version": "fc-judge-1",
+  "criteria": {
+    "empty-command-skipped-not-crashed": {
+      "status": "pass",
+      "note": "The change adds a guard at the beginning of the Run function that checks if the command slice is empty (len(command) == 0). When empty, it logs a warning and returns nil (success) rather than continuing to the line that would panic by indexing command[0]. This satisfies the criterion: it handles the",
+      "judge": {
+        "pass": true,
+        "reasoning": "The change adds a guard at the beginning of the Run function that checks if the command slice is empty (len(command) == 0). When empty, it logs a warning and returns nil (success) rather than continuing to the line that would panic by indexing command[0]. This satisfies the criterion: it handles the empty case that would previously cause a panic by skipping execution with a warning, without returning an error or allowing the panic to occur. The guard is placed before any indexing operation, so it protects the entire run path.",
+        "usage": {
+          "prompt_tokens": 582,
+          "completion_tokens": 126,
+          "total_tokens": 708,
+          "cost": 0.003636,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.003636,
+            "upstream_inference_prompt_cost": 0.001746,
+            "upstream_inference_completions_cost": 0.00189
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    "run-contract-unchanged": {
+      "status": "pass",
+      "note": "The change adds an early return when command is empty (len(command) == 0), logging a warning and returning nil. This occurs BEFORE any command execution logic. For non-empty commands, the code path is unchanged: it proceeds to exec.CommandContext with the same arguments, environment, and output hand",
+      "judge": {
+        "pass": true,
+        "reasoning": "The change adds an early return when command is empty (len(command) == 0), logging a warning and returning nil. This occurs BEFORE any command execution logic. For non-empty commands, the code path is unchanged: it proceeds to exec.CommandContext with the same arguments, environment, and output handling as before. The early return does not wrap or modify the error handling for non-empty commands - they still execute through cmd.Run() or cmd.CombinedOutput() (not shown but implied by the output parameter) and any errors from those operations would still be returned unchanged. The change only af",
+        "usage": {
+          "prompt_tokens": 548,
+          "completion_tokens": 155,
+          "total_tokens": 703,
+          "cost": 0.003969,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.003969,
+            "upstream_inference_prompt_cost": 0.001644,
+            "upstream_inference_completions_cost": 0.002325
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    "reference-tests-pass": {
+      "status": "pass",
+      "note": "overlay applied; tests exit 0",
+      "exit_code": 0
+    },
+    "clean-build": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "shell-package-tests-pass": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "reverse-tests-fail": {
+      "status": "pass",
+      "note": "tests exit 1 after revert (fail expected)",
+      "exit_code": 1
+    },
+    "scope-focused": {
+      "status": "pass",
+      "note": "15+/0- in 2 files",
+      "stats": {
+        "files": [
+          "internal/shell/shell.go",
+          "internal/shell/shell_test.go"
+        ],
+        "added": 15,
+        "removed": 0,
+        "binary": false
+      }
+    },
+    "adapted-tests-pass": {
+      "status": "pass",
+      "note": "derived: the verbatim reference tests apply and pass"
+    }
+  },
+  "failed_blockers": [],
+  "rig_criteria": [],
+  "score": 1.0,
+  "pass": true,
+  "status": "done"
+}

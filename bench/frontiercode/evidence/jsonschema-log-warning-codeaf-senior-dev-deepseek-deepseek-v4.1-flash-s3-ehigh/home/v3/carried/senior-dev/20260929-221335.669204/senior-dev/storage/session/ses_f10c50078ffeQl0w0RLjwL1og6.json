@@ -1,0 +1,14 @@
+{
+  "id": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "slug": "0ef3aff98001IYY8ZnNS597htZ",
+  "projectID": "8b6b3d1402f6f0a07a3f7f07bbc70a10438cb7ca",
+  "directory": "/root/repos/jsonschema",
+  "path": ".",
+  "title": "# Add a warning logger and route every warning through it\n\n#",
+  "agent": "coder",
+  "version": "c24796937 built 2026-09-29 19:13",
+  "time": {
+    "created": 1790720016280,
+    "updated": 1790720016515
+  }
+}

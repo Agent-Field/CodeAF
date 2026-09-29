@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3c6788001k27lyVy0050384",
+  "sessionID": "ses_f10c4f877ffeKhJ62itpnegyz1",
+  "messageID": "msg_0ef3c5df3001RK6HeGh9Hy8KBB",
+  "type": "reasoning",
+  "text": "Wait, but there could be an issue with the `MERGE_HEAD` file: when the fixture is set up, and we create a file named MERGE_HEAD, then `git add MERGE_HEAD`. But git's `git add` with `MERGE_HEAD`... let me just run.\n\nActually another concern: for the `MERGE_HEAD` case, the file `MERGE_HEAD` is new (not in HEAD or MERGE_HEAD commit), so it appears in the diff result. Expected `{'conflict_file', 'MERGE_HEAD'}`. But does the merge-conflict parser also add anything? merge_conflict_filenames = ['conflict_file']. Good.\n\nLet me run the tests.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Wait, but there could be an issue with the `MERGE_HEAD` file: when the fixture is set up, and we create a file named MERGE_HEAD, then `git add MERGE_HEAD`. But git's `git add` with `MERGE_HEAD`... let me just run.\n\nActually another concern: for the `MERGE_HEAD` case, the file `MERGE_HEAD` is new (not in HEAD or MERGE_HEAD commit), so it appears in the diff result. Expected `{'conflict_file', 'MERGE_HEAD'}`. But does the merge-conflict parser also add anything? merge_conflict_filenames = ['conflict_file']. Good.\n\nLet me run the tests.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720108424,
+    "end": 1790720108435
+  }
+}

@@ -1,0 +1,42 @@
+diff --git a/pre_commit/git.py b/pre_commit/git.py
+index 19aac38..a511504 100644
+--- a/pre_commit/git.py
++++ b/pre_commit/git.py
+@@ -127,6 +127,9 @@ def get_conflicted_files() -> set[str]:
+         cmd_output(
+             'git', 'diff', '--name-only', '--no-ext-diff', '-z',
+             '-m', tree_hash, 'HEAD', 'MERGE_HEAD',
++            # `HEAD` / `MERGE_HEAD` are revisions, not pathspecs -- without
++            # this separator a tracked file sharing their name is ambiguous
++            '--',
+         )[1],
+     )
+     return set(merge_conflict_filenames) | set(merge_diff_filenames)
+diff --git a/tests/git_test.py b/tests/git_test.py
+index 93f5a1c..c448ec0 100644
+--- a/tests/git_test.py
++++ b/tests/git_test.py
+@@ -124,6 +124,23 @@ def test_get_conflicted_files(in_merge_conflict):
+     assert ret == {'conflict_file', 'other_file'}
+ 
+ 
++@pytest.mark.parametrize('refname', ('HEAD', 'MERGE_HEAD'))
++def test_get_conflicted_files_refname_collision(in_merge_conflict, refname):
++    """A tracked file named like a refname must not make git ambiguous"""
++    resolve_conflict()
++
++    with open(refname, 'w') as refname_file:
++        refname_file.write('refname')
++    cmd_output('git', 'add', refname)
++
++    with open('other_file', 'w') as other_file:
++        other_file.write('oh hai')
++    cmd_output('git', 'add', 'other_file')
++
++    ret = set(git.get_conflicted_files())
++    assert ret == {refname, 'conflict_file', 'other_file'}
++
++
+ def test_get_conflicted_files_in_submodule(in_conflicting_submodule):
+     resolve_conflict()
+     assert set(git.get_conflicted_files()) == {'conflict_file'}

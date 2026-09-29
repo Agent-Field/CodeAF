@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29cba60017afVM8dZoZl1TN",
+  "sessionID": "ses_f10d65b7affeR4w8dvexcSM1YG",
+  "messageID": "msg_0ef29c586001qNbyOcrcGqFcba",
+  "type": "reasoning",
+  "text": "Now, let's look at the test `pass_jsonl_empty`. Let me find it.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now, let's look at the test `pass_jsonl_empty`. Let me find it.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718888870,
+    "end": 1790718888889
+  }
+}

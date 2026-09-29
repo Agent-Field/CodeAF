@@ -1,0 +1,28 @@
+{
+  "id": "prt_0ef37b9e2001295UaiIuriboLy",
+  "sessionID": "ses_f10cad2e9ffe2RJ2Fn0AsGdEoQ",
+  "messageID": "msg_0ef37b6c6001xCt6yqWMfspBWK",
+  "type": "tool",
+  "callID": "call_01a0ef37b7b572dbb49da1b2",
+  "tool": "submit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "reason": "Added a length guard at the top of shell.Run that logs a warning and returns nil for an empty command slice, with a registered empty-command regression subtest; all other behavior untouched.",
+      "evidence": "go build ./... exited 0. go vet ./internal/shell/ clean. `go test ./internal/shell/ -run TestRunCommand -v` passed: 5 subtests including new TestRunCommand/empty_command (PASS, ok github.com/goreleaser/goreleaser/v2/internal/shell 0.013s). grep confirms log.Warn is the project's existing warning convention. golangci-lint binary not installed in the environment, so lint was checked via go vet only.",
+      "checklist_satisfied": true
+    },
+    "output": "Submission accepted and the tree is frozen: 1005 bytes across 2 file(s), tree 07e05e20d8a0\n\nThis is your answer. Stop editing. Reply with a short summary of what you changed and the evidence it works; nothing you do now can change what ships.",
+    "metadata": {},
+    "title": "submitted",
+    "time": {
+      "start": 1790719801829,
+      "end": 1790719801938
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

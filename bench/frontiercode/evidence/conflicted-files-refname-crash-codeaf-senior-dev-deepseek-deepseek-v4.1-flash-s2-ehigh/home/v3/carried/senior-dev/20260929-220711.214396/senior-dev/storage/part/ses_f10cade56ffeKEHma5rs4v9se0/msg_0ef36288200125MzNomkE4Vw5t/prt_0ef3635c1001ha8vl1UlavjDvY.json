@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3635c1001ha8vl1UlavjDvY",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef36288200125MzNomkE4Vw5t",
+  "type": "reasoning",
+  "text": "Wait 34 passed but before my test added it was 34 too? Let me recount: originally there were 32 tests? Let me check. Earlier run after adding regression test said 34 passed. Hmm actually earlier when I ran with the temp test file it was separate. Let me check: the first full git_test run after adding the test said \"34 passed\". Before adding? Let me verify test count includes my 2 parametrized tests. Let me run with -v filtering.\n\nActually, before I added any test, I didn't run the full git_test.py. Let me just confirm my tests are collected.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Wait 34 passed but before my test added it was 34 too? Let me recount: originally there were 32 tests? Let me check. Earlier run after adding regression test said 34 passed. Hmm actually earlier when I ran with the temp test file it was separate. Let me check: the first full git_test run after adding the test said \"34 passed\". Before adding? Let me verify test count includes my 2 parametrized tests. Let me run with -v filtering.\n\nActually, before I added any test, I didn't run the full git_test.py. Let me just confirm my tests are collected.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790719702465,
+    "end": 1790719702764
+  }
+}

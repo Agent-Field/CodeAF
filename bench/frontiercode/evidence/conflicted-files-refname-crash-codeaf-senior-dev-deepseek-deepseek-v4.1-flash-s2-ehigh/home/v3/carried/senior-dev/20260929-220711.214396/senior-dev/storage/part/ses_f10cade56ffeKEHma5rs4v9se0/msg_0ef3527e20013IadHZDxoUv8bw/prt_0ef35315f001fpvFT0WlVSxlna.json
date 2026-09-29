@@ -1,0 +1,25 @@
+{
+  "id": "prt_0ef35315f001fpvFT0WlVSxlna",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef3527e20013IadHZDxoUv8bw",
+  "type": "tool",
+  "callID": "call_01_w8i80qzw7vzy5on5q2wcyx97",
+  "tool": "grep",
+  "state": {
+    "status": "completed",
+    "input": {
+      "pattern": "MERGE_HEAD",
+      "path": "/root/repos/pre-commit"
+    },
+    "output": "Found 2 matches\n/root/repos/pre-commit/pre_commit/git.py:\n  Line 100:         os.path.exists(os.path.join(git_dir, 'MERGE_HEAD'))\n\n  Line 129:             '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n",
+    "metadata": {
+      "matches": 2,
+      "truncated": false
+    },
+    "title": "MERGE_HEAD",
+    "time": {
+      "start": 1790719635810,
+      "end": 1790719635825
+    }
+  }
+}

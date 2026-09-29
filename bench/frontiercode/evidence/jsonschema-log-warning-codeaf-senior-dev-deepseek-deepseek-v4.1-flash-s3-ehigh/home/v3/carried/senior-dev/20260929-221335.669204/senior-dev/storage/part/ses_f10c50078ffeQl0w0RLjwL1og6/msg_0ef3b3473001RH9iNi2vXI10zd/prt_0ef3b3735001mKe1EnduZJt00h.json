@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b3735001mKe1EnduZJt00h",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3b3473001RH9iNi2vXI10zd",
+  "type": "tool",
+  "callID": "call_01a0ef3b367175779bfa8d16",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && cat Makefile | head -80; echo \"=== compiler flags / format ===\"; grep -rn 'clang-format\\|shellcheck' Makefile cmake/ CMakeLists.txt | head -30"
+    },
+    "output": "# Programs\nCMAKE = cmake\nCTEST = ctest\nCPACK = cpack\n\n# Options\nPRESET = Debug\nSHARED = OFF\nPREFIX = ./build/dist\n\nall: configure compile test\n\nconfigure: .always\n\t$(CMAKE) -S . -B ./build \\\n\t\t-DCMAKE_BUILD_TYPE:STRING=$(PRESET) \\\n\t\t-DCMAKE_COMPILE_WARNING_AS_ERROR:BOOL=ON \\\n\t\t-DJSONSCHEMA_TESTS:BOOL=ON \\\n\t\t-DJSONSCHEMA_TESTS_CI:BOOL=OFF \\\n\t\t-DJSONSCHEMA_CONTINUOUS:BOOL=ON \\\n\t\t-DJSONSCHEMA_DEVELOPMENT:BOOL=ON \\\n\t\t-DBUILD_SHARED_LIBS:BOOL=$(SHARED)\n\ncompile: .always\n\t$(CMAKE) --build ./build --config $(PRESET) --target clang_format\n\t$(CMAKE) --build ./build --config $(PRESET) --target shellcheck\n\t$(CMAKE) --build ./build --config $(PRESET) --parallel 4\n\t$(CMAKE) --install ./build --prefix $(PREFIX) --config $(PRESET) --verbose \\\n\t\t--component sourcemeta_jsonschema\n\t$(CPACK) --config build/CPackConfig.cmake -B build/out -C $(PRESET)\n\ntest: .always\n\t$(CTEST) --test-dir ./build --build-config $(PRESET) \\\n\t\t--output-on-failure --progress --parallel\n\nclean: .always\n\t$(CMAKE) -E rm -R -f build\n\n# For NMake, which doesn't support .PHONY\n.always:\n=== compiler flags / format ===\nMakefile:25:\t$(CMAKE) --build ./build --config $(PRESET) --target shellcheck\nCMakeLists.txt:31:  sourcemeta_target_shellcheck(SOURCES\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && cat Makefile | head -80; echo \"",
+    "time": {
+      "start": 1790720030520,
+      "end": 1790720030540
+    }
+  }
+}

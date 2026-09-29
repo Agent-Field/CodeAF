@@ -1,0 +1,35 @@
+{
+  "id": "prt_0ef3b372e001nIK66X4mU2wjew",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3b3473001RH9iNi2vXI10zd",
+  "type": "tool",
+  "callID": "call_01a0ef3b35e6777182a2cf90",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && grep -rln 'sets any identifiers\\|resources were imported\\|Are you sure this schema' test/ ; echo ---; grep -rn 'add_jsonschema_test_unix(lint' test/CMakeLists.txt"
+    },
+    "output": "---\n271:add_jsonschema_test_unix(lint/pass_lint_fix)\n272:add_jsonschema_test_unix(lint/pass_lint_no_fix)\n273:add_jsonschema_test_unix(lint/fail_lint)\n274:add_jsonschema_test_unix(lint/fail_lint_with_id)\n275:add_jsonschema_test_unix(lint/fail_lint_fix_broken_reference)\n276:add_jsonschema_test_unix(lint/fail_lint_default_dialect)\n277:add_jsonschema_test_unix(lint/fail_lint_default_dialect_config)\n278:add_jsonschema_test_unix(lint/fail_lint_default_dialect_config_relative)\n279:add_jsonschema_test_unix(lint/fail_lint_yaml)\n280:add_jsonschema_test_unix(lint/fail_lint_fix_yaml)\n281:add_jsonschema_test_unix(lint/fail_lint_fix_yml)\n282:add_jsonschema_test_unix(lint/fail_lint_json)\n283:add_jsonschema_test_unix(lint/fail_lint_non_schema)\n284:add_jsonschema_test_unix(lint/fail_lint_non_schema_fix)\n285:add_jsonschema_test_unix(lint/fail_bigint)\n286:add_jsonschema_test_unix(lint/fail_lint_directory_unresolvable)\n287:add_jsonschema_test_unix(lint/fail_lint_directory_unresolvable_fix)\n288:add_jsonschema_test_unix(lint/fail_lint_directory_unresolvable_dialect)\n289:add_jsonschema_test_unix(lint/fail_lint_directory_json)\n290:add_jsonschema_test_unix(lint/fail_lint_disable_one)\n291:add_jsonschema_test_unix(lint/fail_lint_disable_one_verbose)\n292:add_jsonschema_test_unix(lint/fail_lint_disable_unknown_verbose)\n293:add_jsonschema_test_unix(lint/fail_lint_disable_many)\n294:add_jsonschema_test_unix(lint/fail_lint_examples)\n295:add_jsonschema_test_unix(lint/fail_lint_default)\n296:add_jsonschema_test_unix(lint/pass_lint_json)\n297:add_jsonschema_test_unix(lint/pass_lint_fix_json)\n298:add_jsonschema_test_unix(lint/pass_lint_fix_strict)\n299:add_jsonschema_test_unix(lint/pass_lint_fix_indentation)\n300:add_jsonschema_test_unix(lint/pass_lint_ignore_short)\n301:add_jsonschema_test_unix(lint/pass_lint_ignore_long)\n302:add_jsonschema_test_unix(lint/pass_lint_examples_fix)\n303:add_jsonschema_test_unix(lint/pass_lint_examples_no_fix)\n304:add_jsonschema_test_unix(lint/pass_lint_default_fix)\n305:add_jsonschema_test_unix(lint/pass_lint_default_no_fix)\n306:add_jsonschema_test_unix(lint/pass_lint_anonymous_default_with_ref)\n307:add_jsonschema_test_unix(lint/pass_lint_anonymous_nested_default_with_ref)\n308:add_jsonschema_test_unix(lint/pass_lint_default_nested_with_id)\n309:add_jsonschema_test_unix(lint/pass_lint_examples_nested_with_id)\n310:add_jsonschema_test_unix(lint/pass_lint_list_exclude)\n311:add_jsonschema_test_unix(lint/pass_lint_list_long)\n312:add_jsonschema_test_unix(lint/pass_lint_list_short)\n313:add_jsonschema_test_unix(lint/pass_lint_list_strict)\n314:add_jsonschema_test_unix(lint/pass_lint_list_only_one)\n315:add_jsonschema_test_unix(lint/pass_lint_list_only_many)\n316:add_jsonschema_test_unix(lint/pass_lint_fix_no_reformat)\n317:add_jsonschema_test_unix(lint/pass_lint_directory_resolve_many)\n318:add_jsonschema_test_unix(lint/pass_lint_direct_custom_extension)\n319:add_jsonschema_test_unix(lint/fail_lint_only)\n320:add_jsonschema_test_unix(lint/fail_lint_only_with_exclude)\n321:add_jsonschema_test_unix(lint/fail_lint_only_unknown)\n322:add_jsonschema_test_unix(lint/fail_lint_only_unknown_verbose)\n323:add_jsonschema_test_unix(lint/pass_config_path)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && grep -rln 'sets any identifiers",
+    "time": {
+      "start": 1790720030514,
+      "end": 1790720030535
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me check the resolver warning tests. Search test for \"are imported\" or \"sets any identifiers\".",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "prt_0ef38a51f001imWlCAz2gv5QI2",
+  "sessionID": "ses_f10cade56ffeKEHma5rs4v9se0",
+  "messageID": "msg_0ef389778001qm06vf0NEJXCoF",
+  "type": "text",
+  "text": "Done. Here's what changed:\n\n## The fix\nIn `pre_commit/git.py`'s `get_conflicted_files()`, the merge-diff command was passing the refnames `HEAD` and `MERGE_HEAD` bare:\n\n```\ngit diff --name-only --no-ext-diff -z -m <tree> HEAD MERGE_HEAD\n```\n\nA tracked file named `HEAD` (or `MERGE_HEAD`) makes git read the token as both a revision and a path, so the command dies with `fatal: ambiguous argument 'HEAD': both revision and filename`. I added the `--` separator so the refnames are unambiguously revisions and there are no pathspecs:\n\n```\n'-m', tree_hash, 'HEAD', 'MERGE_HEAD', '--',\n```\n\nThis keeps the full result set — the `MERGE_MSG` conflict filenames plus all merge-diff filenames (including a colliding file that actually changed) — and doesn't swallow the error or return an empty/partial set.\n\n## Regression test\nAdded `test_get_conflicted_files_refname_collision`, parametrized over `HEAD` and `MERGE_HEAD`, to `tests/git_test.py` following the existing `in_merge_conflict`/`resolve_conflict` fixture style. It creates and stages a tracked file named after the ref and asserts the result is exactly `{'conflict_file', refname}` (the collision must still be reported, not silently dropped).\n\n## Evidence\n- `python -m pytest tests/git_test.py` → **34 passed**; without the `--` the new test fails with the exact `ambiguous argument 'HEAD'` error.\n- Full suite `python -m pytest tests --ignore=tests/languages` → 626 passed, 1 skipped, 3 xfailed; the 3 failures are read-only/unreadable-permission tests that fail identically on the starting commit because the run is uid 0 (pre-existing, unrelated).\n- `python -m flake8 pre_commit/git.py tests/git_test.py` → exit 0.",
+  "time": {
+    "start": 1790719862047,
+    "end": 1790719862056
+  }
+}

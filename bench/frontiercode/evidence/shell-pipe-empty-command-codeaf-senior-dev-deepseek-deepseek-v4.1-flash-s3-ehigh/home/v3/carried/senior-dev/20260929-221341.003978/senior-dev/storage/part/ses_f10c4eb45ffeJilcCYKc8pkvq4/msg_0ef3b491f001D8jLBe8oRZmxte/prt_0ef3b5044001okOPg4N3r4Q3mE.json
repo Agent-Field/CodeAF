@@ -1,0 +1,29 @@
+{
+  "id": "prt_0ef3b5044001okOPg4N3r4Q3mE",
+  "sessionID": "ses_f10c4eb45ffeJilcCYKc8pkvq4",
+  "messageID": "msg_0ef3b491f001D8jLBe8oRZmxte",
+  "type": "tool",
+  "callID": "call_00_ujkte7ejx3jvm5amqbw46zgx",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/goreleaser && gofmt -l internal/shell/ && go build ./... && go test ./internal/shell/ 2>&1 | tail -20",
+      "timeout_ms": 300000
+    },
+    "output": "ok  \tgithub.com/goreleaser/goreleaser/v2/internal/shell\t0.012s\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/goreleaser && gofmt -l internal/shell/ && go ",
+    "time": {
+      "start": 1790720036935,
+      "end": 1790720181669
+    }
+  },
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": []
+    }
+  }
+}

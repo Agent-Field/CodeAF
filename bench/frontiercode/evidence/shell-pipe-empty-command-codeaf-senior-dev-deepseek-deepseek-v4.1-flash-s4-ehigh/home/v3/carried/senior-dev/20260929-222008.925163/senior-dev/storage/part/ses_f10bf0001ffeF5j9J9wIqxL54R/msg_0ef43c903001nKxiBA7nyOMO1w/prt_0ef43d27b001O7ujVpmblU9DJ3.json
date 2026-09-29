@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef43d27b001O7ujVpmblU9DJ3",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef43c903001nKxiBA7nyOMO1w",
+  "type": "reasoning",
+  "text": "Everything is good. Now submit. Evidence: `go build ./...` succeeded, `go test ./internal/shell/` ok, subtests 5 passed including empty_command, gofmt clean, go vet clean.\n\nThe checklist file exists with items ticked. Let me submit.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Everything is good. Now submit. Evidence: `go build ./...` succeeded, `go test ./internal/shell/` ok, subtests 5 passed including empty_command, gofmt clean, go vet clean.\n\nThe checklist file exists with items ticked. Let me submit.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720594555,
+    "end": 1790720594565
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef3b4d04001hZdqccMbuV2N58",
+  "sessionID": "ses_f10c50078ffeQl0w0RLjwL1og6",
+  "messageID": "msg_0ef3b3758001xVdCHNpKyNbMHX",
+  "type": "tool",
+  "callID": "call_01a0ef3b4bee751cb12a08fe",
+  "tool": "bash",
+  "state": {
+    "status": "completed",
+    "input": {
+      "command": "cd /root/repos/jsonschema && sed -n '60,110p' test/lint/fail_lint_disable_one_verbose.sh; echo ===; ls build 2>/dev/null | head; echo ===; git log --all --oneline | head -5"
+    },
+    "output": "===\nCMakeCache.txt\nCMakeFiles\nCPackConfig.cmake\nCPackSourceConfig.cmake\nCTestTestfile.cmake\nMakefile\nbin\nclang-format\ncmake_install.cmake\ncompile_commands.json\n===\n99b97c0 senior-dev: exact starting tree\nfc0dd94 Normalise error message metadata (#520)\nefea99a Break `src/utils.h` into more cohesive smaller modules (#519)\n646f304 Do not rely on exit codes on command handlers (#518)\nfc02fc1 Implement a general purpose `Fail` exception class (#517)\n",
+    "metadata": {
+      "exitCode": 0
+    },
+    "title": "cd /root/repos/jsonschema && sed -n '60,110p' test/lint/fail",
+    "time": {
+      "start": 1790720036104,
+      "end": 1790720036123
+    }
+  }
+}

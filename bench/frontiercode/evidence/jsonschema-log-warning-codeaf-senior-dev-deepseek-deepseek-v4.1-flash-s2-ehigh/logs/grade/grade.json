@@ -1,0 +1,136 @@
+{
+  "task": "jsonschema-log-warning",
+  "rubric_schema": 1,
+  "judge_model": "openrouter/anthropic/claude-sonnet-4.5",
+  "judge_prompt_version": "fc-judge-1",
+  "criteria": {
+    "resolver-multiline-converted": {
+      "status": "pass",
+      "note": "The diff shows a multi-line warning block that previously had 3 std::cerr statements (lines 99-101 in the original). All 3 statements have been converted to a single LOG_WARNING() call that chains the output using the << operator. The mechanical excerpt shows only 1 std::cerr remaining in the file, ",
+      "judge": {
+        "pass": true,
+        "reasoning": "The diff shows a multi-line warning block that previously had 3 std::cerr statements (lines 99-101 in the original). All 3 statements have been converted to a single LOG_WARNING() call that chains the output using the << operator. The mechanical excerpt shows only 1 std::cerr remaining in the file, which is on line 25 in an #include comment ('// std::cerr'), not an actual std::cerr statement in the warning block. The warning block itself has been fully converted with no std::cerr statements remaining in it.",
+        "usage": {
+          "prompt_tokens": 671,
+          "completion_tokens": 137,
+          "total_tokens": 808,
+          "cost": 0.004068,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.004068,
+            "upstream_inference_prompt_cost": 0.002013,
+            "upstream_inference_completions_cost": 0.002055
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    "bundle-multiline-converted": {
+      "status": "pass",
+      "note": "The diff shows that all 6 std::cerr statements in the multi-line warning block (lines 38-48 in the original) have been converted to a single LOG_WARNING() call with chained stream operators. The mechanical excerpt confirms that 0 std::cerr statements remain in the file and 1 LOG_WARNING() call exist",
+      "judge": {
+        "pass": true,
+        "reasoning": "The diff shows that all 6 std::cerr statements in the multi-line warning block (lines 38-48 in the original) have been converted to a single LOG_WARNING() call with chained stream operators. The mechanical excerpt confirms that 0 std::cerr statements remain in the file and 1 LOG_WARNING() call exists. Every former std::cerr line in the warning block has been converted to the new logging helper.",
+        "usage": {
+          "prompt_tokens": 1001,
+          "completion_tokens": 109,
+          "total_tokens": 1110,
+          "cost": 0.004638,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.004638,
+            "upstream_inference_prompt_cost": 0.003003,
+            "upstream_inference_completions_cost": 0.001635
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    "helper-added": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "lint-site-converted": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "validate-precompiled-site-converted": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "validate-jsonl-site-converted": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "format-clean": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "clean-build": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "reference-tests-pass": {
+      "status": "pass",
+      "note": "overlay already in the tree (reverse-applies cleanly); tests exit 0",
+      "exit_code": 0
+    },
+    "reverse-tests-fail": {
+      "status": "pass",
+      "note": "tests exit 8 after revert (fail expected)",
+      "exit_code": 8
+    },
+    "scope-focused": {
+      "status": "pass",
+      "note": "28+/20- in 6 files",
+      "stats": {
+        "files": [
+          "src/command_bundle.cc",
+          "src/command_lint.cc",
+          "src/command_validate.cc",
+          "src/logger.h",
+          "src/resolver.h",
+          "test/validate/pass_jsonl_empty.sh"
+        ],
+        "added": 28,
+        "removed": 20,
+        "binary": false
+      }
+    },
+    "adapted-tests-pass": {
+      "status": "pass",
+      "note": "derived: the verbatim reference tests apply and pass"
+    }
+  },
+  "failed_blockers": [],
+  "rig_criteria": [],
+  "score": 1.0,
+  "pass": true,
+  "status": "done"
+}

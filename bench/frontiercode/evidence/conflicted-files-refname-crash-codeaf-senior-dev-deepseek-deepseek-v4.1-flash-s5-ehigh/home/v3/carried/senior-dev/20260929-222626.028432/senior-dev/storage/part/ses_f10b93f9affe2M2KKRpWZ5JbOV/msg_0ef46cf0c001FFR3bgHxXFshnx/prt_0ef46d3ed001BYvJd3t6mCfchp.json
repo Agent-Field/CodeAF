@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46d3ed001BYvJd3t6mCfchp",
+  "sessionID": "ses_f10b93f9affe2M2KKRpWZ5JbOV",
+  "messageID": "msg_0ef46cf0c001FFR3bgHxXFshnx",
+  "type": "reasoning",
+  "text": "Now let me see the fixtures at the top of the test file and the rest of the test file.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let me see the fixtures at the top of the test file and the rest of the test file.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720791533,
+    "end": 1790720791544
+  }
+}

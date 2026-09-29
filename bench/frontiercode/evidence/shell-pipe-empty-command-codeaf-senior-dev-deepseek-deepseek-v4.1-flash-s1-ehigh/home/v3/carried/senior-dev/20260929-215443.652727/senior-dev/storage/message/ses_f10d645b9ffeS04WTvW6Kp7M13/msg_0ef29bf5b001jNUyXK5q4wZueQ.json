@@ -1,0 +1,32 @@
+{
+  "id": "msg_0ef29bf5b001jNUyXK5q4wZueQ",
+  "sessionID": "ses_f10d645b9ffeS04WTvW6Kp7M13",
+  "role": "assistant",
+  "time": {
+    "created": 1790718885723,
+    "completed": 1790718886114
+  },
+  "parentID": "msg_0ef29baee001UC0yLJ2nH92YHs",
+  "modelID": "deepseek/deepseek-v4.1-flash",
+  "providerID": "openrouter",
+  "mode": "coder",
+  "agent": "coder",
+  "path": {
+    "cwd": "/root/repos/goreleaser",
+    "root": "/root/repos/goreleaser"
+  },
+  "cost": 0.000262356,
+  "tokens": {
+    "total": 5984,
+    "input": 555,
+    "output": 53,
+    "reasoning": 0,
+    "cache": {
+      "read": 5376,
+      "write": 0
+    }
+  },
+  "variant": "high",
+  "finish": "tool-calls",
+  "upstream": "Together"
+}

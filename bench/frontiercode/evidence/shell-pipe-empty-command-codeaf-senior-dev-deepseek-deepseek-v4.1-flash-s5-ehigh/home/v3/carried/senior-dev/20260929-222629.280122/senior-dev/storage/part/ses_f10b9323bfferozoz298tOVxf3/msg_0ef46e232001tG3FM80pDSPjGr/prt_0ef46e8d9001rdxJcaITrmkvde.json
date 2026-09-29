@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef46e8d9001rdxJcaITrmkvde",
+  "sessionID": "ses_f10b9323bfferozoz298tOVxf3",
+  "messageID": "msg_0ef46e232001tG3FM80pDSPjGr",
+  "type": "reasoning",
+  "text": "Let me check how shell.Run is called to understand whether command could be empty at callers.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Let me check how shell.Run is called to understand whether command could be empty at callers.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720796889,
+    "end": 1790720796904
+  }
+}

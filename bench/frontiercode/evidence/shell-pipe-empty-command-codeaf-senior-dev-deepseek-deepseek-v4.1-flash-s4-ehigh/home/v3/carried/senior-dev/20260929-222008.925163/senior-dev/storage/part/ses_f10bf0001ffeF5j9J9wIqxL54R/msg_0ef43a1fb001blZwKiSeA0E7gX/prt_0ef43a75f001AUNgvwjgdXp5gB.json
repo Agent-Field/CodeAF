@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef43a75f001AUNgvwjgdXp5gB",
+  "sessionID": "ses_f10bf0001ffeF5j9J9wIqxL54R",
+  "messageID": "msg_0ef43a1fb001blZwKiSeA0E7gX",
+  "type": "reasoning",
+  "text": "git diff didn't show output? That's odd. Maybe the diff got swallowed. Let me run git status/diff separately.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "git diff didn't show output? That's odd. Maybe the diff got swallowed. Let me run git status/diff separately.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790720583519,
+    "end": 1790720583530
+  }
+}

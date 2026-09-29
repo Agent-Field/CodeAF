@@ -1,0 +1,23 @@
+{
+  "id": "prt_0ef29fee3001fqSJn7R2fsYh8V",
+  "sessionID": "ses_f10d65266ffe78V7VoS0W1fvpI",
+  "messageID": "msg_0ef29f59a001WebYaYE32gkU2d",
+  "type": "reasoning",
+  "text": "Now let's create a tracked file named HEAD to trigger ambiguity. Actually wait, the ambiguity is in the `git diff` invocation. The command runs `git diff --name-only --no-ext-diff -z -m <tree_hash> HEAD MERGE_HEAD`. If a file named `HEAD` is tracked and exists in worktree, git sees `HEAD` as ambiguous.\n\nLet me test. But a file literally named `HEAD` in worktree — git tracks paths, `git add HEAD` works? Let's try. Actually the ambiguity arises because git tries to resolve `HEAD` as revisions on the command line, but there's also a path `HEAD`. Let's test.\n\nNote: tree_hash = git write-tree after resolving conflict. Let's simulate.",
+  "metadata": {
+    "openrouter": {
+      "reasoning_details": [
+        {
+          "type": "reasoning.text",
+          "text": "Now let's create a tracked file named HEAD to trigger ambiguity. Actually wait, the ambiguity is in the `git diff` invocation. The command runs `git diff --name-only --no-ext-diff -z -m \u003ctree_hash\u003e HEAD MERGE_HEAD`. If a file named `HEAD` is tracked and exists in worktree, git sees `HEAD` as ambiguous.\n\nLet me test. But a file literally named `HEAD` in worktree — git tracks paths, `git add HEAD` works? Let's try. Actually the ambiguity arises because git tries to resolve `HEAD` as revisions on the command line, but there's also a path `HEAD`. Let's test.\n\nNote: tree_hash = git write-tree after resolving conflict. Let's simulate.",
+          "format": "unknown",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "time": {
+    "start": 1790718901987,
+    "end": 1790718901998
+  }
+}
