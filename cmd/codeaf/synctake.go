@@ -55,7 +55,7 @@ func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
 	if err != nil {
 		return tui3.Taken{}, err
 	}
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device}, nil
+	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies}, nil
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

@@ -1,6 +1,7 @@
 package chatlist
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -46,6 +47,22 @@ func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
 	r.Pending = 0
 	if got, want := TakeoverLine(r), "last durable turn 42s ago"; got != want {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCopiesCameSaysNothingForNone(t *testing.T) {
+	for names, want := range map[string]string{
+		"":      "",
+		"n1":    "the working copy of a task came along: n1",
+		"n1,n2": "working copies of tasks came along: n1, n2",
+	} {
+		var in []string
+		if names != "" {
+			in = strings.Split(names, ",")
+		}
+		if got := CopiesCame(in); got != want {
+			t.Errorf("CopiesCame(%v) = %q, want %q", in, got, want)
+		}
 	}
 }
 

@@ -317,3 +317,16 @@ func TestTakeoverScreenGolden(t *testing.T) {
 		}
 	}
 }
+
+// A takeover that kept edits and brought task copies says both in one line, and
+// one that did neither says nothing.
+func TestTakenSaidJoinsWhatTheTakeoverDid(t *testing.T) {
+	both := takenSaid(Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk", TaskCopies: []string{"n1"}})
+	want := chatlist.KeptEdits(2, "desk") + "; " + chatlist.CopiesCame([]string{"n1"})
+	if both != want {
+		t.Errorf("takenSaid = %q, want %q", both, want)
+	}
+	if got := takenSaid(Taken{}); got != "" {
+		t.Errorf("a takeover that did nothing said %q", got)
+	}
+}

@@ -356,6 +356,22 @@ what is there. Anything you had changed and never saved is kept first, as a bran
 sentence above; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
 
+## Tasks that had not landed when a chat moved — working copy, uncommitted task edits, unmerged task branch, worktree
+
+A task works in a
+copy of your repository on its own branch. When the chat moves, each copy still at work comes
+along: its branch and commits arrive with the project, and the files the task had changed but
+not yet committed (edited, added, and the ones it deleted) are carried beside them and laid back
+over a fresh copy on the same branch, in this machine's own folder for that chat. Home says
+`the working copy of a task came along: <task>`, or `working copies of tasks came along:
+<task>, <task>` for several. A task that has finished has no copy, so nothing comes for it.
+What the repository's own `.gitignore` names (build output, a `.env`) and any file that looks
+like it holds a secret stay behind. Copies the other machine registered in the repository are
+forgotten here, so `git worktree list` shows only what this machine has. If a copy cannot be set
+up again (say its branch is checked out somewhere else), the sentence `a task's working copy
+could not be set up again here` names why, and the task's files are still in its folder under
+the chat's `trees` folder.
+
 ## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
 
 A chat that was taken over while another machine still held unsent turns leaves those turns
