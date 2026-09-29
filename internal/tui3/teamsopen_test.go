@@ -334,18 +334,25 @@ func TestTeamsManagerSwapOverASharedConnectionIsAskedOffTheLoop(t *testing.T) {
 	l := newTeamsOpenLab(t, true)
 	l.a.shared = true
 	l.a.open = nil
-	swapped := 0
+	// The door is parked until the test lets it go. Choosing the team returns
+	// with the door still shut, which is what "not asked from Update" means: an
+	// ask made inline would wait here for a release that only the test after it
+	// gives. The ask goes into the line on the keystroke and starts at once on
+	// the line's goroutine, so a count read right after the keystroke is a race
+	// with that goroutine, not a fact about the loop.
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
 	l.a.resume = func(file string) (Agent, error) {
-		swapped++
+		entered <- struct{}{}
+		<-release
 		return &fakeAgent{model: "m"}, nil
 	}
 	cmd := l.a.teamsSelect(l.orbit)
-	if swapped != 0 {
-		t.Fatal("the swap was asked on the keystroke, from Update")
-	}
+	<-entered
+	close(release)
 	drive(t, l.a, runCmd(cmd)...)
-	if swapped != 1 {
-		t.Fatalf("the swap was asked %d times", swapped)
+	if n := len(entered); n != 0 {
+		t.Fatalf("the swap was asked %d more times", n)
 	}
 	if l.a.frontTabKey() != l.key || !l.a.teamsHosting() {
 		t.Fatalf("the swapped manager is not in the pane (front %q):\n%s", l.a.frontTabKey(), teamsFrameText(l.a))
