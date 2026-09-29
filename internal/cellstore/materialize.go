@@ -12,9 +12,6 @@ import (
 // takes one just before it removes a working tree, so nothing the tree held
 // since the last seal is lost.
 func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
-	if err := e.ensureRepository(ctx, c); err != nil {
-		return "", err
-	}
 	out, err := e.engine(ctx, c, "--json", "snap", "-m", "materialization capture")
 	if err != nil {
 		return "", fmt.Errorf("capture: %w", err)
@@ -25,9 +22,6 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 // Restore writes the snapshot back into the cell's folder, byte for byte:
 // only the named top-level paths, or the whole tree when none are named.
 func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths []string) error {
-	if err := e.ensureRepository(ctx, c); err != nil {
-		return err
-	}
 	args := []string{"--json", "rewind", snapshot, "--yes"}
 	for _, p := range paths {
 		args = append(args, "--paths="+p)

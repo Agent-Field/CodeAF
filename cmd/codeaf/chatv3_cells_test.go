@@ -17,13 +17,17 @@ func mintOpened(t *testing.T, bucket, workspace string) session.Place {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := openV3Agent(session.Config{
+	agent, _, _, err := openV3Agent(session.Config{
 		Workspace: workspace, Model: "test/model", APIKey: "test-key",
 		BaseURL: "https://example.invalid/v1",
 		Place:   place, SessionFile: place.Transcript(),
-	}, workspace, v3OpenSession); err != nil {
+	}, workspace, v3OpenSession)
+	if err != nil {
 		t.Fatalf("session did not open: %v", err)
 	}
+	// An agent left open keeps writing into the session folder after the test
+	// returns, which races the temp-dir cleanup and fails the test at random.
+	t.Cleanup(func() { _ = agent.Close() })
 	return place
 }
 
