@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellbudget"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // cellGC brings the cells' working files under the disk budget now.
@@ -29,7 +30,9 @@ func cellGC(_ cell.Cell, args []string, out io.Writer) error {
 }
 
 func cellBudget() cellbudget.Manager {
-	return cellbudget.New(cellstore.Engine{}, cellBusy)
+	m := cellbudget.New(cellstore.Engine{}, cellBusy)
+	m.Limit = int64(config.CellBudgetGBAt(config.ProfileDir())) << 30
+	return m
 }
 
 func writeGCReport(out io.Writer, rep cellbudget.Report) {

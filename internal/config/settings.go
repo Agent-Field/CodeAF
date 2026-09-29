@@ -431,6 +431,11 @@ const (
 	// because the page cache has the rest. 0 turns the check off.
 	KeyTaskMinFreeMB = "task.min_free_mb"
 
+	// KeyCellBudget is the disk the working files of all cells may use
+	// together, in gibibytes (internal/cellbudget). Over it, `codeaf cell gc`
+	// evicts the cells opened longest ago. 0 means no limit.
+	KeyCellBudget = "cell.budget_gb"
+
 	// KeyTaskModel is the model a task runs on when the conversation does not
 	// name one for it (internal/session's taskmodel.go). It is named under
 	// `task.` beside the countdown rather than among the `models.` rows because
@@ -1310,6 +1315,12 @@ var OperatorEnvPins = []string{
 	"CODEAF_MODEL_POOL_SUBMIT_URL",
 	"CODEAF_MODEL_POOL_MIRROR_URL",
 	"CODEAF_MODEL_POOL_TTL",
+	// CODEAF_CELLS switches cells on (internal/cell): the isolated working
+	// folders whose verbs, `codeaf cell`, stay hidden while it is off. It is
+	// the flag unreleased work hides behind, so it is plumbing and never a
+	// row — a persisted row would arm half-built machinery on a machine
+	// where the variable is nowhere in sight. It goes the day cells ship.
+	"CODEAF_CELLS",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -1428,6 +1439,10 @@ const (
 	// task that was too many — it is whichever process was largest, which on a
 	// developer's machine is usually theirs.
 	DefaultTaskMinFreeMB = 1536
+
+	// DefaultCellBudgetGB is what internal/cellbudget assumes when nothing
+	// says otherwise: room for a handful of ordinary checkouts.
+	DefaultCellBudgetGB = 20
 
 	// DefaultConsentTimeout is ten seconds of reminder, and it is a different
 	// number from the one above because it is a different KIND of clock. The
@@ -2327,6 +2342,15 @@ func (s *Settings) build() []Setting {
 				"0 stops watching memory.",
 			read:  func() string { return strconv.Itoa(TaskMinFreeMBAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyTaskMinFreeMB, raw) },
+		},
+		Setting{
+			Key: KeyCellBudget, Category: CategoryTasks, Kind: SettingCount,
+			Label: "cell disk budget", Unit: "GB", Env: "CODEAF_CELL_BUDGET_GB",
+			Hint: "how much disk the working files of all cells may use together — 20 by " +
+				"default. Over it, `codeaf cell gc` evicts the cells opened longest ago and " +
+				"leaves any a session still holds. 0 stops watching the disk.",
+			read:  func() string { return strconv.Itoa(CellBudgetGBAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyCellBudget, raw) },
 		},
 		// Which model the work that LEAVES a conversation runs on. It sits with
 		// the countdown and the audit rather than among the model rows for the
@@ -4285,6 +4309,22 @@ func TaskMaxLoadAt(profileDir string) float64 {
 func TaskMinFreeMBAt(profileDir string) int {
 	_, minFreeMB := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
 	return minFreeMB
+}
+
+// CellBudgetGBAt resolves the cells' disk budget in gibibytes: the environment
+// pin, then the persisted row, then the default. An unreadable pin is the
+// default rather than an error, so a typo cannot lift the budget. 0 is no limit.
+func CellBudgetGBAt(profileDir string) int {
+	if raw := strings.TrimSpace(env.Get("CODEAF_CELL_BUDGET_GB")); raw != "" {
+		if value, err := parseCount(raw); err == nil {
+			return value
+		}
+		return DefaultCellBudgetGB
+	}
+	if value, ok := persistedInt(profileDir, KeyCellBudget); ok && value >= 0 {
+		return value
+	}
+	return DefaultCellBudgetGB
 }
 
 // TaskAdmissionLimitsAt overlays current persisted ceilings on the caller's
