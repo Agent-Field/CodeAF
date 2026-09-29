@@ -27,10 +27,22 @@ import (
 // folder does, and what a session without one still does — because the whole
 // design of the seam is that the second answer never changed.
 
+// resolvedTempDir is t.TempDir with macOS's /var → /private/var symlink
+// resolved: the code under test canonicalises the paths it builds, so a
+// comparison against the unresolved spelling flakes on macOS.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // newPlace is one session folder under a temp directory, borrowed or owned.
 func newPlace(t *testing.T, owned bool) Place {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+	dir := filepath.Join(resolvedTempDir(t), "0123456789abcdef")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +61,7 @@ func newPlace(t *testing.T, owned bool) Place {
 // A job log is a dropping. With a folder it lands in logs/jobs; without one it
 // lands exactly where it always did, in the workspace's dot directory.
 func TestJobLogsFollowTheSessionFolder(t *testing.T) {
-	workspace := t.TempDir()
+	workspace := resolvedTempDir(t)
 	place := newPlace(t, false)
 
 	registry := newJobRegistry(workspace, place, nil)
@@ -68,7 +80,7 @@ func TestJobLogsFollowTheSessionFolder(t *testing.T) {
 }
 
 func TestJobLogsKeepTheLegacyPathWithoutAFolder(t *testing.T) {
-	workspace := t.TempDir()
+	workspace := resolvedTempDir(t)
 	registry := newJobRegistry(workspace, Place{}, nil)
 	job, err := registry.newJob("a build", jobKindBash)
 	if err != nil {

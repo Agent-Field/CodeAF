@@ -25,7 +25,7 @@ func TestC13NoSecondCodexProviderConstructorBypassesClientConfig(t *testing.T) {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" || entry.Name() == ".codex-login-spec" {
+			if entry.Name() == ".git" || entry.Name() == ".claude" || entry.Name() == ".codex-login-spec" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -89,7 +89,7 @@ func catalogSourceViolations(root string) ([]string, error) {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" || entry.Name() == ".codex-login-spec" {
+			if entry.Name() == ".git" || entry.Name() == ".claude" || entry.Name() == ".codex-login-spec" {
 				return filepath.SkipDir
 			}
 			return nil
