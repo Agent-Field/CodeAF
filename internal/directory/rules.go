@@ -1,0 +1,78 @@
+package directory
+
+// This file is the only place lease logic lives. Each rule takes a cell and
+// returns the changed cell or an error, and never touches a clock or a store:
+// the caller passes the directory time in and keeps the result.
+
+const ttlMs = int64(LeaseTTL / 1e6)
+
+// Acquire takes the lease for device unless another device still holds it. The
+// same device may re-take its own live lease; the fence still goes up.
+func Acquire(c Cell, device string, now int64) (Cell, error) {
+	if c.Lease.Expires > now && c.Lease.Device != device {
+		return c, ErrLeaseHeld
+	}
+	c.Lease = Lease{Device: device, Fence: c.Lease.Fence + 1, Expires: now + ttlMs}
+	return c, nil
+}
+
+// Heartbeat renews the lease. An expired lease nobody took may be renewed: the
+// unchanged fence proves nobody did.
+func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
+	if err := holder(c, device, b.Fence); err != nil {
+		return c, err
+	}
+	c.Lease.Expires = now + ttlMs
+	c.Lease.Pending = b.Pending
+	return c, nil
+}
+
+// PublishTo moves the durable head. The fence is checked before the head, so a
+// superseded holder always learns it lost the lease first.
+func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
+	if err := holder(c, device, p.Fence); err != nil {
+		return c, err
+	}
+	if p.OldHead != c.Head {
+		return c, ErrHeadMoved
+	}
+	c.Head, c.Size, c.Class = p.Head, p.Size, p.Class
+	c.Lease.Pending, c.DurableAt = p.Pending, now
+	c.Title = keepIfEmpty(p.Title, c.Title)
+	return c, nil
+}
+
+// ReleaseOf gives the lease up. The fence stays, so the next acquire still
+// goes up by one.
+func ReleaseOf(c Cell, device string, fence uint64) (Cell, error) {
+	if err := holder(c, device, fence); err != nil {
+		return c, err
+	}
+	c.Lease.Expires, c.Lease.Pending = 0, 0
+	return c, nil
+}
+
+// Created is the first record of a cell: the creating device holds the lease
+// at fence 1. The caller has already checked that the id is free.
+func Created(in CellInit, device string, now int64) Cell {
+	return Cell{
+		V: 1, Head: in.Head, DurableAt: now, Class: in.Class, Size: in.Size,
+		ParentCell: in.ParentCell, Title: in.Title, Keys: in.Keys, OrphanTurns: in.OrphanTurns,
+		Lease: Lease{Device: device, Fence: 1, Expires: now + ttlMs},
+	}
+}
+
+// holder says whether device still holds the lease at fence.
+func holder(c Cell, device string, fence uint64) error {
+	if c.Lease.Fence != fence || c.Lease.Device != device {
+		return ErrFenceStale
+	}
+	return nil
+}
+
+func keepIfEmpty(next, current string) string {
+	if next == "" {
+		return current
+	}
+	return next
+}
