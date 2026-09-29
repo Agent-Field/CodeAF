@@ -6,6 +6,7 @@ pub mod claims;
 pub mod content_class;
 pub mod coord;
 pub mod estimate;
+pub mod exchange;
 pub mod fault;
 pub mod fork;
 pub mod gc;

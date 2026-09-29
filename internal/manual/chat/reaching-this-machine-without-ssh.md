@@ -436,3 +436,16 @@ set up, and no service to depend on. `--at` is for the machine ssh cannot reach.
 
 Both open the same surface with the same limits — what does and does not work over a
 connection is a property of the connection, not of which of these two doors opened it.
+
+## Running the relay yourself
+
+The relay is a program, and `codeaf relay --listen :8787` runs it (`relay --listen :8787`
+from the separate `relay` binary is the same thing). Left like that it is the blind pipe
+this page describes: it forwards the conversation and cannot read it.
+
+Given `--store <directory>` it also keeps the shared directory and blob store that lets one
+person's machines see the same chats: `codeaf relay --listen :8787 --store /var/lib/codeaf`.
+Every request must be signed by one of that person's devices, each person's data lives
+apart from everyone else's, and a restart keeps who holds each chat. Its log lists the
+first characters of an identity id, the kind of request, the status and the byte counts,
+never what was sent. Stop it with SIGTERM and requests already under way finish first.

@@ -2875,6 +2875,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
+		{"codeaf cell list --all", "running-from-the-terminal"},
+		{"a chat is running on my other computer how does home show it", "home"},
+		{"what does studio off mean on a chat row", "home"},
+		{"home says other machines unreachable", "home"},
+		{"how do I turn on sync between my machines", "running-from-the-terminal"},
+		{"what is CODEAF_SYNC_URL", "running-from-the-terminal"},
+		{"how often does sync send my turns CODEAF_SYNC_INTERVAL_MS", "running-from-the-terminal"},
+		{"cell list says sync is off", "running-from-the-terminal"},
 		{"how do I update codeaf to the latest version", "running-from-the-terminal"},
 		{"how do I install the latest dev build beside my codeaf", "running-from-the-terminal"},
 		{"what is devaf", "running-from-the-terminal"},
@@ -3513,6 +3522,53 @@ func TestTheFreshInstallQuestionsReachTheirAnswers(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%q does not reach the models-and-cost section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
+// The cost of syncing a conversation is kept as counts on the device, and a
+// person asking how to see it, or whether anything is sent, must reach the
+// section that names the command and says the export is opt-in.
+func TestTheCellReportQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"how much data did syncing this conversation upload", "codeaf cell report [<cell>]"},
+		{"how do I see the bytes and requests a sync used", "one row per flush"},
+		{"does codeaf send my sync usage numbers anywhere", "Nothing is exported unless you"},
+		{"can I export the sync cost report to a file", "codeaf cell report --export <file>"},
+		{"do the sync stats contain my file names or titles", "no file names, no titles and no content"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a running-from-the-terminal section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
+// A person whose chat was continued on another machine must reach the section
+// that says what the window shows and what became of the turns not yet sent.
+func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"another machine continued my chat and this window only shows it", "this window now only shows it"},
+		{"why did my tool call not run after I continued the chat on my laptop", "a tool call the model tries here answers with that same line"},
+		{"what happens to the turns I had not synced when another computer took over the conversation", "`<K> turns from <device>: merge / discard`"},
+		{"does closing the chat let another machine take it over", "lets go of it"},
+		{"sync says my computer's clock is off", "clock is off by more than 5 minutes"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a running-from-the-terminal section that says %q", probe.asked, probe.says)
 		}
 	}
 }

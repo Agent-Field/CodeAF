@@ -55,6 +55,9 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		restart = &codeupdate.Plan{}
 		options.Restart = restart
 	}
+	if options.Machines == nil {
+		options.Machines = syncMachines()
+	}
 	options.UpdateRunning = revision
 	options.UpdateCurl = curl
 	options.UpdateArgs = surfaceArguments()

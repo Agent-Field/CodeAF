@@ -18,11 +18,23 @@ import (
 // report is told of a seal that failed; the call it followed is never failed
 // by it.
 func SeatFor(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error)) (executor.Seat, error) {
+	return SeatOver(class, c, workspace, obs, report, nil)
+}
+
+// SeatOver is SeatFor with the store every seal goes through decorated by
+// over, which is handed the cell's engine. A nil over seals on the engine
+// itself. It is how a chat that syncs notes each turn it seals.
+func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error), over func(Engine) Store) (executor.Seat, error) {
 	base := executor.Stance{Class: class, Observer: obs, Secrets: vaultEnv{c}}
 	if !cell.Enabled() {
 		return executor.Watching(base, obs), nil
 	}
-	rec, err := recorderFor(base.In(workspace), EngineFor(workspace), c, Options{Report: report})
+	engine := EngineFor(workspace)
+	var store Store = engine
+	if over != nil {
+		store = over(engine)
+	}
+	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report})
 	if err != nil {
 		return executor.Watching(base, obs), err
 	}
