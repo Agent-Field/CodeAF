@@ -69,8 +69,7 @@ func (a *Agent) railBlockLocked() error {
 				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
 			if daily.Limit > 0 && spentToday >= daily.Limit {
-				daily.Spent, daily.Reached = spentToday, true
-				return dailyBudgetReached{spend: daily}
+				return dailyBudgetReached{spend: DailySpend{Limit: daily.Limit, Spent: spentToday, Reached: true}}
 			}
 		}
 	}
