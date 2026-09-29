@@ -51,7 +51,8 @@ type Continuer struct {
 // secrets to the folder the tree landed in.
 func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 	eng.WorkspaceOf = func(c cell.Cell) string { return workspaceOf(c.Root) }
-	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
+	sync := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
+	engine := landing{Engine: sync}
 	pub := &cellsync.Publisher{Engine: engine, Store: s.Store, Dir: s.Dir}
 	// THE TAKEOVER'S BRANCHER RUNS WITH Map NIL. The chat being taken keeps its
 	// id on this machine; only the edits set aside live in the branch, and a
@@ -62,7 +63,7 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 	c := &Continuer{sync: s, opt: opt}
 	c.taker = handoff.Taker{
 		Dir:     s.Dir,
-		Fetch:   &cellsync.Fetcher{Engine: engine, Store: s.Store, Inbox: engine.Inbox},
+		Fetch:   &cellsync.Fetcher{Engine: engine, Store: s.Store, Inbox: sync.Inbox},
 		Local:   engineLocal{eng},
 		Branch:  c.branch(brancher),
 		RootFor: opt.RootFor,
@@ -106,6 +107,18 @@ func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.
 	}
 }
 
+// landing is the engine for a chat that has not landed on this machine yet: the
+// engine works from inside the folder it restores into, so the folders are
+// made before it is asked what it is missing.
+type landing struct{ cellsync.Engine }
+
+func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, error) {
+	if err := os.MkdirAll(workspaceOf(c.Root), 0o700); err != nil {
+		return nil, err
+	}
+	return l.Engine.Want(ctx, c, head)
+}
+
 // engineLocal is the Taker's view of a copy of the chat this machine has: what
 // the engine says differs from the newest turn, and a seal of it.
 type engineLocal struct{ eng cellstore.Engine }
@@ -114,8 +127,14 @@ func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
 	return l.eng.Dirty(ctx, c)
 }
 
+// Seal seals the tree as one turn of the copy. The Taker names a cell by id and
+// folder only, and a seal needs the cell's own record, so it is opened here.
 func (l engineLocal) Seal(ctx context.Context, c cell.Cell) (string, uint32, error) {
-	sealed, err := l.eng.Seal(ctx, c, cellstore.TurnInfo{})
+	opened, err := cell.OpenAt(c.Root, c.ID)
+	if err != nil {
+		return "", 0, err
+	}
+	sealed, err := l.eng.Seal(ctx, opened, cellstore.TurnInfo{})
 	return sealed.Turn.ID, 1, err
 }
 
