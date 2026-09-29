@@ -106,6 +106,8 @@ const programLeftoversFile = "leftovers.patch"
 const (
 	programCopyExcludeSentinel = "# codeaf: links in a program's copy of this repository, removed when no copy is left"
 	programCopyExcludeEnd      = "# codeaf: end"
+	programCopyExcludeCreated  = "# codeaf: exclude file created for this block"
+	programCopyExcludeNewline  = "# codeaf: separator newline added for this block"
 )
 
 // Copied says the program works in a copy of its own of a repository, rather
@@ -734,14 +736,18 @@ func excludeLinkedNames(dir string, names, folders []string) {
 	if len(need) == 0 {
 		return
 	}
-	current, _ := os.ReadFile(exclude)
-	outside, ours := splitProgramExclude(string(current))
+	current, err := os.ReadFile(exclude)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	outside, ours, created := splitProgramExclude(string(current))
+	created = created || errors.Is(err, os.ErrNotExist)
 	for _, line := range need {
 		if !slices.Contains(ours, line) {
 			ours = append(ours, line)
 		}
 	}
-	writeProgramExclude(exclude, outside, ours)
+	writeProgramExclude(exclude, outside, ours, created)
 }
 
 // dropProgramExclude takes codeaf's lines back out of repo's exclude file when
@@ -758,9 +764,12 @@ func dropProgramExclude(repo string) {
 	if programCopiesOnDisk(repo) {
 		return
 	}
-	current, _ := os.ReadFile(exclude)
-	if outside, ours := splitProgramExclude(string(current)); len(ours) > 0 || outside != string(current) {
-		writeProgramExclude(exclude, outside, nil)
+	current, err := os.ReadFile(exclude)
+	if err != nil {
+		return
+	}
+	if outside, ours, created := splitProgramExclude(string(current)); len(ours) > 0 || outside != string(current) {
+		writeProgramExclude(exclude, outside, nil, created)
 	}
 }
 
@@ -804,37 +813,60 @@ func lockProgramExclude(exclude string) func() {
 }
 
 // splitProgramExclude parts an exclude file into everything that is not
-// codeaf's, as it was written, and the lines between codeaf's two fences.
-func splitProgramExclude(text string) (string, []string) {
-	var outside []string
+// codeaf's, as it was written, and the lines between codeaf's two fences. The
+// block also records whether the file and its separator belong to codeaf, so
+// cleanup after a restart can restore an absent file or an unterminated line.
+func splitProgramExclude(text string) (string, []string, bool) {
+	start := strings.Index(text, programCopyExcludeSentinel+"\n")
+	if start < 0 || (start > 0 && text[start-1] != '\n') {
+		return text, nil, false
+	}
+	content := text[start+len(programCopyExcludeSentinel)+1:]
+	end := strings.Index(content, programCopyExcludeEnd+"\n")
+	if end < 0 || (end > 0 && content[end-1] != '\n') {
+		return text, nil, false
+	}
+	before, after := text[:start], content[end+len(programCopyExcludeEnd)+1:]
 	var ours []string
-	inside := false
-	for _, line := range strings.SplitAfter(text, "\n") {
+	created, separator := false, false
+	for _, line := range strings.Split(content[:end], "\n") {
 		trimmed := strings.TrimSpace(line)
 		switch {
-		case trimmed == programCopyExcludeSentinel:
-			inside = true
-		case inside && trimmed == programCopyExcludeEnd:
-			inside = false
-		case inside && trimmed != "":
+		case trimmed == programCopyExcludeCreated:
+			created = true
+		case trimmed == programCopyExcludeNewline:
+			separator = true
+		case trimmed != "":
 			ours = append(ours, trimmed)
-		case !inside:
-			outside = append(outside, line)
 		}
 	}
-	return strings.Join(outside, ""), ours
+	// A NEW RULE AFTER THE BLOCK STILL NEEDS A LINE OF ITS OWN. The separator
+	// becomes part of that edit; removing it would weld two ignore patterns.
+	if separator && after == "" {
+		before = strings.TrimSuffix(before, "\n")
+	}
+	return before + after, ours, created
 }
 
 // writeProgramExclude writes an exclude file as outside with codeaf's lines
 // fenced at its end, none when ours is empty, through a temporary file and a
-// rename.
-func writeProgramExclude(exclude, outside string, ours []string) {
+// rename. A file codeaf created is removed only when nobody added rules to it.
+func writeProgramExclude(exclude, outside string, ours []string, created bool) {
+	if len(ours) == 0 && outside == "" && created {
+		_ = os.Remove(exclude)
+		return
+	}
 	text := outside
 	if len(ours) > 0 {
+		metadata := ""
+		if created {
+			metadata += programCopyExcludeCreated + "\n"
+		}
 		if text != "" && !strings.HasSuffix(text, "\n") {
 			text += "\n"
+			metadata += programCopyExcludeNewline + "\n"
 		}
-		text += programCopyExcludeSentinel + "\n" + strings.Join(ours, "\n") + "\n" + programCopyExcludeEnd + "\n"
+		text += programCopyExcludeSentinel + "\n" + metadata + strings.Join(ours, "\n") + "\n" + programCopyExcludeEnd + "\n"
 	}
 	if os.MkdirAll(filepath.Dir(exclude), 0o755) != nil {
 		return

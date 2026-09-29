@@ -265,6 +265,67 @@ func TestTheExcludeLinesLastOnlyAsLongAsACopy(t *testing.T) {
 	}
 }
 
+// CLEANUP RESTORES THE FILE'S SHAPE, even after a second run adds another
+// pattern. Rules written beside the block while it is present belong to the
+// person, including the newline that separates them from an earlier rule.
+func TestProgramExcludeRestoresTheOriginalFileAndKeepsLaterRules(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		before  string
+		missing bool
+		append  string
+		want    string
+	}{
+		{name: "absent", missing: true},
+		{name: "empty"},
+		{name: "no final newline", before: "*.log", want: "*.log"},
+		{name: "final newline", before: "*.log\n", want: "*.log\n"},
+		{name: "CRLF", before: "# my rules\r\n*.log\r\n", want: "# my rules\r\n*.log\r\n"},
+		{name: "new file gains a rule", missing: true, append: "*.local\n", want: "*.local\n"},
+		{name: "unterminated file gains a rule", before: "*.log", append: "*.local\n", want: "*.log\n*.local\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := safetyRepo(t)
+			exclude := copyGitPath(t, repo, "info/exclude")
+			if tc.missing {
+				if err := os.Remove(exclude); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+			} else {
+				writeFile(t, exclude, tc.before)
+				if err := os.Chmod(exclude, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			excludeLinkedNames(repo, nil, []string{"node_modules"})
+			if tc.append != "" {
+				writeFile(t, exclude, readFile(t, exclude)+tc.append)
+			}
+			excludeLinkedNames(repo, nil, []string{".venv"})
+			for _, folder := range []string{"node_modules/", ".venv/"} {
+				mustGit(t, repo, "check-ignore", "-q", "--", folder)
+			}
+			dropProgramExclude(repo)
+			got, err := os.ReadFile(exclude)
+			if tc.missing && tc.append == "" {
+				if !os.IsNotExist(err) {
+					t.Fatalf("a previously absent exclude file remains: %q, %v", got, err)
+				}
+				return
+			}
+			if err != nil || string(got) != tc.want {
+				t.Fatalf("exclude after cleanup = %q, %v; want %q", got, err, tc.want)
+			}
+			if !tc.missing {
+				info, err := os.Stat(exclude)
+				if err != nil || info.Mode().Perm() != 0o600 {
+					t.Fatalf("exclude permissions changed: %v, %v", info, err)
+				}
+			}
+		})
+	}
+}
+
 // A PROJECT'S LIST OF LINKS THAT DOES NOT APPLY REFUSES THE RUN, naming the
 // file, rather than quietly linking the defaults; a list written as a JSON list
 // is taken, as the text is.

@@ -240,7 +240,10 @@ handed in nothing, stopped on a limit, or broke — and acts on it:
 - **handed in, but its own check did not pass or finish**: the run is done. senior-dev's
   check guesses the project's commands and environment and is often wrong about them, so
   the chat treats what it said as a lead: it runs the project's own checks on the branch
-  itself, and only a failure it sees there is fixed or handed back;
+  in a temporary worktree, and only a failure it sees there is fixed or handed back.
+  The landing note tells the chat to run each check from that worktree, never from your
+  checkout. If the copy was kept, it uses that copy; a folder with no git history is
+  checked where the run worked;
 - **handed in nothing**: the chat finishes a small gap on its branch itself, or hands the
   work back to senior-dev with a brief sharpened by what is missing;
 - **stopped on a dollar or time limit**: the chat never sends it back on its own, because
@@ -559,7 +562,8 @@ or edits reaches your folder**:
 `.venv/`, `venv/` and `node_modules/` stay out of git in the copy even when your
 `.gitignore` does not name them: codeaf adds them to `.git/info/exclude`, between two
 `# codeaf:` lines, while a copy is on disk, and takes the lines out when the last copy is
-removed.
+removed. Cleanup preserves your existing exclude file, including a missing final newline.
+If codeaf created the file, it removes it only when no rules were added outside its block.
 
 **With `SENIOR_DEV_NET=off` they are linked from your folder instead**, because nothing can
 be installed; then what senior-dev's shell writes through a link lands in your folder, and
@@ -785,7 +789,9 @@ totals` — names the program, the models it works on and its effort:
 once it has started. They are what its calls go to: your crew, or the models you
 asked for, or its own list when nothing was named, less any model its catalog
 could not size. They are not only what was asked. A narrow window keeps the first
-models and a `+N` for the rest, then drops the name `senior-dev`.
+models and a `+N` for the rest, then drops the name `senior-dev`. At narrower widths it
+shortens the model name first to keep the effort whole; if only the effort fits, it
+shows that alone.
 
 For the first seconds, before senior-dev has said, the line still reads
 `Conversation totals`. It does the same for a run from an older build that never

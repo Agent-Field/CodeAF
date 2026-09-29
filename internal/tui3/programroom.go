@@ -450,7 +450,13 @@ func (a *app) programModelsWord(width int) string {
 			}
 		}
 	}
-	return fit(models[0]+effort, width)
+	if effort != "" {
+		if room := width - ansi.StringWidth(effort); room > 0 {
+			return fit(models[0], room) + effort
+		}
+		return fit(strings.TrimSpace(p.page.Program.Effort), width)
+	}
+	return fit(models[0], width)
 }
 
 // programRoomClock is the age the program room's facts row draws: the span

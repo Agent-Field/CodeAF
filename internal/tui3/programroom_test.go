@@ -607,12 +607,19 @@ func TestAProgramRoomsSeamNamesTheModelsItsRunWasLaunchedOn(t *testing.T) {
 		{cells(want) - 1, "senior-dev on deepseek-v4-pro, kimi-k2.6 +1 · high"},
 		{cells("senior-dev on deepseek-v4-pro +2 · high") + 1, "senior-dev on deepseek-v4-pro +2 · high"},
 		{cells("deepseek-v4-pro +2 · high"), "deepseek-v4-pro +2 · high"},
+		{20, "deepseek-v4-… · high"},
+		{10, "de… · high"},
+		{7, "high"},
+		{4, "high"},
 	} {
 		if got := a.programModelsWord(c.width); got != c.want {
 			t.Fatalf("at %d cells the seam says %q, want %q", c.width, got, c.want)
 		}
 	}
-	if got := a.programModelsWord(10); ansi.StringWidth(got) > 10 || !strings.HasPrefix(got, "deepseek") {
-		t.Fatalf("at 10 cells the seam says %q", got)
+	for width := 1; width <= cells(want); width++ {
+		got := a.programModelsWord(width)
+		if cells(got) > width || (width >= cells("high") && !strings.HasSuffix(got, "high")) {
+			t.Fatalf("at %d cells the seam loses its effort or overflows: %q", width, got)
+		}
 	}
 }
