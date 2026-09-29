@@ -110,15 +110,22 @@ python3 "$RIG_DIR/grade/judge.py" review --task "$TASK_DIR" --grade-dir "$OUT/lo
   > "$OUT/logs/grade/judge-review.out" 2>&1 || log "$TASK_ID: judge review failed — see judge-review.out"
 
 # ── the adaptive path: only when the verbatim tests did not fit ─────────────
-NEEDS_ADAPT=$(python3 - "$OUT/logs/grade/phaseA.json" <<'PY'
-import json, sys
+# Adapt when the verbatim reference tests did not fit: an overlay conflict,
+# or a failed criterion that is classical or adaptive-classical in the task's
+# own rubric (the fixture pinned the id; candidates name their own).
+NEEDS_ADAPT=$(python3 - "$OUT/logs/grade/phaseA.json" "$TASK_DIR/rubric.toml" <<'PY'
+import json, sys, tomllib
 pa = json.load(open(sys.argv[1]))
 for e in pa["criteria"].values():
     if e.get("note", "").startswith("test overlay conflict"):
         print("1"); break
 else:
-    c = pa["criteria"].get("reference-tests-pass", {})
-    print("1" if c.get("status") == "fail" else "0")
+    rubric = tomllib.load(open(sys.argv[2], "rb"))
+    testable = {c["id"] for c in rubric.get("criterion", [])
+                if c.get("kind") in ("classical", "adaptive-classical")}
+    adapt = any(e.get("status") == "fail" and cid in testable
+                for cid, e in pa["criteria"].items())
+    print("1" if adapt else "0")
 PY
 )
 if [ "$NEEDS_ADAPT" = 1 ]; then
