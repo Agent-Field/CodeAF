@@ -497,9 +497,12 @@ model's (`gpt-4.1-mini:high`), and the name came off it on 2026-09-17 because a 
 takes the room the numbers need.
 
 **It starts with your first message.** The small model on the `title` role is shown the
-opening question and asked for one descriptive **5–8 word phrase**. The answer and the naming request run independently. A late name still
-reaches an idle chat, a background tab, or a hosted chat after the connection is restored;
-no refresh or follow-up message is needed.
+opening question and asked for one descriptive **5–8 word phrase**. A `!` shell command
+is not that message: a conversation that opens with `!` commands keeps the command as its
+name until you send an ordinary message, and is then named from that message. The answer
+and the naming request run independently. A late name still reaches an idle chat, a
+background tab, or a hosted chat after the connection is restored; no refresh or
+follow-up message is needed.
 
 Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing
 fallback promptly. Temporary provider failures are asked again for as long as the

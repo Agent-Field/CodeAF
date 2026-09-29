@@ -36,7 +36,9 @@ A conversation containing only `!` commands keeps a literal command preview as
 its working name. Home and conversation lists preserve its casing and punctuation;
 long commands are clipped to fit. Shell turns do not ask a model for a title.
 Once you send an ordinary message, automatic naming uses that message, skipping
-recorded human shell turns. Its reply is included when already available.
+recorded human shell turns. Naming starts as soon as that message is sent, so a reply
+is included only when one already exists; a message that only points at the output,
+such as "what did that print?", is named from its own words.
 
 ## Typing a slash to see the command list
 
@@ -1157,8 +1159,9 @@ esc leaves the conversation exactly as it was.
 Ten rows show, each a name, a description and an age. The name climbs a ladder: the title
 the session gave itself, else the first seven words you said in it, else the transcript's
 file name — then title-cased, with small words left lowercase and nothing ever
-lowercased, so `OpenAI` keeps its shape. The description is the last thing that happened,
-capped at 80 columns. The age (`2h ago`, or a date past a month) is reserved first and
+lowercased, so `OpenAI` keeps its shape. A name that is still a `!` command is the
+exception: it is shown exactly as typed, never title-cased or cut to seven words. The
+description is the last thing that happened, capped at 80 columns. The age (`2h ago`, or a date past a month) is reserved first and
 never cut. **Ids and file names appear nowhere.**
 
 The cursor opens on the conversation you are already in. enter on another row closes this
