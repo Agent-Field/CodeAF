@@ -229,15 +229,17 @@ nproc | sed 's/^/host cpus: /'
 awk '/MemTotal/ {print "host memory: " int($2/1024/1024) " GiB"}' /proc/meminfo
 REMOTE
 
-gcloud compute scp "$bundle" "$local_bin" "$remote_cfg" "$remote_script" "$INSTANCE:/tmp/" \
-  --project="$PROJECT" --zone="$ZONE" --quiet 2>&1 | grep -v '^Warning' || true
+scp_out="$(gcloud compute scp "$bundle" "$local_bin" "$remote_cfg" "$remote_script" "$INSTANCE:/tmp/" \
+  --project="$PROJECT" --zone="$ZONE" --quiet 2>&1)" || { printf '%s\n' "$scp_out" | grep -v '^Warning'; fc_die "transfer to $INSTANCE failed"; }
+printf '%s\n' "$scp_out" | grep -v '^Warning' || true
 
 remote_bundle="/tmp/$(basename "$bundle")"
 remote_bin="/tmp/$(basename "$local_bin")"
 remote_cfg_path="/tmp/$(basename "$remote_cfg")"
 remote_script_path="/tmp/$(basename "$remote_script")"
-gcloud compute ssh "$INSTANCE" --project="$PROJECT" --zone="$ZONE" --quiet \
-  --command="bash '$remote_script_path' '$REMOTE_ROOT' '$remote_bundle' '$remote_bin' '$remote_cfg_path'" 2>&1 \
-  | grep -v '^Warning: Permanently added' || true
+ssh_out="$(gcloud compute ssh "$INSTANCE" --project="$PROJECT" --zone="$ZONE" --quiet \
+  --command="bash '$remote_script_path' '$REMOTE_ROOT' '$remote_bundle' '$remote_bin' '$remote_cfg_path'" 2>&1)" \
+  || { printf '%s\n' "$ssh_out" | grep -v '^Warning: Permanently added'; fc_die "staging on $INSTANCE failed"; }
+printf '%s\n' "$ssh_out" | grep -v '^Warning: Permanently added' || true
 
 echo "staged $INSTANCE for shard ${SHARD:-<all>}; no credential was transferred and no attempt was launched"
