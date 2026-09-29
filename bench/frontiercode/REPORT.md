@@ -109,7 +109,7 @@ and the seed budget set there — the rig, its controls and the scoreboard are
 ready for that the moment the owner names the model set and the cloud budget.
 ## First GCP canary (2026-09-29)
 
-- **Host:** `fc-pilot-s1`, `openaf-505800` <!-- legacy-name --> (the GCP project's identifier), `us-central1-a`, e2-standard-8, external 35.192.51.155, `--max-run-duration 6h --instance-termination-action=STOP`. Branch `bench/frontiercode` tip 6c7253696 plus three host-path fixes committed during the run (see "What broke").
+- **Host:** `fc-pilot-s1`, `openaf-505800` (the GCP project's identifier), `us-central1-a`, e2-standard-8, external 35.192.51.155, `--max-run-duration 6h --instance-termination-action=STOP`. Branch `bench/frontiercode` tip 6c7253696 plus three host-path fixes committed during the run (see "What broke").
 - **Controls (host path, `launch.sh --controls 1`):** gold jsonschema-log-warning **1.00**; negative **0.0** with **both blockers failed**; seal **FLAGGED** (planted leak, score 0). All three reproduced — `ok controls on fc-pilot-s1`.
 - **Rollout (`launch.sh --execute 1`):** one task, one seed, one wave. **Score 1.00, pass**, no blockers failed. Run dir `results/jsonschema-log-warning-codeaf-senior-dev-deepseek-deepseek-v4.1-flash-s1` (grade.json, record row, scan.json, cost.json, guard-usage.jsonl, DONE sentinel all present and fetched with a verified artifact set).
 - **Cost:** harness-reported **$0.0511**; guard-metered **$0.0511** (51 calls, 1.74M prompt / 26.2k completion tokens, `guard_unknown_cost_calls 0`). Judge spend (sonnet-4.5) included in the key delta.
@@ -121,4 +121,40 @@ ready for that the moment the owner names the model set and the cloud budget.
   3. `gcp-stage.sh`: `bin/` is gitignored so it is not in the bundle; `install` target dir missing on host — `install -D`.
   4. `lib.sh`: `ensure_env_image`/`ensure_verify_image` log under `results/` before it exists, so the first warm loop silently failed ("warm: environment image failed") — both now `mkdir -p "$RESULTS"`.
   Also: `--check-local` initially failed because the gitignored pinned binaries were absent in the fresh tree (copied from the owner checkout, sha256 verified `fde4a42d…`).
-- **Teardown:** key shredded, instance and boot disk deleted; `gcloud compute instances list --project openaf-505800` <!-- legacy-name --> (the project id) lists 0 items, no orphan disk. Nothing bills after the run.
+- **Teardown:** key shredded, instance and boot disk deleted; `gcloud compute instances list --project openaf-505800` (the project id) lists 0 items, no orphan disk. Nothing bills after the run.
+
+## Second GCP canary (5-trial)
+
+- **Host:** `fc-pilot-s1`, `openaf-505800` (the GCP project's identifier), `us-central1-a`, e2-standard-8, 120 GB boot disk, 6h self-stop. Branch `bench/frontiercode` tip `5cfd4a924`; one host-path fix committed during the run (see "What broke"). First exercise of the official 5-trial protocol: manifest `seed_ids: [s1..s5]`, single reasoning effort `high`, one host.
+- **Controls (host path, `launch.sh --controls 1`):** gold jsonschema-log-warning **1.00**; negative **0.0 with both blockers failed**; seal **FLAGGED** (planted leak, score 0). All three reproduced — `ok controls on fc-pilot-s1`.
+- **Rollout (`launch.sh --execute 1`):** 5 trials, one per seed s1–s5, one effort, one wave. Labels `fc-pilot-shard1-ehigh-s<seed>-wave1`.
+
+| seed | score | pass | flagged | blockers fail | criteria | out tok | cost$ (harness) | wall (s) |
+|---|---|---|---|---|---|---|---|---|
+| s1 | 1.00 | yes* | **yes\*** | none | 12/12 | 45341 | 0.050 | 522 |
+| s2 | 1.00 | yes | no | none | 12/12 | 20367 | 0.054 | 353 |
+| s3 | 1.00 | yes | no | none | 12/12 | 46509 | 0.090 | 477 |
+| s4 | 1.00 | yes | no | none | 12/12 | 25589 | 0.047 | 357 |
+| s5 | 1.00 | yes | no | none | 12/12 | 20923 | 0.027 | 345 |
+
+\* s1: the judge graded 1.00 / pass, 12/12 criteria, zero failed blockers; the seal scanner FLAGGED it, which zeroes it to 0.0/pass. This is a **false positive** — see "What broke" #2. Report table below therefore counts s1 as flagged.
+
+`grade/report.py` aggregate (over the 5 run dirs):
+
+```
+  EFFORT TRIALS GRADED  PASS MEAN SCORE MEAN OUT TOK
+----------------------------------------------------
+    high      5      5     4     0.8000        31746
+best-performing reasoning effort: high (mean score 0.8000)
+
+runs 5: 4 pass, 1 flagged, 5 graded, 0 rig; total $0.268 (harness-reported)
+```
+
+- **Cost:** harness-reported **$0.268** (5 rollouts, ~$0.05 each); guard-metered matches. Judge spend (sonnet-4.5, 3 controls) included in the key delta.
+- **Key usage delta (frontiercode-generic):** baseline (provider-side usage at install) **$0.098469** → final (at teardown) **$0.469695** → **delta $0.37123**. Daily limit $1000, $0.0985 used by campaign start.
+- **Wall time:** create → teardown ≈ 3h48m. Controls ≈ 3 min. Rollout wave 15:58Z→16:42Z (≈ 44 min, ~8–9 min/trial). Staging/warm ≈ 20 min.
+- **What broke:**
+  1. **`gcp-create.sh` plan gate** failed on the aligned manifest: it required the old scalar `.seed_id` (`fc_require_keys .seed_id`, printed `fc_get '.seed_id'`), but the manifest now carries `seed_ids` (array) — null `.seed_id`. Fixed to `fc_require_keys` without `.seed_id` and print `fc_seeds` (the same fallback gcp-lib/launch/fetch already use). One-line, called out.
+  2. **Seal-scanner false positive on s1.** The agent worked in the task's own repo (`~/repos/jsonschema`, as its instructions say), running `cd ~/repos/jsonschema && grep … src/error.h`. `src/error.h` embeds the repo's own issues URL `https://github.com/sourcemeta/jsonschema`. The scanner treats that as an upstream-slug leak and flags the run → zeroed to 0.0. The egress proxy log shows only model-plane hosts (codeaf.agentfield.ai, models.dev) — no external fetch; judge already scored 1.00 with all criteria met. The flagged text is the task's own source and path. Not patched — reported per policy (do not change rig scripts to make a failure go away); recommend the scanner exclude the run's own task repository path/slug when the URL only appears inside source fetched by the task itself.
+- **Teardown:** key shredded (`--shred fc-pilot-s1`), instance and boot disk deleted (`gcloud compute instances delete fc-pilot-s1 --delete-disks=all`); `gcloud compute instances list --project openaf-505800` (the project id) lists 0 items, no orphan disk. Nothing bills after the run.
+- **Artifacts fetched home:** `bench/frontiercode/results/jsonschema-log-warning-codeaf-senior-dev-deepseek-deepseek-v4.1-flash-s1..s5-ehigh/`, each with grade.json, scan.json, record.jsonl, cost.json, meta.json and DONE sentinel, verified by `fetch-results.sh` (`fetched 5 run(s); --keep-host set`). Raw `--controls` and `--execute` transcripts preserved in this run's task log and `fc-controls.txt`.
