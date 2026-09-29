@@ -3,12 +3,15 @@ package keys
 import (
 	"encoding/hex"
 	"encoding/json"
-	"golang.org/x/crypto/chacha20poly1305"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/chacha20poly1305"
+
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
 func mustOpen(t *testing.T) (*Vault, string) {
@@ -45,7 +48,7 @@ func TestFilesArePrivateAndSealed(t *testing.T) {
 	if err := v.Put("id1", Entry{Name: "K", Value: "hunter2-plain", Scope: "p"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"vault.enc", "vault.key"} {
+	for _, name := range []string{"vault.enc", "identity.json"} {
 		info, err := os.Stat(filepath.Join(home, name))
 		if err != nil || info.Mode().Perm() != 0o600 {
 			t.Fatalf("%s: %v %v", name, info, err)
@@ -65,15 +68,15 @@ func TestAtomicWriteLeavesNoTemp(t *testing.T) {
 		}
 	}
 	entries, _ := os.ReadDir(home)
-	if len(entries) != 2 {
-		t.Fatalf("want vault.enc + vault.key only, got %v", entries)
+	if len(entries) != 3 {
+		t.Fatalf("want vault.enc, identity.json and device.json only, got %v", entries)
 	}
 }
 
 func TestTamperAndWrongKeyRejected(t *testing.T) {
 	v, home := mustOpen(t)
 	v.Put("id", Entry{Name: "K", Value: "v", Scope: "p"})
-	os.Remove(filepath.Join(home, "vault.key"))
+	os.Remove(filepath.Join(home, "identity.json"))
 	other, _ := Open(home) // fresh key
 	if _, err := other.Get("id"); err == nil {
 		t.Fatal("opened vault under a different key")
@@ -195,7 +198,7 @@ func TestEnvelopeRefusesForeignKeyID(t *testing.T) {
 	}
 }
 
-func legacyID(key []byte) string { return keyID(key)[:16] }
+func legacyID(key []byte) string { return identity.CellKeyID(key)[:16] }
 
 // sealAs seals plain the way the pre-freeze build did, naming the key by id.
 func sealAs(t *testing.T, key, plain []byte, id string) []byte {
@@ -208,4 +211,32 @@ func sealAs(t *testing.T, key, plain []byte, id string) []byte {
 		t.Fatal(err)
 	}
 	return blob
+}
+
+// A machine with a vault.key from before identities keeps its vault: the old
+// key becomes the identity's cell key and the vault still opens.
+func TestVaultKeyBecomesTheIdentityCellKey(t *testing.T) {
+	home := t.TempDir()
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	os.WriteFile(filepath.Join(home, "vault.key"), []byte(hex.EncodeToString(key)), 0o600)
+	blob, err := seal(key, []byte(`{"V":1,"secrets":{"a":{"name":"K","value":"old","scope":"p"}},"updated":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(home, "vault.enc"), blob, 0o600)
+
+	v, err := Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, err := v.Get("a"); err != nil || e.Value != "old" {
+		t.Fatalf("old vault did not open: %v %v", e, err)
+	}
+	id, _ := identity.Load(home)
+	if id.CellKeyID() != identity.CellKeyID(key) {
+		t.Fatal("identity cell key is not the old vault key")
+	}
 }
