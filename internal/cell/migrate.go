@@ -64,7 +64,9 @@ func stageCell(dir string) error {
 	if err := os.RemoveAll(stage); err != nil {
 		return err
 	}
-	m, err := Options{Class: FilesOnly}.meta()
+	// A legacy session already ran its tools on the host; declaring it
+	// anything narrower would refuse or cut off the work it was doing.
+	m, err := Options{Class: HostBound}.meta()
 	if err != nil {
 		return err
 	}

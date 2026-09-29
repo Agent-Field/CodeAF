@@ -39,6 +39,9 @@ func wantMigrated(t *testing.T, dir string) {
 	if regexp.MustCompile(`"/[^"]`).Match(raw) {
 		t.Fatalf("absolute path in meta: %s", raw)
 	}
+	if !regexp.MustCompile(`"` + string(HostBound) + `"`).Match(raw) {
+		t.Errorf("migrated class is not %s: %s", HostBound, raw)
+	}
 	if _, err := os.Stat(filepath.Join(dir, EnvPath)); err != nil {
 		t.Errorf("env/: %v", err)
 	}
