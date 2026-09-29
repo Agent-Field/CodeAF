@@ -94,6 +94,9 @@ Open the run's task and click `▸ brief` beside its title, or press `ctrl+o`. T
 body becomes **the whole brief** senior-dev was handed, from its first line, as a
 document. Nothing is folded away or cut to a count. Scroll it the way you scroll the
 page: the mouse wheel, `pgup` and `pgdown`.
+The one exception is the line codeaf puts at its head as senior-dev starts in a copy of
+your repository (where that copy is, which branch it is on, and that the branch begins
+with your uncommitted work): it is not shown here, and the run's ending names the branch.
 
 A brief codeaf wrote is shown in parts under plain bold headings. The work comes first as
 `Task request`, then `Deliverable`, `Completion criteria` and `Workspace`, then
