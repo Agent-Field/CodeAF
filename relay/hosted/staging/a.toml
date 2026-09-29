@@ -1,0 +1,16 @@
+# Staging deploy of option (a). Run from relay/hosted: wrangler deploy -c staging/a.toml
+name = "caf-relay-a"
+main = "../src/worker_a.js"
+compatibility_date = "2026-09-01"
+
+[[r2_buckets]]
+binding = "FRAMES"
+bucket_name = "caf-staging-relay-a"
+
+[[durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "IdentityDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IdentityDO"]
