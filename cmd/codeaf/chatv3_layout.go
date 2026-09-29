@@ -717,3 +717,18 @@ func v3ReapEmpty(empty []v3Folder, keep string) {
 		_ = os.RemoveAll(folder.dir)
 	}
 }
+
+// v3Migrated moves a legacy session folder into the cell layout when cells are
+// on, and points the config at the journal's new home. [openV3Agent] is the one
+// door every open goes through, so this is the one place a folder is migrated.
+//
+// A failed migration is not a failed open: every state it can stop in opens
+// (cell.MigrateLegacy), and the path is read back from the disk either way.
+func v3Migrated(cfg session.Config) session.Config {
+	if !cell.Enabled() || cfg.Place.Dir == "" {
+		return cfg
+	}
+	_ = cell.MigrateLegacy(cfg.Place.Dir)
+	cfg.SessionFile = cfg.Place.Transcript()
+	return cfg
+}
