@@ -9,7 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// cellReport prints what syncing a cell cost, one row per flush and a total.
+// cellReport prints what syncing a cell cost, one row per flush, a total, and the vault's own row.
 // The numbers are counts kept on this device (internal/cellstats). Nothing is
 // written anywhere unless the person names a file with --export.
 func cellReport(c cell.Cell, args []string, out io.Writer) error {
@@ -17,7 +17,11 @@ func cellReport(c cell.Cell, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	cellstats.Render(out, lines)
+	vault, err := cellstats.Read(home.Dir(), cellstats.VaultScope)
+	if err != nil {
+		return err
+	}
+	cellstats.RenderScopes(out, lines, vault)
 	if len(args) == 0 || len(lines) == 0 {
 		return nil
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -167,16 +168,17 @@ func TestOpenBuildsBoundClients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Store.PutFrame(ctx, frame); err != nil {
+	sc := s.scope("probe")
+	if _, err := sc.Store.PutFrame(ctx, frame); err != nil {
 		t.Fatalf("PutFrame: %v", err)
 	}
-	if have, err := s.Store.Has(ctx, []string{rid}); err != nil || !have[0] {
+	if have, err := sc.Store.Has(ctx, []string{rid}); err != nil || !have[0] {
 		t.Fatalf("Has = %v, %v", have, err)
 	}
-	if _, err := s.Store.Get(ctx, rid); err != nil {
+	if _, err := sc.Store.Get(ctx, rid); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if _, err := s.Store.Get(ctx, strings.Repeat("cd", 32)); !errors.Is(err, blobstore.ErrNotFound) {
+	if _, err := sc.Store.Get(ctx, strings.Repeat("cd", 32)); !errors.Is(err, blobstore.ErrNotFound) {
 		t.Fatalf("Get of a missing object = %v", err)
 	}
 
@@ -184,13 +186,15 @@ func TestOpenBuildsBoundClients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := s.Counters
-	got := blobstore.Counts{Puts: c.Puts.Load(), Gets: c.Gets.Load(), Has: c.Has.Load(), BytesIn: c.BytesUp.Load(), BytesOut: c.BytesDown.Load()}
-	if got != theirs {
-		t.Fatalf("counters %+v, relay says %+v", got, theirs)
+	sc.Settle()
+	lines, err := cellstats.Read(home, "probe")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if c.ObjectsUp.Load() != 1 {
-		t.Fatalf("ObjectsUp = %d", c.ObjectsUp.Load())
+	l := cellstats.Total(lines)
+	got := blobstore.Counts{Puts: l.Puts, Gets: l.Gets, Has: l.Has, BytesIn: l.BytesUp, BytesOut: l.BytesDown}
+	if got != theirs {
+		t.Fatalf("scope stats %+v, relay says %+v", got, theirs)
 	}
 }
 

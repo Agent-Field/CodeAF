@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -248,10 +247,7 @@ func assertStatsMatchRelay(t *testing.T, r *driveRig) {
 		t.Fatal(err)
 	}
 	total := cellstats.Total(lines)
-	got, err := r.a.Store.(blobstore.Counting).Inner.(*blobstore.HTTP).Stats(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := relayCounts(t, r.a)
 	if total.Puts != got.Puts || total.BytesUp != got.BytesIn || total.Gets != got.Gets || total.Has != got.Has {
 		t.Fatalf("stats file totals %+v, relay counted %+v", total, got)
 	}

@@ -7,14 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/vaultsync"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -42,6 +41,7 @@ type Drive struct {
 	cell    cell.Cell
 	opt     DriveOptions
 	batcher *cellsync.Batcher
+	scope   *Scope // what this chat's publishes are counted under
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -95,8 +95,7 @@ func (d *Drive) syncVault(ctx context.Context) {
 	if !ok || fp == d.sent {
 		return
 	}
-	syncer, err := d.sync.vaultSyncer(nil)
-	if err != nil || syncer.Push(ctx) != nil {
+	if d.sync.withVault(nil, func(v vaultsync.Syncer) error { return v.Push(ctx) }) != nil {
 		return
 	}
 	// The push merges what the directory holds, which may rewrite the file.
@@ -104,9 +103,9 @@ func (d *Drive) syncVault(ctx context.Context) {
 }
 
 // flushed is what runs after each publish: the telemetry, then the vault.
-func (d *Drive) flushed(rec *cellstats.Recorder) func(cellsync.Flush) {
+func (d *Drive) flushed() func(cellsync.Flush) {
 	return func(f cellsync.Flush) {
-		rec.OnFlush(f)
+		d.scope.Flushed(f)
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
 		d.syncVault(ctx)
@@ -166,8 +165,8 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		return nil, err
 	}
 	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
-	rec := cellstats.NewRecorder(s.Home, c.ID, meter(s.Counters))
-	pub := &cellsync.Publisher{Engine: engine, Store: s.Store, Dir: s.Dir}
+	d.scope = s.scope(c.ID)
+	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
 	return &cellsync.Batcher{
 		Publisher: pub,
 		Brancher: cellsync.Brancher{
@@ -177,21 +176,11 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		Driving:      &drv,
 		Interval:     s.Interval,
 		Info:         d.info,
-		OnFlush:      d.flushed(rec),
+		OnFlush:      d.flushed(),
 		OnSuperseded: d.becomeViewer,
 		OnError:      d.refusal,
 		Sleep:        d.opt.Sleep,
 	}, nil
-}
-
-// meter reads the store client's counters as the recorder's snapshot.
-func meter(c *blobstore.Counters) cellstats.Meter {
-	return cellstats.MeterFunc(func() cellstats.Counts {
-		return cellstats.Counts{
-			Puts: c.Puts.Load(), Gets: c.Gets.Load(), Has: c.Has.Load(),
-			BytesUp: c.BytesUp.Load(), BytesDown: c.BytesDown.Load(),
-		}
-	})
 }
 
 // info is what a publish tells the directory about this chat.
@@ -299,6 +288,7 @@ func (d *Drive) Close(ctx context.Context) error {
 		<-d.done
 		d.syncVault(ctx)
 		err = d.batcher.Close(ctx)
+		d.scope.Settle() // a publish that failed after the last flush line still counts
 	})
 	return err
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellindex"
+	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -40,9 +41,9 @@ type Continued struct {
 
 // Continuer is the take side of one machine: `continue here`.
 type Continuer struct {
-	sync  *Sync
-	taker handoff.Taker
-	opt   TakeOptions
+	sync *Sync
+	eng  cellstore.Engine
+	opt  TakeOptions
 }
 
 // Continuer builds the take side over eng, the engine every chat this machine
@@ -51,33 +52,41 @@ type Continuer struct {
 // secrets to the folder the tree landed in.
 func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 	eng.WorkspaceOf = func(c cell.Cell) string { return workspaceOf(c.Root) }
-	sync := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
+	return &Continuer{sync: s, eng: eng, opt: opt}
+}
+
+// taker is the Taker for chat id. It is built per takeover because the store
+// it fetches through is counted under the chat it serves, and so is the branch
+// that keeps this machine's unsent edits: both are the cost of taking this chat.
+func (c *Continuer) taker(sc *Scope) handoff.Taker {
+	s := c.sync
+	sync := c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	engine := landing{Engine: sync}
-	pub := &cellsync.Publisher{Engine: engine, Store: s.Store, Dir: s.Dir}
+	pub := &cellsync.Publisher{Engine: engine, Store: sc.Store, Dir: s.Dir}
 	// THE TAKEOVER'S BRANCHER RUNS WITH Map NIL. The chat being taken keeps its
 	// id on this machine; only the edits set aside live in the branch, and a
 	// mapping from the chat to that branch would make the chat open as the
 	// branch. (The drive side's brancher records the mapping, because there the
 	// local chat does become the branch.)
 	brancher := cellsync.Brancher{Dir: s.Dir, Publisher: pub, NewID: newCellID}
-	c := &Continuer{sync: s, opt: opt}
-	c.taker = handoff.Taker{
+	return handoff.Taker{
 		Dir:     s.Dir,
-		Fetch:   &cellsync.Fetcher{Engine: engine, Store: s.Store, Inbox: sync.Inbox},
-		Local:   engineLocal{eng},
+		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Inbox: sync.Inbox},
+		Local:   engineLocal{c.eng},
 		Branch:  c.branch(brancher),
-		RootFor: opt.RootFor,
+		RootFor: c.opt.RootFor,
 		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
 		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, c.pullVault, c.injectEnv},
 	}
-	return c
 }
 
 // Take continues chat id here. Everything the surface says about it comes back
 // with it.
 func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 	from := c.holderName(ctx, id)
-	taken, err := c.taker.Take(ctx, id)
+	sc := c.sync.scope(id)
+	defer sc.Settle()
+	taken, err := c.taker(sc).Take(ctx, id)
 	if err != nil {
 		return Continued{}, err
 	}
@@ -196,18 +205,10 @@ func rebuildIndexes(_ context.Context, c cell.Cell) error {
 // pullVault brings this identity's secrets here; injectEnv writes the chat's
 // own into its workspace.
 func (c *Continuer) pullVault(ctx context.Context, _ cell.Cell) error {
-	syncer, err := c.sync.vaultSyncer(c.opt.Notify)
-	if err != nil {
-		return err
-	}
-	return syncer.Pull(ctx)
+	return c.sync.withVault(c.opt.Notify, func(v vaultsync.Syncer) error { return v.Pull(ctx) })
 }
 
 func (c *Continuer) injectEnv(ctx context.Context, at cell.Cell) error {
-	syncer, err := c.sync.vaultSyncer(c.opt.Notify)
-	if err != nil {
-		return err
-	}
 	opened, err := cell.OpenAt(at.Root, at.ID)
 	if err != nil {
 		return err
@@ -215,17 +216,21 @@ func (c *Continuer) injectEnv(ctx context.Context, at cell.Cell) error {
 	// .env belongs in the folder the tools run in, which is not always the
 	// chat's own folder.
 	opened.Root = workspaceOf(at.Root)
-	return syncer.Inject(ctx, opened)
+	return c.sync.withVault(c.opt.Notify, func(v vaultsync.Syncer) error { return v.Inject(ctx, opened) })
 }
 
-// vaultSyncer is the syncer of this machine's vault. The vault file is made if
-// it is not there yet, with this machine's identity as its key.
-func (s *Sync) vaultSyncer(notify func(string)) (vaultsync.Syncer, error) {
+// withVault runs use with the syncer of this machine's vault. The vault file is
+// made if it is not there yet, with this machine's identity as its key. The
+// syncer's store is counted under the vault scope, so vaultsync stays unaware
+// of counting, and what the run moved is written when it ends.
+func (s *Sync) withVault(notify func(string), use func(vaultsync.Syncer) error) error {
 	v, err := keys.Open(s.Home)
 	if err != nil {
-		return vaultsync.Syncer{}, err
+		return err
 	}
-	return vaultsync.Syncer{Store: s.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(), Notify: notify}, nil
+	sc := s.scope(cellstats.VaultScope)
+	defer sc.Settle()
+	return use(vaultsync.Syncer{Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(), Notify: notify})
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every
