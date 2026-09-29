@@ -33,7 +33,7 @@ fc_load_manifest
 fc_require_keys .campaign_name .label_prefix .model .arm .seed_id .preregistration \
   .host_shards .wave_capacity .per_container.cpus .per_container.memory_gb .max_cost_usd \
   .max_hours .hard_timeout_seconds .codeaf_commit .codeaf_sha256 .corpus .corpus_sha256 \
-  .hypothesis .reasoning_effort
+  .hypothesis .reasoning_effort .judge_model .judge_prompt_version
 
 MODEL="$(fc_get '.model')"
 PREFIX="$(fc_get '.label_prefix')"
