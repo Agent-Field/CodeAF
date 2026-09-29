@@ -191,7 +191,7 @@ type UsageLine struct {
 	// The role beside it names the reflex, so the row remains useful even to a
 	// reader that does not know this build's aggregate counters.
 	Empty bool `json:"empty,omitempty"`
-	// Session is the 16-hex id of the conversation the call was made in. For a
+	// Session is the id of the conversation the call was made in. For a
 	// piece of work it is the NODE's own journal id and not the conversation
 	// that asked for it, which is why Task sits beside it: the pair is what
 	// identifies where the money went.
