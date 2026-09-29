@@ -44,7 +44,7 @@ screen you pass through, so the tip worth saying differs: a conversation gets th
 urgent thing that is true right now, and home gets everything in turn. Home's row does not
 wait for quiet; a conversation's waits 15 seconds.
 
-Both rows draw from **one list** of twenty-three tips (below), and using a gesture on
+Both rows draw from **one list** of twenty-four tips (below), and using a gesture on
 either retires it on both.
 
 **A conversation's tip has moved several times.** It was the keys row's lowest rung until
@@ -121,7 +121,7 @@ later when the ring comes round. It jumps once and then takes its turn like the 
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are twenty-three, one list for both boxes. Each one says the moment it first appears
+There are twenty-four, one list for both boxes. Each one says the moment it first appears
 and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
@@ -174,7 +174,11 @@ build if the two disagree), so a tip you saw is on it word for word.
   opens, over a conversation or over home's draft.
 - `/crew sets the models codeaf uses on its own behalf` — retired when `/crew` answers,
   bare or with a preset.
-- `/budget sets the spending cap for the day` — retired when `/budget` answers.
+- `/budget sets the daily spending limit across all conversations` — retired when
+  `/budget` opens or edits the daily setting, bare, with an amount, or with `day`, `daily` or `today`.
+- `/budget conversation sets the per-conversation spending limit` — retired when
+  `/budget conversation` (or `chat` or `session`) is used, with or without an amount.
+  Changing the daily limit leaves this separate hint available, and vice versa.
 
 **Steering a running answer**
 

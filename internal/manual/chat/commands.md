@@ -902,8 +902,18 @@ the same row the Spending tab writes through.
 | `/budget` | opens the Spending tab on `per day` |
 | `/budget 50` | sets the day's limit to $50 |
 | `/budget none` | removes the day's limit — the row then reads `no limit` |
+| `/budget conversation 20` | sets the open conversation’s limit to $20 immediately and saves the default |
+| `/budget conversation none` | removes the open conversation’s limit |
 | `/budget plan 20` | sets one row by name |
 | `/budget plan` | a row named with no figure opens the tab on that row |
+
+If a turn says `conversation limit reached`, use `/budget conversation 20`
+(or another amount above the recorded spend), then send the message again — `↑`
+brings it back, since the box is cleared on enter. `/budget 20`
+changes only the daily limit and cannot release a conversation's separate cap.
+The refusal names `/budget conversation`; a daily refusal names `/budget day`.
+With no amount, either command opens settings on the corresponding row. A failed
+live update says `saved for the next conversation · this one still has its previous limit`.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be

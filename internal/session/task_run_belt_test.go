@@ -1505,7 +1505,7 @@ func TestStartTaskBashBeltRunSpendRefusesNextTurnWithShippedLimitSentence(t *tes
 	if len(refusal) != 1 || refusal[0].Err == nil {
 		t.Fatalf("the turn after overspending the conversation limit = %v, want one refusal", kinds(refusal))
 	}
-	const want = "conversation limit reached · $2.05 spent of $2 · /budget changes it"
+	const want = "conversation limit reached · $2.05 spent of $2 · /budget conversation changes it"
 	if got := refusal[0].Err.Error(); got != want {
 		t.Fatalf("next-turn refusal = %q, want unchanged shipped sentence %q", got, want)
 	}
