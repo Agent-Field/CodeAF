@@ -46,6 +46,10 @@ type Local struct {
 
 	// Observer, when set, sees each call that ran to a result.
 	Observer Observer
+
+	// Secrets, when set, names variables added to every process's environment:
+	// the vault's, for a workspace whose secret files are not in its history.
+	Secrets SecretSource
 }
 
 // resolve stamps the request with the workspace's class and the network policy
@@ -95,7 +99,7 @@ func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) 
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, req.Argv[0], req.Argv[1:]...) //codeaf:plumbing the executor is the spawn seam
-	cmd.Dir, cmd.Env, cmd.Stdin = dir, req.Env, req.Stdin
+	cmd.Dir, cmd.Env, cmd.Stdin = dir, l.withSecrets(req.Env), req.Stdin
 	configureGroup(cmd, req.Group)
 	cmd.Cancel = canceller(cmd, req.Group)
 	cmd.WaitDelay = req.WaitDelay
@@ -103,6 +107,27 @@ func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) 
 		return nil, err
 	}
 	return cmd, nil
+}
+
+// SecretSource is where a process's secret variables come from (the vault).
+type SecretSource interface {
+	Env() []string
+}
+
+// withSecrets is env with the vault's variables added; a nil env inherits the
+// host's, so it stays nil when there is nothing to add.
+func (l Local) withSecrets(env []string) []string {
+	if l.Secrets == nil {
+		return env
+	}
+	extra := l.Secrets.Env()
+	if len(extra) == 0 {
+		return env
+	}
+	if env == nil {
+		env = os.Environ()
+	}
+	return append(append([]string(nil), env...), extra...)
 }
 
 func configureGroup(cmd *exec.Cmd, g Group) {

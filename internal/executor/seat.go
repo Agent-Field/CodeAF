@@ -44,11 +44,12 @@ type Stance struct {
 	Class    Class
 	Setup    bool
 	Observer Observer
+	Secrets  SecretSource // added to every process's environment; nil adds none
 }
 
 // In implements Seat.
 func (s Stance) In(dir string) Runner {
-	return Local{Root: dir, Class: s.Class, Jail: DefaultJail(), Setup: s.Setup, Observer: s.Observer}
+	return Local{Root: dir, Class: s.Class, Jail: DefaultJail(), Setup: s.Setup, Observer: s.Observer, Secrets: s.Secrets}
 }
 
 // ForSetup is the same stance for a setup turn's calls.

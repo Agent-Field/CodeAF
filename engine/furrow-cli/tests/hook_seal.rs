@@ -151,3 +151,22 @@ fn a_composed_workspace_never_gets_an_engine_folder() {
     assert_eq!(read(&folder.root.join("a.txt")), "one");
     assert!(!folder.root.join(".furrow").exists());
 }
+
+#[test]
+fn the_cell_directory_carries_exclusions_so_the_workspace_needs_no_policy_file() {
+    let folder = Folder::new();
+    fs::write(folder.root.join("a.txt"), "one").unwrap();
+    fs::write(folder.root.join("secret.txt"), "one").unwrap();
+    fs::create_dir_all(&folder.cell).unwrap();
+    fs::write(folder.cell.join(".furrowpolicy"), "exclude secret.txt\n").unwrap();
+    let cell = folder.cell.to_str().unwrap();
+    let sealed = folder.turn_end(&["--cell-dir", cell], b"");
+
+    fs::write(folder.root.join("a.txt"), "damaged").unwrap();
+    fs::write(folder.root.join("secret.txt"), "changed").unwrap();
+    folder.rewind(&sealed, &["--cell-dir", cell]);
+
+    assert_eq!(read(&folder.root.join("a.txt")), "one");
+    assert_eq!(read(&folder.root.join("secret.txt")), "changed");
+    assert!(!folder.root.join(".furrowpolicy").exists());
+}

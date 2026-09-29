@@ -5,6 +5,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
 // SeatFor builds the executor a session owns: every call runs under the class
@@ -17,7 +18,7 @@ import (
 // report is told of a seal that failed; the call it followed is never failed
 // by it.
 func SeatFor(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error)) (executor.Seat, error) {
-	base := executor.Stance{Class: class, Observer: obs}
+	base := executor.Stance{Class: class, Observer: obs, Secrets: vaultEnv{c}}
 	if !cell.Enabled() {
 		return executor.Watching(base, obs), nil
 	}
@@ -35,7 +36,9 @@ func SeatFor(class executor.Class, c cell.Cell, workspace string, obs executor.O
 // folder itself. It is the one place an Engine is derived for a cell: the
 // session's seat and the `cell` verbs both come here, so a rewind restores the
 // tree that was sealed.
-func EngineFor(workspace string) Engine { return Engine{Workspace: workspace} }
+func EngineFor(workspace string) Engine {
+	return Engine{Workspace: workspace, Guard: Guard{Ledger: keys.NewLedger()}}
+}
 
 func recorderFor(inner executor.Executor, store Store, c cell.Cell, opts Options) (*Recorder, error) {
 	return NewRecorder(inner, store, c, Engine{}.WALPath(c), opts)
