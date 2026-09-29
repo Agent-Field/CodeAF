@@ -895,7 +895,11 @@ func (f *ProgramFolder) settleCopyWork(end *ProgramFolderEnd, result string, gon
 		stays = f.keepWhatIsLeft(end)
 	}
 	if gone {
-		end.Frozen = f.keepOwnRefs()
+		kept, failed := f.keepOwnRefs()
+		end.Frozen = kept
+		if stays == "" && len(failed) > 0 {
+			stays = failed[0]
+		}
 	}
 	return stays
 }
@@ -1018,7 +1022,8 @@ func (f *ProgramFolder) keepDetached() (string, bool) {
 }
 
 // keepOwnRefs puts a branch on each of the copy's own refs (`refs/worktree/`)
-// that holds something its branch does not, and answers what it kept.
+// that holds something its branch does not, and answers what it kept and
+// what could not be saved before the copy goes away.
 //
 // A COPY'S OWN REFS GO WITH IT. senior-dev keeps the candidate it submitted at
 // `refs/worktree/senior-dev/submitted`, so a run killed between submitting and
@@ -1026,23 +1031,26 @@ func (f *ProgramFolder) keepDetached() (string, bool) {
 // over each other's, and so removed with the copy. A run whose end nobody saw
 // is the one that can have stopped in that gap, and its candidate is kept on a
 // branch of its own (`<branch>-submitted`) rather than lost with the copy.
-func (f *ProgramFolder) keepOwnRefs() []programKeptRef {
+func (f *ProgramFolder) keepOwnRefs() ([]programKeptRef, []string) {
 	out, err := git(f.Dir, "for-each-ref", "--format=%(refname)", "refs/worktree/")
 	if err != nil {
-		return nil
+		return nil, []string{"the copy's saved refs could not be read (" + firstLine(out) + ")"}
 	}
 	tip := branchCommit(f.Repo, f.Branch)
 	var kept []programKeptRef
+	var failed []string
 	for _, ref := range nonEmptyLines(out) {
 		if f.branchHolds(ref, tip) {
 			continue
 		}
 		name := freeBranchName(f.Repo, f.Branch+"-"+path.Base(ref))
-		if _, err := git(f.Dir, "branch", "-q", name, ref); err == nil {
+		if out, err := git(f.Dir, "branch", "-q", name, ref); err == nil {
 			kept = append(kept, programKeptRef{Ref: ref, Branch: name})
+		} else {
+			failed = append(failed, fmt.Sprintf("what %s had saved at %s could not be kept on a branch (%s)", f.Program, ref, firstLine(out)))
 		}
 	}
-	return kept
+	return kept, failed
 }
 
 // branchHolds says the branch whose tip is tip already holds what ref names:

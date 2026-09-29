@@ -591,6 +591,7 @@ is kept at <copy>, because <why>: take what you need from it, then delete that f
 the copy (`index.lock`) does not cause this: nothing can still be using the copy by then,
 so codeaf removes it and commits. A copy that would not be removed says `its copy at
 <copy> could not be removed, so <branch> is still checked out there`.
+If a submitted candidate cannot be kept on a branch, its copy stays on disk and the ending names the saved ref.
 
 A copy left behind — codeaf crashed, or the machine restarted mid-run — is finished by the
 next run on that repository, which also prunes git's record of it.

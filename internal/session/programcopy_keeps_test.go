@@ -545,6 +545,29 @@ func TestANetworkOnCopyNeverLinksToAPersonsLinkedNodeModules(t *testing.T) {
 	}
 }
 
+// A SUBMITTED CANDIDATE WHOSE RESCUE BRANCH IS LOCKED STAYS IN ITS COPY.
+// Removing that copy would also remove the only ref that still holds the work.
+func TestASweptCopyStaysWhenItsCandidateCannotBeKept(t *testing.T) {
+	repo := newTestRepo(t)
+	dead := deadProgramFolder(t, repo, t.TempDir())
+	writeFile(t, filepath.Join(dead.Dir, "candidate.go"), "package candidate\n")
+	mustGit(t, dead.Dir, "add", "candidate.go")
+	tree := strings.TrimSpace(gitOut(t, dead.Dir, "write-tree"))
+	candidate := strings.TrimSpace(gitOut(t, dead.Dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit-tree", tree, "-p", "HEAD", "-m", "submitted"))
+	ref := "refs/worktree/senior-dev/submitted"
+	mustGit(t, dead.Dir, "update-ref", ref, candidate)
+	writeFile(t, copyGitPath(t, repo, "refs/heads/"+dead.Branch+"-submitted.lock"), "other git writer\n")
+	sweepProgramCopies(repo)
+	if _, err := os.Stat(dead.Dir); err != nil {
+		t.Fatalf("the copy holding the candidate was removed: %v", err)
+	}
+	ending, ok := keptProgramFolderEnd(dead.Keep)
+	if !ok || !strings.Contains(ending.Sentence(), ref) ||
+		!strings.Contains(ending.Sentence(), "its copy is kept at "+dead.Dir) {
+		t.Fatalf("the ending = %+v, want the copy kept and the ref named", ending)
+	}
+}
+
 // A RUN SENT BACK COUNTS FROM WHERE THE LINE'S FIRST RUN FOUND THE PERSON. It
 // takes the branch up, the person's changes already its first commit, and
 // neither those changes nor the person's newer ones are carried again.
