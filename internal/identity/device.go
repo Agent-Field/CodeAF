@@ -17,13 +17,13 @@ const DeviceFile = "device.json"
 
 const certLabel = "codeaf/device-cert/v1\n"
 
-// Cert is the identity's signature over one device: its public key, a name and
-// when it was made. It is what a relay checks to tell devices of one identity
+// Cert is the identity's signature over one device: its public key and when it
+// was made. It carries no name, because a relay reads it in a request header;
+// the device's name lives only sealed in the directory record. It is what a relay checks to tell devices of one identity
 // apart, and what would let a lost one be dropped.
 type Cert struct {
 	V      uint16 `json:"V"`
-	Device string `json:"device"` // device public key, hex
-	Name   string `json:"name"`
+	Device string `json:"device"`  // device public key, hex
 	Made   int64  `json:"created"` // unix ms
 	Sig    string `json:"sig"`     // hex ed25519 over the other fields
 }
@@ -98,12 +98,8 @@ func newDevice(id Identity) (Dev, error) {
 	if err != nil {
 		return Dev{}, err
 	}
-	name, err := os.Hostname()
-	if err != nil || name == "" {
-		name = "device"
-	}
 	pub := ed25519.NewKeyFromSeed(seed[:]).Public().(ed25519.PublicKey)
-	cert := Cert{V: version, Device: hex.EncodeToString(pub), Name: name, Made: time.Now().UnixMilli()}
+	cert := Cert{V: version, Device: hex.EncodeToString(pub), Made: time.Now().UnixMilli()}
 	cert.Sig = hex.EncodeToString(id.Sign(cert.body()))
 	return Dev{Cert: cert, seed: seed}, nil
 }
