@@ -1815,9 +1815,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		a.recordUserLocked(user)
 		// AND THE SESSION STARTS NAMING ITSELF NOW, on the person's own words,
 		// beside the answer rather than behind it (title.go). The message is in
-		// the transcript on the line above, which is the only thing the namer
-		// needs; it is started under this lock so that two Submits racing to be
-		// the first cannot buy two names.
+		// the transcript on the line above; a shell opening additionally waits
+		// for an ordinary reply to explain its output. Naming is started under
+		// this lock so two Submits racing to be first cannot buy two names.
 		if user.bash == "" {
 			a.startTitleLocked()
 		}

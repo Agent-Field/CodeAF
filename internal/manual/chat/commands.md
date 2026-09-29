@@ -35,10 +35,12 @@ Task pages accept task messages; run `!` commands from the parent conversation.
 A conversation containing only `!` commands keeps a literal command preview as
 its working name. Home and conversation lists preserve its casing and punctuation;
 long commands are clipped to fit. Shell turns do not ask a model for a title.
-Once you send an ordinary message, automatic naming uses that message, skipping
-recorded human shell turns. Naming starts as soon as that message is sent, so a reply
-is included only when one already exists; a message that only points at the output,
-such as "what did that print?", is named from its own words.
+After a shell opening, automatic naming waits for the first ordinary message with
+an answer and uses both, skipping recorded human shell turns. The command preview
+stays until the title arrives. This gives a question such as "what did that print?"
+the context of its answer; the answer may quote shell output. An unanswered or
+interrupted question does not prevent a later answered message from naming the chat.
+Conversations that begin with an ordinary message still start naming immediately.
 
 ## Typing a slash to see the command list
 

@@ -499,8 +499,9 @@ takes the room the numbers need.
 **It starts with your first message.** The small model on the `title` role is shown the
 opening question and asked for one descriptive **5–8 word phrase**. A `!` shell command
 is not that message: a conversation that opens with `!` commands keeps the command as its
-name until you send an ordinary message, and is then named from that message. The answer
-and the naming request run independently. A late name still reaches an idle chat, a
+name until an ordinary message has an answer, and is then named from that question and
+answer. Unanswered questions are skipped after a shell opening. For an ordinary opening,
+the answer and naming still run independently from the start. A late name reaches an idle chat, a
 background tab, or a hosted chat after the connection is restored; no refresh or
 follow-up message is needed.
 
