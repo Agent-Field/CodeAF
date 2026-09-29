@@ -25,7 +25,7 @@ func TestEveryMessageWriteUsesThreadPost(t *testing.T) {
 				return filepath.SkipDir
 			}
 			switch entry.Name() {
-			case ".git", "bin", "testdata", "vendor":
+			case ".git", ".claude", "bin", "testdata", "vendor":
 				return filepath.SkipDir
 			}
 			return nil

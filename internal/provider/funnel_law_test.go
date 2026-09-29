@@ -81,7 +81,7 @@ func funnelWalk(t *testing.T, root string, skipTree func(rel string) bool,
 		rel = filepath.ToSlash(rel)
 		if entry.IsDir() {
 			name := entry.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" || name == "testdata" {
+			if name == ".git" || name == ".claude" || name == "node_modules" || name == "vendor" || name == "testdata" {
 				return filepath.SkipDir
 			}
 			if rel != "." && skipTree != nil && skipTree(rel) {

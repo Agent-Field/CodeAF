@@ -64,7 +64,7 @@ func walkDoorSources(t *testing.T, inspect func(string, *token.FileSet, *ast.Fil
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "third_party", "bin":
+			case ".git", ".claude", "third_party", "bin":
 				return filepath.SkipDir
 			}
 			return nil

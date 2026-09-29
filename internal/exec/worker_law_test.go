@@ -212,6 +212,7 @@ var namesLawSkipped = map[string]string{
 	"bench/deepswe":                    "a benchmark track, named for the task set and not for a worker",
 	"bench/oneroad":                    "the SWE-bench track for codeaf, pi and opencode",
 	".git":                             "not the tree",
+	".claude":                          "session worktrees are not the tree",
 	"internal/exec/worker_law_test.go": "this law has to be able to say the names it forbids",
 }
 
