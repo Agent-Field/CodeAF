@@ -7,6 +7,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -62,5 +63,22 @@ func TestTakeRootForFindsTheFolderAChatIsIn(t *testing.T) {
 	const stranger = "01J0000000000000000000000Z"
 	if got := takeRootFor(stranger); filepath.Base(got) != stranger || filepath.Dir(filepath.Dir(got)) != filepath.Join(h, "v3", "projects") {
 		t.Fatalf("a new chat is kept at %s, want a bucket under v3/projects", got)
+	}
+}
+
+// The title a chat publishes is the one its session record has now.
+func TestChatTitleIsTheSessionsTitle(t *testing.T) {
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.HostBound})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := chatTitle(c); got != "" {
+		t.Fatalf("a chat nothing named has title %q", got)
+	}
+	if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Title: "Port the picker"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := chatTitle(c); got != "Port the picker" {
+		t.Fatalf("chatTitle = %q", got)
 	}
 }
