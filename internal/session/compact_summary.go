@@ -407,7 +407,7 @@ func (a *Agent) personMessagesLocked() []int {
 		if a.messages[index].Role != "user" {
 			continue
 		}
-		if isCodeafNote(messageContentText(a.messages[index])) || a.file.isNote(a.messages[index]) {
+		if a.sessionNoteLocked(a.messages[index]) {
 			continue
 		}
 		persons = append(persons, index)

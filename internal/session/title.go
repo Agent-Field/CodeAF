@@ -498,6 +498,7 @@ func (a *Agent) setTitleIfUnnamed(title string, _ ...string) bool {
 // firstExchangeLocked returns the session's opening question and the first
 // thing the assistant said back, both as plain text. After a human shell opening,
 // it returns nothing until an ordinary question has an answer without tool calls.
+// Notes the session wrote cannot serve as the person's question.
 //
 // It reads from the front of the transcript rather than from the turn that just
 // ended, which matters for the session whose first turn is not its first
@@ -510,6 +511,9 @@ func (a *Agent) firstExchangeLocked() (string, string) {
 	for _, message := range a.messages {
 		switch message.Role {
 		case "user":
+			if a.sessionNoteLocked(message) {
+				continue
+			}
 			// Do not borrow an answer from a later, unrelated user turn. After
 			// a shell opening, skip unanswered questions so an interrupted turn
 			// cannot prevent a later completed exchange from naming the chat.
@@ -539,6 +543,12 @@ func (a *Agent) firstExchangeLocked() (string, string) {
 		return "", ""
 	}
 	return question, ""
+}
+
+// sessionNoteLocked identifies user-role messages the session wrote, so only
+// the person's words can anchor a conversation title or a compacted summary.
+func (a *Agent) sessionNoteLocked(message ai.Message) bool {
+	return isCodeafNote(messageContentText(message)) || a.file.isNote(message)
 }
 
 func humanShellReply(message ai.Message) bool {
