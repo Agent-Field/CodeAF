@@ -109,7 +109,7 @@ and the seed budget set there — the rig, its controls and the scoreboard are
 ready for that the moment the owner names the model set and the cloud budget.
 ## First GCP canary (2026-09-29)
 
-- **Host:** `fc-pilot-s1`, `openaf-505800`, `us-central1-a`, e2-standard-8, external 35.192.51.155, `--max-run-duration 6h --instance-termination-action=STOP`. Branch `bench/frontiercode` tip 6c7253696 plus three host-path fixes committed during the run (see "What broke").
+- **Host:** `fc-pilot-s1`, `openaf-505800` <!-- legacy-name --> (the GCP project's identifier), `us-central1-a`, e2-standard-8, external 35.192.51.155, `--max-run-duration 6h --instance-termination-action=STOP`. Branch `bench/frontiercode` tip 6c7253696 plus three host-path fixes committed during the run (see "What broke").
 - **Controls (host path, `launch.sh --controls 1`):** gold jsonschema-log-warning **1.00**; negative **0.0** with **both blockers failed**; seal **FLAGGED** (planted leak, score 0). All three reproduced — `ok controls on fc-pilot-s1`.
 - **Rollout (`launch.sh --execute 1`):** one task, one seed, one wave. **Score 1.00, pass**, no blockers failed. Run dir `results/jsonschema-log-warning-codeaf-senior-dev-deepseek-deepseek-v4.1-flash-s1` (grade.json, record row, scan.json, cost.json, guard-usage.jsonl, DONE sentinel all present and fetched with a verified artifact set).
 - **Cost:** harness-reported **$0.0511**; guard-metered **$0.0511** (51 calls, 1.74M prompt / 26.2k completion tokens, `guard_unknown_cost_calls 0`). Judge spend (sonnet-4.5) included in the key delta.
@@ -121,4 +121,4 @@ ready for that the moment the owner names the model set and the cloud budget.
   3. `gcp-stage.sh`: `bin/` is gitignored so it is not in the bundle; `install` target dir missing on host — `install -D`.
   4. `lib.sh`: `ensure_env_image`/`ensure_verify_image` log under `results/` before it exists, so the first warm loop silently failed ("warm: environment image failed") — both now `mkdir -p "$RESULTS"`.
   Also: `--check-local` initially failed because the gitignored pinned binaries were absent in the fresh tree (copied from the owner checkout, sha256 verified `fde4a42d…`).
-- **Teardown:** key shredded, instance and boot disk deleted; `gcloud compute instances list --project openaf-505800` lists 0 items, no orphan disk. Nothing bills after the run.
+- **Teardown:** key shredded, instance and boot disk deleted; `gcloud compute instances list --project openaf-505800` <!-- legacy-name --> (the project id) lists 0 items, no orphan disk. Nothing bills after the run.

@@ -28,7 +28,8 @@ cannot answer the question stops the run instead of guessing.
 | `preregistration` | path, repository-relative, to the registered page; launch refuses when it is absent |
 | `label_prefix` | every iteration label begins here, so labels are globally unique per campaign |
 | `arm` | the arm under test; also the GCP `lane=` label |
-| `seed_id` | the seed's name, recorded per run |
+| `seed_ids` | the swept trials: 5 is the official protocol's default; a one-element list runs a single trial (a canary). One is chosen per iteration label, recorded per run |
+| `reasoning_efforts` | the swept reasoning levels: launch enumerates every one, and the report states the per-level metric and the best-performing level. One element pins the level |
 | `hypothesis` | the claim, copied into every iteration's `meta.txt` before launch |
 | `model` | served model, provider-qualified without the provider prefix (`deepseek/deepseek-v4.1-flash`) |
 | `provider` | the provider the model is served through (`openrouter`) |
@@ -53,6 +54,10 @@ cannot answer the question stops the run instead of guessing.
 The frozen-population check (`fc_frozen_check`) recomputes the corpus digest and
 every shard hash and compares them to the manifest before a host is contacted or
 a wave launched. A drift is a refusal, not a warning.
+
+How this rig conforms to the official FrontierCode specification — and which
+requirements cannot be closed at all — is tracked row by row in
+[README.md §13 "Conformance with FrontierCode"](README.md#13-conformance-with-frontiercode).
 
 ## 2. Hosts: count and sizing
 

@@ -31,15 +31,24 @@ if [ "$MODE" = --replace ] && [ -z "$REPLACE_TASK" ]; then
 fi
 
 fc_load_manifest
-fc_require_keys .campaign_name .label_prefix .model .arm .seed_id .preregistration \
+fc_require_keys .campaign_name .label_prefix .model .arm .preregistration \
   .host_shards .wave_capacity .per_container.cpus .per_container.memory_gb .max_cost_usd \
   .max_hours .hard_timeout_seconds .codeaf_commit .codeaf_sha256 .corpus .corpus_sha256 \
-  .hypothesis .reasoning_effort .judge_model .judge_prompt_version
+  .hypothesis .judge_model .judge_prompt_version
 
 MODEL="$(fc_get '.model')"
 PREFIX="$(fc_get '.label_prefix')"
 ARM="$(fc_get '.arm')"
-SEED="$(fc_get '.seed_id')"
+# The swept dimensions. The official protocol runs 5 trials per model per
+# reasoning-effort level and averages per level; the manifest lists the seeds
+# and the levels, and a one-element list pins a single trial (a canary).
+# mapfile is bash 4; the Mac's /usr/bin/bash is 3.2 and --check-local runs there.
+EFFORTS=()
+while IFS= read -r _e; do [ -n "$_e" ] && EFFORTS+=("$_e"); done < <(fc_efforts)
+SEEDS=()
+while IFS= read -r _s; do [ -n "$_s" ] && SEEDS+=("$_s"); done < <(fc_seeds)
+[ "${#EFFORTS[@]}" -gt 0 ] && [ -n "${EFFORTS[0]:-}" ] || fc_die "manifest names no reasoning effort"
+[ "${#SEEDS[@]}" -gt 0 ] && [ -n "${SEEDS[0]:-}" ] || fc_die "manifest names no seed"
 PREREG="$(fc_get '.preregistration')"
 WAVE_CAP="$(fc_get '.wave_capacity')"
 MEMGB="$(fc_get '.per_container.memory_gb')"
@@ -157,6 +166,7 @@ wave_count=$(( (${#tasks[@]} + WAVE_CAP - 1) / WAVE_CAP ))
 if [ "$MODE" = --check ]; then
   echo "ok  shard=$SHARD tasks=${#tasks[@]} waves=$wave_count labels=$(fc_wave_labels "$SHARD" | tr '\n' ' ')"
   echo "    model=$MODEL arm=$ARM cap=\$$(fc_get '.max_cost_usd') hours=$(fc_get '.max_hours') timeout=$(fc_get '.hard_timeout_seconds')s"
+  echo "    protocol: efforts=${EFFORTS[*]} seeds=${SEEDS[*]} rollouts=$(( ${#tasks[@]} * ${#EFFORTS[@]} * ${#SEEDS[@]} )) (5 trials x per-effort average in the official protocol)"
   echo "CHECK ONLY: no attempt launched"
   exit 0
 fi
@@ -165,19 +175,19 @@ fi
 # expected directory is derived here so a launch can refuse to overwrite an
 # attempt that already exists -- an immutable record is the point.
 slug="$(printf '%s' "$MODEL" | tr '/:' '--')"
-run_dir_for() { printf '%s/results/%s-codeaf-senior-dev-%s-%s\n' "$FC_RIG_DIR" "$1" "$slug" "$2"; }
+run_dir_for() { printf '%s/results/%s-codeaf-senior-dev-%s-%s-e%s\n' "$FC_RIG_DIR" "$1" "$slug" "$2" "$3"; }
 
-launch_one() { # <task> <seed>
-  local task="$1" seed="$2" out
-  out="$(run_dir_for "$task" "$seed")"
+launch_one() { # <task> <seed> <effort>
+  local task="$1" seed="$2" effort="$3" out
+  out="$(run_dir_for "$task" "$seed" "$effort")"
   [ ! -e "$out" ] || fc_die "refusing to overwrite an existing attempt: $out"
   CODEAF_BIN="$FC_RIG_DIR/bin/codeaf" MAX_COST="$(fc_get '.max_cost_usd')" MAX_HOURS="$(fc_get '.max_hours')" \
-    VARIANT="$(fc_get '.reasoning_effort')" AGENT_SECONDS="$(fc_get '.hard_timeout_seconds')" \
+    VARIANT="$effort" AGENT_SECONDS="$(fc_get '.hard_timeout_seconds')" \
     bash "$FC_RIG_DIR/run.sh" "$task" "$MODEL" "$seed"
 }
 
-write_iteration_meta() { # <iter dir> <shard> <wave> <label> <tasks...>
-  local iter="$1" shard="$2" wave="$3" label="$4"; shift 4
+write_iteration_meta() { # <iter dir> <shard> <wave> <label> <effort> <seed> <tasks...>
+  local iter="$1" shard="$2" wave="$3" label="$4" effort="$5" seed="$6"; shift 6
   mkdir -p "$iter"
   {
     echo "label=$label"
@@ -186,7 +196,8 @@ write_iteration_meta() { # <iter dir> <shard> <wave> <label> <tasks...>
     echo "wave=$wave"
     echo "wave_capacity=$WAVE_CAP"
     echo "arm=$ARM"
-    echo "seed_id=$SEED"
+    echo "seed_id=$seed"
+    echo "reasoning_effort=$effort"
     echo "model=$MODEL"
     echo "codeaf_commit=$(fc_get '.codeaf_commit')"
     echo "codeaf_sha256=$(fc_get '.codeaf_sha256')"
@@ -199,12 +210,12 @@ write_iteration_meta() { # <iter dir> <shard> <wave> <label> <tasks...>
   } > "$iter/meta.txt"
 }
 
-record_wave() { # <iter> <tasks...>
-  local iter="$1"; shift
+record_wave() { # <iter> <effort> <seed> <tasks...>
+  local iter="$1" effort="$2" seed="$3"; shift 3
   local t out score
   echo -e "task\trun_dir\tscore" > "$iter/scoreboard.tsv"
   for t in "$@"; do
-    out="$(run_dir_for "$t" "$SEED")"
+    out="$(run_dir_for "$t" "$seed" "$effort")"
     score="$(python3 -c "import json;print(json.load(open('$out/logs/grade/grade.json')).get('score'))" 2>/dev/null || echo rig)"
     printf '%s\t%s\t%s\n' "$t" "${out#$FC_RIG_DIR/}" "$score" >> "$iter/scoreboard.tsv"
   done
@@ -214,31 +225,37 @@ if [ "$MODE" = --replace ]; then
   idx=-1
   for i in "${!tasks[@]}"; do [ "${tasks[$i]}" = "$REPLACE_TASK" ] && idx="$i"; done
   [ "$idx" -ge 0 ] || fc_die "$REPLACE_TASK is not in shard $SHARD"
+  effort="${EFFORTS[0]}"
+  seed="${SEEDS[0]}-replacement1"
   label="$PREFIX-shard$SHARD-replacement1"
-  seed="$SEED-replacement1"
   iter="$FC_RIG_DIR/results/_iterations/$label"
   [ ! -e "$iter/meta.txt" ] || fc_die "replacement already exists: $label"
-  write_iteration_meta "$iter" "$SHARD" 0 "$label" "$REPLACE_TASK"
+  write_iteration_meta "$iter" "$SHARD" 0 "$label" "$effort" "${SEEDS[0]}" "$REPLACE_TASK"
   echo "launching $label: $REPLACE_TASK (original attempt preserved)"
-  launch_one "$REPLACE_TASK" "$seed"
-  record_wave "$iter" "$REPLACE_TASK"
+  launch_one "$REPLACE_TASK" "$seed" "$effort"
+  record_wave "$iter" "$effort" "${SEEDS[0]}" "$REPLACE_TASK"
   echo "replacement $label complete"
   exit 0
 fi
 
+# The official protocol's loop, outermost first: every reasoning effort, every
+# trial (seed) of that effort, then the shard's tasks as waves. Per effort the
+# report averages across the seeds and states the best-performing level.
+for effort in "${EFFORTS[@]}"; do
+for seed in "${SEEDS[@]}"; do
 for ((w = 0; w < wave_count; w++)); do
   start=$((w * WAVE_CAP))
   wave_tasks=("${tasks[@]:start:WAVE_CAP}")
-  label="$PREFIX-shard$SHARD-wave$((w + 1))"
+  label="$PREFIX-shard$SHARD-e$effort-s$seed-wave$((w + 1))"
   iter="$FC_RIG_DIR/results/_iterations/$label"
   [ ! -e "$iter/meta.txt" ] || fc_die "iteration already exists: $label"
   active="$(docker ps --format '{{.Names}}' | grep -E '^fc-' || true)"
   [ -z "$active" ] || { echo "refusing to share host with active experiment containers:" >&2; echo "$active" >&2; exit 3; }
-  write_iteration_meta "$iter" "$SHARD" "$((w + 1))" "$label" "${wave_tasks[@]}"
+  write_iteration_meta "$iter" "$SHARD" "$((w + 1))" "$label" "$effort" "$seed" "${wave_tasks[@]}"
   echo "launching $label ($(date -u +%H:%M:%SZ)): ${wave_tasks[*]}"
   pids=()
   for t in "${wave_tasks[@]}"; do
-    launch_one "$t" "$SEED" > "$iter/$t.runner.log" 2>&1 &
+    launch_one "$t" "$seed" "$effort" > "$iter/$t.runner.log" 2>&1 &
     pids+=($!)
     sleep 3
   done
@@ -250,6 +267,8 @@ for ((w = 0; w < wave_count; w++)); do
     fi
   done
   echo "finished=$(date -Iseconds)" >> "$iter/meta.txt"
-  record_wave "$iter" "${wave_tasks[@]}"
+  record_wave "$iter" "$effort" "$seed" "${wave_tasks[@]}"
+done
+done
 done
 echo "shard $SHARD complete ($(date -u +%H:%M:%SZ))"

@@ -57,8 +57,12 @@ transfer on a small, honest task set.
   campaigns pinned, so pilot results cross-check against that history (brief
   §6). One model for the whole pilot; a second model (Kimi K3) only if the
   owner asks.
-- **Seeds**: 2 per arm per task for the pilot (5 for anything quoted
-  publicly). Variant `high`, recorded per row.
+- **Seeds**: the official FrontierCode protocol is 5 trials per model per
+  reasoning-effort level; the rig sweeps `seed_ids` × `reasoning_efforts` and
+  averages per level. This pilot's written plan stays at 2 seeds per arm (the
+  $20 cap the original brief set) — running the full 5-trial protocol at one
+  effort is ~80 rollouts, ~$24–120 of model spend, and waits for the owner's
+  budget approval. Effort `high` is pinned by listing one level; recorded per row.
 
 ## Protocol
 
@@ -78,7 +82,7 @@ transfer on a small, honest task set.
 | senior-dev rollout | ~$0.3–1.5 | DeepSWE full113 history + this task's C++ build cost |
 | mini-swe-agent rollout | ~$0.1–0.5 | fewer turns, smaller context |
 | judge per grade | ~$0.02–0.05 | measured (~$0.006/criterion call) |
-| **pilot total** | **8 tasks × 2 arms × 2 seeds ≈ 32 rollouts ≈ $8–16** | within the $20 cap |
+| **pilot total** | **8 tasks × 2 arms × 2 seeds ≈ 32 rollouts ≈ $8–16** (the official 5-trial protocol at one effort is ≈ 80 rollouts ≈ $24–120) | within the $20 cap |
 
 All spend goes through the credential guard (per-call usage rows) — no
 account-balance arithmetic anywhere.
@@ -88,7 +92,8 @@ account-balance arithmetic anywhere.
 - **Hypothesis**: senior-dev's pass rate (cleared every blocker, unflagged)
   on the dev tasks is at least mini-swe-agent's, at comparable or lower cost
   per rollout, on the same model.
-- **Arms**: the two above, same model, 2 seeds each.
+- **Arms**: the two above, same model, 2 seeds each (5 when the owner
+  approves the official protocol's budget).
 - **Metric**: pass rate; secondary: mean score, flag rate, cost per rollout,
   wall seconds.
 - **Analysis**: per-task paired comparison; no pooling across the dev/held-out
@@ -98,7 +103,8 @@ account-balance arithmetic anywhere.
   a rig bug to fix first.
 - **Known threats**: the corpus is ours, so no leaderboard comparison is
   implied; judge quality is calibrated only on the fixture's controls; 2
-  seeds cannot resolve small differences.
+  seeds cannot resolve small differences; 2 cannot either — the official
+  protocol averages 5 trials per level for this reason.
 
 ## What blocks the pilot
 
