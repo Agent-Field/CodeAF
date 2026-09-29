@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
@@ -58,14 +58,23 @@ func startDrive(c cell.Cell, engine cellstore.Engine) *syncsetup.Drive {
 		sealNotice.report(err)
 		return nil
 	}
-	name, _ := os.Hostname()
 	d, err := s.Drive(context.Background(), engine, c, syncsetup.DriveOptions{
-		DeviceName: name,
-		// The surface owns the terminal, so a line goes where the logger does.
-		OnNotice: func(line string) { log.Print("sync: " + line) },
+		DeviceName: deviceName(),
+		// The title the chat has now, sealed on its way out: the other machine's
+		// list names the chat by it.
+		Title: func() string { return chatTitle(c) },
+		// A line is said by the surface the moment it happens (tui3/notices.go).
+		OnNotice: surfaceNotices.Say,
 	})
 	sealNotice.report(err)
 	return d
+}
+
+// chatTitle is the chat's title as its session record has it now: the name it
+// earned, or the person's opening words until it has one.
+func chatTitle(c cell.Cell) string {
+	m, _ := session.LoadMeta(c.Root)
+	return m.Title
 }
 
 // closeAll ends every drive side: what is sealed is published and each lease is

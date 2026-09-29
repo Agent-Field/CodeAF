@@ -17,7 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell merge <branch> [<cell>] | codeaf cell discard <branch> [<cell>] | codeaf cell gc [--dry-run] | codeaf cell list --all | codeaf cell report [<cell>] [--export <file>]"
+const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell discard <branch> [<cell>] | codeaf cell gc [--dry-run] | codeaf cell list --all | codeaf cell report [<cell>] [--export <file>]"
 
 // cellVerb is one word after `cell`: how many arguments of its own it takes
 // before the optional cell name, and what it does to the cell. A verb that is
@@ -34,7 +34,6 @@ var cellVerbs = map[string]cellVerb{
 	"log":     {args: 0, run: cellLog},
 	"rewind":  {args: 1, run: cellRewind},
 	"resolve": {args: 0, run: cellResolve},
-	"merge":   {args: 1, run: cellMerge},
 	"discard": {args: 1, run: cellDiscard},
 	"gc":      {wide: true, run: cellGC},
 	"list":    {wide: true, run: cellListVerb},
