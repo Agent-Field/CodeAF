@@ -106,6 +106,7 @@ load_task() { # <task-id> -> exports TASK_*
 # committed files alone. An image already on the host is trusted; FORCE_IMAGE=1
 # rebuilds.
 ensure_env_image() {
+  mkdir -p "$RESULTS"
   if docker image inspect "$TASK_IMAGE" >/dev/null 2>&1 && [ "${FORCE_IMAGE:-0}" != 1 ]; then
     log "$TASK_ID: environment image already present"
     return 0
@@ -118,6 +119,7 @@ ensure_env_image() {
 }
 
 ensure_verify_image() {
+  mkdir -p "$RESULTS"
   if docker image inspect "$TASK_VERIFY_IMAGE" >/dev/null 2>&1 && [ "${FORCE_IMAGE:-0}" != 1 ]; then
     return 0
   fi
