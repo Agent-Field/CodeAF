@@ -34,14 +34,26 @@ func writeFile(path string, data []byte) error {
 
 // compose writes every harness-owned file the seal will carry: meta.json
 // as the harness holds it, the receipt, and the output blobs of external calls.
-func compose(c cell.Cell, raw []byte, id string, info TurnInfo) error {
+func (e Engine) compose(c cell.Cell, raw []byte, id string, info TurnInfo) error {
 	if err := c.RestoreMeta(); err != nil {
 		return err
 	}
 	if err := writeFile(rel(c, ReceiptsDir+"/"+id+".json"), raw); err != nil {
 		return err
 	}
-	return writeBlobs(c, info)
+	if err := writeBlobs(c, info); err != nil {
+		return err
+	}
+	return e.composeExtra(c)
+}
+
+// composeExtra runs the engine's Composer. A cell that seals its own folder has
+// nothing outside the tree to carry: what would be composed already sits in it.
+func (e Engine) composeExtra(c cell.Cell) error {
+	if e.Compose == nil || e.cellDir(c) == "" {
+		return nil
+	}
+	return e.Compose.Compose(c)
 }
 
 func writeBlobs(c cell.Cell, info TurnInfo) error {

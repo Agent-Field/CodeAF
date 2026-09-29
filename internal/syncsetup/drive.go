@@ -85,21 +85,34 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 }
 
 // syncVault sends this machine's secrets along with the chat, so a machine that
-// continues the chat can put its .env back. The vault changes while a chat
-// runs (the first seal imports the project's .env), so it is sent whenever its
-// content differs from what was last sent, not once at the start. It is best
-// effort and says nothing when it fails: the fingerprint is then not recorded,
-// so the next flush tries again, and a seal never waits on it.
+// continues the chat can put its .env and its credentials back. The vault
+// changes while a chat runs (the first seal imports the project's .env, and a
+// connection may be saved), so it is sent whenever its content differs from what
+// was last sent, not once at the start. credentials.json is captured into the
+// vault first, since a save to it is a change of the vault the fingerprint must
+// see. It is best effort and says nothing when it fails: the fingerprint is then
+// not recorded, so the next flush tries again, and a seal never waits on it.
 func (d *Drive) syncVault(ctx context.Context) {
-	fp, ok := keys.Fingerprint(d.sync.Home)
-	if !ok || fp == d.sent {
-		return
-	}
-	if d.sync.withVault(nil, func(v vaultsync.Syncer) error { return v.Push(ctx) }) != nil {
+	err := d.sync.withVault(nil, func(v vaultsync.Syncer) error {
+		if err := v.Capture(); err != nil {
+			return err
+		}
+		return d.pushChanged(ctx, v)
+	})
+	if err != nil {
 		return
 	}
 	// The push merges what the directory holds, which may rewrite the file.
 	d.sent, _ = keys.Fingerprint(d.sync.Home)
+}
+
+// pushChanged sends the vault only when its content differs from what was last
+// sent, so an unchanged vault costs no request.
+func (d *Drive) pushChanged(ctx context.Context, v vaultsync.Syncer) error {
+	if fp, ok := keys.Fingerprint(d.sync.Home); !ok || fp == d.sent {
+		return nil
+	}
+	return v.Push(ctx)
 }
 
 // flushed is what runs after each publish: the telemetry, then the vault.

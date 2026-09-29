@@ -1,0 +1,195 @@
+package taskcopy
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/keys"
+)
+
+// Carry is the mechanism: [Carry.Compose] on the seal side, [Carry.Restore] on
+// the take side. It holds nothing, so the zero value is the one to use.
+type Carry struct{}
+
+// Compose writes what every live task copy of c holds beyond its last commit
+// into the cell's .cell/trees/. It is one of the things a seal composes before
+// the engine captures the tree, and it is exact: a copy that is gone (its task
+// finished and its folder was removed) leaves nothing behind, and a copy with no
+// edits leaves only its record.
+func (Carry) Compose(c cell.Cell) error {
+	live := liveCopies(liveRoot(c))
+	if err := dropCarriedExcept(carriedRoot(c), live); err != nil {
+		return err
+	}
+	for _, tree := range live {
+		if err := carry(tree, filepath.Join(carriedRoot(c), filepath.Base(tree))); err != nil {
+			return fmt.Errorf("carry task copy %s: %w", filepath.Base(tree), err)
+		}
+	}
+	return nil
+}
+
+// liveCopies is the folders under root that are linked worktrees. A folder that
+// is not one is not a task's copy: it has no branch to cut again.
+func liveCopies(root string) []string {
+	entries, _ := os.ReadDir(root)
+	var out []string
+	for _, e := range entries {
+		if dir := filepath.Join(root, e.Name()); e.IsDir() && isLinkedWorktree(dir) {
+			out = append(out, dir)
+		}
+	}
+	return out
+}
+
+// dropCarriedExcept removes the carried copies whose task copy is no longer
+// live, so a finished task's edits do not travel forever.
+func dropCarriedExcept(root string, live []string) error {
+	keep := map[string]bool{}
+	for _, tree := range live {
+		keep[filepath.Base(tree)] = true
+	}
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !keep[e.Name()] {
+			if err := os.RemoveAll(filepath.Join(root, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// carry writes one copy's record and changed files into dest.
+func carry(tree, dest string) error {
+	head, err := git(tree, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	changed, err := changedPaths(tree)
+	if err != nil {
+		return err
+	}
+	present, deleted := partition(tree, withoutSecrets(tree, changed))
+	if err := syncFiles(tree, filepath.Join(dest, filesDir), present); err != nil {
+		return err
+	}
+	return writeRecord(dest, record{Branch: branchOf(tree), Head: strings.TrimSpace(head), Deleted: deleted})
+}
+
+// branchOf is the branch a copy is on, and empty for a detached head, which a
+// restore then cuts at the commit alone.
+func branchOf(tree string) string {
+	out, err := git(tree, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// changedPaths is every path whose content differs from the copy's last commit:
+// modified, added, deleted and untracked. What the copy's own .gitignore names
+// is never listed, which is what keeps build output and .env files out. Renames
+// are reported as a delete and an add, so each path stands alone.
+func changedPaths(tree string) ([]string, error) {
+	out, err := git(tree, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, entry := range strings.Split(out, "\x00") {
+		// An entry is two status letters, a space and the path.
+		if len(entry) > 3 {
+			paths = append(paths, entry[3:])
+		}
+	}
+	return paths, nil
+}
+
+// withoutSecrets drops the paths whose files look like they hold a secret. The
+// seal's own screen reads the workspace, not the task copies, so a copy's files
+// are screened here by the same scanner before they enter the cell.
+func withoutSecrets(tree string, paths []string) []string {
+	held := map[string]bool{}
+	for _, f := range (keys.Scanner{}).Paths(tree, paths) {
+		held[f.Path] = true
+	}
+	var out []string
+	for _, p := range paths {
+		if !held[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// partition splits paths into the regular files the copy holds and the paths it
+// no longer has. Anything else at a path (a symlink, a folder) is neither: it
+// is left where it is, because a file cannot stand for it.
+func partition(tree string, paths []string) (present, deleted []string) {
+	for _, p := range paths {
+		info, err := os.Lstat(filepath.Join(tree, p))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			deleted = append(deleted, p)
+		case err == nil && info.Mode().IsRegular():
+			present = append(present, p)
+		}
+	}
+	return present, deleted
+}
+
+// syncFiles makes dest hold exactly the named files of tree. A file whose size
+// and time already match is left alone, so a seal that changed nothing rewrites
+// nothing and the engine's own stat cache stays warm.
+func syncFiles(tree, dest string, rels []string) error {
+	if err := dropStale(dest, rels); err != nil {
+		return err
+	}
+	for _, rel := range rels {
+		if err := copyIfChanged(filepath.Join(tree, rel), filepath.Join(dest, rel)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dropStale removes the files under dest that are not in rels.
+func dropStale(dest string, rels []string) error {
+	want := map[string]bool{}
+	for _, rel := range rels {
+		want[filepath.Join(dest, rel)] = true
+	}
+	err := filepath.WalkDir(dest, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || want[path] {
+			return err
+		}
+		return os.Remove(path)
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func copyIfChanged(from, to string) error {
+	src, err := os.Stat(from)
+	if err != nil {
+		return err
+	}
+	if dst, err := os.Stat(to); err == nil && dst.Size() == src.Size() && dst.ModTime().Equal(src.ModTime()) {
+		return nil
+	}
+	return copyFile(from, to, src)
+}

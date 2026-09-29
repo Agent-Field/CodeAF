@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
@@ -37,6 +39,9 @@ type Continued struct {
 	KeptTurns uint32
 	// Device is this machine's name.
 	Device string
+	// TaskCopies is the names of the tasks whose working copies came along and
+	// are back at work here, empty when none did.
+	TaskCopies []string
 }
 
 // Continuer is the take side of one machine: `continue here`.
@@ -93,11 +98,23 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
 		return Continued{}, err
 	}
-	out := Continued{Taken: taken, Device: c.opt.DeviceName}
+	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: c.restoreCopies(taken.Cell)}
 	if taken.Kept != "" {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
 	return out, nil
+}
+
+// restoreCopies puts the task working copies the chat carried back to work in
+// its project and answers which came back. A copy that cannot be cut again
+// still has its files in place, so the takeover carries on and says so on the
+// same desk as the vault's sentence.
+func (c *Continuer) restoreCopies(at cell.Cell) []string {
+	restored, err := taskcopy.Carry{}.Restore(at, workspaceOf(at.Root))
+	if err != nil && c.opt.Notify != nil {
+		c.opt.Notify("a task's working copy could not be set up again here: " + err.Error())
+	}
+	return restored
 }
 
 // holderName is the name of the device that held the chat last, for the log
@@ -230,7 +247,23 @@ func (s *Sync) withVault(notify func(string), use func(vaultsync.Syncer) error) 
 	}
 	sc := s.scope(cellstats.VaultScope)
 	defer sc.Settle()
-	return use(vaultsync.Syncer{Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(), Notify: notify})
+	return use(vaultsync.Syncer{Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
+		Carry: s.carried(), Notify: notify})
+}
+
+// profile is the directory the product reads config.json and credentials.json
+// from, the same one its own stores resolve.
+func (s *Sync) profile() string {
+	if s.ProfileDir != "" {
+		return s.ProfileDir
+	}
+	return s.Home
+}
+
+// carried is the profile state that travels in the vault beside the secrets.
+func (s *Sync) carried() []vaultsync.Carrier {
+	dir := s.profile()
+	return []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home)}
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every
