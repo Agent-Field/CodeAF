@@ -99,7 +99,6 @@ shard_rel="$(jq -r --arg s "$SHARD" '.shard_files[$s] // empty' "$FC_MANIFEST_PA
 [ -n "$shard_rel" ] || fc_die "manifest names no shard file for shard $SHARD"
 mapfile -t tasks < <(fc_shard_tasks "$FC_REPO_ROOT/$shard_rel")
 [ "${#tasks[@]}" -gt 0 ] || fc_die "shard $SHARD carries no tasks"
-[ "${#tasks[@]}" -le "$WAVE_CAP" ] || true
 
 # Every wave's containers must still find the host memory they may claim.
 need_gb=$(( WAVE_CAP * MEMGB ))
