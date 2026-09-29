@@ -50,18 +50,51 @@ ensure_verify_image || {
   exit 1
 }
 
+
+# ── phase helper: bind-mount run, docker-cp fallback ────────────────────────
+# The verifier image needs /rig (the grader), /task (the task dir) and
+# /logs/artifacts/model.patch. On a normal workstation those are bind mounts.
+# On a checkout the Docker VM cannot read through (a synthesized/lazy tree —
+# observed on this Mac's session copies: mounts resolve names but reads fail
+# with I/O errors), fall back to docker cp: the phases' inputs are copied into
+# a stopped container and the outputs copied back out. Same image, same
+# --network none, same verdicts.
+run_in_verify() { # <phase> <script...>
+  local phase="$1"; shift
+  local cid="fc-grade-$$-$phase"
+  docker rm -f "$cid" >/dev/null 2>&1
+  docker create --platform "$PLATFORM" --network none --name "$cid" \
+    --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]+${EMU_ARGS[@]}}" \
+    -e FC_PATCH=/logs/artifacts/model.patch \
+    "$TASK_VERIFY_IMAGE" sleep 3600 >/dev/null || return 99
+  # Stream the inputs as a tar over stdin: the docker daemon's own reads of
+  # this tree can hit the same lazy-materialization I/O errors that broke the
+  # bind mounts, but a host-side tar cannot.
+  docker start "$cid" >/dev/null || { docker rm -f "$cid" >/dev/null; return 99; }
+  docker exec "$cid" mkdir -p /rig /task /logs/artifacts
+  tar --no-xattrs -C "$RIG_DIR" -cf - . \
+    | docker exec -i "$cid" tar -xf - -C /rig \
+    || { docker rm -f "$cid" >/dev/null; return 99; }
+  tar --no-xattrs -C "$TASK_DIR" -cf - . \
+    | docker exec -i "$cid" tar -xf - -C /task \
+    || { docker rm -f "$cid" >/dev/null; return 99; }
+  tar --no-xattrs -C "$OUT/logs/artifacts" -cf - model.patch \
+    | docker exec -i "$cid" tar -xf - -C /logs/artifacts \
+    || { docker rm -f "$cid" >/dev/null; return 99; }
+  timeout "$((TASK_VSECS + 120))" docker exec "$cid" "$@"
+  local code=$?
+  docker exec "$cid" tar -cf - -C /logs grade 2>/dev/null \
+    | tar -xf - -C "$OUT/logs" 2>/dev/null
+  docker rm -f "$cid" >/dev/null 2>&1
+  return $code
+}
+
 # ── phase A: in-container verdicts ──────────────────────────────────────────
 emu_args
 log "$TASK_ID: grading phase A (limit ${TASK_VSECS}s, network none)"
-timeout "$((TASK_VSECS + 120))" docker run --rm --platform "$PLATFORM" --network none \
-  --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]+${EMU_ARGS[@]}}" \
-  -e FC_PATCH=/logs/artifacts/model.patch \
-  -v "$OUT/logs:/logs" \
-  -v "$TASK_DIR:/task:ro" \
-  -v "$RIG_DIR:/rig:ro" \
-  "$TASK_VERIFY_IMAGE" \
+run_in_verify phase-a \
   python3 /rig/grade/rubric.py phase-a --task /task \
-    --repo /root/repos/jsonschema --base "$TASK_BASE" --out /logs/grade \
+    --repo "/root/repos/$TASK_AGENT_REPO" --base "$TASK_BASE" --out /logs/grade \
   > "$OUT/logs/grade/phase-a.out" 2>&1
 PHASE_A_CODE=$?
 if [ ! -f "$OUT/logs/grade/phaseA.json" ]; then
@@ -94,15 +127,9 @@ if [ "$NEEDS_ADAPT" = 1 ]; then
     > "$OUT/logs/grade/judge-adapt.out" 2>&1 || log "$TASK_ID: judge adapt failed — see judge-adapt.out"
   if [ -s "$OUT/logs/grade/adapted-tests.patch" ]; then
     log "$TASK_ID: phase B — rerunning adapted tests"
-    timeout "$((TASK_VSECS + 120))" docker run --rm --platform "$PLATFORM" --network none \
-      --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]+${EMU_ARGS[@]}}" \
-      -e FC_PATCH=/logs/artifacts/model.patch \
-      -v "$OUT/logs:/logs" \
-      -v "$TASK_DIR:/task:ro" \
-      -v "$RIG_DIR:/rig:ro" \
-      "$TASK_VERIFY_IMAGE" \
+    run_in_verify phase-b \
       python3 /rig/grade/rubric.py phase-b --task /task \
-        --repo /root/repos/jsonschema --base "$TASK_BASE" --out /logs/grade \
+        --repo "/root/repos/$TASK_AGENT_REPO" --base "$TASK_BASE" --out /logs/grade \
       > "$OUT/logs/grade/phase-b.out" 2>&1 || log "$TASK_ID: phase B failed — see phase-b.out"
   fi
 fi
