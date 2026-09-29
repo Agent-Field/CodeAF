@@ -501,8 +501,8 @@ opening question and asked for one descriptive **5–8 word phrase**. A `!` shel
 is not that message: a conversation that opens with `!` commands keeps the command as its
 name until an ordinary message has an answer, and is then named from that question and
 answer. Unanswered questions are skipped after a shell opening. For an ordinary opening,
-the answer and naming still run independently from the start. A late name reaches an idle chat, a
-background tab, or a hosted chat after the connection is restored; no refresh or
+the answer and naming still run independently from the start. A late name reaches an idle
+chat, a background tab, or a hosted chat after the connection is restored; no refresh or
 follow-up message is needed.
 
 Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing

@@ -38,9 +38,10 @@ long commands are clipped to fit. Shell turns do not ask a model for a title.
 After a shell opening, automatic naming waits for the first ordinary message with
 an answer and uses both, skipping recorded human shell turns. The command preview
 stays until the title arrives. This gives a question such as "what did that print?"
-the context of its answer; the answer may quote shell output. An unanswered or
-interrupted question does not prevent a later answered message from naming the chat.
-Conversations that begin with an ordinary message still start naming immediately.
+the context of its answer; the answer may quote shell output. An interrupted question
+does not stop naming: if part of its answer had arrived, your next message names the chat
+from that exchange, and if none had, the next answered question does. Conversations that
+begin with an ordinary message still start naming immediately.
 
 ## Typing a slash to see the command list
 
@@ -1162,9 +1163,9 @@ Ten rows show, each a name, a description and an age. The name climbs a ladder: 
 the session gave itself, else the first seven words you said in it, else the transcript's
 file name — then title-cased, with small words left lowercase and nothing ever
 lowercased, so `OpenAI` keeps its shape. A name that is still a `!` command is the
-exception: it is shown exactly as typed, never title-cased or cut to seven words. The
-description is the last thing that happened, capped at 80 columns. The age (`2h ago`, or a date past a month) is reserved first and
-never cut. **Ids and file names appear nowhere.**
+exception: it is shown as typed, clipped only to fit, never title-cased or cut to seven
+words. The description is the last thing that happened, capped at 80 columns. The age
+(`2h ago`, or a date past a month) is reserved first and never cut. **Ids and file names appear nowhere.**
 
 The cursor opens on the conversation you are already in. enter on another row closes this
 agent, interrupting a running turn first, opens the chosen transcript, clears everything
