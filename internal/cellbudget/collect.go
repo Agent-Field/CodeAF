@@ -182,12 +182,22 @@ func (m Manager) refreshed(dir string, c cell.Cell, e Entry) (Entry, error) {
 	if !m.stale(c, e) {
 		return e, nil
 	}
-	n, err := workingSize(c.Root)
+	n, err := m.held(c)
 	if err != nil {
 		return e, err
 	}
 	e.Bytes, e.MeasuredMs = n, m.nowMs()
 	return e, writeEntry(dir, e)
+}
+
+// held is what eviction would free from the cell: the size of a workspace the
+// harness owns. A person's folder is never walked and never counted.
+func (m Manager) held(c cell.Cell) (int64, error) {
+	dir := m.Workspace(c)
+	if !harnessOwned(c, dir) {
+		return 0, nil
+	}
+	return workingSize(dir)
 }
 
 func (m Manager) stale(c cell.Cell, e Entry) bool {

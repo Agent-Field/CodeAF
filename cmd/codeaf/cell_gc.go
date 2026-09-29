@@ -30,7 +30,7 @@ func cellGC(_ cell.Cell, args []string, out io.Writer) error {
 }
 
 func cellBudget() cellbudget.Manager {
-	m := cellbudget.New(cellstore.Engine{}, cellBusy)
+	m := cellbudget.New(cellstore.Engine{}, cellWorkspace, cellBusy)
 	m.Limit = int64(config.CellBudgetGBAt(config.ProfileDir())) << 30
 	return m
 }

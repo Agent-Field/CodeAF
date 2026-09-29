@@ -26,6 +26,8 @@ type rig struct {
 	busy map[string]bool
 	now  time.Time
 	dirs string
+	work map[string]string // cell id -> the workspace its seals cover
+	bin  string
 }
 
 func newRig(t *testing.T, limit int64) *rig {
@@ -34,26 +36,47 @@ func newRig(t *testing.T, limit int64) *rig {
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	r := &rig{t: t, busy: map[string]bool{}, now: time.Now(), dirs: t.TempDir()}
+	r := &rig{t: t, busy: map[string]bool{}, now: time.Now(), dirs: t.TempDir(), work: map[string]string{}, bin: bin}
 	r.m = New(cellstore.Engine{Binary: bin, DataRoot: filepath.Join(r.dirs, "stores")},
+		func(c cell.Cell) string { return r.work[c.ID] },
 		func(c cell.Cell) bool { return r.busy[c.ID] })
 	r.m.Limit = limit
 	r.m.Now = func() time.Time { return r.now }
 	return r
 }
 
-// cell makes a sealed cell holding one file of n bytes, opened at the rig's
-// current time, then moves the clock past the just-opened grace.
+// cell makes a sealed cell whose workspace is its own work/ folder holding one
+// file of n bytes, opened at the rig's current time, then moves the clock past
+// the just-opened grace.
 func (r *rig) cell(name string, n int) cell.Cell {
 	r.t.Helper()
+	c := r.newCell()
+	return r.seal(c, filepath.Join(c.Root, "work"), name, n)
+}
+
+// yours is the same cell over a project folder outside it.
+func (r *rig) yours(name string, n int) (cell.Cell, string) {
+	r.t.Helper()
+	c, dir := r.newCell(), r.t.TempDir()
+	return r.seal(c, dir, name, n), dir
+}
+
+func (r *rig) newCell() cell.Cell {
 	c, err := cell.CreateIn(filepath.Join(r.dirs, "cells"), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	write(r.t, filepath.Join(c.Root, name), strings.Repeat("x", n))
-	write(r.t, filepath.Join(c.Root, "src", "deep", "f.txt"), name)
+	return c
+}
+
+func (r *rig) seal(c cell.Cell, workspace, name string, n int) cell.Cell {
+	r.work[c.ID] = workspace
+	write(r.t, filepath.Join(workspace, name), strings.Repeat("x", n))
+	write(r.t, filepath.Join(workspace, "src", "deep", "f.txt"), name)
 	write(r.t, filepath.Join(c.Root, cell.TranscriptPath), `{"role":"user"}`+"\n")
-	if _, err := r.m.Engine.Seal(ctx, c, cellstore.TurnInfo{Trigger: cellstore.AgentRun}); err != nil {
+	engine := cellstore.EngineFor(workspace)
+	engine.Binary, engine.DataRoot = r.bin, r.m.Engine.DataRoot
+	if _, err := engine.Seal(ctx, c, cellstore.TurnInfo{Trigger: cellstore.AgentRun}); err != nil {
 		r.t.Fatal(err)
 	}
 	if err := r.m.Open(ctx, c); err != nil {
@@ -124,13 +147,14 @@ func TestEvictThenOpenRestoresByteIdentical(t *testing.T) {
 	c := r.cell("big", 4096)
 	grown := filepath.Join(c.Root, cell.TranscriptPath)
 	write(t, grown, `{"role":"user"}`+"\n"+`{"role":"assistant"}`+"\n") // grew after the seal
-	want := digest(t, c.Root)
+	work := r.work[c.ID]
+	want, wantCell := digest(t, work), digest(t, c.Root)
 
 	rep := r.collect()
 	if r.outcomes(rep)[c.ID] != Evicted {
 		t.Fatalf("not evicted: %+v", rep)
 	}
-	left, _ := os.ReadDir(c.Root)
+	left, _ := os.ReadDir(work)
 	for _, e := range left {
 		if !kept[e.Name()] {
 			t.Fatalf("working file %q survived eviction", e.Name())
@@ -139,8 +163,44 @@ func TestEvictThenOpenRestoresByteIdentical(t *testing.T) {
 	if err := r.m.Open(ctx, c); err != nil {
 		t.Fatal(err)
 	}
-	if got := digest(t, c.Root); got != want {
+	if got := digest(t, work); got != want {
 		t.Fatalf("reopened tree differs.\nwant:\n%s\ngot:\n%s", want, got)
+	}
+	if got := digest(t, c.Root); got != wantCell {
+		t.Fatalf("the cell's own folder changed.\nwant:\n%s\ngot:\n%s", wantCell, got)
+	}
+}
+
+func TestYourFolderIsNeverEvicted(t *testing.T) {
+	r := newRig(t, 1)
+	c, dir := r.yours("big", 4096) // opened first, so considered first
+	mine := r.cell("big", 4096)
+	want := digest(t, dir)
+	dry, err := r.m.Collect(ctx, true)
+	if err != nil || r.outcomes(dry)[mine.ID] != WouldEvict {
+		t.Fatalf("dry run: %+v %v", dry, err)
+	}
+	if a := dry.Actions[0]; a.ID != c.ID || a.Outcome != Skipped || a.Why != "workspace is yours" {
+		t.Fatalf("dry run must say why: %+v", a)
+	}
+	if got := r.outcomes(r.collect()); got[c.ID] != Skipped || got[mine.ID] != Evicted {
+		t.Fatalf("outcomes: %v", got)
+	}
+	if got := digest(t, dir); got != want {
+		t.Fatalf("your folder changed.\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func TestYourFolderDoesNotCountAgainstTheBudget(t *testing.T) {
+	r := newRig(t, 6000)
+	r.yours("huge", 1<<20)
+	mine := r.cell("a", 4096)
+	rep := r.collect()
+	if rep.Total >= 1<<20 {
+		t.Fatalf("a folder of yours was counted: %+v", rep)
+	}
+	if got := r.outcomes(rep); len(got) != 0 {
+		t.Fatalf("under budget, nothing to do: %v (%s)", got, mine.ID)
 	}
 }
 
@@ -152,7 +212,7 @@ func TestRunningCellIsNeverEvicted(t *testing.T) {
 	if r.outcomes(rep)[c.ID] != Skipped || rep.Actions[0].Why != "running" {
 		t.Fatalf("running cell was not skipped: %+v", rep)
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, "big")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.work[c.ID], "big")); err != nil {
 		t.Fatal("running cell lost its files")
 	}
 }
@@ -209,7 +269,7 @@ func TestDryRunChangesNothing(t *testing.T) {
 	if err != nil || r.outcomes(rep)[c.ID] != WouldEvict {
 		t.Fatalf("dry run: %+v %v", rep, err)
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, "big")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.work[c.ID], "big")); err != nil {
 		t.Fatal("dry run removed files")
 	}
 }

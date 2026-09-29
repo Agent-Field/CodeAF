@@ -3,6 +3,8 @@ package cellbudget
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -30,6 +32,24 @@ func justOpened(grace time.Duration, now func() time.Time) Rule {
 		}
 		return nil
 	}
+}
+
+// owned accepts a cell whose sealed workspace is the harness's own: a folder
+// inside the cell's. Any other workspace is a person's project, and eviction
+// never removes a person's files.
+func owned(workspace func(cell.Cell) string) Rule {
+	return func(c cell.Cell, _ Entry) error {
+		if !harnessOwned(c, workspace(c)) {
+			return errors.New("workspace is yours")
+		}
+		return nil
+	}
+}
+
+// harnessOwned says whether dir is a folder strictly inside the cell's own.
+func harnessOwned(c cell.Cell, dir string) bool {
+	rel, err := filepath.Rel(c.Root, dir)
+	return dir != "" && err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 }
 
 // sealed accepts a cell whose head is sealed and whose call log holds nothing

@@ -111,9 +111,13 @@ func cellRewind(c cell.Cell, args []string, out io.Writer) error {
 
 // cellEngine is the engine of a cell opened from a verb: built from the
 // session place the cell's meta records, exactly as the session's seat builds it.
-func cellEngine(c cell.Cell) cellstore.Engine {
+func cellEngine(c cell.Cell) cellstore.Engine { return cellstore.EngineFor(cellWorkspace(c)) }
+
+// cellWorkspace is the tree a cell's session seals: its own work/ when the
+// session owns its workspace, else the project it borrowed.
+func cellWorkspace(c cell.Cell) string {
 	meta, _ := session.LoadMeta(c.Root)
-	return cellstore.EngineFor(v3PlaceFor(c.Root, meta.Workspace, meta.Owned).Workspace)
+	return v3PlaceFor(c.Root, meta.Workspace, meta.Owned).Workspace
 }
 
 const shortIDLen = 12
