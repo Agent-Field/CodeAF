@@ -73,7 +73,7 @@ func TestChangedPathsAreHandedToTheEngineOrTheWalkIsLeftToIt(t *testing.T) {
 		"too long": {make([]string, maxChangedArgs+1), "--json hook turn-end --turn r"},
 	}
 	for name, tc := range cases {
-		if got := strings.Join(Engine{}.turnEndArgs(cell.Cell{}, "r", tc.changed), " "); got != tc.want {
+		if got := strings.Join(sealOp{Turn: "r", Changed: changedPaths(tc.changed)}.Args(), " "); got != tc.want {
 			t.Errorf("%s: args %q, want %q", name, got, tc.want)
 		}
 	}

@@ -451,6 +451,7 @@ dependencies = [
  "blake3",
  "clap",
  "furrow-core",
+ "furrow-daemon",
  "libc",
  "predicates",
  "rusqlite",
@@ -491,6 +492,15 @@ dependencies = [
 [[package]]
 name = "furrow-daemon"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "furrow-core",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "generic-array"

@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -34,7 +37,51 @@ func engineFor(t testing.TB, dataRoot string) Engine {
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	return Engine{Binary: bin, DataRoot: dataRoot}
+	return Engine{Binary: bin, DataRoot: dataRoot, Transport: current.make(t, bin)}
+}
+
+// A transportCase is one way the real engine is reached; every real-engine
+// test runs once per case, so the Store implementations answer to one suite.
+type transportCase struct {
+	name string
+	make func(t testing.TB, bin string) Transport
+}
+
+var transportCases = []transportCase{
+	{"spawn", func(_ testing.TB, bin string) Transport { return Spawn{Binary: bin} }},
+	{"daemon", daemonFor},
+}
+
+// current is the case the running subtest is in; realEngine reads it.
+var current = transportCases[0]
+
+// forEachTransport runs body against every transport. Tests that use it do
+// not run in parallel: they share current.
+func forEachTransport(t *testing.T, body func(t *testing.T)) {
+	for _, tc := range transportCases {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := current
+			current = tc
+			t.Cleanup(func() { current = previous })
+			body(t)
+		})
+	}
+}
+
+// daemonFor is a daemon of the test's own, on a socket of the test's own,
+// stopped when the test ends.
+func daemonFor(t testing.TB, bin string) Transport {
+	dir, err := os.MkdirTemp("", "cs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := Daemon{Socket: filepath.Join(dir, "e.sock"), Binary: bin}
+	t.Cleanup(func() {
+		_ = d.Stop(context.Background())
+		time.Sleep(50 * time.Millisecond) // let it unlink its socket
+		os.RemoveAll(dir)
+	})
+	return d
 }
 
 // fakeEngine seals without spawning anything: it invents snapshot ids.

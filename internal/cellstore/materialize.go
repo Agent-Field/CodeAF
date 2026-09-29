@@ -12,8 +12,7 @@ import (
 // takes one just before it removes a working tree, so nothing the tree held
 // since the last seal is lost.
 func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
-	args := append([]string{"--json", "snap", "-m", "materialization capture"}, e.cellDirArgs(c)...)
-	out, err := e.engine(ctx, c, args...)
+	out, err := e.do(ctx, c, e.cellDir(c), snapOp{Message: "materialization capture"})
 	if err != nil {
 		return "", fmt.Errorf("capture: %w", err)
 	}
@@ -25,15 +24,11 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 // composed .cell/ is restored in place, chain files included, so this is for a
 // snapshot that is the cell's newest state; a rewind uses restoreKeepingChain.
 func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths []string) error {
-	return e.restore(ctx, c, snapshot, paths, e.cellDirArgs(c))
+	return e.restore(ctx, c, snapshot, paths, e.cellDir(c))
 }
 
-func (e Engine) restore(ctx context.Context, c cell.Cell, snapshot string, paths, cellDir []string) error {
-	args := append([]string{"--json", "rewind", snapshot, "--yes"}, cellDir...)
-	for _, p := range paths {
-		args = append(args, "--paths="+p)
-	}
-	if _, err := e.engine(ctx, c, args...); err != nil {
+func (e Engine) restore(ctx context.Context, c cell.Cell, snapshot string, paths []string, cellDir string) error {
+	if _, err := e.do(ctx, c, cellDir, restoreOp{Snapshot: snapshot, Paths: paths}); err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
 	return nil

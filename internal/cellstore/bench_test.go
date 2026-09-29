@@ -75,13 +75,20 @@ func BenchmarkSealDelta10k(b *testing.B) { benchSealDelta10k(b, false) }
 func BenchmarkSealDelta10kChanged(b *testing.B) { benchSealDelta10k(b, true) }
 
 func benchSealDelta10k(b *testing.B, listChanged bool) {
-	e := realEngineB(b)
-	c, err := cell.CreateIn(b.TempDir(), cell.Options{Class: cell.Sandboxed})
-	if err != nil {
-		b.Fatal(err)
+	for _, tc := range transportCases {
+		b.Run(tc.name, func(b *testing.B) {
+			previous := current
+			current = tc
+			defer func() { current = previous }()
+			e := realEngineB(b)
+			c, err := cell.CreateIn(b.TempDir(), cell.Options{Class: cell.Sandboxed})
+			if err != nil {
+				b.Fatal(err)
+			}
+			fillTree(b, c.Root, 10000)
+			timeSeals(b, e, c, listChanged)
+		})
 	}
-	fillTree(b, c.Root, 10000)
-	timeSeals(b, e, c, listChanged)
 }
 
 // BenchmarkSealComposeOnly is everything a seal does except the engine spawn,
