@@ -3,6 +3,7 @@ package executor_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -65,16 +66,17 @@ func TestEverySiteRunsOnTheContextSeat(t *testing.T) {
 	}
 }
 
-func TestForFallsBackToHostOnlyWhenNoSessionIsCarried(t *testing.T) {
-	if executor.For(context.Background()) != executor.Host {
-		t.Fatal("a context with no session must run on the host seat")
+func TestForRefusesAContextThatCarriesNoSession(t *testing.T) {
+	runner := executor.For(context.Background()).In(t.TempDir())
+	if _, err := runner.Exec(context.Background(), executor.ExecRequest{Argv: []string{"true"}}, nil); !errors.Is(err, executor.ErrNoSeat) {
+		t.Fatalf("Exec err = %v, want ErrNoSeat", err)
+	}
+	if _, err := runner.Command(context.Background(), executor.ExecRequest{Argv: []string{"true"}}); !errors.Is(err, executor.ErrNoSeat) {
+		t.Fatalf("Command err = %v, want ErrNoSeat", err)
 	}
 	seat := &probeSeat{}
 	if executor.For(executor.With(context.Background(), seat)) != executor.Seat(seat) {
 		t.Fatal("the carried seat was not returned")
-	}
-	if executor.For(executor.With(context.Background(), nil)) != executor.Host {
-		t.Fatal("a nil seat must leave the context on the host seat")
 	}
 }
 

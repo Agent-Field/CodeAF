@@ -888,7 +888,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// during the unwind kills the process the way it always did. SIGKILL is
 	// outside all of this and stays correct by accident: no defer runs, so
 	// nothing deletes the store either.
-	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalled, stopSignals := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	// The person's own ending of the run is the one fact the usage counts
 	// keep about how it ended: the interrupt word, not a failure word.

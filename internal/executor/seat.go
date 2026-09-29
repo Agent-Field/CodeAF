@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 )
 
@@ -24,7 +25,16 @@ type Seat interface {
 	// tree is sealed at) and hands run's output and verdict to whatever keeps
 	// the record. The tool's own result is run's business; the error is only
 	// ever the seat's, and means the call was not run.
-	Around(ctx context.Context, tool string, args []byte, run func() (output []byte, failed bool)) error
+	Around(ctx context.Context, call Call, run func() (output []byte, failed bool)) error
+}
+
+// Call is one tool call as the seat is told of it.
+type Call struct {
+	Tool string
+	Args []byte
+	// Changed is the workspace-relative paths the call is known to change; nil
+	// means unknown, and the whole tree is then looked at.
+	Changed []string
 }
 
 // Stance is a seat that runs every call under one declared class and records
@@ -37,7 +47,7 @@ func (s Stance) In(dir string) Runner {
 }
 
 // Around implements Seat: a stance keeps no record, so the call just runs.
-func (Stance) Around(_ context.Context, _ string, _ []byte, run func() ([]byte, bool)) error {
+func (Stance) Around(_ context.Context, _ Call, run func() ([]byte, bool)) error {
 	run()
 	return nil
 }
@@ -57,11 +67,43 @@ func With(ctx context.Context, seat Seat) context.Context {
 	return context.WithValue(ctx, seatKey{}, seat)
 }
 
+// ErrNoSeat is what a tool call answers when its context carries no session.
+// Work that belongs to no session says so with [Host]; a tool call that lost
+// its session is a bug, and running it unjailed on the host would hide it.
+var ErrNoSeat = errors.New("executor: this call carries no session seat")
+
 // For is the seat of the session whose call ctx belongs to. A context that
-// carries no session is plumbing, and plumbing runs on [Host].
+// carries none gets a seat that refuses every call with [ErrNoSeat].
 func For(ctx context.Context) Seat {
 	if seat, ok := ctx.Value(seatKey{}).(Seat); ok {
 		return seat
 	}
-	return Host
+	if testSeat != nil {
+		return testSeat
+	}
+	return unseated{}
 }
+
+// testSeat is what a test binary that runs tools without a session says its
+// calls run on. It is set by internal/executor/executortest and nowhere else
+// (law_test.go), so no production binary has it.
+var testSeat Seat
+
+// UseInTests names the seat a test binary's seatless calls run on. Only
+// executortest may call it.
+func UseInTests(seat Seat) { testSeat = seat }
+
+type unseated struct{ Stance }
+
+// In implements Seat.
+func (unseated) In(string) Runner { return refused{} }
+
+type refused struct{ Local }
+
+// Exec implements Executor.
+func (refused) Exec(context.Context, ExecRequest, func(Chunk)) (ExecResult, error) {
+	return ExecResult{}, ErrNoSeat
+}
+
+// Command implements Runner.
+func (refused) Command(context.Context, ExecRequest) (*exec.Cmd, error) { return nil, ErrNoSeat }

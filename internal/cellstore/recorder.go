@@ -56,7 +56,7 @@ func Wrap(inner executor.Executor, c cell.Cell) (executor.Executor, error) {
 	if !cell.Enabled() {
 		return inner, nil
 	}
-	r, err := recorderFor(inner, c, Options{})
+	r, err := recorderFor(inner, Engine{}, c, Options{})
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 		return executor.ExecResult{}, fmt.Errorf("log call intent: %w", err)
 	}
 	res, err := r.inner.Exec(ctx, req, onOutput)
-	r.complete(ctx, intent, res, err)
+	r.complete(ctx, intent, executed(intent, res, err, r.now().UnixMilli()))
 	return res, err
 }
 
@@ -79,13 +79,15 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 // Exec, one owned by the tool through Command, or a file written directly. The
 // call is the boundary the tree is sealed at, so this is what a session uses;
 // Exec is the same record for a caller that has only an executor.
-func (r *Recorder) Around(ctx context.Context, tool string, args []byte, effect executor.SideEffect, run func() ([]byte, bool)) error {
-	intent := Intent{V: schemaV, Tool: tool, ArgsHash: hashHex(args), Started: r.now().UnixMilli(), SideEffect: string(effect)}
+func (r *Recorder) Around(ctx context.Context, call executor.Call, effect executor.SideEffect, run func() ([]byte, bool)) error {
+	intent := Intent{V: schemaV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(), SideEffect: string(effect)}
 	if err := r.wal.Begin(intent); err != nil {
 		return fmt.Errorf("log call intent: %w", err)
 	}
 	out, failed := run()
-	r.complete(ctx, intent, executor.ExecResult{Exit: exitOfFailure(failed), Stdout: out}, nil)
+	done := executed(intent, executor.ExecResult{Exit: exitOfFailure(failed), Stdout: out}, nil, r.now().UnixMilli())
+	done.Changed = call.Changed
+	r.complete(ctx, intent, done)
 	return nil
 }
 
@@ -156,8 +158,7 @@ func argsHash(req executor.ExecRequest) string {
 // complete logs the call's completion and seals. It runs on the call's way
 // out whatever the call did, and seals under a context the caller cannot
 // cancel: a cancelled call may still have changed files.
-func (r *Recorder) complete(ctx context.Context, i Intent, res executor.ExecResult, callErr error) {
-	e := executed(i, res, callErr, r.now().UnixMilli())
+func (r *Recorder) complete(ctx context.Context, i Intent, e Executed) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err := r.wal.Finish(i, e); err != nil {
@@ -171,7 +172,7 @@ func (r *Recorder) complete(ctx context.Context, i Intent, res executor.ExecResu
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {
 	batch := r.pending
-	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Calls: batch}); err != nil {
+	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Calls: batch, Changed: changedOf(batch)}); err != nil {
 		r.report(err)
 		return
 	}
@@ -213,4 +214,17 @@ func serviceRecs(list []executor.Service) []ServiceRec {
 		out = append(out, serviceRec(s.PGID, s.Argv, s.Ports))
 	}
 	return out
+}
+
+// changedOf is the paths a batch of calls changed, or nil when any one of them
+// could have changed anything: a promise of "only these" needs every call's word.
+func changedOf(batch []Executed) []string {
+	var all []string
+	for _, e := range batch {
+		if e.Changed == nil {
+			return nil
+		}
+		all = append(all, e.Changed...)
+	}
+	return all
 }

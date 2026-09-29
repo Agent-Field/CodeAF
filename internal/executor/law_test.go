@@ -256,3 +256,29 @@ func (l lineTags) near(line int) string {
 	}
 	return l.above[line-1]
 }
+
+// A production binary never has the test seat: only test files may reach
+// executortest, and only that package may call UseInTests.
+func TestTestSeatIsReachableOnlyFromTests(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = filepath.WalkDir(filepath.Join(root, "internal"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		if strings.HasPrefix(filepath.ToSlash(rel), "internal/executor/") {
+			return nil
+		}
+		source, readErr := os.ReadFile(path)
+		if readErr == nil && (strings.Contains(string(source), "executortest") || strings.Contains(string(source), "UseInTests(")) {
+			t.Errorf("%s reaches the test seat from production code", rel)
+		}
+		return readErr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

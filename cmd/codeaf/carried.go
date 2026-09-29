@@ -109,7 +109,7 @@ func runCarried(program delegate.Delegate, args []string) error {
 // to its jobs as it exits — is ignored rather than allowed to kill that
 // finishing halfway.
 func carriedSignals() (context.Context, context.CancelFunc) {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	ctx, stop := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	context.AfterFunc(ctx, func() {
 		signal.Ignore(syscall.SIGHUP)
 		stop()

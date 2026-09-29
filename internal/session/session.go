@@ -1189,7 +1189,8 @@ type Config struct {
 	Workspace string // tools root here; all relative paths resolve inside it
 	// Seat is the executor this session owns: every tool call runs on it, so
 	// the class the workspace declared and the seal after each call follow the
-	// session and never a path. Nil runs the session's calls on the host.
+	// session and never a path. Nil is a session with no cell, whose calls run
+	// on the host; see [Config.seat].
 	Seat    procexec.Seat
 	Model   string
 	APIKey  string
@@ -3506,4 +3507,30 @@ type Agent struct {
 	// under it, and a measurement must never be able to contend with the turn it
 	// is measuring.
 	phase phaseHeart
+}
+
+// seat is the executor this session's tool calls run on. A session with no
+// cell says so by name: it is on the host seat.
+func (c Config) seat() procexec.Seat {
+	if c.Seat == nil {
+		return procexec.Host
+	}
+	return c.Seat
+}
+
+// rootContext is where work that belongs to the session and not to a turn
+// starts from: a background task, an orchestrated run, a resumed one. It
+// carries the session's seat, so a tool call below it runs where the session
+// says and never falls back to the host by accident.
+func (a *Agent) rootContext() context.Context {
+	return procexec.With(context.Background(), a.config.seat())
+}
+
+// rootContext is the graph's own: its owner's, and the host's only for a graph
+// that has no owner (a standing item's throwaway).
+func (g *TaskGraph) rootContext() context.Context {
+	if g.home == nil {
+		return procexec.With(context.Background(), procexec.Host)
+	}
+	return g.home.rootContext()
 }

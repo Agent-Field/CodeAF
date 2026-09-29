@@ -101,8 +101,11 @@ type Executed struct {
 	Call     Call         `json:"call"`
 	Services []ServiceRec `json:"services,omitempty"`
 	Exact    bool         `json:"exact"`
-	Stdout   []byte       `json:"stdout,omitempty"`
-	Stderr   []byte       `json:"stderr,omitempty"`
+	// Changed is the workspace paths the call is known to have changed; nil is
+	// unknown, which is what any call that could touch anything leaves.
+	Changed []string `json:"changed,omitempty"`
+	Stdout  []byte   `json:"stdout,omitempty"`
+	Stderr  []byte   `json:"stderr,omitempty"`
 }
 
 // TurnInfo is everything the caller knows about the turn being sealed.

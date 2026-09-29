@@ -775,3 +775,10 @@ func (n *onceNotice) report(err error) {
 		n.once.Do(func() { fmt.Fprintln(os.Stderr, "codeaf: "+err.Error()) })
 	}
 }
+
+// hostSeated is the root of a command that runs work outside any conversation
+// (do, exec, run, a carried program): its tool calls run on the host seat, and
+// say so here once instead of at every site.
+func hostSeated(ctx context.Context) context.Context {
+	return executor.With(ctx, executor.Host)
+}

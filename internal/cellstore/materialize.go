@@ -22,7 +22,7 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 // Restore writes the snapshot back into the cell's folder, byte for byte:
 // only the named top-level paths, or the whole tree when none are named.
 func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths []string) error {
-	args := []string{"--json", "rewind", snapshot, "--yes"}
+	args := append([]string{"--json", "rewind", snapshot, "--yes"}, e.cellDirArgs(c)...)
 	for _, p := range paths {
 		args = append(args, "--paths="+p)
 	}

@@ -36,9 +36,14 @@ type Engine struct {
 	Binary string
 	// DataRoot holds one store directory per cell; empty means the state root's.
 	DataRoot string
-	Identity Identity
-	Run      Runner
-	Now      func() time.Time
+	// Workspace, when set, is the tree the engine seals: the folder the tools
+	// work in, which is not the cell's own. The cell's .cell/ directory is then
+	// composed in as the tree's .cell/ entry and nothing is written into the
+	// workspace. Empty seals the cell's folder itself.
+	Workspace string
+	Identity  Identity
+	Run       Runner
+	Now       func() time.Time
 }
 
 var _ Store = Engine{}
@@ -109,18 +114,18 @@ func (e Engine) identity() Identity {
 // ties a snapshot to its receipt until the engine has a receipt field of its
 // own.
 func (e Engine) snapshot(ctx context.Context, c cell.Cell, receipt string, changed []string) (string, error) {
-	out, err := e.engine(ctx, c, snapshotArgs(receipt, changed)...)
+	out, err := e.engine(ctx, c, e.turnEndArgs(c, receipt, changed)...)
 	if err != nil {
 		return "", fmt.Errorf("seal: snapshot: %w", err)
 	}
 	return parseSnapshot(out)
 }
 
-// snapshotArgs is the turn-end verb and, when the caller knows what changed,
+// turnEndArgs is the turn-end verb and, when the caller knows what changed,
 // the paths the engine should visit instead of walking the folder. The seal's
 // own writes under the state directory always count as changed.
-func snapshotArgs(receipt string, changed []string) []string {
-	args := []string{"--json", "hook", "turn-end", "--turn", receipt}
+func (e Engine) turnEndArgs(c cell.Cell, receipt string, changed []string) []string {
+	args := append([]string{"--json", "hook", "turn-end", "--turn", receipt}, e.cellDirArgs(c)...)
 	if changed == nil || len(changed) > maxChangedArgs {
 		return args
 	}
@@ -128,6 +133,23 @@ func snapshotArgs(receipt string, changed []string) []string {
 		args = append(args, "--changed", path)
 	}
 	return args
+}
+
+// tree is the folder the engine seals and restores.
+func (e Engine) tree(c cell.Cell) string {
+	if e.Workspace == "" {
+		return c.Root
+	}
+	return e.Workspace
+}
+
+// cellDirArgs composes the cell's private .cell/ directory into the tree when
+// the tree is not the cell's own folder.
+func (e Engine) cellDirArgs(c cell.Cell) []string {
+	if e.Workspace == "" {
+		return nil
+	}
+	return []string{"--cell-dir", filepath.Join(c.Root, cell.StateDir)}
 }
 
 // engine runs one engine verb in the cell's folder against the cell's store.
@@ -141,7 +163,7 @@ func (e Engine) engine(ctx context.Context, c cell.Cell, args ...string) ([]byte
 		bin = resolved
 	}
 	env := append(os.Environ(), dataDirEnv+"="+e.LocalDir(c))
-	return e.exec(ctx, c.Root, env, append([]string{bin}, args...)...)
+	return e.exec(ctx, e.tree(c), env, append([]string{bin}, args...)...)
 }
 
 func (e Engine) exec(ctx context.Context, dir string, env []string, argv ...string) ([]byte, error) {
