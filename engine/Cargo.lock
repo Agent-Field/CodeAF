@@ -497,8 +497,10 @@ name = "furrow-daemon"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "fs2",
  "furrow-core",
+ "hex",
  "libc",
  "serde",
  "serde_json",

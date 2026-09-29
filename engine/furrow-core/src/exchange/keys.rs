@@ -11,8 +11,8 @@ pub const DEDUP_VAR: &str = "FURROW_DEDUP_SECRET";
 /// environment is. Errors name the variable and never repeat its value.
 pub fn keys_from(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Keys> {
     Ok(Keys {
-        cell_key: secret(&lookup, CELL_KEY_VAR)?,
-        dedup: secret(&lookup, DEDUP_VAR)?,
+        cell_key: parse_secret(CELL_KEY_VAR, lookup(CELL_KEY_VAR))?,
+        dedup: parse_secret(DEDUP_VAR, lookup(DEDUP_VAR))?,
     })
 }
 
@@ -20,8 +20,10 @@ pub fn keys_from_env() -> anyhow::Result<Keys> {
     keys_from(|name| std::env::var(name).ok())
 }
 
-fn secret(lookup: &impl Fn(&str) -> Option<String>, name: &str) -> anyhow::Result<[u8; 32]> {
-    let text = Zeroizing::new(lookup(name).with_context(|| format!("{name} is not set"))?);
+/// One secret in its 64-hex spelling. `name` is how the caller knows the value
+/// (a variable or a JSON field); it is the only thing an error repeats.
+pub fn parse_secret(name: &str, value: Option<String>) -> anyhow::Result<[u8; 32]> {
+    let text = Zeroizing::new(value.with_context(|| format!("{name} is not set"))?);
     let bytes = Zeroizing::new(
         hex::decode(text.as_bytes())
             .ok()
