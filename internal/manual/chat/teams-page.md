@@ -262,6 +262,8 @@ On the page's buttons, and on a team with no manager in the pane:
 | `esc` | cancel a drag or a move's question, clear the picks, then back to the message box, or home when there is none |
 
 Any letter not in that list goes back to the message box and types there.
+After `M` starts a manager, the new manager's message box receives the keyboard immediately;
+letters you type are sent to that manager, not interpreted as page actions.
 
 ## A team's card: its settings, and where each value comes from
 

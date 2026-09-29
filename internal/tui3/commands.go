@@ -1132,7 +1132,7 @@ func helpText(file string, chords chordSpelling) string {
 		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
 		// selected team, and the chord that puts the keyboard on those buttons
 		// while the manager's conversation has the box (teamspagehost.go).
-		"s c w n o      in /teams: settings · close · open on the wall · new team · organize",
+		"s c w n o M m p r d u  in /teams: settings · close · wall · new team · organize · manager · move · members · reopen · delete · undo",
 		helpKeyRow(chords.say("alt+↑↓"), "in /teams: onto the page's buttons while the manager has the box · esc back"),
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
