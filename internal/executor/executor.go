@@ -11,6 +11,9 @@ package executor
 
 import (
 	"context"
+	"errors"
+	"io"
+	"os/exec"
 	"time"
 )
 
@@ -54,6 +57,23 @@ func classify(p NetPolicy) SideEffect {
 	return EffectExternal
 }
 
+// Group says how the child is placed among the harness's own processes.
+type Group int
+
+const (
+	// GroupOwn gives the child its own process group, so a kill reaches
+	// everything it started. It is the default.
+	GroupOwn Group = iota
+	// GroupSession gives it a new session: its own group and no controlling
+	// terminal, so a program that opens /dev/tty is refused.
+	GroupSession
+	// GroupInherit leaves it in the harness's group.
+	GroupInherit
+)
+
+// OpenNet is the policy of a call that may reach the whole network.
+var OpenNet = NetPolicy{Open: true}
+
 // ExecRequest is one process to run.
 type ExecRequest struct {
 	Argv    []string
@@ -62,6 +82,12 @@ type ExecRequest struct {
 	Timeout time.Duration // zero means no limit beyond the context
 	Class   Class
 	Net     NetPolicy
+
+	Stdin     io.Reader     // nil reads nothing
+	Group     Group         // where the child sits; the zero value is its own group
+	WaitDelay time.Duration // bound on draining output after exit; zero picks a short default
+	Combined  bool          // stderr shares stdout's pipe, so arrival order is kept
+	Stream    bool          // output goes to onOutput only; the result keeps none of it
 }
 
 // Stream names an output stream.
@@ -94,15 +120,31 @@ func SnapshotExact(res ExecResult) bool { return len(res.Services) == 0 }
 
 // ExecResult is what one call did.
 type ExecResult struct {
-	Exit       int // -1 when the process was killed or never exited
-	TimedOut   bool
-	Stdout     []byte
-	Stderr     []byte
-	Wall       time.Duration
-	SideEffect SideEffect
-	Services   []Service
+	Exit        int // -1 when the process was killed or never exited
+	Status      string
+	TimedOut    bool
+	PipesForced bool // a child kept the output pipes open and they were closed on it
+	Stdout      []byte
+	Stderr      []byte
+	Wall        time.Duration
+	SideEffect  SideEffect
+	Services    []Service
 	// JailDegraded: the jail could not apply every limit on this kernel.
 	JailDegraded bool
+}
+
+// Failure is nil for a clean exit and otherwise the process's own status
+// sentence, such as "exit status 2" or "signal: killed". A clean exit whose
+// output pipes had to be closed on a lingering child reports exec.ErrWaitDelay,
+// as os/exec does.
+func (r ExecResult) Failure() error {
+	switch {
+	case r.Exit != 0:
+		return errors.New(r.Status)
+	case r.PipesForced:
+		return exec.ErrWaitDelay
+	}
+	return nil
 }
 
 // Executor runs a request and streams output to onOutput, which may be nil.

@@ -125,3 +125,33 @@ func TestRemoteIsNotImplemented(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestCombinedStreamKeepsArrivalOrderAndRetainsNothing(t *testing.T) {
+	req := sh("echo a; echo b >&2; echo c")
+	req.Combined, req.Stream = true, true
+	var got strings.Builder
+	res := exec1(t, req, func(c Chunk) { got.Write(c.Data) })
+	if got.String() != "a\nb\nc\n" || len(res.Stdout) != 0 || len(res.Stderr) != 0 {
+		t.Fatalf("got %q, result kept %q/%q", got.String(), res.Stdout, res.Stderr)
+	}
+}
+
+func TestFailureNamesTheProcessStatus(t *testing.T) {
+	res := exec1(t, sh("exit 3"), nil)
+	if err := res.Failure(); err == nil || err.Error() != "exit status 3" {
+		t.Fatalf("Failure = %v", err)
+	}
+	if exec1(t, sh("true"), nil).Failure() != nil {
+		t.Fatal("a clean exit is not a failure")
+	}
+}
+
+func TestCommandBuildsAnUnstartedCommandInItsOwnGroup(t *testing.T) {
+	cmd, err := Local{Root: t.TempDir()}.Command(context.Background(), sh("true"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Process != nil || cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
+		t.Fatalf("want an unstarted command with Setpgid, got %+v", cmd)
+	}
+}
