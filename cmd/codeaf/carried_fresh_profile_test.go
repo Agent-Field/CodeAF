@@ -145,7 +145,14 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	if code := exitCodeOf(err); code != 0 || calls.Load() == 0 {
 		t.Fatalf("fresh explicit shell run exited %d after %d chat calls: %s", code, calls.Load(), output.String())
 	}
-	if content, err := os.ReadFile(workspace + "/feature.txt"); err != nil || string(content) != "implemented by stub\n" {
+	read := func() (string, error) {
+		content, err := os.ReadFile(workspace + "/feature.txt")
+		return string(content), err
+	}
+	if !tc.plain {
+		read = func() (string, error) { return onTheTaskBranch(workspace, "feature.txt") }
+	}
+	if content, err := read(); err != nil || content != "implemented by stub\n" {
 		t.Fatalf("the shell did not make the feature: %q, %v", content, err)
 	}
 	if tc.plain {

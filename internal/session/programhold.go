@@ -2,10 +2,13 @@ package session
 
 // THE HOLD A PROGRAM'S RUN HAS ON ITS FOLDER, and everything that asks it.
 //
-// A program works in the person's folder itself (programfolder.go), so while
-// it runs that folder is its. The hold is how every other road in codeaf knows:
+// A program works in a plain folder itself (programfolder.go), so while it runs
+// that folder is its. In a repository it works in a copy of its own
+// (programcopy.go) and holds only the copy, which is why runs on one
+// repository never wait for each other or refuse the person's tools. The hold is how every other road in codeaf knows:
 // a flock on a file under the state root named for the folder, which dies with
-// the process that took it however that process dies, and which holds between
+// the last process holding it however that process dies — codeaf, and the
+// program's own process it hands the hold to ([ProgramFolder.Hold]) — and which holds between
 // two windows, two conversations in one engine and a shell alike, because a
 // flock is per open file.
 //
@@ -219,8 +222,9 @@ func (h programHold) where(dir string) string {
 
 // ── nothing else of codeaf's writes in a held folder ────────────────────────
 //
-// WITHOUT THE COPY, A PROGRAM WORKS IN THE PERSON'S LIVE FOLDER, and what
-// anything else writes there meanwhile becomes the program's to act on. Once
+// IN A PLAIN FOLDER A PROGRAM WORKS IN THE PERSON'S LIVE FOLDER — there is no
+// history to cut a copy from — and what anything else writes there meanwhile
+// becomes the program's to act on. Once
 // senior-dev has submitted it checks its frozen tree, and a tree that moved is
 // put back — `checkout --force`, `reset`, `clean -fd` — which reverts a file
 // the chat edited and deletes one it wrote, with no copy kept; an ordinary

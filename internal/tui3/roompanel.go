@@ -310,7 +310,7 @@ func (a *app) roomTitleRow(width int) string {
 	}
 	room := max(width-headLabelAt-2-ansi.StringWidth(right)-3, 1)
 	// A PROGRAM'S ROOM HANGS THE BRIEF'S DROPDOWN AFTER THE BADGE, paid for
-	// before the title is fitted (programroom.go's [app.programHeadBriefRows]).
+	// before the title is fitted (programroom.go's [app.turnProgramBrief]).
 	chevron := ""
 	if p := a.programOf(); p != nil && a.programHeadsRoom() {
 		chevron = " " + programBriefChevron(p.briefFull)

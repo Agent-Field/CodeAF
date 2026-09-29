@@ -176,7 +176,13 @@ func newSeniorDevCompactionController(
 // soloStartRef names the run's exact starting tree, written by the solo
 // pipeline when the run begins (solo_finalize.go). It is what the changed-files
 // record diffs against.
-const soloStartRef = "refs/senior-dev/start"
+//
+// IT IS PER WORKTREE. Every ref outside `refs/worktree/` is one ref for the whole
+// repository, so two runs in two worktrees of one repository — which is how
+// codeaf runs them side by side — each wrote the other's starting tree, and a
+// compaction diffed its own work against the other run's start. Git keeps
+// `refs/worktree/*` per worktree, and it goes when the worktree does.
+const soloStartRef = "refs/worktree/senior-dev/start"
 
 const changedFilesMaxLines = 40
 

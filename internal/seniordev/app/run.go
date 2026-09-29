@@ -64,7 +64,10 @@ type Options struct {
 	High     string
 	Low      string
 	Frontier string
-	// Variant is the reasoning effort, sent as `reasoning.effort`.
+	// Variant is the reasoning effort of the coder's calls, sent as
+	// `reasoning.effort`: a rung of internal/effort, or "none" for no
+	// `reasoning` at all ([ParseVariant]). Empty sends none too; the command
+	// line's own default is [DefaultVariant].
 	Variant string
 	// InPlace edits the folder without git: no commits, no refs, and the run's
 	// checkpoints kept outside it.
@@ -131,6 +134,11 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 	if len(splitPool(args.High)) == 0 {
 		return refused("--high names no model, and the coder needs one to route on")
 	}
+	variant, ok := ParseVariant(args.Variant)
+	if !ok {
+		return refused(fmt.Sprintf("--variant %q is not a reasoning effort; say one of %s", strings.TrimSpace(args.Variant), VariantWords()))
+	}
+	args.Variant = variant
 	// A CEILING OF ZERO IS NO CEILING, and is passed as none, so senior-dev's
 	// own SENIOR_DEV_MAX_COST_USD and SENIOR_DEV_MAX_WALL_H still apply to a run
 	// codeaf set no limit on.

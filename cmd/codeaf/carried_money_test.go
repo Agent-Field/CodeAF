@@ -76,6 +76,9 @@ func TestAShellRunWaitsForItsLastCallsPriceAndKeepsItsClock(t *testing.T) {
 		len(program.Stages) == 0 {
 		t.Fatalf("program record = %+v (%v), want its name, stages and the program's own start and end", program, ok)
 	}
+	if strings.Join(program.Models, ",") != "vendor/model-a" || program.Effort != "high" {
+		t.Fatalf("program record = %+v, want the models and effort the program's stage named", program)
+	}
 }
 
 // THE LAST LINE SAYS HOW LONG THE PROGRAM RAN, the way a person says it, and

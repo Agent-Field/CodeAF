@@ -315,7 +315,7 @@ it, and the program gets no tab of its own.
 ```
 
 `esc`, a press on the conversation's tab and a press on the `home` tab leave it; none of them
-stops the run. `ctrl+o` opens and folds a long brief. `ctrl+y` turns the page to the
+stops the run. `ctrl+o` opens the whole brief as the page, which scrolls like the page, and closes it. `ctrl+y` turns the page to the
 program's raw calls and back. `x` over an empty box, `/stop`, or `Stop` at the end of the
 line over the page asks `Stop this task?` and ends the whole run.
 

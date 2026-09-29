@@ -3766,7 +3766,14 @@ func (a *app) legendLeftSpanFrom(pieces *seamPieces, room int, tier seamTier) (s
 			// left says only whose numbers ride its right — the conversation's,
 			// never the node's (room.go's law about the telemetry). At phone
 			// width the right is the keys and the left stays empty.
+			//
+			// A PROGRAM'S ROOM SAYS WHAT ITS RUN WAS LAUNCHED ON INSTEAD: the
+			// models the program works on, which no other line of its page
+			// names ([app.programModelsWord]).
 			if a.seamCarriesTelemetry() {
+				if word := a.programModelsWord(room); word != "" {
+					return word, hudSpan{}, hudSpan{}, hudSpan{}, true
+				}
 				return roomTotalsWord, hudSpan{}, hudSpan{}, hudSpan{}, true
 			}
 			return "", hudSpan{}, hudSpan{}, hudSpan{}, true

@@ -29,7 +29,7 @@ func programPageFixture(t *testing.T) (*Agent, string) {
 	path := filepath.Join(dir, planStoreFilename)
 	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha", Description: "rewrite the auth middleware"})
 	folder := plandb.TaskDir(dir, "alpha")
-	if err := delegate.WriteProgram(folder, delegate.ProgramRecord{Name: "senior-dev", Stages: []string{"intake", "implement", "verification"}, CeilingUSD: 5}); err != nil {
+	if err := delegate.WriteProgram(folder, delegate.ProgramRecord{Name: "senior-dev", Stages: []string{"intake", "implement", "verification"}, CeilingUSD: 5, Models: []string{"deepseek/deepseek-v4-pro"}, Effort: "high"}); err != nil {
 		t.Fatalf("write the program record: %v", err)
 	}
 	began := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
@@ -96,6 +96,9 @@ func TestAProgramsPageCarriesItsConversationStageAndLiveStep(t *testing.T) {
 	}
 	if last := program.Turns[2]; !last.InFlight() || len(last.Sent) != 1 || last.Sent[0].Tool != "read" {
 		t.Fatalf("the call in flight reads %+v, want it open with what the program sent", last)
+	}
+	if strings.Join(program.Models, ",") != "deepseek/deepseek-v4-pro" || program.Effort != "high" {
+		t.Fatalf("models = %v at %q, want the model and effort the program record carries", program.Models, program.Effort)
 	}
 	if program.CeilingUSD != 5 {
 		t.Fatalf("ceiling = %v, want the 5 the program record carries", program.CeilingUSD)

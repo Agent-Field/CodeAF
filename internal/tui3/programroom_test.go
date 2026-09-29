@@ -7,6 +7,7 @@ package tui3
 // the room, the rail and the landed card all read for one run.
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -94,8 +95,8 @@ func TestAProgramsRoomSendsNothingAndSaysSo(t *testing.T) {
 // THE ROOM NAMES ITS TASK ONCE, AND ITS BRIEF IS BEHIND A DROPDOWN. The head is
 // the title row alone — no trail crumb repeating the conversation's name, no
 // `Reading:` label over the box — with `▸ brief` after the badge; the brief is
-// not in the body, and ctrl+o or a press on the dropdown draws it whole between
-// the head's rules, and shuts it again.
+// not drawn, and ctrl+o or a press on the dropdown makes the whole brief the
+// room's body, with the head still one row, and shuts it again.
 func TestAProgramRoomNamesItsTaskOnceAndHidesItsBriefBehindADropdown(t *testing.T) {
 	a, agent := programRoomApp(t, 120, 40)
 	page := agent.planFake.pages["7"]
@@ -122,15 +123,84 @@ func TestAProgramRoomNamesItsTaskOnceAndHidesItsBriefBehindADropdown(t *testing.
 	}
 	drive(t, a, key("ctrl+o"))
 	open := strings.Join(head(), "\n")
-	if !strings.Contains(open, "THE LAST WORDS") || !strings.Contains(open, programBriefChevron(true)) {
-		t.Fatalf("ctrl+o did not draw the whole brief in the head:\n%s", open)
+	if !strings.Contains(roomText(a), "THE LAST WORDS") || !strings.Contains(open, programBriefChevron(true)) {
+		t.Fatalf("ctrl+o did not make the whole brief the body:\n%s", roomText(a))
 	}
-	if strings.Contains(roomText(a), "THE LAST WORDS") {
-		t.Fatal("the open brief is drawn in the body as well as the head")
+	if strings.Contains(open, "THE LAST WORDS") || len(head()) != len(shut) {
+		t.Fatalf("the open brief is pinned in the head:\n%s", open)
 	}
 	p := a.programOf()
-	if !a.programBriefPress(p.briefSpan.from, a.roomHeadRow()) || strings.Contains(strings.Join(head(), "\n"), "THE LAST WORDS") {
+	if !a.programBriefPress(p.briefSpan.from, a.roomHeadRow()) || strings.Contains(roomText(a), "THE LAST WORDS") {
 		t.Fatal("a press on the dropdown did not shut the brief")
+	}
+}
+
+// THE OPEN BRIEF IS A DOCUMENT THE ROOM SCROLLS. A brief of hundreds of lines is
+// drawn whole — nothing folded into a count — from its top, with its parts
+// under their plain headings and every line it kept its own; the room's scroll
+// reaches its last line; the key row says how to shut it; and shutting it puts
+// the steps back where they were scrolled.
+func TestAProgramsOpenBriefIsAWholeDocumentTheRoomScrolls(t *testing.T) {
+	a, agent := programRoomApp(t, 120, 40)
+	page := agent.planFake.pages["7"]
+	var items []string
+	for i := 1; i <= 120; i++ {
+		items = append(items, "- item "+strconv.Itoa(i)+" keeps __init__.py as it is")
+	}
+	page.Description = "THE WORK\n\nFIRST ACTION: read the spec.\n" + strings.Join(items, "\n") + "\n\nWHAT TO PRODUCE\n\nTHE LAST WORDS"
+	agent.planFake.pages["7"] = page
+	openProgramRoomNow(t, a)
+	a.roomScroll(-3)
+	before := a.room.offset
+	drive(t, a, key("ctrl+o"))
+	body := roomText(a)
+	for _, want := range []string{"Task request", "Deliverable", "item 1 keeps __init__.py as it is", "item 120 keeps", "THE LAST WORDS"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the open brief lost %q:\n%s", want, body)
+		}
+	}
+	if strings.Count(body, "- item") != 120 {
+		t.Fatalf("the brief's list does not keep one line per item:\n%s", body)
+	}
+	if a.room.offset != 0 || a.room.stick {
+		t.Fatalf("the brief opened at %d (stick %v), want its top", a.room.offset, a.room.stick)
+	}
+	if frame, _, _ := a.frame(); !strings.Contains(plain(frame), "Task request") || strings.Contains(plain(frame), "THE LAST WORDS") || !strings.Contains(plain(frame), programBriefCloseWord) {
+		t.Fatalf("the frame does not show the brief's top with the key that shuts it:\n%s", plain(frame))
+	}
+	for i := 0; i < 20; i++ {
+		a.roomScroll(a.scrollPage())
+	}
+	if frame, _, _ := a.frame(); !strings.Contains(plain(frame), "THE LAST WORDS") {
+		t.Fatalf("scrolling did not reach the brief's last line:\n%s", plain(frame))
+	}
+	drive(t, a, key("ctrl+o"))
+	if a.room.offset != before || strings.Contains(roomText(a), "THE LAST WORDS") {
+		t.Fatalf("shutting the brief left the steps at %d, want %d", a.room.offset, before)
+	}
+}
+
+// THE BRIEF'S LINES ARE LAID AS A DOCUMENT: a list item's wrapped lines hang
+// under its text, and a line that opens in capital words wears them in bold —
+// but not a sentence that opens on one short word.
+func TestABriefsListHangsAndItsCapitalLeadIsTheLeadAlone(t *testing.T) {
+	for text, want := range map[string]string{
+		"FIRST ACTION: read it":      "FIRST ACTION:",
+		"DONE WHEN the tests pass":   "DONE WHEN",
+		"SETTLED WITH THE OWNER (do": "SETTLED WITH THE OWNER",
+		"NOTE: keep it":              "NOTE:",
+		"I read the file":            "",
+		"README gives one command":   "",
+		"the work is small":          "",
+	} {
+		if got := text[:briefCapitalLead(text)]; got != want {
+			t.Fatalf("the capital lead of %q is %q, want %q", text, got, want)
+		}
+	}
+	a, _ := programRoomApp(t, 120, 40)
+	rows := a.briefLineRows("- "+strings.Repeat("a long line that wraps ", 8), 40)
+	if len(rows) < 2 || !strings.HasPrefix(plain(rows[0]), "- a long") || !strings.HasPrefix(plain(rows[1]), "  that") {
+		t.Fatalf("the item's wrapped line does not hang under its text: %q", rows)
 	}
 }
 
@@ -499,4 +569,57 @@ func planBeat(t *testing.T, a *app) {
 	at := a.now().Add(elsewhereEvery)
 	a.clock = func() time.Time { return at }
 	drive(t, a, frameMsg{})
+}
+
+// THE SEAM NAMES WHAT THE RUN WAS LAUNCHED ON. On a program's organized room the
+// seam's left is the program and the models it said it works on, with its
+// effort, in place of the conversation-totals label; a run that has not said
+// yet keeps the label. A narrow seam gives the list up from its tail into a
+// `+N`, then the program's name, and keeps the first model and the effort.
+func TestAProgramRoomsSeamNamesTheModelsItsRunWasLaunchedOn(t *testing.T) {
+	a, agent := programRoomApp(t, 160, 40)
+	openProgramRoomNow(t, a)
+	if !a.roomOrganized() {
+		t.Fatal("the fixture's room is not organized; the seam under test is not drawn")
+	}
+	if frame, _, _ := a.frame(); !strings.Contains(plain(frame), roomTotalsWord) {
+		t.Fatalf("a run that named no models lost the seam's label:\n%s", plain(frame))
+	}
+	page := agent.planFake.pages["7"]
+	program := *page.Program
+	program.Models = []string{"deepseek/deepseek-v4-pro", "moonshotai/kimi-k2.6", "z-ai/glm-5.1"}
+	program.Effort = "high"
+	page.Program = &program
+	agent.planFake.pages["7"] = page
+	a.closeRoom()
+	openProgramRoomNow(t, a)
+	frame, _, _ := a.frame()
+	want := "senior-dev on deepseek-v4-pro, kimi-k2.6, glm-5.1 · high"
+	if !strings.Contains(plain(frame), want) || strings.Contains(plain(frame), roomTotalsWord) {
+		t.Fatalf("the seam does not say %q in place of its label:\n%s", want, plain(frame))
+	}
+	cells := ansi.StringWidth
+	for _, c := range []struct {
+		width int
+		want  string
+	}{
+		{cells(want), want},
+		{cells(want) - 1, "senior-dev on deepseek-v4-pro, kimi-k2.6 +1 · high"},
+		{cells("senior-dev on deepseek-v4-pro +2 · high") + 1, "senior-dev on deepseek-v4-pro +2 · high"},
+		{cells("deepseek-v4-pro +2 · high"), "deepseek-v4-pro +2 · high"},
+		{20, "deepseek-v4-… · high"},
+		{10, "de… · high"},
+		{7, "high"},
+		{4, "high"},
+	} {
+		if got := a.programModelsWord(c.width); got != c.want {
+			t.Fatalf("at %d cells the seam says %q, want %q", c.width, got, c.want)
+		}
+	}
+	for width := 1; width <= cells(want); width++ {
+		got := a.programModelsWord(width)
+		if cells(got) > width || (width >= cells("high") && !strings.HasSuffix(got, "high")) {
+			t.Fatalf("at %d cells the seam loses its effort or overflows: %q", width, got)
+		}
+	}
 }

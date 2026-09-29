@@ -58,6 +58,22 @@ func programCallsHint(calls bool) string {
 	return programCallsWord
 }
 
+// programBriefCloseWord is the key row's clause while the brief is the page:
+// the one key that puts the steps back.
+const programBriefCloseWord = "ctrl+o close brief"
+
+// programViewHint is the key row's clause for the open program room: how to
+// shut the brief while it is the page, and the calls' key otherwise.
+func (a *app) programViewHint() string {
+	if a.programBriefShown() {
+		return programBriefCloseWord
+	}
+	if p := a.programOf(); p != nil {
+		return programCallsHint(p.calls)
+	}
+	return ""
+}
+
 const (
 	// convSaidMost is how many of the program's messages one of its turns draws.
 	// A turn that answers eight tool calls sends eight results, and the eight

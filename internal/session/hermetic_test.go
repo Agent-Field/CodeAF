@@ -121,6 +121,11 @@ func runTests(m *testing.M) int {
 		return 1
 	}
 
+	// AND A PROGRAM'S COPIES ARE CUT UNDER THIS RUN'S OWN TEMPORARY HOME, not
+	// the machine's temporary folder (programcopy.go), so a test that leaves a
+	// run's copy unfinished leaves it where the rest of this run's files go.
+	programCopyRoot = func() string { return filepath.Join(root, "worktrees") }
+
 	code := m.Run()
 
 	if moved := tree.moved(); moved != "" {

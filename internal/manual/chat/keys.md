@@ -2546,10 +2546,12 @@ deliberately **not** taken here — it falls through to the message box's
 back-navigation.
 
 **Inside a program's room** — a task handed to senior-dev — `ctrl+y` turns the page
-between the actions it took and its raw calls to its model, `ctrl+o` folds its brief, and
-the box sends nothing. While it works the keys row under the box reads
+between the actions it took and its raw calls to its model, `ctrl+o` opens its whole brief
+as the page (scroll it like the page) and closes it again, and the box sends nothing.
+While it works the keys row under the box reads
 `/stop · x with empty input · esc main · ctrl+y calls`, ending `ctrl+y actions` while the
-calls are showing; once it has ended the row is the `ctrl+y` clause alone.
+calls are showing and `ctrl+o close brief` while the brief is; once it has ended the row
+is that last clause alone.
 
 **`up` and `down` in a room mean what they mean in the message box**, in the same order:
 inside a multi-line message they move the caret; on the first line — or over an empty box

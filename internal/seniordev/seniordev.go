@@ -114,8 +114,8 @@ var Program = delegate.Delegate{
 }
 
 // crewFlags is the conversation's crew as senior-dev's own flags: the working
-// seat is the pool the coder routes on (--high), and the light seat the
-// history summaries (--low). --crew says the pools came from a crew, so a
+// seat is the pool the coder routes on (--high), the light seat the history
+// summaries (--low), and the crew's effort the coder's depth (--variant). --crew says the pools came from a crew, so a
 // model senior-dev's catalog cannot size is left out rather than failing the
 // run. A seat the crew leaves unset keeps senior-dev's own default for it.
 //
@@ -151,6 +151,11 @@ func crewFlags(crew delegate.Crew) []string {
 			flags = append(flags, seat.flag, seat.model)
 		}
 	}
+	// THE EFFORT RIDES WITH THE WORKING SEAT it was chosen for. A crew that
+	// names none leaves senior-dev on its own default ([app.DefaultVariant]).
+	if effort := strings.TrimSpace(crew.Effort); effort != "" {
+		flags = append(flags, "--variant", effort)
+	}
 	return flags
 }
 
@@ -166,7 +171,7 @@ var runCommand = delegate.Command{
 
 // bindRun declares the run's own flags and answers the body that reads them.
 func bindRun(fs *flag.FlagSet) delegate.Body {
-	variant := fs.String("variant", "", "reasoning effort per call: low, medium, high or xhigh")
+	variant := fs.String("variant", app.DefaultVariant, "the coder's thinking: "+app.VariantWords())
 	inPlace := fs.Bool("in-place", false, "work without git: no commits; checkpoints kept outside")
 	high := fs.String("high", app.DefaultHighModels, "models the coder routes among, comma-separated")
 	low := fs.String("low", "", "models for the history summary (default: --high)")

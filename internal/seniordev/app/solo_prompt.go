@@ -88,17 +88,48 @@ A run that never submits is recorded as unsubmitted and leaves behind the tree
 as it stands, except that a tree whose suite cannot start is restored to an
 earlier one.`
 
+// soloDependenciesSection is how a run gets what the project's build and tests
+// need and the machine lacks. It is part of the instruction only when the run
+// may reach the network (netpolicy): with egress off nothing can be installed,
+// and a paragraph about installing would only send the model to probe a
+// network it does not have.
+//
+// IT EXISTS BECAUSE A MISSING DEPENDENCY WAS WORKED AROUND, NEVER FETCHED. With
+// nothing saying installing was allowed, runs on a machine with no pytest used
+// unittest instead, and one wrote a `pytest.py` stand-in into the project so
+// the post-submit check would pass. A system Python that refuses `pip
+// install` (PEP 668, Homebrew's) is why the environment is the project's own,
+// and senior-dev's check runs with the project's `.venv` active, so what is
+// installed there is what the check uses.
+const soloDependenciesSection = `## Dependencies
+
+When the project's build or tests need a tool or package this machine does not
+have, install it into the project's own environment and use it from there: for
+Python a virtual environment at .venv in the project (` + "`python3 -m venv .venv`" + `,
+then ` + "`.venv/bin/python -m pip install ...`" + `, or ` + "`uv sync`" + `), for Node ` + "`npm ci`" + ` or the
+project's own package manager, for other ecosystems their usual fetch. Never
+install into the system (no ` + "`sudo`" + `, no ` + "`--break-system-packages`" + `, no global
+installs), and never write a stand-in for a missing tool. senior-dev runs its
+own check of the project with .venv active when there is one.`
+
 // buildSoloPrompt assembles the run instruction. The request is repeated at the
 // top verbatim: it travels through no paraphrase on its way to the model.
-func buildSoloPrompt(goal string, pinned string, checklistPath string) string {
+// network says the run may reach the network, which is what the dependencies
+// section is about ([soloDependenciesSection]).
+func buildSoloPrompt(goal string, pinned string, checklistPath string, network bool) string {
 	sections := []string{
 		soloSystemPreamble,
 		soloIntakeSection,
 		soloExploreSection,
 		soloImplementSection,
+	}
+	if network {
+		sections = append(sections, soloDependenciesSection)
+	}
+	sections = append(sections,
 		soloConformanceSection,
 		soloSubmitSection,
-	}
+	)
 	body := strings.Join(sections, "\n\n")
 	header := "# The request\n\n" + strings.TrimSpace(goal) +
 		"\n\n(The same text is in .senior-dev/spec.md, which is the specification.)\n\n"

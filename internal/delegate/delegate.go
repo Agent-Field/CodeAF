@@ -193,11 +193,16 @@ type Crew struct {
 	// seat in place of Hands, and a program may not swap any of it for another:
 	// one it cannot use is a refusal, said before anything is spent.
 	Asked []string
+	// Effort is how hard the working seat is asked to think, a rung of
+	// internal/effort: the one the conversation chose for this hand-off, or
+	// the one written on the person's working seat. Empty leaves it to the
+	// program's own default.
+	Effort string
 }
 
-// IsZero says the crew names no model at all, so no flag is owed for it.
+// IsZero says the crew names no model and no effort, so no flag is owed for it.
 func (c Crew) IsZero() bool {
-	return c.Brain == "" && c.Hands == "" && c.Light == "" && len(c.Asked) == 0
+	return c.Brain == "" && c.Hands == "" && c.Light == "" && len(c.Asked) == 0 && c.Effort == ""
 }
 
 // GuideMax is the most bytes a program's [Delegate.Guide] may take. It is a

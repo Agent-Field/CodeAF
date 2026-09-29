@@ -5,7 +5,9 @@
 The pinned header carries the breadcrumb trail and Back. In the expanded layout,
 the breadcrumb names ancestors; one row below it combines the bold task title
 with state, activity, time and known cost. The divider comes below that row.
-The footer explicitly labels its figures `Conversation totals`. The right column keeps the
+The footer explicitly labels its figures `Conversation totals`; on a senior-dev task it
+names the models the run was launched on instead (`senior-dev on kimi-k2.6 · high`),
+and the figures are still the conversation's. The right column keeps the
 existing task tree at the top. The input says `To: <task name>` when the terminal
 has room for that row. Back and Escape change the view; neither stops work.
 

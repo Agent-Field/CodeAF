@@ -47,7 +47,7 @@ func fakeCarriedProgram() delegate.Delegate {
 				linger := fs.Duration("linger", 0, "leave a helper holding stdout this long after the program exits")
 				return func(ctx context.Context, host delegate.Host, args []string) error {
 					host.Hello([]string{"implement", "verify"})
-					host.Stage(delegate.StageRecord{Stage: "implement", Status: "running"})
+					host.Stage(delegate.StageRecord{Stage: "implement", Status: "running", Data: json.RawMessage(`{"models":["vendor/model-a"],"effort":"high"}`)})
 					for call := 1; call <= *calls && ctx.Err() == nil; call++ {
 						reply, err := askCarried(ctx, host.Models(), fmt.Sprintf("question %d: %s", call, strings.Join(args, " ")))
 						if err != nil {

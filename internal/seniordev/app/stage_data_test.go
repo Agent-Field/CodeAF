@@ -41,6 +41,14 @@ func TestAStageRecordCarriesACuratedCopyOfItsData(t *testing.T) {
 	if reason := got["reason"].(string); len(reason) > stageDataTextMost {
 		t.Fatalf("the reason is %d bytes, want it cut to %d", len(reason), stageDataTextMost)
 	}
+	// THE CODER'S POOL IS CARRIED WHOLE, for codeaf to name what the run was
+	// launched on (delegate.StageRecord.Models).
+	pool := stageRecordData(map[string]any{"recorder": "git", "workspace": "/tmp/copy",
+		"models": coderModels("openrouter/deepseek/deepseek-v4-pro,openrouter/z-ai/glm-5.1"), "effort": "high"})
+	models, effort, ok := delegate.StageRecord{Stage: "bootstrap", Data: pool}.Models()
+	if !ok || strings.Join(models, ",") != "deepseek/deepseek-v4-pro,z-ai/glm-5.1" || effort != "high" {
+		t.Fatalf("the bootstrap record names %v at %q (%v): %s", models, effort, ok, pool)
+	}
 	if stageRecordData(map[string]any{"tree_sha": "t1"}) != nil || stageRecordData(nil) != nil {
 		t.Fatal("a stage with nothing to say carries data")
 	}

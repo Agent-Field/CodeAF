@@ -237,3 +237,33 @@ func TestChangedFilesRecordDiffsAgainstTheStartRefAndListsStatus(t *testing.T) {
 		t.Fatalf("non-repository produced a record: %v", got)
 	}
 }
+
+// TWO RUNS IN TWO WORKTREES OF ONE REPOSITORY KEEP THEIR OWN START. A ref
+// outside `refs/worktree/` is one ref for the whole repository, so the second
+// run's start overwrote the first's and the first run's compaction record
+// diffed its work against the other run's tree.
+func TestTheStartRefIsPerWorktree(t *testing.T) {
+	main := t.TempDir()
+	gitIn(t, main, "init", "-q")
+	if err := os.WriteFile(filepath.Join(main, "a.txt"), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, main, "add", "a.txt")
+	gitIn(t, main, "commit", "-q", "-m", "base")
+	base := gitIn(t, main, "rev-parse", "HEAD")
+	other := filepath.Join(t.TempDir(), "other")
+	gitIn(t, main, "worktree", "add", "-q", "-b", "other", other)
+	if err := os.WriteFile(filepath.Join(other, "b.txt"), []byte("two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, other, "add", "b.txt")
+	gitIn(t, other, "commit", "-q", "-m", "other")
+	gitIn(t, main, "update-ref", soloStartRef, base)
+	gitIn(t, other, "update-ref", soloStartRef, gitIn(t, other, "rev-parse", "HEAD"))
+	if got := gitIn(t, main, "rev-parse", soloStartRef); got != base {
+		t.Fatalf("the other worktree's run moved this one's start to %s, want %s", got, base)
+	}
+	if !strings.HasPrefix(soloFrozenRef, "refs/worktree/") {
+		t.Fatalf("the submitted ref %q is shared by every worktree", soloFrozenRef)
+	}
+}
