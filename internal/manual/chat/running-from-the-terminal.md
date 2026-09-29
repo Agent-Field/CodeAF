@@ -209,24 +209,33 @@ by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, a
 **`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
 Neither draws anything or reads a key.
 
-A third is typed by hand but is not in the help text while cells are still switched on by
-`CODEAF_CELLS`: **`codeaf cell log [<cell>]`** lists a cell's turns, newest first, one line
-each (turn, parent, time, tools, receipt), and **`codeaf cell rewind <turn> [<cell>]`**
-puts the cell's files and transcript back to that turn. A rewind adds a new turn on top of
-the newest one and deletes nothing, so it can be rewound too. It refuses while a tool call
-began and never finished. With no cell named, both use the cell the current folder is in.
+A third, **`codeaf cell`**, is typed by hand but is not in the help text: it only works
+while `CODEAF_CELLS` is on. Its verbs are described under "The cell verbs" below.
 
-**`codeaf cell gc [--dry-run]`** frees disk from finished conversations. A conversation kept
-as a cell is a folder of working files, and those files can always be written back from what
-codeaf sealed. `gc` removes the working files of finished conversations, least recently
-opened first, until the cells fit the disk budget: `CODEAF_CELL_BUDGET_GB`, in gigabytes, 20
-when unset, 0 for no limit. Only a conversation nobody is using and that is fully sealed is
-touched. One that is open in any window, one opened in the last ten minutes, and one with a
-call still in flight or not yet sealed are passed over, and `gc` says why beside each. What
-stays is the conversation itself (its transcript and history), so it still lists and opens,
-and opening one writes its files back, byte for byte. A start also looks at the budget, at
-most once an hour, using sizes it already knows. `--dry-run` removes nothing and prints what
-would go:
+## The cell verbs — list a cell's turns and rewind it, and why they only work with CODEAF_CELLS on
+
+Cells are switched on by `CODEAF_CELLS=1`; with it off, `codeaf cell` is hidden from the
+help text and does not run. With it on, **`codeaf cell log [<cell>]`** lists a cell's
+turns, newest first, one line each (turn, parent, time, tools, receipt), and
+**`codeaf cell rewind <turn> [<cell>]`** puts the cell's files and transcript back to that
+turn. A rewind adds a new turn on top of the newest one and deletes nothing, so it can be
+rewound too. It refuses while a tool call began and never finished. With no cell named,
+both use the cell the current folder is in.
+
+## Free disk from old conversations — codeaf cell gc and the cell disk budget
+
+**`codeaf cell gc [--dry-run]`** (with `CODEAF_CELLS` on) frees disk from finished
+conversations. A conversation kept as a cell is a folder of working files, and those files
+can always be written back from what codeaf sealed. `gc` removes the working files of
+finished conversations, least recently opened first, until the cells fit the disk budget:
+the `cell disk budget` row in settings, or `CODEAF_CELL_BUDGET_GB` for one launch, in
+gigabytes, 20 when unset, 0 for no limit. Only a conversation nobody is using and that is
+fully sealed is touched. One that is open in any window, one opened in the last ten
+minutes, and one with a call still in flight or not yet sealed are passed over, and `gc`
+says why beside each. What stays is the conversation itself (its transcript and history),
+so it still lists and opens, and opening one writes its files back, byte for byte. A start
+also looks at the budget, at most once an hour, using sizes it already knows. `--dry-run`
+removes nothing and prints what would go:
 
 ```
 cells hold 24576.0 MiB, budget 20480.0 MiB

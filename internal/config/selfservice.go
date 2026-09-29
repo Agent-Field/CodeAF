@@ -100,6 +100,7 @@ var selfServiceGuards = map[string]string{
 	KeyTaskParallel:        guardPressure,
 	KeyTaskMaxLoad:         guardPressure,
 	KeyTaskMinFreeMB:       guardPressure,
+	KeyCellBudget:          guardPressure,
 	KeyBashBackgroundAfter: guardPressure,
 
 	// The team defaults: a team's day and the share a sub-team is handed are
