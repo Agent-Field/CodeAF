@@ -77,7 +77,9 @@ func TestCellIsUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(cell, "secret"), []byte("s"), 0o644)
-	res := jailed(t, root, sh("cat .cell/secret"))
+	// The path is assembled at run time: a literal .cell argument is refused by
+	// the executor before it reaches the jail, and this tests the jail.
+	res := jailed(t, root, sh(`cat "$(printf '.ce%s' ll)/secret"`))
 	if res.Exit == 0 || strings.Contains(string(res.Stdout), "s") {
 		t.Fatalf("read .cell inside the jail: %+v", res)
 	}
