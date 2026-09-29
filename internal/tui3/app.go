@@ -307,6 +307,10 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+	// summarized says an [entryCompact] pass replaced some of the conversation
+	// with a summary ([session.Event.Summarized]). Only such a pass stands
+	// outside the turn's fold (workfold.go); a free one folds with the work.
+	summarized bool
 
 	// carried marks the note naming the skills a turn carried (session's
 	// turnSkillsNotice). It is not addressed to the person, so it does not hold

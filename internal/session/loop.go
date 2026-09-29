@@ -5054,7 +5054,7 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	a.mu.Unlock()
 
 	if hub != nil {
-		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter)})
+		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter), Summarized: pass.summarized})
 	}
 	return true, pass.summarySkipped, nil
 }

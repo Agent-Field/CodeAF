@@ -34,11 +34,8 @@ func TestInterruptedUpdatesAcrossStopSteerRetryAndSharedDecks(t *testing.T) {
 					a.ingest(session.Event{Kind: session.EventReasoning, Text: "PRIVATE REASONING"})
 					a.ingest(session.Event{Kind: session.EventTextDelta, Text: " arriving."})
 					a.ingest(session.Event{Kind: session.EventToolForming, Tool: "bash", CallID: "abandoned", ArgsText: "PRIVATE ABANDONED PAYLOAD"})
-					// A FINISHED COMPACTION IS NOT PRIVATE: its one line is the record
-					// that the model's copy of the conversation changed, and it stands
-					// outside the fold (workfold.go). It shows once, settled.
-					wanted := []string{"First result ready.", "Check exports too", "PRIVATE COMPACTION"}
-					hidden := []string{"PRIVATE ABANDONED PAYLOAD", "PRIVATE REASONING", "[update]"}
+					wanted := []string{"First result ready.", "Check exports too"}
+					hidden := []string{"PRIVATE ABANDONED PAYLOAD", "PRIVATE COMPACTION", "PRIVATE REASONING", "[update]"}
 					switch ending {
 					case "steer":
 						a.steerAccepted(&session.SteerNote{ID: 2, Words: "Use Decimal"})

@@ -123,6 +123,11 @@ func TestAPassTheFreeRungsCannotShrinkEndsWithASummary(t *testing.T) {
 	// the two, which is what the hint must say.
 	event := lastCompacted(t, hub)
 	folded, summarized := hintCount(event.Hint, "folded"), hintCount(event.Hint, "summarized")
+	// The surface decides whether the line stands by this field, never by the
+	// hint's words (internal/tui3's workfold.go).
+	if event.Summarized != summarized {
+		t.Fatalf("event.Summarized = %d, want the %d the hint reports", event.Summarized, summarized)
+	}
 	if summarized == 0 || folded+summarized < 18 {
 		t.Fatalf("hint = %q; want a summary, with fold and summary covering the 18 older messages", event.Hint)
 	}

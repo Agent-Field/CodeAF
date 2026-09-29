@@ -3490,7 +3490,7 @@ left when neither of the lines above knows anything. It says "still working" and
 "trying again" — a silence is only a silence to this suffix, and the words change to
 `trying again` solely when the request really was cut and re-sent, which is said outright.
 
-## The compaction line — what "⚭ compacted" means, and why it stays after the turn
+## The compaction line — what "⚭ compacted" means, and why a summary's line stays after the turn
 
 A compaction is drawn while it runs and left as one quiet line
 once it lands, so the conversation never silently loses its middle. Running, it reads
@@ -3498,10 +3498,11 @@ once it lands, so the conversation never silently loses its middle. Running, it 
 spinners, dim, with a count-up. Settled, it becomes a dim line in the notes' lane:
 `· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · full record in the session journal · took 6s`. The duration is
 dropped under one second. It is never painted the question hue, because nobody is being
-asked anything. **It stays after the turn ends**: when the turn's work folds behind
-`▸ worked`, the compaction line stands outside the fold — above the answer when the pass
-ran mid-turn, under it when it ran at the end — so there is always a visible record that
-the model's copy of the conversation changed. A `/compact`
+asked anything. **A pass that wrote a summary stays after the turn ends**: when the turn's
+work folds behind `▸ worked`, its line stands outside the fold — above the answer when it
+ran mid-turn, under it when it ran at the end — because it rewrote your own words in the
+model's copy of the conversation. A pass that only folded or stubbed is ordinary machinery
+and folds with the rest of the turn; `ctrl+e` opens it. A `/compact`
 you run yourself leaves the same mark: `⚭ compacted · about N to M tokens` when the
 measured count fell, or `⚭ compacted` without a size when it did not.
 

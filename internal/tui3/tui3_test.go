@@ -1203,12 +1203,17 @@ func TestCompactionDrawsADivider(t *testing.T) {
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "keep going")
 
-	// THE MARK OUTLIVES THE TURN. It is the record that the model's copy of the
-	// conversation changed, so it stands when the turn's work folds
-	// (workfold.go) — one quiet line, not a rule across the page.
+	// A PASS THAT ONLY STUBBED AND FOLDED IS MACHINERY, so a turn that settles
+	// on an answer tucks it away with the rest of the work (workfold.go), and
+	// ctrl+e brings it back — one quiet line, not a rule across the page. Only
+	// a pass that wrote a summary stands ([TestACompactionMidTurnStaysVisibleWhenTheWorkFolds]).
+	if folded := plain(frame(a)); strings.Contains(folded, "compacted from") {
+		t.Fatalf("a settled turn still shows a free pass's mark:\n%s", folded)
+	}
+	drive(t, a, key("ctrl+e"))
 	got := plain(frame(a))
 	if !strings.Contains(got, "· ⚭ compacted from ~84k tokens") {
-		t.Fatalf("a settled turn does not keep the quiet compaction line:\n%s", got)
+		t.Fatalf("the opened work does not carry the compaction line:\n%s", got)
 	}
 	if row := findRow(t, a, "compacted from ~84k tokens"); strings.Contains(row, "──") {
 		t.Fatalf("the compaction mark is still a rule: %q", row)

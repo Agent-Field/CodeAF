@@ -445,7 +445,7 @@ stays in the session journal, and the summary names that file.
 
 Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
 `⚭ compacted` without a size when it did not; the figures are estimates, and the line
-stays in the conversation as the record of the pass. When nothing
+stays in the conversation as the answer to your command. When nothing
 changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
 last summary — too little to summarize`, `there is nothing before your last 3 messages to
 summarize`, or `the model could not write a summary: ` and the reason. The status line's

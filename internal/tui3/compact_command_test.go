@@ -146,15 +146,15 @@ func TestCompactLinesUseTheSelectedGlyphTier(t *testing.T) {
 	}
 }
 
-// A COMPACTION IN THE MIDDLE OF A TURN OUTLIVES THE FOLD. The work on either
+// A SUMMARY IN THE MIDDLE OF A TURN OUTLIVES THE FOLD. The work on either
 // side of it goes behind the chip as it always did; the one quiet line saying
-// the model's copy of the conversation changed stays, above the answer.
+// the person's words were summarized stays, above the answer.
 func TestACompactionMidTurnStaysVisibleWhenTheWorkFolds(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("bash", "go build ./..."),
 		{Kind: session.EventToolEnd, Tool: "bash"},
 		{Kind: session.EventCompacting, Hint: "compacting ~31k tokens"},
-		{Kind: session.EventCompacted, Hint: "compacted · summarized 4 messages · ~31k → ~13k tokens"},
+		{Kind: session.EventCompacted, Hint: "compacted · summarized 4 messages · ~31k → ~13k tokens", Summarized: 4},
 		toolBegin("bash", "go test ./..."),
 		{Kind: session.EventToolEnd, Tool: "bash"},
 		text(session.EventTextDelta, "all green"),
@@ -175,9 +175,9 @@ func TestACompactionMidTurnStaysVisibleWhenTheWorkFolds(t *testing.T) {
 	}
 }
 
-// AN END-OF-TURN COMPACTION STAYS TOO. The check after the answer is the
+// AN END-OF-TURN SUMMARY STAYS TOO. The check after the answer is the
 // ordinary place a pass runs, and the fold that takes a turn's trailing
-// bookkeeping into its disclosure must leave the pass's line standing under
+// bookkeeping into its disclosure must leave a summary's line standing under
 // the answer, with the answer itself still in view.
 func TestAnEndOfTurnCompactionStaysVisibleUnderTheAnswer(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
@@ -185,14 +185,46 @@ func TestAnEndOfTurnCompactionStaysVisibleUnderTheAnswer(t *testing.T) {
 		{kind: entryUser, text: "q", turn: 1},
 		{kind: entryTool, tool: "read", status: toolOK, turn: 1, settled: true},
 		{kind: entryAssistant, text: "The answer.", turn: 1, settled: true},
-		{kind: entryCompact, text: "compacted · folded 3 messages", turn: 1, began: time.Unix(90, 0), ended: time.Unix(100, 0)},
+		{kind: entryCompact, text: "compacted · summarized 3 messages", summarized: true, turn: 1, began: time.Unix(90, 0), ended: time.Unix(100, 0)},
 	}
 	a.workMode = config.WorkFold
 	a.touch()
 	text := strings.Join(plainRows(a), "\n")
-	answer, mark := strings.Index(text, "The answer."), strings.Index(text, "⚭ compacted · folded 3 messages")
+	answer, mark := strings.Index(text, "The answer."), strings.Index(text, "⚭ compacted · summarized 3 messages")
 	if answer < 0 || mark < 0 || mark < answer {
-		t.Fatalf("want the answer and then the compaction line under it:\n%s", text)
+		t.Fatalf("want the answer and then the summary line under it:\n%s", text)
+	}
+}
+
+// A FREE PASS FOLDS WITH THE WORK, wherever it ran. On a small window a pass
+// that only stubs and folds runs almost every step, and a standing line for
+// each drew five marks between five chips on one turn (review of #1658). Only
+// a pass that summarized stands; this one is behind the chip.
+func TestAFreePassFoldsWithTheWorkAroundIt(t *testing.T) {
+	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
+		toolBegin("bash", "go build ./..."),
+		{Kind: session.EventToolEnd, Tool: "bash"},
+		{Kind: session.EventCompacting, Hint: "compacting ~31k tokens"},
+		{Kind: session.EventCompacted, Hint: "compacted · folded 6 messages · ~31k → ~24k tokens"},
+		toolBegin("bash", "go test ./..."),
+		{Kind: session.EventToolEnd, Tool: "bash"},
+		text(session.EventTextDelta, "all green"),
+		{Kind: session.EventCompacted, Hint: "compacted · folded 2 messages · ~25k → ~23k tokens"},
+		{Kind: session.EventTurnDone},
+	}}}
+	a := newTestApp(agent)
+	runTurn(t, a, agent, "build and test it")
+
+	page := plain(frame(a))
+	if strings.Contains(page, "folded 6 messages") || strings.Contains(page, "folded 2 messages") {
+		t.Fatalf("a free pass is standing outside the fold:\n%s", page)
+	}
+	if !strings.Contains(page, "all green") || strings.Count(page, "▸ worked") != 1 {
+		t.Fatalf("want one chip and the answer:\n%s", page)
+	}
+	drive(t, a, key("ctrl+e"))
+	if opened := plain(frame(a)); !strings.Contains(opened, "folded 6 messages") || !strings.Contains(opened, "folded 2 messages") {
+		t.Fatalf("the opened work does not carry the free passes:\n%s", opened)
 	}
 }
 

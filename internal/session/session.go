@@ -705,6 +705,16 @@ type Event struct {
 	// cannot support.
 	Skills []string `json:"Skills,omitempty"`
 
+	// Summarized is how many messages a compaction pass replaced with a
+	// summary, on [EventCompacted]; zero for a pass that only stubbed and
+	// folded. It is the field a surface decides by, never the hint's words:
+	// a pass that rewrote the person's own messages is the one whose line
+	// stays standing (internal/tui3's workfold.go), and a free pass folds
+	// with the rest of the turn's machinery. Omitted when zero, so an event
+	// with no summary serialises exactly as it did before this field, and a
+	// surface talking to an older engine folds every pass.
+	Summarized int `json:"Summarized,omitempty"`
+
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
 	// other kind.
