@@ -36,3 +36,13 @@ func unquote(s string) string {
 	}
 	return s
 }
+
+// DotenvValues maps each name a .env text sets to its value; when a name is set
+// twice the later line wins, as a dotenv loader would read it.
+func DotenvValues(text string) map[string]string {
+	out := map[string]string{}
+	for _, p := range parseDotenv(text) {
+		out[p.name] = p.value
+	}
+	return out
+}

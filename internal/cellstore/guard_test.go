@@ -155,9 +155,9 @@ func TestScreenWritesNothingWhenTheTreeIsClean(t *testing.T) {
 
 func TestScopeIsTheNormalizedRemoteElseTheCell(t *testing.T) {
 	same := []string{"https://github.com/Org/repo.git", "git@GitHub.com:Org/repo", "ssh://git@github.com/Org/repo.git/"}
-	want := normalizeRemote(same[0])
+	want := keys.NormalizeRemote(same[0])
 	for _, s := range same {
-		if got := normalizeRemote(s); got != want || strings.Contains(got, "@") {
+		if got := keys.NormalizeRemote(s); got != want || strings.Contains(got, "@") {
 			t.Fatalf("normalize(%q) = %q, want %q", s, got, want)
 		}
 	}
