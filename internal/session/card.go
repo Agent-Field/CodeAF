@@ -93,8 +93,8 @@ func (c Config) cardFile() string {
 	if sessionFile == "" {
 		return ""
 	}
-	if filepath.Base(sessionFile) == placeTranscript {
-		return filepath.Join(filepath.Dir(sessionFile), placeCard)
+	if dir, ok := FolderOf(sessionFile); ok {
+		return filepath.Join(dir, placeCard)
 	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".card.json"
 }

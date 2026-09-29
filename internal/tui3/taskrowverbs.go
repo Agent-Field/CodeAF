@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,7 +17,7 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 	var verbs []verb
 	dir := strings.TrimSpace(row.Dir)
 	if dir == "" && strings.TrimSpace(row.Transcript) != "" {
-		dir = filepath.Dir(row.Transcript)
+		dir = session.DirOf(row.Transcript)
 	}
 	if dir != "" && row.ID != "" && row.ID == entry.SessionID && entry.ID != "" {
 		word := "close"

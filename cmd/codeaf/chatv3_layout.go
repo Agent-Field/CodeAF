@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -360,8 +361,8 @@ func v3NamedSession(explicit, workspace string, owned bool) (v3Session, error) {
 		return v3Session{}, fmt.Errorf("create session directory: %w", err)
 	}
 	_, statErr := os.Stat(path)
-	found := v3Session{Transcript: path, Resumed: statErr == nil, Bucket: filepath.Dir(filepath.Dir(path))}
-	if filepath.Base(path) != v3TranscriptName {
+	found := v3Session{Transcript: path, Resumed: statErr == nil, Bucket: session.BucketOf(path)}
+	if _, isFolder := session.FolderOf(path); !isFolder {
 		bucket, err := v3ProjectDir(workspace)
 		if err != nil {
 			return v3Session{}, err
@@ -374,8 +375,9 @@ func v3NamedSession(explicit, workspace string, owned bool) (v3Session, error) {
 	// owned, whatever the terminal it is being opened from looks like. A folder
 	// with no meta.json yet takes the launch's posture.
 	found.Place = v3PlaceOf(path, workspace)
-	if meta, _ := session.LoadMeta(filepath.Dir(path)); strings.TrimSpace(meta.ID) == "" && owned {
-		found.Place = v3PlaceFor(filepath.Dir(path), workspace, true)
+	dir := found.Place.Dir
+	if meta, _ := session.LoadMeta(dir); strings.TrimSpace(meta.ID) == "" && owned {
+		found.Place = v3PlaceFor(dir, workspace, true)
 	}
 	return found, nil
 }
@@ -388,10 +390,10 @@ func v3NamedSession(explicit, workspace string, owned bool) (v3Session, error) {
 // that is a fact about the conversation and not about the window opening it.
 func v3PlaceOf(transcript, workspace string) session.Place {
 	transcript = strings.TrimSpace(transcript)
-	if transcript == "" || filepath.Base(transcript) != v3TranscriptName {
+	dir, ok := session.FolderOf(transcript)
+	if transcript == "" || !ok {
 		return session.Place{}
 	}
-	dir := filepath.Dir(transcript)
 	meta, _ := session.LoadMeta(dir)
 	root := strings.TrimSpace(meta.Workspace)
 	if root == "" {
@@ -437,12 +439,6 @@ func v3Reopen(cfg session.Config, transcript, workspace string) (session.Config,
 	return v3PointAt(cfg, place)
 }
 
-// v3TranscriptName is the journal's name inside a session folder. It is
-// [session.Place.Transcript]'s last element, repeated here because this side
-// has to RECOGNIZE one — a path a person typed — where the other side only ever
-// builds them.
-const v3TranscriptName = "transcript.jsonl"
-
 // v3PlaceFor builds the Place for one session folder. The workspace follows
 // from the posture and never from a caller's opinion: an owned session's tools
 // root is its own work/, and a borrowed one's is the project it borrowed.
@@ -461,10 +457,9 @@ func v3PlaceFor(dir, workspace string, owned bool) session.Place {
 // in another window sees the conversation from the moment it exists rather than
 // from the moment somebody speaks in it.
 func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Place, error) {
-	id := session.NewSessionID()
-	dir := filepath.Join(bucket, id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return session.Place{}, fmt.Errorf("create session directory: %w", err)
+	id, dir, err := v3NewFolder(bucket)
+	if err != nil {
+		return session.Place{}, err
 	}
 	place := v3PlaceFor(dir, workspace, owned)
 	// The write is not checked for the reason place.go gives: meta.json is a
@@ -478,6 +473,25 @@ func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Pla
 		Created:   time.Now(),
 	})
 	return place, nil
+}
+
+// v3NewFolder makes the empty folder a new session lives in and answers its id
+// and path: a cell when CODEAF_CELLS=1 (the session package finds its
+// transcript in .cell/ by the folder's shape), a plain folder otherwise.
+func v3NewFolder(bucket string) (id, dir string, err error) {
+	if cell.Enabled() {
+		c, err := cell.CreateIn(bucket, cell.Options{Class: cell.FilesOnly})
+		if err != nil {
+			return "", "", fmt.Errorf("create session directory: %w", err)
+		}
+		return c.ID, c.Root, nil
+	}
+	id = session.NewSessionID()
+	dir = filepath.Join(bucket, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", "", fmt.Errorf("create session directory: %w", err)
+	}
+	return id, dir, nil
 }
 
 // v3NextSession mints a sibling of the session a launch is already on: the same
