@@ -574,17 +574,19 @@ The name of a conversation is the title it gave itself; failing that, the first 
 you said; failing that, the file name with `.jsonl` stripped.
 
 A conversation started with `/senior-dev` or `/task` is listed even if you never
-sent an ordinary chat message. Its saved task brief supplies the preview until the
-conversation has its own words or title, including after an abrupt exit. Empty-launch
-cleanup preserves saved task work. Listing the conversation does not restart or finish
-the interrupted task.
+sent an ordinary chat message, including after an abrupt exit. Until you send one, its
+saved task brief is the row's description, and its name too unless the conversation
+has earned a title. Empty-launch cleanup preserves saved task work. Listing the
+conversation does not restart or finish the interrupted task.
 
 There is **no argument form** of `/resume`. A conversation is named by a title the model
 wrote and lives in a timestamped file, so the only honest way to ask for one is to be shown
 them.
 
-The list is read without locking anything: open, scan, close. It never writes and never
-creates a file, so it can show a conversation another window is holding open. One known
+The list is read without locking anything: open, scan, close. It never writes to a
+conversation, so it can show a conversation another window is holding open. The one
+exception is a task-only conversation: reading its saved brief opens the task store
+read-only, which can leave SQLite's `plandb.db-wal` and `plandb.db-shm` files beside it. One known
 staleness: the list reads what the file says rather than the transcript a resume would
 rebuild, so a rewind with nothing typed after it leaves the taken-back message as the row's
 description.
