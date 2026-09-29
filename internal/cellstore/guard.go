@@ -160,25 +160,5 @@ func (g Guard) Env(c cell.Cell) []string {
 	return env
 }
 
-// scopeOf names the project a cell's secrets belong to (SCHEMAS.md vault
-// rulings): the normalized remote it was based on, else the cell's own id.
-func scopeOf(c cell.Cell) string {
-	if base := c.Meta().Base; base != nil && base.Remote != "" {
-		return normalizeRemote(base.Remote)
-	}
-	return c.ID
-}
-
-// normalizeRemote makes the same repository the same scope however it was
-// cloned: no scheme, no credentials, no .git suffix, host in lower case.
-func normalizeRemote(remote string) string {
-	r := strings.TrimSpace(remote)
-	if _, rest, ok := strings.Cut(r, "://"); ok {
-		r = rest
-	}
-	if _, rest, ok := strings.Cut(r, "@"); ok {
-		r = rest
-	}
-	host, path, _ := strings.Cut(strings.Replace(r, ":", "/", 1), "/")
-	return strings.ToLower(host) + "/" + strings.TrimSuffix(strings.Trim(path, "/"), ".git")
-}
+// scopeOf names the project a cell's secrets belong to.
+func scopeOf(c cell.Cell) string { return keys.ScopeOf(c) }
