@@ -27,8 +27,8 @@ type Disk struct {
 
 	// The two seams below exist so a test can break the write at the exact
 	// place the crash order matters. Production leaves them as they are.
-	sync       func(*os.File) error // makes a written file durable
-	afterFrame func() error         // runs once the frame is durable, before any pointer
+	sync       func([]*os.File) error // makes a batch of written files durable
+	afterFrame func() error           // runs once the frame is durable, before any pointer
 }
 
 // NewDisk opens a store under root, creating the two prefixes when needed.
@@ -36,7 +36,7 @@ func NewDisk(root string) (*Disk, error) {
 	d := &Disk{
 		frames:     filepath.Join(root, "frames"),
 		objects:    filepath.Join(root, "objects"),
-		sync:       (*os.File).Sync,
+		sync:       flushFiles,
 		afterFrame: func() error { return nil },
 	}
 	for _, dir := range []string{d.frames, d.objects} {
@@ -85,17 +85,16 @@ func (d *Disk) conflict(ctx context.Context, objects []Object) error {
 	return nil
 }
 
-// point writes one pointer per object that has none yet. An object already
-// stored keeps its pointer: the bytes are identical, and a pointer is never
-// rewritten.
+// point writes one pointer per object that has none yet, as one group commit.
+// An object already stored keeps its pointer: the bytes are identical, and a
+// pointer is never rewritten.
 func (d *Disk) point(id FrameID, start uint64, refs []ObjectRef) error {
-	for _, ref := range refs {
+	entries := make([]entry, len(refs))
+	for i, ref := range refs {
 		p := pointer{Frame: id, Off: start + ref.Off, Len: ref.Len}
-		if err := d.writeOnce(d.pointerPath(ref.RID), p.line()); err != nil {
-			return err
-		}
+		entries[i] = entry{d.pointerPath(ref.RID), p.line()}
 	}
-	return nil
+	return d.writeAllOnce(entries)
 }
 
 // Get implements Store: follow the pointer into the frame and read the object.
@@ -133,11 +132,15 @@ func (d *Disk) readObject(p pointer) ([]byte, error) {
 }
 
 // Has implements Store; a pointer that exists is enough, as it is only ever
-// written after the frame it names.
+// written after the frame it names. It waits for a put in flight, so a client
+// that timed out on a slow put and asks whether it landed gets the answer
+// after the write ends and not a false "no" from the middle of it.
 func (d *Disk) Has(_ context.Context, rids []string) ([]bool, error) {
 	if err := checkHas(rids); err != nil {
 		return nil, err
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	have := make([]bool, len(rids))
 	for i, rid := range rids {
 		_, err := os.Stat(d.pointerPath(rid))

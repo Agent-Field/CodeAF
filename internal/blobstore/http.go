@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -18,6 +19,10 @@ type HTTP struct {
 	base string
 	sign wireauth.Sign
 	hc   *http.Client
+
+	// deadline sizes each request's time limit from its body; a test swaps it
+	// to make a modest frame time out.
+	deadline func(bodyBytes int) time.Duration
 }
 
 // NewHTTP returns a client for the store wire at base (no trailing path).
@@ -26,7 +31,7 @@ func NewHTTP(base string, sign wireauth.Sign, hc *http.Client) *HTTP {
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-	return &HTTP{base: strings.TrimRight(base, "/"), sign: sign, hc: hc}
+	return &HTTP{base: strings.TrimRight(base, "/"), sign: sign, hc: hc, deadline: Deadline}
 }
 
 // PutFrame implements Store.
@@ -85,6 +90,8 @@ func (c *HTTP) doJSON(ctx context.Context, method, path string, body []byte, int
 // do sends one signed request and answers the body of a 200, or the error the
 // answer names. It never retries: a skew refusal must reach the person once.
 func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.deadline(len(body)))
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
