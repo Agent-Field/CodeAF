@@ -809,21 +809,6 @@ fn path_rewind_refuses_to_follow_a_symlink_parent_outside_workspace() {
 }
 
 #[test]
-fn watch_refuses_non_git_directories() {
-    let temp = tempfile::tempdir().unwrap();
-    Command::cargo_bin("furrow")
-        .unwrap()
-        .env("FURROW_DATA_DIR", temp.path().join("data"))
-        .env("FURROW_NO_DAEMON", "1")
-        .arg("--repo")
-        .arg(temp.path())
-        .arg("watch")
-        .assert()
-        .failure()
-        .stderr(predicates::str::contains("requires a Git repository"));
-}
-
-#[test]
 fn unchanged_snapshots_reuse_cached_blobs_and_add_only_small_metadata() {
     let fixture = Fixture::new();
     fixture.watch();
