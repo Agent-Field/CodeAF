@@ -116,6 +116,34 @@ def slug_of(repository_url):
     return m.group(1) if m else ""
 
 
+# A transcript line carries FETCH EVIDENCE when it looks like the agent
+# acting on the upstream — a clone/fetch/pull/checkout command, a git remote
+# URL, or a github.com URL whose path names the upstream's history rather
+# than the project's own housekeeping. A line that merely CONTAINS the slug
+# (a source line the checked-out tree carries, a doc sentence) does not.
+FETCH_ACTION = re.compile(
+    r"(git|gh|hg|svn)\s+\S*?(clone|fetch|pull|push|checkout|remote)"
+    r"|git@github\.com:|ssh://git@"
+    r"|curl|wget", re.I)
+UPSTREAM_HISTORY_URL = re.compile(
+    r"https?://[^\s\"']*github\.com/[^\s\"']*/"
+    r"(pull|commit|commits|tree|blob|issues|archive|releases|download)s?/",
+    re.I)
+UPSTREAM_ARCHIVE_URL = re.compile(
+    r"https?://[^\s\"']*/[^\s\"']*\.(patch|diff|tar\.gz|tgz|zip|tar)\b", re.I)
+
+
+def slug_evidence(line):
+    """True when the line is itself evidence the agent fetched the upstream."""
+    if UPSTREAM_HISTORY_URL.search(line) or UPSTREAM_ARCHIVE_URL.search(line):
+        return True
+    if FETCH_ACTION.search(line) and "github.com" in line:
+        return True
+    if re.search(r"github\.com/[^\s\"']*/[^\s\"']*\.git\b", line):
+        return True
+    return False
+
+
 def scan(run_dir, repository_url, model_hosts=None):
     run_dir = pathlib.Path(run_dir)
     slug = slug_of(repository_url)
@@ -138,16 +166,34 @@ def scan(run_dir, repository_url, model_hosts=None):
         elif host in REGISTRY_HOSTS:
             soft.append(f"proxy: registry host {host}")
 
+    # Corroboration rule for the upstream slug. The slug appearing in the
+    # transcript is NOT on its own a leak: the task's own repository embeds
+    # its slug in its source (issue-tracker URLs in headers, go.mod module
+    # paths, package metadata), and the agent works inside that source all
+    # day — the s1 canary was zeroed exactly this way while the proxy log
+    # showed only model-plane hosts. The slug is a HARD flag only when there
+    # is corroborating evidence the agent reached for the upstream: a fetch
+    # action in the line itself, a URL that points at the upstream's history
+    # (pull/commit/tree/issues, .patch/.diff/.git/tarball), or ANY
+    # github-family connection in the proxy log. A bare slug mention with a
+    # clean proxy log is recorded as a soft note for review.
+    github_egress = bool(hosts & (HARD_HOSTS | SOFT_HOSTS))
     seen_slug = False
     for source, text in read_transcripts(run_dir):
         for i, line in enumerate(text.split("\n")):
             if slug and slug in line:
                 seen_slug = True
-                hard.append(f"transcript: upstream slug in {pathlib.Path(source).name}:{i+1}: {line.strip()[:160]}")
+                where = f"{pathlib.Path(source).name}:{i+1}"
+                if slug_evidence(line):
+                    hard.append(f"transcript: upstream slug in {where}: {line.strip()[:160]}")
+                else:
+                    soft.append(f"transcript: upstream slug mentioned without fetch evidence in {where}")
             for shape in PR_SHAPES:
                 if re.search(shape, line) and slug and slug.split("/")[-1] in line:
                     hard.append(
                         f"transcript: patch/commit shape in {pathlib.Path(source).name}:{i+1}: {line.strip()[:160]}")
+    if github_egress and seen_slug:
+        hard.append("transcript: upstream slug present alongside github-family egress in the proxy log")
 
     # A run that never logged a model-plane host either is suspicious in the
     # other direction: the guard sits on the model plane and every run talks

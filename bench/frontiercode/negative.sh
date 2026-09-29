@@ -29,7 +29,8 @@ json.dump({"task": task, "arm": "negative-control", "base_commit": base,
            "patch_source": "first-line-only"}, open(path, "w"), indent=2)
 PY
   docker run --rm --platform "$PLATFORM" "$TASK_VERIFY_IMAGE" \
-    cat /solution/first-line-only.patch > "$out/model.patch" 2>> "$out/docker.log" || \
+    sh -c 'cat /solution/negative-control.patch 2>/dev/null || cat /solution/first-line-only.patch' \
+    > "$out/model.patch" 2>> "$out/docker.log" || \
     { ok=0; log "$id: could not read the negative patch from the verifier image"; continue; }
   log "$id: negative patch is $(wc -c < "$out/model.patch" | tr -d ' ') bytes"
   t0=$(date +%s)
