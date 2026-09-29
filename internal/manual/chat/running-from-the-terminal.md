@@ -283,6 +283,26 @@ no file content it can read. Requests are signed by this machine's own device ke
 relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
 show your chats on the other machines once both machines share an identity and this setting.
 
+## When another machine continues your chat — the window that only shows it, and the turns kept as a branch
+
+With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
+for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
+other machine can pick it up at once. If this machine sleeps or loses its connection, the hold runs
+out after about thirty seconds and another machine may take the chat over.
+
+When another machine does, this window says `<device> continued this chat; this window now only shows it`,
+with the name of the machine that took over (or the first digits of its id when it has no name). From then on
+this window only shows the conversation: a tool call the model tries here answers with that same line and does
+not run, so the two machines never both change the chat. Nothing on the other machine is overwritten.
+
+Turns you saved here that had not reached the relay yet are not lost. They are kept as a separate chat
+that starts from the last turn both machines share, and `codeaf cell list --all` shows it as
+`<K> turns from <device>: merge / discard`. Open this chat again and it carries on as that separate chat.
+
+If this computer's clock is more than five minutes off, sync shows `this computer's clock is off by more than 5 minutes`
+once and tries again on the next round; fix the clock and it carries on. With sync off (no `CODEAF_SYNC_URL`) none of
+this exists and the chat behaves as it always did.
+
 ## What syncing a conversation cost — codeaf cell report, and sending the numbers only if you choose
 
 Each time a conversation is synced to another machine, codeaf adds one line of counts to a file on this

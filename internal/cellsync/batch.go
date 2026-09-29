@@ -86,6 +86,12 @@ func (b *Batcher) Note(t cellstore.Turn) {
 	}
 }
 
+// Fence is the lease fence this device now holds, 0 before the cell has a record.
+func (b *Batcher) Fence() uint64 {
+	d, _, _ := b.view()
+	return d.Fence
+}
+
 // Pending is the number of noted turns that are not durable yet.
 func (b *Batcher) Pending() uint32 {
 	b.mu.Lock()

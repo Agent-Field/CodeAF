@@ -755,7 +755,7 @@ func v3Migrated(cfg session.Config) session.Config {
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
 	cfg.Seat, cfg.Machine, cfg.Interrupted = nil, nil, nil
-	seat, machine := v3SeatOf(cfg.Place)
+	seat, machine := v3SeatWith(cfg.Place, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	if machine != nil {
 		cfg.Machine = machine
@@ -767,6 +767,14 @@ func v3Seated(cfg session.Config) session.Config {
 // built with: the one construction every door that seals its calls goes
 // through. A place that is not a readable cell answers no seat.
 func v3SeatOf(place session.Place) (executor.Seat, *preflight.Machine) {
+	return v3SeatWith(place, nil)
+}
+
+// v3SeatWith is v3SeatOf for a door that syncs: with a drive side for the cell
+// every seal is also noted for the relay, and once another machine has taken
+// the chat its tool calls are refused. A nil book, or sync off, is the seat
+// exactly as it was.
+func v3SeatWith(place session.Place, drives *driveBook) (executor.Seat, *preflight.Machine) {
 	if !cell.Enabled() || place.Dir == "" || place.Workspace == "" {
 		return nil, nil
 	}
@@ -780,9 +788,10 @@ func v3SeatOf(place session.Place) (executor.Seat, *preflight.Machine) {
 	}
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	sealNotice.report(err)
-	seat, err := cellstore.SeatFor(class, c, place.Workspace, observerOf(machine), sealNotice.report)
+	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace))
+	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), sealNotice.report, driveStore(drive))
 	sealNotice.report(err)
-	return seat, machine
+	return executor.Gated(seat, driveGate(drive)), machine
 }
 
 // observerOf is the machine's observer, and no observer where the inventory
