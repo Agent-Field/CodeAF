@@ -157,7 +157,7 @@ does not repeat the request or change the transcript's presentation.
 ## Reading a note on a run task's room, and the room following the newest step
 
 A run's task opens the same task room as any other task: from its row on the side list,
-from `enter` on its row in the tasks place, or from the run's tab. The room keeps up with
+from `enter` on its row in the sessions place, or from the run's tab. The room keeps up with
 its newest step, reading the task again every three seconds while it is queued or running,
 and follows it until you scroll up; scrolling back to the bottom resumes the follow, and a
 room on a settled task is a still page. Its box says `a note for this task`: type in it and
@@ -174,7 +174,7 @@ step, so its room takes no note: `enter` there says `this task has finished` and
 words can go, and leaves them in the box. `x` is read only over an empty box: the moment
 there is a note to type, a letter is a letter. `x` raises the `Stop this task?` card before
 anything ends. On a task that has ended it is not offered and does nothing: it is a letter in
-the box. `p` is always a letter in the room; a part is held from its row in the tasks place.
+the box. `p` is always a letter in the room; a part is held from its row in the sessions place.
 
 ## Typing while a task's room is still loading: the letters land in its box
 

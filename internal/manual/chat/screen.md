@@ -1170,7 +1170,7 @@ expire on time.
 ## Why the bottom rows of a long list look dimmer — faded, greyed out or washed out rows
 
 The last three rows of a list that runs on past the bottom of its window are drawn a step
-fainter each, fading toward the background. It happens on the task page (`/history`,
+fainter each, fading toward the background. It happens on the sessions place (`/history`,
 `ctrl+.`) and on the task column. Home's panels never fade: each one folds inside itself
 with `N more` instead.
 
@@ -3222,7 +3222,7 @@ Finished work sits under `Done`, which starts folded to its heading: press `Done
 `enter` on it, to open it, and it stays open for the session.
 
 A background job is not a finished task row: it lives in the `jobs` section, and its log
-path is on the job's page. The full record of any task is on the task page (`ctrl+.`,
+path is on the job's page. The full record of any task is on the sessions place (`ctrl+.`,
 `/history`).
 
 ## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it
