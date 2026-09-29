@@ -9,17 +9,18 @@ import (
 // from here so a respelling happens once.
 const (
 	OfferContinue  = "continue here"
+	LostRace       = "another device continued this chat first"
 	NoIdentity     = "this machine has no identity yet: codeaf identity import"
 	Unreachable    = "other machines unreachable"
 	ClockOff       = "this computer's clock is off by more than 5 minutes"
 	runningOn      = "running on %s"
 	deviceOff      = "%s off"
-	branchLine     = "%d turns from %s: merge / discard"
-	branchKeep     = "%d turns from %s: discard"
-	branchShort    = "%d turns · %s"
+	branchLine     = "%s from %s: merge / discard"
+	branchKeep     = "%s from %s: discard"
+	branchShort    = "%s · %s"
 	takeoverLine   = "last durable turn %ds ago"
-	takeoverMore   = "; up to %d turns may still be on %s"
-	keptEdits      = "your unsaved edits here were kept as %d turns from %s"
+	takeoverMore   = "; up to %s may still be on %s"
+	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	supersededLine = "%s continued this chat; this window now only shows it"
 )
 
@@ -32,7 +33,7 @@ func StatusLine(r Row) string {
 	case Off:
 		return fmt.Sprintf(deviceOff, r.Device)
 	case Branch:
-		return fmt.Sprintf(branchLine, r.OrphanTurns, r.Device)
+		return fmt.Sprintf(branchLine, turns(r.OrphanTurns), r.Device)
 	}
 	return ""
 }
@@ -43,15 +44,15 @@ func StatusLine(r Row) string {
 // (a capability that cannot work is absent, not broken).
 func BranchLine(r Row, merge bool) string {
 	if merge {
-		return fmt.Sprintf(branchLine, r.OrphanTurns, r.Device)
+		return fmt.Sprintf(branchLine, turns(r.OrphanTurns), r.Device)
 	}
-	return fmt.Sprintf(branchKeep, r.OrphanTurns, r.Device)
+	return fmt.Sprintf(branchKeep, turns(r.OrphanTurns), r.Device)
 }
 
 // BranchShort is the branch row's narrow spelling (ruling 2026-09-29, §8.1):
 // the shared row fitter takes it below the width the full sentence needs, so
 // the row never loses the fact that it is a branch and where it came from.
-func BranchShort(r Row) string { return fmt.Sprintf(branchShort, r.OrphanTurns, r.Device) }
+func BranchShort(r Row) string { return fmt.Sprintf(branchShort, turns(r.OrphanTurns), r.Device) }
 
 // TakeoverLine is the takeover screen's sentence; the clause about turns still
 // on the other machine is left out when none are.
@@ -60,13 +61,22 @@ func TakeoverLine(r Row) string {
 	if r.Pending == 0 {
 		return line
 	}
-	return line + fmt.Sprintf(takeoverMore, r.Pending, r.Device)
+	return line + fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
 }
 
 // KeptEdits is said after a takeover kept local edits as a branch.
-func KeptEdits(turns uint32, device string) string {
-	return fmt.Sprintf(keptEdits, turns, device)
+func KeptEdits(n uint32, device string) string {
+	return fmt.Sprintf(keptEdits, turns(n), device)
 }
 
 // Superseded is said to a driver whose lease another device took over.
 func Superseded(device string) string { return fmt.Sprintf(supersededLine, device) }
+
+// turns spells a count of turns, so one reads `1 turn` in every sentence that
+// carries a count and the copy is never `1 turns`.
+func turns(n uint32) string {
+	if n == 1 {
+		return "1 turn"
+	}
+	return fmt.Sprintf("%d turns", n)
+}

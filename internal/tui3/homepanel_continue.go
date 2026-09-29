@@ -56,7 +56,7 @@ type BranchActions struct {
 const (
 	continueAsk   = "Continue this chat here?"
 	continueStay  = "leave it there"
-	lostRaceWord  = "another device continued this chat first"
+	lostRaceWord  = chatlist.LostRace
 	continueFails = "could not continue this chat here"
 	branchAsk     = "What should happen to these turns?"
 	branchLeave   = "leave them"
