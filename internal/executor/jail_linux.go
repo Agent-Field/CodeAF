@@ -9,7 +9,6 @@ package executor
 // the mounts and Landlock inside the new namespaces and then execs the tool.
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,20 +51,10 @@ func (LinuxJail) Degraded(ExecRequest) bool {
 	return !c.Landlock || !c.UserNS
 }
 
-// ErrNoIsolation is the refusal of a call that must have no network on a
-// kernel that cannot isolate it. It reads as a sentence to the person: the
-// call did not run.
-var ErrNoIsolation = errors.New("this command was not run: the workspace is sandboxed (no network) but this system " +
-	"has user namespaces disabled, so the network cannot be blocked; enable user namespaces " +
-	"or declare the workspace host-bound")
-
 // refuseWithoutNamespaces fails closed when the network must be denied and
 // runs unconfined (degraded) otherwise.
 func refuseWithoutNamespaces(req ExecRequest) error {
-	if req.Net.Denies() {
-		return ErrNoIsolation
-	}
-	return nil
+	return refuseWithout(req, "user namespaces are disabled; enable user namespaces or declare the workspace host-bound")
 }
 
 // withNamespaces merges the namespace attributes into the group attributes.

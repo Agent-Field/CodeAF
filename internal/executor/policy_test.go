@@ -58,11 +58,11 @@ func TestParseClass(t *testing.T) {
 }
 
 func TestRefusalIsReadable(t *testing.T) {
-	err := refuseWithoutNamespaces(ExecRequest{Net: NetPolicy{}})
-	if !errors.Is(err, ErrNoIsolation) || !strings.Contains(err.Error(), "user namespaces") {
+	err := refuseWithout(ExecRequest{Net: NetPolicy{}}, "the fix")
+	if !errors.Is(err, ErrNoIsolation) || !strings.Contains(err.Error(), "the fix") {
 		t.Fatalf("refusal = %v", err)
 	}
-	if refuseWithoutNamespaces(ExecRequest{Net: openNet}) != nil {
+	if refuseWithout(ExecRequest{Net: openNet}, "the fix") != nil {
 		t.Fatal("an open call must run degraded, not be refused")
 	}
 }
