@@ -5,9 +5,10 @@ package main
 // A SHELL RUN WORKS IN ITS FOLDER THE WAY A CONVERSATION'S RUN DOES
 // (internal/session's programfolder.go): a plain folder is worked in as it is
 // with the program told so on its line — where it used to end at once with
-// "workspace is not a git repository" — a repository gets a branch of its own
-// that is left checked out with the work committed on it, and a checkout with
-// changes that are not committed is refused before anything is spent.
+// "workspace is not a git repository" — and a repository gets a copy of its
+// own on a branch of its own, which starts from the person's changes that are
+// not committed and is kept with the work committed on it, checked out nowhere,
+// while the person's checkout never moves.
 
 import (
 	"bytes"
@@ -188,9 +189,9 @@ func TestAShellRunInARepositoryWorksOnABranchOfItsOwn(t *testing.T) {
 	}
 }
 
-// A SHELL RUN BESIDE CHANGES THAT ARE NOT COMMITTED STARTS, and leaves them
-// where they are: its copy is cut from the last commit, so they are neither in
-// its work nor touched.
+// A SHELL RUN BESIDE CHANGES THAT ARE NOT COMMITTED STARTS FROM THEM, and
+// leaves them where they are: they are the first commit on its branch, its
+// work comes after them, and the person's checkout is not touched.
 func TestAShellRunStartsBesideChangesThatAreNotCommitted(t *testing.T) {
 	_, printed, _ := hostWithFolderChild(t)
 	repo := shellRepo(t)
@@ -202,8 +203,11 @@ func TestAShellRunStartsBesideChangesThatAreNotCommitted(t *testing.T) {
 		t.Fatalf("the shell run left with %d (%v):\n%s", code, err, printed)
 	}
 	branch := shellGit(t, repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/task/")
-	if files := shellGit(t, repo, "ls-tree", "--name-only", branch); files != "made.txt" {
-		t.Fatalf("the run's branch holds %q, want its work and none of the person's", files)
+	if files := shellGit(t, repo, "ls-tree", "--name-only", branch); files != "draft.md\nmade.txt" {
+		t.Fatalf("the run's branch holds %q, want the person's draft and its work", files)
+	}
+	if first := shellGit(t, repo, "log", "--format=%s", "--reverse", "main.."+branch); !strings.HasPrefix(first, "Your uncommitted changes when ") {
+		t.Fatalf("the branch does not open on the person's changes:\n%s", first)
 	}
 	if status := shellGit(t, repo, "status", "--porcelain"); status != "?? draft.md" || shellGit(t, repo, "branch", "--show-current") != "main" {
 		t.Fatalf("the person's checkout was touched: %q", status)
