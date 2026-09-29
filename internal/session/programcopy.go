@@ -276,19 +276,29 @@ func (f *ProgramFolder) snapshotLeftBehind() {
 // task grounded on a checkout with work in it has used since #578; the
 // program's notes are what it leaves out instead of a task's droppings.
 //
-// `git add -A` IS WHAT A PERSON'S OWN COMMIT OF EVERYTHING WOULD TAKE: tracked
-// edits, staged or not, deletions, and new files .gitignore does not cover.
-// What it covers is not in git's world, and the copy links the few such
-// folders a build needs instead ([programCopyLinks]).
+// ONLY WHAT GIT STATUS NAMES IS STAGED: tracked edits, staged or not,
+// deletions, and new files .gitignore does not cover. A path hidden by the
+// person's index must stay at its committed bytes in the copy. What git
+// ignores is not in its world, and the copy carries the few such folders a
+// build needs instead ([programCopyLinks]).
 func snapshotCheckout(repo, start, notes, program string) (string, error) {
+	paths, err := uncommittedSnapshotList(repo, notes)
+	if err != nil || len(paths) == 0 {
+		return "", err
+	}
 	gitDir, err := git(repo, "rev-parse", "--absolute-git-dir")
 	if err != nil {
 		return "", errors.New(firstLine(gitDir))
 	}
 	index := filepath.Join(strings.TrimSpace(gitDir), "codeaf-program-index-"+shortID())
 	defer func() { _ = os.Remove(index) }()
+	pathspec := index + ".paths"
+	defer func() { _ = os.Remove(pathspec) }()
+	if err := os.WriteFile(pathspec, []byte(strings.Join(paths, "\x00")+"\x00"), 0o600); err != nil {
+		return "", err
+	}
 	withIndex := func(args ...string) (string, error) {
-		out, err := gitWith(repo, []string{"GIT_INDEX_FILE=" + index}, args...)
+		out, err := gitWith(repo, []string{"GIT_INDEX_FILE=" + index, "GIT_LITERAL_PATHSPECS=1"}, args...)
 		if err != nil {
 			return "", errors.New(firstLine(out))
 		}
@@ -297,7 +307,7 @@ func snapshotCheckout(repo, start, notes, program string) (string, error) {
 	if _, err := withIndex("read-tree", start); err != nil {
 		return "", err
 	}
-	if _, err := withIndex("add", "-A", "--", "."); err != nil {
+	if _, err := withIndex("add", "-A", "--pathspec-from-file="+pathspec, "--pathspec-file-nul"); err != nil {
 		return "", err
 	}
 	if notes = strings.Trim(notes, "/"); notes != "" {
@@ -1194,18 +1204,48 @@ func uncommittedPaths(dir, notes string) []string {
 // uncommittedList is [uncommittedPaths] with git's line when git cannot say,
 // for the reader that must not take "cannot say" for "nothing".
 func uncommittedList(dir, notes string) ([]string, error) {
+	return uncommittedStatusList(dir, notes, false)
+}
+
+// uncommittedSnapshotList adds each rename or copy source because a fresh
+// index must stage its removal as well as the destination the receipt names.
+func uncommittedSnapshotList(dir, notes string) ([]string, error) {
+	return uncommittedStatusList(dir, notes, true)
+}
+
+// uncommittedStatusList reads the same status for the receipt and snapshot;
+// only the snapshot needs both paths from a rename or copy record.
+func uncommittedStatusList(dir, notes string, snapshot bool) ([]string, error) {
 	out, err := git(dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "-z")
 	if err != nil {
 		return nil, errors.New(firstLine(out))
 	}
-	var paths []string
-	for _, path := range porcelainZPaths(out) {
+	paths := porcelainZPaths(out)
+	if snapshot {
+		fields := strings.Split(out, "\x00")
+		for i := 0; i < len(fields); i++ {
+			entry := fields[i]
+			if len(entry) < 4 || (entry[0] != 'R' && entry[0] != 'C' && entry[1] != 'R' && entry[1] != 'C') {
+				continue
+			}
+			// A rename into the program's notes is absent from the receipt,
+			// so its source must not become a snapshot deletion on its own.
+			newPath := entry[3:]
+			intoNotes := notes != "" && (newPath == notes || strings.HasPrefix(newPath, strings.TrimSuffix(notes, "/")+"/"))
+			if i+1 < len(fields) && !intoNotes {
+				paths = append(paths, fields[i+1])
+			}
+			i++
+		}
+	}
+	var visible []string
+	for _, path := range paths {
 		if notes != "" && (path == notes || strings.HasPrefix(path, strings.TrimSuffix(notes, "/")+"/")) {
 			continue
 		}
-		paths = append(paths, path)
+		visible = append(visible, path)
 	}
-	return paths, nil
+	return visible, nil
 }
 
 // LeftBehindWords is what a run in a copy says, as it starts, about the

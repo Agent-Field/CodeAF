@@ -632,6 +632,7 @@ is anything `.gitignore` covers. The receipt says `Your uncommitted changes (a.g
 c.go and 2 more) are in its copy, as the first commit on its branch; in your folder they
 stay uncommitted, as they are.` senior-dev's brief tells it that first commit is the work
 so far, to build on.
+Files your index hides with skip-worktree or assume-unchanged are not carried.
 
 **Its work is counted from that commit**, so your changes are never reported as its files,
 and a run that adds nothing to them changed nothing.

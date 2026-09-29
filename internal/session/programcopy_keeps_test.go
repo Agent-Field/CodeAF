@@ -454,6 +454,71 @@ func TestUncommittedWorkCarriedInIsNeverCountedAsTheProgramsOwn(t *testing.T) {
 	}
 }
 
+// A FILE THE PERSON'S INDEX HIDES IS NOT PART OF THE SNAPSHOT. A fresh private
+// index does not inherit skip-worktree, so staging the whole checkout used to
+// include local configuration that the person's git status did not name.
+func TestTheSnapshotLeavesOutALocalFileTheIndexHides(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "local.cfg"), "committed\n")
+	mustGit(t, repo, "add", "local.cfg")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "local config")
+	mustGit(t, repo, "update-index", "--skip-worktree", "local.cfg")
+	writeFile(t, filepath.Join(repo, "local.cfg"), "private edit\n")
+	writeFile(t, filepath.Join(repo, "shared.txt"), "visible edit\n")
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Read the visible work")
+	defer folder.Finish("")
+	if changes := strings.TrimSpace(gitOut(t, repo, "diff-tree", "--no-commit-id", "--name-status", "-r", folder.Snapshot)); changes != "M\tshared.txt" {
+		t.Fatalf("the snapshot changed %q, want only shared.txt", changes)
+	}
+	if got := readFile(t, filepath.Join(folder.Dir, "local.cfg")); got != "committed\n" {
+		t.Fatalf("the copy's local.cfg = %q, want committed bytes", got)
+	}
+	if got := readFile(t, filepath.Join(repo, "local.cfg")); got != "private edit\n" {
+		t.Fatalf("the person's local.cfg = %q", got)
+	}
+}
+
+// AN ABSENT FILE THAT THE PERSON'S INDEX HIDES IS NOT A DELETION. Neither
+// index flag should let the private snapshot remove a file git status omits.
+func TestTheSnapshotRecordsNoDeletionTheIndexHides(t *testing.T) {
+	for _, flag := range []string{"--assume-unchanged", "--skip-worktree"} {
+		t.Run(flag, func(t *testing.T) {
+			repo := newTestRepo(t)
+			writeFile(t, filepath.Join(repo, "hidden.txt"), "committed\n")
+			mustGit(t, repo, "add", "hidden.txt")
+			mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "hidden file")
+			mustGit(t, repo, "update-index", flag, "hidden.txt")
+			if err := os.Remove(filepath.Join(repo, "hidden.txt")); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(repo, "shared.txt"), "visible edit\n")
+			folder := prepareIn(t, testPrograms("fake")[0], repo, "Read the visible work")
+			defer folder.Finish("")
+			if changes := strings.TrimSpace(gitOut(t, repo, "diff-tree", "--no-commit-id", "--name-status", "-r", folder.Snapshot)); changes != "M\tshared.txt" {
+				t.Fatalf("the snapshot changed %q, want only shared.txt", changes)
+			}
+			if got := readFile(t, filepath.Join(folder.Dir, "hidden.txt")); got != "committed\n" {
+				t.Fatalf("the copy's hidden.txt = %q, want committed bytes", got)
+			}
+		})
+	}
+}
+
+// A STAGED RENAME NEEDS BOTH PATHS STAGED IN THE PRIVATE INDEX. The receipt
+// names only its destination, but omitting its source leaves the old file too.
+func TestTheSnapshotCarriesAStagedRenameAsARename(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "a.txt"), "rename me\n")
+	mustGit(t, repo, "add", "a.txt")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "file to rename")
+	mustGit(t, repo, "mv", "a.txt", "b.txt")
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Read the rename")
+	defer folder.Finish("")
+	if changes := strings.TrimSpace(gitOut(t, repo, "diff-tree", "--no-commit-id", "--name-status", "-r", "-M", folder.Snapshot)); changes != "R100\ta.txt\tb.txt" {
+		t.Fatalf("the snapshot changed %q, want the staged rename", changes)
+	}
+}
+
 // A RUN SENT BACK COUNTS FROM WHERE THE LINE'S FIRST RUN FOUND THE PERSON. It
 // takes the branch up, the person's changes already its first commit, and
 // neither those changes nor the person's newer ones are carried again.
