@@ -222,6 +222,34 @@ turn. A rewind adds a new turn on top of the newest one and deletes nothing, so 
 rewound too. It refuses while a tool call began and never finished. With no cell named,
 both use the cell the current folder is in.
 
+## Your identity — codeaf identity show, export and import, and why they need CODEAF_CELLS
+
+Your identity is the one root secret codeaf keeps for you on a machine: a signing key, a
+secret for deduplicating file content, and the key your saved secrets are sealed under. It
+lives in `identity.json` in the codeaf home, readable by you only. There is no account.
+These verbs are hidden from the help text and refuse to run unless `CODEAF_CELLS=1` is set.
+
+**`codeaf identity show`** prints your public id, a short fingerprint you can compare by
+eye between two machines, the cell key id, and this machine's device id. It makes the identity the first time it runs.
+
+**`codeaf identity export [<file>]`** asks for a passphrase (typed twice at a prompt, or one line
+piped in) and writes your identity wrapped under it, to the file or to the
+screen. The blob is safe to copy; without the passphrase it opens to nothing. Keep the
+passphrase: losing it and every machine loses the identity.
+
+**`codeaf identity import [--replace] <file>`** asks for the passphrase and makes that
+identity this machine's. Afterwards `show` prints the same id and cell key id on both
+machines. It refuses to overwrite a different identity already here unless you pass
+`--replace`, and after a replace the secrets sealed under the old identity can no longer
+be read. A wrong passphrase and a damaged blob get the same refusal.
+
+Each machine also has its own device key, made the first time and never exported. Your
+identity signs a small certificate for it, so two machines share one id but keep separate
+device ids, and one machine can be told apart from another.
+
+A vault made before identities existed keeps working: its old key becomes the identity's
+key the first time the identity is made on that machine.
+
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
 **`codeaf cell gc [--dry-run]`** (with `CODEAF_CELLS` on) frees disk from finished
