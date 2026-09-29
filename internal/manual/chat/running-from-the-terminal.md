@@ -657,11 +657,23 @@ when an existing resident did the work and this invocation cannot establish its 
 `why` reads a store, and by default that store is `~/.codeaf/graph.db`. A headless
 `codeaf do` run does **not** work there: it uses a separate store of its own, kept only when
 the run failed or you asked for it with `--keep`, and the last line on the error stream
-says where:
+says where, and the line above it says how to carry the run on:
 
 ```
+continue it with: codeaf do --continue 3f81c2
 record kept at ~/.codeaf/runs/codeaf-do-3f81c2
 ```
+
+`codeaf do --continue <id>` carries a kept run on: the id is the part of the folder name after
+`codeaf-do-`, an unambiguous start of it is enough, and the folder's own path works too. Words
+after it are this round's finding (`codeaf do --continue 3f81c2 "also add a test"`). The new run
+is handed the original assignment unchanged, how the last run ended and what its plan reached,
+and it works in `--dir` (the current directory unless you say otherwise), where the last run's
+edits already are. It is a new run with its own record and its own id, and continuing a
+continuation still names the first request once. Only a kept record can be continued: a run that
+finished cleanly keeps none unless you passed `--keep`. An id nothing matches, or matches twice,
+is refused in words. Only the run engine keeps this record, so `--continue` is refused when
+`CODEAF_TASK_BELT` selects the older engine.
 
 That directory holds a `graph.db`, and that is what to point the reader at:
 
