@@ -1,0 +1,56 @@
+# The task manifest for the completions-args-mutation candidate.
+# Same layout as the shell-pipe-empty-command fixture; see that file for the
+# schema comments. Mined from spf13/cobra#2356 (merged 2026-04-24).
+schema_version = "1.3"
+artifacts = ["/logs/artifacts/model.patch"]
+
+[task]
+name = "frontiercode/completions-args-mutation"
+description = "Make cobra's completion machinery hand lookup a copy of the caller's arguments instead of a subslice that a later append mutates in place"
+authors = []
+keywords = ["go", "cli", "completions"]
+
+[metadata]
+task_id = "completions-args-mutation"
+display_title = "Stop completion lookup from mutating os.Args via append"
+display_description = "cobra's completion machinery slices the caller's argument list (ultimately a subslice of os.Args) and later appends \"--\" to a derived slice; with spare capacity the append writes into the caller's backing array in place, silently mutating os.Args for programs with TraverseChildren. Make the arguments handed through completion lookup a copy the machinery owns."
+language = "go"
+repository_url = "https://github.com/spf13/cobra"
+base_commit_hash = "61968e893eee2f27696c2fbc8e34fa5c4afaf7c4"
+reference_commit_hash = "a36b43475f0a868310fdce4ead976a0cfb8173ea"
+reference_pr = "spf13/cobra#2356"
+license = "Apache-2.0 (upstream only; fetched at image build time)"
+# Where the task tree lives inside the container (grade.sh mounts and grades
+# it; the fixture leaves this key off and defaults to jsonschema).
+agent_repo_path = "cobra"
+
+[environment]
+docker_image = "frontiercode-completions-args-mutation:env"
+os = "linux"
+allow_internet = true
+network_mode = "public"
+cpus = 4
+memory_mb = 8192
+build_timeout_sec = 2400.0
+
+[agent]
+timeout_sec = 7200.0
+
+[verifier]
+# The reverse-classical criterion reverts completions.go and must test the
+# REVERTED tree: touch the module's Go sources so the incremental build
+# cannot serve stale objects, then rebuild the tree.
+rebuild_command = "find . -name '*.go' -newer go.mod -exec touch {} + && go build ./..."
+network_mode = "no-network"
+environment_mode = "separate"
+timeout_sec = 5400.0
+cpus = 4
+memory_mb = 8192
+docker_image = "frontiercode-completions-args-mutation:verify"
+
+[[verifier.collect]]
+command = "cd /root/repos/cobra && git add -A && git diff --binary 61968e893eee2f27696c2fbc8e34fa5c4afaf7c4 > /logs/artifacts/model.patch"
+timeout_sec = 300.0
+
+[rubric]
+file = "rubric.toml"
