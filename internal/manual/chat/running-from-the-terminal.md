@@ -222,6 +222,14 @@ turn. A rewind adds a new turn on top of the newest one and deletes nothing, so 
 rewound too. It refuses while a tool call began and never finished. With no cell named,
 both use the cell the current folder is in.
 
+**`codeaf cell list --all`** prints every chat you have on any of your machines, one line
+each: id, title, device, where it runs (`running on <device>`, `<device> off`,
+`<K> turns from <device>: merge / discard`, or `-` for one held here or let go), and how
+long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
+`--all` it prints the usage line. On a machine with no identity it prints
+`this machine has no identity yet: codeaf identity import` and lists nothing, and when the
+other machines cannot be reached it starts with `other machines unreachable`.
+
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
 **`codeaf cell gc [--dry-run]`** (with `CODEAF_CELLS` on) frees disk from finished

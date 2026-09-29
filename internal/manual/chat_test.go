@@ -2873,6 +2873,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
+		{"codeaf cell list --all", "running-from-the-terminal"},
+		{"a chat is running on my other computer how does home show it", "home"},
+		{"what does studio off mean on a chat row", "home"},
+		{"home says other machines unreachable", "home"},
 		{"how do I update codeaf to the latest version", "running-from-the-terminal"},
 		{"how do I install the latest dev build beside my codeaf", "running-from-the-terminal"},
 		{"what is devaf", "running-from-the-terminal"},

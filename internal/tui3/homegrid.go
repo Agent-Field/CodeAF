@@ -310,6 +310,8 @@ type homeGridInput struct {
 	last map[string]session.Summary
 	// repos is each workspace's last `git status` reading (homeband_repo.go).
 	repos map[string]homeRepoReading
+	// others is the last listing of chats on other machines.
+	others machineReading
 	// spend is the day's figure and the fortnight behind it (homepanel_spend.go).
 	spend homeSpendReading
 	seen  time.Time
@@ -348,7 +350,7 @@ func (h *homeView) gridInput() homeGridInput {
 		opened: h.opened, openedOn: h.openedOn,
 		desc: homeDescOn(h.cols), world: world, items: h.items,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
-		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
+		repos: h.repos, others: h.others, spend: h.spend, seen: h.seen, now: h.world.Read}
 }
 
 // ── what a panel hands back ────────────────────────────────────────────────
@@ -1540,6 +1542,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
 		}
 	}
+	asked = append(asked, a.askMachines())
 	return tea.Batch(asked...)
 }
 

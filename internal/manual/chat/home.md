@@ -288,6 +288,30 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
+## Chats on my other machines — a chat running on another computer, "running on studio", "studio off", merge / discard
+
+When this machine can reach your other machines, a chat that lives on one of them is a
+row under **sessions**, beside the local ones and ordered by when its last saved turn
+happened. The row says where the chat is only where that tells you something:
+
+| The chat is | The row says |
+| --- | --- |
+| running on another machine | `running on <device>` |
+| on a machine that went off or to sleep without letting go | `<device> off` |
+| a branch left by a takeover | `<K> turns from <device>: merge / discard` |
+| held by this machine, or let go by everyone | nothing |
+
+The device is the name you gave that machine. A chat whose name will not open shows
+`untitled`, and a machine whose name will not open shows the first eight characters of
+its id. On a narrow frame the sentence gives way whole before the chat's name is cut, so a
+row may show only the name and its age. Those rows are read-only for now: enter does not
+open them, and the takeover that would continue one here is not part of this screen yet.
+
+If the other machines cannot be reached, the last list stays on screen and the line
+`other machines unreachable` stands under it. With no connection set up at all, nothing
+extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
+same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
+
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
 **A conversation nothing has named yet reads `new conversation`** on home's sessions
