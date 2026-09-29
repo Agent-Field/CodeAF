@@ -35,6 +35,7 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
@@ -301,6 +302,12 @@ func run() error {
 		// is a command a person runs and watches — which is why it is in the
 		// usage text and `engine` is not (chatv3_at.go).
 		return runServe(os.Args[2:])
+	case "relay":
+		// The relay program itself, the same relayserve.Main that cmd/relay
+		// builds: `codeaf relay --listen :8787 --store <dir>`. It is run by
+		// whoever hosts the relay and not typed in a conversation, so like
+		// `engine` it is absent from the usage text.
+		return relayserve.Main(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
