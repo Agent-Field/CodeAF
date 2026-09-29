@@ -110,21 +110,39 @@ func cellLog(c cell.Cell, _ []string, out io.Writer) error {
 			time.UnixMilli(e.Turn.SealedAtMs).UTC().Format("2006-01-02T15:04:05Z"),
 			e.Turn.Trigger, toolSummary(e.Receipt), short(e.Turn.Receipt))
 	}
-	return writeUnfinished(c, out)
+	return writeGaps(c, out)
 }
 
-// writeUnfinished says which calls began and never finished: a crash left them
-// in the call log, and the harness never runs them again on its own.
-func writeUnfinished(c cell.Cell, out io.Writer) error {
+// writeGaps marks what the chain cannot show yet: calls that began and never
+// finished, and calls that finished and were never sealed. The second is the
+// gap a failing seal leaves, and it stays in the call log until a seal holds,
+// so it is still here after the session that hit it is gone.
+func writeGaps(c cell.Cell, out io.Writer) error {
 	_, rec, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
 	if err != nil {
 		return err
 	}
-	for _, in := range rec.Incomplete {
+	writeUnsealed(rec.Completed, out)
+	writeUnfinishedOf(rec.Incomplete, out)
+	return nil
+}
+
+// writeUnsealed says how many finished calls no turn holds, and since when.
+func writeUnsealed(done []cellstore.Executed, out io.Writer) {
+	if len(done) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "unsealed  %d call(s) since %s  not in any turn yet; the next seal that holds takes them\n", len(done),
+		time.UnixMilli(done[0].Call.Started).UTC().Format("2006-01-02T15:04:05Z"))
+}
+
+// writeUnfinishedOf says which calls began and never finished: a crash left them
+// in the call log, and the harness never runs them again on its own.
+func writeUnfinishedOf(open []cellstore.Intent, out io.Writer) {
+	for _, in := range open {
 		fmt.Fprintf(out, "unfinished  %s  %s  started %s  not run again; `codeaf cell resolve` closes it\n", in.Tool,
 			in.SideEffect, time.UnixMilli(in.Started).UTC().Format("2006-01-02T15:04:05Z"))
 	}
-	return nil
 }
 
 // cellResolve closes every unfinished call of a cell no session holds, so the

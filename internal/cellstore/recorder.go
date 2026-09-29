@@ -17,8 +17,10 @@ type Options struct {
 	Tool string
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
-	// Report receives a seal failure. A failed seal never fails the call it
-	// follows: the call's record is durable in the WAL and rides the next seal.
+	// Report receives the outcome of every seal: the error of one that failed,
+	// nil for one that held. A failed seal never fails the call it follows: the
+	// call's record is durable in the WAL and rides the next seal. [SealWatch]
+	// is the holder of what the outcomes add up to.
 	Report func(error)
 }
 
@@ -187,7 +189,14 @@ func (r *Recorder) seal(ctx context.Context) {
 		return
 	}
 	r.pending, r.models = nil, nil
-	r.report(r.wal.Sealed(batch))
+	r.outcome(r.wal.Sealed(batch))
+}
+
+// outcome tells Report how a seal ended, nil included.
+func (r *Recorder) outcome(err error) {
+	if r.opts.Report != nil {
+		r.opts.Report(err)
+	}
 }
 
 func (r *Recorder) report(err error) {
