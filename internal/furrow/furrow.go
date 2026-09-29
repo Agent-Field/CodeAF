@@ -293,6 +293,11 @@ func lookBinary() (string, error) {
 	return exec.LookPath(Binary)
 }
 
+// ResolveBinary is the furrow program this codeaf would run, chosen by the same
+// order as every other caller here. It is the seam for packages that drive the
+// engine themselves (internal/cellstore) and must not repeat the order.
+func ResolveBinary() (string, error) { return lookBinary() }
+
 // Workspace is one attached folder, and the receiver every operation in this
 // package hangs off. Holding it is a claim that furrow was here and this folder
 // was attached at the moment [Open] asked, which is the strongest claim

@@ -203,7 +203,7 @@ func run(ctx context.Context, cmd *exec.Cmd, req ExecRequest, root string, onOut
 	res := ExecResult{
 		Exit: cmd.ProcessState.ExitCode(), Status: cmd.ProcessState.String(),
 		Stdout: out.Bytes(), Stderr: errb.Bytes(),
-		Wall: time.Since(start), SideEffect: classify(req.Net),
+		Wall: time.Since(start), SideEffect: Classify(req.Net),
 		TimedOut:    errors.Is(ctx.Err(), context.DeadlineExceeded),
 		PipesForced: errors.Is(waitErr, exec.ErrWaitDelay),
 		Services:    services(ctx, cmd, req, root),
