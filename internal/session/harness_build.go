@@ -344,30 +344,21 @@ func (a *Agent) askHarnessDesign(ctx context.Context, node *TaskNode, page subha
 		// the task off the replayed event ([Agent.WatchHarnessDesigns]).
 		Task: &TaskNotice{ID: id},
 	}
-	a.mu.Lock()
-	if a.closed {
-		a.mu.Unlock()
-		return harnessWord{}, errAgentClosed
-	}
-	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]harnessAsk, 1)
-	}
 	// THE CARD IS KEPT BESIDE THE ANSWER CHANNEL for as long as the question
 	// stands, so a watcher that subscribes late — above all the surface of a
 	// session that RESTORED this design from its checkpoint, which subscribes
 	// moments after recovery raised the card — is handed the standing question
 	// instead of a silence ([Agent.WatchHarnessDesigns]).
-	a.harnessAsks[id] = harnessAsk{answers: answers, card: card}
-	a.mu.Unlock()
-
-	// THE PAGE IS RAISED THROUGH THE ONE DOOR AND BANKED AT THE DESK, with the
-	// card as its announcement (taskpresence.go's [Agent.presenceAskingWhole],
-	// which is [Agent.raiseQuestion] plus the row that says what the question
-	// is). letGo is called on every road out
-	// of this function, and a question somebody answered has already claimed its
-	// own words, so the withdrawal it sends is the one nobody answered.
-	letGo := a.presenceAskingWhole(a.harnessQuestion(id, card), func() { a.emitHarness(card) })
-	defer letGo()
+	//
+	// THE PAGE IS RAISED THROUGH THE ONE DOOR, [Agent.raiseHarnessLane], with the
+	// card as its announcement. release is called on every road out of this
+	// function, and a question somebody answered has already claimed its own
+	// words, so the withdrawal it sends is the one nobody answered.
+	release, err := a.raiseHarnessLane(id, harnessAsk{answers: answers, card: card}, a.harnessQuestion(id, card), func() { a.emitHarness(card) })
+	if err != nil {
+		return harnessWord{}, err
+	}
+	defer release()
 
 	select {
 	case answer := <-answers:

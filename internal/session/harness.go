@@ -448,14 +448,6 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 	answers := make(chan harnessAnswer, 1)
 	a.mu.Unlock()
 
-	// THE SENTENCE LANDS BEFORE THE LANE IS VISIBLE. waitingOnPerson reads the
-	// lane under a.mu and the sentence under the desk's own lock, one after the
-	// other. Filling harnessAsks first and banking the desk row afterwards let a
-	// reader report that a person is needed with an empty reason. The row is
-	// banked while a.mu is held and the map is filled before that lock is
-	// released, so the unlock is the first moment either half can be seen (the
-	// same order askConnect keeps).
-	//
 	// THE OFFER IS RAISED THROUGH THE ONE DOOR, with the card as its
 	// announcement (question.go's [Agent.raiseQuestion]): the question is the
 	// same object [Agent.OpenQuestions] used to derive at subscription time, and
@@ -474,23 +466,11 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 		Model:     match.Model,
 		ModelNote: match.ModelNote,
 	}
-	q := a.harnessQuestion(id, offer)
-	a.mu.Lock()
-	if a.closed {
-		a.mu.Unlock()
-		return harnessAnswer{}, errAgentClosed
+	release, err := a.raiseHarnessLane(id, harnessAsk{answers: answers}, a.harnessQuestion(id, offer), func() { hub.send(offer) })
+	if err != nil {
+		return harnessAnswer{}, err
 	}
-	forgetDesk := a.presenceAskingQuestion(q)
-	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]harnessAsk, 1)
-	}
-	a.harnessAsks[id] = harnessAsk{answers: answers}
-	a.mu.Unlock()
-	letGo := a.raiseQuestion(q, func() { hub.send(offer) })
-	defer func() {
-		forgetDesk()
-		letGo()
-	}()
+	defer release()
 
 	select {
 	case answer := <-answers:
@@ -499,6 +479,36 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 		a.forgetHarness(id)
 		return harnessAnswer{}, ctx.Err()
 	}
+}
+
+// raiseHarnessLane is the one door a harness question stands up through, for
+// an offer and for a written design alike.
+//
+// THE SENTENCE LANDS BEFORE THE LANE IS VISIBLE. The desk row is banked while
+// a.mu is held and harnessAsks is filled before that lock is released, so the
+// unlock is the first moment either half can be seen. The other order let
+// [Agent.waitingOnPerson] read the lane with no sentence beside it and report a
+// person needed for an empty reason. The returned release takes the question
+// down again on every road out of the caller.
+func (a *Agent) raiseHarnessLane(id uint64, ask harnessAsk, q Question, announce func()) (func(), error) {
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return nil, errAgentClosed
+	}
+	forgetDesk := a.presenceAskingQuestion(q)
+	if a.harnessAsks == nil {
+		a.harnessAsks = make(map[uint64]harnessAsk, 1)
+	}
+	a.harnessAsks[id] = ask
+	a.mu.Unlock()
+	letGo := a.raiseQuestion(q, announce)
+	teamDown := a.teamAsking(q)
+	return func() {
+		forgetDesk()
+		letGo()
+		teamDown()
+	}, nil
 }
 
 // forgetHarness drops an offer nobody will answer. Without it an interrupted
