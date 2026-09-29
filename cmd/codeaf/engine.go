@@ -53,6 +53,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -248,6 +249,9 @@ type engineBuild struct {
 	// Binary is the file this process runs from, "" when the platform will
 	// not say.
 	Binary string
+	// Cells is the cells mode this process runs in. A host answers with its
+	// own, and the door settles the two ([settleCellsMode]).
+	Cells bool
 }
 
 // thisEngineBuild is the build that is running, measured the way a host
@@ -257,6 +261,7 @@ func thisEngineBuild() engineBuild {
 		Build:   buildinfo.Identity(),
 		BuiltAt: enginehost.BuildMoment(),
 		Binary:  enginehost.ThisBinary(),
+		Cells:   cell.Enabled(),
 	}
 }
 
@@ -312,12 +317,12 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 	}
 	host := held.Self
 	if held.Answered && sameEngineBuild(host, me) {
-		return "", nil
+		return settleCellsMode(workspace, host, me)
 	}
 	if held.Answered && !host.BuiltAt.Before(me.BuiltAt) {
 		// A NEWER BUILD (or a tie) IS NOT REPLACED FROM HERE. Same wire: join it.
 		if host.Version == remote.Version {
-			return "", nil
+			return settleCellsMode(workspace, host, me)
 		}
 		return "", &staleHost{reason: newerEngineHostSentence(hostWorkspace(host, workspace))}
 	}
@@ -333,6 +338,59 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		return "", nil
 	}
 	return replacedEngineHostSentence(held), nil
+}
+
+// settleCellsMode is the last question before joining a host: does it run in
+// this process's cells mode? A host reads CODEAF_CELLS once, when it starts, so
+// one started with cells off would serve every later chat with cells off and
+// nothing would ever migrate. There is no silent mismatch. An idle host is asked
+// to retire and the next line of the door starts one in this mode, with one line
+// saying so; a host holding work is left exactly as it is and refused in words.
+func settleCellsMode(workspace string, host remote.HostSelf, me engineBuild) (string, error) {
+	if host.Cells == me.Cells {
+		return "", nil
+	}
+	err := enginehost.Retire(workspace, false)
+	if errors.Is(err, enginehost.ErrHostBusy) {
+		return "", &staleHost{reason: cellsHostBusySentence(host.Cells, hostWorkspace(host, workspace))}
+	}
+	if err != nil {
+		return "", err
+	}
+	return cellsRestartedSentence(me.Cells), nil
+}
+
+// cellsMode is a mode as a person types it.
+func cellsMode(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
+// cellsRestartedSentence is the line owed for replacing an idle host.
+func cellsRestartedSentence(now bool) string {
+	return fmt.Sprintf("restarted the idle engine because it ran with cells %s; it runs with cells %s now", cellsMode(!now), cellsMode(now))
+}
+
+// cellsHostBusySentence is the refusal for a host in the other mode that is
+// still holding work. It names the workspace in the command, for the reason
+// [staleEngineHostSentence] gives.
+func cellsHostBusySentence(hostCells bool, workspace string) string {
+	stop := "codeaf engine --stop"
+	if workspace = strings.TrimSpace(workspace); workspace != "" {
+		stop += " --workspace " + workspace
+	}
+	return fmt.Sprintf("engine: the engine on %s runs with cells %s and something is still going in it — let that finish, or run %s, then open again",
+		machineOrThis(), cellsMode(hostCells), stop)
+}
+
+// machineOrThis is this machine's name, or "this machine" when it has none.
+func machineOrThis() string {
+	if name := strings.TrimSpace(remote.MachineName()); name != "" {
+		return name
+	}
+	return "this machine"
 }
 
 // sameEngineBuild is the host being this build: the same wire, the same source,
@@ -564,9 +622,12 @@ func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, 
 		fmt.Fprintf(out, "  started    %s (%s ago)\n", host.Started.Local().Format("2006-01-02 15:04"), roughAge(now.Sub(host.Started)))
 	}
 	if held.Answered {
+		fmt.Fprintf(out, "  cells      %s\n", cellsMode(host.Cells))
 		fmt.Fprintf(out, "  windows    %d attached · %s open\n", host.Surfaces, countWord(host.Conversations, "conversation", "conversations"))
 		if host.Busy {
 			fmt.Fprintln(out, "  working    yes — a turn, a task or a question is in flight")
+		} else if host.Conversations > 0 {
+			fmt.Fprintf(out, "  holding    idle chats keep their lock for %s after the last window closes, then the engine lets go\n", roughAge(enginehost.SessionIdleAfter()))
 		}
 	}
 	stop := "codeaf engine --stop"
@@ -723,6 +784,7 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 		return fmt.Errorf("open %s: %w", workspace, err)
 	}
 	err = enginehost.Run(workspace, enginehost.Options{
+		Cells: cell.Enabled(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, workspace, sessionFlag)
 		}, // usage writer owner: see CloseUsage after the host returns

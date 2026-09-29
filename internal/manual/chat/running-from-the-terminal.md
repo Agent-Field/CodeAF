@@ -229,7 +229,8 @@ conversations. A conversation that codeaf keeps its own working folder for has f
 can always be written back from what codeaf sealed. `gc` removes those working files of
 finished conversations, least recently opened first, until the cells fit the disk budget:
 the `cell disk budget` row in settings, or `CODEAF_CELL_BUDGET_GB` for one launch, in
-gigabytes, 20 when unset, 0 for no limit. Only a conversation nobody is using and that is
+gigabytes (a fraction such as 0.5 works), 20 when unset, 0 for no limit. `codeaf doctor`
+shows a `cells` row with what they hold against that budget. Only a conversation nobody is using and that is
 fully sealed is touched. One that is open in any window, one opened in the last ten
 minutes, and one with a call still in flight or not yet sealed are passed over, and `gc`
 says why beside each. Your own project folders are never removed: a conversation

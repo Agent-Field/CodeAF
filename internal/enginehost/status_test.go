@@ -55,6 +55,25 @@ func TestAHostNamesItsProcessBinaryAndStartForStatus(t *testing.T) {
 	}
 }
 
+// A HOST SAYS THE CELLS MODE IT STARTED IN, so a door in the other mode can tell.
+func TestAHostSaysTheCellsModeItStartedIn(t *testing.T) {
+	shortHome(t)
+	workspace := "/home/somebody/api"
+	stopped := make(chan error, 1)
+	go func() {
+		stopped <- Run(workspace, Options{Cells: true, Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: stubAgent{}, Workspace: workspace}, nil
+		}})
+	}()
+	waitForHostQuietly(t, workspace)
+	t.Cleanup(func() { _ = Retire(workspace, true); <-stopped })
+
+	held, err := Inspect(workspace)
+	if err != nil || !held.Self.Cells {
+		t.Fatalf("a host started with cells on said %+v, %v", held.Self, err)
+	}
+}
+
 func TestInspectFindsNothingWhereNothingIsHolding(t *testing.T) {
 	shortHome(t)
 	if _, err := Inspect("/home/somebody/api"); !errors.Is(err, ErrNothingHolding) {
