@@ -1,0 +1,1 @@
+{"V":1,"launchDir":"workspace:cmd","owned":true,"effort":"high","approval":"allow","places":[{"path":"home:proj","arrival":"said","referred":"0001-01-01T00:00:00Z"}],"trees":[{"folder":"home:proj","dir":"session:trees/a","mode":"","root":"home:proj","cut":"0001-01-01T00:00:00Z","wrote":["a.go"]}],"archived":true,"archivedTasks":{"t1":true}}

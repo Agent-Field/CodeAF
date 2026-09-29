@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellbudget"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -20,12 +22,13 @@ import (
 //
 // Every object the build writes to disk is one row here. A row is a name and a
 // populated sample (every optional field set, so the checks see every key).
-// A later lane that adds a persisted type adds ONE row; L1 and L11 then hold
-// for it with no other edit.
-var persisted = []struct {
-	name   string
-	sample any
-}{
+// A later lane that adds a persisted type adds ONE row; L1, L11 and the golden
+// fixture (testdata/<name>.golden.json, made with -update) then hold for it with
+// no other edit. Types this package cannot name (the WAL record, the vault
+// envelope) have their row in their own package, through [Golden].
+var _ = UpdateFlag()
+
+var persisted = []row{
 	{"cell.Meta", cell.Meta{
 		V: 1, Class: cell.FilesOnly, CellKeyID: "00112233445566778899aabbccddeeff",
 		Base: &cell.Base{Remote: "https://example.test/repo.git", SHA: "abc123"},
@@ -37,6 +40,21 @@ var persisted = []struct {
 		Archived:      true,
 		ArchivedTasks: map[string]bool{"t1": true},
 	}},
+	{"cellstore.Turn", cellstore.Turn{
+		V: 1, ID: "9f2c", Parent: "41ab", MergeParents: []string{"77d0"}, SealedAtMs: 1759049990120,
+		Quality: cellstore.Quiescent, Trigger: cellstore.Setup, Device: "c0de", Fence: 17,
+		Receipt: "77d0", ExcludedPaths: []string{"node_modules"},
+	}},
+	{"cellstore.Receipt", cellstore.Receipt{
+		V: 1, Transcript: cellstore.Range{Start: 40213, End: 41877},
+		Calls: []cellstore.Call{{Tool: "bash", ArgsHash: "d1f0", Started: 1759049981200, Ended: 1759049981940,
+			Exit: 0, StdoutHash: "0a1b", StderrHash: "e3b0", SideEffect: "local"}},
+		Services: []cellstore.ServiceRec{{PID: 4711, Argv: []string{"postgres", "-D", "var/pg"}, Ports: []int{5432}}},
+		ModelCalls: []cellstore.ModelCall{{Model: "deepseek/deepseek-v4.1-flash", ParamsHash: "7c7c",
+			RequestHash: "5a5a", ResponseHash: "b2b2", TokensIn: 5210, TokensOut: 412, CostMicroUSD: 613}},
+	}},
+	{"cellstore.Receipt.minimal", cellstore.Receipt{V: 1, Calls: []cellstore.Call{}}},
+	{"cellstore.Intent", cellstore.Intent{V: 1, Tool: "bash", ArgsHash: "d1f0", Started: 1759049981200, SideEffect: "external"}},
 	{"inventory.Inventory", inventory.Inventory{
 		V:        1,
 		Tools:    []inventory.Tool{{Name: "node", BinaryHash: "3fa9c2", VersionString: "v22.4.0"}},
@@ -45,6 +63,21 @@ var persisted = []struct {
 		EnvVarNames: []string{"DATABASE_URL"}, Hints: map[string]string{"devcontainer": ".devcontainer/devcontainer.json"},
 		Annotations: map[string]map[string]any{"postgres": {"optional": true}},
 	}},
+}
+
+type row struct {
+	name   string
+	sample any
+}
+
+// deviceLocal objects never enter a tree, so L1 does not apply to them (the
+// budget ledger names the cell's own root); they are frozen all the same.
+var deviceLocal = []row{
+	{"cellbudget.Entry", cellbudget.Entry{
+		V: 1, Root: "/cells/01J", OpenedMs: 1759049981200, Bytes: 4096, MeasuredMs: 1759049990000,
+		Evicted: &cellbudget.Pointer{Snapshot: "9f2c", AtMs: 1759050000000, Paths: []string{"work"}},
+	}},
+	{"cellbudget.Entry.resident", cellbudget.Entry{V: 1, Root: "/cells/01J", OpenedMs: 1759049981200}},
 }
 
 // The sealing package: the one place a Turn may be built (L2).
@@ -201,4 +234,12 @@ func moduleRoot(t *testing.T) string {
 	}
 	t.Fatal("go.mod not found")
 	return ""
+}
+
+func TestGoldenFixtures(t *testing.T) {
+	for _, o := range append(append([]row{}, persisted...), deviceLocal...) {
+		t.Run(o.name, func(t *testing.T) {
+			Golden(t, filepath.Join("testdata", o.name+".golden.json"), o.sample)
+		})
+	}
 }
