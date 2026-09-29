@@ -53,6 +53,7 @@ type Batcher struct {
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
+	failing bool // the last flush failed, so Idle must wait out the backoff
 }
 
 // Superseded says another device continued the chat.
@@ -149,13 +150,32 @@ func (b *Batcher) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// flushes uploads, then waits as long as the flush asks or until Idle.
+// flushes uploads, then waits as long as the flush asks, or until Idle when the
+// flush succeeded.
 func (b *Batcher) flushes(ctx context.Context) {
 	for {
-		if _, err := b.nap(ctx, b.flush(ctx), &b.idle); err != nil {
+		if err := b.rest(ctx, b.flush(ctx)); err != nil {
 			return
 		}
 	}
+}
+
+// rest waits d between flushes. After a failure it waits the whole backoff
+// whatever Idle says, and forgets an Idle that arrived meanwhile: when the
+// relay is failing, a client that retried after every finished turn would be
+// thousands of clients hammering it at once. The flush that ends the backoff
+// sends what Idle wanted sent.
+func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
+	if !b.failing {
+		_, err := b.nap(ctx, d, &b.idle)
+		return err
+	}
+	err := b.sleeper()(ctx, d)
+	select {
+	case <-b.idle.ch():
+	default:
+	}
+	return err
 }
 
 // beats renews the lease every HeartbeatEvery, and at once when a turn is
@@ -251,10 +271,9 @@ func (b *Batcher) flush(ctx context.Context) time.Duration {
 // after turns a flush's outcome into the next wait.
 func (b *Batcher) after(err error) time.Duration {
 	interval := b.interval()
+	b.failing = err != nil
 	switch {
-	case err == nil:
-		b.backoff = interval
-	case b.surface(err):
+	case err == nil, b.surface(err):
 		b.backoff = interval
 	default:
 		b.backoff = min(2*max(b.backoff, interval), max(MaxBackoff, interval))
