@@ -66,7 +66,25 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	if t.CellDir != "" {
 		argv = append(argv, cellDirArg(t.CellDir)...)
 	}
-	return s.run(ctx, t.Tree, append(os.Environ(), dataDirEnv+"="+t.DataDir), argv...)
+	environ := append(os.Environ(), dataDirEnv+"="+t.DataDir)
+	return s.run(ctx, t.Tree, append(environ, opEnv(op)...), argv...)
+}
+
+// EnvOp is an Op that carries secrets. A spawn hands them to the engine
+// through its environment, because argv is readable in ps; the daemon takes
+// them in the request's JSON arguments instead.
+type EnvOp interface {
+	Op
+	// Env is the NAME=value pairs the engine program needs.
+	Env() []string
+}
+
+// opEnv is the environment an Op adds to a spawn: nothing unless it is an EnvOp.
+func opEnv(op Op) []string {
+	if e, ok := op.(EnvOp); ok {
+		return e.Env()
+	}
+	return nil
 }
 
 func (s Spawn) program() (string, error) {
