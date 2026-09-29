@@ -160,6 +160,10 @@ fn health_and_refusals_keep_the_connection() {
     let health = client.recv();
     assert_eq!(health["id"], id);
     assert_eq!(health["ok"]["stores"], 0);
+    assert_eq!(health["ok"]["version"], env!("CARGO_PKG_VERSION"));
+    assert!(health["ok"]["engine"]
+        .as_str()
+        .is_some_and(|name| !name.is_empty()));
 
     assert!(client.call("no-such-verb", &store, json!({}))["err"].is_string());
     let restore = client.call("restore", &store, json!({"snapshot": "0".repeat(64)}));
