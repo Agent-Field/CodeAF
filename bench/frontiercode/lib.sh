@@ -89,6 +89,7 @@ load_task() { # <task-id> -> exports TASK_*
   TASK_BASE="$(toml_get "$TASK_DIR/task.toml" metadata.base_commit_hash)"
   TASK_REFERENCE="$(toml_get "$TASK_DIR/task.toml" metadata.reference_commit_hash)"
   TASK_REPO_URL="$(toml_get "$TASK_DIR/task.toml" metadata.repository_url)"
+  TASK_AGENT_REPO="$(toml_get "$TASK_DIR/task.toml" metadata.agent_repo_path)"; TASK_AGENT_REPO="${TASK_AGENT_REPO:-jsonschema}"
   TASK_LANG="$(toml_get "$TASK_DIR/task.toml" metadata.language)"
   TASK_CPUS="${CPUS:-$(toml_get "$TASK_DIR/task.toml" environment.cpus)}"
   TASK_MEM="${MEMORY_MB:-$(toml_get "$TASK_DIR/task.toml" environment.memory_mb)}"

@@ -22,6 +22,7 @@ grade's cost carries the judge's own tokens.
 
 import argparse
 import json
+import re
 import os
 import pathlib
 import subprocess
@@ -104,6 +105,31 @@ def call(model, system, user, key, temperature=0.0, max_tokens=900):
     return content, usage
 
 
+def _balanced(text, start):
+    """The balanced {...} span starting at `start`, or None. Respects JSON
+    strings so a brace inside one does not close the span."""
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def parse_json_reply(content):
     """The judge replies with one JSON object; strip the fences a model adds
     around it and parse. A reply with no object is a rig-conditioned failure
@@ -115,7 +141,37 @@ def parse_json_reply(content):
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError(f"no JSON object in judge reply: {content[:200]!r}")
-    return json.loads(text[start : end + 1])
+    # Preferred shape: a fenced ```json block. The reply may also carry
+    # prose and code fences whose braces are not JSON (observed with the
+    # pinned judge model), so scan every balanced top-level {...} span and
+    # take the first span that parses as JSON.
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if fence:
+        try:
+            return json.loads(fence.group(1))
+        except json.JSONDecodeError:
+            pass
+    for m in re.finditer(r"\{", text):
+        obj = _balanced(text, m.start())
+        if obj:
+            try:
+                return json.loads(obj)
+            except json.JSONDecodeError:
+                continue
+    obj = text[start : end + 1]
+    try:
+        return json.loads(obj)
+    except json.JSONDecodeError:
+        pass
+    # Common model lapses, repaired in order and re-parsed; if none of them
+    # was the problem the reply is a rig-conditioned failure like before.
+    repaired = re.sub(r"([{,]\s*)([A-Za-z_][\w-]*)(\s*):", r'\1"\2"\3:', obj)
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    repaired = re.sub(r"^\s*//.*$", "", repaired, flags=re.M)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"unparseable judge reply ({e}): {content[:400]!r}")
 
 
 def review_criteria(rubric, judge_input, key, model, prompt_version):
@@ -127,7 +183,7 @@ def review_criteria(rubric, judge_input, key, model, prompt_version):
             f"Diff of the change for {', '.join(item['paths'])}:\n"
             f"{item['hunks']}\n\nMechanical excerpts of the changed tree:\n"
             f"{json.dumps(item['mechanical'], indent=2)}\n\n"
-            "Answer the criterion question."
+            "Answer the criterion question. Your reply must be ONLY the JSON object — no prose before it, no code fences, no commentary."
         )
         usage = {}
         try:
@@ -152,7 +208,8 @@ def adapt_tests(rubric, grade_dir, key, model, prompt_version):
     an adapted test patch or a refusal."""
     grade_dir = pathlib.Path(grade_dir)
     phase_a = json.loads((grade_dir / "phaseA.json").read_text())
-    classical_id = next((c["id"] for c in rubric["criteria"] if c["kind"] == "classical"), "")
+    raw_criteria = rubric.get("criteria") or rubric.get("criterion", [])
+    classical_id = next((c["id"] for c in raw_criteria if c["kind"] == "classical"), "")
     classical = phase_a["criteria"].get(classical_id, {})
     agent_diff = grade_dir / "agent.diff"
     evidence = ""

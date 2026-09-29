@@ -94,16 +94,17 @@ def apply_overlay_idempotent(repo, overlay):
     return False, f"overlay conflict: {out[-2000:]}"
 
 
-def force_rebuild(repo):
-    """Touch the reverted sources so the incremental build cannot keep the
-    patched binary: a reverted source is older than the object file it built,
-    and make would correctly decide nothing needs doing — which would hand the
-    reverse check the agent's binary and let the tests pass."""
-    code, out = sh(
-        "find src test -type f \\( -name '*.cc' -o -name '*.h' -o -name '*.sh' \\) -exec touch {} + "
-        "&& make configure compile",
-        cwd=repo, timeout=None,
-    )
+# The fixture's rebuild recipe (touch the C++/shell sources so make cannot
+# keep the patched objects, then rebuild). A task that is not the fixture
+# names its own rebuild under [verifier] rebuild_command in task.toml.
+FIXTURE_REBUILD = ("find src test -type f \\( -name '*.cc' -o -name '*.h' -o -name '*.sh' \\) "
+                   "-exec touch {} + && make configure compile")
+
+
+def force_rebuild(repo, command=None):
+    """Invalidate any build products of the patched tree and rebuild, so the
+    reverse check tests the REVERTED tree and not a stale patched binary."""
+    code, out = sh(command or FIXTURE_REBUILD, cwd=repo, timeout=None)
     return code, out
 
 
@@ -172,6 +173,11 @@ def scope_check(patch_path, spec, repo):
 
 def phase_a(task_dir, repo, base, out_dir):
     rubric = load_rubric(os.path.join(task_dir, "rubric.toml"))
+    rebuild_command = None
+    tpath = os.path.join(task_dir, "task.toml")
+    if os.path.exists(tpath):
+        with open(tpath, "rb") as fh:
+            rebuild_command = tomllib.load(fh).get("verifier", {}).get("rebuild_command")
     patch_path = os.environ.get("FC_PATCH", "/logs/artifacts/model.patch")
     out = pathlib.Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -244,7 +250,7 @@ def phase_a(task_dir, repo, base, out_dir):
                             reverted = False
                             break
                     if reverted:
-                        code, outtext = force_rebuild(repo)
+                        code, outtext = force_rebuild(repo, rebuild_command)
                         if code != 0:
                             entry = {"status": RIG, "note": f"rebuild after revert failed: {outtext[-2000:]}"}
                         else:
@@ -378,6 +384,11 @@ def phase_b(task_dir, repo, base, out_dir):
     Written to phaseB.json in the same shape phase A uses, keyed by the
     adaptive criterion ids."""
     rubric = load_rubric(os.path.join(task_dir, "rubric.toml"))
+    rebuild_command = None
+    tpath = os.path.join(task_dir, "task.toml")
+    if os.path.exists(tpath):
+        with open(tpath, "rb") as fh:
+            rebuild_command = tomllib.load(fh).get("verifier", {}).get("rebuild_command")
     patch_path = os.environ.get("FC_PATCH", "/logs/artifacts/model.patch")
     grade_dir = pathlib.Path(out_dir)
     adapted = grade_dir / "adapted-tests.patch"
