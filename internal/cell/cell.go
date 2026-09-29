@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // Cell-relative names.
@@ -38,7 +40,7 @@ const (
 const EnvVar = "CODEAF_CELLS"
 
 // Enabled reports whether new chats should be created as cells.
-func Enabled() bool { return os.Getenv(EnvVar) == "1" }
+func Enabled() bool { return env.Get(EnvVar) == "1" }
 
 // Options describe a new cell. KeyID is generated when empty.
 type Options struct {
