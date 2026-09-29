@@ -448,13 +448,7 @@ func formatList(allowed map[string]bool) string {
 // exactly as it finds a generated one. A file the person may want back is a
 // deliverable whether a provider made it or ffmpeg did.
 func (a *Agent) recordVideoArtifact(path, said, kind string) {
-	RecordArtifact(a.config.ArtifactsIndex, Artifact{
-		Path:    path,
-		Session: a.journalID(),
-		Title:   mediaTitle(said, path),
-		Kind:    kind,
-		Created: time.Now(),
-	})
+	a.recordArtifact(path, mediaTitle(said, path), kind)
 }
 
 // describeVideoFile is the one sentence every action that touches a video

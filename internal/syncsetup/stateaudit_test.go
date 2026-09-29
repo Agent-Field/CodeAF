@@ -126,9 +126,9 @@ func (au *audited) keepOnA(t *testing.T, h *twoHomes) {
 	// an artifact: a file in the session's artifacts/ and its row in the index.
 	au.artifactPath = filepath.Join(au.placeA.Artifacts(), "report.md")
 	appendTo(t, au.artifactPath, "# report\n")
-	session.RecordArtifact(home.Join("v3", session.ArtifactsIndexName), session.Artifact{
-		Path: au.artifactPath, Session: h.cell.ID, Title: "report", Kind: "document", Created: time.Now(),
-	})
+	row := session.Artifact{Path: au.artifactPath, Session: h.cell.ID, Title: "report", Kind: "document", Created: time.Now()}
+	session.RecordSealedArtifact(au.placeA, row)
+	session.RecordArtifact(home.Join("v3", session.ArtifactsIndexName), row)
 }
 
 func (au *audited) remember(t *testing.T, h *twoHomes) string {
@@ -199,17 +199,20 @@ func (au *audited) registrationClean(t *testing.T) {
 		"the sealed .git registers a worktree at A's absolute trees/1 path, dangling on B; follow-up: prune on take (cell/migrate.go keeps trees/ machine-local)")
 }
 
-// artifactFileTravels: a borrowed chat's artifacts/ is beside the sealed tree,
-// not in it (session/place.go Artifacts; landing.go deliverablesDir).
+// artifactFileTravels: a borrowed chat's artifacts/ is inside .cell/, so the
+// sealed tree carries the file.
 func (au *audited) artifactFileTravels(t *testing.T) {
-	gapOr(t, exists(filepath.Join(au.placeB.Artifacts(), "report.md")),
-		"a borrowed chat's artifacts/ is outside the sealed tree; follow-up: land deliverables in the workspace or seal artifacts/")
+	if !exists(filepath.Join(au.placeB.Artifacts(), "report.md")) {
+		t.Fatalf("B has no artifact at %s", au.placeB.Artifacts())
+	}
 }
 
-// artifactRowOnB: the global index is neither sealed nor rebuilt by
-// cellindex.Indexes (meta, usage, tasks, memories only).
+// artifactRowOnB: the machine's index is derived from the cell's ledger, so B's
+// own index, which started empty, names the file at B's path.
 func (au *audited) artifactRowOnB(t *testing.T) {
 	rows := session.ReadArtifacts(home.Join("v3", session.ArtifactsIndexName))
-	gapOr(t, len(rows) == 1 && rows[0].Title == "report",
-		"artifacts.jsonl has no cellindex.Index: the moved chat's deliverables are missing from B's artifact picker; follow-up: artifactIndex from sealed artifact receipts")
+	want := filepath.Join(au.placeB.Artifacts(), "report.md")
+	if len(rows) != 1 || rows[0].Title != "report" || rows[0].Path != want {
+		t.Fatalf("B's artifact index = %+v, want one row for %s", rows, want)
+	}
 }

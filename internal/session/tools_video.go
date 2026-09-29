@@ -30,7 +30,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -223,13 +222,7 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 		a.failVideo(rendering, "could not save the generated video: "+err.Error())
 		return
 	}
-	RecordArtifact(a.config.ArtifactsIndex, Artifact{
-		Path:    path,
-		Session: a.journalID(),
-		Title:   mediaTitle(request.Prompt, path),
-		Kind:    "video",
-		Created: time.Now(),
-	})
+	a.recordArtifact(path, mediaTitle(request.Prompt, path), "video")
 
 	landed := describeGeneratedVideo(a.config.Workspace, path, response.Video, model)
 	fmt.Fprintln(rendering.sink, landed)

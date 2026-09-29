@@ -166,10 +166,11 @@ func (p Place) Logs() string { return p.join(placeLogs) }
 
 // Artifacts holds deliverables that have no natural home in the workspace —
 // a generated image in a borrowed session lands here rather than littering
-// the person's repo, and its row in the global index is how it is found.
-// An owned session's deliverables land in work/ instead; this directory is
-// the borrowed session's answer.
-func (p Place) Artifacts() string { return p.join(placeArtifacts) }
+// the person's repo. It is truth, so in the cell layout it sits inside .cell/
+// and travels with the chat; its ledger ([Place.ArtifactLedger]) is how the
+// files are found again on any machine. An owned session's deliverables land
+// in work/ instead; this directory is the borrowed session's answer.
+func (p Place) Artifacts() string { return p.truth(placeArtifacts) }
 
 // Trees holds the git worktrees, one per running node. Session deletion runs
 // git worktree remove/prune against [Meta.Workspace] BEFORE this directory

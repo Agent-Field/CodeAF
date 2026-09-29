@@ -16,7 +16,7 @@ type Index interface {
 }
 
 // Indexes is the registry, in build order.
-var Indexes = []Index{metaIndex{}, usageIndex{}, taskIndex{}, memoryIndex{}}
+var Indexes = []Index{metaIndex{}, usageIndex{}, taskIndex{}, memoryIndex{}, artifactIndex{}}
 
 // RebuildAt opens the cell at dir and rebuilds its missing indexes, for a
 // session whose workspace is where workspace says on this machine.

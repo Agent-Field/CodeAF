@@ -738,6 +738,7 @@ func v3Migrated(cfg session.Config) session.Config {
 		return cfg
 	}
 	_ = cell.MigrateLegacy(cfg.Place.Dir, session.TruthCarriers()...)
+	session.AdoptArtifacts(cfg.Place, artifactsIndexPath())
 	budgetOnOpen(cfg.Place.Dir)
 	if cfg.Memory != nil {
 		_ = session.SealMemories(cfg.Place.Dir, cfg.Memory)
