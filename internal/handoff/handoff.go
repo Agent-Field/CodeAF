@@ -42,6 +42,12 @@ type Taker struct {
 	// only the kept edits live in the branch, so no old-id to new-id mapping
 	// may be recorded.
 	Branch func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error)
+	// InPlace says the tree of the chat at c's root is a folder the person owns
+	// (their project), which is never renamed or replaced: editors and git hold
+	// it open. Such a chat gets the fetched head restored into the folder where
+	// it stands, after the lease is ours. Nil, or false, is a chat that lives in
+	// a copy, which is replaced whole.
+	InPlace func(c cell.Cell) bool
 	// RootFor is where this device keeps the cell. The takeover materializes
 	// beside it and moves the result into place once the lease is held.
 	RootFor func(id string) string
@@ -116,7 +122,7 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string) (string, uin
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
 	head, fence, err := t.fetchAndAcquire(ctx, stage, head)
 	if err == nil {
-		if err = install(stage.Root, c.Root); err != nil {
+		if err = t.install(ctx, stage.Root, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
 		}
 	}
@@ -160,10 +166,24 @@ func freshDir(dir string) error {
 	return os.MkdirAll(dir, 0o700)
 }
 
-// install puts stage in place of root. What was at root is sealed in the store
+// install makes the fetched head the chat's tree. A folder the person owns is
+// restored in place: everything it needs is already in the store from the
+// staging fetch, so this is only the engine's restore to that tree, and the
+// staging folder is dropped. A copy is replaced by the staging folder.
+func (t Taker) install(ctx context.Context, stage string, c cell.Cell, head string) error {
+	if t.InPlace == nil || !t.InPlace(c) {
+		return swap(stage, c.Root)
+	}
+	if err := t.Fetch.Fetch(ctx, c, head); err != nil {
+		return err
+	}
+	return os.RemoveAll(stage)
+}
+
+// swap puts stage in place of root. What was at root is sealed in the store
 // (any unsealed edit went to a branch first), so it is set aside for the move
 // and removed once the new root is in place; a failed move puts it back.
-func install(stage, root string) error {
+func swap(stage, root string) error {
 	aside := root + ".replaced"
 	if err := os.RemoveAll(aside); err != nil {
 		return err

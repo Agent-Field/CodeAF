@@ -67,6 +67,7 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 		Local:   engineLocal{eng},
 		Branch:  c.branch(brancher),
 		RootFor: opt.RootFor,
+		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
 		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, c.pullVault, c.injectEnv},
 	}
 	return c
@@ -75,8 +76,12 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 // Take continues chat id here. Everything the surface says about it comes back
 // with it.
 func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
+	from := c.holderName(ctx, id)
 	taken, err := c.taker.Take(ctx, id)
 	if err != nil {
+		return Continued{}, err
+	}
+	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
 		return Continued{}, err
 	}
 	out := Continued{Taken: taken, Device: c.opt.DeviceName}
@@ -84,6 +89,16 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
 	return out, nil
+}
+
+// holderName is the name of the device that held the chat last, for the log
+// entry that stands for the head this machine received.
+func (c *Continuer) holderName(ctx context.Context, id string) string {
+	v, err := c.sync.Dir.Cell(ctx, id)
+	if err != nil {
+		return ""
+	}
+	return c.sync.deviceName(v.Cell.Lease.Device)
 }
 
 // orphanTurns is how many turns the directory says a branch holds.
@@ -143,10 +158,22 @@ func (l engineLocal) Seal(ctx context.Context, c cell.Cell) (string, uint32, err
 // work/ folder otherwise, which is where a copy taken from another machine
 // lands.
 func workspaceOf(root string) string {
-	if m, err := session.LoadMeta(root); err == nil && !m.Owned && dirExists(m.Workspace) {
-		return m.Workspace
+	if project, ok := projectOf(root); ok {
+		return project
 	}
 	return session.Place{Dir: root, Owned: true}.Work()
+}
+
+// projectOf is the project folder the chat at root works in, when it works in
+// one of the person's folders and that folder is here.
+func projectOf(root string) (string, bool) {
+	m, err := session.LoadMeta(root)
+	return m.Workspace, err == nil && !m.Owned && dirExists(m.Workspace)
+}
+
+func borrowsProject(root string) bool {
+	_, ok := projectOf(root)
+	return ok
 }
 
 func dirExists(path string) bool {

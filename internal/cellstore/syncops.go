@@ -179,7 +179,10 @@ func (e SyncEngine) Import(ctx context.Context, c cell.Cell, head, inbox string)
 
 // Materialize implements the sync seam.
 func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) error {
-	return e.ask(ctx, c, materializeOp{Head: head}, nil)
+	if err := e.ask(ctx, c, materializeOp{Head: head}, nil); err != nil {
+		return err
+	}
+	return noteAdopted(c, head)
 }
 
 // targetFor is the cell's target as op needs it: only a composing verb is
