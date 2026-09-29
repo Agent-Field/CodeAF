@@ -192,7 +192,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/drafts` | — | — | lists cleared drafts, newest first; enter restores one to the box and `d` lets one go; an empty ring says `no cleared draft is waiting` |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
-| `/compact` | — | — | summarizes the conversation now |
+| `/compact` | — | — | shortens the conversation now |
 
 ## Home, project and file context commands — what does /workspace path do
 
@@ -426,29 +426,36 @@ new session failed: <error>
 A close that fails says so and the surface continues. A launcher that cannot build the
 replacement says so, and nothing is replaced.
 
-## /compact — summarize the conversation now
+## /compact — shorten the conversation now
 
-`/compact` notes `compacting…` immediately and runs the compaction off the loop.
+`/compact` notes `compacting…` immediately and reduces older completed work, even below
+the automatic threshold. It first turns old tool results into pointers and folds older
+assistant work, which costs nothing. If enough older conversation remains, the conversation's
+own model writes a **summary** in the same pass, replacing older messages.
+Your three most recent messages and
+everything after them stay word for word unless a cut that keeps fewer is what reaches the
+line: codeaf chooses the cut that keeps the most and still gets under it — three, two, your
+latest with the reply before it, or your latest alone. When no cut can reach the line,
+`/compact` keeps all of your last three messages that exist, since summarizing more
+would not reach it either. With only two since the last summary, it keeps both; if
+there is too little before them, it writes no summary and says why. Only recovery
+from a refused request then keeps fewer. The
+latest message and the system prompt always stay word for word. The full record
+stays in the session journal, and the summary names that file.
 
-**There is no success message.** A compaction that worked is silent — the note that it
-started is all you get.
-
-A failure comes back as:
-
-```
-compact failed: <error>
-```
-
+Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
+`⚭ compacted` without a size when it did not; the figures are estimates, and the line
+stays in the conversation as the answer to your command. When nothing
+changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
+last summary — too little to summarize`, `there is nothing before your last 3 messages to
+summarize`, or `the model could not write a summary: ` and the reason. The status line's
+count drops as soon as the pass lands.
+Other failures say `compact failed: ` followed by the reason. The pass runs off the input
+loop, so the surface stays responsive, and a message you send while it runs is not held
+behind it; if that message is too long to send before the pass lands, it waits for the pass
+and then goes. A summary on a slow model can take a minute; the chat waits up to five. If the
+engine is still working after that, it says `still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands`.
 `/compact` has no argument form and no alias.
-
-**A compaction costs nothing and asks no model.** It is two mechanical passes over
-the messages this session already has: tool results the model has already used
-become pointers to their own bytes, and if that is not enough the oldest assistant
-work is replaced by one marker line naming how much went and where it can be read.
-Your own words are never folded. There is **no summariser** and there is **no
-`compaction` role in settings** — there was one, and it was a priced row wired to
-nothing. What the model is handed instead of a summary is the state card, which is
-maintained a little at a time by the reader that runs after each turn.
 
 ## /rewind — go back to an earlier point in the conversation
 

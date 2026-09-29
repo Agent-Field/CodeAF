@@ -1146,8 +1146,19 @@ func (c *Client) late() error {
 	if roaming {
 		return errors.New(c.roamingRefusal())
 	}
-	return errors.New(c.where() + lateCallTail)
+	return lateError{where: c.where()}
 }
+
+// ErrLate is what a call that outlived this end's patience matches with
+// [errors.Is]. The engine may still be doing the work, so a surface that can
+// say "still running" rather than "failed" reads it through this.
+var ErrLate = errors.New("the engine did not answer in time")
+
+// lateError is [Client.late]'s sentence, and it is [ErrLate].
+type lateError struct{ where string }
+
+func (e lateError) Error() string        { return e.where + lateCallTail }
+func (e lateError) Is(target error) bool { return target == ErrLate }
 
 // forget drops a call nobody is waiting for any more.
 func (c *Client) forget(id uint64) {
@@ -1772,8 +1783,22 @@ func (a *Agent) StopWork() error {
 }
 
 // Compact runs a compaction pass on the far side.
+//
+// IT WAITS AS LONG AS A PASS CAN TAKE, not [callDeadline]. A pass may ask the
+// model for a summary, which on a slow model is longer than ten seconds, and a
+// surface that gave up sooner said "did not answer in time" about a pass that
+// landed a moment later. The surface asks from a command rather than from its
+// update loop, so the longer wait is a line saying "compacting…", never a
+// terminal that stops drawing. It runs beside the ordered lane (callclass.go's
+// [classWork]), so nothing the person sends meanwhile queues behind it.
 func (a *Agent) Compact(ctx context.Context) error {
-	_, err := a.c.call(ctx, MethodCompact, nil)
+	result, err := a.c.callWithin(ctx, MethodCompact, nil, session.CompactPatience)
+	if err == nil && len(result) > 0 && string(result) != "null" {
+		var why string
+		if json.Unmarshal(result, &why) == nil && why != "" {
+			return &session.SummarySkipped{Why: why}
+		}
+	}
 	return err
 }
 

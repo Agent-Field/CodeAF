@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -1861,17 +1862,39 @@ func (a *app) silentFor() time.Duration {
 	return time.Since(a.lastDelta)
 }
 
-// divider is the compaction mark: a rule with the fact in it, because a
+var compactASCIIPunctuation = strings.NewReplacer(" · ", " - ", " → ", " to ", " — ", " - ", "…", "...")
+
+// compactASCII spells a compaction line's MARKS in ASCII and leaves its WORDS
+// alone. The linear tier is a screen reader's, and a reason or a summary's first
+// line in the person's own language is read out as written; only punctuation
+// and symbols a plain terminal cannot draw become ASCII, or `?` when there is
+// no spelling for them.
+func compactASCII(hint string) string {
+	return strings.Map(func(r rune) rune {
+		if r <= unicode.MaxASCII || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) || unicode.IsMark(r) {
+			return r
+		}
+		return '?'
+	}, compactASCIIPunctuation.Replace(hint))
+}
+
+// divider is the compaction mark: one dim line with the fact in it, because a
 // conversation that silently lost its middle is a conversation the person
 // cannot reason about.
+//
+// IT IS A LINE AND NOT A RULE. It was a full-width rule with the fact centred
+// in it, the loudest shape on the page for the surface's own housekeeping, and
+// the design language is dim telemetry with no borders. It now wears the
+// note lane's lead, so it reads as what it is — something codeaf did, said
+// once, quietly — and the mark tells it apart from the notes around it.
 func (a *app) divider(hint string, width int) string {
-	label := " ⚭ " + hint + " "
-	rest := width - ansi.StringWidth(label) - 2
-	if rest < 0 {
-		return a.pal.dim(ansi.Truncate("──"+label, width, glyphMore))
+	lead, more := "· ", glyphMore
+	if a.linear || a.pal.ascii {
+		lead = "- "
+		more = ">"
+		hint = compactASCII(hint)
 	}
-	left := rest / 2
-	return a.pal.dim(strings.Repeat("─", left+2) + label + strings.Repeat("─", rest-left))
+	return a.pal.dim(ansi.Truncate(lead+a.icon(tokens.GCompacted)+" "+hint, width, more))
 }
 
 // compactRow draws one compaction pass, in the two shapes it has.
@@ -1889,9 +1912,10 @@ func (a *app) divider(hint string, width int) string {
 // violet is not available to it — that hue means a person is being asked
 // something, and nobody is being asked anything here.)
 //
-// SETTLED, it is the rule it always was, with what it cost in time:
+// SETTLED, it is the one dim line [app.divider] draws, with what it cost in
+// time, and it stays standing when the turn's work folds (workfold.go):
 //
-//	───── ⚭ compacted from ~84k tokens · took 6s ─────
+//	· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · took 6s
 //
 // The duration is dropped under a second, by the same law the tool clock uses
 // ([countUpWord]'s floor): "took 0s" is a column read for nothing.

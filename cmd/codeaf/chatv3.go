@@ -1031,7 +1031,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// --reasoning went to every model blind — and on a router, a knob no
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
-		SupportsParameter: activeModels.SupportsParameter,
+		//
+		// AND IT IS ASKED ABOUT THE ID THE SERVICE IS SENT. A model behind a
+		// connected service is named here with the service's written prefix
+		// (`stub/z-ai/glm-5.3-flash`), and the adapter asks the same catalog
+		// about the id it puts on the wire (`z-ai/glm-5.3-flash`): answered only
+		// about the prefixed name, the session kept the working page for a
+		// model the adapter was already sending no tools (chatpage.go).
+		SupportsParameter: v3SupportsParameter(proc.Shelf, activeModels),
 		ReasoningProfile:  config.ReasoningProfileSeam(activeModels),
 		// And the model's own published price, which is what bounds the latency
 		// ask: this session wants the fastest endpoint, not the dearest one
@@ -2492,6 +2499,25 @@ func v3AnswersText(outputs []string) bool {
 // The file is read at most once per session: it is the same rows for the whole
 // warming window, and re-reading it per message would put I/O on the message
 // path to learn nothing new.
+// v3SupportsParameter is the catalog's answer about a model, asked first as
+// named and then as the id its service is sent — the same id the adapter asks
+// about, so the session's page and the adapter's body cannot disagree about
+// what the model accepts.
+func v3SupportsParameter(shelf *v3ModelShelf, models *catalog.Catalog) func(string, string) (bool, bool) {
+	return func(model, parameter string) (bool, bool) {
+		if models == nil {
+			return false, false
+		}
+		if supported, known := models.SupportsParameter(model, parameter); known {
+			return supported, known
+		}
+		if bare := shelf.wireModel(model); bare != "" && !strings.EqualFold(bare, model) {
+			return models.SupportsParameter(bare, parameter)
+		}
+		return false, false
+	}
+}
+
 func v3SeesImages(models v3Catalog) func(string) bool {
 	var once sync.Once
 	var cached []tui3.Model

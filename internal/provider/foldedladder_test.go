@@ -61,7 +61,7 @@ func TestTheLadderTakesItsRungFromTheMoveGenerator(t *testing.T) {
 	want := []string{
 		"Retry 1/3: relaxed the endpoint filter",
 		"Retry 2/3: removed max_tokens",
-		"Retry 3/3: removed tools",
+		"Retry 3/3: sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer",
 	}
 	if len(notices) != len(want) {
 		t.Fatalf("the ladder said %#v, want %#v", notices, want)

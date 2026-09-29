@@ -200,6 +200,9 @@ const (
 	GlyphFilter  = "⌕" // narrowing what is already on the page
 	GlyphWrite   = "✎" // a call that wrote something down
 
+	// GlyphCompacted marks a pass that shortened the model's working context.
+	GlyphCompacted = "⚭"
+
 	// The action families (internal/tui3's step gutter). One still, monochrome
 	// mark per FAMILY of work — searching, editing, running a command — keyed
 	// off the closed vocabulary the engine carries in session.ActionCategory.
@@ -480,6 +483,7 @@ func Glyphs() []GlyphInfo {
 		{"Search", GlyphSearch, '⌕', false},
 		{"Filter", GlyphFilter, '⌕', false},
 		{"Write", GlyphWrite, '✎', false},
+		{"Compacted", GlyphCompacted, '⚭', false},
 		{"ActionRead", GlyphActionRead, '▤', true},
 		{"ActionCreate", GlyphActionCreate, '+', false},
 		{"ActionTest", GlyphActionTest, '◎', true},

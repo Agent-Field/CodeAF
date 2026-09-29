@@ -128,10 +128,12 @@ func newMemoryBrain(s *store.Store) *memoryBrain {
 	return &memoryBrain{store: s, reflex: &reflex.Session{}}
 }
 
-// remembers reports whether this session has a brain at all. Every entry point
-// in this file asks it first, and the answer is a fact about the wiring rather
-// than about a setting: the door opens no store when memory is off.
-func (a *Agent) remembers() bool { return a.memory != nil && a.memory.store != nil }
+// remembers gates every memory entry point. An automatic lean conversation
+// may hold a dormant brain for a later model switch, but performs no memory
+// work until its profile is full.
+func (a *Agent) remembers() bool {
+	return a.memory != nil && a.memory.store != nil && !a.config.promptProfile().lean()
+}
 
 // memorySourceSession is the journal header id attached to a memory write. A
 // test or embedded session without a journal still has the stable session name

@@ -120,6 +120,10 @@ func (c *Client) lowestEffort(model string) Effort {
 	if !known || len(profile.Efforts) == 0 {
 		return EffortLow
 	}
+	return lowestListedEffort(profile)
+}
+
+func lowestListedEffort(profile ReasoningProfile) Effort {
 	lowest := EffortNone
 	for _, word := range profile.Efforts {
 		if word == EffortNone || effortRank(word) >= effortRank("") {
@@ -135,11 +139,32 @@ func (c *Client) lowestEffort(model string) Effort {
 	return lowest
 }
 
+// listedEffort raises a requested word to the catalog's lowest usable level.
+// A model listing only high and xhigh cannot run an optional low pass at low.
+func listedEffort(profile ReasoningProfile, requested Effort) Effort {
+	if len(profile.Efforts) == 0 || requested == EffortNone || requested == EffortOff {
+		return requested
+	}
+	floor := lowestListedEffort(profile)
+	if effortRank(requested) < effortRank(floor) {
+		return floor
+	}
+	return requested
+}
+
 // runningEffort is the level the thinking pass will actually run at: the word
 // being sent, or — when nothing is sent to a model that thinks regardless —
 // the row's default, taken as the top of the ladder when the row does not say.
 func (c *Client) runningEffort(model string, sent Effort) Effort {
 	if sent != EffortNone && sent != EffortOff {
+		// A MODEL RUNS NO LOWER THAN ITS PUBLISHED FLOOR. The word travels as
+		// asked, but a model whose catalog lists only high and xhigh thinks at
+		// one of those whatever it is sent, and a ceiling sized for low left a
+		// summary no room to answer (deepseek-v4-flash, 2026-09-28: 8 of 28
+		// summaries ended at the ceiling with no text).
+		if profile, known := c.profileFor(model); known {
+			return listedEffort(profile, sent)
+		}
 		return sent
 	}
 	if !c.reasoningUnstoppable(model) {
@@ -185,15 +210,33 @@ func (c *Client) wireCeiling(model string, sent Effort, budget int, answer int) 
 		return answer + budget
 	}
 	running := c.runningEffort(model, sent)
-	share := thinkingShare(running)
-	if share <= 0 {
+	if thinkingShare(running) <= 0 {
 		return answer
 	}
-	ceiling := int(float64(answer)/(1-share) + 0.5)
+	ceiling := reasoningCeiling(answer, running)
 	if running != sent && ceiling < answer+unaskedThinkingFloor {
 		return answer + unaskedThinkingFloor
 	}
 	return ceiling
+}
+
+// SummaryOutputReserve is the space a summary chunk must leave behind its
+// prompt when the catalog publishes a floor above the summarizer's low ask.
+// The provider's wire sizing uses the same reasoningCeiling calculation.
+func SummaryOutputReserve(profile ReasoningProfile, answer int) int {
+	floor := listedEffort(profile, EffortLow)
+	if effortRank(floor) <= effortRank(EffortLow) {
+		return answer
+	}
+	return reasoningCeiling(answer, floor)
+}
+
+func reasoningCeiling(answer int, running Effort) int {
+	share := thinkingShare(running)
+	if share <= 0 {
+		return answer
+	}
+	return int(float64(answer)/(1-share) + 0.5)
 }
 
 // ceilingFor is the wire ceiling for one request as its knobs will shape it,
