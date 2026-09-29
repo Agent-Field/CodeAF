@@ -354,6 +354,11 @@ func run() error {
 		return runServices(os.Args[2:])
 	case "wake":
 		return runWake(os.Args[2:])
+	case "cell":
+		// The turn chain of a cell (cell.go): its log and its rewind. Machinery
+		// while cells are behind CODEAF_CELLS, so DELIBERATELY ABSENT from the
+		// usage text below, like `engine` and `tick`.
+		return runCell(os.Args[2:])
 	case "tick":
 		// One bounded pass over the standing items — the reminders, watches and
 		// routines a conversation left behind (tick.go). It is what the OS

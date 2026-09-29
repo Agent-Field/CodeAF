@@ -58,17 +58,19 @@ func writeBlobs(c cell.Cell, info TurnInfo) error {
 	return nil
 }
 
-// transcriptRange is what the transcript gained since the last seal.
+// transcriptRange is what the transcript gained since the last seal. A cell
+// with no transcript yet has an empty range at zero.
 func transcriptRange(c cell.Cell, last *Sealed) Range {
-	var start int64
+	var start, end int64
 	if last != nil {
 		start = last.Receipt.Transcript.End
 	}
-	end := start
 	if info, err := os.Stat(rel(c, cell.TranscriptPath)); err == nil {
 		end = info.Size()
 	}
-	return Range{Start: start, End: max(start, end)}
+	// A transcript shorter than the last seal saw was rewound: what it gained
+	// is counted from where it now ends.
+	return Range{Start: min(start, end), End: end}
 }
 
 // appendTurn adds the turn to the cell's chain, durably.

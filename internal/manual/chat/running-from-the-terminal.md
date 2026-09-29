@@ -209,6 +209,13 @@ by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, a
 **`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
 Neither draws anything or reads a key.
 
+A third is typed by hand but is not in the help text while cells are still switched on by
+`CODEAF_CELLS`: **`codeaf cell log [<cell>]`** lists a cell's turns, newest first, one line
+each (turn, parent, time, tools, receipt), and **`codeaf cell rewind <turn> [<cell>]`**
+puts the cell's files and transcript back to that turn. A rewind adds a new turn on top of
+the newest one and deletes nothing, so it can be rewound too. It refuses while a tool call
+began and never finished. With no cell named, both use the cell the current folder is in.
+
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
 `codeaf connect` lists every model service this profile knows, whether it is connected,
