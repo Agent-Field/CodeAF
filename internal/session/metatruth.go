@@ -27,14 +27,14 @@ import (
 // base (pathcodec.go), never absolute.
 type SessionTruth struct {
 	V             uint16          `json:"V"`
-	LaunchDir     string          `json:"launchDir,omitempty"`
+	LaunchDir     string          `json:"launch_dir,omitempty"`
 	Owned         bool            `json:"owned,omitempty"`
 	Effort        string          `json:"effort,omitempty"`
 	Approval      string          `json:"approval,omitempty"`
 	Places        []PlaceRef      `json:"places,omitempty"`
 	Trees         []StandingTree  `json:"trees,omitempty"`
 	Archived      bool            `json:"archived,omitempty"`
-	ArchivedTasks map[string]bool `json:"archivedTasks,omitempty"`
+	ArchivedTasks map[string]bool `json:"archived_tasks,omitempty"`
 }
 
 const truthVersion = 1
@@ -73,16 +73,35 @@ func overlayTruth(dir string, meta Meta) (Meta, error) {
 	return meta, nil
 }
 
+// legacyTruth reads the camelCase spelling the file had before the schema
+// freeze. It is read once: the next write is snake_case only.
+type legacyTruth struct {
+	SessionTruth
+	LaunchDir     string          `json:"launchDir"`
+	ArchivedTasks map[string]bool `json:"archivedTasks"`
+}
+
+func (l legacyTruth) truth() SessionTruth {
+	t := l.SessionTruth
+	if t.LaunchDir == "" {
+		t.LaunchDir = l.LaunchDir
+	}
+	if t.ArchivedTasks == nil {
+		t.ArchivedTasks = l.ArchivedTasks
+	}
+	return t
+}
+
 func readTruth(path string) (SessionTruth, error) {
-	var t SessionTruth
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return t, err
+		return SessionTruth{}, err
 	}
-	if json.Unmarshal(raw, &t) != nil {
+	var l legacyTruth
+	if json.Unmarshal(raw, &l) != nil {
 		return SessionTruth{}, nil // a corrupt file reads as no truth, as meta.json does
 	}
-	return t, nil
+	return l.truth(), nil
 }
 
 // writeTruth seals meta's truth at path, every path spelled against the bases

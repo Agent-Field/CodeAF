@@ -150,3 +150,30 @@ func TestMigrationDropsTheSecondNameOfALinkedJournal(t *testing.T) {
 	}
 	wantJournalsMoved(t, dir, journals)
 }
+
+// session.json written before the schema freeze spelled two keys in camelCase.
+// It reads once, and the next write is snake_case only.
+func TestLegacyTruthKeysReadOnceThenWriteSnakeCase(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.json")
+	old := `{"V":1,"launchDir":"workspace:cmd","archived":true,"archivedTasks":{"t1":true}}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readTruth(path)
+	if err != nil || got.LaunchDir != "workspace:cmd" || !got.ArchivedTasks["t1"] || !got.Archived {
+		t.Fatalf("legacy read: %+v %v", got, err)
+	}
+	if err := writeJSONAtomic(path, got); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(path)
+	for _, key := range []string{`"launch_dir"`, `"archived_tasks"`} {
+		if !strings.Contains(string(raw), key) {
+			t.Errorf("rewrite lacks %s: %s", key, raw)
+		}
+	}
+	if strings.Contains(string(raw), "launchDir") || strings.Contains(string(raw), "archivedTasks") {
+		t.Errorf("rewrite kept camelCase: %s", raw)
+	}
+}
