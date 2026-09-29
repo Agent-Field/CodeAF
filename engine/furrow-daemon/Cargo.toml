@@ -1,0 +1,8 @@
+[package]
+name = "furrow-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Placeholder for the furrow daemon"
+license.workspace = true
+repository.workspace = true

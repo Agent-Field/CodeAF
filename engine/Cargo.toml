@@ -1,16 +1,15 @@
-[package]
-name = "furrow"
+[workspace]
+resolver = "2"
+members = ["furrow-core", "furrow-cli", "furrow-daemon"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.83"
-description = "Local-first working-state snapshots for agentic development"
 license = "Apache-2.0"
 repository = "https://github.com/Agent-Field/furrow"
-readme = "README.md"
-keywords = ["snapshot", "backup", "agents", "filesystem", "developer-tools"]
-categories = ["command-line-utilities", "development-tools"]
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "=1.0.95"
 blake3 = "=1.5.5"
 chacha20poly1305 = "=0.10.1"
@@ -33,8 +32,6 @@ ureq = { version = "=3.1.4", default-features = false, features = ["rustls"] }
 url = "=2.5.2"
 xattr = "=1.3.1"
 zeroize = "=1.8.1"
-
-[dev-dependencies]
 assert_cmd = "=2.0.16"
 predicates = "=3.1.3"
 
@@ -44,7 +41,3 @@ lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true
-
-[[bench]]
-name = "engine"
-harness = false
