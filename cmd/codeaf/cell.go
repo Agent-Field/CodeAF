@@ -129,6 +129,10 @@ func cellLog(c cell.Cell, _ []string, out io.Writer) error {
 		return err
 	}
 	for _, e := range entries {
+		if e.IsAdopted {
+			fmt.Fprintf(out, "%s  %s  sealed on %s\n", short(e.Turn.ID), orDash(short(e.Turn.Parent)), orDefault(e.Adopted, "another device"))
+			continue
+		}
 		fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s\n", short(e.Turn.ID), orDash(short(e.Turn.Parent)),
 			time.UnixMilli(e.Turn.SealedAtMs).UTC().Format("2006-01-02T15:04:05Z"),
 			e.Turn.Trigger, toolSummary(e.Receipt), short(e.Turn.Receipt))
@@ -194,9 +198,11 @@ const shortIDLen = 12
 
 func short(id string) string { return id[:min(len(id), shortIDLen)] }
 
-func orDash(s string) string {
+func orDash(s string) string { return orDefault(s, "-") }
+
+func orDefault(s, otherwise string) string {
 	if s == "" {
-		return "-"
+		return otherwise
 	}
 	return s
 }

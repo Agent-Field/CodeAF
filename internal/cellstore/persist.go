@@ -102,8 +102,15 @@ func appendTurn(c cell.Cell, t Turn) error {
 // cell that was never sealed.
 func Head(c cell.Cell) (*Sealed, error) {
 	t, err := lastTurn(rel(c, TurnsPath))
-	if err != nil || t == nil {
+	if err != nil {
 		return nil, err
+	}
+	if a, ok := currentAdoption(c); ok {
+		sealed := a.sealed(t)
+		return &sealed, nil
+	}
+	if t == nil {
+		return nil, nil
 	}
 	r, err := readReceipt(c, t.Receipt)
 	if err != nil {

@@ -384,6 +384,7 @@ func TestTwoHomesL8ByteIdentical(t *testing.T) {
 	if err != nil || !bytes.Equal(gotLog, wantLog) || len(wantLog) == 0 {
 		t.Fatalf("transcript on B = %d bytes (%v), want A's %d bytes", len(gotLog), err, len(wantLog))
 	}
+	assertAdoptedHead(t, h, got.Taken.Cell)
 	assertEnvInjected(t, workspaceOf(rootB))
 	if m, _ := session.LoadMeta(rootB); m.ID != h.cell.ID {
 		t.Fatalf("B lists no session row for the chat it took: %+v", m)
@@ -478,10 +479,10 @@ func assertNotOverwritten(t *testing.T, h *twoHomes, c cell.Cell) {
 	}
 }
 
-// TestTwoHomesTakeBackKeepsHandEdit is the no-overwrite law at the take-back: A
-// edits a file by hand after B continued the chat, takes the chat back, and the
-// edit is sealed and kept as a branch before B's head is materialized.
-func TestTwoHomesTakeBackKeepsHandEdit(t *testing.T) {
+// bContinued is the scene both take-back tests start from: A sealed two turns
+// and let go, B took the chat, sealed one turn of its own and let go.
+func bContinued(t *testing.T) *twoHomes {
+	t.Helper()
 	h := newTwoHomes(t)
 	ctx := context.Background()
 	seedTree(t, h.work)
@@ -492,7 +493,6 @@ func TestTwoHomesTakeBackKeepsHandEdit(t *testing.T) {
 	if err := a.drive.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-
 	took, err := h.continuerB().Take(ctx, h.cell.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -503,10 +503,73 @@ func TestTwoHomesTakeBackKeepsHandEdit(t *testing.T) {
 	if err := b.drive.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
+	return h
+}
 
+// sameFolder asserts a path is still the very directory it was: editors and git
+// hold a project folder open, so it is never renamed or replaced.
+func sameFolder(t *testing.T, path string, before os.FileInfo) {
+	t.Helper()
+	after, err := os.Stat(path)
+	if err != nil || !os.SameFile(before, after) {
+		t.Fatalf("%s is not the folder it was (%v)", path, err)
+	}
+}
+
+func inodeOf(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info
+}
+
+// TestTwoHomesTakeBackIntoTheProjectFolder: A's chat works in the person's own
+// project folder, so when A takes the chat back B's turn lands in that folder,
+// where the person is looking, and neither it nor the chat's folder is replaced.
+func TestTwoHomesTakeBackIntoTheProjectFolder(t *testing.T) {
+	h := bContinued(t)
+	project, root := inodeOf(t, h.work), inodeOf(t, h.cell.Root)
+
+	back, err := h.continuerA().Take(context.Background(), h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Taken.Kept != "" {
+		t.Fatalf("a clean folder kept %s", back.Taken.Kept)
+	}
+	sameFolder(t, h.work, project)
+	sameFolder(t, h.cell.Root, root)
+	if back.Taken.Cell.Root != h.cell.Root || workspaceOf(h.cell.Root) != h.work {
+		t.Fatalf("the chat moved to %s / %s; it works in %s", back.Taken.Cell.Root, workspaceOf(h.cell.Root), h.work)
+	}
+	if _, err := os.Stat(filepath.Join(h.work, "turn-"+h.cell.ID[len(h.cell.ID)-4:]+"-1.txt")); err != nil {
+		t.Fatalf("B's turn did not reach the project folder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.cell.Root, "work")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a hidden copy was made (%v)", err)
+	}
+	if _, err := os.Stat(h.cell.Root + ".taking"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the staging folder is still there (%v)", err)
+	}
+	if m, _ := session.LoadMeta(h.cell.Root); m.ID != h.cell.ID || m.Workspace != h.work {
+		t.Fatalf("the session record lost its project: %+v", m)
+	}
+}
+
+// TestTwoHomesTakeBackKeepsHandEdit is the no-overwrite law at the take-back: A
+// edits a file by hand after B continued the chat, takes the chat back, and the
+// edit is sealed and kept as a branch before B's head is restored into the
+// folder, in place.
+func TestTwoHomesTakeBackKeepsHandEdit(t *testing.T) {
+	h := bContinued(t)
+	ctx := context.Background()
+	project := inodeOf(t, h.work)
 	if err := os.WriteFile(filepath.Join(h.work, "README.md"), []byte("# hand edit\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
 	back, err := h.continuerA().Take(ctx, h.cell.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -521,12 +584,12 @@ func TestTwoHomesTakeBackKeepsHandEdit(t *testing.T) {
 	if kept := h.fetchInto(rec.Cell.Head); kept["README.md"].body != "# hand edit\n" {
 		t.Fatalf("the branch holds README.md = %q; want the hand edit", kept["README.md"].body)
 	}
-	if got, _ := os.ReadFile(filepath.Join(h.work, "README.md")); string(got) != "# hand edit\n" {
-		t.Fatalf("A's project folder lost the edit: %q", got)
+	sameFolder(t, h.work, project)
+	if got, _ := os.ReadFile(filepath.Join(h.work, "README.md")); string(got) != "# project\n" {
+		t.Fatalf("the project folder holds README.md = %q; want B's head, the edit being in the branch", got)
 	}
-	work := workspaceOf(back.Taken.Cell.Root)
-	if _, err := os.Stat(filepath.Join(work, "turn-"+h.cell.ID[len(h.cell.ID)-4:]+"-1.txt")); err != nil {
-		t.Fatalf("B's turn is not in the taken tree: %v", err)
+	if _, err := os.Stat(filepath.Join(h.work, "turn-"+h.cell.ID[len(h.cell.ID)-4:]+"-1.txt")); err != nil {
+		t.Fatalf("B's turn is not in the project folder: %v", err)
 	}
 }
 
@@ -583,5 +646,22 @@ func TestTakeSideContinueHere(t *testing.T) {
 	turns, _ := cellstore.Turns(took.Taken.Cell)
 	if len(turns) == 0 || turns[len(turns)-1].Device != h.b.Device.Cert.Device {
 		t.Fatalf("B's chain = %+v; want B's turn last, under B's key", turns)
+	}
+}
+
+// assertAdoptedHead: the log of the chat B took shows A's head as one entry
+// sealed on A, with no receipt, and B's next turn descends from it.
+func assertAdoptedHead(t *testing.T, h *twoHomes, c cell.Cell) {
+	t.Helper()
+	aHead := headOf(t, h.cell)
+	entries, err := cellstore.Log(c)
+	if err != nil || len(entries) == 0 || !entries[0].IsAdopted || entries[0].Adopted != nameA || entries[0].Turn.ID != aHead {
+		t.Fatalf("B's log = %+v, %v; want A's head %s first, sealed on %s", entries, err, aHead, nameA)
+	}
+	b := h.openOn(h.b, h.engB, c, workspaceOf(c.Root), nameB)
+	b.mustSay("b next")
+	turns, _ := cellstore.Turns(c)
+	if got := turns[len(turns)-1].Parent; got != aHead {
+		t.Fatalf("B's next turn has parent %s; want A's head %s", got, aHead)
 	}
 }

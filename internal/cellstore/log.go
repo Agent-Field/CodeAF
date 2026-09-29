@@ -18,6 +18,11 @@ import (
 type Entry struct {
 	Turn    Turn
 	Receipt Receipt
+	// Adopted is set on the entry that stands for a head this device received
+	// rather than sealed: the name of the device that sealed it, "" when the
+	// chat did not say. Such an entry has no receipt.
+	Adopted   string
+	IsAdopted bool
 }
 
 // Turns reads the cell's whole chain, oldest first. A cell that was never
@@ -50,7 +55,11 @@ func Log(c cell.Cell) ([]Entry, error) {
 		return nil, err
 	}
 	slices.Reverse(turns)
-	entries := make([]Entry, 0, len(turns))
+	entries := make([]Entry, 0, len(turns)+1)
+	if from, ok := Adopted(c); ok {
+		head, _ := Head(c)
+		entries = append(entries, Entry{Turn: head.Turn, Adopted: from, IsAdopted: true})
+	}
 	for _, t := range turns {
 		r, err := readReceipt(c, t.Receipt)
 		if err != nil {

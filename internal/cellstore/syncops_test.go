@@ -65,7 +65,7 @@ func syncEngineOver(tr Transport) SyncEngine {
 }
 
 func TestSyncEngineOpsParseContractJSON(t *testing.T) {
-	c := cell.Cell{ID: "c1", Root: "/tree"}
+	c := cell.Cell{ID: "c1", Root: t.TempDir()}
 	tr := &scripted{replies: contractReplies}
 	e := syncEngineOver(tr)
 	ctx := context.Background()
@@ -90,7 +90,7 @@ func TestSyncEngineOpsParseContractJSON(t *testing.T) {
 	if err := e.Materialize(ctx, c, "h"); err != nil {
 		t.Fatal(err)
 	}
-	if tr.targets[0].DataDir != "/data/c1" || tr.targets[0].Tree != "/tree" {
+	if tr.targets[0].DataDir != "/data/c1" || tr.targets[0].Tree != c.Root {
 		t.Fatalf("target = %+v", tr.targets[0])
 	}
 }
@@ -178,7 +178,7 @@ func TestSyncEngineSpawnLeavesKeylessVerbsWithoutKeys(t *testing.T) {
 		return []byte(`{"snapshot":"s"}`), nil
 	}
 	e := syncEngineOver(Spawn{Binary: "engine", Run: run})
-	if err := e.Materialize(context.Background(), cell.Cell{ID: "c1"}, "h"); err != nil {
+	if err := e.Materialize(context.Background(), cell.Cell{ID: "c1", Root: t.TempDir()}, "h"); err != nil {
 		t.Fatal(err)
 	}
 	for _, kv := range environ {
