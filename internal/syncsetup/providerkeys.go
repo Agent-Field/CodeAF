@@ -1,80 +1,90 @@
 package syncsetup
 
 import (
-	"encoding/json"
-	"os"
-	"time"
+	"maps"
+	"path/filepath"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
-// providerKeys carries the keys stored in the profile's config.json, and only
-// those: everything else in that file stays on the machine it was set on.
-func providerKeys(profileDir string) vaultsync.Carried {
-	return vaultsync.Carried{ID: "home:provider-keys", Scope: "home:carried", Name: "provider keys", Medium: providerKeysMedium{profileDir}}
+// sourcePrefix marks a model service's key in a key name, so a service id can
+// never be mistaken for a settings row.
+const sourcePrefix = "source:"
+
+// providerKeys carries the keys stored in the profile's config.json, one vault
+// entry per key, and only those: everything else in that file stays on the
+// machine it was set on. The ledger of what was last shared sits in the home,
+// beside the vault.
+func providerKeys(profileDir, home string) vaultsync.Keyed {
+	return vaultsync.Keys("provider", providerKeyset{profileDir}, filepath.Join(home, "provider-keys.ledger"))
 }
 
-// providerKeysMedium is the key fields of config.json as a vaultsync.Medium. It
+// providerKeyset is the key fields of config.json as a vaultsync.Keyset. It
 // reads and writes through the config package, so the file's own lock, atomic
-// writer and mode apply.
-type providerKeysMedium struct{ profileDir string }
+// writer and mode apply, and no environment variable is ever consulted.
+type providerKeyset struct{ profileDir string }
 
-// Read answers the keys as JSON, and the config file's save time. A profile with
-// no key of its own holds nothing, which is how a removal travels; a config file
-// that cannot be read is damaged, not empty.
-func (m providerKeysMedium) Read() (string, time.Time, error) {
-	keys, err := config.ReadProviderKeys(m.profileDir)
+// Values flattens the stored keys to names: a settings row by its config key, a
+// service as "source:<id>". A config file that cannot be read is damaged, not
+// empty.
+func (s providerKeyset) Values() (map[string]string, error) {
+	keys, err := config.ReadProviderKeys(s.profileDir)
 	if err != nil {
-		return "", time.Time{}, vaultsync.ErrDamaged
+		return nil, vaultsync.ErrDamaged
 	}
-	if keys.Empty() {
-		return "", time.Time{}, os.ErrNotExist
+	values := maps.Clone(keys.Rows)
+	if values == nil {
+		values = map[string]string{}
 	}
-	info, err := os.Stat(config.BudgetConfigPath(m.profileDir))
-	if err != nil {
-		return "", time.Time{}, err
+	for id, key := range keys.Sources {
+		values[sourcePrefix+id] = key
 	}
-	return encodeKeys(keys), info.ModTime(), nil
+	return values, nil
 }
 
-// Write replaces the stored keys, and nothing else in the file. A content this
-// build cannot read is left alone.
-func (m providerKeysMedium) Write(content string) error {
-	keys, err := decodeKeys(content)
+// Holds reports whether this profile has a place for the key: every secret row,
+// and a service only when its row is listed here and stores its key inline.
+func (s providerKeyset) Holds(name string) bool {
+	return !config.ProviderKeysHeldBy(s.profileDir, unflatten(map[string]string{name: "held"})).Empty()
+}
+
+// Apply changes the named keys and leaves every other field of the file alone.
+func (s providerKeyset) Apply(changes map[string]string) error {
+	held, err := config.ReadProviderKeys(s.profileDir)
 	if err != nil {
 		return vaultsync.ErrDamaged
 	}
-	if _, err := config.ReadProviderKeys(m.profileDir); err != nil {
-		return vaultsync.ErrDamaged
+	next := config.ProviderKeys{Rows: maps.Clone(held.Rows), Sources: maps.Clone(held.Sources)}
+	for name, value := range changes {
+		next = with(next, name, value)
 	}
-	return config.WriteProviderKeys(m.profileDir, keys)
+	return config.WriteProviderKeys(s.profileDir, next)
 }
 
-func (m providerKeysMedium) Clear() error {
-	return config.WriteProviderKeys(m.profileDir, config.ProviderKeys{})
-}
-
-// Realized is content cut down to the services this machine has, and nothing
-// when no key is left.
-func (m providerKeysMedium) Realized(content string) string {
-	keys, err := decodeKeys(content)
-	if err != nil {
-		return content
+// with is keys with the named key set, or removed when value is empty.
+func with(keys config.ProviderKeys, name, value string) config.ProviderKeys {
+	table, key := &keys.Rows, name
+	if id, isSource := strings.CutPrefix(name, sourcePrefix); isSource {
+		table, key = &keys.Sources, id
 	}
-	held := config.ProviderKeysHeldBy(m.profileDir, keys)
-	if held.Empty() {
-		return ""
+	if *table == nil {
+		*table = map[string]string{}
 	}
-	return encodeKeys(held)
+	if value == "" {
+		delete(*table, key)
+	} else {
+		(*table)[key] = value
+	}
+	return keys
 }
 
-func encodeKeys(k config.ProviderKeys) string {
-	raw, _ := json.Marshal(k)
-	return string(raw)
-}
-
-func decodeKeys(content string) (config.ProviderKeys, error) {
-	var k config.ProviderKeys
-	return k, json.Unmarshal([]byte(content), &k)
+// unflatten is a set of flattened names as ProviderKeys.
+func unflatten(values map[string]string) config.ProviderKeys {
+	var keys config.ProviderKeys
+	for name, value := range values {
+		keys = with(keys, name, value)
+	}
+	return keys
 }

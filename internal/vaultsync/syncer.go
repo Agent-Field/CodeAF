@@ -46,7 +46,7 @@ type Syncer struct {
 	// Carry is the state that rides in the vault beside the secrets, each kept
 	// here in its own Medium (credentials.go, and the provider keys of the
 	// profile config).
-	Carry []Carried
+	Carry []Carrier
 	// Notify, when set, receives one plain sentence about what Inject skipped.
 	// A sentence names secrets, never their values.
 	Notify func(string)

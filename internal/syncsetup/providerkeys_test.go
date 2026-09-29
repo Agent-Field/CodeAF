@@ -62,7 +62,7 @@ func (r *keyRig) machine() *keyMachine {
 	dev := "dev_" + strings.Repeat(string(rune('a'+r.n)), 32)
 	m := &keyMachine{profile: filepath.Join(r.t.TempDir(), "profile")}
 	m.Syncer = vaultsync.Syncer{Store: r.store, Dir: r.dir.For(dev), Vault: v, CellKeyID: r.id.CellKeyID(),
-		Carry: []vaultsync.Carried{providerKeys(m.profile)}}
+		Carry: []vaultsync.Carrier{providerKeys(m.profile, home)}}
 	return m
 }
 
@@ -125,15 +125,10 @@ func TestProviderKeySetOnAIsUsableOnB(t *testing.T) {
 	}
 }
 
+// B's newer key survives A's later push, when A changed nothing about it.
 func TestProviderKeyNewerOnBIsNotClobbered(t *testing.T) {
-	r := newKeyRig(t)
-	a, b := r.machine(), r.machine()
-	now := time.Now()
-	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne}, now.Add(-time.Hour))
-	a.push(t)
-	b.pull(t)
-	b.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyTwo}, now.Add(-time.Minute))
-	a.saveConfig(t, map[string]any{config.KeyAPIKey: "FAKE-key-older"}, now.Add(-30*time.Minute))
+	a, b := syncedPair(t)
+	b.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyTwo}, time.Now())
 	b.push(t)
 	a.push(t)
 	b.pull(t)
@@ -141,10 +136,65 @@ func TestProviderKeyNewerOnBIsNotClobbered(t *testing.T) {
 	b.wantKey(t, fakeKeyTwo)
 }
 
-func TestProviderKeyRemovedOnAIsRemovedOnB(t *testing.T) {
+// An edit to something else in A's config.json does not make A's old key look
+// newer: only a key whose value changed is stamped.
+func TestUnrelatedConfigEditOnADoesNotBeatBsNewerKey(t *testing.T) {
+	a, b := syncedPair(t)
+	b.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyTwo}, time.Now())
+	b.push(t)
+	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, "daily_budget": 7.0}, time.Now())
+	a.push(t)
+	b.pull(t)
+	a.pull(t)
+	a.wantKey(t, fakeKeyTwo)
+	b.wantKey(t, fakeKeyTwo)
+	if a.config(t)["daily_budget"] != 7.0 {
+		t.Fatal("A's own budget was lost")
+	}
+}
+
+// syncedPair is two machines that both hold key one.
+func syncedPair(t *testing.T) (a, b *keyMachine) {
+	t.Helper()
+	r := newKeyRig(t)
+	a, b = r.machine(), r.machine()
+	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne}, time.Now())
+	a.push(t)
+	b.pull(t)
+	return a, b
+}
+
+// B lists no service X. Its push of an unrelated key edit neither tombstones
+// nor drops A's key for X: it stays in the vault, and on A.
+func TestProviderKeyOfAServiceBLacksSurvivesBsPush(t *testing.T) {
+	r := newKeyRig(t)
+	a, b, c := r.machine(), r.machine(), r.machine()
+	a.withService(t, "acme", "FAKE-acme")
+	a.push(t)
+	b.pull(t)
+	b.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyTwo}, time.Now())
+	b.push(t)
+	a.pull(t)
+	if got, _ := config.ReadProviderKeys(a.profile); got.Sources["acme"] != "FAKE-acme" {
+		t.Fatal("A lost its service key")
+	}
+	c.withService(t, "acme", "")
+	c.pull(t)
+	if got, _ := config.ReadProviderKeys(c.profile); got.Sources["acme"] != "FAKE-acme" {
+		t.Fatal("the vault lost the service key")
+	}
+}
+
+// withService lists a service on this machine, with an inline key when one is given.
+func (m *keyMachine) withService(t *testing.T, id, key string) {
+	t.Helper()
+	mustNil(t, config.WriteSources(m.profile, []config.PersistedSource{{ID: id, Written: id, Region: "us", Key: key}}))
+}
+
+func TestProviderKeyRemovedOnATombstonesOnB(t *testing.T) {
 	r := newKeyRig(t)
 	a, b := r.machine(), r.machine()
-	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne}, time.Now().Add(-time.Hour))
+	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne}, time.Now())
 	a.push(t)
 	b.pull(t)
 	a.saveConfig(t, map[string]any{}, time.Now())

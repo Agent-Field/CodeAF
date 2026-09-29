@@ -124,7 +124,10 @@ func writeSourceKeys(profileDir string, held, want map[string]string) error {
 // key is kept only for a service row the profile has and that stores its key
 // inline. It is what ReadProviderKeys answers after WriteProviderKeys(keys).
 func ProviderKeysHeldBy(profileDir string, keys ProviderKeys) ProviderKeys {
-	kept := ProviderKeys{Rows: keys.Rows}
+	var kept ProviderKeys
+	for _, name := range secretRowKeys() {
+		kept.Rows = putNonEmpty(kept.Rows, name, keys.Rows[name])
+	}
 	for _, row := range PersistedSources(profileDir) {
 		if row.KeyEnv == "" {
 			kept.Sources = putNonEmpty(kept.Sources, row.ID, keys.Sources[row.ID])

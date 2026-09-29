@@ -356,8 +356,9 @@ vault with your identity key and sent when they change, so a machine you continu
 ask you to enter keys again. One is `credentials.json`, the keys of every account you
 connected. The other is the model keys stored in your profile's `config.json`: the model key,
 the search keys, the app secret and the key of any model service that keeps its key in the
-file. When two machines both changed a key, the one saved last wins, and removing a key on one
-machine removes it on the other. A key that comes from an environment variable such as
+file. Each key is sent on its own: when two machines both changed the same key the one changed last
+wins, changing a budget or any other setting never makes a key look newer, and removing a key on
+one machine removes it on the other. A key that comes from an environment variable such as
 `OPENROUTER_API_KEY` is never sent. A damaged `credentials.json` or `config.json` is never
 sent and never replaces a good copy; when a good `credentials.json` arrives, the damaged file
 is kept beside it as `credentials.json.damaged`.
@@ -365,7 +366,8 @@ is kept beside it as `credentials.json.damaged`.
 **Budgets stay per machine.** Only the key fields of `config.json` travel. Your budgets and
 limits, model picks and every other setting are not sent, and a key arriving never changes them,
 so a limit you set here is not applied to your other machine. A service's key lands only on a
-machine that already has that service listed.
+machine that already has that service listed, and a machine without it never removes it for
+your other machines.
 
 If you continue a chat on a machine that already has it, the chat as it was left replaces
 what is there. Anything you had changed and never saved is kept first, as a branch, with the
