@@ -65,6 +65,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -182,8 +183,9 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 		folder.forget()
 		return nil, fmt.Errorf("%s", refusal)
 	}
-	folder.Linked = linkIgnored(repo, dir, folder.Notes, links)
-	excludeLinkedNames(dir, folder.Linked)
+	offline := programNetworkOff()
+	folder.Linked, folder.Carried = carryIgnored(repo, dir, folder.Notes, links, offline)
+	excludeLinkedNames(dir, folder.Linked, programEnvironmentFolders(offline))
 	ignored, err := git(dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 	if err != nil {
 		folder.forget()
@@ -469,13 +471,50 @@ func programCopyLinks(repo string) ([]string, error) {
 	return names, nil
 }
 
-// linkIgnored links into dir each of names that is in repo, at its top level,
-// and that git ignores there, and answers the ones it linked. A name git does
-// not ignore is the repository's own file and is in the copy already; one the
-// program keeps its notes under is never linked, because its notes are its own
-// run's.
-func linkIgnored(repo, dir, notes string, names []string) []string {
-	var linked []string
+// programNetworkOff says a program runs with its network off: SENIOR_DEV_NET
+// set to anything but "allow", read the way senior-dev reads it
+// (internal/seniordev/netpolicy), which fails closed on a word it does not
+// know. codeaf leaves the variable to the environment it was started in and
+// sets it on no run, so this is on unless somebody turned it off.
+func programNetworkOff() bool {
+	switch strings.ToLower(strings.TrimSpace(env.Value(programNetworkEnv))) {
+	case "", "allow":
+		return false
+	}
+	return true
+}
+
+// programNetworkEnv is senior-dev's network switch (netpolicy.EnvMode), which
+// its process inherits from codeaf's.
+const programNetworkEnv = "SENIOR_DEV_NET"
+
+// programEnvironmentFolders is the folders a program with its network on may
+// install a project's dependencies into in its copy ([soloDependenciesSection]
+// in internal/seniordev), which must stay out of git there whatever the
+// project's .gitignore says ([excludeLinkedNames]); none with the network off,
+// when nothing can be installed.
+func programEnvironmentFolders(offline bool) []string {
+	if offline {
+		return nil
+	}
+	return []string{".venv", "venv", "node_modules"}
+}
+
+// carryIgnored carries into dir each of names that is in repo, at its top
+// level, and that git ignores there, and answers the ones it linked and the
+// ones it put there of the copy's own. A name git does not ignore is the
+// repository's own file and is in the copy already; one the program keeps its
+// notes under is never carried, because its notes are its own run's.
+//
+// A LINK SHARES THE PERSON'S FOLDER, WRITES AND ALL. An `npm install` through a
+// linked node_modules, or a `pip install` into a linked .venv, changes the
+// environment the person works in, and an editable install in a linked .venv
+// points the copy's tests at the person's own source rather than the copy's.
+// So with the network on — the program can install what it lacks — nothing
+// that can be had another way is linked ([carryOne]); with it off nothing can
+// be installed, and linking is the only way the copy has what the project's
+// build and tests need.
+func carryIgnored(repo, dir, notes string, names []string, offline bool) (linked, carried []string) {
 	for _, name := range names {
 		if name == "" || strings.Contains(name, "/") || name == ".git" || name == "." || name == ".." ||
 			(notes != "" && name == strings.Trim(notes, "/")) {
@@ -492,11 +531,80 @@ func linkIgnored(repo, dir, notes string, names []string) []string {
 		if _, err := os.Lstat(target); err == nil {
 			continue
 		}
-		if os.Symlink(source, target) == nil {
+		switch carryOne(source, target, name, offline) {
+		case carryLinked:
 			linked = append(linked, name)
+		case carryOwn:
+			carried = append(carried, name)
 		}
 	}
-	return linked
+	return linked, carried
+}
+
+// carryWay is how one name reached a copy.
+type carryWay int
+
+const (
+	carryNone carryWay = iota
+	carryLinked
+	carryOwn
+)
+
+// carryOne puts one ignored name into a copy, and answers how:
+//
+//   - with the network off, every name is linked;
+//   - a file (an `.env`) is copied: it is small, and a link would let the
+//     program's edits land in the person's;
+//   - a Python virtual environment is left out: an editable install in it
+//     points at the person's source, so the copy's tests would import the
+//     person's code, and the program builds one of its own;
+//   - any other folder is cloned copy-on-write where the disk can (APFS, a
+//     reflinking Linux filesystem), which costs no space and no time;
+//   - where it cannot, `node_modules` is left out for the program to install,
+//     and a folder the project listed itself is linked, as the project asked.
+func carryOne(source, target, name string, offline bool) carryWay {
+	info, err := os.Stat(source)
+	switch {
+	case offline || err != nil:
+		return linkInto(source, target)
+	case info.Mode().IsRegular():
+		if copyFileInto(source, target, info.Mode().Perm()) == nil {
+			return carryOwn
+		}
+		return carryNone
+	case !info.IsDir():
+		return carryNone
+	case isVirtualEnv(source):
+		return carryNone
+	case cloneTree(source, target) == nil:
+		return carryOwn
+	case name == "node_modules":
+		return carryNone
+	}
+	return linkInto(source, target)
+}
+
+// isVirtualEnv says dir is a Python virtual environment: it holds pyvenv.cfg.
+func isVirtualEnv(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "pyvenv.cfg"))
+	return err == nil
+}
+
+// linkInto links target to source, answering carryLinked when it went.
+func linkInto(source, target string) carryWay {
+	if os.Symlink(source, target) == nil {
+		return carryLinked
+	}
+	return carryNone
+}
+
+// copyFileInto copies one file, its mode kept.
+func copyFileInto(source, target string, mode os.FileMode) error {
+	body, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(target, body, mode)
 }
 
 // excludeLinkedNames names, in the exclude file git reads for the copy at dir,
@@ -518,8 +626,14 @@ func linkIgnored(repo, dir, notes string, names []string) []string {
 // The file is rewritten whole, under codeaf's own lock on it, and put in place
 // by a rename, so git never reads half of it and two copies starting at once
 // never write over each other's lines.
-func excludeLinkedNames(dir string, names []string) {
-	if len(names) == 0 {
+//
+// AND THE FOLDERS A PROGRAM MAY INSTALL INTO ARE KEPT OUT OF GIT THE SAME WAY
+// (folders, [programEnvironmentFolders]): a project that does not ignore .venv
+// would otherwise have the program's new environment in its answer and its
+// finishing commit. They are named as folders (`/.venv/`), and only when git
+// in the copy would not already ignore a folder of that name.
+func excludeLinkedNames(dir string, names, folders []string) {
+	if len(names) == 0 && len(folders) == 0 {
 		return
 	}
 	exclude := gitExcludeFile(dir)
@@ -534,6 +648,11 @@ func excludeLinkedNames(dir string, names []string) {
 	for _, name := range names {
 		if _, err := git(dir, "check-ignore", "-q", "--", name); err != nil {
 			need = append(need, "/"+name)
+		}
+	}
+	for _, name := range folders {
+		if _, err := git(dir, "check-ignore", "-q", "--", name+"/"); err != nil {
+			need = append(need, "/"+name+"/")
 		}
 	}
 	if len(need) == 0 {

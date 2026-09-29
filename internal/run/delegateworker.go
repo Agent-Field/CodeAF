@@ -586,6 +586,17 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		reason = w.program.Name + " stopped on its own ceiling: " + t.Message
 	case delegate.StatusCrashed:
 		reason = w.program.Name + " crashed: " + t.Message
+	case delegate.StatusFail:
+		if t.HandedIn() {
+			// A CHANGE THE PROGRAM HANDED IN IS FINISHED, whatever its own check
+			// of the project said ([delegate.Terminal.HandedIn]): the run lands
+			// it, and the check's word rides on as the verdict, for the
+			// conversation to look into rather than to act on.
+			report.Verdict = t.Verdict()
+			end(sink.steps, "finished: "+t.Message, report.Result)
+			return report, nil
+		}
+		reason = w.program.Name + " did not finish: " + t.Message
 	default:
 		// `fail`, and any word this build does not know, is work that does not
 		// stand: the run reads it as incomplete.

@@ -145,8 +145,11 @@ type ProgramFolder struct {
 	// names linked into the copy from it ([programCopyLinks]), and LeftBehind
 	// the paths its checkout had not committed when the copy was cut, which
 	// the copy does not have ([ProgramFolder.LeftBehindWords]).
-	Repo       string   `json:"repo,omitempty"`
-	Linked     []string `json:"linked,omitempty"`
+	Repo   string   `json:"repo,omitempty"`
+	Linked []string `json:"linked,omitempty"`
+	// Carried is the ignored names put into the copy as its own — a file
+	// copied, a folder cloned — rather than linked ([carryOne]).
+	Carried    []string `json:"carried,omitempty"`
 	LeftBehind []string `json:"leftBehind,omitempty"`
 	// Snapshot is the commit that carries those uncommitted changes into the
 	// copy, the first on the program's branch, whose parent is Start; empty

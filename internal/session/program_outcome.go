@@ -41,10 +41,13 @@ const (
 	// programPassed is finished work the program's own run of the project's
 	// build and tests passed.
 	programPassed programVerdict = "passed"
-	// programUnverified is finished work nothing finished checking.
+	// programUnverified is finished work nothing finished checking, or whose
+	// program's own check of the project did not pass: the program handed in a
+	// change, and whether it stands is for the conversation to find out
+	// ([delegate.Terminal.HandedIn]).
 	programUnverified programVerdict = "unverified"
-	// programFailed is work the program handed in that does not pass, or work
-	// it did not finish.
+	// programFailed is work the program did not finish: it handed in no
+	// change.
 	programFailed programVerdict = "failed"
 	// programLimit is a run that stopped on a ceiling: the program's own, or a
 	// dollar or time limit the person set.
@@ -137,7 +140,7 @@ func programNextStep(o programOutcome) string {
 	case programPassed:
 		return "Its change passed the project's own checks. Check the result against what was asked, then tell the person in one short summary where the work is and offer to merge it."
 	case programUnverified:
-		return "Nothing finished checking its change. Run the project's checks on its branch yourself, then act on what they show as you would on a pass or a failure."
+		return "It handed in a change, but its own check of the project did not pass or did not finish. That check guesses the project's commands and environment and is often wrong about them, so what it says is a lead, not a verdict: run the project's own checks on its branch yourself, and act only on what yours show."
 	case programLimit:
 		return "It stopped on a limit, so another run spends more of the person's money: do not hand it back. Tell the person briefly what is done and what is left, and ask whether to spend more."
 	}
@@ -147,7 +150,7 @@ func programNextStep(o programOutcome) string {
 	if o.verdict == programCrashed {
 		return fmt.Sprintf("It broke rather than finished. If the cause looks passing (a network or provider failure), hand the same work to %s again; otherwise tell the person plainly. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 	}
-	return fmt.Sprintf("Its work does not stand yet. Read what failed; fix a small gap on its branch yourself, or hand the work back to %s with a brief sharpened by what failed. You may send it back %d more time%s on your own.", o.program, left, plural(left))
+	return fmt.Sprintf("It handed in no finished change. Read what it got done on its branch; finish a small gap yourself, or hand the work back to %s with a brief sharpened by what is missing. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 }
 
 // rememberProgramOutcomeLocked keeps a program's ending until the person next

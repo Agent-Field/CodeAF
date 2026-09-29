@@ -60,8 +60,11 @@ func TestTheOutcomeNoteSaysWhatToDoNowAndKeepsBothBounds(t *testing.T) {
 	if limit := note(programLimit, 0); !strings.Contains(limit, "ask whether to spend more") || strings.Contains(limit, "hand the work back") {
 		t.Fatalf("a limit's note does not say to ask the person first:\n%s", limit)
 	}
-	if unverified := note(programUnverified, 0); !strings.Contains(unverified, "Run the project's checks on its branch yourself") {
-		t.Fatalf("an unverified ending is not told to check the branch:\n%s", unverified)
+	// A PROGRAM'S OWN CHECK IS A LEAD, NOT A VERDICT: a change it handed in
+	// whose check did not pass is looked into before anything is fixed.
+	if unverified := note(programUnverified, 0); !strings.Contains(unverified, "run the project's own checks on its branch yourself, and act only on what yours show") ||
+		!strings.Contains(unverified, "a lead, not a verdict") || strings.Contains(unverified, "hand the work back") {
+		t.Fatalf("an ending whose own check did not pass is not told to check the branch first:\n%s", unverified)
 	}
 	if passed := note(programPassed, 0); !strings.Contains(passed, "offer to merge") {
 		t.Fatalf("a pass is not told to offer the merge:\n%s", passed)
@@ -279,7 +282,7 @@ func TestAProgramsLandingWakesATurnWithThePlaybook(t *testing.T) {
 		t.Fatal("the program's outcome turn was not handed the playbook")
 	}
 	last := messageText(request[len(request)-1])
-	if !strings.Contains(last, "task 7 · unverified · run 1") || !strings.Contains(last, "Run the project's checks on its branch yourself") {
+	if !strings.Contains(last, "task 7 · unverified · run 1") || !strings.Contains(last, "run the project's own checks on its branch yourself") {
 		t.Fatalf("the outcome note = %q, want the verdict and what to do now", last)
 	}
 	if got := completer.model(0); got != agent.model {

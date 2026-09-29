@@ -185,6 +185,27 @@ func (t Terminal) Observed() string {
 // protocol's status word, and "" when the record carried none.
 func (t Terminal) Verdict() string { return t.text("status") }
 
+// HandedIn says the program handed in a change of its own — senior-dev's
+// `submitted` — whatever its own check of that change then said, and false
+// when the record does not say.
+//
+// A CHANGE HANDED IN IS FINISHED WORK, AND A PROGRAM'S OWN CHECK OF IT IS A
+// LEAD, NOT A VERDICT. senior-dev ends `fail` when its guess at the project's
+// build and tests exits non-zero, and in a fortnight of real runs every such
+// ending came from the guess — a CI line cut in half, `python3 -m pytest` on a
+// machine with no pytest — and none from a change that broke the project. Read
+// as unfinished work, each one woke the conversation to "fix" work that was
+// never broken; the host reads a handed-in change as finished instead
+// (internal/run's DelegateWorker), with what the check said kept beside it.
+func (t Terminal) HandedIn() bool {
+	raw, ok := t.Data["submitted"]
+	if !ok {
+		return false
+	}
+	var handedIn bool
+	return json.Unmarshal(raw, &handedIn) == nil && handedIn
+}
+
 // Deliverable is the answer text of a delegate that lands text.
 func (t Terminal) Deliverable() string { return t.text("deliverable") }
 

@@ -255,3 +255,17 @@ func TestAShellRunWorksOnTheProfilesWorkSeat(t *testing.T) {
 		t.Fatalf("no seat changed the line: %q", got)
 	}
 }
+
+// A SHELL RUN THAT HANDED IN A CHANGE FINISHED, whatever senior-dev's own check
+// of it said, the way a conversation's run reads it; one that handed in
+// nothing did not.
+func TestAShellRunThatHandedInAChangeSaysItFinished(t *testing.T) {
+	handedIn := delegate.Terminal{Status: delegate.StatusFail, Message: "its check did not pass", Data: map[string]json.RawMessage{"submitted": json.RawMessage("true")}}
+	if said := carriedEnding("senior-dev", handedIn); said != "senior-dev finished: its check did not pass" {
+		t.Fatalf("a handed-in change ends %q", said)
+	}
+	nothing := delegate.Terminal{Status: delegate.StatusFail, Message: "no submission", Data: map[string]json.RawMessage{"submitted": json.RawMessage("false")}}
+	if said := carriedEnding("senior-dev", nothing); said != "senior-dev did not finish: no submission" {
+		t.Fatalf("a run that handed in nothing ends %q", said)
+	}
+}

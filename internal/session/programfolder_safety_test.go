@@ -59,23 +59,86 @@ func TestProgramFolderNeverCommitsPathsIgnoredAtStartOrRunCaches(t *testing.T) {
 	}
 }
 
-// A COPY LINKS IN THE DEPENDENCIES AND ENVIRONMENT A FRESH CHECKOUT LACKS, AND
-// NOTHING ELSE: an ignored `node_modules` and `.env` are there, an ignored
-// `bin/` is not — a run's `make build` once overwrote the binary its person was
-// running — and the copy's own tree is clean with them in it. A project names
-// its own list in `.codeaf/config.json`, an empty one linking nothing. The
-// links go before the copy does, and what they pointed at is untouched.
-func TestACopyLinksTheIgnoredDependenciesAndNothingElse(t *testing.T) {
+// dependencyRepo is a repository whose ignored dependencies, environment
+// files, build output and Python environment are all on disk, the way a
+// person's working project is.
+func dependencyRepo(t *testing.T) string {
+	t.Helper()
 	repo := safetyRepo(t)
-	writeFile(t, filepath.Join(repo, ".gitignore"), "node_modules/\nbin/\n.env\n.env.*\n")
+	writeFile(t, filepath.Join(repo, ".gitignore"), "node_modules/\nbin/\n.env\n.env.*\n.venv/\n")
 	mustGit(t, repo, "add", ".gitignore")
 	mustGit(t, repo, "commit", "-q", "-m", "ignore")
 	writeFile(t, filepath.Join(repo, "node_modules", "left-pad", "index.js"), "module.exports = 1\n")
 	writeFile(t, filepath.Join(repo, "bin", "codeaf"), "the person's binary\n")
 	writeFile(t, filepath.Join(repo, ".env"), "A=1\n")
 	writeFile(t, filepath.Join(repo, ".env.local"), "B=2\n")
+	writeFile(t, filepath.Join(repo, ".venv", "pyvenv.cfg"), "home = /usr/bin\n")
+	return repo
+}
+
+// A COPY WITH THE NETWORK ON HAS DEPENDENCIES OF ITS OWN, NOT LINKS INTO THE
+// PERSON'S. Its node_modules is a copy-on-write clone where the disk can make
+// one and absent where it cannot, for the program to install; its `.env` files
+// are copies; a Python environment is never carried, because an editable
+// install in it points at the person's own source; a build folder is never
+// carried at all — a run's `make build` once overwrote the binary its person
+// was running. So what the program installs or edits there never reaches the
+// person's folder, and none of it is committed.
+func TestACopyWithTheNetworkOnHasDependenciesOfItsOwn(t *testing.T) {
+	t.Setenv(programNetworkEnv, "")
+	repo := dependencyRepo(t)
+	probe := t.TempDir()
+	writeFile(t, filepath.Join(probe, "from", "f"), "x")
+	clones := cloneTree(filepath.Join(probe, "from"), filepath.Join(probe, "to")) == nil
+	t.Logf("this disk clones folders: %v", clones)
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Use the dependencies")
-	for _, name := range []string{"node_modules", ".env", ".env.local"} {
+	for _, name := range []string{".env", ".env.local"} {
+		info, err := os.Lstat(filepath.Join(folder.Dir, name))
+		if err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("%s is not a file of the copy's own: %v %v", name, info, err)
+		}
+	}
+	modules := filepath.Join(folder.Dir, "node_modules")
+	if info, err := os.Lstat(modules); clones && (err != nil || !info.IsDir()) {
+		t.Fatalf("node_modules was not cloned where the disk clones: %v %v", info, err)
+	} else if !clones && !os.IsNotExist(err) {
+		t.Fatalf("node_modules is in a copy on a disk that cannot clone: %v", err)
+	}
+	for _, gone := range []string{".venv", "bin"} {
+		if _, err := os.Lstat(filepath.Join(folder.Dir, gone)); !os.IsNotExist(err) {
+			t.Fatalf("%s was carried into the copy: %v", gone, err)
+		}
+	}
+	if status := strings.TrimSpace(gitOut(t, folder.Dir, "status", "--porcelain")); status != "" {
+		t.Fatalf("the copy's tree is not clean with its dependencies in it:\n%s", status)
+	}
+	if clones {
+		writeFile(t, filepath.Join(modules, "left-pad", "index.js"), "the program's install\n")
+	}
+	writeFile(t, filepath.Join(folder.Dir, ".env"), "A=the program's\n")
+	writeFile(t, filepath.Join(folder.Dir, "made.txt"), "work\n")
+	end := folder.Finish("done")
+	if paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Branch); strings.Contains(paths, "node_modules") || strings.Contains(paths, ".env") || !end.Kept {
+		t.Fatalf("a dependency entered the commit, or the work did not: %s", paths)
+	}
+	if body := readFile(t, filepath.Join(repo, "node_modules", "left-pad", "index.js")); body != "module.exports = 1\n" {
+		t.Fatalf("the program's install reached the person's node_modules: %q", body)
+	}
+	if body := readFile(t, filepath.Join(repo, ".env")); body != "A=1\n" {
+		t.Fatalf("the program's edit reached the person's .env: %q", body)
+	}
+}
+
+// A COPY WITH THE NETWORK OFF LINKS WHAT A FRESH CHECKOUT LACKS, because
+// nothing can be installed: the ignored node_modules, .venv and `.env` files
+// are links, a build folder is still not carried, the copy's tree is clean with
+// them in it, and the links go before anything is committed. A project names
+// its own list in `.codeaf/config.json`.
+func TestACopyWithTheNetworkOffLinksTheIgnoredDependencies(t *testing.T) {
+	t.Setenv(programNetworkEnv, "off")
+	repo := dependencyRepo(t)
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Use the dependencies")
+	for _, name := range []string{"node_modules", ".env", ".env.local", ".venv"} {
 		if target, err := os.Readlink(filepath.Join(folder.Dir, name)); err != nil || target != filepath.Join(repo, name) {
 			t.Fatalf("%s is not linked into the copy: %q, %v", name, target, err)
 		}
@@ -90,9 +153,6 @@ func TestACopyLinksTheIgnoredDependenciesAndNothingElse(t *testing.T) {
 	end := folder.Finish("done")
 	if paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Branch); strings.Contains(paths, "node_modules") || strings.Contains(paths, ".env") || !end.Kept {
 		t.Fatalf("a link entered the commit, or the work did not: %s", paths)
-	}
-	if body := readFile(t, filepath.Join(repo, "node_modules", "left-pad", "index.js")); body != "module.exports = 1\n" {
-		t.Fatalf("what a link pointed at was touched: %q", body)
 	}
 
 	writeFile(t, filepath.Join(repo, ".codeaf", "config.json"), `{"program.links": "bin"}`)

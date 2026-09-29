@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
+	"github.com/Agent-Field/codeaf/internal/seniordev/netpolicy"
 	"github.com/Agent-Field/codeaf/internal/seniordev/project"
 	"github.com/Agent-Field/codeaf/internal/seniordev/tool"
 )
@@ -232,7 +233,7 @@ func (runner *pipeline) soloConverse(
 	defer cancel()
 	prompt, err := adaptSoloPrompt(
 		runner.recorder,
-		buildSoloPrompt(goal, runner.readPinnedCommand(), ".senior-dev/checklist.md"),
+		buildSoloPrompt(goal, runner.readPinnedCommand(), ".senior-dev/checklist.md", !netpolicy.Current().Restricted()),
 	)
 	if err != nil {
 		return err

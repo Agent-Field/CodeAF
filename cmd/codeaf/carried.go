@@ -1019,7 +1019,12 @@ func carriedEnding(name string, terminal delegate.Terminal) string {
 	case delegate.StatusBudget:
 		said = name + " stopped at its ceiling"
 	case delegate.StatusFail:
+		// A change it handed in is finished, whatever its own check of it
+		// said, the way a conversation's run reads it ([delegate.Terminal.HandedIn]).
 		said = name + " did not finish"
+		if terminal.HandedIn() {
+			said = name + " finished"
+		}
 	default:
 		said = name + " crashed"
 	}

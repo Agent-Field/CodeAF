@@ -203,6 +203,9 @@ func TestARunFoundGoneWithNothingLeftSaysItsOwnCommitsHoldTheWork(t *testing.T) 
 // later stops ignoring `.env` is never told by a line of codeaf's that it is
 // ignored.
 func TestTheExcludeLinesLastOnlyAsLongAsACopy(t *testing.T) {
+	// THE NETWORK IS OFF, so node_modules is linked, which is when a line is
+	// needed for it.
+	t.Setenv(programNetworkEnv, "off")
 	repo := safetyRepo(t)
 	writeFile(t, filepath.Join(repo, ".gitignore"), "node_modules/\n.env\n")
 	mustGit(t, repo, "add", ".gitignore")
@@ -246,8 +249,8 @@ func TestAProjectsListOfLinksThatDoesNotApplyRefusesTheRun(t *testing.T) {
 	settings := filepath.Join(repo, ".codeaf", "config.json")
 	writeFile(t, settings, `{"program.links": ["bin"]}`)
 	listed := prepareIn(t, testPrograms("fake")[0], repo, "Listed")
-	if _, err := os.Readlink(filepath.Join(listed.Dir, "bin")); err != nil {
-		t.Fatalf("a list written as a JSON list was not linked: %v", err)
+	if _, err := os.Lstat(filepath.Join(listed.Dir, "bin", "tool")); err != nil {
+		t.Fatalf("a list written as a JSON list was not carried in: %v", err)
 	}
 	listed.Finish("")
 	for body, want := range map[string]string{
@@ -475,5 +478,36 @@ func TestARunSentBackCountsFromThePersonsCarriedInWork(t *testing.T) {
 	}
 	if end := second.Finish(""); !end.Kept || strings.Join(end.Changed, " ") != "done.go" {
 		t.Fatalf("the sent-back run counts %q, want the line's own done.go", end.Changed)
+	}
+}
+
+// THE FOLDERS A PROGRAM MAY INSTALL INTO STAY OUT OF GIT IN ITS COPY. With the
+// network on it may make a .venv, and a project that does not ignore one would
+// have the program's whole environment in its answer and its finishing commit;
+// the copy names it as a folder while it is on disk, and not with the network
+// off, when nothing is installed.
+func TestAnEnvironmentTheProgramMakesStaysOutOfItsCommit(t *testing.T) {
+	t.Setenv(programNetworkEnv, "")
+	repo := newTestRepo(t)
+	exclude := copyGitPath(t, repo, "info/exclude")
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Make an environment")
+	if during := readFile(t, exclude); !strings.Contains(during, "\n/.venv/\n") || !strings.Contains(during, "\n/node_modules/\n") {
+		t.Fatalf("the exclude file during the run =\n%s", during)
+	}
+	writeFile(t, filepath.Join(folder.Dir, ".venv", "pyvenv.cfg"), "home = /usr/bin\n")
+	writeFile(t, filepath.Join(folder.Dir, "fix.go"), "package fix\n")
+	folder.Finish("done")
+	if paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Branch); strings.Contains(paths, ".venv") || !strings.Contains(paths, "fix.go") {
+		t.Fatalf("the branch holds %q", paths)
+	}
+	if after, err := os.ReadFile(exclude); err == nil && strings.Contains(string(after), "/.venv/") {
+		t.Fatalf("the line outlived the copy:\n%s", after)
+	}
+
+	t.Setenv(programNetworkEnv, "off")
+	offline := prepareIn(t, testPrograms("fake")[0], repo, "No network")
+	defer offline.Finish("")
+	if during, _ := os.ReadFile(exclude); strings.Contains(string(during), "/.venv/") {
+		t.Fatalf("a run with the network off was given environment lines:\n%s", during)
 	}
 }

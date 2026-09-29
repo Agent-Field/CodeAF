@@ -204,16 +204,18 @@ section.
 ## What codeaf does when senior-dev ends — its ending, checked, sent back, retry, at most twice, ask before spending more
 
 **senior-dev's ending goes to the chat, not to you.** The moment a run ends, the
-conversation wakes on its own with how it came out — passed its own check of the project,
-nothing finished checking it, handed in work that does not pass, stopped on a limit, or
-broke — and acts on it:
+conversation wakes on its own with how it came out — handed in a change that passed its own
+check of the project, handed in a change its own check did not pass or did not finish,
+handed in nothing, stopped on a limit, or broke — and acts on it:
 
 - **passed**: the chat looks at what changed against what was asked, then tells you where
   the work is and offers to merge its branch;
-- **nothing checked it**: the chat runs the project's checks on its branch itself, then
-  acts on what they show;
-- **does not pass, or did not finish**: the chat fixes a small gap on its branch itself, or
-  hands the work back to senior-dev with a brief sharpened by what failed;
+- **handed in, but its own check did not pass or finish**: the run is done. senior-dev's
+  check guesses the project's commands and environment and is often wrong about them, so
+  the chat treats what it said as a lead: it runs the project's own checks on the branch
+  itself, and only a failure it sees there is fixed or handed back;
+- **handed in nothing**: the chat finishes a small gap on its branch itself, or hands the
+  work back to senior-dev with a brief sharpened by what is missing;
 - **stopped on a dollar or time limit**: the chat never sends it back on its own, because
   another run spends more of your money: it says what is done and what is left, and asks;
 - **broke**: the chat hands it back once if the cause looks passing (a network or model
@@ -280,10 +282,32 @@ first and the new run is cut from its work.
 
 Yes. Its `webfetch` tool can fetch URLs by default. Web search through Exa and Parallel
 is opt-in: set `SENIOR_DEV_ENABLE_EXA=1` or `SENIOR_DEV_ENABLE_PARALLEL=1` before
-starting codeaf. `SENIOR_DEV_NET=off` withholds `webfetch` and `websearch` for that run.
+starting codeaf. It may also install what a project's build and tests need (see missing
+dependencies). `SENIOR_DEV_NET=off` withholds `webfetch` and `websearch` for that run,
+drops the part of its instructions about installing anything, and makes its copy link
+your ignored dependency folders instead of having its own.
 Senior-dev also requests model sizes and capabilities from models.dev when its cached
 catalog is absent or stale. If that site cannot be reached, the run uses conservative
 model limits and still calls models through codeaf's loopback API.
+
+## senior-dev and missing dependencies — pytest not installed, No module named, pip refuses, npm install, a virtual environment
+
+**With the network on (the default), senior-dev installs what the project's build and
+tests need, into the project's own environment**: a `.venv` in its copy for Python
+(`python3 -m venv .venv`, then `pip install` inside it, or `uv sync`), `npm ci` or the
+project's package manager for Node, the usual fetch elsewhere. It is told never to install
+into the system (no `sudo`, no `--break-system-packages`, no global installs), which is why:
+Homebrew's Python refuses `pip install` outright. It is also told never to write a
+stand-in for a missing tool; one run once wrote a fake `pytest.py` to get past its own
+check.
+
+**Its own check of the project runs with that `.venv` active** (the one in the folder the
+command runs in, else the one at the top), so `python3 -m pytest` there is the
+environment's python, and what senior-dev installed is what the check uses.
+
+**With `SENIOR_DEV_NET=off` nothing is installed**, and its instructions say nothing about
+installing. Its copy links your own dependency folders instead (see whether senior-dev's
+copy has your node_modules).
 
 ## What happens to background commands after senior-dev ends — stop and detached processes
 
@@ -473,7 +497,7 @@ branch <branch> in <folder> as it stops` at once. **A run that changed nothing**
 nothing; its branch <branch> in <folder> is kept where it began, and your checkout was not
 touched`.
 
-## Where is senior-dev's copy — a git worktree in codeaf's cache folder, node_modules and .env linked in, removed when it ends
+## Where is senior-dev's copy — a git worktree in codeaf's cache folder, removed when it ends
 
 In a git repository senior-dev works in a git worktree of your repository under your
 account's cache folder (`~/Library/Caches/codeaf/worktrees/<repository>-<random>` on a
@@ -484,27 +508,42 @@ at once and your checkout is never touched, and it is removed the moment senior-
 another account made, is refused rather than used.
 
 **It starts from your folder as it stands**: your last commit, and your uncommitted changes
-as the branch's first commit. **A few
-folders git ignores are linked in from your folder**, because a fresh checkout lacks them
-and a project's build and tests need them: `node_modules`, `.venv`, `venv`, `.env`,
-`.envrc` and every `.env.*`, when they sit at the top of your repository and git ignores
-them. Nothing else is: build output such as `bin/`, `dist/` or `target/` is never linked,
-because two runs building into one folder corrupt each other. The links are removed before
-anything is committed, and never on a branch. **What senior-dev's shell writes through a
-link lands in your folder**: an `npm install` there updates your `node_modules`.
-
-A link that your `.gitignore` ignores only as a folder (`node_modules/`) is named in the
-repository's `.git/info/exclude`, between two `# codeaf:` lines, while a copy is on disk,
-and codeaf takes those lines out when the last copy of the repository is removed.
+as the branch's first commit. What git ignores is not in a fresh checkout, so a few ignored
+things at the top of your repository are carried in (next section); nothing else is, and
+build output such as `bin/`, `dist/` or `target/` never is, because two runs building into
+one folder corrupt each other.
 
 The brief senior-dev reads opens with one line saying where its copy is, and that a path
 the brief names under your folder is the same file in the copy.
 
-## Which folders are linked into senior-dev's copy — program.links, .codeaf/config.json, Git LFS
+## Does senior-dev's copy have my node_modules, .venv and .env — its own dependencies, copy-on-write, linked with the network off
+
+**With the network on (the default), the copy has its own, so nothing senior-dev installs
+or edits reaches your folder**:
+- `.env`, `.envrc` and every `.env.*` are copied in;
+- `node_modules` is cloned copy-on-write where your disk can (APFS on a Mac; btrfs or XFS
+  on Linux), which costs no space and no time; where it cannot, it is left out and
+  senior-dev installs it (`npm ci`);
+- a Python `.venv` or `venv` is never carried: an editable install in it points at your
+  own source, so the copy's tests would run your code, not senior-dev's. senior-dev makes
+  one of its own in the copy when the tests need one.
+
+`.venv/`, `venv/` and `node_modules/` stay out of git in the copy even when your
+`.gitignore` does not name them: codeaf adds them to `.git/info/exclude`, between two
+`# codeaf:` lines, while a copy is on disk, and takes the lines out when the last copy is
+removed.
+
+**With `SENIOR_DEV_NET=off` they are linked from your folder instead**, because nothing can
+be installed; then what senior-dev's shell writes through a link lands in your folder, and
+a link your `.gitignore` ignores only as a folder is named in that exclude file the same
+way. Links are removed before anything is committed.
+
+## Which folders are carried into senior-dev's copy — program.links, .codeaf/config.json, Git LFS
 
 **Name your own list** in the repository's `.codeaf/config.json`, as text or as a list:
 `"program.links": "node_modules, .env, vendor"` or `["node_modules", ".env", "vendor"]`.
-An empty one links nothing. **A list that does not apply refuses the run** with the file
+An empty one carries nothing. With the network on, a folder you list is cloned where the
+disk can and linked where it cannot; a file is copied. **A list that does not apply refuses the run** with the file
 named, rather than quietly linking the defaults: `<file>: program.links wants
 comma-separated text, or a list of names, got …; fix it, then ask again`; a name that is
 not at the top of the repository (`tools/bin`) is refused the same way, and so is a
@@ -870,11 +909,12 @@ senior-dev had finished but that codeaf closed under before the run was over rea
 
 A run ends in one of these ways, and the task's ending says which:
 
-- `finished: …` — it submitted, and the words after say what the project's build and
-  tests did on the frozen tree;
-- `senior-dev did not finish: …` — it ended without submitting, or what it submitted fails
-  the project's own build or tests. It is not drawn as a fault, what it made is still on its
-  branch, and the chat acts on it (see what codeaf does when senior-dev ends);
+- `finished: …` — it submitted a change, and the words after say what its own check of the
+  project's build and tests found on the frozen tree, passed or not: a change handed in is
+  finished work, and a check that did not pass is looked into by the chat, not acted on;
+- `senior-dev did not finish: …` — it ended without submitting. It is not drawn as a fault,
+  what it made is still on its branch, and the chat acts on it (see what codeaf does when
+  senior-dev ends);
 - `senior-dev reached the run's dollar ceiling of $5.00: …` — codeaf refused a model call
   at the dollar ceiling; the words after are senior-dev's own ending;
 - `senior-dev stopped on its own ceiling: …` — it stopped itself at the time ceiling;

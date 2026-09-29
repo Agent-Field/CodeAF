@@ -382,7 +382,7 @@ func TestInPlacePromptRewritesAllMatch(t *testing.T) {
 	if !ok {
 		t.Fatal("the coder agent is not available")
 	}
-	solo := buildSoloPrompt("Do the thing.", "", ".senior-dev/checklist.md")
+	solo := buildSoloPrompt("Do the thing.", "", ".senior-dev/checklist.md", true)
 	recorder := newSnapshotRecorder(t.TempDir(), func(string) {})
 
 	adaptedCoder, err := adaptCoderPrompt(recorder, coder)
@@ -410,7 +410,7 @@ func TestInPlacePromptRewritesAllMatch(t *testing.T) {
 // over rewording: an unchanged prompt hash keeps earlier runs comparable.
 func TestGitRecorderLeavesPromptsByteIdentical(t *testing.T) {
 	coder, _ := baked.GetBakedAgent("coder")
-	solo := buildSoloPrompt("Do the thing.", "", ".senior-dev/checklist.md")
+	solo := buildSoloPrompt("Do the thing.", "", ".senior-dev/checklist.md", true)
 	recorder := newGitRecorder(t.TempDir(), func(string) {})
 
 	adaptedCoder, err := adaptCoderPrompt(recorder, coder)
