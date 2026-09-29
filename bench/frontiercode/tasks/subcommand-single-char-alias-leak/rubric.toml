@@ -1,0 +1,77 @@
+# The rubric for the subcommand-single-char-alias-leak candidate.
+# Draft rubric from PLAN-pilot.md (Candidate 3), schema rubric-schema-v1,
+# verbatim: two prompt blockers written from the brief's behaviour alone, plus
+# the classical/scope criteria the fixture's schema supports.
+schema_version = 1
+judge_model = "openrouter/anthropic/claude-sonnet-4.5"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "single-char-alias-parses"
+kind = "classical"
+blocker = true
+weight = 1
+[criterion.classical]
+overlay = "/solution/test-overlay.patch"  # the PR's regression test, test-side
+run = "go test . -run TestSubCommandSingleCharAliases"
+
+[[criterion]]
+id = "alias-bookkeeping-by-invoked-form"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["build.go"]
+question = """The bookkeeping that lets sibling subcommands share flag names
+must delete an alias under the form it is invoked as: a one-character alias
+under its short form (-x), a longer alias under its long form (--x). Read the
+diff hunk. Does the change delete exactly the alias's own spelling, or does
+it instead clear whole records, drop duplicate detection for long aliases,
+or treat long aliases as short — any of which may stop THIS error while
+changing the conflict contract for every other flag? A change that widens
+the deletion beyond the alias's own form fails."""
+
+[[criterion]]
+id = "clean-build"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go build ./..."
+
+[[criterion]]
+id = "package-tests-pass"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "go test ."
+
+[[criterion]]
+id = "reverse-tests-fail"
+kind = "reverse-classical"
+blocker = false
+weight = 1
+[criterion.reverse_classical]
+run = "go test . -run TestSubCommandSingleCharAliases"
+revert_paths = ["build.go"]
+
+[[criterion]]
+id = "scope-focused"
+kind = "scope"
+blocker = false
+weight = 1
+[criterion.scope]
+max_files = 3
+max_changed_lines = 40
+allowed_paths = ["build.go", "kong_test.go"]
+forbidden_paths = [".github/"]
+
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "/solution/test-overlay.patch"
+run = "go test . -run TestSubCommandSingleCharAliases"
