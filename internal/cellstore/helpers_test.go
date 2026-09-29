@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -39,8 +37,7 @@ func engineFor(t testing.TB, dataRoot string) Engine {
 	return Engine{Binary: bin, DataRoot: dataRoot}
 }
 
-// fakeEngine seals without spawning anything: it invents snapshot ids and
-// leaves the .git directory where git init would.
+// fakeEngine seals without spawning anything: it invents snapshot ids.
 type fakeEngine struct {
 	mu    sync.Mutex
 	calls [][]string
@@ -50,13 +47,10 @@ func (f *fakeEngine) engine(t *testing.T) Engine {
 	return Engine{Binary: "engine", DataRoot: t.TempDir(), Run: f.run}
 }
 
-func (f *fakeEngine) run(_ context.Context, dir string, _ []string, argv ...string) ([]byte, error) {
+func (f *fakeEngine) run(_ context.Context, _ string, _ []string, argv ...string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, argv)
-	if argv[0] == "git" {
-		return nil, os.MkdirAll(filepath.Join(dir, repositoryMarker), 0o700)
-	}
 	return json.Marshal(map[string]string{"snapshot": fmt.Sprintf("%064x", len(f.calls))})
 }
 

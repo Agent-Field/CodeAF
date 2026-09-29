@@ -23,25 +23,26 @@
 //     directory per cell so writers never share a catalog lock. A seal is one
 //     spawn of `hook turn-end --turn <receipt id>`, which attaches a folder the
 //     engine has not seen and snapshots it with the agent-run trigger. The
-//     engine insists on a .git directory, so the first seal runs `git init`.
+//     folder need not be a git repository, and none is ever created in it.
 //
 // DEATH CREATES A BRANCH (L12). Every seal appends a Turn to .cell/turns.jsonl
 // naming its parent, and engine snapshots are immutable, so a chain that a dead
 // device sealed and never uploaded is still a chain with a known parent: stage 1
 // re-parents it as a child cell. Nothing here overwrites a turn.
 //
-// MEASURED (10,000 files, one changed, spark, load ~60): the engine CLI walks
-// and stats every file on each snapshot (about 5 syscalls per file), so a seal
-// costs hundreds of milliseconds, not the 15 ms the engine's library reaches
-// with an explicit changed-path list (engine/docs/performance.md). The 50 ms
-// target needs a CLI or daemon entry that takes the changed paths; see the
-// lane report. The harness's own share (compose, WAL, turn log) is a few ms.
+// FAST PATH. The engine keeps a stat cache per store, so a file whose stat has
+// not changed costs one statx and is neither opened nor read. A caller that
+// knows what changed says so in [TurnInfo].Changed, and the engine then visits
+// only those paths; without it the engine walks the folder through the cache.
+// bench_test.go measures both on 10,000 files with one changed.
 //
 // DEFERRED (L10 layout). .cell/ still lives inside the folder tools run in,
 // and the engine snapshots that folder as it stands. The seal therefore writes
 // every harness-owned file under .cell/ (meta.json, receipts, blobs) itself,
 // immediately before snapshotting, so what is sealed is what the harness
 // wrote; the transcript is the session engine's file and is sealed as found.
-// Moving .cell/ out of the exec root and composing it into the sealed tree
-// needs the engine to accept an extra tree root, which is an engine change.
+// The engine can now do its half: `--cell-dir <dir>` seals a directory outside
+// the folder as the tree's .cell/ entry, and `rewind --cell-dir <dir>` puts it
+// back there. What is left is moving the cell's state directory out of the exec
+// root and passing it, which belongs to the cell layout.
 package cellstore
