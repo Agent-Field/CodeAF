@@ -90,6 +90,7 @@ fi
 fc_host_arch_gate
 model_gate
 prereg_gate "$SHARD"
+fc_judge_gate
 fc_frozen_check
 local_bin_gate "$FC_RIG_DIR/bin/codeaf"
 
