@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -95,5 +96,43 @@ func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workspace, cell.StateDir)); !os.IsNotExist(err) {
 		t.Fatal("the rewind wrote .cell into the workspace")
+	}
+}
+
+func TestCellResolveClosesACrashedCallAndFindsBucketedCells(t *testing.T) {
+	if _, err := furrow.ResolveBinary(); err != nil {
+		t.Skipf("no engine binary: %v", err)
+	}
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	bucket := filepath.Join(home.Join("v3", "projects"), "-work")
+	c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := cellstore.Engine{}.Seal(context.Background(), c, cellstore.TurnInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wal, _, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wal.Begin(cellstore.Intent{V: 1, Tool: "bash", ArgsHash: "ab", Started: 1, SideEffect: "local"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runCellIn([]string{"log", c.ID}, &out, t.TempDir()); err != nil || !strings.Contains(out.String(), "unfinished  bash") {
+		t.Fatalf("log by id: %v\n%s", err, out.String())
+	}
+	if err := runCellIn([]string{"rewind", sealed.Turn.ID[:10], c.ID}, &out, t.TempDir()); err == nil {
+		t.Fatal("rewind must refuse while a call is unfinished")
+	}
+	out.Reset()
+	if err := runCellIn([]string{"resolve", c.ID}, &out, t.TempDir()); err != nil || !strings.Contains(out.String(), "resolved  bash") {
+		t.Fatalf("resolve: %v\n%s", err, out.String())
+	}
+	if err := runCellIn([]string{"rewind", sealed.Turn.ID[:10], c.ID}, &out, t.TempDir()); err != nil {
+		t.Fatalf("rewind after resolve: %v", err)
 	}
 }
