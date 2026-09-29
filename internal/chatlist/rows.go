@@ -103,6 +103,12 @@ func statusOf(c directory.Cell, now int64, self string) Status {
 	return Idle
 }
 
+// DeviceName is the name of device id as the list shows it, for the surfaces
+// that name a device outside a row.
+func DeviceName(devs map[string]directory.Device, id string, open Opener) string {
+	return deviceName(devs, id, open)
+}
+
 // deviceName opens the holder's sealed name; a name that will not open, or a
 // device the listing does not know, shows the first hex digits of its id.
 func deviceName(devs map[string]directory.Device, id string, open Opener) string {

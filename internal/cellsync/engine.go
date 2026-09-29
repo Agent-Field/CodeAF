@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
 // Engine is the device-local half of sync: the furrow verbs of the Stage 1
@@ -24,17 +25,9 @@ type Engine interface {
 	Materialize(ctx context.Context, c cell.Cell, head string) error
 }
 
-// Export is what one export produced.
-type Export struct {
-	Frames  []FrameFile
-	HeadRID string
-	Objects int
-	Bytes   int64
-}
-
-// FrameFile is one frame waiting in the outbox.
-type FrameFile struct {
-	Path    string
-	Objects int
-	Bytes   int64
-}
+// Export and FrameFile are cellstore's own types under the seam's names: one
+// definition, so cellstore.SyncEngine satisfies Engine with no adapter.
+type (
+	Export    = cellstore.Export
+	FrameFile = cellstore.FrameFile
+)

@@ -106,6 +106,12 @@ type materializeOp struct {
 
 func (materializeOp) Verb() string { return "materialize" }
 
+// composing marks the verb that reads the tree's composed .cell/ entry: the
+// other four work on the store alone and the engine refuses a --cell-dir there.
+type composing interface{ composesCellDir() }
+
+func (materializeOp) composesCellDir() {}
+
 func (o materializeOp) Args() []string { return []string{"--json", "materialize", "--head", o.Head} }
 
 // FrameFile is one frame the engine wrote to the outbox.
@@ -176,6 +182,16 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 	return e.ask(ctx, c, materializeOp{Head: head}, nil)
 }
 
+// targetFor is the cell's target as op needs it: only a composing verb is
+// told where the composed .cell/ directory is.
+func (e SyncEngine) targetFor(c cell.Cell, op Op) Target {
+	t := e.Target(c)
+	if _, ok := op.(composing); !ok {
+		t.CellDir = ""
+	}
+	return t
+}
+
 // outbox is the cell's frame directory: the caller's choice, else a sibling
 // of the store so frames stay on the store's filesystem.
 func (e SyncEngine) outbox(c cell.Cell) string {
@@ -188,7 +204,7 @@ func (e SyncEngine) outbox(c cell.Cell) string {
 // ask runs one verb and decodes its ok object into out (nil ignores it). Every
 // error names the verb and the cell, because a person is told which chat failed.
 func (e SyncEngine) ask(ctx context.Context, c cell.Cell, op Op, out any) error {
-	raw, err := e.Transport.Do(ctx, e.Target(c), op)
+	raw, err := e.Transport.Do(ctx, e.targetFor(c, op), op)
 	if err != nil {
 		return fmt.Errorf("sync %s of cell %s: %w", op.Verb(), c.ID, err)
 	}
@@ -199,4 +215,19 @@ func (e SyncEngine) ask(ctx context.Context, c cell.Cell, op Op, out any) error 
 		return fmt.Errorf("sync %s of cell %s: unreadable answer: %w", op.Verb(), c.ID, err)
 	}
 	return nil
+}
+
+// Sync is the sync engine over this store: the same transport and the same
+// per-cell directories the seals use, so an export reads exactly what a seal
+// wrote. The inbox is device-local scratch beside the cell's store.
+func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
+	return SyncEngine{
+		Transport: e.transport(),
+		Keys:      keys,
+		Ledger:    ledger,
+		Target: func(c cell.Cell) Target {
+			return Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: e.cellDir(c)}
+		},
+		Inbox: func(c cell.Cell) string { return e.LocalDir(c) + ".inbox" },
+	}
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -119,10 +120,20 @@ func TestOpenReadsInterval(t *testing.T) {
 	}
 }
 
+// The ledger name has one source, cellstore.LedgerName, fed the one normalized
+// relay address: two spellings of one relay share a ledger, two relays do not.
 func TestLedgerNameIsPerRelayAndIdentity(t *testing.T) {
-	a, b := ledgerName("http://a", "id_1"), ledgerName("http://b", "id_1")
-	if len(a) != 16 || a == b || a == ledgerName("http://a", "id_2") {
-		t.Fatalf("ledger names %q %q are not per (relay, identity)", a, b)
+	home := machine(t, "http://r:1/")
+	a, _, _ := Open(home)
+	t.Setenv(URLVar, "http://r:1")
+	b, _, _ := Open(home)
+	t.Setenv(URLVar, "http://other:1")
+	c, _, _ := Open(home)
+	if a.Ledger != b.Ledger || a.Ledger == c.Ledger {
+		t.Fatalf("ledger names %q %q %q are not per relay", a.Ledger, b.Ledger, c.Ledger)
+	}
+	if want := cellstore.LedgerName(a.Relay, a.Identity.ID()); a.Ledger != want || a.Relay != "http://r:1" {
+		t.Fatalf("ledger %q for relay %q, want %q", a.Ledger, a.Relay, want)
 	}
 }
 
