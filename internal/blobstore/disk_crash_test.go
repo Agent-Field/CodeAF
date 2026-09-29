@@ -77,7 +77,7 @@ func TestDiskResumesPointersAfterCrash(t *testing.T) {
 func TestDiskFrameNotDurableWritesNoPointer(t *testing.T) {
 	ctx := context.Background()
 	d, root, frame, o := newCrashDisk(t)
-	d.sync = func(*os.File) error { return errors.New("disk full") }
+	d.sync = func([]*os.File) error { return errors.New("disk full") }
 
 	if _, err := d.PutFrame(ctx, frame); err == nil {
 		t.Fatal("PutFrame succeeded although the frame could not be synced")
@@ -112,7 +112,7 @@ func TestDiskDanglingPointerIsNotNotFound(t *testing.T) {
 func TestDiskENOSPC(t *testing.T) {
 	for _, errno := range []error{syscall.ENOSPC, syscall.EDQUOT} {
 		d, root, frame, o := newCrashDisk(t)
-		d.sync = func(*os.File) error { return errno }
+		d.sync = func([]*os.File) error { return errno }
 		if _, err := d.PutFrame(context.Background(), frame); !errors.Is(err, ErrFull) {
 			t.Fatalf("PutFrame with %v = %v, want ErrFull", errno, err)
 		}

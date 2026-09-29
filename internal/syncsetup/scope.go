@@ -17,13 +17,19 @@ type Scope struct {
 	rec   *cellstats.Recorder
 }
 
-// scope counts the wire for one name. Counting sits between the wire and the
-// caller, so a test that swaps Sync.Store for a fault injector is counted the
-// same way the real client is.
+// scope is the one place the wire is wrapped: wire, then Counting, then
+// Resuming. Counting sits below Resuming on purpose. Resuming answers a frame it
+// already delivered without asking the relay, and probes the relay with has
+// requests after a timeout; the relay counts exactly the requests that reach it,
+// so counting beneath Resuming is what keeps the stats equal to the relay's
+// view. Each scope gets its own Resuming, whose memory of delivered frames is
+// then the memory of one chat's publishes or one vault run, and never leaks
+// frames between scopes. Sync.Store may be swapped by a test for a fault
+// injector, and is counted the same way as the real client.
 func (s *Sync) scope(name string) *Scope {
 	c := &blobstore.Counters{}
 	return &Scope{
-		Store: blobstore.Counting{Inner: s.Store, C: c},
+		Store: blobstore.NewResuming(blobstore.Counting{Inner: s.Store, C: c}),
 		rec:   cellstats.NewRecorder(s.Home, name, meter(c)),
 	}
 }
