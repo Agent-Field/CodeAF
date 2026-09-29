@@ -39,6 +39,7 @@ type twoHomes struct {
 	engB   cellstore.Engine // B's engine: its own data root, no workspace of its own
 	rootsB string           // where B keeps chats it takes
 	block  *blocker         // A's store, which can be made to fail
+	quiet  atomic.Bool      // A's heartbeats alone are refused; its uploads still reach the relay
 	wall   *noticeLog
 }
 
@@ -48,7 +49,7 @@ func newTwoHomes(t *testing.T) *twoHomes {
 	h := &twoHomes{driveRig: r, rootsB: t.TempDir(), wall: &noticeLog{}}
 	h.block = &blocker{Store: r.a.Store}
 	r.a.Store = h.block
-	r.a.Dir = offlineDir{Client: r.a.Dir, down: &h.block.down}
+	r.a.Dir = offlineDir{Client: r.a.Dir, down: func() bool { return h.block.down.Load() || h.quiet.Load() }}
 	h.engB = cellstore.EngineFor("")
 	h.engB.DataRoot, h.engB.Binary, h.engB.Transport = t.TempDir(), r.bin, cellstore.Spawn{Binary: r.bin}
 	r.sealMeta()
@@ -107,11 +108,11 @@ func (b *blocker) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID
 // test lets lapse would be renewed by A's own prompt heartbeat before B took it.
 type offlineDir struct {
 	directory.Client
-	down *atomic.Bool
+	down func() bool
 }
 
 func (d offlineDir) Heartbeat(ctx context.Context, id string, b directory.Beat) (directory.CellView, error) {
-	if d.down.Load() {
+	if d.down() {
 		return directory.CellView{}, blobstore.ErrUnreachable
 	}
 	return d.Client.Heartbeat(ctx, id, b)
