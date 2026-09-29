@@ -85,7 +85,7 @@ touches nothing: `--plan` (and `gcp-stage.sh --check`, `launch.sh
 | --- | --- | --- |
 | `gcp-create.sh` | `--plan`, `--create` | `--plan` prints the full campaign plan and needs no credentials; `--create` refuses an existing name, labels hosts `campaign=`/`lane=`, and sets `max-run-duration` + `STOP` |
 | `gcp-stage.sh` | `--plan`, `--check <instance> <shard>`, `--stage` | credential-free staging: a git bundle of committed HEAD keyed by a ref, the pinned binary re-hashed on the host, the rig commit checked out, the corpus pinned, the egress proxy bound and its address verified, then one background image warm loop guarded by a child-written PID file |
-| `gcp-key.sh` | `--install <instance>`, `--usage [instance]`, `--shred <instance>` | pushes the campaign key over ssh and prints only its length, a sha256 prefix and the provider usage counter; `--shred` before teardown |
+| `gcp-key.sh` | `--plan`, `--check`, `--install <instance>`, `--usage [instance]`, `--shred <instance>` | `--plan`/`--check` read nothing and transfer nothing; `--install` pushes the campaign key over ssh and prints only its length, a sha256 prefix and the provider usage counter; `--shred` before teardown |
 | `launch.sh` | `--check-local`, `--check <shard>`, `--execute <shard>`, `--replace <shard> <task>` | the gates and the four modes; waves of at most `wave_capacity`, one label each; `--replace` is the only re-run path |
 | `fetch-results.sh` | `--plan`, `--check`, `--fetch <instance> [--keep-host]`, `--teardown <instance>` | fetches every DONE-carrying run whole, verifies its full artifact set, exits non-zero and deletes nothing when anything is missing; then reports, shreds the key and deletes the host and its boot disk |
 
