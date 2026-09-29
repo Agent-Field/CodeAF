@@ -101,6 +101,9 @@ type Executed struct {
 	Call     Call         `json:"call"`
 	Services []ServiceRec `json:"services,omitempty"`
 	Exact    bool         `json:"exact"`
+	// Trigger is why the call ran: Setup for a setup turn's call. Empty is an
+	// ordinary run.
+	Trigger Trigger `json:"trigger,omitempty"`
 	// Changed is the workspace paths the call is known to have changed; nil is
 	// unknown, which is what any call that could touch anything leaves.
 	Changed []string `json:"changed,omitempty"`

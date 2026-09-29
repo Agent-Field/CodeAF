@@ -1,6 +1,9 @@
 package preflight
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Line is the one-line text for the chat list.
 func (it Item) Line() string {
@@ -46,4 +49,17 @@ func (r Report) Lines() []string {
 		out[i] = it.Line()
 	}
 	return out
+}
+
+// SetupBrief is the instruction a setup turn gives the agent: one line per
+// installable need, in the words the chat list uses, and the limits it works
+// within. It never names an impossible item, so nothing impossible is tried.
+func (r Report) SetupBrief() string {
+	var b strings.Builder
+	b.WriteString("This chat needs the following on this machine so it can run here. Install each one, " +
+		"keep to user space (no root), check that it now runs, then stop:\n")
+	for _, it := range r.Pending() {
+		b.WriteString("- " + it.Line() + "\n")
+	}
+	return b.String()
 }

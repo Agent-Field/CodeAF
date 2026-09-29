@@ -12,10 +12,11 @@ import (
 // workspace sealed when it returns. This is the one place a session's
 // executor is made.
 //
+// obs, when set, sees every process the seat ran (the inventory's observer).
 // report is told of a seal that failed; the call it followed is never failed
 // by it.
-func SeatFor(class executor.Class, c cell.Cell, workspace string, report func(error)) (executor.Seat, error) {
-	base := executor.Stance{Class: class}
+func SeatFor(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error)) (executor.Seat, error) {
+	base := executor.Stance{Class: class, Observer: obs}
 	if !cell.Enabled() {
 		return base, nil
 	}
@@ -46,8 +47,22 @@ type sealed struct {
 	rec *Recorder
 }
 
+// ForSetup implements executor.SetupSeat: the same recorder, and every call is
+// a setup turn's, so the seal says so.
+func (s sealed) ForSetup() executor.Seat {
+	s.Stance.Setup = true
+	return s
+}
+
 // Around implements executor.Seat.
 func (s sealed) Around(ctx context.Context, call executor.Call, run func() ([]byte, bool)) error {
-	effect := executor.Classify(executor.PolicyFor(s.Class, false))
-	return s.rec.Around(ctx, call, effect, run)
+	effect := executor.Classify(executor.PolicyFor(s.Class, s.Setup))
+	return s.rec.Around(ctx, call, effect, s.trigger(), run)
+}
+
+func (s sealed) trigger() Trigger {
+	if s.Setup {
+		return Setup
+	}
+	return AgentRun
 }

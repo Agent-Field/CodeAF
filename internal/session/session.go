@@ -1191,7 +1191,10 @@ type Config struct {
 	// the class the workspace declared and the seal after each call follow the
 	// session and never a path. Nil is a session with no cell, whose calls run
 	// on the host; see [Config.seat].
-	Seat    procexec.Seat
+	Seat procexec.Seat
+	// Machine is the session's view of the device it runs on, for the setup
+	// turn (setup.go). Nil is a session with no cell: it has nothing to set up.
+	Machine Machine
 	Model   string
 	APIKey  string
 	BaseURL string
@@ -3516,6 +3519,15 @@ func (c Config) seat() procexec.Seat {
 		return procexec.Host
 	}
 	return c.Seat
+}
+
+// seatFor is the seat a turn's tool calls run on: the session's own, or its
+// setup form when the turn is a setup turn (setup.go).
+func (c Config) seatFor(ctx context.Context) procexec.Seat {
+	if inSetup(ctx) {
+		return procexec.ForSetup(c.seat())
+	}
+	return c.seat()
 }
 
 // rootContext is where work that belongs to the session and not to a turn
