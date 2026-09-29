@@ -440,8 +440,9 @@ impl RefLog {
         if index.metadata()?.len() == 0 {
             index.write_all(INDEX_MAGIC)?;
         }
+        // No sync: the index is checked against the log on every use and
+        // rebuilt when it disagrees, and the log append has already synced.
         write_index_record(&mut index, &record)?;
-        index.sync_data()?;
         Ok(())
     }
 
@@ -457,7 +458,6 @@ impl RefLog {
         );
         index.seek(SeekFrom::Start(len - INDEX_RECORD_LEN as u64))?;
         write_index_record(&mut index, record)?;
-        index.sync_data()?;
         Ok(())
     }
 }

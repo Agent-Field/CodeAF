@@ -20,6 +20,9 @@ pub struct PackCheckpoint {
     pub last_record_start: u64,
 }
 
+/// Page cache for the catalog connection, in KiB.
+const CACHE_KIB: i64 = 32 * 1024;
+
 pub struct Catalog {
     conn: Connection,
 }
@@ -29,11 +32,18 @@ impl Catalog {
         let conn =
             Connection::open(path).with_context(|| format!("open catalog {}", path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "FULL")?;
-        // Every commit is already durable in the log, so closing need not pay
-        // two more syncs to copy it back into the database file; the log is
-        // folded in as it grows.
+        // The catalog indexes the packs and the reference log, which are the
+        // durable record: a commit lost to a crash is rebuilt at the next
+        // open, so a commit does not sync. The log is still crash-consistent
+        // (a lost suffix, never a torn database), and closing need not pay two
+        // syncs to copy it back into the database file; the log is folded in
+        // as it grows.
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        // A full walk looks up every file's stat row; a cache that holds the
+        // hot pages spares each lookup a read from the file.
+        conn.pragma_update(None, "cache_size", -CACHE_KIB)?;
         conn.set_db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)?;
+        crate::sqlite_adapter::fold_oversized_wal(&conn, path)?;
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS objects (

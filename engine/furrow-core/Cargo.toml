@@ -13,6 +13,10 @@ categories = ["command-line-utilities", "development-tools"]
 [lib]
 name = "furrow"
 
+[features]
+# Crash points armed by FURROW_FAULT, for the crash-safety tests only.
+fault-injection = []
+
 [dependencies]
 anyhow.workspace = true
 blake3.workspace = true

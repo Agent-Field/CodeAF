@@ -34,8 +34,11 @@ impl PathIndex {
         connection.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
-             PRAGMA temp_store=MEMORY;
-             CREATE TABLE IF NOT EXISTS entries (
+             PRAGMA temp_store=MEMORY;",
+        )?;
+        crate::sqlite_adapter::fold_oversized_wal(&connection, path)?;
+        connection.execute_batch(
+            "CREATE TABLE IF NOT EXISTS entries (
                 path BLOB PRIMARY KEY,
                 parent BLOB NOT NULL,
                 name BLOB NOT NULL,

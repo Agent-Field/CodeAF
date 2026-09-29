@@ -10,6 +10,24 @@ pub struct ConsistentBackup {
     pub integrity_ok: bool,
 }
 
+/// The most log a WAL-mode index may carry into an open.
+const WAL_BUDGET: u64 = 1 << 20;
+
+/// Folds the log of a database whose connections skip the close-time
+/// checkpoint. A skipped checkpoint never lets the log restart, and every open
+/// forgets how much of it was already copied, so an unbounded log is re-read
+/// and re-copied (with its syncs) by every process that opens the database.
+/// Folding it once it passes the budget makes that cost rare instead of
+/// constant.
+pub fn fold_oversized_wal(connection: &Connection, database: &Path) -> anyhow::Result<()> {
+    let mut wal = database.as_os_str().to_owned();
+    wal.push("-wal");
+    if std::fs::metadata(wal).map_or(0, |wal| wal.len()) > WAL_BUDGET {
+        connection.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+    }
+    Ok(())
+}
+
 const HEADER: &[u8; 16] = b"SQLite format 3\0";
 
 /// True when `bytes` begin the way every SQLite database file begins.

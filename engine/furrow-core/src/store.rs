@@ -1,5 +1,6 @@
 use crate::budget::{self, BudgetStatus};
 use crate::catalog::{CachedFile, Catalog, PackCheckpoint, TimelineRow};
+use crate::fault;
 use crate::gc::{self, GcReport};
 use crate::model::{ObjectId, ObjectKind, SnapshotTrigger};
 use crate::refs::{RefLog, RefRecord};
@@ -26,7 +27,53 @@ pub struct ObjectStore {
     root: PathBuf,
     catalog: Catalog,
     active_pack: RefCell<String>,
+    /// The run of records this process appended since the last pack sync.
+    unsynced: RefCell<Option<AppendRun>>,
     maintenance: Rc<MaintenanceState>,
+}
+
+/// Contiguous pack records appended by this process and not yet synced.
+struct AppendRun {
+    pack: String,
+    start: u64,
+    end: u64,
+    objects: u64,
+    last_object: ObjectId,
+    last_record_start: u64,
+}
+
+impl AppendRun {
+    /// This run with one more record appended after it, or a new run when the
+    /// record does not follow it (another process appended in between).
+    fn then(run: Option<Self>, pack: &str, id: ObjectId, start: u64, end: u64) -> Self {
+        match run {
+            Some(run) if run.pack == pack && run.end == start => Self {
+                end,
+                objects: run.objects + 1,
+                last_object: id,
+                last_record_start: start,
+                ..run
+            },
+            _ => Self {
+                pack: pack.to_owned(),
+                start,
+                end,
+                objects: 1,
+                last_object: id,
+                last_record_start: start,
+            },
+        }
+    }
+
+    /// The checkpoint after this run, when it continues `checkpoint`.
+    fn extend(&self, checkpoint: PackCheckpoint) -> Option<PackCheckpoint> {
+        (checkpoint.verified_len == self.start).then_some(PackCheckpoint {
+            verified_len: self.end,
+            object_count: checkpoint.object_count + self.objects,
+            last_object: Some(self.last_object),
+            last_record_start: self.last_record_start,
+        })
+    }
 }
 
 struct MaintenanceState {
@@ -84,6 +131,7 @@ impl ObjectStore {
             root,
             catalog,
             active_pack: RefCell::new(active_pack),
+            unsynced: RefCell::new(None),
             maintenance,
         };
         let startup_guard = MaintenanceGuard {
@@ -137,6 +185,15 @@ impl ObjectStore {
             let payload_offset = record_start + HEADER_LEN;
             pack.write_all(bytes)?;
             pack.write_all(OBJECT_END)?;
+            let end = pack.stream_position()?;
+            let run = self.unsynced.take();
+            self.unsynced.replace(Some(AppendRun::then(
+                run,
+                &active_pack,
+                id,
+                record_start,
+                end,
+            )));
             self.catalog.insert_object(
                 &id,
                 kind,
@@ -405,9 +462,18 @@ impl ObjectStore {
     }
 
     /// Runs `write` as one catalog transaction: the many small cache and index
-    /// writes of a capture become a single durable commit.
+    /// writes of a capture become a single commit. The pack is made durable
+    /// before that commit, so the catalog never names bytes the pack could
+    /// lose; the commit itself needs no sync of its own, because the catalog
+    /// is an index rebuilt from the pack and the reference log.
     pub fn batched<T>(&self, write: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<T> {
-        self.catalog.batch(write)
+        self.catalog.batch(|| {
+            let value = write()?;
+            fault::point("seal.captured");
+            self.sync_active_pack()?;
+            fault::point("seal.packed");
+            Ok(value)
+        })
     }
 
     pub fn cached_directory(
@@ -438,12 +504,14 @@ impl ObjectStore {
         // The append is the visibility boundary. Every referenced object was
         // sync'd before this call; SQLite is an advisory index rebuilt from it.
         self.sync_active_pack()?;
+        fault::point("seal.committed");
         let record = RefLog::open(&self.root, workspace_id)?.append(
             snapshot_id,
             sealed_at,
             label,
             trigger,
         )?;
+        fault::point("seal.logged");
         self.index_ref_record(workspace_id, &record)?;
         if let Err(error) = self.enforce_budget(false) {
             eprintln!("warning: automatic store-budget enforcement failed: {error:#}");
@@ -593,14 +661,33 @@ impl ObjectStore {
     }
 
     fn sync_active_pack(&self) -> anyhow::Result<()> {
-        let path = self
-            .root
-            .join("packs")
-            .join(self.active_pack.borrow().as_str());
+        let Some(run) = self.unsynced.take() else {
+            return Ok(());
+        };
+        let path = self.root.join("packs").join(&run.pack);
         if path.exists() {
             File::open(path)?.sync_data()?;
         }
-        Ok(())
+        self.advance_checkpoint(&run)
+    }
+
+    /// Records the synced run as verified, so the next open has no tail to
+    /// re-verify and re-sync. Skipped when another process appended before the
+    /// run: the open-time recovery scan owns that case.
+    fn advance_checkpoint(&self, run: &AppendRun) -> anyhow::Result<()> {
+        let checkpoint = self
+            .catalog
+            .pack_checkpoint(&run.pack)?
+            .unwrap_or(PackCheckpoint {
+                verified_len: 0,
+                object_count: 0,
+                last_object: None,
+                last_record_start: 0,
+            });
+        match run.extend(checkpoint) {
+            Some(next) => self.catalog.set_pack_checkpoint(&run.pack, &next),
+            None => Ok(()),
+        }
     }
 
     fn recover_pack(&mut self) -> anyhow::Result<()> {
