@@ -39,6 +39,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // v3Dir is ~/.codeaf/v3: the directory this surface keeps its own files in —
@@ -754,35 +755,41 @@ func v3Migrated(cfg session.Config) session.Config {
 // seat is set on every call, so a config reused for the next conversation never
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
-	cfg.Seat, cfg.Machine, cfg.Interrupted = nil, nil, nil
-	seat, machine := v3SeatOf(cfg.Place)
+	cfg.Seat, cfg.Machine, cfg.Seals, cfg.Interrupted = nil, nil, nil, nil
+	seat, machine, seals := v3SeatOf(cfg.Place, nil)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	if machine != nil {
 		cfg.Machine = machine
 	}
+	if seals != nil {
+		cfg.Seals = seals
+	}
 	return cfg
 }
 
-// v3SeatOf is the seat of the cell a place names, and the machine view it was
-// built with: the one construction every door that seals its calls goes
+// v3SeatOf is the seat of the cell a place names, the machine view it was
+// built with, and the watch of its seals — one per seat, so one per cell. A
+// nil say queues the watch's sentences for the surface showing the session;
+// a door with no surface passes where they go: the one construction every door that seals its calls goes
 // through. A place that is not a readable cell answers no seat.
-func v3SeatOf(place session.Place) (executor.Seat, *preflight.Machine) {
+func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
 	if !cell.Enabled() || place.Dir == "" || place.Workspace == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	c, err := cell.OpenAt(place.Dir, filepath.Base(place.Dir))
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	class, ok := executor.ParseClass(string(c.Meta().Class))
 	if !ok {
 		class = executor.HostBound
 	}
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
-	sealNotice.report(err)
-	seat, err := cellstore.SeatFor(class, c, place.Workspace, observerOf(machine), sealNotice.report)
-	sealNotice.report(err)
-	return seat, machine
+	watch := &cellstore.SealWatch{Say: say}
+	failed(watch, err)
+	seat, err := cellstore.SeatFor(class, c, place.Workspace, observerOf(machine), watch.Report)
+	failed(watch, err)
+	return seat, machine, watch
 }
 
 // observerOf is the machine's observer, and no observer where the inventory
@@ -794,15 +801,23 @@ func observerOf(m *preflight.Machine) executor.Observer {
 	return m.Observer()
 }
 
-// sealNotice tells a person once per launch that their calls are not sealed. It
-// is stderr, not the surface's notice row, until the launch has one for it.
-var sealNotice onceNotice
+// sealSeamOf is what a session's seals tell the chat surface: nothing for a
+// session with no seat of its own.
+func sealSeamOf(seals session.SealState) tui3.SealSeam {
+	if seals == nil {
+		return tui3.SealSeam{}
+	}
+	return tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
+}
 
-type onceNotice struct{ once sync.Once }
+// stderrSay is where a run with no surface says its sentences.
+func stderrSay(sentence string) { fmt.Fprintln(os.Stderr, "codeaf: "+sentence) }
 
-func (n *onceNotice) report(err error) {
+// failed tells the watch about a seat that could not be built, and is silent
+// about one that could: a nil error there is no seal having held.
+func failed(watch *cellstore.SealWatch, err error) {
 	if err != nil {
-		n.once.Do(func() { fmt.Fprintln(os.Stderr, "codeaf: "+err.Error()) })
+		watch.Report(err)
 	}
 }
 

@@ -33,6 +33,15 @@ const (
 	setupNothingWord = "nothing to set up: everything this chat uses is already here"
 )
 
+// SealState is what a session's seat knows about whether its last seal held.
+// cellstore.SealWatch is the one implementation.
+type SealState interface {
+	// Failing reports whether the most recent seal failed.
+	Failing() bool
+	// Take hands over the next sentence worth saying, and "" when there is none.
+	Take() string
+}
+
 // Machine is the session's view of the device it runs on. preflight.Machine is
 // the one implementation.
 type Machine interface {
