@@ -308,7 +308,8 @@ row may show only the name and its age. Those rows are read-only for now: enter 
 open them, and the takeover that would continue one here is not part of this screen yet.
 
 If the other machines cannot be reached, the last list stays on screen and the line
-`other machines unreachable` stands under it. With no connection set up at all, nothing
+`other machines unreachable` stands under it. With no connection set up at all (no
+`CODEAF_SYNC_URL`, see "Sync your chats between machines" in running-from-the-terminal), nothing
 extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 

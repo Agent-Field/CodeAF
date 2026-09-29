@@ -254,9 +254,34 @@ key the first time the identity is made on that machine.
 each: id, title, device, where it runs (`running on <device>`, `<device> off`,
 `<K> turns from <device>: merge / discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
-`--all` it prints the usage line. On a machine with no identity it prints
+`--all` it prints the usage line. With sync off (no `CODEAF_SYNC_URL`) it prints
+`sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
+set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
 other machines cannot be reached it starts with `other machines unreachable`.
+
+## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
+
+Two settings, both read from the environment, point this machine at a relay so your chats
+can follow you from one computer to another. Neither is a row in `/settings`: unset, sync is
+off and codeaf behaves exactly as it does without it.
+
+**`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`. Plain `http` is for
+trying it out inside an ssh tunnel; later the relay needs TLS. Unset means sync is off.
+Set to something that is not a web address, it stops with
+`CODEAF_SYNC_URL is not a web address like http://host:8787`. Set on a machine with no
+identity it stops with `this machine has no identity yet: codeaf identity import`; it never
+makes an identity for you, because a fresh one would be an identity none of your other
+machines know.
+
+**`CODEAF_SYNC_INTERVAL_MS`** is how often unsaved turns are sent to the relay, in
+milliseconds. The default is `5000`. A longer interval means fewer requests and more turns
+that only this machine has if it goes to sleep. It must be a positive number.
+
+Everything sent is sealed under your identity first; the relay holds no names, no titles and
+no file content it can read. Requests are signed by this machine's own device key, so the
+relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
+show your chats on the other machines once both machines share an identity and this setting.
 
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 

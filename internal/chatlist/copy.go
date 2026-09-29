@@ -10,6 +10,7 @@ import (
 const (
 	OfferContinue  = "continue here"
 	NoIdentity     = "this machine has no identity yet: codeaf identity import"
+	SyncOff        = "sync is off: set CODEAF_SYNC_URL to your relay's address"
 	Unreachable    = "other machines unreachable"
 	ClockOff       = "this computer's clock is off by more than 5 minutes"
 	runningOn      = "running on %s"
