@@ -3525,3 +3525,27 @@ func TestTheFreshInstallQuestionsReachTheirAnswers(t *testing.T) {
 		}
 	}
 }
+
+// The cost of syncing a conversation is kept as counts on the device, and a
+// person asking how to see it, or whether anything is sent, must reach the
+// section that names the command and says the export is opt-in.
+func TestTheCellReportQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"how much data did syncing this conversation upload", "codeaf cell report [<cell>]"},
+		{"how do I see the bytes and requests a sync used", "one row per flush"},
+		{"does codeaf send my sync usage numbers anywhere", "Nothing is exported unless you"},
+		{"can I export the sync cost report to a file", "codeaf cell report --export <file>"},
+		{"do the sync stats contain my file names or titles", "no file names, no titles and no content"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a running-from-the-terminal section that says %q", probe.asked, probe.says)
+		}
+	}
+}
