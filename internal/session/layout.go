@@ -16,7 +16,7 @@ type layout interface {
 	// transcript is the journal's path inside dir.
 	transcript(dir string) string
 	// truth is where dir keeps the truth file called name (state.json,
-	// tasks.json, team.json).
+	// tasks.json, team.json) or the directory called name (tasks/).
 	truth(dir, name string) string
 	// metaTruth is the file holding the truth-only fields of the session's
 	// meta, or "" when they ride in meta.json with the derived summary.
@@ -66,9 +66,14 @@ const (
 	placeMetaTruth = "session.json"
 )
 
-// truthNames are the files a legacy folder carries into .cell/ when it
-// migrates (session.TruthCarriers).
-var truthNames = []string{placeState, placeTasks, placeTeamCursors}
+// truthNames are the files, and truthTrees the directories, a legacy folder
+// carries into .cell/ when it migrates (session.TruthCarriers). The node
+// journals are truth: the checkpoint names them, and a chat moved without them
+// keeps its task list but loses what each task said and did.
+var (
+	truthNames = []string{placeState, placeTasks, placeTeamCursors}
+	truthTrees = []string{placeNodeJournals}
+)
 
 func (cellLayout) holds(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, cellStateDir))

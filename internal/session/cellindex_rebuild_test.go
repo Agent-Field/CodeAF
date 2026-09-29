@@ -3,6 +3,8 @@ package session_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -41,7 +43,8 @@ func TestDerivedIndexesRebuildFromTheTranscript(t *testing.T) {
 	dropLedger(t)
 
 	built, err := cellindex.Rebuild(c)
-	if err != nil || len(built) != len(cellindex.Indexes) {
+	// No task landed, so the task index has nothing to build.
+	if err != nil || len(built) != len(cellindex.Indexes)-1 {
 		t.Fatalf("Rebuild built %v, err %v", built, err)
 	}
 	assertMetaEquivalent(t, wantMeta, c.Root)
@@ -100,5 +103,41 @@ func dropLedger(t *testing.T) {
 	t.Helper()
 	if err := os.Remove(session.UsageLedgerPath()); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
+	}
+}
+
+// The bucket's task index, deleted, is rebuilt from the checkpoint: the rows
+// the live landings wrote come back, and the session's own copy is left alone.
+//
+// Compared field for field. Nothing in a row is stamped at write time: the
+// landing instant and duration are the record's own, so the rebuilt row is the
+// live row exactly.
+func TestTaskIndexRebuildsFromTheCheckpoint(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.RunScriptedSession(t, c.Root, "map the parser migration failures")
+	session.RunLandedTasks(t, c.Root, "map the parser", "fix the reconciler")
+
+	index := session.TaskIndexPath(session.Place{Dir: c.Root}.Transcript())
+	want := session.ReadTaskIndex(index)
+	if len(want) != 2 {
+		t.Fatalf("live landings wrote %d rows, want 2", len(want))
+	}
+	if err := os.Remove(index); err != nil {
+		t.Fatal(err)
+	}
+
+	built, err := cellindex.Rebuild(c)
+	if err != nil || !slices.Contains(built, "tasks.jsonl") {
+		t.Fatalf("Rebuild built %v, err %v", built, err)
+	}
+	if got := session.ReadTaskIndex(index); !reflect.DeepEqual(got, want) {
+		t.Fatalf("rebuilt rows differ:\n got  %+v\n want %+v", got, want)
+	}
+	if again, err := cellindex.Rebuild(c); err != nil || slices.Contains(again, "tasks.jsonl") {
+		t.Fatalf("second Rebuild built %v, want no task index (err %v)", again, err)
 	}
 }
