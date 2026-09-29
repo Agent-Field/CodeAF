@@ -88,6 +88,49 @@ func TestEagerCommit(t *testing.T) {
 	}
 }
 
+// A COMMIT OF ONE NAMED INPUT MUST NOT WRITE ANOTHER INPUT'S BLOB. Git reads
+// brackets in a path argument as a pattern unless the pathspec is literal.
+func TestAnEagerCommitOfABracketedNameTakesNoOtherInput(t *testing.T) {
+	dir := initGitRepo(t)
+	gitTestRun(t, dir, "commit", "-q", "--allow-empty", "-m", "base")
+	gitTestRun(t, dir, "switch", "-q", "-c", "task/run")
+	inputs := gitidentity.Inputs{}
+	for _, name := range []string{"notes[1].md", "notes1.md"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("person's "+name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fingerprint, ok := gitidentity.Fingerprint(path)
+		if !ok {
+			t.Fatalf("could not fingerprint %s", path)
+		}
+		inputs[name] = fingerprint
+	}
+	list := filepath.Join(t.TempDir(), "inputs-at-start")
+	if err := gitidentity.WriteInputs(list, inputs); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(gitidentity.InputsEnv, list)
+	t.Setenv("SENIOR_DEV_EXPECTED_BRANCH", "task/run")
+	changed := filepath.Join(dir, "notes[1].md")
+	if err := os.WriteFile(changed, []byte("run's notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	previous := skipEagerCommit.Load()
+	skipEagerCommit.Store(false)
+	defer skipEagerCommit.Store(previous)
+	EagerCommit(context.Background(), EagerCommitOptions{Cwd: dir, FilePath: changed, Label: "write"})
+	if got := gitTestRun(t, dir, "ls-tree", "-r", "--name-only", "-z", "HEAD"); got != "notes[1].md\x00" {
+		t.Fatalf("eager commit tree = %q, want only notes[1].md", got)
+	}
+	blob := strings.TrimSpace(gitTestRun(t, dir, "hash-object", "--", "notes1.md"))
+	command := exec.Command("git", "cat-file", "-e", blob)
+	command.Dir = dir
+	if err := command.Run(); err == nil {
+		t.Fatal("the input left alone was written into git's object store")
+	}
+}
+
 // A write made after HEAD leaves the run's branch remains uncommitted, on a
 // person's branch or on a detached HEAD, and never advances either ref.
 func TestEagerCommitSkipsAHeadMovedOffTheRunBranch(t *testing.T) {

@@ -666,9 +666,9 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 	if half := halfDone(f.Dir); half != "" {
 		return f.Dir + " is in the middle of a " + half
 	}
-	// Stage named paths only. A blanket add would put an initially ignored
-	// secret into the index when the run rewrote .gitignore, even if a later
-	// reset kept it out of the commit.
+	// Stage named paths only, literally. A blanket add would put an initially
+	// ignored secret into the index when the run rewrote .gitignore, and a
+	// patterned pathspec would write an untouched input's blob before a reset.
 	var toAdd []string
 	for _, args := range [][]string{
 		{"diff", "HEAD", "--name-only", "--no-renames", "-z", "--"},
@@ -685,7 +685,7 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		}
 	}
 	if len(toAdd) > 0 {
-		if out, err := git(f.Dir, append([]string{"add", "-A", "--"}, toAdd...)...); err != nil {
+		if out, err := git(f.Dir, append([]string{"--literal-pathspecs", "add", "-A", "--"}, toAdd...)...); err != nil {
 			return "git add: " + firstLine(out)
 		}
 	}
@@ -697,7 +697,7 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		if path == "" || !f.excludedFromCommit(path) {
 			continue
 		}
-		if out, err := git(f.Dir, "reset", "-q", "--", path); err != nil {
+		if out, err := git(f.Dir, "--literal-pathspecs", "reset", "-q", "--", path); err != nil {
 			return "git reset: " + firstLine(out)
 		}
 	}

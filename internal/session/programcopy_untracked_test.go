@@ -58,6 +58,29 @@ func TestTheEndingsStashTakesOnlyTheFilesItNames(t *testing.T) {
 	mustGit(t, repo, "merge", folder.Branch)
 }
 
+// THE FINISHING COMMIT MUST STAGE ONLY THE INPUT IT CHANGED. A bracketed name
+// otherwise matches its unbracketed neighbour as a git pathspec and writes the
+// untouched input's bytes into the object store even if it leaves the branch.
+func TestTheFinishingCommitWritesNoBlobForAnInputLeftAlone(t *testing.T) {
+	repo := newTestRepo(t)
+	for _, name := range []string{"notes[1].md", "notes1.md"} {
+		writeFile(t, filepath.Join(repo, name), "person's "+name+"\n")
+	}
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Finish the notes")
+	writeFile(t, filepath.Join(folder.Dir, "notes[1].md"), "run's notes\n")
+	end := folder.Finish("done")
+	if !end.Kept || end.Refused != "" {
+		t.Fatalf("finishing the changed input: %+v", end)
+	}
+	if got := gitOut(t, repo, "ls-tree", "-r", "--name-only", "-z", folder.Branch); got != "notes[1].md\x00shared.txt\x00" {
+		t.Fatalf("finished branch tree = %q, want only the changed input and shared.txt", got)
+	}
+	blob := strings.TrimSpace(gitOut(t, repo, "hash-object", "--", "notes1.md"))
+	if _, err := git(repo, "cat-file", "-e", blob); err == nil {
+		t.Fatal("the input left alone was written into git's object store")
+	}
+}
+
 // AN UNTRACKED FILE THE RUN CHANGED IS ITS WORK; ONE IT LEFT ALONE IS NOT. The
 // person's untracked files are copied in as inputs without entering git; a
 // half-written parser.py the run finishes goes on its branch, and a

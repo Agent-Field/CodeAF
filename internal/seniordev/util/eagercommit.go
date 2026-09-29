@@ -67,13 +67,13 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 	if GeneratedRunPath(relative) || IgnoredAtStart(relative) || InputLeftAlone(root, relative) {
 		return
 	}
-	add, _ := RunProcess(ctx, []string{"git", "add", "--", relative}, RunOptions{
+	add, _ := RunProcess(ctx, []string{"git", "--literal-pathspecs", "add", "--", relative}, RunOptions{
 		ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true,
 	})
 	if add.Code != 0 {
 		return
 	}
-	diff, _ := RunProcess(ctx, []string{"git", "diff", "--cached", "--quiet", "--", relative}, RunOptions{
+	diff, _ := RunProcess(ctx, []string{"git", "--literal-pathspecs", "diff", "--cached", "--quiet", "--", relative}, RunOptions{
 		ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true,
 	})
 	if diff.Code == 0 {
@@ -89,7 +89,7 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 	}
 	message := "wip(" + options.Label + "): " + relative
 	_, _ = RunProcess(ctx, GitArgv(
-		"commit", "-m", message, "--no-verify", "--only", "--", relative,
+		"--literal-pathspecs", "commit", "-m", message, "--no-verify", "--only", "--", relative,
 	), RunOptions{ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true})
 }
 
