@@ -204,8 +204,8 @@ func TestStandingAmbientPlainFolderWithoutGrant(t *testing.T) {
 		t.Fatalf("unexpected Run error: %v", err)
 	}
 
-	if outcome.Kind != "landed" {
-		t.Fatalf("expected outcome landed, got %q", outcome.Kind)
+	if outcome.Kind != "said" {
+		t.Fatalf("expected outcome said, got %q", outcome.Kind)
 	}
 	if !strings.Contains(outcome.Text, "everything looks fine") {
 		t.Fatalf("expected outcome.Text to contain response, got %q", outcome.Text)
