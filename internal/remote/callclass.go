@@ -140,7 +140,7 @@ func classify(method string) callClass {
 		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
 		MethodPlanTasks, MethodPlanTaskPage, MethodPlanTaskWork, MethodPlanRunSummary, MethodRefreshRunSummary,
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
-		MethodAttachedSkills, MethodSkillShelf,
+		MethodAttachedSkills, MethodSkillShelf, MethodSetupPlan,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodStandingItems, MethodStandingWatch,
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,

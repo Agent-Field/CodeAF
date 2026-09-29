@@ -1,6 +1,8 @@
 package inventory
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,4 +206,21 @@ func readFile(t *testing.T, r *rig) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// A tool run inside `bash -c` is the shell's child, and the inventory learns it
+// from the shell call's command line at the seat's boundary.
+func TestAToolRunByBashIsObserved(t *testing.T) {
+	r := newRig(t, "jq")
+	t.Setenv("PATH", r.bin)
+	seat := executor.Watching(executor.Host, r.obs)
+	args, _ := json.Marshal(map[string]string{"command": "cd sub && jq . a.json | wc -l"})
+	err := seat.Around(context.Background(), executor.Call{Tool: "bash", Args: args}, func() ([]byte, bool) { return nil, false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := r.store.Snapshot().Tools
+	if len(tools) != 1 || tools[0].Name != "jq" {
+		t.Fatalf("the inventory holds %+v, want jq alone", tools)
+	}
 }

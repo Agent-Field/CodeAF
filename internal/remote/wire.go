@@ -446,6 +446,7 @@ const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
 	MethodSubmitBash      = "SubmitBash"      // SubmitArgs → StreamRef, then shell output events
+	MethodSubmitSetup     = "SubmitSetup"     // nothing → StreamRef, then the setup turn's "event" frames
 	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
 	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
 	MethodSubmitFiles     = "SubmitFiles"     // SubmitFilesArgs → StreamRef, then "event" frames
@@ -600,6 +601,12 @@ const (
 	MethodAttachedSkills = "AttachedSkills" // nothing → []string
 	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
 	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
+
+	// This machine's preflight for the conversation (internal/session's
+	// setup.go), read where the tools run: the engine's device, which over a
+	// connection is the host and not the viewer. The setup turn it plans is
+	// [MethodSubmitSetup] above.
+	MethodSetupPlan = "SetupPlan" // nothing → SetupPlanReply
 
 	// The conversation's own posture on the tool gate (internal/session's
 	// approvalposture.go), the dial above one door over: the resolved posture
@@ -1273,6 +1280,13 @@ type Welcome struct {
 	// false keeps the picker's own sentence for a conversation that cannot
 	// carry attached skills rather than a list whose every choice goes nowhere.
 	Skills bool `json:"skills,omitempty"`
+
+	// Setup says this engine's conversation answers [MethodSetupPlan] and
+	// [MethodSubmitSetup] (setup.go), for [Welcome.Folders]'s reason: a
+	// *remote.Agent always has the methods. ABSENCE IS false, and the surface
+	// then says it has no machine to set up rather than showing a plan nobody
+	// can act on.
+	Setup bool `json:"setup,omitempty"`
 }
 
 // SkillShelfArgs asks for one reading of the conversation's skill shelf, on

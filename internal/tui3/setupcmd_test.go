@@ -39,7 +39,7 @@ func TestSetupShowsTheLinesAndActsOnlyOnNow(t *testing.T) {
 		machine.Item{Bucket: machine.Installable, Name: "jq"},
 		machine.Item{Bucket: machine.Impossible, Name: "nvcc", Reason: "needs CUDA"})
 
-	a.slash("/setup")
+	settleDoor(t, a, a.slash("/setup"))
 	shown := lastNote(t, a)
 	if !strings.Contains(shown, "/setup now") || agent.runs != 0 {
 		t.Fatalf("bare /setup said %q and ran %d turns; it must only show", shown, agent.runs)
@@ -55,7 +55,7 @@ func TestSetupShowsTheLinesAndActsOnlyOnNow(t *testing.T) {
 		}
 	}
 
-	runFirst(a.slash("/setup now"))
+	runFirst(settledCmd(t, a, a.slash("/setup now")))
 	if agent.runs != 1 {
 		t.Fatalf("/setup now started %d setup turns, want 1", agent.runs)
 	}
@@ -63,11 +63,11 @@ func TestSetupShowsTheLinesAndActsOnlyOnNow(t *testing.T) {
 
 func TestSetupWithNothingInstallableSaysSo(t *testing.T) {
 	a, agent := machineApp(t, machine.Item{Bucket: machine.Present, Name: "git"})
-	a.slash("/setup")
+	settleDoor(t, a, a.slash("/setup"))
 	if got := lastNote(t, a); got != setupAllHere {
 		t.Fatalf("said %q, want %q", got, setupAllHere)
 	}
-	runFirst(a.slash("/setup now"))
+	runFirst(settledCmd(t, a, a.slash("/setup now")))
 	if agent.runs != 0 {
 		t.Fatalf("started %d turns", agent.runs)
 	}
@@ -82,4 +82,15 @@ func runFirst(cmd tea.Cmd) {
 	if batch, ok := cmd().(tea.BatchMsg); ok && len(batch) > 0 {
 		batch[0]()
 	}
+}
+
+// settledCmd runs the plan door of /setup to its answer and hands back what the
+// fold started, the way the update loop would on the doorMsg.
+func settledCmd(t *testing.T, a *app, cmd tea.Cmd) tea.Cmd {
+	t.Helper()
+	msg, ok := cmd().(doorMsg)
+	if !ok {
+		t.Fatalf("the plan was not asked on the door line: %T", cmd())
+	}
+	return msg.fold(true)
 }
