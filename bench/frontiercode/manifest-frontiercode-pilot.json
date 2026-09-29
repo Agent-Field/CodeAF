@@ -1,65 +1,73 @@
 {
-  "schema": 1,
-  "campaign_name": "FrontierCode GCP pilot — codeaf senior-dev on the jsonschema fixture",
-  "preregistration": "bench/frontiercode/PREREGISTRATION-frontiercode-pilot.md",
-  "label_prefix": "fc-pilot",
-  "arm": "codeaf-senior-dev",
-  "seed_ids": ["s1", "s2", "s3", "s4", "s5"],
-  "seed_ids_note": "The official protocol runs 5 trials per model per reasoning-effort level and averages per level. A canary is a legal campaign: a one-element list runs a single trial. Seeds are swept inside one campaign, never pooled across one.",
-  "label_seed_note": "kept single-purpose: the run dir and docker names carry both seed and effort so two levels or two trials never collide",  
-  "hypothesis": "codeaf senior-dev, at reasoning effort high under the campaign's cost and hour caps, clears every blocker and scores 1.00 on the jsonschema-log-warning fixture through the GCP host path, with open-and-logged egress unflagged and the judge's model and prompt version recorded; a scored run is the delivery gate, the controls (gold 1.00, negative 0.0, seal flagged) are the grading gate, and one fixture is a working slice rather than a rate.",
-  "model": "deepseek/deepseek-v4.1-flash",
-  "provider": "openrouter",
-  "list_price_per_mtok": {
-    "input": 0.3,
-    "cache_read": 0.006,
-    "output": 1.2
-  },
-  "list_price_note": "The endpoint rate this campaign's key reaches, not the first-party rate: same figures the DeepSWE full113-v41 campaigns charged to Novita and GMICloud on 2026-09-12. The manifest price is the authority; models.dev is a cross-check when the network answers.",
-  "judge_model": "openrouter/anthropic/claude-sonnet-4.5",
-  "judge_prompt_version": "fc-judge-1",
-  "codeaf_commit": "f4ac67de73e0ef5eaec1d59cb44d9e312f73df98",
-  "codeaf_sha256": "27ca7e9fcb8da8329084c61f35a137acc256a4744e6abd8b641d036a64d7edb1",
-  "codeaf_local_binary": "bench/frontiercode/bin/codeaf-linux-amd64",
-  "rig_commit": "HEAD",
-  "rig_commit_note": "HEAD means the committed tip of the checkout being staged is the pin: a commit cannot name itself, so a literal here is refused the moment the rig is committed again. The sha is resolved and recorded at stage time, and staging refuses a dirty checkout or a commit no branch contains. codeaf_commit above stays literal because it names the revision the shipped binary was built from.",
-  "corpus": "bench/frontiercode/tasks",
-  "corpus_sha256": "9e8ff1d7a68c42b0629a4ca039a66602dd112219e3e89969a004cc7ae7873040",
-  "host_shards": 1,
-  "wave_capacity": 2,
-  "per_container": {
-    "cpus": 2,
-    "memory_gb": 8
-  },
-  "shard_files": {
-    "1": "bench/frontiercode/shards/shard-1.txt"
-  },
-  "shard_sha256": {
-    "1": "649e7c20f346da3fe40868dc097019fd609d3c29e62dd2acbcc720d4b88a0e01"
-  },
-  "max_cost_usd": "500.00",
-  "max_cost_note": "Per run, and enforced: launch.sh passes this to run.sh as the agent's dollar ceiling, and the judge's tokens bill against the same figure. It is not a campaign total. The campaign's provider-side spend is the delta of the key's usage counter between the baseline recorded at install and the final read at teardown.",
-  "max_hours": 2,
-  "hard_timeout_seconds": 7500,
-  "reasoning_efforts": ["high"],
-  "reasoning_efforts_note": "A swept dimension: launch.sh enumerates every level listed, and the report states the per-level metric and the best-performing level, as the official protocol does. Pin one level by listing one. This pilot lists only high to keep the cost inside the cap.",
-  "gcp": {
-    "project": "openaf-505800",
-    "zone": "us-central1-a",
-    "image": "codeaf-frontiercode-base-20260928",
-    "machine_type": "e2-standard-8",
-    "boot_disk_gb": 120,
-    "instance_prefix": "fc-pilot",
-    "max_run_duration": "6h"
-  },
-  "key": {
-    "store": "keychain",
-    "item": "frontiercode-generic",
-    "reuse": "one key may serve many campaigns; this campaign's spend is the delta of the provider's usage counter between the baseline recorded at install and the final read at teardown, valid on the assumption that nothing else used the key in that window"
-  },
-  "recovery": {
-    "note": "Declared contract exceptions live here, never hard-coded in a script. An empty list means this campaign expects no exception.",
-    "profiles": [],
-    "label_prefixes": []
-  }
+ "schema": 1,
+ "campaign_name": "FrontierCode GCP pilot — codeaf senior-dev on the jsonschema fixture",
+ "preregistration": "bench/frontiercode/PREREGISTRATION-frontiercode-pilot.md",
+ "label_prefix": "fc-pilot",
+ "arm": "codeaf-senior-dev",
+ "seed_ids": [
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5"
+ ],
+ "seed_ids_note": "The official protocol runs 5 trials per model per reasoning-effort level and averages per level. A canary is a legal campaign: a one-element list runs a single trial. Seeds are swept inside one campaign, never pooled across one.",
+ "label_seed_note": "kept single-purpose: the run dir and docker names carry both seed and effort so two levels or two trials never collide",
+ "hypothesis": "codeaf senior-dev, at reasoning effort high under the campaign's cost and hour caps, clears every blocker and scores 1.00 on the jsonschema-log-warning fixture through the GCP host path, with open-and-logged egress unflagged and the judge's model and prompt version recorded; a scored run is the delivery gate, the controls (gold 1.00, negative 0.0, seal flagged) are the grading gate, and one fixture is a working slice rather than a rate.",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "provider": "openrouter",
+ "list_price_per_mtok": {
+  "input": 0.3,
+  "cache_read": 0.006,
+  "output": 1.2
+ },
+ "list_price_note": "The endpoint rate this campaign's key reaches, not the first-party rate: same figures the DeepSWE full113-v41 campaigns charged to Novita and GMICloud on 2026-09-12. The manifest price is the authority; models.dev is a cross-check when the network answers.",
+ "judge_model": "openrouter/anthropic/claude-sonnet-4.5",
+ "judge_prompt_version": "fc-judge-1",
+ "codeaf_commit": "f4ac67de73e0ef5eaec1d59cb44d9e312f73df98",
+ "codeaf_sha256": "27ca7e9fcb8da8329084c61f35a137acc256a4744e6abd8b641d036a64d7edb1",
+ "codeaf_local_binary": "bench/frontiercode/bin/codeaf-linux-amd64",
+ "rig_commit": "HEAD",
+ "rig_commit_note": "HEAD means the committed tip of the checkout being staged is the pin: a commit cannot name itself, so a literal here is refused the moment the rig is committed again. The sha is resolved and recorded at stage time, and staging refuses a dirty checkout or a commit no branch contains. codeaf_commit above stays literal because it names the revision the shipped binary was built from.",
+ "corpus": "bench/frontiercode/tasks",
+ "corpus_sha256": "9e8ff1d7a68c42b0629a4ca039a66602dd112219e3e89969a004cc7ae7873040",
+ "host_shards": 1,
+ "wave_capacity": 5,
+ "per_container": {
+  "cpus": 4,
+  "memory_gb": 8
+ },
+ "shard_files": {
+  "1": "bench/frontiercode/shards/shard-1.txt"
+ },
+ "shard_sha256": {
+  "1": "649e7c20f346da3fe40868dc097019fd609d3c29e62dd2acbcc720d4b88a0e01"
+ },
+ "max_cost_usd": "500.00",
+ "max_cost_note": "Per run, and enforced: launch.sh passes this to run.sh as the agent's dollar ceiling, and the judge's tokens bill against the same figure. It is not a campaign total. The campaign's provider-side spend is the delta of the key's usage counter between the baseline recorded at install and the final read at teardown.",
+ "max_hours": 6,
+ "hard_timeout_seconds": 7500,
+ "reasoning_efforts": [
+  "high"
+ ],
+ "reasoning_efforts_note": "A swept dimension: launch.sh enumerates every level listed, and the report states the per-level metric and the best-performing level, as the official protocol does. Pin one level by listing one. This pilot lists only high to keep the cost inside the cap.",
+ "gcp": {
+  "project": "openaf-505800",
+  "zone": "us-central1-a",
+  "image": "codeaf-frontiercode-base-20260928",
+  "machine_type": "e2-standard-32",
+  "boot_disk_gb": 120,
+  "instance_prefix": "fc-pilot",
+  "max_run_duration": "6h"
+ },
+ "key": {
+  "store": "keychain",
+  "item": "frontiercode-generic",
+  "reuse": "one key may serve many campaigns; this campaign's spend is the delta of the provider's usage counter between the baseline recorded at install and the final read at teardown, valid on the assumption that nothing else used the key in that window"
+ },
+ "recovery": {
+  "note": "Declared contract exceptions live here, never hard-coded in a script. An empty list means this campaign expects no exception.",
+  "profiles": [],
+  "label_prefixes": []
+ }
 }
