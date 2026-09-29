@@ -3,12 +3,12 @@
 package tool
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
 type ripgrepResult struct {
@@ -24,30 +24,17 @@ type ripgrepRunner interface {
 type execRipgrepRunner struct{}
 
 func (execRipgrepRunner) Run(ctx context.Context, cwd string, args []string) (ripgrepResult, error) {
-	//codeaf:tool-pending
-	command := exec.CommandContext(ctx, "rg", args...)
-	command.Dir = cwd
-	command.Env = withoutEnv(os.Environ(), "RIPGREP_CONFIG_PATH")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	command.Stdout = &stdout
-	command.Stderr = &stderr
-	err := command.Run()
-	if err == nil {
-		return ripgrepResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), code: 0}, nil
-	}
+	res, err := executor.In(cwd).Exec(ctx, executor.ExecRequest{
+		Argv: append([]string{"rg"}, args...), Env: withoutEnv(os.Environ(), "RIPGREP_CONFIG_PATH"),
+		Net: executor.OpenNet, Group: executor.GroupInherit,
+	}, nil)
 	if ctx.Err() != nil {
 		return ripgrepResult{}, ctx.Err()
 	}
-	var exitError *exec.ExitError
-	if !errors.As(err, &exitError) {
+	if err != nil {
 		return ripgrepResult{}, err
 	}
-	return ripgrepResult{
-		stdout: stdout.Bytes(),
-		stderr: stderr.Bytes(),
-		code:   exitError.ExitCode(),
-	}, nil
+	return ripgrepResult{stdout: res.Stdout, stderr: res.Stderr, code: res.Exit}, nil
 }
 
 func withoutEnv(environment []string, name string) []string {

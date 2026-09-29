@@ -21,6 +21,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
 // SystemError is a tagged spawn or I/O failure.
@@ -298,6 +300,22 @@ type Handle struct {
 	options  CommandOptions
 }
 
+// specRequest maps a spawn spec onto an executor request: a detached child gets
+// its own process group, any other stays in the caller's.
+func specRequest(spec SpawnSpec) executor.ExecRequest {
+	req := executor.ExecRequest{
+		Argv: append([]string{spec.Path}, spec.Args...), Net: executor.OpenNet,
+		Group: executor.GroupInherit,
+	}
+	if spec.EnvSet {
+		req.Env = spec.Env
+	}
+	if spec.Detached && runtime.GOOS != "windows" {
+		req.Group = executor.GroupOwn
+	}
+	return req
+}
+
 // Spawn starts command and returns after every child has started.
 func (s *Spawner) Spawn(ctx context.Context, command Command) (*Handle, error) {
 	flat, err := flatten(command)
@@ -313,14 +331,9 @@ func (s *Spawner) Spawn(ctx context.Context, command Command) (*Handle, error) {
 			return nil, err
 		}
 		specs[i] = spec
-		//codeaf:tool-pending
-		cmd := exec.Command(spec.Path, spec.Args...)
-		cmd.Dir = spec.Cwd
-		if spec.EnvSet {
-			cmd.Env = spec.Env
-		}
-		if spec.Detached && runtime.GOOS != "windows" {
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd, err := executor.In(spec.Cwd).Command(context.Background(), specRequest(spec))
+		if err != nil {
+			return nil, err
 		}
 		commands[i] = cmd
 	}
