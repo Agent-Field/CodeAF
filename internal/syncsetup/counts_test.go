@@ -74,6 +74,7 @@ func TestScopesCountsEveryRelayRequest(t *testing.T) {
 	a.mustSay("second")
 	h.durable(h.cell.ID, h.cell)
 
+	h.quiet.Store(true) // without this A's own heartbeat could renew the lease before B asks for it
 	h.lapse()
 	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
 		t.Fatal(err)
