@@ -1575,7 +1575,8 @@ func (e ProgramFolderEnd) copySentence() string {
 // back through the branch itself — the run began from them. The inputs it left
 // alone are not on the branch, so no stash touches them. THE STASH MUST TAKE
 // ONLY THE INPUTS IT NAMES: shell quotes keep each path one word, but git still
-// reads pathspec patterns, so names with pattern characters need literal magic.
+// reads pathspec patterns, so a name with pattern characters, or a leading
+// colon git would read as magic, needs literal magic.
 func (e ProgramFolderEnd) mergeWords() string {
 	f := e.Folder
 	repo := shellQuoted(f.Repo)
@@ -1588,7 +1589,7 @@ func (e ProgramFolderEnd) mergeWords() string {
 	if changed := e.changedInputs(); len(changed) > 0 {
 		quoted := make([]string, len(changed))
 		for i, path := range changed {
-			if strings.ContainsAny(path, "*?[\\") {
+			if strings.ContainsAny(path, "*?[\\") || strings.HasPrefix(path, ":") {
 				path = ":(literal)" + path
 			}
 			quoted[i] = shellQuoted(path)

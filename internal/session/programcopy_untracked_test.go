@@ -16,12 +16,12 @@ import (
 // has handed it each word.
 func TestTheEndingsStashTakesOnlyTheFilesItNames(t *testing.T) {
 	repo := newTestRepo(t)
-	inputs := []string{"notes[1].md", "notes1.md", "star*.txt", "starZ.txt", "it's two  spaces.txt"}
+	inputs := []string{"notes[1].md", "notes1.md", "star*.txt", "starZ.txt", "it's two  spaces.txt", ":colon.txt", "colon.txt"}
 	for _, path := range inputs {
 		writeFile(t, filepath.Join(repo, path), "person's "+path+"\n")
 	}
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Finish the notes")
-	want := []string{"notes[1].md", "star*.txt", "it's two  spaces.txt"}
+	want := []string{"notes[1].md", "star*.txt", "it's two  spaces.txt", ":colon.txt"}
 	for _, path := range want {
 		writeFile(t, filepath.Join(folder.Dir, path), "run's "+path+"\n")
 	}
@@ -50,7 +50,7 @@ func TestTheEndingsStashTakesOnlyTheFilesItNames(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("the ending's stash took %q, want only %q; command: %s", got, want, command)
 	}
-	for _, path := range []string{"notes1.md", "starZ.txt"} {
+	for _, path := range []string{"notes1.md", "starZ.txt", "colon.txt"} {
 		if got := readFile(t, filepath.Join(repo, path)); got != "person's "+path+"\n" {
 			t.Fatalf("the ending changed untouched input %q to %q", path, got)
 		}
