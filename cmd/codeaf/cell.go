@@ -17,7 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell gc [--dry-run]"
+const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell gc [--dry-run]"
 
 // cellVerb is one word after `cell`: how many arguments of its own it takes
 // before the optional cell name, and what it does to the cell. A verb that is
@@ -30,9 +30,10 @@ type cellVerb struct {
 }
 
 var cellVerbs = map[string]cellVerb{
-	"log":    {args: 0, run: cellLog},
-	"rewind": {args: 1, run: cellRewind},
-	"gc":     {wide: true, run: cellGC},
+	"log":     {args: 0, run: cellLog},
+	"rewind":  {args: 1, run: cellRewind},
+	"resolve": {args: 0, run: cellResolve},
+	"gc":      {wide: true, run: cellGC},
 }
 
 // runCell is the stage 0 door onto a cell's turn chain. Like `engine` it is
@@ -69,9 +70,21 @@ func openCellNamed(name, cwd string) (cell.Cell, error) {
 	case name == "":
 		return openCellAbove(cwd)
 	case cell.ValidID(name):
-		return cell.Open(home.Dir(), name)
+		return openCellByID(name)
 	}
 	return openCellAbove(name)
+}
+
+// openCellByID finds a cell by id where a chat keeps it: in the project bucket
+// its workspace names, or in the flat cells directory of cell.Create.
+func openCellByID(id string) (cell.Cell, error) {
+	buckets, _ := filepath.Glob(filepath.Join(home.Join("v3", "projects"), "*", id))
+	for _, dir := range append(buckets, filepath.Join(cell.Dir(home.Dir()), id)) {
+		if c, err := cell.OpenAt(dir, id); err == nil {
+			return c, nil
+		}
+	}
+	return cell.Open(home.Dir(), id)
 }
 
 func openCellAbove(dir string) (cell.Cell, error) {
@@ -96,6 +109,39 @@ func cellLog(c cell.Cell, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s\n", short(e.Turn.ID), orDash(short(e.Turn.Parent)),
 			time.UnixMilli(e.Turn.SealedAtMs).UTC().Format("2006-01-02T15:04:05Z"),
 			e.Turn.Trigger, toolSummary(e.Receipt), short(e.Turn.Receipt))
+	}
+	return writeUnfinished(c, out)
+}
+
+// writeUnfinished says which calls began and never finished: a crash left them
+// in the call log, and the harness never runs them again on its own.
+func writeUnfinished(c cell.Cell, out io.Writer) error {
+	_, rec, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
+	if err != nil {
+		return err
+	}
+	for _, in := range rec.Incomplete {
+		fmt.Fprintf(out, "unfinished  %s  %s  started %s  not run again; `codeaf cell resolve` closes it\n", in.Tool,
+			in.SideEffect, time.UnixMilli(in.Started).UTC().Format("2006-01-02T15:04:05Z"))
+	}
+	return nil
+}
+
+// cellResolve closes every unfinished call of a cell no session holds, so the
+// cell can be rewound again.
+func cellResolve(c cell.Cell, _ []string, out io.Writer) error {
+	if cellBusy(c) {
+		return errors.New("a session holds this cell; close it first")
+	}
+	wal, rec, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
+	if err != nil {
+		return err
+	}
+	for _, in := range rec.Incomplete {
+		if err := wal.Resolve(in); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "resolved  %s  started %s\n", in.Tool, time.UnixMilli(in.Started).UTC().Format("2006-01-02T15:04:05Z"))
 	}
 	return nil
 }
