@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -36,4 +38,12 @@ func budgetOnOpen(dir string) {
 		return
 	}
 	guard.Go("chatv3/cell-budget", func() { _ = m.Auto(context.Background(), cellSweepEvery) })
+}
+
+// heldByEngineHint says why a cell can still read as held after every window
+// closed: the resident engine keeps a chat's lock while it waits for someone to
+// come back, and lets go on its own.
+func heldByEngineHint() string {
+	return fmt.Sprintf("an engine lets an idle chat go %s after the last window closes; `codeaf engine --stop` lets go now",
+		roughAge(enginehost.SessionIdleAfter()))
 }

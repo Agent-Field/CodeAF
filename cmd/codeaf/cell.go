@@ -131,7 +131,7 @@ func writeUnfinished(c cell.Cell, out io.Writer) error {
 // cell can be rewound again.
 func cellResolve(c cell.Cell, _ []string, out io.Writer) error {
 	if cellBusy(c) {
-		return errors.New("a session holds this cell; close it first")
+		return fmt.Errorf("a session holds this cell; close it first — %s", heldByEngineHint())
 	}
 	wal, rec, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
 	if err != nil {

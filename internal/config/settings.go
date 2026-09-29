@@ -2344,13 +2344,14 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeProfileCount(dir, KeyTaskMinFreeMB, raw) },
 		},
 		Setting{
-			Key: KeyCellBudget, Category: CategoryTasks, Kind: SettingCount,
+			Key: KeyCellBudget, Category: CategoryTasks, Kind: SettingText,
 			Label: "cell disk budget", Unit: "GB", Env: "CODEAF_CELL_BUDGET_GB",
 			Hint: "how much disk the working files of all cells may use together — 20 by " +
-				"default. Over it, `codeaf cell gc` evicts the cells opened longest ago and " +
-				"leaves any a session still holds. 0 stops watching the disk.",
-			read:  func() string { return strconv.Itoa(CellBudgetGBAt(dir)) },
-			write: func(raw string) error { return writeProfileCount(dir, KeyCellBudget, raw) },
+				"default, and a fraction such as 0.5 is fine. Over it, `codeaf cell gc` evicts " +
+				"the cells opened longest ago and leaves any a session still holds. 0 stops " +
+				"watching the disk.",
+			read:  func() string { return formatNumber(CellBudgetGBAt(dir)) },
+			write: func(raw string) error { return writeProfileNumber(dir, KeyCellBudget, raw) },
 		},
 		// Which model the work that LEAVES a conversation runs on. It sits with
 		// the countdown and the audit rather than among the model rows for the
@@ -4311,17 +4312,18 @@ func TaskMinFreeMBAt(profileDir string) int {
 	return minFreeMB
 }
 
-// CellBudgetGBAt resolves the cells' disk budget in gibibytes: the environment
-// pin, then the persisted row, then the default. An unreadable pin is the
-// default rather than an error, so a typo cannot lift the budget. 0 is no limit.
-func CellBudgetGBAt(profileDir string) int {
+// CellBudgetGBAt resolves the cells' disk budget in gibibytes, fractions
+// allowed (0.5 is half a gibibyte): the environment pin, then the persisted row,
+// then the default. An unreadable pin is the default rather than an error, so a
+// typo cannot lift the budget. 0 is no limit.
+func CellBudgetGBAt(profileDir string) float64 {
 	if raw := strings.TrimSpace(env.Get("CODEAF_CELL_BUDGET_GB")); raw != "" {
-		if value, err := parseCount(raw); err == nil {
+		if value, err := parseNumber(raw); err == nil {
 			return value
 		}
 		return DefaultCellBudgetGB
 	}
-	if value, ok := persistedInt(profileDir, KeyCellBudget); ok && value >= 0 {
+	if value, ok := persistedFloat(profileDir, KeyCellBudget); ok && value >= 0 {
 		return value
 	}
 	return DefaultCellBudgetGB

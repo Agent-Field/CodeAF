@@ -15,7 +15,7 @@ import (
 )
 
 // BudgetEnv is the one setting: the disk the working files of all cells may
-// use, in GiB. 0 means no limit.
+// use, in GiB, fractions allowed. 0 means no limit.
 const BudgetEnv = "CODEAF_CELL_BUDGET_GB"
 
 const defaultGiB = 20
@@ -24,11 +24,11 @@ const defaultGiB = 20
 // default rather than an error, so a typo cannot disable the budget silently
 // or refuse to start.
 func Limit() int64 {
-	gib, err := strconv.ParseInt(strings.TrimSpace(env.Get(BudgetEnv)), 10, 64)
+	gib, err := strconv.ParseFloat(strings.TrimSpace(env.Get(BudgetEnv)), 64)
 	if err != nil || gib < 0 {
 		gib = defaultGiB
 	}
-	return gib << 30
+	return int64(gib * (1 << 30))
 }
 
 // Outcome is what a sweep did, or would do, with one cell.

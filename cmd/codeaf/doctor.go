@@ -41,7 +41,10 @@ type doctorSnapshot struct {
 	// worth changing: the command exists to tell somebody why nothing works,
 	// and a missing key is the most common answer there is.
 	Key keyReport
-	Now time.Time
+	// Cells is what the cells' working files hold against the disk budget, "" when
+	// they hold nothing.
+	Cells string
+	Now   time.Time
 }
 
 // fallbackKeyEnv is the OpenAI-shaped variable [config.Load] accepts when the
@@ -135,6 +138,7 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 	// The key is read from the same profile, and for the same reason: `--db`
 	// moves the store and moves nothing about who this machine can talk to.
 	snapshot.Key = readKeyReport(strings.TrimSpace(env.Get(config.ProfileDirEnv)))
+	snapshot.Cells = cellsUsage()
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
 }
@@ -311,6 +315,9 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		"spend", spend)
 	if standing := strings.Join(standingParts, " · "); standing != "" {
 		block += fmt.Sprintf("%-16s %s\n", "standing", standing)
+	}
+	if snapshot.Cells != "" {
+		block += fmt.Sprintf("%-16s %s\n", "cells", snapshot.Cells)
 	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)

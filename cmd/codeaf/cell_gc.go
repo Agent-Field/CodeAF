@@ -31,7 +31,7 @@ func cellGC(_ cell.Cell, args []string, out io.Writer) error {
 
 func cellBudget() cellbudget.Manager {
 	m := cellbudget.New(cellstore.Engine{}, cellWorkspace, cellBusy)
-	m.Limit = int64(config.CellBudgetGBAt(config.ProfileDir())) << 30
+	m.Limit = int64(config.CellBudgetGBAt(config.ProfileDir()) * (1 << 30))
 	return m
 }
 
@@ -40,6 +40,19 @@ func writeGCReport(out io.Writer, rep cellbudget.Report) {
 	for _, a := range rep.Actions {
 		fmt.Fprintf(out, "  %s  %s  %s%s\n", a.ID, gcSize(a.Bytes), a.Outcome, gcWhy(a.Why))
 	}
+	if gcSawRunning(rep) {
+		fmt.Fprintf(out, "running: %s\n", heldByEngineHint())
+	}
+}
+
+// gcSawRunning is whether the sweep passed over a cell because a session holds it.
+func gcSawRunning(rep cellbudget.Report) bool {
+	for _, a := range rep.Actions {
+		if a.Why == "running" {
+			return true
+		}
+	}
+	return false
 }
 
 func gcWhy(why string) string {
@@ -54,6 +67,16 @@ func gcLimit(n int64) string {
 		return "unlimited"
 	}
 	return gcSize(n)
+}
+
+// cellsUsage is the doctor row: what the cells hold against the budget, and ""
+// when they hold nothing (a machine with no cells has measured nothing, not zero).
+func cellsUsage() string {
+	rep, err := cellBudget().Collect(context.Background(), true)
+	if err != nil || rep.Total == 0 {
+		return ""
+	}
+	return gcSize(rep.Total) + " of " + gcLimit(rep.Limit)
 }
 
 func gcSize(n int64) string { return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20)) }
