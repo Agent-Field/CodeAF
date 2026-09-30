@@ -158,6 +158,49 @@ func (d *Disk) Has(_ context.Context, rids []string) ([]bool, error) {
 	return have, nil
 }
 
+// GetFrame implements Store: the frame as it was written, read whole. The
+// frame is the truth, so this is a plain file read with no pointer to follow.
+func (d *Disk) GetFrame(_ context.Context, frame string) ([]byte, error) {
+	if err := checkGet(frame); err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(filepath.Join(d.frames, frame))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("blobstore: read frame: %w", err)
+	}
+	return b, nil
+}
+
+// Locate implements Store: read each rid's pointer line, which is exactly the
+// answer a location is. A rid with no pointer is absent from the map; a
+// pointer that exists is only ever written after its frame, as with Has.
+func (d *Disk) Locate(_ context.Context, rids []string) (map[string]Location, error) {
+	if err := checkHas(rids); err != nil {
+		return nil, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	at := make(map[string]Location, len(rids))
+	for _, rid := range rids {
+		line, err := os.ReadFile(d.pointerPath(rid))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("blobstore: read pointer: %w", err)
+		}
+		p, err := parsePointer(line)
+		if err != nil {
+			return nil, err
+		}
+		at[rid] = Location{Frame: p.Frame, Off: p.Off, Len: p.Len}
+	}
+	return at, nil
+}
+
 func (d *Disk) pointerPath(rid string) string {
 	return filepath.Join(d.objects, rid[:2], rid[2:])
 }
