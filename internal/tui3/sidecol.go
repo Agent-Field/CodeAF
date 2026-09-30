@@ -332,24 +332,29 @@ func (a *app) sideHeadRow(width int) (string, *sideRow) {
 	var b strings.Builder
 	used := 0
 	// word paints one word of the header: its label bold ink when it is in
-	// front and dim when it is not, its count the same except that a zero is
-	// always dim and a count of new rows (fresh) is always ink, so what arrived
+	// front and dim when it is not, its positive count the same except that a
+	// count of new rows (fresh) is always ink, so what arrived
 	// behind the other word is still read.
-	word := func(label, count string, fresh bool, current bool, act sideAct, hint string) {
-		text := label + " " + count
+	word := func(label string, n int, fresh bool, current bool, act sideAct, hint string) {
+		count, text := "", label
+		if n > 0 {
+			count = itoa(n)
+			text += " " + count
+		}
 		if fresh {
 			text += " " + sideNewWord
 		}
 		var painted string
 		switch {
 		case current:
-			painted = a.pal.bold(a.pal.ink(label + " "))
+			painted = a.pal.bold(a.pal.ink(label))
 		default:
-			painted = a.pal.dim(label + " ")
+			painted = a.pal.dim(label)
+		}
+		if count != "" {
+			painted += " "
 		}
 		switch {
-		case count == "0":
-			painted += a.pal.dim(count)
 		case fresh:
 			painted += a.pal.ink(count + " " + sideNewWord)
 		case current:
@@ -373,7 +378,7 @@ func (a *app) sideHeadRow(width int) (string, *sideRow) {
 		tasksAct = sideAct{kind: sideActView, view: sideTasks}
 		trafficAct = sideAct{kind: sideActView, view: sideTraffic}
 	}
-	word(sideTasksWord, itoa(len(a.taskOrder)), false, view == sideTasks, tasksAct, "Show this chat's tasks"+hintSegment+"click")
+	word(sideTasksWord, len(a.taskOrder), false, view == sideTasks, tasksAct, "Show this chat's tasks"+hintSegment+"click")
 	if team {
 		n, fresh := a.sideTrafficCount(t, kind, handle)
 		// WITH THE TRAFFIC IN FRONT NOTHING IN IT IS NEW TO THE WORD: the `new`
@@ -381,12 +386,12 @@ func (a *app) sideHeadRow(width int) (string, *sideRow) {
 		if view == sideTraffic {
 			fresh = 0
 		}
-		count, isNew := itoa(n), fresh > 0
+		count, isNew := n, fresh > 0
 		if isNew {
-			count = itoa(fresh)
+			count = fresh
 		}
 		// A NARROW COLUMN LOSES THE WORD `new` FIRST, and keeps the count.
-		full := ansi.StringWidth(sideWordSep + sideTrafficWord + " " + count + " " + sideNewWord)
+		full := ansi.StringWidth(sideWordSep + sideTrafficWord + " " + itoa(count) + " " + sideNewWord)
 		if isNew && used+full > width {
 			isNew = false
 		}
