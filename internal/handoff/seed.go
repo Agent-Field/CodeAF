@@ -47,6 +47,10 @@ func seedFrom(src, dst string) {
 	settleDirs(src, dst, dirs)
 }
 
+// linkFile makes a hard link. It is a variable so a test can refuse the link
+// the way a staging folder on another filesystem does.
+var linkFile = os.Link
+
 // skipEntry leaves out an entry, and what is below it when it is a folder.
 func skipEntry(d fs.DirEntry) error {
 	if d != nil && d.IsDir() {
@@ -64,7 +68,7 @@ func seedEntry(from, to string, d fs.DirEntry) bool {
 	case d.Type()&fs.ModeSymlink != 0:
 		return linkSymlink(from, to)
 	case d.Type().IsRegular():
-		return os.Link(from, to) == nil
+		return linkFile(from, to) == nil
 	}
 	return false
 }
