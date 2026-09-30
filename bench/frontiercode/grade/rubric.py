@@ -194,6 +194,11 @@ def phase_a(task_dir, repo, base, out_dir):
     results, evidence_dir = {}, out / "evidence"
     evidence_dir.mkdir(exist_ok=True)
 
+    # The judge's input is always present in the written phaseA.json, even when
+    # the patch did not apply: a non-applying patch is a legitimate 0, not a
+    # crash, and the combine step and the adaptive trigger both read this key.
+    judge_input = {"base": base, "criteria": {}, "test_files": {}, "overlay": ""}
+
     ok, note = apply_patch(repo, patch_path, "apply")
     if not ok:
         # A non-applying patch is a legitimate 0; every criterion records the
@@ -211,7 +216,6 @@ def phase_a(task_dir, repo, base, out_dir):
         # evidence gathered after that would show the base tree and judge
         # nothing. (This really happened: the first gold control graded its
         # prompt criteria against an unmodified tree.)
-        judge_input = {"base": base, "criteria": {}, "test_files": {}, "overlay": ""}
         for c in rubric["criteria"]:
             if c["kind"] == "prompt":
                 paths = (c.get("prompt") or {}).get("paths", [])
