@@ -4,6 +4,7 @@ use crate::chunker::ChunkStream;
 use crate::claims;
 use crate::content_class::{self, ContentClass};
 use crate::coord;
+use crate::durability::Written;
 use crate::estimate::{self, CaptureEstimate};
 use crate::fork::{fork_workspace_excluding, try_clone_file, ForkReport, ForkTier};
 use crate::gc::{self, GcReport};
@@ -1266,77 +1267,13 @@ impl FurrowRepository {
         index.commit()
     }
 
+    /// Makes the delta a plan just wrote durable in one batch.
     fn sync_applied_delta(
         &self,
         target: &BTreeMap<Vec<u8>, FlatEntry>,
         plan: &RewindPlan,
     ) -> anyhow::Result<()> {
-        let changed: BTreeSet<_> = plan
-            .changes
-            .iter()
-            .map(|change| change.raw_path.as_slice())
-            .collect();
-        let files: Vec<_> = target
-            .iter()
-            .filter(|(path, flat)| {
-                changed.contains(path.as_slice()) && flat.entry.kind == EntryKind::File
-            })
-            .map(|(path, _)| safe_join(&self.root, path))
-            .collect::<anyhow::Result<_>>()?;
-
-        for batch in files.chunks(4) {
-            std::thread::scope(|scope| -> anyhow::Result<()> {
-                let handles: Vec<_> = batch
-                    .iter()
-                    .map(|path| {
-                        scope.spawn(move || -> anyhow::Result<()> {
-                            File::open(path)?.sync_all()?;
-                            Ok(())
-                        })
-                    })
-                    .collect();
-                for handle in handles {
-                    handle.join().expect("sync worker panicked")?;
-                }
-                Ok(())
-            })?;
-        }
-
-        let mut directories = BTreeSet::new();
-        directories.insert(self.root.clone());
-        for change in &plan.changes {
-            let path = safe_join(&self.root, &change.raw_path)?;
-            let mut parent = path.parent();
-            while let Some(candidate) = parent {
-                if candidate
-                    .symlink_metadata()
-                    .is_ok_and(|metadata| metadata.is_dir())
-                {
-                    directories.insert(candidate.to_owned());
-                    break;
-                }
-                parent = candidate.parent();
-            }
-        }
-        let directories: Vec<_> = directories.into_iter().collect();
-        for batch in directories.chunks(4) {
-            std::thread::scope(|scope| -> anyhow::Result<()> {
-                let handles: Vec<_> = batch
-                    .iter()
-                    .map(|path| {
-                        scope.spawn(move || -> anyhow::Result<()> {
-                            File::open(path)?.sync_all()?;
-                            Ok(())
-                        })
-                    })
-                    .collect();
-                for handle in handles {
-                    handle.join().expect("directory sync worker panicked")?;
-                }
-                Ok(())
-            })?;
-        }
-        Ok(())
+        Ok(applied_writes(&self.root, target, plan)?.make_durable()?)
     }
 
     pub fn sync_follow_session(&self, ref_name: Option<&str>) -> anyhow::Result<SyncFollowSession> {
@@ -3956,7 +3893,11 @@ impl FurrowRepository {
         plan: &RewindPlan,
         selected_paths: &[PathBuf],
     ) -> anyhow::Result<()> {
-        self.apply_plan_at_with_file_sync(root, target, plan, selected_paths, true, |_| Ok(()))
+        self.apply_plan_at_with_file_sync(root, target, plan, selected_paths, false, |_| Ok(()))?;
+        // One durability step for the whole batch instead of one per file: the
+        // caller clears the restore intent only after this returns.
+        applied_writes(root, target, plan)?.make_durable()?;
+        Ok(())
     }
 
     /// Materialize `plan` at `root`. `before_file` runs immediately before each
@@ -4336,6 +4277,45 @@ impl IdentityHome {
         }
         Ok(id)
     }
+}
+
+/// The files a plan created and the directories that gained or lost an entry,
+/// which is all a restore has to make durable.
+fn applied_writes(
+    root: &Path,
+    target: &BTreeMap<Vec<u8>, FlatEntry>,
+    plan: &RewindPlan,
+) -> anyhow::Result<Written> {
+    let mut files = Vec::new();
+    let mut directories = BTreeSet::from([root.to_owned()]);
+    for change in &plan.changes {
+        let path = safe_join(root, &change.raw_path)?;
+        let is_file = target
+            .get(&change.raw_path)
+            .is_some_and(|flat| flat.entry.kind == EntryKind::File);
+        if is_file {
+            files.push(path.clone());
+        }
+        directories.extend(nearest_directory(&path));
+    }
+    Ok(Written {
+        root: root.to_owned(),
+        files,
+        directories: directories.into_iter().collect(),
+    })
+}
+
+/// The closest existing directory above `path`, where the entry for `path`
+/// was added or removed.
+fn nearest_directory(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .skip(1)
+        .find(|candidate| {
+            candidate
+                .symlink_metadata()
+                .is_ok_and(|metadata| metadata.is_dir())
+        })
+        .map(Path::to_owned)
 }
 
 /// Gives the overlay directory itself the mode and mtime its `.cell/` entry

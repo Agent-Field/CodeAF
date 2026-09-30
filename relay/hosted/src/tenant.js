@@ -69,9 +69,9 @@ export class Tenant {
     return this.store.has(rids);
   }
 
-  /** watch opens a socket for `device` that is told the directory's version now and on every visible change. */
-  watch(device) {
-    return this.watchers.accept(device, this.dir.version);
+  /** watch opens a socket for `device` that is told the directory's version now and on every visible change, and that vouches for the leases it names in `holds`. */
+  watch(device, holds) {
+    return this.watchers.accept(device, this.dir.version, holds, this.clock());
   }
 
   /** assertWritable refuses a write to an identity a rotation has replaced, whichever device asks. */

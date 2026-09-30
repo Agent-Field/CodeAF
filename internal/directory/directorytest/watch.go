@@ -48,7 +48,23 @@ func RunWatch(t *testing.T, factory WatchRigFactory) {
 // with the signed headers as the handshake. On a refusal before the upgrade
 // the error is non-nil and the response holds the status and the body.
 func DialWatch(ctx context.Context, base string, sign wireauth.Sign) (*websocket.Conn, *http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+directory.WatchPath, nil)
+	return dialWatchQuery(ctx, base, sign, "")
+}
+
+// DialWatchHolding is DialWatch for a socket that names the leases its caller
+// holds (contract 21.11.1). The hold query is part of the signed uri.
+func DialWatchHolding(ctx context.Context, base string, sign wireauth.Sign, holds []directory.Hold) (*websocket.Conn, *http.Response, error) {
+	return dialWatchQuery(ctx, base, sign, directory.HoldQuery(holds))
+}
+
+// dialWatchQuery dials the watch route with a raw query, so a case can also
+// send the holds a well-behaved client never would.
+func dialWatchQuery(ctx context.Context, base string, sign wireauth.Sign, query string) (*websocket.Conn, *http.Response, error) {
+	target := base + directory.WatchPath
+	if query != "" {
+		target += "?" + query
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -17,21 +17,43 @@ type Watcher interface {
 	Watch(ctx context.Context) (dirwatch.Stream, error)
 }
 
+// HoldWatcher is a Watcher whose socket can name the leases its holder holds,
+// so the relay can count the socket as proof that the holder is alive.
+type HoldWatcher interface {
+	Watcher
+	WatchHolding(ctx context.Context, holds []Hold) (dirwatch.Stream, error)
+}
+
 var (
-	_ Watcher = (*HTTP)(nil)
+	_ Watcher     = (*HTTP)(nil)
+	_ HoldWatcher = (*HTTP)(nil)
 )
+
+// vouchHeader is how a relay says, in the upgrade answer, that it counts a
+// socket as proof of life for the leases the socket names. A relay that does
+// not send it is an old one that ignores the names.
+const vouchHeader = "Codeaf-Vouch"
 
 // watchLimit is the most a frame may weigh. The frames are a few bytes, so a
 // larger one is a fault and is refused before it is buffered.
 const watchLimit = 1 << 10
 
-// Watch opens the signed watch socket. The upgrade request is signed like any
-// other directory request, with an empty body.
+// Watch opens the signed watch socket of a screen: it names no holds, so it
+// vouches for nothing. The upgrade request is signed like any other directory
+// request, with an empty body.
 func (h *HTTP) Watch(ctx context.Context) (dirwatch.Stream, error) {
+	return h.WatchHolding(ctx, nil)
+}
+
+// WatchHolding opens the watch socket of a process that holds leases, naming
+// them in the query. The query is part of the signed uri, so only this device
+// can name a hold.
+func (h *HTTP) WatchHolding(ctx context.Context, holds []Hold) (dirwatch.Stream, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.base+dirBase+"/watch", nil)
 	if err != nil {
 		return nil, err
 	}
+	req.URL.RawQuery = HoldQuery(holds)
 	h.sign(req, nil)
 	// The library applies the client's Timeout to the dial alone and clears it
 	// for the socket, so the shared client is safe to hand over.
@@ -43,7 +65,7 @@ func (h *HTTP) Watch(ctx context.Context) (dirwatch.Stream, error) {
 		return nil, dialFailure(resp, err)
 	}
 	c.SetReadLimit(watchLimit)
-	return &socket{c: c}, nil
+	return &socket{c: c, vouching: resp.Header.Get(vouchHeader) == "1"}, nil
 }
 
 // watchRefusals pairs each refusal the feed must stop on with the dirwatch
@@ -71,7 +93,10 @@ func dialFailure(resp *http.Response, err error) error {
 }
 
 // socket is the watch socket as the feed reads it.
-type socket struct{ c *websocket.Conn }
+type socket struct {
+	c        *websocket.Conn
+	vouching bool
+}
 
 // Next reads one text frame: a version, or the answer to a ping.
 func (s *socket) Next(ctx context.Context) (dirwatch.Frame, error) {
@@ -86,6 +111,9 @@ func (s *socket) Next(ctx context.Context) (dirwatch.Frame, error) {
 func (s *socket) Ping(ctx context.Context) error {
 	return s.c.Write(ctx, websocket.MessageText, []byte("ping"))
 }
+
+// Vouching is whether the upgrade answer carried the vouch header.
+func (s *socket) Vouching() bool { return s.vouching }
 
 // Close says goodbye without waiting for the server to answer.
 func (s *socket) Close() { _ = s.c.Close(websocket.StatusNormalClosure, "") }
