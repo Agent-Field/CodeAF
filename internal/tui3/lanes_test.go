@@ -310,6 +310,7 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 	a := laneApp(t)
 	a.width = 120
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 
 	if note := modelNote(laneCatalog[0]); note != "1M" {
 		t.Fatalf("an unmeasured row says %q, want the window and nothing more", note)
