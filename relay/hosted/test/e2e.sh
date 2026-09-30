@@ -31,7 +31,7 @@ start 18791 --var "CAF_LIMITS:$OPEN" --var TRUST_PROXY:1
 start 18792 --var "CAF_LIMITS:$TIGHT"
 start 18794 --var 'CAF_LIMITS:{"newIdentitiesPerIpPerDay":1000000,"pairMaxBoxes":2}' --var TRUST_PROXY:1
 
-for script in api race flight; do node "test/$script.e2e.mjs"; done
+for script in api race flight dedup; do node "test/$script.e2e.mjs"; done
 node test/caps.e2e.mjs
 node test/pair.e2e.mjs
 IDENTITY_DO_DIR="$work/18791/v3/do/codeaf-hosted-relay-IdentityDO" R2_DIR="$work/18791/v3/r2/miniflare-R2BucketObject" node test/rotation.e2e.mjs
