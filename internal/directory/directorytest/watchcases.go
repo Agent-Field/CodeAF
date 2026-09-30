@@ -26,6 +26,9 @@ var watchCases = map[string]func(watchEnv){
 	"PlainGetIs426":               plainGetIs426,
 	"FreezeClosesAll4410":         freezeClosesAll4410,
 	"FrozenRefusesUpgrade":        frozenRefusesUpgrade,
+	"IdempotentFreezeIsSilent":    idempotentFreezeIsSilent,
+	"ThawOfLiveIdentityIsSilent":  thawOfLiveIdentityIsSilent,
+	"RealFreezeBumpsThenCloses":   realFreezeBumpsThenCloses,
 	"OnlyVersionsOnTheWire":       onlyVersionsOnTheWire,
 	"PingAnswersPong":             pingAnswersPong,
 	"ClientFramesAreIgnored":      clientFramesAreIgnored,
@@ -251,6 +254,47 @@ func freezeClosesAll4410(w watchEnv) {
 		if heard := s.wantClosed(4410, "rotated"); len(heard) != 1 || heard[0] != n+1 {
 			w.t.Fatalf("socket %s heard %v before its close, want the bump [%d]", name, heard, n+1)
 		}
+	}
+}
+
+func rotate(w watchEnv, op directory.RotationOp) {
+	w.t.Helper()
+	_, err := w.dirAs(devA).Rotate(ctx, directory.RotationReq{Op: op})
+	must(w.t, err)
+}
+
+// A repeated freeze by the device that froze stores the same rotation, which a person
+// cannot see as a change (contract 21.4), so it bumps nothing. The first freeze closes
+// every socket, so the repeat is heard on a socket opened before it only as that close.
+func idempotentFreezeIsSilent(w watchEnv) {
+	a := w.open(devA)
+	n := a.version()
+	freeze(w)
+	a.wantClosed(4410, "rotated")
+	freeze(w)
+	if got := w.listVersion(devA); got != n+1 {
+		w.t.Fatalf("list version %d after a repeated freeze, want %d", got, n+1)
+	}
+}
+
+// A thaw of an identity that never rotated leaves it as it was, so it bumps nothing.
+func thawOfLiveIdentityIsSilent(w watchEnv) {
+	s := w.open(devA)
+	n := s.version()
+	rotate(w, directory.OpThaw)
+	s.wantSilent()
+	if got := w.listVersion(devA); got != n {
+		w.t.Fatalf("list version %d after a thaw of a live identity, want %d", got, n)
+	}
+}
+
+// A freeze that changes the record bumps once, and the bump is the last thing a socket hears before its 4410.
+func realFreezeBumpsThenCloses(w watchEnv) {
+	s := w.open(devA)
+	n := s.version()
+	freeze(w)
+	if heard := s.wantClosed(4410, "rotated"); len(heard) != 1 || heard[0] != n+1 {
+		w.t.Fatalf("the socket heard %v before its close, want the bump [%d]", heard, n+1)
 	}
 }
 
