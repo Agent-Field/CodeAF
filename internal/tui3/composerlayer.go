@@ -545,6 +545,10 @@ func (a *app) composerSend() tea.Cmd {
 func (a *app) openComposerPicker() {
 	a.composer.pick.startFor(a.modelsFor(filterFor(config.ModelSettingKey(composerSlot))),
 		a.composerModel(), filterFor(config.ModelSettingKey(composerSlot)))
+	// A DOOR THAT OPENS TO CONFIRM OPENS ON WHAT IT HOLDS ([picker.cursorToCurrent]):
+	// enter binds the execution slot to the row under the cursor, so the cursor
+	// waits on the slot's model, not on the list's first row.
+	a.composer.pick.cursorToCurrent()
 	a.touch()
 }
 
