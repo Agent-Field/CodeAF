@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE MODEL CURSOR IS A DRAWN ROW, NOT AN INDEX. The person's report
@@ -94,6 +95,9 @@ func TestTheCursorStaysVisibleAtTheBottomOfTheList(t *testing.T) {
 	// A TRANSCRIPT THAT CAN SCROLL, so "the conversation did not move" is a real
 	// assertion and not the accident of a short one.
 	a := benchApp(20)
+	// The assertion below inspects the cursor's ground. Pin a color palette
+	// rather than inheriting a CI runner's terminal-free NoColor profile.
+	a.pal = newPalette(tokens.ANSI256, false)
 	a.models = func() []Model { return groupedCatalog }
 	a.model = "beta/model-3"
 	a.frame()
