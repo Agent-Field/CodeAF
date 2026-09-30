@@ -94,7 +94,7 @@ kind-specific spec:
 | kind | spec | how the grader answers it |
 |---|---|---|
 | `command` | `command`, optional `timeout_sec` | runs in the task tree in the verifier container; exit 0 is pass |
-| `classical` | `overlay` (the reference test-side patch), `run` | overlay applied idempotently (an agent that made the same test change already carries it — `git apply --reverse --check` decides), then the test command must exit 0 |
+| `classical` | `overlay` (the reference test-side patch), `run` | overlay applied idempotently (an agent that made the same test change already carries it — `git apply --reverse --check` decides), then the test command must exit 0. When the agent's own nearby test moved the overlay's anchor, the apply retries with one line of reduced context (`git apply -C1`); the test bytes are unchanged and the test still has to pass |
 | `reverse-classical` | `run`, `revert_paths` | the named paths are restored to the base commit, the rebuild is forced (every reverted source touched — an incremental build would otherwise keep the patched binary and let the tests pass), then the tests must FAIL; failing is what proves they test the change |
 | `adaptive-classical` | as classical | derived when the verbatim overlay applies and passes; otherwise the judge rewrites the test patch to the agent's interface (or refuses — a behavioural failure is not an interface divergence) and a second no-network container re-runs the adapted tests |
 | `scope` | `max_files`, `max_changed_lines`, `allowed_paths`, `forbidden_paths` | computed off the patch itself, before any container |
