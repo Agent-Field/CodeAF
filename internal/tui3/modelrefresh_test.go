@@ -170,8 +170,11 @@ func TestALandedListKeepsTheFilterAndSaysWhatIsNew(t *testing.T) {
 	if ids := pickerIDs(a); len(ids) != 6 {
 		t.Fatalf("the landed list ranked to %v, want every gpt row", ids)
 	}
-	if chosen, _ := a.pick.choice(); chosen.ID != "openai/gpt-4.1-mini" {
-		t.Fatalf("the cursor landed on %q, want the model in use", chosen.ID)
+	// A landed list is a fresh list, shown from its top: the cursor rests on the
+// first ranked row ([picker.cursorToFirst]), and the model in use keeps its
+// mark wherever it now sits.
+	if chosen, _ := a.pick.choice(); chosen.ID != "gpt-5-classic" {
+		t.Fatalf("the cursor landed on %q, want the landed list's first row", chosen.ID)
 	}
 	// anthropic/claude-gpt-echo vanished, and a refresh never says so.
 	want := "models · 7 · 4 new · openai/gpt-6, openai/gpt-6-mini, openai/gpt-6-nano"
