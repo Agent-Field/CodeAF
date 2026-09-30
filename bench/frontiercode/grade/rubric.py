@@ -84,13 +84,23 @@ def apply_overlay_idempotent(repo, overlay):
     """Apply the reference test overlay over the agent's tree. An agent that
     made the same test change already carries it; `git apply --reverse --check`
     answers whether the overlay's content is already in the tree, which is how
-    a gold patch (which includes its own test change) grades without conflict."""
+    a gold patch (which includes its own test change) grades without conflict.
+
+    When the agent added lines at the overlay's own anchor — its own test beside
+    the reference test — the exact apply fails although the reference test's
+    bytes and meaning are untouched. One line of context reduction (-C1) places
+    the same bytes at the same anchor and the test still has to pass; it narrows
+    where the hunk is anchored, never what is asserted. The note records which
+    apply was used so a grade stays auditable."""
     code, out = sh(f"git apply --whitespace=nowarn '{overlay}'", cwd=repo)
     if code == 0:
         return True, "applied"
     code, _ = sh(f"git apply --reverse --check --whitespace=nowarn '{overlay}'", cwd=repo)
     if code == 0:
         return True, "already in the tree (reverse-applies cleanly)"
+    code, _ = sh(f"git apply -C1 --whitespace=nowarn '{overlay}'", cwd=repo)
+    if code == 0:
+        return True, "applied with one line of reduced context (-C1)"
     return False, f"overlay conflict: {out[-2000:]}"
 
 
