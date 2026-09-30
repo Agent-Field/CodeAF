@@ -343,4 +343,20 @@ func TestTakeInPlaceKeepsThePersonsFolder(t *testing.T) {
 	if _, err := os.Stat(taken.Cell.Root + ".taking"); !os.IsNotExist(err) {
 		t.Fatalf("staging folder left behind (%v)", err)
 	}
+	if len(a.local.followed) != 0 {
+		t.Fatalf("a folder restored in place never moved, yet the engine was told %v", a.local.followed)
+	}
+}
+
+// A copy that is replaced by the staging folder is a tree the engine registered
+// under the staging path, so the engine is told it moved.
+func TestTakeTellsTheEngineWhereTheStagedTreeWent(t *testing.T) {
+	_, a, _ := backFromB(t)
+	if _, err := a.taker().Take(context.Background(), chatID); err != nil {
+		t.Fatal(err)
+	}
+	root := a.root(chatID)
+	if want := []string{root + ".taking -> " + root}; !reflect.DeepEqual(a.local.followed, want) {
+		t.Fatalf("the engine was told %v, want %v", a.local.followed, want)
+	}
 }
