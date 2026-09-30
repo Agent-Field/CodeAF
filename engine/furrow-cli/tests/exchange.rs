@@ -324,3 +324,53 @@ fn a_bad_ledger_name_is_refused_before_anything_is_written() {
         .failure();
     assert!(!outbox.exists());
 }
+
+/// Every file of a tree except the engine's own folder, with its mode and bytes.
+fn files_of(root: &Path) -> BTreeMap<String, (u32, Vec<u8>)> {
+    dump(root)
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with(".furrow"))
+        .map(|(name, (mode, _, _, body))| (name, (mode, body)))
+        .collect()
+}
+
+/// A take that dies part way through writing the changed files leaves a whole
+/// tree, never a mix of two heads: the next use of the folder rolls it back to
+/// the head it held, and the take can then be done again.
+#[test]
+fn a_materialize_that_dies_mid_write_leaves_a_whole_tree() {
+    let src = source();
+    let (tree, cell) = (
+        src.temp.path().join("b-tree"),
+        src.temp.path().join("b-cell"),
+    );
+    fs::create_dir_all(&tree).unwrap();
+    let cell_dir = cell.to_str().unwrap();
+    let materialize = |head: &str| {
+        let mut command = furrow(&src.data, &tree);
+        command.args(["materialize", "--head", head, "--cell-dir", cell_dir]);
+        command
+    };
+    materialize(&src.head).assert().success();
+    let held = files_of(&tree);
+
+    fs::write(src.tree.join("dir/one.txt"), b"two\n").unwrap();
+    fs::write(src.tree.join("added.txt"), b"added\n").unwrap();
+    let second = id_hex(
+        &FurrowRepository::open_composed_in(&src.data, &src.tree, Some(src.cell.clone()))
+            .unwrap()
+            .snapshot(None, SnapshotTrigger::Manual)
+            .unwrap(),
+    );
+    materialize(&second)
+        .env("FURROW_FAILPOINT", "rewind_after_first_change")
+        .assert()
+        .code(86);
+    // Attaching the folder again is what recovers it.
+    materialize(&src.head).assert().success();
+    assert_eq!(files_of(&tree), held, "the crash left the old head whole");
+
+    materialize(&second).assert().success();
+    assert_eq!(fs::read(tree.join("dir/one.txt")).unwrap(), b"two\n");
+    assert_eq!(fs::read(tree.join("added.txt")).unwrap(), b"added\n");
+}
