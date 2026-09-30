@@ -55,6 +55,15 @@ are on the machine you are sitting at, so they are never at risk. And the conver
 journaled on the far machine as it happens — the far machine is the only thing that writes
 that file — so nothing that reached it is lost either way.
 
+## The reply stopped halfway through
+
+If the model connection ends before the model reports a finish reason or sends its `[DONE]`
+marker, codeaf drops the unfinished reply and asks again while attempts remain. Text that
+appeared while it was arriving is not kept in the conversation, even when every attempt
+ends this way. When it gives up, it says `the partial reply was dropped` and suggests
+`/model`. A reply with either completion signal is accepted, even when the other signal
+is absent.
+
 ## I closed my laptop and opened it somewhere else
 
 Under about five minutes, the surface will have redialled by itself and you are back in

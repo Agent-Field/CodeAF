@@ -145,7 +145,8 @@ func TestAFragmentAfterReadyFormsNothing(t *testing.T) {
 
 // A stream whose call dies half-sent announces nothing — and the forming events
 // that described it are all a surface ever saw, which is the honest record of
-// what happened.
+// what happened. The call itself is still a truncated response and must be
+// retried rather than returned as a usable answer.
 func TestATruncatedCallFormsButNeverReadies(t *testing.T) {
 	client := streamClientForTest(t, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")
@@ -156,8 +157,13 @@ func TestATruncatedCallFormsButNeverReadies(t *testing.T) {
 	ctx := WithStreamObserver(context.Background(), func(event StreamEvent) {
 		observed = append(observed, event)
 	})
-	if _, err := client.CompleteWithMessages(ctx, userMessages("write it")); err != nil {
-		t.Fatal(err)
+	response, err := client.CompleteWithMessages(ctx, userMessages("write it"))
+	cut, ok := CutFrom(err)
+	if !ok || cut.Reason != CutTruncated {
+		t.Fatalf("err = %v, want a truncated stream cut", err)
+	}
+	if response != nil {
+		t.Fatalf("truncated call returned a response: %+v", response)
 	}
 	if len(formingEvents(observed, 0)) == 0 {
 		t.Fatal("a call that arrived and stopped formed nothing")

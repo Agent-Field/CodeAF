@@ -504,7 +504,7 @@ func gapFor(rate float64) time.Duration {
 	return gap
 }
 
-// CutReason says which of the two things went wrong, and it is the only thing
+// CutReason says which thing went wrong, and it is the only thing
 // this package decides about a cut. The sentence is composed upstream.
 type CutReason int
 
@@ -529,6 +529,9 @@ const (
 	// model's chat template, and the reply is unusable no matter how healthy
 	// the stream that carried it was. See [MachineryLeak].
 	CutMachinery
+	// CutTruncated is a stream that ended without an explicit completion marker
+	// or a finish reason, so its partial reply cannot be used.
+	CutTruncated
 )
 
 // word is the short machine-readable name of a cut: what the lane's belief
@@ -550,6 +553,8 @@ func (r CutReason) word() string {
 		return "overrun"
 	case CutMachinery:
 		return "machinery"
+	case CutTruncated:
+		return "truncated"
 	}
 	return "cut"
 }
@@ -561,7 +566,8 @@ func (r CutReason) word() string {
 type StreamCut struct {
 	Reason CutReason
 	// Waited is how long the stream was quiet, on the two silence reasons, and
-	// zero on CutBabble. It is the constant that fired rather than a measurement
+	// zero when no timer made the cut (CutBabble and CutTruncated). It is the
+	// constant that fired rather than a measurement
 	// — the plain bound on an outright silence, [bufferedQuietBound] when
 	// keepalives bought the stream its full patience and it still never wrote —
 	// because the timer is what decided, and the timer's own bound is the
@@ -647,6 +653,8 @@ func (c *StreamCut) Error() string {
 		return fmt.Sprintf("the reply ran past %s without finishing and was cut", roundSeconds(c.Waited))
 	case CutMachinery:
 		return "the reply was the model's own internal markup instead of an answer and was cut"
+	case CutTruncated:
+		return "the connection ended before the reply was finished"
 	default:
 		return "the reply stopped being language and was cut"
 	}

@@ -1,11 +1,32 @@
 package tui3
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// A final cut withdraws what the person watched arrive without inventing a
+// further retry. Ordinary permanent errors still leave their partial visible.
+func TestFinalTruncatedErrorWithdrawsOnlyItsUnfinishedReply(t *testing.T) {
+	for _, discard := range []bool{true, false} {
+		f := &feed{live: -1, think: -1, turn: 1}
+		f.ingest(session.Event{Kind: session.EventTextDelta, Text: "unfinished words"})
+		f.ingest(session.Event{Kind: session.EventError, Discard: discard})
+		var visible bool
+		for _, entry := range f.entries {
+			visible = visible || strings.Contains(entry.text, "unfinished words")
+		}
+		if visible == discard {
+			t.Fatalf("discard=%t left visible=%t: %+v", discard, visible, f.entries)
+		}
+		if got := f.asksSeen(); got != 0 {
+			t.Fatalf("final error invented %d retries", got)
+		}
+	}
+}
 
 // TestOneCallBecomesOneRowFromTheFirstFragmentToTheResult drives the reducer
 // with NO VIEW BEHIND IT AT ALL, which is the half of the law this lane is for:
