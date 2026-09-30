@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Monthly cost of the hosted directory, three ways, from counts measured with the real client.
 
-Measured inputs (local `wrangler dev`, real client, three sessions; see STAGE-1H-DECISION.md section 8):
+Measured inputs (real client, local `wrangler dev` then staging Workers; see STAGE-1H-DECISION.md section 8):
   s1  55 s   6 sealed turns  6 flushes  21 requests  R2 A 20  B 14  176,611 B up
   s2 110 s   7 sealed turns  2 flushes  17 requests  R2 A 16  B 15  141,824 B up
   s3 takeover: 90 object GETs, 122 R2 B, 61,364 B down, 20 heartbeats over 3 min
@@ -27,14 +27,19 @@ class Shape:
     fixed_writes: float = 3      # create, device record, release (measured: s1)
     fixed_reads: float = 4       # the reads that come with them (measured: s1)
     takeover: float = 0.2        # share of sessions that end in a takeover
-    take_gets: float = 90        # object GETs per takeover (measured: s3)
+    take_gets: float = 96        # object GETs per takeover (billed: 193 requests in the dumb run less its polls and beats)
     take_dir: float = 8          # directory requests per takeover (measured: s3)
     take_b: float = 33           # extra R2 reads per takeover beyond its GETs (measured: s3 122 - 90 + snapshot)
     flush_bytes: float = 43_200  # measured mean frame: 388,592 B over 9 flushes
-    do_ms_dir: float = 5         # assumed active ms per directory request in a Durable Object
-    do_ms_put: float = 100       # assumed active ms per frame put in a Durable Object (body receive + R2 put)
-    cpu_ms: float = 3            # assumed billed CPU per Worker request
+    do_ms: float = 40            # billed active ms per Durable Object request (staging: 14.3 s over 379 requests, 8.0 s over 194)
+    cpu_ms: float = 1.5          # billed CPU per Worker request (staging: 325 ms over 192, 378 over 379, 138 over 193)
     sessions: float = 8          # per identity per month
+    home_hours: float = 0        # hours a home screen is open per identity per month; it polls the directory list
+    polls_per_hour: float = 450  # measured: one list per 8 s with this branch's client (a newer build polls every 3 s: 1,140)
+
+
+def polls(s, n_identities):   # list requests a month from open home screens
+    return s.home_hours * s.polls_per_hour * n_identities
 
 
 def requests(s):   # Worker invocations per session
@@ -50,9 +55,9 @@ def storage(s, n_sessions, months=12):
     return over(gb * 1e6, PRICE['r2_gb_free'] * 1e6, PRICE['r2_gb_month'])   # (gb-free) * $/GB
 
 
-def common(s, n_sessions):
+def common(s, n_sessions, n_polls=0):
     """Worker requests, CPU, frames in R2, storage: the same for every option."""
-    req = requests(s) * n_sessions
+    req = requests(s) * n_sessions + n_polls
     frames_a = s.flushes * n_sessions + s.takeover * n_sessions   # frames plus one snapshot write per takeover
     gets_b = s.takeover * s.take_gets * n_sessions
     return dict(
@@ -62,25 +67,25 @@ def common(s, n_sessions):
     )
 
 
-def option_a(s, n):   # Durable Object per identity holds the directory (SQLite) and sees every put
-    c = common(s, n)
-    reqs = (dir_writes(s) + s.flushes + s.fixed_reads / 2) * n            # dir ops plus puts route to the object
-    gbs = ((dir_writes(s) * s.do_ms_dir + s.flushes * s.do_ms_put) / 1000 * 0.128) * n
+def option_a(s, n, p=0):   # Durable Object per identity holds the directory (SQLite) and sees every put
+    c = common(s, n, p)
+    reqs = p + (dir_writes(s) + s.flushes + s.fixed_reads / 2) * n            # dir ops plus puts route to the object
+    gbs = (reqs / n * s.do_ms / 1000 * 0.128) * n
     rows = 2 * dir_writes(s) * n
     c['do'] = over(reqs, PRICE['do_req_free'], PRICE['do_req_per_m']) + over(gbs, PRICE['do_gbs_free'], PRICE['do_gbs_per_m']) \
         + over(rows, PRICE['do_rows_free'], PRICE['do_rows_per_m'])
     return c
 
 
-def option_b(s, n):   # D1 shard holds the directory; frames still go through the stateless Worker
-    c = common(s, n)
+def option_b(s, n, p=0):   # D1 shard holds the directory; frames still go through the stateless Worker
+    c = common(s, n, p)
     c['d1'] = over(2 * dir_writes(s) * n, PRICE['d1_rows_free'], PRICE['d1_rows_per_m'])
     return c
 
 
-def option_c(s, n):   # R2 only: each directory write is one conditional put, each read one get
-    c = common(s, n)
-    c['r2_a'] += dir_writes(s) * n + s.takeover * n * 2       # + acquire writes at takeover
+def option_c(s, n, p=0):   # R2 only: each directory write is one conditional put, each read one get
+    c = common(s, n, p)
+    c['r2_a'] += dir_writes(s) * n + s.takeover * n * 2 + p        # each list is a Class A ListObjects       # + acquire writes at takeover
     c['r2_b'] += (s.heartbeats + s.flushes + s.fixed_reads) * n + s.takeover * n * (s.take_dir + s.take_b)
     return c
 
@@ -102,7 +107,7 @@ def table(shape, label):
             for active in (1.0, 0.25):
                 s = replace(shape, **tweak)
                 sessions = n * active * s.sessions
-                row = [total(f(s, sessions)) for f in OPTIONS.values()]
+                row = [total(f(s, sessions, polls(s, n * active))) for f in OPTIONS.values()]
                 print(f'{cname:26}{n:>11,}{active:>8.0%}' + ''.join(f'{v:>20,.0f}' for v in row))
 
 
@@ -118,6 +123,6 @@ def breakeven_resident_s(shape, n_identities, active=1.0):
     n = n_identities * active * shape.sessions
     a, c = option_a(shape, n), option_c(shape, n)
     gap = total(c) - total(a)
-    modelled = ((dir_writes(shape) * shape.do_ms_dir + shape.flushes * shape.do_ms_put) / 1000 * 0.128) * n
+    modelled = (requests(shape) * shape.do_ms / 1000 * 0.128) * n
     need = max(PRICE['do_gbs_free'], modelled) + gap / PRICE['do_gbs_per_m'] * 1e6
     return (need - modelled) / n / 0.128
