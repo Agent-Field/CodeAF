@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -81,4 +82,25 @@ func TestWorkerReceiptSettlementIsBoundedAndCompletionIsIdempotent(t *testing.T)
 	done()
 	done()
 	receipts.wait(0)
+}
+
+// A receipt grace belongs only to an outstanding call. A closed or unused
+// account must not arm an ending wait, however long its permitted grace is.
+func TestWorkerReceiptSettlementWithNothingOwedReturnsWithoutWaiting(t *testing.T) {
+	for _, retired := range []bool{false, true} {
+		var receipts workerReceipts
+		if retired {
+			receipts.owe()()
+		}
+		returned := make(chan struct{})
+		go func() {
+			receipts.wait(24 * time.Hour)
+			close(returned)
+		}()
+		select {
+		case <-returned:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("receipt ending waited with nothing owed (retired=%v)", retired)
+		}
+	}
 }

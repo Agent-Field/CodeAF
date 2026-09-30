@@ -62,3 +62,25 @@ func TestBashWorkerSettlesLateReceiptsBeforeReportingItsTotals(t *testing.T) {
 	}
 	<-delivered
 }
+
+// The real worker's ordinary error ending owes no receipt and must come home
+// immediately rather than sitting out the provider's receipt grace.
+func TestBashWorkerWithNoOutstandingReceiptEndsWithoutAReceiptWait(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	s := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		return nil, errors.New("API error (401): account refused")
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", s)
+	ended := make(chan error, 1)
+	go func() { _, err := worker.Run(runContext(t), *store.Task(store.RootID())); ended <- err }()
+	select {
+	case err := <-ended:
+		if err == nil {
+			t.Fatal("worker lost its authentication ending")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ordinary ending waited despite having no outstanding receipt")
+	}
+}

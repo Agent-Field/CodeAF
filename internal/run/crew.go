@@ -124,8 +124,8 @@ type Seats struct {
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
 func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
-	// The door's admitted source set wins over rereading a default home. Older
-	// callers without that snapshot still resolve accounts in the named profile.
+	// The admitted source set explains the refused account without resolving
+	// worker requests a second time. The completer still owns every route.
 	var sources modelsource.Set
 	if len(sourceSets) > 0 && !sourceSets[0].Empty() {
 		sources = sourceSets[0]
@@ -134,7 +134,9 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	}
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, standing, completer)
-		worker.profileDir, worker.sources = profileDir, sources
+		worker.authKeySource = func(model string) string {
+			return config.APIKeySourceForModel(profileDir, sources, model)
+		}
 		return worker
 	}
 	return func(task plandb.Task) Worker {

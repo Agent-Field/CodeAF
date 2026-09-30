@@ -1029,7 +1029,9 @@ without retrying it as a provider failure. The ending names the safe source of t
 with `stop:"incomplete"` and exit 2. A directly connected provider uses its own key,
 so its refusal does not name the default provider's key source. This also applies to
 bash workers in `do` runs: they use the profile admitted by `CODEAF_PROFILE_DIR`,
-including its saved key and connected providers. Delegated programs resolve the key
+including its saved key and connected providers. A chat task keeps the provider,
+model, and credential chosen for its crew seat; its key-source explanation cannot
+reroute that call through the default provider. Delegated programs resolve the key
 explanation for the model actually served, including a fallback onto another model.
 
 **These change state without model spending**: `connect`, `disconnect`, `cache clean`,
@@ -1246,6 +1248,7 @@ as the brief rather than setting a cost ceiling. Put ceilings before the first
 On `codeaf do`'s default run road, paid calls remain in `tokens.in`, `tokens.out`
 and the spend total when a later call fails in the same turn. Auxiliary summary
 calls count too. A worker settles outstanding provider receipts before reporting
-its final totals; it waits at most the provider's receipt deadline and keeps
+its final totals. With no receipt outstanding, it adds no receipt wait to the
+ending. Otherwise it waits at most the provider's existing receipt deadline and keeps
 the figures already received when a receipt cannot be settled. An incomplete
 receipt therefore reports the work's paid calls as well as its failure reason.

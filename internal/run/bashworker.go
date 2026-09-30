@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -64,10 +63,9 @@ type BashWorker struct {
 	// nothing stands, and no section is rendered.
 	standing  string
 	completer session.Completer
-	// The admitted account facts travel with the seat, because the owner may
-	// have selected a profile or connected provider outside the default home.
-	profileDir string
-	sources    modelsource.Set
+	// The door explains a refused account without changing the request road
+	// already owned by the injected completer.
+	authKeySource func(model string) string
 }
 
 // NewBashWorker builds the seat the run's factory hands each claimed task to.
@@ -118,8 +116,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		Workspace:        w.workspace,
 		Model:            w.model,
 		WaitForBeltSteps: true,
-		ProfileDir:       w.profileDir,
-		Sources:          w.sources,
+		AuthKeySource:    w.authKeySource,
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err
