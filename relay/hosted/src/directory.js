@@ -70,8 +70,20 @@ export class Directory {
     this.change(id, (c) => ({ ...c, archived: true }));
   }
 
+  // A device's record says whether it is revoked, and the device cannot change that: only revoke can.
   putDevice(id, device) {
-    this.write('devices', id, device);
+    this.write('devices', id, { ...device, revoked: this.revoked(id) });
+  }
+
+  /**
+   * revoke stops the device `id` on behalf of `caller`. A device cannot stop itself, which is nearly
+   * always a slip and a stopped device cannot say so, and revoking twice changes nothing.
+   */
+  revoke(id, caller) {
+    const record = this.read('devices', id);
+    if (!record) throw refuse('not_found');
+    if (id === caller) throw refuse('self_revoke');
+    this.write('devices', id, { ...record, revoked: true });
   }
 
   /** revoked says whether the identity's own record of this device has turned it away. */

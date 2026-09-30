@@ -58,10 +58,25 @@ for (const shiftMs of [6 * 60_000, -6 * 60_000]) {
   const skew = await call(a, 'GET', '/v1/dir/list', undefined, { shiftMs });
   assert.deepEqual([skew.status, skew.json.err], [401, 'skew']);
 }
+// Revocation: one device stops another, which is then 401 revoked on both wires. A device cannot stop
+// itself or an unknown id, stopping twice is fine, and a record cannot clear or set its own flag.
 const gone = await newDevice(id);
 const goneId = await deviceId(gone);
-assert.equal((await call(gone, 'PUT', `/v1/dir/devices/${goneId}`, { V: 1, name: '', added_by: '', revoked: true, caps: {} })).status, 204);
-const revoked = await call(gone, 'GET', '/v1/dir/list');
-assert.deepEqual([revoked.status, revoked.json.err], [401, 'revoked']);
+const aId = await deviceId(a);
+const record = { V: 1, name: '', added_by: '', revoked: false, caps: {} };
+assert.equal((await call(gone, 'PUT', `/v1/dir/devices/${goneId}`, { ...record, revoked: true })).status, 204);
+assert.equal((await call(a, 'PUT', `/v1/dir/devices/${aId}`, record)).status, 204);
+assert.equal((await call(gone, 'GET', '/v1/dir/list')).status, 200, 'a record cannot set its own revoked flag');
+assert.equal(answerOf(await call(a, 'POST', `/v1/dir/devices/${aId}/revoke`)), 'self_revoke');
+assert.equal((await call(a, 'POST', `/v1/dir/devices/${aId}/revoke`)).status, 400);
+assert.equal(answerOf(await call(a, 'POST', '/v1/dir/devices/dev_cccccccccccccccccccccccccccccccc/revoke')), 'not_found');
+assert.equal((await call(a, 'POST', `/v1/dir/devices/${goneId}/revoke`)).status, 204);
+assert.equal((await call(a, 'POST', `/v1/dir/devices/${goneId}/revoke`)).status, 204, 'revoking twice changes nothing');
+for (const [method, path] of [['GET', '/v1/dir/list'], ['GET', '/v1/store/stats'], ['POST', '/v1/dir/cells/c1/acquire']]) {
+  const revoked = await call(gone, method, path, method === 'POST' ? {} : undefined);
+  assert.deepEqual([revoked.status, revoked.json.err], [401, 'revoked'], path);
+}
+assert.equal((await call(gone, 'PUT', `/v1/dir/devices/${goneId}`, record)).status, 401, 'and it cannot put itself back');
+assert.equal((await call(a, 'GET', '/v1/dir/list')).json.devices[goneId].revoked, true);
 assert.equal((await call(a, 'GET', '/v1/dir/list')).status, 200, 'the other devices of the identity carry on');
 console.log('e2e: all pass');

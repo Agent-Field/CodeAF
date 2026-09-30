@@ -23,12 +23,18 @@ export const rateLimited = (seconds) => new Wire('rate_limited', 429, seconds);
 export const full = () => new Wire('full', 507);
 export const tooManyIdentities = (seconds) => new Wire('too_many_identities', 429, seconds);
 
-// The IP is the socket peer as Cloudflare reports it. A request without one shares a single
+// The IP is the socket peer as Cloudflare reports it (CF-Connecting-IP). A request without one shares a single
 // "unknown" allowance, which is the strict way to fail.
-export const ipOf = (request) => request.headers.get('cf-connecting-ip') ?? 'unknown';
+export function ipOf(request, env) {
+  return (env.TRUST_PROXY === '1' ? forwarded(request) : null) ?? request.headers.get('cf-connecting-ip') ?? 'unknown';
+}
+
+// With TRUST_PROXY set (a test rig that stands where a trusted proxy would), a caller may name its own
+// network in X-Forwarded-For, first address first, as the self-hosted relay's --trust-proxy allows.
+const forwarded = (request) => request.headers.get('x-forwarded-for')?.split(',')[0].trim() || null;
 
 // The status of each rule refusal the directory rules raise.
-const RULE_STATUS = { not_found: 404, exists: 409, lease_held: 409, fence_stale: 409, head_moved: 409, cas: 409 };
+const RULE_STATUS = { not_found: 404, exists: 409, lease_held: 409, fence_stale: 409, head_moved: 409, cas: 409, self_revoke: 400 };
 
 /** wireOf names any failure as the Wire refusal a client should see. */
 export function wireOf(e) {

@@ -63,7 +63,8 @@ const tests = {
     const b = await box();
     assert.equal((await send('POST', `/v1/pair/${b.np}/a`, { pairKey: key(), body: 'x' })).status, 403);
     assert.equal((await send('DELETE', `/v1/pair/${b.np}`, { pairKey: key() })).status, 403);
-    assert.equal((await send('POST', `/v1/pair/${b.np}/a`, { body: 'x' })).status, 400, 'no key at all is malformed');
+    assert.equal((await send('POST', `/v1/pair/${b.np}/a`, { body: 'x' })).status, 403, 'no key at all owns nothing');
+    assert.equal((await send('POST', `/v1/pair/${b.np}/a`, { pairKey: 'short', body: 'x' })).status, 403, 'nor does a malformed one');
     await b.close();
   },
 
@@ -138,7 +139,7 @@ const tests = {
     const made = [];
     for (let i = 0; i < limits.create_per_hour; i++) made.push(await box(ip));
     const over = await send('POST', '/v1/pair', { ip, pairKey: key() });
-    assert.deepEqual([over.status, over.json.err], [429, 'rate_limited']);
+    assert.deepEqual([over.status, over.json.err], [429, 'slow down']);
     assert.ok(Number(over.retry) > 0, 'Retry-After names the wait');
     await made[0].close(); // the relay holds four boxes at most; make room, so only the IP is in question
     assert.equal((await send('POST', '/v1/pair', { pairKey: key() })).status, 201, 'another IP is unaffected');
