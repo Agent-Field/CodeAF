@@ -195,6 +195,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		OnSuperseded: d.becomeViewer,
 		OnError:      d.refusal,
 		Sleep:        d.opt.Sleep,
+		Liveness:     s.Liveness(),
 	}, nil
 }
 
