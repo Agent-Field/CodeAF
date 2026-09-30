@@ -52,6 +52,41 @@ func (c *HTTP) Get(ctx context.Context, rid string) ([]byte, error) {
 	return c.do(ctx, http.MethodGet, pathObjects+rid, nil)
 }
 
+// GetMany implements Store: one request, answered by a frame holding a prefix of
+// the objects asked for. The frame is decoded with the same checks as any
+// other, and its objects must be that prefix, in order, or the answer is
+// refused, so a relay cannot hand a taker objects it did not ask for.
+func (c *HTTP) GetMany(ctx context.Context, rids []string) ([]Object, error) {
+	if len(rids) == 0 {
+		return nil, nil
+	}
+	if err := checkMany(rids); err != nil {
+		return nil, err
+	}
+	frame, err := c.do(ctx, http.MethodPost, pathMany, mustJSON(getManyRequest{Rids: rids}))
+	if err != nil {
+		return nil, err
+	}
+	_, objects, err := Decode(frame)
+	if err != nil || !isPrefix(objects, rids) {
+		return nil, fmt.Errorf("%w: the answer to a GetMany is not the objects asked for", ErrUnreachable)
+	}
+	return objects, nil
+}
+
+// isPrefix says whether objects are exactly the first len(objects) of rids.
+func isPrefix(objects []Object, rids []string) bool {
+	if len(objects) > len(rids) {
+		return false
+	}
+	for i, o := range objects {
+		if o.RID != rids[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Has implements Store.
 func (c *HTTP) Has(ctx context.Context, rids []string) ([]bool, error) {
 	if rids == nil {
@@ -90,8 +125,8 @@ func (c *HTTP) doJSON(ctx context.Context, method, path string, body []byte, int
 // do sends one signed request and answers the body of a 200, or the error the
 // answer names. It never retries: a skew refusal must reach the person once.
 func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.deadline(len(body)))
-	defer cancel()
+	ctx, limit := startBudget(ctx, c.deadline, len(body))
+	defer limit.done()
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
@@ -102,6 +137,7 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
+	limit.answering(resp.ContentLength)
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, MaxFrame+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
@@ -109,17 +145,18 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 	if resp.StatusCode == http.StatusOK {
 		return answer, nil
 	}
-	return nil, answerError(resp.StatusCode, answer)
+	return nil, answerError(resp.StatusCode, resp.Header, answer)
 }
 
 // answerError turns a non-200 answer into an error: the code the server named,
 // else a 5xx as "unreachable" (the server is not doing its job now, so
-// callers degrade), else a plain error carrying the status.
-func answerError(status int, answer []byte) error {
+// callers degrade), else a plain error carrying the status. A refusal keeps the
+// Retry-After the relay sent with it.
+func answerError(status int, h http.Header, answer []byte) error {
 	var e errBody
 	_ = json.Unmarshal(answer, &e)
 	if named := errOf(e.Err); named != nil {
-		return fmt.Errorf("%w (%d)", named, status)
+		return Capped(wireauth.Wait(fmt.Errorf("%w (%d)", named, status), h), e.LimitBytes)
 	}
 	if status >= 500 {
 		return fmt.Errorf("%w: server answered %d", ErrUnreachable, status)

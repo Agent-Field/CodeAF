@@ -128,7 +128,12 @@ func homeTick(gen int) tea.Cmd {
 // been closed and reopened re-arms nothing either, which is how there stays one
 // clock.
 func (a *app) homeBeat(gen int) tea.Cmd {
-	if !a.at(pageHome) || gen != a.homeGen {
+	if !a.at(pageHome) {
+		// Home is not showing, so nobody needs the change socket (machinewatch.go).
+		a.tendWatch(false)
+		return nil
+	}
+	if gen != a.homeGen {
 		return nil
 	}
 	a.refreshHome()
@@ -964,6 +969,9 @@ func (a *app) raiseHome() tea.Cmd {
 	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
 	// window has one (homegrid.go's [app.homePreselect]).
 	a.homePreselect()
+	// OPENING HOME IS A PERSON ARRIVING: the directory is asked now and the wait
+	// starts over at the fast pace (machinepoll.go).
+	a.machinePoll.hurry()
 	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
 	// (homecardread.go). The repository among them is a command, so it is asked
 	// for rather than waited on and comes back as a message.

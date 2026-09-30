@@ -9,6 +9,9 @@ type IdentityRec struct {
 	V        uint16 `json:"V"`
 	Identity string `json:"identity"`        // id_…, derived from the signing key
 	Vault    string `json:"vault,omitempty"` // rid of the current vault object
+	// Rotation is set once the identity has been replaced by a rotation: it
+	// takes no writes from then on. Nil means live.
+	Rotation *Rotation `json:"rotation,omitempty"`
 }
 
 // Caps says what a device can do.
@@ -26,7 +29,7 @@ type Device struct {
 	V       uint16 `json:"V"`
 	Name    string `json:"name"`     // b64, sealed under the metadata key
 	AddedBy string `json:"added_by"` // identity id that signed the device cert
-	Revoked bool   `json:"revoked"`  // always false in Stage 1
+	Revoked bool   `json:"revoked"`  // set only by Revoke; a fresh pairing makes a new device id
 	Caps    Caps   `json:"caps"`
 }
 
@@ -59,6 +62,9 @@ type Listing struct {
 	Identity IdentityRec       `json:"identity"`
 	Devices  map[string]Device `json:"devices"`
 	Cells    map[string]Cell   `json:"cells"`
+	// Version is the directory version the records were read at, which is
+	// sent as the VersionHeader and not in the body.
+	Version uint64 `json:"-"`
 }
 
 // CellView is one cell with the directory time it was read at.

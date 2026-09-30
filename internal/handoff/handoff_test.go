@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
@@ -105,6 +106,29 @@ func TestTakeBackAfterAToBAndAgain(t *testing.T) {
 	}
 }
 
+// TestTakeRunningChatDisplacesItsHolder: a person who continues a chat that is
+// running on another device takes it at once, without waiting for the holder's
+// lease to run out, and the holder's next write is refused as superseded.
+func TestTakeRunningChatDisplacesItsHolder(t *testing.T) {
+	w := newWorld(t)
+	a, b := w.device(devA), w.device(devB)
+	drv := a.start(map[string]string{"a.txt": "one"}) // A still holds a live lease
+
+	taken, err := b.taker().Take(context.Background(), chatID)
+	if err != nil {
+		t.Fatalf("Take of a running chat = %v, want it taken at once", err)
+	}
+	if taken.Driving.Fence != 2 || w.cellRec(chatID).Lease.Device != devB {
+		t.Fatalf("fence %d, holder %s; want B at fence 2", taken.Driving.Fence, w.cellRec(chatID).Lease.Device)
+	}
+	pub := &cellsync.Publisher{Engine: a.eng, Store: a.store, Dir: a.dir}
+	next := a.eng.Seal(a.cell(chatID), map[string]string{"a.txt": "two"})
+	err = pub.Publish(context.Background(), &drv, next, cellsync.PublishInfo{Class: "chat"})
+	if !errors.Is(err, cellsync.ErrSuperseded) {
+		t.Fatalf("displaced holder's publish = %v, want ErrSuperseded", err)
+	}
+}
+
 func TestTakeFetchFailureTakesNoLease(t *testing.T) {
 	w, a, _ := backFromB(t)
 	before := w.cellRec(chatID).Lease
@@ -162,7 +186,7 @@ func TestTakeLosesRace(t *testing.T) {
 	a.hooks = []func(context.Context, cell.Cell) error{func(context.Context, cell.Cell) error { ran = true; return nil }}
 	// B wins the acquire while A is still fetching.
 	a.onFetc = func() {
-		if _, err := b.dir.Client.Acquire(context.Background(), chatID); err != nil {
+		if _, err := b.dir.Client.Acquire(context.Background(), chatID, directory.AcquireOpts{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -260,7 +284,7 @@ func TestTakeLostRaceLeavesNoTreeInTheRoot(t *testing.T) {
 	a, b, c := w.device(devA), w.device(devB), w.device("dev_c")
 	a.release(a.start(map[string]string{"a.txt": "one"}))
 	c.onFetc = func() {
-		if _, err := b.dir.Client.Acquire(context.Background(), chatID); err != nil {
+		if _, err := b.dir.Client.Acquire(context.Background(), chatID, directory.AcquireOpts{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -282,7 +306,7 @@ func TestTakeLostRaceKeepsTheOldRoot(t *testing.T) {
 	_, a, b := backFromB(t)
 	before := tree(t, a.root(chatID))
 	a.onFetc = func() {
-		if _, err := b.dir.Client.Acquire(context.Background(), chatID); err != nil {
+		if _, err := b.dir.Client.Acquire(context.Background(), chatID, directory.AcquireOpts{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -318,5 +342,21 @@ func TestTakeInPlaceKeepsThePersonsFolder(t *testing.T) {
 	}
 	if _, err := os.Stat(taken.Cell.Root + ".taking"); !os.IsNotExist(err) {
 		t.Fatalf("staging folder left behind (%v)", err)
+	}
+	if len(a.local.followed) != 0 {
+		t.Fatalf("a folder restored in place never moved, yet the engine was told %v", a.local.followed)
+	}
+}
+
+// A copy that is replaced by the staging folder is a tree the engine registered
+// under the staging path, so the engine is told it moved.
+func TestTakeTellsTheEngineWhereTheStagedTreeWent(t *testing.T) {
+	_, a, _ := backFromB(t)
+	if _, err := a.taker().Take(context.Background(), chatID); err != nil {
+		t.Fatal(err)
+	}
+	root := a.root(chatID)
+	if want := []string{root + ".taking -> " + root}; !reflect.DeepEqual(a.local.followed, want) {
+		t.Fatalf("the engine was told %v, want %v", a.local.followed, want)
 	}
 }

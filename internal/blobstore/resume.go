@@ -107,6 +107,11 @@ func (r *Resuming) Get(ctx context.Context, rid string) ([]byte, error) {
 	return r.Inner.Get(ctx, rid)
 }
 
+// GetMany implements Store.
+func (r *Resuming) GetMany(ctx context.Context, rids []string) ([]Object, error) {
+	return r.Inner.GetMany(ctx, rids)
+}
+
 // Has implements Store.
 func (r *Resuming) Has(ctx context.Context, rids []string) ([]bool, error) {
 	return r.Inner.Has(ctx, rids)

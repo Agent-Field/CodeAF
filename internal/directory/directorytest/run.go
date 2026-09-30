@@ -77,10 +77,12 @@ var cases = map[string]func(*testing.T, env){
 	"AcquireRefusedWhileHeld":        acquireRefusedWhileHeld,
 	"AcquireAfterExpiry":             acquireAfterExpiry,
 	"AcquireOwnLeaseRaisesFence":     acquireOwnLeaseRaisesFence,
+	"ForcedAcquireBeatsLiveLease":    forcedAcquireBeatsLiveLease,
 	"HeartbeatRenews":                heartbeatRenews,
 	"LateHeartbeatSameFence":         lateHeartbeatSameFence,
 	"HeartbeatWrongFenceRefused":     heartbeatWrongFenceRefused,
 	"PublishMovesHead":               publishMovesHead,
+	"PublishRenewsLease":             publishRenewsLease,
 	"PublishKeepsTitleWhenEmpty":     publishKeepsTitleWhenEmpty,
 	"PublishStaleOldHeadRefused":     publishStaleOldHeadRefused,
 	"PublishAfterTakeoverRefused":    publishAfterTakeoverRefused,
@@ -91,6 +93,17 @@ var cases = map[string]func(*testing.T, env){
 	"SetVaultIsCompareAndSwap":       setVaultIsCompareAndSwap,
 	"DirectoryClockStampsEverything": directoryClockStampsEverything,
 	"ConcurrentAcquireOneWins":       concurrentAcquireOneWins,
+	"DeviceRevokedIsRefused":         deviceRevokedIsRefused,
+	"RevokeRefusesSelfAndUnknown":    revokeRefusesSelfAndUnknown,
+	"RevokeIsIdempotent":             revokeIsIdempotent,
+	"RotationStatus":                 rotationStatus,
+	"RotationFreezeRefusesWrites":    rotationFreezeRefusesWrites,
+	"RotationThawRestores":           rotationThawRestores,
+	"RotationRetireNeedsFreeze":      rotationRetireNeedsFreeze,
+	"RotationRetireBounds":           rotationRetireBounds,
+	"RotationFirstFreezerWins":       rotationFirstFreezerWins,
+	"RotationRetiredIsForever":       rotationRetiredIsForever,
+	"RevokedCannotRotate":            revokedCannotRotate,
 }
 
 func start(t *testing.T, e env) directory.CellView {
@@ -143,20 +156,20 @@ func createExists(t *testing.T, e env) {
 func cellNotFound(t *testing.T, e env) {
 	_, err := e.as(devA).Cell(ctx, cell)
 	wantErr(t, err, directory.ErrNotFound)
-	_, err = e.as(devA).Acquire(ctx, cell)
+	_, err = e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{})
 	wantErr(t, err, directory.ErrNotFound)
 }
 
 func acquireRefusedWhileHeld(t *testing.T, e env) {
 	start(t, e)
-	_, err := e.as(devB).Acquire(ctx, cell)
+	_, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	wantErr(t, err, directory.ErrLeaseHeld)
 }
 
 func acquireAfterExpiry(t *testing.T, e env) {
 	start(t, e)
 	expire(e)
-	v, err := e.as(devB).Acquire(ctx, cell)
+	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if v.Cell.Lease.Device != e.id(devB) || v.Cell.Lease.Fence != 2 || v.Cell.Lease.Pending != 0 {
 		t.Fatalf("lease = %+v", v.Cell.Lease)
@@ -165,11 +178,26 @@ func acquireAfterExpiry(t *testing.T, e env) {
 
 func acquireOwnLeaseRaisesFence(t *testing.T, e env) {
 	start(t, e)
-	v, err := e.as(devA).Acquire(ctx, cell)
+	v, err := e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if v.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence = %d, want 2", v.Cell.Lease.Fence)
 	}
+}
+
+// forcedAcquireBeatsLiveLease: a person who continues a chat where it runs now
+// takes the lease at once, and the displaced holder is refused as in L7.
+func forcedAcquireBeatsLiveLease(t *testing.T, e env) {
+	start(t, e)
+	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
+	must(t, err)
+	if l := v.Cell.Lease; l.Device != e.id(devB) || l.Fence != 2 || l.Pending != 0 {
+		t.Fatalf("lease = %+v", l)
+	}
+	_, err = e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
+	wantErr(t, err, directory.ErrFenceStale)
+	_, err = e.as(devA).Heartbeat(ctx, cell, directory.Beat{Fence: 1})
+	wantErr(t, err, directory.ErrFenceStale)
 }
 
 func heartbeatRenews(t *testing.T, e env) {
@@ -213,6 +241,18 @@ func publishMovesHead(t *testing.T, e env) {
 	}
 }
 
+// publishRenewsLease: a publish is proof of life, so a holder that publishes
+// often never needs a heartbeat.
+func publishRenewsLease(t *testing.T, e env) {
+	start(t, e)
+	e.clock.Wait(directory.HeartbeatEvery)
+	v, err := e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
+	must(t, err)
+	if want := v.Now + directory.LeaseTTL.Milliseconds(); v.Cell.Lease.Expires != want {
+		t.Fatalf("expires = %d, want %d", v.Cell.Lease.Expires, want)
+	}
+}
+
 func publishKeepsTitleWhenEmpty(t *testing.T, e env) {
 	start(t, e)
 	v, err := e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
@@ -236,7 +276,7 @@ func publishStaleOldHeadRefused(t *testing.T, e env) {
 func publishAfterTakeoverRefused(t *testing.T, e env) {
 	start(t, e)
 	expire(e)
-	b, err := e.as(devB).Acquire(ctx, cell)
+	b, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if b.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence = %d, want 2", b.Cell.Lease.Fence)
@@ -259,7 +299,7 @@ func releaseFreesLeaseKeepsFence(t *testing.T, e env) {
 	if l.Expires != 0 || l.Pending != 0 || l.Fence != 1 || l.Device != e.id(devA) {
 		t.Fatalf("lease = %+v", l)
 	}
-	v, err := e.as(devB).Acquire(ctx, cell)
+	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if v.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence = %d, want 2", v.Cell.Lease.Fence)
@@ -330,7 +370,7 @@ func concurrentAcquireOneWins(t *testing.T, e env) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := e.as(fmt.Sprintf("dev_%032x", i+1)).Acquire(ctx, cell)
+			_, err := e.as(fmt.Sprintf("dev_%032x", i+1)).Acquire(ctx, cell, directory.AcquireOpts{})
 			errs <- err
 		}()
 	}
@@ -360,4 +400,207 @@ func tally(t *testing.T, errs <-chan error, racers int) {
 	if won != 1 || held != racers-1 {
 		t.Fatalf("won %d, held %d of %d", won, held, racers)
 	}
+}
+
+// twoDevices records devA and devB as devices of one identity.
+func twoDevices(t *testing.T, e env) {
+	t.Helper()
+	for _, d := range []string{devA, devB} {
+		must(t, e.as(d).PutDevice(ctx, e.id(d), directory.Device{V: 1, Name: d}))
+	}
+}
+
+// deviceRevokedIsRefused: once A revokes B, B is refused on every verb, A goes
+// on as before, and the record and the listing both say B is stopped.
+func deviceRevokedIsRefused(t *testing.T, e env) {
+	start(t, e)
+	twoDevices(t, e)
+	must(t, e.as(devA).Revoke(ctx, e.id(devB)))
+
+	b := e.as(devB)
+	_, listErr := b.List(ctx)
+	_, cellErr := b.Cell(ctx, cell)
+	_, createErr := b.Create(ctx, "01J0000000000000000000000B", directory.CellInit{Head: head})
+	_, acquireErr := b.Acquire(ctx, cell, directory.AcquireOpts{})
+	_, beatErr := b.Heartbeat(ctx, cell, directory.Beat{Fence: 1})
+	_, publishErr := b.Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
+	for verb, err := range map[string]error{
+		"List": listErr, "Cell": cellErr, "Create": createErr, "Acquire": acquireErr, "Heartbeat": beatErr,
+		"Publish":   publishErr,
+		"Release":   b.Release(ctx, cell, 1),
+		"Archive":   b.Archive(ctx, cell),
+		"SetVault":  b.SetVault(ctx, "", "rid"),
+		"PutDevice": b.PutDevice(ctx, e.id(devB), directory.Device{V: 1, Name: "back"}),
+		"Revoke":    b.Revoke(ctx, e.id(devA)),
+	} {
+		if !errors.Is(err, directory.ErrRevoked) {
+			t.Errorf("%s by a revoked device: %v, want ErrRevoked", verb, err)
+		}
+	}
+
+	l, err := e.as(devA).List(ctx)
+	must(t, err)
+	if !l.Devices[e.id(devB)].Revoked || l.Devices[e.id(devA)].Revoked {
+		t.Fatalf("listing shows devices %+v, want only B revoked", l.Devices)
+	}
+	if got := get(t, e); got.Head != head || got.Lease.Device != e.id(devA) {
+		t.Fatalf("a refused device changed the cell: %+v", got)
+	}
+	_, err = e.as(devA).Heartbeat(ctx, cell, directory.Beat{Fence: 1})
+	must(t, err)
+}
+
+// revokeRefusesSelfAndUnknown: a device cannot stop itself, and an id nobody
+// recorded is not found.
+func revokeRefusesSelfAndUnknown(t *testing.T, e env) {
+	twoDevices(t, e)
+	wantErr(t, e.as(devA).Revoke(ctx, e.id(devA)), directory.ErrSelfRevoke)
+	wantErr(t, e.as(devA).Revoke(ctx, "dev_cccccccccccccccccccccccccccccccc"), directory.ErrNotFound)
+	l, err := e.as(devA).List(ctx)
+	must(t, err)
+	if l.Devices[e.id(devA)].Revoked {
+		t.Fatal("a refused self-revoke still stopped the device")
+	}
+}
+
+// revokeIsIdempotent: stopping a stopped device is not an error, so a retry
+// after a lost answer is safe.
+func revokeIsIdempotent(t *testing.T, e env) {
+	twoDevices(t, e)
+	must(t, e.as(devA).Revoke(ctx, e.id(devB)))
+	must(t, e.as(devA).Revoke(ctx, e.id(devB)))
+}
+
+func move(t *testing.T, e env, device string, req directory.RotationReq) (directory.RotationView, error) {
+	t.Helper()
+	return e.as(device).Rotate(ctx, req)
+}
+
+// rotationStatus: a live identity has no rotation and says what grace it accepts.
+func rotationStatus(t *testing.T, e env) {
+	v, err := e.as(devA).Rotation(ctx)
+	must(t, err)
+	if v.Rotation != nil || v.MinMS <= 0 || v.MinMS > v.DefaultMS || v.DefaultMS > v.MaxMS {
+		t.Fatalf("view of a live identity = %+v", v)
+	}
+}
+
+// rotationFreezeRefusesWrites: once frozen, every verb that changes a record is
+// refused for every device, and reads are not.
+func rotationFreezeRefusesWrites(t *testing.T, e env) {
+	start(t, e)
+	twoDevices(t, e)
+	_, err := move(t, e, devA, directory.RotationReq{Op: directory.OpFreeze})
+	must(t, err)
+	for _, dev := range []string{devA, devB} {
+		c := e.as(dev)
+		_, createErr := c.Create(ctx, "01J0000000000000000000000B", directory.CellInit{Head: head})
+		_, acquireErr := c.Acquire(ctx, cell, directory.AcquireOpts{})
+		_, beatErr := c.Heartbeat(ctx, cell, directory.Beat{Fence: 1})
+		_, publishErr := c.Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
+		for verb, err := range map[string]error{
+			"Create": createErr, "Acquire": acquireErr, "Heartbeat": beatErr, "Publish": publishErr,
+			"Release":   c.Release(ctx, cell, 1),
+			"Archive":   c.Archive(ctx, cell),
+			"SetVault":  c.SetVault(ctx, "", "rid"),
+			"PutDevice": c.PutDevice(ctx, e.id(dev), directory.Device{V: 1, Name: "x"}),
+			"Revoke":    c.Revoke(ctx, e.id(devB)),
+		} {
+			if !errors.Is(err, directory.ErrRotated) {
+				t.Errorf("%s by %s on a frozen identity: %v, want ErrRotated", verb, dev, err)
+			}
+		}
+		if _, err := c.List(ctx); err != nil {
+			t.Errorf("List on a frozen identity: %v", err)
+		}
+		if _, err := c.Cell(ctx, cell); err != nil {
+			t.Errorf("Cell on a frozen identity: %v", err)
+		}
+	}
+	v, err := e.as(devB).Rotation(ctx)
+	must(t, err)
+	if v.Rotation == nil || v.Rotation.State != directory.StateFrozen || v.Rotation.By != e.id(devA) {
+		t.Fatalf("rotation = %+v, want frozen by A", v.Rotation)
+	}
+}
+
+// rotationThawRestores: a thaw makes the identity writable as it was, and thawing
+// a live one is not an error.
+func rotationThawRestores(t *testing.T, e env) {
+	start(t, e)
+	_, err := move(t, e, devA, directory.RotationReq{Op: directory.OpFreeze})
+	must(t, err)
+	_, err = move(t, e, devA, directory.RotationReq{Op: directory.OpThaw})
+	must(t, err)
+	_, err = move(t, e, devA, directory.RotationReq{Op: directory.OpThaw})
+	must(t, err)
+	must(t, e.as(devA).Archive(ctx, cell))
+}
+
+// rotationRetireNeedsFreeze: retiring a live identity is refused.
+func rotationRetireNeedsFreeze(t *testing.T, e env) {
+	_, err := move(t, e, devA, directory.RotationReq{Op: directory.OpRetire})
+	wantErr(t, err, directory.ErrRotationStep)
+}
+
+// rotationRetireBounds: a grace outside what the relay says it accepts is
+// refused, none at all means the relay's default, and the deadline is the
+// directory's time plus the grace.
+func rotationRetireBounds(t *testing.T, e env) {
+	_, err := move(t, e, devA, directory.RotationReq{Op: directory.OpFreeze})
+	must(t, err)
+	limits, err := e.as(devA).Rotation(ctx)
+	must(t, err)
+	for _, ms := range []int64{limits.MinMS - 1, limits.MaxMS + 1} {
+		_, err := move(t, e, devA, directory.RotationReq{Op: directory.OpRetire, GraceMS: ms})
+		wantErr(t, err, directory.ErrBadGrace)
+	}
+	v, err := move(t, e, devA, directory.RotationReq{Op: directory.OpRetire})
+	must(t, err)
+	if v.Rotation.State != directory.StateRetired || v.Rotation.RetireAt != v.Now+limits.DefaultMS {
+		t.Fatalf("retired view = %+v at %d, default %d", v.Rotation, v.Now, limits.DefaultMS)
+	}
+}
+
+// rotationFirstFreezerWins: a second device cannot freeze what another froze, and
+// only the device that froze may retire; any device may thaw.
+func rotationFirstFreezerWins(t *testing.T, e env) {
+	twoDevices(t, e)
+	_, err := move(t, e, devA, directory.RotationReq{Op: directory.OpFreeze})
+	must(t, err)
+	_, err = move(t, e, devB, directory.RotationReq{Op: directory.OpFreeze})
+	wantErr(t, err, directory.ErrRotated)
+	_, err = move(t, e, devB, directory.RotationReq{Op: directory.OpRetire})
+	wantErr(t, err, directory.ErrRotated)
+	_, err = move(t, e, devB, directory.RotationReq{Op: directory.OpThaw})
+	must(t, err)
+}
+
+// rotationRetiredIsForever: a retired identity cannot be thawed or frozen by
+// another, and retiring again changes nothing.
+func rotationRetiredIsForever(t *testing.T, e env) {
+	twoDevices(t, e)
+	_, err := move(t, e, devA, directory.RotationReq{Op: directory.OpFreeze})
+	must(t, err)
+	first, err := move(t, e, devA, directory.RotationReq{Op: directory.OpRetire})
+	must(t, err)
+	_, err = move(t, e, devA, directory.RotationReq{Op: directory.OpThaw})
+	wantErr(t, err, directory.ErrRotated)
+	_, err = move(t, e, devB, directory.RotationReq{Op: directory.OpFreeze})
+	wantErr(t, err, directory.ErrRotated)
+	again, err := move(t, e, devA, directory.RotationReq{Op: directory.OpRetire})
+	must(t, err)
+	if *again.Rotation != *first.Rotation {
+		t.Fatalf("a second retire changed %+v to %+v", first.Rotation, again.Rotation)
+	}
+}
+
+// revokedCannotRotate: a stopped device cannot ask for anything, rotation included.
+func revokedCannotRotate(t *testing.T, e env) {
+	twoDevices(t, e)
+	must(t, e.as(devA).Revoke(ctx, e.id(devB)))
+	_, err := move(t, e, devB, directory.RotationReq{Op: directory.OpFreeze})
+	wantErr(t, err, directory.ErrRevoked)
+	_, err = e.as(devB).Rotation(ctx)
+	wantErr(t, err, directory.ErrRevoked)
 }

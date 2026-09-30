@@ -104,3 +104,61 @@ type notWrittenDown struct{ err error }
 
 func (n notWrittenDown) Error() string { return n.err.Error() }
 func (n notWrittenDown) Unwrap() error { return n.err }
+
+// ── pairing a person's chats, and the join words ────────────────────────────
+//
+// The same rule as above: one sentence, naming the thing that is wrong, and the
+// next step where there is one. These are the sentences themselves, because a
+// caller that wants to tell them apart uses errors.Is and one that wants to
+// show them prints them.
+
+var (
+	// ErrCodeShape is a typed code that cannot be a code.
+	ErrCodeShape = errors.New("a pairing code looks like 42-715-302: digits, with dashes or spaces if you like")
+	// ErrCodeDidNotWork is the wrong code, or a code that ran out.
+	ErrCodeDidNotWork = errors.New("that code did not work, or it timed out; ask for a new one")
+	// ErrRefused is the person on the other device saying no, or saying nothing.
+	ErrRefused = errors.New("refused on the other device")
+	// ErrNothingWaiting is a nameplate nothing is waiting under, with the plate after it.
+	ErrNothingWaiting = errors.New("no pairing is waiting")
+	// ErrStopped is the other device leaving before the pairing began.
+	ErrStopped = errors.New("the other device stopped pairing; run /pair there again")
+	// ErrSomeoneElse is a mailbox another device already joined.
+	ErrSomeoneElse = errors.New("someone else used that code")
+	// ErrDidNotFinish is a pairing that ran out of time part way.
+	ErrDidNotFinish = errors.New("the pairing did not finish; nothing was changed")
+	// ErrOffering is a second code asked for while one is showing.
+	ErrOffering = errors.New("a pairing code is already showing on this computer")
+	// ErrBadGrant is what arrived as a grant and could not be used.
+	ErrBadGrant = errors.New("what the other device sent could not be read; nothing was changed")
+	// ErrSyncOff is a person who has turned the relay off.
+	ErrSyncOff = errors.New("sync is off (CODEAF_SYNC_URL=off); pairing needs a relay")
+	// ErrNoSync is a person with no relay set at all.
+	ErrNoSync = errors.New("no relay is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a relay's address, or pass --relay <address>")
+	// ErrRelayBusy is a relay at one of its global caps.
+	ErrRelayBusy = errors.New("the relay is full right now; try again in a few minutes")
+	// ErrRelayTooOld is a relay that does not know pairing yet.
+	ErrRelayTooOld = errors.New("that relay is too old for pairing")
+	// ErrDifferentChats is a computer that already has chats of its own.
+	ErrDifferentChats = errors.New("this computer already has chats of its own, so they stay local and nothing was changed; to replace them with the other device's, run this again with --replace")
+	// ErrAlreadyPaired is a computer that already holds the chats being offered.
+	ErrAlreadyPaired = errors.New("already paired; nothing changed")
+	// ErrCannotReach is a relay that does not answer, with its host after it.
+	ErrCannotReach = errors.New("cannot reach")
+	// ErrTooManyPairings is a network that asked for too many codes in an hour.
+	ErrTooManyPairings = errors.New("too many pairings from this network")
+)
+
+// NothingWaitingUnder is the sentence for a nameplate that is unknown or over,
+// the same words for both because the person's next step is the same.
+func NothingWaitingUnder(plate string) error {
+	return fmt.Errorf("%w under %s", ErrNothingWaiting, plate)
+}
+
+// CannotReachHost names the relay that did not answer.
+func CannotReachHost(host string) error { return fmt.Errorf("%w %s", ErrCannotReach, host) }
+
+// TooManyFor says how long until a network may ask again.
+func TooManyFor(wait time.Duration) error {
+	return fmt.Errorf("%w; wait %d min", ErrTooManyPairings, int((wait+time.Minute-1)/time.Minute))
+}

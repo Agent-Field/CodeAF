@@ -9,7 +9,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
-	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const (
@@ -17,9 +16,6 @@ const (
 	DefaultInterval = 5 * time.Second
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
-	// NudgeWindow is the least time between two heartbeats that a noted turn
-	// asked for, so a burst of seals costs one request and not one each.
-	NudgeWindow = time.Second
 )
 
 // Publishing wraps the Stage 0 store: seal exactly as before, then note the
@@ -30,7 +26,8 @@ type Publishing struct {
 }
 
 // Batcher publishes the newest sealed turn on an interval and keeps the lease
-// alive, each on its own loop so a slow upload cannot starve a heartbeat.
+// alive while nothing is being published, each on its own loop so a slow upload
+// cannot starve a heartbeat.
 type Batcher struct {
 	Publisher    *Publisher
 	Brancher     Brancher
@@ -39,17 +36,22 @@ type Batcher struct {
 	Info         func() PublishInfo
 	OnFlush      func(Flush)      // telemetry hook
 	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
-	OnError      func(error)      // wireauth.ErrSkew and other person-facing refusals
+	OnError      func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
+	Now          func() time.Time // default time.Now; tests inject a fake clock
 	// Sleep waits d or until ctx ends; tests inject a fake. Default is real time.
 	Sleep func(ctx context.Context, d time.Duration) error
 
-	mu        sync.Mutex // guards Driving, noted, stale and skewShown; never held over the network
+	mu        sync.Mutex // guards Driving, noted, stale, published, refusedSince and told; never held over the network
 	noted     []string   // heads of sealed turns not yet durable, oldest first
 	stale     bool       // the lease was lost and the orphans are not branched yet
-	skewShown bool
+	published bool       // a publish renewed the lease since the last heartbeat tick
 
-	nudge wakeup // asks the heartbeat loop for a prompt beat: a turn was noted
+	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
+	told         string    // the kind of refusal the person has heard of in this run, so each is said once
+
+	work  wakeup // tells the flush loop a turn was noted, so a closed window can open at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
+	freed wakeup // ends a halt: something the relay refused for has changed
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
@@ -84,17 +86,17 @@ func (p *Publishing) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnI
 	return s, err
 }
 
-// Note records a sealed turn and asks the heartbeat loop for a prompt beat, so
-// the directory's pending count is current within about a second and not a
-// whole heartbeat late. It only takes a lock and never waits, so it is safe on
-// the seal path.
+// Note records a sealed turn and wakes the flush loop. It only takes a lock and
+// never waits, so it is safe on the seal path. It sends nothing itself: the turn
+// goes up with the next publish, which is also what tells the directory it is no
+// longer pending.
 func (b *Batcher) Note(t cellstore.Turn) {
 	b.mu.Lock()
 	if n := len(b.noted); n == 0 || b.noted[n-1] != t.ID {
 		b.noted = append(b.noted, t.ID)
 	}
 	b.mu.Unlock()
-	b.nudge.fire()
+	b.work.fire()
 }
 
 // Idle says the agent has stopped and is waiting for the person, so the turns
@@ -103,6 +105,11 @@ func (b *Batcher) Note(t cellstore.Turn) {
 // moment the person is likeliest to pick the chat up on another machine. It
 // never waits, so it is safe to call from the turn's own goroutine.
 func (b *Batcher) Idle() { b.idle.fire() }
+
+// Freed says something a refusal waited on has changed (space was freed on the
+// relay, say), so a halted chat tries again now instead of waiting for a
+// reopen. It never waits, so it is safe to call from any goroutine.
+func (b *Batcher) Freed() { b.freed.fire() }
 
 // wakeup carries at most one pending request from a caller to a loop. The zero
 // value is ready to use.
@@ -138,10 +145,11 @@ func (b *Batcher) Pending() uint32 {
 	return uint32(len(b.noted))
 }
 
-// Run flushes each Interval, or as soon as Idle is called, and heartbeats each
-// directory.HeartbeatEvery until ctx ends. Sealing is never held back: only the
-// upload waits, so a busy agent costs one publish a window however many tool
-// calls it makes.
+// Run uploads noted turns and heartbeats each directory.HeartbeatEvery until
+// ctx ends. An upload opens a window of one Interval; turns sealed while it is
+// open wait for it to close and then go up together, so a busy agent costs two
+// publishes a window at most and a lone tool call is durable at once. Sealing
+// is never held back: only the upload waits.
 func (b *Batcher) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { b.beats(ctx) })
@@ -150,27 +158,49 @@ func (b *Batcher) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// flushes uploads, then waits as long as the flush asks, or until Idle when the
-// flush succeeded.
+// flushes is the whole state machine: wait until a turn is noted, upload it,
+// which opens a window, and rest until the window closes. A turn noted while
+// the window is open is still noted when it closes, so it goes straight up and
+// opens the next window; a turn noted in a quiet period goes up at once. There
+// is no separate rule for the first turn of a burst.
 func (b *Batcher) flushes(ctx context.Context) {
 	for {
+		if b.awaitWork(ctx) != nil {
+			return
+		}
 		if err := b.rest(ctx, b.flush(ctx)); err != nil {
 			return
 		}
 	}
 }
 
-// rest waits d between flushes. After a failure it waits the whole backoff
-// whatever Idle says, and forgets an Idle that arrived meanwhile: when the
-// relay is failing, a client that retried after every finished turn would be
-// thousands of clients hammering it at once. The flush that ends the backoff
-// sends what Idle wanted sent.
-func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
-	if !b.failing {
-		_, err := b.nap(ctx, d, &b.idle)
-		return err
+// awaitWork returns once a turn is noted. An Idle with nothing noted has
+// nothing to send, so it is dropped here and never shortens a later window.
+func (b *Batcher) awaitWork(ctx context.Context) error {
+	for b.Pending() == 0 {
+		select {
+		case <-b.work.ch():
+		case <-b.idle.ch():
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	err := b.sleeper()(ctx, d)
+	return nil
+}
+
+// rest waits out the window d, which is zero when the flush sent nothing. After
+// a failure it waits the whole backoff whatever Idle says, and forgets an Idle
+// that arrived meanwhile: when the relay is failing, a client that retried after
+// every finished turn would be thousands of clients hammering it at once. The
+// flush that ends the backoff sends what Idle wanted sent.
+func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	if !b.failing {
+		return b.nap(ctx, d, &b.idle)
+	}
+	err := b.nap(ctx, d, &b.freed)
 	select {
 	case <-b.idle.ch():
 	default:
@@ -178,46 +208,47 @@ func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
 	return err
 }
 
-// beats renews the lease every HeartbeatEvery, and at once when a turn is
-// noted. After such a prompt beat it waits out the NudgeWindow, so turns noted
-// meanwhile share the next single beat.
+// beats renews the lease once every HeartbeatEvery in which nothing was
+// published. A publish is proof of life and renews the lease itself, so a busy
+// chat costs the relay no heartbeat at all, and an idle one costs one per tick.
 func (b *Batcher) beats(ctx context.Context) {
-	b.beat(ctx)
-	for {
-		nudged, err := b.nap(ctx, directory.HeartbeatEvery, &b.nudge)
-		if err != nil {
-			return
-		}
-		b.beat(ctx)
-		if nudged && b.sleeper()(ctx, NudgeWindow) != nil {
-			return
+	for b.sleeper()(ctx, directory.HeartbeatEvery) == nil {
+		if !b.takePublished() {
+			b.beat(ctx)
 		}
 	}
 }
 
-// nap waits d, or until w is fired, and says which ended it. The sleep is the
-// injected one, so a fake clock governs it.
-func (b *Batcher) nap(ctx context.Context, d time.Duration, w *wakeup) (bool, error) {
+// takePublished says whether a publish renewed the lease since the last call,
+// and forgets it. A publish just after one tick is skipped at the next tick and
+// covered by the tick after, at most two ticks, which the TTL allows.
+func (b *Batcher) takePublished() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	was := b.published
+	b.published = false
+	return was
+}
+
+// nap waits d, or until w is fired. The sleep is the injected one, so a fake
+// clock governs it. It answers only ctx's own error: being woken is not one.
+func (b *Batcher) nap(ctx context.Context, d time.Duration, w *wakeup) error {
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	over := make(chan struct{})
-	woke := make(chan bool, 1)
+	woke := make(chan struct{})
 	go func() {
+		defer close(woke)
 		select {
 		case <-w.ch():
 			cancel()
-			woke <- true
 		case <-over:
-			woke <- false
 		}
 	}()
 	_ = b.sleeper()(sctx, d)
 	close(over)
-	nudged := <-woke
-	if ctx.Err() != nil {
-		return nudged, ctx.Err()
-	}
-	return nudged, nil
+	<-woke
+	return ctx.Err()
 }
 
 func (b *Batcher) sleeper() func(context.Context, time.Duration) error {
@@ -260,24 +291,32 @@ func (b *Batcher) release(ctx context.Context) error {
 	return err
 }
 
-// flush publishes the newest noted turn and says how long to wait before the
-// next flush: the interval, or a doubled backoff after a failure.
+// flush publishes the newest noted turn and says how long the window it opened
+// lasts: the interval, or a doubled backoff after a failure. A flush that had
+// nothing to send opens no window.
 func (b *Batcher) flush(ctx context.Context) time.Duration {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
-	return b.after(b.drain(ctx))
+	_, sending := b.newest()
+	err := b.drain(ctx)
+	window := b.after(err)
+	if sending == 0 && err == nil {
+		return 0
+	}
+	return window
 }
 
-// after turns a flush's outcome into the next wait.
+// after turns a flush's outcome into the next wait. A failure that is not a
+// refusal is the zero Refusal, which backs off and says nothing.
 func (b *Batcher) after(err error) time.Duration {
 	interval := b.interval()
 	b.failing = err != nil
-	switch {
-	case err == nil, b.surface(err):
+	if err == nil {
 		b.backoff = interval
-	default:
-		b.backoff = min(2*max(b.backoff, interval), max(MaxBackoff, interval))
+		return b.backoff
 	}
+	r, _ := b.surface(err)
+	b.backoff = r.next(b.backoff, interval, err)
 	return b.backoff
 }
 
@@ -312,6 +351,7 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 		return err
 	}
 	b.adopt(d)
+	b.setFlag(&b.published, true)
 	b.recovered()
 	turns := b.durable(head)
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})
@@ -447,24 +487,46 @@ func (b *Batcher) setFlag(flag *bool, v bool) {
 	*flag = v
 }
 
-// surface shows a person-facing refusal once and answers whether err was one.
-// Skew is not retried on the backoff: the next tick simply tries again.
-func (b *Batcher) surface(err error) bool {
-	if !errors.Is(err, wireauth.ErrSkew) {
-		return false
-	}
-	b.mu.Lock()
-	first := !b.skewShown
-	b.skewShown = true
-	b.mu.Unlock()
-	if first && b.OnError != nil {
+// surface tells the person of a refusal when the run of refusals is news, and
+// answers which refusal err was.
+func (b *Batcher) surface(err error) (Refusal, bool) {
+	r, ok := RefusalOf(err)
+	if ok && b.news(r) && b.OnError != nil {
 		b.OnError(err)
 	}
+	return r, ok
+}
+
+// news says whether the person should hear r now: it has lasted as long as its
+// row asks to stay quiet, and this sentence has not been said in this run. It
+// marks the sentence as said, so asking twice answers true once.
+func (b *Batcher) news(r Refusal) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.now()
+	if b.refusedSince.IsZero() {
+		b.refusedSince = now
+	}
+	if b.told == r.Is.Error() || now.Sub(b.refusedSince) < r.Quiet {
+		return false
+	}
+	b.told = r.Is.Error()
 	return true
 }
 
-// recovered notes that the directory answered, so a later skew is news again.
-func (b *Batcher) recovered() { b.setFlag(&b.skewShown, false) }
+func (b *Batcher) now() time.Time {
+	if b.Now != nil {
+		return b.Now()
+	}
+	return time.Now()
+}
+
+// recovered notes that the relay answered, so the next refusal is news again.
+func (b *Batcher) recovered() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.refusedSince, b.told = time.Time{}, ""
+}
 
 func (b *Batcher) emit(f Flush) {
 	if b.OnFlush != nil {

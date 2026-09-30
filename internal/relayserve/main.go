@@ -10,12 +10,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 // Main is the relay program, shared by cmd/relay and `codeaf relay`:
 //
-//	relay --listen :8787 [--store /var/lib/codeaf] [--quiet] [--status=false]
+//	relay --listen :8787 [--store /var/lib/codeaf] [--quiet] [--status=false] [--trust-proxy]
 //
 // It runs until SIGINT or SIGTERM and then lets in-flight requests finish.
 // In front of it in production goes whatever already terminates TLS; the pipe
@@ -26,10 +27,18 @@ func Main(args []string) error {
 	store := flags.String("store", "", "directory that keeps the directory and blob stores; empty runs the blind pipe only")
 	quiet := flags.Bool("quiet", false, "do not log arrivals, departures and requests")
 	status := flags.Bool("status", true, "answer GET /status with what is connected right now")
+	trust := flags.Bool("trust-proxy", false, "count the address in X-Forwarded-For as the caller's network in the pairing limits; only for a relay behind a proxy that sets it")
+	minGrace := flags.Duration("min-grace", 0, "shortest grace period a rotation may ask for (default 1h); a test hook")
+	sweepEvery := flags.Duration("sweep-every", 0, "how often replaced identities whose grace has ended are deleted (default 1h); a test hook")
+	watchers := flags.Int("max-watchers", 0, "directory watch sockets one identity may hold (default 1000); a test hook")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	cfg := Config{Store: *store, Status: *status}
+	cfg := Config{Store: *store, Status: *status, TrustProxy: *trust, SweepEvery: *sweepEvery, MaxWatchers: *watchers}
+	if *minGrace > 0 {
+		cfg.Grace = directory.DefaultGraceBounds
+		cfg.Grace.Min = *minGrace
+	}
 	if !*quiet {
 		// A relay operator may log what a relay operator can see: a machine
 		// name and a moment, and per request the line note.go describes.

@@ -7,7 +7,7 @@ import (
 
 const (
 	now   = int64(1_000_000)
-	ttl   = int64(30_000)
+	ttl   = int64(90_000)
 	devA  = "dev_a"
 	devB  = "dev_b"
 	head1 = "h1"
@@ -43,7 +43,7 @@ func TestAcquire(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Acquire(tc.cell, tc.by, now)
+			got, err := Acquire(tc.cell, tc.by, now, false)
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("err = %v, want %v", err, tc.err)
 			}
@@ -54,6 +54,26 @@ func TestAcquire(t *testing.T) {
 				t.Fatalf("a refusal changed the lease: %+v", got.Lease)
 			}
 		})
+	}
+}
+
+// TestAcquireForce: a forced acquire displaces a live holder and raises the
+// fence, so the displaced holder's next write is refused as stale.
+func TestAcquireForce(t *testing.T) {
+	taken, err := Acquire(held(), devB, now, true)
+	if err != nil {
+		t.Fatalf("forced acquire refused: %v", err)
+	}
+	if want := (Lease{Device: devB, Fence: 5, Expires: now + ttl}); taken.Lease != want {
+		t.Fatalf("lease = %+v, want %+v", taken.Lease, want)
+	}
+	if _, err := Heartbeat(taken, devA, Beat{Fence: 4}, now); !errors.Is(err, ErrFenceStale) {
+		t.Fatalf("displaced holder's heartbeat = %v, want ErrFenceStale", err)
+	}
+	free, err := Acquire(expired(), devB, now, true)
+	plain, _ := Acquire(expired(), devB, now, false)
+	if err != nil || free.Lease != plain.Lease {
+		t.Fatalf("force on a free cell = %+v, %v; want the plain result %+v", free.Lease, err, plain.Lease)
 	}
 }
 
@@ -97,7 +117,7 @@ func TestPublishTo(t *testing.T) {
 		check  func(*testing.T, Cell)
 	}{
 		{"moves the head", devA, ok, nil, func(t *testing.T, c Cell) {
-			if c.Head != head2 || c.Size != 9 || c.Class != "chat" || c.Lease.Pending != 1 || c.DurableAt != now || c.Title != "new" {
+			if c.Head != head2 || c.Size != 9 || c.Class != "chat" || c.Lease.Pending != 1 || c.DurableAt != now || c.Title != "new" || c.Lease.Expires != now+ttl {
 				t.Fatalf("cell = %+v", c)
 			}
 		}},

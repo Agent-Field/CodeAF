@@ -273,6 +273,15 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
 
+## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
+| `/pair` | `/sync`, `/link`, `/laptop` | — | shows a code like `42-715-302`, valid 10 minutes, that gives your chats to another computer, then asks `y / n` when that computer types it |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<code>` | on the other computer: uses a code from `/pair` there, and shows three words to compare while it waits |
+
+The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. All five open the same door. In a terminal the same two forms are `codeaf pair` and `codeaf pair <code>`. The page *Pairing your chats with a second computer* has the whole story: the three words, one attempt for each code, and what revoking cannot take back.
+
 ## Cache, display and export commands
 
 | Command | Aliases | Argument | Effect |

@@ -241,6 +241,7 @@ fn export_published_want_import_materialize_over_socket() {
 
     let mut import = want_args.clone();
     import["inbox"] = json!(inbox);
+    import["ledger"] = json!(LEDGER);
     let imported = client.ok("import", &b, import);
     assert_eq!(imported["imported"], resent["objects"]);
     assert_eq!(client.ok("want", &b, want_args)["want"], json!([]));

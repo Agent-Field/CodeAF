@@ -181,6 +181,10 @@ func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
 	return l.eng.Dirty(ctx, c)
 }
 
+func (l engineLocal) Follow(ctx context.Context, from, to cell.Cell) error {
+	return l.eng.Follow(ctx, from, to)
+}
+
 // Seal seals the tree as one turn of the copy. The Taker names a cell by id and
 // folder only, and a seal needs the cell's own record, so it is opened here.
 func (l engineLocal) Seal(ctx context.Context, c cell.Cell) (string, uint32, error) {

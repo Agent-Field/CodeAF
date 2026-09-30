@@ -222,6 +222,8 @@ fn two_data_dirs_round_trip_byte_identical() {
             &src.head,
             "--inbox",
             inbox.to_str().unwrap(),
+            "--ledger",
+            LEDGER,
         ],
     );
     assert_eq!(imported["imported"], sent["objects"]);

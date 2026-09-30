@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -18,6 +19,7 @@ const MaxBody = 1 << 20
 // call is everything one route needs: the Client of the verified device and
 // the request it answers. Routes never see an identity or a device to trust.
 type call struct {
+	dir    Directory
 	cl     Client
 	device string
 	r      *http.Request
@@ -39,6 +41,7 @@ func Handler(auth wireauth.Authenticate, open func(identity string) (Directory, 
 	for pattern, rt := range routes {
 		mux.HandleFunc(pattern, h.serve(rt))
 	}
+	mux.HandleFunc("GET "+WatchPath, h.watch)
 	return mux
 }
 
@@ -77,15 +80,16 @@ func (h *handler) admit(w http.ResponseWriter, r *http.Request) (call, error) {
 	if err != nil {
 		return call{}, err
 	}
-	return call{cl: dir.For(device), device: device, r: r, body: body}, nil
+	return call{dir: dir, cl: dir.For(device), device: device, r: r, body: body}, nil
 }
 
-// denial keeps skew apart from every other refusal, because a person can fix it.
+// denial names a refusal the way the wire does: skew and revoked have their
+// own codes because a person can act on them, every other one is unauthorized.
 func denial(err error) error {
-	if errors.Is(err, wireauth.ErrSkew) {
-		return wireauth.ErrSkew
+	if err = wireauth.Narrow(err); errors.Is(err, wireauth.ErrUnauthorized) {
+		return ErrUnauthorized
 	}
-	return ErrUnauthorized
+	return err
 }
 
 func refuse(w http.ResponseWriter, err error) {
@@ -93,7 +97,17 @@ func refuse(w http.ResponseWriter, err error) {
 	send(w, we.status, errBody{Err: we.code})
 }
 
+// headed is an answer that also sets headers, as a list sets its version.
+type headed interface{ header(http.Header) }
+
+func (l Listing) header(h http.Header) {
+	h.Set(VersionHeader, strconv.FormatUint(l.Version, 10))
+}
+
 func reply(w http.ResponseWriter, out any) {
+	if h, ok := out.(headed); ok {
+		h.header(w.Header())
+	}
 	if out == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -112,13 +126,16 @@ var routes = map[string]route{
 	"GET " + dirBase + "/list":                  func(c call) (any, error) { return pair(c.cl.List(c.ctx())) },
 	"GET " + dirBase + "/cells/{id}":            func(c call) (any, error) { return pair(c.cl.Cell(c.ctx(), c.id())) },
 	"PUT " + dirBase + "/devices/{id}":          withBody(putDevice),
+	"POST " + dirBase + "/devices/{id}/revoke":  func(c call) (any, error) { return nothing(c.cl.Revoke(c.ctx(), c.id())) },
 	"POST " + dirBase + "/vault":                withBody(setVault),
 	"POST " + dirBase + "/cells/{id}":           withBody(create),
-	"POST " + dirBase + "/cells/{id}/acquire":   func(c call) (any, error) { return pair(c.cl.Acquire(c.ctx(), c.id())) },
+	"POST " + dirBase + "/cells/{id}/acquire":   optionalBody(acquire),
 	"POST " + dirBase + "/cells/{id}/heartbeat": withBody(heartbeat),
 	"POST " + dirBase + "/cells/{id}/publish":   withBody(publish),
 	"POST " + dirBase + "/cells/{id}/release":   withBody(release),
 	"POST " + dirBase + "/cells/{id}/archive":   func(c call) (any, error) { return nothing(c.cl.Archive(c.ctx(), c.id())) },
+	"GET " + rotationPath:                       func(c call) (any, error) { return pair(c.cl.Rotation(c.ctx())) },
+	"POST " + rotationPath:                      withBody(rotate),
 }
 
 // pair and nothing adapt a Client's return shapes to a route's.
@@ -133,6 +150,18 @@ func withBody[T any](f func(call, T) (any, error)) route {
 			return nil, errBadRequest
 		}
 		return f(c, v)
+	}
+}
+
+// optionalBody is withBody for a request whose body may be absent, which then
+// decodes as the zero T, so a client that sends none still gets its old meaning.
+func optionalBody[T any](f func(call, T) (any, error)) route {
+	return func(c call) (any, error) {
+		if len(c.body) == 0 {
+			var zero T
+			return f(c, zero)
+		}
+		return withBody(f)(c)
 	}
 }
 
@@ -156,10 +185,12 @@ type fenceBody struct {
 	Fence uint64 `json:"fence"`
 }
 
-func setVault(c call, s vaultSwap) (any, error) { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }
-func create(c call, in CellInit) (any, error)   { return pair(c.cl.Create(c.ctx(), c.id(), in)) }
-func heartbeat(c call, b Beat) (any, error)     { return pair(c.cl.Heartbeat(c.ctx(), c.id(), b)) }
-func publish(c call, p Publish) (any, error)    { return pair(c.cl.Publish(c.ctx(), c.id(), p)) }
+func rotate(c call, req RotationReq) (any, error) { return pair(c.cl.Rotate(c.ctx(), req)) }
+func setVault(c call, s vaultSwap) (any, error)   { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }
+func create(c call, in CellInit) (any, error)     { return pair(c.cl.Create(c.ctx(), c.id(), in)) }
+func acquire(c call, o AcquireOpts) (any, error)  { return pair(c.cl.Acquire(c.ctx(), c.id(), o)) }
+func heartbeat(c call, b Beat) (any, error)       { return pair(c.cl.Heartbeat(c.ctx(), c.id(), b)) }
+func publish(c call, p Publish) (any, error)      { return pair(c.cl.Publish(c.ctx(), c.id(), p)) }
 func release(c call, f fenceBody) (any, error) {
 	return nothing(c.cl.Release(c.ctx(), c.id(), f.Fence))
 }

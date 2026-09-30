@@ -50,7 +50,7 @@ func TestSQLiteLeaseSurvivesReopen(t *testing.T) {
 	first.Close()
 
 	second := openAt(t, path, clock)
-	if _, err := second.For(tB).Acquire(bg, tCell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := second.For(tB).Acquire(bg, tCell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("live lease lost across reopen: %v", err)
 	}
 	v, err := second.For(tA).Heartbeat(bg, tCell, directory.Beat{Fence: 1})
@@ -58,7 +58,7 @@ func TestSQLiteLeaseSurvivesReopen(t *testing.T) {
 		t.Fatalf("heartbeat after reopen: %v %+v", err, v)
 	}
 	clock.Advance(directory.LeaseTTL + time.Second)
-	if v, err = second.For(tB).Acquire(bg, tCell); err != nil || v.Cell.Lease.Fence != 2 {
+	if v, err = second.For(tB).Acquire(bg, tCell, directory.AcquireOpts{}); err != nil || v.Cell.Lease.Fence != 2 {
 		t.Fatalf("expired lease not takeable: %v %+v", err, v)
 	}
 }
@@ -84,7 +84,7 @@ func TestSQLiteConcurrentAcquireTwoConnections(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := d.For(dev).Acquire(bg, tCell)
+			_, err := d.For(dev).Acquire(bg, tCell, directory.AcquireOpts{})
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -108,7 +108,7 @@ func TestSQLiteConcurrentAcquireTwoConnections(t *testing.T) {
 	if v.Cell.Lease.Device == tB {
 		other = tA
 	}
-	if _, err := one.For(other).Acquire(bg, tCell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := one.For(other).Acquire(bg, tCell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("loser can acquire: %v", err)
 	}
 }
@@ -166,5 +166,46 @@ func TestSQLiteDevicesAndVaultSurviveReopen(t *testing.T) {
 	must(err)
 	if l.Identity.Vault != "rid1" || l.Devices[tA].Name != "n" {
 		t.Fatalf("lost on reopen: %+v", l)
+	}
+}
+
+// A revoke is on disk: a reopened directory still turns the device away, both
+// from the relay's memory set and from the verbs themselves.
+func TestSQLiteRevokeSurvivesReopen(t *testing.T) {
+	path, clock := filepath.Join(t.TempDir(), "dir.db"), directorytest.NewFakeClock()
+	d := openAt(t, path, clock)
+	for _, id := range []string{tA, tB} {
+		if err := d.For(id).PutDevice(bg, id, directory.Device{V: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.For(tA).Revoke(bg, tB); err != nil {
+		t.Fatal(err)
+	}
+	if !d.Revoked(tB) || d.Revoked(tA) {
+		t.Fatalf("revoked set: B %v, A %v", d.Revoked(tB), d.Revoked(tA))
+	}
+	d.Close()
+
+	again := openAt(t, path, clock)
+	if !again.Revoked(tB) || again.Revoked(tA) {
+		t.Fatalf("after reopen: B %v, A %v", again.Revoked(tB), again.Revoked(tA))
+	}
+	if _, err := again.For(tB).List(bg); !errors.Is(err, directory.ErrRevoked) {
+		t.Fatalf("revoked device listed after reopen: %v", err)
+	}
+}
+
+// Revoked is set by Revoke alone: a record that says so, put by the device
+// itself, neither stops a live device nor lets a stopped one come back.
+func TestPutDeviceNeverChangesRevoked(t *testing.T) {
+	d := openAt(t, filepath.Join(t.TempDir(), "dir.db"), directorytest.NewFakeClock())
+	a := d.For(tA)
+	if err := a.PutDevice(bg, tA, directory.Device{V: 1, Revoked: true}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := a.List(bg)
+	if err != nil || l.Devices[tA].Revoked {
+		t.Fatalf("a device stopped itself by writing its record: %+v, %v", l.Devices, err)
 	}
 }
