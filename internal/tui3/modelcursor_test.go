@@ -97,6 +97,13 @@ func TestTheCursorStaysVisibleAtTheBottomOfTheList(t *testing.T) {
 	a.models = func() []Model { return groupedCatalog }
 	a.model = "beta/model-3"
 	a.frame()
+	// Park the transcript away from the live edge first, with the picker shut,
+	// the way the wheel's own test does — an offset that never left 0 would
+	// make the no-scroll assertion below read nothing.
+	drive(t, a, tea.MouseWheelMsg{X: 4, Y: a.bodyTop() + 1, Button: tea.MouseWheelUp})
+	if a.offset == 0 {
+		t.Fatal("the fixture transcript is too short to scroll")
+	}
 	typeLine(t, a, "/model")
 	last := len(a.pick.list) - 1
 	offset := a.offset
