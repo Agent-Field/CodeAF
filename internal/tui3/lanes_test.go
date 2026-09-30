@@ -126,6 +126,9 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	a := laneApp(t)
 	a.width = 100
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
+	// this test is about is the model in use's, so the walk goes there first.
+	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"))
 	if a.pick.unfold != flash {
