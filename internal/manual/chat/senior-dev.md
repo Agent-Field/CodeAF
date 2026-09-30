@@ -235,8 +235,11 @@ message`). Until then the note is not counted as delivered.
 **After it hands in, it reads no more messages.** What it handed in is frozen, so words
 cannot change it: the box and the chat's `say` are refused with `senior-dev reads no more
 messages (it has handed in its work, and what it handed in is frozen)`. To change finished
-work, stop it and hand off the right ask. In the first moments of a run, before it has begun,
-the refusal is `senior-dev has not started reading messages yet`; say it again shortly.
+work, stop it and hand off the right ask. A message sent during the call in which it hands
+in has no next call to reach, so when the run ends its page says `senior-dev did not read
+this before it stopped reading (…)` with the words. In the first moments of a run, before it
+has begun, the refusal is `senior-dev has not started reading messages yet`; say it again
+shortly.
 
 ## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 

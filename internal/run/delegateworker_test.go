@@ -661,3 +661,48 @@ func TestDelegateWorkerFeedsAListeningProgramItsNotesAndMarksThemOnlyWhenHeard(t
 		t.Fatalf("program record = %+v %v", record, ok)
 	}
 }
+
+// A MESSAGE THE PROGRAM NEVER READ IS SAID NOT TO HAVE BEEN READ. A listening
+// program that closes its inbox without a receipt — the words arrived during
+// the call that handed its work in — leaves one note on the task naming them
+// and why, which no later worker of the task is handed as a message.
+func TestDelegateWorkerSaysWhichMessagesTheProgramNeverRead(t *testing.T) {
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	if _, err := store.AddPersonNote(store.RootID(), "also add a line saying bye"); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(t.TempDir(), "deaf.sh")
+	program := "#!/bin/sh\n" + strings.Join([]string{
+		`echo '{"type":"hello","protocol":2,"delegate":"fake","stages":["implement"],"accepts":["messages"]}'`,
+		`i=0; while [ $i -lt 100 ] && [ ! -s "$CODEAF_INBOX" ]; do sleep 0.1; i=$((i+1)); done`,
+		`echo '{"type":"inbox","open":false,"reason":"it has handed in its work"}'`,
+		passLine("handed in"),
+	}, "\n") + "\n"
+	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listening := delegate.Delegate{Name: "fake", Summary: "a fake program", Default: "run", Listens: true}
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), listening, run.DelegateSetup{Exe: script}, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+		t.Fatalf("the run failed: %v", err)
+	}
+	var report *plandb.Note
+	for _, note := range store.Notes(store.RootID(), 0) {
+		if note.Agent == "fake" {
+			report = &note
+		}
+	}
+	if report == nil || report.Body != "fake did not read this before it stopped reading (it has handed in its work): “also add a line saying bye”" {
+		t.Fatalf("the unread message was not reported: %+v", report)
+	}
+	marked := false
+	for _, line := range rawTrajectory(t, storeDir, store.RootID()) {
+		var step run.Step
+		if json.Unmarshal([]byte(line), &step) == nil && step.Kind == "notes" && slices.Contains(step.Notes, report.ID) {
+			marked = true
+		}
+	}
+	if !marked {
+		t.Fatal("the worker's own report would be handed to a later worker as a message")
+	}
+}

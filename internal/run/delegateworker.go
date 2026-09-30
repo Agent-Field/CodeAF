@@ -377,6 +377,48 @@ func messageFrom(note plandb.Note) string {
 	return delegate.FromWorker
 }
 
+// reportUnheard leaves one note on a listening program's task naming the
+// messages it never said it heard, once the program is gone.
+//
+// A MESSAGE THE PROGRAM NEVER READ IS SAID NOT TO HAVE BEEN READ. The box that
+// sent it said the program reads it before its next model call, and a message
+// that arrives during the call that hands the work in has no next call: the
+// inbox closes with the hand-in, and the words were never before the model.
+// Without this the page would show the message and nothing after it, which
+// reads as though it were taken.
+func (s *delegateSink) reportUnheard() {
+	if !s.record.Listening {
+		return
+	}
+	s.inboxMu.Lock()
+	had := make(map[string]bool, len(s.had))
+	for id := range s.had {
+		had[id] = true
+	}
+	why := s.closedWhy
+	s.inboxMu.Unlock()
+	var unheard []string
+	for _, note := range s.worker.store.Notes(s.taskID, 0) {
+		spoken := note.From == plandb.NoteFromPerson || strings.TrimSpace(note.Agent) == plandb.NoteAgentChat
+		if spoken && !had[note.ID] {
+			unheard = append(unheard, "“"+strings.TrimSpace(note.Body)+"”")
+		}
+	}
+	if len(unheard) == 0 {
+		return
+	}
+	if why == "" {
+		why = "it ended"
+	}
+	body := fmt.Sprintf("%s did not read %s before it stopped reading (%s): %s",
+		s.name, map[bool]string{true: "this", false: "these"}[len(unheard) == 1], why, strings.Join(unheard, " "))
+	// The report is the worker's own, so no later worker of the task is
+	// handed it as a message.
+	if note, err := s.worker.store.AddNote(s.taskID, s.name, body); err == nil {
+		_ = appendTrajectory(s.storeDir, s.taskID, Step{Kind: trajectoryNotesKind, Notes: []string{note.ID}})
+	}
+}
+
 // Heard is the program's receipt for messages it put before its model.
 func (s *delegateSink) Heard(ids []string) {
 	s.inboxMu.Lock()
@@ -632,6 +674,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if sink.mismatch == "" {
 		sink.record.EndedAt = ended
 		_ = delegate.WriteProgram(taskDir, sink.record)
+		sink.reportUnheard()
 	}
 	// The program has exited: its API goes with it, so nothing it left behind
 	// can spend, and the calls that were still running write their last turn.
