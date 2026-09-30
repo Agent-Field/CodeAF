@@ -404,6 +404,12 @@ func transientTurnError(err error) (turnRetryInfo, bool) {
 	var failure *modelTurnError
 	if errors.As(err, &failure) {
 		text += " " + strings.ToLower(failure.responseBody)
+		// The model API reserves 401/403 for the program's local token. Its
+		// gateway can carry an upstream auth refusal under an outer 502,
+		// which another attempt with the same provider key cannot cure.
+		if status, ok := provider.StatusOf(failure); ok && (status == 401 || status == 403) {
+			return turnRetryInfo{}, false
+		}
 		if permanentProviderLimit(text) || failure.kind == msgmodel.ErrNameContextOverflow {
 			return turnRetryInfo{}, false
 		}

@@ -2,6 +2,7 @@ package modelapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -23,8 +24,13 @@ func TestAuthFailureSentenceNamesKeySourceWithoutTheKey(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			server := &Server{ctx: context.Background(), config: Config{AuthKeySource: row.source}}
 			status, said := server.failure(&provider.APIError{Status: row.status, Message: row.key}, context.Background(), "test/model")
-			if status != row.status {
-				t.Fatalf("auth status = %d, want %d", status, row.status)
+			// The upstream account is separate from the program's loopback
+			// token, so its refusal retains the gateway's status.
+			if status != http.StatusBadGateway {
+				t.Fatalf("upstream auth status = %d, want gateway status %d", status, http.StatusBadGateway)
+			}
+			if upstream, ok := provider.StatusOf(errors.New(said)); !ok || upstream != row.status {
+				t.Fatalf("auth sentence lost upstream status %d: %q", row.status, said)
 			}
 			if !strings.Contains(said, row.source) {
 				t.Fatalf("auth sentence = %q, want source %q", said, row.source)

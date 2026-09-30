@@ -1042,8 +1042,9 @@ var (
 // is answered with and the turn is written with.
 //
 // AN ACCOUNT REFUSED UPSTREAM IS NOT THE PROGRAM'S TOKEN BEING WRONG. A 401 or
-// 403 from the model's service is codeaf's own account being refused, so those
-// statuses stay 401/403 and cannot become a retryable gateway failure.
+// 403 from the model's service is codeaf's own account being refused, and on
+// this API those two statuses mean the run's token. The gateway stays 502;
+// the upstream status in its sentence still makes the program stop retrying.
 func (s *Server) failure(err error, request context.Context, model string) (int, string) {
 	switch {
 	case s.ctx.Err() != nil:
@@ -1062,12 +1063,21 @@ func (s *Server) failure(err error, request context.Context, model string) (int,
 		if status < 400 || status > 599 {
 			status = http.StatusBadGateway
 		}
-		return status, authSourceSentence(refusal.Error(), status, s.config.AuthKeySource)
+		return modelFailureStatus(status), authSourceSentence(refusal.Error(), status, s.config.AuthKeySource)
 	}
 	if status, ok := provider.StatusOf(err); ok {
-		return status, authSourceSentence(err.Error(), status, s.config.AuthKeySource)
+		return modelFailureStatus(status), authSourceSentence(err.Error(), status, s.config.AuthKeySource)
 	}
 	return http.StatusBadGateway, firstLine(err.Error())
+}
+
+// modelFailureStatus reserves authentication responses for the program's own
+// token, preserving the distinction from a refused upstream account.
+func modelFailureStatus(status int) int {
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return http.StatusBadGateway
+	}
+	return status
 }
 
 func authSourceSentence(message string, status int, source string) string {

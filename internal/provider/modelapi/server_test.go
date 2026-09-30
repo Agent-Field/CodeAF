@@ -793,8 +793,8 @@ func TestAModelFailureIsTheRoutersErrorAndItsTurnSaysSo(t *testing.T) {
 		status int
 	}{
 		{&provider.APIError{Status: 429, Message: "slow down"}, 429},
-		{&provider.APIError{Status: 401, Message: "no such account"}, 401},
-		{&provider.APIError{Status: 403, Message: "not permitted"}, 403},
+		{&provider.APIError{Status: 401, Message: "no such account"}, 502},
+		{&provider.APIError{Status: 403, Message: "not permitted"}, 502},
 		{errors.New("connection reset"), 502},
 	} {
 		refusal = row.err
