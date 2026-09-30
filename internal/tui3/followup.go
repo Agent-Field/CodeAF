@@ -273,29 +273,6 @@ var queuedHint = []string{"queued for after this turn", "click takes one back", 
 // queueQueueWord is the piece that names the chord, spelled once.
 const queueQueueWord = "ctrl+enter queues the draft"
 
-// queueFooterWord is what the FOOT calls the queue key, where the idle row's
-// `space space home` would stand. It is the short key-then-noun form every
-// other clause on that row keeps (`ctrl+g tasks`), not the queued block's
-// sentence: the foot names the key, the block says what happens.
-const queueFooterWord = "ctrl+enter queue"
-
-// queueFooterOffered reports whether the foot may name the queue key: the
-// terminal can tell ctrl+enter from a plain enter, a sentence is in the box to
-// queue, and no overlay, room or roster has taken the box. It answers the same
-// question the key's own guard does ([app.followUp]), which is the only thing
-// that makes a hint on this surface true — a row that named a chord the box
-// would not act on is the lie every hint here is written to avoid
-// (render.go's [app.hintWord]).
-func (a *app) queueFooterOffered() bool {
-	if !a.keysDisambiguated || a.at(pageHome) {
-		return false
-	}
-	if a.roomOpen() || a.copy.on || a.rew.on || a.railHold {
-		return false
-	}
-	return strings.TrimSpace(a.input.String()) != ""
-}
-
 // queuedWord is the dim line's sentence, trimmed to what fits. The count is
 // only spelled when there is more than one message waiting — one message
 // counted is a number that says nothing the rows above it do not.

@@ -806,32 +806,30 @@ whenever nothing is happening. Home's tip is the row above the rule instead. It 
 keys that work right now when a state has
 keys of its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running,
-`enter steers it in · ctrl+enter queue · ctrl+shift+enter stops and sends · esc interrupt`
-while a turn is running and you have typed words on a terminal that can deliver `ctrl+enter`
-and the secondary key,
+`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while a turn is
+running and you have typed words on a terminal that can deliver the secondary key,
 `enter waits · ctrl+shift+enter stops and sends · esc interrupt` while an otherwise empty
 box has a picture on its tray on that terminal,
-`enter steers it in · ctrl+enter queue · ctrl+shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
 when that turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
 while a list is open. A waiting message changes the final clause to
-`esc stops and drops`; with neither words nor a picture the send clauses are absent, and
-the `ctrl+enter queue` clause needs words in the box to be named at all.
+`esc stops and drops`; with neither words nor a picture the send clauses are absent.
+The queue key, `ctrl+enter`, is not on this row: it is named on the keys sheet and, once
+something is queued, on the dim line under the queued messages above the box.
 
 **A question that cannot remember its answer loses the `a always` clause**, on this line and
 on the offer above it: a stuck turn is asked about with a scope codeaf cannot save, so the
 key would do nothing and neither line names it. The slot reads `y allow · n deny` there.
 
 It only ever names a key that **works right now**, and that includes the terminal: the
-`ctrl+shift+enter` and `ctrl+enter` clauses are not drawn on a terminal that cannot tell
-those chords apart from a plain `enter`, because a hint for a key that could never arrive
-would be the surface lying to you — there the send half keeps only `enter steers it in`.
-`cmd+enter` still waits on
+`ctrl+shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
+plain `enter`, because a hint for a key that could never arrive would be the surface lying
+to you — there the send half keeps only `enter steers it in`. `cmd+enter` still waits on
 terminals that can deliver it, but is not part of this one-line slot. See the keys page,
 "Interrupt and say something new in one key" and "Send a message into the running
 answer".
 
-The running-turn clauses always have this order: send, queue, `ctrl+shift+enter`,
-background, stop.
+The running-turn clauses always have this order: send, `ctrl+shift+enter`, background, stop.
 When the row is tight, codeaf removes whole clauses from the right until the line fits;
 at least the first fitting clause remains, and a running turn never loses the row merely
 because every clause would not fit. The row is the keys' own: nothing on the frame competes

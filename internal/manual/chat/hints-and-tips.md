@@ -4,10 +4,8 @@
 
 The dim row under your message box — the last row of the frame — mostly names the keys that
 work right now: `esc interrupt` while an answer is coming, `y allow · n deny · a always`
-while codeaf is asking you something, `space space home` when there is a home to go to and
-the box is empty, `ctrl+enter queue` in that same slot once a draft has taken it and the
-terminal can send the chord, `/ commands` when nothing else is true. Once you have used
-codeaf a little, that idle line
+while codeaf is asking you something, `space space home` when there is a home to go to,
+`/ commands` when nothing else is true. Once you have used codeaf a little, that idle line
 sometimes carries a **tip** as well — one sentence naming a key or a command you have not
 used yet, and what it does, for example `esc esc or /rewind takes back an earlier message`
 or `/files finds files codeaf wrote for you`. It reads the way every hint on this surface

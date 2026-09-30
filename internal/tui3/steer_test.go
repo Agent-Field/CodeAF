@@ -583,7 +583,7 @@ func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing
 	a, _ := steerableTurn(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")
 
-	want := "enter " + steerSendWord + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
+	want := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
 	if got := a.hintWord(); got != want {
 		t.Fatalf("the hint slot reads %q, want %q", got, want)
 	}
@@ -632,9 +632,8 @@ func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
 	}
 
 	want := []string{
-		steerShortHint + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord + " · ctrl+g backgrounds",
-		steerShortHint + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord,
-		steerShortHint + " · " + queueFooterWord,
+		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · ctrl+g backgrounds",
+		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord,
 		steerShortHint,
 		"",
 	}

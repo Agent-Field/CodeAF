@@ -288,22 +288,14 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"↑ or click to edit", []string{"↑"}},
 	}
 	// H6: every sentence the running-turn composer can produce lifts the key at
-	// the head of every clause and leaves the verbs as prose. The send prefixes
-	// combine independently with the queue clause and the background and stop
-	// clauses: the queue clause is offered only where the chord can be sent and
-	// a draft is in the box (followup.go's [app.queueFooterOffered]).
+	// the head of every clause and leaves the verbs as prose. The five possible
+	// send prefixes combine independently with the background and stop clauses.
 	runPrefixes := []hintGrammarCase{
 		{},
 		{hint: enterWaitHint, want: []string{"enter"}},
-		{hint: enterWaitHint + " · " + queueFooterWord, want: []string{"enter", "ctrl+enter"}},
 		{hint: enterWaitHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
-		{hint: enterWaitHint + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord,
-			want: []string{"enter", "ctrl+enter", bargeKey}},
 		{hint: steerShortHint, want: []string{"enter"}},
-		{hint: steerShortHint + " · " + queueFooterWord, want: []string{"enter", "ctrl+enter"}},
 		{hint: steerShortHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
-		{hint: steerShortHint + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord,
-			want: []string{"enter", "ctrl+enter", bargeKey}},
 	}
 	for _, prefix := range runPrefixes {
 		for _, background := range []bool{false, true} {

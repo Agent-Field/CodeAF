@@ -196,14 +196,14 @@ front of the queue, the line does not offer `→ steers it in`.
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · ctrl+enter queue · ctrl+shift+enter stops and sends · esc interrupt
+enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
 ```
 
-That is the terminal-capable form when no command can be kept. The `ctrl+enter queue`
-clause appears only on a terminal that can send that chord; the stop-and-send clause
-only where `ctrl+shift+enter` can be delivered. A running foreground command that can
-be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`; a `!` command
-cannot be kept. `cmd+enter` still waits, but the one-line slot no longer advertises it.
+That is the terminal-capable form when no command can be kept. A running foreground
+command that can be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`;
+a `!` command cannot be kept. A terminal that cannot deliver `ctrl+shift+enter`
+leaves that clause out. `cmd+enter` still waits, and `ctrl+enter` still queues, but the
+one-line slot advertises neither.
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -345,9 +345,8 @@ enter steers it in · esc interrupt
 ```
 
 On a terminal that can spell the secondary chords, the line reads
-`enter steers it in · ctrl+enter queue · ctrl+shift+enter stops and sends · esc interrupt`.
-The queue clause appears only where `ctrl+enter` can be sent; a foreground command that
-can be kept inserts `ctrl+g backgrounds` before the final stop clause.
+`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt`. A foreground
+command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
 
 **A picture on the tray is a message even when the box has no words.** It cannot steer, so
 that form reads `enter waits · esc interrupt`, or
@@ -420,12 +419,11 @@ is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
 message box ends with `esc interrupt` — for example
-`enter steers it in · ctrl+enter queue · ctrl+shift+enter stops and sends · esc interrupt`
-while you have typed something and this terminal can deliver `ctrl+enter` and
-`ctrl+shift+enter`. A foreground command that can be kept inserts `ctrl+g backgrounds`
-immediately before the stop clause. When a message of yours is already waiting for the
-answer to finish, the last clause becomes `esc stops and drops`. On the very first frame
-of a session the conversation carries the note
+`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while you have
+typed something and this terminal can deliver `ctrl+shift+enter`. A foreground command that
+can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
+message of yours is already waiting for the answer to finish, the last clause becomes
+`esc stops and drops`. On the very first frame of a session the conversation carries the note
 `esc interrupts · ctrl+c quits · ? for help`.
 
 **Stopping it and saying something new at once.** `ctrl+shift+enter` does both in one key —
@@ -2320,10 +2318,8 @@ back in it.
 
 When the box is empty, the keys row under the box says so:
 `/ commands · space space home`, after any effort, approvals and chats hints. Clicking
-`space space home` opens home; that clause vanishes as soon as you type. Where the
-terminal can send `ctrl+enter`, its slot is then taken by `ctrl+enter queue`, the one key
-a draft can be queued with. A tip never takes the slot: a conversation's tip covers the
-project at the row's right end instead.
+`space space home` opens home; that clause vanishes as soon as you type. A tip never takes
+its place: a conversation's tip covers the project at the row's right end instead.
 
 **The door does not ask what the machine holds.** It is open on a machine with only this
 conversation and on one with none, from the first minute, and starting a second

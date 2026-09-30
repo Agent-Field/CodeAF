@@ -422,12 +422,16 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // typingHint is the send half of the running-turn hint while there is something
 // in the box or on the tray.
 //
-// It teaches plain enter first, then the queue key, then the stop-and-send chord
-// only when the terminal says it can distinguish it. `cmd+enter waits` remains
-// on the keys page, but this live slot spends its cells on the actions that move
-// now.
+// It teaches plain enter first, then the stop-and-send chord only when the
+// terminal says it can distinguish it. `cmd+enter waits` remains on the keys
+// page, but this live slot spends its cells on the actions that move now.
 //
-//	enter steers it in · ctrl+enter queue · ctrl+shift+enter stops and sends
+// THE QUEUE KEY IS NOT NAMED HERE, by the owner's call (2026-09-30): the queued
+// block above the box says `ctrl+enter queues the draft` once something is
+// queued, and the key sheet carries it, so the foot does not grow a third
+// clause for it (followup.go's [queuedHint]).
+//
+//	enter steers it in · ctrl+shift+enter stops and sends
 var steerShortHint = "enter " + steerSendWord
 
 // enterWaitHint is the plain-enter half of the running-turn hint. The tray and
@@ -442,17 +446,10 @@ func (a *app) typingHint() string {
 	if a.steerOffered() {
 		first = steerShortHint
 	}
-	parts := []string{first}
-	// THE QUEUE KEY SITS BESIDE THE SEND, because it is the other thing a
-	// sentence in the box can do while a turn runs, and it is the key the idle
-	// foot's `space space home` gave its slot up for (render.go's [app.idleHint]).
-	if a.queueFooterOffered() {
-		parts = append(parts, queueFooterWord)
+	if !a.bargeOffered() {
+		return first
 	}
-	if a.bargeOffered() {
-		parts = append(parts, bargeKey+" "+bargeSendWord)
-	}
-	return strings.Join(parts, hintSegment)
+	return first + hintSegment + bargeKey + " " + bargeSendWord
 }
 
 // runSendOffered is [app.bargeOffered] without the terminal's chord gate. It is

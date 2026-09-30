@@ -896,52 +896,6 @@ func TestQueuedWordNamesTheChordOnlyWhereItCanBeSent(t *testing.T) {
 	}
 }
 
-// THE FOOT NAMES THE QUEUE KEY WHERE THE HOME DOOR STANDS DOWN. `space space
-// home` is advertised only over an empty box; when a draft is in the box — at
-// rest or under a running turn — its slot carries `ctrl+enter queue` instead,
-// and only on a terminal that can tell the chord from a plain enter.
-func TestTheFootNamesTheQueueKeyWhereTheHomeDoorStandsDown(t *testing.T) {
-	// Under a running turn.
-	_, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
-	typeLine(t, a, "the first thing")
-	settleAsk(a)
-	enhanced(t, a)
-	typeInto(t, a, "and then the tests")
-	if got := a.footHint(200); !strings.Contains(got, queueFooterWord) {
-		t.Fatalf("the running foot did not name the queue key: %q", got)
-	}
-	if got := a.footHint(200); strings.Contains(got, homeDoorWord) {
-		t.Fatalf("the running foot still advertised the home door: %q", got)
-	}
-	// An empty box queues nothing, so the key is not named.
-	for range "and then the tests" {
-		drive(t, a, key("backspace"))
-	}
-	if got := a.footHint(200); strings.Contains(got, queueFooterWord) {
-		t.Fatalf("an empty box was offered the queue key: %q", got)
-	}
-
-	// A terminal that cannot send the chord is never taught it.
-	_, plain := wired([]session.Event{text(session.EventTextDelta, "working on it")})
-	typeLine(t, plain, "the first thing")
-	settleAsk(plain)
-	typeInto(t, plain, "and then the tests")
-	if got := plain.footHint(200); strings.Contains(got, queueFooterWord) {
-		t.Fatalf("a plain terminal was taught the queue key: %q", got)
-	}
-
-	// At rest with a draft, the idle row's own home door has stood down and the
-	// queue key takes its place.
-	_, idle := wired(nil)
-	enhanced(t, idle)
-	typeInto(t, idle, "a draft")
-	if got := idle.footHint(200); !strings.Contains(got, queueFooterWord) {
-		t.Fatalf("the idle foot did not name the queue key: %q", got)
-	}
-	if got := idle.footHint(200); strings.Contains(got, homeDoorWord) {
-		t.Fatalf("the idle foot advertised a door a draft hides: %q", got)
-	}
-}
 func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "go")

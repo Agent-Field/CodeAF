@@ -3879,12 +3879,6 @@ func (a *app) footHint(width int) string {
 
 // idleHint keeps the shared controls in home's order, followed by the way home.
 // Each control is named only where the session can take its key.
-//
-// WHERE THE HOME DOOR STANDS DOWN BECAUSE A DRAFT TOOK ITS PLACE, the queue key
-// stands in its slot: `space space home` is advertised only over an empty box,
-// and the moment a sentence is in the box the one key that acts on it — the
-// chord that queues it (followup.go) — is what the foot can offer instead. The
-// two never share: a box cannot be empty and hold a draft at once.
 func (a *app) idleHint() string {
 	doors := make([]string, 0, 5)
 	if !a.roomOpen() {
@@ -3901,8 +3895,6 @@ func (a *app) idleHint() string {
 	doors = append(doors, microcopy)
 	if a.homeDoorShowing() {
 		doors = append(doors, homeDoorWord)
-	} else if a.queueFooterOffered() {
-		doors = append(doors, queueFooterWord)
 	}
 	return strings.Join(doors, hintSegment)
 }

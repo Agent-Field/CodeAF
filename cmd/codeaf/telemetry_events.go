@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -57,6 +58,14 @@ func countedAgent(agent tui3.Agent) tui3.Agent {
 // events are already counted on the Submit stream that pump reads.
 type countingAgent struct {
 	*remote.Agent
+	// follows maps each follow-up stream this tee handed the surface to the
+	// stream it copies. The surface takes a queued message back BY THE CHANNEL
+	// IT HOLDS (internal/tui3's followup.go), and the channel it holds is the
+	// copy — so a take-back promoted straight through to [remote.Agent] named a
+	// stream the remote agent had never minted, got false every time, and the
+	// click on a queued row did nothing on every hosted chat.
+	followMu sync.Mutex
+	follows  map[<-chan session.Event]<-chan session.Event
 }
 
 // Submit is [tui3.Agent.Submit] with the stream counted as it is handed on.
@@ -95,13 +104,50 @@ func (c *countingAgent) SubmitImage(ctx context.Context, text string, images []s
 	return countedEvents(events), nil
 }
 
-// FollowUp is [tui3.Agent.FollowUp] with the stream counted.
+// FollowUp is [tui3.Agent.FollowUp] with the stream counted, and the copy
+// remembered against its source so [countingAgent.UnqueueFollowUp] can name
+// the stream the remote agent knows.
 func (c *countingAgent) FollowUp(text string) (<-chan session.Event, error) {
 	events, err := c.Agent.FollowUp(text)
 	if err != nil {
 		return events, err
 	}
-	return countedEvents(events), nil
+	// THE RECEIPT IS WRITTEN UNDER THE LOCK ITS REMOVAL TAKES, so a stream
+	// that closes before this function returns cannot forget a receipt that has
+	// not been written yet and leave it behind for good.
+	c.followMu.Lock()
+	defer c.followMu.Unlock()
+	if c.follows == nil {
+		c.follows = map[<-chan session.Event]<-chan session.Event{}
+	}
+	out := countedEventsThen(events, c.forgetFollow)
+	c.follows[out] = events
+	return out, nil
+}
+
+// UnqueueFollowUp is [remote.Agent.UnqueueFollowUp] with the surface's copy
+// translated back to the stream it copies. A channel this tee never handed out
+// is passed through unchanged, so the answer for it is the remote agent's own.
+// The receipt is kept until the stream closes rather than spent here: a false
+// from the far end leaves the message queued, and a second press has to be
+// able to name it again.
+func (c *countingAgent) UnqueueFollowUp(ch <-chan session.Event) bool {
+	c.followMu.Lock()
+	src, ok := c.follows[ch]
+	c.followMu.Unlock()
+	if !ok {
+		src = ch
+	}
+	return c.Agent.UnqueueFollowUp(src)
+}
+
+// forgetFollow drops a copy's receipt once its stream has closed — the turn
+// ran or the message was taken back, and either way there is nothing left to
+// name.
+func (c *countingAgent) forgetFollow(out <-chan session.Event) {
+	c.followMu.Lock()
+	delete(c.follows, out)
+	c.followMu.Unlock()
 }
 
 // countedEvents returns src with the count taken on the way through: one
@@ -110,9 +156,19 @@ func (c *countingAgent) FollowUp(text string) (<-chan session.Event, error) {
 // stream it wraps is (internal/remote's stream.out) — unbuffered, so the flow
 // the surface already backs up against is the flow it keeps, one hop longer.
 func countedEvents(src <-chan session.Event) <-chan session.Event {
+	return countedEventsThen(src, nil)
+}
+
+// countedEventsThen is [countedEvents] with done run once the source has
+// closed and before the copy closes, handed the copy, for a caller that keeps
+// something keyed by it.
+func countedEventsThen(src <-chan session.Event, done func(<-chan session.Event)) <-chan session.Event {
 	out := make(chan session.Event)
 	guard.Go("chatv3/telemetry-events", func() {
 		defer close(out)
+		if done != nil {
+			defer done(out)
+		}
 		for event := range src {
 			countEvent(event)
 			out <- event
