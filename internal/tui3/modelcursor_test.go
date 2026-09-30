@@ -91,9 +91,15 @@ func TestTheMenuOpensWithTheCursorOnTheFirstRowAndVisible(t *testing.T) {
 }
 
 func TestTheCursorStaysVisibleAtTheBottomOfTheList(t *testing.T) {
-	a := pickerApp(t, &fakeAgent{model: "beta/model-3"}, groupedCatalog)
+	// A TRANSCRIPT THAT CAN SCROLL, so "the conversation did not move" is a real
+	// assertion and not the accident of a short one.
+	a := benchApp(20)
+	a.models = func() []Model { return groupedCatalog }
+	a.model = "beta/model-3"
+	a.frame()
 	typeLine(t, a, "/model")
 	last := len(a.pick.list) - 1
+	offset := a.offset
 
 	// FAR MORE STEPS THAN THE LIST HAS ROWS, across every navigation there is:
 	// repeated arrows, page keys and wheel notches all bottom out on the same
@@ -107,6 +113,11 @@ func TestTheCursorStaysVisibleAtTheBottomOfTheList(t *testing.T) {
 	}
 	if a.pick.cursor != last {
 		t.Fatalf("the cursor rests on %d of %d rows, want the last", a.pick.cursor, last)
+	}
+	// AND THE CONVERSATION BEHIND THE MENU DID NOT MOVE — not for the arrows,
+	// not for the page key, not for the wheel.
+	if a.offset != offset {
+		t.Fatalf("navigation at the bottom moved the transcript: %d → %d", offset, a.offset)
 	}
 
 	// AND THE CURSOR'S ROW IS ON THE SCREEN. The window bottoms out with the
