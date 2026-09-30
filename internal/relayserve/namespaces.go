@@ -30,19 +30,20 @@ func checkedID(id string) error {
 // namespaces gives each identity its own directory file and its own blob
 // tree under one root, so an identity can only reach what its id names.
 type namespaces struct {
-	root  string
-	now   func() time.Time
-	grace directory.GraceBounds // what a retire may ask for; the zero value is the default
+	root     string
+	now      func() time.Time
+	grace    directory.GraceBounds // what a retire may ask for; the zero value is the default
+	watchers int                   // the per-identity watch cap; zero is directory.MaxWatchers
 
 	mu   sync.Mutex
 	dirs map[string]*directory.SQLite
 }
 
-func newNamespaces(root string, now func() time.Time, grace directory.GraceBounds) *namespaces {
+func newNamespaces(root string, now func() time.Time, grace directory.GraceBounds, watchers int) *namespaces {
 	if grace == (directory.GraceBounds{}) {
 		grace = directory.DefaultGraceBounds
 	}
-	return &namespaces{root: root, now: now, grace: grace, dirs: map[string]*directory.SQLite{}}
+	return &namespaces{root: root, now: now, grace: grace, watchers: watchers, dirs: map[string]*directory.SQLite{}}
 }
 
 // directory opens (once) the SQLite directory of one identity. A SQLite file
@@ -73,6 +74,9 @@ func (n *namespaces) sqlite(id string) (*directory.SQLite, error) {
 		return nil, err
 	}
 	d.SetGraceBounds(n.grace)
+	if n.watchers > 0 {
+		d.SetMaxWatchers(n.watchers)
+	}
 	n.dirs[id] = d
 	return d, nil
 }

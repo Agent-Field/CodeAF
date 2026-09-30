@@ -308,11 +308,14 @@ even that will not fit the sentence gives way whole before the chat's name is cu
 row may show only the name and its age. These rows are stops for the cursor: enter runs
 what the row offers, described in the next two sections.
 
-The list is fetched only while home is on screen and the terminal has your attention (its
-focus, or a key pressed in the last ten minutes). It is fetched every few seconds while it is
-changing and about once a minute while it is not, and at once when you open home or come back
-to the window. Each row's age is counted from its last saved turn, so it keeps growing between
-fetches.
+When the relay offers a live connection, home keeps one open and a change made on
+another machine shows on home within a second or two. The list is also fetched once a
+minute as a safety net, and at once when you open home or come back to the window. When the
+relay does not offer a live connection (an older or self-hosted relay), or the connection is
+down, home asks for the list instead. It asks only while home is on screen and the terminal
+has your attention (its focus, or a key pressed in the last ten minutes). It asks every few
+seconds while the list is changing and about once a minute while it is not. Each row's age is
+counted from its last saved turn, so it keeps growing between fetches.
 
 If the other machines cannot be reached, the last list stays on screen and the line
 `other machines unreachable` stands under it. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing

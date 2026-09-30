@@ -73,6 +73,7 @@ type rig struct {
 	clock *directorytest.FakeClock
 	srv   *httptest.Server
 	svc   *relayserve.Service
+	watch int // the watcher cap the relay is built with; zero keeps the default
 	mu    sync.Mutex
 	logs  []string
 }
@@ -91,7 +92,7 @@ func (r *rig) logf(format string, args ...any) {
 
 // start brings the relay up on a fresh port over the same store: a restart.
 func (r *rig) start() {
-	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf, Grace: testGrace})
+	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf, Grace: testGrace, MaxWatchers: r.watch})
 	r.srv = httptest.NewServer(r.svc.Handler)
 	r.t.Cleanup(r.stop)
 }

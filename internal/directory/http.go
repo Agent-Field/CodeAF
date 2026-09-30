@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -35,8 +36,15 @@ func cellPath(id, verb string) string {
 	return p
 }
 
+// List reads the directory. The listing carries the version the relay read it
+// at (0 when the relay does not say), which a feed compares with the versions
+// it is told of.
 func (h *HTTP) List(ctx context.Context) (l Listing, err error) {
-	return l, h.do(ctx, http.MethodGet, dirBase+"/list", nil, &l)
+	hdr, err := h.doHeader(ctx, http.MethodGet, dirBase+"/list", nil, &l)
+	if err == nil {
+		l.Version, _ = strconv.ParseUint(hdr.Get(VersionHeader), 10, 64)
+	}
+	return l, err
 }
 
 func (h *HTTP) Cell(ctx context.Context, id string) (v CellView, err error) {
@@ -89,27 +97,34 @@ func (h *HTTP) Rotation(ctx context.Context) (v RotationView, err error) {
 
 // do sends one signed request and decodes the answer into out (when non-nil).
 func (h *HTTP) do(ctx context.Context, method, path string, in, out any) error {
+	_, err := h.doHeader(ctx, method, path, in, out)
+	return err
+}
+
+// doHeader is do that also hands back the response headers, for the reads
+// that carry a fact in a header as well as in the body.
+func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (http.Header, error) {
 	body, err := encode(in)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, method, h.base+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	h.sign(req, body)
 	resp, err := h.hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrUnreachable, err)
+		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return refusal(resp)
+		return resp.Header, refusal(resp)
 	}
 	if out == nil {
-		return nil
+		return resp.Header, nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return resp.Header, json.NewDecoder(resp.Body).Decode(out)
 }
 
 // encode marshals a body; a request without one sends no bytes, so the signed
