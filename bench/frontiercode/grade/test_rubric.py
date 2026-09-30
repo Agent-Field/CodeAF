@@ -76,10 +76,10 @@ class OverlayRepo:
         git(self.repo, "commit", "-q", "-m", "base")
         self.base = git(self.repo, "rev-parse", "HEAD").stdout.strip()
 
-        # The reference overlay: a test inserted between test_a and TAIL.
+        # The reference overlay: a test inserted between test_a and ANCHOR.
         write(self.test_file, BASE_TEST.replace(
-            "TAIL = 1",
-            "def test_reference():\n    assert True\n\n\nTAIL = 1",
+            "ANCHOR = 1",
+            "def test_reference():\n    assert True\n\n\nANCHOR = 1",
         ))
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-q", "-m", "reference")
@@ -90,10 +90,7 @@ class OverlayRepo:
         git(self.repo, "checkout", "-q", self.base)
 
         # The agent's patch: a differently-named test at the same anchor.
-        write(self.test_file, BASE_TEST.replace(
-            "TAIL = 1",
-            "def test_agent():\n    assert True\n\n\nTAIL = 1",
-        ))
+        write(self.test_file, BASE_TEST.replace("ANCHOR = 1", AGENT_BLOCK))
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-q", "-m", "agent")
         self.agent_patch = pathlib.Path(root) / "agent.patch"
