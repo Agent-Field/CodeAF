@@ -57,12 +57,12 @@ const (
 // folder are the common way a skill reaches several harnesses at once, and a
 // scan that skipped links saw none of those.
 //
-// TWO MORE SOURCES FOLLOW THESE SIX WITHIN EACH SCOPE, and they come last on
-// purpose (see [Discover]): the skills that arrived inside an installed and
+// TWO MORE SOURCES FOLLOW THESE FOLDERS WITHIN EACH SCOPE, and they come last
+// on purpose (see [Discover]): the skills that arrived inside an installed and
 // enabled Claude Code plugin ([RootClaudePlugins], plugins.go), and the skills
 // Codex ships with itself ([RootCodexSystem]). Nobody placed either of them
-// by hand, so any skill a person did place by hand, in any of the six folders,
-// owns the name over them.
+// by hand, so any skill a person did place by hand, in any of the hand-kept
+// folders, owns the name over them.
 var skillRoots = []string{
 	".codeaf/skills",
 	".agents/skills",
@@ -74,8 +74,20 @@ var skillRoots = []string{
 	".goose/skills",
 }
 
+// homeSkillRoots are hand-kept folders that exist ONLY in the home directory,
+// read after [skillRoots] in the user scope. OpenCode and Goose keep a
+// person's own skills under ~/.config rather than in a dot folder named after
+// the tool, so ~/.opencode/skills and ~/.goose/skills are empty on a machine
+// that uses them and these are where their global skills actually live. They
+// are never read under a project: a project's .config folder is somebody's
+// application settings, not a place either tool looks for skills.
+var homeSkillRoots = []string{
+	".config/opencode/skills",
+	".config/goose/skills",
+}
+
 // RootCodexSystem is the folder Codex installs its own bundled skills into.
-// It sits INSIDE .codex/skills, where the six-root scan sees it as one child
+// It sits INSIDE .codex/skills, where the folder scan sees it as one child
 // with no SKILL.md and passes over it, so it is read as a root of its own.
 //
 // IT RANKS LAST IN ITS SCOPE, below the plugin skills too. A system skill is
@@ -125,7 +137,7 @@ type Skill struct {
 
 // Discover scans the conventional skill folders under one project directory
 // and one home directory, in issue #1277's order, and returns what it found:
-// within each scope the six hand-kept folders, then the skills of every
+// within each scope the hand-kept folders, then the skills of every
 // installed and enabled Claude Code plugin, then Codex's bundled skills —
 // every folder that holds a SKILL.md, winners first, losers marked Shadowed,
 // and unreadable ones carried with a Warning rather than dropped. It never
@@ -204,11 +216,19 @@ func Discover(opts Options) ([]Skill, error) {
 		for _, root := range skillRoots {
 			collect(filepath.Join(base.dir, root), root, scope, "")
 		}
+		// The home-only folders follow the shared ones in whichever base IS
+		// the home directory: the user scope, or the project scope when codeaf
+		// was opened in the home directory itself and the two bases folded.
+		if homeDir != "" && base.dir == absolute(homeDir) {
+			for _, root := range homeSkillRoots {
+				collect(filepath.Join(base.dir, root), root, scope, "")
+			}
+		}
 		// THE PLUGIN SKILLS, after every hand-kept folder in the scope and
 		// before the harness's own bundled skills. A project scope carries
 		// the plugins installed for this project; when the home directory
 		// folded into the project base above, it carries the person's own
-		// plugins after them too, the same way it already carries their six
+		// plugins after them too, the same way it already carries their hand-kept
 		// home folders.
 		plugins := userPlugins
 		if scope == ScopeProject {
