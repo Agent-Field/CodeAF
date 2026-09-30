@@ -2891,15 +2891,17 @@ func (a *app) openPickerFiltered(query string) {
 // model and the shortlist a typed word can raise (internal/session's
 // taskmodel.go) has nothing to raise here.
 //
-// THE MARK OPENS ON THE NODE'S OWN MODEL, not the session's, for [picker.start]'s
-// stated reason: the cursor sits on what you are on, so enter confirms rather
-// than changes. In here what you are on is what the task is running.
+// THE MARK OPENS ON THE NODE'S OWN MODEL, not the session's, and the cursor
+// opens with it ([picker.cursorToCurrent]): this is a door that opens to
+// confirm — enter applies to the task — so the cursor sits on what the task is
+// running rather than on the list's first row.
 func (a *app) openTaskPicker(id uint64) {
 	current := ""
 	if node := a.tasks[id]; node != nil {
 		current = firstNonEmpty(node.nextModel, node.model)
 	}
 	a.pick.startFor(a.modelPickerList(), current, chatModel)
+	a.pick.cursorToCurrent()
 	a.pick.task = id
 	a.armRefresh()
 	a.touch()
