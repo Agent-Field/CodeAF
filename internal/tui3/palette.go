@@ -476,16 +476,17 @@ func (p *picker) rank() {
 	p.cursor, p.top = 0, 0
 	p.relist()
 	// AND A BOX WITH NOTHING IN IT IS THE LIST THE PICKER OPENED ON, so the
-	// cursor goes back to where it opened: on the list's first row. Emptying
-	// the box with ctrl+u used to leave it wherever the narrowed list had put
-	// it, which read as the walk surviving an edit that emptied the list it
-	// walked.
+	// cursor goes back to the model in use: enter after an emptied box confirms
+	// rather than changes, which is [picker.cursorToCurrent]'s law — a rule
+	// about the confirm gesture that survives the new open law, since the box
+	// being emptied is a person backing out of a hunt, not a fresh list to
+	// start reading.
 	//
 	// THE SORT KEY MOVES IT TO THE TOP ITSELF ([picker.sortNext]) rather than this
 	// being asked to tell the two cases apart: opening the list and pressing the
 	// sort key both end here, and only the second of them wants row one.
 	if len(tokens) == 0 {
-		p.cursorToFirst()
+		p.cursorToCurrent()
 	}
 	// THE DOOR IS NOT A MODEL AND NEVER RANKS: the add-provider row rides the
 	// list's end whatever the sort reads, because a door is not a row a
