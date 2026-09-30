@@ -1947,7 +1947,10 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 	if head := p.tableFit(width).header(); head != "" {
 		fill.plain(pal.head(fit(head, width)))
 	}
-	p.follow(overlayItems(n-p.headLines(width), width))
+	// THE SCROLL IS IN SCREEN LINES ([picker.follow]): every line the fill will
+	// spend after the heads is the budget the cursor's row must fit inside.
+	p.width = width
+	p.follow(n - p.headLines(width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
 		if group := p.groupBefore(at); group != "" {
 			if !fill.plain(pal.dim(fit("  "+group, width))) {
