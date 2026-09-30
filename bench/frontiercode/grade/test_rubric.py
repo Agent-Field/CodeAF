@@ -307,7 +307,7 @@ class PhaseBTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = pathlib.Path(self.tmp.name)
         self.r = OverlayRepo(self.tmp.name)
-        self.r.apply_agent()
+        # phase_b applies the model patch itself; the tree stays pristine here.
         self.task = self.root / "task"
         self.task.mkdir()
         write(self.task / "task.toml", """\
