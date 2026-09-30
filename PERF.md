@@ -201,6 +201,35 @@ CI size job reports it and does not block (`ci-full.yml`'s `size`), for the
 reason that job gives — which architecture the budget is measured on has to be
 agreed first — and that agreement, not a larger number here, is the fix.
 
+It was reset a sixth time on 2026-09-30, and this time the platform is agreed:
+**the budget is set on darwin/amd64, the heaviest platform codeaf ships, with that
+platform's own furrow artifact staged and the Go release `go.mod` pins.** A tree
+under the cap there is under it everywhere `make size` runs. The fifth reset's
+table was measured without three of the four furrow artifacts and raised the cap
+only by senior-dev's own cost, so the bill it named as already owed was still
+unpaid, and by `dev@2f33722b2` every platform weighed more than 57,400,000 —
+three megabytes over on linux/arm64 and ten on darwin/amd64. `make size` was red
+on a clean tree and the CI size job only reported it. Measured on `dev@2f33722b2`, Go
+1.26.5, with the flags `make build` uses and each platform's furrow staged by
+`make build` itself:
+
+| platform | bytes |
+| --- | --- |
+| darwin/amd64 | 67,497,584 |
+| linux/amd64 | 66,478,345 |
+| darwin/arm64 | 61,659,170 |
+| linux/arm64 | 60,358,818 |
+
+The two Windows builds ship without a furrow artifact and weigh less than
+darwin/amd64. The budget is 68,850,000, two percent above darwin/amd64.
+
+THIS RESET IS NOT A DECISION THAT THE WEIGHT IS WANTED. It restores a gate that
+had stopped meaning anything, so the next byte added is a visible choice again.
+What made dev about eight megabytes heavier than `main` on linux/amd64 by
+2026-09-27 (65,712,393 at `837b2b06a` against 57,921,801 at `e44650715`, both from
+the CI size job) is not attributed here; #1694 finds it, cuts what is redundant,
+and lowers this number in the same commit as each cut.
+
 ## Adaptive run shutdown grace
 
 `Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
