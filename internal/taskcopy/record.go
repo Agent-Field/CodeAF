@@ -14,15 +14,23 @@ const (
 	// tree.json cannot collide with the record.
 	recordName = "tree.json"
 	filesDir   = "files"
+	// bundleName holds the commits the copy made that no other ref of its
+	// repository holds, so a copy with a repository of its own arrives with its
+	// branch's tip.
+	bundleName = "commits.bundle"
 )
 
 // record is what a restore needs to cut a copy again: the branch it was on (empty
-// for a detached head), the commit it was at, and the files it had deleted.
+// for a detached head), the commit it was at, the files it had deleted, and
+// whether it was a linked worktree rather than a fork with a repository of its
+// own, because the branch of a worktree lives in the project and a fork's does
+// not, so a copy must come back as the kind it was.
 // The changed files themselves sit beside it under [filesDir].
 type record struct {
 	Branch  string   `json:"branch,omitempty"`
 	Head    string   `json:"head"`
 	Deleted []string `json:"deleted,omitempty"`
+	Linked  bool     `json:"linked,omitempty"`
 }
 
 // carriedRoot is the folder of a cell where the seal keeps its task copies.

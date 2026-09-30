@@ -110,7 +110,7 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 // still has its files in place, so the takeover carries on and says so on the
 // same desk as the vault's sentence.
 func (c *Continuer) restoreCopies(at cell.Cell) []string {
-	restored, err := taskcopy.Carry{}.Restore(at, workspaceOf(at.Root))
+	restored, err := taskcopy.Carry{Cutter: session.TaskCopyCutter{}}.Restore(at, workspaceOf(at.Root))
 	if err != nil && c.opt.Notify != nil {
 		c.opt.Notify("a task's working copy could not be set up again here: " + err.Error())
 	}
