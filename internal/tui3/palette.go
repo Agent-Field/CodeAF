@@ -632,8 +632,8 @@ func (p *picker) follow(lines int) {
 	}
 	// THE CURSOR'S ROW IS ALREADY INSIDE THE WINDOW: scroll by the least, which
 	// is nothing. The count runs from the window's own top, where a heading the
-	// edge rule draws is a line the window pays for ([picker.groupHead]).
-	if p.spanLines(p.top, p.cursor, lines) <= lines {
+	// edge rule draws is a line the window pays for ([picker.rowLines]).
+	if p.spanLines(p.top, p.cursor) <= lines {
 		return
 	}
 	p.top = p.endingTop(p.cursor, lines)
@@ -641,9 +641,8 @@ func (p *picker) follow(lines int) {
 
 // spanLines is how many screen lines the rows from `from` through `to` spend,
 // drawn from the top at `from` — the count [picker.follow] reads to answer
-// "is the cursor on the screen", and the count [picker.height] reads to
-// reserve the frame. One function, or the two answers drift.
-func (p *picker) spanLines(from, to, _ int) int {
+// "is the cursor on the screen" and [picker.endingTop] to place a window.
+func (p *picker) spanLines(from, to int) int {
 	lines := 0
 	for at := from; at <= to && at < len(p.list); at++ {
 		lines += p.rowLines(at, at == from)
@@ -653,19 +652,13 @@ func (p *picker) spanLines(from, to, _ int) int {
 
 // endingTop is the window that ENDS at row `at` and spends no more than
 // `lines` screen lines: the top walked back from the cursor until the budget
-// runs out, each candidate top charged with the heading the edge rule would
-// draw at it. The bottom of the list is where this earns its keep — the walk
-// stops at the budget, so the last rows and the door past them are what the
-// window shows, with the cursor's row the last one drawn.
+// runs out, every candidate charged with the heading the window's edge would
+// draw at it ([picker.rowLines]). The bottom of the list is where this earns
+// its keep — the walk stops at the budget, so the last rows and the door past
+// them are what the window shows, with the cursor's row the last one drawn.
 func (p *picker) endingTop(at, lines int) int {
 	top := at
-	used := 0
-	for top > 0 {
-		cost := p.rowLines(top-1, true)
-		if used+cost > lines {
-			break
-		}
-		used += cost
+	for top > 0 && p.spanLines(top-1, at) <= lines {
 		top--
 	}
 	return top
