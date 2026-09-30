@@ -162,6 +162,17 @@ type Client struct {
 	replayCursor session.ReplayCursor
 	replayOrder  uint64
 
+	// followRefs remembers the receive end of each FollowUp stream against the
+	// stream id that carries it ([Agent.UnqueueFollowUp]): the take-back names
+	// the stream, and the wire needs the id the local channel stands for. They
+	// live on the CLIENT and not on an Agent because [Client.Agent] hands out a
+	// fresh Agent per call and the receipt belongs to the stream this
+	// connection opened, whoever is holding the Agent today. An entry is added
+	// on every FollowUp and removed when the take-back answers either way — the
+	// message came out, or its turn already started and nothing is queued to
+	// take.
+	followRefs followRefs
+
 	// driver is who holds the keyboard, as the engine last told this surface.
 	// It is set from the welcome and moved by every "driver" frame, and it is
 	// the ONLY thing on this side that answers the question — a client that
@@ -939,6 +950,11 @@ func (c *Client) bury(cause error) {
 	dead := c.dead
 	calls, streams := c.calls, c.streams
 	c.calls, c.streams = map[uint64]chan result{}, map[uint64]*stream{}
+	// AND THE TAKE-BACK'S RECEIPTS GO WITH THEM: a stream id from the
+	// connection that just died names nothing on the one that follows, and a
+	// stale receipt would match a queued message it was never handed
+	// ([Agent.UnqueueFollowUp]).
+	c.followRefs.forget()
 	// AND THE KEYBOARD COMES BACK TO A SURFACE WHOSE CONNECTION DIED. There is
 	// no room left to be a watcher in, the screen is about to say the connection
 	// is gone, and a composer replaced by a line about another machine would be
@@ -1720,9 +1736,87 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []session.I
 }
 
 // FollowUp queues a message for after this turn and returns the stream that turn
-// will run on.
+// will run on. The stream id is remembered against the channel handed back,
+// because the take-back ([Agent.UnqueueFollowUp]) names the stream and the wire
+// needs the id that channel stands for.
 func (a *Agent) FollowUp(text string) (<-chan session.Event, error) {
-	return a.open(nil, MethodFollowUp, SubmitArgs{Text: text})
+	payload, err := a.c.call(nil, MethodFollowUp, SubmitArgs{Text: text})
+	if err != nil {
+		return nil, err
+	}
+	var ref StreamRef
+	if err := json.Unmarshal(payload, &ref); err != nil {
+		return nil, err
+	}
+	ch := a.c.stream(ref.Stream).events()
+	a.c.followRefs.add(ch, ref.Stream)
+	return ch, nil
+}
+
+// UnqueueFollowUp takes ONE queued follow-up back out, named by the stream the
+// surface has held since the moment it queued (internal/tui3's followup.go).
+// The local channel is translated to the stream id the FollowUp call minted,
+// and the far end — where the queue actually lives — takes the message off by
+// it.
+//
+// FALSE IS A REAL ANSWER AND NOT A FAILURE: the turn drained the queue before
+// the press (the message's turn already started, so the words are no longer
+// the surface's to take back), the stream was never a queued follow-up here,
+// or the connection failed. A call that could not be made at all also reads as
+// false — which is what lets this door ride a wire that predates it: an older
+// engine answers "no such method" and the take-back does what it did before
+// the door existed, which is nothing.
+func (a *Agent) UnqueueFollowUp(ch <-chan session.Event) bool {
+	id, ok := a.c.followRefs.take(ch)
+	if !ok {
+		return false
+	}
+	out, err := a.c.call(nil, MethodUnqueueFollowUp, UnqueueArgs{Stream: id})
+	if err != nil {
+		// THE PRESS FAILED ON THE ROAD, NOT IN THE QUEUE: the receipt stays, so
+		// a second press can try again on a link that came back.
+		a.c.followRefs.add(ch, id)
+		return false
+	}
+	var answered bool
+	if json.Unmarshal(out, &answered) != nil {
+		return false
+	}
+	return answered
+}
+
+// followRefs is the stream receipts, as a map with its own lock so the Client
+// needs no extra guarding on this field.
+type followRefs struct {
+	mu   sync.Mutex
+	byCh map[<-chan session.Event]uint64
+}
+
+func (f *followRefs) add(ch <-chan session.Event, id uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.byCh == nil {
+		f.byCh = map[<-chan session.Event]uint64{}
+	}
+	f.byCh[ch] = id
+}
+
+func (f *followRefs) take(ch <-chan session.Event) (uint64, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id, ok := f.byCh[ch]
+	if ok {
+		delete(f.byCh, ch)
+	}
+	return id, ok
+}
+
+// forget empties the receipts, for [Client.bury]: the connection that minted
+// those stream ids is gone, and the next one numbers streams from its own zero.
+func (f *followRefs) forget() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.byCh = map[<-chan session.Event]uint64{}
 }
 
 // Steer puts words into the running turn on the engine machine and returns the

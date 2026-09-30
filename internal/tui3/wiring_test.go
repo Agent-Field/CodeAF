@@ -9,10 +9,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// The wave-4 surface: the approval question, the session's name, ctrl+q, and
-// the model's own thinking.
+// The wave-4 surface: the approval question, the session's name, ctrl+enter's
+// queue, and the model's own thinking.
 
 // ── the scripted agent's wave-4 methods ─────────────────────────────────────
 //
@@ -21,7 +22,25 @@ import (
 // and [wiredAgent] below is the one that records.
 
 func (f *fakeAgent) FollowUp(string) (<-chan session.Event, error) {
-	return make(chan session.Event), nil
+	ch := make(chan session.Event)
+	f.queue = append(f.queue, ch)
+	return ch, nil
+}
+
+// UnqueueFollowUp is the take-back's session half (followup.go's
+// [followUnqueuer]): it takes the named stream off the fake's own queue and
+// closes it exactly as [session.Agent.UnqueueFollowUp] does, and says whether
+// the message came out. A fake that always answered yes would let the surface
+// test a removal nobody made.
+func (f *fakeAgent) UnqueueFollowUp(ch <-chan session.Event) bool {
+	for i, c := range f.queue {
+		if (<-chan session.Event)(c) == ch {
+			close(c)
+			f.queue = append(f.queue[:i], f.queue[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 func (f *fakeAgent) ResolveConsent(uint64, bool)                               {}
 func (f *fakeAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
@@ -83,6 +102,21 @@ func (w *wiredAgent) FollowUp(text string) (<-chan session.Event, error) {
 	w.follow = make(chan session.Event, 8)
 	w.followStreams = append(w.followStreams, w.follow)
 	return w.follow, nil
+}
+
+// UnqueueFollowUp is the take-back's session half, held in step with this
+// fake's own stream list (followup.go's [followUnqueuer]): the message comes
+// off the fake's queue and its stream closes with no events, which is how the
+// surface reads "this never ran".
+func (w *wiredAgent) UnqueueFollowUp(ch <-chan session.Event) bool {
+	for i, c := range w.followStreams {
+		if (<-chan session.Event)(c) == ch {
+			close(c)
+			w.followStreams = append(w.followStreams[:i], w.followStreams[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 func (w *wiredAgent) Interrupt() { w.InterruptFor(session.StopByPerson) }
@@ -521,38 +555,74 @@ func TestTheTitleReachesTheTabsLiveAndOnResume(t *testing.T) {
 	}
 }
 
-// ── 3. ctrl+q ───────────────────────────────────────────────────────────────
+// ── 3. ctrl+enter queues ────────────────────────────────────────────────────
 
 func ctrlQ() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl} }
 
-func TestCtrlQQueuesAMessageForAfterTheTurnAndShowsTheCount(t *testing.T) {
+// enhanced answers the keyboard-enhancement query the way a terminal that can
+// send ctrl+enter does. Without it the chord does not exist on the surface at
+// all, which is its own test below.
+func enhanced(t *testing.T, a *app) {
+	t.Helper()
+	drive(t, a, tea.KeyboardEnhancementsMsg{Flags: 1})
+	if !a.keysDisambiguated {
+		t.Fatal("the terminal's answer did not reach the surface")
+	}
+}
+
+func TestCtrlEnterQueuesAMessageForAfterTheTurnAndDrawsTheQueue(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
 	typeLine(t, a, "the first thing")
 	settleAsk(a)
 	if a.state != stateWorking {
 		t.Fatalf("state is %v, want working", a.state)
 	}
+	enhanced(t, a)
 
 	// Nothing typed is nothing queued.
-	drive(t, a, ctrlQ())
+	drive(t, a, key("ctrl+enter"))
 	if len(agent.asked) != 0 {
 		t.Fatalf("an empty draft queued %q", agent.asked)
 	}
 
 	typeInto(t, a, "and then the tests")
-	drive(t, a, ctrlQ())
+	drive(t, a, key("ctrl+enter"))
 	if len(agent.asked) != 1 || agent.asked[0] != "and then the tests" {
-		t.Fatalf("ctrl+q sent %q to FollowUp", agent.asked)
+		t.Fatalf("ctrl+enter sent %q to FollowUp", agent.asked)
 	}
 	if a.input.String() != "" {
 		t.Fatalf("the box kept %q", a.input.String())
 	}
-	if !strings.Contains(plain(frame(a)), "after yield · 1") {
-		t.Fatalf("the count is not above the box:\n%s", plain(frame(a)))
+	// THE QUEUE IS DRAWN MESSAGE BY MESSAGE, in a register nothing sent wears:
+	// the row sits above the box under the queued glyph in dim ink, and the dim
+	// line under it says what is happening and how to take one back. A count
+	// alone made a person guess which of their sentences were still queued
+	// (followup.go).
+	w, _ := a.size()
+	rows := a.followRows(w)
+	if len(rows) != 2 {
+		t.Fatalf("the queued block drew %d rows, want the message and the dim line:\n%s",
+			len(rows), strings.Join(rows, "\n"))
 	}
-	// It is NOT in the transcript yet: it lands where it actually runs.
-	if strings.Contains(strings.Join(plainRows(a), "\n"), "and then the tests") {
-		t.Fatal("a queued message was drawn before its turn")
+	if got := plain(rows[0]); !strings.HasPrefix(got, "  "+a.icon(tokens.GQueued)+" ") || !strings.Contains(got, "and then the tests") {
+		t.Fatalf("the queued row is not the queued glyph over the message: %q", got)
+	}
+	if got := plain(rows[1]); !strings.Contains(got, "queued for after this turn") {
+		t.Fatalf("the queued block's dim line is wrong: %q", got)
+	}
+	// ON A NARROW FRAME the pieces trim from the right, and the first to go is
+	// the chord piece (followup.go's [queuedWord]); on a wide one it is said.
+	a.width = 120
+	rows = a.followRows(120)
+	if got := plain(rows[len(rows)-1]); !strings.Contains(got, "ctrl+enter queues the draft") {
+		t.Fatalf("the wide frame dropped the chord piece: %q", got)
+	}
+	// It is NOT in the transcript yet: it lands where it actually runs. The
+	// queued row above the box is the only place the words appear.
+	for _, e := range a.entries {
+		if e.kind == entryUser && strings.Contains(e.text, "and then the tests") {
+			t.Fatal("a queued message was drawn in the transcript before its turn")
+		}
 	}
 
 	// The turn ends, and the queued message's own turn begins on the channel
@@ -571,8 +641,8 @@ func TestCtrlQQueuesAMessageForAfterTheTurnAndShowsTheCount(t *testing.T) {
 	if !strings.Contains(body, "› and then the tests") {
 		t.Fatalf("the follow-up's own message is not in the transcript:\n%s", body)
 	}
-	if strings.Contains(plain(frame(a)), "after yield") {
-		t.Fatalf("the count outlived the queue:\n%s", plain(frame(a)))
+	if strings.Contains(plain(frame(a)), "queued for after this turn") {
+		t.Fatalf("the queued block outlived the queue:\n%s", plain(frame(a)))
 	}
 
 	// And that channel is the live stream now. Deltas become rows on the frame
@@ -583,12 +653,302 @@ func TestCtrlQQueuesAMessageForAfterTheTurnAndShowsTheCount(t *testing.T) {
 	}
 }
 
+// A TERMINAL THAT CANNOT TELL CTRL+ENTER FROM A PLAIN ENTER NEVER QUEUES WITH
+// IT: the key arrives as ctrl+j, a newline, and the router guard stands down
+// with the hints (followup.go). A chord that queued anyway would take the draft
+// on the very terminal whose enter means send.
+func TestCtrlEnterOnAPlainTerminalDoesNothing(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	if a.keysDisambiguated {
+		t.Fatal("the test app was born knowing its terminal")
+	}
+	typeInto(t, a, "and then the tests")
+	drive(t, a, key("ctrl+enter"))
+	if len(agent.asked) != 0 || a.followWaiting() != 0 {
+		t.Fatalf("a chord this terminal cannot send queued %q", agent.asked)
+	}
+	if a.input.String() != "and then the tests" {
+		t.Fatalf("the draft was spent by a key that did nothing: %q", a.input.String())
+	}
+}
+
+// CTRL+Q IS DELIBERATELY UNBOUND (2026-09-30): queueing moved onto ctrl+enter,
+// and a control key with no meaning left does nothing rather than acquiring a
+// new one (input.go). Over a draft it must not queue, must not send, and must
+// not spend what was typed.
+func TestCtrlQIsDeliberatelyUnbound(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "and then the tests")
+	drive(t, a, ctrlQ())
+	if len(agent.asked) != 0 || a.followWaiting() != 0 {
+		t.Fatalf("ctrl+q queued %q", agent.asked)
+	}
+	if a.input.String() != "and then the tests" {
+		t.Fatalf("ctrl+q spent the draft: %q", a.input.String())
+	}
+}
+
+// ↑ DOES NOT TAKE A QUEUED MESSAGE BACK. The session's queue is named with the
+// pointer alone (followup.go's [app.followPress]): ↑ over an empty box belongs
+// to the parked block and to history, and naming a queued row here would take
+// down a message somebody only meant to scroll past.
+func TestArrowUpLeavesTheQueuedMessageInTheSession(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "and then the tests")
+	drive(t, a, key("ctrl+enter"))
+	if a.followWaiting() != 1 || len(agent.followStreams) != 1 {
+		t.Fatalf("the queue did not take the message: surface=%d session=%d", a.followWaiting(), len(agent.followStreams))
+	}
+
+	drive(t, a, key("up"))
+	if a.followWaiting() != 1 || len(agent.followStreams) != 1 {
+		t.Fatalf("↑ took the queued message back: surface=%d session=%d", a.followWaiting(), len(agent.followStreams))
+	}
+	if a.input.String() != "" {
+		t.Fatalf("↑ pulled queued words into the box: %q", a.input.String())
+	}
+	// The stream is STILL OPEN: the message is going to run.
+	select {
+	case <-a.follows[0].ch:
+		t.Fatal("↑ closed the queued message's stream")
+	default:
+	}
+}
+
+// AND THE PARKED BLOCK IS STILL ↑'s: it is the queue a person is composing
+// over, and reading it must leave the session's queue alone.
+func TestArrowUpReadsTheParkedMessageAndLeavesTheQueue(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "and then the tests")
+	drive(t, a, key("ctrl+enter"))
+	parkLine(t, a, "no, the other file")
+
+	drive(t, a, key("up"))
+	if a.input.String() != "no, the other file" {
+		t.Fatalf("↑ did not read the parked block: %q", a.input.String())
+	}
+	if a.followWaiting() != 1 || len(agent.followStreams) != 1 {
+		t.Fatalf("the queued message did not stay queued: surface=%d session=%d", a.followWaiting(), len(agent.followStreams))
+	}
+	// The parked words go back to being a draft; another ↑ with nothing parked
+	// still must not reach into the session's queue.
+	for range "no, the other file" {
+		drive(t, a, key("backspace"))
+	}
+	drive(t, a, key("up"))
+	if a.input.String() != "" || a.followWaiting() != 1 {
+		t.Fatalf("↑ reached the queued message: box=%q waiting=%d", a.input.String(), a.followWaiting())
+	}
+}
+
+// A CLICK ON ONE QUEUED ROW TAKES THAT MESSAGE BACK, by the mark the layout
+// recorded: the pointer named a message, so the pointer's answer is that
+// message and not the newest one. The dim line under the block belongs to no
+// message and takes nothing.
+func TestAClickTakesThatQueuedMessageBack(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "first follow-up")
+	drive(t, a, key("ctrl+enter"))
+	typeInto(t, a, "second follow-up")
+	drive(t, a, key("ctrl+enter"))
+	drive(t, a, frameMsg{})
+	if a.followWaiting() != 2 || len(agent.followStreams) != 2 {
+		t.Fatalf("the queue did not take both: surface=%d session=%d", a.followWaiting(), len(agent.followStreams))
+	}
+
+	// The SECOND message's row, not the first: queued rows are a register, and
+	// the click acts on the one it landed on.
+	y := queuedRowY(t, a, 1)
+	drive(t, a, press(2, y))
+	if a.input.String() != "second follow-up" {
+		t.Fatalf("the click put %q in the box", a.input.String())
+	}
+	if a.followWaiting() != 1 || len(agent.followStreams) != 1 {
+		t.Fatalf("the click did not unqueue: surface=%d session=%d", a.followWaiting(), len(agent.followStreams))
+	}
+	w, _ := a.size()
+	if got := plain(a.followRows(w)[0]); !strings.Contains(got, "first follow-up") {
+		t.Fatalf("the wrong message stayed queued: %q", got)
+	}
+
+	// AND A PRESS ON THE DIM LINE TAKES NOTHING — it is a statement, not a
+	// message. The block is two rows shorter than it was, so the row the last
+	// click landed on is the dim line's now, and the layout is asked again for
+	// the row the remaining message actually sits on.
+	drive(t, a, press(2, queuedRowY(t, a, 0)+1))
+	if a.followWaiting() != 1 || a.input.String() != "second follow-up" {
+		t.Fatalf("the dim line gave up a message: waiting=%d box=%q", a.followWaiting(), a.input.String())
+	}
+}
+
+// queuedRowY is the screen row the i'th queued message is drawn on — the same
+// question park_test.go's [parkedRowY] asks the parked block.
+func queuedRowY(t *testing.T, a *app, index int) int {
+	t.Helper()
+	_, height := a.size()
+	for y := 0; y < height; y++ {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeQueued && mark.index == index {
+			return y
+		}
+	}
+	t.Fatalf("queued index %d is not on any row of the frame", index)
+	return -1
+}
+
+// A CLICK GIVES THE DRAFT BACK EXACTLY AS IT WAS QUEUED, pasted documents and
+// all. Queueing unfolds a paste into the words the model reads and spends the
+// chip (pastechip.go), so a take-back that restored only the text would leave
+// `[paste 1 · 3 lines]` as dead words and the next send would carry the tag
+// instead of the document — the opposite of an EXACT pre-queue message.
+func TestAClickRestoresTheQueuedDraftsPaste(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "look at ")
+	pasteText(t, a, "alpha\nbeta\ngamma")
+	if len(a.pastes) != 1 {
+		t.Fatalf("the paste did not become a chip: %d", len(a.pastes))
+	}
+	shown := strings.TrimSpace(a.input.String())
+	spoken := unfoldPastes(shown, a.pastes)
+	drive(t, a, key("ctrl+enter"))
+	if len(agent.asked) != 1 || agent.asked[0] != spoken {
+		t.Fatalf("the queued words were %q, want the unfolded paste %q", agent.asked, spoken)
+	}
+	if len(a.pastes) != 0 {
+		t.Fatal("queueing left the paste chip on the tray")
+	}
+	drive(t, a, frameMsg{})
+
+	drive(t, a, press(2, queuedRowY(t, a, 0)))
+	if a.input.String() != shown {
+		t.Fatalf("the restored draft is %q, want %q", a.input.String(), shown)
+	}
+	if len(a.pastes) != 1 || a.pastes[0].text != "alpha\nbeta\ngamma" {
+		t.Fatalf("the paste did not come back as a chip: %+v", a.pastes)
+	}
+	if a.followWaiting() != 0 || len(agent.followStreams) != 0 {
+		t.Fatalf("the click did not unqueue: surface=%d session=%d", a.followWaiting(), len(agent.followStreams))
+	}
+}
+
+// THE RACE, SAID HONESTLY. If the turn drained the queue between the frame and
+// the press, the session answers false and the message is no longer the
+// person's to take: the row STAYS, the stream is left open, and the box does
+// not change. The click must not pretend the message came back.
+func TestAClickWhoseTakeBackIsRefusedKeepsTheRow(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "and then the tests")
+	drive(t, a, key("ctrl+enter"))
+	drive(t, a, frameMsg{})
+	if a.followWaiting() != 1 || len(agent.followStreams) != 1 {
+		t.Fatalf("the queue did not take the message: surface=%d session=%d", a.followWaiting(), len(agent.followStreams))
+	}
+	// The session no longer holds this stream: its turn already began.
+	agent.followStreams = nil
+
+	drive(t, a, press(2, queuedRowY(t, a, 0)))
+	if a.followWaiting() != 1 {
+		t.Fatalf("a refused take-back removed the row: waiting=%d", a.followWaiting())
+	}
+	if a.input.String() != "" {
+		t.Fatalf("a refused take-back put %q in the box", a.input.String())
+	}
+}
+
+// THE CHORD PIECE IS CONDITIONAL ON THE TERMINAL (followup.go): a terminal
+// that cannot send ctrl+enter is never taught the chord, and an agent that
+// cannot hand a queued message back is never offered the take-back.
+func TestQueuedWordNamesTheChordOnlyWhereItCanBeSent(t *testing.T) {
+	if got := queuedWord(1, 200, true, false); strings.Contains(got, "ctrl+enter") {
+		t.Fatalf("a plain terminal was taught the chord: %q", got)
+	}
+	if got := queuedWord(1, 200, true, true); !strings.Contains(got, "ctrl+enter") {
+		t.Fatalf("a disambiguating terminal was not told the chord: %q", got)
+	}
+	if got := queuedWord(3, 200, true, true); !strings.HasPrefix(got, "3 queued") {
+		t.Fatalf("the count was not spelled for three: %q", got)
+	}
+	if got := queuedWord(1, 200, false, true); strings.Contains(got, "takes one back") {
+		t.Fatalf("an agent with no take-back was offered one: %q", got)
+	}
+	// ↑ IS NOT AN UNQUEUE GESTURE and no queue hint may name it (input.go).
+	if got := queuedWord(1, 200, true, true); strings.Contains(got, "↑") {
+		t.Fatalf("a queue hint still names ↑: %q", got)
+	}
+}
+
+// THE FOOT NAMES THE QUEUE KEY WHERE THE HOME DOOR STANDS DOWN. `space space
+// home` is advertised only over an empty box; when a draft is in the box — at
+// rest or under a running turn — its slot carries `ctrl+enter queue` instead,
+// and only on a terminal that can tell the chord from a plain enter.
+func TestTheFootNamesTheQueueKeyWhereTheHomeDoorStandsDown(t *testing.T) {
+	// Under a running turn.
+	_, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "and then the tests")
+	if got := a.footHint(200); !strings.Contains(got, queueFooterWord) {
+		t.Fatalf("the running foot did not name the queue key: %q", got)
+	}
+	if got := a.footHint(200); strings.Contains(got, homeDoorWord) {
+		t.Fatalf("the running foot still advertised the home door: %q", got)
+	}
+	// An empty box queues nothing, so the key is not named.
+	for range "and then the tests" {
+		drive(t, a, key("backspace"))
+	}
+	if got := a.footHint(200); strings.Contains(got, queueFooterWord) {
+		t.Fatalf("an empty box was offered the queue key: %q", got)
+	}
+
+	// A terminal that cannot send the chord is never taught it.
+	_, plain := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, plain, "the first thing")
+	settleAsk(plain)
+	typeInto(t, plain, "and then the tests")
+	if got := plain.footHint(200); strings.Contains(got, queueFooterWord) {
+		t.Fatalf("a plain terminal was taught the queue key: %q", got)
+	}
+
+	// At rest with a draft, the idle row's own home door has stood down and the
+	// queue key takes its place.
+	_, idle := wired(nil)
+	enhanced(t, idle)
+	typeInto(t, idle, "a draft")
+	if got := idle.footHint(200); !strings.Contains(got, queueFooterWord) {
+		t.Fatalf("the idle foot did not name the queue key: %q", got)
+	}
+	if got := idle.footHint(200); strings.Contains(got, homeDoorWord) {
+		t.Fatalf("the idle foot advertised a door a draft hides: %q", got)
+	}
+}
 func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "go")
 	settleAsk(a)
+	enhanced(t, a)
 	typeInto(t, a, "and after that")
-	drive(t, a, ctrlQ())
+	drive(t, a, key("ctrl+enter"))
 	if len(a.follows) != 1 {
 		t.Fatalf("%d queued, want 1", len(a.follows))
 	}
@@ -604,16 +964,17 @@ func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 	}
 }
 
-// M9: two ctrl+q follow-ups become fresh turns in FIFO order, and the parked
-// message waits until both session-owned streams have closed.
+// M9: two ctrl+enter follow-ups become fresh turns in FIFO order, and the
+// parked message waits until both session-owned streams have closed.
 func TestFollowUpsDrainInOrderBeforeTheParkedMessage(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "the first turn")
 	settleAsk(a)
+	enhanced(t, a)
 	typeInto(t, a, "first follow-up")
-	drive(t, a, ctrlQ())
+	drive(t, a, key("ctrl+enter"))
 	typeInto(t, a, "second follow-up")
-	drive(t, a, ctrlQ())
+	drive(t, a, key("ctrl+enter"))
 	parkLine(t, a, "the parked message")
 	if got := agent.asked; len(got) != 2 || got[0] != "first follow-up" || got[1] != "second follow-up" {
 		t.Fatalf("the queued follow-ups are %q", got)

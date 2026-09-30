@@ -485,7 +485,7 @@ func TestASteerThatFellThroughBecomesTheNextMessagesTurn(t *testing.T) {
 		t.Fatalf("the fall-through did not become a waiting turn: %+v", a.follows)
 	}
 	// The turn being steered is still the one being pumped, so the carried
-	// stream waits for it exactly as a ctrl+q message's does.
+	// stream waits for it exactly as a ctrl+enter message's does.
 	if a.stream == nil {
 		t.Fatal("the fall-through took the running turn's stream")
 	}
@@ -583,7 +583,7 @@ func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing
 	a, _ := steerableTurn(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")
 
-	want := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
+	want := "enter " + steerSendWord + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
 	if got := a.hintWord(); got != want {
 		t.Fatalf("the hint slot reads %q, want %q", got, want)
 	}
@@ -632,8 +632,9 @@ func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
 	}
 
 	want := []string{
-		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · ctrl+g backgrounds",
-		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord,
+		steerShortHint + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord + " · ctrl+g backgrounds",
+		steerShortHint + " · " + queueFooterWord + " · " + bargeKey + " " + bargeSendWord,
+		steerShortHint + " · " + queueFooterWord,
 		steerShortHint,
 		"",
 	}

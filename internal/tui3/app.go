@@ -1981,7 +1981,7 @@ type app struct {
 	// a person that this surface lies to them, so [app.bargeOffered] reads this
 	// before anything else it asks.
 	keysDisambiguated bool
-	// follows are the messages typed with ctrl+q while a turn ran, each holding
+	// follows are the messages typed with ctrl+enter while a turn ran, each holding
 	// the stream the turn it starts will speak on — and the woken turns waiting
 	// on the same door, which are streams with no message at all (followup.go).
 	follows []queued
@@ -4579,6 +4579,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.parkPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND A MESSAGE THE SESSION IS HOLDING IS PRESSABLE the same way:
+			// the queued block says "click takes one back", and the press takes
+			// that message out of the session's queue before the turn that would
+			// have run it begins (followup.go). It is read beside the parked
+			// block for the same reason every chrome target is.
+			if cmd, took := a.followPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE DIM LINE UNDER THAT BLOCK CARRIES ONE DOOR OF ITS OWN:
 			// `→ steers it in` puts the waiting message into the answer that is
 			// still running (steer.go). It is read directly after the block for the
@@ -4830,7 +4838,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (followup.go). Nil when nothing is queued.
 		//
 		// AND A PARKED MESSAGE GOES HERE TOO, one per finished turn and after the
-		// follow-up queue is offered the same moment (park.go): a ctrl+q message
+		// follow-up queue is offered the same moment (park.go): a queued message
 		// was handed to the session before this one was parked, and a surface that
 		// let the newer sentence jump the older one would be reordering what the
 		// person said. [app.sendParked] stands down when the follow-up above it

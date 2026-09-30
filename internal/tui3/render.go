@@ -3879,6 +3879,12 @@ func (a *app) footHint(width int) string {
 
 // idleHint keeps the shared controls in home's order, followed by the way home.
 // Each control is named only where the session can take its key.
+//
+// WHERE THE HOME DOOR STANDS DOWN BECAUSE A DRAFT TOOK ITS PLACE, the queue key
+// stands in its slot: `space space home` is advertised only over an empty box,
+// and the moment a sentence is in the box the one key that acts on it — the
+// chord that queues it (followup.go) — is what the foot can offer instead. The
+// two never share: a box cannot be empty and hold a draft at once.
 func (a *app) idleHint() string {
 	doors := make([]string, 0, 5)
 	if !a.roomOpen() {
@@ -3895,6 +3901,8 @@ func (a *app) idleHint() string {
 	doors = append(doors, microcopy)
 	if a.homeDoorShowing() {
 		doors = append(doors, homeDoorWord)
+	} else if a.queueFooterOffered() {
+		doors = append(doors, queueFooterWord)
 	}
 	return strings.Join(doors, hintSegment)
 }
@@ -4112,18 +4120,18 @@ func (a *app) hintWord() string {
 		// below. A HINT MAY ONLY NAME A KEY THAT WORKS, and exactly one tag is the
 		// only state where enter has the promised alternate meaning.
 		return a.slashTagHint()
-	case a.standMarkOffered():
-		// THE DRAFT LOOKS LIKE A CONDITION, so the slot says the chord that makes
-		// it one (standmark.go). It ranks HERE — under the running turn, over the
-		// column's own line — for this slot's ordering law: the chord is read at
-		// the bottom of [app.key]'s plain switch, so every state above has already
-		// taken the keyboard, and esc while an answer is streaming is a key the
-		// person is far more likely to want next.
+	case a.standSayOffered():
+		// THE DRAFT LOOKS LIKE A CONDITION, so the slot says the typed door that
+		// makes it one (standmark.go). It ranks HERE — under the running turn,
+		// over the column's own line — for this slot's ordering law: it is read
+		// at the bottom of [app.key]'s plain switch, so every state above has
+		// already taken the keyboard, and esc while an answer is streaming is a
+		// key the person is far more likely to want next.
 		//
 		// It costs no rows. The legend is on the frame in every state, and this is
 		// the slot it already carries — so a draft that starts looking like a rule
 		// changes one word at the end of a line and moves nothing.
-		return standMarkHint
+		return standSayHint
 	case a.spellOffered():
 		// AND THE DRAFT LOOKS LIKE SOMETHING TO BUILD, with room left to say what
 		// it means, so the slot offers to spell it out (spellout.go). It ranks

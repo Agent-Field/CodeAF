@@ -44,9 +44,10 @@ import (
 // of the turn that one starts. A drain that started three turns at once, or
 // spliced three sentences into one message, would be a decision nobody made.
 //
-// ctrl+q is still its own key and still means something else: a follow-up is
-// handed to the SESSION the moment it is typed (followup.go), with no take-backs
-// and no editing. A parked message is still yours until it goes.
+// ctrl+enter is still its own key and still means something else: a follow-up
+// is handed to the SESSION the moment it is typed (followup.go) — and, since
+// 2026-09-30, one that can be taken back out of the session's queue before its
+// turn starts. A parked message is still yours until it goes.
 
 // parked is one message typed while a turn was open: the words, and the
 // pictures that were in the tray with them.

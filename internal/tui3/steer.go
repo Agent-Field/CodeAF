@@ -264,9 +264,10 @@ func (a *app) steerIn() tea.Cmd {
 	a.noticeEvent(eventSteered)
 	waiting := len(a.parks)
 	// The mark is deliberately not passed, for [app.bargeIn]'s reason: ctrl+enter
-	// is the gesture that means "keep this true" and this one means "and also
-	// this" — a chord that did both would be one keystroke making two decisions.
-	cmd := a.enterLine(false)
+	// is the gesture that means "queue it for after this turn" and this one means
+	// "and also this" — a chord that did both would be one keystroke making two
+	// decisions (followup.go).
+	cmd := a.enterLine()
 	if len(a.parks) == waiting {
 		// The road did something other than park. The turn is left alone and the
 		// words went wherever that road sends them, which is the guard above said
@@ -421,11 +422,12 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // typingHint is the send half of the running-turn hint while there is something
 // in the box or on the tray.
 //
-// It teaches plain enter first, then the stop-and-send chord only when the
-// terminal says it can distinguish it. `cmd+enter waits` remains on the keys
-// page, but this live slot spends its cells on the actions that move now.
+// It teaches plain enter first, then the queue key, then the stop-and-send chord
+// only when the terminal says it can distinguish it. `cmd+enter waits` remains
+// on the keys page, but this live slot spends its cells on the actions that move
+// now.
 //
-//	enter steers it in · ctrl+shift+enter stops and sends
+//	enter steers it in · ctrl+enter queue · ctrl+shift+enter stops and sends
 var steerShortHint = "enter " + steerSendWord
 
 // enterWaitHint is the plain-enter half of the running-turn hint. The tray and
@@ -440,10 +442,17 @@ func (a *app) typingHint() string {
 	if a.steerOffered() {
 		first = steerShortHint
 	}
-	if !a.bargeOffered() {
-		return first
+	parts := []string{first}
+	// THE QUEUE KEY SITS BESIDE THE SEND, because it is the other thing a
+	// sentence in the box can do while a turn runs, and it is the key the idle
+	// foot's `space space home` gave its slot up for (render.go's [app.idleHint]).
+	if a.queueFooterOffered() {
+		parts = append(parts, queueFooterWord)
 	}
-	return first + hintSegment + bargeKey + " " + bargeSendWord
+	if a.bargeOffered() {
+		parts = append(parts, bargeKey+" "+bargeSendWord)
+	}
+	return strings.Join(parts, hintSegment)
 }
 
 // runSendOffered is [app.bargeOffered] without the terminal's chord gate. It is

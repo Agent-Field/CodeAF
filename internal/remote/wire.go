@@ -445,11 +445,21 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
-	MethodSubmitBash      = "SubmitBash"      // SubmitArgs → StreamRef, then shell output events
-	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
-	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
-	MethodSubmitFiles     = "SubmitFiles"     // SubmitFilesArgs → StreamRef, then "event" frames
-	MethodFollowUp        = "FollowUp"        // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmitBash  = "SubmitBash"  // SubmitArgs → StreamRef, then shell output events
+	MethodSubmit      = "Submit"      // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmitImage = "SubmitImage" // SubmitImageArgs → StreamRef, then "event" frames
+	MethodSubmitFiles = "SubmitFiles" // SubmitFilesArgs → StreamRef, then "event" frames
+	MethodFollowUp    = "FollowUp"    // SubmitArgs → StreamRef, then "event" frames
+	// MethodUnqueueFollowUp takes ONE queued follow-up back out, named by the
+	// stream id the FollowUp call minted ([UnqueueArgs]). The take-back's road
+	// home: the surface holds the stream's receive end, and the far end is
+	// where the queue actually lives. FALSE IS A REAL ANSWER AND NOT A FAILURE
+	// — the turn drained the queue before the press, or the stream was never a
+	// queued follow-up here. An engine too old to know the method answers "no
+	// such method", which the client reads as false: the take-back simply does
+	// not exist on that wire, and the surface's own guard asks the same
+	// question its rows do (followup.go's [app.queuedTakesBack]).
+	MethodUnqueueFollowUp = "UnqueueFollowUp" // UnqueueArgs → bool (whether the message came out)
 	MethodQuestionReplace = "ReplaceQuestion" // QuestionArgs → StreamRef
 	MethodSteer           = "Steer"           // SubmitArgs → StreamRef, then "event" frames
 	// MethodTyping is a person having started writing, and it is the only frame
@@ -1354,6 +1364,16 @@ type SubmitArgs struct {
 	// that does not read it runs the ordinary turn, which is the one direction
 	// this may fail in that leaves the person's words intact.
 	Standing bool `json:"standing,omitempty"`
+}
+
+// UnqueueArgs names the queued follow-up a surface wants taken back out: the
+// stream id the FollowUp call answered with ([MethodUnqueueFollowUp]). It is
+// the stream and not a position or the text, because the stream is the receipt
+// the surface has held since the moment it queued, and matching on it rather
+// than on a position is what keeps a queue the surface cannot see whole from
+// making an index lie.
+type UnqueueArgs struct {
+	Stream uint64 `json:"stream"`
 }
 
 // SubmitImageArgs carries SubmitImage. Images travel with their bytes filled

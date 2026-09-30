@@ -4,8 +4,10 @@
 
 The dim row under your message box — the last row of the frame — mostly names the keys that
 work right now: `esc interrupt` while an answer is coming, `y allow · n deny · a always`
-while codeaf is asking you something, `space space home` when there is a home to go to,
-`/ commands` when nothing else is true. Once you have used codeaf a little, that idle line
+while codeaf is asking you something, `space space home` when there is a home to go to and
+the box is empty, `ctrl+enter queue` in that same slot once a draft has taken it and the
+terminal can send the chord, `/ commands` when nothing else is true. Once you have used
+codeaf a little, that idle line
 sometimes carries a **tip** as well — one sentence naming a key or a command you have not
 used yet, and what it does, for example `esc esc or /rewind takes back an earlier message`
 or `/files finds files codeaf wrote for you`. It reads the way every hint on this surface
@@ -148,9 +150,10 @@ build if the two disagree), so a tip you saw is on it word for word.
   it. It is the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
-- `ctrl+enter makes your message a rule instead of a request` — retired when a standing
+- `/standing makes your message a rule instead of a request` — retired when a standing
   order is made or the standing page opened. It teaches the same door as the `/standing`
-  row above and retires with it, so the two say a rule in the same words.
+  row above and retires with it, so the two say a rule in the same words. (It named the
+  `ctrl+enter` chord until 2026-09-30, when queueing took that chord over.)
 - `/manual answers any question about codeaf` — retired when
   `/manual` is typed, bare or with a question.
 - `ctrl+shift+t reopens the last conversation tab` — retired the first time the chord is
@@ -182,9 +185,14 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Steering a running answer**
 
-- `using enter steers conversations · use ctrl+q to queue messages` — after the first
-  exchange. Retired the first time you queue a message. It was two rows until 2026-09-22
-  — one for the steer and one for the queue — and the owner folded them into one.
+- `using enter steers conversations · use ctrl+enter to queue messages` — after the first
+  exchange, on a terminal that can tell `ctrl+enter` from a plain `enter`. Retired the first
+  time you queue a message. It was two rows until 2026-09-22
+  — one for the steer and one for the queue — and the owner folded them into one; the
+  queue half named `ctrl+q` until 2026-09-30, when the chord moved onto `ctrl+enter`. On a
+  terminal that cannot send the chord the tip is not shown at all, because the queue half
+  would name a key that does not work there; the steer half is taught by the running foot
+  on every terminal.
 
 **Moving around**
 

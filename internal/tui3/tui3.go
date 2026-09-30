@@ -21,7 +21,7 @@
 //	app.go      the program model: state, messages, the event pump, slashes
 //	consent.go  the approval question: the overlay, the keys, the annotation
 //	thinking.go the reasoning block: streamed, then collapsed to one row
-//	followup.go ctrl+q: the message that waits for the turn to end
+//	followup.go ctrl+enter: the message that waits for the turn to end
 //	input.go    the multi-line draft and the key map
 //	render.go   the styles and the transcript → lines function
 //	view.go     the frame: status line, conversation viewport, input block
@@ -122,7 +122,7 @@ type Agent interface {
 	// and let the model use its own default".
 	SetReasoningFor(model, level string)
 	// FollowUp queues a message to be asked AFTER the current turn ends and
-	// returns the channel that turn will stream on. It is ctrl+q, and it is the
+	// returns the channel that turn will stream on. It is ctrl+enter, and it is the
 	// other half of steering: a plain Enter mid-turn lands INSIDE the running
 	// turn, this waits for the work to finish and then starts a turn of its own.
 	FollowUp(text string) (<-chan session.Event, error)

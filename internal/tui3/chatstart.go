@@ -415,7 +415,7 @@ func (a *app) startChatOpen(slot int) tea.Cmd {
 // A conversation holding an unsent sentence is not one the create may close
 // ([app.startKeepsLeaving]) — because the words a `+` promised to leave where
 // they were cannot be left anywhere if their owner is ended.
-func (a *app) startChatEnter(marked bool) tea.Cmd {
+func (a *app) startChatEnter() tea.Cmd {
 	if !a.startingChat() {
 		return nil
 	}
@@ -449,7 +449,7 @@ func (a *app) startChatEnter(marked bool) tea.Cmd {
 	// opening under it must not raise a second.
 	a.welcome = welcome{spent: true}
 	a.putComposer(page)
-	send := a.enterLine(marked)
+	send := a.enterLine()
 	return tea.Batch(cmd, send)
 }
 
@@ -485,7 +485,7 @@ func (a *app) startChatKey(name string) (tea.Cmd, bool) {
 		if a.welcome.sel >= 0 && a.welcome.sel < len(a.welcome.recent) && a.input.empty() {
 			return a.startChatOpen(a.welcome.sel), true
 		}
-		return a.startChatEnter(false), true
+		return a.startChatEnter(), true
 	}
 	return nil, false
 }
@@ -517,7 +517,7 @@ func (a *app) startMenuEnter() tea.Cmd {
 	// dispatch that is not made here; the line has to be in the composer for the
 	// page to send it, because what the page sends is what is in the composer.
 	a.input.setText(word)
-	return a.startChatEnter(false)
+	return a.startChatEnter()
 }
 
 // typedListOpen reports whether one of the lists that hang under the draft has

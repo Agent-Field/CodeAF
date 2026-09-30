@@ -147,7 +147,7 @@ func TestHeldWaitingMessagesUseStandingPasteAndRemoteFileDoors(t *testing.T) {
 func TestHeldWaitingMessagesGoOnePerLandingAfterSessionFollowUpsAndNeverTwice(t *testing.T) {
 	a, agent, _, key, held := parkedKeeperLab(t, []parked{{text: "one"}, {text: "two"}})
 
-	// The first landing has already opened the session's ctrl+q follow-up.
+	// The first landing has already opened the session's ctrl+enter follow-up.
 	landHeld(t, a, agent, key, held, true)
 	if len(agent.sent) != 0 || len(held.side.parks) != 2 {
 		t.Fatalf("a parked message jumped the follow-up: sent=%q parks=%+v", agent.sent, held.side.parks)

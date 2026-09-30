@@ -319,17 +319,17 @@ func TestTheChordPressedThreeTimesStopsOnceAndSendsOnce(t *testing.T) {
 	}
 }
 
-// A QUEUED FOLLOW-UP AND A BARGE-IN IN ONE TURN. ctrl+q hands its message to
-// the SESSION, and the session drops its queue on an interrupt — so the surface
-// must say the follow-up is gone and must still send the sentence that did the
-// stopping. Anything else is a count above the box for a turn that will never
-// run, or a message silently eaten by the stop.
+// A QUEUED FOLLOW-UP AND A BARGE-IN IN ONE TURN. ctrl+enter hands its message
+// to the SESSION, and the session drops its queue on an interrupt — so the
+// surface must say the follow-up is gone and must still send the sentence that
+// did the stopping. Anything else is a count above the box for a turn that will
+// never run, or a message silently eaten by the stop.
 func TestTheChordDropsTheQueuedFollowUpAndStillSendsItsOwnSentence(t *testing.T) {
 	a, agent := bargeable(t, "reading the tree. ")
 	typeInto(t, a, "and then write the tests")
-	drive(t, a, key("ctrl+q"))
+	drive(t, a, key("ctrl+enter"))
 	if a.followWaiting() != 1 {
-		t.Fatalf("ctrl+q did not queue: %d waiting", a.followWaiting())
+		t.Fatalf("ctrl+enter did not queue: %d waiting", a.followWaiting())
 	}
 
 	typeInto(t, a, "no, the other file")
