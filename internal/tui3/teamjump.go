@@ -266,8 +266,8 @@ func (a *app) trafficLineBelongs(line session.TeamLine, target team) bool {
 // sentElsewhere reports a team tool that named a team other than shown, whose
 // receipt counts in that team's traffic and says nothing about this one. An
 // omitted post team is resolved through the executed receipt: a manager can
-// also be a member elsewhere, where its post verb belongs. A renamed post
-// needs its retained sender and words before its historical name can match.
+// also be a member elsewhere, where its post verb belongs. Each team's own
+// sender identity must establish a renamed post, because handles can differ.
 func (a *app) sentElsewhere(e *entry, shown team, id string) bool {
 	var args struct{ Team, Text string }
 	if json.Unmarshal([]byte(e.detail.Args), &args) != nil {
@@ -282,20 +282,50 @@ func (a *app) sentElsewhere(e *entry, shown team, id string) bool {
 			}
 		}
 	}
-	if target == "" || target == shown.ID || strings.EqualFold(target, shown.Name) {
-		return false
-	}
-	if omittedPost {
-		if sender, ok := shown.Member(a.frontTabKey()); ok {
-			for _, row := range a.traffic.rows[shown.ID] {
-				if row.ID == id && row.Kind == teamstore.KindNote && row.From == sender.Handle && strings.TrimSpace(row.Text) == strings.TrimSpace(args.Text) {
-					return !a.trafficLineBelongs(session.TeamLine{Team: target, Thread: id, Kind: row.Kind,
-						From: row.From, Text: session.TeamDeliveryText(row)}, shown)
-				}
+	if omittedPost && target != "" {
+		ownerID := ""
+		for _, owner := range a.wall.teams {
+			if target == owner.ID || strings.EqualFold(target, owner.Name) {
+				ownerID = owner.ID
+				break
 			}
 		}
+		// A currently named team owns its receipt. A historical-name guess
+		// cannot transfer it to another team, even when their handles differ.
+		if ownerID != "" && ownerID != shown.ID {
+			return true
+		}
+		matched := ""
+		for _, owner := range a.wall.teams {
+			if ownerID != "" && owner.ID != ownerID {
+				continue
+			}
+			sender, ok := owner.Member(a.frontTabKey())
+			if !ok {
+				continue
+			}
+			known := a.traffic.cursor[owner.ID] == trafficFromStart
+			for _, row := range a.traffic.rows[owner.ID] {
+				if row.ID != id {
+					continue
+				}
+				known = true
+				if row.Kind == teamstore.KindNote && row.From == sender.Handle && (ownerID != "" || strings.TrimSpace(row.Text) == strings.TrimSpace(args.Text)) {
+					if matched != "" && matched != owner.ID {
+						return true
+					}
+					matched = owner.ID
+				}
+			}
+			// A rename cannot be disambiguated by a candidate team's missing
+			// numbered row. Only loaded evidence can establish ownership.
+			if !known {
+				return true
+			}
+		}
+		return matched != shown.ID
 	}
-	return true
+	return target != "" && target != shown.ID && !strings.EqualFold(target, shown.Name)
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the
