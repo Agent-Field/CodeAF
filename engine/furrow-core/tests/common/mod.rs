@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use furrow::exchange::export::{ExportJob, ExportReport};
+use furrow::exchange::fetch::Taken;
 use furrow::exchange::frame;
 use furrow::exchange::ledger::Ledger;
 use furrow::exchange::open_store;
@@ -298,6 +299,20 @@ pub fn import_with(
         ledger: &ledger,
     }
     .run()
+}
+
+pub fn import_primed(data: &Path, head: ObjectId, inbox: &Path) -> anyhow::Result<Taken> {
+    let store = open_store(data)?;
+    let sealer = CellSealer::new(&keys());
+    let ledger = Ledger::named(data, LEDGER)?;
+    furrow::exchange::fetch::Import {
+        store: &store,
+        sealer: &sealer,
+        head,
+        inbox,
+        ledger: &ledger,
+    }
+    .run_primed()
 }
 
 pub fn want_of(data: &Path, head: ObjectId) -> Vec<ObjectId> {

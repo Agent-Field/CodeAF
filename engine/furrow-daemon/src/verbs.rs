@@ -262,6 +262,9 @@ struct ImportArgs {
     head: String,
     inbox: PathBuf,
     ledger: String,
+    /// Priming mode: unwanted inbox files are deleted, not an error.
+    #[serde(default)]
+    primed: bool,
     #[serde(flatten)]
     keys: KeyArgs,
 }
@@ -279,6 +282,7 @@ impl Verb for Import {
             &a.head,
             &a.ledger,
             &a.inbox,
+            a.primed,
         )
     }
 }

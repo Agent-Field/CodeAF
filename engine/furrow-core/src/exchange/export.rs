@@ -12,7 +12,11 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_MAX_FRAME: usize = 1 << 20;
+/// The size a writer closes a frame at (contract §22.6, `BulkFrame`): large
+/// enough that a bulk take fetches whole megabyte-scale objects in one frame,
+/// small enough that relays carry the frame whole. A save smaller than this
+/// still writes one small frame, so an incremental save stays small.
+pub const DEFAULT_MAX_FRAME: usize = 8 << 20;
 
 /// Children before parents: a receiver that sees a parent already has, or is
 /// about to receive, everything the parent names. The snapshot goes last.
