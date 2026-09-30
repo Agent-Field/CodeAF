@@ -1420,18 +1420,26 @@ func overlayRowCore(label, note string, hit []int, tint noteInk, oncursor bool, 
 
 	// lifted is whether this row wears a ground at all, which is the one thing
 	// the note's ink turns on: dim grey on a raised ground is grey on grey.
-	lifted := oncursor || hovered || marked == markFront
+	// THE FRONT MARK LIFTS A ROW ONLY WHERE THE GROUND IS ITS GRAMMAR: on the
+	// model menu ([palette.frontUnlifted]) the chosen row takes no ground, so
+	// its note stays dim with the resting rows it sits between.
+	lifted := oncursor || hovered || (marked == markFront && !pal.frontUnlifted)
 	// ON A PLACE THE POINTER'S ROW IS THE CURSOR'S ROW, word for word: the
 	// same ground, the same bold subject (styles.go's [palette.placeRows]).
 	lit := oncursor || (hovered && pal.placeRows)
+	// AND THE UNLIFTED FRONT MARK KEEPS ITS WEIGHT EXPLICITLY. Under the
+	// selected band the lift carried the row's emphasis; with no band the bold
+	// is what says the row is chosen, so it is drawn on purpose and not left
+	// to read as an accident of the ground it no longer has.
+	loud := lit || (marked == markFront && pal.frontUnlifted)
 
 	// THE LABEL'S OWN INK, THEN THE EMPHASIS: a searched row carries the bytes
 	// the search matched in bold over that ink ([rowLabelInk] is the switch
 	// every row already paints through, said once), and the rest of the label
 	// keeps it — the mark is on the matched letters and nowhere else.
-	ink := rowLabelInk(pal, marked, lit)
-	painted := paintHit(pal, label, hit, lit, ink)
-	if lit {
+	ink := rowLabelInk(pal, marked, loud)
+	painted := paintHit(pal, label, hit, loud, ink)
+	if loud {
 		painted = pal.bold(painted)
 	}
 	line := lead + painted
@@ -1450,10 +1458,14 @@ func overlayRowCore(label, note string, hit []int, tint noteInk, oncursor bool, 
 	// AN OVERLAY'S CHOSEN ROW OUTRANKS THE CURSOR ON THE ROW IT SHARES WITH IT
 	// — both can be true of one row, and the louder step wins so the row never
 	// gets quieter for being arrived at; the cursor is still said, on the lead.
-	// Home's own conversation deliberately is not in this switch: on a
-	// dashboard the ground is the hand's and only the hand's ([markHere]).
+	// EXCEPT WHERE THE MARK TAKES NO GROUND ([palette.frontUnlifted]): there
+	// the CURSOR ALONE INDICATES THE HIGHLIGHTED ROW, so a cursor arrived on
+	// the chosen row lifts it like any other, and the mark rides the row's own
+	// accent underneath. Home's own conversation deliberately is not in this
+	// switch: on a dashboard the ground is the hand's and only the hand's
+	// ([markHere]).
 	switch {
-	case marked == markFront:
+	case marked == markFront && !pal.frontUnlifted:
 		return pal.selected(line, width)
 	case oncursor, hovered:
 		return pal.cursor(line, width)
@@ -1561,10 +1573,15 @@ func overlayLinesCore(label, note string, hit []int, tint noteInk, selected, mar
 	}
 	head := overlayLead(selected, hovered, pal)
 	lit := selected || (hovered && pal.placeRows)
+	// AND THE UNLIFTED FRONT MARK KEEPS ITS WEIGHT HERE TOO
+	// ([palette.frontUnlifted]): the pair already takes no ground for a marked
+	// row, so the bold is what carries the choice — the same sentence the
+	// one-line row speaks ([overlayRowCore]).
+	loud := lit || (marked && pal.frontUnlifted)
 	// The label keeps the row's own ink ([rowLabelInk]) and carries the
 	// search's emphasis in bold over it, exactly as the one-line row does.
-	painted := paintHit(pal, fit(label, width-2), hit, lit, rowLabelInk(pal, markIf(marked), lit))
-	if lit {
+	painted := paintHit(pal, fit(label, width-2), hit, loud, rowLabelInk(pal, markIf(marked), loud))
+	if loud {
 		painted = pal.bold(painted)
 	}
 	head += painted
@@ -1809,6 +1826,12 @@ func (p *picker) rows(width, n int, pal palette, hover int, level func(string) s
 // against it (settings.go's [sheet.selectLines]), and "the hit is the line's
 // index from the top" stopped being true the moment a row could be two lines.
 func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(string) string) ([]string, []int) {
+	// THE MODEL MENU'S OWN GRAMMAR ([palette.frontUnlifted]): this is the one
+	// list whose chosen row is a persistent fact — the model in use — so its
+	// front mark keeps the accent and the weight and takes no ground; the
+	// cursor alone lifts a row. Every other list that draws through the shared
+	// renderer keeps the ladder's selected step.
+	pal.frontUnlifted = true
 	if n <= 0 {
 		return nil, nil
 	}

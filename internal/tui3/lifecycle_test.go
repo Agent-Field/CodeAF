@@ -699,8 +699,14 @@ func TestHoverReachesTheChoicesAndThePickerRows(t *testing.T) {
 	if !strings.Contains(list[2], background) {
 		t.Fatalf("the hovered picker row has no hover background: %q", list[2])
 	}
+	// THE KEYBOARD CURSOR'S OWN ROW WEARS THE SAME STEP, deliberately: the
+	// cursor opened on the model in use, and since the menu's front mark takes
+	// no ground ([palette.frontUnlifted]) the cursor step is all its row wears.
+	// It is not a second hovered row — every row that is neither the pointer's
+	// nor the keyboard's rests bare.
+	held, _ := picked.pick.choice()
 	for i, line := range list {
-		if i != 2 && strings.Contains(line, background) {
+		if i != 2 && strings.Contains(line, background) && !strings.Contains(line, held.ID) {
 			t.Fatalf("row %d is hovered too: %q", i, line)
 		}
 	}

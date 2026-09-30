@@ -4047,6 +4047,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.crewWheel(placeWheelDelta(msg.Mouse().Button))
 			return a, nil
 		}
+		// THE MODEL PICKER OWNS THE WHEEL WHILE IT IS UP, over the whole frame,
+		// like every modal above: the conversation under it is not live, and a
+		// notch that fell through used to scroll a transcript the person cannot
+		// see move (the owner's TODO on the /model menu). While the list is up
+		// every key belongs to it, and the wheel is a key here for the same
+		// reason; its window follows its cursor, so the wheel walks that — and
+		// [picker.move] clamps at both ends, so the wheel cannot run past the
+		// list either.
+		if a.pick.open {
+			a.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
 		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on every page in the same
 		// cells, so a wheel answered by the place under it would scroll a list
