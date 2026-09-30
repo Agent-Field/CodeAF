@@ -148,6 +148,9 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	a := laneApp(t)
 	a.width, a.height = 130, 40
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
+	// this test types into is the model in use's, so the walk goes there first.
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 
 	typeInto(t, a, "core")
