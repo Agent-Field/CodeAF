@@ -34,6 +34,12 @@ type Host struct {
 	Devices *Book
 	// Desk holds the live pairing code.
 	Desk *Desk
+	// Approve is asked, with the joining device's name and the join words, before
+	// this machine lets a device in, and answers whether the person looking at
+	// that device's screen said yes. NIL IS A NO: a machine with nobody to ask
+	// admits nobody, because admitting a shell without a look at the other
+	// device is the weaker door.
+	Approve func(label, words string) bool
 	// Say is where a person-facing line goes — the name, the code, and one
 	// line per device that arrives or is turned away. Nil says nothing.
 	Say func(string)
@@ -169,24 +175,57 @@ func (h *Host) pair(stream io.ReadWriteCloser) {
 	// device it is paired — see pairAsMachine. It is passed in rather than done
 	// here for exactly that reason: done here it would be done one reply too
 	// late, and the device's own next connection could find the book empty.
-	admitted, err := pairAsMachine(stream, h.Device.Name(), code, h.Device, h.now(), h.Devices.Admit)
-	if err != nil {
-		var write notWrittenDown
-		if errors.As(err, &write) {
-			h.say("could not write down that pairing: " + write.Error())
-			return
-		}
-		h.say("a device tried to pair with the wrong code")
-		return
-	}
-	// One code pairs one device. A person who wants a second device reads the
-	// next one, which is another thing they had to be sitting at this machine
-	// to do.
+	admitted, err := pairAsMachine(stream, h.Device.Name(), code, h.Device, h.now(), h.approver(stream), h.Devices.Admit)
+	h.say(h.outcome(admitted, err))
+	// Every attempt spends the code, so every attempt is followed by the next
+	// one: a person who watched a code burn must not have to ask for another.
 	h.Desk.Retire()
-	h.say(fmt.Sprintf("%s is now paired with this machine — it can open conversations here and run what this machine allows", admitted.Label))
 	if next, err := h.Desk.Offer(); err == nil {
 		h.say(strings.TrimRight(Lines(h.Device.Name(), next), "\n"))
 	}
+}
+
+// approver asks the person, with the connection's deadline held open for as long
+// as they are given and put back afterwards. Silence is a no, so a machine
+// nobody is sitting at never admits anything.
+func (h *Host) approver(stream io.ReadWriteCloser) func(label, words string) error {
+	return func(label, words string) error {
+		withDeadline(stream, h.now().Add(ConfirmWithin+HandshakeWithin))
+		defer withDeadline(stream, h.now().Add(HandshakeWithin))
+		if h.Approve == nil || !h.Approve(label, words) {
+			return ErrRefused
+		}
+		return nil
+	}
+}
+
+// outcomes is what this machine says about how an attempt ended, first match
+// wins. The last row matches everything, so an attempt always says something.
+var outcomes = []struct {
+	is   func(error) bool
+	line func(h *Host, one Paired, err error) string
+}{
+	{func(err error) bool { return err == nil }, func(h *Host, one Paired, _ error) string {
+		return fmt.Sprintf("%s is now paired with this machine — it can open conversations here and run what this machine allows", one.Label)
+	}},
+	{func(err error) bool { return errors.Is(err, ErrRefused) }, func(*Host, Paired, error) string {
+		return "a device asked to pair and was not let in"
+	}},
+	{func(err error) bool { var w notWrittenDown; return errors.As(err, &w) }, func(_ *Host, _ Paired, err error) string {
+		return "could not write down that pairing: " + err.Error()
+	}},
+	{func(error) bool { return true }, func(*Host, Paired, error) string {
+		return "someone typed a wrong code, so that code is no longer good"
+	}},
+}
+
+func (h *Host) outcome(one Paired, err error) string {
+	for _, row := range outcomes {
+		if row.is(err) {
+			return row.line(h, one, err)
+		}
+	}
+	return ""
 }
 
 // connect answers a device that has already been paired.

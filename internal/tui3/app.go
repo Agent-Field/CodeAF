@@ -2228,6 +2228,7 @@ type app struct {
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
+	machinePoll    machinePoll
 	// newsAsking and leftOffAsking are the same idea for the two readings a card
 	// takes of its own row (homecardread.go).
 	newsAsking    map[string]bool
@@ -2601,6 +2602,12 @@ type app struct {
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
 
+	// pairing is the door onto pairing this computer with another, and pair the
+	// panel /pair opens over it (pair.go). Nil pairing is a connection that
+	// cannot; closed, the panel costs the frame nothing.
+	pairing Pairing
+	pair    pairPanel
+
 	// draftPage is the list /drafts opens over the ring of cleared-but-kept
 	// drafts (draftring.go): closed, it costs the frame nothing.
 	draftPage draftPanel
@@ -2916,6 +2923,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	a := &app{
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
+		pairing:             opts.Pairing,
 		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
@@ -3796,7 +3804,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// frame there has been anybody to read it (question.go's
 		// [app.tickQuestion]).
 		a.refocusQuestions()
-		return a, nil
+		// AND HOME IS READ AT ONCE, because a list left to age a minute while
+		// nobody looked must not be what the person sees on arrival.
+		return a, a.hurryMachines()
 
 	case tea.BlurMsg:
 		a.focused, a.seenFocus = false, true
@@ -4426,6 +4436,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// anywhere else closes the list.
 			if a.permPanel.open {
 				return a, a.permPanelPress(msg.Mouse().Y)
+			}
+			// AND THE PAIRING PANEL TAKES EVERY PRESS AND ACTS ON NONE: a press must
+			// never answer the question of whether a device may have your chats.
+			if a.pair.open {
+				return a, nil
 			}
 			// THE STANDING PAGE USED TO BE READ HERE, under the two registry
 			// panels. It is a PLACE now and is read with the other three of them,
@@ -5286,6 +5301,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// through the door its live twin comes through, and a kind this build
 		// does not know is left waiting (hostlink.go).
 		return a, a.replayHeld(msg)
+
+	case pairMsg:
+		return a, a.tookPair(msg)
 
 	case linkPingTickMsg:
 		// The next timer is armed immediately when this one finds a reconnect in
@@ -7478,6 +7496,9 @@ func (a *app) slash(line string) tea.Cmd {
 	switch canonicalCommand(name) {
 	case "update":
 		return a.runUpdateCommand(rest)
+
+	case "pair":
+		return a.runPair(rest)
 
 	case "autonomy":
 		a.noticeEvent(eventAutonomyAsked)

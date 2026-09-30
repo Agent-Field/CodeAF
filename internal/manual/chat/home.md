@@ -308,6 +308,12 @@ even that will not fit the sentence gives way whole before the chat's name is cu
 row may show only the name and its age. These rows are stops for the cursor: enter runs
 what the row offers, described in the next two sections.
 
+The list is fetched only while home is on screen and the terminal has your attention (its
+focus, or a key pressed in the last ten minutes). It is fetched every few seconds while it is
+changing and about once a minute while it is not, and at once when you open home or come back
+to the window. Each row's age is counted from its last saved turn, so it keeps growing between
+fetches.
+
 If the other machines cannot be reached, the last list stays on screen and the line
 `other machines unreachable` stands under it. With no connection set up at all (no
 `CODEAF_SYNC_URL`, see "Sync your chats between machines" in running-from-the-terminal), nothing

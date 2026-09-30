@@ -272,7 +272,7 @@ func TestRelayWithoutStoreIsOnlyThePipe(t *testing.T) {
 			t.Fatal(err)
 		}
 		resp.Body.Close()
-		if resp.StatusCode != want || resp.Header.Get("Codeaf-Now") != "" {
+		if resp.StatusCode != want || resp.Header.Get("Codeaf-Now") == "" {
 			t.Fatalf("%s: status %d, Codeaf-Now %q", path, resp.StatusCode, resp.Header.Get("Codeaf-Now"))
 		}
 	}

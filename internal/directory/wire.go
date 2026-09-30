@@ -26,6 +26,7 @@ var wireErrors = []wireError{
 	{ErrCAS, "cas", http.StatusConflict},
 	{ErrUnauthorized, "unauthorized", http.StatusUnauthorized},
 	{ErrRevoked, "revoked", http.StatusUnauthorized},
+	{ErrSelfRevoke, "self_revoke", http.StatusBadRequest},
 	{wireauth.ErrSkew, "skew", http.StatusUnauthorized},
 	{errBadRequest, "bad_request", http.StatusBadRequest},
 	{errTooLarge, "too_large", http.StatusRequestEntityTooLarge},

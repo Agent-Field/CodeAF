@@ -127,6 +127,7 @@ func helpPages(t *testing.T) []helpPage {
 		{"why", runWhy},
 		{"cache", runCache},
 		{"devices", runDevices},
+		{"pair", runPair},
 		{"plan new", func(args []string) error { return runPlanNew("plan new", args) }},
 		{"plan run", func(args []string) error { return runGraph("plan run", args) }},
 		{"patch", runPatch},

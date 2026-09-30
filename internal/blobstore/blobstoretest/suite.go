@@ -206,6 +206,10 @@ func getManyRefusals(t *testing.T, s blobstore.Store) {
 	if _, err := s.GetMany(ctx, []string{object("a").RID, "abc"}); !errors.Is(err, blobstore.ErrBadRID) {
 		t.Errorf("GetMany with a bad id = %v, want ErrBadRID", err)
 	}
+	a := object("a").RID
+	if _, err := s.GetMany(ctx, []string{a, a}); !errors.Is(err, blobstore.ErrBadRID) {
+		t.Errorf("GetMany with an id twice = %v, want ErrBadRID", err)
+	}
 	if got, err := s.GetMany(ctx, nil); err != nil || len(got) != 0 {
 		t.Errorf("GetMany of no ids = %v, %v; want empty, nil", got, err)
 	}

@@ -95,15 +95,21 @@ func checkGet(rid string) error {
 	return nil
 }
 
-// checkMany is checkHas for GetMany: the same rules, at GetMany's own bound.
+// checkMany is checkHas for GetMany: the same rules at GetMany's own bound, and no id twice,
+// because the answer is a frame and a frame cannot hold one object twice.
 func checkMany(rids []string) error {
 	if len(rids) > MaxGetMany {
 		return fmt.Errorf("%w: %d ids, the limit is %d", ErrTooMany, len(rids), MaxGetMany)
 	}
+	seen := make(map[string]bool, len(rids))
 	for _, rid := range rids {
 		if err := checkGet(rid); err != nil {
 			return err
 		}
+		if seen[rid] {
+			return fmt.Errorf("%w: %q asked for twice", ErrBadRID, rid)
+		}
+		seen[rid] = true
 	}
 	return nil
 }

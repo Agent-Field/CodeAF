@@ -21,6 +21,9 @@ type simClock struct {
 	changed *sync.Cond
 	now     time.Duration
 	waiters []*simWait
+	// quiet says the flush loop has nothing noted, so it waits for a turn and
+	// not on the clock; set once the drive exists.
+	quiet func() bool
 }
 
 type simWait struct {
@@ -68,14 +71,21 @@ func (c *simClock) advance(d time.Duration) {
 	c.waiters = kept
 }
 
-// settle waits until the drive side's two loops are asleep again, that is,
-// until the work the last advance woke has finished.
+// settle waits until the drive side's loops are asleep again, that is, until
+// the work the last advance woke has finished. The heartbeat loop always sleeps
+// on the clock; the flush loop sleeps on it inside a window and otherwise waits
+// for a noted turn, which is when nothing is noted.
 func (c *simClock) settle() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for len(c.waiters) != 2 {
-		c.changed.Wait()
+	for !c.settled() {
+		time.Sleep(50 * time.Microsecond)
 	}
+}
+
+func (c *simClock) settled() bool {
+	c.mu.Lock()
+	n := len(c.waiters)
+	c.mu.Unlock()
+	return n == 2 || (n == 1 && c.quiet != nil && c.quiet())
 }
 
 // scriptedSession is a scripted chat on a simulated clock: turns of tool calls a few
@@ -145,6 +155,7 @@ func runScript(t *testing.T, idle func(*Drive)) cost {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = drive.Close(context.Background()) })
+	sim.quiet = func() bool { return drive.batcher.Pending() == 0 }
 	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil,
 		func(cellstore.Engine) cellstore.Store { return drive.Store(r.engine) })
 	if err != nil {

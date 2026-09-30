@@ -3268,6 +3268,8 @@ func (a *app) overlayHeight() int {
 		want = a.skillPick.height(width)
 	case a.permPanel.open:
 		want = a.permPanel.height(width)
+	case a.pair.open:
+		want = a.pair.height(width, a.now(), a.pal)
 	case a.subPage.open:
 		want = a.subPage.height(width)
 	case a.menu.open:
@@ -3335,6 +3337,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.skillPick.draw(width, n, a.pal, hover)
 	case a.permPanel.open:
 		return a.permPanel.draw(width, n, a.pal, hover)
+	case a.pair.open:
+		return a.pair.draw(width, n, a.now(), a.pal)
 	case a.subPage.open:
 		return a.subPage.draw(a, width, n, hover)
 	case a.menu.open:
