@@ -13,8 +13,9 @@ import (
 )
 
 // Carry is the mechanism: [Carry.Compose] on the seal side, [Carry.Restore] on
-// the take side. It holds nothing, so the zero value is the one to use.
-type Carry struct{}
+// the take side. Compose needs nothing, so the zero value composes; Restore
+// needs the [Cutter] that makes copies.
+type Carry struct{ Cutter Cutter }
 
 // Compose writes what every live task copy of c holds beyond its last commit
 // into the cell's .cell/trees/. It is one of the things a seal composes before
@@ -34,13 +35,15 @@ func (Carry) Compose(c cell.Cell) error {
 	return nil
 }
 
-// liveCopies is the folders under root that are linked worktrees. A folder that
-// is not one is not a task's copy: it has no branch to cut again.
+// liveCopies is the folders under root that are git working trees, which is what
+// a task's copy is whether it was cut as a worktree or forked with a repository
+// of its own. A folder that is neither is not a task's copy: it has no branch to
+// cut again.
 func liveCopies(root string) []string {
 	entries, _ := os.ReadDir(root)
 	var out []string
 	for _, e := range entries {
-		if dir := filepath.Join(root, e.Name()); e.IsDir() && isLinkedWorktree(dir) {
+		if dir := filepath.Join(root, e.Name()); e.IsDir() && isRepository(dir) {
 			out = append(out, dir)
 		}
 	}
@@ -85,7 +88,29 @@ func carry(tree, dest string) error {
 	if err := syncFiles(tree, filepath.Join(dest, filesDir), present); err != nil {
 		return err
 	}
-	return writeRecord(dest, record{Branch: branchOf(tree), Head: strings.TrimSpace(head), Deleted: deleted})
+	branch := branchOf(tree)
+	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest); err != nil {
+		return err
+	}
+	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree)})
+}
+
+// carryCommits keeps dest's bundle of the commits only this copy holds in step
+// with the copy's head. A head that has not moved since the last seal leaves the
+// bundle untouched, so an idle task adds nothing to what the seal uploads.
+func carryCommits(tree, branch, head, dest string) error {
+	if prior, err := readRecord(dest); err == nil && prior.Head == head {
+		return nil
+	}
+	path := filepath.Join(dest, bundleName)
+	if err := os.MkdirAll(dest, 0o700); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	_, err := bundleOwnCommits(tree, branch, path)
+	return err
 }
 
 // branchOf is the branch a copy is on, and empty for a detached head, which a

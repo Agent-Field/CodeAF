@@ -19,6 +19,17 @@ type machine struct {
 	project string
 }
 
+// worktreeCutter is a Cutter that cuts a linked worktree. These tests are about
+// what Restore asks of a Cutter, so they use the plainest one; the road a task
+// really makes its copy by is driven in the session package's own tests.
+type worktreeCutter struct{}
+
+func (worktreeCutter) Cut(project, dest string, spec Spec) error {
+	return exec.Command("git", "-C", project, "worktree", "add", "-q", "-b", spec.Branch, dest, spec.At).Run()
+}
+
+var restorer = Carry{Cutter: worktreeCutter{}}
+
 func run(t *testing.T, dir string, name string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(name, args...)
@@ -92,7 +103,7 @@ func (m *machine) takeOn() (*machine, []string) {
 	m.seal()
 	b := newMachineNoRepo(m.t)
 	m.moveTo(b)
-	restored, err := Carry{}.Restore(b.cell, b.project)
+	restored, err := restorer.Restore(b.cell, b.project)
 	if err != nil {
 		m.t.Fatal(err)
 	}
@@ -173,8 +184,8 @@ func TestTaskWhoseBranchIsGoneComesBackOnItsCommit(t *testing.T) {
 	run(t, tree, "git", "checkout", "-q", "--detach")
 	run(t, a.project, "git", "branch", "-q", "-D", "task/1")
 	b, _ := a.takeOn()
-	if got, _ := b.read("1", "wip.txt"); got != "wip\n" || b.branch("1") != "HEAD" {
-		t.Errorf("wip.txt = %q on %q, want the edit on a detached head", got, b.branch("1"))
+	if got, _ := b.read("1", "wip.txt"); got != "wip\n" || b.branch("1") != "restored/1" {
+		t.Errorf("wip.txt = %q on %q, want the edit on a branch made for it", got, b.branch("1"))
 	}
 }
 
@@ -241,7 +252,7 @@ func TestRestoreForgetsRegistrationsForPathsNotHere(t *testing.T) {
 	if !strings.Contains(run(t, b.project, "git", "worktree", "list", "--porcelain"), "prunable") {
 		t.Fatal("the arriving repository has no stale registration to forget")
 	}
-	if _, err := (Carry{}).Restore(b.cell, b.project); err != nil {
+	if _, err := restorer.Restore(b.cell, b.project); err != nil {
 		t.Fatal(err)
 	}
 	list := run(t, b.project, "git", "worktree", "list", "--porcelain")
@@ -256,7 +267,7 @@ func TestRestoreLeavesALiveCopyItsOwnFiles(t *testing.T) {
 	write(t, filepath.Join(tree, "wip.txt"), "wip\n")
 	a.seal()
 	write(t, filepath.Join(tree, "later.txt"), "written after the seal\n")
-	if _, err := (Carry{}).Restore(a.cell, a.project); err != nil {
+	if _, err := restorer.Restore(a.cell, a.project); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := a.read("1", "later.txt"); got != "written after the seal\n" {
@@ -276,7 +287,7 @@ func TestACopyThatCannotBeCutStillGetsItsFiles(t *testing.T) {
 	if err := os.MkdirAll(b.project, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := Carry{}.Restore(b.cell, b.project)
+	restored, err := restorer.Restore(b.cell, b.project)
 	if err == nil || len(restored) != 0 {
 		t.Fatalf("restored %v, %v; want a refusal to cut the copy", restored, err)
 	}

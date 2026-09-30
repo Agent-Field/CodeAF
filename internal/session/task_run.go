@@ -8327,17 +8327,25 @@ func cutTaskWorktree(ctx context.Context, place Place, root, session string, id 
 	// that grounds a node in a repository arrives here, so this one call is what
 	// makes the ground law true for all of them rather than for the one road
 	// somebody remembered to change.
-	return carveGround(ctx, groundOrder{
+	return carveGround(ctx, worktreeOrder(place, root, dir, mode, taskBranchName(title), title, frozen))
+}
+
+// worktreeOrder is the order for a branch cut off a repository into dir, which is
+// the one order every road that makes a task's copy of a repository places: a
+// task being started ([cutTaskWorktree]) and a copy being put back on another
+// machine ([TaskCopyCutter]).
+func worktreeOrder(place Place, root, dir string, mode os.FileMode, branch, title, frozen string) groundOrder {
+	return groundOrder{
 		place:   place,
 		ground:  root,
 		root:    root,
 		dir:     dir,
 		mode:    mode,
-		branch:  taskBranchName(title),
+		branch:  branch,
 		title:   title,
 		promise: TaskModeWorktree,
 		frozen:  frozen,
-	})
+	}
 }
 
 // cutWorktreeAt is the git of it, with the two names handed in: a directory to
