@@ -1011,6 +1011,13 @@ Each directly connected service may instead name its own environment variable, w
 stored with that service. `codeaf doctor`'s first row still reports only which default-service key answered — `key set · OPENROUTER_API_KEY`, or
 `key set · /home/you/.codeaf/config.json`, or `key none ·` and the two lines above.
 
+**These key variables are removed from a model's shell environment.** `OPENROUTER_API_KEY`,
+`OPENAI_API_KEY` and every connected service's own key variable are stripped before a
+bash call or background job starts, the same way `TMUX` is. This does not stop a shell
+with file access from reading a key saved in the profile. To let a command use an
+already exported provider key, set `CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL=1` in the shell
+that starts codeaf. This setting does not export a key stored only in the profile.
+
 **These change state without model spending**: `connect`, `disconnect`, `cache clean`,
 `rebuild`, `notebook retract|restore`, `services stop` and `devices revoke`. A browser
 connection may make authentication and model-list network requests, but sends no prompt.
