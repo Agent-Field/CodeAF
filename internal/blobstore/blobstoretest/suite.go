@@ -41,6 +41,11 @@ func Run(t *testing.T, factory Factory) {
 		"bad frames":             badFrames,
 		"RefusesPlaintext":       plaintextRefused,
 		"vault object accepted":  vaultObjectAccepted,
+		"GetFrame round trip":    getFrameRoundTrip,
+		"GetFrame refusals":      getFrameRefusals,
+		"Locate answers offsets": locateMatchesDecode,
+		"Locate keeps first":     locateKeepsFirst,
+		"Locate refusals":        locateRefusals,
 	}
 	for name, run := range cases {
 		t.Run(name, func(t *testing.T) { run(t, factory(t)) })
@@ -359,6 +364,7 @@ func put(t *testing.T, s blobstore.Store, frame []byte) blobstore.FrameID {
 	return id
 }
 
+// MakeFrameOf is frameOf, exported likewise.
 func frameOf(t *testing.T, objects ...blobstore.Object) []byte {
 	t.Helper()
 	frame, err := blobstore.Encode(strings.Repeat("0", 32), objects)
@@ -401,4 +407,93 @@ func frameWith(header []byte, payload ...[]byte) []byte {
 		out = append(out, p...)
 	}
 	return out
+}
+
+// getFrameRoundTrip: GetFrame answers the exact bytes of a frame that was put.
+func getFrameRoundTrip(t *testing.T, s blobstore.Store) {
+	frame := frameOf(t, object("a"), object("b"))
+	id := put(t, s, frame)
+	got, err := s.GetFrame(ctx, id)
+	if err != nil || string(got) != string(frame) {
+		t.Fatalf("GetFrame = %d bytes, %v; want the %d put", len(got), err, len(frame))
+	}
+}
+
+// getFrameRefusals: a well-formed id that was never put is ErrNotFound, and an
+// id that could never name a frame is ErrBadRID, as Get refuses its bad rids.
+func getFrameRefusals(t *testing.T, s blobstore.Store) {
+	if _, err := s.GetFrame(ctx, hash("absent frame")); !errors.Is(err, blobstore.ErrNotFound) {
+		t.Fatalf("GetFrame of an absent frame = %v, want ErrNotFound", err)
+	}
+	for _, id := range []string{"", "abc", strings.Repeat("A", 64), "../" + strings.Repeat("a", 61)} {
+		if _, err := s.GetFrame(ctx, id); !errors.Is(err, blobstore.ErrBadRID) {
+			t.Errorf("GetFrame(%q) = %v, want ErrBadRID", id, err)
+		}
+	}
+}
+
+// locateMatchesDecode: every location Locate answers points into the frame that
+// holds the object, at the offset and length Decode of that frame says.
+func locateMatchesDecode(t *testing.T, s blobstore.Store) {
+	a, b, c := object("a"), object("b"), object("c")
+	first, second := frameOf(t, a, b), frameOf(t, c)
+	put(t, s, first)
+	put(t, s, second)
+	at, err := s.Locate(ctx, []string{a.RID, b.RID, c.RID})
+	must(t, err)
+	held := []struct {
+		rid   string
+		frame []byte
+		obj   blobstore.Object
+	}{{a.RID, first, a}, {b.RID, first, b}, {c.RID, second, c}}
+	for _, h := range held {
+		loc, ok := at[h.rid]
+		if !ok {
+			t.Fatalf("Locate(%s) is absent from the answer", h.rid[:8])
+		}
+		if loc.Frame != blobstore.IDOf(h.frame) {
+			t.Errorf("Locate(%s) names frame %s, want %s", h.rid[:8], loc.Frame, blobstore.IDOf(h.frame))
+		}
+		if string(h.frame[loc.Off:uint64(loc.Off)+uint64(loc.Len)]) != string(h.obj.Bytes) {
+			t.Errorf("Locate(%s) points at the wrong bytes", h.rid[:8])
+		}
+	}
+}
+
+// locateKeepsFirst: an object stored again in a later frame keeps the location
+// it first had, as the pointer is never rewritten.
+func locateKeepsFirst(t *testing.T, s blobstore.Store) {
+	a, b := object("a"), object("b")
+	first := frameOf(t, a, b)
+	put(t, s, first)
+	put(t, s, frameOf(t, b, a)) // the same bytes again, at another offset
+	at, err := s.Locate(ctx, []string{a.RID})
+	must(t, err)
+	// a is the first object of the first frame, so its first location names
+	// that frame at the payload's start; the re-put's later offset is not it.
+	start := uint64(len(first)) - uint64(len(a.Bytes)+len(b.Bytes))
+	loc, ok := at[a.RID]
+	if !ok || loc.Frame != blobstore.IDOf(first) || loc.Off != start {
+		t.Fatalf("Locate after a re-put = %+v, want the first location at offset %d", loc, start)
+	}
+}
+
+// locateRefusals: the argument rules are Has's, at the same bound.
+func locateRefusals(t *testing.T, s blobstore.Store) {
+	rids := make([]string, blobstore.MaxHas+1)
+	for i := range rids {
+		rids[i] = object(strings.Repeat("y", i+1)).RID
+	}
+	if _, err := s.Locate(ctx, rids); !errors.Is(err, blobstore.ErrTooMany) {
+		t.Errorf("Locate of MaxHas+1 ids = %v, want ErrTooMany", err)
+	}
+	if _, err := s.Locate(ctx, []string{object("a").RID, "abc"}); !errors.Is(err, blobstore.ErrBadRID) {
+		t.Errorf("Locate with a bad id = %v, want ErrBadRID", err)
+	}
+	if at, err := s.Locate(ctx, []string{object("absent").RID}); err != nil || len(at) != 0 {
+		t.Errorf("Locate of an unheld rid = %v, %v; want empty", at, err)
+	}
+	if at, err := s.Locate(ctx, nil); err != nil || len(at) != 0 {
+		t.Errorf("Locate of no ids = %v, %v; want empty", at, err)
+	}
 }

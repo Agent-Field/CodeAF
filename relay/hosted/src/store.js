@@ -13,6 +13,8 @@ import { Serial } from './serial.js';
 
 export class Conflict extends Error {}
 export class Damaged extends Error {}
+/** Unsatisfiable is a ranged get whose offset begins past the frame: the caller turns it into a refusal. */
+export class Unsatisfiable extends Error {}
 
 export const TARGET_FRAME = 1 << 20; // the size writers close a frame at, and a batch get's answer stops at
 
@@ -86,6 +88,37 @@ export class R2Store {
     const reads = await Promise.all([...spans].map(([frame, span]) => this.#read(frame, span)));
     const bytes = new Map(reads.flat());
     return found.map(({ rid }) => ({ rid, bytes: bytes.get(rid) }));
+  }
+
+  /**
+   * getFrame answers one frame as R2 holds it: the body is R2's own ReadableStream, so a frame is
+   * piped to the client and never held whole in the isolate's memory. Absent is null.
+   */
+  async getFrame(id, range) {
+    let o;
+    try {
+      o = await this.bucket.get(this.prefix + id, range && { range });
+    } catch (e) {
+      // R2 answers a range that begins past the object with an error, not an empty get, so with a
+      // range asked that error is the range itself and nothing else it can be.
+      if (range && /not satisfiable/.test(e.message)) throw new Unsatisfiable();
+      throw e;
+    }
+    if (!o) return null;
+    return { body: o.body, size: o.size };
+  }
+
+  /**
+   * locate answers, for each rid the index holds, where its bytes live: the frame, offset and length
+   * the index recorded at put time. It is an index read only, with no freshness rule.
+   */
+  locate(rids) {
+    const at = {};
+    for (const rid of rids) {
+      const row = this.#locate(rid);
+      if (row) at[rid] = row;
+    }
+    return at;
   }
 
   // #prefix locates rids in order until a frame's worth of bytes is in hand or a rid is absent.

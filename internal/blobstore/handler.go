@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,6 +32,8 @@ func HandlerAt(now func() time.Time, auth wireauth.Authenticate, open func(ident
 	mux.Handle("GET "+pathObjects+"{rid}", h.route(maxSmallBody, (*tenant).getObject, false))
 	mux.Handle("POST "+pathMany, h.route(maxSmallBody, (*tenant).getMany, false))
 	mux.Handle("POST "+pathHas, h.route(maxSmallBody, (*tenant).has, false))
+	mux.Handle("GET "+pathFrames+"/{frame}", h.route(maxSmallBody, (*tenant).getFrame, false))
+	mux.Handle("POST "+pathLocate, h.route(maxSmallBody, (*tenant).locate, false))
 	mux.Handle("GET "+pathStats, h.route(maxSmallBody, (*tenant).statsReply, false))
 	return h.stamped(mux)
 }
@@ -58,13 +62,16 @@ type tenant struct {
 	bytesIn, bytesOut atomic.Int64
 }
 
-// reply is a success answer: a content type and the bytes.
+// reply is a success answer: a content type, the bytes, and the status and
+// extra header a verb needs beyond the 200 every other one answers.
 type reply struct {
-	ctype string
-	body  []byte
+	ctype  string
+	body   []byte
+	status int    // 0 means 200
+	header string // one extra header value, for Content-Range
 }
 
-func jsonReply(v any) reply { return reply{"application/json", mustJSON(v)} }
+func jsonReply(v any) reply { return reply{ctype: "application/json", body: mustJSON(v)} }
 
 // serveFunc answers one verb for one tenant. Errors it returns go on the wire
 // through the code table.
@@ -110,6 +117,12 @@ func (h *handler) route(limit int64, serve serveFunc, isPut bool) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", out.ctype)
+		if out.header != "" {
+			w.Header().Set("Content-Range", out.header)
+		}
+		if out.status != 0 {
+			w.WriteHeader(out.status)
+		}
 		_, _ = w.Write(out.body)
 	})
 }
@@ -187,7 +200,77 @@ func (t *tenant) getObject(ctx context.Context, r *http.Request, _ []byte) (repl
 		return reply{}, err
 	}
 	t.bytesOut.Add(int64(len(b)))
-	return reply{"application/octet-stream", b}, nil
+	return reply{ctype: "application/octet-stream", body: b}, nil
+}
+
+// getFrame answers one whole frame, or the single byte range the caller asked
+// for. A frame is immutable, so a range needs no revalidation and the only
+// well-formed request beyond the whole frame is one bytes=a-b header.
+func (t *tenant) getFrame(ctx context.Context, r *http.Request, _ []byte) (reply, error) {
+	t.gets.Add(1)
+	b, err := t.store.GetFrame(ctx, r.PathValue("frame"))
+	if err != nil {
+		return reply{}, err
+	}
+	t.bytesOut.Add(int64(len(b)))
+	return rangedFrame(r.Header.Get("Range"), b)
+}
+
+// rangedFrame answers the whole frame at 200, or its single requested range at
+// 206 with a Content-Range. A header that is not exactly one range inside the
+// frame is a malformed request.
+func rangedFrame(rng string, frame []byte) (reply, error) {
+	if rng == "" {
+		return reply{ctype: "application/octet-stream", body: frame}, nil
+	}
+	start, end, ok := parseByteRange(rng, uint64(len(frame)))
+	if !ok {
+		return reply{}, errBadRequest
+	}
+	return reply{
+		ctype:  "application/octet-stream",
+		body:   frame[start : end+1],
+		status: http.StatusPartialContent,
+		header: fmt.Sprintf("bytes %d-%d/%d", start, end, len(frame)),
+	}, nil
+}
+
+// parseByteRange reads the one range form a frame fetch may use, "bytes=a-b"
+// with both ends present and inside the frame. Anything else, several ranges
+// included, is not a request the verb answers, and says so with ok = false.
+func parseByteRange(header string, size uint64) (start, end uint64, ok bool) {
+	const form = "bytes="
+	if !strings.HasPrefix(header, form) || strings.Contains(header, ",") {
+		return 0, 0, false
+	}
+	spec := strings.TrimPrefix(header, form)
+	dash := strings.IndexByte(spec, '-')
+	if dash < 0 {
+		return 0, 0, false
+	}
+	var a, b error
+	start, a = strconv.ParseUint(spec[:dash], 10, 63)
+	end, b = strconv.ParseUint(spec[dash+1:], 10, 63)
+	if a != nil || b != nil || start > end || end >= size {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+// locate answers, per rid, where the object lies. It is an index read that
+// does not wait for a put in flight, unlike Has: a location exists only after
+// the frame it names is durable, so there is nothing to wait for.
+func (t *tenant) locate(ctx context.Context, _ *http.Request, body []byte) (reply, error) {
+	var req locateRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return reply{}, errBadRequest
+	}
+	t.hases.Add(1)
+	at, err := t.store.Locate(ctx, req.Rids)
+	if err != nil {
+		return reply{}, err
+	}
+	return jsonReply(locateAnswer{At: at}), nil
 }
 
 // getMany answers a batch of rids with one frame holding the objects the store
@@ -207,7 +290,7 @@ func (t *tenant) getMany(ctx context.Context, _ *http.Request, body []byte) (rep
 		return reply{}, err
 	}
 	t.bytesOut.Add(sizeOf(objects))
-	return reply{"application/octet-stream", frame}, nil
+	return reply{ctype: "application/octet-stream", body: frame}, nil
 }
 
 func (t *tenant) has(ctx context.Context, _ *http.Request, body []byte) (reply, error) {
