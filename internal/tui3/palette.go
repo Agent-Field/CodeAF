@@ -2150,7 +2150,21 @@ func (p *picker) marked(at int) bool {
 // groupBefore is the dim service heading before a model row. Folded lane rows
 // stay under their model, and a scrolled window repeats the heading at its top
 // so a service name is never left above the viewport.
-func (p *picker) groupBefore(at int) string {
+// groupBefore is the service heading drawn ahead of the row `at`, with the
+// window's real top known ([picker.groupHead] says why there are two).
+func (p *picker) groupBefore(at int) string { return p.groupHead(at, at == p.top) }
+
+// groupHead is the service heading row `at` sits under, drawn when the row
+// opens its service's block — at the list's own top, where a block starts, or
+// at the window's top, where the heading is drawn so a mid-block window keeps
+// its columns explained ([picker.laneHead] carries the same rule for the
+// machines' table).
+//
+// atTop is whether this row would be the WINDOW's first, which is the form the
+// scroll asks with ([picker.rowLines]): the window's top is not yet decided
+// while the walk is placing it, and a heading drawn at that edge is a line the
+// budget must pay for.
+func (p *picker) groupHead(at int, atTop bool) string {
 	if at < 0 || at >= len(p.list) || p.list[at].lane != laneNone {
 		return ""
 	}
@@ -2167,7 +2181,7 @@ func (p *picker) groupBefore(at int) string {
 	if head == "" {
 		head = model.Group
 	}
-	if at == p.top || at == 0 {
+	if at == 0 || atTop {
 		return head
 	}
 	previous := p.list[at-1]
