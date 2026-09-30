@@ -369,8 +369,8 @@ def combine(task_dir, grade_dir):
                 entry["status"] = PASS
                 entry["note"] = "derived: the verbatim reference tests apply and pass"
             elif adapt.get("adapted"):
-                if cid in phase_b:
-                    entry.update(phase_b[cid])
+                if cid in phase_b_criteria:
+                    entry.update(phase_b_criteria[cid])
                     entry["source"] = "phase-b"
                 else:
                     entry = {"status": RIG, "note": "judge adapted the tests but phase B did not run"}
