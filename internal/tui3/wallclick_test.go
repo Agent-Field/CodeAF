@@ -117,6 +117,29 @@ func TestWallClickPicksTilesAndMakesATeam(t *testing.T) {
 	}
 }
 
+// A WALL TILE LEAVES THE PLACE IT WAS OPENED FROM. The teams page can raise
+// the wall just as chats can, and choosing a conversation must put that
+// conversation in front rather than leaving the page over the switch.
+func TestWallTileFromTeamsPageLandsOnConversation(t *testing.T) {
+	a, _, _ := tabApp(t)
+	runCmd(a.showPage(pageTeams))
+	tiles := a.wallShown(a.now())
+	if len(tiles) < 2 {
+		t.Fatalf("the teams lab has %d wall tiles, want a tile behind the front", len(tiles))
+	}
+	want := tiles[1].tab.key
+	runCmd(a.wallOpen(tiles, 1))
+	if a.at(pageTeams) {
+		t.Fatal("opening a wall tile left the teams page in front")
+	}
+	if a.wall.on {
+		t.Fatal("opening a wall tile left the wall open")
+	}
+	if got := a.frontTabKey(); got != want {
+		t.Fatalf("opening a wall tile put %q in front, want %q", got, want)
+	}
+}
+
 // A CONVERSATION'S TEAMS ARE A CLICK AWAY: its ●+ opens the popover, a box
 // puts it in a team and takes it out again, and a team's dot opens its
 // settings, where it is renamed, recoloured and deleted, the last only once

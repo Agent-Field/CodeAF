@@ -19,7 +19,9 @@ import (
 //
 // EACH IS OPTIONAL, AND UNSET IS INHERIT. A team that says nothing takes its
 // parent's value, the parent its own parent's, and the top of the chain takes
-// the profile's `teams.` defaults (internal/config's teamdefaults.go). The
+// the profile's `teams.` defaults (internal/config's teamdefaults.go). A
+// profile cap is different: it is each ordinary team's own pool, while the
+// global manager group has no cap unless it has an explicit override. The
 // resolver ([File.Effective]) answers every value together with where it came
 // from ([Origin]), so a settings card can draw an inherited value dim with
 // `· from Settings` or `· from harbor` and an overridden one in ink with a
@@ -192,9 +194,10 @@ type Effective struct {
 	QuestionsUpFrom Origin  `json:"questions_up_from"`
 	CapUSDDay       float64 `json:"cap_usd_day"`
 	// CapFrom names the team whose cap this is. A cap is a POOL: a team's
-	// spend counts every team under it ([TeamSpend]), so an inherited cap is
-	// the ancestor's one pool, shared, and not a second allowance of the same
-	// size; the spend to set beside it is CapFrom.Team's.
+	// spend counts every team under it ([TeamSpend]), so an explicit cap on an
+	// ancestor is that ancestor's one pool. For a profile default on an ordinary
+	// team, CapFrom.Team is that team, even though the value came from Settings;
+	// the root has no profile-default cap.
 	CapFrom      Origin  `json:"cap_from"`
 	DepthLimit   int     `json:"depth_limit"`
 	DepthFrom    Origin  `json:"depth_from"`
@@ -251,6 +254,12 @@ func (f *File) Effective(id string, d Defaults) Effective {
 	}
 	if self.Closed() {
 		out.CapUSDDay, out.CapFrom = 0, Origin{Kind: OriginClosed, Team: self.ID, Name: self.Name}
+	} else if !got.cap {
+		if self.Root {
+			out.CapUSDDay = 0
+		} else {
+			out.CapFrom = Origin{Kind: OriginSettings, Team: self.ID, Name: self.Name}
+		}
 	}
 	return out
 }
@@ -285,10 +294,10 @@ func (f *File) CanNest(parent string, d Defaults) bool {
 // SubTeamCap is the cap a new sub-team under parent is made with: the
 // parent's effective cap times its effective share, rounded by [RoundMoney]
 // (to the cent, or finer under a cent, so a sub-cent share is not zero). A
-// parent with no cap gives none (0), and the sub-team then shares whatever
-// pool is above it. The caller writes the answer on the new team
-// ([File.SetSettings]), so a later change to the share moves no team that
-// exists.
+// parent with no effective cap gives none (0), so the sub-team follows the
+// ordinary effective-cap walk instead of receiving a derived override. The
+// caller writes the answer on the new team ([File.SetSettings]), so a later
+// change to the share moves no team that exists.
 func (f *File) SubTeamCap(parent string, d Defaults) float64 {
 	e := f.Effective(parent, d)
 	if e.CapUSDDay <= 0 {

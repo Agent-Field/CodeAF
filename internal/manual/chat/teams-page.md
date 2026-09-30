@@ -79,9 +79,11 @@ amber when a member is stopped on a question for you, `✗ failed` in red when i
 failed. Everyone else is one quiet word, **`+4 idle`**, or **`6 members`** when nobody is doing
 anything, and a press on it opens the members card. Then what the team spent today, shown
 only when there is a spend or a cap to compare it with: `$0.42 today`, or `$0.42 of $5 today`
-under a daily cap. When the cap is inherited from the team above, the header names whose it
-is, `$1.20 of $5 today · harbor's cap`, because a cap is one pool for a team and every team
-under it. Then three word buttons: **`Settings`** (the team's card, `s`), **`Close…`** (`c`),
+under a daily cap. The `daily cap per team` default is each ordinary team's own pool; `All
+teams` has no cap from that default. When a cap is inherited from the team above, the header
+names whose it is, `$1.20 of $5 today · harbor's cap`, because an explicitly set cap is one
+pool for a team and every team under it. Then three word buttons: **`Settings`** (the team's
+card, `s`), **`Close…`** (`c`),
 and **`Open ▦`** (the conversations view narrowed to this team, `w`).
 
 On a narrow screen the line gives up its parts in order: the idle word first, then the spend,
@@ -262,6 +264,8 @@ On the page's buttons, and on a team with no manager in the pane:
 | `esc` | cancel a drag or a move's question, clear the picks, then back to the message box, or home when there is none |
 
 Any letter not in that list goes back to the message box and types there.
+After `M` starts a manager, the new manager's message box receives the keyboard immediately;
+letters you type are sent to that manager, not interpreted as page actions.
 
 ## A team's card: its settings, and where each value comes from
 
