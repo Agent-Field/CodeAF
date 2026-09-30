@@ -88,11 +88,15 @@ func carry(tree, dest string) error {
 	if err := syncFiles(tree, filepath.Join(dest, filesDir), present); err != nil {
 		return err
 	}
+	copyFiles, err := regularFiles(tree)
+	if err != nil {
+		return err
+	}
 	branch := branchOf(tree)
 	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest); err != nil {
 		return err
 	}
-	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: modesOf(tree, present)})
+	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: modesOf(tree, copyFiles)})
 }
 
 // carryCommits keeps dest's bundle of the commits only this copy holds in step
@@ -173,6 +177,28 @@ func partition(tree string, paths []string) (present, deleted []string) {
 		}
 	}
 	return present, deleted
+}
+
+// regularFiles is every regular file the copy holds that git would write again
+// when the copy is cut: the tracked ones and the untracked ones its .gitignore
+// does not name. Their modes are recorded, and not only those of the changed
+// files, because a checkout gives every file it recreates the umask of the
+// machine that cut it.
+func regularFiles(tree string) ([]string, error) {
+	out, err := git(tree, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	var rels []string
+	for _, rel := range strings.Split(out, "\x00") {
+		if rel == "" {
+			continue
+		}
+		if info, err := os.Lstat(filepath.Join(tree, rel)); err == nil && info.Mode().IsRegular() {
+			rels = append(rels, rel)
+		}
+	}
+	return rels, nil
 }
 
 // modesOf is the permission bits of each of the named files of tree.
