@@ -471,6 +471,18 @@ var commands = []command{
 	// and position here is a claim about frequency — nobody turns the record on
 	// twice in a day, and a row inserted higher would push a daily command
 	// behind a scroll.
+	// SHARING YOUR CHATS WITH ANOTHER COMPUTER (pair.go). It is an errand nobody
+	// does twice in a day, so it stands below the daily eight with /update and
+	// /debug, where position in this table is the honest claim about frequency.
+	//
+	// TWO ROWS FOR ONE COMMAND, /export's reason exactly: the bare form is the one
+	// that can be run from the list, and the one that takes a code rides under it
+	// wearing the "…" of the other computer. The other words are what people say
+	// they want: "use this on my laptop", "sync my chats", "connect another
+	// computer".
+	{name: "pair", desc: "share your chats with another computer · or /pair <code> on the other",
+		alias: []string{"sync", "link", "laptop"}},
+	{name: "pair", args: "<code>", desc: "join another computer's chats with the code it shows"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf and restart on it", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag, then restart"},
