@@ -71,7 +71,7 @@ run_in_verify() { # <phase> <script...>
   # this tree can hit the same lazy-materialization I/O errors that broke the
   # bind mounts, but a host-side tar cannot.
   docker start "$cid" >/dev/null || { docker rm -f "$cid" >/dev/null; return 99; }
-  docker exec "$cid" mkdir -p /rig /task /logs/artifacts
+  docker exec "$cid" mkdir -p /rig /task /logs/artifacts /logs/grade
   tar --no-xattrs -C "$RIG_DIR" -cf - . \
     | docker exec -i "$cid" tar -xf - -C /rig \
     || { docker rm -f "$cid" >/dev/null; return 99; }
@@ -81,6 +81,15 @@ run_in_verify() { # <phase> <script...>
   tar --no-xattrs -C "$OUT/logs/artifacts" -cf - model.patch \
     | docker exec -i "$cid" tar -xf - -C /logs/artifacts \
     || { docker rm -f "$cid" >/dev/null; return 99; }
+  # The host's grade directory travels in: phase A writes phaseA.json into it,
+  # and phase B needs the judge's adapted-tests.patch, which lives there. A
+  # fresh container otherwise has no /logs/grade at all, which is what made
+  # phase B die with FileNotFoundError instead of reporting a verdict.
+  if [ -d "$OUT/logs/grade" ]; then
+    tar --no-xattrs -C "$OUT/logs/grade" -cf - . \
+      | docker exec -i "$cid" tar -xf - -C /logs/grade \
+      || { docker rm -f "$cid" >/dev/null; return 99; }
+  fi
   timeout "$((TASK_VSECS + 120))" docker exec "$cid" "$@"
   local code=$?
   docker exec "$cid" tar -cf - -C /logs grade 2>/dev/null \
