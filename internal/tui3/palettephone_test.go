@@ -68,6 +68,10 @@ func hoverLead(pal palette) string {
 // meaninglessness: the whole id is there, and so is the whole tail.
 func TestAPhonePickerRowWrapsItsNoteOntoASecondLine(t *testing.T) {
 	a := phonePicker(t, phoneWidth)
+	// The menu opens on the list's first row ([picker.cursorToFirst]) and that
+	// row is the one this test reads, so the walk moves off it first: the wrap
+	// is the row's shape at rest, not the cursor's.
+	drive(t, a, key("down"))
 	lines := overlayBlock(a)
 
 	at := -1
