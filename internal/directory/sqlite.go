@@ -50,7 +50,7 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &SQLite{db: db, clock: clock, feed: NewFeed(), grace: DefaultGraceBounds}
+	s := &SQLite{db: db, clock: clock, feed: NewFeed(clock), grace: DefaultGraceBounds}
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
@@ -249,8 +249,8 @@ func get(tx *sql.Tx, table, id string, v any) error {
 // put stores v under (table, id), replacing any earlier record, and moves the
 // directory version by one when the record is new or differs from the stored
 // one in a way a person could see at time now.
-func put[T any](tx *sql.Tx, table, id string, v T, now int64) error {
-	changed, err := visiblyChanges(tx, table, id, v, now)
+func put[T any](tx *sql.Tx, feed *Feed, table, id string, v T, now int64) error {
+	changed, err := visiblyChanges(tx, feed, table, id, v, now)
 	if err == nil && changed {
 		err = bump(tx)
 	}
@@ -267,13 +267,13 @@ func put[T any](tx *sql.Tx, table, id string, v T, now int64) error {
 
 // visiblyChanges says whether storing v under (table, id) would show a person
 // something new: the record is absent, or differs from the stored one.
-func visiblyChanges[T any](tx *sql.Tx, table, id string, v T, now int64) (bool, error) {
+func visiblyChanges[T any](tx *sql.Tx, feed *Feed, table, id string, v T, now int64) (bool, error) {
 	var old T
 	err := get(tx, table, id, &old)
 	if errors.Is(err, ErrNotFound) {
 		return true, nil
 	}
-	return err == nil && differs(old, v, now), err
+	return err == nil && feed.differs(id, old, v, now), err
 }
 
 func bump(tx *sql.Tx) error {
@@ -294,7 +294,7 @@ func (c *sqliteClient) change(ctx context.Context, id string, fn func(Cell, int6
 			return err
 		}
 		v = CellView{Now: now, Cell: next}
-		return put(tx, "cells", id, next, now)
+		return put(tx, c.s.feed, "cells", id, next, now)
 	})
 	return v, err
 }
@@ -312,7 +312,13 @@ func (c *sqliteClient) List(ctx context.Context) (l Listing, err error) {
 		if err := scanAll(tx, "devices", l.Devices); err != nil {
 			return err
 		}
-		return scanAll(tx, "cells", l.Cells)
+		if err := scanAll(tx, "cells", l.Cells); err != nil {
+			return err
+		}
+		for id, cell := range l.Cells {
+			l.Cells[id] = c.s.feed.Lifted(id, cell)
+		}
+		return nil
 	})
 	return l, err
 }
@@ -341,7 +347,11 @@ func scanAll[T any](tx *sql.Tx, table string, out map[string]T) error {
 func (c *sqliteClient) Cell(ctx context.Context, id string) (v CellView, err error) {
 	err = c.tx(ctx, func(tx *sql.Tx) error {
 		v.Now = c.s.now()
-		return get(tx, "cells", id, &v.Cell)
+		if err := get(tx, "cells", id, &v.Cell); err != nil {
+			return err
+		}
+		v.Cell = c.s.feed.Lifted(id, v.Cell)
+		return nil
 	})
 	return v, err
 }
@@ -357,7 +367,7 @@ func (c *sqliteClient) Rotate(ctx context.Context, req RotationReq) (v RotationV
 			return err
 		}
 		v = viewOf(rec, now, c.s.bounds())
-		return put(tx, "identity", "1", rec, now)
+		return put(tx, c.s.feed, "identity", "1", rec, now)
 	})
 	return v, err
 }
@@ -383,7 +393,7 @@ func (c *sqliteClient) PutDevice(ctx context.Context, id string, d Device) error
 			return err
 		}
 		d.Revoked = old.Revoked
-		return put(tx, "devices", id, d, c.s.now())
+		return put(tx, c.s.feed, "devices", id, d, c.s.now())
 	})
 }
 
@@ -397,7 +407,7 @@ func (c *sqliteClient) Revoke(ctx context.Context, id string) error {
 		if err != nil {
 			return err
 		}
-		return put(tx, "devices", id, d, c.s.now())
+		return put(tx, c.s.feed, "devices", id, d, c.s.now())
 	})
 }
 
@@ -411,7 +421,7 @@ func (c *sqliteClient) SetVault(ctx context.Context, old, next string) error {
 			return ErrCAS
 		}
 		rec.Vault = next
-		return put(tx, "identity", "1", rec, c.s.now())
+		return put(tx, c.s.feed, "identity", "1", rec, c.s.now())
 	})
 }
 
@@ -427,13 +437,15 @@ func (c *sqliteClient) Create(ctx context.Context, id string, in CellInit) (v Ce
 		now := c.s.now()
 		cell := Created(in, c.device, now)
 		v = CellView{Now: now, Cell: cell}
-		return put(tx, "cells", id, cell, now)
+		return put(tx, c.s.feed, "cells", id, cell, now)
 	})
 	return v, err
 }
 
 func (c *sqliteClient) Acquire(ctx context.Context, id string, o AcquireOpts) (CellView, error) {
-	return c.change(ctx, id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now, o.Force) })
+	return c.change(ctx, id, func(cell Cell, now int64) (Cell, error) {
+		return Acquire(c.s.feed.Lifted(id, cell), c.device, now, o.Force)
+	})
 }
 
 func (c *sqliteClient) Heartbeat(ctx context.Context, id string, b Beat) (CellView, error) {
