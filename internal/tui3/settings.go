@@ -2460,11 +2460,13 @@ func (a *app) activate() tea.Cmd {
 		}
 
 	case widgetSelect:
-		// The picker opens ON the id the row currently holds, the way /model
-		// opens on the model in use: enter with nothing typed confirms rather
-		// than changes. A row holding its empty label ("follows the
-		// conversation") matches no id and the cursor stays at the top, which is
-		// the honest reading of "this slot has not been set".
+		// The picker opens ON the id the row currently holds ([picker.cursorToCurrent]):
+		// enter with nothing typed confirms rather than changes — this is a door
+		// that opens to confirm, and /model's own door opens on the list's first
+		// row instead because its list is there to be read down. A row holding
+		// its empty label ("follows the conversation") matches no id and the
+		// cursor stays at the top, which is the honest reading of "this slot has
+		// not been set".
 		sel := &sheetSelect{
 			key: item.row.Key, label: item.meta.label,
 			keep: filterFor(item.row.Key),
@@ -2474,6 +2476,7 @@ func (a *app) activate() tea.Cmd {
 		// handed to the picker as well because that is the door every slot comes
 		// through, and a second application of the same filter is a no-op.
 		sel.pick.startFor(a.modelsFor(sel.keep), item.row.Value(), sel.keep)
+		sel.pick.cursorToCurrent()
 		// AND THIS IS THE SAME LIST /model OPENS, machines and all. A row that
 		// has a lane row behind it (lanes.go's [laneSlotForRow]) folds, shows
 		// the speed column, takes the lane grammar in its filter and pins on
