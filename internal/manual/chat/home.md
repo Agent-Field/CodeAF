@@ -945,8 +945,10 @@ its tasks keep running, it keeps its lock — and the new one is built on **its 
 workspace, with that project's approval rules, its crew, its spend ceiling and its saved
 shapes of work. Nothing is carried across, because nothing crosses.
 
-The **tab strip** above the transcript then shows both, and `tab` over an empty message
-box goes back.
+The **tab strip** above the transcript shows conversations that have a name. An
+untouched conversation has no tab; a draft or first sent message names it and adds
+its tab. Opening a saved, named conversation shows its tab straight away. `tab`
+over an empty message box goes back.
 
 One refusal is still possible and it leaves home standing: the folder is gone —
 `that folder is gone · <path>`, and nothing is opened. Home already knew — the row reads

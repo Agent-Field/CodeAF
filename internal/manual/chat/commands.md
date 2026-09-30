@@ -994,7 +994,9 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-With one connected provider the models have no provider heading. With several, models
+With only the default provider in the list, models have no provider heading. The
+default provider stays in the list even without its key: adding a direct provider
+such as Ollama therefore draws headings, including the default provider's. Models
 sit under their provider's name as a dim heading, default provider first; a custom
 provider's heading is the name you gave it.
 
