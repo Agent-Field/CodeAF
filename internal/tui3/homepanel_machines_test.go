@@ -13,10 +13,10 @@ import (
 
 // otherMachines is one chat in each state a person can find on another machine.
 var otherMachines = chatlist.Static{
-	{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
-	{Cell: "c-off", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3 * time.Hour},
-	{Cell: "c-branch", Title: "Fix the flaky test", Device: "laptop", Status: chatlist.Branch, OrphanTurns: 2, DurableAgo: 5 * time.Hour},
-	{Cell: "c-idle", Title: "Notes on the migration", Device: "studio", Status: chatlist.Idle, DurableAgo: 26 * time.Hour},
+	{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", Status: chatlist.Running, DurableAgo: 2*time.Minute + 10*time.Second},
+	{Cell: "c-off", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3*time.Hour + 10*time.Second},
+	{Cell: "c-branch", Title: "Fix the flaky test", Device: "laptop", Status: chatlist.Branch, OrphanTurns: 2, DurableAgo: 5*time.Hour + 10*time.Second},
+	{Cell: "c-idle", Title: "Notes on the migration", Device: "studio", Status: chatlist.Idle, DurableAgo: 26*time.Hour + 10*time.Second},
 	{Cell: "c-here", Title: "Held by this machine", Device: "here", Status: chatlist.Here, DurableAgo: time.Minute},
 }
 
