@@ -18,13 +18,14 @@ const HAS_WAIT_MS = 30_000;
 const MANY_KEY_ID = '0'.repeat(32);
 
 export class Tenant {
-  constructor({ identity, sql, bucket, clock, policy, limits, flight, arm }) {
+  constructor({ identity, sql, bucket, clock, policy, limits, flight, arm, watchers }) {
     this.identity = identity;
     this.clock = clock;
     this.limits = limits;
     this.arm = arm;
     this.flight = flight;
-    this.dir = new Directory(sql, identity, clock, policy);
+    this.watchers = watchers;
+    this.dir = new Directory(sql, identity, clock, policy, watchers);
     this.quota = new Quota(sql, limits);
     this.store = new R2Store(bucket, sql, identity);
     this.meta = new Meta(sql);
@@ -66,6 +67,11 @@ export class Tenant {
     this.stats.add({ has: 1 });
     if (!(await this.flight.idle(HAS_WAIT_MS))) throw new Wire('unreachable', 503);
     return this.store.has(rids);
+  }
+
+  /** watch opens a socket for `device` that is told the directory's version now and on every visible change. */
+  watch(device) {
+    return this.watchers.accept(device, this.dir.version);
   }
 
   /** assertWritable refuses a write to an identity a rotation has replaced, whichever device asks. */
