@@ -67,6 +67,25 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
 }
 
+// applyModes gives each file of the copy the bits it left with, including the
+// files the checkout wrote, which took the umask of this machine. A path the
+// copy does not have is skipped, and one that would leave dest is refused,
+// since a record that arrives over a network is not trusted with the rest of
+// the disk.
+func applyModes(dest string, modes map[string]fs.FileMode) error {
+	var errs []error
+	for rel, mode := range modes {
+		if !filepath.IsLocal(filepath.FromSlash(rel)) {
+			errs = append(errs, fmt.Errorf("carried mode for %q leaves the task copy", rel))
+			continue
+		}
+		if err := os.Chmod(filepath.Join(dest, filepath.FromSlash(rel)), mode); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // cutAgain makes dest a copy of project at the commit the copy was at. A dest
 // that already is one (the chat came back to the machine it never left) is left
 // as it is.
@@ -133,25 +152,6 @@ func overlay(files, dest string, rec record) error {
 		return err
 	}
 	return removeAll(dest, rec.Deleted)
-}
-
-// applyModes puts every recorded file of dest at the mode it left with. It runs
-// after the copy is cut and the carried files are laid down, because the cut
-// gives each file it recreates the umask of this machine, and a file the record
-// names that is not there is left alone.
-func applyModes(dest string, modes map[string]fs.FileMode) error {
-	var errs []error
-	for rel, mode := range modes {
-		if !filepath.IsLocal(rel) {
-			errs = append(errs, fmt.Errorf("recorded path %q leaves the task copy", rel))
-			continue
-		}
-		path := filepath.Join(dest, rel)
-		if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
-			errs = append(errs, os.Chmod(path, mode))
-		}
-	}
-	return errors.Join(errs...)
 }
 
 func removeAll(dest string, rels []string) error {

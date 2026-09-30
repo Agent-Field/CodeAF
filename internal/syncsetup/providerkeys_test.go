@@ -294,3 +294,18 @@ func TestApplyKeepsAKeyStoredByAnotherWriter(t *testing.T) {
 		t.Fatal("the restore lost its own key")
 	}
 }
+
+// A key set on A before its first sync, with the rest of a real config beside it,
+// against a vault that has never seen it, is neither dropped on A by the start-up
+// sync nor lost on the way to B. A machine never removes a key it has never
+// shared: no ledger entry is never a removal.
+func TestProviderKeySetBeforeTheFirstSyncSurvivesTheStartUpSync(t *testing.T) {
+	r := newKeyRig(t)
+	a, b := r.machine(), r.machine()
+	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, "daily_budget_usd": 500.0, "model_pool": false, "setup_seen_at": "2026-09-29T00:00:00Z"}, time.Now())
+	a.push(t) // the chat starts: capture, then push against an empty vault
+	a.push(t) // and its next flush
+	a.wantKey(t, fakeKeyOne)
+	b.pull(t)
+	b.wantKey(t, fakeKeyOne)
+}
