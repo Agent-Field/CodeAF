@@ -1224,23 +1224,12 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			// AND A RECOGNIZED SLASH COMMAND KEEPS ITS CHIP AFTER IT IS SENT
-			// (slashchip.go). The box is where a person learns that this surface
-			// knows the word, and a message that dropped the mark on its way into
-			// the transcript would take the fact back the moment it mattered — a
-			// conversation scrolled back through is the only record of what was
-			// asked for. Every row of a wrapped message opens at a boundary: the
-			// wrap breaks on spaces, and a word too long to break on one is not a
-			// command either.
-			// Sent tag ranges are stored on the unwrapped message. Wrapped rows
-			// cannot reuse those offsets, so a line away from the head may chip a
-			// send door only when this entry records that one acted.
+			// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE, so every
+			// recognized command in a sent message keeps it — the same widening
+			// rule as the draft (slashchip.go's [commandSpans]). Every row of a
+			// wrapped message opens at a boundary: the wrap breaks on spaces,
+			// and a word too long to break on one is not a command either.
 			spans := transcriptCommandSpans([]rune(line), e.actedTags)
-			if len(e.actedTags) > 0 && i > 0 {
-				// Wrapping changes offsets; routed messages are ordinarily one line,
-				// while the scanner still safely recognizes their door on this row.
-				spans = commandSpans([]rune(line), true)
-			}
 			out = append(out, lead+paintCommandSpans(line, spans, a.pal, words))
 		}
 		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest

@@ -6793,10 +6793,15 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	// conversation. It is asked rather than assumed so that the day the engine
 	// routes a conversation's turn into a named thread, the line that says so is
 	// already being drawn — one mechanism, keyed off what the session exposes.
+	// ACTED TAGS ARE DOOR-ONLY, however wide the chip has grown. The chip now
+	// marks every recognized command in the message (slashchip.go), but what
+	// this entry is recorded as having RUN is only the send-door words — the
+	// same rule [editor.liveTags] holds the draft to, so the transcript and the
+	// box agree about which words acted.
 	var acted []segment
 	if shown != text {
 		for _, s := range commandSpans([]rune(shown), true) {
-			if s.from > 0 {
+			if s.from > 0 && commandDoor(string([]rune(shown)[s.from+1:s.to])) != sendDoorNone {
 				acted = append(acted, s)
 			}
 		}

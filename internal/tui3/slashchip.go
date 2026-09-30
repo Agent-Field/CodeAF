@@ -30,19 +30,24 @@ import "strings"
 // A chip on a word this surface would answer with "unknown command: /tsak" would
 // be the surface promising something it is about to refuse.
 //
-// ── THE CHIP IS A PROMISE ──
+// ── THE CHIP IS A RECOGNITION MARK ──
 //
-// A CHIP MARKS A WORD THAT WILL ACT: a command at the head of the draft, or a
-// send-door tag anywhere else. Other commands inside prose stay prose. A person
-// may make a live tag plain by pressing backspace immediately after it, and its
-// chip leaves on that first press without deleting a letter.
+// A CHIP MARKS A WORD THIS SURFACE KNOWS: any recognized command, wherever it
+// stands in the draft or the sent message. It no longer says "enter will act on
+// this" — send still runs only a leading command, and still treats a send-door
+// tag anywhere else as actionable (see [app.slashTagHint] and the door-only
+// [editor.liveTags]). What it says is "this is a specifier, not prose", which
+// is true of a command mentioned mid-sentence and is the promise a person
+// reads when they are learning what this surface answers to. A person may make
+// a live tag plain by pressing backspace immediately after it, and its chip
+// leaves on that first press without deleting a letter.
 //
 // THE TWO TAG DOORS BOTH END WHERE A PERSON CAN SEE THEM. /standing raises its
 // ratification card, and /task starts its work in the open — a started row and a
 // task on the roster, one worker that can be stopped (issue #936 took the wait in
 // front of it away, not the row). Pasted text cannot turn a tinted word into
-// silent work, because the chip says what enter will do before enter is pressed,
-// which is why it may honestly promise that enter will act on a tag.
+// silent work, because a tag's promise is carried by [commandDoor] and the hint
+// line, never by the tint alone.
 
 type sendDoor uint8
 
@@ -134,9 +139,11 @@ func commandSpans(value []rune, boundary bool) []segment {
 	out := all[:0]
 	for _, s := range all {
 		word := string(value[s.from+1 : s.to])
-		// A leading recognized word runs through the command dispatcher. Away
-		// from the head, only a row that names a send door is a promise.
-		if s.from == 0 && boundary || commandDoor(word) != sendDoorNone {
+		// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE, so it travels with
+		// the recognized word anywhere it stands. The promise law lives on
+		// [commandDoor] now (liveTags, the hint line): send still runs only a
+		// leading command, and still acts on a send-door tag away from the head.
+		if s.from == 0 && boundary || knownCommand(word) {
 			out = append(out, s)
 		}
 	}
@@ -268,16 +275,13 @@ func paintCommandSpans(line string, spans []segment, pal palette, ink func(strin
 	return b.String()
 }
 
-// transcriptCommandSpans keeps the chip's promise after a send: a leading
-// command did act, and only the tag ranges recorded on that entry did act.
+// transcriptCommandSpans is every recognized command in a sent message line:
+// every recognised command is highlighted as a recognition mark — same widening
+// rule as the draft. The acted-tag ranges on the entry no longer narrow the
+// chip; they narrow what the message is understood to have RUN, which is the
+// door-only record [app.submittingShown] keeps.
 func transcriptCommandSpans(value []rune, acted []segment) []segment {
-	var out []segment
-	for _, s := range commandSpans(value, true) {
-		if s.from == 0 || containsSegment(acted, s) {
-			out = append(out, s)
-		}
-	}
-	return out
+	return commandSpans(value, true)
 }
 
 func paintDraftCommands(line string, pal palette, ink func(string) string, offset int, boundary bool, demoted []segment) string {

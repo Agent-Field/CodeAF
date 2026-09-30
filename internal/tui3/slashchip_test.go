@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
@@ -107,22 +108,40 @@ func TestAPathInTheBoxIsNeverChipped(t *testing.T) {
 	}
 }
 
-func TestOnlyASendDoorInsideASentenceIsChipped(t *testing.T) {
+// TestAllRecognisedCommandsAreChippedInsideASentence is the acceptance
+// sentence: a known command is chipped wherever it stands in the draft, and
+// keeps that mark in the transcript. The mark is a recognition mark, not a
+// promise enter will act — only the send doors still act (see the non-door
+// test below).
+func TestAllRecognisedCommandsAreChippedInsideASentence(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
+	// /senior-dev is a PROGRAM'S ROW, not a literal one: the engine's build
+	// carries it as a delegate command (delegate.go) and the launch installs it
+	// on the live table, which is how the shipped binary knows the word. Install
+	// it the same way so this test reads the real path.
+	t.Cleanup(func() { installDelegateCommands(nil) })
+	installDelegateCommands([]session.DelegateRow{{Name: "senior-dev", Description: "a program"}})
 
-	typeInto(t, a, "later I will run /compact on this")
-	sameRuns(t, boxRuns(a), nil, "an inert command mid-sentence")
-
-	a.input.reset()
-	typeInto(t, a, "keep this true /standing")
-	sameRuns(t, boxRuns(a), []string{"/standing"}, "a send-door tag")
+	typeInto(t, a, "try running /senior-dev on this")
+	sameRuns(t, boxRuns(a), []string{"/senior-dev"}, "a program named mid-sentence")
 
 	// AND IT KEEPS THE CHIP AFTER IT IS SENT. The transcript is the only record
 	// of what was asked for, and a mark that survived only until enter would be
 	// taken back at the moment it is worth having.
+	a.entries = []entry{{kind: entryUser, text: "try running /senior-dev on this"}}
+	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
+		[]string{"/senior-dev"}, "the sent message keeps the chip")
+
+	// A SEND-DOOR TAG IS UNCHANGED away from the head.
+	a.entries = []entry{{kind: entryUser, text: "keep this true /standing"}}
+	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
+		[]string{"/standing"}, "a send-door tag in the sent message")
+
+	// AND SO IS A NON-DOOR COMMAND: it chips, and an unknown word beside it does
+	// not — this is the recognition rule, not a second send rule.
 	a.entries = []entry{{kind: entryUser, text: "later I will run /compact on this, not /nope"}}
 	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
-		nil, "plain slash prose in the sent message")
+		[]string{"/compact"}, "a non-door command in the sent message")
 }
 
 func tagTestApp() (*app, *fakeAgent) {
@@ -170,8 +189,12 @@ func TestBackspaceDemotesATagThenEditsAndSendsItAsProse(t *testing.T) {
 	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
 		t.Fatalf("demoted send: sent=%q marked=%q", agent.sent, agent.marked)
 	}
-	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 0 {
-		t.Fatalf("demoted transcript chipped %q", got)
+	// THE DEMOTION IS ABOUT ACTION, NOT RECOGNITION. The word no longer routes —
+	// marked is empty and it travels as prose — but it is still a command this
+	// surface knows, so the transcript keeps its recognition chip, the same
+	// widening rule the draft follows.
+	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 1 || got[0] != "/standing" {
+		t.Fatalf("demoted transcript chipped %q, want [/standing]", got)
 	}
 
 	a, _ = tagTestApp()
@@ -210,9 +233,20 @@ func TestAnEditBeforeADemotedTagMovesItsPlainRange(t *testing.T) {
 func TestNonDoorCommandsStayInertAndLeadingCommandsAreUnchanged(t *testing.T) {
 	a, agent := tagTestApp()
 	typeInto(t, a, "please /compact later")
+	// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE: /compact wears one
+	// mid-sentence now, and enter still does not run it.
+	if got := boxRuns(a); len(got) != 1 || got[0] != "/compact" {
+		t.Fatalf("a non-door command mid-sentence chipped %q, want [/compact]", got)
+	}
 	drive(t, a, key("enter"))
 	if len(agent.sent) != 1 || agent.sent[0] != "please /compact later" {
 		t.Fatalf("inert command sent %q", agent.sent)
+	}
+	if len(agent.marked) != 0 {
+		t.Fatalf("a non-door command routed %q", agent.marked)
+	}
+	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 1 || got[0] != "/compact" {
+		t.Fatalf("the sent non-door command chipped %q, want [/compact]", got)
 	}
 
 	a, agent = tagTestApp()
@@ -357,11 +391,12 @@ func TestChoosingARowMidSentenceWritesTheWordAndRunsNothing(t *testing.T) {
 	if a.menu.open {
 		t.Fatal("the list reopened on top of its own answer")
 	}
-	// The caret is after the word it just wrote, and the word wears its chip.
+	// The caret is after the word it just wrote, and the word wears its chip —
+	// a recognition mark, not a send promise.
 	if a.input.cursor != len([]rune("before you answer, /compact")) {
 		t.Fatalf("the caret parked at %d", a.input.cursor)
 	}
-	sameRuns(t, boxRuns(a), nil, "the inert word the list wrote")
+	sameRuns(t, boxRuns(a), []string{"/compact"}, "the inert word the list wrote")
 
 	// And enter now SENDS the sentence: only a leading slash is a command, so a
 	// mention travels to the model as the words a person typed.
