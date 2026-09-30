@@ -48,6 +48,9 @@ func TestTheSurfaceNamesNoMachineTheTransportIsNotAskingFor(t *testing.T) {
 	// AND THE FOLD MARKS `auto`, which is where the requests are going — not the
 	// machine the row names.
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
+	// this test reads is the model in use's, so the walk goes there first.
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"), key("down"), key("right"))
 	// THE MARK IS THE ROW'S BAND AND NOT A GLYPH any more ([picker.mark] is
 	// gone, palette.go says why), so what is asserted is the answer the list
@@ -112,6 +115,7 @@ func TestEnterOnThePinnedMachineUnpinsIt(t *testing.T) {
 	a.pinLane(flash, "cloudflare")
 
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 	row, on := a.pick.laneUnder()
 	if !on || row.lane < 0 || !strings.EqualFold(a.pick.lanes[row.lane].Name, "cloudflare") {
@@ -133,6 +137,7 @@ func TestEnterOnThePinnedMachineUnpinsIt(t *testing.T) {
 	// other half of a toggle.
 	drive(t, a, key("esc"))
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if got := a.pinnedNow(); got == "" {
 		t.Fatal("enter on an unpinned machine did not pin it")
