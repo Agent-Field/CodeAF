@@ -62,6 +62,9 @@ type Listing struct {
 	Identity IdentityRec       `json:"identity"`
 	Devices  map[string]Device `json:"devices"`
 	Cells    map[string]Cell   `json:"cells"`
+	// Version is the directory version the records were read at, which is
+	// sent as the VersionHeader and not in the body.
+	Version uint64 `json:"-"`
 }
 
 // CellView is one cell with the directory time it was read at.
