@@ -170,12 +170,24 @@ func TestResumeFromEveryCrashPoint(t *testing.T) {
 			if err != nil || !found {
 				t.Fatalf("no journal after a crash at %s: %v", step, err)
 			}
+			assertVaultOpens(t, r) // whichever identity is on disk, the vault on disk opens under it
 			res := mustRotate(t, r.reload())
 			if res.NewID != j.NewID {
 				t.Fatalf("resume minted a second root: %s then %s", j.NewID, res.NewID)
 			}
 			assertRotated(t, r, res)
 		})
+	}
+}
+
+func assertVaultOpens(t *testing.T, r *rig) {
+	t.Helper()
+	v, err := keys.Open(r.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, err := v.Get("p/KEY"); err != nil || e.Value != "secret" {
+		t.Fatalf("the vault does not open under the identity on disk: %+v, %v", e, err)
 	}
 }
 
@@ -201,6 +213,9 @@ func assertRotated(t *testing.T, r *rig, res Result) {
 	}
 	if r.relay.of(r.old.PublicKey()).state != "retired" {
 		t.Fatal("old identity not retired")
+	}
+	if got := identity.Predecessors(r.home); len(got) != 1 || got[0] != r.old.ID() {
+		t.Fatalf("predecessors = %v, want [%s]", got, r.old.ID())
 	}
 }
 

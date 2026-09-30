@@ -233,6 +233,9 @@ func (r *run) switchOver(ctx context.Context) error {
 	if err := keys.CommitReseal(r.Home); err != nil {
 		return err
 	}
+	if err := identity.RecordPredecessor(r.Home, r.j.OldID); err != nil {
+		return err
+	}
 	return r.advance(Switched)
 }
 

@@ -55,3 +55,25 @@ func TestDeviceMarshalRoundTrip(t *testing.T) {
 		t.Fatal("the device changed in the journal")
 	}
 }
+
+// The list of replaced identities keeps order, takes each once and is bounded.
+func TestPredecessorsAreRecordedOnceAndBounded(t *testing.T) {
+	home := t.TempDir()
+	var made []string
+	for range MaxPredecessors + 2 {
+		id, _ := Mint()
+		made = append(made, id.ID())
+		for range 2 {
+			if err := RecordPredecessor(home, id.ID()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	got := Predecessors(home)
+	if len(got) != MaxPredecessors || got[0] != made[2] || got[len(got)-1] != made[len(made)-1] {
+		t.Fatalf("predecessors = %v", got)
+	}
+	if RecordPredecessor(home, "../etc") == nil {
+		t.Fatal("recorded something that is not an identity id")
+	}
+}
