@@ -27,9 +27,12 @@
 // removed: this proxy's job is to be a window, not a gate.
 //
 // Build (for the container's architecture, by the rig):
-//   GOOS=linux GOARCH=<arch> CGO_ENABLED=0 go build -o bin/egress-proxy-arm64 proxy/egress-proxy.go
+//
+//	GOOS=linux GOARCH=<arch> CGO_ENABLED=0 go build -o bin/egress-proxy-arm64 proxy/egress-proxy.go
+//
 // Run:
-//   egress-proxy -addr :3128 -log /logs/egress-proxy.log
+//
+//	egress-proxy -addr :3128 -log /logs/egress-proxy.log
 package main
 
 import (
