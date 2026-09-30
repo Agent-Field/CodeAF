@@ -44,13 +44,27 @@ type Carried struct {
 // how a removal travels; the vault leaves an already absent slot alone. A
 // damaged medium is left out, since storing it would replace a good copy with
 // one nobody can read.
-func (c Carried) capture(v VaultFile) error {
+func (c Carried) capture(v VaultFile) error { return c.record(v, c.removed) }
+
+// captureEdits is capture without the removals: a medium that holds nothing is
+// left alone. It is what runs before a pull, when this machine may simply not
+// have been given the slot yet. A slot merged into the vault by another window
+// (one that only starts up and syncs) has no file here, and reading that gap as
+// a removal would tombstone the slot with a newer stamp than the machine that
+// wrote it, so the pull would then delete the very file it came to bring.
+func (c Carried) captureEdits(v VaultFile) error {
+	return c.record(v, func(VaultFile) error { return nil })
+}
+
+// record copies what the medium holds into the slot, and asks absent what to do
+// when it holds nothing.
+func (c Carried) record(v VaultFile, absent func(VaultFile) error) error {
 	content, at, err := c.Medium.Read()
 	if errors.Is(err, ErrDamaged) {
 		return nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		return c.removed(v)
+		return absent(v)
 	}
 	if err != nil {
 		return err

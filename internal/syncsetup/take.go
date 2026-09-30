@@ -81,7 +81,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 		Branch:  c.branch(brancher),
 		RootFor: c.opt.RootFor,
 		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
-		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, c.pullVault, c.injectEnv},
+		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, c.pullVault},
 	}
 }
 
@@ -110,7 +110,7 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 // still has its files in place, so the takeover carries on and says so on the
 // same desk as the vault's sentence.
 func (c *Continuer) restoreCopies(at cell.Cell) []string {
-	restored, err := taskcopy.Carry{}.Restore(at, workspaceOf(at.Root))
+	restored, err := taskcopy.Carry{Cutter: session.TaskCopyCutter{Place: session.Place{Dir: at.Root}}}.Restore(at, workspaceOf(at.Root))
 	if err != nil && c.opt.Notify != nil {
 		c.opt.Notify("a task's working copy could not be set up again here: " + err.Error())
 	}
@@ -219,28 +219,44 @@ func rebuildIndexes(_ context.Context, c cell.Cell) error {
 	return err
 }
 
-// pullVault brings this identity's secrets here; injectEnv writes the chat's
-// own into its workspace.
-func (c *Continuer) pullVault(ctx context.Context, _ cell.Cell) error {
-	return c.sync.withVault(c.opt.Notify, func(v vaultsync.Syncer) error { return v.Pull(ctx) })
-}
-
-func (c *Continuer) injectEnv(ctx context.Context, at cell.Cell) error {
+// pullVault brings this identity's secrets here, and with them the files the
+// chat's seals withheld, which are written back into the folder the tools run in.
+func (c *Continuer) pullVault(ctx context.Context, at cell.Cell) error {
 	opened, err := cell.OpenAt(at.Root, at.ID)
 	if err != nil {
 		return err
 	}
-	// .env belongs in the folder the tools run in, which is not always the
-	// chat's own folder.
-	opened.Root = workspaceOf(at.Root)
-	return c.sync.withVault(c.opt.Notify, func(v vaultsync.Syncer) error { return v.Inject(ctx, opened) })
+	files, err := c.sync.files(c.eng, opened)
+	if err != nil {
+		return err
+	}
+	return c.sync.withVault(func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
 }
 
-// withVault runs use with the syncer of this machine's vault. The vault file is
-// made if it is not there yet, with this machine's identity as its key. The
-// syncer's store is counted under the vault scope, so vaultsync stays unaware
-// of counting, and what the run moved is written when it ends.
-func (s *Sync) withVault(notify func(string), use func(vaultsync.Syncer) error) error {
+// files is the withheld files of c as a carrier: the workspace the engine seals
+// and the paths its guard keeps out of the seals. Its slots are named by the id
+// the directory knows the chat by, which a branch does not share with the chat
+// it grew from.
+func (s *Sync) files(eng cellstore.Engine, c cell.Cell) (vaultsync.Files, error) {
+	branches, err := cellsync.OpenBranchMap(s.Home)
+	if err != nil {
+		return vaultsync.Files{}, err
+	}
+	// Only the folder is wanted here; the paths are asked again at each use, since
+	// a seal in between changes them.
+	tree, _, _ := eng.Withheld(c)
+	return vaultsync.Files{
+		Root: tree, Chat: branches.Resolve(c.ID),
+		Withheld: func() ([]string, error) { _, paths, err := eng.Withheld(c); return paths, err },
+	}, nil
+}
+
+// withVault runs use with the syncer of this machine's vault, which also carries
+// extra beside the profile state. The vault file is made if it is not there
+// yet, with this machine's identity as its key. The syncer's store is counted
+// under the vault scope, so vaultsync stays unaware of counting, and what the
+// run moved is written when it ends.
+func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
 	v, err := keys.Open(s.Home)
 	if err != nil {
 		return err
@@ -248,7 +264,7 @@ func (s *Sync) withVault(notify func(string), use func(vaultsync.Syncer) error) 
 	sc := s.scope(cellstats.VaultScope)
 	defer sc.Settle()
 	return use(vaultsync.Syncer{Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
-		Carry: s.carried(), Notify: notify})
+		Carry: append(s.carried(), extra...)})
 }
 
 // profile is the directory the product reads config.json and credentials.json

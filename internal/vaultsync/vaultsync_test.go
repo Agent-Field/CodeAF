@@ -4,15 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
-	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
@@ -229,165 +226,5 @@ func TestPushOfAnUnchangedVaultStillSettles(t *testing.T) {
 	must(t, a.Push(ctx))
 	if a.value(t, "s1") != "abc" {
 		t.Fatal("secret lost")
-	}
-}
-
-// --- Inject ---
-
-func newCell(t *testing.T) cell.Cell {
-	t.Helper()
-	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
-	must(t, err)
-	return c
-}
-
-func (m *machine) putIn(t *testing.T, c cell.Cell, name, value string) {
-	t.Helper()
-	must(t, m.vault.Put("id-"+name, keys.Entry{Name: name, Value: value, Scope: keys.ScopeOf(c)}))
-}
-
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-	raw, err := os.ReadFile(path)
-	must(t, err)
-	return string(raw)
-}
-
-func TestInjectWritesEnvInStableOrderAtMode0600(t *testing.T) {
-	m, c := newRig(t).machine(), newCell(t)
-	m.putIn(t, c, "ZED", "z")
-	m.putIn(t, c, "A0", "a0")
-	m.putIn(t, c, "A", "a")
-	must(t, m.Inject(ctx, c))
-	path := filepath.Join(c.Root, ".env")
-	if got, want := readFile(t, path), "A=a\nA0=a0\nZED=z\n"; got != want {
-		t.Fatalf("got %q, want %q", got, want)
-	}
-	if st, _ := os.Stat(path); st.Mode().Perm() != 0o600 {
-		t.Fatalf("mode %v", st.Mode().Perm())
-	}
-}
-
-func TestInjectNeedsTheCellKey(t *testing.T) {
-	m, c := newRig(t).machine(), newCell(t)
-	m.putIn(t, c, "TOKEN", "abc")
-	m.CellKeyID = "" // a machine with no identity
-	err := m.Inject(ctx, c)
-	if !errors.Is(err, ErrNoIdentity) || strings.Contains(err.Error(), "\n") {
-		t.Fatalf("want one clear sentence, got %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(c.Root, ".env")); !os.IsNotExist(err) {
-		t.Fatal("no .env may be written without an identity")
-	}
-}
-
-func TestInjectNeverOverwritesThePersonsLines(t *testing.T) {
-	m, c := newRig(t).machine(), newCell(t)
-	m.putIn(t, c, "MINE", "vault-mine")
-	m.putIn(t, c, "NEW", "vault-new")
-	path := filepath.Join(c.Root, ".env")
-	written := "# my file\nMINE=person\nOTHER=1" // no trailing newline
-	must(t, os.WriteFile(path, []byte(written), 0o644))
-	var said []string
-	m.Notify = func(s string) { said = append(said, s) }
-
-	in, err := m.Apply(ctx, c)
-	must(t, err)
-	if got, want := readFile(t, path), written+"\nNEW=vault-new\n"; got != want {
-		t.Fatalf("got %q, want %q", got, want)
-	}
-	if strings.Join(in.Written, ",") != "NEW" || strings.Join(in.Skipped, ",") != "MINE" {
-		t.Fatalf("report %+v", in)
-	}
-	if st, _ := os.Stat(path); st.Mode().Perm() != 0o644 {
-		t.Fatal("an existing file keeps its mode")
-	}
-	must(t, m.Inject(ctx, c))
-	if len(said) != 1 || !strings.Contains(said[0], "MINE") || strings.Contains(said[0], "NEW") {
-		t.Fatalf("Notify must name the skipped names only: %q", said)
-	}
-}
-
-func TestInjectLeavesAnInSyncEnvAlone(t *testing.T) {
-	m, c := newRig(t).machine(), newCell(t)
-	m.putIn(t, c, "TOKEN", "abc")
-	m.Notify = func(s string) { t.Fatalf("nothing to report, got %q", s) }
-	must(t, m.Inject(ctx, c))
-	path := filepath.Join(c.Root, ".env")
-	first, _ := os.Stat(path)
-	time.Sleep(10 * time.Millisecond)
-	must(t, m.Inject(ctx, c))
-	if again, _ := os.Stat(path); !again.ModTime().Equal(first.ModTime()) {
-		t.Fatal("an .env that already holds every name must not be written")
-	}
-	if readFile(t, path) != "TOKEN=abc\n" {
-		t.Fatal("content changed")
-	}
-}
-
-func TestInjectSkipsAValueThatCannotSitOnOneLine(t *testing.T) {
-	m, c := newRig(t).machine(), newCell(t)
-	m.putIn(t, c, "KEY", "line1\nline2")
-	m.putIn(t, c, "PAD", " padded ")
-	in, err := m.Apply(ctx, c)
-	must(t, err)
-	if strings.Join(in.Skipped, ",") != "KEY" {
-		t.Fatalf("report %+v", in)
-	}
-	got := keys.DotenvValues(readFile(t, filepath.Join(c.Root, ".env")))
-	if got["PAD"] != " padded " {
-		t.Fatalf("a padded value must round-trip, got %q", got["PAD"])
-	}
-}
-
-func TestNothingLogsASecretValue(t *testing.T) {
-	const secret = "s3cr3t-value-7f3a"
-	r := newRig(t)
-	a, b, c := r.machine(), r.machine(), newCell(t)
-	var out bytes.Buffer
-	log.SetOutput(&out)
-	defer log.SetOutput(os.Stderr)
-	notify := func(s string) { out.WriteString(s + "\n") }
-	a.Notify, b.Notify = notify, notify
-
-	a.putIn(t, c, "TOKEN", secret)
-	must(t, os.WriteFile(filepath.Join(c.Root, ".env"), []byte("TOKEN=other\n"), 0o600))
-	for _, err := range []error{a.Push(ctx), b.Pull(ctx), a.Inject(ctx, c), b.Inject(ctx, c)} {
-		if err != nil {
-			out.WriteString(err.Error() + "\n")
-		}
-	}
-	b.CellKeyID = ""
-	if err := b.Inject(ctx, c); err != nil {
-		out.WriteString(err.Error())
-	}
-	b.Store = swapped{Store: r.store, rid: currentRID(t, a), obj: append(bytes.Clone(magic), secret...)}
-	if err := b.Pull(ctx); err != nil {
-		out.WriteString(err.Error())
-	}
-	if out.Len() == 0 {
-		t.Fatal("the capture saw nothing, so it proves nothing")
-	}
-	if strings.Contains(out.String(), secret) {
-		t.Fatalf("a secret value leaked: %q", out.String())
-	}
-}
-
-func TestDeleteTravelsAndIsNeverInjected(t *testing.T) {
-	r := newRig(t)
-	a, b, c := r.machine(), r.machine(), newCell(t)
-	a.putIn(t, c, "LEAKED", "v")
-	must(t, a.Push(ctx))
-	must(t, b.Pull(ctx))
-	must(t, a.vault.Delete("id-LEAKED"))
-	must(t, a.Push(ctx))
-	must(t, b.Push(ctx)) // b still held the old copy; its push must not resurrect it
-	must(t, a.Pull(ctx))
-	for _, m := range []*machine{a, b} {
-		must(t, m.Pull(ctx))
-		must(t, m.Inject(ctx, c))
-	}
-	if _, err := os.Stat(filepath.Join(c.Root, ".env")); !os.IsNotExist(err) {
-		t.Fatal("a deleted secret must never be written to .env")
 	}
 }

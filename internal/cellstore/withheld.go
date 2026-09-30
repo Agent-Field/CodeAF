@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // The engine keeps a path out of a snapshot when a .furrowpolicy says
@@ -144,4 +146,13 @@ func ignoreMissing(err error) error {
 		return nil
 	}
 	return err
+}
+
+// Withheld is the folder a seal of c captures and the paths in it that the
+// guard keeps out of every seal because they hold secrets, as the last seal
+// left them. A cell never screened has none. The paths are relative to the
+// folder and slash-separated.
+func (e Engine) Withheld(c cell.Cell) (tree string, paths []string, err error) {
+	p, err := readPolicyAt(e.policyDir(c))
+	return e.tree(c), p.withheld, err
 }

@@ -345,11 +345,14 @@ it works in one of your project folders, the chat is restored into that very fol
 never renamed or replaced, so an editor or git that holds it open keeps working, and it shows
 the other machine's work.
 
-**Secrets do not travel in the files.** A `.env` is kept in your key vault, and the vault
-travels with your chats. When you continue, the chat's secrets are put back as a `.env` in
-the chat's work folder with the same variables, readable by you alone. A `.env` line you
-already wrote here is never overwritten, and codeaf says `.env keeps your own value for
-NAME`. With no identity on this machine, no secrets are fetched and no `.env` is written.
+**Secrets do not travel in the files.** A `.env`, at any depth, and any other file that holds a
+secret is kept out of the saved history and kept whole in your key vault instead, and the vault
+travels with your chats. When you continue, each of those files is put back at the same
+path in the chat's work folder, with the same bytes and the same permissions: comments, order
+and quoting are as you wrote them. Each file is carried on its own, so two machines that edited
+different files keep both. When both edited the same file, the one saved last wins as a whole
+file, never line by line. A file you delete on one machine is deleted on the other. With no
+identity on this machine, no secrets are fetched and no file is written.
 
 **Your keys travel too, through the same encrypted vault.** Two things are sealed in the
 vault with your identity key and sent when they change, so a machine you continue on does not

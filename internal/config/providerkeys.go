@@ -77,23 +77,38 @@ func storedString(values map[string]json.RawMessage, name string) string {
 }
 
 // WriteProviderKeys makes the profile's stored keys equal to keys: a key that
-// is absent from keys is removed, and every other field of config.json, and
-// every other field of a service row, is left as it was. It goes through the
-// profile's own locked, atomic writer, and it writes nothing when the file
-// already says the same. A service row this machine does not have is skipped,
-// since a key alone cannot make one.
+// is absent from keys is removed. Use [ChangeProviderKeys] to change some keys
+// and leave the rest as they are.
 func WriteProviderKeys(profileDir string, keys ProviderKeys) error {
-	held, err := ReadProviderKeys(profileDir)
-	if err != nil {
-		return err
-	}
-	if err := writeRowKeys(profileDir, held.Rows, keys.Rows); err != nil {
-		return err
-	}
-	return writeSourceKeys(profileDir, held.Sources, keys.Sources)
+	return ChangeProviderKeys(profileDir, func(ProviderKeys) ProviderKeys { return keys })
 }
 
-func writeRowKeys(profileDir string, held, want map[string]string) error {
+// ChangeProviderKeys hands change the keys the profile stores AT THE MOMENT OF
+// THE WRITE and stores the keys it answers: a key absent from the answer is
+// removed, and every other field of config.json, and every other field of a
+// service row, is left as it was. The stored keys are read inside the profile's
+// own locked, atomic write, so a key another writer stored a moment ago is in
+// what change sees and cannot be removed by a set built from an earlier reading.
+// It writes nothing when the file already says the same. A service row this
+// machine does not have is skipped, since a key alone cannot make one.
+func ChangeProviderKeys(profileDir string, change func(ProviderKeys) ProviderKeys) error {
+	return editProfile(profileDir, "provider keys", func(held map[string]json.RawMessage) (profileChange, error) {
+		return encodeChange(providerKeyUpdates(held, change(providerKeysFrom(held))))
+	})
+}
+
+// providerKeyUpdates is the rows to set and remove, and the service list to
+// write, that bring the stored keys (in held) to want.
+func providerKeyUpdates(held map[string]json.RawMessage, want ProviderKeys) map[string]any {
+	stored := providerKeysFrom(held)
+	updates := rowKeyUpdates(stored.Rows, want.Rows)
+	if !maps.Equal(stored.Sources, want.Sources) {
+		updates[keyModelSources] = sourcesWithKeys(persistedSourcesFrom(held), want.Sources)
+	}
+	return updates
+}
+
+func rowKeyUpdates(held, want map[string]string) map[string]any {
 	updates := map[string]any{}
 	for _, name := range secretRowKeys() {
 		switch value, ok := want[name]; {
@@ -104,20 +119,18 @@ func writeRowKeys(profileDir string, held, want map[string]string) error {
 			updates[name] = removeProfileKey
 		}
 	}
-	return writeProfileValues(profileDir, updates)
+	return updates
 }
 
-func writeSourceKeys(profileDir string, held, want map[string]string) error {
-	if maps.Equal(held, want) {
-		return nil
-	}
-	rows := PersistedSources(profileDir)
+// sourcesWithKeys is rows with each inline key set to the one wanted for that
+// service, in the cleaned form the file keeps.
+func sourcesWithKeys(rows []PersistedSource, want map[string]string) []PersistedSource {
 	for i := range rows {
 		if rows[i].KeyEnv == "" {
 			rows[i].Key = want[rows[i].ID]
 		}
 	}
-	return WriteSources(profileDir, rows)
+	return cleanSources(rows)
 }
 
 // ProviderKeysHeldBy is keys cut down to what this profile can hold: a service

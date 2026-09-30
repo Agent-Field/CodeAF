@@ -59,7 +59,7 @@ func (f credentialsFile) Write(content string) error {
 	if same, err := f.holds(content); same || err != nil {
 		return err
 	}
-	return writeAtomic(f.path, []byte(content))
+	return writeAtomic(f.path, []byte(content), 0o600)
 }
 
 // holds reports whether the file already has content, and sets a damaged file
@@ -90,15 +90,16 @@ func lockFile(path string) (func(), error) {
 	return func() { _ = filelock.Unlock(f); f.Close() }, nil
 }
 
-// writeAtomic writes through a 0600 temporary file and a rename, so the keys
-// are never briefly readable by others and a killed process leaves the old file.
-func writeAtomic(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".credentials-*.json")
+// writeAtomic writes through a temporary file that already has mode and a
+// rename, so the keys are never briefly readable by more than the final file
+// allows and a killed process leaves the old file.
+func writeAtomic(path string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".vaultsync-*")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(0o600); err != nil {
+	if err := tmp.Chmod(mode); err != nil {
 		tmp.Close()
 		return err
 	}
