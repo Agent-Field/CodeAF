@@ -34,12 +34,21 @@ export class Directory {
     return row ? JSON.parse(row.doc) : null;
   }
 
-  /** write stores a record, and counts a change of it that a person could see (see #visible) as a new version. */
+  /**
+   * write stores a record, and counts a change of it that a person could see (see #visible) as a new
+   * version. This is the one place a version is counted, so no verb, rotation included, decides alone.
+   */
   write(kind, id, doc) {
-    const before = this.read(kind, id);
+    const before = this.#stored(kind, id);
     this.sql.exec('INSERT OR REPLACE INTO dir VALUES (?,?,?)', kind, id, JSON.stringify(doc));
     if (!before || this.#visible(kind, before) !== this.#visible(kind, doc)) this.#bump();
     return doc;
+  }
+
+  // The identity's own record is live before any row exists for it, so a first write that leaves it
+  // live (a thaw of an identity that never rotated) changes nothing, as on the Go relay.
+  #stored(kind, id) {
+    return this.read(kind, id) ?? (kind === 'identity' ? { V: 1, identity: this.identity } : null);
   }
 
   // What the home list shows of a record: all of it, except that a lease shows only whether it is held,
@@ -120,7 +129,7 @@ export class Directory {
   }
 
   #identityRec() {
-    return this.read('identity', '') ?? { V: 1, identity: this.identity };
+    return this.#stored('identity', '');
   }
 
   setVault(old, next) {

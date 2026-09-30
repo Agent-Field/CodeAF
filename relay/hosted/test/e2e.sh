@@ -25,8 +25,9 @@ TIGHT='{"newIdentitiesPerIpPerDay":3,"requestsPerMinute":40,"requestsPerMinutePe
 # The default relay is also the conformance target, which names its network in X-Forwarded-For (as
 # --trust-proxy allows) and needs a pairing TTL short enough to wait out; the small one is capped at
 # two mailboxes for RelayFull.
+# Its request rates are lifted too, because the watch suite dials a thousand sockets as one device in seconds.
 # It also has the shortest grace and a two-object sweep page, so the deletion case (and the page loop) run in seconds.
-OPEN='{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000,"minGraceMs":2000,"sweepPageSize":2}'
+OPEN='{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000,"minGraceMs":2000,"sweepPageSize":2,"requestsPerMinute":100000,"requestsPerMinutePerDevice":100000}'
 start 18791 --var "CAF_LIMITS:$OPEN" --var TRUST_PROXY:1
 start 18792 --var "CAF_LIMITS:$TIGHT"
 start 18794 --var 'CAF_LIMITS:{"newIdentitiesPerIpPerDay":1000000,"pairMaxBoxes":2}' --var TRUST_PROXY:1

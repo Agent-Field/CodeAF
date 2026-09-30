@@ -128,7 +128,12 @@ func homeTick(gen int) tea.Cmd {
 // been closed and reopened re-arms nothing either, which is how there stays one
 // clock.
 func (a *app) homeBeat(gen int) tea.Cmd {
-	if !a.at(pageHome) || gen != a.homeGen {
+	if !a.at(pageHome) {
+		// Home is not showing, so nobody needs the change socket (machinewatch.go).
+		a.tendWatch(false)
+		return nil
+	}
+	if gen != a.homeGen {
 		return nil
 	}
 	a.refreshHome()
