@@ -1047,12 +1047,17 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					continue
 				}
 			}
-			// A permanent failure mid-stream is still a step the person
-			// watched: the streamed text is kept and the turn is sealed, so an
-			// error leaves the same record an interrupt does and the surface
-			// gets the turn's duration with the reason.
-			a.keepPartial(partial, hub)
-			hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(turn, started, model)})
+			// A truncated stream has no completed answer even when its last retry
+			// fails. Withdraw its visible text and leave it out of the journal;
+			// other permanent mid-stream failures still keep what the person saw.
+			cut, isCut := provider.CutFrom(err)
+			discard := isCut && cut.Reason == provider.CutTruncated
+			if discard {
+				partial.reset()
+			} else {
+				a.keepPartial(partial, hub)
+			}
+			hub.send(Event{Kind: EventError, Err: err, Discard: discard, Usage: a.sealTurn(turn, started, model)})
 			return false
 		}
 

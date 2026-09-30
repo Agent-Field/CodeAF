@@ -667,12 +667,16 @@ type TaskReplyTag struct {
 type Event struct {
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
-	Kind          EventKind
-	Text          string
-	ShortTitle    string `json:"ShortTitle,omitempty"`
-	Tool          string
-	Hint          string
-	Err           error
+	Kind       EventKind
+	Text       string
+	ShortTitle string `json:"ShortTitle,omitempty"`
+	Tool       string
+	Hint       string
+	Err        error
+	// Discard says an EventError ended a cut attempt whose streamed text was
+	// never a reply. The surface withdraws that attempt before drawing the
+	// error, as it does for EventRetrying, without counting another retry.
+	Discard       bool `json:"Discard,omitempty"`
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
 	// Skills is the ordered list of skill names this turn carried, on the
