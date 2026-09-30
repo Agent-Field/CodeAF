@@ -9,12 +9,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import { readBody } from './body.js';
 import { Flight } from './flight.js';
+import { Lazy } from './lazy.js';
 import { limitsOf, RateLimit } from './limits.js';
 import { matchRoute } from './routes.js';
 import { policyOf } from './rules.js';
 import { Tenant } from './tenant.js';
 import { checkCert, checkRequest, Refusal } from './verify.js';
-import { rateLimited, respond } from './wire.js';
+import { ipOf, rateLimited, respond, unwrap } from './wire.js';
 
 const SIGNED = { identity: 'codeaf-identity', cert: 'codeaf-cert', time: 'codeaf-time', sig: 'codeaf-sig' };
 const signedHeaders = (request) => Object.fromEntries(Object.entries(SIGNED).map(([k, h]) => [k, request.headers.get(h)]));
@@ -22,6 +23,7 @@ const signedHeaders = (request) => Object.fromEntries(Object.entries(SIGNED).map
 export class IdentityDO extends DurableObject {
   flight = new Flight();
   #tenant = null;
+  #admitted = new Lazy((ip) => this.#admitNewcomer(ip)); // single-flight: a burst of first requests is one admission
 
   constructor(ctx, env) {
     super(ctx, env);
@@ -44,7 +46,7 @@ export class IdentityDO extends DurableObject {
       const body = await readBody(request, route.limit, route.over);
       const who = await checkRequest(caller, { method: request.method, uri: url.pathname + url.search }, body, Date.now());
       const tenant = this.#tenantOf(who.identity);
-      this.#admit(tenant, who.device);
+      await this.#admit(tenant, who.device, ipOf(request));
       return await route.handler({ tenant, device: who.device, body }, route.args);
     } finally {
       leave();
@@ -68,19 +70,37 @@ export class IdentityDO extends DurableObject {
       policy: this.policy,
       limits: this.limits,
       flight: this.flight,
+      scheduleFlush: () => this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now() + this.limits.statsFlushMs)),
     });
     return this.#tenant;
   }
 
+  /** alarm writes the counts that changed since the last write; see stats.js. */
+  alarm() {
+    this.#tenant?.stats.flush();
+  }
+
   /**
-   * #admit turns away a revoked device, then charges the request to the device's rate and the
-   * identity's. The device goes first, so one noisy device that is refused spends none of the
-   * identity's share, which its other devices still need.
+   * #admit lets a request through: a first-time identity is counted against its IP, a revoked
+   * device is turned away, and the request is charged to the device's rate and the identity's.
+   * The device goes first, so one noisy device that is refused spends none of the identity's
+   * share, which its other devices still need.
    */
-  #admit(tenant, device) {
+  async #admit(tenant, device, ip) {
+    await this.#admitted.get(ip);
     if (tenant.dir.revoked(device)) throw new Refusal('revoked', 'device revoked');
     const now = Date.now();
     this.deviceRate.admit(device, now);
     this.identityRate.admit('', now);
+  }
+
+  // An identity is new until its first admitted request; from then on it is remembered, so the
+  // count never touches an existing identity, whatever address it comes from.
+  async #admitNewcomer(ip) {
+    const { meta } = this.#tenant;
+    if (meta.get('admitted')) return;
+    const gate = this.env.NEWCOMERS;
+    unwrap(await gate.get(gate.idFromName('gate')).admit(ip));
+    meta.set('admitted', true);
   }
 }

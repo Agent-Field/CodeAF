@@ -4,6 +4,7 @@
 // creates, writes and open polls by IP. Its counters are stored, not remembered in memory, so
 // idling until the object is evicted does not reset them.
 import { DurableObject } from 'cloudflare:workers';
+import { Counters } from '../counters.js';
 import { limitsOf } from '../limits.js';
 import { guarded, rateLimited, Wire } from '../wire.js';
 
@@ -26,7 +27,7 @@ export class PairGate extends DurableObject {
     this.limits = limitsOf(env);
     this.sql = ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS plates (np TEXT PRIMARY KEY, expires INTEGER NOT NULL)');
-    this.sql.exec('CREATE TABLE IF NOT EXISTS hits (key TEXT PRIMARY KEY, until INTEGER NOT NULL, n INTEGER NOT NULL)');
+    this.counters = new Counters(this.sql);
     this.sql.exec('CREATE TABLE IF NOT EXISTS polls (token TEXT PRIMARY KEY, ip TEXT NOT NULL, expires INTEGER NOT NULL)');
   }
 
@@ -70,12 +71,8 @@ export class PairGate extends DurableObject {
 
   // #hit counts one event for key in a fixed window and throws rate_limited past max.
   #hit(key, windowMs, max, now) {
-    this.sql.exec('DELETE FROM hits WHERE until <= ?', now);
-    const row = this.sql.exec('SELECT until, n FROM hits WHERE key = ?', key).toArray()[0];
-    const until = row?.until ?? now + windowMs;
-    const n = (row?.n ?? 0) + 1;
-    this.sql.exec('INSERT OR REPLACE INTO hits VALUES (?,?,?)', key, until, n);
-    if (n > max) throw rateLimited((until - now) / 1000);
+    const { n, retryAfter } = this.counters.hit(key, windowMs, now);
+    if (n > max) throw rateLimited(retryAfter);
   }
 
   // #allocate reserves a free nameplate, or throws full when the relay holds all the mailboxes it will.

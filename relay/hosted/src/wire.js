@@ -21,6 +21,11 @@ export const notFound = () => new Wire('not_found', 404);
 export const badRequest = () => new Wire('bad_request', 400);
 export const rateLimited = (seconds) => new Wire('rate_limited', 429, seconds);
 export const full = () => new Wire('full', 507);
+export const tooManyIdentities = (seconds) => new Wire('too_many_identities', 429, seconds);
+
+// The IP is the socket peer as Cloudflare reports it. A request without one shares a single
+// "unknown" allowance, which is the strict way to fail.
+export const ipOf = (request) => request.headers.get('cf-connecting-ip') ?? 'unknown';
 
 // The status of each rule refusal the directory rules raise.
 const RULE_STATUS = { not_found: 404, exists: 409, lease_held: 409, fence_stale: 409, head_moved: 409, cas: 409 };

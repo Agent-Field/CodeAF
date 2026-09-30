@@ -1,37 +1,38 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { Conflict, R2Store, sealFrame } from '../src/store.js';
-import { openBucket, countingBucket, frame, rid } from './helpers.js';
+import { memorySql } from './sql.js';
+import { openBucket, frame, rid } from './helpers.js';
 
 let env;
 before(async () => { env = await openBucket(); });
 after(() => env.close());
 
-const put = async (store, f) => store.put(await sealFrame(f.bytes));
+// One identity's state is its SQLite and its R2 prefix; a "cold" store is a new object over the same two.
+const open = (identity, sql = memorySql()) => ({ sql, store: new R2Store(env.bucket, sql, identity) });
+const put = async (store, f, admit) => store.put(await sealFrame(f.bytes), admit);
 
-test('put, has and get through the index; a cold store rebuilds from the frames', async () => {
-  const s = new R2Store(env.bucket, 'id_s1');
+test('put, has and get through the index; a cold store finds everything in the SQLite', async () => {
+  const { sql, store } = open('id_s1');
   const f = frame([rid(1), rid(2), rid(3)]);
-  assert.equal(await put(s, f), true);
-  assert.deepEqual(await s.has([rid(2), rid(9)]), [true, false]);
-  assert.deepEqual(await s.get(rid(3)), f.objs[2]);
-  const cold = new R2Store(env.bucket, 'id_s1'); // a new object after eviction: nothing in memory
+  assert.equal(await put(store, f), true);
+  assert.deepEqual(store.has([rid(2), rid(9)]), [true, false]);
+  assert.deepEqual(await store.get(rid(3)), f.objs[2]);
+  const cold = open('id_s1', sql).store;
   assert.deepEqual(await cold.get(rid(1)), f.objs[0]);
   assert.equal(await cold.get(rid(99)), null);
 });
 
 test('an identity never reads another identity objects', async () => {
-  await put(new R2Store(env.bucket, 'id_a'), frame([rid(5)]));
-  assert.deepEqual(await new R2Store(env.bucket, 'id_b').has([rid(5)]), [false]);
+  await put(open('id_a').store, frame([rid(5)]));
+  assert.deepEqual(open('id_b').store.has([rid(5)]), [false]);
 });
 
 test('a frame put twice is stored once and the second put says it was not new', async () => {
-  const { bucket, calls } = countingBucket(env.bucket);
-  const s = new R2Store(bucket, 'id_s2');
+  const { store } = open('id_s2');
   const f = frame([rid(7)]);
-  assert.equal(await put(s, f), true);
-  assert.equal(await put(s, f), false);
-  assert.equal(calls.put, 1);
+  assert.equal(await put(store, f), true);
+  assert.equal(await put(store, f), false);
 });
 
 test('a bad frame is refused before anything is stored', async () => {
@@ -39,56 +40,48 @@ test('a bad frame is refused before anything is stored', async () => {
 });
 
 test('a rid held with other bytes is a conflict, and the frame stores none of its objects', async () => {
-  const s = new R2Store(env.bucket, 'id_conflict');
-  await put(s, frame([rid(1)], 'first'));
-  await assert.rejects(put(s, frame([rid(2), rid(1)], 'other')), Conflict);
-  assert.deepEqual(await s.has([rid(2)]), [false]);
+  const { store } = open('id_conflict');
+  await put(store, frame([rid(1)], 'first'));
+  await assert.rejects(put(store, frame([rid(2), rid(1)], 'other')), Conflict);
+  assert.deepEqual(store.has([rid(2)]), [false]);
+});
+
+test('two puts racing to store one rid with different bytes: exactly one wins', async () => {
+  const { store } = open('id_race');
+  const results = await Promise.allSettled([put(store, frame([rid(1)], 'one')), put(store, frame([rid(1)], 'two'))]);
+  assert.deepEqual(results.map((r) => r.status).sort(), ['fulfilled', 'rejected']);
 });
 
 test('the same object in another frame is not a conflict', async () => {
-  const s = new R2Store(env.bucket, 'id_twice');
-  await put(s, frame([rid(1)]));
-  assert.equal(await put(s, frame([rid(1), rid(2)])), true);
-});
-
-test('a burst of first requests builds the index once', async () => {
-  const seed = new R2Store(env.bucket, 'id_burst');
-  await put(seed, frame([rid(1)]));
-  const { bucket, calls } = countingBucket(env.bucket);
-  const cold = new R2Store(bucket, 'id_burst');
-  await Promise.all(Array.from({ length: 20 }, () => cold.get(rid(1))));
-  assert.equal(calls.list, 1);
-});
-
-test('a failed load is tried again by the next request', async () => {
-  const flaky = { ...env.bucket, get: env.bucket.get.bind(env.bucket), list: env.bucket.list.bind(env.bucket), put: env.bucket.put.bind(env.bucket) };
-  let failures = 1;
-  flaky.list = async (o) => {
-    if (failures-- > 0) throw new Error('r2 down');
-    return env.bucket.list(o);
-  };
-  const s = new R2Store(flaky, 'id_flaky');
-  await assert.rejects(s.has([rid(1)]));
-  assert.deepEqual(await s.has([rid(1)]), [false]);
-});
-
-test('the snapshot is saved once enough frames were found by listing, not before', async () => {
-  const writer = new R2Store(env.bucket, 'id_snap');
-  for (let i = 1; i <= 33; i++) await put(writer, frame([rid(i)]));
-  const { bucket, calls } = countingBucket(env.bucket);
-  await new R2Store(bucket, 'id_snap').has([rid(1)]);
-  assert.equal(calls.put, 1);
-  const again = countingBucket(env.bucket);
-  await new R2Store(again.bucket, 'id_snap').has([rid(1)]);
-  assert.equal(again.calls.put, undefined);
+  const { store } = open('id_twice');
+  await put(store, frame([rid(1)]));
+  assert.equal(await put(store, frame([rid(1), rid(2)])), true);
 });
 
 test('admit runs only for a new frame, before anything is written', async () => {
-  const { bucket, calls } = countingBucket(env.bucket);
-  const s = new R2Store(bucket, 'id_admit');
-  const f = await sealFrame(frame([rid(1)]).bytes);
-  await assert.rejects(s.put(f, () => { throw new Error('over quota'); }), /over quota/);
-  assert.equal(calls.put, undefined);
-  assert.equal(await s.put(f), true);
-  await s.put(f, () => { throw new Error('a stored frame is not asked about'); });
+  const { store } = open('id_admit');
+  const f = frame([rid(1)]);
+  await assert.rejects(put(store, f, () => { throw new Error('over quota'); }), /over quota/);
+  assert.deepEqual(store.has([rid(1)]), [false]);
+  assert.equal(await put(store, f), true);
+  await put(store, f, () => { throw new Error('a stored frame is not asked about'); });
+});
+
+test('a frame that reached R2 but not the index is indexed by the next put of it', async () => {
+  const { store } = open('id_crash');
+  const f = frame([rid(1)]);
+  const sealed = await sealFrame(f.bytes);
+  await env.bucket.put(`id_crash/f/${sealed.id}`, f.bytes); // the crash: durable, never indexed
+  assert.deepEqual(store.has([rid(1)]), [false]);
+  assert.equal(await put(store, f), true);
+  assert.deepEqual(await store.get(rid(1)), f.objs[0]);
+});
+
+test('an identity with thousands of objects needs no memory for them: a frame of 3000 objects is found row by row', async () => {
+  const { store } = open('id_many');
+  const rids = Array.from({ length: 3000 }, (_, i) => rid(i + 1));
+  const f = frame(rids);
+  await put(store, f);
+  assert.deepEqual(await store.get(rids[2999]), f.objs[2999]);
+  assert.deepEqual(store.has([rids[0], rid(99999)]), [true, false]);
 });

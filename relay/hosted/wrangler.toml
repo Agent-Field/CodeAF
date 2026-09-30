@@ -18,12 +18,16 @@ name = "PAIR_GATE"
 class_name = "PairGate"
 
 [[durable_objects.bindings]]
+name = "NEWCOMERS"
+class_name = "NewcomerGate"
+
+[[durable_objects.bindings]]
 name = "MAILBOX"
 class_name = "Mailbox"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox"]
+new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
 
 [vars]
 # The lease law: "stage1" is the frozen contract (30 s TTL); "amended" is contract 8.7 of the

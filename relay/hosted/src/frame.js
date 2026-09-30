@@ -69,16 +69,3 @@ export function decode(frame) {
   const h = parseHeader(raw);
   return { cellKeyId: h.cell_key_id, base: frame.length - payload.length, objects: carve(h.objects, payload) };
 }
-
-/**
- * headerRefs reads only the front of a frame: the prefix and the JSON header.
- * It answers {need} while front is too short to hold the whole header, else
- * {base, refs}, where base is the payload's offset inside the frame.
- */
-export function headerRefs(front) {
-  if (front.length < PREFIX || !startsWith(front, MAGIC)) throw bad('wrong magic');
-  const n = new DataView(front.buffer, front.byteOffset).getUint32(MAGIC.length, true);
-  if (n > MAX_HEADER) throw bad('header is larger than the limit');
-  if (PREFIX + n > front.length) return { need: PREFIX + n };
-  return { base: PREFIX + n, refs: parseHeader(front.subarray(PREFIX, PREFIX + n)).objects };
-}

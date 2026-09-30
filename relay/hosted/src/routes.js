@@ -38,7 +38,7 @@ const ROUTES = [
     return octets(await c.tenant.getObject(rid));
   }],
   ['POST', /^\/v1\/store\/has$/, STORE, async (c) => json({ have: await c.tenant.has(asRids(object(c.body))) })],
-  ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json(c.tenant.stats)],
+  ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json(c.tenant.stats.snapshot())],
   ['GET', /^\/v1\/dir\/list$/, DIR, (c) => json(c.tenant.dir.list())],
   ['GET', /^\/v1\/dir\/cells\/([^/]+)$/, DIR, (c, [id]) => json(c.tenant.dir.cell(id))],
   ['PUT', /^\/v1\/dir\/devices\/([^/]+)$/, DIR, (c, [id]) => {

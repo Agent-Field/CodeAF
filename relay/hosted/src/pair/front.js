@@ -5,14 +5,10 @@
 import { readBody } from '../body.js';
 import { base64, fromBase64Url, sha256, hex } from '../codec.js';
 import { limitsOf } from '../limits.js';
-import { badRequest, empty, json, notFound, unwrap } from '../wire.js';
+import { badRequest, empty, ipOf, json, notFound, unwrap } from '../wire.js';
 
 const MAX_WAIT_MS = 25_000;
 const KEY_BYTES = 16;
-
-// The IP is the socket peer as Cloudflare reports it. A request without one shares a single
-// "unknown" allowance, which is the strict way to fail.
-const ipOf = (request) => request.headers.get('cf-connecting-ip') ?? 'unknown';
 
 /** keyHashOf is the hex SHA-256 of the side key in Codeaf-Pair-Key, the only form of it the relay keeps. */
 async function keyHashOf(request) {

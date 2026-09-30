@@ -16,7 +16,7 @@ export class Directory {
     this.identity = identity;
     this.clock = clock;
     this.rules = makeRules(policy);
-    sql.exec('CREATE TABLE IF NOT EXISTS dir (kind TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, id))');
+    sql.exec('CREATE TABLE IF NOT EXISTS dir (kind TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, id)) WITHOUT ROWID');
   }
 
   read(kind, id) {
