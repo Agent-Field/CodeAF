@@ -318,6 +318,9 @@ func TestTheSortKeyOrdersTheProvidersWhenTheCursorIsInThem(t *testing.T) {
 	a := laneApp(t)
 	a.width, a.height = 130, 40
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
+	// this test sorts is the model in use's, so the walk goes there first.
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"), key("down"), key("right")) // into the machines
 
 	// The fold opens in ITS first column, the provider name, ascending — which is
