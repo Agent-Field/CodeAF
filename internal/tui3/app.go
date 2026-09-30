@@ -7338,7 +7338,7 @@ func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 			if land := a.threadRowLand(r); land != "" && link.member != "" {
 				if t, ok := a.teamByID(link.team); ok {
 					if m, ok := t.Member(link.member); ok {
-						return true, a.trafficJump(m.Key, land)
+						return true, a.trafficJumpIn(m.Key, land, t.ID)
 					}
 				}
 			}
