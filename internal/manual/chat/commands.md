@@ -395,7 +395,8 @@ with a fresh agent and a fresh session file.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
-message box goes back. The **tab strip** above the transcript then shows both.
+message box goes back. An untouched new conversation has no tab. A draft or first
+sent message gives it a name, and the **tab strip** above the transcript then shows both.
 
 **The one exception is a conversation nobody has used yet**: no transcript, no turn ever
 run, nothing out and nothing waiting. That one is closed and replaced, because closing it
@@ -993,8 +994,9 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-Models from connected providers sit under their provider's name as a dim heading, default
-provider first; a custom provider's heading is the name you gave it.
+With one connected provider the models have no provider heading. With several, models
+sit under their provider's name as a dim heading, default provider first; a custom
+provider's heading is the name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
