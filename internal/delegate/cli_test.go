@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -397,4 +398,22 @@ func TestAChildThatIgnoresItsGoneHostIsEndedAfterTheGrace(t *testing.T) {
 	}
 	close(release)
 	<-done
+}
+
+// After the first marker, even another marker is a literal brief argument.
+func TestParsePreservesEveryArgumentAfterTheEndMarker(t *testing.T) {
+	for _, args := range [][]string{{"--", "--"}, {"--max-cost", "0.5", "--", "--", "--max-cost", "2", "last"}} {
+		inv, err := Parse(testProgram(nil), args, &bytes.Buffer{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		marker := 0
+		for args[marker] != "--" {
+			marker++
+		}
+		want := strings.Join(args[marker+1:], " ")
+		if inv.Brief() != want || !reflect.DeepEqual(inv.Args, args[marker+1:]) {
+			t.Fatalf("brief=%q args=%q, want %q from %q", inv.Brief(), inv.Args, want, args)
+		}
+	}
 }

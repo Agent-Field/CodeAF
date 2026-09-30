@@ -133,12 +133,12 @@ func interspersedFlags(flags *flag.FlagSet, args []string) []string {
 	endOfFlags := false
 	for index := 0; index < len(args); index++ {
 		argument := args[index]
-		if argument == "--" {
-			endOfFlags = true
-			continue
-		}
 		if endOfFlags {
 			positional = append(positional, argument)
+			continue
+		}
+		if argument == "--" {
+			endOfFlags = true
 			continue
 		}
 		if !strings.HasPrefix(argument, "-") || argument == "-" {
