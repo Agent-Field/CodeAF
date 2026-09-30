@@ -160,14 +160,8 @@ func (h *handler) tenantFor(r *http.Request, body []byte) (*tenant, error) {
 	return t, nil
 }
 
-// refusal narrows every authentication failure to the two the wire names:
-// skew, which the person can fix and must be told about, and the rest.
-func refusal(err error) error {
-	if errors.Is(err, wireauth.ErrSkew) {
-		return wireauth.ErrSkew
-	}
-	return wireauth.ErrUnauthorized
-}
+// refusal narrows every authentication failure to the three the wire names.
+func refusal(err error) error { return wireauth.Narrow(err) }
 
 func (t *tenant) putFrame(ctx context.Context, _ *http.Request, body []byte) (reply, error) {
 	t.puts.Add(1)

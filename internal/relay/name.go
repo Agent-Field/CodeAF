@@ -48,6 +48,12 @@ func NameFor(publicKey []byte) string {
 	return fmt.Sprintf("%s-%s-%d", nameWords[sum[0]], nameWords[sum[1]], 10+int(sum[2])%90)
 }
 
+// WordFor is the word a byte stands for in the name list. It is exported so that
+// the join words two devices compare by eye come out of the same 256 words a
+// person already reads machine names in, and there is one list to keep clear of
+// words that sound alike.
+func WordFor(b byte) string { return nameWords[b] }
+
 // ValidName says whether a string could be a name this package ever minted. It
 // is a cheap door on the dial path so that a garbage path never reaches the
 // registration table, and it is deliberately a SHAPE check rather than a

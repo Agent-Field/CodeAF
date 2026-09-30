@@ -47,6 +47,10 @@ func (h *HTTP) PutDevice(ctx context.Context, id string, d Device) error {
 	return h.do(ctx, http.MethodPut, dirBase+"/devices/"+url.PathEscape(id), d, nil)
 }
 
+func (h *HTTP) Revoke(ctx context.Context, id string) error {
+	return h.do(ctx, http.MethodPost, dirBase+"/devices/"+url.PathEscape(id)+"/revoke", nil, nil)
+}
+
 func (h *HTTP) SetVault(ctx context.Context, old, next string) error {
 	return h.do(ctx, http.MethodPost, dirBase+"/vault", vaultSwap{Old: old, New: next}, nil)
 }

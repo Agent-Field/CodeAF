@@ -91,6 +91,9 @@ var cases = map[string]func(*testing.T, env){
 	"SetVaultIsCompareAndSwap":       setVaultIsCompareAndSwap,
 	"DirectoryClockStampsEverything": directoryClockStampsEverything,
 	"ConcurrentAcquireOneWins":       concurrentAcquireOneWins,
+	"DeviceRevokedIsRefused":         deviceRevokedIsRefused,
+	"RevokeRefusesSelfAndUnknown":    revokeRefusesSelfAndUnknown,
+	"RevokeIsIdempotent":             revokeIsIdempotent,
 }
 
 func start(t *testing.T, e env) directory.CellView {
@@ -360,4 +363,73 @@ func tally(t *testing.T, errs <-chan error, racers int) {
 	if won != 1 || held != racers-1 {
 		t.Fatalf("won %d, held %d of %d", won, held, racers)
 	}
+}
+
+// twoDevices records devA and devB as devices of one identity.
+func twoDevices(t *testing.T, e env) {
+	t.Helper()
+	for _, d := range []string{devA, devB} {
+		must(t, e.as(d).PutDevice(ctx, e.id(d), directory.Device{V: 1, Name: d}))
+	}
+}
+
+// deviceRevokedIsRefused: once A revokes B, B is refused on every verb, A goes
+// on as before, and the record and the listing both say B is stopped.
+func deviceRevokedIsRefused(t *testing.T, e env) {
+	start(t, e)
+	twoDevices(t, e)
+	must(t, e.as(devA).Revoke(ctx, e.id(devB)))
+
+	b := e.as(devB)
+	_, listErr := b.List(ctx)
+	_, cellErr := b.Cell(ctx, cell)
+	_, createErr := b.Create(ctx, "01J0000000000000000000000B", directory.CellInit{Head: head})
+	_, acquireErr := b.Acquire(ctx, cell)
+	_, beatErr := b.Heartbeat(ctx, cell, directory.Beat{Fence: 1})
+	_, publishErr := b.Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
+	for verb, err := range map[string]error{
+		"List": listErr, "Cell": cellErr, "Create": createErr, "Acquire": acquireErr, "Heartbeat": beatErr,
+		"Publish":   publishErr,
+		"Release":   b.Release(ctx, cell, 1),
+		"Archive":   b.Archive(ctx, cell),
+		"SetVault":  b.SetVault(ctx, "", "rid"),
+		"PutDevice": b.PutDevice(ctx, e.id(devB), directory.Device{V: 1, Name: "back"}),
+		"Revoke":    b.Revoke(ctx, e.id(devA)),
+	} {
+		if !errors.Is(err, directory.ErrRevoked) {
+			t.Errorf("%s by a revoked device: %v, want ErrRevoked", verb, err)
+		}
+	}
+
+	l, err := e.as(devA).List(ctx)
+	must(t, err)
+	if !l.Devices[e.id(devB)].Revoked || l.Devices[e.id(devA)].Revoked {
+		t.Fatalf("listing shows devices %+v, want only B revoked", l.Devices)
+	}
+	if got := get(t, e); got.Head != head || got.Lease.Device != e.id(devA) {
+		t.Fatalf("a refused device changed the cell: %+v", got)
+	}
+	_, err = e.as(devA).Heartbeat(ctx, cell, directory.Beat{Fence: 1})
+	must(t, err)
+}
+
+// revokeRefusesSelfAndUnknown: a device cannot stop itself, and an id nobody
+// recorded is not found.
+func revokeRefusesSelfAndUnknown(t *testing.T, e env) {
+	twoDevices(t, e)
+	wantErr(t, e.as(devA).Revoke(ctx, e.id(devA)), directory.ErrSelfRevoke)
+	wantErr(t, e.as(devA).Revoke(ctx, "dev_cccccccccccccccccccccccccccccccc"), directory.ErrNotFound)
+	l, err := e.as(devA).List(ctx)
+	must(t, err)
+	if l.Devices[e.id(devA)].Revoked {
+		t.Fatal("a refused self-revoke still stopped the device")
+	}
+}
+
+// revokeIsIdempotent: stopping a stopped device is not an error, so a retry
+// after a lost answer is safe.
+func revokeIsIdempotent(t *testing.T, e env) {
+	twoDevices(t, e)
+	must(t, e.as(devA).Revoke(ctx, e.id(devB)))
+	must(t, e.as(devA).Revoke(ctx, e.id(devB)))
 }

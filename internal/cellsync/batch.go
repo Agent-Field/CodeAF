@@ -49,6 +49,7 @@ type Batcher struct {
 	skewShown bool
 
 	nudge wakeup // asks the heartbeat loop for a prompt beat: a turn was noted
+	work  wakeup // tells the flush loop a turn was noted, so a closed window can open at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
 
 	flushMu sync.Mutex // one flush, branch or close at a time
@@ -95,6 +96,7 @@ func (b *Batcher) Note(t cellstore.Turn) {
 	}
 	b.mu.Unlock()
 	b.nudge.fire()
+	b.work.fire()
 }
 
 // Idle says the agent has stopped and is waiting for the person, so the turns
@@ -138,10 +140,11 @@ func (b *Batcher) Pending() uint32 {
 	return uint32(len(b.noted))
 }
 
-// Run flushes each Interval, or as soon as Idle is called, and heartbeats each
-// directory.HeartbeatEvery until ctx ends. Sealing is never held back: only the
-// upload waits, so a busy agent costs one publish a window however many tool
-// calls it makes.
+// Run uploads noted turns and heartbeats each directory.HeartbeatEvery until
+// ctx ends. An upload opens a window of one Interval; turns sealed while it is
+// open wait for it to close and then go up together, so a busy agent costs two
+// publishes a window at most and a lone tool call is durable at once. Sealing
+// is never held back: only the upload waits.
 func (b *Batcher) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { b.beats(ctx) })
@@ -150,22 +153,45 @@ func (b *Batcher) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// flushes uploads, then waits as long as the flush asks, or until Idle when the
-// flush succeeded.
+// flushes is the whole state machine: wait until a turn is noted, upload it,
+// which opens a window, and rest until the window closes. A turn noted while
+// the window is open is still noted when it closes, so it goes straight up and
+// opens the next window; a turn noted in a quiet period goes up at once. There
+// is no separate rule for the first turn of a burst.
 func (b *Batcher) flushes(ctx context.Context) {
 	for {
+		if b.awaitWork(ctx) != nil {
+			return
+		}
 		if err := b.rest(ctx, b.flush(ctx)); err != nil {
 			return
 		}
 	}
 }
 
-// rest waits d between flushes. After a failure it waits the whole backoff
-// whatever Idle says, and forgets an Idle that arrived meanwhile: when the
-// relay is failing, a client that retried after every finished turn would be
-// thousands of clients hammering it at once. The flush that ends the backoff
-// sends what Idle wanted sent.
+// awaitWork returns once a turn is noted. An Idle with nothing noted has
+// nothing to send, so it is dropped here and never shortens a later window.
+func (b *Batcher) awaitWork(ctx context.Context) error {
+	for b.Pending() == 0 {
+		select {
+		case <-b.work.ch():
+		case <-b.idle.ch():
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+// rest waits out the window d, which is zero when the flush sent nothing. After
+// a failure it waits the whole backoff whatever Idle says, and forgets an Idle
+// that arrived meanwhile: when the relay is failing, a client that retried after
+// every finished turn would be thousands of clients hammering it at once. The
+// flush that ends the backoff sends what Idle wanted sent.
 func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
 	if !b.failing {
 		_, err := b.nap(ctx, d, &b.idle)
 		return err
@@ -260,12 +286,19 @@ func (b *Batcher) release(ctx context.Context) error {
 	return err
 }
 
-// flush publishes the newest noted turn and says how long to wait before the
-// next flush: the interval, or a doubled backoff after a failure.
+// flush publishes the newest noted turn and says how long the window it opened
+// lasts: the interval, or a doubled backoff after a failure. A flush that had
+// nothing to send opens no window.
 func (b *Batcher) flush(ctx context.Context) time.Duration {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
-	return b.after(b.drain(ctx))
+	_, sending := b.newest()
+	err := b.drain(ctx)
+	window := b.after(err)
+	if sending == 0 && err == nil {
+		return 0
+	}
+	return window
 }
 
 // after turns a flush's outcome into the next wait.
