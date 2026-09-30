@@ -27,6 +27,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
+	"github.com/Agent-Field/codeaf/internal/rotate"
 )
 
 const (
@@ -65,6 +66,13 @@ type Sync struct {
 // in that case. A relay with no identity here, or a URL that is not a web
 // address, is an error of one sentence.
 func Open(home string) (*Sync, bool, error) {
+	if rotate.Pending(home) {
+		return nil, false, ErrRotating
+	}
+	return open(home)
+}
+
+func open(home string) (*Sync, bool, error) {
 	raw := RelayURL(home)
 	if raw == "" {
 		return nil, false, nil

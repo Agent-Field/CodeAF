@@ -247,6 +247,12 @@ machines. It refuses to overwrite a different identity already here unless you p
 `--replace`, and after a replace the secrets sealed under the old identity can no longer
 be read. A wrong passphrase and a damaged blob get the same refusal.
 
+**`codeaf identity rotate [--grace 7d] [--yes] [--abandon]`** replaces your identity on every
+computer you keep: a new root, every chat and your saved keys sealed again under it, and the
+old identity deleted by the relay after the grace period. It is how a lost computer is locked
+out for good. It asks first and says what it costs; `--abandon` stops a rotation that has not
+switched yet. Read *Locking out a lost computer for good*.
+
 Each machine also has its own device key, made the first time and never exported. Your
 identity signs a small certificate for it, so two machines share one id but keep separate
 device ids, and one machine can be told apart from another.

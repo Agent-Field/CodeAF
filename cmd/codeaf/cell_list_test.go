@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // withListSource installs a Source for one test.
@@ -68,6 +69,23 @@ func TestCellListNeedsAll(t *testing.T) {
 	for _, args := range [][]string{{"list"}, {"list", "--some"}, {"list", "--all", "x"}} {
 		if err := runCellIn(args, &bytes.Buffer{}, t.TempDir()); err == nil || !strings.Contains(err.Error(), "usage") {
 			t.Errorf("%v: err = %v, want usage", args, err)
+		}
+	}
+}
+
+// errSource is a list that fails the way a relay that replaced the identity does.
+type errSource struct{ err error }
+
+func (e errSource) Rows(context.Context) ([]chatlist.Row, error) { return nil, e.err }
+
+// A computer on an identity that was rotated is told what happened and what to
+// do, not that other machines are unreachable.
+func TestCellListOnAReplacedIdentity(t *testing.T) {
+	for _, cause := range []error{wireauth.ErrGone, wireauth.ErrRotated} {
+		withListSource(t, errSource{cause}, nil)
+		err := runCellIn([]string{"list", "--all"}, &bytes.Buffer{}, t.TempDir())
+		if err == nil || err.Error() != chatlist.Replaced {
+			t.Errorf("%v: got %v, want the replaced sentence", cause, err)
 		}
 	}
 }

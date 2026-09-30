@@ -45,7 +45,10 @@ type driveRig struct {
 	bin    string
 	clock  *skewedClock
 	store  string // the relay's --store directory
+	svc    *relayserve.Service
+	url    string // where the relay answers
 	homeA  string
+	homeB  string
 	a, b   *Sync
 	engine cellstore.Engine // A's engine: its own data root, the real binary over spawn
 	cell   cell.Cell
@@ -60,16 +63,17 @@ func newDriveRig(t *testing.T) *driveRig {
 	}
 	clock := &skewedClock{}
 	storeDir := t.TempDir()
-	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now})
+	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	srv := httptestServer(t, svc.Handler)
 	t.Setenv(cell.EnvVar, "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	homeA := machine(t, srv.URL)
 	t.Setenv(IntervalVar, "50")
-	r := &driveRig{t: t, bin: bin, clock: clock, store: storeDir, homeA: homeA}
+	r := &driveRig{t: t, bin: bin, clock: clock, store: storeDir, homeA: homeA, svc: svc, url: srv.URL}
 	r.a = openSync(t, homeA)
 	homeB := t.TempDir()
+	r.homeB = homeB
 	if _, err := identity.Adopt(homeB, r.a.Identity, false); err != nil {
 		t.Fatal(err)
 	}

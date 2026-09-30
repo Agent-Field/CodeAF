@@ -56,12 +56,14 @@ func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 // has, made on first use, and the relay the pairing went through, so the other
 // device syncs through the same one. There is no built-in default relay yet, so
 // every relay is worth naming; the day one exists this is where it is left out.
+// It also names the identities this one replaced by rotation, so a computer
+// still on one of them may follow instead of being refused.
 func pairGrant(route pair.Mailbox) (pair.Grant, error) {
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		return pair.Grant{}, err
 	}
-	return pair.Grant{Identity: id, SyncURL: route.URL}, nil
+	return pair.Grant{Identity: id, SyncURL: route.URL, Replaces: identity.Predecessors(home.Dir())}, nil
 }
 
 // pairJoining is this computer as the device that types the code.

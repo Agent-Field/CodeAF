@@ -86,6 +86,7 @@ func TestFrozenSentences(t *testing.T) {
 		NoIdentity:  "this machine has no identity yet: codeaf identity import",
 		Unreachable: "other machines unreachable",
 		ClockOff:    "this computer's clock is off by more than 5 minutes",
+		Replaced:    "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)",
 	} {
 		if got != want {
 			t.Errorf("got %q want %q", got, want)

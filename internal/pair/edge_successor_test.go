@@ -124,3 +124,17 @@ func roundTrip(t *testing.T, g Grant) Grant {
 	}
 	return got
 }
+
+// Each way a join can end has its own sentence, and following a rotation does
+// not claim the computer was given someone's chats.
+func TestJoinedSentence(t *testing.T) {
+	for joined, want := range map[Joined]string{
+		{}:                JoinedLine,
+		{Already: true}:   ErrAlreadyPaired.Error(),
+		{Successor: true}: FollowedLine,
+	} {
+		if got := joined.Sentence(); got != want {
+			t.Errorf("%+v says %q, want %q", joined, got, want)
+		}
+	}
+}

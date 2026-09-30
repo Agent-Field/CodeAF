@@ -2897,6 +2897,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I use my own relay to pair", "use-this-on-another-computer"},
 		{"sync is off (CODEAF_SYNC_URL=off); pairing needs a relay", "use-this-on-another-computer"},
 		{"does revoking a device take my chats back", "use-this-on-another-computer"},
+		// LOCKING OUT A LOST COMPUTER FOR GOOD, ASKED BY SOMEBODY WHO READ THAT
+		// REVOKING IS NOT ENOUGH. The words are the wish (lock it out, make it
+		// useless), the verb they will have met (rotate), and the worry (what does
+		// the stolen one still have).
+		{"my laptop was stolen and I want it locked out for good", "lock-out-a-lost-computer"},
+		{"codeaf identity rotate", "lock-out-a-lost-computer"},
+		{"how do I rotate my identity", "lock-out-a-lost-computer"},
+		{"make a new identity so the stolen computer cannot read my new chats", "lock-out-a-lost-computer"},
+		{"what does a stolen computer still keep after I rotate", "lock-out-a-lost-computer"},
+		{"do I have to change my provider keys after a rotation", "lock-out-a-lost-computer"},
+		{"it says this identity was already rotated", "lock-out-a-lost-computer"},
+		{"a rotation stopped half way, what now", "lock-out-a-lost-computer"},
 		{"what does /laptop do", "use-this-on-another-computer"},
 		{"how do I move my identity to another machine without a relay", "use-this-on-another-computer"},
 		{"no pairing is waiting under 42", "use-this-on-another-computer"},

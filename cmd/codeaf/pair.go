@@ -96,14 +96,8 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	return nil
 }
 
-// joinedSentence is how a finished join reads: a computer that already held
-// these chats is told nothing was changed.
-func joinedSentence(joined pair.Joined) string {
-	if joined.Already {
-		return pair.ErrAlreadyPaired.Error()
-	}
-	return pair.JoinedLine
-}
+// joinedSentence is how a finished join reads.
+func joinedSentence(joined pair.Joined) string { return joined.Sentence() }
 
 // endedByPerson turns the end a person chose with ctrl+c into a clean exit, and
 // leaves every other failure as the sentence it already is.

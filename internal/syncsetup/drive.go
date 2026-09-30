@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sync"
 	"time"
 
@@ -133,14 +132,11 @@ func (d *Drive) flushed() func(cellsync.Flush) {
 
 // putDevice upserts this device's record with its sealed name and what it can do.
 func (s *Sync) putDevice(ctx context.Context, name string) error {
-	sealed, err := directory.SealName(directory.MetadataKey(s.Identity.CellKey()), name)
+	rec, err := deviceRecord(s.Identity, name)
 	if err != nil {
 		return err
 	}
-	return s.Dir.PutDevice(ctx, s.Device.ID(), directory.Device{
-		V: 1, Name: sealed, AddedBy: s.Identity.ID(),
-		Caps: directory.Caps{OS: runtime.GOOS, Arch: runtime.GOARCH, Cow: "none"},
-	})
+	return s.Dir.PutDevice(ctx, s.Device.ID(), rec)
 }
 
 // driving finds where this chat stands in the directory: no record yet (fence
@@ -224,8 +220,11 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 
 // refusal shows the person-facing line of a refused request.
 func (d *Drive) refusal(err error) {
-	if errors.Is(err, wireauth.ErrSkew) {
+	switch {
+	case errors.Is(err, wireauth.ErrSkew):
 		d.notice(chatlist.ClockOff)
+	case errors.Is(err, wireauth.ErrRotated), errors.Is(err, wireauth.ErrGone):
+		d.notice(chatlist.Replaced)
 	}
 }
 

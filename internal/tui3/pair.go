@@ -328,13 +328,10 @@ func sharedLine(label string, err error) string {
 // joinedLine is what the joining side ends on. A computer that held these chats
 // already gets that fact's own sentence and not a success it did not earn.
 func joinedLine(joined pair.Joined, err error) string {
-	switch {
-	case err != nil:
+	if err != nil {
 		return err.Error()
-	case joined.Already:
-		return pair.ErrAlreadyPaired.Error()
 	}
-	return pair.JoinedLine
+	return joined.Sentence()
 }
 
 // tookPair files one event from the door and asks for the next, until the
