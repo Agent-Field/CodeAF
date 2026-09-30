@@ -201,12 +201,18 @@ never does):
   the law that a criterion the machinery could not answer is `rig` — the run's
   score is then not computed at all, never averaged in as a 0.
 
-**Adaptive classical in v1 is implemented and self-tested, not yet exercised
-against a real agent run**: the fixture's agents so far all fit the verbatim
-tests, so every adaptive criterion to date was derived from its classical
-result. The machinery (judge adaptation → phase B rerun → combined verdict) is
-real and runs; the honest statement is that no live rollout has yet landed in
-the adaptation branch.
+**Adaptive classical in v1 is implemented and self-tested.** The first pilot
+reached the adaptation branch for real — conflicted-files-refname-crash s1–s3
+had the judge adapt the tests — and found the machinery broken at every seam:
+phase B ran in a container with no `/logs/grade` and no adapted patch, did not
+create its output directory, rebuilt with the fixture's recipe rather than the
+task's, and `combine` misread `phaseB.json`. All of those are fixed and covered
+by `grade/test_rubric.py`; `ATTEMPT-LEDGER.md` and the `REPORT.md` correction
+carry the regraded outcomes. No live rollout has yet completed *through* phase B
+to a verdict, because the same change's reduced-context overlay apply answers
+the pilot's three conflicts before adaptation is needed. The honest statement
+remains: phase B is machinery-tested and was exercised to its crash point live,
+but no live run has finished with a phase-B verdict.
 
 ## 6. Controls
 
