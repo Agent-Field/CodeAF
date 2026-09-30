@@ -21,6 +21,13 @@ type Engine interface {
 	Want(ctx context.Context, c cell.Cell, head string) ([]string, error)
 	// Import stores each object file in inbox, named by its remote id.
 	Import(ctx context.Context, c cell.Cell, head, inbox string) (int, error)
+	// ImportPrimed is Import with one rule changed (contract §22.7): an inbox
+	// file no pass wanted is deleted, not an error. It exists for a take that
+	// primed its inbox with whole frames: a frame packs one publish's objects,
+	// and later turns may have orphaned some of them, so priming can deliver
+	// objects the head does not want. The want loop's answers keep the strict
+	// rule: what the relay names for a want is checked.
+	ImportPrimed(ctx context.Context, c cell.Cell, head, inbox string) (int, error)
 	// Materialize restores head into the cell's folder.
 	Materialize(ctx context.Context, c cell.Cell, head string) error
 }

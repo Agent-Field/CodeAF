@@ -41,6 +41,10 @@ const (
 	MaxHeader = 1 << 20
 	// TargetFrame is the size at which writers flush a frame.
 	TargetFrame = 1 << 20
+	// BulkFrame is the size a writer closes a frame at (contract §22.6): one
+	// frame covers this many bytes of one save, so a bulk save costs a few
+	// large frames and an incremental save still writes one small one.
+	BulkFrame = 8 << 20
 )
 
 var (

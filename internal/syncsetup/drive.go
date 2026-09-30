@@ -160,6 +160,9 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		return drv, "", err
 	}
 	drv.Fence, drv.Head = v.Cell.Lease.Fence, v.Cell.Head
+	// The plan comes with the record: the frames the last publisher named for
+	// this head, which this device's publishes now extend (contract §22.2).
+	drv.Frames = v.Cell.Frames
 	return drv, "", nil
 }
 
@@ -179,7 +182,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		return nil, err
 	}
 	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
-	engine.MaxFrame = blobstore.TargetFrame // a flush's objects share frames up to the size the store wants
+	engine.MaxFrame = blobstore.BulkFrame // a flush's objects share frames up to the bulk size (contract §22.6); a small save still writes one small frame
 	d.scope = s.scope(c.ID)
 	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
 	return &cellsync.Batcher{
