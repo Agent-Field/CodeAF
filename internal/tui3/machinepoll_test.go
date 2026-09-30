@@ -168,3 +168,13 @@ func TestRowAgeComesFromTheTurnNotThePoll(t *testing.T) {
 		t.Fatalf("age drawn at the read was %q and half an hour on %q, want 5m and 35m", soon, later)
 	}
 }
+
+// TestRowAgeNeverYoungerThanTheDirectorySaid: a draw stamped a hair before the
+// read still shows the age the directory gave.
+func TestRowAgeNeverYoungerThanTheDirectorySaid(t *testing.T) {
+	readAt := time.Unix(1_000_000, 0)
+	row := chatlist.Row{Cell: "c9", Title: "Elsewhere", Status: chatlist.Idle, DurableAgo: 5 * time.Hour}
+	if got := machineLine(row, readAt, readAt.Add(-time.Millisecond), false).cell.right; got != "5h" {
+		t.Fatalf("age drawn a millisecond before the read was %q, want 5h", got)
+	}
+}
