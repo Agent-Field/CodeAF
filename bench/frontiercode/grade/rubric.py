@@ -472,7 +472,13 @@ def phase_b(task_dir, repo, base, out_dir):
                 if not overlay_ok:
                     results[c["id"]] = {"status": RIG, "note": f"the adapted test patch did not apply: {onote}"}
                     continue
-                code, outtext = sh(f"make configure compile", cwd=repo, timeout=spec.get("timeout_sec"))
+                # Rebuild with the task's own command, exactly as the
+                # reverse-classical path does; the fixture's recipe is only the
+                # fallback for a task that declares none. Hardcoding it here
+                # made phase B run `make configure compile` on every task,
+                # which is not a target most of them have.
+                code, outtext = sh(rebuild_command or FIXTURE_REBUILD, cwd=repo,
+                                   timeout=spec.get("timeout_sec"))
                 if code != 0:
                     results[c["id"]] = {"status": RIG, "note": f"phase B build failed: {outtext[-2000:]}"}
                     continue
