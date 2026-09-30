@@ -50,6 +50,10 @@ is noticed immediately. During that gap the status line says
 `reconnecting to devbox — trying for up to 5 minutes`; a message submitted in the gap is
 refused visibly rather than lost.
 
+The first SSH connection shows its sign-in and host-key prompts before the
+conversation opens. Once its handshake succeeds, diagnostics from that same
+connection and from later retries stay out of the conversation frame.
+
 A recent ssh connection is kept reusable for 300 seconds, so a new channel can avoid a
 full handshake when the underlying ssh connection is still healthy. Its control socket
 lives under this machine's codeaf state directory at `~/.codeaf/v3/ssh/` (moved by

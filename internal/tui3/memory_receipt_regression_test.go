@@ -14,7 +14,7 @@ func TestALateRememberDoesNotClaimFailureOrWriteAgain(t *testing.T) {
 	for _, err := range []error{remote.ErrLate, fmt.Errorf("the engine: %w", remote.ErrLate)} {
 		agent := &lateMemoryWriter{rememberingAgent: &rememberingAgent{}, err: err}
 		a := newTestApp(agent)
-		a.slash("/remember keep this once")
+		settleMemorySlash(t, a, "/remember keep this once")
 		got := plain(lastNote(t, a))
 		if !strings.Contains(got, "saving that has not answered yet") || !strings.Contains(got, "/memory before trying again") {
 			t.Fatalf("late memory receipt = %q", got)

@@ -57,6 +57,24 @@ Changing the memory row applies to conversations opened afterwards; an engine
 already holding conversations keeps their existing memory wiring until it is
 stopped and a new conversation is opened. Existing saved notes stay in the store.
 
+## Can I keep typing while remember, forget or a memory query waits?
+
+Yes. `/remember <text>`, `/forget <query>` and `/memories <query>` wait outside
+screen updates. You can keep typing and move to another conversation. The
+receipt stays with the conversation that issued the command and appears there
+when you return; it never appears in the other conversation. Closing the
+issuing conversation discards its screen receipt, but does not undo a save
+already received by the engine.
+
+## Does changing to a smaller model turn memory off?
+
+With automatic profiles, a model with a context window under 32,000 tokens
+uses the lean profile and cannot use memory, even with the memory setting on.
+Changing to a model with at least that much room restores memory at the next
+request; changing back to a smaller window suspends it again. The connected
+surface follows the engine's updates without reconnecting. Saved notes stay in the store through both
+changes. An explicitly chosen prompt profile keeps its own choice.
+
 ## Remember has not answered yet — should I try saving the note again?
 
 On the engine road, a save can take longer than the connection waits for its
@@ -72,9 +90,11 @@ The page refreshes on its three-second beat. A completed save normally says
 
 ## It said memory is off and I never turned it off
 
-Then it is not the setting, it is the file. Two different sentences use the same
-words, and the one printed on the terminal before the screen appears always says
-what the trouble was after a colon:
+A model with a context window under 32,000 tokens uses the automatic lean
+profile, which suspends memory even when the setting is on. A full profile
+restores it at the next request. It can also be trouble opening the saved store.
+The sentence printed on the terminal before the screen appears names that
+trouble after a colon:
 
 ```
 memory is off for this session: could not open ~/.codeaf/graph.db: permission denied

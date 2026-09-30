@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -17,10 +19,8 @@ import (
 // facts about a person between sessions has to be a thing that person can read,
 // add to and empty by hand.
 //
-// All three ANSWER IN THE TRANSCRIPT rather than opening a panel, which is
-// /status and /cost's argument unchanged: somebody who asked what is remembered
-// about them wants it where they can scroll back to it, not on a fullscreen
-// sheet they have to leave before they can act on it.
+// Saves, removals and queries answer in the transcript so their receipts stay
+// scrollable. Bare /memory and /memories open the place when it is available.
 
 // memoryAgent is the slice of *session.Agent these three need. It is asserted
 // rather than added to [Agent] for [taskAgent]'s reason: memory is OPTIONAL —
@@ -60,73 +60,101 @@ func (a *app) brain() (memoryAgent, bool) {
 // somebody to the manual.
 const memoryOffNote = "memory is off for this session · turn it on under /settings"
 
+// memoryReplyMsg belongs to the conversation that issued the command. The
+// agent alone is not enough: a remote handle can survive a transcript swap.
+type memoryReplyMsg struct {
+	agent Agent
+	file  string
+	text  string
+}
+
+// memoryCall leaves every store or wire wait off Update. Only the receipt
+// returns to the surface, so typing and repainting never wait for the engine.
+func (a *app) memoryCall(call func() string) tea.Cmd {
+	agent, file := a.agent, a.file
+	return func() tea.Msg { return memoryReplyMsg{agent: agent, file: file, text: call()} }
+}
+
+func (a *app) adoptMemoryReply(msg memoryReplyMsg) {
+	if msg.agent == a.agent && msg.file == a.file {
+		a.note(msg.text)
+		return
+	}
+	for _, held := range a.behind {
+		if held != nil && held.side != nil && held.conv.Agent == msg.agent && held.conv.SessionFile == msg.file {
+			// A receipt waits with its conversation, just like a held send's
+			// receipt, and appears when the person brings that conversation back.
+			held.side.parkNotes = append(held.side.parkNotes, msg.text)
+			return
+		}
+	}
+}
+
 // runRemember is /remember: keep one thing across conversations.
-func (a *app) runRemember(text string) {
+func (a *app) runRemember(text string) tea.Cmd {
 	a.noticeEvent(eventRemembered)
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
-		return
+		return nil
 	}
 	if strings.TrimSpace(text) == "" {
 		a.note("/remember <text> · what should be kept?")
-		return
+		return nil
 	}
-	title, err := agent.Remember(text)
-	if err != nil {
-		if errors.Is(err, remote.ErrLate) {
-			// A LATE RECEIPT IS NOT A FAILED WRITE. The engine keeps the save
-			// running, and retrying here could keep the same words twice.
-			a.note("saving that has not answered yet · check /memory before trying again")
-		} else {
-			a.note("could not remember that · " + err.Error())
+	return a.memoryCall(func() string {
+		title, err := agent.Remember(text)
+		if err != nil {
+			if errors.Is(err, remote.ErrLate) {
+				// A LATE RECEIPT IS NOT A FAILED WRITE. The engine keeps the save
+				// running, and retrying here could keep the same words twice.
+				return "saving that has not answered yet · check /memory before trying again"
+			}
+			return "could not remember that · " + err.Error()
 		}
-		return
-	}
-	a.note("remembered · " + title)
+		return "remembered · " + title
+	})
 }
 
-// runForget is /forget: drop the one thing that best matches.
-//
-// ONE, not every match. A query that matched three memories and silently
-// dropped all three would be a person losing two things they never named, and
-// the recovery — the store keeps a tombstone, not the row's contents in any
-// place a surface can reach — is a database question rather than a keystroke.
-func (a *app) runForget(query string) {
+// runForget drops ONE match because silently removing every match could erase
+// notes the person never meant to name, with no surface door to their contents.
+func (a *app) runForget(query string) tea.Cmd {
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
-		return
+		return nil
 	}
 	if strings.TrimSpace(query) == "" {
 		a.note("/forget <query> · what should be dropped?")
-		return
+		return nil
 	}
-	title, err := agent.Forget(query)
-	if err != nil {
-		a.note("could not forget that · " + err.Error())
-		return
-	}
-	if title == "" {
-		a.note("nothing matched " + query)
-		return
-	}
-	a.note("forgot · " + title)
+	return a.memoryCall(func() string {
+		title, err := agent.Forget(query)
+		if err != nil {
+			return "could not forget that · " + err.Error()
+		}
+		if title == "" {
+			return "nothing matched " + query
+		}
+		return "forgot · " + title
+	})
 }
 
-// runMemories is /memories: the whole list, or the ones matching a word.
-func (a *app) runMemories(query string) {
+// runMemories prints a query's matches, or the whole list on a surface without
+// the memory place. Its receipt remains scrollable in the issuing conversation.
+func (a *app) runMemories(query string) tea.Cmd {
 	agent, ok := a.brain()
 	if !ok {
 		a.note(memoryOffNote)
-		return
+		return nil
 	}
-	lines, err := agent.Memories(query)
-	if err != nil {
-		a.note("could not read what is remembered · " + err.Error())
-		return
-	}
-	a.note(memoriesText(query, lines))
+	return a.memoryCall(func() string {
+		lines, err := agent.Memories(query)
+		if err != nil {
+			return "could not read what is remembered · " + err.Error()
+		}
+		return memoriesText(query, lines)
+	})
 }
 
 // memoriesText renders the list: one memory per line, its title, what it says,

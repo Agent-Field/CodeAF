@@ -5178,6 +5178,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case steerFellMsg:
 		return a, a.steerFell(msg)
 
+	case memoryReplyMsg:
+		a.adoptMemoryReply(msg)
+		return a, nil
+
 	case compactedMsg:
 		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
 		// page over that conversation still leaves its reply behind the page.
@@ -7823,8 +7827,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "memory", "memories":
 		// Bare is the inspect-and-change panel; a query is the transcript form,
-		// for somebody who wants matching rows to remain scrollable. The plural
-		// alias keeps its older print posture even when it has no query.
+		// for somebody who wants matching rows to remain scrollable.
 		// AND /memories NOW OPENS THE PLACE TOO. The plural used to keep an older
 		// print posture — a bare /memories wrote the whole list into the
 		// transcript — which was the right answer while memory was a twelve-row
@@ -7841,16 +7844,13 @@ func (a *app) slash(line string) tea.Cmd {
 		if rest == "" && (name != "memories" || a.memoryReady()) {
 			return a.showPage(pageMemory)
 		}
-		a.runMemories(rest)
-		return nil
+		return a.runMemories(rest)
 
 	case "remember":
-		a.runRemember(rest)
-		return nil
+		return a.runRemember(rest)
 
 	case "forget":
-		a.runForget(rest)
-		return nil
+		return a.runForget(rest)
 
 	case "crew":
 		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
