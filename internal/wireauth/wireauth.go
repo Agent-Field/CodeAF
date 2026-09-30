@@ -43,3 +43,10 @@ func Narrow(err error) error {
 	}
 	return ErrUnauthorized
 }
+
+// ErrRotated is a refusal to write to an identity that has been replaced by a
+// rotation: what it holds is read-only until the relay deletes it. It is not an
+// authentication failure (the device is who it says), so it is kept out of
+// Narrow; the two wires map it to the same answer and a person is told to pair
+// again.
+var ErrRotated = errors.New("wireauth: this identity was replaced by a rotation")

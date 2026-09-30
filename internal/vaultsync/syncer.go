@@ -81,6 +81,14 @@ func (s Syncer) publish(ctx context.Context, old string) error {
 	if err != nil {
 		return err
 	}
+	return s.PushSealed(ctx, enc, old)
+}
+
+// PushSealed stores enc, a vault envelope already sealed under this identity's
+// key, and moves the directory from old to it. A rotation uses it to seed the
+// new identity's relay with the vault resealed for it, which no local file
+// holds yet.
+func (s Syncer) PushSealed(ctx context.Context, enc []byte, old string) error {
 	obj := append(bytes.Clone(magic), enc...)
 	rid := ridOf(obj)
 	if err := s.put(ctx, rid, obj); err != nil || rid == old {
