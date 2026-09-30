@@ -827,30 +827,24 @@ func (p *picker) unfoldHere() bool {
 
 // revealFold scrolls by the least that puts the open block — the model's own
 // row and every row under it, with the dim lines and headings they carry —
-// inside a window of `lines` screen lines. Where the block is taller than the
-// window the cursor wins, because the row enter would act on is the one that
-// may never be off screen ([picker.follow] says so with the same count).
+// inside a window of `lines` screen lines. The window opens at the block's
+// first row, and [picker.follow] then moves by the least that keeps the
+// cursor's row on the screen: where the block is taller than the window the
+// cursor wins, because the row enter would act on is the one that may never
+// be off screen. Both counts are in lines ([picker.rowLines]) — a block
+// scrolled against its rows alone is a block one heading taller than the room
+// made for it.
 func (p *picker) revealFold(lines int) {
-	from, to := -1, -1
+	from := -1
 	for at, row := range p.list {
 		if row.hit != p.list[p.cursor].hit {
 			continue
 		}
-		if from < 0 {
-			from = at
-		}
-		to = at
+		from = at
+		break
 	}
 	if from >= 0 {
-		// THE BLOCK FITS THE WINDOW, so the window opens at its first row —
-		// the model's own, with everything it carries under it in view. A
-		// taller block shows its last rows instead: the walk out of a fold
-		// reads its machines from the bottom up ([picker.foldHere]).
-		if p.spanLines(from, to) <= lines {
-			p.top = from
-		} else {
-			p.top = p.endingTop(to, lines)
-		}
+		p.top = from
 	}
 	p.follow(lines)
 }
