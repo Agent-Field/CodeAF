@@ -24,9 +24,12 @@ import (
 	"time"
 )
 
-// Code is one live pairing code.
+// Code is one live pairing code. A code that pairs chats also carries the
+// public nameplate of the mailbox it was made in; a code that pairs a machine is
+// found by the machine's name instead, so its plate is empty.
 type Code struct {
 	digits string
+	plate  string
 	born   time.Time
 	left   int
 }
@@ -42,11 +45,36 @@ func NewCode(now time.Time) (*Code, error) {
 	return &Code{digits: fmt.Sprintf("%06d", drawn.Int64()), born: now, left: CodeAttempts}, nil
 }
 
-// Shown is the code as a person reads it off the screen.
-func (c *Code) Shown() string { return c.digits[:3] + " " + c.digits[3:] }
+// Shown is the code as a person reads it off the screen: `715 302`, and with a
+// nameplate `42-715-302`, which is the whole of what the other device types.
+func (c *Code) Shown() string {
+	spaced := c.digits[:3] + " " + c.digits[3:]
+	if c.plate == "" {
+		return spaced
+	}
+	return c.plate + "-" + c.digits[:3] + "-" + c.digits[3:]
+}
+
+// Plate is the nameplate of the mailbox this code lives in, or empty.
+func (c *Code) Plate() string { return c.plate }
+
+// Born is when this code was made, by the clock it was made with.
+func (c *Code) Born() time.Time { return c.born }
+
+// WithPlate is this code placed in the mailbox that was made for it. The digits
+// are drawn before the mailbox exists and the plate is assigned by the relay, so
+// the two meet here.
+func (c *Code) WithPlate(plate string) *Code {
+	placed := *c
+	placed.plate = plate
+	return &placed
+}
 
 // secret is the code as the exchange uses it: the six digits, no space.
 func (c *Code) secret() string { return c.digits }
+
+// errSixDigits is the sentence for a machine code that is not six digits.
+var errSixDigits = errors.New("a pairing code is six digits, like 715 302")
 
 // ReadCode takes what a person typed and answers the six digits, or says what
 // is wrong with it.
@@ -55,6 +83,16 @@ func (c *Code) secret() string { return c.digits }
 // down with whichever separator the listener prefers and neither of them is
 // wrong.
 func ReadCode(typed string) (string, error) {
+	digits, ok := digitsOf(typed)
+	if !ok || len(digits) != 6 {
+		return "", errSixDigits
+	}
+	return digits, nil
+}
+
+// digitsOf is the digits of what was typed with separators dropped, and false
+// when anything else was in it.
+func digitsOf(typed string) (string, bool) {
 	var digits strings.Builder
 	for _, r := range typed {
 		switch {
@@ -62,13 +100,26 @@ func ReadCode(typed string) (string, error) {
 			digits.WriteRune(r)
 		case r == ' ' || r == '-' || r == '\t':
 		default:
-			return "", errors.New("a pairing code is six digits, like 715 302")
+			return "", false
 		}
 	}
-	if digits.Len() != 6 {
-		return "", errors.New("a pairing code is six digits, like 715 302")
+	return digits.String(), true
+}
+
+// JoinCode is what a person typed to join a device's chats: the nameplate of
+// the mailbox and the six secret digits.
+type JoinCode struct{ Plate, Digits string }
+
+// ReadJoinCode takes `42-715-302`, spaces and dashes optional, and separates the
+// nameplate from the six digits. It refuses any shape that could not be a code
+// before a single request is made: seven to ten digits, the last six the secret.
+func ReadJoinCode(typed string) (JoinCode, error) {
+	all, ok := digitsOf(typed)
+	if !ok || len(all) < 7 || len(all) > 10 {
+		return JoinCode{}, ErrCodeShape
 	}
-	return digits.String(), nil
+	cut := len(all) - 6
+	return JoinCode{Plate: all[:cut], Digits: all[cut:]}, nil
 }
 
 // Desk is the engine machine's live pairing code: minting it, showing it,
@@ -145,8 +196,26 @@ func (d *Desk) alive(c *Code) bool {
 //
 // The wording and the spacing are the design's own, and the validity is
 // interpolated from [CodeValidFor] rather than typed, because a number that
-// appears in two places drifts.
+// appears in two places drifts. Its second line names what the code grants, as
+// the pairing screen for chats does in its first: one concept, two grants, and
+// each says which one it is.
 func Lines(name string, code *Code) string {
-	return fmt.Sprintf("  this machine is reachable as  %s\n  pair a new device with code   %s   (valid %d minutes)\n",
-		name, code.Shown(), int(CodeValidFor/time.Minute))
+	return codeLines("this machine is reachable as  "+name, "let a device use this machine with code   "+code.Shown())
+}
+
+// codeLines is the two-line layout every code is shown in: what the code is for
+// on the first line, what to do with it on the second, and how long it lasts.
+func codeLines(what, how string) string {
+	return fmt.Sprintf("  %s\n  %s   (valid %d minutes)\n", what, how, int(CodeValidFor/time.Minute))
+}
+
+// ChatLines is what a device that is sharing its chats shows: the grant on the
+// line above the code, then the command that takes it. A relay that is not the
+// default is named in the command, so the other device never has to guess it.
+func ChatLines(code *Code, relay string) string {
+	command := "codeaf pair " + code.Shown()
+	if relay != "" {
+		command += " --relay " + relay
+	}
+	return codeLines("this shares your chats with the device you pair", "on it run  "+command)
 }
