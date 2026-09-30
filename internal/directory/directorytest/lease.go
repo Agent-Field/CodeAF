@@ -17,6 +17,13 @@ import (
 // cellB is a second cell, for the cases about another device's lease.
 const cellB = "01J0000000000000000000000B"
 
+// dialWait bounds how long a lease case waits for the relay to answer an upgrade.
+// It is longer than frameWait on purpose: a local `wrangler dev` runtime stops
+// answering for 10 to 15 s after the watch suite's thousand-socket case closes
+// them all (measured with a bare unsigned GET, on a Worker without any lease
+// code), and a case whose first request is a dial would otherwise fail for it.
+const dialWait = 30 * time.Second
+
 // The moments the lease cases look at, on the directory's clock, counted from
 // the lease's creation at 0. Its stored expiry is one TTL (90 s), so a case that
 // still sees it held at leasePast is kept live by something other than its
@@ -85,7 +92,7 @@ func (w watchEnv) openHolding(device string, holds ...directory.Hold) *sock {
 
 func (w watchEnv) dialHolding(device string, holds []directory.Hold) *sock {
 	w.t.Helper()
-	dialCtx, cancel := context.WithTimeout(context.Background(), frameWait)
+	dialCtx, cancel := context.WithTimeout(context.Background(), dialWait)
 	defer cancel()
 	conn, resp, err := DialWatchHolding(dialCtx, w.rig.Base, w.rig.Sign(device), holds)
 	if err != nil {
@@ -327,7 +334,7 @@ func tooManyHoldsIsRefused(w watchEnv) {
 // 400 bad_request before the upgrade, and an accepted socket is closed at once.
 func (w watchEnv) wantHoldQuery(query string, status int) {
 	w.t.Helper()
-	dialCtx, cancel := context.WithTimeout(context.Background(), frameWait)
+	dialCtx, cancel := context.WithTimeout(context.Background(), dialWait)
 	defer cancel()
 	conn, resp, err := dialWatchQuery(dialCtx, w.rig.Base, w.rig.Sign(devA), query)
 	if status == http.StatusSwitchingProtocols {
@@ -397,7 +404,7 @@ func holdsAreSignedWithTheRequest(w watchEnv) {
 		signed(r, body)
 		r.URL.RawQuery = directory.HoldQuery([]directory.Hold{hold(cell, 1)})
 	}
-	dialCtx, cancel := context.WithTimeout(context.Background(), frameWait)
+	dialCtx, cancel := context.WithTimeout(context.Background(), dialWait)
 	defer cancel()
 	conn, resp, err := DialWatchHolding(dialCtx, w.rig.Base, tampered, nil)
 	if conn != nil {
