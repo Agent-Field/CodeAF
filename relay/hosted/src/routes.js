@@ -34,13 +34,23 @@ const asMany = (body) => {
   return rids;
 };
 
+// The directory version the answer was read at; the whole turn is synchronous, so it cannot be older than the records (contract 21.5).
+const withVersion = (res, version) => (res.headers.set('Codeaf-Dir-Version', String(version)), res);
+
+// The watch is an upgrade and nothing else: a plain GET is told so (contract 21.2).
+function watching(c) {
+  if (c.request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new Wire('upgrade_required', 426);
+  return c.tenant.watch(c.device);
+}
+
 const octets = (bytes) => new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });
 
 // Each entry: [method, path pattern, options, handler]. `frames` marks the one route whose body is
 // a put in flight, which Has must not overtake.
 const STORE = { over: 'bad_frame' };
 const DIR = { over: 'too_large' };
-// `write` marks a route a replaced identity refuses: every verb that changes a record or a frame.
+// `write` marks a route a replaced identity refuses: every verb that changes a record or a frame, and
+// the watch, which a replaced identity could only ever hear a thaw on (contract 21.2).
 const STORE_WRITE = { ...STORE, write: true };
 const DIR_WRITE = { ...DIR, write: true };
 
@@ -53,7 +63,8 @@ const ROUTES = [
   ['POST', /^\/v1\/store\/objects$/, STORE, async (c) => octets(await c.tenant.getMany(asMany(c.body)))],
   ['POST', /^\/v1\/store\/has$/, STORE, async (c) => json({ have: await c.tenant.has(asRids(object(c.body))) })],
   ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json(c.tenant.stats.snapshot())],
-  ['GET', /^\/v1\/dir\/list$/, DIR, (c) => json(c.tenant.dir.list())],
+  ['GET', /^\/v1\/dir\/list$/, DIR, (c) => withVersion(json(c.tenant.dir.list()), c.tenant.dir.version)],
+  ['GET', /^\/v1\/dir\/watch$/, DIR_WRITE, (c) => watching(c)],
   ['GET', /^\/v1\/dir\/cells\/([^/]+)$/, DIR, (c, [id]) => json(c.tenant.dir.cell(id))],
   ['PUT', /^\/v1\/dir\/devices\/([^/]+)$/, DIR_WRITE, (c, [id]) => {
     if (id !== c.device) throw new Wire('unauthorized', 401);
