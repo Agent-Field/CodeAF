@@ -62,9 +62,10 @@ func (r *renderer) inline(n ast.Node, w *wrapper, st style) {
 			url := scrub(string(c.URL(r.src)))
 			r.link(c, w, st, scrub(string(c.Label(r.src))), url)
 		case *ast.RawHTML:
-			// A tag is markup, not content. Its text has already been emitted
-			// as siblings, so drawing `<em>` here would show the reader the
-			// author's punctuation twice.
+			// Model prose is content even when CommonMark classifies an angle-
+			// bracketed word as raw HTML. Keeping the source here preserves
+			// placeholders such as `<id>` instead of silently dropping them.
+			w.push(scrub(string(c.Segments.Value(r.src))), st)
 		default:
 			r.inline(c, w, st)
 		}
@@ -94,6 +95,7 @@ func (r *renderer) collect(n ast.Node, b *strings.Builder) {
 		case *ast.AutoLink:
 			b.Write(c.Label(r.src))
 		case *ast.RawHTML:
+			b.Write(c.Segments.Value(r.src))
 		default:
 			r.collect(c, b)
 		}

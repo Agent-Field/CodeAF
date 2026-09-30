@@ -30,6 +30,10 @@ it — **the whole path, absolute, from the root** — like:
 /home/you/work/.codeaf/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
 ```
 
+The file suffix follows the image bytes. If a provider returns JPEG bytes for a
+path ending in `.png`, codeaf changes the saved name to `.jpg` and reports that
+actual path, so the name and the file agree.
+
 The path is whole because that line is what you are shown in place of the
 picture on a terminal that cannot draw one, and a path relative to a directory
 you are not standing in is a path you cannot open.

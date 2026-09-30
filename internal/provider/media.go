@@ -51,6 +51,35 @@ type GeneratedImage struct {
 	MediaType string `json:"media_type"`
 }
 
+// ImageExtension names an image from its bytes, using the provider's declared
+// type only when the bytes do not identify a supported format. The saved suffix
+// must describe what a file contains even when a provider mislabels its reply.
+func ImageExtension(data []byte, declared string) string {
+	if extension, ok := imageExtensionForType(http.DetectContentType(data)); ok {
+		return extension
+	}
+	if extension, ok := imageExtensionForType(declared); ok {
+		return extension
+	}
+	return ".png"
+}
+
+func imageExtensionForType(mediaType string) (string, bool) {
+	mediaType = strings.ToLower(strings.TrimSpace(strings.Split(mediaType, ";")[0]))
+	switch mediaType {
+	case "image/png":
+		return ".png", true
+	case "image/jpeg", "image/jpg":
+		return ".jpg", true
+	case "image/webp":
+		return ".webp", true
+	case "image/gif":
+		return ".gif", true
+	default:
+		return "", false
+	}
+}
+
 type ImageResponse struct {
 	Data  []GeneratedImage `json:"data"`
 	Usage *ai.Usage        `json:"usage,omitempty"`
@@ -183,12 +212,17 @@ func (c *MediaClient) Speak(ctx context.Context, request SpeechRequest) (*Speech
 	defer response.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
 	if err != nil {
+		finishMediaResponse(response, response.StatusCode, err, nil)
 		return nil, fmt.Errorf("read speech response: %w", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, apiError(response.StatusCode, payload)
+		err := apiError(response.StatusCode, payload)
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return nil, err
 	}
-	return &SpeechResponse{Audio: payload, Usage: usageFromHeaders(response.Header)}, nil
+	usage := usageFromHeaders(response.Header)
+	finishMediaResponse(response, response.StatusCode, nil, usage)
+	return &SpeechResponse{Audio: payload, Usage: usage}, nil
 }
 
 // GenerateVideo submits one asynchronous OpenRouter job, waits through its
@@ -299,14 +333,20 @@ func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob, model str
 	defer response.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, maxVideoResponseBytes))
 	if err != nil {
+		finishMediaResponse(response, response.StatusCode, err, nil)
 		return nil, fmt.Errorf("read video response: %w", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, apiError(response.StatusCode, payload)
+		err := apiError(response.StatusCode, payload)
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return nil, err
 	}
 	if len(payload) == 0 {
-		return nil, fmt.Errorf("video download was empty")
+		err := fmt.Errorf("video download was empty")
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return nil, err
 	}
+	finishMediaResponse(response, response.StatusCode, nil, nil)
 	return &VideoResponse{Video: payload, Usage: job.Usage}, nil
 }
 
@@ -322,14 +362,26 @@ func (c *MediaClient) postJSON(ctx context.Context, path string, request any, ta
 	defer response.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
 	if err != nil {
+		finishMediaResponse(response, response.StatusCode, err, nil)
 		return nil, fmt.Errorf("read media response: %w", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, apiError(response.StatusCode, payload)
+		err := apiError(response.StatusCode, payload)
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return nil, err
 	}
-	if err := json.Unmarshal(payload, target); err != nil {
+	var envelope struct {
+		Usage *ai.Usage `json:"usage"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		finishMediaResponse(response, response.StatusCode, err, nil)
 		return nil, fmt.Errorf("decode media response: %w", err)
 	}
+	if err := json.Unmarshal(payload, target); err != nil {
+		finishMediaResponse(response, response.StatusCode, err, envelope.Usage)
+		return nil, fmt.Errorf("decode media response: %w", err)
+	}
+	finishMediaResponse(response, response.StatusCode, nil, envelope.Usage)
 	return response.Header.Clone(), nil
 }
 
@@ -341,14 +393,19 @@ func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any, 
 	defer response.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
 	if err != nil {
+		finishMediaResponse(response, response.StatusCode, err, nil)
 		return fmt.Errorf("read media response: %w", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return apiError(response.StatusCode, payload)
+		err := apiError(response.StatusCode, payload)
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return err
 	}
 	if err := json.Unmarshal(payload, target); err != nil {
+		finishMediaResponse(response, response.StatusCode, err, nil)
 		return fmt.Errorf("decode media response: %w", err)
 	}
+	finishMediaResponse(response, response.StatusCode, nil, nil)
 	return nil
 }
 
@@ -365,11 +422,13 @@ func (c *MediaClient) do(ctx context.Context, path string, body []byte, model st
 // belongs to nobody, and internal/tui3's PostPhaseNews drops it — which is how
 // a picture whose connection had gone drew nothing at all while it waited.
 func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, body []byte, authenticated bool, model string) (*http.Response, error) {
+	ctx = beginMediaCall(ctx, model)
 	var recovery connectionRetry
 	defer recovery.release()
 	for {
 		if c.connection != nil && authenticated {
 			if _, err := c.connection.waitConnection(ctx, model, endpoint, false); err != nil {
+				finishMediaCall(ctx, 0, err, nil)
 				return nil, err
 			}
 		}
@@ -379,6 +438,7 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 		})
 		request, err := http.NewRequestWithContext(requestCtx, method, endpoint, bytes.NewReader(body))
 		if err != nil {
+			finishMediaCall(ctx, 0, err, nil)
 			return nil, fmt.Errorf("create media request: %w", err)
 		}
 		if len(body) > 0 {
@@ -395,11 +455,17 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 		if err != nil {
 			if authenticated && c.connection != nil && connectionFailure(err) && !sent.Load() && ctx.Err() == nil {
 				if err := c.connection.recoverBeforeSend(ctx, &recovery, model, endpoint); err != nil {
+					finishMediaCall(ctx, 0, err, nil)
 					return nil, err
 				}
 				continue
 			}
-			return nil, fmt.Errorf("execute media request: %w", err)
+			err := fmt.Errorf("execute media request: %w", err)
+			finishMediaCall(ctx, 0, err, nil)
+			return nil, err
+		}
+		if response.Request == nil {
+			response.Request = request
 		}
 		return response, nil
 	}
