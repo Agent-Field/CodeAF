@@ -2411,6 +2411,9 @@ func (a *app) activate() tea.Cmd {
 			keep: roleFilter(item.role.role), role: item.role.role,
 		}
 		sel.pick.startFor(a.modelsFor(sel.keep), item.role.pin, sel.keep)
+		// A DOOR THAT OPENS TO CONFIRM OPENS ON WHAT IT HOLDS ([picker.cursorToCurrent]):
+		// enter here applies the row, so the row is where the cursor waits.
+		sel.pick.cursorToCurrent()
 		s.sel = sel
 		return nil
 	}
