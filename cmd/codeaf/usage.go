@@ -507,7 +507,7 @@ func commandWords() []string {
 // reason they are absent from the usage text: nothing types them. The programs
 // this build carries are joined to it where it is read ([commandWords]).
 var knownCommands = []string{
-	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
+	"chat", "resume", "pair", "serve", "devices", "do", "plan", "revise", "run", "exec",
 	"show", "models", "pool", "notebook", "collections", "competence", "services", "wake", "patch",
 	"doc", "web", "image",
 	"doctor",

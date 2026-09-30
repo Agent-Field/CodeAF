@@ -9,7 +9,7 @@ package main
 //
 //	big-machine$ codeaf serve
 //	  this machine is reachable as  otter-lamp-42
-//	  pair a new device with code   715 302   (valid 10 minutes)
+//	  let a device use this machine with code   42-715-302   (valid 10 minutes)
 //
 //	laptop$ codeaf chat --at otter-lamp-42
 //	  pairing with otter-lamp-42 — enter the code shown there: ______
@@ -285,20 +285,20 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	host := &pair.Host{
-		Service: service,
-		Device:  device,
-		Devices: pair.DeviceBook(),
-		Desk:    &pair.Desk{},
-		Say:     func(line string) { fmt.Fprintln(os.Stdout, line) },
-		Open:    func(tunnel io.ReadWriteCloser) { serveOneConnection(tunnel, here) },
-	}
-
 	// ctrl+c is how this command ends, so it is caught rather than left to kill
 	// the process mid-registration: the machine gives its name up on the way
 	// out instead of leaving the relay to notice.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	host := &pair.Host{
+		Service: service,
+		Device:  device,
+		Devices: pair.DeviceBook(),
+		Desk:    &pair.Desk{},
+		Approve: serveApprover(ctx, os.Stdin, os.Stdout),
+		Say:     func(line string) { fmt.Fprintln(os.Stdout, line) },
+		Open:    func(tunnel io.ReadWriteCloser) { serveOneConnection(tunnel, here) },
+	}
 	if err := host.Run(ctx); err != nil {
 		return err
 	}
