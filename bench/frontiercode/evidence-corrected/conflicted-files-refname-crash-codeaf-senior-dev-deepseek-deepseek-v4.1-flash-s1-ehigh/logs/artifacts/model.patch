@@ -1,0 +1,44 @@
+diff --git a/pre_commit/git.py b/pre_commit/git.py
+index 19aac38..cb3c273 100644
+--- a/pre_commit/git.py
++++ b/pre_commit/git.py
+@@ -126,7 +126,10 @@ def get_conflicted_files() -> set[str]:
+     merge_diff_filenames = zsplit(
+         cmd_output(
+             'git', 'diff', '--name-only', '--no-ext-diff', '-z',
+-            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',
++            '-m', tree_hash,
++            # pull the refs in front of the `--` so they are unambiguously
++            # revisions even if the worktree has a tracked file named HEAD
++            'HEAD', 'MERGE_HEAD', '--',
+         )[1],
+     )
+     return set(merge_conflict_filenames) | set(merge_diff_filenames)
+diff --git a/tests/git_test.py b/tests/git_test.py
+index 93f5a1c..da71900 100644
+--- a/tests/git_test.py
++++ b/tests/git_test.py
+@@ -141,6 +141,23 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):
+     assert ret == {'conflict_file'}
+ 
+ 
++def test_get_conflicted_files_refname_collision(in_merge_conflict):
++    """A tracked file named like a refname must not break the diff."""
++    resolve_conflict()
++    with open('other_file', 'w') as other_file:
++        other_file.write('oh hai\n')
++    cmd_output('git', 'add', 'other_file')
++
++    # tracked files whose names collide with the refnames passed to git diff
++    for filename in ('HEAD', 'MERGE_HEAD'):
++        with open(filename, 'w') as refname_file:
++            refname_file.write('contents\n')
++    cmd_output('git', 'add', 'HEAD', 'MERGE_HEAD')
++
++    ret = set(git.get_conflicted_files())
++    assert ret == {'conflict_file', 'HEAD', 'MERGE_HEAD', 'other_file'}
++
++
+ MERGE_MSG = b"Merge branch 'foo' into bar\n\nConflicts:\n\tconflict_file\n"
+ OTHER_MERGE_MSG = MERGE_MSG + b'\tother_conflict_file\n'
+ 

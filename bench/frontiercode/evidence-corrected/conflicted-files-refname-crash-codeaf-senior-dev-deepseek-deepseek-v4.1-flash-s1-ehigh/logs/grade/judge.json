@@ -1,0 +1,65 @@
+{
+  "criteria": {
+    "conflict-set-still-complete": {
+      "pass": true,
+      "reasoning": "The diff shows that the fix adds '--' as a separator after 'HEAD' and 'MERGE_HEAD'. This correctly separates refnames (tree_hash, HEAD, MERGE_HEAD) from pathspecs. The '--' is placed AFTER all the refs, which is the correct position to disambiguate refs from paths. The command structure remains 'git diff --name-only --no-ext-diff -z -m tree_hash HEAD MERGE_HEAD --', which will still produce both kinds of files: merge-conflict filenames (from the -m flag with tree_hash) and merge-diff filenames (from comparing HEAD and MERGE_HEAD). The fix does not narrow the diff, does not drop either diff mod",
+      "usage": {
+        "prompt_tokens": 639,
+        "completion_tokens": 208,
+        "total_tokens": 847,
+        "cost": 0.005037,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.005037,
+          "upstream_inference_prompt_cost": 0.001917,
+          "upstream_inference_completions_cost": 0.00312
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 5376,
+    "completion_tokens": 1020,
+    "calls": 2
+  },
+  "adaptive": {
+    "adapted": true,
+    "reasoning": "The reference test verifies that a tracked file named 'HEAD' is properly included in conflicted files. The agent's solution adds '--' to disambiguate refs from filenames, which makes this scenario work correctly. The agent added their own more comprehensive test, but the reference test is still valid and tests the same core behaviour with a simpler case. The test can be applied as-is since it tests against the same function interface.",
+    "usage": {
+      "prompt_tokens": 4737,
+      "completion_tokens": 812,
+      "total_tokens": 5549,
+      "cost": 0.026391,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.026391,
+        "upstream_inference_prompt_cost": 0.014211,
+        "upstream_inference_completions_cost": 0.01218
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  }
+}
