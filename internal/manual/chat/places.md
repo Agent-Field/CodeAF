@@ -256,8 +256,9 @@ went to the filter at the top of the list, and on spend the words went nowhere a
 is gone (2026-09-17).
 
 **Typing still filters where a list is worth filtering.** On **sessions** every printable key
-narrows the list, and the letters draw on the control row at the top of it beside the `⌕`
-mark. On **memory** the head row echoes the filter in place of
+narrows the conversation list by conversation name, project name or path, or nested task
+name. Matching conversations keep their complete task trees. The letters draw on the
+control row at the top beside the `⌕` mark. On **memory** the head row echoes the filter in place of
 `type to filter`. Spend and standing take no text.
 
 **Two spaces still open home from every place.** On a place with a filter they are typed
@@ -427,7 +428,7 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `n new in project`, `o open folder`, `p copy project`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `c copy name`, `n new in project`, `o open folder`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -555,7 +556,7 @@ window or not; the decisions waiting on you, as cards you answer with one press;
 team manager's own conversation, which you talk to right there. `/teams`, `alt+2` and a
 click on the word open it. The **Teams page** of this manual has the whole of it.
 
-## tasks — the tasks page, and how to get to it without a command
+## sessions — the sessions page for tasks and history, and how to get to it without a command
 
 The full-screen conversation tree groups every chat and its tasks into **running** and
 **completed**. A conversation stays under running while it is answering or has running,
@@ -574,12 +575,13 @@ rather than home's `› type to search or start something new`. It used to show 
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's options: `x close`, `n new in project`, `o open folder`, and
-`p copy project` where the local conversation and project are available. To stop work, open its room and use Stop. Everything starts expanded; the list scrolls and its
+a conversation's options: `x close` (then `x delete` after closing), `c copy name`,
+`n new in project`, and `o open folder` where those doors are available. Task rows offer
+Stop while active and Delete for a settled subtree; their copy action remains `p copy project`. Everything starts expanded; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
 the list already draws, and it says `nothing matches` only when your filter has emptied the
 page — and the foot names only what is true of the row you are on: `enter open its room ·
-→ verbs: close, new in project, open folder, copy project`.
+→ verbs: stop, new in project, open folder, copy project` over an active task.
 
 ## Closed conversations in Sessions — dark grey names and synchronized tabs
 
@@ -913,9 +915,9 @@ honest dim sentence instead of falling through to this computer's files.
 ## Can I put away a conversation on the other machine from home
 
 Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
-`enter` on a far conversation opens it in this window. `o open folder`, `p copy project`, and
-starting a new conversation in that folder are absent on far rows because those paths do not
-name folders on the computer holding your file manager and clipboard.
+`enter` on a far conversation opens it in this window. `c copy name` copies its current
+name to this computer’s clipboard. `o open folder` and starting a new conversation in that
+folder are absent on far rows because those paths do not name local folders.
 
 ## Do the tab numbers follow the machine too
 

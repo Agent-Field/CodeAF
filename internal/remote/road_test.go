@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -127,6 +129,9 @@ func TestADeadlineOnALiveConnectionDoesNotSayTheConnectionIsGone(t *testing.T) {
 	if !strings.Contains(err.Error(), strings.TrimSpace(lateCallTail)) {
 		t.Fatalf("the late call did not say so: %v", err)
 	}
+	if !errors.Is(err, ErrLate) {
+		t.Fatalf("a surface cannot tell the late call from a failure: %v", err)
+	}
 	if client.Err() != nil {
 		t.Fatalf("the connection was buried: %v", client.Err())
 	}
@@ -149,10 +154,15 @@ func TestTheCallClassKeepsAKeystrokeOffTheReader(t *testing.T) {
 	// between Submit and the first request leaving used to run there and
 	// everything behind it on this socket waited (callclass.go); what an
 	// ordered call owes is an order, and the lane is what gives it.
-	for _, method := range []string{MethodSubmit, MethodCompact, MethodSetModel} {
+	for _, method := range []string{MethodSubmit, MethodSetModel} {
 		if classify(method).road() != inOrder {
 			t.Fatalf("%s owes an order and is not on the ordered lane", method)
 		}
+	}
+	// A COMPACTION IS WORK THAT OWES NOBODY AN ORDER. It may ask the model for
+	// a summary, and a send queued behind it waited out its own deadline.
+	if classify(MethodCompact) != classWork || classify(MethodCompact).road() != onItsOwn {
+		t.Fatal("a compaction is back on the ordered lane, where a send waits behind its summary")
 	}
 	// AND AN ACT IS NOT A CLASS OF ITS OWN ON THE CLOCK, which is a law with a
 	// measurement behind it (callclass.go): a longer window for a keystroke buys
@@ -160,5 +170,79 @@ func TestTheCallClassKeepsAKeystrokeOffTheReader(t *testing.T) {
 	// from the update loop. Both classes leave the reader; neither waits longer.
 	if classify(MethodQuestionResolve) != classAct || classify(MethodTranscript) != classGetter {
 		t.Fatal("the two off-reader classes are no longer told apart")
+	}
+}
+
+// heldCompaction is a fake engine whose Compact does not return until the test
+// lets it, the shape of a pass waiting on a slow model's summary.
+type heldCompaction struct {
+	*fakeAgent
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *heldCompaction) Compact(context.Context) error {
+	h.once.Do(func() { close(h.entered) })
+	<-h.release
+	return nil
+}
+
+// TestASendIsNotHeldBehindACompactionWaitingOnItsSummary is the measured
+// defect of 2026-09-28: /compact asked deepseek-v3.2 for a summary that took
+// twenty seconds, and the message the person sent meanwhile sat on the ordered
+// lane behind it, past its own deadline. The compaction is held here; the send
+// must open its turn anyway, and the compaction must still land afterwards.
+func TestASendIsNotHeldBehindACompactionWaitingOnItsSummary(t *testing.T) {
+	far := &heldCompaction{
+		fakeAgent: &fakeAgent{model: "m"},
+		entered:   make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, Workspace: "/srv/app", SessionFile: "/srv/app/j.jsonl"}, nil
+	}})
+	if err != nil {
+		t.Fatalf("dial the loopback: %v", err)
+	}
+	t.Cleanup(func() {
+		select {
+		case <-far.release:
+		default:
+			close(far.release)
+		}
+		_ = loop.Close()
+	})
+
+	compacted := make(chan error, 1)
+	go func() { compacted <- loop.Client.Agent().Compact(context.Background()) }()
+	select {
+	case <-far.entered:
+	case <-time.After(time.Second):
+		t.Fatal("the compaction never reached the engine")
+	}
+
+	sent := make(chan error, 1)
+	go func() {
+		_, err := loop.Client.Agent().Submit(context.Background(), "you there?")
+		sent <- err
+	}()
+	select {
+	case err := <-sent:
+		if err != nil {
+			t.Fatalf("the send was refused: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the send did not return; it is waiting behind the compaction")
+	}
+
+	close(far.release)
+	select {
+	case err := <-compacted:
+		if err != nil {
+			t.Fatalf("the compaction failed once released: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the compaction never answered after it was released")
 	}
 }

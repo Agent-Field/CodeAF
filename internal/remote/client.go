@@ -1146,8 +1146,19 @@ func (c *Client) late() error {
 	if roaming {
 		return errors.New(c.roamingRefusal())
 	}
-	return errors.New(c.where() + lateCallTail)
+	return lateError{where: c.where()}
 }
+
+// ErrLate is what a call that outlived this end's patience matches with
+// [errors.Is]. The engine may still be doing the work, so a surface that can
+// say "still running" rather than "failed" reads it through this.
+var ErrLate = errors.New("the engine did not answer in time")
+
+// lateError is [Client.late]'s sentence, and it is [ErrLate].
+type lateError struct{ where string }
+
+func (e lateError) Error() string        { return e.where + lateCallTail }
+func (e lateError) Is(target error) bool { return target == ErrLate }
 
 // forget drops a call nobody is waiting for any more.
 func (c *Client) forget(id uint64) {
@@ -1566,7 +1577,7 @@ func (a *Agent) Cancel(id string) (string, error) {
 // brief is written beside the work (internal/session's task_shape.go), so there
 // is nothing on the far side worth a longer wait.
 func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo})
+	payload, err := a.callTaskStart(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1597,7 +1608,7 @@ func (a *Agent) Delegates() session.DelegateReport {
 // and returns the same receipt StartTask does. It is an ordinary call with the
 // ordinary deadline: the engine admits the run at once.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
+	payload, err := a.callTaskStart(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1612,7 +1623,7 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 // (`/task --best`, `/task --cheap`); the engine's router reads it for this task
 // and nothing after it.
 func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, effort string) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
+	payload, err := a.callTaskStart(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1621,6 +1632,15 @@ func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, ef
 		return 0, "", "", err
 	}
 	return started.ID, started.Title, started.Note, nil
+}
+
+// A start whose answer never arrived may already have created work on the engine.
+func (a *Agent) callTaskStart(ctx context.Context, method string, args any) (json.RawMessage, error) {
+	payload, answered, err := a.c.callAnswered(ctx, method, args, callDeadline)
+	if err != nil && !answered {
+		return nil, unanswered{said: err}
+	}
+	return payload, err
 }
 
 // RedoStronger runs a task again on the engine machine with a stronger crew
@@ -1772,8 +1792,22 @@ func (a *Agent) StopWork() error {
 }
 
 // Compact runs a compaction pass on the far side.
+//
+// IT WAITS AS LONG AS A PASS CAN TAKE, not [callDeadline]. A pass may ask the
+// model for a summary, which on a slow model is longer than ten seconds, and a
+// surface that gave up sooner said "did not answer in time" about a pass that
+// landed a moment later. The surface asks from a command rather than from its
+// update loop, so the longer wait is a line saying "compacting…", never a
+// terminal that stops drawing. It runs beside the ordered lane (callclass.go's
+// [classWork]), so nothing the person sends meanwhile queues behind it.
 func (a *Agent) Compact(ctx context.Context) error {
-	_, err := a.c.call(ctx, MethodCompact, nil)
+	result, err := a.c.callWithin(ctx, MethodCompact, nil, session.CompactPatience)
+	if err == nil && len(result) > 0 && string(result) != "null" {
+		var why string
+		if json.Unmarshal(result, &why) == nil && why != "" {
+			return &session.SummarySkipped{Why: why}
+		}
+	}
 	return err
 }
 

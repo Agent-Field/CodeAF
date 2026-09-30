@@ -529,27 +529,17 @@ func (a *app) teamsPrompts(t team) []session.SessionRow {
 
 // ── THE SPEND AND THE CAP ───────────────────────────────────────────────────
 
-// teamsPool is whose spend sits beside team t's cap, and the effective
-// settings: the team itself with no cap or its own, the ancestor whose cap it
-// inherits, and the top of the chain when the cap is the profile's default. A
+// teamsPool is whose spend sits beside team t's cap. Effective resolves the
+// owner for both a team's own cap and an explicit ancestor cap; a profile
+// default is already the team's own pool, and the root has no default cap. A
 // cap is a pool (DESIGN.md section 8.2), so the figure beside it is always the
-// pool owner's.
+// resolved pool owner's.
 func (a *app) teamsPool(t team) (string, teamstore.Effective) {
 	e := a.teamTree().Effective(t.ID, a.tp.defaults)
 	if e.CapUSDDay <= 0 {
 		return t.ID, e
 	}
-	switch e.CapFrom.Kind {
-	case teamstore.OriginTeam, teamstore.OriginAncestor:
-		return e.CapFrom.Team, e
-	}
-	top := t.ID
-	for _, up := range a.teamAncestors(t.ID) {
-		if !up.Closed() {
-			top = up.ID
-		}
-	}
-	return top, e
+	return e.CapFrom.Team, e
 }
 
 // ── THE READ ────────────────────────────────────────────────────────────────

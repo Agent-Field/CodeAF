@@ -479,3 +479,37 @@ func TestH4ProjectConfigReadFallbackAndWritePath(t *testing.T) {
 		t.Fatalf("write path changed legacy file: %q, %v", body, err)
 	}
 }
+
+// A LIST OF NAMES IS TAKEN AS TEXT OR AS A LIST, and any other shape is an
+// error naming the file (law 3): `program.links` written the way a person
+// hand-writing JSON reaches for first once linked nothing without a word.
+func TestAListOfNamesIsTextOrAListAndNothingElse(t *testing.T) {
+	for body, want := range map[string][]string{
+		`{"program.links": "node_modules, .env ,, vendor"}`: {"node_modules", ".env", "vendor"},
+		`{"program.links": ["node_modules", " .env", ""]}`:  {"node_modules", ".env"},
+		`{"program.links": ""}`:                             {},
+	} {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, []byte(body))
+		project, err := LoadProjectConfig(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		names, found, err := project.Names(ProjectProgramLinks)
+		if err != nil || !found || strings.Join(names, "|") != strings.Join(want, "|") {
+			t.Fatalf("%s = %q (%v, %v), want %q", body, names, found, err, want)
+		}
+	}
+	dir := t.TempDir()
+	writeProjectFile(t, dir, []byte(`{"program.links": {"node_modules": true}}`))
+	project, err := LoadProjectConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := project.Names(ProjectProgramLinks); err == nil || !strings.Contains(err.Error(), ProjectConfigPath(dir)) {
+		t.Fatalf("an object for a list = %v, want an error naming the file", err)
+	}
+	if _, found, err := (ProjectConfig{}).Names(ProjectProgramLinks); found || err != nil {
+		t.Fatal("an empty layer answered a list")
+	}
+}

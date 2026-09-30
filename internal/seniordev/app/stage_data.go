@@ -22,9 +22,13 @@ import (
 // reaches the model.
 
 // stageDataKeys are the keys a stage record may carry, each a plain fact a
-// page can say. Tree and commit ids, paths, pools of models and the run's
-// environment are left to stderr: they are machinery, and a page has nothing
-// to say with them.
+// page can say. Tree and commit ids, paths and the run's environment are left
+// to stderr: they are machinery, and a page has nothing to say with them.
+//
+// THE CODER'S POOL IS THE ONE LIST CARRIED WHOLE. `bootstrap` names the models
+// the run works on and its effort, which codeaf shows on the task's page so a
+// person can see what the run was launched on (delegate.StageRecord.Models);
+// a count of them would say nothing.
 var stageDataKeys = map[string]bool{
 	// implement: the attempt, the retries and corrections.
 	"attempt": true, "retry": true, "max_retries": true, "delay_ms": true,
@@ -42,7 +46,7 @@ var stageDataKeys = map[string]bool{
 	// landing and ship.
 	"source": true, "timeout_ms": true,
 	// bootstrap and intake.
-	"recorder": true, "spec_bytes": true,
+	"recorder": true, "spec_bytes": true, "models": true, "effort": true,
 	// compaction-capacity and compaction.
 	"limit_tokens": true, "pinned_capacity_tokens": true,
 	"before_tokens": true, "after_tokens": true, "summary_status": true,
@@ -76,6 +80,10 @@ func stageRecordData(data map[string]any) json.RawMessage {
 			kept[key] = v
 		case []any:
 			kept[key] = len(v)
+		case []string:
+			if len(v) > 0 {
+				kept[key] = v
+			}
 		}
 	}
 	for len(kept) > 0 {

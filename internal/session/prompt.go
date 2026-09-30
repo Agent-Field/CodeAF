@@ -309,6 +309,10 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(workerFooter(config, now))
 		return out.String()
 	}
+	// A MODEL WITH NO TOOLS READS A PAGE WITHOUT THEM (chatpage.go).
+	if config.promptProfile().chat() {
+		return chatPage(config, now)
+	}
 	var out strings.Builder
 	// THE PAGE, WITH ITS TOOL-NAMING FACTS COMPOSED FROM THIS BELT'S OWN
 	// PREDICATES (beltfacts.go). Everything below conditions a whole page on

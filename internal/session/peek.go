@@ -56,8 +56,8 @@ type Summary struct {
 	At time.Time
 	// Asked is how many of the person's messages the FILE holds. It counts
 	// lines rather than turns — a compaction re-journals the messages it kept,
-	// so a long session counts some of them twice — because the only question
-	// asked of it is whether anything was ever said here at all.
+	// so a long session counts some of them twice. A task-only conversation can
+	// have a saved brief and still have no chat messages.
 	Asked int
 }
 
@@ -68,7 +68,8 @@ const summaryClip = 200
 
 // Peek reads one transcript and reports what a picker can show of it. The
 // boolean is false for a file that is not a conversation — missing, unreadable,
-// a header with nothing under it, or a session nobody ever spoke in. A picker
+// a header with nothing under it, or a session with neither messages nor saved
+// task work. Command-only conversations fall back to the saved run brief. A picker
 // row for one of those is a row with no words on it and nothing behind it.
 func Peek(path string) (Summary, bool) {
 	file, err := os.Open(path)
@@ -113,7 +114,7 @@ func Peek(path string) (Summary, bool) {
 				// picture and nothing else is the ordinary case (the surface's
 				// attach.go writes exactly that), and a file whose only turn was
 				// one is a conversation — so it counts toward [Summary.Asked],
-				// which is the whole test for whether this file is one at all.
+				// which identifies an ordinary chat independently of saved task work.
 				// What it cannot be is the OPENING or the LAST line: those are
 				// sentences, and this message has none. The answer below is what
 				// the last line falls back to, for precisely this case.
@@ -147,7 +148,12 @@ func Peek(path string) (Summary, bool) {
 	// and a picker row built from the first half of a file says more than a row
 	// that is missing because the second half was unreadable.
 	if summary.Asked == 0 {
-		return Summary{}, false
+		saved, ok := savedTaskSummary(path)
+		if !ok {
+			return Summary{}, false
+		}
+		saved.Title = summary.Title
+		return saved, true
 	}
 	if summary.Last == "" {
 		summary.Last = answered

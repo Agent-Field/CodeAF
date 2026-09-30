@@ -5,7 +5,7 @@
 #
 # From the root of a real repository:
 #
-#   WORKDIR=$PWD docs/benchmarks/measure-cli.sh mine /tmp/bench-home/mine bin/mine chat
+#   WORKDIR=$PWD docs/benchmarks/performance/measure-cli.sh mine /tmp/bench-home/mine bin/mine chat
 #
 # <name> only labels the output, the tmux session and the run; nothing about the
 # CLI is inferred from it. <home> is the profile the CLI runs under — an

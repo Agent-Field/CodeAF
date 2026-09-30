@@ -650,7 +650,7 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // transcript in it is not a session at all and is skipped. A folder whose
 // meta.json says nobody has ever spoken — a `lastUserAt` that is not there — is
 // the empty shell a launch mints and the groom reuses (cmd/codeaf's
-// v3ScanBucket), and it is skipped too. But a folder whose meta.json is MISSING
+// v3ScanBucket), and it is skipped too unless a saved task supplies its brief. But a folder whose meta.json is MISSING
 // or unreadable is kept, for the reason the sweep keeps it: a session that
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
@@ -663,8 +663,17 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	}
 	meta, _ := LoadMeta(dir)
 	named := strings.TrimSpace(meta.ID) != ""
-	if named && meta.LastUserAt.IsZero() {
-		return SessionRow{}, false
+	if meta.LastUserAt.IsZero() {
+		saved, ok := savedTaskSummary(transcript)
+		if !ok && named {
+			return SessionRow{}, false
+		}
+		if ok {
+			meta.LastUserAt = saved.At
+			if strings.TrimSpace(meta.Title) == "" {
+				meta.Title = saved.Opening
+			}
+		}
 	}
 	at := meta.LastUserAt
 	if at.IsZero() {

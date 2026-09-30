@@ -97,6 +97,7 @@ package session
 
 import (
 	"strings"
+	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/env"
 
@@ -116,10 +117,21 @@ const (
 	profileFull promptProfile = config.PromptProfileFull
 	// profileLean is the Pi-sized prefix.
 	profileLean promptProfile = config.PromptProfileLean
+	// profileChat is the prefix of a model that takes no tools (chatpage.go).
+	// It is not a word a person types: it is decided by what the model can
+	// do, above the pin, the row and the window, and it ends when the
+	// conversation moves to a model that can use tools.
+	profileChat promptProfile = "chat"
 )
 
-// lean is the one question the rest of the package asks of a profile.
-func (p promptProfile) lean() bool { return p == profileLean }
+// lean is the one question the rest of the package asks of a profile. The
+// chat prefix answers yes: everything a lean prefix gives up — memory, the
+// second instruction file, the shelf — a conversation with no tools gives up
+// too.
+func (p promptProfile) lean() bool { return p == profileLean || p == profileChat }
+
+// chat says the prefix is the tool-less page with an empty belt.
+func (p promptProfile) chat() bool { return p == profileChat }
 
 const (
 	// leanWindowThreshold is the window under which the prefix goes lean, in
@@ -153,19 +165,24 @@ const (
 
 // ── the decision ────────────────────────────────────────────────────────────
 
-// promptProfile is this session's profile, SETTLED ONCE at construction
-// (agent.go's newAgent) and read from the config everywhere after.
-//
-// It is a method on [Config] and not on [Agent] because every reader of it is a
-// reader the agent does not exist for yet: the page is rendered before the agent
-// is built, and the belt is built from the same config a moment later. That is
-// the same law beltfacts.go's predicates are written under — every predicate is
-// answerable from the config alone — and it is what makes it impossible for the
-// page and the belt to disagree about which profile this is.
-//
-// A config nobody settled derives the answer live, which is what a test asking
-// the question of a bare [Config] wants.
+// livePromptProfile keeps the launch choice and the current automatic shape.
+// The pointer is private to one engine, even when its Config came from a parent.
+// Background memory readers share the atomic value; request boundaries own
+// changes to the page and belt.
+type livePromptProfile struct {
+	current atomic.Value
+	auto    bool
+	// launch is the profile an explicit choice named, which a conversation
+	// returns to when it leaves a model that takes no tools. Unused when auto.
+	launch promptProfile
+}
+
+// promptProfile also works before an engine exists, when the page and belt
+// are first composed from a bare Config.
 func (c Config) promptProfile() promptProfile {
+	if c.liveProfile != nil {
+		return c.liveProfile.current.Load().(promptProfile)
+	}
 	if c.profile != "" {
 		return c.profile
 	}
@@ -189,6 +206,20 @@ func settlePromptProfile(c Config) promptProfile { return resolvePromptProfile(c
 // changes it. Both answer `auto` by saying nothing, and then the window decides
 // exactly as it did before either existed.
 func resolvePromptProfile(c Config) promptProfile {
+	// A MODEL THAT TAKES NO TOOLS IS ABOVE EVERY RUNG. The pin, the row and the
+	// window choose how much of the working page to send; none of them can
+	// make a model use a tool, and a page about tools it cannot call is a page
+	// that lies (chatpage.go).
+	if c.takesNoTools(c.Model) {
+		return profileChat
+	}
+	return chosenPromptProfile(c)
+}
+
+// chosenPromptProfile is the ladder under the capability: the pin, the row,
+// then the window. A live conversation returns to it when it moves from a
+// model with no tools to one that has them.
+func chosenPromptProfile(c Config) promptProfile {
 	if pinned, ok := promptProfileWord(env.Get(promptProfileEnv)); ok {
 		return pinned
 	}
@@ -513,3 +544,14 @@ func (c Config) instructionLimit() int {
 // the second copy is the first thing to go — and it is the second FOUND rather
 // than a named file, so a project that has only CLAUDE.md still gets its rules.
 func (c Config) onlyOneInstructionFile() bool { return c.promptProfile().lean() }
+
+// takesNoTools says the catalog knows this model and says it takes no tool
+// calls — the same test internal/provider's toolless.go leaves the tools off
+// by. Unknown is false: a model nobody has described keeps the working page.
+func (c Config) takesNoTools(model string) bool {
+	if c.SupportsParameter == nil {
+		return false
+	}
+	supported, known := c.SupportsParameter(model, "tools")
+	return known && !supported
+}

@@ -1079,6 +1079,11 @@ var OperatorEnvPins = []string{
 	// still be found and ended (internal/processgroup). codeaf sets it and reads
 	// it back, and a person has nothing to say to it, so it is plumbing too.
 	"CODEAF_DELEGATE_RUN",
+	// The descriptor a program's process holds its host's hold on its folder
+	// by (internal/delegate's HoldEnv), so the folder stays held until the
+	// program has gone too. codeaf sets it on the launch and the program reads
+	// it back; it is a number only that one process can mean, so plumbing.
+	"CODEAF_PROGRAM_HOLD_FD",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
@@ -1310,6 +1315,15 @@ var OperatorEnvPins = []string{
 	"CODEAF_MODEL_POOL_SUBMIT_URL",
 	"CODEAF_MODEL_POOL_MIRROR_URL",
 	"CODEAF_MODEL_POOL_TTL",
+	// CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL is the opt-in that keeps a provider
+	// credential (OPENROUTER_API_KEY and its siblings) in the environment of a
+	// bash command a model runs (internal/exec's JobShellEnv, issue #1484); unset,
+	// every such key is stripped before the shell ever starts. It is plumbing and
+	// not a row for the reason CODEAF_CALL_LOG_BODIES is: keeping a secret
+	// readable by the model's own commands is not a preference a sheet should
+	// make convenient, it is a decision somebody makes on purpose, in a shell,
+	// for one run that genuinely needs it.
+	"CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

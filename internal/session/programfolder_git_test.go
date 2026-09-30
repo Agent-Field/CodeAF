@@ -1,10 +1,10 @@
 package session
 
-// THE PERSON'S BRANCH AND CHECKOUT ARE NEVER CLAIMED SAFE WITHOUT BEING READ
-// (programfolder.go), in real git in temporary repositories: a switch runs with
-// the repository's hooks off and is read again when it fails, the ending looks
-// at the person's branch before it says it is as it was, and the commit that
-// finishes a run goes whatever the program's notes folder is.
+// A PROGRAM'S COPY, CUT AND FINISHED IN REAL GIT (programcopy.go): the copy is
+// cut with the repository's hooks off and leaves nothing behind when the cut
+// fails, the ending names the branch and leaves the person's own alone, the
+// commit that finishes a run goes whatever the program's notes folder is, and
+// what cannot be committed is kept as a patch.
 
 import (
 	"os"
@@ -46,13 +46,12 @@ func failingHook(t *testing.T, hooks string) string {
 	return mark
 }
 
-// A SWITCH RUNS WITH THE REPOSITORY'S HOOKS OFF. A post-checkout hook that
-// fails used to make `git switch -c` exit non-zero after HEAD had moved, and
-// the refusal then said nothing was changed while the person's checkout sat
-// on an orphan branch; the switch back of a run that changed nothing failed
-// the same way. Both switches go between two names for one commit, so no hook
-// has anything to do — neither in .git/hooks nor where core.hooksPath points.
-func TestAProgramsSwitchesRunWithTheRepositorysHooksOff(t *testing.T) {
+// A COPY IS CUT WITH THE REPOSITORY'S HOOKS OFF. A post-checkout hook that
+// fails — an LFS hook on a PATH with no git-lfs — would fail the cut after the
+// copy was made, and the program has nothing for a hook to do: its copy is cut
+// from a commit, whether the hooks are in .git/hooks or where core.hooksPath
+// points.
+func TestACopyIsCutWithTheRepositorysHooksOff(t *testing.T) {
 	for _, where := range []string{"git-hooks", "hooks-path"} {
 		t.Run(where, func(t *testing.T) {
 			repo := newTestRepo(t)
@@ -63,48 +62,42 @@ func TestAProgramsSwitchesRunWithTheRepositorysHooksOff(t *testing.T) {
 			}
 			mark := failingHook(t, hooks)
 			folder := prepareIn(t, testPrograms("fake")[0], repo, "Fix the parser")
-			if head := currentBranch(repo); head != folder.Branch {
-				t.Fatalf("the checkout is on %q after the cut, want %q", head, folder.Branch)
-			}
-			end := folder.Finish("")
-			if !end.Dropped || end.Refused != "" {
-				t.Fatalf("a run that changed nothing ended %+v, want its branch dropped", end)
+			if head := currentBranch(folder.Dir); head != folder.Branch {
+				t.Fatalf("the copy is on %q after the cut, want %q", head, folder.Branch)
 			}
 			if head := currentBranch(repo); head != "work" {
-				t.Fatalf("the checkout is on %q after a run that changed nothing, want the person's branch", head)
+				t.Fatalf("the person's checkout is on %q, want it where it was", head)
 			}
-			if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
-				t.Fatalf("the empty branch was left behind: %q", branches)
+			end := folder.Finish("")
+			if end.Kept || end.Refused != "" || end.CopyLeft != "" || branchCommit(repo, folder.Branch) == "" {
+				t.Fatalf("a run that changed nothing ended %+v, want its branch kept and its copy gone", end)
 			}
 			if _, err := os.Stat(mark); !os.IsNotExist(err) {
-				t.Fatalf("the repository's hook ran on codeaf's switch: %v", err)
+				t.Fatalf("the repository's hook ran on codeaf's cut: %v", err)
 			}
 		})
 	}
 }
 
-// A CUT THAT FAILED IS READ AGAIN BEFORE IT IS ANSWERED. A lock git could not
-// take after it had made the branch left a `task/…` branch in the person's
-// repository that nothing knew about; now the stray branch is deleted, the
-// checkout is where it was, and nothing is owed or held.
+// A CUT THAT FAILED LEAVES NOTHING BEHIND: no branch in the person's
+// repository, no copy, no worktree git remembers, and nothing owed or held.
 func TestACutThatFailedLeavesNoBranchBehind(t *testing.T) {
 	repo := newTestRepo(t)
-	writeFile(t, filepath.Join(repo, ".git", "HEAD.lock"), "")
+	// A FILE WHERE `task/` WOULD BE A FOLDER is a branch git cannot make.
+	writeFile(t, filepath.Join(repo, ".git", "refs", "heads", "task"), "")
+	before, _ := filepath.Glob(filepath.Join(programCopyRoot(), "*"))
 	_, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "Fix the parser", Holder: "task 7 (Fix the parser)", Keep: t.TempDir()})
-	if err == nil || !strings.HasPrefix(err.Error(), "could not cut fake's branch in "+repo+": ") {
+	if err == nil || !strings.HasPrefix(err.Error(), "could not cut fake's copy of "+repo+": ") {
 		t.Fatalf("PrepareProgramFolder = %v, want the cut refused", err)
-	}
-	if strings.Contains(err.Error(), "the checkout is now on") {
-		t.Fatalf("the refusal says the checkout moved when it did not: %v", err)
 	}
 	if head := currentBranch(repo); head != "work" {
 		t.Fatalf("the checkout is on %q, want the person's branch", head)
 	}
-	if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
+	if branches := strings.TrimSpace(gitOut(t, repo, "for-each-ref", "refs/heads/task/")); branches != "" {
 		t.Fatalf("the failed cut left a branch behind: %q", branches)
 	}
-	if record, ok := readProgramFolder(canonicalPath(repo)); ok && record.Ended == "" {
-		t.Fatalf("the failed cut left a run owed: %+v", record)
+	if after, _ := filepath.Glob(filepath.Join(programCopyRoot(), "*")); len(after) != len(before) || worktreeCount(t, repo) != 1 {
+		t.Fatalf("the failed cut left a copy behind: %v, %d worktrees", after, worktreeCount(t, repo))
 	}
 	if holder := programFolderHolder(canonicalPath(repo)); holder != "" {
 		t.Fatalf("the failed cut still holds the folder: %q", holder)
@@ -112,8 +105,8 @@ func TestACutThatFailedLeavesNoBranchBehind(t *testing.T) {
 }
 
 // moveBranch puts a commit of nobody's on branch without checking it out, the
-// way a program's shell that checked the person's branch out, committed there
-// and switched back leaves it, and answers the commit.
+// way a person committing on their own branch while the program works leaves
+// it, and answers the commit.
 func moveBranch(t *testing.T, repo, branch string) string {
 	t.Helper()
 	tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", branch))
@@ -122,94 +115,58 @@ func moveBranch(t *testing.T, repo, branch string) string {
 	return moved
 }
 
-// THE ENDING LOOKS AT THE PERSON'S BRANCH BEFORE IT SAYS IT IS AS IT WAS. A
-// program's shell that committed on the person's branch mid-run was reported
-// as `your branch work is as it was`; a run that changed nothing then switched
-// the checkout onto commits nobody had read and said it changed nothing.
-func TestTheEndingSaysThePersonsBranchMovedDuringTheRun(t *testing.T) {
+// THE ENDING NAMES THE PROGRAM'S BRANCH AND LEAVES THE PERSON'S ALONE. The
+// person may commit on their own branch while the program works in its copy —
+// that is what the copy is for — and nothing of codeaf's moves it back, checks
+// it out, or says a word about it.
+func TestTheEndingOfARunInACopyNamesItsBranchAndLeavesThePersonsAlone(t *testing.T) {
 	t.Run("with work", func(t *testing.T) {
 		repo := newTestRepo(t)
-		start := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
 		folder := prepareIn(t, testPrograms("fake")[0], repo, "Fix the parser")
-		writeFile(t, filepath.Join(repo, "fix.go"), "package fix\n")
+		writeFile(t, filepath.Join(folder.Dir, "fix.go"), "package fix\n")
 		moved := moveBranch(t, repo, "work")
 		said := folder.Finish("done").Sentence()
-		want := "your branch work moved during the run, from " + shortSha(start) + " to " + shortSha(moved) +
-			", and codeaf did not move it: look at it before you push or merge it; `git -C "
-		if !strings.Contains(said, want) || strings.Contains(said, "as it was") {
-			t.Fatalf("the ending = %q, want it to say %q", said, want)
+		want := "its work is on the branch " + folder.Branch + " in " + repo + ", 1 file; your checkout was not touched, and `git -C " +
+			shellQuoted(repo) + " merge " + folder.Branch + "` brings it in"
+		if said != want {
+			t.Fatalf("the ending = %q, want %q", said, want)
 		}
-		if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work")); tip != moved {
-			t.Fatalf("codeaf moved the person's branch to %s", tip)
+		if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work")); tip != moved || currentBranch(repo) != "work" {
+			t.Fatalf("codeaf moved the person's branch to %s (on %q)", tip, currentBranch(repo))
 		}
 	})
 	t.Run("with nothing", func(t *testing.T) {
 		repo := newTestRepo(t)
-		start := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
 		folder := prepareIn(t, testPrograms("fake")[0], repo, "Fix the parser")
-		moved := moveBranch(t, repo, "work")
 		end := folder.Finish("")
-		if end.Dropped || currentBranch(repo) != folder.Branch {
-			t.Fatalf("a run whose person's branch moved was dropped onto it: %+v, on %q", end, currentBranch(repo))
-		}
-		want := "it changed nothing, but your branch work moved during the run, from " + shortSha(start) + " to " + shortSha(moved) +
-			", so codeaf did not switch back to it: its empty branch " + folder.Branch + " is still checked out in " + repo
-		if said := end.Sentence(); said != want {
-			t.Fatalf("the ending = %q, want %q", said, want)
+		want := "it changed nothing; its branch " + folder.Branch + " in " + repo + " is kept where it began, and your checkout was not touched"
+		if said := end.Sentence(); said != want || branchCommit(repo, folder.Branch) != folder.Start {
+			t.Fatalf("the ending = %q, want %q and the branch kept", said, want)
 		}
 	})
-	t.Run("gone", func(t *testing.T) {
-		repo := newTestRepo(t)
-		start := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
-		folder := prepareIn(t, testPrograms("fake")[0], repo, "Fix the parser")
-		writeFile(t, filepath.Join(repo, "fix.go"), "package fix\n")
-		mustGit(t, repo, "branch", "-D", "work")
-		said := folder.Finish("done").Sentence()
-		want := "your branch work is gone: it was at " + shortSha(start) + " when the run began, and codeaf did not make it again"
-		if !strings.HasSuffix(said, want) {
-			t.Fatalf("the ending = %q, want it to end %q", said, want)
-		}
-	})
-}
-
-// AND THE RECEIPT READS IT TOO before it promises the branch does not move.
-func TestTheReceiptSaysWhenThePersonsBranchHasAlreadyMoved(t *testing.T) {
-	repo := newTestRepo(t)
-	start := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
-	moved := moveBranch(t, repo, "work")
-	record := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", Home: "work", HomeSha: start}
-	want := "It is fake's: it works alone in " + repo + " itself, on a new branch task/pong-abc123; your branch work has already moved, from " +
-		shortSha(start) + " to " + shortSha(moved) + ", and codeaf does not move it, and when it ends task/pong-abc123 stays checked out there with its work. Until it ends, codeaf's own tools write nothing in " + repo + "."
-	if got := delegateReceipt(repo, testPrograms("fake")[0], record); got != want {
-		t.Fatalf("the receipt = %q, want %q", got, want)
-	}
 }
 
 // THE COMMIT THAT FINISHES A RUN GOES WHATEVER THE NOTES FOLDER IS. A notes
 // folder named by an exclude pathspec made `git add` exit 1 whenever it was
-// there and ignored — senior-dev ignores its own in every repository — so a
-// folder whose notes predated the run never had its leftovers committed and
-// never had an empty branch dropped.
+// there and ignored — senior-dev ignores its own in every repository — so its
+// leftovers were never committed. The notes never enter the branch, and a run
+// that changed nothing keeps its branch as it was cut.
 func TestTheLeftoversAreCommittedWhateverTheNotesFolderIs(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		ready func(t *testing.T, repo string)
 	}{
-		{"there and ignored", func(t *testing.T, repo string) {
-			writeFile(t, filepath.Join(repo, ".fake-notes", "old.md"), "an earlier run's checklist\n")
+		{"ignored", func(t *testing.T, repo string) {
 			writeFile(t, filepath.Join(repo, ".git", "info", "exclude"), ".fake-notes/\n")
 		}},
-		{"there and not ignored", func(t *testing.T, repo string) {
-			writeFile(t, filepath.Join(repo, ".fake-notes", "old.md"), "an earlier run's checklist\n")
-		}},
-		{"not there", func(*testing.T, string) {}},
+		{"not ignored", func(*testing.T, string) {}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := newTestRepo(t)
 			tc.ready(t, repo)
 			folder := prepareIn(t, notesProgram(), repo, "Fix the parser")
-			writeFile(t, filepath.Join(repo, "fix.go"), "package fix\n")
-			writeFile(t, filepath.Join(repo, ".fake-notes", "checklist.md"), "- [x] fix\n")
+			writeFile(t, filepath.Join(folder.Dir, "fix.go"), "package fix\n")
+			writeFile(t, filepath.Join(folder.Dir, ".fake-notes", "checklist.md"), "- [x] fix\n")
 			end := folder.Finish("done")
 			if end.Refused != "" || !end.Kept {
 				t.Fatalf("the run's leftovers were not committed: %+v", end)
@@ -217,46 +174,50 @@ func TestTheLeftoversAreCommittedWhateverTheNotesFolderIs(t *testing.T) {
 			if files := strings.Fields(gitOut(t, repo, "ls-tree", "-r", "--name-only", folder.Branch)); strings.Join(files, " ") != "fix.go shared.txt" {
 				t.Fatalf("the branch holds %q, want the work and none of the notes", files)
 			}
-			if staged := strings.TrimSpace(gitOut(t, repo, "diff", "--cached", "--name-only")); staged != "" {
-				t.Fatalf("the notes were left staged: %q", staged)
+			if _, err := os.Stat(filepath.Join(folder.Keep, "fake", "checklist.md")); err != nil {
+				t.Fatalf("the notes were not kept in the run's record folder: %v", err)
 			}
 		})
 		t.Run(tc.name+", changing nothing", func(t *testing.T) {
 			repo := newTestRepo(t)
 			tc.ready(t, repo)
 			folder := prepareIn(t, notesProgram(), repo, "Fix the parser")
-			writeFile(t, filepath.Join(repo, ".fake-notes", "checklist.md"), "- [ ] fix\n")
-			if end := folder.Finish(""); !end.Dropped || end.Refused != "" {
-				t.Fatalf("a run that changed nothing ended %+v, want its branch dropped", end)
-			}
-			if head := currentBranch(repo); head != "work" {
-				t.Fatalf("the checkout is on %q, want the person's branch", head)
+			writeFile(t, filepath.Join(folder.Dir, ".fake-notes", "checklist.md"), "- [ ] fix\n")
+			if end := folder.Finish(""); end.Kept || end.Refused != "" || branchCommit(repo, folder.Branch) != folder.Start {
+				t.Fatalf("a run that changed nothing ended %+v, want its branch kept where it was cut", end)
 			}
 		})
 	}
 }
 
-// A CHECKOUT THE PROGRAM LEFT IN THE MIDDLE OF A MERGE IS NOT COMMITTED: a
-// commit then would conclude the merge, conflict markers and all, under
-// codeaf's name.
+// A MERGE THE PROGRAM LEFT HALF DONE IS NOT COMMITTED: a commit then would
+// conclude it, conflict markers and all, under codeaf's name. What it left is
+// kept as a patch in the run's record folder, and the copy still goes.
 func TestAMergeTheProgramLeftHalfDoneIsNotCommitted(t *testing.T) {
 	repo := newTestRepo(t)
 	folder := prepareIn(t, testPrograms("fake")[0], repo, "Fix the parser")
-	mustGit(t, repo, "checkout", "-q", "-b", "other", "work")
-	writeFile(t, filepath.Join(repo, "shared.txt"), "theirs\n")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "theirs")
-	mustGit(t, repo, "checkout", "-q", folder.Branch)
-	writeFile(t, filepath.Join(repo, "shared.txt"), "ours\n")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "ours")
-	if _, err := git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "other"); err == nil {
+	copyDir := folder.Dir
+	mustGit(t, copyDir, "checkout", "-q", "-b", "other", "work")
+	writeFile(t, filepath.Join(copyDir, "shared.txt"), "theirs\n")
+	mustGit(t, copyDir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "theirs")
+	mustGit(t, copyDir, "checkout", "-q", folder.Branch)
+	writeFile(t, filepath.Join(copyDir, "shared.txt"), "ours\n")
+	mustGit(t, copyDir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "ours")
+	if _, err := git(copyDir, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "other"); err == nil {
 		t.Fatal("the merge did not stop on its conflict")
 	}
-	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	head := strings.TrimSpace(gitOut(t, copyDir, "rev-parse", "HEAD"))
 	end := folder.Finish("done")
-	if end.Refused != repo+" is in the middle of a merge" {
-		t.Fatalf("the ending = %+v, want the merge named and nothing committed", end)
+	if end.Refused != copyDir+" is in the middle of a merge" || end.Patch == "" {
+		t.Fatalf("the ending = %+v, want the merge named, nothing committed and a patch kept", end)
 	}
-	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); after != head {
-		t.Fatalf("a half-done merge was committed: HEAD moved from %s to %s", head, after)
+	if tip := branchCommit(repo, folder.Branch); tip != head {
+		t.Fatalf("a half-done merge was committed: the branch moved from %s to %s", head, tip)
+	}
+	if patch := readFile(t, end.Patch); !strings.Contains(patch, "shared.txt") {
+		t.Fatalf("the patch does not hold what the merge left: %q", patch)
+	}
+	if _, err := os.Stat(copyDir); !os.IsNotExist(err) {
+		t.Fatalf("the copy of a run that left a merge half done is still there: %v", err)
 	}
 }

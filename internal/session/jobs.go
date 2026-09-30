@@ -614,10 +614,19 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	}
 	root.Close()
 
-	id, logPath, logFile, err := r.claimJobLog(directory)
+	id, spoolPath, logFile, err := r.claimJobLog(directory)
 	if err != nil {
 		return nil, err
 	}
+	// THE LOG IS NAMED THE WAY THE SESSION NAMED ITS FOLDER. The anchor above
+	// is resolved only so the retention walk can refuse links below it; the
+	// path every sentence carries ("log at …", the row, the footer) is the one
+	// the person chose, spelled by [droppingsDir] as it always was. Printing
+	// the resolved spelling told a macOS person their log was under
+	// /private/var and a person on a linked home that it was somewhere they
+	// never typed. The sink and the discard keep the resolved one, because
+	// those are the calls that walk the folder.
+	logPath := filepath.Join(droppingsDir(place, workspace, droppingJobs), filepath.Base(spoolPath))
 	started := &job{
 		epoch:   epoch,
 		id:      id,
@@ -628,7 +637,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		logPath: logPath,
 		done:    make(chan struct{}),
 	}
-	started.sink = newJobSink(logFile, logPath)
+	started.sink = newJobSink(logFile, spoolPath)
 	// Closing asks for maintenance before the job publishes its final state.
 	// Claim and startup also sweep, while a log write never does.
 	started.sink.finishRetention = func() { r.askRetention(directory, started.sink) }
@@ -739,8 +748,10 @@ func (r *jobRegistry) join(started *job) error {
 	if r.closed || started.epoch != r.epoch {
 		r.mu.Unlock()
 		started.sink.close()
-		if started.logPath != "" {
-			_ = jobRetentionDiscard(started.logPath)
+		// The discard walks the folder, so it takes the resolved spool path
+		// the sink holds and not the person's spelling in logPath.
+		if started.sink.base != "" {
+			_ = jobRetentionDiscard(started.sink.base)
 		}
 		return errSessionClosed
 	}

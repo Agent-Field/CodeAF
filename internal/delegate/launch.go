@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -51,7 +52,22 @@ type Launch struct {
 	// Grace overrides DefaultGrace, for a test that must not wait fifteen
 	// seconds for a process that ignores SIGTERM.
 	Grace time.Duration
+	// Hold is the file the run's hold on its folder is taken on
+	// (session.ProgramFolder.Hold), which the program's process is handed as
+	// well ([HoldEnv]); nil hands it nothing.
+	Hold *os.File
 }
+
+// HoldEnv names, in a program's environment, the descriptor its host's hold on
+// the program's folder was handed to it on ([Launch.Hold]).
+//
+// THE HOLD OUTLIVES A HOST THAT DIES. The hold is a flock, and a flock belongs
+// to the open file, not to the process: shared with the program, it is let go
+// only when the program has gone too. A host killed outright once let the next
+// codeaf take its run's copy, commit what was in it and remove it, while the
+// program — still inside the grace it is given to stop ([watchHost]) — was
+// restoring its candidate and committing its last edits there.
+const HoldEnv = "CODEAF_PROGRAM_HOLD_FD"
 
 // Result is what one launch came to.
 type Result struct {
@@ -115,6 +131,10 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 		baseEnv = os.Environ()
 	}
 	cmd.Env = append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker)
+	if launch.Hold != nil && runtime.GOOS != "windows" {
+		cmd.ExtraFiles = []*os.File{launch.Hold}
+		cmd.Env = append(cmd.Env, HoldEnv+"=3")
+	}
 	cmd.Dir = launch.Dir
 	cmd.Stdin = nil
 	processgroup.Configure(cmd)

@@ -66,6 +66,9 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			PlainFolder:  spec.PlainFolder,
 			Branch:       spec.ProgramBranch,
 			IgnoredFile:  spec.ProgramIgnoredFile,
+			InputsFile:   spec.ProgramInputsFile,
+			BriefNote:    spec.ProgramBriefNote,
+			Hold:         spec.ProgramFolderHold,
 			Crew:         spec.Crew,
 			// AND ITS MONEY IS THE CONVERSATION'S, CALL BY CALL: every ledger row
 			// names the conversation and the task, and every call is folded

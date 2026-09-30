@@ -159,15 +159,18 @@ func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
 	r.lit("/connect")
 	r.keys("Enter")
 	connections := r.waitFor(20*time.Second,
-		say(t, "connectFilterHint"), say(t, "connectModelsGroup"), say(t, "taskDoneGlyph"))
+		say(t, "connectFilterHint"), say(t, "connectProvidersGroup"))
 	if strings.Contains(connections, say(t, "connectUnavailableWord")) {
 		t.Fatalf("the plain launch lost this machine's connections:\n%s", connections)
 	}
-	if !strings.Contains(connections, say(t, "taskDoneGlyph")+" ") {
-		t.Fatalf("the copied connection is not drawn as connected:\n%s", connections)
+	r.lit("stripe")
+	connected := r.waitFor(20*time.Second, say(t, "taskDoneGlyph")+" Stripe")
+	if strings.Contains(connected, say(t, "connectUnavailableWord")) {
+		t.Fatalf("the copied account is unavailable on the plain launch:\n%s", connected)
 	}
-	t.Logf("the local engine road opened this machine's connection panel:\n%s", connections)
+	t.Logf("the local engine road opened this machine's connection panel and found its copied account:\n%s", connected)
 
+	r.keys("Escape")
 	r.keys("Escape")
 	r.lit("/harness")
 	r.keys("Enter")
@@ -267,7 +270,7 @@ func testFreshInstallSetup(t *testing.T) {
 func testNestedGate(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "gatews", false)
-	seedDecidedFamily(t, home, ws)
+	seedDir := seedDecidedFamily(t, home, ws)
 	r := start(t, "afe2e_gate", home, ws, tuiWide, 40, "chat", "--one-model")
 
 	// WHICHEVER DOOR THE LAUNCH TOOK, and esc until it is actually gone. A state
@@ -276,26 +279,26 @@ func testNestedGate(t *testing.T) {
 	// root — and the setup is several steps, so one esc leaves the one under it.
 	statesPastTheDoor(t, r)
 
-	// ONE FRAME, BOTH HALVES. The roster's `?` and its words for a node waiting
+	// ONE FRAME, BOTH HALVES. The roster's `?` and the reason for a node waiting
 	// on a person, and the answers row on the card — all on screen at once, which
-	// is the whole of what "answerable" means here.
+	// is the whole of what "answerable" means here. The compact card no longer
+	// repeats the tier word beside the question.
 	screen := r.waitFor(20*time.Second,
 		say(t, "settleAskWord"), say(t, "settleAccept"), say(t, "settleTellIt"),
-		say(t, "taskLookWord"), say(t, "unverifiedGlyph"))
+		say(t, "unverifiedGlyph"))
 	t.Logf("a nested landing asking on every surface:\n%s", screen)
 	if !strings.Contains(screen, "Port the parser") {
 		t.Fatalf("the nested part is not named on the screen:\n%s", screen)
 	}
 
-	// AND A KEY ANSWERS IT. The letters work on the SELECTED card and only over an
-	// empty message box, exactly as `x` does — so the greeting is put away first
-	// ([statesAnswerKey] says why), ↑ walks to the card the landing just wrote,
-	// and `a` is the accept.
-	if !statesAnswerKey(t, r, "a", say(t, "settleTookLine")) {
-		t.Fatalf("three presses of `a` never left %q on the card:\n%s", say(t, "settleTookLine"), r.capture())
-	}
-	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
-	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
+	// The landing key accepts the nested task once. Finished cards now start
+	// folded, so the visible proof is the batch changing from one done and one
+	// your call to two done; the durable receipt names who spent the answer.
+	pressLandingKey(r, "a")
+	settled := r.waitFor(20*time.Second,
+		say(t, "taskDoneGlyph")+" 2"+say(t, "doneRollupWord"))
+	waitForLandingReceipt(t, seedDir, say(t, "settleTookLine"))
+	t.Logf("the nested accept made both tasks done and wrote its receipt:\n%s", settled)
 	r.quit()
 }
 
@@ -327,20 +330,44 @@ func testNestedGate(t *testing.T) {
 func testRefusedLanding(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "refusedgatews", false)
-	seedUndecidedRoot(t, home, ws)
+	seedDir := seedUndecidedRoot(t, home, ws)
 	r := start(t, "afe2e_refused_gate", home, ws, tuiWide, 40)
 
 	statesPastTheDoor(t, r)
 	r.waitFor(20*time.Second, say(t, "settleAskWord"), say(t, "settleNotRight"))
-	if !statesAnswerKey(t, r, "n", say(t, "settleNotRightLine")) {
-		t.Fatalf("three presses of `n` never left %q on the card:\n%s", say(t, "settleNotRightLine"), r.capture())
-	}
-	screen := r.waitFor(20*time.Second, say(t, "settleNotRightLine"), say(t, "taskIncompleteWord"))
+	pressLandingKey(r, "n")
+	screen := r.waitFor(20*time.Second, say(t, "taskIncompleteWord"))
+	waitForLandingReceipt(t, seedDir, say(t, "settleNotRightLine"))
 	t.Logf("a refused landing keeps its reason and says incomplete:\n%s", screen)
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
 		t.Errorf("the refused landing still says failed:\n%s", screen)
 	}
 	r.quit()
+}
+
+// pressLandingKey clears the first-run greeting before spending one answer.
+// Repeating an answer while its receipt is folded can start unrelated work.
+func pressLandingKey(r *rig, key string) {
+	r.lit(".")
+	r.keys("C-u")
+	time.Sleep(400 * time.Millisecond)
+	r.lit(key)
+}
+
+// waitForLandingReceipt reads the conversation's durable answer while the
+// completion card is folded. The receipt is written before the resumed model
+// finishes, so this does not depend on how long that model takes to reply.
+func waitForLandingReceipt(t *testing.T, seedDir, receipt string) {
+	t.Helper()
+	path := filepath.Join(seedDir, "transcript.jsonl")
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if raw, err := os.ReadFile(path); err == nil && strings.Contains(string(raw), receipt) {
+			return
+		}
+		time.Sleep(pollEvery)
+	}
+	t.Fatalf("the accepted landing wrote no %q receipt in %s", receipt, path)
 }
 
 // ── 1 ───────────────────────────────────────────────────────────────────────

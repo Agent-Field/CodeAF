@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1171,7 +1172,15 @@ type wireEndpoint struct {
 		Completion     string `json:"completion"`
 		InputCacheRead string `json:"input_cache_read"`
 	} `json:"pricing"`
-	SupportsToolChoice struct {
+	// SupportedParameters is the list the router filters on when a request
+	// says `require_parameters`, which every request from this program does —
+	// so it is the one answer to "will a request carrying tools reach this
+	// lane". SupportsToolChoice describes which tool_choice VALUES the lane
+	// takes, a different question: on 2026-09-28 deepseek-v3.2's sheet had
+	// GMICloud, AtlasCloud and Alibaba taking tools with no forced-function
+	// choice, and Mara offering the choice while taking no tools at all.
+	SupportedParameters []string `json:"supported_parameters"`
+	SupportsToolChoice  struct {
 		Function bool `json:"function"`
 	} `json:"supports_tool_choice"`
 	// Status is the router's own health word for the endpoint: zero is healthy,
@@ -1181,6 +1190,16 @@ type wireEndpoint struct {
 	SupportsImplicitCache bool            `json:"supports_implicit_caching"`
 	LatencyLast30m        wirePercentiles `json:"latency_last_30m"`
 	ThroughputLast30m     wirePercentiles `json:"throughput_last_30m"`
+}
+
+// takesTools reads a lane's tool support from the parameter list the router
+// itself filters on, and falls back to the tool_choice block only for a sheet
+// that publishes no list, which is what an older router or a stub sends.
+func (item wireEndpoint) takesTools() bool {
+	if item.SupportedParameters == nil {
+		return item.SupportsToolChoice.Function
+	}
+	return slices.Contains(item.SupportedParameters, "tools")
 }
 
 // decodeSheet reads the endpoints body one row at a time. The error it returns
@@ -1212,7 +1231,7 @@ func decodeSheet(model string, body io.Reader) ([]Row, map[ID]string, error) {
 		rows = append(rows, Row{
 			ID: id,
 			Facts: Facts{
-				Tools:      item.SupportsToolChoice.Function,
+				Tools:      item.takesTools(),
 				Quant:      strings.TrimSpace(item.Quantization),
 				MaxOut:     item.MaxCompletionTokens,
 				Context:    item.ContextLength,

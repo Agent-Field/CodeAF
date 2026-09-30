@@ -189,7 +189,38 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 // moment the field is being filled, in as few bytes as say it. The page stays
 // the rule's home: on the lean belt this schema is fetched on demand, and the
 // page is all that is read before the model decides to propose at all.
-const taskViaSchemaJSON = `"via":{"type":"string","description":"A program your instructions list, to do the whole task alone in ground (or this conversation's folder): set it for work one is for, and when the person names one"},`
+//
+// AND `thinking` RIDES WITH `via`, because it is only ever read for a program:
+// how hard the program's working model thinks, on codeaf's one ladder
+// (internal/effort). It is left out unless the work is plainly mechanical or
+// plainly hard, so the program's own default — which its manual page names —
+// is what an ordinary hand-off gets.
+var taskViaSchemaJSON = `"via":{"type":"string","description":"A program your instructions list, to do the whole task alone in ground (or this conversation's folder): set it for work one is for, and when the person names one"},` +
+	`"thinking":{"type":"string","enum":[` + programThinkingEnum() + `],"description":"With via: to move its thinking off its default"},`
+
+// parseProgramThinking reads a proposal's `thinking`: a rung of the ladder,
+// or nothing when it was left out. "auto" is not a choice to make there,
+// because leaving the field out already is; any other word is refused rather
+// than dropped.
+func parseProgramThinking(word string) (effort.Rung, string) {
+	if strings.TrimSpace(word) == "" {
+		return effort.None, ""
+	}
+	rung, ok := effort.Parse(word)
+	if !ok || rung == effort.None {
+		return effort.None, "Invalid arguments: thinking is one of " + strings.ReplaceAll(strings.ReplaceAll(programThinkingEnum(), `"`, ""), ",", ", ") + ", or left out"
+	}
+	return rung, ""
+}
+
+// programThinkingEnum is the rungs `thinking` takes, in the ladder's order.
+func programThinkingEnum() string {
+	words := make([]string, 0, len(effort.Rungs))
+	for _, rung := range effort.Rungs {
+		words = append(words, strconv.Quote(rung.String()))
+	}
+	return strings.Join(words, ",")
+}
 
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
@@ -238,7 +269,10 @@ type taskArguments struct {
 	Via       string   `json:"via"`
 	// Effort is the person's one-task word for how hard to try — best or
 	// cheap — which moves this task's crew and nothing after it (taskcrew.go).
-	Effort     string `json:"effort"`
+	Effort string `json:"effort"`
+	// Thinking is how hard a program's working model thinks, a rung of
+	// internal/effort; read only with Via ([programWish]).
+	Thinking   string `json:"thinking"`
 	MaxSteps   int    `json:"max_steps"`
 	NoProgress int    `json:"no_progress"`
 }
@@ -370,6 +404,10 @@ type taskSpec struct {
 	// or empty for the router's own knee (taskcrew.go). It is not `effort`
 	// below, which is how hard the model thinks, not which models the crew is.
 	crewEffort crewroute.Effort
+	// thinking is the rung the proposal asked a program's working model for
+	// (`thinking`), empty for its own default. It is read only for a hand-off
+	// to a program, and it is not `effort` below, which is a node's own.
+	thinking effort.Rung
 	// effort is the rung this node's workers ask the model for, empty when
 	// nobody has set one and the ladder's next rung down decides
 	// (internal/effort). It travels the same road `model` travels — set at
@@ -935,6 +973,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	var prior *programOutcome
 	if via != nil {
 		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
+		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
 	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
@@ -1106,6 +1145,11 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		}
 		spec.crewEffort = effort
 	}
+	thinking, problem := parseProgramThinking(parsed.Thinking)
+	if problem != "" {
+		return spec, problem
+	}
+	spec.thinking = thinking
 	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
 	// one is not: omitting the field means "use the default" and is the ordinary
 	// case, but a model that asked for -1 steps meant something it did not say,

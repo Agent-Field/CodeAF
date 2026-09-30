@@ -410,6 +410,14 @@ land, stops the answer and then quits. Nothing you typed is lost when it does: t
 and anything waiting for an answer are written to disk on the way out. See "Quitting
 codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
 
+## Reopen a conversation after stopping an answer — where did the answer I stopped go
+
+When you stop an answer with `esc` or `ctrl+c`, its unfinished words fold behind
+`▸ stopped by you`. Reopening the conversation keeps that chip. Press `ctrl+e`
+to open it and read the words that arrived before you stopped. They stay
+unfinished work, not a completed answer. After reopening, the chip may leave out
+how long the answer ran, because that time is not saved.
+
 ## Esc is not stopping it — how long does a stop take, why the turn is still finishing, how long stopping takes, and what happens if it will not stop or will not let go
 
 **I pressed escape and it is still running.** That is this section: escape is not being
@@ -1634,7 +1642,7 @@ Every column is two rungs — its own direction, then reversed — so `alt+s` wa
 `model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
 published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
 column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
-sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the tasks place gives:
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the sessions place gives:
 `s` is one of the commonest letters a filter starts with, and the list a person was
 narrowing would re-sort instead.
 
@@ -1753,10 +1761,10 @@ and `space` activates too — except while a search is on, when it goes into the
 a phrase like `shell command` can be written · `backspace`, `ctrl+u`, `ctrl+w` edit the
 search · anything else types into it.
 
-**Task page** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
+**Sessions place** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
 column, `ctrl+. earlier`): `esc` closes it (or clears the filter first, if one is being typed),
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
-over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
+over the `running` and `completed` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
 · **`1` and `2` answer the row under the cursor, but only while the pane beside the list is
 drawing those two answers for it** — a frame at least 110 columns wide, over a task of this
@@ -1766,8 +1774,8 @@ every section at once and is drawn on the **control row** at the top of the list
 `⌕ port`. `alt+s` sorts by the next column — age, name, state, files, cost — and
 `alt+shift+s` turns the column you are on round; a press on one of the two column labels at
 the right of that control row sorts by it. `→` opens the row's
-four actions: `x close` (then `x delete` after closing), `n new in project`,
-`o open folder`, and `p copy project`. A collapsed family opens before its actions.
+conversation actions: `x close` (then `x delete` after closing), `c copy name`,
+`n new in project`, and `o open folder`. A collapsed family opens before its actions.
 Delete asks `delete is permanent, are you sure?`; `y` confirms, `n` restores the actions.
 Enter reopens a closed row. To stop work without deleting its record, open its room
 and use its Stop action. The foot names the applicable actions over a task this
@@ -1787,7 +1795,7 @@ the pane there is nothing for a first click to show, so one click opens as it al
 click on one of the pane's own answers presses that answer and opens nothing. The wheel
 walks the cursor. The tasks pages describe what is on it.
 
-**Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
+**Inside an old task's card** (`enter` on a completed task's row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
 `space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
 message box** and closes the page. Its foot reads
@@ -2249,7 +2257,7 @@ tasks, on standing orders and on memory alike: a foot that offered `enter` or `t
 filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
-taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
+taken, and `ctrl+.` is the sessions place (`/history`) from a conversation — while a place is
 standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
 takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already clears messages waiting from the turn, and a third
@@ -2321,8 +2329,8 @@ the answers are on the `needs you` row itself.
 **`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
 opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — a question's own answer keys and words, `x close`, `n new in project`,
-`o open folder`, `p copy project`, `p pause it` or `r resume it` on a standing item. `esc` or
+and the box is asleep — a question's own answer keys and words, `x close`, `c copy name`, `n new in project`,
+`o open folder`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
 never leave home's field, and on a panel's fold line (`N more`) `enter`
 opens the panel and shows the rest; on `N fewer` it folds them again.
@@ -2557,10 +2565,12 @@ deliberately **not** taken here — it falls through to the message box's
 back-navigation.
 
 **Inside a program's room** — a task handed to senior-dev — `ctrl+y` turns the page
-between the actions it took and its raw calls to its model, `ctrl+o` folds its brief, and
-the box sends nothing. While it works the keys row under the box reads
+between the actions it took and its raw calls to its model, `ctrl+o` opens its whole brief
+as the page (scroll it like the page) and closes it again, and the box sends nothing.
+While it works the keys row under the box reads
 `/stop · x with empty input · esc main · ctrl+y calls`, ending `ctrl+y actions` while the
-calls are showing; once it has ended the row is the `ctrl+y` clause alone.
+calls are showing and `ctrl+o close brief` while the brief is; once it has ended the row
+is that last clause alone.
 
 **`up` and `down` in a room mean what they mean in the message box**, in the same order:
 inside a multi-line message they move the caret; on the first line — or over an empty box
@@ -2633,7 +2643,7 @@ A program's task page — senior-dev's — opens on the actions it took, each un
 of its process. **`ctrl+y` turns it to the raw calls** it made to its model: what it sent,
 what the model answered, which model it was, and the call in flight. `ctrl+y` again turns
 it back. It works in the program's room, whichever door opened it — its row, its card, or
-the tasks place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
+the sessions place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
 over the calls. Every page opens on the actions.
 
 It is a chord, so it never costs a character: the room's box keeps what you typed. It is

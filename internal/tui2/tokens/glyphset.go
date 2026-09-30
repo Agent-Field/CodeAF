@@ -135,6 +135,7 @@ const (
 	GShell
 	GSearch
 	GWrite
+	GCompacted
 	GActionRead
 	GActionCreate
 	GActionTest

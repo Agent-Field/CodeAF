@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
+	"github.com/Agent-Field/codeaf/internal/seniordev/netpolicy"
 	"github.com/Agent-Field/codeaf/internal/seniordev/project"
 	"github.com/Agent-Field/codeaf/internal/seniordev/tool"
 )
@@ -232,7 +233,7 @@ func (runner *pipeline) soloConverse(
 	defer cancel()
 	prompt, err := adaptSoloPrompt(
 		runner.recorder,
-		buildSoloPrompt(goal, runner.readPinnedCommand(), ".senior-dev/checklist.md"),
+		buildSoloPrompt(goal, runner.readPinnedCommand(), ".senior-dev/checklist.md", !netpolicy.Current().Restricted()),
 	)
 	if err != nil {
 		return err
@@ -700,7 +701,8 @@ func (runner *pipeline) soloRecordTree(treeSHA, message string) (string, error) 
 
 // soloFrozenRef makes the frozen candidate reachable from outside this process,
 // so a hard kill between submit and finalize still has something to restore.
-const soloFrozenRef = "refs/senior-dev/submitted"
+// It is per worktree for the reason [soloStartRef] is.
+const soloFrozenRef = "refs/worktree/senior-dev/submitted"
 
 // soloTreeChange describes the whole working tree against the run's base.
 type soloTreeChange struct {
