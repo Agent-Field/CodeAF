@@ -316,7 +316,12 @@ func TestJobRetentionSelectedFolderAlias(t *testing.T) {
 				t.Fatalf("user-selected folder alias cannot start a job: %v", err)
 			}
 			job.sink.close()
-			if err := jobRetentionSweep(filepath.Dir(job.logPath), defaultJobRetentionBudget()); err != nil {
+			// The person reads the folder they chose; only the walk below
+			// takes the resolved spool path the sink holds.
+			if want := filepath.Join(droppingsDir(place, alias, droppingJobs), "1.log"); job.logPath != want {
+				t.Fatalf("job log = %q, want the chosen spelling %q", job.logPath, want)
+			}
+			if err := jobRetentionSweep(filepath.Dir(job.sink.base), defaultJobRetentionBudget()); err != nil {
 				t.Fatal(err)
 			}
 			if withPlace {
