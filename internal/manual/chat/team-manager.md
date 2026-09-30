@@ -213,8 +213,21 @@ A deliberate message jump opens the activity and tool-call groups that contain t
 
 The row keeps its own team's message even with `All` chats shown, or when its manager also
 belongs to `All teams`. Showing another team on the rail does not change which message opens.
+A same-number `team_post` to `All teams` cannot replace the ordinary team's message.
 If the message has left that conversation's history, the chat opens at the bottom and the
 hint says `that message is older than this chat's history`.
+
+## Opening a message after renaming its team
+
+A Traffic handle still opens its recipient at the retained delivered card after the team is
+renamed. This includes a long message or new-member brief whose delivered words were clipped, and a team whose
+old name has since been given to another team. The name on an older delivered card records
+what the team was called when the message arrived.
+
+The jump needs a message it can identify in that conversation's loaded history. If the
+retained messages cannot distinguish it from another team's message, codeaf does not choose
+one. The chat opens at the bottom and the hint says
+`that message is older than this chat's history`.
 
 ## What members say without being asked
 
