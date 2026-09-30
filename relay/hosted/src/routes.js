@@ -45,6 +45,30 @@ function watching(c) {
 
 const octets = (bytes) => new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });
 
+// One Range header: bytes=a-b, with b optional. Anything else — no prefix, more than one range, an
+// end before the start — is a range nothing can serve, which the contract answers with 416.
+function parseRange(header) {
+  if (!header) return undefined;
+  const m = /^bytes=(\d+)-(\d*)$/.exec(header);
+  if (!m || (m[2] && Number(m[2]) < Number(m[1]))) throw new Wire('range_not_satisfiable', 416);
+  return { offset: Number(m[1]), ...(m[2] && { length: Number(m[2]) - Number(m[1]) + 1 }) };
+}
+
+// The handler of a frame get: the frame's immutable bytes as R2 holds them, streamed, never buffered
+// whole in the isolate, with a single Range answered 206 (contract 22.3). The content-length is the
+// bytes the answer serves, so the client can read the stream without waiting for its end.
+async function frameOf(c, [id]) {
+  if (!isRid(id)) throw new Wire('bad_rid', 400);
+  const range = parseRange(c.request.headers.get('range'));
+  const f = await c.tenant.getFrame(id, range);
+  const headers = {
+    'content-type': 'application/octet-stream',
+    'content-length': String(f.served),
+    ...(range && { 'content-range': `bytes ${range.offset}-${range.offset + f.served - 1}/${f.size}` }),
+  };
+  return new Response(f.body, { status: range ? 206 : 200, headers });
+}
+
 // Each entry: [method, path pattern, options, handler]. `frames` marks the one route whose body is
 // a put in flight, which Has must not overtake.
 const STORE = { over: 'bad_frame' };
@@ -61,6 +85,8 @@ const ROUTES = [
     return octets(await c.tenant.getObject(rid));
   }],
   ['POST', /^\/v1\/store\/objects$/, STORE, async (c) => octets(await c.tenant.getMany(asMany(c.body)))],
+  ['GET', /^\/v1\/store\/frames\/([^/]+)$/, STORE, frameOf],
+  ['POST', /^\/v1\/store\/locate$/, STORE, async (c) => json({ at: await c.tenant.locate(asRids(object(c.body))) })],
   ['POST', /^\/v1\/store\/has$/, STORE, async (c) => json({ have: await c.tenant.has(asRids(object(c.body))) })],
   ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json(c.tenant.stats.snapshot())],
   ['GET', /^\/v1\/dir\/list$/, DIR, (c) => withVersion(json(c.tenant.dir.list()), c.tenant.dir.version)],

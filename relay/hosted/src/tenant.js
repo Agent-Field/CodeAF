@@ -6,7 +6,7 @@ import { Meta } from './meta.js';
 import { Stats } from './stats.js';
 import { encode } from './frame.js';
 import { rotateBy, rotationView } from './rotation.js';
-import { R2Store, sealFrame } from './store.js';
+import { R2Store, Unsatisfiable, sealFrame } from './store.js';
 import { RuleError } from './rules.js';
 import { Wire } from './wire.js';
 
@@ -16,6 +16,10 @@ const HAS_WAIT_MS = 30_000;
 
 // The cell key id of the frame that answers a batch get: the answer belongs to no cell, so all zeros.
 const MANY_KEY_ID = '0'.repeat(32);
+
+// The bytes a frame answer serves: all of them, or the slice one Range header asks for, clamped to
+// what the frame holds (R2 clamps a range whose end runs past the frame).
+const servedOf = (range, size) => (range ? Math.min(range.length ?? Infinity, size - range.offset) : size);
 
 export class Tenant {
   constructor({ identity, sql, bucket, clock, policy, limits, flight, arm, watchers }) {
@@ -51,6 +55,32 @@ export class Tenant {
     if (!bytes) throw new Wire('not_found', 404);
     this.stats.add({ bytes_out: bytes.length });
     return bytes;
+  }
+
+  /**
+   * getFrame answers one frame's bytes by id, streaming: the body is R2's own stream, so a frame of
+   * up to 16 MiB is piped to the client and never held whole in the isolate's 128 MB. Counted as one
+   * get with the bytes actually served, a range included.
+   */
+  async getFrame(id, range) {
+    this.stats.add({ gets: 1 });
+    const f = await this.store.getFrame(id, range).catch((e) => {
+      if (e instanceof Unsatisfiable) throw new Wire('range_not_satisfiable', 416);
+      throw e;
+    });
+    if (!f) throw new Wire('not_found', 404);
+    const served = servedOf(range, f.size);
+    this.stats.add({ bytes_out: served });
+    return { body: f.body, size: f.size, served };
+  }
+
+  /**
+   * locate answers where held rids live, and does not wait for puts in flight: the publish ordering
+   * rule moves a head only after its objects are stored, so a take's locate never races a put that matters.
+   */
+  async locate(rids) {
+    this.stats.add({ has: 1 });
+    return this.store.locate(rids);
   }
 
   /** getMany answers a batch get: a frame holding a prefix of the objects asked for. */
