@@ -303,10 +303,11 @@ func (p *picker) cursorToFirst() {
 }
 
 // cursorToCurrent puts the cursor on the model in use, and is the law of the
-// DOORS THAT OPEN TO CONFIRM: a settings slot's picker and a task's model
-// word (settings.go, app.go's [app.openTaskPicker]) each open ON the row the
-// door already holds, because enter there — the key a person presses to
-// confirm — must not change what the row says. /model's own door opens on the
+// DOORS THAT OPEN TO CONFIRM and of the box emptied with ctrl+u: a settings
+// slot's picker, a task's model word (settings.go, app.go's
+// [app.openTaskPicker]) and home's draft each open ON the row the door
+// already holds, and /model's own box, emptied, returns there — because enter
+// on those moments must confirm, not change. /model's own door opens on the
 // list's first row instead ([picker.cursorToFirst]), where the highlight on
 // the screen is what makes the choice explicit.
 func (p *picker) cursorToCurrent() {
