@@ -166,7 +166,9 @@ A task handed to senior-dev wears its name as a badge wherever a task is named:
 - **The card you answer** asks `wants to start a [senior-dev] task: <title>`, and the
   card's top line wears the badge beside the task's name.
 - **The ending card** wears the badge after the title too, shortening to `[sd]`
-  when narrow and cutting the title before the badge.
+  when narrow and cutting the title before the badge. A batch of adjacent
+  endings keeps that badge on senior-dev's row when expanded; ordinary tasks
+  in the same batch wear none.
 - **The task's own page** wears it beside the title — a page onto another
   conversation's task too, with that task's own badge and never the one a task of the
   same number in this conversation wears.
@@ -280,6 +282,12 @@ cross). Open it by clicking it or pressing `ctrl+o` on the selected card to read
 `senior-dev's ending went to the chat` and senior-dev's own words. The chat's own
 reply is where you read what came of the work. The card stays outside `worked`;
 if the run ends during a chat reply, the card appears right after that reply ends.
+
+Two or more adjacent endings share one folded batch row. Expand that batch to
+see each task's title, with the badge on senior-dev's row. Opening senior-dev's
+card inside the batch still shows `senior-dev's ending went to the chat` and its
+raw ending. Closing and reopening the batch keeps that output; other cards'
+output stays folded until you open them.
 
 ## What ceiling does /senior-dev start with — typed start note, dollar and time limits
 
