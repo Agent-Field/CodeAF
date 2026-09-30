@@ -44,6 +44,10 @@ it, checks the device is not revoked, spends the caller's rate budget, and serve
   never counted again, from any address, so the cap cannot affect the current client. Admission
   happens before the identity's tables exist, so a refused identity stores nothing.
 
+Directory revocation is `POST /v1/dir/devices/{id}/revoke` (204; unknown id 404 `not_found`; the
+caller itself 400 `self_revoke`; twice is fine). A revoked device is `401 revoked` on both wires, and
+a device record cannot set or clear its own flag.
+
 The pairing mailbox (`src/pair/`) is unauthenticated because the joining device has no identity yet,
 so it cannot become free storage: every limit is by IP (`CF-Connecting-IP`), boxes live one TTL and
 are deleted by an alarm, and `PairGate` caps the live boxes. Its counters are stored, so waiting for
@@ -67,6 +71,11 @@ the running relay, from the repository root:
 ```sh
 go test -tags relayurl ./internal/relayconf/ -relay-url=http://127.0.0.1:8787
 ```
+
+`npm run dev` also trusts `X-Forwarded-For` and keeps pairing mailboxes 4 s, which the pairing suite
+needs (each case is a network of its own; `ExpiryDeletes` skips above a 5 s TTL). `RelayFull` is
+skipped unless a second relay capped at two mailboxes is given with `-relay-small-url`
+(`npx wrangler dev --port 8788 --var TRUST_PROXY:1 --var 'CAF_LIMITS:{"pairMaxBoxes":2,"newIdentitiesPerIpPerDay":1000000}'`).
 
 ## Tests
 
@@ -99,6 +108,7 @@ canonical names, so the stricter side is the safe one.
 | `MAILBOX` | Durable Object `Mailbox` | one pairing, one per nameplate |
 | `LEASE_POLICY` | var | `stage1` (frozen contract: 30 s lease) or `amended` (90 s, a publish renews; stage 1H decision 8.7) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
+| `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
 
 `wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
 SQLite-backed. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
@@ -121,9 +131,9 @@ a publish renews, `LeaseTTL` 90 s), then flip it to `amended` in the same change
 `directorytest`; the conformance suite still waits out the frozen 30 s. The deployment
 keeps no request log and enables no observability.
 
-To run the pairing conformance cases on staging, deploy with short limits so expiry and rate cases
-finish, as contract 18.10 asks:
-`CAF_LIMITS = '{"pairTtlMs":2000,"pairCreatePerHour":5}'`. Remove the variable for production.
+`staging.toml` already carries what the conformance suites need (a 4 s pairing TTL, `TRUST_PROXY`, a lifted
+per-IP identity cap); production sets none of them. The pairing wire words are those of
+`internal/pairbox` (`forbidden`, `gone`, `full`, `too big`, `slow down`).
 
 ## Limits (`src/limits.js`, one table)
 

@@ -46,6 +46,7 @@ const ROUTES = [
     c.tenant.dir.putDevice(id, object(c.body));
     return empty();
   }],
+  ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR, (c, [id]) => (c.tenant.dir.revoke(id, c.device), empty())],
   ['POST', /^\/v1\/dir\/vault$/, DIR, (c) => {
     const { old, new: next } = object(c.body);
     c.tenant.dir.setVault(old, next);

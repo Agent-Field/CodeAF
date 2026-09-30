@@ -76,13 +76,26 @@ test('release, archive, vault and devices are kept, and the listing shows them',
   assert.deepEqual(Object.keys(list.devices), ['dev_a']);
 });
 
-test('a device is revoked only when its own record says so', () => {
+test('only revoke stops a device: a record cannot set or clear the flag', () => {
   const { dir } = open();
-  assert.equal(dir.revoked('dev_a'), false);
-  dir.putDevice('dev_a', { V: 1, revoked: false });
-  assert.equal(dir.revoked('dev_a'), false);
-  dir.putDevice('dev_a', { V: 1, revoked: true });
-  assert.equal(dir.revoked('dev_a'), true);
+  dir.putDevice('dev_b', { V: 1, revoked: true });
+  assert.equal(dir.revoked('dev_b'), false, 'a record cannot stop itself');
+  dir.revoke('dev_b', 'dev_a');
+  assert.equal(dir.revoked('dev_b'), true);
+  dir.putDevice('dev_b', { V: 1, name: 'back', revoked: false });
+  assert.equal(dir.revoked('dev_b'), true, 'nor bring itself back');
+  assert.equal(dir.list().devices.dev_b.name, 'back', 'the rest of the record is still its own');
+});
+
+test('revoke refuses an unknown id and the caller itself, and is idempotent', () => {
+  const { dir } = open();
+  dir.putDevice('dev_a', { V: 1 });
+  dir.putDevice('dev_b', { V: 1 });
+  assert.equal(code(() => dir.revoke('dev_zzz', 'dev_a')), 'not_found');
+  assert.equal(code(() => dir.revoke('dev_a', 'dev_a')), 'self_revoke');
+  assert.equal(dir.revoked('dev_a'), false, 'a refused self-revoke stops nothing');
+  dir.revoke('dev_b', 'dev_a');
+  assert.equal(code(() => dir.revoke('dev_b', 'dev_a')), 'ok');
 });
 
 test('a cell that is not there is not_found for every verb that needs one', () => {

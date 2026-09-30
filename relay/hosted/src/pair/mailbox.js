@@ -5,9 +5,8 @@
 // alarm, so it cannot be used to keep anything.
 import { DurableObject } from 'cloudflare:workers';
 import { limitsOf } from '../limits.js';
-import { guarded, notFound, Wire } from '../wire.js';
-
-const forbidden = () => new Wire('forbidden', 403);
+import { guarded } from '../wire.js';
+import { forbidden, gone, sideFull } from './refusals.js';
 
 export class Mailbox extends DurableObject {
   #box = null; // { expires, keys: {a, b}, msgs: {a: [bytes], b: [bytes]} }, or null when there is none
@@ -36,7 +35,7 @@ export class Mailbox extends DurableObject {
       const box = this.#live();
       box.keys[side] ??= keyHash;
       if (box.keys[side] !== keyHash) throw forbidden();
-      if (box.msgs[side].length >= this.limits.pairMaxMsgsPerSide) throw new Wire('full', 409);
+      if (box.msgs[side].length >= this.limits.pairMaxMsgsPerSide) throw sideFull();
       const n = box.msgs[side].push(bytes) - 1;
       await this.ctx.storage.put('box', box);
       this.#wake();
@@ -70,7 +69,7 @@ export class Mailbox extends DurableObject {
   }
 
   #live() {
-    if (!this.#box || Date.now() >= this.#box.expires) throw notFound();
+    if (!this.#box || Date.now() >= this.#box.expires) throw gone();
     return this.#box;
   }
 

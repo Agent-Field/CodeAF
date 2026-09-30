@@ -6,7 +6,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Counters } from '../counters.js';
 import { limitsOf } from '../limits.js';
-import { guarded, rateLimited, Wire } from '../wire.js';
+import { guarded } from '../wire.js';
+import { relayFull, slowDown } from './refusals.js';
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
@@ -53,7 +54,7 @@ export class PairGate extends DurableObject {
       const now = Date.now();
       this.sql.exec('DELETE FROM polls WHERE expires <= ?', now);
       const { open } = this.sql.exec('SELECT COUNT(*) AS open FROM polls WHERE ip = ?', ip).one();
-      if (open >= this.limits.pairConcurrentPolls) throw rateLimited(1);
+      if (open >= this.limits.pairConcurrentPolls) throw slowDown(1);
       const token = crypto.randomUUID();
       this.sql.exec('INSERT INTO polls VALUES (?,?,?)', token, ip, now + POLL_LEASE_MS);
       return token;
@@ -72,14 +73,14 @@ export class PairGate extends DurableObject {
   // #hit counts one event for key in a fixed window and throws rate_limited past max.
   #hit(key, windowMs, max, now) {
     const { n, retryAfter } = this.counters.hit(key, windowMs, now);
-    if (n > max) throw rateLimited(retryAfter);
+    if (n > max) throw slowDown(retryAfter);
   }
 
   // #allocate reserves a free nameplate, or throws full when the relay holds all the mailboxes it will.
   #allocate(now) {
     this.sql.exec('DELETE FROM plates WHERE expires <= ?', now);
     const { live } = this.sql.exec('SELECT COUNT(*) AS live FROM plates').one();
-    if (live >= this.limits.pairMaxBoxes) throw new Wire('full', 503);
+    if (live >= this.limits.pairMaxBoxes) throw relayFull();
     for (;;) {
       const np = String(draw(digitsFor(live)));
       if (this.sql.exec('SELECT 1 FROM plates WHERE np = ?', np).toArray().length) continue;

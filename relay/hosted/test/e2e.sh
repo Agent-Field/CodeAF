@@ -22,9 +22,13 @@ start() { # port, extra wrangler args
 TIGHT='{"newIdentitiesPerIpPerDay":3,"requestsPerMinute":40,"requestsPerMinutePerDevice":25,"framesPerDay":6,"storeBytes":3000,"storeObjects":12,"concurrentPuts":1,"pairTtlMs":3000,"pairCreatePerHour":4,"pairWritePerMinute":10,"pairConcurrentPolls":2,"pairMaxBoxes":4}'
 # The default relay takes any number of new identities from one address, as the conformance suite
 # makes one per case; the tight one keeps the short limits, and the third is for the restart check.
-OPEN='{"newIdentitiesPerIpPerDay":1000000}'
-start 18791 --var "CAF_LIMITS:$OPEN"
+# The default relay is also the conformance target, which names its network in X-Forwarded-For (as
+# --trust-proxy allows) and needs a pairing TTL short enough to wait out; the small one is capped at
+# two mailboxes for RelayFull.
+OPEN='{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000}'
+start 18791 --var "CAF_LIMITS:$OPEN" --var TRUST_PROXY:1
 start 18792 --var "CAF_LIMITS:$TIGHT"
+start 18794 --var 'CAF_LIMITS:{"newIdentitiesPerIpPerDay":1000000,"pairMaxBoxes":2}' --var TRUST_PROXY:1
 
 for script in api race flight; do node "test/$script.e2e.mjs"; done
 node test/caps.e2e.mjs
@@ -39,5 +43,5 @@ kill "$last"; wait "$last" 2>/dev/null || true
 start 18793 --var "CAF_LIMITS:$PERSIST"
 node test/stats.e2e.mjs check "$work/state.json"
 if [ "${CONF:-}" = 1 ]; then
-  (cd ../.. && go test -count=1 -tags relayurl ./internal/relayconf/ -relay-url=http://127.0.0.1:18791)
+  (cd ../.. && go test -count=1 -tags relayurl ./internal/relayconf/ -relay-url=http://127.0.0.1:18791 -relay-small-url=http://127.0.0.1:18794)
 fi

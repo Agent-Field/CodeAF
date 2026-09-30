@@ -45,7 +45,7 @@ export class IdentityDO extends DurableObject {
     try {
       const body = await readBody(request, route.limit, route.over);
       const who = await checkRequest(caller, { method: request.method, uri: url.pathname + url.search }, body, Date.now());
-      await this.#admitted.get(ipOf(request));
+      await this.#admitted.get(ipOf(request, this.env));
       const tenant = this.#tenantOf(who.identity);
       this.#admit(tenant, who.device);
       return await route.handler({ tenant, device: who.device, body }, route.args);
