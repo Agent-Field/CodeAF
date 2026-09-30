@@ -137,5 +137,6 @@ func chatsMarks(one ChatsDevice) string {
 // who has just stopped a stolen computer is the one who most needs to know.
 func ChatsRevokedLine(name string) string {
 	return name + " has been stopped — it can no longer sync your chats through the relay. " +
-		"it cannot take back what that computer already holds: it has your chats and keys, so if it was stolen, treat your chats as exposed."
+		"it cannot take back what that computer already holds: it has your chats and keys, so if it was stolen, treat your chats as exposed. " +
+		"to lock it out for good, run `codeaf identity rotate`: it gives all your other computers a new identity."
 }

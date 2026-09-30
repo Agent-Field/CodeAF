@@ -219,7 +219,7 @@ You cannot stop the computer you are typing on. It says `that is this computer �
 
 So a computer that is lost or stolen must be treated as if your chats are exposed. Revoking it stops it from syncing. It does not make the chats on it unreadable to the person who has it.
 
-A new identity for all your computers, so that revoking takes effect for real, is planned and is not built in this stage.
+To make revoking take effect for real, give all your other computers a new identity: run `codeaf identity rotate` on a computer you keep. Read *Locking out a lost computer for good*.
 
 ## Without a relay — identity export and import
 
@@ -289,7 +289,7 @@ that relay is too old for pairing
 
 1. On a computer you still have, run `codeaf devices`.
 2. Run `codeaf devices revoke <name>` for the lost computer.
-3. Treat your chats as exposed. The lost computer holds your whole identity. Revoking cuts it off from the relay. It does not take anything back.
+3. Treat your chats as exposed: the lost computer holds your whole identity, and revoking takes nothing back. `codeaf identity rotate` shuts it for good.
 
 ## Which door do I use — pairing, --at or --host
 

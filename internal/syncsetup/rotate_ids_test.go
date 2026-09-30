@@ -2,13 +2,20 @@ package syncsetup
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/rotate"
 )
 
 // exportUnder seals everything a head reaches under one identity's keys into a
@@ -68,5 +75,48 @@ func TestKeepsSnapshotIDs(t *testing.T) {
 	ex, err := (&cellsync.Publisher{Engine: again, Store: blobstore.NewMemory()}).Upload(context.Background(), cellB, r.head())
 	if err != nil || ex.HeadRID != newRID {
 		t.Fatalf("machine B sealed the turn as %s (%v), machine A as %s", ex.HeadRID, err, newRID)
+	}
+}
+
+// A chat that keeps working after its identity was frozen for a rotation says,
+// once, that the chats are moving, and does not say it again on every flush.
+func TestRotatedShowsWaitOnce(t *testing.T) {
+	r := newDriveRig(t)
+	var notices noticeLog
+	c := r.startChat(&notices)
+	c.mustSay()
+	waitFor(t, "the first turn to be durable", func() bool { return r.directoryHead(r.cell.ID) == r.head() })
+
+	if err := (directory.Gate{Client: r.a.Dir}).Freeze(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		c.mustSay()
+		time.Sleep(150 * time.Millisecond)
+	}
+	waitFor(t, "the person to be told", func() bool { return notices.has(chatlist.Replaced) })
+	count := 0
+	for _, line := range notices.all() {
+		if line == chatlist.Replaced {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("the person was told %d times: %v", count, notices.all())
+	}
+}
+
+// While a rotation is unfinished the machine does not open the relay under the
+// identity that is about to change.
+func TestOpenRefusesWhileARotationIsPending(t *testing.T) {
+	r := newDriveRig(t)
+	if err := os.WriteFile(filepath.Join(r.homeA, rotate.File), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Open(r.homeA); !errors.Is(err, ErrRotating) {
+		t.Fatalf("Open = %v, want ErrRotating", err)
+	}
+	if _, ok, err := OpenForRotation(r.homeA); err != nil || !ok {
+		t.Fatalf("OpenForRotation = %v, %v", ok, err)
 	}
 }

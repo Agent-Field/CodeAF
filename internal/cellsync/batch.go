@@ -46,6 +46,7 @@ type Batcher struct {
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
 	skewShown bool
+	moveShown bool // the identity was replaced and the person was told
 
 	work wakeup // tells the flush loop a turn was noted, so a closed window can open at once
 	idle wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
@@ -478,24 +479,37 @@ func (b *Batcher) setFlag(flag *bool, v bool) {
 	*flag = v
 }
 
-// surface shows a person-facing refusal once and answers whether err was one.
-// Skew is not retried on the backoff: the next tick simply tries again.
+// surface shows a person-facing refusal once and answers whether err was one
+// that is not retried on the backoff. Skew is not: the next tick simply tries
+// again. A replaced identity is shown once and then backs off like any failure,
+// because trying every tick cannot change the answer.
 func (b *Batcher) surface(err error) bool {
-	if !errors.Is(err, wireauth.ErrSkew) {
-		return false
+	switch {
+	case errors.Is(err, wireauth.ErrSkew):
+		b.show(&b.skewShown, err)
+		return true
+	case errors.Is(err, wireauth.ErrRotated), errors.Is(err, wireauth.ErrGone):
+		b.show(&b.moveShown, err)
 	}
+	return false
+}
+
+// show tells the person about err the first time since the directory last answered.
+func (b *Batcher) show(shown *bool, err error) {
 	b.mu.Lock()
-	first := !b.skewShown
-	b.skewShown = true
+	first := !*shown
+	*shown = true
 	b.mu.Unlock()
 	if first && b.OnError != nil {
 		b.OnError(err)
 	}
-	return true
 }
 
-// recovered notes that the directory answered, so a later skew is news again.
-func (b *Batcher) recovered() { b.setFlag(&b.skewShown, false) }
+// recovered notes that the directory answered, so a later refusal is news again.
+func (b *Batcher) recovered() {
+	b.setFlag(&b.skewShown, false)
+	b.setFlag(&b.moveShown, false)
+}
 
 func (b *Batcher) emit(f Flush) {
 	if b.OnFlush != nil {

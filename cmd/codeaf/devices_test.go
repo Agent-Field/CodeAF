@@ -145,16 +145,13 @@ func TestDevicesRevokeText(t *testing.T) {
 	// stop says what that means for a stolen one.
 	says := map[string][]string{
 		usageForCommand("devices revoke"): {"cannot take back"},
-		said:                              {"cannot take back", "treat your chats as exposed"},
+		said:                              {"cannot take back", "treat your chats as exposed", "codeaf identity rotate"},
 	}
 	for text, wants := range says {
 		for _, want := range wants {
 			if !strings.Contains(text, want) {
 				t.Errorf("%q does not say %q", text, want)
 			}
-		}
-		if strings.Contains(text, "rotate") {
-			t.Errorf("%q promises a command this build does not have", text)
 		}
 	}
 }

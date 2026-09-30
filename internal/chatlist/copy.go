@@ -15,6 +15,7 @@ const (
 	SyncOff        = "sync is off: set CODEAF_SYNC_URL to your relay's address"
 	Unreachable    = "other machines unreachable"
 	ClockOff       = "this computer's clock is off by more than 5 minutes"
+	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	runningOn      = "running on %s"
 	deviceOff      = "%s off"
 	branchLine     = "%s from %s: merge / discard"
