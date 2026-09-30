@@ -15,6 +15,9 @@ import (
 // vault before a push or pull, and restored from it after a merge.
 type Carrier interface {
 	capture(v VaultFile) error
+	// captureEdits is capture that never records a removal, for the moment
+	// before a pull, when a gap here may only mean the state was never sent.
+	captureEdits(v VaultFile) error
 	restore(v VaultFile) error
 }
 
@@ -86,6 +89,10 @@ func (k Keyed) capture(v VaultFile) error {
 	}
 	return run.finish(run.captureAll())
 }
+
+// captureEdits is capture: a key is tombstoned only when the ledger says this
+// machine held it, so a key it was never given is already not a removal.
+func (k Keyed) captureEdits(v VaultFile) error { return k.capture(v) }
 
 func (k Keyed) restore(v VaultFile) error {
 	run, err := k.begin(v)

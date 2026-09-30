@@ -295,3 +295,39 @@ func TestACopyThatCannotBeCutStillGetsItsFiles(t *testing.T) {
 		t.Fatalf("the edit is not where the task worked: %q", got)
 	}
 }
+
+// A copy comes back with the permission bits it left with, whatever the folder
+// it travelled through and the umask of the machine that put it back: the
+// record holds them, so the copy compares equal to the first machine's.
+func TestCopyFilesComeBackAtTheirModes(t *testing.T) {
+	a := newMachine(t)
+	tree := a.task("modes")
+	for rel, mode := range map[string]os.FileMode{"note.txt": 0o664, "run.sh": 0o775, "private.txt": 0o600} {
+		write(t, filepath.Join(tree, rel), rel+"\n")
+		if err := os.Chmod(filepath.Join(tree, rel), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.seal()
+	b := newMachineNoRepo(t)
+	a.moveTo(b)
+	// The folder that travelled was rewritten on the way, as a machine with another umask does.
+	err := filepath.WalkDir(filepath.Join(carriedRoot(b.cell), "modes", filesDir), func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		return os.Chmod(path, 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restorer.Restore(b.cell, b.project); err != nil {
+		t.Fatal(err)
+	}
+	for rel, want := range map[string]os.FileMode{"note.txt": 0o664, "run.sh": 0o775, "private.txt": 0o600} {
+		info, err := os.Stat(filepath.Join(b.cell.Root, cell.TreesDir, "modes", rel))
+		if err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s came back as %v (%v), want %v", rel, info, err, want)
+		}
+	}
+}

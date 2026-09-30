@@ -11,8 +11,13 @@ import (
 // by the same road a task is given its copy: the ground ladder ([carveGround]).
 // It exists so that a carried copy is a fork where a started task would have got
 // a fork and a linked worktree where it would have got one, with no second place
-// that knows how a copy is made. The zero value is the one to use.
-type TaskCopyCutter struct{}
+// that knows how a copy is made.
+type TaskCopyCutter struct {
+	// Place is the conversation's folder. Naming it is what keeps the repository
+	// lock under the state root: a cutter without one takes the lock in the
+	// legacy layout, which is a .codeaf/ folder inside the person's project.
+	Place Place
+}
 
 // ladders is the ladder a copy is cut down, by whether it was a linked worktree.
 // A worktree's branch lives in the project's own repository, so a worktree must
@@ -24,12 +29,12 @@ var ladders = map[bool][]groundRung{true: {snapshotRung{}}, false: groundLadder}
 // The commit is handed to the ladder as the frozen world, which is what a rung
 // already opens a copy at instead of sealing the project as it stands now: what
 // the copy held is At, and the project's present files are not it.
-func (TaskCopyCutter) Cut(project, dest string, spec taskcopy.Spec) error {
+func (k TaskCopyCutter) Cut(project, dest string, spec taskcopy.Spec) error {
 	root, ok := repositoryRoot(project)
 	if !ok {
 		return fmt.Errorf("%s is not a repository to cut a task copy from", project)
 	}
-	order := worktreeOrder(Place{}, root, canonicalPath(dest), 0o700, spec.Branch, "restored task copy", spec.At)
+	order := worktreeOrder(k.Place, root, canonicalPath(dest), 0o700, spec.Branch, "restored task copy", spec.At)
 	_, err := carveGroundDown(context.Background(), ladders[spec.Linked], order)
 	return err
 }

@@ -159,6 +159,32 @@ func TestFileDeletedOnOneMachineIsDeletedOnTheOther(t *testing.T) {
 	wa.wantGone(t, ".env")
 }
 
+// A window that only started up has merged the vault already, so the slot is
+// in B's vault when the chat it did not have arrives with its list of withheld
+// paths and no files. The pull must bring the files, and B's next push must not
+// carry a removal of them back to A.
+func TestPullOfAChatWhoseSlotsWereMergedEarlierStillWritesTheFiles(t *testing.T) {
+	r := newRig(t)
+	a, b := r.machine(), r.machine()
+	wa := a.chatFolder(t)
+	wa.save(t, ".env", "A=1\n", 0o644, time.Now().Add(-time.Hour))
+	wa.save(t, "svc/api/.env", "B=2\n", 0o640, time.Now().Add(-time.Hour))
+	wa.save(t, "web/client/app/.env.local", "C=3\n", 0o600, time.Now().Add(-time.Hour))
+	must(t, a.Push(ctx))
+	must(t, b.Push(ctx)) // B's own window syncs at start: the slots are merged, no file is written
+
+	wb := b.chatFolder(t)
+	wb.withheld = append([]string(nil), wa.withheld...) // the taken chat's policy names them
+	must(t, b.Pull(ctx))
+	wb.want(t, ".env", "A=1\n", 0o644)
+	wb.want(t, "svc/api/.env", "B=2\n", 0o640)
+	wb.want(t, "web/client/app/.env.local", "C=3\n", 0o600)
+
+	must(t, b.Push(ctx))
+	must(t, a.Pull(ctx))
+	wa.want(t, ".env", "A=1\n", 0o644)
+}
+
 func TestTwoMachinesEditingDifferentFilesKeepBoth(t *testing.T) {
 	r := newRig(t)
 	a, b := r.machine(), r.machine()

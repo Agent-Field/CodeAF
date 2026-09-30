@@ -92,7 +92,7 @@ func carry(tree, dest string) error {
 	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest); err != nil {
 		return err
 	}
-	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree)})
+	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: modesOf(tree, present)})
 }
 
 // carryCommits keeps dest's bundle of the commits only this copy holds in step
@@ -175,6 +175,17 @@ func partition(tree string, paths []string) (present, deleted []string) {
 	return present, deleted
 }
 
+// modesOf is the permission bits of each of the named files of tree.
+func modesOf(tree string, rels []string) map[string]fs.FileMode {
+	modes := make(map[string]fs.FileMode, len(rels))
+	for _, rel := range rels {
+		if info, err := os.Lstat(filepath.Join(tree, rel)); err == nil {
+			modes[rel] = info.Mode().Perm()
+		}
+	}
+	return modes
+}
+
 // syncFiles makes dest hold exactly the named files of tree. A file whose size
 // and time already match is left alone, so a seal that changed nothing rewrites
 // nothing and the engine's own stat cache stays warm.
@@ -216,5 +227,5 @@ func copyIfChanged(from, to string) error {
 	if dst, err := os.Stat(to); err == nil && dst.Size() == src.Size() && dst.ModTime().Equal(src.ModTime()) {
 		return nil
 	}
-	return copyFile(from, to, src)
+	return copyFile(from, to, src, src.Mode().Perm())
 }

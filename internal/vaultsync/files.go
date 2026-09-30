@@ -35,6 +35,8 @@ type Files struct {
 
 func (f Files) capture(v VaultFile) error { return f.each(v, Carried.capture) }
 
+func (f Files) captureEdits(v VaultFile) error { return f.each(v, Carried.captureEdits) }
+
 func (f Files) restore(v VaultFile) error { return f.each(v, Carried.restore) }
 
 // each applies step to the slot of every path this machine or the vault knows.
