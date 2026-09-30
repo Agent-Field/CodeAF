@@ -37,6 +37,9 @@ func chatScheme(plate string) scheme {
 type Mailbox struct {
 	// Box is the mailbox service.
 	Box pairbox.Box
+	// URL is the address of the relay, which a pairing hands to the other device
+	// so it lands on the same one.
+	URL string
 	// Host is named in the sentence for a relay that does not answer.
 	Host string
 	// Shown is the address the other device is told to pass as --relay, and is

@@ -65,7 +65,7 @@ type Sync struct {
 // in that case. A relay with no identity here, or a URL that is not a web
 // address, is an error of one sentence.
 func Open(home string) (*Sync, bool, error) {
-	raw := env.Get(URLVar)
+	raw := RelayURL(home)
 	if raw == "" {
 		return nil, false, nil
 	}
