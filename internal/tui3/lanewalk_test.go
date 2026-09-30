@@ -58,6 +58,9 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 	a.profileDir = t.TempDir()
 	a.width, a.height = 130, 40
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
+	// this test walks into is the model in use's, further down walkCatalog.
+	pickerWalkTo(t, a, flash)
 	if strings.Contains(plain(frame(a)), "openrouter") {
 		t.Fatalf("the fold is open before anybody asked:\n%s", plain(frame(a)))
 	}
