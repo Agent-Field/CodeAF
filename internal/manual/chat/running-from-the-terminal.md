@@ -291,7 +291,7 @@ no file content it can read. Requests are signed by this machine's own device ke
 relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
 show your chats on the other machines once both machines share an identity and this setting.
 
-## When another machine continues your chat — the window that only shows it, and the turns kept as a branch
+## When another machine continues your chat — the window that only shows it, the turns kept as a branch, and "your computer's clock is off"
 
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
