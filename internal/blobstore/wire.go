@@ -26,6 +26,8 @@ var wireErrors = []struct {
 	{"unreachable", http.StatusServiceUnavailable, ErrUnreachable},
 	{"skew", http.StatusUnauthorized, wireauth.ErrSkew},
 	{"revoked", http.StatusUnauthorized, wireauth.ErrRevoked},
+	{"rotated", http.StatusGone, wireauth.ErrRotated},
+	{"gone", http.StatusGone, wireauth.ErrGone},
 	{"unauthorized", http.StatusUnauthorized, wireauth.ErrUnauthorized},
 }
 

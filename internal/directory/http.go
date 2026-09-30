@@ -79,6 +79,14 @@ func (h *HTTP) Archive(ctx context.Context, id string) error {
 	return h.do(ctx, http.MethodPost, cellPath(id, "archive"), nil, nil)
 }
 
+func (h *HTTP) Rotate(ctx context.Context, req RotationReq) (v RotationView, err error) {
+	return v, h.do(ctx, http.MethodPost, rotationPath, req, &v)
+}
+
+func (h *HTTP) Rotation(ctx context.Context) (v RotationView, err error) {
+	return v, h.do(ctx, http.MethodGet, rotationPath, nil, &v)
+}
+
 // do sends one signed request and decodes the answer into out (when non-nil).
 func (h *HTTP) do(ctx context.Context, method, path string, in, out any) error {
 	body, err := encode(in)
@@ -121,6 +129,9 @@ func refusal(resp *http.Response) error {
 		if err := errorOf(b.Err); err != nil {
 			return err
 		}
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrTooOld
 	}
 	return fmt.Errorf("directory: %s", resp.Status)
 }

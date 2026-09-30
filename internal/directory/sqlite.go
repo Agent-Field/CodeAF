@@ -35,6 +35,10 @@ type SQLite struct {
 	// ahead of the records and only behind them while a Revoke is in flight.
 	mu      sync.RWMutex
 	stopped map[string]bool
+	// rotation is the identity's Rotation as last committed, for the same
+	// reason: the blob wire asks it on every frame put.
+	rotation *Rotation
+	grace    GraceBounds
 }
 
 // OpenSQLite opens (creating when absent) the directory file at path. Write
@@ -46,7 +50,7 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &SQLite{db: db, clock: clock, stopped: map[string]bool{}}
+	s := &SQLite{db: db, clock: clock, stopped: map[string]bool{}, grace: DefaultGraceBounds}
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
@@ -63,8 +67,40 @@ func (s *SQLite) init() error {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO identity (id, rec) VALUES (1, ?)`, string(start)); err != nil {
 			return err
 		}
+		var rec IdentityRec
+		if err := get(tx, "identity", "1", &rec); err != nil {
+			return err
+		}
+		s.setRotation(rec.Rotation)
 		return s.loadStopped(tx)
 	})
+}
+
+// SetGraceBounds changes what a retire may ask for.
+func (s *SQLite) SetGraceBounds(b GraceBounds) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.grace = b
+}
+
+func (s *SQLite) bounds() GraceBounds {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.grace
+}
+
+// Rotated answers the identity's Rotation, nil while it is live. It never reads
+// the file, so a relay may ask it on every request.
+func (s *SQLite) Rotated() *Rotation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.rotation
+}
+
+func (s *SQLite) setRotation(r *Rotation) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rotation = r
 }
 
 // loadStopped fills the revoked set from the devices already on file.
@@ -125,6 +161,21 @@ func (c *sqliteClient) tx(ctx context.Context, fn func(*sql.Tx) error) error {
 	})
 }
 
+// txw is tx for a verb that changes a record: inside the same transaction it
+// refuses a replaced identity, so no verb can be the one that forgets to.
+func (c *sqliteClient) txw(ctx context.Context, fn func(*sql.Tx) error) error {
+	return c.tx(ctx, func(tx *sql.Tx) error {
+		var rec IdentityRec
+		if err := get(tx, "identity", "1", &rec); err != nil {
+			return err
+		}
+		if err := refusesWrites(rec); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
+
 // inTx runs fn in one write transaction and commits only if fn succeeds, so a
 // refused rule or a crash leaves the old records untouched.
 func (s *SQLite) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
@@ -164,7 +215,7 @@ func put(tx *sql.Tx, table, id string, v any) error {
 
 // change reads cell id, applies fn at the directory time and stores the result.
 func (c *sqliteClient) change(ctx context.Context, id string, fn func(Cell, int64) (Cell, error)) (v CellView, err error) {
-	err = c.tx(ctx, func(tx *sql.Tx) error {
+	err = c.txw(ctx, func(tx *sql.Tx) error {
 		var cell Cell
 		if err := get(tx, "cells", id, &cell); err != nil {
 			return err
@@ -215,14 +266,49 @@ func scanAll[T any](tx *sql.Tx, table string, out map[string]T) error {
 	return rows.Err()
 }
 
-func (c *sqliteClient) Cell(ctx context.Context, id string) (CellView, error) {
-	return c.change(ctx, id, func(cell Cell, _ int64) (Cell, error) { return cell, nil })
+func (c *sqliteClient) Cell(ctx context.Context, id string) (v CellView, err error) {
+	err = c.tx(ctx, func(tx *sql.Tx) error {
+		v.Now = c.s.now()
+		return get(tx, "cells", id, &v.Cell)
+	})
+	return v, err
+}
+
+func (c *sqliteClient) Rotate(ctx context.Context, req RotationReq) (v RotationView, err error) {
+	var rec IdentityRec
+	err = c.tx(ctx, func(tx *sql.Tx) error {
+		if err := get(tx, "identity", "1", &rec); err != nil {
+			return err
+		}
+		now := c.s.now()
+		if rec, err = RotateBy(rec, c.device, req, now, c.s.bounds()); err != nil {
+			return err
+		}
+		v = viewOf(rec, now, c.s.bounds())
+		return put(tx, "identity", "1", rec)
+	})
+	if err == nil {
+		c.s.setRotation(rec.Rotation)
+	}
+	return v, err
+}
+
+func (c *sqliteClient) Rotation(ctx context.Context) (v RotationView, err error) {
+	err = c.tx(ctx, func(tx *sql.Tx) error {
+		var rec IdentityRec
+		if err := get(tx, "identity", "1", &rec); err != nil {
+			return err
+		}
+		v = viewOf(rec, c.s.now(), c.s.bounds())
+		return nil
+	})
+	return v, err
 }
 
 // PutDevice keeps the stored Revoked flag whatever the record says, so the
 // only way to stop a device is Revoke and a device cannot clear its own stop.
 func (c *sqliteClient) PutDevice(ctx context.Context, id string, d Device) error {
-	return c.tx(ctx, func(tx *sql.Tx) error {
+	return c.txw(ctx, func(tx *sql.Tx) error {
 		var old Device
 		if err := get(tx, "devices", id, &old); err != nil && !errors.Is(err, ErrNotFound) {
 			return err
@@ -233,7 +319,7 @@ func (c *sqliteClient) PutDevice(ctx context.Context, id string, d Device) error
 }
 
 func (c *sqliteClient) Revoke(ctx context.Context, id string) error {
-	err := c.tx(ctx, func(tx *sql.Tx) error {
+	err := c.txw(ctx, func(tx *sql.Tx) error {
 		var d Device
 		if err := get(tx, "devices", id, &d); err != nil {
 			return err
@@ -251,7 +337,7 @@ func (c *sqliteClient) Revoke(ctx context.Context, id string) error {
 }
 
 func (c *sqliteClient) SetVault(ctx context.Context, old, next string) error {
-	return c.tx(ctx, func(tx *sql.Tx) error {
+	return c.txw(ctx, func(tx *sql.Tx) error {
 		var rec IdentityRec
 		if err := get(tx, "identity", "1", &rec); err != nil {
 			return err
@@ -265,7 +351,7 @@ func (c *sqliteClient) SetVault(ctx context.Context, old, next string) error {
 }
 
 func (c *sqliteClient) Create(ctx context.Context, id string, in CellInit) (v CellView, err error) {
-	err = c.tx(ctx, func(tx *sql.Tx) error {
+	err = c.txw(ctx, func(tx *sql.Tx) error {
 		var taken Cell
 		switch err := get(tx, "cells", id, &taken); {
 		case err == nil:

@@ -32,11 +32,16 @@ var ErrUnauthorized = errors.New("wireauth: unauthorized")
 // pairing, which makes a new device key, brings the machine back.
 var ErrRevoked = errors.New("wireauth: device revoked")
 
-// Narrow reduces any authentication failure to the three the wires name: skew
-// and revoked, which the person can act on, and the rest. Both wires call it,
+// ErrGone is a refusal because the identity was replaced and the relay has
+// deleted it. Nothing is left to retry against, so it is kept apart from every
+// other refusal: only pairing with the new identity brings a machine back.
+var ErrGone = errors.New("wireauth: this identity was replaced and deleted")
+
+// Narrow reduces any authentication failure to the four the wires name: skew,
+// revoked and gone, which the person can act on, and the rest. Both wires call it,
 // so they cannot disagree about what a refusal is.
 func Narrow(err error) error {
-	for _, named := range []error{ErrSkew, ErrRevoked} {
+	for _, named := range []error{ErrSkew, ErrRevoked, ErrGone} {
 		if errors.Is(err, named) {
 			return named
 		}
