@@ -56,6 +56,15 @@ func (m *metered) Get(ctx context.Context, rid string) ([]byte, error) {
 	return b, err
 }
 
+func (m *metered) GetMany(ctx context.Context, rids []string) ([]blobstore.Object, error) {
+	m.gets.Add(1)
+	got, err := m.Store.GetMany(ctx, rids)
+	for _, o := range got {
+		m.down.Add(int64(len(o.Bytes)))
+	}
+	return got, err
+}
+
 func (m *metered) Has(ctx context.Context, rids []string) ([]bool, error) {
 	m.has.Add(1)
 	return m.Store.Has(ctx, rids)

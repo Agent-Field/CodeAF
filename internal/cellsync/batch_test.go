@@ -151,7 +151,7 @@ func TestStoreDownDirectoryUp(t *testing.T) {
 	for i := 0; i < 5; i++ { // 50 s: longer than a lease
 		r.clock.Advance(directory.HeartbeatEvery)
 		b.beat(context.Background())
-		if _, err := r.dir.For(devB).Acquire(context.Background(), cellID); !errors.Is(err, directory.ErrLeaseHeld) {
+		if _, err := r.dir.For(devB).Acquire(context.Background(), cellID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 			t.Fatalf("beat %d: takeover = %v, the lease should be kept", i, err)
 		}
 	}
@@ -264,44 +264,55 @@ func TestCloseFlushesAndReleases(t *testing.T) {
 	if got.Head != h1 || got.Lease.Expires != 0 {
 		t.Fatalf("after close: %+v", got)
 	}
-	if _, err := r.dir.For(devB).Acquire(context.Background(), cellID); err != nil {
+	if _, err := r.dir.For(devB).Acquire(context.Background(), cellID, directory.AcquireOpts{}); err != nil {
 		t.Fatalf("a released lease is takeable at once: %v", err)
 	}
 }
 
-func TestBatcherRunFlushesAndBeatsOnSchedule(t *testing.T) {
+// second is the step tests advance the fake clock by, so a loop that wakes on
+// any whole second is seen waking on it.
+const second = time.Second
+
+// step advances the fake clock one second at a time for n seconds, calling
+// before with the second about to be reached, and lets both loops settle each time.
+func step(sl *fakeSleeper, n int, before func(sec int)) {
+	for sec := 1; sec <= n; sec++ {
+		before(sec)
+		sl.advance(second)
+		sl.settle(2)
+	}
+}
+
+// A chat that keeps publishing renews its lease with every publish, so it sends
+// the relay no heartbeat; once it goes quiet, one heartbeat goes out per tick.
+func TestOnlyAnIdleChatSendsHeartbeats(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
-	b.Interval = 7 * time.Second // apart from the 10 s heartbeat, so each wake is its own
+	b.Interval = 7 * time.Second // apart from the 30 s tick, so each wake is its own
 	sl := newFakeSleeper(r.clock)
 	b.Sleep = sl.Sleep
+	r.publishFirst(map[string]string{"a": "0"})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()
 	sl.settle(2)
 
-	h1 := r.seal(map[string]string{"a": "1"})
-	note(b, h1)
-	sl.settleOn(NudgeWindow) // the first note beat at once, before any lease exists to renew
-	sl.advance(NudgeWindow)
-	sl.settle(2)
-	sl.advance(6 * time.Second) // flush at 7 s
-	sl.settle(2)
-	if r.head(cellID).Head != h1 {
-		t.Fatal("no flush after one interval")
+	busy := func(sec int) {
+		if sec%7 == 6 { // a turn is sealed just before each flush wakes
+			note(b, r.seal(map[string]string{"a": fmt.Sprint(sec)}))
+		}
 	}
-	h2 := r.seal(map[string]string{"a": "2"})
-	note(b, h2)
-	sl.settleOn(NudgeWindow) // the noted turn beat at once, at 7 s, and did not wait for 10 s
-	if got := r.head(cellID); got.Lease.Pending != 1 || got.Head != h1 {
-		t.Fatalf("at 7 s: %+v", got)
+	step(sl, 60, busy)
+	if got := r.dirA.beats.Load(); got != 0 {
+		t.Fatalf("%d heartbeats in 60 s of publishing, want none", got)
 	}
-	sl.advance(NudgeWindow) // the window closes; the periodic wait starts again
-	sl.settle(2)
-	sl.advance(6 * time.Second) // flush at 14 s
-	sl.settle(2)
-	if r.head(cellID).Head != h2 {
-		t.Fatal("no second flush")
+	if lease := r.head(cellID).Lease; lease.Expires <= r.clock.Now().UnixMilli() {
+		t.Fatalf("a publishing chat lost its lease: %+v", lease)
+	}
+
+	step(sl, 30, func(int) {}) // quiet: the tick at 90 s finds no publish since the last one
+	if got := r.dirA.beats.Load(); got != 1 {
+		t.Fatalf("%d heartbeats after one quiet tick, want 1", got)
 	}
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
@@ -354,47 +365,13 @@ func TestSupersededWithNothingOrphanedNotifiesViewerOnce(t *testing.T) {
 	}
 }
 
-// A noted turn reaches the directory's pending count within the coalescing
-// window, without waiting for the 10 s heartbeat; a burst costs one beat.
-func TestNotedTurnBeatsPromptlyAndCoalesces(t *testing.T) {
-	r := newRig(t)
-	b := r.batcher()
-	b.Interval = time.Hour // keep the flush loop out of this test
-	sl := newFakeSleeper(r.clock)
-	b.Sleep = sl.Sleep
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- b.Run(ctx) }()
-	sl.settle(2)
-	r.publishFirst(map[string]string{"a": "0"})
-
-	note(b, r.seal(map[string]string{"a": "1"}))
-	sl.settleOn(NudgeWindow) // the heartbeat loop is in its coalescing window
-	if got := r.head(cellID).Lease.Pending; got != 1 {
-		t.Fatalf("pending %d right after Note, want 1", got)
-	}
-
-	note(b, r.seal(map[string]string{"a": "2"}), r.seal(map[string]string{"a": "3"}))
-	if got := r.head(cellID).Lease.Pending; got != 1 {
-		t.Fatalf("pending %d inside the window, want the burst held back", got)
-	}
-	sl.advance(NudgeWindow)
-	sl.settleOn(NudgeWindow) // the burst's one beat was sent, and a new window opened
-	if got := r.head(cellID).Lease.Pending; got != 3 {
-		t.Fatalf("pending %d after the window, want 3", got)
-	}
-	cancel()
-	<-done
-}
-
-// Sealing stays immediate and the takeover card stays truthful while uploads
-// wait for the window: the directory's pending count is current within the
-// nudge window, nothing goes up before the window ends, and Idle sends every
-// noted turn in one publish at once and brings the count back to zero.
+// Sealing stays immediate while uploads wait for the window: nothing goes up
+// before the window ends, and Idle sends every noted turn in one publish at
+// once and brings the count back to zero.
 func TestIdleUploadsAtOnceWhileBusyWaitsForTheWindow(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
-	b.Interval = 7 * time.Second // apart from the 10 s heartbeat, so each wake is its own
+	b.Interval = 7 * time.Second // apart from the 30 s tick, so each wake is its own
 	sl := newFakeSleeper(r.clock)
 	b.Sleep = sl.Sleep
 	first := r.publishFirst(map[string]string{"a": "0"})
@@ -406,13 +383,12 @@ func TestIdleUploadsAtOnceWhileBusyWaitsForTheWindow(t *testing.T) {
 
 	h1, h2 := r.seal(map[string]string{"a": "1"}), r.seal(map[string]string{"a": "2"})
 	note(b, h1)
-	sl.settleOn(NudgeWindow) // the first beat is out and its window is open
-	note(b, h2)              // noted inside the window, so it waits for the next beat
-	sl.advance(NudgeWindow)
-	sl.settleOn(NudgeWindow)
+	note(b, h2)
+	sl.advance(second)
+	sl.settle(2)
 	got := r.head(cellID)
-	if got.Head != first || got.Lease.Pending != 2 || r.puts() != puts {
-		t.Fatalf("busy, inside the window: head %s, pending %d, %d new puts; want the old head, 2 pending, none", got.Head, got.Lease.Pending, r.puts()-puts)
+	if got.Head != first || r.puts() != puts || b.Pending() != 2 {
+		t.Fatalf("busy, inside the window: head %s, %d new puts, %d pending; want the old head, none, 2 pending", got.Head, r.puts()-puts, b.Pending())
 	}
 
 	b.Idle()
@@ -482,12 +458,12 @@ func TestIdleDuringBackoffWaitsForTheBackoff(t *testing.T) {
 	for range 10000 { // give a wrongly woken flush loop every chance to run; there is no event to wait for
 		runtime.Gosched()
 	}
-	sl.advance(NudgeWindow)
-	sl.settleOn(2*b.Interval - NudgeWindow) // still the same backoff, not a new one begun by an idle retry
+	sl.advance(second)
+	sl.settleOn(2*b.Interval - second) // still the same backoff, not a new one begun by an idle retry
 	if attempts.Load() != 1 {
 		t.Fatalf("an idle during the backoff retried: %d attempts", attempts.Load())
 	}
-	sl.advance(2*b.Interval - NudgeWindow) // the backoff ends: one more attempt
+	sl.advance(2*b.Interval - second) // the backoff ends: one more attempt
 	sl.settleOn(4 * b.Interval)
 	if attempts.Load() != 2 {
 		t.Fatalf("%d upload attempts across the backoff, want 2", attempts.Load())

@@ -199,8 +199,8 @@ func (c *sqliteClient) Create(ctx context.Context, id string, in CellInit) (v Ce
 	return v, err
 }
 
-func (c *sqliteClient) Acquire(ctx context.Context, id string) (CellView, error) {
-	return c.change(ctx, id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now) })
+func (c *sqliteClient) Acquire(ctx context.Context, id string, o AcquireOpts) (CellView, error) {
+	return c.change(ctx, id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now, o.Force) })
 }
 
 func (c *sqliteClient) Heartbeat(ctx context.Context, id string, b Beat) (CellView, error) {

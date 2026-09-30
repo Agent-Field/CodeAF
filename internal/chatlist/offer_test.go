@@ -12,7 +12,7 @@ func TestOfferCopy(t *testing.T) {
 		want Offer
 	}{
 		{Row{Status: Off, Device: "studio"}, Offer{ContinueHere, "continue here"}},
-		{Row{Status: Running, Device: "studio"}, Offer{Watching, "running on studio"}},
+		{Row{Status: Running, Device: "studio"}, Offer{ContinueHere, "continue here"}},
 		{Row{Status: Branch, Device: "studio", OrphanTurns: 3}, Offer{Merge, "3 turns from studio: merge / discard"}},
 		{Row{Status: Idle}, Offer{Kind: Open}},
 		{Row{Status: Here}, Offer{Kind: Open}},
@@ -47,6 +47,15 @@ func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
 	r.Pending = 0
 	if got, want := TakeoverLine(r), "last durable turn 42s ago"; got != want {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// A chat that runs now says where before how fresh the copy is, because
+// continuing it here stops it there.
+func TestTakeoverLineNamesTheDeviceARunningChatIsOn(t *testing.T) {
+	r := Row{Status: Running, Device: "studio", DurableAgo: 12 * time.Second}
+	if got, want := TakeoverLine(r), "running on studio; last durable turn 12s ago"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 

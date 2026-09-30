@@ -138,7 +138,7 @@ func TestBranchWithoutMapStillCreates(t *testing.T) {
 	if got := r.head(id); got.OrphanTurns != 2 || got.ParentCell != cellID {
 		t.Fatalf("branch = %+v", got)
 	}
-	if _, err := r.dir.For(devB).Acquire(context.Background(), id); err != directory.ErrLeaseHeld {
+	if _, err := r.dir.For(devB).Acquire(context.Background(), id, directory.AcquireOpts{}); err != directory.ErrLeaseHeld {
 		t.Fatalf("the branch is held by A: %v", err)
 	}
 }

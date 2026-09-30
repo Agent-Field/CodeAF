@@ -37,6 +37,15 @@ func (c Counting) Get(ctx context.Context, rid string) ([]byte, error) {
 	return b, err
 }
 
+// GetMany counts one get however many objects answer it, and their bytes: the
+// relay counts one request and the same bytes, so the tallies agree.
+func (c Counting) GetMany(ctx context.Context, rids []string) ([]Object, error) {
+	c.C.Gets.Add(1)
+	got, err := c.Inner.GetMany(ctx, rids)
+	c.C.BytesDown.Add(sizeOf(got))
+	return got, err
+}
+
 // Has counts one request, however many rids it asks about.
 func (c Counting) Has(ctx context.Context, rids []string) ([]bool, error) {
 	c.C.Has.Add(1)

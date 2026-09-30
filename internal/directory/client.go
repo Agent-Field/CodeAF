@@ -16,12 +16,21 @@ type Client interface {
 	PutDevice(ctx context.Context, id string, d Device) error // upsert this device's record
 	SetVault(ctx context.Context, old, new string) error      // CAS identity.vault; ErrCAS
 
-	Create(ctx context.Context, id string, in CellInit) (CellView, error) // ErrExists
-	Acquire(ctx context.Context, id string) (CellView, error)             // ErrLeaseHeld
-	Heartbeat(ctx context.Context, id string, b Beat) (CellView, error)   // ErrFenceStale
-	Publish(ctx context.Context, id string, p Publish) (CellView, error)  // ErrFenceStale, ErrHeadMoved
-	Release(ctx context.Context, id string, fence uint64) error           // ErrFenceStale
-	Archive(ctx context.Context, id string) error                         // idempotent
+	Create(ctx context.Context, id string, in CellInit) (CellView, error)       // ErrExists
+	Acquire(ctx context.Context, id string, opts AcquireOpts) (CellView, error) // ErrLeaseHeld unless opts.Force
+	Heartbeat(ctx context.Context, id string, b Beat) (CellView, error)         // ErrFenceStale
+	Publish(ctx context.Context, id string, p Publish) (CellView, error)        // ErrFenceStale, ErrHeadMoved
+	Release(ctx context.Context, id string, fence uint64) error                 // ErrFenceStale
+	Archive(ctx context.Context, id string) error                               // idempotent
+}
+
+// AcquireOpts says how a device takes a lease. Its JSON is the acquire
+// request body, and an empty body means the zero value.
+type AcquireOpts struct {
+	// Force takes the lease from a live holder. It is for a person who chose to
+	// continue a chat where it runs now: waiting out the holder's lease would
+	// make them sit through the time a dead holder's row takes to go off.
+	Force bool `json:"force,omitempty"`
 }
 
 // Directory is one identity's shared directory; For gives each device its own
@@ -30,10 +39,13 @@ type Directory interface {
 	For(device string) Client
 }
 
-// The lease timings every device and the directory agree on.
+// The lease timings every device and the directory agree on. A publish renews
+// the lease and a heartbeat is sent only while nothing was published, so the
+// relay sees one request per HeartbeatEvery at most and the TTL still covers
+// two missed beats.
 const (
-	LeaseTTL       = 30 * time.Second
-	HeartbeatEvery = 10 * time.Second
+	LeaseTTL       = 90 * time.Second
+	HeartbeatEvery = 30 * time.Second
 )
 
 // The errors a Client returns. Callers compare with errors.Is.

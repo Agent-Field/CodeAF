@@ -71,6 +71,9 @@ type hasRequest struct {
 	Rids []string `json:"rids"`
 }
 
+// getManyRequest names the objects a GetMany asks for; the answer is a frame.
+type getManyRequest = hasRequest
+
 type hasAnswer struct {
 	Have []bool `json:"have"`
 }
@@ -78,6 +81,7 @@ type hasAnswer struct {
 const (
 	pathFrames  = "/v1/store/frames"
 	pathObjects = "/v1/store/objects/"
+	pathMany    = "/v1/store/objects"
 	pathHas     = "/v1/store/has"
 	pathStats   = "/v1/store/stats"
 
@@ -88,6 +92,10 @@ const (
 	// nowHeader carries the server's clock, in unix milliseconds, on every answer.
 	nowHeader = "Codeaf-Now"
 )
+
+// manyKeyID is the cell key id of the frame that answers a GetMany. A frame
+// needs one, and this answer belongs to no cell, so it is all zeros.
+const manyKeyID = "00000000000000000000000000000000"
 
 func mustJSON(v any) []byte {
 	b, err := json.Marshal(v)

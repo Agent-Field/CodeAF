@@ -113,9 +113,9 @@ func (c *memoryClient) Create(_ context.Context, id string, in CellInit) (v Cell
 	return v, err
 }
 
-func (c *memoryClient) Acquire(_ context.Context, id string) (v CellView, err error) {
+func (c *memoryClient) Acquire(_ context.Context, id string, o AcquireOpts) (v CellView, err error) {
 	c.m.locked(func() {
-		v, err = c.m.change(id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now) })
+		v, err = c.m.change(id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now, o.Force) })
 	})
 	return v, err
 }

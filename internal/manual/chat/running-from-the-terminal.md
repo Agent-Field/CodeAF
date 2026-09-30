@@ -290,7 +290,10 @@ show your chats on the other machines once both machines share an identity and t
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
 other machine can pick it up at once. If this machine sleeps or loses its connection, the hold runs
-out after about thirty seconds and another machine may take the chat over.
+out after about ninety seconds and the chat's row on your other machines then says `<device> off`.
+You do not have to wait for that: press enter on a chat that says `running on <device>` on another
+machine and continue it there, and it is taken at once (see "Continue a chat here that another
+machine left" in home).
 
 When another machine does, this window says `<device> continued this chat; this window now only shows it`,
 with the name of the machine that took over (or the first digits of its id when it has no name). From then on

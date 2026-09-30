@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -103,7 +104,7 @@ func (r *rig) publishFirst(files map[string]string) string {
 func (r *rig) takeOver() {
 	r.t.Helper()
 	r.clock.Advance(directory.LeaseTTL + time.Second)
-	if _, err := r.dir.For(devB).Acquire(context.Background(), cellID); err != nil {
+	if _, err := r.dir.For(devB).Acquire(context.Background(), cellID, directory.AcquireOpts{}); err != nil {
 		r.t.Fatalf("takeover: %v", err)
 	}
 }
@@ -165,8 +166,9 @@ func (s *flakyStore) PutFrame(ctx context.Context, frame []byte) (blobstore.Fram
 // faultDir is a directory client that can be told to fail its writes.
 type faultDir struct {
 	directory.Client
-	mu  sync.Mutex
-	err error
+	mu    sync.Mutex
+	err   error
+	beats atomic.Int32 // heartbeats attempted, for tests that count relay requests
 }
 
 func (d *faultDir) set(err error) {
@@ -196,6 +198,7 @@ func (d *faultDir) Publish(ctx context.Context, id string, p directory.Publish) 
 }
 
 func (d *faultDir) Heartbeat(ctx context.Context, id string, b directory.Beat) (directory.CellView, error) {
+	d.beats.Add(1)
 	if err := d.fault(); err != nil {
 		return directory.CellView{}, err
 	}

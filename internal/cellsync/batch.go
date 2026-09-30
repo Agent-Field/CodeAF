@@ -17,9 +17,6 @@ const (
 	DefaultInterval = 5 * time.Second
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
-	// NudgeWindow is the least time between two heartbeats that a noted turn
-	// asked for, so a burst of seals costs one request and not one each.
-	NudgeWindow = time.Second
 )
 
 // Publishing wraps the Stage 0 store: seal exactly as before, then note the
@@ -30,7 +27,8 @@ type Publishing struct {
 }
 
 // Batcher publishes the newest sealed turn on an interval and keeps the lease
-// alive, each on its own loop so a slow upload cannot starve a heartbeat.
+// alive while nothing is being published, each on its own loop so a slow upload
+// cannot starve a heartbeat.
 type Batcher struct {
 	Publisher    *Publisher
 	Brancher     Brancher
@@ -43,13 +41,13 @@ type Batcher struct {
 	// Sleep waits d or until ctx ends; tests inject a fake. Default is real time.
 	Sleep func(ctx context.Context, d time.Duration) error
 
-	mu        sync.Mutex // guards Driving, noted, stale and skewShown; never held over the network
+	mu        sync.Mutex // guards Driving, noted, stale, published and skewShown; never held over the network
 	noted     []string   // heads of sealed turns not yet durable, oldest first
 	stale     bool       // the lease was lost and the orphans are not branched yet
+	published bool       // a publish renewed the lease since the last heartbeat tick
 	skewShown bool
 
-	nudge wakeup // asks the heartbeat loop for a prompt beat: a turn was noted
-	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
+	idle wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
@@ -84,17 +82,15 @@ func (p *Publishing) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnI
 	return s, err
 }
 
-// Note records a sealed turn and asks the heartbeat loop for a prompt beat, so
-// the directory's pending count is current within about a second and not a
-// whole heartbeat late. It only takes a lock and never waits, so it is safe on
-// the seal path.
+// Note records a sealed turn. It only takes a lock and never waits, so it is
+// safe on the seal path. It sends nothing: the turn goes up with the next
+// publish, which is also what tells the directory it is no longer pending.
 func (b *Batcher) Note(t cellstore.Turn) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if n := len(b.noted); n == 0 || b.noted[n-1] != t.ID {
 		b.noted = append(b.noted, t.ID)
 	}
-	b.mu.Unlock()
-	b.nudge.fire()
 }
 
 // Idle says the agent has stopped and is waiting for the person, so the turns
@@ -167,8 +163,7 @@ func (b *Batcher) flushes(ctx context.Context) {
 // sends what Idle wanted sent.
 func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
 	if !b.failing {
-		_, err := b.nap(ctx, d, &b.idle)
-		return err
+		return b.nap(ctx, d, &b.idle)
 	}
 	err := b.sleeper()(ctx, d)
 	select {
@@ -178,46 +173,47 @@ func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
 	return err
 }
 
-// beats renews the lease every HeartbeatEvery, and at once when a turn is
-// noted. After such a prompt beat it waits out the NudgeWindow, so turns noted
-// meanwhile share the next single beat.
+// beats renews the lease once every HeartbeatEvery in which nothing was
+// published. A publish is proof of life and renews the lease itself, so a busy
+// chat costs the relay no heartbeat at all, and an idle one costs one per tick.
 func (b *Batcher) beats(ctx context.Context) {
-	b.beat(ctx)
-	for {
-		nudged, err := b.nap(ctx, directory.HeartbeatEvery, &b.nudge)
-		if err != nil {
-			return
-		}
-		b.beat(ctx)
-		if nudged && b.sleeper()(ctx, NudgeWindow) != nil {
-			return
+	for b.sleeper()(ctx, directory.HeartbeatEvery) == nil {
+		if !b.takePublished() {
+			b.beat(ctx)
 		}
 	}
 }
 
-// nap waits d, or until w is fired, and says which ended it. The sleep is the
-// injected one, so a fake clock governs it.
-func (b *Batcher) nap(ctx context.Context, d time.Duration, w *wakeup) (bool, error) {
+// takePublished says whether a publish renewed the lease since the last call,
+// and forgets it. A publish just after one tick is skipped at the next tick and
+// covered by the tick after, at most two ticks, which the TTL allows.
+func (b *Batcher) takePublished() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	was := b.published
+	b.published = false
+	return was
+}
+
+// nap waits d, or until w is fired. The sleep is the injected one, so a fake
+// clock governs it. It answers only ctx's own error: being woken is not one.
+func (b *Batcher) nap(ctx context.Context, d time.Duration, w *wakeup) error {
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	over := make(chan struct{})
-	woke := make(chan bool, 1)
+	woke := make(chan struct{})
 	go func() {
+		defer close(woke)
 		select {
 		case <-w.ch():
 			cancel()
-			woke <- true
 		case <-over:
-			woke <- false
 		}
 	}()
 	_ = b.sleeper()(sctx, d)
 	close(over)
-	nudged := <-woke
-	if ctx.Err() != nil {
-		return nudged, ctx.Err()
-	}
-	return nudged, nil
+	<-woke
+	return ctx.Err()
 }
 
 func (b *Batcher) sleeper() func(context.Context, time.Duration) error {
@@ -312,6 +308,7 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 		return err
 	}
 	b.adopt(d)
+	b.setFlag(&b.published, true)
 	b.recovered()
 	turns := b.durable(head)
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})

@@ -142,7 +142,7 @@ func TestTwoDevicesRaceAfterLeaseExpiry(t *testing.T) {
 		go func() { defer wg.Done(); pubErr = r.pub.Publish(context.Background(), r.drv, h2, r.info()) }()
 		go func() {
 			defer wg.Done()
-			_, takeErr = r.dir.For(devB).Acquire(context.Background(), cellID)
+			_, takeErr = r.dir.For(devB).Acquire(context.Background(), cellID, directory.AcquireOpts{})
 		}()
 		wg.Wait()
 

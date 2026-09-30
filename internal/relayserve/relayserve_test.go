@@ -130,11 +130,11 @@ func TestRelayServesDirAndStore(t *testing.T) {
 	if _, err := r.dir(a).Create(bg, cell, directory.CellInit{Head: head1, Class: "chat"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.dir(b).Acquire(bg, cell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("B took a live lease: %v", err)
 	}
 	r.expire()
-	v, err := r.dir(b).Acquire(bg, cell)
+	v, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{})
 	if err != nil || v.Cell.Lease.Fence != 2 || v.Cell.Lease.Device != b.dev.ID() {
 		t.Fatalf("B acquire after expiry: %v %+v", err, v)
 	}
@@ -175,11 +175,11 @@ func TestRelayRestartKeepsLease(t *testing.T) {
 	}
 
 	r.restart()
-	if _, err := r.dir(b).Acquire(bg, cell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("live lease lost across restart: %v", err)
 	}
 	r.expire()
-	if v, err := r.dir(b).Acquire(bg, cell); err != nil || v.Cell.Lease.Fence != 2 {
+	if v, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); err != nil || v.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence after restart: %v %+v", err, v)
 	}
 

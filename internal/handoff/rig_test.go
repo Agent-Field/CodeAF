@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -138,7 +139,7 @@ func (d *device) work(files map[string]string) string {
 	if err != nil {
 		d.w.t.Fatal(err)
 	}
-	got, err := d.dir.Client.Acquire(ctx, chatID)
+	got, err := d.dir.Client.Acquire(ctx, chatID, directory.AcquireOpts{})
 	if err != nil {
 		d.w.t.Fatalf("%s acquire: %v", d.name, err)
 	}
@@ -231,9 +232,9 @@ func (d *tracedDir) Cell(ctx context.Context, id string) (directory.CellView, er
 	return d.Client.Cell(ctx, id)
 }
 
-func (d *tracedDir) Acquire(ctx context.Context, id string) (directory.CellView, error) {
+func (d *tracedDir) Acquire(ctx context.Context, id string, o directory.AcquireOpts) (directory.CellView, error) {
 	d.trace.add("acquire")
-	return d.Client.Acquire(ctx, id)
+	return d.Client.Acquire(ctx, id, o)
 }
 
 // tracedStore can lose an object or go away.
@@ -255,6 +256,24 @@ func (s *tracedStore) Get(ctx context.Context, rid string) ([]byte, error) {
 		return nil, blobstore.ErrNotFound
 	}
 	return s.Store.Get(ctx, rid)
+}
+
+// GetMany is Get's failures over a batch: the store being down fails it, and a
+// hidden object ends the answer where it stands, as an absent one does.
+func (s *tracedStore) GetMany(ctx context.Context, rids []string) ([]blobstore.Object, error) {
+	if s.down != nil {
+		return nil, s.down
+	}
+	if s.hide && len(rids) > 0 {
+		s.hide, s.Missing = false, rids[0]
+	}
+	if i := slices.Index(rids, s.Missing); s.Missing != "" && i >= 0 {
+		rids = rids[:i]
+		if i == 0 {
+			return nil, blobstore.ErrNotFound
+		}
+	}
+	return s.Store.GetMany(ctx, rids)
 }
 
 // tracedFetch notes each fetch and lets a test move the world after one.
