@@ -125,6 +125,11 @@ python3 "$RIG_DIR/grade/judge.py" review --task "$TASK_DIR" --grade-dir "$OUT/lo
 NEEDS_ADAPT=$(python3 - "$OUT/logs/grade/phaseA.json" "$TASK_DIR/rubric.toml" <<'PY'
 import json, sys, tomllib
 pa = json.load(open(sys.argv[1]))
+# A patch that did not apply is a legitimate 0: the tests never ran, so there
+# is nothing for the judge to adapt. Adapting here would spend a judge call on
+# a run the grader already answered.
+if not pa.get("apply_ok", True):
+    print("0"); raise SystemExit
 for e in pa["criteria"].values():
     if e.get("note", "").startswith("test overlay conflict"):
         print("1"); break
