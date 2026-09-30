@@ -40,11 +40,9 @@ func groundsAreDrawn(a *app) bool { return a.pal.profile != tokens.NoColor }
 func TestTheCurrentModelKeepsBoldAccentButNoGround(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: "openai/gpt-4.1-mini"}, pickerCatalog)
 	typeLine(t, a, "/model")
-	// The cursor opens on the model in use, the list's LAST model row (the
-	// door past it is a row too); walk it UP, so the marked row is at rest and
-	// the cursor is on a row of its own.
-	drive(t, a, key("up"))
-
+	// The cursor opens on the list's first row ([picker.cursorToFirst]), and
+	// the marked row — the model in use — sits further down with no cursor on
+	// it: the two facts on the frame are apart from the first keystroke.
 	marked := modelMenuRow(t, a, "openai/gpt-4.1-mini")
 	// BOLD BLUE, RETAINED AND NOW EXPLICIT: the label keeps the accent and the
 	// weight it read at under the band.
@@ -58,15 +56,27 @@ func TestTheCurrentModelKeepsBoldAccentButNoGround(t *testing.T) {
 		t.Fatalf("the current model's row wears a ground:\n%q", marked)
 	}
 
-	// THE CURSOR'S ROW IS THE HIGHLIGHTED ONE, and the cursor is on the row
-	// ↑ moved to: its ground is what says so.
-	cursor := modelMenuRow(t, a, "moonshotai/kimi-k3")
-	if groundsAreDrawn(a) && !strings.Contains(cursor, "\x1b[48;") {
-		t.Fatalf("the cursor's row lost its ground:\n%q", cursor)
+	// AND THE CURSOR'S HIGHLIGHT IS ON THE SCREEN WHERE IT OPENED: on the
+	// list's first row, and on no other.
+	if a.pick.cursor != 0 {
+		t.Fatalf("the menu opened with the cursor on row %d, want the first", a.pick.cursor)
+	}
+	var grounded []string
+	for _, line := range modelMenuLines(a) {
+		if strings.Contains(line, "\x1b[48;") {
+			grounded = append(grounded, line)
+		}
+	}
+	if groundsAreDrawn(a) {
+		if len(grounded) != 1 || !strings.Contains(grounded[0], "anthropic/claude-gpt-echo") {
+			t.Fatalf("the opening frame carries the cursor's ground on %d rows, want the first row alone:\n%s",
+				len(grounded), plain(strings.Join(modelMenuLines(a), "\n")))
+		}
 	}
 
 	// AND THE CURSOR ON THE MARKED ROW STILL LIFTS IT — the mark must not have
-	// made the row unhighlightable, only unhighlighted on its own.
+	// made the row unhighlightable, only unhighlighted on its own. One down
+	// from the first row reaches the model in use.
 	drive(t, a, key("down"))
 	both := modelMenuRow(t, a, "openai/gpt-4.1-mini")
 	if groundsAreDrawn(a) && !strings.Contains(both, "\x1b[48;") {
