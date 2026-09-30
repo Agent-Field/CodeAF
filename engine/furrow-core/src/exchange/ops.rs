@@ -59,18 +59,23 @@ pub fn import(
     head: &str,
     ledger: &str,
     inbox: &Path,
+    primed: bool,
 ) -> anyhow::Result<Value> {
     let sealer = CellSealer::new(keys);
     let store = open_store(data_dir)?;
     let ledger = Ledger::named(data_dir, ledger)?;
-    let imported = Import {
+    let import = Import {
         store: &store,
         sealer: &sealer,
         head: parse_id(head)?,
         inbox,
         ledger: &ledger,
+    };
+    if primed {
+        let taken = import.run_primed()?;
+        return Ok(json!({"imported": taken.imported, "extras_deleted": taken.extras_deleted}));
     }
-    .run()?;
+    let imported = import.run()?;
     Ok(json!({"imported": imported}))
 }
 
