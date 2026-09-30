@@ -99,9 +99,11 @@ func (s Syncer) put(ctx context.Context, rid string, obj []byte) error {
 }
 
 // Pull fetches the vault the directory names, checks it hashes to that name and
-// merges it. Nothing reaches the local vault before the check passes.
+// merges it. Nothing reaches the local vault before the check passes. What this
+// machine edited is kept first, but a file it does not have is not a removal:
+// only Capture and Push let a removal travel.
 func (s Syncer) Pull(ctx context.Context) error {
-	if err := s.Capture(); err != nil {
+	if err := s.each(Carrier.captureEdits); err != nil {
 		return err
 	}
 	_, err := s.pull(ctx)
@@ -144,10 +146,14 @@ func ridOf(obj []byte) string {
 }
 
 // Capture stores every changed carried medium in the vault without any network,
-// so a caller that fingerprints the vault sees the change.
-func (s Syncer) Capture() error {
+// so a caller that fingerprints the vault sees the change. A medium that holds
+// nothing is a removal, and travels as one.
+func (s Syncer) Capture() error { return s.each(Carrier.capture) }
+
+// each applies step to every carried medium.
+func (s Syncer) each(step func(Carrier, VaultFile) error) error {
 	for _, c := range s.Carry {
-		if err := c.capture(s.Vault); err != nil {
+		if err := step(c, s.Vault); err != nil {
 			return err
 		}
 	}
@@ -155,11 +161,4 @@ func (s Syncer) Capture() error {
 }
 
 // restoreCarried writes what a merge brought in back to each medium.
-func (s Syncer) restoreCarried() error {
-	for _, c := range s.Carry {
-		if err := c.restore(s.Vault); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+func (s Syncer) restoreCarried() error { return s.each(Carrier.restore) }

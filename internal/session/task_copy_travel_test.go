@@ -35,9 +35,10 @@ var copyRoads = []struct {
 // takenTask is what a task left on machine A and what machine B holds after the
 // chat took over there.
 type takenTask struct {
-	a       taskTree
-	bDir    string
-	headOnA string
+	a        taskTree
+	bDir     string
+	bProject string
+	headOnA  string
 }
 
 // takeATask starts a task on a project holding uncommitted work, has the task
@@ -74,11 +75,11 @@ func takeATask(t *testing.T) takenTask {
 	projectB, placeB := t.TempDir(), Place{Dir: t.TempDir()}
 	copyFolder(t, repo, projectB)
 	copyFolder(t, filepath.Join(placeA.Dir, cell.StateDir), filepath.Join(placeB.Dir, cell.StateDir))
-	restored, err := taskcopy.Carry{Cutter: TaskCopyCutter{}}.Restore(cell.Cell{ID: "c", Root: placeB.Dir}, projectB)
+	restored, err := taskcopy.Carry{Cutter: TaskCopyCutter{Place: placeB}}.Restore(cell.Cell{ID: "c", Root: placeB.Dir}, projectB)
 	if err != nil || len(restored) != 1 {
 		t.Fatalf("restore = %v, %v; want the one copy back", restored, err)
 	}
-	return takenTask{a: tree, bDir: filepath.Join(placeB.Trees(), "1"), headOnA: headOnA}
+	return takenTask{a: tree, bDir: filepath.Join(placeB.Trees(), "1"), bProject: projectB, headOnA: headOnA}
 }
 
 // copyFolder is a folder arriving on another machine, hidden files included.
@@ -111,6 +112,20 @@ func TestATaskCopyMadeByTheRealRoadArrivesWithItsEdits(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(taken.bDir, "invented.txt")); err == nil {
 				t.Error("the file the task deleted is back on B")
+			}
+		})
+	}
+}
+
+// Putting a copy back must leave nothing of ours in the person's folder: the
+// repository lock it takes lives under the state root.
+func TestPuttingATaskCopyBackLeavesNothingInTheProject(t *testing.T) {
+	for _, road := range copyRoads {
+		t.Run(road.name, func(t *testing.T) {
+			road.prep(t)
+			taken := takeATask(t)
+			if _, err := os.Stat(filepath.Join(taken.bProject, ".codeaf")); err == nil {
+				t.Error("restoring the copy made a .codeaf folder in the project")
 			}
 		})
 	}

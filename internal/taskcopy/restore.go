@@ -64,7 +64,7 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 	}
 	dest := filepath.Join(liveRoot(c), name)
 	cutErr := k.cutAgain(project, dest, name, from, rec)
-	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec.Deleted))
+	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec))
 }
 
 // cutAgain makes dest a copy of project at the commit the copy was at. A dest
@@ -111,10 +111,10 @@ func unbundle(project, path string) error {
 	return err
 }
 
-// overlay lays the carried files over dest and removes the files the copy had
-// deleted. A deleted path that would leave dest is refused, since a record that
+// overlay lays the carried files over dest, each at the mode the record kept,
+// and removes the files the copy had deleted. A deleted path that would leave dest is refused, since a record that
 // arrives over a network is not trusted with the rest of the disk.
-func overlay(files, dest string, deleted []string) error {
+func overlay(files, dest string, rec record) error {
 	err := filepath.WalkDir(files, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -127,12 +127,12 @@ func overlay(files, dest string, deleted []string) error {
 		if err != nil {
 			return err
 		}
-		return copyFile(path, filepath.Join(dest, rel), info)
+		return copyFile(path, filepath.Join(dest, rel), info, rec.modeOf(filepath.ToSlash(rel), info))
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return removeAll(dest, deleted)
+	return removeAll(dest, rec.Deleted)
 }
 
 func removeAll(dest string, rels []string) error {
@@ -147,10 +147,13 @@ func removeAll(dest string, rels []string) error {
 	return nil
 }
 
-// copyFile writes to with the bytes, permission and modified time of from, whose
-// stat is info. Keeping the time is what lets [copyIfChanged] recognise a file
-// it already carried.
-func copyFile(from, to string, info fs.FileInfo) error {
+// copyFile writes to with the bytes and modified time of from, whose stat is
+// info, and exactly the permission bits in mode. The mode is set after the write
+// because a mode given to the create is cut down by the umask of the machine,
+// and a copy that comes back with other bits than it left with is not the same
+// copy. Keeping the time is what lets [copyIfChanged] recognise a file it
+// already carried.
+func copyFile(from, to string, info fs.FileInfo, mode fs.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
 		return err
 	}
@@ -159,7 +162,7 @@ func copyFile(from, to string, info fs.FileInfo) error {
 		return err
 	}
 	defer src.Close()
-	dst, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+	dst, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
@@ -168,6 +171,9 @@ func copyFile(from, to string, info fs.FileInfo) error {
 		return err
 	}
 	if err := dst.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(to, mode); err != nil {
 		return err
 	}
 	return os.Chtimes(to, info.ModTime(), info.ModTime())

@@ -2,6 +2,7 @@ package taskcopy
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -25,12 +26,25 @@ const (
 // whether it was a linked worktree rather than a fork with a repository of its
 // own, because the branch of a worktree lives in the project and a fork's does
 // not, so a copy must come back as the kind it was.
-// The changed files themselves sit beside it under [filesDir].
+// The changed files themselves sit beside it under [filesDir], and the record
+// holds the permission bits each of them had, because the folder they travel
+// through is written by whatever umask the machine has and a copy must come back
+// with the modes it left with.
 type record struct {
-	Branch  string   `json:"branch,omitempty"`
-	Head    string   `json:"head"`
-	Deleted []string `json:"deleted,omitempty"`
-	Linked  bool     `json:"linked,omitempty"`
+	Branch  string                 `json:"branch,omitempty"`
+	Head    string                 `json:"head"`
+	Deleted []string               `json:"deleted,omitempty"`
+	Linked  bool                   `json:"linked,omitempty"`
+	Modes   map[string]fs.FileMode `json:"modes,omitempty"`
+}
+
+// modeOf is the mode a carried file is put back with: the one the record kept,
+// or the one the carried file itself has for a record from before modes were kept.
+func (r record) modeOf(rel string, carried fs.FileInfo) fs.FileMode {
+	if mode, ok := r.Modes[rel]; ok {
+		return mode
+	}
+	return carried.Mode().Perm()
 }
 
 // carriedRoot is the folder of a cell where the seal keeps its task copies.

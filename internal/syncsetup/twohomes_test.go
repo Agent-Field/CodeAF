@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
 // The two-home rig: one identity on two machines that share nothing but a relay
@@ -783,4 +784,54 @@ func TestTwoHomesMidChatEnvEditTravelsWholeAndComesBack(t *testing.T) {
 	if got, _ := os.ReadFile(filepath.Join(h.work, ".env")); string(got) != mine {
 		t.Fatalf(".env on A = %q; want the same bytes back", got)
 	}
+}
+
+// awayFromA takes A's project folder out of B's sight, as it is when B is
+// another machine: the path the chat's session record names is not on B, so B
+// keeps the chat in a work/ folder of its own. Without this the two homes share
+// one project folder and a take that writes nothing still looks whole.
+func (h *twoHomes) awayFromA() {
+	h.t.Helper()
+	if err := os.Rename(h.work, h.work+".away"); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// A window on B that only started up has already merged A's vault, which holds
+// the slots of every withheld file but writes none of them: the chat is not
+// there yet. The take the surface offers (Continuer.Take is the one entry the
+// surface, the corpus and these tests all call) must still write every withheld
+// file at its path and mode, and B's next push must not delete them for A.
+func TestTakeWritesWithheldFilesAfterTheTakersWindowSyncedTheVault(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	seedTree(t, h.work)
+	want := readTree(t, h.work)
+
+	a := h.openA()
+	a.mustSay("first")
+	a.mustSay("second")
+	h.durable(h.cell.ID, h.cell)
+	if err := a.drive.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.awayFromA()
+	if err := h.b.withVault(func(v vaultsync.Syncer) error { return v.Push(ctx) }); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := workspaceOf(got.Taken.Cell.Root)
+	assertEnvInjected(t, work)
+	for _, rel := range []string{".env", "web/client/app/.env.production"} {
+		if have := readTree(t, work)[rel]; have != want[rel] {
+			t.Fatalf("%s on B = %+v, want A's %+v", rel, have, want[rel])
+		}
+	}
+	b := h.openOn(h.b, h.engB, got.Taken.Cell, work, nameB)
+	b.mustSay("b1")
+	assertEnvInjected(t, work)
 }
