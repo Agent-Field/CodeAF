@@ -15,6 +15,7 @@ import { limitsOf, RateLimit } from './limits.js';
 import { matchRoute } from './routes.js';
 import { policyOf } from './rules.js';
 import { Tenant } from './tenant.js';
+import { finishClose, Watchers } from './watch.js';
 import { checkCert, checkRequest, Refusal } from './verify.js';
 import { gone, ipOf, rateLimited, respond, unwrap } from './wire.js';
 
@@ -30,6 +31,7 @@ export class IdentityDO extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.limits = limitsOf(env);
+    this.watchers = new Watchers(ctx, this.limits.maxWatchers);
     this.policy = policyOf(env.LEASE_POLICY);
     this.identityRate = new RateLimit(this.limits.requestsPerMinute);
     this.deviceRate = new RateLimit(this.limits.requestsPerMinutePerDevice);
@@ -37,6 +39,16 @@ export class IdentityDO extends DurableObject {
 
   fetch(request) {
     return respond(() => this.#serve(request));
+  }
+
+  /** webSocketMessage runs only for a client frame that is not `ping` (the platform answers that without waking us); such a frame is ignored (contract 21.3). */
+  webSocketMessage() {
+    console.warn('watch: message');
+  }
+
+  /** webSocketClose completes the close handshake the client started; nothing else is kept per socket. */
+  webSocketClose(ws, code) {
+    finishClose(ws, code);
   }
 
   async #serve(request) {
@@ -52,7 +64,7 @@ export class IdentityDO extends DurableObject {
       const tenant = this.#tenantOf(who.identity);
       this.#admit(tenant, who.device);
       if (route.write) tenant.assertWritable();
-      return await route.handler({ tenant, device: who.device, body }, route.args);
+      return await route.handler({ tenant, device: who.device, body, request }, route.args);
     } finally {
       leave();
     }
@@ -77,6 +89,7 @@ export class IdentityDO extends DurableObject {
       limits: this.limits,
       flight: this.flight,
       arm: (at) => this.ctx.waitUntil(this.#arm(at)),
+      watchers: this.watchers,
     });
     return this.#tenant;
   }
