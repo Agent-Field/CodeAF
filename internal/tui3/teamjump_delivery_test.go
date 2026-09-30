@@ -150,6 +150,11 @@ func realTrafficDelivery(t *testing.T, text, kind string) (*app, string, string,
 	}
 	a.teamActivate(harbor)
 	trafficReadNow(t, a)
+	// The empty manager view is discarded on attachment. Release its journal
+	// so a later handle-click fixture can reopen it through a real session.
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
 	drain(t, a, a.attachConversation(Conversation{Agent: member, Workspace: root, SessionFile: memberFile, Resumed: true}, nil))
 	return a, harbor, memberKey, id
 }
@@ -192,6 +197,13 @@ func TestTrafficRenamedTeamRetainsDeliveryWhenItsOldNameIsReused(t *testing.T) {
 		t.Fatalf("reusing the free name: team=%q err=%v", other, err)
 	}
 	teamsFlush(t, a)
+	spend(t, a, a.trafficJumpIn(member, id, harbor))
+	if !a.traffic.landing.older || a.dockHoverWords() != trafficOlderWords {
+		t.Fatalf("unloaded name ownership was guessed: %+v", a.traffic.landing)
+	}
+	// The new name owner's empty log must be loaded before its absence can
+	// distinguish this historical delivery from one of its own messages.
+	spend(t, a, a.trafficReadOf([]string{other}, false))
 	fillEntries(a, 60, "after")
 	a.offset, a.stick = 0, true
 	spend(t, a, a.trafficJumpIn(member, id, harbor))

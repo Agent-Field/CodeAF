@@ -224,9 +224,14 @@ renamed. This includes a long message or new-member brief whose delivered words 
 old name has since been given to another team. The name on an older delivered card records
 what the team was called when the message arrived.
 
+Pressing a member's own post row still finds its retained `team_post` receipt after a rename
+when the post did not name a team.
+
 The jump needs a message it can identify in that conversation's loaded history. If the
 retained messages cannot distinguish it from another team's message, codeaf does not choose
-one. The chat opens at the bottom and the hint says
+one. When another team owns the name on an old card, its numbered Traffic row or empty log
+must be loaded before the jump can distinguish them. An unloaded or older row that has left
+the Traffic history cannot establish that ownership. The chat opens at the bottom and the hint says
 `that message is older than this chat's history`.
 
 ## What members say without being asked
