@@ -214,7 +214,9 @@ component over their own models, but they have no provider row behind them, so n
 unfolds under them and the foot does not offer the key.
 
 The cursor opens **on the model in use**, which is also the marked row, so enter with
-nothing typed confirms rather than changes.
+nothing typed confirms rather than changes. The model in use is marked in the accent,
+in bold, and wears no band of its own — the highlighted row is the one the cursor is
+on, and nothing else.
 
 **Enter does not close the list.** It switches, the mark moves to the row you chose, and
 the list stays where it is — so two models can be compared on their prices, chosen between,
