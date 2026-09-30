@@ -275,19 +275,29 @@ func (p *picker) restock(models []Model) {
 	// longer exist. The model in use is the one row that is always there to land
 	// on (the same rule [picker.start] opens with).
 	p.rank()
-	p.cursorToCurrent()
+	p.cursorToFirst()
 }
 
-// cursorToCurrent puts the cursor on the model in use. A picker that opened on
-// row zero would make enter — the key a person presses to confirm — a model
-// change they did not ask for; and a box emptied back out with ctrl+u is the
-// list the picker opened on, so it is the same rule again.
-func (p *picker) cursorToCurrent() {
-	for at, row := range p.list {
-		if row.lane == laneNone && p.all[p.hits[row.hit]].ID == p.current {
-			p.cursor = at
-			break
-		}
+// cursorToFirst rests the cursor on the FIRST selectable row of the list —
+// the list's own top, past a heading and past a service that answered with
+// nothing ([picker.move] skips those too). The menu's own cursor law since
+// the owner's report of 2026-09-30: a menu that opened with its highlight
+// nowhere on the screen read as a list with no cursor in it, and the row it
+// should rest on is the one a reader starts reading at.
+//
+// THE MODEL IN USE DOES NOT LOSE ITS MARK to this. The marked row keeps the
+// accent and the weight wherever it sits, so what enter would apply is the
+// row the highlight names and nothing silent: a picker that opened with the
+// cursor on the model in use put that row at the bottom of a window the
+// headings pushed off the frame — the highlight was not on the screen at all,
+// which is the report this law answers.
+func (p *picker) cursorToFirst() {
+	p.cursor = 0
+	for p.cursor < len(p.list) && p.rowUnavailable(p.cursor) {
+		p.cursor++
+	}
+	if p.cursor >= len(p.list) {
+		p.cursor = max(0, len(p.list)-1)
 	}
 	p.follow(pickerRows)
 }
