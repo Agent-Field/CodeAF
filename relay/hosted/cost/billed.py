@@ -219,10 +219,31 @@ def sum_phases(phases):
 
 # ---------- reading one phase ----------
 
-def read_phase(client, script, bucket, namespaces, start, end):
+def periodic_ranges(phases):
+    """The minutes of the periodic Durable Object dataset that belong to each phase.
+
+    That dataset is stamped when the runtime reports, not when work ran, and was seen up to a minute
+    off (a move at 21:10:04 showed its rows in the 21:09 bucket). So a phase owns every minute up to
+    the midpoint of the quiet gap that follows it, which is wide enough (two minutes or more) that
+    the shift cannot reach the next phase's work."""
+    order = sorted(phases.items(), key=lambda kv: kv[1][0])
+    ranges, first = {}, None
+    for i, (name, (start, end)) in enumerate(order):
+        first = first or start.replace(second=0, microsecond=0)
+        if i + 1 < len(order):
+            mid = end + (order[i + 1][1][0] - end) / 2
+            last = mid.replace(second=0, microsecond=0)
+        else:
+            last = (end + timedelta(minutes=1)).replace(second=0, microsecond=0)
+        ranges[name] = (first, last)
+        first = last + timedelta(minutes=1)
+    return ranges
+
+
+def read_phase(client, script, bucket, namespaces, start, end, minutes=None):
     lo, hi = minute_window(start, end)
     hi_event = hi - timedelta(seconds=1)
-    last_minute = hi - timedelta(minutes=1)
+    first_minute, last_minute = minutes or (lo, hi - timedelta(minutes=1))
     out = parse_workers(client.run(q_workers(script, lo, hi_event))["workersInvocationsAdaptive"])
     groups = client.run(q_do_groups(script, lo, hi_event))["durableObjectsInvocationsAdaptiveGroups"]
     out["do_requests"] = parse_do_invocations(groups)
@@ -231,7 +252,7 @@ def read_phase(client, script, bucket, namespaces, start, end):
     ids = set(namespaces) | {g["dimensions"]["namespaceId"] for g in groups}
     periodic = []
     if ids:
-        periodic = client.run(q_do_periodic(ids, lo, last_minute))["durableObjectsPeriodicGroups"]
+        periodic = client.run(q_do_periodic(ids, first_minute, last_minute))["durableObjectsPeriodicGroups"]
     out.update(parse_do_periodic(periodic))
     r2_rows = client.run(q_r2(bucket, lo, hi_event))["r2OperationsAdaptiveGroups"]
     bad = unknown_actions(r2_rows)
@@ -249,7 +270,8 @@ def discover_namespaces(client, script, start, end):
 
 def read_all(client, args, phases, window):
     namespaces = discover_namespaces(client, args.script, *window)
-    return {name: read_phase(client, args.script, args.bucket, namespaces, s, e)
+    minutes = periodic_ranges(phases)
+    return {name: read_phase(client, args.script, args.bucket, namespaces, s, e, minutes[name])
             for name, (s, e) in phases.items()}
 
 

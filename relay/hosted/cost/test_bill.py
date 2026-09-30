@@ -42,17 +42,24 @@ class BillTest(unittest.TestCase):
     def test_rows_priced_apart(self):
         self.assertAlmostEqual(bill.charge(vec(do_rows_read=1e6, do_rows_written=1e6), 0, 0), bill.ROWS_READ["per_m"] + bill.ROWS_WRITTEN["per_m"])
 
-    def test_render_pending(self):
-        out = bill.render(MANIFEST, billed(), bill.SHAPE)
+    def test_render_one_column(self):
+        out = bill.render([dict(title="first", manifest=MANIFEST, billed=billed())], bill.SHAPE)
         self.assertTrue(out.startswith(bill.HEADING + "\n"))
-        self.assertIn(bill.PENDING, out)
-        self.assertNotIn("Ratio", out)
+        self.assertIn("| Usage | first |", out)
         self.assertIn("100,000 users, 100% active", out)
+        self.assertIn("**Total**", out)
 
-    def test_render_after_ratio(self):
-        out = bill.render(MANIFEST, billed(), bill.SHAPE, (MANIFEST, billed(0.5), bill.SHAPE))
-        self.assertNotIn(bill.PENDING, out)
-        self.assertIn("DO GB-s 0.50, DO requests 0.50", out)
+    def test_render_many_columns_and_ratios(self):
+        cols = [dict(title=t, manifest=MANIFEST, billed=billed(k)) for t, k in (("one", 1), ("two", 0.5), ("three", 0.25))]
+        out = bill.render(cols, bill.SHAPE)
+        self.assertIn("| Usage | one | two | three |", out)
+        self.assertIn("Ratio two / one per user-month: DO GB-s 0.50, DO requests 0.50", out)
+        self.assertIn("Ratio three / one per user-month: DO GB-s 0.25", out)
+
+    def test_class_a_is_at_least_the_client_frame_puts(self):
+        phase = {"client_requests": {"POST /v1/store/frames": 12}}
+        self.assertEqual(bill.class_a_floor({"r2_class_a": 0}, phase)["r2_class_a"], 12)
+        self.assertEqual(bill.class_a_floor({"r2_class_a": 30}, phase)["r2_class_a"], 30)
 
     def test_splice_replace_and_append(self):
         sec = bill.HEADING + "\n\nnew\n"
