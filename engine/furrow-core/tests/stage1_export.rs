@@ -3,12 +3,14 @@
 mod common;
 
 use common::*;
-use furrow::exchange::export::published;
+use furrow::exchange::export::{published, DEFAULT_MAX_FRAME};
 use furrow::exchange::keys::{keys_from, CELL_KEY_VAR, DEDUP_VAR};
 use furrow::exchange::ledger::Ledger;
 use furrow::exchange::open_store;
 use furrow::exchange::survey::survey;
+use furrow::model::SnapshotTrigger;
 use furrow::model::{id_hex, ObjectKind};
+use furrow::repository::{FurrowRepository, SealOptions};
 use furrow::sealer::Sealer;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -319,4 +321,53 @@ fn keys_never_on_argv_or_disk() {
             );
         }
     }
+}
+
+/// The default frame size is the contract's `BulkFrame` (§22.6), not the old
+/// 1 MiB: a bulk take fetches whole megabyte-scale objects in one frame. The
+/// fixture's 3 MiB blob lands in a frame the old default would have split.
+#[test]
+fn the_default_frame_size_is_bulk_frame() {
+    assert_eq!(DEFAULT_MAX_FRAME, 8 << 20);
+    let src = source();
+    let outbox = src._temp.path().join("outbox");
+    let report = export(&src, LEDGER, &outbox, DEFAULT_MAX_FRAME);
+    assert!(
+        report.frames.iter().any(|info| info.bytes > 1 << 20),
+        "no frame needed the bigger default"
+    );
+    assert!(
+        report
+            .frames
+            .iter()
+            .all(|info| info.bytes <= DEFAULT_MAX_FRAME),
+        "a frame outgrew the default"
+    );
+
+    // A save smaller than `BulkFrame` still writes one small frame: a small
+    // payload in a fresh store closes its frame as soon as it ends, not at
+    // the default.
+    let temp = tempfile::tempdir().unwrap();
+    let tree = temp.path().join("tree-s");
+    fs::create_dir_all(&tree).unwrap();
+    fs::write(tree.join("note.txt"), b"small\n").unwrap();
+    let (_, head) = FurrowRepository::attach_and_seal_in(
+        &temp.path().join("data-s"),
+        &tree,
+        None,
+        SnapshotTrigger::Manual,
+        SealOptions::default(),
+    )
+    .unwrap();
+    let small = export_with(
+        &temp.path().join("data-s"),
+        head,
+        &keys(),
+        LEDGER,
+        &outbox,
+        64 * 1024,
+    )
+    .unwrap();
+    assert_eq!(small.frames.len(), 1);
+    assert!(small.frames[0].bytes <= 64 * 1024);
 }
