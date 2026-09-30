@@ -156,6 +156,7 @@ func (c *memoryClient) List(context.Context) (l Listing, err error) {
 		for id, cell := range c.m.cells {
 			l.Cells[id] = copyCell(cell)
 		}
+		l = withoutFrames(l)
 		return nil
 	})
 	return l, err

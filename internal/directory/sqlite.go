@@ -312,7 +312,11 @@ func (c *sqliteClient) List(ctx context.Context) (l Listing, err error) {
 		if err := scanAll(tx, "devices", l.Devices); err != nil {
 			return err
 		}
-		return scanAll(tx, "cells", l.Cells)
+		if err := scanAll(tx, "cells", l.Cells); err != nil {
+			return err
+		}
+		l = withoutFrames(l)
+		return nil
 	})
 	return l, err
 }

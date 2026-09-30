@@ -153,7 +153,13 @@ export class Directory {
     const out = { now: this.clock(), identity: { V: 1, identity: this.identity }, devices: {}, cells: {} };
     for (const { kind, id, doc } of this.sql.exec('SELECT kind, id, doc FROM dir').toArray()) {
       if (kind === 'identity') out.identity = JSON.parse(doc);
-      else out[kind][id] = JSON.parse(doc);
+      else {
+        const rec = JSON.parse(doc);
+        // The list is the home screen's hot read: frame plans are for takers, and they
+        // read them off the cell answer, so the list never carries them.
+        if (kind === 'cells') delete rec.frames;
+        out[kind][id] = rec;
+      }
     }
     return out;
   }
