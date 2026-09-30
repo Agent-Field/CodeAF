@@ -10,11 +10,14 @@ const MiB = 1 << 20;
 export const DEFAULTS = {
   // One identity.
   storeBytes: 5 * GiB, // stored bytes; the cost ceiling
-  storeObjects: 200_000, // the object index lives in one isolate's memory (128 MB), so it is bounded too
+  storeObjects: 5_000_000, // the index is rows in the identity's SQLite, so this is a backstop; the byte cap rules
   framesPerDay: 5_000, // R2 writes, the dearest operation
   requestsPerMinute: 1_200, // all devices of one identity together
   requestsPerMinutePerDevice: 600,
+  statsFlushMs: 5_000, // how long a count may wait in memory before it is written (see stats.js)
   concurrentPuts: 2, // a 16 MiB frame costs the isolate 2 to 3 times its size while it arrives
+  // The whole relay, by caller IP: how many identities one address may bring in (contract 6: no accounts).
+  newIdentitiesPerIpPerDay: 20,
   // The pairing mailbox (contract 18.4), for callers that have no identity yet.
   pairTtlMs: 10 * 60_000,
   pairMaxMsg: 4 << 10,

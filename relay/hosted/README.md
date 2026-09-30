@@ -29,10 +29,19 @@ it, checks the device is not revoked, spends the caller's rate budget, and serve
   every operation is one synchronous turn, which is the compare-and-swap the lease rules need. The
   rules (`src/rules.js`) are a JS port of `internal/directory/rules.go`.
 - Frames live in R2 at `<identity>/f/<FrameID>` (`src/store.js`), each validated (magics, header,
-  `cell_key_id`) before it is stored. A frame is durable in R2 before the index learns of it. The
-  object index is derived from the frames' headers and saved as `<identity>/ix`; deleting it loses
-  nothing. Loading it is single-flight, so a burst of first requests builds it once.
-- A rid held with other bytes is `409 conflict`, and the frame stores none of its objects.
+  `cell_key_id`) before it is stored. The index that finds an object inside its frame is rows in the
+  object's SQLite (`objs`: rid -> frame, offset, length, primary key on rid), so it takes no memory
+  and how many objects an identity holds is bounded by its byte quota. A frame is durable in R2
+  before the index learns of it; a crash between the two leaves an unindexed frame, which the next
+  put of that same frame indexes.
+- A rid held with other bytes is `409 conflict`, and the frame stores none of its objects. Puts run
+  one at a time inside the object, so two racing puts of one rid cannot both win.
+- `/v1/store/stats` is kept across evictions and restarts: counts are batched in memory and written
+  by an alarm a few seconds after the first change (`src/stats.js`). A platform crash can lose at
+  most those few seconds.
+- An identity is admitted on its first authenticated request, and that first sight is counted
+  against the caller's IP in one `NewcomerGate` object (`src/newcomers.js`). Existing identities are
+  never counted again, from any address, so the cap cannot affect the current client.
 
 The pairing mailbox (`src/pair/`) is unauthenticated because the joining device has no identity yet,
 so it cannot become free storage: every limit is by IP (`CF-Connecting-IP`), boxes live one TTL and
@@ -47,10 +56,12 @@ verify, lease rules) are ported to JavaScript and pinned to Go by vectors that G
 ```sh
 cd relay/hosted
 npm install
-npx wrangler dev --local          # http://127.0.0.1:8787, R2 and Durable Objects simulated in workerd
+npm run dev                       # http://127.0.0.1:8787, R2 and Durable Objects simulated in workerd
 ```
 
-Conformance, against the running relay, from the repository root:
+`npm run dev` lifts the new-identity cap (the conformance suite makes one identity per case, all from
+127.0.0.1); a bare `wrangler dev` keeps the default of 20 a day per address. Conformance, against
+the running relay, from the repository root:
 
 ```sh
 go test -tags relayurl ./internal/relayconf/ -relay-url=http://127.0.0.1:8787
@@ -82,12 +93,13 @@ canonical names, so the stricter side is the safe one.
 |---|---|---|
 | `FRAMES` | R2 bucket | frames and the object index, under `<identity>/` |
 | `IDENTITY` | Durable Object `IdentityDO` (SQLite) | directory, puts in flight, caps, one per identity |
+| `NEWCOMERS` | Durable Object `NewcomerGate` (SQLite) | new identities per IP, one object |
 | `PAIR_GATE` | Durable Object `PairGate` (SQLite) | nameplates, per-IP counters, one object |
 | `MAILBOX` | Durable Object `Mailbox` | one pairing, one per nameplate |
 | `LEASE_POLICY` | var | `stage1` (frozen contract: 30 s lease) or `amended` (90 s, a publish renews; stage 1H decision 8.7) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
 
-`wrangler.toml` declares all of them and the migration `v1` that creates the three classes as
+`wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
 SQLite-backed. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
 requests a day.
 
@@ -103,8 +115,9 @@ npx wrangler deploy
 ```
 
 No route or domain is set: it answers on `<name>.<account>.workers.dev` until one is added. Keep
-`LEASE_POLICY = "stage1"` until the Go client carries the amendment (`force` on acquire, a publish
-renews, `LeaseTTL` 90 s); the conformance suite still waits out the frozen 30 s. The deployment
+`LEASE_POLICY = "stage1"` until the client lease amendment lands (lane hclient: `force` on acquire,
+a publish renews, `LeaseTTL` 90 s), then flip it to `amended` in the same change that updates
+`directorytest`; the conformance suite still waits out the frozen 30 s. The deployment
 keeps no request log and enables no observability.
 
 To run the pairing conformance cases on staging, deploy with short limits so expiry and rate cases
@@ -116,7 +129,8 @@ finish, as contract 18.10 asks:
 | Limit | Default | Refusal |
 |---|---|---|
 | stored bytes per identity | 5 GiB | `507 full` |
-| stored objects per identity (the index is in one isolate's 128 MB) | 200,000 | `507 full` |
+| stored objects per identity (the index is SQLite rows; the byte cap rules) | 5,000,000 | `507 full` |
+| new identities per IP per day (first sight only; existing identities never counted) | 20 | `429 too_many_identities`, `Retry-After` |
 | new frames per identity per day | 5,000 | `507 full` |
 | requests per minute, per identity / per device | 1,200 / 600 | `429 rate_limited`, `Retry-After` |
 | puts in flight per identity (a 16 MiB frame costs 2 to 3 times its size in memory) | 2 | `429 rate_limited` |
@@ -126,9 +140,32 @@ finish, as contract 18.10 asks:
 | pairing: creates per hour, writes per minute, open polls, per IP | 10, 30, 4 | `429 rate_limited`, `Retry-After` |
 | pairing: live mailboxes in all (32 KiB each, so also 64 MiB) | 2,000 | `503 full` |
 
-Stored quotas (bytes, objects, frames a day) live in the identity object's SQLite and survive
+Stored quotas (bytes, objects, frames a day), the stats counts and the per-IP counters live in the identity object's SQLite and survive
 eviction. A frame the store already holds costs no quota, so a client that resends is never refused
 for it. The per-minute rates are kept in memory: an eviction can only forgive a burst.
+
+## Cost note: Durable Object SQLite rows written
+
+DO SQLite bills rows written at $1 per million after 50 million a month included (rows read are
+25 billion included and not a concern here). Every table in the object is `WITHOUT ROWID` or keyed
+by the rowid, so a row is one row written, not a row and an index entry (an assumption to confirm
+against billed usage on a real account; the stage 1H staging read-back is the method).
+
+| Operation | Rows written |
+|---|---|
+| put of a frame with n objects, new | n + 2 (the frame, each object, the usage row) |
+| put of a frame already held | 0 |
+| directory create, acquire, heartbeat, publish, release | 1 |
+| stats | 1 per flush window (5 s) of store activity, not per request |
+| `Has`, `Get`, list, cell read | 0 |
+| an identity's first request | 1 (admitted) |
+
+For the session shape measured in the stage 1H decision (232 one-object puts, 197 directory writes)
+that is about 930 rows a session; 10,000 identities at 8 sessions a month is 74M rows, so about
+$24 a month over the included 50M. With frames batched to about 12 puts of 20 objects a session it
+is about 510 rows, 41M a month, inside the included amount. Object count no longer costs memory, so
+the only price of a large repository is these rows: 170,000 objects is 170,000 rows once, about
+$0.17.
 
 ## The other option
 

@@ -20,6 +20,10 @@ export async function newDevice(identity) {
   return { identity, pair, cert };
 }
 
+// Each identity comes from its own address, as a real person does; a test that wants many identities
+// from one address says so with an explicit cf-connecting-ip (the header a Cloudflare edge sets).
+const addressOf = (pub) => `10.${pub[0]}.${pub[1]}.${pub[2]}`;
+
 /** headers for a request signed by device; body is a Uint8Array; shiftMs moves the signing clock. */
 export async function signed(device, method, uri, body = new Uint8Array(0), shiftMs = 0) {
   const time = String(Date.now() + shiftMs);
@@ -29,6 +33,7 @@ export async function signed(device, method, uri, body = new Uint8Array(0), shif
     'codeaf-cert': b64u(enc.encode(JSON.stringify(device.cert))),
     'codeaf-time': time,
     'codeaf-sig': b64u(await sign(device.pair.privateKey, msg)),
+    'cf-connecting-ip': addressOf(device.identity.pub),
   };
 }
 

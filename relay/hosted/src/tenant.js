@@ -2,6 +2,8 @@
 // what the identity asked of it. Route handlers talk to this and to nothing beneath it.
 import { Directory } from './directory.js';
 import { Quota } from './limits.js';
+import { Meta } from './meta.js';
+import { Stats } from './stats.js';
 import { R2Store, sealFrame } from './store.js';
 import { Wire } from './wire.js';
 
@@ -10,16 +12,15 @@ import { Wire } from './wire.js';
 const HAS_WAIT_MS = 30_000;
 
 export class Tenant {
-  // stats is "the server's own count for this identity since start" (contract 3): it lives in memory.
-  stats = { puts: 0, gets: 0, has: 0, bytes_in: 0, bytes_out: 0 };
-
-  constructor({ identity, sql, bucket, clock, policy, limits, flight }) {
+  constructor({ identity, sql, bucket, clock, policy, limits, flight, scheduleFlush }) {
     this.identity = identity;
     this.clock = clock;
     this.flight = flight;
     this.dir = new Directory(sql, identity, clock, policy);
     this.quota = new Quota(sql, limits);
-    this.store = new R2Store(bucket, identity);
+    this.store = new R2Store(bucket, sql, identity);
+    this.meta = new Meta(sql);
+    this.stats = new Stats(this.meta, scheduleFlush);
   }
 
   /**
@@ -27,8 +28,7 @@ export class Tenant {
    * the store already holds costs the identity nothing, so a client that resends is never refused for it.
    */
   async putFrame(bytes) {
-    this.stats.puts++;
-    this.stats.bytes_in += bytes.length;
+    this.stats.add({ puts: 1, bytes_in: bytes.length });
     const frame = await sealFrame(bytes);
     const cost = { size: frame.size, objects: frame.objects.length };
     const stored = await this.store.put(frame, () => this.quota.admit(cost, this.clock()));
@@ -37,16 +37,16 @@ export class Tenant {
   }
 
   async getObject(rid) {
-    this.stats.gets++;
+    this.stats.add({ gets: 1 });
     const bytes = await this.store.get(rid);
     if (!bytes) throw new Wire('not_found', 404);
-    this.stats.bytes_out += bytes.length;
+    this.stats.add({ bytes_out: bytes.length });
     return bytes;
   }
 
   /** has waits for this identity's puts in flight, then answers from the store. */
   async has(rids) {
-    this.stats.has++;
+    this.stats.add({ has: 1 });
     if (!(await this.flight.idle(HAS_WAIT_MS))) throw new Wire('unreachable', 503);
     return this.store.has(rids);
   }

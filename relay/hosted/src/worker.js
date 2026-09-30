@@ -10,6 +10,7 @@ import { identityOf } from './verify.js';
 import { notFound, respond } from './wire.js';
 
 export { IdentityDO } from './identity.js';
+export { NewcomerGate } from './newcomers.js';
 export { PairGate } from './pair/gate.js';
 export { Mailbox } from './pair/mailbox.js';
 
