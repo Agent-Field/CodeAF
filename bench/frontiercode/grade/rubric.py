@@ -351,6 +351,7 @@ def combine(task_dir, grade_dir):
             elif adapt.get("adapted"):
                 if cid in phase_b:
                     entry.update(phase_b[cid])
+                    entry["source"] = "phase-b"
                 else:
                     entry = {"status": RIG, "note": "judge adapted the tests but phase B did not run"}
             elif adapt:
@@ -361,6 +362,25 @@ def combine(task_dir, grade_dir):
             else:
                 entry = {"status": RIG, "note": "no judge adaptation result"}
         criteria[cid] = entry
+
+    # A classical criterion whose verbatim overlay conflicted is the same
+    # reference behaviour the adaptive-classical criterion names. When the judge
+    # adapted the tests and phase B reran them, that verdict answers the
+    # classical criterion too; without this the conflicted criterion stayed rig
+    # and the run with it, so the adaptive path could never rescue a run it was
+    # built for.
+    for c in rubric["criteria"]:
+        if c["kind"] != "classical":
+            continue
+        entry = criteria[c["id"]]
+        if entry.get("status") != RIG or not entry.get("note", "").startswith("test overlay conflict"):
+            continue
+        adaptive = next((criteria[x["id"]] for x in rubric["criteria"]
+                         if x["kind"] == "adaptive-classical"), None)
+        if adaptive and adaptive.get("source") == "phase-b" and adaptive["status"] in (PASS, FAIL):
+            entry["status"] = adaptive["status"]
+            entry["note"] = f"resolved by the adaptive path: {adaptive.get('note', '')}"
+            entry["source"] = "phase-b"
 
     blockers = [c["id"] for c in rubric["criteria"] if c.get("blocker")]
     failed_blockers = [cid for cid in blockers if criteria[cid]["status"] == FAIL]
