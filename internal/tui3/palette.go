@@ -268,18 +268,12 @@ func (p *picker) restock(models []Model) {
 		p.text[i] = label
 	}
 	p.score = make([]int, len(models))
-	// THE CURSOR GOES BACK TO THE MODEL IN USE WHATEVER IS TYPED. [picker.rank]
-	// only does that for an empty box, because a keystroke that narrows the list
-	// must not yank the cursor away from the row a person was walking towards —
-	// but a landed list is not a keystroke, and the row they were on may no
-	// longer exist. The model in use is the one row that is always there to land
-	// on (the same rule [picker.start] opens with).
 	// AND A LANDED LIST IS A FRESH LIST, so the cursor goes back to its first
-// row whatever is typed: [picker.rank] only leaves a narrowed list's cursor
-// alone because a keystroke that narrows the list must not yank the cursor
-// away from the row a person was walking towards — but a list that arrived
-// whole (a refresh landing, the picker opening) is shown from its top, the
-// same rule [picker.start] opens with.
+	// row whatever is typed: [picker.rank] only leaves a narrowed list's cursor
+	// alone because a keystroke that narrows the list must not yank the cursor
+	// away from the row a person was walking towards — but a list that arrived
+	// whole (a refresh landing, the picker opening) is shown from its top, the
+	// same rule [picker.start] opens with.
 	p.rank()
 	p.cursorToFirst()
 }
