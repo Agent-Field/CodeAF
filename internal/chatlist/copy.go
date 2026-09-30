@@ -26,7 +26,63 @@ const (
 	supersededLine = "%s continued this chat; this window now only shows it"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
+	setupAsk       = "Set this machine up like %s had it?"
+	setupAskAnon   = "Set this machine up like it was?"
+	notBrought     = "not brought along: %s"
+	wasRunning     = "was running there: %s"
+	alsoNeeded     = "also needed: %s"
+	moreNames      = "%s and %d more"
+	// OfferSetUp and OfferNotNow are the two answers of the card a takeover raises,
+	// and SetupLater is what the second one says, so a person who answered it
+	// knows the door is still open.
+	OfferSetUp  = "set up"
+	OfferNotNow = "not now"
+	SetupLater  = "/setup does this later"
 )
+
+// namesShown is how many names a line of the setup card spells before it says
+// how many more there are.
+const namesShown = 3
+
+// SetupFacts are the three lists a takeover can have something to say about, as
+// lines a person reads: folders the copy did not bring, commands that were
+// running there, and what this machine also needs.
+type SetupFacts struct{ Missing, Running, Needed []string }
+
+// SetupHead is the question of the card a takeover raises. A device whose name
+// is unknown is left out with the word before it, so the sentence still reads.
+func SetupHead(device string) string {
+	if device == "" {
+		return setupAskAnon
+	}
+	return fmt.Sprintf(setupAsk, device)
+}
+
+// SetupReasons are the lines under the question, one for each list that is not
+// empty. The person is shown exactly what the agent will be told, because both
+// are built from the same facts.
+func SetupReasons(f SetupFacts) []string {
+	var out []string
+	for _, line := range []struct {
+		label string
+		names []string
+	}{
+		{notBrought, f.Missing}, {wasRunning, f.Running}, {alsoNeeded, f.Needed},
+	} {
+		if len(line.names) > 0 {
+			out = append(out, fmt.Sprintf(line.label, nameList(line.names)))
+		}
+	}
+	return out
+}
+
+// nameList spells the first few names and counts the rest.
+func nameList(names []string) string {
+	if len(names) <= namesShown {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf(moreNames, strings.Join(names[:namesShown], ", "), len(names)-namesShown)
+}
 
 // StatusLine is what a list row says beside the title. Idle and Here say
 // nothing (the emptiness law), so their line is empty.

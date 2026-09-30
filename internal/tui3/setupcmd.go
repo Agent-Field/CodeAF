@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	machine "github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -71,7 +72,10 @@ func (a *app) showSetup(plan machine.Report) tea.Cmd {
 	for _, line := range plan.Lines() {
 		a.note(line)
 	}
-	if len(plan.Pending()) == 0 {
+	for _, line := range chatlist.SetupReasons(chatlist.SetupFacts{Missing: plan.Resume.MissingNames(), Running: plan.Resume.RunningLines()}) {
+		a.note(line)
+	}
+	if plan.Idle() {
 		a.note(setupAllHere)
 		return nil
 	}
@@ -80,7 +84,7 @@ func (a *app) showSetup(plan machine.Report) tea.Cmd {
 }
 
 func (a *app) startSetup(door setupDoor, plan machine.Report) tea.Cmd {
-	if len(plan.Pending()) == 0 {
+	if plan.Idle() {
 		a.note(setupAllHere)
 		return nil
 	}

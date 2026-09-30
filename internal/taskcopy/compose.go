@@ -32,7 +32,7 @@ func (Carry) Compose(c cell.Cell) error {
 			return fmt.Errorf("carry task copy %s: %w", filepath.Base(tree), err)
 		}
 	}
-	return nil
+	return noteLeftOut(c, live)
 }
 
 // liveCopies is the folders under root that are git working trees, which is what

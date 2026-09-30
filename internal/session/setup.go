@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 )
 
@@ -75,7 +76,7 @@ func (a *Agent) SubmitSetup(ctx context.Context) (<-chan Event, error) {
 	switch {
 	case !ok:
 		return nil, errors.New(setupAbsentWord)
-	case len(plan.Pending()) == 0:
+	case plan.Idle():
 		return nil, errors.New(setupNothingWord)
 	}
 	events, err := a.submitUser(ctx, setupMessage(plan))
@@ -89,15 +90,24 @@ func (a *Agent) SubmitSetup(ctx context.Context) (<-chan Event, error) {
 // the person's own for the journal.
 func setupMessage(plan preflight.Report) userMessage {
 	user := userText(plan.SetupBrief())
-	user.said = "set up this machine: " + strings.Join(pendingNames(plan), ", ")
+	user.said = "set up this machine"
+	if names := setupNames(plan); len(names) > 0 {
+		user.said += ": " + strings.Join(names, ", ")
+	}
 	user.setup = true
+	user.grants = plan.Resume.Grants()
 	return user
 }
 
-func pendingNames(plan preflight.Report) []string {
+// setupNames is what the turn is about, for the person's own line of the journal:
+// the tools to install and the folders to bring back.
+func setupNames(plan preflight.Report) []string {
 	var names []string
 	for _, it := range plan.Pending() {
 		names = append(names, it.Name)
+	}
+	for _, w := range plan.Resume.Missing {
+		names = append(names, w.Path)
 	}
 	return names
 }
@@ -116,12 +126,16 @@ func settlingAfter(events <-chan Event, done func()) <-chan Event {
 	return out
 }
 
-type setupKey struct{}
+type (
+	setupKey  struct{}
+	grantsKey struct{}
+)
 
 // turnContext is the context a turn starts under: a setup turn's carries the
 // mark that puts its tool calls on the setup seat and under the network floor.
 func (u userMessage) turnContext(ctx context.Context) context.Context {
 	if u.setup {
+		ctx = context.WithValue(ctx, grantsKey{}, u.grants)
 		return context.WithValue(ctx, setupKey{}, true)
 	}
 	return ctx
@@ -140,4 +154,29 @@ func (a *Agent) setupFloor(ctx context.Context, decision approval.Decision) appr
 		return decision
 	}
 	return approval.Decision{Action: approval.ActionPrompt, Rule: "a setup call opens the network"}
+}
+
+// newsSource is a machine that owes the agent news of a move: what the chat left
+// behind on the machine it came from. preflight.Machine is the one implementation.
+type newsSource interface{ News() string }
+
+// owedResumeNews tells the agent, once and at the next step, what a chat that
+// moved here left behind, unless the person's own turn is the setup that
+// answers it. It goes on the steering queue without waking anything: it is news
+// and asks for nothing, and a chat that has not been spoken to has no step yet.
+func (a *Agent) owedResumeNews(user userMessage) {
+	source, ok := a.config.Machine.(newsSource)
+	if !ok || user.setup || user.bash != "" {
+		return
+	}
+	if news := source.News(); news != "" {
+		a.enqueueNote(userText(news))
+	}
+}
+
+// lifecycleOf is the machine's ear for background commands, when it has one: a
+// machine that keeps a record of what is running hears each job start and end.
+func lifecycleOf(m Machine) procexec.Lifecycle {
+	l, _ := m.(procexec.Lifecycle)
+	return l
 }

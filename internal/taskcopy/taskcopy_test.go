@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/inventory"
 )
 
 // machine is one machine's view of a chat: the cell folder whose trees/ holds
@@ -367,5 +368,51 @@ func TestCheckedOutFilesComeBackAtTheirModesUnderAnotherUmask(t *testing.T) {
 	}
 	if got["README.md"] != want["README.md"] || got["edited.txt"] != want["edited.txt"] {
 		t.Errorf("the checked-out and the carried file came back as %v and %v", got["README.md"], got["edited.txt"])
+	}
+}
+
+// A task's own install folder never travelled, and the record now says so: the
+// next machine is told the task's dependencies are to be installed again, under
+// the task's name.
+func TestComposeRecordsCopyInstallFolders(t *testing.T) {
+	m := newMachine(t)
+	write(t, filepath.Join(m.project, "web", "package-lock.json"), "{}\n")
+	write(t, filepath.Join(m.project, ".gitignore"), "build/\n.env\nnode_modules/\n")
+	run(t, m.project, "git", "add", ".")
+	run(t, m.project, "git", "commit", "-q", "-m", "lock")
+	tree := m.task("t1")
+	write(t, filepath.Join(tree, "web", "node_modules", "left-pad", "index.js"), "1\n")
+	write(t, filepath.Join(tree, "vendor", "x.go"), "package x\n") // no lock beside it: not an install folder here
+
+	if err := (Carry{}).Compose(m.cell); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := inventory.Open(m.cell.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []inventory.Withheld{{Path: "trees/t1/web/node_modules", Lock: "trees/t1/web/package-lock.json"}}
+	if got := inv.Snapshot().Withheld; !slices.Equal(got, want) {
+		t.Fatalf("record %+v, want %+v", got, want)
+	}
+
+	// The seal's own entries beside it are not erased, and a finished task's are.
+	if err := inventory.Record(m.cell.Root, func(i *inventory.Inventory) {
+		i.SetWithheld(func(p string) bool { return !OwnsWithheld(p) }, []inventory.Withheld{{Path: "node_modules", Lock: "package-lock.json"}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Carry{}).Compose(m.cell); err != nil {
+		t.Fatal(err)
+	}
+	if got := inv.Snapshot().Withheld; len(got) != 2 {
+		t.Fatalf("record %+v: the copy's step erased the workspace's entry", got)
+	}
+	run(t, m.project, "git", "worktree", "remove", "--force", tree)
+	if err := (Carry{}).Compose(m.cell); err != nil {
+		t.Fatal(err)
+	}
+	if got := inv.Snapshot().Withheld; len(got) != 1 || got[0].Path != "node_modules" {
+		t.Fatalf("record %+v after the task finished", got)
 	}
 }
