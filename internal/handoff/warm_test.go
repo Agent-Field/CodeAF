@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
@@ -155,5 +157,119 @@ func TestSeedFromNothingLeavesTheFolderEmpty(t *testing.T) {
 	seedFrom(filepath.Join(t.TempDir(), "absent"), dst)
 	if entries, _ := os.ReadDir(dst); len(entries) != 0 {
 		t.Fatalf("staging holds %d entries after a cold seed", len(entries))
+	}
+}
+
+// TestWarmTakeAcrossFilesystemsFallsBackToCopy: when the filesystem refuses
+// the hard link (the staging folder is on another device than the held tree)
+// nothing is seeded, the engine writes every file, and the take is whole while
+// the held tree is untouched.
+func TestWarmTakeAcrossFilesystemsFallsBackToCopy(t *testing.T) {
+	refused := func(string, string) error { return &os.LinkError{Op: "link", Err: syscall.EXDEV} }
+	defer func(old func(string, string) error) { linkFile = old }(linkFile)
+	linkFile = refused
+	_, a, b := backFromB(t)
+	a.materialize(a.cell(chatID), map[string]string{"keep.txt": "same", "edit.txt": "old"})
+	b.work(map[string]string{"a.txt": "one", "keep.txt": "same", "edit.txt": "new"})
+	held := stat(t, filepath.Join(a.root(chatID), "keep.txt"))
+	a.local.dirty = false
+
+	taken, err := a.taker().Take(context.Background(), chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := tree(t, taken.Cell.Root)
+	if got["keep.txt"] != "same" || got["edit.txt"] != "new" || got["a.txt"] != "one" {
+		t.Fatalf("root = %v, want the new head", got)
+	}
+	if os.SameFile(held, stat(t, filepath.Join(taken.Cell.Root, "keep.txt"))) {
+		t.Fatal("a refused link still produced a shared file")
+	}
+}
+
+// TestSeededFileChangedInPlaceIsRepairedByTheRestore: a write made in place to
+// a held file after seeding changes the staged file too, because they are one
+// inode. The restore compares content, never a cache of what was seeded, so it
+// replaces that file by a new one: the taken tree holds the head and the held
+// tree keeps only its own edit.
+func TestSeededFileChangedInPlaceIsRepairedByTheRestore(t *testing.T) {
+	_, a, b := backFromB(t)
+	a.materialize(a.cell(chatID), map[string]string{"keep.txt": "same"})
+	head := b.work(map[string]string{"keep.txt": "same"})
+	held := filepath.Join(a.root(chatID), "keep.txt")
+	stage := cell.Cell{ID: chatID, Root: stagingOf(a.root(chatID))}
+	if err := os.MkdirAll(stage.Root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	seedFrom(a.root(chatID), stage.Root)
+	if err := os.WriteFile(held, []byte("edited in place"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.taker().Fetch.Fetch(context.Background(), stage, head); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := tree(t, stage.Root)["keep.txt"]; got != "same" {
+		t.Fatalf("taken keep.txt = %q, the in-place edit leaked through the shared file", got)
+	}
+	if got := tree(t, a.root(chatID))["keep.txt"]; got != "edited in place" {
+		t.Fatalf("held keep.txt = %q, the restore wrote into the held file", got)
+	}
+}
+
+// TestTakeLeavesNoSecondNameForAnyFile: once the staging folder replaced the
+// root, the old root is gone, so no file of the taken tree has another name
+// and a later in-place write there cannot reach any other tree.
+func TestTakeLeavesNoSecondNameForAnyFile(t *testing.T) {
+	_, a, b := backFromB(t)
+	a.materialize(a.cell(chatID), map[string]string{"keep.txt": "same"})
+	b.work(map[string]string{"a.txt": "one", "keep.txt": "same"})
+	a.local.dirty = false
+
+	taken, err := a.taker().Take(context.Background(), chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := stat(t, filepath.Join(taken.Cell.Root, "keep.txt")).Sys().(*syscall.Stat_t).Nlink
+	if links != 1 {
+		t.Fatalf("keep.txt has %d names after the swap, want 1", links)
+	}
+	for _, leftover := range []string{taken.Cell.Root + ".replaced", taken.Cell.Root + ".taking"} {
+		if exists(leftover) {
+			t.Fatalf("%s survived the take", leftover)
+		}
+	}
+}
+
+// TestCrashAfterSeedingLeavesTheHeldTreeWhole: a process that dies once the
+// staging folder is seeded and fetched, before the swap, leaves the held tree
+// byte for byte as it was (the engine never writes a shared file), and the
+// next take discards what the crash left and succeeds.
+func TestCrashAfterSeedingLeavesTheHeldTreeWhole(t *testing.T) {
+	_, a, b := backFromB(t)
+	a.materialize(a.cell(chatID), map[string]string{"keep.txt": "same", "edit.txt": "old"})
+	head := b.work(map[string]string{"a.txt": "one", "keep.txt": "same", "edit.txt": "new"})
+	before := tree(t, a.root(chatID))
+	a.local.dirty = false
+	stage := cell.Cell{ID: chatID, Root: stagingOf(a.root(chatID))}
+
+	// The claim runs as far as the staging folder and stops: no install.
+	if _, _, err := a.taker().fetchAndAcquire(context.Background(), stage, a.root(chatID), head, directory.AcquireOpts{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := tree(t, a.root(chatID)); !reflect.DeepEqual(got, before) {
+		t.Fatalf("held tree = %v, was %v", got, before)
+	}
+	if got := tree(t, stage.Root); got["edit.txt"] != "new" {
+		t.Fatalf("the crash left staging = %v, want the new head to be there", got)
+	}
+	taken, err := a.taker().Take(context.Background(), chatID)
+	if err != nil {
+		t.Fatalf("the take after the crash: %v", err)
+	}
+	if got := tree(t, taken.Cell.Root); got["edit.txt"] != "new" || got["a.txt"] != "one" {
+		t.Fatalf("root = %v, want the new head", got)
 	}
 }
