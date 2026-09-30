@@ -24,13 +24,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
+	"github.com/Agent-Field/codeaf/internal/rotate"
 )
 
 const (
-	// URLVar names the relay. Unset means sync is off.
+	// URLVar names the relay: an address, or "off". Unset means the relay a
+	// pairing saved, else the hosted default (see HostedRelayURL).
 	URLVar = "CODEAF_SYNC_URL"
 	// IntervalVar is how often unsaved turns are flushed, in milliseconds.
 	IntervalVar = "CODEAF_SYNC_INTERVAL_MS"
@@ -52,6 +55,7 @@ type Sync struct {
 	Device   identity.Dev
 	Identity identity.Identity
 	Relay    string // the normalized relay address every client and the ledger name are built from
+	Hosted   bool   // Relay is the hosted default, which the first-run line speaks of
 	Home     string // the codeaf home: where the branch map and the stats files live
 	// ProfileDir is where the product keeps its profile files (config.json,
 	// credentials.json): CODEAF_PROFILE_DIR when set, else empty, which means Home.
@@ -60,16 +64,23 @@ type Sync struct {
 	Interval   time.Duration // flush interval
 }
 
-// Open builds the clients for the relay named by CODEAF_SYNC_URL. It answers
-// ok = false with no error when no relay is set, and touches nothing on disk
-// in that case. A relay with no identity here, or a URL that is not a web
+// Open builds the clients for the relay Resolve names. It answers ok = false
+// with no error when sync is off or there is no relay, and touches nothing on
+// disk in that case. A relay with no identity here, or a URL that is not a web
 // address, is an error of one sentence.
 func Open(home string) (*Sync, bool, error) {
-	raw := env.Get(URLVar)
-	if raw == "" {
+	if rotate.Pending(home) {
+		return nil, false, ErrRotating
+	}
+	return open(home)
+}
+
+func open(home string) (*Sync, bool, error) {
+	relay := Resolve(home)
+	if !relay.On() {
 		return nil, false, nil
 	}
-	base, err := relayBase(raw)
+	base, err := relayBase(relay.URL)
 	if err != nil {
 		return nil, false, err
 	}
@@ -85,7 +96,9 @@ func Open(home string) (*Sync, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	return build(home, base, id, dev, interval), true, nil
+	s := build(home, base, id, dev, interval)
+	s.Hosted = relay.Hosted
+	return s, true, nil
 }
 
 // relayBase checks that s is an http or https address with a host, and returns
@@ -153,17 +166,36 @@ func (s deviceSigner) Sign(msg []byte) []byte         { return s.dev.Sign(msg) }
 // Rows makes a Sync the chat list's source: every chat the person has on any
 // machine, with names opened under the metadata key of their cell key.
 func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
+	rows, _, err := s.RowsAt(ctx)
+	return rows, err
+}
+
+// RowsAt is Rows and the directory version the listing was read at.
+func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
 	l, err := s.Dir.List(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), nil
+	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
+}
+
+// Follow joins this process's change feed for the identity on this relay, so a
+// screen that shows the directory hears of a change when it happens. It answers
+// nil when the directory client cannot open a watch socket, which is a screen
+// that polls alone.
+func (s *Sync) Follow() dirwatch.Follower {
+	w, ok := s.Dir.(directory.Watcher)
+	if !ok {
+		return nil
+	}
+	return dirwatch.Follow(s.Ledger, w.Watch)
 }
 
 var (
-	_ chatlist.Source = (*Sync)(nil)
+	_ chatlist.Source    = (*Sync)(nil)
+	_ chatlist.Versioned = (*Sync)(nil)
 	// The engine glue is the sync seam by method set: no adapter between them.
 	_ cellsync.Engine = cellstore.SyncEngine{}
 )

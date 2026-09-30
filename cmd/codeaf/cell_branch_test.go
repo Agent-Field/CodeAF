@@ -94,7 +94,7 @@ func (r *branchRig) rec(id string) directory.Cell {
 func (r *branchRig) loseLease() {
 	r.t.Helper()
 	r.clock.Advance(directory.LeaseTTL + 1)
-	if _, err := r.dir.For("dev_c").Acquire(context.Background(), parentID); err != nil {
+	if _, err := r.dir.For("dev_c").Acquire(context.Background(), parentID, directory.AcquireOpts{}); err != nil {
 		r.t.Fatal(err)
 	}
 }

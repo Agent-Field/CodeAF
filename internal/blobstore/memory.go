@@ -113,11 +113,36 @@ func (m *Memory) Get(_ context.Context, rid string) ([]byte, error) {
 	if err := checkGet(rid); err != nil {
 		return nil, err
 	}
+	have, err := m.lookup(rid)
+	op.Bytes = int64(len(have))
+	return have, err
+}
+
+// GetMany implements Store. It is one call in the log, however many objects it
+// answers, because it is one request on every wire.
+func (m *Memory) GetMany(_ context.Context, rids []string) ([]Object, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	op := Op{Kind: "get"}
+	defer func() { m.log = append(m.log, op) }()
+
+	if err := m.due(); err != nil {
+		return nil, err
+	}
+	if err := checkMany(rids); err != nil {
+		return nil, err
+	}
+	got, err := gatherPrefix(rids, m.lookup)
+	op.RIDs, op.Bytes = ridsOf(got), sizeOf(got)
+	return got, err
+}
+
+// lookup is a copy of the object held under rid; the caller holds the lock.
+func (m *Memory) lookup(rid string) ([]byte, error) {
 	have, ok := m.objects[rid]
 	if !ok {
 		return nil, ErrNotFound
 	}
-	op.Bytes = int64(len(have))
 	return bytes.Clone(have), nil
 }
 

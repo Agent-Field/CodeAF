@@ -28,6 +28,7 @@ func HandlerAt(now func() time.Time, auth wireauth.Authenticate, open func(ident
 	mux := http.NewServeMux()
 	mux.Handle("POST "+pathFrames, h.route(MaxFrame, (*tenant).putFrame, true))
 	mux.Handle("GET "+pathObjects+"{rid}", h.route(maxSmallBody, (*tenant).getObject, false))
+	mux.Handle("POST "+pathMany, h.route(maxSmallBody, (*tenant).getMany, false))
 	mux.Handle("POST "+pathHas, h.route(maxSmallBody, (*tenant).has, false))
 	mux.Handle("GET "+pathStats, h.route(maxSmallBody, (*tenant).statsReply, false))
 	return h.stamped(mux)
@@ -160,14 +161,8 @@ func (h *handler) tenantFor(r *http.Request, body []byte) (*tenant, error) {
 	return t, nil
 }
 
-// refusal narrows every authentication failure to the two the wire names:
-// skew, which the person can fix and must be told about, and the rest.
-func refusal(err error) error {
-	if errors.Is(err, wireauth.ErrSkew) {
-		return wireauth.ErrSkew
-	}
-	return wireauth.ErrUnauthorized
-}
+// refusal narrows every authentication failure to the three the wire names.
+func refusal(err error) error { return wireauth.Narrow(err) }
 
 func (t *tenant) putFrame(ctx context.Context, _ *http.Request, body []byte) (reply, error) {
 	t.puts.Add(1)
@@ -193,6 +188,26 @@ func (t *tenant) getObject(ctx context.Context, r *http.Request, _ []byte) (repl
 	}
 	t.bytesOut.Add(int64(len(b)))
 	return reply{"application/octet-stream", b}, nil
+}
+
+// getMany answers a batch of rids with one frame holding the objects the store
+// gave, whichever Store is behind it.
+func (t *tenant) getMany(ctx context.Context, _ *http.Request, body []byte) (reply, error) {
+	var req getManyRequest
+	if err := json.Unmarshal(body, &req); err != nil || len(req.Rids) == 0 {
+		return reply{}, errBadRequest
+	}
+	t.gets.Add(1)
+	objects, err := t.store.GetMany(ctx, req.Rids)
+	if err != nil {
+		return reply{}, err
+	}
+	frame, err := Encode(manyKeyID, objects)
+	if err != nil {
+		return reply{}, err
+	}
+	t.bytesOut.Add(sizeOf(objects))
+	return reply{"application/octet-stream", frame}, nil
 }
 
 func (t *tenant) has(ctx context.Context, _ *http.Request, body []byte) (reply, error) {
@@ -239,20 +254,21 @@ var errBadRequest = errors.New("blobstore: malformed request")
 func writeErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errTooLarge):
-		send(w, http.StatusRequestEntityTooLarge, "bad_frame")
+		send(w, http.StatusRequestEntityTooLarge, "bad_frame", 0)
 	case errors.Is(err, errBadRequest):
-		send(w, http.StatusBadRequest, "bad_request")
+		send(w, http.StatusBadRequest, "bad_request", 0)
 	default:
 		code, status, ok := codeOf(err)
 		if !ok {
 			code, status = "internal", http.StatusInternalServerError
 		}
-		send(w, status, code)
+		send(w, status, code, LimitOf(err))
 	}
 }
 
-func send(w http.ResponseWriter, status int, code string) {
+// send answers with the code and, when the relay has a byte ceiling to name, the ceiling.
+func send(w http.ResponseWriter, status int, code string, limit int64) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write(mustJSON(errBody{Err: code}))
+	_, _ = w.Write(mustJSON(errBody{Err: code, LimitBytes: limit}))
 }

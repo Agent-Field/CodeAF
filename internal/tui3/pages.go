@@ -2117,6 +2117,7 @@ func (a *app) closeModals() {
 	a.harnPanel.close()
 	a.crewUI.close()
 	a.permPanel.close()
+	a.pair.hide()
 	a.subPage.close()
 	// AND HOME'S OWN MODEL LIST, which IS drawn where it stands and is still a
 	// list nobody left open on purpose: walking to another place and back to a

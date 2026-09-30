@@ -3,6 +3,7 @@ package cellsync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -75,4 +76,38 @@ func TestFetchReportsProgress(t *testing.T) {
 	if last := len(have) - 1; have[last] != want[last] {
 		t.Fatalf("finished with %d of %d", have[last], want[last])
 	}
+}
+
+// A takeover asks the store once per frame's worth of objects, not once per
+// object: three hundred small files are a handful of requests.
+func TestFetchAsksOncePerBatchNotOncePerObject(t *testing.T) {
+	r := newRig(t)
+	files := map[string]string{}
+	for i := range 300 {
+		files[fmt.Sprintf("f%03d", i)] = fmt.Sprint("body ", i)
+	}
+	head := r.publishFirst(files)
+	f, c := fetcherFor(t, r.mem)
+	before := gets(r.mem)
+	if err := f.Fetch(context.Background(), c, head); err != nil {
+		t.Fatal(err)
+	}
+	objects := 301 // a blob for each file, and the snapshot
+	if got, most := gets(r.mem)-before, 2*(objects/blobstore.MaxGetMany+2); got > most {
+		t.Fatalf("%d store requests for %d objects, want at most %d", got, objects, most)
+	}
+	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, files) {
+		t.Fatalf("materialized %d files, want %d", len(got), len(files))
+	}
+}
+
+// gets counts the get requests a Memory store has answered.
+func gets(m *blobstore.Memory) int {
+	n := 0
+	for _, op := range m.Log() {
+		if op.Kind == "get" {
+			n++
+		}
+	}
+	return n
 }

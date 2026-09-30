@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -25,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // skewedClock is the relay's clock: the wall clock plus an offset a test moves
@@ -45,7 +47,10 @@ type driveRig struct {
 	bin    string
 	clock  *skewedClock
 	store  string // the relay's --store directory
+	svc    *relayserve.Service
+	url    string // where the relay answers
 	homeA  string
+	homeB  string
 	a, b   *Sync
 	engine cellstore.Engine // A's engine: its own data root, the real binary over spawn
 	cell   cell.Cell
@@ -60,16 +65,17 @@ func newDriveRig(t *testing.T) *driveRig {
 	}
 	clock := &skewedClock{}
 	storeDir := t.TempDir()
-	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now})
+	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	srv := httptestServer(t, svc.Handler)
 	t.Setenv(cell.EnvVar, "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	homeA := machine(t, srv.URL)
 	t.Setenv(IntervalVar, "50")
-	r := &driveRig{t: t, bin: bin, clock: clock, store: storeDir, homeA: homeA}
+	r := &driveRig{t: t, bin: bin, clock: clock, store: storeDir, homeA: homeA, svc: svc, url: srv.URL}
 	r.a = openSync(t, homeA)
 	homeB := t.TempDir()
+	r.homeB = homeB
 	if _, err := identity.Adopt(homeB, r.a.Identity, false); err != nil {
 		t.Fatal(err)
 	}
@@ -280,11 +286,11 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 	if err := r.b.putDevice(ctx, "blackmac"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("B acquired a live lease: %v", err)
 	}
 	r.clock.advance(directory.LeaseTTL + time.Second)
-	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID); err != nil {
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); err != nil {
 		t.Fatalf("B could not acquire after LeaseTTL: %v", err)
 	}
 
@@ -348,7 +354,7 @@ func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 	if got := r.directoryHead(r.cell.ID); got != r.head() {
 		t.Fatalf("Close left the directory at %q, want the chat's head", got)
 	}
-	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID); err != nil {
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); err != nil {
 		t.Fatalf("B could not take a released chat at once: %v", err)
 	}
 	if err := c.drive.Close(ctx); err != nil {
@@ -449,4 +455,25 @@ func stopDaemons(t *testing.T) {
 	for _, s := range socks {
 		_ = cellstore.Daemon{Socket: s}.Stop(context.Background())
 	}
+}
+
+// Each refusal the relay can make reaches the chat as its one sentence.
+func TestARefusalReachesTheChatAsItsSentence(t *testing.T) {
+	for err, want := range map[error]string{
+		blobstore.ErrFull:                          chatlist.RelayFull(0),
+		blobstore.Capped(blobstore.ErrFull, 5<<30): chatlist.RelayFull(5 << 30),
+		wireauth.ErrRevoked:                        chatlist.Removed,
+		wireauth.ErrSkew:                           chatlist.ClockOff,
+		wireauth.ErrRateLimited:                    chatlist.SlowDown,
+		wireauth.ErrTooManyIdentities:              chatlist.TooManyNew,
+	} {
+		var said []string
+		d := &Drive{opt: DriveOptions{OnNotice: func(l string) { said = append(said, l) }}}
+		d.refusal(err)
+		if len(said) != 1 || said[0] != want {
+			t.Errorf("%v said %q, want %q", err, said, want)
+		}
+	}
+	d := &Drive{opt: DriveOptions{OnNotice: func(l string) { t.Errorf("said %q for an unreachable relay", l) }}}
+	d.refusal(blobstore.ErrUnreachable)
 }

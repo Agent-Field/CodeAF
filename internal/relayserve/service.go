@@ -7,10 +7,12 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/pairbox"
 	"github.com/Agent-Field/codeaf/internal/relay"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
@@ -22,45 +24,126 @@ type Config struct {
 	Now    func() time.Time // the relay's clock; nil is the wall clock
 	Logf   func(string, ...any)
 	Note   func(name, what string) // the pipe's arrival and departure line; nil says nothing
+
+	// TrustProxy makes the pairing mailbox's per-network limits count the
+	// address in X-Forwarded-For. Only a relay behind a proxy that sets it may
+	// say so; anywhere else a caller could name any network it liked.
+	TrustProxy bool
+	// Pair is what the pairing mailbox enforces; the zero value is
+	// pairbox.DefaultLimits.
+	Pair pairbox.Limits
+
+	// Grace is what a rotation may ask for as its grace period; the zero value
+	// is one hour to thirty days, a week unless told. A relay a test drives
+	// shortens it.
+	Grace directory.GraceBounds
+	// SweepEvery is how often identities whose retirement is due are deleted;
+	// zero is hourly.
+	SweepEvery time.Duration
+	// MaxWatchers is how many directory watch sockets one identity may hold; the
+	// zero value is directory.MaxWatchers. A relay a test drives lowers it.
+	MaxWatchers int
 }
 
 // Service is a built relay: one handler and the files it holds open.
 type Service struct {
 	Handler http.Handler
 	ns      *namespaces
+	stop    chan struct{}
+	swept   sync.WaitGroup
 }
 
-// Close releases the directory files. It is safe on a pipe-only service.
+// Close stops the sweep and releases the directory files. It is safe on a
+// pipe-only service.
 func (s *Service) Close() error {
 	if s.ns == nil {
 		return nil
 	}
+	close(s.stop)
+	s.swept.Wait()
 	return s.ns.Close()
 }
 
-// New builds the relay. Without a store it is exactly the blind pipe; with one
-// it also serves the directory and store wires, every request authenticated by
-// the real signature check against the relay's own clock.
+// Sweep deletes the identities whose retirement is due now. The relay runs it on
+// its own every SweepEvery; it is exported for a caller that keeps its own time.
+func (s *Service) Sweep() error {
+	if s.ns == nil {
+		return nil
+	}
+	return s.ns.sweep()
+}
+
+// sweepLoop sweeps once at start, so a relay that was down past a deadline
+// catches up, and then every interval.
+func (s *Service) sweepLoop(every time.Duration, logf func(string, ...any)) {
+	defer s.swept.Done()
+	for {
+		if err := s.Sweep(); err != nil && logf != nil {
+			logf("sweep: %v", err)
+		}
+		select {
+		case <-s.stop:
+			return
+		case <-time.After(every):
+		}
+	}
+}
+
+// New builds the relay. Every relay is the blind pipe and the pairing mailbox,
+// which needs no disk and no identity. Given a store it also serves the
+// directory and store wires, every request authenticated by the real signature
+// check against the relay's own clock.
 func New(cfg Config) *Service {
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
 	}
 	mux := pipeMux(&relay.Server{Note: cfg.Note}, cfg.Status)
-	svc := &Service{Handler: mux}
+	mountPairing(mux, cfg, now)
+	svc := &Service{Handler: stamped(now, mux)}
 	if cfg.Store == "" {
 		return svc
 	}
-	svc.ns = newNamespaces(cfg.Store, now)
-	auth := noting(reqsign.AuthenticateAt(now))
-	mux.Handle("/v1/dir/", logged(cfg.Logf, directory.Handler(auth, svc.ns.directory)))
+	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
+	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
+	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
+	mux.Handle("/v1/dir/", dirs)
+	mux.Handle("/v1/identity/", dirs)
 	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, auth, svc.ns.blobs)))
-	svc.Handler = stamped(now, mux)
+	svc.stop = make(chan struct{})
+	svc.swept.Add(1)
+	go svc.sweepLoop(sweepInterval(cfg.SweepEvery), cfg.Logf)
 	return svc
 }
 
+func sweepInterval(d time.Duration) time.Duration {
+	if d <= 0 {
+		return time.Hour
+	}
+	return d
+}
+
+// mountPairing serves the pairing mailbox outside request signing, because the
+// device that is pairing has no identity yet. Its log line is the verb and the
+// status and nothing else: the key travels in a header and the messages in a
+// body, and neither is ever handed to the logger.
+func mountPairing(mux *http.ServeMux, cfg Config, now func() time.Time) {
+	limits := cfg.Pair
+	if limits == (pairbox.Limits{}) {
+		limits = pairbox.DefaultLimits
+	}
+	peer := pairbox.SocketPeer
+	if cfg.TrustProxy {
+		peer = pairbox.ForwardedPeer
+	}
+	h := logged(cfg.Logf, pairbox.Handler(pairbox.NewMemory(limits, now), peer))
+	mux.Handle(pairbox.Path, h)
+	mux.Handle(pairbox.Path+"/", h)
+}
+
 // stamped puts the relay's clock on every answer, refusals included, because a
-// device refused for skew needs the time most of all. It sets a header and
+// device refused for skew needs the time most of all, and a conformance run
+// reads the relay's time from any answer at all. It sets a header and
 // wraps nothing, so the pipe's hijacked connections are untouched.
 func stamped(now func() time.Time, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

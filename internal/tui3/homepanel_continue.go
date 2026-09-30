@@ -123,12 +123,13 @@ func (a *app) machineScreen(width int) []string {
 //
 // A CHAT ANOTHER MACHINE LET GO OF (`Open`, which is what a released chat offers
 // where it is held) IS CONTINUED THE WAY A CHAT THAT WENT OFF IS: it is not on
-// this machine, so opening it is continuing it, and the lease is free.
+// this machine, so opening it is continuing it, and the lease is free. A chat
+// that is running on another machine is continued the same way, and the lease
+// is taken from it at once: the screen names the machine, the person decides.
 var remoteOffers = map[chatlist.OfferKind]func(*app, chatlist.Row, chatlist.Offer) tea.Cmd{
 	chatlist.Open:         (*app).offerContinue,
 	chatlist.ContinueHere: (*app).offerContinue,
 	chatlist.Merge:        (*app).offerBranch,
-	chatlist.Watching:     (*app).sayOffer,
 }
 
 // homeMachineEnter is enter on a chat from another machine.
@@ -142,7 +143,7 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 	// THE DIRECTORY IS THE ONLY THING THAT CAN GRANT A LEASE OR ARCHIVE A
 	// BRANCH, so with it out of reach the acting offers are disabled and say why
 	// on the foot, where every other refusal on this screen is said.
-	if a.machineRead.down && offer.Kind != chatlist.Watching {
+	if a.machineRead.down {
 		a.home.say(chatlist.Unreachable, "")
 		return nil
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -115,3 +116,19 @@ func CellKeyID(cellKey []byte) string {
 
 // CellKeyID names this identity's cell key.
 func (i Identity) CellKeyID() string { return CellKeyID(i.cell[:]) }
+
+// Marshal is the identity as one document in memory, for a moment when it must
+// cross a channel the caller has already made private (a pairing). Nothing here
+// touches the disk: Save is still the only way an identity reaches a file, and
+// a caller that holds this output holds every secret the identity has.
+func (i Identity) Marshal() ([]byte, error) { return json.Marshal(i.document()) }
+
+// Unmarshal reads a document Marshal made, refusing anything that is not a
+// whole, current identity so that a half-received grant cannot be adopted.
+func Unmarshal(raw []byte) (Identity, error) {
+	var d document
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return Identity{}, fmt.Errorf("identity: not an identity document: %w", err)
+	}
+	return fromDocument(d)
+}

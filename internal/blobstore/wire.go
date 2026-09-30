@@ -24,7 +24,12 @@ var wireErrors = []struct {
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
 	{"unreachable", http.StatusServiceUnavailable, ErrUnreachable},
+	{"rate_limited", http.StatusTooManyRequests, wireauth.ErrRateLimited},
+	{"too_many_identities", http.StatusTooManyRequests, wireauth.ErrTooManyIdentities},
 	{"skew", http.StatusUnauthorized, wireauth.ErrSkew},
+	{"revoked", http.StatusUnauthorized, wireauth.ErrRevoked},
+	{"rotated", http.StatusGone, wireauth.ErrRotated},
+	{"gone", http.StatusGone, wireauth.ErrGone},
 	{"unauthorized", http.StatusUnauthorized, wireauth.ErrUnauthorized},
 }
 
@@ -51,6 +56,36 @@ func errOf(code string) error {
 // errBody is the JSON every failure carries.
 type errBody struct {
 	Err string `json:"err"`
+	// LimitBytes is the byte ceiling a full relay names; absent when it has none.
+	LimitBytes int64 `json:"limit_bytes,omitempty"`
+}
+
+// ceiling is a refusal together with the byte ceiling the relay named.
+type ceiling struct {
+	err   error
+	bytes int64
+}
+
+func (c ceiling) Error() string { return c.err.Error() }
+func (c ceiling) Unwrap() error { return c.err }
+
+// Capped attaches a byte ceiling to err. A store that has a cap returns its ErrFull this way and the
+// handler tells the client; the client attaches the ceiling it read. A ceiling of zero means the relay
+// named none, and err is left alone.
+func Capped(err error, bytes int64) error {
+	if bytes <= 0 {
+		return err
+	}
+	return ceiling{err: err, bytes: bytes}
+}
+
+// LimitOf is the byte ceiling the relay named with err, or zero when it named none.
+func LimitOf(err error) int64 {
+	var c ceiling
+	if errors.As(err, &c) {
+		return c.bytes
+	}
+	return 0
 }
 
 // statsBody is the answer to GET /v1/store/stats.
@@ -71,6 +106,9 @@ type hasRequest struct {
 	Rids []string `json:"rids"`
 }
 
+// getManyRequest names the objects a GetMany asks for; the answer is a frame.
+type getManyRequest = hasRequest
+
 type hasAnswer struct {
 	Have []bool `json:"have"`
 }
@@ -78,6 +116,7 @@ type hasAnswer struct {
 const (
 	pathFrames  = "/v1/store/frames"
 	pathObjects = "/v1/store/objects/"
+	pathMany    = "/v1/store/objects"
 	pathHas     = "/v1/store/has"
 	pathStats   = "/v1/store/stats"
 
@@ -88,6 +127,10 @@ const (
 	// nowHeader carries the server's clock, in unix milliseconds, on every answer.
 	nowHeader = "Codeaf-Now"
 )
+
+// manyKeyID is the cell key id of the frame that answers a GetMany. A frame
+// needs one, and this answer belongs to no cell, so it is all zeros.
+const manyKeyID = "00000000000000000000000000000000"
 
 func mustJSON(v any) []byte {
 	b, err := json.Marshal(v)

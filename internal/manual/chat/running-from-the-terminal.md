@@ -193,7 +193,7 @@ hand it work            do "<task>" · exec "<prompt>" · run <program>
 look at what happened   why self · why <task-id> · notebook · competence · services ·
                         logs · models · doctor · manual · version
 housekeeping            connect · disconnect · cache · cache clean · rebuild · wake ·
-                        serve · devices · help env
+                        serve · pair · devices · help env
 plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
 ```
@@ -211,6 +211,10 @@ Neither draws anything or reads a key.
 
 A third, **`codeaf cell`**, is typed by hand but is not in the help text: it only works
 while `CODEAF_CELLS` is on. Its verbs are described under "The cell verbs" below.
+
+## codeaf pair — show a code, or use one, from the terminal
+
+**`codeaf pair`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--relay <url>` names the relay to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The cell verbs — list a cell's turns and rewind it, and why they only work with CODEAF_CELLS on
 
@@ -243,6 +247,12 @@ machines. It refuses to overwrite a different identity already here unless you p
 `--replace`, and after a replace the secrets sealed under the old identity can no longer
 be read. A wrong passphrase and a damaged blob get the same refusal.
 
+**`codeaf identity rotate [--grace 7d] [--yes] [--abandon]`** replaces your identity on every
+computer you keep: a new root, every chat and your saved keys sealed again under it, and the
+old identity deleted by the relay after the grace period. It is how a lost computer is locked
+out for good. It asks first and says what it costs; `--abandon` stops a rotation that has not
+switched yet. Read *Locking out a lost computer for good*.
+
 Each machine also has its own device key, made the first time and never exported. Your
 identity signs a small certificate for it, so two machines share one id but keep separate
 device ids, and one machine can be told apart from another.
@@ -256,7 +266,7 @@ key the first time the identity is made on that machine.
 each: id, title, device, where it runs (`running on <device>`, `<device> off`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
-`--all` it prints the usage line. With sync off (no `CODEAF_SYNC_URL`) it prints
+`--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
 `sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
 set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
@@ -265,12 +275,14 @@ other machines cannot be reached it starts with `other machines unreachable`.
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 
 Two settings, both read from the environment, point this machine at a relay so your chats
-can follow you from one computer to another. Neither is a row in `/settings`: unset, sync is
-off and codeaf behaves exactly as it does without it.
+can follow you from one computer to another. Neither is a row in `/settings`. With sync off,
+codeaf behaves exactly as it does without it.
 
-**`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`. Plain `http` is for
-trying it out inside an ssh tunnel; later the relay needs TLS. Unset means sync is off.
-Set to something that is not a web address, it stops with
+**`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`, or the word `off`.
+Plain `http` is for trying it out inside an ssh tunnel; later the relay needs TLS. Unset, it
+is the relay a pairing saved on this computer, and with none saved it is codeaf's hosted
+relay when this build has one (see "Where your chats are stored" in use-this-on-another-computer); a build with no
+hosted relay keeps sync off until you name one. `off` turns sync off. Set to something that is not a web address, it stops with
 `CODEAF_SYNC_URL is not a web address like http://host:8787`. Set on a machine with no
 identity it stops with `this machine has no identity yet: codeaf identity import`; it never
 makes an identity for you, because a fresh one would be an identity none of your other
@@ -285,12 +297,15 @@ no file content it can read. Requests are signed by this machine's own device ke
 relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
 show your chats on the other machines once both machines share an identity and this setting.
 
-## When another machine continues your chat — the window that only shows it, and the turns kept as a branch
+## When another machine continues your chat — the window that only shows it, the turns kept as a branch, and "your computer's clock is off"
 
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
 other machine can pick it up at once. If this machine sleeps or loses its connection, the hold runs
-out after about thirty seconds and another machine may take the chat over.
+out after about ninety seconds and the chat's row on your other machines then says `<device> off`.
+You do not have to wait for that: press enter on a chat that says `running on <device>` on another
+machine and continue it there, and it is taken at once (see "Continue a chat here that another
+machine left" in home).
 
 When another machine does, this window says `<device> continued this chat; this window now only shows it`,
 with the name of the machine that took over (or the first digits of its id when it has no name). From then on
@@ -308,7 +323,7 @@ machines.) **There is no `codeaf cell merge` in this version:** folding a branch
 offered anywhere, so a branch row says `discard` alone.
 
 If this computer's clock is more than five minutes off, sync shows `this computer's clock is off by more than 5 minutes`
-once and tries again on the next round; fix the clock and it carries on. With sync off (no `CODEAF_SYNC_URL`) none of
+once and tries again on the next round; fix the clock and it carries on. With sync off none of
 this exists and the chat behaves as it always did.
 
 ## What syncing a conversation cost — codeaf cell report, and sending the numbers only if you choose

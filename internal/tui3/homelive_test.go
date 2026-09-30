@@ -85,7 +85,7 @@ func TestHomeLiveSource(t *testing.T) {
 	}
 
 	live.down = false
-	if _, err := here.Acquire(ctx, "c-live"); err != nil {
+	if _, err := here.Acquire(ctx, "c-live", directory.AcquireOpts{}); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, a, a.askMachines())

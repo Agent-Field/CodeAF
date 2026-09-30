@@ -29,6 +29,10 @@ type Local interface {
 	Dirty(ctx context.Context, c cell.Cell) (bool, error)
 	// Seal seals the tree as a local turn.
 	Seal(ctx context.Context, c cell.Cell) (head string, turns uint32, err error)
+	// Follow says the tree restored at from was moved to be the tree of to. The
+	// engine knows a tree by its path, so a tree moved into place unannounced
+	// is one it has never heard of, and cannot tell whether it holds edits.
+	Follow(ctx context.Context, from, to cell.Cell) error
 }
 
 // Taker continues a chat on this device.
@@ -70,7 +74,9 @@ type Taken struct {
 // the staging folder becomes the root, then the After hooks, then open. Fetch
 // precedes acquire, so a failed fetch never takes a lease, and the root
 // changes only after the acquire, so a lost race (directory.ErrLeaseHeld)
-// leaves nothing on disk beyond the kept branch.
+// leaves nothing on disk beyond the kept branch. A person who chose to continue
+// a chat that was running elsewhere has chosen to displace its holder, so that
+// lease is taken by force; a holder that appears meanwhile is a lost race.
 func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 	view, err := t.Dir.Cell(ctx, id)
 	if err != nil {
@@ -81,7 +87,7 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 	if err != nil {
 		return Taken{}, err
 	}
-	head, fence, err := t.claim(ctx, c, view.Cell.Head)
+	head, fence, err := t.claim(ctx, c, view.Cell.Head, displacing(view))
 	if err != nil {
 		return Taken{}, err
 	}
@@ -90,6 +96,13 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 		return Taken{}, err
 	}
 	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head}, Kept: kept}, nil
+}
+
+// displacing is the acquire the person's choice covers: they saw the chat's
+// lease held by a live holder, so they may take it from that holder, and only
+// from that one.
+func displacing(v directory.CellView) directory.AcquireOpts {
+	return directory.AcquireOpts{Force: v.Cell.Lease.Expires > v.Now}
 }
 
 // keepLocal seals unsealed work in an existing root into a branch of the chat.
@@ -118,11 +131,11 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (s
 // if the head moved while the fetch ran, and only then puts the staging folder
 // in place of c's root. It answers the head that is on disk and the fence. The
 // staging folder never outlives a failed claim.
-func (t Taker) claim(ctx context.Context, c cell.Cell, head string) (string, uint64, error) {
+func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, error) {
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
-	head, fence, err := t.fetchAndAcquire(ctx, stage, head)
+	head, fence, err := t.fetchAndAcquire(ctx, stage, head, how)
 	if err == nil {
-		if err = t.install(ctx, stage.Root, c, head); err != nil {
+		if err = t.install(ctx, stage, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
 		}
 	}
@@ -134,14 +147,14 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string) (string, uin
 
 // fetchAndAcquire is the part of a claim that touches only the staging folder
 // and the directory.
-func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, head string) (string, uint64, error) {
+func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, head string, how directory.AcquireOpts) (string, uint64, error) {
 	if err := freshDir(stage.Root); err != nil {
 		return "", 0, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
 	}
 	if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
 		return "", 0, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
 	}
-	got, err := t.Dir.Acquire(ctx, stage.ID)
+	got, err := t.Dir.Acquire(ctx, stage.ID, how)
 	if err != nil {
 		return "", 0, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
 	}
@@ -170,14 +183,24 @@ func freshDir(dir string) error {
 // restored in place: everything it needs is already in the store from the
 // staging fetch, so this is only the engine's restore to that tree, and the
 // staging folder is dropped. A copy is replaced by the staging folder.
-func (t Taker) install(ctx context.Context, stage string, c cell.Cell, head string) error {
+func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) error {
 	if t.InPlace == nil || !t.InPlace(c) {
-		return swap(stage, c.Root)
+		return t.replace(ctx, stage, c)
 	}
 	if err := t.Fetch.Fetch(ctx, c, head); err != nil {
 		return err
 	}
-	return os.RemoveAll(stage)
+	return os.RemoveAll(stage.Root)
+}
+
+// replace puts the staging folder in place of c's root and tells the engine the
+// tree moved, so a chat that is taken again before it is ever opened is still
+// known to the engine.
+func (t Taker) replace(ctx context.Context, stage, c cell.Cell) error {
+	if err := swap(stage.Root, c.Root); err != nil {
+		return err
+	}
+	return t.Local.Follow(ctx, stage, c)
 }
 
 // swap puts stage in place of root. What was at root is sealed in the store

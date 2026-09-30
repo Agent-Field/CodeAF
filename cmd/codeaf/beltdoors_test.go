@@ -27,7 +27,8 @@ import (
 // a command that scrolled off a person's screen.
 // Part A's terminal connect door adds its two required forms and descriptions.
 // The cap moves by exactly those seven lines; unrelated help growth still fails.
-const helpLineCap = 117
+// The pairing door adds its two forms and their descriptions, four lines more.
+const helpLineCap = 121
 
 // doorsOffThePage are the command words main.go dispatches that `codeaf --help`
 // deliberately does NOT name, so the check below does not demand a line for

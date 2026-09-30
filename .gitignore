@@ -41,3 +41,7 @@ internal/manual/pages.pack.gz
 .furrow/
 bench/idle-surface/runs/
 work/
+
+# hosted relay dev install (wrangler, miniflare)
+relay/hosted/node_modules
+relay/hosted/.wrangler/

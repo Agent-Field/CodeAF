@@ -9,7 +9,7 @@ package main
 //
 //	big-machine$ codeaf serve
 //	  this machine is reachable as  otter-lamp-42
-//	  pair a new device with code   715 302   (valid 10 minutes)
+//	  let a device use this machine with code   42-715-302   (valid 10 minutes)
 //
 //	laptop$ codeaf chat --at otter-lamp-42
 //	  pairing with otter-lamp-42 — enter the code shown there: ______
@@ -45,7 +45,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -285,20 +284,20 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	host := &pair.Host{
-		Service: service,
-		Device:  device,
-		Devices: pair.DeviceBook(),
-		Desk:    &pair.Desk{},
-		Say:     func(line string) { fmt.Fprintln(os.Stdout, line) },
-		Open:    func(tunnel io.ReadWriteCloser) { serveOneConnection(tunnel, here) },
-	}
-
 	// ctrl+c is how this command ends, so it is caught rather than left to kill
 	// the process mid-registration: the machine gives its name up on the way
 	// out instead of leaving the relay to notice.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	host := &pair.Host{
+		Service: service,
+		Device:  device,
+		Devices: pair.DeviceBook(),
+		Desk:    &pair.Desk{},
+		Approve: serveApprover(ctx, os.Stdin, os.Stdout),
+		Say:     func(line string) { fmt.Fprintln(os.Stdout, line) },
+		Open:    func(tunnel io.ReadWriteCloser) { serveOneConnection(tunnel, here) },
+	}
 	if err := host.Run(ctx); err != nil {
 		return err
 	}
@@ -332,85 +331,4 @@ func serveOneConnection(tunnel io.ReadWriteCloser, workspace string) {
 	if err := engine.Run(); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "that connection ended:", err)
 	}
-}
-
-// ── the machine: codeaf devices ─────────────────────────────────────────────
-
-// runDevices lists the devices this machine lets in, and stops one.
-//
-// THE LIST AND THE STOPPING BOTH BELONG TO THIS MACHINE. A device cannot list
-// itself out of somebody's machine and cannot stop another device; this command
-// answers about the machine it is typed on, which is the same law the rest of
-// codeaf keeps about remote surfaces.
-func runDevices(args []string) error {
-	device, err := pair.ThisDevice(pair.OpenKeeper())
-	if err != nil {
-		return err
-	}
-	book := pair.DeviceBook()
-
-	if len(args) > 0 && args[0] == "revoke" {
-		return revokeDevice(book, args[1:])
-	}
-	if askedForHelp(args) {
-		return commandHelp("devices")
-	}
-	if len(args) > 0 {
-		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all]]")
-	}
-
-	paired, err := book.Devices()
-	if err != nil {
-		return err
-	}
-	fmt.Print(pair.DevicesList(device.Name(), paired, pair.OpenKeeper(), time.Now()))
-	known, err := pair.Machines()
-	if err != nil {
-		return err
-	}
-	fmt.Print(pair.MachinesList(known, time.Now()))
-	return nil
-}
-
-// revokeDevice stops one device, or every device answering to one name.
-//
-// --ALL IS A FLAG LIKE EVERY OTHER FLAG IN THIS BINARY. It used to be read by
-// hand, and only when it was the FIRST word after `revoke`, so `codeaf devices
-// revoke laptop --all` was refused — with a usage line that did not mention
-// `--all` at all. A person taking back access to their own machine was told the
-// wrong grammar for the gesture they had just typed correctly. Through
-// [commandFlags] and [reorder] it is now accepted in either position, printed
-// by `codeaf devices revoke --help`, and named in the one usage table.
-func revokeDevice(book *pair.Book, args []string) error {
-	flags := commandFlags("devices revoke")
-	all := flags.Bool("all", false, "stop every device answering to that name, not just the one")
-	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
-		return err
-	}
-	if flags.NArg() != 1 {
-		return errors.New("usage: codeaf devices revoke <name> [--all] — `codeaf devices` lists the names")
-	}
-	name := flags.Arg(0)
-	if *all {
-		count, err := book.RevokeAll(name)
-		if err != nil {
-			return err
-		}
-		// ONE DEVICE STOPPED IS ONE DEVICE STOPPED, whichever flag was typed:
-		// `--all` over a name only one device answers to reads as the plain
-		// form, in the plain form's own sentence, rather than as a second kind
-		// of event with a count in front of it.
-		if count == 1 {
-			fmt.Println(pair.RevokedLine(name))
-			return nil
-		}
-		fmt.Printf("%d devices called %s have been stopped — each needs a new pairing code to come back.\n", count, name)
-		return nil
-	}
-	gone, err := book.Revoke(name)
-	if err != nil {
-		return err
-	}
-	fmt.Println(pair.RevokedLine(gone.Label))
-	return nil
 }

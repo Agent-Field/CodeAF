@@ -1,14 +1,11 @@
 package chatlist
 
-import "fmt"
-
 // OfferKind is what a person may do with a row.
 type OfferKind int
 
 const (
 	Open OfferKind = iota
 	ContinueHere
-	Watching
 	Merge
 )
 
@@ -19,10 +16,12 @@ type Offer struct {
 }
 
 // offers maps each status to its offer; a table keeps OfferFor free of
-// branching. Idle and Here open the chat with nothing said.
+// branching. Idle and Here open the chat with nothing said. A chat running on
+// another device is continued like one that went off: the person who opens it
+// decides it moves, and the takeover screen says where it runs now.
 var offers = map[Status]func(Row) Offer{
 	Off:     func(Row) Offer { return Offer{ContinueHere, OfferContinue} },
-	Running: func(r Row) Offer { return Offer{Watching, fmt.Sprintf(runningOn, r.Device)} },
+	Running: func(Row) Offer { return Offer{ContinueHere, OfferContinue} },
 	Branch:  func(r Row) Offer { return Offer{Merge, StatusLine(r)} },
 }
 

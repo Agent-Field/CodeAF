@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -28,6 +29,9 @@ const (
 )
 
 var bg = context.Background()
+
+// testGrace is a grace period short enough for a fake clock to pass.
+var testGrace = directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}
 
 // device is one machine: a real device key and cert under a real identity.
 type device struct {
@@ -69,6 +73,7 @@ type rig struct {
 	clock *directorytest.FakeClock
 	srv   *httptest.Server
 	svc   *relayserve.Service
+	watch int // the watcher cap the relay is built with; zero keeps the default
 	mu    sync.Mutex
 	logs  []string
 }
@@ -87,7 +92,7 @@ func (r *rig) logf(format string, args ...any) {
 
 // start brings the relay up on a fresh port over the same store: a restart.
 func (r *rig) start() {
-	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf})
+	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf, Grace: testGrace, MaxWatchers: r.watch})
 	r.srv = httptest.NewServer(r.svc.Handler)
 	r.t.Cleanup(r.stop)
 }
@@ -130,11 +135,11 @@ func TestRelayServesDirAndStore(t *testing.T) {
 	if _, err := r.dir(a).Create(bg, cell, directory.CellInit{Head: head1, Class: "chat"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.dir(b).Acquire(bg, cell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("B took a live lease: %v", err)
 	}
 	r.expire()
-	v, err := r.dir(b).Acquire(bg, cell)
+	v, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{})
 	if err != nil || v.Cell.Lease.Fence != 2 || v.Cell.Lease.Device != b.dev.ID() {
 		t.Fatalf("B acquire after expiry: %v %+v", err, v)
 	}
@@ -175,11 +180,11 @@ func TestRelayRestartKeepsLease(t *testing.T) {
 	}
 
 	r.restart()
-	if _, err := r.dir(b).Acquire(bg, cell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("live lease lost across restart: %v", err)
 	}
 	r.expire()
-	if v, err := r.dir(b).Acquire(bg, cell); err != nil || v.Cell.Lease.Fence != 2 {
+	if v, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); err != nil || v.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence after restart: %v %+v", err, v)
 	}
 
@@ -272,8 +277,14 @@ func TestRelayWithoutStoreIsOnlyThePipe(t *testing.T) {
 			t.Fatal(err)
 		}
 		resp.Body.Close()
-		if resp.StatusCode != want || resp.Header.Get("Codeaf-Now") != "" {
+		if resp.StatusCode != want || resp.Header.Get("Codeaf-Now") == "" {
 			t.Fatalf("%s: status %d, Codeaf-Now %q", path, resp.StatusCode, resp.Header.Get("Codeaf-Now"))
 		}
 	}
+}
+
+func bytesReader(s string) *strings.Reader { return strings.NewReader(s) }
+
+func signAs(req *http.Request, body []byte, d device, r *rig) {
+	reqsign.Sign(req, body, d, r.clock.Now())
 }
