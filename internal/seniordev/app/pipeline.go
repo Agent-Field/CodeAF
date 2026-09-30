@@ -21,7 +21,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/runbudget"
-	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 type pipelineDeps struct {
@@ -279,12 +278,6 @@ func (runner *pipeline) prepareWorkspace(ctx context.Context) error {
 	runner.recorder = newWorkspaceRecorder(runner.args, absolute, runner.note)
 	if err := runner.recorder.Prepare(ctx); err != nil {
 		return err
-	}
-	if !runner.recorder.CommitsOnWrite() {
-		// The recorder keeps its own copies of the tree, so a per-write commit
-		// buys nothing -- and under --in-place the workspace may be a
-		// repository this run has no business writing history into.
-		util.DisableEagerCommit()
 	}
 	runner.events.stage("bootstrap", "ready", map[string]any{
 		"workspace": absolute, "recorder": runner.recorder.Kind(),

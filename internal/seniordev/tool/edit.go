@@ -16,7 +16,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 	patchpkg "github.com/Agent-Field/codeaf/internal/seniordev/patch"
-	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 const (
@@ -143,8 +142,6 @@ func (r *Registry) executeEdit(ctx context.Context, call steploop.ToolCall) (ste
 	if err != nil {
 		return steploop.ToolResult{}, err
 	}
-
-	util.EagerCommit(ctx, util.EagerCommitOptions{Cwd: r.workDir, FilePath: resolved, Label: "edit"})
 
 	title, err := filepath.Rel(r.workDir, resolved)
 	if err != nil {

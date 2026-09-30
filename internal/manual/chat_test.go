@@ -1046,6 +1046,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does /senior-dev do", "senior-dev"},
 		{"will senior-dev stop and ask me questions while it works", "senior-dev"},
 		{"where did senior-dev's commits go", "senior-dev"},
+		{"why does senior-dev make wip(edit) commits in my pull request", "senior-dev"},
 		{"how much does a senior-dev run cost", "senior-dev"},
 		{"which model is my senior-dev run using", "senior-dev"},
 		{"how do I read the whole brief senior-dev was given", "senior-dev"},

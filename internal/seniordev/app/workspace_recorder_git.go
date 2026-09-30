@@ -73,8 +73,7 @@ func (recorder *gitRecorder) startLists() ([]string, error) {
 	return paths, nil
 }
 
-func (recorder *gitRecorder) Kind() string         { return "git" }
-func (recorder *gitRecorder) CommitsOnWrite() bool { return true }
+func (recorder *gitRecorder) Kind() string { return "git" }
 
 // git runs a git command in the workspace and keeps NUL-delimited path lists
 // byte-for-byte while trimming ordinary human-readable output.

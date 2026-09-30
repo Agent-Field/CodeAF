@@ -200,12 +200,12 @@ too.
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.
 
-## Where a delegate's work goes — its own branch, not checked out, not merged into mine, not squashed, the wip commits, what it costs
+## Where a delegate's work goes — its own branch, not checked out, not merged into mine, one commit, nothing to squash, no wip commits, what it costs
 
 In a git repository codeaf cuts the program a branch of its own (`task/<title>-<id>`) from
 the commit your checkout stands on, in a private copy of the repository, and the program
-works there; its own commits (senior-dev's `wip(edit): …`) stay on that branch, and
-nothing squashes them. When it ends — finished, stopped, crashed, or codeaf gone — codeaf
+works there. senior-dev commits nothing as it goes — no `wip(edit): …` commits, and
+nothing under its name. When it ends — finished, stopped, crashed, or codeaf gone — codeaf
 commits what it left uncommitted onto that branch (the task's title, with the program's
 own account of the ending as the body) and removes the copy, so **the branch is kept and
 checked out nowhere**, even when the run changed nothing. **Your checkout is never

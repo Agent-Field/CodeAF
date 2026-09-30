@@ -639,9 +639,8 @@ func clearGitIdentity(t *testing.T, workspace string) {
 
 // The freeze must not depend on the container having a git identity.
 //
-// If workspaceGit shelled plain `git` while eager-commit went through
-// attribution.GitArgv, every wip(edit) commit would work and the one commit
-// that decides what ships would fail with
+// If workspaceGit shelled plain `git`, the one commit that decides what ships
+// would fail with
 //
 //	could not record the tree: git commit-tree …: exit status 128:
 //	Author identity unknown … unable to auto-detect email address
@@ -732,8 +731,8 @@ func TestCurrentTreeSHAIncludesTrackedIgnoredFiles(t *testing.T) {
 }
 
 // A restore must remove files ADDED after the checkpoint, not only revert
-// edits. Overlay checkout cannot: every model-written file is tracked by
-// eager-commit, so probe debris (a scratch test file the model added)
+// edits. Overlay checkout cannot: a file the model's shell added and
+// committed is tracked, so probe debris (a scratch test file the model added)
 // survives `checkout --force <commit> -- .` + `clean -fd`, and the "restored"
 // tree is not the checkpoint. The runs whose debris breaks the suite are
 // exactly the ones that need this to work.
@@ -756,15 +755,15 @@ func TestRestoreRemovesFilesAddedAfterTheCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The debris: a file added AND tracked after the checkpoint, the way
-	// eager-commit tracks everything the model writes.
+	// The debris: a file added AND tracked after the checkpoint, the way the
+	// model's own shell can commit one.
 	if err := writeFile(filepath.Join(workspace, "probe.test.js"), "debris\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := gitRun(workspace, "add", "probe.test.js"); err != nil {
 		t.Fatal(err)
 	}
-	if err := gitRun(workspace, "commit", "-m", "wip(edit): probe.test.js"); err != nil {
+	if err := gitRun(workspace, "commit", "-m", "add a probe"); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeFile(filepath.Join(workspace, "feature.txt"), "broken state\n"); err != nil {

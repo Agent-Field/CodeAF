@@ -63,7 +63,7 @@ at the person's discretion.
 | Command | `/<name> <brief>`, one word per installed delegate | 2026-09-21 |
 | What it starts | a task through the existing `/task` door, never a blocking turn | 2026-09-21 |
 | Questions from the delegate | none. The brief must be self-sufficient | 2026-09-21 |
-| senior-dev's `wip(edit)` commits | squashed into one commit at landing (2026-09-21); kept on the program's own branch, under one commit of what it left uncommitted, from 2026-09-24 | 2026-09-24 |
+| senior-dev's `wip(edit)` commits | squashed into one commit at landing (2026-09-21); kept on the program's own branch, under one commit of what it left uncommitted, from 2026-09-24; never made at all from 2026-09-30 — the run's work is the one commit codeaf makes when it ends, because the kept commits reached a pull request with senior-dev as an author and a squash merge wrote every one into the trunk's message | 2026-09-30 |
 | senior-dev control plane | optional. Landed in senior-dev `f3b9716` | 2026-09-21 |
 | Live cost from senior-dev | a top-level `spend` record. Landed in senior-dev `5793499` | 2026-09-22 |
 | Steps from senior-dev | a `step` record per finished tool call. Landed in senior-dev `5793499` | 2026-09-22 |

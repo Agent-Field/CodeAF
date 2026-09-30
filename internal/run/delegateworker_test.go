@@ -362,14 +362,14 @@ func TestDelegateWorkerFinishesAChangeHandedInWhateverItsOwnCheckSaid(t *testing
 	}
 }
 
-// The real child receives the branch and frozen ignore record that its eager
-// file writes need; a missing field would silently commit on current HEAD.
-func TestDelegateWorkerPassesTheRunBranchAndIgnoreRecordToItsChild(t *testing.T) {
+// The real child receives the frozen ignore record its recorder keeps out of
+// every tree, and no longer a branch to commit on: senior-dev commits nothing
+// on the run's branch, so the variable that fenced those commits is gone.
+func TestDelegateWorkerPassesTheIgnoreRecordAndNoBranchToItsChild(t *testing.T) {
 	store := runOpenStore(t)
 	seen := filepath.Join(t.TempDir(), "seen")
 	t.Setenv("FAKE_ENV_PATH", seen)
-	m, setup := fakeDelegate(t, "printf '%s\\n%s\\n' \"$SENIOR_DEV_EXPECTED_BRANCH\" \"$SENIOR_DEV_IGNORED_AT_START\" > \"$FAKE_ENV_PATH\"\n"+passLine("done"))
-	setup.Branch = "task/fix-123"
+	m, setup := fakeDelegate(t, "printf '%s\\n%s\\n' \"${SENIOR_DEV_EXPECTED_BRANCH-unset}\" \"$SENIOR_DEV_IGNORED_AT_START\" > \"$FAKE_ENV_PATH\"\n"+passLine("done"))
 	setup.IgnoredFile = filepath.Join(t.TempDir(), "ignored-at-start")
 	if _, err := run.NewDelegateWorker(store, t.TempDir(), m, setup, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
 		t.Fatal(err)
@@ -378,7 +378,7 @@ func TestDelegateWorkerPassesTheRunBranchAndIgnoreRecordToItsChild(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != setup.Branch+"\n"+setup.IgnoredFile+"\n" {
+	if string(body) != "unset\n"+setup.IgnoredFile+"\n" {
 		t.Fatalf("child branch and ignore record = %q", body)
 	}
 }

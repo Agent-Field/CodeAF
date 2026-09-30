@@ -532,15 +532,16 @@ they never end up on a branch, and the next run in that folder never reads the l
 one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
 left where it is, and never ends up on a branch either.
 
-## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, not squashed
+## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, one commit, nothing to squash, no wip commits
 
 In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`) from
 the commit your checkout stands on — with your uncommitted changes as its first commit, when
 you have some (see uncommitted changes) — checked out in a private copy of the repository
-(see where senior-dev's copy is), and senior-dev works there. senior-dev commits each file
-it writes, except initially ignored files and test caches (`wip(write): <path>`,
-`wip(edit): <path>`), on that branch, which is how it keeps a record to restore from; they
-stay there, and nothing squashes them.
+(see where senior-dev's copy is), and senior-dev works there. **senior-dev makes no
+commits of its own**: no `wip(write): <path>` or `wip(edit): <path>` per file, and nothing
+authored `senior-dev`. The snapshots it restores from are kept outside the branch. (Runs
+before 2026-09-30 committed every file they wrote that way; those commits are still on
+their branches.)
 
 When the run ends — finished or not, stopped, crashed, or codeaf gone — codeaf commits
 what it left uncommitted on that branch, excluding paths ignored at the start and known

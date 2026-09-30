@@ -218,7 +218,8 @@ type ProgramFolder struct {
 func (f *ProgramFolder) Plain() bool { return f == nil || f.Branch == "" }
 
 // IgnoredFile is the run's start-time ignore list, kept outside the repository
-// so the child can protect eager commits after it changes .gitignore.
+// so the child's recorder still keeps those paths out of its trees after the
+// run changes .gitignore.
 func (f *ProgramFolder) IgnoredFile() string {
 	if f == nil || f.Keep == "" {
 		return ""
@@ -228,7 +229,7 @@ func (f *ProgramFolder) IgnoredFile() string {
 
 // InputsFile is the run's list of its copy's inputs and their fingerprints
 // ([ProgramFolder.Inputs]), kept beside [ProgramFolder.IgnoredFile] for the
-// child's commits to read (gitidentity.InputsEnv); "" when there is none.
+// child's recorder to read (gitidentity.InputsEnv); "" when there is none.
 func (f *ProgramFolder) InputsFile() string {
 	if f == nil || f.Keep == "" || len(f.Inputs) == 0 {
 		return ""

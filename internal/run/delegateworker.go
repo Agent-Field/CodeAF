@@ -115,11 +115,10 @@ type DelegateSetup struct {
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
 	// flags for that (delegate.Delegate.PlainFolder).
 	PlainFolder bool
-	// Branch is the run's own task branch; IgnoredFile is its start-time
-	// ignore list, and InputsFile the untracked files copied into its copy
-	// with their fingerprints (session.ProgramFolder.InputsFile). All three are
-	// passed to the child before any eager commit.
-	Branch      string
+	// IgnoredFile is the run's start-time ignore list, and InputsFile the
+	// untracked files copied into its copy with their fingerprints
+	// (session.ProgramFolder.InputsFile). Both are passed to the child, whose
+	// recorder keeps both out of every tree it records.
 	IgnoredFile string
 	InputsFile  string
 	// BriefNote is the line the program's brief opens with when it works in a
@@ -517,7 +516,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 			delegate.RunFacts{Plain: w.setup.PlainFolder, Crew: w.setup.Crew}),
 		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the API's
 		// address and token are what its engine needs; model commands lose both.
-		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
+		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
 			gitidentity.InputsEnv+"="+w.setup.InputsFile),
 		Dir:        w.workspace,
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
