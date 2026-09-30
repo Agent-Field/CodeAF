@@ -150,9 +150,11 @@ else:
 PY
 )
 if [ "$NEEDS_ADAPT" = 1 ]; then
-  log "$TASK_ID: judge — adaptive test adaptation"
-  python3 "$RIG_DIR/grade/judge.py" adapt --task "$TASK_DIR" --grade-dir "$OUT/logs/grade" \
-    > "$OUT/logs/grade/judge-adapt.out" 2>&1 || log "$TASK_ID: judge adapt failed — see judge-adapt.out"
+  if [ "$REGRADE" != 1 ]; then
+    log "$TASK_ID: judge — adaptive test adaptation"
+    python3 "$RIG_DIR/grade/judge.py" adapt --task "$TASK_DIR" --grade-dir "$OUT/logs/grade" \
+      > "$OUT/logs/grade/judge-adapt.out" 2>&1 || log "$TASK_ID: judge adapt failed — see judge-adapt.out"
+  fi
   if [ -s "$OUT/logs/grade/adapted-tests.patch" ]; then
     log "$TASK_ID: phase B — rerunning adapted tests"
     run_in_verify phase-b \
@@ -165,6 +167,12 @@ fi
 # ── combine, scan, record ───────────────────────────────────────────────────
 python3 "$RIG_DIR/grade/rubric.py" combine --task "$TASK_DIR" --grade-dir "$OUT/logs/grade" \
   > "$OUT/logs/grade/combine.out" 2>&1 || log "$TASK_ID: combine failed — see combine.out"
+
+if [ "$REGRADE" = 1 ]; then
+  SCORE=$(python3 -c "import json;g=json.load(open('$OUT/logs/grade/grade.json'));print(g.get('score'))" 2>/dev/null || echo rig)
+  log "$TASK_ID: regraded — score=$SCORE (see $OUT/logs/grade/grade.json)"
+  exit 0
+fi
 
 if [ "$EGRESS_SCAN" = 1 ]; then
   python3 "$RIG_DIR/grade/scanner.py" --run-dir "$OUT" \
