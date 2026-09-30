@@ -1026,7 +1026,8 @@ nothing. Space is the separator — no pipe, no bracket, no rule. The groups, le
 - **elsewhere** — what is alive somewhere other than this conversation: `2 jobs · 1 watch`
   for background work, absent when both counts are zero. The open-conversation count and
   the standing count were in this group until 2026-09-09 and are not on the row at all
-  now: the **tab strip** above the transcript names every open conversation, and
+  now: the **tab strip** above the transcript names every open conversation that has a
+  draft or a message (an untouched new one has no tab yet), and
   `◦ 2 standing orders` is a line at the foot of the **task column** (see *The column on
   the right*).
 - **the posture** — `YOLO`, drawn only when the gate is open **and** the legend above the
@@ -3151,8 +3152,9 @@ Done 6 ▸
 ```
 
 - **The header** is the column's two words in a chat in a team, one word elsewhere. The
-  word in front is bold ink and the other is dim, and each keeps its count; a count of `0`
-  is dim, and a count of new traffic, `3 new`, is in ink. The `alt+l` at the right is dim.
+  word in front is bold ink and the other is dim, and each keeps its count; a count of zero
+  is not drawn at all (the word stays, as `Tasks` alone), and a count of new traffic,
+  `3 new`, is in ink. The `alt+l` at the right is dim.
 - **The needs-you band** is the one place with colour of its own: what is waiting on you
   leads with its `?` in the needs-you amber, and a failure nobody has opened leads with its
   `✕` in ordinary ink. A thin dim rule closes it. With nothing waiting it is not drawn.

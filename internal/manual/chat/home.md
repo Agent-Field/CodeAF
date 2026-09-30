@@ -1102,8 +1102,9 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
   this one. Press it again and you are back. It is `cd -`.
 - **`/new`** adds a conversation in this project — unless the one on screen is fresh and
   empty, in which case it takes its place.
-- **the tab strip** above the transcript draws one tab per open conversation, and marks the
-  ones stopped on a question.
+- **the tab strip** above the transcript draws one tab per open conversation that has a
+  draft or a message — an untouched new conversation gets its tab when you type in it — and
+  marks the ones stopped on a question.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves codeaf
   only when that was the last one.
 - **`ctrl+c`** closes all of them, on the press that lands and with nothing asked
