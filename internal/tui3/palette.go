@@ -1890,23 +1890,13 @@ func (p *picker) height(width int) int {
 	// MODELS you can see (the manual makes it in those words). Charging the
 	// heading to the models would quietly make it eleven.
 	ceiling := pickerRows + p.tableHead(width)
+	p.width = width
 	lines := p.headLines(width)
 	for at := p.top; at < len(p.list) && lines < ceiling; at++ {
-		if p.groupBefore(at) != "" {
-			lines++
-		}
-		// The providers' own heading is counted where it is drawn, for
-		// [overlayItemLines]' reason: the count here and the lines the fill
-		// actually writes must agree or the list is laid into a block of the
-		// wrong size.
-		if p.laneHeadBefore(at, width) != "" {
-			lines++
-		}
-		_, note := p.entryText(at, width, nil)
-		take := overlayItemLines(width, note)
-		if p.lineUnder(at) != "" {
-			take++
-		}
+		// THE COUNT AND THE DRAW ARE ONE FUNCTION ([picker.rowLines]): the
+		// scroll reads the same costs the fill spends, so a cursor the window
+		// claims to hold is a cursor the frame really drew.
+		take := p.rowLines(at, at == p.top)
 		if lines+take > ceiling {
 			break
 		}
