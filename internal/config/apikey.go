@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 
@@ -77,31 +76,4 @@ func WriteAPIKey(profileDir, key string) error {
 // than discovering as a 401 on the first turn.
 func LooksLikeAPIKey(key string) bool {
 	return modelsource.LooksLikeAPIKey(key)
-}
-
-// EnsurePersistedAPIKey copies the session's environment key into the profile
-// config exactly once, so the standing watch can authenticate after the shell
-// that ratified it is gone. It never overwrites a key already on disk, and the
-// file ends owner-readable only. Returns whether a key was newly persisted and
-// the path that holds it.
-func EnsurePersistedAPIKey(profileDir string) (bool, string, error) {
-	path := BudgetConfigPath(profileDir)
-	key := strings.TrimSpace(firstNonEmpty(os.Getenv(APIKeyEnv), os.Getenv("OPENAI_API_KEY")))
-	if key == "" {
-		return false, path, nil
-	}
-	// Whether a key is already on disk is decided inside the write, on the file
-	// as it is then, so a key stored a moment ago is never overwritten.
-	persisted := false
-	err := editProfile(profileDir, KeyAPIKey, func(held map[string]json.RawMessage) (profileChange, error) {
-		if persistedAPIKeyFrom(held) != "" {
-			return profileChange{}, nil
-		}
-		persisted = true
-		return encodeChange(map[string]any{KeyAPIKey: key})
-	})
-	if err != nil {
-		return false, path, fmt.Errorf("persist api key: %w", err)
-	}
-	return persisted, path, nil
 }
