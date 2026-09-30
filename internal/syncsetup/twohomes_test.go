@@ -222,7 +222,8 @@ func seedTree(t *testing.T, work string) {
 		{"bin/run.sh", []byte("#!/bin/sh\necho hi\n"), 0o755},
 		{"data/blob.bin", blob, 0o600},
 		{"untracked/notes.txt", []byte("not in any repository\n"), 0o644},
-		{".env", []byte("API_KEY=sk-test-123\nDB_URL=postgres://u:p@h/db\n"), 0o600},
+		{".env", []byte(envBody), 0o644},
+		{"web/client/app/.env.production", []byte("# prod\nAPI_URL='https://x'\n"), 0o640},
 	}
 	for _, f := range files {
 		path := filepath.Join(work, f.path)
@@ -412,11 +413,18 @@ func assertEnvInjected(t *testing.T, work string) {
 	t.Helper()
 	path := filepath.Join(work, ".env")
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf(".env on B = %v, %v; want the vault's secrets at mode 0600", info, err)
+	if err != nil || info.Mode().Perm() != 0o644 {
+		t.Fatalf(".env on B = %v, %v; want A's file at mode 0644", info, err)
 	}
-	if got, _ := os.ReadFile(path); string(got) != "API_KEY=sk-test-123\nDB_URL=postgres://u:p@h/db\n" {
+	if got, _ := os.ReadFile(path); string(got) != envBody {
 		t.Fatalf(".env on B = %q", got)
+	}
+	deep := filepath.Join(work, "web/client/app/.env.production")
+	if info, err := os.Stat(deep); err != nil || info.Mode().Perm() != 0o640 {
+		t.Fatalf("the nested dotenv on B = %v, %v; want it back at mode 0640", info, err)
+	}
+	if got, _ := os.ReadFile(deep); string(got) != "# prod\nAPI_URL='https://x'\n" {
+		t.Fatalf("the nested dotenv on B = %q", got)
 	}
 }
 
@@ -690,7 +698,7 @@ const envBody = "API_KEY=sk-test-123\nDB_URL=postgres://u:p@h/db\n"
 // A's vault, as the guard does at the first seal that finds one.
 func (h *twoHomes) writeEnvAndVault() {
 	h.t.Helper()
-	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(envBody), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(envBody), 0o644); err != nil {
 		h.t.Fatal(err)
 	}
 	h.vaultTheEnv()
@@ -741,9 +749,9 @@ func TestTwoHomesEnvBeforeChatReachesB(t *testing.T) {
 	assertEnvInjected(t, workspaceOf(got.Taken.Cell.Root))
 }
 
-// The secrets that crossed mid-chat come back to A too, and a value the person
-// changed by hand in A's own .env is kept, with the one sentence that says so.
-func TestTwoHomesMidChatEnvKeepsOwnValueOnTakeBack(t *testing.T) {
+// A .env the person edited by hand in A's own folder after it was first vaulted
+// reaches B as the edited file, and comes back to A the same, byte for byte.
+func TestTwoHomesMidChatEnvEditTravelsWholeAndComesBack(t *testing.T) {
 	h := newTwoHomes(t)
 	seedTree(t, h.work)
 	if err := os.Remove(filepath.Join(h.work, ".env")); err != nil {
@@ -753,13 +761,15 @@ func TestTwoHomesMidChatEnvKeepsOwnValueOnTakeBack(t *testing.T) {
 	a.mustSay("before any secret")
 	h.writeEnvAndVault()
 	mine := "API_KEY=my-own-value\nDB_URL=postgres://u:p@h/db\n"
-	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(mine), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(mine), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a.mustSay("after the .env appeared")
 
 	took := h.takeOnB(a)
-	assertEnvInjected(t, workspaceOf(took.Taken.Cell.Root))
+	if got, _ := os.ReadFile(filepath.Join(workspaceOf(took.Taken.Cell.Root), ".env")); string(got) != mine {
+		t.Fatalf(".env on B = %q; want the edited file", got)
+	}
 	b := h.openOn(h.b, h.engB, took.Taken.Cell, workspaceOf(took.Taken.Cell.Root), nameB)
 	b.mustSay("b one")
 	h.durable(h.cell.ID, took.Taken.Cell)
@@ -771,9 +781,6 @@ func TestTwoHomesMidChatEnvKeepsOwnValueOnTakeBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(h.work, ".env")); string(got) != mine {
-		t.Fatalf(".env on A = %q; want the person's own value kept", got)
-	}
-	if want := ".env keeps your own value for API_KEY"; !h.wall.has(want) {
-		t.Fatalf("notices %q; want %q", h.wall.all(), want)
+		t.Fatalf(".env on A = %q; want the same bytes back", got)
 	}
 }

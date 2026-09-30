@@ -39,6 +39,7 @@ type DriveOptions struct {
 // another device takes the chat over it becomes a viewer (L7).
 type Drive struct {
 	sync    *Sync
+	files   vaultsync.Files // the chat's withheld files, carried beside the secrets
 	cell    cell.Cell
 	opt     DriveOptions
 	batcher *cellsync.Batcher
@@ -59,7 +60,11 @@ type Drive struct {
 // another device is driving right now starts as a viewer. Any directory error
 // is returned before anything runs, so the caller can carry on unsynced.
 func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt DriveOptions) (*Drive, error) {
-	d := &Drive{sync: s, cell: c, opt: opt, done: make(chan struct{})}
+	files, err := s.files(eng, c)
+	if err != nil {
+		return nil, err
+	}
+	d := &Drive{sync: s, files: files, cell: c, opt: opt, done: make(chan struct{})}
 	if err := s.putDevice(ctx, opt.DeviceName); err != nil {
 		return nil, err
 	}
@@ -86,20 +91,20 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 }
 
 // syncVault sends this machine's secrets along with the chat, so a machine that
-// continues the chat can put its .env and its credentials back. The vault
-// changes while a chat runs (the first seal imports the project's .env, and a
+// continues the chat can put its withheld files and its credentials back. The vault
+// changes while a chat runs (a seal may withhold a file, and a
 // connection may be saved), so it is sent whenever its content differs from what
-// was last sent, not once at the start. credentials.json is captured into the
+// was last sent, not once at the start. The withheld files and credentials.json are captured into the
 // vault first, since a save to it is a change of the vault the fingerprint must
 // see. It is best effort and says nothing when it fails: the fingerprint is then
 // not recorded, so the next flush tries again, and a seal never waits on it.
 func (d *Drive) syncVault(ctx context.Context) {
-	err := d.sync.withVault(nil, func(v vaultsync.Syncer) error {
+	err := d.sync.withVault(func(v vaultsync.Syncer) error {
 		if err := v.Capture(); err != nil {
 			return err
 		}
 		return d.pushChanged(ctx, v)
-	})
+	}, d.files)
 	if err != nil {
 		return
 	}

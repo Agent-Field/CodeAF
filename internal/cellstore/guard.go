@@ -12,9 +12,10 @@ import (
 )
 
 // Guard is law L3: a secret never enters a sealed tree. Before each seal it
-// scans what the seal will capture. An environment file goes to the vault and
-// out of the tree; any other file that holds a secret goes out of the tree with
-// one notice. "Out of the tree" is the engine's own exclude policy (withheld.go),
+// scans what the seal will capture. A file that holds a secret goes out of the
+// tree with one notice, and the vault carries it to the other machines whole
+// (internal/vaultsync Files); the variables of an environment file also go to
+// the vault one by one, which is what a tool's environment is made from. "Out of the tree" is the engine's own exclude policy (withheld.go),
 // so the file stays where it is on this machine and is simply never captured.
 // Nothing is written into the tree: the exclusions live in the cell's own folder.
 //
@@ -106,7 +107,7 @@ func noticeFor(f keys.Finding) string {
 	if f.Rule == keys.RuleDotenv {
 		return f.Path + " is kept in your key vault and out of the saved history; your tools still see its variables"
 	}
-	return f.Path + " looks like it holds a secret (" + f.Rule + "), so it is left out of the saved history; move the secret to an environment variable to save the file"
+	return f.Path + " looks like it holds a secret (" + f.Rule + "), so it is kept in your key vault and out of the saved history"
 }
 
 // vault keeps the variables of every environment file found. A vault that
