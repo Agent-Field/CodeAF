@@ -192,13 +192,15 @@ build-check:
 test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws
 
 # The shell runners are executable infrastructure that Go's package walk cannot
-# discover, so their acceptance scripts are named here. They are touched-only,
-# like the Go packages: `pr-ready` runs them when the change touches scripts/ or
-# this Makefile, because together they take about forty seconds and most pull
-# requests never go near them.
+# discover, so their acceptance scripts are named here. The benchmark clone
+# regression is kept beside the helper it drives. They are touched-only, like
+# the Go packages: `pr-ready` runs them when the change touches scripts/, the
+# covered benchmark paths, or this Makefile. Together they take about forty
+# seconds and most pull requests never go near them.
 test-tooling:
 	bash scripts/one-suite_test.sh
 	bash scripts/shard-test_test.sh
+	bash bench/canary/lib/repo_test.sh
 
 manual-gates:
 	go test ./internal/manual/
@@ -271,7 +273,8 @@ test-touched: test-touched-preflight
 # work, with `make check` as the full-tree laptop/Spark spelling.
 pr-ready: test-touched-preflight
 	$(MAKE) --no-print-directory test-quick
-	@if ! git diff --quiet "$${BASE:-origin/dev}" HEAD -- scripts Makefile; then \
+	@if ! git diff --quiet "$${BASE:-origin/dev}" HEAD -- \
+		scripts Makefile bench/run.sh bench/canary/lib bench/oneroad/lib/corpus.sh; then \
 		$(MAKE) --no-print-directory test-tooling; \
 	fi
 	$(MAKE) --no-print-directory test-touched

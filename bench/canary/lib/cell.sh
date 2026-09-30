@@ -19,6 +19,8 @@ PY="$(command -v python3)"
 source "$HERE/home.sh"
 # shellcheck source=chat.sh
 source "$HERE/chat.sh"
+# shellcheck source=repo.sh
+source "$HERE/repo.sh"
 
 ENTRY="$1"
 OUT="$2"
@@ -351,10 +353,7 @@ mkdir -p "$CANARY_CACHE/repos"
   git -C "$MIRROR" cat-file -e "$MERGE^{commit}" && git -C "$MIRROR" cat-file -e "$BASE^{commit}"
 ) 9>"$MIRROR.lock" || finish "mirror: cannot reach $REPO at $BASE and $MERGE"
 
-rm -rf "$WORK"
-git init -q -b main "$WORK"
-git -C "$WORK" fetch -q --depth 1 "$MIRROR" "$BASE" || finish "fetch: $BASE"
-git -C "$WORK" reset -q --hard FETCH_HEAD
+fetch_only_tree "$WORK" "$MIRROR" "$BASE" || finish "fetch: $BASE"
 echo ".venv/" >> "$WORK/.git/info/exclude"
 
 install_suite || finish "venv: pip install $INSTALL failed"
