@@ -99,6 +99,19 @@ class OverlayRepo:
         ).stdout)
         git(self.repo, "checkout", "-q", self.base)
 
+        # A modification overlay, for the case where the agent (or a gold patch)
+        # already carries the reference test: the exact apply cannot find the
+        # preimage and the reverse check must recognise it.
+        git(self.repo, "checkout", "-q", "-b", "mod")
+        write(self.test_file, BASE_TEST.replace("MID = 2", "MID = 22"))
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "mod")
+        self.mod_overlay = pathlib.Path(root) / "mod.patch"
+        write(self.mod_overlay, git(
+            self.repo, "diff", self.base, "HEAD", "--", "tests/git_test.py",
+        ).stdout)
+        git(self.repo, "checkout", "-q", self.base)
+
     def apply_agent(self):
         code, out = rubric.sh(
             f"git apply --binary --whitespace=nowarn '{self.agent_patch}'",
