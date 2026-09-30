@@ -298,6 +298,75 @@ run = "true"
         self.assertEqual(grade["status"], "rig")
 
 
+class UnappliablePatchCombineTests(unittest.TestCase):
+    """A patch that never applied grades 0, not rig — even when the rubric
+    carries a prompt criterion the judge cannot answer without a tree."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        self.task = self.root / "task"
+        self.task.mkdir()
+        write(self.task / "rubric.toml", """\
+schema_version = 1
+judge_model = "test/model"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "prompt-blocker"
+kind = "prompt"
+blocker = true
+weight = 1
+[criterion.prompt]
+paths = ["src/a.py"]
+question = "does the change do the thing?"
+
+[[criterion]]
+id = "command-check"
+kind = "command"
+blocker = false
+weight = 1
+[criterion.command]
+command = "true"
+""")
+        self.grade = self.root / "grade"
+        self.grade.mkdir()
+        # phase A with a patch that did not apply: every criterion fail, and no
+        # judge input gathered (there was no tree to read).
+        write(self.grade / "phaseA.json", json.dumps({
+            "apply_ok": False,
+            "apply_note": "git apply exit 1",
+            "judge_input": {"base": "x", "criteria": {}, "test_files": {}, "overlay": ""},
+            "criteria": {
+                "prompt-blocker": {"status": "fail", "note": "patch did not apply: x"},
+                "command-check": {"status": "fail", "note": "patch did not apply: x"},
+            },
+        }))
+        # The judge produced nothing, because phase A gave it nothing to review.
+        write(self.grade / "judge.json", json.dumps({"criteria": {}, "usage": {}}))
+
+    def test_unappliable_patch_combines_to_zero_not_rig(self):
+        grade = rubric.combine(str(self.task), str(self.grade))
+        self.assertEqual(grade["status"], "done")
+        self.assertEqual(grade["score"], 0.0)
+        self.assertFalse(grade["pass"])
+        self.assertEqual(grade["criteria"]["prompt-blocker"]["status"], rubric.FAIL)
+        self.assertEqual(grade["rig_criteria"], [])
+
+    def test_stale_retained_judge_verdict_cannot_rescue_a_bad_patch(self):
+        # A regrade reuses the original run's judge.json. If that carried a
+        # prompt pass, it must not be read against a tree the patch never
+        # produced.
+        write(self.grade / "judge.json", json.dumps({
+            "criteria": {"prompt-blocker": {"pass": True, "reasoning": "looks fine"}},
+            "usage": {},
+        }))
+        grade = rubric.combine(str(self.task), str(self.grade))
+        self.assertEqual(grade["criteria"]["prompt-blocker"]["status"], rubric.FAIL)
+        self.assertEqual(grade["score"], 0.0)
+
+
 class PhaseBTests(unittest.TestCase):
     """phase_b: a missing output dir must not crash, and the task's own rebuild
     command must be the one used (not the fixture's hardcoded recipe)."""
