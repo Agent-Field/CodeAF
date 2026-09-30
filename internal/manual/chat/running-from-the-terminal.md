@@ -260,7 +260,7 @@ key the first time the identity is made on that machine.
 each: id, title, device, where it runs (`running on <device>`, `<device> off`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
-`--all` it prints the usage line. With sync off (no `CODEAF_SYNC_URL`) it prints
+`--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
 `sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
 set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
@@ -269,12 +269,14 @@ other machines cannot be reached it starts with `other machines unreachable`.
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 
 Two settings, both read from the environment, point this machine at a relay so your chats
-can follow you from one computer to another. Neither is a row in `/settings`: unset, sync is
-off and codeaf behaves exactly as it does without it.
+can follow you from one computer to another. Neither is a row in `/settings`. With sync off,
+codeaf behaves exactly as it does without it.
 
-**`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`. Plain `http` is for
-trying it out inside an ssh tunnel; later the relay needs TLS. Unset means sync is off.
-Set to something that is not a web address, it stops with
+**`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`, or the word `off`.
+Plain `http` is for trying it out inside an ssh tunnel; later the relay needs TLS. Unset, it
+is the relay a pairing saved on this computer, and with none saved it is codeaf's hosted
+relay when this build has one (see "Where your chats are stored" in use-this-on-another-computer); a build with no
+hosted relay keeps sync off until you name one. `off` turns sync off. Set to something that is not a web address, it stops with
 `CODEAF_SYNC_URL is not a web address like http://host:8787`. Set on a machine with no
 identity it stops with `this machine has no identity yet: codeaf identity import`; it never
 makes an identity for you, because a fresh one would be an identity none of your other
@@ -315,7 +317,7 @@ machines.) **There is no `codeaf cell merge` in this version:** folding a branch
 offered anywhere, so a branch row says `discard` alone.
 
 If this computer's clock is more than five minutes off, sync shows `this computer's clock is off by more than 5 minutes`
-once and tries again on the next round; fix the clock and it carries on. With sync off (no `CODEAF_SYNC_URL`) none of
+once and tries again on the next round; fix the clock and it carries on. With sync off none of
 this exists and the chat behaves as it always did.
 
 ## What syncing a conversation cost — codeaf cell report, and sending the numbers only if you choose

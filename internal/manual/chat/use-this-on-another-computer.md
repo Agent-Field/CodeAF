@@ -232,13 +232,38 @@ You can move your identity by file. This needs no relay. It is the way to use wh
 
 Keep the file and the passphrase safe. Anybody who has both has your chats.
 
+## Where your chats are stored — the hosted relay, turning it off, your own relay, is my code private
+
+Your chats live on your own computer first. They are also copied, sealed,
+to a relay, so your other computers can open them. Which relay is one setting,
+`CODEAF_SYNC_URL`, and there is no sign-in and no account:
+
+- **Unset** uses codeaf's hosted relay when this build has one, and says so once, in one
+  line, the first time your chats are copied: `Your chats sync end-to-end encrypted through
+  codeaf's hosted relay, which only ever sees ciphertext; turn that off with
+  CODEAF_SYNC_URL=off, or use your own relay with CODEAF_SYNC_URL=<url>.` A computer you
+  paired with another one uses the relay that pairing saved instead. A build with no
+  hosted relay has no default, and nothing is copied until you name a relay.
+- **`CODEAF_SYNC_URL=off`** turns the copying off. Nothing leaves the computer, and `codeaf pair`
+  says `sync is off (CODEAF_SYNC_URL=off); pairing needs a relay`.
+- **`CODEAF_SYNC_URL=https://relay.example.com`** is your own relay. You run it with
+  `codeaf relay --listen :8787 --store <directory>` (see "Running the relay yourself" on the page
+  *Reaching a machine with a pairing code*). The hosted relay and your own speak the same way, so
+  nothing else changes.
+
+**Is my code private?** Everything a chat holds, its turns and the files it saved, is sealed
+on your computer with a key only your own computers have, before it is sent. The relay keeps
+ciphertext: it cannot read your messages, your code, or even the names of your chats. It can
+see that an identity's devices talk to it, when, and how many bytes. Turning it off
+stops new copies going, and a relay you run is yours to empty.
+
 ## The relay — what it sees, your own relay, and turning pairing off
 
 A relay is a small service that passes bytes between the two computers. Your chats sync end to end encrypted. The relay only carries ciphertext. It never sees the code, the three words or your chats.
 
 What the relay does see is short: the number at the start of the code, the time, how long each message is, and the network address of each computer. It never sees the six digits.
 
-**There is no relay built into this build.** You must name one. Set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay set, `/pair` and `codeaf pair` say:
+Pairing goes through the relay this computer syncs through: codeaf's hosted relay when this build has one and you have not chosen another, else the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved. A build with no hosted relay has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
 
 ```
 no relay is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a relay's address, or pass --relay <address>
@@ -257,7 +282,7 @@ When the computer that has your chats uses a relay you named, the code it shows 
   on it run  codeaf pair 42-715-302 --relay https://relay.example.com   (valid 10 minutes)
 ```
 
-After the pairing, the other computer saves that relay and syncs through it. The way to run a relay yourself is on the page *Reaching a machine with a pairing code*, under "Running the relay yourself".
+After the pairing, the other computer saves that relay and syncs through it; when it is the hosted relay there is nothing to save, because every computer reaches it without being told. The way to run a relay yourself is on the page *Reaching a machine with a pairing code*, under "Running the relay yourself".
 
 `CODEAF_SYNC_URL=off` turns sync off. Then pairing is not available. Both commands say so before they send anything:
 
