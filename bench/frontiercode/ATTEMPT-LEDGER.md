@@ -148,7 +148,9 @@ does not weaken or retune them. What the retained bytes show:
   `judge_input` was built only on the success branch, so a patch that did not
   apply raised before `phaseA.json` was written and grade.sh recorded `rig`
   instead of the legitimate 0 the code intends. Fixed (the key is initialised
-  before the apply) and regression-tested.
+  before the apply) and regression-tested. The review below found the 0 was
+  still not reached in the *combined* grade for a prompt criterion; that is
+  fixed too.
 - **`allowed_paths ['./']` prefix semantics.** Confirmed: `allowed_paths = [""]`
   matched every path by accident (`startswith("")`), while `allowed_paths =
   ["./"]` matched none (patch paths never carry `./`), and `forbidden_paths =
