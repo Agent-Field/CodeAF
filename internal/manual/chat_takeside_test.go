@@ -11,11 +11,12 @@ import (
 func TestTheContinuedChatQuestionsReachTheAnswer(t *testing.T) {
 	for _, probe := range []struct{ asked, says string }{
 		{"do I need git or a login on the other machine to continue a chat", "no git login or remote is needed"},
-		{"what happens to my env file when I continue a chat on another computer", "put back as a `.env` in"},
+		{"what happens to my env file when I continue a chat on another computer", "same bytes and the same permissions"},
 		{"is my project folder changed when I continue a chat here", "never renamed or replaced"},
 		{"does a continued chat keep the executable bit and binary files", "executable bit"},
 		{"i continued a chat on a machine that already had a copy, what happens to my edits", "kept first,"},
-		{"env keeps your own value for a variable", "never overwritten"},
+		{"two computers edited the same env file which one wins", "saved last wins as a whole"},
+		{"if I delete my env file on one computer does it come back on the other", "deleted on the other"},
 		{"is there a merge for the turns of a branch", "Merge is\nnot offered on this build"},
 	} {
 		found := false

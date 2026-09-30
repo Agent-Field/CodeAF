@@ -118,16 +118,12 @@ func TestCredentialsCorruptFileDoesNotDestroyTheOtherCopy(t *testing.T) {
 	}
 }
 
-func TestCredentialsNeverReachAProjectEnv(t *testing.T) {
+func TestCredentialsNeverReachAProjectScope(t *testing.T) {
 	r := newRig(t)
 	a := r.machine()
 	a.saveCreds(t, credsOne, time.Now())
 	must(t, a.Push(ctx))
-	c := newCell(t)
-	if _, err := a.Apply(ctx, c); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(c.Root, ".env")); err == nil {
-		t.Fatal("credentials.json leaked into a workspace .env")
+	if got, err := a.vault.Entries("p"); err != nil || len(got) != 0 {
+		t.Fatalf("credentials.json is offered to a project: %v, %v", got, err)
 	}
 }

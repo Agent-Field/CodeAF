@@ -42,6 +42,14 @@ type SealState interface {
 	Take() string
 }
 
+// TurnEnder is what a SealState may also do: hear that the agent finished a turn
+// and now waits for the person. The sync side uses it to upload at once instead
+// of at the end of its window.
+type TurnEnder interface {
+	// TurnEnded is called once each time a turn is sealed. It must not wait.
+	TurnEnded()
+}
+
 // Machine is the session's view of the device it runs on. preflight.Machine is
 // the one implementation.
 type Machine interface {

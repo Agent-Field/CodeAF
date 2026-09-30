@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -380,6 +382,122 @@ func TestNotedTurnBeatsPromptlyAndCoalesces(t *testing.T) {
 	sl.settleOn(NudgeWindow) // the burst's one beat was sent, and a new window opened
 	if got := r.head(cellID).Lease.Pending; got != 3 {
 		t.Fatalf("pending %d after the window, want 3", got)
+	}
+	cancel()
+	<-done
+}
+
+// Sealing stays immediate and the takeover card stays truthful while uploads
+// wait for the window: the directory's pending count is current within the
+// nudge window, nothing goes up before the window ends, and Idle sends every
+// noted turn in one publish at once and brings the count back to zero.
+func TestIdleUploadsAtOnceWhileBusyWaitsForTheWindow(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = 7 * time.Second // apart from the 10 s heartbeat, so each wake is its own
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	first := r.publishFirst(map[string]string{"a": "0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(2)
+	puts := r.puts()
+
+	h1, h2 := r.seal(map[string]string{"a": "1"}), r.seal(map[string]string{"a": "2"})
+	note(b, h1)
+	sl.settleOn(NudgeWindow) // the first beat is out and its window is open
+	note(b, h2)              // noted inside the window, so it waits for the next beat
+	sl.advance(NudgeWindow)
+	sl.settleOn(NudgeWindow)
+	got := r.head(cellID)
+	if got.Head != first || got.Lease.Pending != 2 || r.puts() != puts {
+		t.Fatalf("busy, inside the window: head %s, pending %d, %d new puts; want the old head, 2 pending, none", got.Head, got.Lease.Pending, r.puts()-puts)
+	}
+
+	b.Idle()
+	sl.settleOn(b.Interval) // the flush loop uploaded and went back to waiting a whole window
+	if got := r.head(cellID); got.Head != h2 || r.puts() != puts+1 || b.Pending() != 0 {
+		t.Fatalf("after idle: head %s, %d new puts, %d pending; want the newest head in one put", got.Head, r.puts()-puts, b.Pending())
+	}
+	b.beat(context.Background())
+	if got := r.head(cellID).Lease.Pending; got != 0 {
+		t.Fatalf("the takeover card still counts %d turns after they went up", got)
+	}
+	cancel()
+	<-done
+}
+
+// Idle with nothing sealed since the last upload asks the relay for nothing.
+func TestIdleWithNothingNewIsFree(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = 7 * time.Second
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	r.publishFirst(map[string]string{"a": "0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(2)
+	puts := r.puts()
+	sl.advance(time.Second) // so a new wait of a whole window can only be the one after the idle flush
+	b.Idle()
+	sl.settleOn(b.Interval)
+	if r.puts() != puts {
+		t.Fatalf("an idle with nothing new made %d puts", r.puts()-puts)
+	}
+	cancel()
+	<-done
+}
+
+// When the relay is failing, a finished turn must not make the client retry at
+// once: thousands of clients would hammer a struggling relay after every turn.
+// Idle only means "flush when the backoff ends", and that flush sends it all.
+func TestIdleDuringBackoffWaitsForTheBackoff(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = 7 * time.Second
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	r.publishFirst(map[string]string{"a": "0"})
+	var attempts atomic.Int32
+	r.store.set(blobstore.ErrFull, func(context.Context) { attempts.Add(1) })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(2)
+
+	note(b, r.seal(map[string]string{"a": "1"}))
+	b.Idle()
+	sl.settleOn(2 * b.Interval) // the idle flush failed once and the loop backs off
+	if attempts.Load() != 1 {
+		t.Fatalf("%d upload attempts after the first idle, want 1", attempts.Load())
+	}
+
+	h2 := r.seal(map[string]string{"a": "2"})
+	note(b, h2)
+	b.Idle()
+	b.Idle()
+	for range 10000 { // give a wrongly woken flush loop every chance to run; there is no event to wait for
+		runtime.Gosched()
+	}
+	sl.advance(NudgeWindow)
+	sl.settleOn(2*b.Interval - NudgeWindow) // still the same backoff, not a new one begun by an idle retry
+	if attempts.Load() != 1 {
+		t.Fatalf("an idle during the backoff retried: %d attempts", attempts.Load())
+	}
+	sl.advance(2*b.Interval - NudgeWindow) // the backoff ends: one more attempt
+	sl.settleOn(4 * b.Interval)
+	if attempts.Load() != 2 {
+		t.Fatalf("%d upload attempts across the backoff, want 2", attempts.Load())
+	}
+
+	r.store.set(nil, nil)
+	sl.advance(4 * b.Interval)
+	sl.settleOn(b.Interval)
+	if got := r.head(cellID).Head; got != h2 || b.Pending() != 0 {
+		t.Fatalf("after the backoff: head %s, %d pending; want the newest head sent", got, b.Pending())
 	}
 	cancel()
 	<-done

@@ -23,11 +23,13 @@ var magic = []byte("AGEV\x01")
 type VaultFile interface {
 	Export() ([]byte, error) // the vault.enc envelope bytes
 	Merge(enc []byte) error  // per secret id the newer slot wins, a delete included
-	// Entries lists a project's live secrets in stable name order; Inject writes them.
+	// Entries lists a scope's live slots in stable name order.
 	Entries(project string) ([]keys.Entry, error)
 	// Get, Put, Delete and Deleted address one slot by id; the credentials
 	// file rides in one such slot (credentials.go).
 	Get(id string) (keys.Entry, error)
+	// IDs lists the slot ids under a prefix, tombstones included.
+	IDs(prefix string) ([]string, error)
 	PutAt(id string, e keys.Entry, at time.Time) error
 	Delete(id string) error
 	Deleted(id string) (bool, error)
@@ -44,12 +46,9 @@ type Syncer struct {
 	Vault     VaultFile
 	CellKeyID string // this identity's cell key id; empty on a machine with no identity
 	// Carry is the state that rides in the vault beside the secrets, each kept
-	// here in its own Medium (credentials.go, and the provider keys of the
-	// profile config).
+	// here in its own Medium (files.go, credentials.go, and the provider keys of
+	// the profile config).
 	Carry []Carrier
-	// Notify, when set, receives one plain sentence about what Inject skipped.
-	// A sentence names secrets, never their values.
-	Notify func(string)
 }
 
 // Push uploads the local vault and points the directory at it. It merges what
@@ -100,9 +99,11 @@ func (s Syncer) put(ctx context.Context, rid string, obj []byte) error {
 }
 
 // Pull fetches the vault the directory names, checks it hashes to that name and
-// merges it. Nothing reaches the local vault before the check passes.
+// merges it. Nothing reaches the local vault before the check passes. What this
+// machine edited is kept first, but a file it does not have is not a removal:
+// only Capture and Push let a removal travel.
 func (s Syncer) Pull(ctx context.Context) error {
-	if err := s.Capture(); err != nil {
+	if err := s.each(Carrier.captureEdits); err != nil {
 		return err
 	}
 	_, err := s.pull(ctx)
@@ -145,10 +146,14 @@ func ridOf(obj []byte) string {
 }
 
 // Capture stores every changed carried medium in the vault without any network,
-// so a caller that fingerprints the vault sees the change.
-func (s Syncer) Capture() error {
+// so a caller that fingerprints the vault sees the change. A medium that holds
+// nothing is a removal, and travels as one.
+func (s Syncer) Capture() error { return s.each(Carrier.capture) }
+
+// each applies step to every carried medium.
+func (s Syncer) each(step func(Carrier, VaultFile) error) error {
 	for _, c := range s.Carry {
-		if err := c.capture(s.Vault); err != nil {
+		if err := step(c, s.Vault); err != nil {
 			return err
 		}
 	}
@@ -156,11 +161,4 @@ func (s Syncer) Capture() error {
 }
 
 // restoreCarried writes what a merge brought in back to each medium.
-func (s Syncer) restoreCarried() error {
-	for _, c := range s.Carry {
-		if err := c.restore(s.Vault); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+func (s Syncer) restoreCarried() error { return s.each(Carrier.restore) }

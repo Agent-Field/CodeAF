@@ -797,6 +797,9 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	watch := &cellstore.SealWatch{Say: say}
 	failed(watch, err)
 	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	if drive != nil {
+		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
+	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive))
 	failed(watch, err)
 	return executor.Gated(seat, driveGate(drive)), machine, watch

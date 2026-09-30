@@ -34,6 +34,7 @@ package config
 //     duplicate every time would be a row nobody can read back.
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -286,21 +287,34 @@ func RememberBashApproval(profileDir, match string) error {
 	if !bashShapeHolds(match) {
 		return fmt.Errorf("%q names no command to allow", match)
 	}
-	raw := BashApprovalsAt(profileDir)
-	rules, err := ParseBashApprovals(raw)
+	return editProfile(profileDir, KeyBashApprovals, func(map[string]json.RawMessage) (profileChange, error) {
+		return rememberedApproval(profileDir, match)
+	})
+}
+
+// rememberedApproval is the change that adds an allow rule for match to the rules
+// as they stand now. It runs inside the profile write, so the rules it appends
+// to include any a concurrent writer stored a moment ago. A command that an
+// allow already answers changes nothing.
+func rememberedApproval(profileDir, match string) (profileChange, error) {
+	rules, err := ParseBashApprovals(BashApprovalsAt(profileDir))
 	if err != nil {
-		return fmt.Errorf("settings row %q: %w", KeyBashApprovals, err)
+		return profileChange{}, fmt.Errorf("settings row %q: %w", KeyBashApprovals, err)
 	}
 	policy := approval.Policy{BashPatterns: asApprovalRules(rules)}
 	if rule, matched := policy.MatchRule(match); matched {
 		if rule.Action == approval.ActionAllow {
-			return nil
+			return profileChange{}, nil
 		}
-		return fmt.Errorf("settings row %q already answers this command with %s (%q)",
+		return profileChange{}, fmt.Errorf("settings row %q already answers this command with %s (%q)",
 			KeyBashApprovals, rule.Action, rule.Match)
 	}
 	rules = append(rules, BashRule{Match: match, Action: string(approval.ActionAllow)})
-	return writeBashApprovals(profileDir, FormatBashApprovals(rules))
+	text := strings.TrimSpace(FormatBashApprovals(rules))
+	if _, err := ParseBashApprovals(text); err != nil {
+		return profileChange{}, err
+	}
+	return encodeChange(map[string]any{KeyBashApprovals: text})
 }
 
 // asApprovalRules is the one conversion between the row's rules and the policy's.

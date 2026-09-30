@@ -96,13 +96,9 @@ func TestTwoHomesStateAudit(t *testing.T) {
 	}
 
 	// B is another machine: its own home for graph.db and the ledgers, and no
-	// folder of A's. The rig's B shares A's disk, and a take whose project folder
-	// is still there lands in it in place (take.go InPlace, projectOf), which
-	// would make every check below compare A with itself.
+	// folder of A's (continuerB moves it out of sight).
 	t.Setenv(home.EnvVar, h.b.Home)
-	if err := os.Rename(h.work, filepath.Join(t.TempDir(), "a-project")); err != nil {
-		t.Fatal(err)
-	}
+	h.awayFromA()
 	// A's disk is not B's: what A's trees/ held is gone from where B looks.
 	if err := os.RemoveAll(au.placeA.Trees()); err != nil {
 		t.Fatal(err)

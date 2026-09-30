@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
 // The two-home rig: one identity on two machines that share nothing but a relay
@@ -41,6 +42,7 @@ type twoHomes struct {
 	block  *blocker         // A's store, which can be made to fail
 	quiet  atomic.Bool      // A's heartbeats alone are refused; its uploads still reach the relay
 	wall   *noticeLog
+	link   string // the project path A's session record names; a link to A's folder, removed while B has the chat
 }
 
 func newTwoHomes(t *testing.T) *twoHomes {
@@ -53,7 +55,24 @@ func newTwoHomes(t *testing.T) *twoHomes {
 	h.engB = cellstore.EngineFor("")
 	h.engB.DataRoot, h.engB.Binary, h.engB.Transport = t.TempDir(), r.bin, cellstore.Spawn{Binary: r.bin}
 	r.sealMeta()
+	h.link = h.work + ".link"
+	h.pointRecordAtLink()
+	h.backToA()
 	return h
+}
+
+// pointRecordAtLink makes A's session record name the project by the link that
+// awayFromA can remove, so A's own path stays where it is.
+func (h *twoHomes) pointRecordAtLink() {
+	h.t.Helper()
+	m, err := session.LoadMeta(h.cell.Root)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	m.Workspace = h.link
+	if err := session.SaveMeta(h.cell.Root, m); err != nil {
+		h.t.Fatal(err)
+	}
 }
 
 // sealMeta gives A's chat the session record a real chat always has, so the
@@ -122,6 +141,7 @@ func (d offlineDir) Heartbeat(ctx context.Context, id string, b directory.Beat) 
 // started where it started it; anything else, and everything of B's, goes under
 // a folder of that machine's own.
 func (h *twoHomes) continuerA() *Continuer {
+	h.backToA()
 	base := h.engine
 	base.Workspace = ""
 	return h.a.Continuer(base, TakeOptions{DeviceName: nameA, Notify: h.wall.add, RootFor: func(id string) string {
@@ -133,6 +153,7 @@ func (h *twoHomes) continuerA() *Continuer {
 }
 
 func (h *twoHomes) continuerB() *Continuer {
+	h.awayFromA()
 	return h.b.Continuer(h.engB, TakeOptions{DeviceName: nameB, Notify: h.wall.add, RootFor: func(id string) string {
 		return filepath.Join(h.rootsB, id)
 	}})
@@ -166,7 +187,10 @@ func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, devi
 	return &openChat{t: h.t, drive: drive, seat: executor.Gated(seat, drive.Gate), cell: c, work: work}
 }
 
-func (h *twoHomes) openA() *openChat { return h.openOn(h.a, h.engine, h.cell, h.work, nameA) }
+func (h *twoHomes) openA() *openChat {
+	h.backToA()
+	return h.openOn(h.a, h.engine, h.cell, h.work, nameA)
+}
 
 // say is one scripted model turn: the transcript grows by a line, a file is
 // written, and the seat seals the call.
@@ -222,7 +246,8 @@ func seedTree(t *testing.T, work string) {
 		{"bin/run.sh", []byte("#!/bin/sh\necho hi\n"), 0o755},
 		{"data/blob.bin", blob, 0o600},
 		{"untracked/notes.txt", []byte("not in any repository\n"), 0o644},
-		{".env", []byte("API_KEY=sk-test-123\nDB_URL=postgres://u:p@h/db\n"), 0o600},
+		{".env", []byte(envBody), 0o644},
+		{"web/client/app/.env.production", []byte("# prod\nAPI_URL='https://x'\n"), 0o640},
 	}
 	for _, f := range files {
 		path := filepath.Join(work, f.path)
@@ -348,6 +373,7 @@ func (h *twoHomes) lapse() { h.clock.advance(directory.LeaseTTL + time.Second) }
 // reads the tree back: what anyone with the identity would get from the relay.
 func (h *twoHomes) fetchInto(head string) map[string]entry {
 	h.t.Helper()
+	h.awayFromA()
 	eng := h.engB
 	eng.DataRoot = h.t.TempDir()
 	root := filepath.Join(h.t.TempDir(), h.cell.ID)
@@ -412,11 +438,18 @@ func assertEnvInjected(t *testing.T, work string) {
 	t.Helper()
 	path := filepath.Join(work, ".env")
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf(".env on B = %v, %v; want the vault's secrets at mode 0600", info, err)
+	if err != nil || info.Mode().Perm() != 0o644 {
+		t.Fatalf(".env on B = %v, %v; want A's file at mode 0644", info, err)
 	}
-	if got, _ := os.ReadFile(path); string(got) != "API_KEY=sk-test-123\nDB_URL=postgres://u:p@h/db\n" {
+	if got, _ := os.ReadFile(path); string(got) != envBody {
 		t.Fatalf(".env on B = %q", got)
+	}
+	deep := filepath.Join(work, "web/client/app/.env.production")
+	if info, err := os.Stat(deep); err != nil || info.Mode().Perm() != 0o640 {
+		t.Fatalf("the nested dotenv on B = %v, %v; want it back at mode 0640", info, err)
+	}
+	if got, _ := os.ReadFile(deep); string(got) != "# prod\nAPI_URL='https://x'\n" {
+		t.Fatalf("the nested dotenv on B = %q", got)
 	}
 }
 
@@ -558,7 +591,7 @@ func TestTwoHomesTakeBackIntoTheProjectFolder(t *testing.T) {
 	}
 	sameFolder(t, h.work, project)
 	sameFolder(t, h.cell.Root, root)
-	if back.Taken.Cell.Root != h.cell.Root || workspaceOf(h.cell.Root) != h.work {
+	if back.Taken.Cell.Root != h.cell.Root || workspaceOf(h.cell.Root) != h.link {
 		t.Fatalf("the chat moved to %s / %s; it works in %s", back.Taken.Cell.Root, workspaceOf(h.cell.Root), h.work)
 	}
 	if _, err := os.Stat(filepath.Join(h.work, "turn-"+h.cell.ID[len(h.cell.ID)-4:]+"-1.txt")); err != nil {
@@ -570,7 +603,7 @@ func TestTwoHomesTakeBackIntoTheProjectFolder(t *testing.T) {
 	if _, err := os.Stat(h.cell.Root + ".taking"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the staging folder is still there (%v)", err)
 	}
-	if m, _ := session.LoadMeta(h.cell.Root); m.ID != h.cell.ID || m.Workspace != h.work {
+	if m, _ := session.LoadMeta(h.cell.Root); m.ID != h.cell.ID || m.Workspace != h.link {
 		t.Fatalf("the session record lost its project: %+v", m)
 	}
 }
@@ -690,7 +723,7 @@ const envBody = "API_KEY=sk-test-123\nDB_URL=postgres://u:p@h/db\n"
 // A's vault, as the guard does at the first seal that finds one.
 func (h *twoHomes) writeEnvAndVault() {
 	h.t.Helper()
-	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(envBody), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(envBody), 0o644); err != nil {
 		h.t.Fatal(err)
 	}
 	h.vaultTheEnv()
@@ -741,9 +774,9 @@ func TestTwoHomesEnvBeforeChatReachesB(t *testing.T) {
 	assertEnvInjected(t, workspaceOf(got.Taken.Cell.Root))
 }
 
-// The secrets that crossed mid-chat come back to A too, and a value the person
-// changed by hand in A's own .env is kept, with the one sentence that says so.
-func TestTwoHomesMidChatEnvKeepsOwnValueOnTakeBack(t *testing.T) {
+// A .env the person edited by hand in A's own folder after it was first vaulted
+// reaches B as the edited file, and comes back to A the same, byte for byte.
+func TestTwoHomesMidChatEnvEditTravelsWholeAndComesBack(t *testing.T) {
 	h := newTwoHomes(t)
 	seedTree(t, h.work)
 	if err := os.Remove(filepath.Join(h.work, ".env")); err != nil {
@@ -753,13 +786,15 @@ func TestTwoHomesMidChatEnvKeepsOwnValueOnTakeBack(t *testing.T) {
 	a.mustSay("before any secret")
 	h.writeEnvAndVault()
 	mine := "API_KEY=my-own-value\nDB_URL=postgres://u:p@h/db\n"
-	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(mine), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.work, ".env"), []byte(mine), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a.mustSay("after the .env appeared")
 
 	took := h.takeOnB(a)
-	assertEnvInjected(t, workspaceOf(took.Taken.Cell.Root))
+	if got, _ := os.ReadFile(filepath.Join(workspaceOf(took.Taken.Cell.Root), ".env")); string(got) != mine {
+		t.Fatalf(".env on B = %q; want the edited file", got)
+	}
 	b := h.openOn(h.b, h.engB, took.Taken.Cell, workspaceOf(took.Taken.Cell.Root), nameB)
 	b.mustSay("b one")
 	h.durable(h.cell.ID, took.Taken.Cell)
@@ -771,9 +806,72 @@ func TestTwoHomesMidChatEnvKeepsOwnValueOnTakeBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(h.work, ".env")); string(got) != mine {
-		t.Fatalf(".env on A = %q; want the person's own value kept", got)
+		t.Fatalf(".env on A = %q; want the same bytes back", got)
 	}
-	if want := ".env keeps your own value for API_KEY"; !h.wall.has(want) {
-		t.Fatalf("notices %q; want %q", h.wall.all(), want)
+}
+
+// awayFromA takes A's project out of B's sight, as it is when B is another
+// machine: the path the chat's session record names is not on B, so B keeps the
+// chat in a work/ folder of its own, exactly as on a second machine. Without this
+// the two homes share one disk, a take whose project path is still there lands in
+// it in place (take.go InPlace, projectOf), and a take that writes nothing still
+// compares equal. A's session record names the project by a link to its folder,
+// and B's view is cut by removing the link, so A keeps working in the folder
+// itself while B cannot resolve the path. Every take on B goes through it (see
+// continuerB); backToA restores the link for A's own use.
+func (h *twoHomes) awayFromA() {
+	h.t.Helper()
+	if err := os.Remove(h.link); err != nil && !errors.Is(err, os.ErrNotExist) {
+		h.t.Fatal(err)
 	}
+}
+
+// backToA makes the path A's session record names resolve again.
+func (h *twoHomes) backToA() {
+	h.t.Helper()
+	if _, err := os.Lstat(h.link); err == nil {
+		return
+	}
+	if err := os.Symlink(h.work, h.link); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// A window on B that only started up has already merged A's vault, which holds
+// the slots of every withheld file but writes none of them: the chat is not
+// there yet. The take the surface offers (Continuer.Take is the one entry the
+// surface, the corpus and these tests all call) must still write every withheld
+// file at its path and mode, and B's next push must not delete them for A.
+func TestTakeWritesWithheldFilesAfterTheTakersWindowSyncedTheVault(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	seedTree(t, h.work)
+	want := readTree(t, h.work)
+
+	a := h.openA()
+	a.mustSay("first")
+	a.mustSay("second")
+	h.durable(h.cell.ID, h.cell)
+	if err := a.drive.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.awayFromA()
+	if err := h.b.withVault(func(v vaultsync.Syncer) error { return v.Push(ctx) }); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := workspaceOf(got.Taken.Cell.Root)
+	assertEnvInjected(t, work)
+	for _, rel := range []string{".env", "web/client/app/.env.production"} {
+		if have := readTree(t, work)[rel]; have != want[rel] {
+			t.Fatalf("%s on B = %+v, want A's %+v", rel, have, want[rel])
+		}
+	}
+	b := h.openOn(h.b, h.engB, got.Taken.Cell, work, nameB)
+	b.mustSay("b1")
+	assertEnvInjected(t, work)
 }

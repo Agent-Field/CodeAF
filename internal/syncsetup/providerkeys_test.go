@@ -3,9 +3,12 @@ package syncsetup
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -243,4 +246,66 @@ func TestProviderKeyFromTheEnvironmentIsNeverCaptured(t *testing.T) {
 	if _, err := os.Stat(config.BudgetConfigPath(b.profile)); err == nil {
 		t.Fatal("B has a config.json from nothing")
 	}
+}
+
+// A key another writer stores while the vault restore is applying must survive
+// the restore. The restore names only the keys it changes, and the write applies
+// them to the file as it is when the write happens; a full set built from an
+// earlier reading would put the earlier value of the other key back. Several
+// writers on each side keep the window between reading and writing busy.
+func TestApplyKeepsAKeyStoredByAnotherWriter(t *testing.T) {
+	profile := t.TempDir()
+	set := providerKeyset{profile}
+	const writers, rounds = 4, 100
+	var stopped atomic.Bool
+	var storing, applying sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		storing.Add(1)
+		go func() {
+			defer storing.Done()
+			for i := 0; i < rounds; i++ {
+				if err := config.WriteAPIKey(profile, fmt.Sprintf("FAKE-model-%d", i)); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+		applying.Add(1)
+		go func() {
+			defer applying.Done()
+			for !stopped.Load() {
+				if err := set.Apply(map[string]string{config.KeyExaKey: "FAKE-search"}); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+	}
+	storing.Wait()
+	stopped.Store(true)
+	applying.Wait()
+
+	got, err := config.ReadProviderKeys(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Rows[config.KeyAPIKey] != fmt.Sprintf("FAKE-model-%d", rounds-1) {
+		t.Fatal("the restore put an older value of another key back")
+	}
+	if got.Rows[config.KeyExaKey] != "FAKE-search" {
+		t.Fatal("the restore lost its own key")
+	}
+}
+
+// A key set on A before its first sync, with the rest of a real config beside it,
+// against a vault that has never seen it, is neither dropped on A by the start-up
+// sync nor lost on the way to B. A machine never removes a key it has never
+// shared: no ledger entry is never a removal.
+func TestProviderKeySetBeforeTheFirstSyncSurvivesTheStartUpSync(t *testing.T) {
+	r := newKeyRig(t)
+	a, b := r.machine(), r.machine()
+	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, "daily_budget_usd": 500.0, "model_pool": false, "setup_seen_at": "2026-09-29T00:00:00Z"}, time.Now())
+	a.push(t) // the chat starts: capture, then push against an empty vault
+	a.push(t) // and its next flush
+	a.wantKey(t, fakeKeyOne)
+	b.pull(t)
+	b.wantKey(t, fakeKeyOne)
 }

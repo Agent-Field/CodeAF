@@ -295,3 +295,15 @@ func gitIn(dir string, args ...string) (string, error) {
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
+
+func TestWithheldNamesTheFilesTheGuardKeptOutAndTheFolderTheyAreIn(t *testing.T) {
+	r := newRig(t)
+	r.write("web/client/.env.production", "K="+fakeKey+"\n")
+	r.write("src/app.py", "print('hi')\n")
+	r.screen()
+	eng := Engine{Workspace: r.tree}
+	tree, paths, err := eng.Withheld(r.cell)
+	if err != nil || tree != r.tree || len(paths) != 1 || paths[0] != "web/client/.env.production" {
+		t.Fatalf("Withheld = %q, %v, %v", tree, paths, err)
+	}
+}

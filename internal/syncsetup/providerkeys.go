@@ -51,16 +51,16 @@ func (s providerKeyset) Holds(name string) bool {
 }
 
 // Apply changes the named keys and leaves every other field of the file alone.
+// The named keys are applied to what the file holds when the write happens, not
+// to a reading taken earlier, so a key stored in between is never removed.
 func (s providerKeyset) Apply(changes map[string]string) error {
-	held, err := config.ReadProviderKeys(s.profileDir)
-	if err != nil {
-		return vaultsync.ErrDamaged
-	}
-	next := config.ProviderKeys{Rows: maps.Clone(held.Rows), Sources: maps.Clone(held.Sources)}
-	for name, value := range changes {
-		next = with(next, name, value)
-	}
-	return config.WriteProviderKeys(s.profileDir, next)
+	return config.ChangeProviderKeys(s.profileDir, func(held config.ProviderKeys) config.ProviderKeys {
+		next := config.ProviderKeys{Rows: maps.Clone(held.Rows), Sources: maps.Clone(held.Sources)}
+		for name, value := range changes {
+			next = with(next, name, value)
+		}
+		return next
+	})
 }
 
 // with is keys with the named key set, or removed when value is empty.

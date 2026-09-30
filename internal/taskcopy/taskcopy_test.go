@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -18,6 +19,17 @@ type machine struct {
 	cell    cell.Cell
 	project string
 }
+
+// worktreeCutter is a Cutter that cuts a linked worktree. These tests are about
+// what Restore asks of a Cutter, so they use the plainest one; the road a task
+// really makes its copy by is driven in the session package's own tests.
+type worktreeCutter struct{}
+
+func (worktreeCutter) Cut(project, dest string, spec Spec) error {
+	return exec.Command("git", "-C", project, "worktree", "add", "-q", "-b", spec.Branch, dest, spec.At).Run()
+}
+
+var restorer = Carry{Cutter: worktreeCutter{}}
 
 func run(t *testing.T, dir string, name string, args ...string) string {
 	t.Helper()
@@ -92,7 +104,7 @@ func (m *machine) takeOn() (*machine, []string) {
 	m.seal()
 	b := newMachineNoRepo(m.t)
 	m.moveTo(b)
-	restored, err := Carry{}.Restore(b.cell, b.project)
+	restored, err := restorer.Restore(b.cell, b.project)
 	if err != nil {
 		m.t.Fatal(err)
 	}
@@ -173,8 +185,8 @@ func TestTaskWhoseBranchIsGoneComesBackOnItsCommit(t *testing.T) {
 	run(t, tree, "git", "checkout", "-q", "--detach")
 	run(t, a.project, "git", "branch", "-q", "-D", "task/1")
 	b, _ := a.takeOn()
-	if got, _ := b.read("1", "wip.txt"); got != "wip\n" || b.branch("1") != "HEAD" {
-		t.Errorf("wip.txt = %q on %q, want the edit on a detached head", got, b.branch("1"))
+	if got, _ := b.read("1", "wip.txt"); got != "wip\n" || b.branch("1") != "restored/1" {
+		t.Errorf("wip.txt = %q on %q, want the edit on a branch made for it", got, b.branch("1"))
 	}
 }
 
@@ -241,7 +253,7 @@ func TestRestoreForgetsRegistrationsForPathsNotHere(t *testing.T) {
 	if !strings.Contains(run(t, b.project, "git", "worktree", "list", "--porcelain"), "prunable") {
 		t.Fatal("the arriving repository has no stale registration to forget")
 	}
-	if _, err := (Carry{}).Restore(b.cell, b.project); err != nil {
+	if _, err := restorer.Restore(b.cell, b.project); err != nil {
 		t.Fatal(err)
 	}
 	list := run(t, b.project, "git", "worktree", "list", "--porcelain")
@@ -256,7 +268,7 @@ func TestRestoreLeavesALiveCopyItsOwnFiles(t *testing.T) {
 	write(t, filepath.Join(tree, "wip.txt"), "wip\n")
 	a.seal()
 	write(t, filepath.Join(tree, "later.txt"), "written after the seal\n")
-	if _, err := (Carry{}).Restore(a.cell, a.project); err != nil {
+	if _, err := restorer.Restore(a.cell, a.project); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := a.read("1", "later.txt"); got != "written after the seal\n" {
@@ -276,11 +288,84 @@ func TestACopyThatCannotBeCutStillGetsItsFiles(t *testing.T) {
 	if err := os.MkdirAll(b.project, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := Carry{}.Restore(b.cell, b.project)
+	restored, err := restorer.Restore(b.cell, b.project)
 	if err == nil || len(restored) != 0 {
 		t.Fatalf("restored %v, %v; want a refusal to cut the copy", restored, err)
 	}
 	if got, _ := b.read("1", "wip.txt"); got != "wip\n" {
 		t.Fatalf("the edit is not where the task worked: %q", got)
+	}
+}
+
+// A copy comes back with the permission bits it left with, whatever the folder
+// it travelled through and the umask of the machine that put it back: the
+// record holds them, so the copy compares equal to the first machine's.
+func TestCopyFilesComeBackAtTheirModes(t *testing.T) {
+	a := newMachine(t)
+	tree := a.task("modes")
+	for rel, mode := range map[string]os.FileMode{"note.txt": 0o664, "run.sh": 0o775, "private.txt": 0o600} {
+		write(t, filepath.Join(tree, rel), rel+"\n")
+		if err := os.Chmod(filepath.Join(tree, rel), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.seal()
+	b := newMachineNoRepo(t)
+	a.moveTo(b)
+	// The folder that travelled was rewritten on the way, as a machine with another umask does.
+	err := filepath.WalkDir(filepath.Join(carriedRoot(b.cell), "modes", filesDir), func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		return os.Chmod(path, 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restorer.Restore(b.cell, b.project); err != nil {
+		t.Fatal(err)
+	}
+	for rel, want := range map[string]os.FileMode{"note.txt": 0o664, "run.sh": 0o775, "private.txt": 0o600} {
+		info, err := os.Stat(filepath.Join(b.cell.Root, cell.TreesDir, "modes", rel))
+		if err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s came back as %v (%v), want %v", rel, info, err, want)
+		}
+	}
+}
+
+// Every file of a copy comes back with the bits it left with, including the
+// files the checkout writes, which git gives only an executable bit and the
+// machine's umask. A takes the copy under one umask and B restores it under a
+// stricter one.
+func TestCheckedOutFilesComeBackAtTheirModesUnderAnotherUmask(t *testing.T) {
+	old := syscall.Umask(0o002)
+	defer syscall.Umask(old)
+	a := newMachine(t)
+	tree := a.task("umask")
+	write(t, filepath.Join(tree, "edited.txt"), "edit\n")
+	if err := os.WriteFile(filepath.Join(tree, ".env"), []byte("K=1\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	want := modesOfTree(tree)
+	if want["README.md"] != 0o664 || want[".env"] != 0o640 {
+		t.Fatalf("the copy's modes are %v", want)
+	}
+	a.seal()
+	b := newMachineNoRepo(t)
+	a.moveTo(b)
+	syscall.Umask(0o077)
+	if _, err := restorer.Restore(b.cell, b.project); err != nil {
+		t.Fatal(err)
+	}
+	got := modesOfTree(filepath.Join(b.cell.Root, cell.TreesDir, "umask"))
+	for rel, mode := range want {
+		// The plain cutter of this test does not copy an ignored file; the real
+		// road does, and its file is put right by the same step.
+		if _, there := got[rel]; there && got[rel] != mode {
+			t.Errorf("%s came back as %v, want %v", rel, got[rel], mode)
+		}
+	}
+	if got["README.md"] != want["README.md"] || got["edited.txt"] != want["edited.txt"] {
+		t.Errorf("the checked-out and the carried file came back as %v and %v", got["README.md"], got["edited.txt"])
 	}
 }

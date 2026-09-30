@@ -48,11 +48,12 @@ type Batcher struct {
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	skewShown bool
 
-	nudged  chan struct{} // holds one wake-up for the heartbeat loop; made by nudger
-	nudgeMu sync.Once
+	nudge wakeup // asks the heartbeat loop for a prompt beat: a turn was noted
+	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
+	failing bool // the last flush failed, so Idle must wait out the backoff
 }
 
 // Superseded says another device continued the chat.
@@ -93,15 +94,35 @@ func (b *Batcher) Note(t cellstore.Turn) {
 		b.noted = append(b.noted, t.ID)
 	}
 	b.mu.Unlock()
-	select {
-	case b.nudger() <- struct{}{}:
-	default: // a wake-up is already waiting; it will see this turn too
-	}
+	b.nudge.fire()
 }
 
-func (b *Batcher) nudger() chan struct{} {
-	b.nudgeMu.Do(func() { b.nudged = make(chan struct{}, 1) })
-	return b.nudged
+// Idle says the agent has stopped and is waiting for the person, so the turns
+// sealed since the last upload go up at once instead of at the end of the
+// window: nothing more is coming to share the request with, and this is the
+// moment the person is likeliest to pick the chat up on another machine. It
+// never waits, so it is safe to call from the turn's own goroutine.
+func (b *Batcher) Idle() { b.idle.fire() }
+
+// wakeup carries at most one pending request from a caller to a loop. The zero
+// value is ready to use.
+type wakeup struct {
+	once sync.Once
+	c    chan struct{}
+}
+
+func (w *wakeup) ch() chan struct{} {
+	w.once.Do(func() { w.c = make(chan struct{}, 1) })
+	return w.c
+}
+
+// fire leaves a request for the loop and never blocks; a request already
+// waiting will be answered with the state this one would have seen.
+func (w *wakeup) fire() {
+	select {
+	case w.ch() <- struct{}{}:
+	default:
+	}
 }
 
 // Fence is the lease fence this device now holds, 0 before the cell has a record.
@@ -117,21 +138,44 @@ func (b *Batcher) Pending() uint32 {
 	return uint32(len(b.noted))
 }
 
-// Run flushes each Interval and heartbeats each directory.HeartbeatEvery until
-// ctx ends.
+// Run flushes each Interval, or as soon as Idle is called, and heartbeats each
+// directory.HeartbeatEvery until ctx ends. Sealing is never held back: only the
+// upload waits, so a busy agent costs one publish a window however many tool
+// calls it makes.
 func (b *Batcher) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { b.beats(ctx) })
-	b.loop(ctx, func() time.Duration { return b.flush(ctx) })
+	b.flushes(ctx)
 	wg.Wait()
 	return ctx.Err()
 }
 
-// loop does a step, then waits as long as the step asks.
-func (b *Batcher) loop(ctx context.Context, step func() time.Duration) {
-	sleep := b.sleeper()
-	for sleep(ctx, step()) == nil {
+// flushes uploads, then waits as long as the flush asks, or until Idle when the
+// flush succeeded.
+func (b *Batcher) flushes(ctx context.Context) {
+	for {
+		if err := b.rest(ctx, b.flush(ctx)); err != nil {
+			return
+		}
 	}
+}
+
+// rest waits d between flushes. After a failure it waits the whole backoff
+// whatever Idle says, and forgets an Idle that arrived meanwhile: when the
+// relay is failing, a client that retried after every finished turn would be
+// thousands of clients hammering it at once. The flush that ends the backoff
+// sends what Idle wanted sent.
+func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
+	if !b.failing {
+		_, err := b.nap(ctx, d, &b.idle)
+		return err
+	}
+	err := b.sleeper()(ctx, d)
+	select {
+	case <-b.idle.ch():
+	default:
+	}
+	return err
 }
 
 // beats renews the lease every HeartbeatEvery, and at once when a turn is
@@ -140,7 +184,7 @@ func (b *Batcher) loop(ctx context.Context, step func() time.Duration) {
 func (b *Batcher) beats(ctx context.Context) {
 	b.beat(ctx)
 	for {
-		nudged, err := b.nap(ctx, directory.HeartbeatEvery)
+		nudged, err := b.nap(ctx, directory.HeartbeatEvery, &b.nudge)
 		if err != nil {
 			return
 		}
@@ -151,16 +195,16 @@ func (b *Batcher) beats(ctx context.Context) {
 	}
 }
 
-// nap waits d, or until a turn is noted, and says which ended it. The sleep is
-// the injected one, so a fake clock governs it.
-func (b *Batcher) nap(ctx context.Context, d time.Duration) (bool, error) {
+// nap waits d, or until w is fired, and says which ended it. The sleep is the
+// injected one, so a fake clock governs it.
+func (b *Batcher) nap(ctx context.Context, d time.Duration, w *wakeup) (bool, error) {
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	over := make(chan struct{})
 	woke := make(chan bool, 1)
 	go func() {
 		select {
-		case <-b.nudger():
+		case <-w.ch():
 			cancel()
 			woke <- true
 		case <-over:
@@ -227,10 +271,9 @@ func (b *Batcher) flush(ctx context.Context) time.Duration {
 // after turns a flush's outcome into the next wait.
 func (b *Batcher) after(err error) time.Duration {
 	interval := b.interval()
+	b.failing = err != nil
 	switch {
-	case err == nil:
-		b.backoff = interval
-	case b.surface(err):
+	case err == nil, b.surface(err):
 		b.backoff = interval
 	default:
 		b.backoff = min(2*max(b.backoff, interval), max(MaxBackoff, interval))
