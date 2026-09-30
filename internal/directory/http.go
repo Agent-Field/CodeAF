@@ -127,7 +127,7 @@ func refusal(resp *http.Response) error {
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBody))
 	if json.Unmarshal(raw, &b) == nil {
 		if err := errorOf(b.Err); err != nil {
-			return err
+			return wireauth.Wait(err, resp.Header)
 		}
 	}
 	if resp.StatusCode == http.StatusNotFound {

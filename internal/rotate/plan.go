@@ -24,6 +24,9 @@ type Plan struct {
 // Plan asks the old relay what it lists and this machine what it already holds.
 // It changes nothing.
 func (e Env) Plan(ctx context.Context) (Plan, error) {
+	if err := e.preflight(ctx); err != nil {
+		return Plan{}, err
+	}
 	old := e.oldSide()
 	l, err := old.Dir.List(ctx)
 	if err != nil {

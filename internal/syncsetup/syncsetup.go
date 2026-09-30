@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	// URLVar names the relay. Unset means sync is off.
+	// URLVar names the relay: an address, or "off". Unset means the relay a
+	// pairing saved, else the hosted default (see HostedRelayURL).
 	URLVar = "CODEAF_SYNC_URL"
 	// IntervalVar is how often unsaved turns are flushed, in milliseconds.
 	IntervalVar = "CODEAF_SYNC_INTERVAL_MS"
@@ -53,6 +54,7 @@ type Sync struct {
 	Device   identity.Dev
 	Identity identity.Identity
 	Relay    string // the normalized relay address every client and the ledger name are built from
+	Hosted   bool   // Relay is the hosted default, which the first-run line speaks of
 	Home     string // the codeaf home: where the branch map and the stats files live
 	// ProfileDir is where the product keeps its profile files (config.json,
 	// credentials.json): CODEAF_PROFILE_DIR when set, else empty, which means Home.
@@ -61,9 +63,9 @@ type Sync struct {
 	Interval   time.Duration // flush interval
 }
 
-// Open builds the clients for the relay named by CODEAF_SYNC_URL. It answers
-// ok = false with no error when no relay is set, and touches nothing on disk
-// in that case. A relay with no identity here, or a URL that is not a web
+// Open builds the clients for the relay Resolve names. It answers ok = false
+// with no error when sync is off or there is no relay, and touches nothing on
+// disk in that case. A relay with no identity here, or a URL that is not a web
 // address, is an error of one sentence.
 func Open(home string) (*Sync, bool, error) {
 	if rotate.Pending(home) {
@@ -73,11 +75,11 @@ func Open(home string) (*Sync, bool, error) {
 }
 
 func open(home string) (*Sync, bool, error) {
-	raw := RelayURL(home)
-	if raw == "" {
+	relay := Resolve(home)
+	if !relay.On() {
 		return nil, false, nil
 	}
-	base, err := relayBase(raw)
+	base, err := relayBase(relay.URL)
 	if err != nil {
 		return nil, false, err
 	}
@@ -93,7 +95,9 @@ func open(home string) (*Sync, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	return build(home, base, id, dev, interval), true, nil
+	s := build(home, base, id, dev, interval)
+	s.Hosted = relay.Hosted
+	return s, true, nil
 }
 
 // relayBase checks that s is an http or https address with a host, and returns

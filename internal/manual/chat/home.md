@@ -315,8 +315,7 @@ to the window. Each row's age is counted from its last saved turn, so it keeps g
 fetches.
 
 If the other machines cannot be reached, the last list stays on screen and the line
-`other machines unreachable` stands under it. With no connection set up at all (no
-`CODEAF_SYNC_URL`, see "Sync your chats between machines" in running-from-the-terminal), nothing
+`other machines unreachable` stands under it. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing
 extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 

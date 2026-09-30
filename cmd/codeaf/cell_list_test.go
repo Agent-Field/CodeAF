@@ -81,11 +81,11 @@ func (e errSource) Rows(context.Context) ([]chatlist.Row, error) { return nil, e
 // A computer on an identity that was rotated is told what happened and what to
 // do, not that other machines are unreachable.
 func TestCellListOnAReplacedIdentity(t *testing.T) {
-	for _, cause := range []error{wireauth.ErrGone, wireauth.ErrRotated} {
+	for cause, want := range map[error]string{wireauth.ErrGone: chatlist.ReplacedGone, wireauth.ErrRotated: chatlist.Replaced} {
 		withListSource(t, errSource{cause}, nil)
 		err := runCellIn([]string{"list", "--all"}, &bytes.Buffer{}, t.TempDir())
-		if err == nil || err.Error() != chatlist.Replaced {
-			t.Errorf("%v: got %v, want the replaced sentence", cause, err)
+		if err == nil || err.Error() != want {
+			t.Errorf("%v: got %v, want %q", cause, err, want)
 		}
 	}
 }

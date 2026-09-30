@@ -336,6 +336,34 @@ func TestSomeoneRotatedFirst(t *testing.T) {
 	}
 }
 
+// A relay with no rotation verb, a rotation somebody else started, and one that
+// already finished are each refused before anything is fetched, minted or
+// written, in words that say what to do.
+func TestPreflightRefusesBeforeAnythingChanges(t *testing.T) {
+	for name, tc := range map[string]struct {
+		set  func(n *namespace)
+		want error
+	}{
+		"relay too old":   {func(n *namespace) { n.tooOld = true }, ErrRelayTooOld},
+		"frozen by other": {func(n *namespace) { n.state = "frozen" }, ErrUnderWay},
+		"retired":         {func(n *namespace) { n.state = "retired" }, ErrSomeoneFirst},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			tc.set(r.relay.of(r.old.PublicKey()))
+			if _, err := r.env.Plan(context.Background()); !errors.Is(err, tc.want) {
+				t.Fatalf("plan = %v, want %v", err, tc.want)
+			}
+			if _, err := r.env.Rotate(context.Background()); !errors.Is(err, tc.want) {
+				t.Fatalf("rotate = %v, want %v", err, tc.want)
+			}
+			if Pending(r.home) {
+				t.Fatal("a journal was written before the relay was asked")
+			}
+		})
+	}
+}
+
 // The new relay missing the newest turn of a chat stops the switch.
 func TestVerifyRefusesMissingObject(t *testing.T) {
 	r := newRig(t)

@@ -14,7 +14,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
-	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // unknownDevice is said for the machine that took a chat when the directory
@@ -218,13 +217,11 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	d.notice(line)
 }
 
-// refusal shows the person-facing line of a refused request.
+// refusal shows the person-facing line of a refused request, which the
+// refusal table in cellsync holds beside how the request is retried.
 func (d *Drive) refusal(err error) {
-	switch {
-	case errors.Is(err, wireauth.ErrSkew):
-		d.notice(chatlist.ClockOff)
-	case errors.Is(err, wireauth.ErrRotated), errors.Is(err, wireauth.ErrGone):
-		d.notice(chatlist.Replaced)
+	if r, ok := cellsync.RefusalOf(err); ok {
+		d.notice(r.Say(err))
 	}
 }
 

@@ -29,6 +29,14 @@ var ErrRotated = wireauth.ErrRotated
 // tell the owner from a thief.
 var ErrSomeoneFirst = errors.New("this identity was already rotated; the new one is on the device that did it")
 
+// ErrUnderWay is said when the identity is frozen by a rotation that this
+// machine has no journal for: somebody else's, or one of this person's own that
+// lost its journal. The sentence says what to do in each case.
+var ErrUnderWay = errors.New("a rotation of this identity is already under way; if it is yours and was cut off, run codeaf identity rotate --abandon, otherwise wait for the computer that started it")
+
+// ErrRelayTooOld is said when the relay has no rotation verb at all.
+var ErrRelayTooOld = errors.New("this relay cannot replace an identity: it is too old for that")
+
 // ErrSwitched is said to an abandon that came too late: this machine already is
 // the new identity and the only way on is forward.
 var ErrSwitched = errors.New("already switched to the new identity; run codeaf identity rotate to finish")
@@ -158,6 +166,9 @@ func (e Env) open(ctx context.Context) (*run, error) {
 		return nil, err
 	}
 	if !found {
+		if err := e.preflight(ctx); err != nil {
+			return nil, err
+		}
 		if err := e.fetchAll(ctx); err != nil {
 			return nil, err
 		}

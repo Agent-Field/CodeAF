@@ -58,6 +58,9 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) *syncs
 		report(err)
 		return nil
 	}
+	if line, first := s.FirstRun(); first {
+		surfaceNotices.Say(line)
+	}
 	d, err := s.Drive(context.Background(), engine, c, syncsetup.DriveOptions{
 		DeviceName: deviceName(),
 		// The title the chat has now, sealed on its way out: the other machine's

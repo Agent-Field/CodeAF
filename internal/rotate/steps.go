@@ -22,6 +22,24 @@ func (e Env) oldSide() Relay {
 	return e.Connect(signer{e.Identity.PublicKey(), e.Device})
 }
 
+// preflight asks the relay, before anything is fetched or written, whether the
+// identity can be replaced by this device now: the relay must know how, and
+// nobody may have started already.
+func (e Env) preflight(ctx context.Context) error {
+	v, err := e.oldSide().Dir.Rotation(ctx)
+	switch {
+	case errors.Is(err, directory.ErrTooOld):
+		return ErrRelayTooOld
+	case err != nil:
+		return err
+	case v.Rotation == nil:
+		return nil
+	case v.Rotation.State == directory.StateRetired:
+		return ErrSomeoneFirst
+	}
+	return ErrUnderWay
+}
+
 // carried lists the chats of a directory listing in id order. Ids are ULIDs, so
 // a chat comes before any branch made from it.
 func carried(l directory.Listing) []Item {
