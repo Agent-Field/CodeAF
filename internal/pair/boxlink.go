@@ -98,13 +98,15 @@ const ackWithin = 10 * time.Second
 // is best effort: if it is lost the other device deletes after ackWithin.
 func (l *boxLink) acknowledge() { _, _ = l.box.Post(l.ctx, l.plate, l.mine, l.key, []byte{1}) }
 
-// settle waits, briefly, for that word.
-func (l *boxLink) settle() {
+// settle waits, briefly, for that word. Without it the answer may never have
+// arrived, and the device that sent it must not say the pairing finished.
+func (l *boxLink) settle() error {
 	quick := *l
 	var stop context.CancelFunc
 	quick.ctx, stop = context.WithTimeout(l.ctx, ackWithin)
 	defer stop()
-	_, _ = quick.recv(awaitAck)
+	_, err := quick.recv(awaitAck)
+	return err
 }
 
 // explain gives a mailbox refusal the sentence a person reads. vanished is what

@@ -12,6 +12,7 @@ package pair
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/url"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -73,7 +74,7 @@ func readGrant(raw []byte) (Grant, error) {
 	var doc grantDocument
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&doc); err != nil || doc.V != grantVersion {
+	if err := dec.Decode(&doc); err != nil || doc.V != grantVersion || !ended(dec) {
 		return Grant{}, ErrBadGrant
 	}
 	id, err := identity.Unmarshal(doc.Identity)
@@ -84,6 +85,13 @@ func readGrant(raw []byte) (Grant, error) {
 		return Grant{}, err
 	}
 	return Grant{Identity: id, SyncURL: doc.SyncURL}, nil
+}
+
+// ended is whether nothing but space follows the document, so that a grant is
+// the whole of what arrived and not the first thing in it.
+func ended(dec *json.Decoder) bool {
+	_, err := dec.Token()
+	return err == io.EOF
 }
 
 // checkSyncURL accepts no address, or an http or https address with a host.

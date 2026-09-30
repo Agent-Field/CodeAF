@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/pair/cpace"
 	"github.com/Agent-Field/codeaf/internal/relay"
@@ -180,7 +181,9 @@ func readableLabel(said string) string {
 	const most = 32
 	kept := make([]rune, 0, most)
 	for _, r := range said {
-		if r < ' ' || r == 0x7f {
+		// EIGHT-BIT CONTROLS ARE CONTROLS TOO: some terminals read U+009B as
+		// the start of an escape sequence, so a name is not allowed to carry one.
+		if unicode.IsControl(r) {
 			continue
 		}
 		kept = append(kept, r)

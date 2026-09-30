@@ -88,11 +88,12 @@ type link interface {
 	send(msg []byte) error
 	recv(waiting stage) ([]byte, error)
 	// acknowledge tells the other device the last message was read, and settle
-	// waits for that word after sending one. A carrier that keeps messages in a
-	// place that is deleted when the exchange ends needs them, or the deletion
-	// can land under the read that was about to happen; a stream does not.
+	// waits for that word after sending one, answering an error when it never
+	// came. A carrier that keeps messages in a place that is deleted when the
+	// exchange ends needs them, or the deletion can land under the read that was
+	// about to happen; a stream does not.
 	acknowledge()
-	settle()
+	settle() error
 }
 
 // streamLink is a link over a relay byte stream, one length-prefixed record per
@@ -112,8 +113,8 @@ func (l streamLink) recv(waiting stage) ([]byte, error) {
 	return msg, err
 }
 
-func (streamLink) acknowledge() {}
-func (streamLink) settle()      {}
+func (streamLink) acknowledge()  {}
+func (streamLink) settle() error { return nil }
 
 // introduction is the joining device's half, after it has sent message 3.
 type introduction struct {
@@ -161,11 +162,14 @@ func (i *introduction) verdict() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	i.ln.acknowledge()
 	said, _, _, err := i.hs.ReadMessage(nil, reply)
 	if err != nil {
 		return nil, ErrWrongCode
 	}
+	// THE WORD THAT THE ANSWER WAS READ IS SENT ONLY ONCE IT HAS OPENED. A reply
+	// that a relay changed on the way was not read, and telling the other device
+	// it was would have that device report a pairing that never happened here.
+	i.ln.acknowledge()
 	return said, nil
 }
 
@@ -220,6 +224,5 @@ func (o *offered) reply(payload []byte) error {
 	if err := o.ln.send(message); err != nil {
 		return err
 	}
-	o.ln.settle()
-	return nil
+	return o.ln.settle()
 }
