@@ -142,6 +142,27 @@ does not weaken or retune them. What the retained bytes show:
   ("do not change rig scripts to make a failure go away"), the scanner is left
   as it is and the finding is recorded here and in the report.
 
+## Related hazards reviewed
+
+- **`rubric.py phase_a` UnboundLocalError for an unappliable patch.** Confirmed:
+  `judge_input` was built only on the success branch, so a patch that did not
+  apply raised before `phaseA.json` was written and grade.sh recorded `rig`
+  instead of the legitimate 0 the code intends. Fixed (the key is initialised
+  before the apply) and regression-tested.
+- **`allowed_paths ['./']` prefix semantics.** Confirmed: `allowed_paths = [""]`
+  matched every path by accident (`startswith("")`), while `allowed_paths =
+  ["./"]` matched none (patch paths never carry `./`), and `forbidden_paths =
+  [""]` would have forbidden everything. `scope_prefixes` now drops `''`, `'.'`
+  and `'./'` (meaning "no restriction") and strips a leading `./` from real
+  prefixes. None of the three pilot tasks used `./`; the fix is for the draft
+  candidates that do.
+- **Multi-commit patch ranges.** Reviewed and not applicable to the pilot's
+  three tasks: each was collected as `git diff --binary <base> <ref>`, a single
+  base..head diff, and the retained `model.patch` files apply cleanly to their
+  bases. The candidate corpus already records this as fixed for the multi-commit
+  PRs (kong, cobra, bubbletea, clap) in
+  `docs/changes/unreleased/1700-frontiercode-five-candidates.md`.
+
 ## Corrected regrade of the retained conflicted patches
 
 `regrade-retained.sh` regrades a retained `model.patch` in the task's verifier
