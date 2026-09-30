@@ -70,3 +70,37 @@ mod platform {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn batch(root: &std::path::Path) -> Written {
+        let file = root.join("dir/a.txt");
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, b"x").unwrap();
+        Written {
+            root: root.to_owned(),
+            directories: vec![root.join("dir"), root.to_owned()],
+            files: vec![file],
+        }
+    }
+
+    #[test]
+    fn a_written_batch_is_made_durable_by_the_platform_step() {
+        let temp = tempfile::tempdir().unwrap();
+        batch(temp.path()).make_durable().unwrap();
+    }
+
+    #[test]
+    fn a_batch_naming_a_file_that_is_gone_is_an_error_where_each_path_is_synced() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut written = batch(temp.path());
+        written.files.push(temp.path().join("missing"));
+        let result = written.make_durable();
+        // Linux flushes the whole filesystem and names no path; the other
+        // platforms hand each named path to the drive, so a vanished one fails.
+        assert_eq!(result.is_err(), !cfg!(target_os = "linux"));
+    }
+}
