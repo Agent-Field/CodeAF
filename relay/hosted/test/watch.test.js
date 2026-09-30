@@ -106,3 +106,15 @@ test('key order does not make two equal records different', () => {
   dir.putDevice('dev_a', { caps: DEVICE.caps, revoked: false, added_by: '', name: '', V: 1 });
   assert.deepEqual(heard, []);
 });
+
+test('an idempotent freeze, and a thaw of a live identity, bump nothing; a real freeze bumps once then closes all', () => {
+  const { dir, heard } = open();
+  dir.setRotation(undefined);
+  assert.deepEqual(heard, [], 'a thaw of an identity that never rotated is no change');
+  dir.setRotation({ state: 'frozen', by: 'dev_a', at: 1 });
+  dir.setRotation({ state: 'frozen', by: 'dev_a', at: 1 });
+  assert.equal(dir.version, 1, 'the owner freezing again stores the same record');
+  assert.deepEqual(heard.filter((h) => h.startsWith('v')), ['v1']);
+  dir.setRotation(undefined);
+  assert.equal(dir.version, 2, 'a thaw of a frozen identity is visible');
+});
