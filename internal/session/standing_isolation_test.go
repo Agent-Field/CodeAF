@@ -59,8 +59,12 @@ func TestStandingIsolationRecordsItsCopyBeforeWorkerInitialization(t *testing.T)
 	if _, err := runner.Run(context.Background(), item, runDir, ""); !errors.Is(err, want) {
 		t.Fatalf("initialization error changed: %v", err)
 	}
+	// The record keeps the repository's canonical root ([repositoryRoot]), so
+	// the comparison resolves symlinks too: on macOS t.TempDir() answers under
+	// /var/folders while the same directory's canonical spelling is under
+	// /private/var/folders, and a raw comparison fails a correct record.
 	trees := loadStandingTrees(runDir)
-	if len(trees) != 1 || trees[0].Root != repo || trees[0].Home == "" || trees[0].HomeSha == "" {
+	if len(trees) != 1 || trees[0].Root != canonicalPath(repo) || trees[0].Home == "" || trees[0].HomeSha == "" {
 		t.Fatalf("lost recovery identity: %+v", trees)
 	}
 	if got := currentBranch(trees[0].Dir); got != trees[0].Branch {
