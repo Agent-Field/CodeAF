@@ -3,9 +3,12 @@ package syncsetup
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -242,5 +245,52 @@ func TestProviderKeyFromTheEnvironmentIsNeverCaptured(t *testing.T) {
 	}
 	if _, err := os.Stat(config.BudgetConfigPath(b.profile)); err == nil {
 		t.Fatal("B has a config.json from nothing")
+	}
+}
+
+// A key another writer stores while the vault restore is applying must survive
+// the restore. The restore names only the keys it changes, and the write applies
+// them to the file as it is when the write happens; a full set built from an
+// earlier reading would put the earlier value of the other key back. Several
+// writers on each side keep the window between reading and writing busy.
+func TestApplyKeepsAKeyStoredByAnotherWriter(t *testing.T) {
+	profile := t.TempDir()
+	set := providerKeyset{profile}
+	const writers, rounds = 4, 100
+	var stopped atomic.Bool
+	var storing, applying sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		storing.Add(1)
+		go func() {
+			defer storing.Done()
+			for i := 0; i < rounds; i++ {
+				if err := config.WriteAPIKey(profile, fmt.Sprintf("FAKE-model-%d", i)); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+		applying.Add(1)
+		go func() {
+			defer applying.Done()
+			for !stopped.Load() {
+				if err := set.Apply(map[string]string{config.KeyExaKey: "FAKE-search"}); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+	}
+	storing.Wait()
+	stopped.Store(true)
+	applying.Wait()
+
+	got, err := config.ReadProviderKeys(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Rows[config.KeyAPIKey] != fmt.Sprintf("FAKE-model-%d", rounds-1) {
+		t.Fatal("the restore put an older value of another key back")
+	}
+	if got.Rows[config.KeyExaKey] != "FAKE-search" {
+		t.Fatal("the restore lost its own key")
 	}
 }

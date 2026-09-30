@@ -64,7 +64,7 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 	}
 	dest := filepath.Join(liveRoot(c), name)
 	cutErr := k.cutAgain(project, dest, name, from, rec)
-	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec))
+	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
 }
 
 // cutAgain makes dest a copy of project at the commit the copy was at. A dest
@@ -133,6 +133,25 @@ func overlay(files, dest string, rec record) error {
 		return err
 	}
 	return removeAll(dest, rec.Deleted)
+}
+
+// applyModes puts every recorded file of dest at the mode it left with. It runs
+// after the copy is cut and the carried files are laid down, because the cut
+// gives each file it recreates the umask of this machine, and a file the record
+// names that is not there is left alone.
+func applyModes(dest string, modes map[string]fs.FileMode) error {
+	var errs []error
+	for rel, mode := range modes {
+		if !filepath.IsLocal(rel) {
+			errs = append(errs, fmt.Errorf("recorded path %q leaves the task copy", rel))
+			continue
+		}
+		path := filepath.Join(dest, rel)
+		if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
+			errs = append(errs, os.Chmod(path, mode))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func removeAll(dest string, rels []string) error {
