@@ -2002,12 +2002,21 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 // machine of an open block, and empty everywhere else — the same shape
 // [picker.groupBefore] has for a service's name, and for the same reason: a
 // heading belongs to the block under it and a scrolled window that starts
-// mid-block draws it again at the top.
+// mid-block draws it again at the top. The window's real top is known here,
+// which is what the scroll's ask ([picker.laneHead]) cannot say for itself.
 func (p *picker) laneHeadBefore(at, width int) string {
+	return p.laneHead(at, at == p.top, width)
+}
+
+// laneHead is [picker.laneHeadBefore] with the window's top named instead of
+// read: the scroll ([picker.rowLines]) asks with atTop because it is placing
+// the window and the window's first row is the only place the heading can
+// still change the count.
+func (p *picker) laneHead(at int, atTop bool, width int) string {
 	if at < 0 || at >= len(p.list) || p.list[at].lane < 0 {
 		return ""
 	}
-	if at > 0 && p.list[at-1].lane >= 0 && at != p.top {
+	if at > 0 && p.list[at-1].lane >= 0 && !atTop {
 		return ""
 	}
 	return p.laneFit(width).header()
