@@ -88,6 +88,7 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 	// opened again ([app.pickerKey]).
 	drive(t, a, key("enter"), key("esc"))
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 	row, on := a.pick.laneUnder()
 	if !on || row.lane < 0 || !strings.EqualFold(a.pick.lanes[row.lane].Name, "Cloudflare") {
