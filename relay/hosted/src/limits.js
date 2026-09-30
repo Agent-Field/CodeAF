@@ -21,6 +21,7 @@ export const DEFAULTS = {
   minGraceMs: 3_600_000,
   maxGraceMs: 30 * 86_400_000,
   defaultGraceMs: 7 * 86_400_000,
+  maxWatchers: 1_000, // directory watch sockets one identity may hold (contract 21.8); the Go relay's directory.MaxWatchers
   sweepPageSize: 1_000, // R2 objects deleted per alarm turn (R2's own limit per list and per delete)
   // The whole relay, by caller IP: how many identities one address may bring in (contract 6: no accounts).
   newIdentitiesPerIpPerDay: 20,
