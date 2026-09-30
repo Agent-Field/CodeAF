@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -165,17 +166,36 @@ func (s deviceSigner) Sign(msg []byte) []byte         { return s.dev.Sign(msg) }
 // Rows makes a Sync the chat list's source: every chat the person has on any
 // machine, with names opened under the metadata key of their cell key.
 func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
-	l, err := s.Dir.List(ctx)
+	rows, _, err := s.RowsAt(ctx)
+	return rows, err
+}
+
+// RowsAt is Rows and the directory version the listing was read at.
+func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	l, version, err := directory.ListVersioned(ctx, s.Dir)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), nil
+	return chatlist.Rows(l, s.Device.ID(), open), version, nil
+}
+
+// Follow joins this process's change feed for the identity on this relay, so a
+// screen that shows the directory hears of a change when it happens. It answers
+// nil when the directory client cannot open a watch socket, which is a screen
+// that polls alone.
+func (s *Sync) Follow() dirwatch.Follower {
+	w, ok := s.Dir.(directory.Watcher)
+	if !ok {
+		return nil
+	}
+	return dirwatch.Follow(s.Ledger, w.Watch)
 }
 
 var (
-	_ chatlist.Source = (*Sync)(nil)
+	_ chatlist.Source    = (*Sync)(nil)
+	_ chatlist.Versioned = (*Sync)(nil)
 	// The engine glue is the sync seam by method set: no adapter between them.
 	_ cellsync.Engine = cellstore.SyncEngine{}
 )

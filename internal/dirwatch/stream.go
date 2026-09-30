@@ -46,15 +46,17 @@ const (
 
 // The pace of the feed. Each number is here once.
 const (
-	// KeepEvery is how long a quiet socket waits before it pings. Cloudflare
-	// closes a socket that carries nothing for 100 s, and nginx and AWS load
-	// balancers do so at 60 s; fifty seconds stays under the shortest of them
-	// with room for one late tick, and costs two pings a minute at most.
-	KeepEvery = 50 * time.Second
+	// KeepEvery is how long a quiet socket waits before it pings. The relay's
+	// contract says about thirty seconds, which keeps a middlebox that drops
+	// idle connections (Cloudflare at 100 s, nginx and AWS balancers at 60 s)
+	// from dropping this one with room for two late ticks; a ping is answered
+	// by the relay without waking anything, so it costs nothing to send.
+	KeepEvery = 30 * time.Second
 	// PongWithin is how long a ping may go unanswered before the socket is
-	// dead. It is a fifth of the keepalive, so a dead socket is found within
-	// one keepalive interval and in seconds after a wake or a network change.
-	PongWithin = KeepEvery / 5
+	// dead. It is a third of the keepalive, so a dead socket is found in
+	// seconds after a wake or a network change, well inside the 75 s the
+	// contract allows.
+	PongWithin = KeepEvery / 3
 	// RetryBase and RetryCap bound the full-jitter wait between reconnects: the
 	// ceiling doubles from the base up to the cap, and the wait is anywhere
 	// below the ceiling, so many devices that lost the relay together do not

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2229,6 +2230,11 @@ type app struct {
 	machineRead    machineReading
 	machinesAsking bool
 	machinePoll    machinePoll
+	// dirFeed is this window's hold on the directory's change feed while home is
+	// being looked at, and readOwed that a frame arrived while a read was in
+	// flight (machinewatch.go).
+	dirFeed  dirwatch.Follower
+	readOwed bool
 	// newsAsking and leftOffAsking are the same idea for the two readings a card
 	// takes of its own row (homecardread.go).
 	newsAsking    map[string]bool
@@ -3806,6 +3812,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.refocusQuestions()
 		// AND HOME IS READ AT ONCE, because a list left to age a minute while
 		// nobody looked must not be what the person sees on arrival.
+		a.probeWatch()
 		return a, a.hurryMachines()
 
 	case tea.BlurMsg:
@@ -5023,8 +5030,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
-		a.tookMachines(msg)
-		return a, nil
+		return a, a.tookMachines(msg)
+
+	case dirWatchMsg:
+		// THE DIRECTORY'S CHANGE SOCKET HAS SOMETHING TO SAY (machinewatch.go).
+		return a, a.tookWatch(msg)
 
 	case homeRepoMsg:
 		// A REPOSITORY'S READING, COMING BACK. It was asked for on the keystroke
