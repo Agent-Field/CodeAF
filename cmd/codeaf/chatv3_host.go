@@ -163,7 +163,7 @@ type engineLink struct {
 	process *exec.Cmd
 	// stderr is the tail of what ssh and the far shell said, kept so a failed
 	// handshake can be diagnosed in the person's own words rather than in a
-	// pipe error. It is a TEE — everything in it was also printed as it arrived.
+	// pipe error. Only pre-handshake prompts also reach the terminal.
 	stderr *tailWriter
 	// reaped says this process has already been waited on, and err is what that
 	// wait answered.
@@ -196,9 +196,9 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	// STDERR IS THE PERSON'S, AND ALSO OURS. It is printed as it arrives — that
-	// is how a passphrase prompt and a host-key question reach the person — and
-	// the tail is kept so that a handshake failure can name the likely cause.
+	// STDERR BELONGS TO THE TERMINAL UNTIL THE HANDSHAKE. Launch prompts reach
+	// the person before the surface takes the frame; later diagnostics stay in
+	// the tail so a disconnect cannot paint over that frame.
 	tail := &tailWriter{}
 	process.Stderr = l.stderrWriter(tail, os.Stderr)
 	if err := process.Start(); err != nil {
@@ -219,9 +219,27 @@ func (l *engineLink) stderrWriter(tail *tailWriter, terminal io.Writer) io.Write
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.process == nil {
-		return io.MultiWriter(terminal, tail)
+		return &launchStderr{link: l, terminal: terminal, tail: tail}
 	}
 	return tail
+}
+
+// launchStderr stays installed on the initial carrier after its handshake.
+// The connection boundary changes its destination under the link's lock, so
+// even that carrier's later disconnect errors stay out of the owned frame.
+type launchStderr struct {
+	link     *engineLink
+	terminal io.Writer
+	tail     *tailWriter
+}
+
+func (w *launchStderr) Write(p []byte) (int, error) {
+	w.link.mu.Lock()
+	defer w.link.mu.Unlock()
+	if w.link.client == nil {
+		return io.MultiWriter(w.terminal, w.tail).Write(p)
+	}
+	return w.tail.Write(p)
 }
 
 // sshTransportArgs keeps the carrier's latency policy in one place. -T remains
@@ -311,6 +329,8 @@ func dialEngine(dest, workspace string, hello remote.Hello) (*engineLink, error)
 	if err != nil {
 		return nil, link.diagnose(dest, err)
 	}
+	link.mu.Lock()
+	defer link.mu.Unlock()
 	link.client = client
 	return link, nil
 }
