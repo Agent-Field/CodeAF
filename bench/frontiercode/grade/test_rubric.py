@@ -298,6 +298,67 @@ run = "true"
         self.assertEqual(grade["status"], "rig")
 
 
+class PhaseBTests(unittest.TestCase):
+    """phase_b: a missing output dir must not crash, and the task's own rebuild
+    command must be the one used (not the fixture's hardcoded recipe)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        self.r = OverlayRepo(self.tmp.name)
+        self.r.apply_agent()
+        self.task = self.root / "task"
+        self.task.mkdir()
+        write(self.task / "task.toml", """\
+schema_version = "1.3"
+[verifier]
+rebuild_command = "true"
+""")
+        write(self.task / "rubric.toml", """\
+schema_version = 1
+judge_model = "test/model"
+judge_prompt_version = "fc-judge-1"
+
+[[criterion]]
+id = "adapted-tests-pass"
+kind = "adaptive-classical"
+blocker = false
+weight = 1
+[criterion.adaptive_classical]
+overlay = "overlay.patch"
+run = "true"
+""")
+        self.grade = self.root / "grade"
+        self.grade.mkdir()
+        self._set_patch(str(self.r.agent_patch))
+
+    def _set_patch(self, path):
+        old = os.environ.get("FC_PATCH")
+        os.environ["FC_PATCH"] = path
+        self.addCleanup(
+            lambda: os.environ.__setitem__("FC_PATCH", old)
+            if old else os.environ.pop("FC_PATCH", None))
+
+    def test_missing_adapted_patch_writes_phaseb_verdict(self):
+        rc = rubric.phase_b(str(self.task), str(self.r.repo), self.r.base, str(self.grade))
+        self.assertEqual(rc, 0)
+        pb = json.loads((self.grade / "phaseB.json").read_text())
+        entry = pb["criteria"]["adapted-tests-pass"]
+        self.assertEqual(entry["status"], rubric.RIG)
+        self.assertIn("never reached phase B", entry["note"])
+
+    def test_adapted_patch_runs_and_passes(self):
+        write(self.grade / "adapted-tests.patch", self.r.mod_overlay.read_text())
+        rc = rubric.phase_b(str(self.task), str(self.r.repo), self.r.base, str(self.grade))
+        self.assertEqual(rc, 0)
+        pb = json.loads((self.grade / "phaseB.json").read_text())
+        entry = pb["criteria"]["adapted-tests-pass"]
+        self.assertEqual(entry["status"], rubric.PASS, entry)
+        self.assertEqual(entry["exit_code"], 0)
+        self.assertTrue((self.grade / "evidence" / "adapted-tests-pass-phaseb.log").exists())
+
+
 class ScopePrefixTests(unittest.TestCase):
     def _check(self, allowed, forbidden, files):
         patch = self.root / "p.patch"
