@@ -460,6 +460,7 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))              // walks in, onto the auto row
 	drive(t, a, key("down"), key("right")) // openrouter, then into its machines
 	drive(t, a, key("enter"))
