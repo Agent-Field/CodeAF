@@ -114,9 +114,16 @@ if [ ! -f "$OUT/logs/grade/phaseA.json" ]; then
 fi
 
 # ── the judge: prompt criteria, from the host ───────────────────────────────
-log "$TASK_ID: judge — prompt criteria"
-python3 "$RIG_DIR/grade/judge.py" review --task "$TASK_DIR" --grade-dir "$OUT/logs/grade" \
-  > "$OUT/logs/grade/judge-review.out" 2>&1 || log "$TASK_ID: judge review failed — see judge-review.out"
+# REGRADE=1 reuses the run's retained judge.json (and adapted-tests.patch) and
+# rewrites only the deterministic phases and the combined grade: no judge call,
+# no scan, no final row. It is how a retained patch is regraded under a fixed
+# grader without spending on the model or touching the original evidence.
+REGRADE="${REGRADE:-0}"
+if [ "$REGRADE" != 1 ]; then
+  log "$TASK_ID: judge — prompt criteria"
+  python3 "$RIG_DIR/grade/judge.py" review --task "$TASK_DIR" --grade-dir "$OUT/logs/grade" \
+    > "$OUT/logs/grade/judge-review.out" 2>&1 || log "$TASK_ID: judge review failed — see judge-review.out"
+fi
 
 # ── the adaptive path: only when the verbatim tests did not fit ─────────────
 # Adapt when the verbatim reference tests did not fit: an overlay conflict,
