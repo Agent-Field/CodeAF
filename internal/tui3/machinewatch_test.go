@@ -138,14 +138,15 @@ func TestAFailedReadOwesNothingMore(t *testing.T) {
 	}
 }
 
-func TestSocketUpReadsAtMostOncePerMinuteInAnOpenHour(t *testing.T) {
+func TestSocketUpReadsAtMostOncePerBackstopInAnOpenHour(t *testing.T) {
 	a, src, now := watchHome(t, true)
 	for elapsed := time.Duration(0); elapsed < time.Hour; elapsed += homeEvery {
 		beat(t, a, now, homeEvery)
 	}
 	t.Logf("directory lists in one open hour, socket up, nothing changing: %d", src.asks)
-	if src.asks > 61 {
-		t.Fatalf("an hour with the socket up read the list %d times, want at most 61", src.asks)
+	// The first read on arrival, then one per backstop.
+	if limit := 1 + int(time.Hour/machinesBackstop); src.asks > limit {
+		t.Fatalf("an hour with the socket up read the list %d times, want at most %d", src.asks, limit)
 	}
 }
 
