@@ -309,8 +309,12 @@ fn tampered_object_refused() {
     assert_eq!(want_of(&dst.data, src.head).len(), 1);
 }
 
+/// The whole import call is one catalog batch, so a failure anywhere in it
+/// rolls the whole call back: either everything or nothing is catalogued,
+/// never a partial catalog. The inbox files are deleted only after the batch
+/// commits, so every file is left for the next attempt.
 #[test]
-fn a_tampered_child_keeps_the_objects_stored_before_it() {
+fn a_tampered_child_rolls_the_whole_import_back() {
     let src = source();
     let objects = exported(&src);
     let kinds = kinds(&src.data, src.head);
@@ -328,10 +332,52 @@ fn a_tampered_child_keeps_the_objects_stored_before_it() {
     assert!(error.to_string().contains(&id_hex(&tree_rid)), "{error:#}");
     let wanted = want_of(&dst.data, src.head);
     assert!(wanted.contains(&tree_rid), "the bad tree is still wanted");
-    let snapshot = furrow::sealer::Sealer::remote_id(&sealer(), ObjectKind::Snapshot, &src.head);
+    // The catalog rolled the snapshot back with the batch, but its verified
+    // bytes sit in the pack, so a fresh open adopts them under the
+    // rebuild-from-pack rule and the survey no longer asks for them. Nothing
+    // unverified can be adopted.
+    for (rid, _) in &tampered {
+        assert!(
+            dst.inbox.join(id_hex(rid)).exists(),
+            "the file stayed for the next attempt"
+        );
+    }
+}
+
+/// A priming take knows its inbox holds more than this head wants: the files
+/// no pass wanted are deleted and counted instead of being an error. The
+/// strict import keeps its rule.
+#[test]
+fn primed_import_deletes_the_extras_and_reports_them() {
+    let src = source();
+    let objects = exported(&src);
+    let kinds = kinds(&src.data, src.head);
+    let snapshot = of_kinds(&objects, &kinds, &[ObjectKind::Snapshot]);
+    let chunk = of_kinds(&objects, &kinds, &[ObjectKind::Chunk]).remove(0);
+
+    let strict = receiver();
+    put_inbox(&strict.inbox, &snapshot);
+    put_inbox(&strict.inbox, std::slice::from_ref(&chunk));
+    let error = import_all(&strict.data, src.head, &strict.inbox).unwrap_err();
     assert!(
-        !wanted.contains(&snapshot),
-        "the snapshot was stored before the failure"
+        error.to_string().contains("not wanted for head"),
+        "{error:#}"
+    );
+    assert!(
+        strict.inbox.join(id_hex(&chunk.0)).exists(),
+        "the strict import leaves the extra in place"
+    );
+
+    let primed = receiver();
+    put_inbox(&primed.inbox, &snapshot);
+    put_inbox(&primed.inbox, std::slice::from_ref(&chunk));
+    let taken = import_primed(&primed.data, src.head, &primed.inbox).unwrap();
+    assert_eq!(taken.imported, snapshot.len());
+    assert_eq!(taken.extras_deleted, 1, "the chunk was counted and deleted");
+    assert_eq!(fs::read_dir(&primed.inbox).unwrap().count(), 0);
+    assert!(
+        !want_of(&primed.data, src.head).is_empty(),
+        "the take went on past the snapshot"
     );
 }
 
