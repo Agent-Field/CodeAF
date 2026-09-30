@@ -109,6 +109,14 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 // The turn's time is fixed once, from the moment of the read; the age drawn is
 // then counted to now, so it grows with the clock however long ago the ask was.
 func machineLine(row chatlist.Row, readAt, now time.Time, merge bool) homeLine {
+	// THE DRAW CLOCK IS THE WORLD'S READING AND THE READ TIME IS THE ASK'S, two
+	// samples of one wall clock a few milliseconds apart. A draw that seems to
+	// come before the read would make a turn look younger than the directory said
+	// it was (`4h` for a chat that is exactly five hours old), so it never counts
+	// as earlier than the read.
+	if now.Before(readAt) {
+		now = readAt
+	}
 	at := readAt.Add(-row.DurableAgo)
 	note, short := chatlist.StatusLine(row), ""
 	if row.Status == chatlist.Branch {
