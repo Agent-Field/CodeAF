@@ -31,6 +31,8 @@ var wireErrors = []wireError{
 	{wireauth.ErrGone, "gone", http.StatusGone},
 	{ErrRotationStep, "rotation_step", http.StatusConflict},
 	{ErrBadGrace, "bad_grace", http.StatusBadRequest},
+	{wireauth.ErrRateLimited, "rate_limited", http.StatusTooManyRequests},
+	{wireauth.ErrTooManyIdentities, "too_many_identities", http.StatusTooManyRequests},
 	{wireauth.ErrSkew, "skew", http.StatusUnauthorized},
 	{errBadRequest, "bad_request", http.StatusBadRequest},
 	{errTooLarge, "too_large", http.StatusRequestEntityTooLarge},

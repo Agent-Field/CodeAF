@@ -108,7 +108,7 @@ func TestStoreFailureKeepsSealing(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()
 	h1 := r.publishFirst(map[string]string{"a": "0"})
-	r.store.set(blobstore.ErrFull, nil)
+	r.store.set(blobstore.ErrUnreachable, nil)
 	inner := &fakeInner{r: r}
 	p := &Publishing{Inner: inner, Batcher: b}
 	seal := func() {
@@ -503,7 +503,7 @@ func TestIdleDuringBackoffWaitsForTheBackoff(t *testing.T) {
 	b.Sleep = sl.Sleep
 	r.publishFirst(map[string]string{"a": "0"})
 	var attempts atomic.Int32
-	r.store.set(blobstore.ErrFull, func(context.Context) { attempts.Add(1) })
+	r.store.set(blobstore.ErrUnreachable, func(context.Context) { attempts.Add(1) })
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()

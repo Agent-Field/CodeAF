@@ -27,6 +27,7 @@ type namespace struct {
 	state   string
 	grace   time.Duration
 	getFail error // what a read of the store answers, to cut a fetch short
+	tooOld  bool  // the relay has no rotation verb
 }
 
 func (n *namespace) writable() bool {
@@ -65,6 +66,20 @@ func (f *fakeRelay) connect(s reqsign.Signer) Relay {
 type guardedDir struct {
 	directory.Client
 	n *namespace
+}
+
+// Rotation is the fake relay's state as the real one reports it.
+func (g guardedDir) Rotation(ctx context.Context) (directory.RotationView, error) {
+	g.n.mu.Lock()
+	defer g.n.mu.Unlock()
+	if g.n.tooOld {
+		return directory.RotationView{}, directory.ErrTooOld
+	}
+	v := directory.RotationView{}
+	if g.n.state != "live" {
+		v.Rotation = &directory.Rotation{State: map[string]string{"frozen": directory.StateFrozen, "retired": directory.StateRetired}[g.n.state]}
+	}
+	return v, nil
 }
 
 func (g guardedDir) refuse() error {

@@ -59,6 +59,12 @@ Remote access is a different door. A machine you let in with `codeaf serve` is n
 
 After a rotation, each computer you keep is still on the old identity. It stops syncing, and says once: `your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)`.
 
+When the relay has deleted the old identity, after the grace period, it says:
+
+```
+your identity was replaced and the relay has deleted the old one; pair this computer again (/pair on a computer that has the new one)
+```
+
 On the computer you rotated on, type `/pair`. On the other computer, use the code: `codeaf pair <code>`, or `/pair <code>` in the chat. Compare the three words as always.
 
 That computer follows the replacement. It does not need `--replace`. It keeps its own chats and its saved keys.
@@ -70,6 +76,14 @@ A computer that was never on your old identity is refused as before, and keeps i
 Every computer that holds your identity can run `codeaf identity rotate`, and so can a thief who holds it. The relay cannot tell you apart. The first one to shut the old identity wins.
 
 So do it at once. If you run it and it says `this identity was already rotated; the new one is on the device that did it`, someone else got there first. The new identity is on that computer, not on yours.
+
+If a rotation of the identity is already under way and this computer has no record of it, it says:
+
+```
+a rotation of this identity is already under way; if it is yours and was cut off, run codeaf identity rotate --abandon, otherwise wait for the computer that started it
+```
+
+A relay that does not know how to do this says `this relay cannot replace an identity: it is too old for that`. Nothing has been fetched or changed when you read either sentence.
 
 A way to prove you are the owner with a written recovery phrase is not built.
 

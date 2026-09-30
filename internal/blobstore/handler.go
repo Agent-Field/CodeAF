@@ -254,20 +254,21 @@ var errBadRequest = errors.New("blobstore: malformed request")
 func writeErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errTooLarge):
-		send(w, http.StatusRequestEntityTooLarge, "bad_frame")
+		send(w, http.StatusRequestEntityTooLarge, "bad_frame", 0)
 	case errors.Is(err, errBadRequest):
-		send(w, http.StatusBadRequest, "bad_request")
+		send(w, http.StatusBadRequest, "bad_request", 0)
 	default:
 		code, status, ok := codeOf(err)
 		if !ok {
 			code, status = "internal", http.StatusInternalServerError
 		}
-		send(w, status, code)
+		send(w, status, code, LimitOf(err))
 	}
 }
 
-func send(w http.ResponseWriter, status int, code string) {
+// send answers with the code and, when the relay has a byte ceiling to name, the ceiling.
+func send(w http.ResponseWriter, status int, code string, limit int64) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write(mustJSON(errBody{Err: code}))
+	_, _ = w.Write(mustJSON(errBody{Err: code, LimitBytes: limit}))
 }
