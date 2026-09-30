@@ -28,7 +28,7 @@ func TestFetchPrimesFromThePlan(t *testing.T) {
 	if len(plan) == 0 {
 		t.Fatal("publish recorded no plan")
 	}
-	count := blobstore.NewCounting(r.mem)
+	count := blobstore.Counting{Inner: r.mem, C: &blobstore.Counters{}}
 	f, c := primedFetcherFor(t, count, r.dir.For(devB))
 	if err := f.Fetch(context.Background(), c, head); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestFetchPrimesFromThePlan(t *testing.T) {
 	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, want) {
 		t.Fatalf("materialized %v, want %v", got, want)
 	}
-	if got := count.Count().Gets; got != len(plan) {
+	if got := count.C.Gets.Load(); got != int64(len(plan)) {
 		t.Fatalf("gets = %d, want one per plan frame (%d)", got, len(plan))
 	}
 }
@@ -48,8 +48,10 @@ func TestFetchSurvivesALyingPlan(t *testing.T) {
 	r := newRig(t)
 	head := r.publishFirst(map[string]string{"a": "one", "b": "two"})
 	lie := append([]string{otherHead}, r.head(cellID).Frames...)
+	r.takeOver() // device B holds the lease, so its word moves the record
+	v := r.head(cellID)
 	if _, err := r.dir.For(devB).Publish(context.Background(), cellID, directory.Publish{
-		Fence: r.head(cellID).Lease.Fence, OldHead: head, Head: head, Class: "chat", Frames: lie,
+		Fence: v.Lease.Fence, OldHead: head, Head: otherHead, Class: "chat", Frames: lie,
 	}); err != nil {
 		t.Fatal(err)
 	}
