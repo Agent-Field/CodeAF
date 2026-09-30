@@ -42,6 +42,9 @@ const (
 	devB = "dev_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	head = "1111111111111111111111111111111111111111111111111111111111111111"
 	next = "2222222222222222222222222222222222222222222222222222222222222222"
+	f1   = "3333333333333333333333333333333333333333333333333333333333333333"
+	f2   = "4444444444444444444444444444444444444444444444444444444444444444"
+	f3   = "5555555555555555555555555555555555555555555555555555555555555555"
 )
 
 var ctx = context.Background()
@@ -82,6 +85,11 @@ var cases = map[string]func(*testing.T, env){
 	"LateHeartbeatSameFence":         lateHeartbeatSameFence,
 	"HeartbeatWrongFenceRefused":     heartbeatWrongFenceRefused,
 	"PublishMovesHead":               publishMovesHead,
+	"CreateStoresFrames":             createStoresFrames,
+	"PublishReplacesFrames":          publishReplacesFrames,
+	"PublishWithoutFramesClears":     publishWithoutFramesClears,
+	"CellAnswerCarriesFrames":        cellAnswerCarriesFrames,
+	"ListAnswerOmitsFrames":          listAnswerOmitsFrames,
 	"PublishRenewsLease":             publishRenewsLease,
 	"PublishKeepsTitleWhenEmpty":     publishKeepsTitleWhenEmpty,
 	"PublishStaleOldHeadRefused":     publishStaleOldHeadRefused,
@@ -250,6 +258,59 @@ func publishRenewsLease(t *testing.T, e env) {
 	must(t, err)
 	if want := v.Now + directory.LeaseTTL.Milliseconds(); v.Cell.Lease.Expires != want {
 		t.Fatalf("expires = %d, want %d", v.Cell.Lease.Expires, want)
+	}
+}
+
+// The frames are the publisher's plan of where the head's closure lives: create
+// sets them, every publish replaces them wholesale, the cell answer carries
+// them and the list answer omits them (§22.2).
+func createStoresFrames(t *testing.T, e env) {
+	v, err := e.as(devA).Create(ctx, cell, directory.CellInit{Head: head, Class: "chat", Size: 10, Frames: []string{f1, f2}})
+	must(t, err)
+	if got := v.Cell.Frames; len(got) != 2 || got[0] != f1 || got[1] != f2 {
+		t.Fatalf("frames = %v, want [%s %s]", got, f1, f2)
+	}
+}
+
+func publishReplacesFrames(t *testing.T, e env) {
+	start(t, e)
+	v, err := e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next, Frames: []string{f2, f3}})
+	must(t, err)
+	if got := v.Cell.Frames; len(got) != 2 || got[0] != f2 || got[1] != f3 {
+		t.Fatalf("frames = %v, want [%s %s]", got, f2, f3)
+	}
+}
+
+func publishWithoutFramesClears(t *testing.T, e env) {
+	start(t, e)
+	if _, err := e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next, Frames: []string{f1}}); err != nil {
+		t.Fatal(err)
+	}
+	v, err := e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: next, Head: head})
+	must(t, err)
+	if len(v.Cell.Frames) != 0 {
+		t.Fatalf("frames = %v, want none", v.Cell.Frames)
+	}
+}
+
+func cellAnswerCarriesFrames(t *testing.T, e env) {
+	if _, err := e.as(devA).Create(ctx, cell, directory.CellInit{Head: head, Class: "chat", Size: 10, Frames: []string{f1}}); err != nil {
+		t.Fatal(err)
+	}
+	c := get(t, e)
+	if len(c.Frames) != 1 || c.Frames[0] != f1 {
+		t.Fatalf("frames = %v, want [%s]", c.Frames, f1)
+	}
+}
+
+func listAnswerOmitsFrames(t *testing.T, e env) {
+	if _, err := e.as(devA).Create(ctx, cell, directory.CellInit{Head: head, Class: "chat", Size: 10, Frames: []string{f1}}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := e.as(devA).List(ctx)
+	must(t, err)
+	if got := l.Cells[cell].Frames; len(got) != 0 {
+		t.Fatalf("list frames = %v, want none", got)
 	}
 }
 
