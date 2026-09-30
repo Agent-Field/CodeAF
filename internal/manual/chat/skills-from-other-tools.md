@@ -1,9 +1,9 @@
-# Skills from Claude Code, Codex and other tools
+# Skills from Claude Code, Codex, OpenCode, Goose and other tools
 
-## Can you use my Claude Code and Codex skills
+## Can you use my Claude Code, Codex, OpenCode or Goose skills
 
 Yes, directly. Any skill you already installed for Claude Code, Codex, Cursor,
-Gemini or another agentskills.io tool — a folder holding a `SKILL.md` whose
+Gemini, OpenCode, Goose or another agentskills.io tool — a folder holding a `SKILL.md` whose
 frontmatter has a `name` and a `description` — is read where it lives. Nothing
 is copied or reinstalled. Each launch reads the folders again before the first
 message, so a skill you add or edit shows up the next time you open codeaf.
@@ -20,10 +20,13 @@ off.
 Under the project folder and under your home folder, in this order:
 
 - `.codeaf/skills`, `.agents/skills`, `.claude/skills`, `.codex/skills`,
-  `.cursor/skills`, `.gemini/skills` — each direct child folder holding a
-  `SKILL.md` is one skill. A child that is a link to a folder counts too, which
-  is how installers that keep one copy and link it into every tool's folder
-  reach codeaf.
+  `.cursor/skills`, `.gemini/skills`, `.opencode/skills`, `.goose/skills` —
+  each direct child folder holding a `SKILL.md` is one skill. A child that is a
+  link to a folder counts too, which is how installers that keep one copy and
+  link it into every tool's folder reach codeaf.
+- In your home folder only, after those: `~/.config/opencode/skills` and
+  `~/.config/goose/skills`, which is where OpenCode and Goose keep the skills
+  you installed for yourself rather than for one project.
 - The skills of every Claude Code plugin that is installed and enabled.
 - Codex's own bundled skills, in `.codex/skills/.system`.
 
