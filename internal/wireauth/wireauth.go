@@ -8,6 +8,8 @@ package wireauth
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 // Sign stamps an outgoing request with proof of its sender. body is the exact
@@ -42,4 +44,44 @@ func Narrow(err error) error {
 		}
 	}
 	return ErrUnauthorized
+}
+
+// ErrRateLimited is a refusal because the identity or one of its computers asked
+// too often. Time alone cures it, so the wire carries how long the relay says
+// to wait (see Wait).
+var ErrRateLimited = errors.New("wireauth: rate limited")
+
+// ErrTooManyIdentities is a refusal because one network has brought in more new
+// identities today than the relay allows; like ErrRateLimited it is cured by
+// time, but by hours and not seconds.
+var ErrTooManyIdentities = errors.New("wireauth: too many new identities")
+
+// waiting is a refusal together with how long the relay said to wait.
+type waiting struct {
+	err   error
+	after time.Duration
+}
+
+func (w waiting) Error() string { return w.err.Error() }
+func (w waiting) Unwrap() error { return w.err }
+
+// Wait attaches the Retry-After of an answer to the refusal it came with, so
+// every wire keeps the relay's word in one shape. An answer without a usable
+// Retry-After leaves the refusal as it was.
+func Wait(err error, h http.Header) error {
+	secs, perr := strconv.Atoi(h.Get("Retry-After"))
+	if perr != nil || secs <= 0 {
+		return err
+	}
+	return waiting{err: err, after: time.Duration(secs) * time.Second}
+}
+
+// After is how long the relay said to wait before asking again, or zero when
+// err carries no such word.
+func After(err error) time.Duration {
+	var w waiting
+	if errors.As(err, &w) {
+		return w.after
+	}
+	return 0
 }

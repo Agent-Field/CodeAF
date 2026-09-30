@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
@@ -261,5 +262,20 @@ func TestReplayedPublishIsRefusedByFence(t *testing.T) {
 	_, err := a.Publish(ctx, cellX, directory.Publish{Fence: 1, OldHead: head1, Head: head2, Class: "chat"})
 	if !errors.Is(err, directory.ErrFenceStale) {
 		t.Fatalf("replayed publish = %v, want ErrFenceStale", err)
+	}
+}
+
+// A rate limit from the directory keeps the wait the relay named, as the store's does.
+func TestHTTPRateLimitKeepsRetryAfter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"err":"rate_limited"}`))
+	}))
+	defer srv.Close()
+	c := directory.NewHTTP(srv.URL, fakeSign("alice", devA), srv.Client())
+	_, err := c.List(context.Background())
+	if !errors.Is(err, wireauth.ErrRateLimited) || wireauth.After(err) != 30*time.Second {
+		t.Fatalf("List = %v (after %v), want ErrRateLimited after 30s", err, wireauth.After(err))
 	}
 }

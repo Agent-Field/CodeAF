@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -25,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // skewedClock is the relay's clock: the wall clock plus an offset a test moves
@@ -449,4 +451,24 @@ func stopDaemons(t *testing.T) {
 	for _, s := range socks {
 		_ = cellstore.Daemon{Socket: s}.Stop(context.Background())
 	}
+}
+
+// Each refusal the relay can make reaches the chat as its one sentence.
+func TestARefusalReachesTheChatAsItsSentence(t *testing.T) {
+	for err, want := range map[error]string{
+		blobstore.ErrFull:             chatlist.RelayFull,
+		wireauth.ErrRevoked:           chatlist.Removed,
+		wireauth.ErrSkew:              chatlist.ClockOff,
+		wireauth.ErrRateLimited:       chatlist.SlowDown,
+		wireauth.ErrTooManyIdentities: chatlist.TooManyNew,
+	} {
+		var said []string
+		d := &Drive{opt: DriveOptions{OnNotice: func(l string) { said = append(said, l) }}}
+		d.refusal(err)
+		if len(said) != 1 || said[0] != want {
+			t.Errorf("%v said %q, want %q", err, said, want)
+		}
+	}
+	d := &Drive{opt: DriveOptions{OnNotice: func(l string) { t.Errorf("said %q for an unreachable relay", l) }}}
+	d.refusal(blobstore.ErrUnreachable)
 }
