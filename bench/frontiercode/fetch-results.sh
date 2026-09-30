@@ -34,10 +34,15 @@ REMOTE_RESULTS="$REMOTE_ROOT/bench/frontiercode/results"
 # gitignored by design (it keeps the upstream reference out of the repo), so
 # the fetch lands in evidence/ — a tracked path a task can actually write —
 # and commits it, making the run's artifacts durable in the branch.
-LOCAL_RESULTS="$FC_RIG_DIR/evidence"
+# FC_EVIDENCE_DIR overrides the destination (used by the regression test).
+LOCAL_RESULTS="${FC_EVIDENCE_DIR:-$FC_RIG_DIR/evidence}"
 
-# The attempt contract: every one of these must survive the trip.
-REQUIRED=(record.jsonl DONE artifacts.sha256 model.patch scan.json cost.json logs/grade/grade.json)
+# The attempt contract: every one of these must survive the trip. egress-proxy.log
+# is on it because it is the scanner's raw input — without it a scan.json cannot
+# be re-derived, and the first pilot's runs lost exactly this file to the
+# repository-wide *.log ignore.
+REQUIRED=(record.jsonl DONE artifacts.sha256 model.patch scan.json cost.json
+          logs/grade/grade.json egress-proxy.log)
 
 verify_run_dir() { # <dir>: print what is missing, return 1 if anything is
   local d="$1" f missing=0
