@@ -76,3 +76,14 @@ func keepIfEmpty(next, current string) string {
 	}
 	return next
 }
+
+// RevokeOf marks target revoked on behalf of caller. A device cannot revoke
+// itself: that is nearly always a slip, and a revoked device can no longer say
+// so, so the mistake would be permanent. Revoking twice changes nothing.
+func RevokeOf(target Device, caller, targetID string) (Device, error) {
+	if caller == targetID {
+		return target, ErrSelfRevoke
+	}
+	target.Revoked = true
+	return target, nil
+}

@@ -63,7 +63,7 @@ func New(cfg Config) *Service {
 		return svc
 	}
 	svc.ns = newNamespaces(cfg.Store, now)
-	auth := noting(reqsign.AuthenticateAt(now))
+	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
 	mux.Handle("/v1/dir/", logged(cfg.Logf, directory.Handler(auth, svc.ns.directory)))
 	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, auth, svc.ns.blobs)))
 	return svc
