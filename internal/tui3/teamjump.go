@@ -198,14 +198,14 @@ func (a *app) teamEntryAtIn(id, teamID string) int {
 		case entryTool:
 			switch e.tool {
 			case "team_send":
-				if inTeam && sentElsewhere(e, shown) {
+				if inTeam && a.sentElsewhere(e, shown, id) {
 					continue
 				}
 				if strings.Contains(e.detail.Output, "("+number+")") {
 					return i
 				}
 			case "team_post":
-				if inTeam && sentElsewhere(e, shown) {
+				if inTeam && a.sentElsewhere(e, shown, id) {
 					continue
 				}
 				if strings.Contains(e.detail.Output, " as "+number+",") || strings.Contains(e.detail.Output, " as "+number+".") {
@@ -221,9 +221,25 @@ func (a *app) teamEntryAtIn(id, teamID string) int {
 // the name it arrived under, so its retained Traffic identity takes precedence
 // over a name another team acquired later. Identical retained identities in
 // multiple teams cannot establish which historical team delivered the card.
+// An evicted or unloaded foreign row is not evidence of an absent identity.
 func (a *app) trafficLineBelongs(line session.TeamLine, target team) bool {
 	if line.Team == "" || line.Team == target.ID {
 		return true
+	}
+	for _, owner := range a.wall.teams {
+		if owner.ID == target.ID || (line.Team != owner.ID && !strings.EqualFold(line.Team, owner.Name)) {
+			continue
+		}
+		known := a.traffic.cursor[owner.ID] == trafficFromStart
+		for _, row := range a.traffic.rows[owner.ID] {
+			if row.ID == line.Thread {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return false
+		}
 	}
 	matched := ""
 	for id, rows := range a.traffic.rows {
@@ -250,21 +266,36 @@ func (a *app) trafficLineBelongs(line session.TeamLine, target team) bool {
 // sentElsewhere reports a team tool that named a team other than shown, whose
 // receipt counts in that team's traffic and says nothing about this one. An
 // omitted post team is resolved through the executed receipt: a manager can
-// also be a member elsewhere, where its post verb belongs.
-func sentElsewhere(e *entry, shown team) bool {
-	var args struct{ Team string }
+// also be a member elsewhere, where its post verb belongs. A renamed post
+// needs its retained sender and words before its historical name can match.
+func (a *app) sentElsewhere(e *entry, shown team, id string) bool {
+	var args struct{ Team, Text string }
 	if json.Unmarshal([]byte(e.detail.Args), &args) != nil {
 		return false
 	}
 	target := strings.TrimSpace(args.Team)
-	if target == "" && e.tool == "team_post" {
+	omittedPost := target == "" && e.tool == "team_post"
+	if omittedPost {
 		if _, after, ok := strings.Cut(e.detail.Output, " in "); ok {
 			if quoted, err := strconv.QuotedPrefix(after); err == nil {
 				target, _ = strconv.Unquote(quoted)
 			}
 		}
 	}
-	return target != "" && target != shown.ID && !strings.EqualFold(target, shown.Name)
+	if target == "" || target == shown.ID || strings.EqualFold(target, shown.Name) {
+		return false
+	}
+	if omittedPost {
+		if sender, ok := shown.Member(a.frontTabKey()); ok {
+			for _, row := range a.traffic.rows[shown.ID] {
+				if row.ID == id && row.Kind == teamstore.KindNote && row.From == sender.Handle && strings.TrimSpace(row.Text) == strings.TrimSpace(args.Text) {
+					return !a.trafficLineBelongs(session.TeamLine{Team: target, Thread: id, Kind: row.Kind,
+						From: row.From, Text: session.TeamDeliveryText(row)}, shown)
+				}
+			}
+		}
+	}
+	return true
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the
