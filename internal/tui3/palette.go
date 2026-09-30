@@ -77,6 +77,14 @@ type picker struct {
 	// cursor indexes list, and top is the first row drawn.
 	cursor int
 	top    int
+	// width is the frame the list last measured itself against. The scroll
+	// needs it between frames — a keystroke moves the window before the next
+	// draw ([picker.move]) — and the number of screen lines a row spends
+	// depends on the frame ([picker.rowLines]): a heading drawn only where the
+	// columns fit, a tail that wraps on a phone. [picker.height] and
+	// [picker.rows] both set it, and one of the two runs before the list is
+	// ever drawn.
+	width int
 
 	// unfold is the model whose lanes are open, empty when none is. ONE AT A
 	// TIME on purpose: the fold is a way of looking closer at one row, and a
