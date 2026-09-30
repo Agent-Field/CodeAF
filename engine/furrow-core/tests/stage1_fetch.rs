@@ -4,10 +4,12 @@ mod common;
 
 use common::*;
 use furrow::exchange::materialize::materialize;
+use furrow::exchange::open_store;
 use furrow::model::{id_hex, ObjectId, ObjectKind, SnapshotTrigger};
 use furrow::repository::{FurrowRepository, SealOptions};
 use std::collections::BTreeSet;
 use std::fs;
+use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 
 const SMALL_FRAME: usize = 300 * 1024;
@@ -92,6 +94,93 @@ fn export_import_materialize_byte_identical() {
         dump(&src.cell),
         "the composed .cell/ directory"
     );
+}
+
+/// An object a store handed us is already in that store, so the next export to
+/// it must not send it back: a take followed by a publish would otherwise
+/// upload again everything the other device just sent.
+#[test]
+fn imported_objects_are_recorded_as_published_for_that_store() {
+    let src = source();
+    let objects = exported(&src);
+    let dst = receiver();
+    put_inbox(&dst.inbox, &objects);
+    import_all(&dst.data, src.head, &dst.inbox).unwrap();
+
+    let again = export_with(
+        &dst.data,
+        src.head,
+        &keys(),
+        LEDGER,
+        &dst._temp.path().join("outbox"),
+        SMALL_FRAME,
+    )
+    .unwrap();
+    assert!(
+        again.frames.is_empty(),
+        "the store's own objects were sent back"
+    );
+
+    let other = export_with(
+        &dst.data,
+        src.head,
+        &keys(),
+        OTHER_LEDGER,
+        &dst._temp.path().join("outbox-other"),
+        SMALL_FRAME,
+    )
+    .unwrap();
+    assert_eq!(
+        other.objects,
+        objects.len(),
+        "another store has none of them"
+    );
+}
+
+/// The engine restores into a staging folder and the caller then moves the
+/// folder into place. The workspace must follow the move, or the folder at its
+/// final path is one the engine has never heard of; a folder that was already
+/// registered at that path is the old tree and steps aside.
+#[test]
+fn a_moved_workspace_is_found_at_its_new_path() {
+    let src = source();
+    let dst = receiver();
+    put_inbox(&dst.inbox, &exported(&src));
+    import_all(&dst.data, src.head, &dst.inbox).unwrap();
+    let staged = dst.tree.with_file_name("tree-staged");
+    let placed = dst.tree.with_file_name("tree-placed");
+    fs::create_dir_all(&staged).unwrap();
+    materialize(&dst.data, &staged, Some(dst.cell.clone()), src.head).unwrap();
+    fs::create_dir_all(&placed).unwrap();
+    let old = materialize(&dst.data, &placed, Some(dst.cell.clone()), src.head).unwrap();
+    assert_eq!(old, src.head);
+
+    fs::remove_dir_all(&placed).unwrap();
+    fs::rename(&staged, &placed).unwrap();
+    furrow::exchange::ops::rebind(&dst.data, &staged, &placed).unwrap();
+
+    let store = open_store(&dst.data).unwrap();
+    let id = store
+        .find_workspace(placed.canonicalize().unwrap().as_os_str().as_bytes())
+        .unwrap();
+    assert!(id.is_some(), "the moved folder is not registered");
+    assert!(
+        store
+            .find_workspace(
+                staged
+                    .parent()
+                    .unwrap()
+                    .canonicalize()
+                    .unwrap()
+                    .join("tree-staged")
+                    .as_os_str()
+                    .as_bytes()
+            )
+            .unwrap()
+            .is_none(),
+        "the old path still names a workspace"
+    );
+    assert_eq!(store.workspace_head(&id.unwrap()).unwrap(), Some(src.head));
 }
 
 #[test]

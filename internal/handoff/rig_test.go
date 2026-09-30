@@ -300,9 +300,16 @@ func (f *tracedFetch) Fetch(ctx context.Context, c cell.Cell, head string) error
 type fakeLocal struct {
 	d     *device
 	dirty bool
+	// followed is each move the engine was told about, as "from -> to".
+	followed []string
 }
 
 func (l *fakeLocal) Dirty(context.Context, cell.Cell) (bool, error) { return l.dirty, nil }
+
+func (l *fakeLocal) Follow(_ context.Context, from, to cell.Cell) error {
+	l.followed = append(l.followed, from.Root+" -> "+to.Root)
+	return nil
+}
 
 func (l *fakeLocal) Seal(_ context.Context, c cell.Cell) (string, uint32, error) {
 	l.d.w.trace.add("seal")

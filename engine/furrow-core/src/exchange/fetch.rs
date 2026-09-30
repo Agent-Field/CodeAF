@@ -1,6 +1,6 @@
 //! `want` and `import`: learn what a head still needs, then accept it.
 
-use super::ledger::parse_rid;
+use super::ledger::{parse_rid, Ledger};
 use super::survey::{survey, Object};
 use crate::model::{id_hex, ObjectId};
 use crate::sealer::Sealer;
@@ -33,6 +33,10 @@ pub struct Import<'a> {
     pub sealer: &'a dyn Sealer,
     pub head: ObjectId,
     pub inbox: &'a Path,
+    /// The ledger of the store the objects came from. Whatever a store handed
+    /// us is by definition already in it, so it is recorded as published there
+    /// and the next export never sends it back.
+    pub ledger: &'a Ledger,
 }
 
 impl Import<'_> {
@@ -47,22 +51,24 @@ impl Import<'_> {
         let mut imported = 0;
         loop {
             let taken = self.pass()?;
-            if taken == 0 {
+            if taken.is_empty() {
                 break;
             }
-            imported += taken;
+            self.ledger.append(&taken)?;
+            imported += taken.len();
         }
         self.settle_leftovers()?;
         Ok(imported)
     }
 
-    fn pass(&self) -> anyhow::Result<usize> {
+    /// One pass over the inbox: the rids of the objects it stored.
+    fn pass(&self) -> anyhow::Result<Vec<ObjectId>> {
         let wanted = self.wanted()?;
-        let mut taken = 0;
+        let mut taken = Vec::new();
         for (rid, path) in self.inbox_files()? {
             if let Some((kind, id)) = wanted.get(&rid) {
                 self.accept(*kind, id, &rid, &path)?;
-                taken += 1;
+                taken.push(rid);
             }
         }
         Ok(taken)

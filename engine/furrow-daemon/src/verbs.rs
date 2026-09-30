@@ -261,6 +261,7 @@ struct Import;
 struct ImportArgs {
     head: String,
     inbox: PathBuf,
+    ledger: String,
     #[serde(flatten)]
     keys: KeyArgs,
 }
@@ -276,6 +277,7 @@ impl Verb for Import {
             &handle.target().data_dir,
             &a.keys.keys()?,
             &a.head,
+            &a.ledger,
             &a.inbox,
         )
     }

@@ -45,6 +45,16 @@ pub enum Exchange {
         head: String,
         #[arg(long)]
         inbox: PathBuf,
+        /// Ledger name of the store the objects came from: they are recorded
+        /// there as published, so an export never sends them back.
+        #[arg(long)]
+        ledger: String,
+    },
+    /// Tell the engine that the folder it restored into `--from` was moved to
+    /// the --repo path, so the tree keeps its history there.
+    Rebind {
+        #[arg(long)]
+        from: PathBuf,
     },
     /// Restore a snapshot held in the store into the --repo folder.
     Materialize {
@@ -86,9 +96,12 @@ fn execute(verb: Exchange, repo: &Path) -> anyhow::Result<Value> {
             ops::record_published(&data_dir, &ledger, &frames)
         }
         Exchange::Want { head } => ops::wanted(&data_dir, &keys_from_env()?, &head),
-        Exchange::Import { head, inbox } => {
-            ops::import(&data_dir, &keys_from_env()?, &head, &inbox)
-        }
+        Exchange::Import {
+            head,
+            inbox,
+            ledger,
+        } => ops::import(&data_dir, &keys_from_env()?, &head, &ledger, &inbox),
+        Exchange::Rebind { from } => ops::rebind(&data_dir, &from, repo),
         Exchange::Materialize { head, cell_dir } => {
             ops::restore_head(&data_dir, repo, cell_dir, &head)
         }
@@ -112,6 +125,9 @@ fn describe(ok: &Value) -> String {
     }
     if let Some(imported) = ok.get("imported") {
         return format!("Imported {imported} objects");
+    }
+    if let Some(workspace) = ok["workspace"].as_str() {
+        return format!("Workspace {workspace} follows its folder");
     }
     format!(
         "Restored snapshot {}",
