@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -27,19 +28,23 @@ func TestUnusedCurrentConversationRemainsReachableOnAShortTaskPage(t *testing.T)
 			a.width, a.height = 120, 14
 			a.clock = func() time.Time { return now }
 			a.file = "/journals/9c1d4a0b7e2f6538/transcript.jsonl"
-			own := session.SessionRow{ID: "9c1d4a0b7e2f6538", Transcript: a.file, Open: true}
-			other := session.SessionRow{ID: "e328e12690fba3e9", Transcript: "/journals/e328e12690fba3e9/transcript.jsonl", At: now}
+			own := session.SessionRow{ID: "9c1d4a0b7e2f6538", Transcript: a.file, Open: true, At: now.Add(-time.Hour)}
+			other := session.SessionRow{ID: "e328e12690fba3e9", Title: "the earlier task conversation", Transcript: "/journals/e328e12690fba3e9/transcript.jsonl", At: now}
 			other.Tasks.Rows = []session.TaskIndexEntry{{SessionID: other.ID, ID: "1", Title: "write hello.txt", Status: string(state), EndedAt: now}}
 			world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{other}}}}
 			r := readTasks(world, tasksMine{row: own}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
 			a.raisePlace(pageTasks)
 			a.taskSheet = tasksPlace{world: world, reading: r}
-			lines := r.lay(a.taskSheetListWidth())
-			for at, line := range lines {
-				if line.kind != tasksLineChat || line.chat.row.ID != own.ID {
+			drive(t, a, tea.KeyPressMsg{Code: tea.KeyHome})
+			if selected, ok := a.taskSheet.rowAt(a, a.taskSheet.cursor); !ok || selected != tasksChatKey(other.ID) {
+				t.Fatalf("fixture must start on the distinct other conversation, got %+v", selected)
+			}
+			for presses := 0; presses < len(r.lay(a.taskSheetListWidth())); presses++ {
+				drive(t, a, tea.KeyPressMsg{Code: tea.KeyDown})
+				selected, ok := a.taskSheet.rowAt(a, a.taskSheet.cursor)
+				if !ok || selected != tasksChatKey(own.ID) {
 					continue
 				}
-				a.taskSheet.cursor = at
 				frame, _, _, _ := a.taskSheetFrame(a.width, a.height)
 				page := plain(strings.Join(frame, "\n"))
 				if !strings.Contains(page, unnamedConversationWord) || strings.Contains(page, own.ID) {
@@ -47,7 +52,7 @@ func TestUnusedCurrentConversationRemainsReachableOnAShortTaskPage(t *testing.T)
 				}
 				return
 			}
-			t.Fatal("current conversation is not selectable")
+			t.Fatalf("Down did not reach current conversation %s after %s", own.ID, state)
 		})
 	}
 }
