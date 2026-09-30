@@ -3,10 +3,13 @@ package tui3
 import (
 	"errors"
 	"strings"
+	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -66,16 +69,91 @@ type memoryReplyMsg struct {
 	agent Agent
 	file  string
 	text  string
+	// delivered releases the next operation only after this receipt has been
+	// routed, so command scheduling cannot reverse the transcript's order.
+	delivered func()
+}
+
+// memoryConversation names one conversation in one surface. An agent handle may
+// survive a transcript swap, and another conversation must have its own queue.
+type memoryConversation struct {
+	surface *app
+	agent   Agent
+	file    string
+}
+
+type memoryTicket struct {
+	previous <-chan struct{}
+	done     chan struct{}
+	once     sync.Once
+	// after keeps the grace clock local to this operation, so a controlled
+	// clock can prove timeout ordering without waiting out model patience.
+	after func(time.Duration) <-chan time.Time
+}
+
+// memoryTails holds only outstanding operations, not a permanent conversation
+// registry. Issuing a command links its predecessor before Bubble Tea can run
+// either command, and the final delivered receipt removes its tail.
+var memoryTails = struct {
+	sync.Mutex
+	tickets map[memoryConversation]*memoryTicket
+}{tickets: make(map[memoryConversation]*memoryTicket)}
+
+func queueMemory(origin memoryConversation) *memoryTicket {
+	memoryTails.Lock()
+	defer memoryTails.Unlock()
+	ticket := &memoryTicket{done: make(chan struct{}), after: time.After}
+	if previous := memoryTails.tickets[origin]; previous != nil {
+		ticket.previous = previous.done
+	}
+	memoryTails.tickets[origin] = ticket
+	return ticket
+}
+
+func (ticket *memoryTicket) finish(origin memoryConversation, grace <-chan time.Time) {
+	ticket.once.Do(func() {
+		retire := func() {
+			memoryTails.Lock()
+			defer memoryTails.Unlock()
+			close(ticket.done)
+			if memoryTails.tickets[origin] == ticket {
+				delete(memoryTails.tickets, origin)
+			}
+		}
+		if grace == nil {
+			retire()
+			return
+		}
+		// THE WIRE DEADLINE DOES NOT STOP THE WRITE. Older engines cannot
+		// report its eventual completion, so the successor waits one full
+		// decider patience after the timeout rather than racing that write.
+		go func() { <-grace; retire() }()
+	})
 }
 
 // memoryCall leaves every store or wire wait off Update. Only the receipt
 // returns to the surface, so typing and repainting never wait for the engine.
-func (a *app) memoryCall(call func() string) tea.Cmd {
-	agent, file := a.agent, a.file
-	return func() tea.Msg { return memoryReplyMsg{agent: agent, file: file, text: call()} }
+func (a *app) memoryCall(call func() (string, error)) tea.Cmd {
+	origin := memoryConversation{surface: a, agent: a.agent, file: a.file}
+	ticket := queueMemory(origin)
+	return func() tea.Msg {
+		if ticket.previous != nil {
+			<-ticket.previous
+		}
+		text, err := call()
+		var grace <-chan time.Time
+		if errors.Is(err, remote.ErrLate) {
+			grace = ticket.after(roles.PatienceFor(roles.RoleReflex))
+		}
+		return memoryReplyMsg{agent: origin.agent, file: origin.file, text: text,
+			delivered: func() { ticket.finish(origin, grace) }}
+	}
 }
 
 func (a *app) adoptMemoryReply(msg memoryReplyMsg) {
+	if msg.delivered != nil {
+		defer msg.delivered()
+	}
 	if msg.agent == a.agent && msg.file == a.file {
 		a.note(msg.text)
 		return
@@ -102,17 +180,17 @@ func (a *app) runRemember(text string) tea.Cmd {
 		a.note("/remember <text> · what should be kept?")
 		return nil
 	}
-	return a.memoryCall(func() string {
+	return a.memoryCall(func() (string, error) {
 		title, err := agent.Remember(text)
 		if err != nil {
 			if errors.Is(err, remote.ErrLate) {
 				// A LATE RECEIPT IS NOT A FAILED WRITE. The engine keeps the save
 				// running, and retrying here could keep the same words twice.
-				return "saving that has not answered yet · check /memory before trying again"
+				return "saving that has not answered yet · check /memory before trying again", err
 			}
-			return "could not remember that · " + err.Error()
+			return "could not remember that · " + err.Error(), err
 		}
-		return "remembered · " + title
+		return "remembered · " + title, nil
 	})
 }
 
@@ -128,15 +206,15 @@ func (a *app) runForget(query string) tea.Cmd {
 		a.note("/forget <query> · what should be dropped?")
 		return nil
 	}
-	return a.memoryCall(func() string {
+	return a.memoryCall(func() (string, error) {
 		title, err := agent.Forget(query)
 		if err != nil {
-			return "could not forget that · " + err.Error()
+			return "could not forget that · " + err.Error(), err
 		}
 		if title == "" {
-			return "nothing matched " + query
+			return "nothing matched " + query, nil
 		}
-		return "forgot · " + title
+		return "forgot · " + title, nil
 	})
 }
 
@@ -148,12 +226,12 @@ func (a *app) runMemories(query string) tea.Cmd {
 		a.note(memoryOffNote)
 		return nil
 	}
-	return a.memoryCall(func() string {
+	return a.memoryCall(func() (string, error) {
 		lines, err := agent.Memories(query)
 		if err != nil {
-			return "could not read what is remembered · " + err.Error()
+			return "could not read what is remembered · " + err.Error(), err
 		}
-		return memoriesText(query, lines)
+		return memoriesText(query, lines), nil
 	})
 }
 

@@ -66,6 +66,20 @@ when you return; it never appears in the other conversation. Closing the
 issuing conversation discards its screen receipt, but does not undo a save
 already received by the engine.
 
+## What happens if I remember and forget a note quickly?
+
+Memory commands from one conversation run in the order you send them. A second
+`/remember` waits for the first, and `/forget cobalt` after
+`/remember cobalt shipment fixture` waits for that save before removing its
+match. Queried `/memory` and `/memories` wait in that same order, and their
+receipts appear in that order too. You can keep typing while they wait.
+
+If a command outlasts the engine connection's wait, the next memory command
+waits up to another 45 seconds before starting. The engine may still be finishing
+the earlier operation; a timeout does not cancel or retry it. Each conversation
+has its own queue. This does not order commands sent from different conversations
+or other windows.
+
 ## Does changing to a smaller model turn memory off?
 
 With automatic profiles, a model with a context window under 32,000 tokens
