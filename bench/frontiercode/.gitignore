@@ -14,3 +14,15 @@ bin/
 # branch. Do not move evidence back under results/.
 results/
 !evidence/
+
+# The run's own logs ARE evidence: egress-proxy.log is the scanner's raw input,
+# and run/docker/guard logs explain a stage that failed. The repository-wide
+# `*.log` ignore silently dropped them, so the first pilot's committed
+# artifacts.sha256 lists an egress-proxy.log that is not in the branch — the
+# scan.json is now the only record of those connections. Re-include exactly
+# the run logs under evidence/, and nothing else the `*.log` rule was hiding.
+!evidence/**/egress-proxy.log
+!evidence/**/egress-start.log
+!evidence/**/run.log
+!evidence/**/docker.log
+!evidence/**/guard-start.log
