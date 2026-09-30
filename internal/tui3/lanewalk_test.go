@@ -253,6 +253,9 @@ func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
 	a.width, a.height = 120, 24
 
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
+	// this test reads is the model in use's, so the walk goes there first.
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 	if a.pick.unfold != flash {
 		t.Fatalf("under routing simple → left the fold at %q", a.pick.unfold)

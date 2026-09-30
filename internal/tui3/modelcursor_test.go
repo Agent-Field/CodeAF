@@ -33,11 +33,11 @@ var groupedCatalog = func() []Model {
 	} {
 		for i := 1; i <= 5; i++ {
 			out = append(out, Model{
-				ID:             fmt.Sprintf("%s/model-%d", group.name, i),
-				ContextLength:  200_000,
-				Group:          group.name,
-				GroupHead:      group.head,
-				GroupOrder:     len(out),
+				ID:            fmt.Sprintf("%s/model-%d", group.name, i),
+				ContextLength: 200_000,
+				Group:         group.name,
+				GroupHead:     group.head,
+				GroupOrder:    len(out),
 			})
 		}
 	}

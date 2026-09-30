@@ -176,6 +176,7 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	// AND A QUERY ONLY ONE MACHINE ANSWERS LEAVES ONLY THAT ONE.
 	drive(t, a, key("esc"))
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 	typeInto(t, a, "corew")
 	if names := laneNames(a.pick.lanes); len(names) != 1 || names[0] != "coreweave" {
@@ -186,6 +187,7 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	// AND A QUERY NO MACHINE MATCHES STILL FILTERS THE MODELS, closing the fold
 	// with it — the fall-through that keeps one filter box doing one thing.
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 	typeInto(t, a, "kimi")
 	if a.pick.unfold != "" {
