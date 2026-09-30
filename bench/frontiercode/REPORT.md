@@ -264,3 +264,103 @@ run would have been roughly $2.5–3.0. Per-run ceiling $500 not approached.
 **Teardown:** key shredded on the host, instance and boot disk deleted;
 `gcloud compute instances list` (the GCP project id, as in the <!-- legacy-name --> lines above) is empty and no
 orphan disk remains.
+
+## Correction — grading and accounting fixed (2026-09-29, task 18)
+
+The sections above are the record as written at the time; this section corrects
+their grading and accounting against the retained bytes. It supersedes the
+aggregate and the failure list above. The full audit is
+[`ATTEMPT-LEDGER.md`](ATTEMPT-LEDGER.md); the corrected regrades are under
+`evidence-corrected/` and the originals under `evidence/` are untouched.
+
+**The overlay failure — reproduced and fixed.** The three rig trials
+(conflicted-files-refname-crash s1–s3) failed because the agent added its own
+test at the anchor where the reference overlay adds its test. Phase A's overlay
+apply conflicted; the judge adapted; and phase B then crashed with
+`FileNotFoundError: /logs/grade/phaseB.json` — the phase-B container had no
+`/logs/grade` and never received `adapted-tests.patch`, phase B never created
+its output directory, and `combine` indexed `phaseB.json`'s top level instead of
+its `criteria` key, so even a phase B that ran would have reported "phase B did
+not run". Phase B also rebuilt with the fixture's hardcoded `make configure
+compile` rather than the task's `rebuild_command`. The fixes:
+
+- `apply_overlay_idempotent` retries with one line of reduced context (`git
+  apply -C1`) when the agent's own nearby test moved the anchor. The test bytes
+  and assertions are unchanged; only the hunk's anchor tolerance widens, and the
+  note records which apply was used.
+- `grade.sh` creates `/logs/grade` in the phase container and streams the host's
+  grade directory in, so phase B has the adapted patch.
+- `phase_b` creates its output directory and reports a missing adapted patch as
+  a rig note instead of a traceback; it uses the task's own rebuild command.
+- `combine` reads `phaseB.json`'s `criteria` key, and a conflicted classical
+  criterion is answered by the adaptive phase-B verdict — the path's whole
+  purpose, which the old code could never realise.
+- `phase_a` always carries a `judge_input` key, so a patch that does not apply
+  grades the legitimate 0 it is meant to instead of raising
+  `UnboundLocalError`; the adaptive trigger does not fire for such a patch.
+
+**Corrected regrade (retained patches, original judge verdicts reused, no
+provider spend):**
+
+| seed | original | corrected rubric score | corrected shipped score |
+|---|---|---|---|
+| conflicted s1 | rig | 0.75 | 0.0 (hard scanner flag) |
+| conflicted s2 | rig | 0.75 | 0.0 (hard scanner flag) |
+| conflicted s3 | rig | 1.0 | 0.0 (hard scanner flag) |
+| conflicted s4 | 1.00 | 1.00 | 1.00 |
+| conflicted s5 | 0.75 | 0.75 | 0.0 (hard scanner flag) |
+
+The grading failure is gone; the shipped score is unchanged because all three
+carry hard scanner flags.
+
+**Corrected accounting.** The aggregate above — "11 passing (…); mean score 0.83
+over the 13 trials with a numeric score" — is replaced by:
+
+- 15 trial identities. **3 grading failures (rig)** — conflicted s1–s3 — not
+  averaged in as 0. **12** numeric `grade.json` scores originally, **15** after
+  the regrade. Original rubric mean **10.75 / 12 = 0.8958** (the report's 0.83
+  divided by the wrong denominator, 13); corrected rubric mean **13.25 / 15 =
+  0.8833**.
+- **9 of 15 flagged**, so the shipped pass count is **6** (jsonschema s1–s5 and
+  conflicted s4), not 11. The report's per-task table prints the pre-flag rubric
+  score beside the flag; the final record zeroes every flagged run. Pass rate is
+  **6/15 = 0.40** shipped, **11/15** by rubric originally and **14/15**
+  corrected.
+- The discarded first execute wave (15 rig attempts, empty `model.patch`) is a
+  campaign-level rig event; it is not among the 15 retained identities, which
+  are all the re-run.
+
+**Scanner flags, separated from rig failures.** Flags are policy outcomes, not
+grading verdicts, and are not weakened here. Nine runs are flagged. The
+shell-pipe runs (s1–s5) and conflicted s1 carry hard host/slug+egress flags;
+their raw `egress-proxy.log` files were never committed (see below), so the
+connection's cause cannot be re-derived — recorded as unresolved, not as a model
+failure. Conflicted s2, s3 and s5 are **demonstrably false positives**: the
+flagged text is `github.com/pre-commit/pre-commit/issues/300` inside the task's
+own `pre_commit/git.py`, returned in a `read` observation; the scanner scans
+whole JSONL records and cannot tell a tool observation from an agent action.
+Those runs' proxy logs show no github-family egress. Per the rig's policy ("do
+not change rig scripts to make a failure go away") the scanner is left as it is
+and the finding is recorded.
+
+**Evidence completeness.** `fetch-results.sh` now requires `egress-proxy.log`
+and the bench's `.gitignore` re-includes the run logs under `evidence/`; the
+repository-wide `*.log` ignore had silently dropped them, so the 15 committed
+runs' `artifacts.sha256` list a proxy log that is not in the branch. The raw
+logs are unrecoverable from the branch; `--check` now reports all 15 as
+incomplete, which is the honest signal. A regression
+(`tests/fetch-results-check.sh`, wired into `go test` by `regression_test.go`)
+proves a complete run passes and a missing or empty required artifact refuses.
+
+**Verification.** `python3 grade/test_rubric.py` — 14 tests, all pass.
+`bash tests/fetch-results-check.sh` — pass. `bash tests/phase-b-smoke.sh` —
+phase B pass, the classical criterion resolved from `phase-b`, score 0.75.
+`go test ./bench/frontiercode/` — ok (runs the first two). `bash
+regrade-retained.sh <run>` for conflicted s1–s5 — 0.75 / 0.75 / 1.0 / 1.0 /
+0.75 as tabled. `go build ./...`, `go vet ./bench/frontiercode/`, `make
+test-laws`, `make test-quick` and `make changelog-check` — all pass.
+
+**Limitations.** The corrected regrade reuses each run's original `judge.json`
+prompt verdicts; no new judge call was made, so a prompt criterion's verdict is
+the pinned judge's original, not a re-ask. No new agent rollout, cloud VM, key
+change or baseline campaign was run.
