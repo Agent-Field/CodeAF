@@ -171,6 +171,12 @@ type openChat struct {
 }
 
 func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string) *openChat {
+	return h.openObserved(s, eng, c, work, device, nil)
+}
+
+// openObserved is openOn with an observer on the seat, the way the door gives a
+// chat the machine that keeps the record of what it ran.
+func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer) *openChat {
 	h.t.Helper()
 	eng.Workspace = work
 	title := func() string { m, _ := session.LoadMeta(c.Root); return m.Title }
@@ -179,7 +185,7 @@ func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, devi
 		h.t.Fatal(err)
 	}
 	h.t.Cleanup(func() { _ = drive.Close(context.Background()) })
-	seat, err := cellstore.SeatOver(executor.HostBound, c, work, nil, nil,
+	seat, err := cellstore.SeatOver(executor.HostBound, c, work, obs, nil,
 		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) })
 	if err != nil {
 		h.t.Fatal(err)

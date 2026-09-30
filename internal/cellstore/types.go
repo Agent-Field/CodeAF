@@ -111,6 +111,11 @@ type Executed struct {
 	Changed []string `json:"changed,omitempty"`
 	Stdout  []byte   `json:"stdout,omitempty"`
 	Stderr  []byte   `json:"stderr,omitempty"`
+	// Command and Dir are the command line a shell call ran and the folder it ran
+	// in. They are for the seal that follows the call and are not kept: the
+	// receipt names a call by hash, and a command line may hold a secret.
+	Command string `json:"-"`
+	Dir     string `json:"-"`
 }
 
 // TurnInfo is everything the caller knows about the turn being sealed.

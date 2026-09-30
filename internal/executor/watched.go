@@ -39,20 +39,37 @@ func (w watched) NoteModelCall(m ModelCall) { NoteModelCall(w.Seat, m) }
 // the answer is the seat beneath's.
 func (w watched) Interrupted() Interrupted { return InterruptedOn(w.Seat) }
 
-// Around implements Seat: the call runs on the seat beneath, then the tools its
-// command line named are observed. A call the seat refused ran nothing.
+// Around implements Seat: the call runs on the seat beneath, then the commands
+// its command line named are observed, each with the whole of its words and the
+// call's own outcome. A call the seat refused ran nothing.
 func (w watched) Around(ctx context.Context, call Call, run func() ([]byte, bool)) error {
-	if err := w.Seat.Around(ctx, call, run); err != nil {
+	failed := false
+	err := w.Seat.Around(ctx, call, func() ([]byte, bool) {
+		out, bad := run()
+		failed = bad
+		return out, bad
+	})
+	if err != nil {
 		return err
 	}
-	for _, name := range shellTools(call) {
-		w.obs.Observe(ExecRequest{Argv: []string{name}}, ExecResult{})
+	for _, words := range shellCommands(call) {
+		w.obs.Observe(ExecRequest{Argv: words}, ExecResult{Exit: exitOf(failed)})
 	}
 	return nil
 }
 
-// shellTools is the executable names a shell call's command line starts.
-func shellTools(call Call) []string {
+// exitOf is the exit status a shell call's outcome stands for: the call is the
+// unit that succeeded or failed, so each command it ran shares its verdict.
+func exitOf(failed bool) int {
+	if failed {
+		return 1
+	}
+	return 0
+}
+
+// shellCommands is the words of every simple command a shell call's command
+// line runs, and nothing for any other call.
+func shellCommands(call Call) [][]string {
 	if call.Tool != shellTool {
 		return nil
 	}
@@ -62,7 +79,23 @@ func shellTools(call Call) []string {
 	if json.Unmarshal(call.Args, &args) != nil {
 		return nil
 	}
-	return commandNames(args.Command)
+	return commandWords(args.Command)
+}
+
+// SimpleCommands is each simple command of a shell line as its own words joined
+// by single spaces, leading VAR=value words and quotes kept as written. A line
+// is cut at ; & | ( ) and newlines that are not quoted, so a command substitution
+// or a pipe to another program is a segment of its own and never hides inside
+// the words of another. It is what a caller compares exactly against a command
+// it has been told to expect.
+func SimpleCommands(line string) []string {
+	var out []string
+	for _, segment := range splitCommands(line) {
+		if words := strings.Fields(segment); len(words) > 0 {
+			out = append(out, strings.Join(words, " "))
+		}
+	}
+	return out
 }
 
 // commandNames is the first word of every simple command in a shell line, after
@@ -70,12 +103,35 @@ func shellTools(call Call) []string {
 // a name that is not an executable is dropped by whoever resolves it.
 func commandNames(line string) []string {
 	var names []string
-	for _, segment := range splitCommands(line) {
-		if name := leadWord(segment); name != "" {
-			names = append(names, name)
-		}
+	for _, words := range commandWords(line) {
+		names = append(names, words[0])
 	}
 	return names
+}
+
+// commandWords is the words of each simple command in a shell line, from its
+// command name on: the leading VAR=value words are not part of the command.
+func commandWords(line string) [][]string {
+	var commands [][]string
+	for _, segment := range splitCommands(line) {
+		if words := commandOf(strings.Fields(segment)); len(words) > 0 {
+			commands = append(commands, words)
+		}
+	}
+	return commands
+}
+
+// commandOf drops the assignments a command starts with and the quotes around
+// the command's name, which is the word an observer resolves on PATH.
+func commandOf(words []string) []string {
+	for i, word := range words {
+		if !isAssignment(word) {
+			out := append([]string(nil), words[i:]...)
+			out[0] = strings.Trim(out[0], `'"`)
+			return out
+		}
+	}
+	return nil
 }
 
 // splitCommands cuts a line at ; & | ( ) and newlines that are not quoted or
@@ -105,16 +161,6 @@ func splitCommands(line string) []string {
 		current.WriteRune(r)
 	}
 	return append(segments, current.String())
-}
-
-// leadWord is the command a segment starts, without quotes.
-func leadWord(segment string) string {
-	for _, word := range strings.Fields(segment) {
-		if !isAssignment(word) {
-			return strings.Trim(word, `'"`)
-		}
-	}
-	return ""
 }
 
 func isAssignment(word string) bool {

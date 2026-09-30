@@ -337,7 +337,8 @@ narrow frame the same question takes the whole screen, with the sentence wrapped
 
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
-executable bit, links. Nothing is fetched from git and no git login or remote is needed on
+executable bit, links. The one exception is an install folder a lockfile rebuilds, such as
+`node_modules` (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
 the machine that continues; everything comes from your relay. The copy lives in a folder of
 its own under this machine's chats, and the chat works in a `work` folder inside it. Your
 project folder on the other machine is not touched. If this machine already has the chat and
@@ -377,6 +378,37 @@ what is there. Anything you had changed and never saved is kept first, as a bran
 sentence above; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
 
+## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
+
+A chat that moves brings its conversation and every file it worked on, except an install
+folder that a lockfile rebuilds: `node_modules` (with a `package-lock.json`,
+`npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), `.venv` or
+`venv` (with `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock`, or a `requirements.txt`
+that pins every version with `==`), `target` (with a `Cargo.lock` beside its `Cargo.toml`),
+`vendor` (with a `composer.lock` or `Gemfile.lock`) and `Pods` (with a `Podfile.lock`). A
+folder is left out only when its lockfile travels too, git tracks nothing inside it, and your
+own `.furrowpolicy` does not already exclude it. A folder with no lockfile, build output such
+as `.next` or `dist`, and data folders always travel. Rebuilding from the lock gives the same
+packages, and a `node_modules` made on a Mac holds Mac programs that would be wrong on Linux.
+A copy of the folder that a machine already has is never deleted: taking a chat back, or
+rewinding, leaves it alone.
+
+Taking such a chat raises one card, **Set this machine up like <device> had it?**, with
+`set up` and `not now` (the cursor starts on `not now`). It lists `not brought along:` the
+folders, each with the command that brings it back, `was running there:` the commands that
+were running (a dev server, with its port), and `also needed:` the tools this machine lacks.
+A line is left out when it has nothing to say, and a machine that has everything, such as
+the one taking its own chat back, gets no card.
+
+`set up` starts the same setup turn as `/setup now`, opened with exactly those facts, and is
+consent for exactly the commands the card lists: the agent runs them without asking again,
+and any other command asks first, as in every setup turn, because the network is open for it.
+`not now` and esc run nothing; the same facts reach the agent once, at its next step, as news
+that asks for nothing, and `/setup` lists what is missing later. codeaf never restarts a
+command by itself, and database rows or container data do not travel. A secret in a recorded
+command is shown as `…`. Limits: there is no way to force a folder to travel, and what was
+running is known only from the moment of the move.
+
 ## Tasks that had not landed when a chat moved — working copy, uncommitted task edits, unmerged task branch, worktree
 
 A task works in a
@@ -387,7 +419,8 @@ over a fresh copy on the same branch, in this machine's own folder for that chat
 `the working copy of a task came along: <task>`, or `working copies of tasks came along:
 <task>, <task>` for several. A task that has finished has no copy, so nothing comes for it.
 What the repository's own `.gitignore` names (build output, a `.env`) and any file that looks
-like it holds a secret stay behind. Copies the other machine registered in the repository are
+like it holds a secret stay behind, and so does a task's own installed `node_modules`, which the
+card in "What a moved chat left behind" lists as `trees/<task>/…`. Copies the other machine registered in the repository are
 forgotten here, so `git worktree list` shows only what this machine has. If a copy cannot be set
 up again (say its branch is checked out somewhere else), the sentence `a task's working copy
 could not be set up again here` names why, and the task's files are still in its folder under

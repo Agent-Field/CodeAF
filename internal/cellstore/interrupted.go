@@ -29,6 +29,18 @@ func briefOf(args []byte) string {
 	return ""
 }
 
+// commandOf is the command line a call's JSON arguments carry, or nothing for a
+// call that runs no command.
+func commandOf(args []byte) string {
+	var fields struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(args, &fields) != nil {
+		return ""
+	}
+	return fields.Command
+}
+
 // clip puts text on one line and cuts it to briefMax.
 func clip(text string) string {
 	line := strings.Join(strings.Fields(text), " ")

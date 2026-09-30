@@ -78,3 +78,29 @@ func TestARefusedCallObservesNothing(t *testing.T) {
 		t.Fatalf("observed %v for a call that did not run", seen.names)
 	}
 }
+
+type whole struct {
+	lines [][]string
+	exits []int
+}
+
+func (w *whole) Observe(req ExecRequest, res ExecResult) {
+	w.lines = append(w.lines, req.Argv)
+	w.exits = append(w.exits, res.Exit)
+}
+
+func TestAShellCallTellsTheObserverEachCommandWithAllItsWordsAndTheCallsOutcome(t *testing.T) {
+	seen := &whole{}
+	seat := Watching(plainSeat{}, seen)
+	run := func(failed bool) func() ([]byte, bool) { return func() ([]byte, bool) { return nil, failed } }
+	if err := seat.Around(context.Background(), shellCall("FOO=1 docker compose up -d && 'ls' -la"), run(false)); err != nil {
+		t.Fatal(err)
+	}
+	if err := seat.Around(context.Background(), shellCall("make"), run(true)); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"docker", "compose", "up", "-d"}, {"ls", "-la"}, {"make"}}
+	if !reflect.DeepEqual(seen.lines, want) || !reflect.DeepEqual(seen.exits, []int{0, 0, 1}) {
+		t.Fatalf("observed %v with exits %v", seen.lines, seen.exits)
+	}
+}

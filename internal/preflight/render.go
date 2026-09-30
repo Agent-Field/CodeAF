@@ -51,10 +51,14 @@ func (r Report) Lines() []string {
 	return out
 }
 
-// SetupBrief is the instruction a setup turn gives the agent: one line per
-// installable need, in the words the chat list uses, and the limits it works
-// within. It never names an impossible item, so nothing impossible is tried.
+// SetupBrief is the instruction a setup turn gives the agent: what the chat left
+// behind when it moved, one line per installable need in the words the chat list
+// uses, and the limits it works within. It never names an impossible item, so
+// nothing impossible is tried.
 func (r Report) SetupBrief() string {
+	if r.Resume.hasFacts() {
+		return r.Resume.Brief() + setupLimits
+	}
 	var b strings.Builder
 	b.WriteString("This chat needs the following on this machine so it can run here. Install each one " +
 		"in user space, without root. Only this folder is writable, so put programs in ./bin " +
@@ -65,3 +69,8 @@ func (r Report) SetupBrief() string {
 	}
 	return b.String()
 }
+
+// setupLimits are the terms a setup turn works within when it brings back what a
+// move left behind.
+const setupLimits = "Work in user space, without root. Only this folder is writable, so put programs in ./bin " +
+	"(./.venv/bin and ./node_modules/.bin work too). Check that each thing you bring back now works, then stop.\n"

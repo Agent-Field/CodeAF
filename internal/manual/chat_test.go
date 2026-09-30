@@ -3557,6 +3557,28 @@ func TestTheCellReportQuestionsReachTheAnswer(t *testing.T) {
 	}
 }
 
+// A person whose chat moved to another machine must reach the page that says what
+// was left behind and what the card offers.
+func TestTheMovedChatQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"set this machine up", "Set this machine up like <device> had it?"},
+		{"why is node_modules missing after I continued the chat here", "`node_modules` (with a `package-lock.json`"},
+		{"my dev server is not running after I moved", "`was running there:` the commands"},
+		{"does set up run npm ci without asking again", "consent for exactly the commands the card lists"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "home" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a home section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
 // A person whose chat was continued on another machine must reach the section
 // that says what the window shows and what became of the turns not yet sent.
 func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {

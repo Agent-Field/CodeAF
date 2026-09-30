@@ -563,6 +563,11 @@ type jobRegistry struct {
 	retentionShut bool
 	// The stage callback is a per-registry test seam; production leaves it nil.
 	retentionStage func(string)
+	// lifecycle, when set, is told of each background command as it starts and as
+	// it ends, however it ends. It is how the record of what is running is kept
+	// without a second detector: this registry already knows, to the moment, and
+	// nothing else sees a job that outlived the call that started it.
+	lifecycle procexec.Lifecycle
 }
 
 func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
@@ -771,7 +776,29 @@ func (r *jobRegistry) add(started *job) error {
 		return err
 	}
 	r.announceRow(started)
+	r.announceStart(started)
 	return nil
+}
+
+// cellRelative is a job's folder as the record spells it: relative to the
+// workspace the seal captures, "" for the root, and "" too for a folder outside
+// it, which no other machine could name (L1).
+func (r *jobRegistry) cellRelative(dir string) string {
+	rel := relativeTo(r.workspace, dir)
+	if len(rel) == 0 || rel[0] == "." {
+		return ""
+	}
+	return rel[0]
+}
+
+// announceStart tells the lifecycle observer that a command is running. Only a
+// process is a command: a watch, a task node or a render has no process group to
+// be alive or not, and the record is of what a machine will lack.
+func (r *jobRegistry) announceStart(one *job) {
+	if r.lifecycle == nil || one.kind != jobKindBash || one.cmd == nil || one.cmd.Process == nil {
+		return
+	}
+	r.lifecycle.Started(procexec.Job{ID: one.id, Command: one.command, Dir: r.cellRelative(one.dir), PGID: one.cmd.Process.Pid})
 }
 
 // announceRow publishes one job's row, and it is the ONE PLACE that decides
@@ -798,6 +825,9 @@ func (r *jobRegistry) announceRow(one *job) {
 func (r *jobRegistry) settled(one *job, code int) bool {
 	requested := one.settle(code)
 	r.announceRow(one)
+	if r.lifecycle != nil && one.kind == jobKindBash {
+		r.lifecycle.Ended(one.id)
+	}
 	return requested
 }
 
