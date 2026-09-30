@@ -219,13 +219,15 @@ def sum_phases(phases):
 
 # ---------- reading one phase ----------
 
-def periodic_ranges(phases):
+def periodic_ranges(phases, steady=()):
     """The minutes of the periodic Durable Object dataset that belong to each phase.
 
     That dataset is stamped when the runtime reports, not when work ran, and was seen up to a minute
     off (a move at 21:10:04 showed its rows in the 21:09 bucket). So a phase owns every minute up to
     the midpoint of the quiet gap that follows it, which is wide enough (two minutes or more) that
-    the shift cannot reach the next phase's work."""
+    the shift cannot reach the next phase's work. A steady phase (an idle hold, whose rate is what is
+    wanted) owns exactly its own minutes: the quiet after it still holds the lease and would be counted
+    in rows that its seconds do not include."""
     order = sorted(phases.items(), key=lambda kv: kv[1][0])
     ranges, first = {}, None
     for i, (name, (start, end)) in enumerate(order):
@@ -235,6 +237,9 @@ def periodic_ranges(phases):
             last = mid.replace(second=0, microsecond=0)
         else:
             last = (end + timedelta(minutes=1)).replace(second=0, microsecond=0)
+        if name in steady:
+            last = min(last, minute_window(start, end)[1] - timedelta(minutes=1))
+            first = max(first, minute_window(start, end)[0])
         ranges[name] = (first, last)
         first = last + timedelta(minutes=1)
     return ranges
@@ -270,7 +275,7 @@ def discover_namespaces(client, script, start, end):
 
 def read_all(client, args, phases, window):
     namespaces = discover_namespaces(client, args.script, *window)
-    minutes = periodic_ranges(phases)
+    minutes = periodic_ranges(phases, getattr(args, 'steady', ()))
     return {name: read_phase(client, args.script, args.bucket, namespaces, s, e, minutes[name])
             for name, (s, e) in phases.items()}
 
@@ -282,6 +287,7 @@ def load_phases(args):
     if args.manifest:
         m = json.load(open(args.manifest))
         phases = {p["name"]: (parse_time(p["start"]), parse_time(p["end"])) for p in m["phases"]}
+        args.steady = {p["name"] for p in m["phases"] if p.get("steady")}
         window = (parse_time(m["start"]), parse_time(m["end"]))
         return phases, window, m.get("script")
     if not (args.time_from and args.time_to):

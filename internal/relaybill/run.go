@@ -27,12 +27,14 @@ type Config struct {
 
 // Phase is one span of the run the analytics are read for on its own.
 type Phase struct {
-	Name    string         `json:"name"`
-	Start   time.Time      `json:"start"`
-	End     time.Time      `json:"end"`
-	Seconds float64        `json:"seconds,omitempty"`
-	Count   int            `json:"count,omitempty"`
-	Client  map[string]int `json:"client_requests"` // what the client says it sent
+	Name    string    `json:"name"`
+	Start   time.Time `json:"start"`
+	End     time.Time `json:"end"`
+	Seconds float64   `json:"seconds,omitempty"`
+	Count   int       `json:"count,omitempty"`
+	// Steady says the phase is a rate to be scaled by its seconds, so the analytics read only its own minutes.
+	Steady bool           `json:"steady,omitempty"`
+	Client map[string]int `json:"client_requests"` // what the client says it sent
 }
 
 // Manifest is what the analytics reader is given: the window of each phase.
@@ -180,7 +182,7 @@ func (r *run) idle() (Phase, error) {
 		home.Run(ctx)
 		return nil
 	})
-	p.Seconds = p.End.Sub(p.Start).Seconds()
+	p.Seconds, p.Steady = p.End.Sub(p.Start).Seconds(), true
 	return p, err
 }
 
