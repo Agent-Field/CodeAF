@@ -337,6 +337,11 @@ def combine(task_dir, grade_dir):
     pb_path = grade_dir / "phaseB.json"
     if pb_path.exists():
         phase_b = json.loads(pb_path.read_text())
+    # phaseB.json carries its verdicts under "criteria", the same shape
+    # phaseA.json uses. Reading the file as if it were the verdict map is how
+    # the adaptive path silently reported "phase B did not run" even when it
+    # had; the verdicts are this key's value, never the top-level object.
+    phase_b_criteria = phase_b.get("criteria", {})
 
     criteria = {}
     for c in rubric["criteria"]:
