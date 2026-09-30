@@ -46,6 +46,9 @@ func TestFetchResultsCompleteness(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash is required to run the fetch-results regression")
 	}
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq is required to run fetch-results.sh")
+	}
 	if _, err := os.Stat(filepath.Join(dir, "tests", "fetch-results-check.sh")); err != nil {
 		t.Fatalf("the fetch-results regression is missing: %v", err)
 	}
