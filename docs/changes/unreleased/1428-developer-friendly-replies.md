@@ -9,3 +9,6 @@ invalidates:
 
 Keep checks, failures, remaining work and complete deliverables visible. These are
 model instructions, not an enforced response-length limit.
+
+The answer guidance fits the existing fixed and lean prompt budgets and retains
+the chat-only closing-offer rule used by the worker-isolation check.
