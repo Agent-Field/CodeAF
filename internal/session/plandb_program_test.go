@@ -432,3 +432,43 @@ func TestANoteForAProgramsTaskIsRefusedAndNothingIsWritten(t *testing.T) {
 		t.Fatalf("the tasks tool answered %q (error %v, %v), want the refusal naming stop", reply, isError, err)
 	}
 }
+
+// A PROGRAM THAT LISTENS TAKES THE NOTE; ONE THAT STOPPED, OR HAS NOT STARTED,
+// SAYS SO. The program's record decides: listening and open, the note is
+// written for its worker to copy into its inbox; closed, the refusal carries
+// the program's own reason; a program whose declaration listens but whose
+// record does not yet say so is still starting, and is told to try again.
+func TestANoteForAListeningProgramIsTakenAndTheOtherCasesSayWhy(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		record delegate.ProgramRecord
+		want   string // "" for a note taken
+	}{
+		{"listening", delegate.ProgramRecord{Name: "senior-dev", Listening: true}, ""},
+		{"handed in", delegate.ProgramRecord{Name: "senior-dev", Listening: true, InboxClosed: "it has handed in its work"}, "senior-dev reads no more messages (it has handed in its work)"},
+		{"starting", delegate.ProgramRecord{Name: "senior-dev"}, "senior-dev has not started reading messages yet"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, planStoreFilename)
+			seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha", Description: "rewrite the auth middleware"})
+			if err := delegate.WriteProgram(plandb.TaskDir(dir, "alpha"), tc.record); err != nil {
+				t.Fatal(err)
+			}
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+			agent.config.Delegates = []delegate.Delegate{{Name: "senior-dev", Listens: true}}
+			armPlanStore(t, agent, path, "chat-a")
+			err := agent.PlanNoteFromChat("t-alpha", "the grader is in grade.sh")
+			page, _ := agent.PlanTaskPage("t-alpha")
+			if tc.want == "" {
+				if err != nil || len(page.Notes) != 1 {
+					t.Fatalf("a listening program's note = %v, notes %#v", err, page.Notes)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) || len(page.Notes) != 0 {
+				t.Fatalf("note = %v (notes %#v), want the refusal %q", err, page.Notes, tc.want)
+			}
+		})
+	}
+}

@@ -89,6 +89,12 @@ type PlanProgram struct {
 	// are empty until the program says.
 	Models []string
 	Effort string
+	// Listening says the program reads the messages its page's box and the
+	// conversation's `say` send it (delegate's inbox.go), and InboxClosed is why
+	// it stopped — senior-dev once it has handed in. The page's box offers to
+	// send words only while it listens.
+	Listening   bool
+	InboxClosed string
 	// Actions is what the program did: the newest [planProgramActions] lines of
 	// its action log, in the order they arrived, each as the program's own
 	// vocabulary reads it (delegate.Delegate.Reader) — the step of its process
@@ -185,16 +191,19 @@ func (a *Agent) planRootIsProgram(store *plandb.Store, rootID string) bool {
 	return ok
 }
 
-// programHearsNothing refuses a note for a task a program is working, and is
-// nil for every other task.
+// programHearsNothing refuses a note for a task a program is working when the
+// program cannot hear it, and is nil for every other task.
 //
 // A NOTE NOBODY READS IS NOT A NOTE DELIVERED. A program runs as a process of
-// its own and codeaf has no road into it while it works: its worker never reads
-// the task's notes. The note door used to write one anyway and answer "its
-// worker is handed it as soon as the step it is on ends", so the conversation
-// believed it had steered senior-dev and the words sat unread on the row until
-// the run ended. The refusal says what is true and names the one door that does
-// reach a running program.
+// its own, and a note reaches it only through its inbox (delegate's inbox.go),
+// which a program has only when its declaration says it listens and its hello
+// said so. The note door used to write a note for every program anyway and
+// answer "its worker is handed it as soon as the step it is on ends", so the
+// conversation believed it had steered senior-dev and the words sat unread. Now
+// a listening program's task takes the note — its worker copies it into the
+// inbox, and the program's receipt marks it had — and every other case is
+// refused with what is true: a program that never listens, one still starting,
+// or one that has stopped reading (senior-dev once it has handed in).
 func (a *Agent) programHearsNothing(store *plandb.Store, taskID string) error {
 	id := planTaskID(taskID)
 	record, ok := planProgramRecord(filepath.Dir(store.Path()), id, a.planCarriedPrograms()[id])
@@ -205,12 +214,24 @@ func (a *Agent) programHearsNothing(store *plandb.Store, taskID string) error {
 	if name == "" {
 		name = "its program"
 	}
+	switch {
+	case record.Listening && record.InboxClosed == "":
+		return nil
+	case record.InboxClosed != "":
+		return fmt.Errorf(programStoppedListeningWord, name, record.InboxClosed, id)
+	case planProgramOf(a.config.Delegates, record.Name).Listens:
+		return fmt.Errorf(programNotListeningYetWord, name)
+	}
 	return fmt.Errorf(programHearsNothingWord, name, id)
 }
 
-// programHearsNothingWord is the refusal, in the words the task page and the
-// `@` block already use for the same fact ("reads no messages").
-const programHearsNothingWord = "nothing was noted: %s reads no messages, and nothing reaches it until it ends. If its work is going the wrong way, stop it with `tasks id %s stop` and hand off the right ask"
+// The refusals, in the words the task page and the `@` block use for the same
+// facts ("reads no messages").
+const (
+	programHearsNothingWord     = "nothing was noted: %s reads no messages, and nothing reaches it until it ends. If its work is going the wrong way, stop it with `tasks id %s stop` and hand off the right ask"
+	programStoppedListeningWord = "nothing was noted: %s reads no more messages (%s). If what it handed in is wrong, stop it with `tasks id %s stop` and hand off the right ask"
+	programNotListeningYetWord  = "nothing was noted: %s has not started reading messages yet. Say it again in a moment, once its page shows it at work"
+)
 
 // planProgramPage reads one task's program and conversation for its page, or
 // nil for a task that is not a program's: no record in its folder, no name the
@@ -229,7 +250,8 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	if !known && len(all) == 0 && len(logged) == 0 {
 		return nil
 	}
-	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort}
+	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort,
+		Listening: record.Listening, InboxClosed: record.InboxClosed}
 	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)

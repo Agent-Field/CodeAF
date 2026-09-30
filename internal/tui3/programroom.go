@@ -83,6 +83,68 @@ var programRoomRefusal = refusal{
 // programRoomNoMessages is the fact's tail after the program's own name.
 const programRoomNoMessages = " reads no messages"
 
+// programRoomNoMore is the fact's tail for a program that listened and has
+// stopped, before its own reason.
+const programRoomNoMore = " reads no more messages"
+
+// listens reports whether the program on this page reads messages now: its
+// record says it listens and it has not stopped (delegate's inbox.go).
+func (p *programRoom) listens() bool {
+	program := p.page.Program
+	return program != nil && program.Listening && program.InboxClosed == ""
+}
+
+// programSteerLane is the box's placeholder over a program that listens.
+func programSteerLane(name string) string {
+	if name == "" || name == convProgramFallback {
+		name = "the program"
+	}
+	return "Tell " + name + " something"
+}
+
+// programSteerSentWord is said under a line a listening program was sent:
+// when it reads it, and where the page shows that it has.
+func programSteerSentWord(name string) string {
+	if name == "" || name == convProgramFallback {
+		name = "the program"
+	}
+	return "sent · " + name + " reads it before its next model call"
+}
+
+// programRoomSteer sends a line to a program that listens: through the plan's
+// note door, which the program's worker copies into its inbox, off the loop.
+// The line leaves the box once it is sent; a refusal — the program handed in a
+// moment ago — puts the reason on the page.
+func (a *app) programRoomSteer(line string) tea.Cmd {
+	room := a.room
+	agent, ok := a.planReader()
+	if room == nil || room.program == nil || !ok {
+		a.roomNote(roomUnavailableRefusal.line())
+		return nil
+	}
+	words := a.pastesUnfolded(line)
+	id, gen := room.program.page.Row.ID, room.gen
+	name := convProgramName(room.program.page)
+	a.pastes = nil
+	a.input.reset()
+	a.endRecall()
+	a.closeLists()
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := agent.PlanNote(id, words)
+		return func(bool) tea.Cmd {
+			if a.room == nil || a.room.gen != gen || a.room.program == nil {
+				return nil
+			}
+			if err != nil {
+				a.roomNote(err.Error())
+				return nil
+			}
+			a.roomNote(programSteerSentWord(name))
+			return a.programRoomRead()
+		}
+	})
+}
+
 // programOf is the open room's program, and nil on every other page.
 func (a *app) programOf() *programRoom {
 	if a.room == nil {
@@ -381,8 +443,19 @@ func (p *programRoom) programSay(text string) {
 func (a *app) programRoomRefusal() refusal {
 	out := programRoomRefusal
 	if p := a.programOf(); p != nil {
-		if name := convProgramName(p.page); name != "" && name != convProgramFallback {
+		name := convProgramName(p.page)
+		named := name != "" && name != convProgramFallback
+		if named {
 			out.what = name + programRoomNoMessages
+		}
+		// A PROGRAM THAT HAS STOPPED LISTENING SAYS WHY — senior-dev once it
+		// has handed in — rather than that it never listened.
+		if program := p.page.Program; program != nil && program.InboxClosed != "" {
+			if !named {
+				name = "this task's program"
+			}
+			out.what = name + programRoomNoMore + " (" + program.InboxClosed + ")"
+			out.shortWhat = strings.TrimSpace(programRoomNoMore)
 		}
 	}
 	return out

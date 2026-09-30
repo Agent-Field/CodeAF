@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -603,5 +604,60 @@ func TestDelegateWorkerStopsAChildOfAnotherBuild(t *testing.T) {
 	}
 	if _, ok := delegate.ReadProgram(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())); ok {
 		t.Fatal("a child of another build was written down as this run's program")
+	}
+}
+
+// A LISTENING PROGRAM IS FED ITS TASK'S NOTES, AND A NOTE IS HAD ONLY WHEN IT
+// SAYS SO. The program's hello accepts messages, so a note on its task reaches
+// the inbox codeaf named in its environment, with who it is from; the
+// program's `heard` marks that note had on the trajectory; its closed `inbox`
+// is kept on the program's record with the reason, beside the fact it listened.
+func TestDelegateWorkerFeedsAListeningProgramItsNotesAndMarksThemOnlyWhenHeard(t *testing.T) {
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	note, err := store.AddNote(store.RootID(), plandb.NoteAgentChat, "the grader is in grade.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "seen")
+	t.Setenv("FAKE_SEEN", seen)
+	script := filepath.Join(t.TempDir(), "listening.sh")
+	program := "#!/bin/sh\n" + strings.Join([]string{
+		`echo '{"type":"hello","protocol":2,"delegate":"fake","stages":["implement"],"accepts":["messages"]}'`,
+		`i=0; while [ $i -lt 100 ] && [ ! -s "$CODEAF_INBOX" ]; do sleep 0.1; i=$((i+1)); done`,
+		`cp "$CODEAF_INBOX" "$FAKE_SEEN"`,
+		`id=$(sed -n 's/.*"id":"\([^"]*\)".*/\1/p' "$CODEAF_INBOX" | head -1)`,
+		`echo "{\"type\":\"heard\",\"ids\":[\"$id\"]}"`,
+		`echo '{"type":"inbox","open":false,"reason":"it has handed in its work"}'`,
+		passLine("heard the grader note"),
+	}, "\n") + "\n"
+	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listening := delegate.Delegate{Name: "fake", Summary: "a fake program", Default: "run", Listens: true}
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), listening, run.DelegateSetup{Exe: script}, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+		t.Fatalf("the listening program's run failed: %v", err)
+	}
+	inbox, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("the program found no inbox: %v", err)
+	}
+	if !strings.Contains(string(inbox), `"id":"`+note.ID+`"`) || !strings.Contains(string(inbox), `"from":"conversation"`) ||
+		!strings.Contains(string(inbox), "the grader is in grade.sh") {
+		t.Fatalf("the inbox held %s", inbox)
+	}
+	had := false
+	for _, line := range rawTrajectory(t, storeDir, store.RootID()) {
+		var step run.Step
+		if json.Unmarshal([]byte(line), &step) == nil && step.Kind == "notes" && slices.Contains(step.Notes, note.ID) {
+			had = true
+		}
+	}
+	if !had {
+		t.Fatalf("the heard note was not marked had on the trajectory:\n%s", strings.Join(rawTrajectory(t, storeDir, store.RootID()), "\n"))
+	}
+	record, ok := delegate.ReadProgram(plandb.TaskDir(storeDir, store.RootID()))
+	if !ok || !record.Listening || record.InboxClosed != "it has handed in its work" {
+		t.Fatalf("program record = %+v %v", record, ok)
 	}
 }

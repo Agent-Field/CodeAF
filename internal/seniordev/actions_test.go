@@ -194,3 +194,17 @@ func TestAChangeToTheWorkWearsItsLinesAndItsOwnRecordsDoNot(t *testing.T) {
 		t.Fatalf("a write nobody counted wears lines: %+v", bare)
 	}
 }
+
+// A MESSAGE HANDED TO ITS MODEL IS A STEERING LINE that says whose words they
+// were and what they said.
+func TestAMessageHandedToItsModelSaysWhoseAndWhat(t *testing.T) {
+	read := Program.Reader()
+	shown, ok := read(stage("implement", "steered", map[string]any{"messages": 1, "from": "person", "detail": "the grader is in grade.sh"}))
+	if !ok || !shown.Steer || shown.Text != "gave its model your message: the grader is in grade.sh" {
+		t.Fatalf("the message read %+v", shown)
+	}
+	several, _ := read(stage("implement", "steered", map[string]any{"messages": 3, "from": "conversation", "detail": "last one"}))
+	if several.Text != "gave its model 3 messages: last one" {
+		t.Fatalf("three messages read %+v", several)
+	}
+}

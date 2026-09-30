@@ -49,6 +49,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -197,6 +198,15 @@ type delegateSink struct {
 	reader  delegate.ActionReader
 	stepped bool
 	step    string
+	// inboxPath is the listening program's inbox (delegate's inbox.go), empty
+	// for a program that does not listen. ctx bounds the forwarding that feeds
+	// it, and the rest is what the forwarding and the program's receipts share.
+	inboxPath string
+	ctx       context.Context
+	inboxMu   sync.Mutex
+	sent      map[string]bool
+	had       map[string]bool
+	closedWhy string
 }
 
 // remember writes one received record to the task's action log, stamped with
@@ -266,6 +276,13 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 		// It is a record, so a disk that refuses it costs the page its heading
 		// and never the run.
 		s.record.Stages = h.Stages
+		// A PROGRAM THAT SAYS IT LISTENS, STARTED WITH AN INBOX, IS FED ONE.
+		// Its record says so, which is what the conversation and the page read
+		// before they offer to send it words.
+		if h.Listening() && s.inboxPath != "" {
+			s.record.Listening = true
+			go s.forward()
+		}
 		_ = delegate.WriteProgram(s.taskDir, s.record)
 		return
 	}
@@ -303,6 +320,89 @@ func (s *delegateSink) Step(record delegate.StepRecord) {
 		s.lastErr = err
 	}
 	s.remember(delegate.StepAction(time.Now(), record))
+}
+
+// forward copies the task's notes into the listening program's inbox as they
+// are written, until the program stops reading or the run ends.
+//
+// A NOTE IS SENT ONCE AND HAD ONLY WHEN THE PROGRAM SAYS SO. Sent is this
+// loop's own mark, so a note is appended once; had is the program's receipt
+// ([delegateSink.Heard]), written to the trajectory the way a bash worker
+// writes the notes it was handed, so a later worker of the same task does not
+// hand them over again. Notes the task already had before this run are skipped.
+func (s *delegateSink) forward() {
+	tick := time.NewTicker(inboxPoll)
+	defer tick.Stop()
+	for {
+		s.inboxMu.Lock()
+		closed := s.closedWhy != ""
+		skip := make(map[string]bool, len(s.sent)+len(s.had))
+		for id := range s.sent {
+			skip[id] = true
+		}
+		for id := range s.had {
+			skip[id] = true
+		}
+		s.inboxMu.Unlock()
+		if closed {
+			return
+		}
+		for _, note := range unreadNotes(s.worker.store, s.taskID, skip) {
+			if delegate.AppendInbox(s.inboxPath, delegate.Message{ID: note.ID, From: messageFrom(note), Text: note.Body}) != nil {
+				break
+			}
+			s.inboxMu.Lock()
+			s.sent[note.ID] = true
+			s.inboxMu.Unlock()
+		}
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// inboxPoll is how often a listening program's notes are looked for.
+var inboxPoll = time.Second
+
+// messageFrom is who a note is from, as a program is told it.
+func messageFrom(note plandb.Note) string {
+	switch {
+	case note.From == plandb.NoteFromPerson:
+		return delegate.FromPerson
+	case strings.TrimSpace(note.Agent) == plandb.NoteAgentChat:
+		return delegate.FromConversation
+	}
+	return delegate.FromWorker
+}
+
+// Heard is the program's receipt for messages it put before its model.
+func (s *delegateSink) Heard(ids []string) {
+	s.inboxMu.Lock()
+	var fresh []string
+	for _, id := range ids {
+		if s.sent[id] && !s.had[id] {
+			s.had[id] = true
+			fresh = append(fresh, id)
+		}
+	}
+	s.inboxMu.Unlock()
+	if len(fresh) > 0 {
+		_ = appendTrajectory(s.storeDir, s.taskID, Step{Kind: trajectoryNotesKind, Notes: fresh})
+	}
+}
+
+// InboxClosed is the program saying it reads no more messages.
+func (s *delegateSink) InboxClosed(reason string) {
+	if strings.TrimSpace(reason) == "" {
+		reason = "it reads no more messages"
+	}
+	s.inboxMu.Lock()
+	s.closedWhy = reason
+	s.inboxMu.Unlock()
+	s.record.InboxClosed = reason
+	_ = delegate.WriteProgram(s.taskDir, s.record)
 }
 
 func (s *delegateSink) Terminal(t delegate.Terminal) {
@@ -491,7 +591,14 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	launchCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	sink := &delegateSink{worker: w, taskID: task.ID, storeDir: storeDir, taskDir: taskDir, name: w.program.Name, stop: stop,
-		record: delegate.ProgramRecord{Name: w.program.Name, CeilingUSD: w.cost}}
+		record: delegate.ProgramRecord{Name: w.program.Name, CeilingUSD: w.cost},
+		ctx:    launchCtx, sent: map[string]bool{}, had: notesAlreadyHad(storeDir, task.ID)}
+	childEnv := append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
+		gitidentity.InputsEnv+"="+w.setup.InputsFile)
+	if w.program.Listens {
+		sink.inboxPath = filepath.Join(taskDir, delegate.InboxName)
+		childEnv = append(childEnv, delegate.EnvInbox+"="+sink.inboxPath)
+	}
 	brief := strings.TrimSpace(task.Description)
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
@@ -508,8 +615,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 			delegate.RunFacts{Plain: w.setup.PlainFolder, Crew: w.setup.Crew}),
 		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the API's
 		// address and token are what its engine needs; model commands lose both.
-		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
-			gitidentity.InputsEnv+"="+w.setup.InputsFile),
+		Env:        childEnv,
 		Dir:        w.workspace,
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,

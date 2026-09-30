@@ -144,7 +144,8 @@ folder with `--dir`.
 
 **It cannot ask you anything.** Nobody is at its keyboard. Write the brief so that
 everything it would stop and ask is already settled. The model is told the same thing when
-it proposes one.
+it proposes one. A program that listens, as senior-dev does until it hands in, can still be
+told something while it works; it never waits for a reply.
 
 **It has no step cap.** senior-dev has finite dollar and wall-clock ceilings even when
 the conversation sets none; `/budget conversation` can lower the dollar ceiling,

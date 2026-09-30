@@ -141,9 +141,11 @@ and the command's own flags survive.
 
 | record | when | fields |
 | --- | --- | --- |
-| `hello` | first | `protocol` (2), `delegate`, `stages` (the whole list, in order) |
+| `hello` | first | `protocol` (2), `delegate`, `stages` (the whole list, in order), and optionally `accepts`: `["messages"]` for a program reading its inbox (§5a) |
 | `stage` | on every phase change | `stage`, `status`, and optionally `data`: a JSON object of at most 1024 bytes (`delegate.StageDataCap`) |
 | `step` | once per finished action | `command` (one line, 200 bytes at most), `observation` (2048 bytes at most), and optionally `tool` (the tool's name), `step` (the program's own id for the part of its process the action served), `exit` (a command's exit code, only for an action that ran one), and `added` and `removed` (the lines an action that changed a file added and removed, only when the program counted them) |
+| `heard` | when a listening program has put messages before its model | `ids`: the inbox messages it took (§5a) |
+| `inbox` | once, when a listening program stops reading | `open` (false), `reason` (why: senior-dev's is that it has handed in) |
 | `terminal` | last, exactly once, on every path | `status` (`pass`, `fail`, `budget-exhausted`, `crashed`), `message`, `data`: `reason`, `claim`, `observed`, `deliverable`, `rescue_path` (optional absolute directory where files were copied before a restore), and anything else |
 
 Any other line is ignored. There is no `spend` record: the model API meters
@@ -187,6 +189,26 @@ is ended outright if it is still at work when the grace has passed
 (`delegate.RunChild`'s `watchHost`). A shell run's host itself treats SIGHUP as
 its first ctrl-c.
 
+## 5a. The inbox — messages while it works
+
+A program whose declaration says it listens (`Delegate.Listens`) is started with
+`CODEAF_INBOX` naming `delegate-inbox.jsonl` in its task's record folder, and its
+host is also a `delegate.Listener`. codeaf appends one JSON line per message —
+`{"id","from","text"}`, `from` one of `person`, `conversation`, `worker` — when a
+note is written on the program's task: the person's words from its page, or the
+conversation's `tasks` `say`. The program reads the lines it has not read at the
+points in its own work where a word can be taken in (senior-dev: before each call
+to its model, and in place of a nudge when its model stops), answers with a
+`heard` record, and only then does codeaf mark the note had. It writes `inbox`
+with `open` false when it stops reading (senior-dev at its hand-in, because a
+frozen tree takes no direction), and codeaf refuses later words with that reason.
+A program that does not listen, or whose hello did not say `accepts`, is refused
+every message in so many words and is never handed one nothing reads.
+
+A file rather than stdin, because the words are already on disk as notes, a
+program busy in a ten-minute command blocks nothing, and the record folder keeps
+what was sent beside what was said.
+
 ## 6. The conversation log and the action log
 
 `delegate-conversation.jsonl` in the task's record folder, one `delegate.Turn`
@@ -215,8 +237,9 @@ record that named one, and its stage's word before any has.
 ## 7. What a program may not do
 
 - Ask a person anything. Nobody is at its keyboard. (Later: a tool codeaf runs
-  inside the model API.)
-- Read stdin.
+  inside the model API.) A listening program may be *told* things (§5a); it never
+  waits for a reply.
+- Read stdin. Messages arrive through the inbox (§5a).
 - Reach a model any way but the model API.
 - Write anything on stdout that is not a record on its own line.
 - For `tree`: touch files outside its workspace, or leave anything in it that is

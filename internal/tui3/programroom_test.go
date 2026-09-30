@@ -92,6 +92,54 @@ func TestAProgramsRoomSendsNothingAndSaysSo(t *testing.T) {
 	}
 }
 
+// A PROGRAM THAT LISTENS IS OFFERED THE LINE, AND IT IS SENT. The placeholder
+// names the program, enter sends the sentence through the plan's note door —
+// which the program's worker copies into its inbox — takes it out of the box,
+// and says when the program reads it.
+func TestAListeningProgramsRoomSendsTheLineAndSaysWhenItIsRead(t *testing.T) {
+	a, agent := programRoomApp(t, 120, 28)
+	agent.planFake.pages["7"].Program.Listening = true
+	openProgramRoomNow(t, a)
+	if frame, _, _ := a.frame(); !strings.Contains(plain(frame), "Tell senior-dev something") {
+		t.Fatalf("the box over a listening program does not offer the line:\n%s", plain(frame))
+	}
+	for _, r := range "the grader is in grade.sh" {
+		drive(t, a, key(string(r)))
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if len(agent.noted) != 1 || agent.noted[0].text != "the grader is in grade.sh" {
+		t.Fatalf("enter did not send the line as the program's note: %v", agent.noted)
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("a sent line stayed in the box: %q", got)
+	}
+	if want := programSteerSentWord("senior-dev"); !strings.Contains(strings.Join(strings.Fields(roomText(a)), " "), want) {
+		t.Fatalf("the page does not say %q:\n%s", want, roomText(a))
+	}
+}
+
+// A PROGRAM THAT HAS STOPPED LISTENING SAYS WHY, and sends nothing: senior-dev
+// once it has handed in reads no more messages, and the page names the reason.
+func TestAProgramThatHandedInSaysWhyItReadsNoMore(t *testing.T) {
+	a, agent := programRoomApp(t, 120, 28)
+	program := agent.planFake.pages["7"].Program
+	program.Listening, program.InboxClosed = true, "it has handed in its work, and what it handed in is frozen"
+	openProgramRoomNow(t, a)
+	for _, r := range "one more thing" {
+		drive(t, a, key(string(r)))
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if len(agent.noted) != 0 {
+		t.Fatalf("a program that stopped listening was sent %v", agent.noted)
+	}
+	if want := "senior-dev reads no more messages (it has handed in its work"; !strings.Contains(strings.Join(strings.Fields(roomText(a)), " "), want) {
+		t.Fatalf("the page does not say %q:\n%s", want, roomText(a))
+	}
+	if got := a.input.String(); got != "one more thing" {
+		t.Fatalf("the refused sentence left the box: %q", got)
+	}
+}
+
 // THE ROOM NAMES ITS TASK ONCE, AND ITS BRIEF IS BEHIND A DROPDOWN. The head is
 // the title row alone — no trail crumb repeating the conversation's name, no
 // `Reading:` label over the box — with `▸ brief` after the badge; the brief is
