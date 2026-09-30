@@ -347,7 +347,11 @@ Asking for help is never a failure: `--help` on any verb exits 0.
 ## The --json result object — one shape, three commands
 
 `--json` on `codeaf do`, `codeaf exec` and `codeaf run` prints **one object on
-stdout, always parseable, printed even when the run failed**:
+stdout, always parseable, printed even when the run failed**. On `do`, that also
+includes a refusal after its flags parse, such as a blank brief or conflicting
+`--best` and `--cheap`: `ok` is false, `stop` is `error`, and `error` carries
+the same refusal stderr prints. An unrecognized flag is refused with usage on
+stderr before the command can enter this envelope path:
 
 ```json
 {

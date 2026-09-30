@@ -261,7 +261,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
 | `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
 | `/crew` | — | `cap task <dollars>` | the most one task may spend — $5 unless set; `-yes-spend` does not lift it |
-| `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
+| `/task` | — | — | opens the full-screen sessions place — the same place as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
 | `/task` | — | `--best <brief>` | starts the task on the strongest crew the allowed models make, this task only |
@@ -1469,7 +1469,7 @@ The row is called by the first words you typed for a second or two, and then by 
 name a small model gives it.
 
 When a `/task` runs on the run engine (*The worker harness* page), the row it writes to the
-tasks place carries the step its worker is on **right now** — the running glyph `◐`, the shell
+sessions place carries the step its worker is on **right now** — the running glyph `◐`, the shell
 lead `$` and the command — with the task's `N steps · $0.11` under it. The line is there only
 while a step is in flight, and goes the moment the command ends.
 
@@ -1477,10 +1477,10 @@ while a step is in flight, and goes the moment the command ends.
 strips the tag and takes the remaining words through this same road. Backspace
 immediately after the tag makes it plain prose.
 
-**A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
-open, holding every task this project has ever run. It does *not* print a usage line, and
+**A bare `/task` opens the full-screen sessions place** — the same place `/history` and `ctrl+.`
+open, holding this machine's conversation and task record. It does *not* print a usage line, and
 it starts nothing. On a project that has never run one it opens the page anyway, headed
-`tasks` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
+`sessions` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
 row at the foot of the task column types `/task ` into your box, which is why the word on
 its own has an answer worth giving.
 
@@ -1558,43 +1558,30 @@ and nothing to walk between — the arrows keep their ordinary meaning — and w
 forming there is no head that counts, only the block described under *Why is there a line
 next to my task*. A typed `/task` never joins the block: it has no wait in front of it.
 
-## /history — the task history command: past tasks, every task this project has run
+## /history — task history in the sessions place, including past tasks
 
-`/history`, or `ctrl+.`, opens a full-screen page holding the project's whole task record:
-this conversation's work **and every earlier conversation's**. It is the one place that
-answers "what did we do about this last week" — the roster's column beside the conversation
-is built from this session's own work, and carries only a short dulled note of the rest.
+`/history` opens the full-screen `[sessions]` place, the same destination as `ctrl+.`,
+`alt+4` and a bare `/task`. It lists this machine's conversations and their nested
+tasks across projects and earlier sessions. The column beside a conversation holds
+that conversation's tasks; the sessions place holds the broader record. There is no
+`/tasks` command. `/task <brief>` and `/task solo <brief>` start work; `/history`
+only opens the record.
 
-**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
-mean *give codeaf work*; this page starts none, so it does not share their word. Typing
-`/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
-bar, and **`alt+4`** and `tab` reach it without a command at all. The word is a place, not a
-command.
+The place groups conversation trees under `running` and `completed`, with each
+task's state on its row. A conversation with a live or unanswered task stays under
+`running`; its tree moves to `completed` when the work settles. The lists start
+newest first and their age heading reverses the order. Rows can be folded.
 
-Two sections. `running` is the tree of everything still going, drawn whole, with each task's
-current call, clock, tokens and spend under its name — and a row a run writes there carries
-the step its worker is on right now: the running glyph `◐`, the shell lead `$` and the command,
-with the task's `N steps · $0.11` beneath it. `earlier` is a flat list, newest first, of
-everything the project has finished — one line each, the same rows the `@` list offers.
+**Type to filter.** Printable keys, including spaces, narrow the list. The box
+at the foot says `› type to filter this list`; `backspace`, `ctrl+w` and `ctrl+u`
+edit the filter. `esc` clears a filter first, then closes the place. `↑`/`↓`
+move through rows. `enter` opens a task this conversation holds in its room;
+otherwise it opens that task's record card. `→` opens the row's available
+actions. Another window's running task can be opened or located when its row
+offers that action.
 
-**Type to filter.** Any printable key, spaces included, narrows both sections at once
-against the titles, the ids and the outcomes; the bottom of the page shows what was typed
-as `filter · port`, and a section with no match disappears entirely. `backspace`, `ctrl+w`
-and `ctrl+u` edit it. `esc` clears the filter first and closes the page on the second press.
-
-`esc` closes it. `↑`/`↓` move, `enter` opens the row: a task this session is holding opens
-its room, and a task another conversation ran goes into your message box as
-`@its-name` — that conversation is closed, so there is no room to open, and the mention is
-what carries its outcome and its transcript to the model when you send.
-
-Its `running` section also carries **a row for each task every other codeaf window open on
-this directory has out right now**, marked `another window` on the right. Those rows take
-no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
-a mention to point at. They are how you find out that the directory is busy somewhere else.
-
-On a project that has never run a task the page opens on its heading and one line,
-`work you send off with /task lands here, and its record stays`. The tasks pages describe the
-page in full.
+On a machine with no task record, the place still opens under `sessions` with
+`work you send off with /task lands here, and its record stays`.
 
 ## /crew — the crew panel, and the three seats a task runs on
 
@@ -1703,7 +1690,7 @@ this split when it opens; configure the remote profile on that machine.
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
-pages here — the others are `/history` (the task page, ctrl+.) and `/home` — and **only one
+pages here — the others are `/history` (the sessions place, ctrl+.) and `/home` — and **only one
 of the three is ever up at a time**: opening any one closes the other two.
 
 Moving in it:

@@ -1638,7 +1638,7 @@ Every column is two rungs — its own direction, then reversed — so `alt+s` wa
 `model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
 published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
 column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
-sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the tasks place gives:
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the sessions place gives:
 `s` is one of the commonest letters a filter starts with, and the list a person was
 narrowing would re-sort instead.
 
@@ -1757,10 +1757,10 @@ and `space` activates too — except while a search is on, when it goes into the
 a phrase like `shell command` can be written · `backspace`, `ctrl+u`, `ctrl+w` edit the
 search · anything else types into it.
 
-**Task page** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
+**Sessions place** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
 column, `ctrl+. earlier`): `esc` closes it (or clears the filter first, if one is being typed),
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
-over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
+over the `running` and `completed` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
 · **`1` and `2` answer the row under the cursor, but only while the pane beside the list is
 drawing those two answers for it** — a frame at least 110 columns wide, over a task of this
@@ -1789,7 +1789,7 @@ the pane there is nothing for a first click to show, so one click opens as it al
 click on one of the pane's own answers presses that answer and opens nothing. The wheel
 walks the cursor. The tasks pages describe what is on it.
 
-**Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
+**Inside an old task's card** (`enter` on a completed task's row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
 `space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
 message box** and closes the page. Its foot reads
@@ -2246,7 +2246,7 @@ tasks, on standing orders and on memory alike: a foot that offered `enter` or `t
 filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
-taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
+taken, and `ctrl+.` is the sessions place (`/history`) from a conversation — while a place is
 standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
 takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already clears messages waiting from the turn, and a third
@@ -2632,7 +2632,7 @@ A program's task page — senior-dev's — opens on the actions it took, each un
 of its process. **`ctrl+y` turns it to the raw calls** it made to its model: what it sent,
 what the model answered, which model it was, and the call in flight. `ctrl+y` again turns
 it back. It works in the program's room, whichever door opened it — its row, its card, or
-the tasks place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
+the sessions place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
 over the calls. Every page opens on the actions.
 
 It is a chord, so it never costs a character: the room's box keeps what you typed. It is

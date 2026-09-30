@@ -555,7 +555,7 @@ window or not; the decisions waiting on you, as cards you answer with one press;
 team manager's own conversation, which you talk to right there. `/teams`, `alt+2` and a
 click on the word open it. The **Teams page** of this manual has the whole of it.
 
-## tasks — the tasks page, and how to get to it without a command
+## sessions — the sessions page for tasks and history, and how to get to it without a command
 
 The full-screen conversation tree groups every chat and its tasks into **running** and
 **completed**. A conversation stays under running while it is answering or has running,

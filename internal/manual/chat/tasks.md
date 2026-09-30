@@ -2045,7 +2045,7 @@ tree of who started whom; the task's own page (its kin line) and the task page h
 family.
 
 **A run's rows are on this column too.** Under the conversation that started a run, the
-column draws that run's tree out of the tasks place's reading: one line per task (the
+column draws that run's tree out of the sessions place's reading: one line per task (the
 connector, the state mark and the fitted title) with `waits: <that task>` at the end of a
 line held behind named work, and the run's own row ending in the dot row (*what are the
 dots next to a task?* has the cells). While a task's worker is on a step, its row spends one
@@ -2369,8 +2369,8 @@ work, shapes the brief and starts it. The column's other section, `standing`, en
 
 ## What a bare /task does — /task with nothing after it opens the task page
 
-**`/task` typed on its own opens the full-screen task page** — the same page `/history` and
-`ctrl+.` open, holding every task this project has ever run. It used to print a one-line
+**`/task` typed on its own opens the full-screen sessions place** — the same place `/history` and
+`ctrl+.` open, holding this machine's conversations and their tasks. It used to print a one-line
 usage instead. It does not any more.
 
 The reason is the `+ /task` row at the foot of the task column: that row puts `/task ` in
@@ -2418,11 +2418,11 @@ conversation's work into another one's without the column ever saying it had. Ev
 they offered is on the other side of the door, whole: every row, the filter, the cards, and
 `m` for the mention.
 
-**Where old work is listed now:** the task page (`ctrl+.`, `/history`, or that line), and
+**Where old work is listed now:** the sessions place (`ctrl+.`, `/history`, or that line), and
 home (`/home`, or space twice on an empty box). The chat can also read the whole project
 record for you with its `tasks` tool; just ask.
 
-**Running work in another codeaf window** is on no surface but the task page. An ordinary
+**Running work in another codeaf window** is on no surface but the sessions place. An ordinary
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
@@ -2555,7 +2555,7 @@ server still has the jobs section to put a cursor on, so `alt+t` takes it.
 
 **The walk stops at this conversation's last job, after its last task.** `↓` walks the band,
 the groups and then the jobs section under them, and clamps there rather than carrying on
-into the project's record. Old work is walked on the task page (`ctrl+.`), where `enter`
+into the project's record. Old work is walked on the sessions place (`ctrl+.`), where `enter`
 goes inside its card.
 
 The cursor follows the task, not the row, when a task moves from one group to another. If
@@ -3161,7 +3161,7 @@ originating conversation and available evidence. Press `esc` to return to the li
 
 ## Going inside an old task — see what a past task did, read a finished task's report, where is the story my task wrote
 
-`enter` on any row of the task page (`ctrl+.`, `/history`) that this conversation did not
+`enter` on any task row of the sessions place (`ctrl+.`, `/history`) that this conversation did not
 run **goes inside that task**. A click does the same on the first press. The task column carries no rows of old
 work — its `ctrl+. earlier` line is the door onto this page — so the page is where every
 old task is opened.
@@ -3248,7 +3248,7 @@ one more dim line:
 ctrl+. earlier
 ```
 
-Click it, or press `ctrl+.`, and the full-screen task page opens. The column is left exactly
+Click it, or press `ctrl+.`, and the full-screen sessions place opens. The column is left exactly
 as it was: the page is somewhere you go and come back from, not a state the column enters.
 
 **There is exactly one such line, never two.** It is drawn when the record holds tasks

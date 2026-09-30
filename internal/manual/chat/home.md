@@ -1590,7 +1590,7 @@ reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spell
 map's own line names while it is live.
 
 Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
-tasks place, `/history`).
+sessions place, `/history`).
 
 ## What landed while I was away — since you left, and the look stamp
 

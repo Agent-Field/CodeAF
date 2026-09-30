@@ -225,8 +225,8 @@ of the commands they named still works** — only the tips about them are gone.
 - `/attach lets you browse anywhere for files` was a second row about one command, which
   is one row too many.
 - `ctrl+. sees every task this project has run` came off on the owner's word, the last of
-  the three reads. The chord still opens the task page, `/history` still opens it too, and
-  the *tasks* page still says so.
+  the three reads. The chord still opens the sessions place, `/history` still opens it too, and
+  the *tasks* manual page still says so.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
 the first exchange in a conversation.
