@@ -93,13 +93,21 @@ type importOp struct {
 	// Ledger is the store the objects were fetched from: what it handed over
 	// is recorded as published there, so the next export never sends it back.
 	Ledger string `json:"ledger"`
+	// Primed relaxes one rule (contract §22.7): an inbox file no pass wanted is
+	// deleted, not an error. A take primes its inbox with whole frames, whose
+	// frame-mates the head may not want; the want loop's answers stay strict.
+	Primed bool `json:"primed,omitempty"`
 	keyArgs
 }
 
 func (importOp) Verb() string { return "import" }
 
 func (o importOp) Args() []string {
-	return []string{"--json", "import", "--head", o.Head, "--inbox", o.Inbox, "--ledger", o.Ledger}
+	args := []string{"--json", "import", "--head", o.Head, "--inbox", o.Inbox, "--ledger", o.Ledger}
+	if o.Primed {
+		args = append(args, "--primed")
+	}
+	return args
 }
 
 // materializeOp restores a head into the target tree.
@@ -174,10 +182,20 @@ func (e SyncEngine) Want(ctx context.Context, c cell.Cell, head string) ([]strin
 
 // Import implements the sync seam.
 func (e SyncEngine) Import(ctx context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return e.runImport(ctx, c, head, inbox, false)
+}
+
+// ImportPrimed implements the sync seam: the import of a primed inbox, whose
+// frame-mates are deleted rather than refused.
+func (e SyncEngine) ImportPrimed(ctx context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return e.runImport(ctx, c, head, inbox, true)
+}
+
+func (e SyncEngine) runImport(ctx context.Context, c cell.Cell, head, inbox string, primed bool) (int, error) {
 	var out struct {
 		Imported int `json:"imported"`
 	}
-	return out.Imported, e.ask(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, keyArgs: hexKeys(e.Keys)}, &out)
+	return out.Imported, e.ask(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, Primed: primed, keyArgs: hexKeys(e.Keys)}, &out)
 }
 
 // Materialize implements the sync seam.

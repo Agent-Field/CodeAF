@@ -83,7 +83,7 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
 	}
 	c := cell.Cell{ID: id, Root: t.RootFor(id)}
-	kept, err := t.keepLocal(ctx, c, view.Cell.Head)
+	kept, err := t.keepLocal(ctx, c, view.Cell.Head, view.Cell.Frames)
 	if err != nil {
 		return Taken{}, err
 	}
@@ -95,7 +95,10 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 	if err != nil {
 		return Taken{}, err
 	}
-	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head}, Kept: kept}, nil
+	// The plan comes with the record: the taken device's publishes extend the
+	// frames the last publisher named (contract §22.2). It may trail the head
+	// when the fetch moved it; the publish union rule keeps that safe.
+	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head, Frames: view.Cell.Frames}, Kept: kept}, nil
 }
 
 // displacing is the acquire the person's choice covers: they saw the chat's
@@ -107,7 +110,11 @@ func displacing(v directory.CellView) directory.AcquireOpts {
 
 // keepLocal seals unsealed work in an existing root into a branch of the chat.
 // It answers the branch id, or "" when the root is absent or clean.
-func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (string, error) {
+// keepLocal seals unsealed local work onto a branch before any fetch. The
+// branch's Driving starts from the parent record's plan: the branch head's
+// closure is the parent's plus the orphan turns, whose frames the branch's
+// first publish adds.
+func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, plan []string) (string, error) {
 	if !exists(c.Root) {
 		return "", nil
 	}
@@ -119,7 +126,7 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (s
 	if err != nil {
 		return "", fmt.Errorf("handoff: seal local edits of %s: %w", c.ID, err)
 	}
-	from := &cellsync.Driving{Cell: c, Head: parentHead}
+	from := &cellsync.Driving{Cell: c, Head: parentHead, Frames: plan}
 	kept, err := t.Branch(ctx, from, head, turns)
 	if err != nil {
 		return "", fmt.Errorf("handoff: keep local edits of %s: %w", c.ID, err)

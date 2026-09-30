@@ -317,6 +317,18 @@ func (fc *fakeCell) want(head string) ([]string, error) {
 // Import implements Engine. It checks every file before it stores any, so a
 // bad file leaves the graph as it was.
 func (f *FakeEngine) Import(_ context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return f.importFiles(c, head, inbox, false)
+}
+
+// ImportPrimed implements Engine: the import of a primed inbox, whose
+// frame-mates the head may not want; they are deleted, never an error.
+func (f *FakeEngine) ImportPrimed(_ context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return f.importFiles(c, head, inbox, true)
+}
+
+// importFiles is Import with the primed rule as a switch: an unlisted file is
+// an error unless primed, when it is simply deleted.
+func (f *FakeEngine) importFiles(c cell.Cell, head, inbox string, primed bool) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	fc := f.cell(c)
@@ -324,9 +336,27 @@ func (f *FakeEngine) Import(_ context.Context, c cell.Cell, head, inbox string) 
 	if err != nil {
 		return 0, err
 	}
-	files, err := readInbox(inbox, wanted)
+	isWanted := map[string]bool{}
+	for _, rid := range wanted {
+		isWanted[rid] = true
+	}
+	entries, err := os.ReadDir(inbox)
 	if err != nil {
 		return 0, err
+	}
+	files := map[string][]byte{}
+	for _, e := range entries {
+		if !isWanted[e.Name()] && primed {
+			if err := os.Remove(filepath.Join(inbox, e.Name())); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		raw, err := readVerified(inbox, e.Name(), isWanted)
+		if err != nil {
+			return 0, err
+		}
+		files[e.Name()] = raw
 	}
 	for rid, raw := range files {
 		fc.objects[rid] = raw
@@ -339,28 +369,8 @@ func (f *FakeEngine) Import(_ context.Context, c cell.Cell, head, inbox string) 
 	return len(files), nil
 }
 
-// readInbox loads every file in inbox, each of which must be wanted and must
-// hash to its own name.
-func readInbox(inbox string, wanted []string) (map[string][]byte, error) {
-	entries, err := os.ReadDir(inbox)
-	if err != nil {
-		return nil, err
-	}
-	isWanted := map[string]bool{}
-	for _, rid := range wanted {
-		isWanted[rid] = true
-	}
-	files := map[string][]byte{}
-	for _, e := range entries {
-		raw, err := readVerified(inbox, e.Name(), isWanted)
-		if err != nil {
-			return nil, err
-		}
-		files[e.Name()] = raw
-	}
-	return files, nil
-}
-
+// readVerified loads one inbox file, which must be wanted and must hash to
+// its own name.
 func readVerified(inbox, rid string, wanted map[string]bool) ([]byte, error) {
 	if !wanted[rid] {
 		return nil, fmt.Errorf("fake engine: object %s was not wanted", rid)
