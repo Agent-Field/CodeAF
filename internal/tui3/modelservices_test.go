@@ -1096,8 +1096,9 @@ func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
 	// and the cursor rests on the list's first row ([picker.cursorToFirst]):
 	// the › is the highlight a reader starts reading at. The mark is still on
 	// the model in use, which is what this test is about — its bold accent
-	// strips to the same plain row it always drew.
-	want := "› gpt-5-classic\n" +
+	// strips to the same plain row it always drew, while the cursor's ground
+	// pads the first row out to the frame's full width.
+	want := "› gpt-5-classic" + strings.Repeat(" ", 100-15) + "\n" +
 		"  openai/gpt-4.1-mini                                                                             1M\n" +
 		"  + add a provider"
 	if rendered := plain(strings.Join(got, "\n")); rendered != want {
