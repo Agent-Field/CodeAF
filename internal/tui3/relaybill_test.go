@@ -30,9 +30,11 @@ var (
 // package's machinePoll), offered to the load driver as the pace to ask at.
 type homePace struct{ poll machinePoll }
 
-func (h *homePace) Ready(now time.Time) bool           { return h.poll.ready(now) }
-func (h *homePace) Landed(now time.Time, changed bool) { h.poll.landed(now, changed) }
-func (h *homePace) Hurry()                             { h.poll.hurry() }
+func (h *homePace) Ready(now time.Time) bool { return h.poll.ready(now) }
+func (h *homePace) Landed(now time.Time, changed, watched bool) {
+	h.poll.landed(now, changed, watched)
+}
+func (h *homePace) Hurry() { h.poll.hurry() }
 
 // TestRelayBill plays one heavy user through the real client against the relay
 // named by -bill-url, with this surface's real home pace, and writes the

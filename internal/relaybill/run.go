@@ -177,7 +177,6 @@ func (r *run) idle() (Phase, error) {
 		ctx, stop := context.WithTimeout(r.ctx, r.cfg.Idle)
 		defer stop()
 		home := &Home{Src: r.holder.sync, Schedule: r.cfg.Schedule(), Tick: r.cfg.Tick}
-		_ = home.Read(ctx, time.Now())
 		home.Run(ctx)
 		return nil
 	})
