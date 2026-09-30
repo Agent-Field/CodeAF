@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // MaxWatchers is how many watch sockets one identity may hold at once. An
@@ -60,11 +61,29 @@ type Feed struct {
 	cap    int
 	subs   map[*Sub]struct{}
 	closed chan struct{}
+
+	// clock is the directory's own clock, so a sign of life and a lease expiry
+	// are read on one timeline (a test's fake clock moves both).
+	clock func() time.Time
+	// holders indexes the sockets that name a hold, by what they name, so the
+	// evidence for one lease is found without scanning every socket.
+	holders map[holdKey]map[*Sub]struct{}
 }
 
-// NewFeed returns a feed at version 0 with the default cap.
-func NewFeed() *Feed {
-	f := &Feed{cap: MaxWatchers, subs: map[*Sub]struct{}{}, closed: make(chan struct{})}
+// holdKey is what a socket's hold is matched against: the device that opened
+// the socket (from its signature) and the cell and fence it named.
+type holdKey struct {
+	device, cell string
+	fence        uint64
+}
+
+// NewFeed returns a feed at version 0 with the default cap, stamping sockets
+// with clock.
+func NewFeed(clock func() time.Time) *Feed {
+	f := &Feed{
+		cap: MaxWatchers, subs: map[*Sub]struct{}{}, closed: make(chan struct{}),
+		clock: clock, holders: map[holdKey]map[*Sub]struct{}{},
+	}
 	f.cur.Store(&Status{Stopped: map[string]bool{}})
 	return f
 }
@@ -105,16 +124,71 @@ func (f *Feed) Close() {
 	}
 }
 
-// Subscribe adds a watcher, or refuses with ErrTooManyWatchers at the cap.
-func (f *Feed) Subscribe() (*Sub, error) {
+// Subscribe adds a watcher opened by device that names holds, or refuses with
+// ErrTooManyWatchers at the cap. Its accept time is its first sign of life.
+func (f *Feed) Subscribe(device string, holds []Hold) (*Sub, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.subs) >= f.cap {
 		return nil, ErrTooManyWatchers
 	}
-	s := &Sub{f: f, poke: make(chan struct{}, 1)}
+	s := &Sub{f: f, poke: make(chan struct{}, 1), keys: keysOf(device, holds)}
+	s.alive.Store(f.clock().UnixMilli())
 	f.subs[s] = struct{}{}
+	for _, k := range s.keys {
+		if f.holders[k] == nil {
+			f.holders[k] = map[*Sub]struct{}{}
+		}
+		f.holders[k][s] = struct{}{}
+	}
 	return s, nil
+}
+
+func keysOf(device string, holds []Hold) []holdKey {
+	keys := make([]holdKey, len(holds))
+	for i, h := range holds {
+		keys[i] = holdKey{device, h.Cell, h.Fence}
+	}
+	return keys
+}
+
+// VouchedUntil is the time until which the sockets of device that named
+// exactly (cell, fence) keep that lease live: the newest sign of life among
+// them plus the lease TTL, or 0 when no socket names it.
+func (f *Feed) VouchedUntil(device, cell string, fence uint64) int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var newest int64
+	for s := range f.holders[holdKey{device, cell, fence}] {
+		newest = max(newest, s.alive.Load())
+	}
+	if newest == 0 {
+		return 0
+	}
+	return newest + ttlMs
+}
+
+// Lifted is cell c (stored under id) as every reader must see it: with its
+// lease kept live by the sockets that vouch for it.
+func (f *Feed) Lifted(id string, c Cell) Cell {
+	if c.Lease.Expires == 0 {
+		return c
+	}
+	return Lifted(c, f.VouchedUntil(c.Lease.Device, id, c.Lease.Fence))
+}
+
+// lift is Lifted for a record of any kind: only a cell has a lease.
+func (f *Feed) lift(id string, v any) any {
+	if c, ok := v.(Cell); ok {
+		return f.Lifted(id, c)
+	}
+	return v
+}
+
+// differs says whether next is a change a person could see from old, reading
+// both as the lifted records they appear as, so evidence alone never counts.
+func (f *Feed) differs(id string, old, next any, now int64) bool {
+	return differs(f.lift(id, old), f.lift(id, next), now)
 }
 
 // Sub is one watcher. It keeps no queue: it always reads the newest Status, so
@@ -124,7 +198,14 @@ type Sub struct {
 	poke    chan struct{}
 	sent    uint64
 	started bool
+
+	keys  []holdKey
+	alive atomic.Int64 // unix ms of the last sign of life
 }
+
+// Ping records a sign of life at the directory's time. It changes no version
+// and wakes nobody: evidence is not a change a person can see.
+func (s *Sub) Ping() { s.alive.Store(s.f.clock().UnixMilli()) }
 
 func (s *Sub) wake() {
 	select {
@@ -157,6 +238,12 @@ func (s *Sub) Close() {
 	s.f.mu.Lock()
 	defer s.f.mu.Unlock()
 	delete(s.f.subs, s)
+	for _, k := range s.keys {
+		delete(s.f.holders[k], s)
+		if len(s.f.holders[k]) == 0 {
+			delete(s.f.holders, k)
+		}
+	}
 }
 
 // visible is a record that can say which of its fields a person sees.
