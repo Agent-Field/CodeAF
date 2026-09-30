@@ -31,8 +31,8 @@ export class IdentityDO extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.limits = limitsOf(env);
-    this.watchers = new Watchers(ctx, this.limits.maxWatchers);
     this.policy = policyOf(env.LEASE_POLICY);
+    this.watchers = new Watchers(ctx, this.limits.maxWatchers, this.policy.ttlMs);
     this.identityRate = new RateLimit(this.limits.requestsPerMinute);
     this.deviceRate = new RateLimit(this.limits.requestsPerMinutePerDevice);
   }
