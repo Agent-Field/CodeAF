@@ -64,7 +64,26 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 	}
 	dest := filepath.Join(liveRoot(c), name)
 	cutErr := k.cutAgain(project, dest, name, from, rec)
-	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec))
+	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
+}
+
+// applyModes gives each file of the copy the bits it left with, including the
+// files the checkout wrote, which took the umask of this machine. A path the
+// copy does not have is skipped, and one that would leave dest is refused,
+// since a record that arrives over a network is not trusted with the rest of
+// the disk.
+func applyModes(dest string, modes map[string]fs.FileMode) error {
+	var errs []error
+	for rel, mode := range modes {
+		if !filepath.IsLocal(filepath.FromSlash(rel)) {
+			errs = append(errs, fmt.Errorf("carried mode for %q leaves the task copy", rel))
+			continue
+		}
+		if err := os.Chmod(filepath.Join(dest, filepath.FromSlash(rel)), mode); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // cutAgain makes dest a copy of project at the commit the copy was at. A dest

@@ -92,7 +92,7 @@ func carry(tree, dest string) error {
 	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest); err != nil {
 		return err
 	}
-	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: modesOf(tree, present)})
+	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: modesOfTree(tree)})
 }
 
 // carryCommits keeps dest's bundle of the commits only this copy holds in step
@@ -175,15 +175,35 @@ func partition(tree string, paths []string) (present, deleted []string) {
 	return present, deleted
 }
 
-// modesOf is the permission bits of each of the named files of tree.
-func modesOf(tree string, rels []string) map[string]fs.FileMode {
-	modes := make(map[string]fs.FileMode, len(rels))
-	for _, rel := range rels {
-		if info, err := os.Lstat(filepath.Join(tree, rel)); err == nil {
-			modes[rel] = info.Mode().Perm()
+// modesOfTree is the permission bits of every regular file of the copy, whichever
+// step put it there: a checkout, the carried edits, or the copy of an ignored
+// file. Git records only whether a file is executable, so a checkout leaves the
+// rest to the umask of the machine, and a copy is only the same copy when each
+// file has the bits it left with. The repository's own folder is not part of it.
+func modesOfTree(tree string) map[string]fs.FileMode {
+	modes := map[string]fs.FileMode{}
+	_ = filepath.WalkDir(tree, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
 		}
-	}
+		if d.Name() == ".git" {
+			return skipEntry(d)
+		}
+		if info, err := d.Info(); err == nil && info.Mode().IsRegular() {
+			rel, _ := filepath.Rel(tree, path)
+			modes[filepath.ToSlash(rel)] = info.Mode().Perm()
+		}
+		return nil
+	})
 	return modes
+}
+
+// skipEntry leaves out a folder with everything in it, and a file alone.
+func skipEntry(d fs.DirEntry) error {
+	if d.IsDir() {
+		return filepath.SkipDir
+	}
+	return nil
 }
 
 // syncFiles makes dest hold exactly the named files of tree. A file whose size
