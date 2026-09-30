@@ -3,6 +3,7 @@
 // depends on it), so nothing can interleave inside a swap: that is the compare-and-swap the
 // lease rules need. The rules themselves are pure and live in rules.js.
 import { makeRules, RuleError } from './rules.js';
+import { CLOSE_REVOKED, CLOSE_ROTATED, NOBODY } from './watch.js';
 
 const refuse = (code) => new RuleError(code);
 const present = (c) => {
@@ -10,13 +11,22 @@ const present = (c) => {
   return c;
 };
 
+// Key order must not decide whether two records are equal, so the comparison is over sorted keys.
+const sorted = (_, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x);
+const canonical = (v) => JSON.stringify(v, sorted);
+
 export class Directory {
-  constructor(sql, identity, clock, policy) {
+  /** `watchers` is told of every visible change and of the closes a revoke or a rotation asks for (contract 21). */
+  constructor(sql, identity, clock, policy, watchers = NOBODY) {
     this.sql = sql;
     this.identity = identity;
     this.clock = clock;
     this.rules = makeRules(policy);
+    this.watchers = watchers;
     sql.exec('CREATE TABLE IF NOT EXISTS dir (kind TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, id)) WITHOUT ROWID');
+    sql.exec('CREATE TABLE IF NOT EXISTS dirver (one INTEGER PRIMARY KEY CHECK (one = 1), n INTEGER NOT NULL)');
+    sql.exec('INSERT OR IGNORE INTO dirver VALUES (1, 0)');
+    this.version = sql.exec('SELECT n FROM dirver').one().n;
   }
 
   read(kind, id) {
@@ -24,9 +34,35 @@ export class Directory {
     return row ? JSON.parse(row.doc) : null;
   }
 
+  /**
+   * write stores a record, and counts a change of it that a person could see (see #visible) as a new
+   * version. This is the one place a version is counted, so no verb, rotation included, decides alone.
+   */
   write(kind, id, doc) {
+    const before = this.#stored(kind, id);
     this.sql.exec('INSERT OR REPLACE INTO dir VALUES (?,?,?)', kind, id, JSON.stringify(doc));
+    if (!before || this.#visible(kind, before) !== this.#visible(kind, doc)) this.#bump();
     return doc;
+  }
+
+  // The identity's own record is live before any row exists for it, so a first write that leaves it
+  // live (a thaw of an identity that never rotated) changes nothing, as on the Go relay.
+  #stored(kind, id) {
+    return this.read(kind, id) ?? (kind === 'identity' ? { V: 1, identity: this.identity } : null);
+  }
+
+  // What the home list shows of a record: all of it, except that a lease shows only whether it is held,
+  // never when it runs out, so a heartbeat that moves the expiry alone is not a change (contract 21.4).
+  #visible(kind, doc) {
+    if (kind !== 'cells') return canonical(doc);
+    return canonical({ ...doc, lease: { ...doc.lease, expires: doc.lease.expires > this.clock() } });
+  }
+
+  /** #bump moves the durable version up by one in the turn that made the change, then tells every socket. */
+  #bump() {
+    this.version += 1;
+    this.sql.exec('UPDATE dirver SET n = ?', this.version);
+    this.watchers.broadcast(this.version);
   }
 
   /** swap moves one cell through a rule and answers {now, cell}; a refusing rule leaves it untouched. */
@@ -84,6 +120,7 @@ export class Directory {
     if (!record) throw refuse('not_found');
     if (id === caller) throw refuse('self_revoke');
     this.write('devices', id, { ...record, revoked: true });
+    this.watchers.closeDevice(id, CLOSE_REVOKED, 'revoked');
   }
 
   /** revoked says whether the identity's own record of this device has turned it away. */
@@ -92,7 +129,7 @@ export class Directory {
   }
 
   #identityRec() {
-    return this.read('identity', '') ?? { V: 1, identity: this.identity };
+    return this.#stored('identity', '');
   }
 
   setVault(old, next) {
@@ -108,6 +145,7 @@ export class Directory {
 
   setRotation(rotation) {
     this.write('identity', '', { ...this.#identityRec(), rotation });
+    if (rotation) this.watchers.closeAll(CLOSE_ROTATED, 'rotated');
   }
 
   /** list answers the whole Listing: the identity record, every device and every cell. */

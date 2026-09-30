@@ -11,7 +11,7 @@ import (
 // No id that is not "id_" plus 32 lowercase hex may become a path.
 func TestNamespacesRefuseIdsThatAreNotIdentities(t *testing.T) {
 	root := t.TempDir()
-	n := newNamespaces(root, time.Now, directory.GraceBounds{})
+	n := newNamespaces(root, time.Now, directory.GraceBounds{}, 0)
 	defer n.Close()
 	for _, id := range []string{
 		"", "../escape", "id_../../etc", "id_" + "0123456789abcdef0123456789abcde", // one short

@@ -42,6 +42,9 @@ type recorder struct {
 	c *call
 }
 
+// Unwrap lets the upgrade to a WebSocket reach the real connection.
+func (w *recorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func (w *recorder) WriteHeader(status int) {
 	w.c.status = status
 	w.ResponseWriter.WriteHeader(status)
