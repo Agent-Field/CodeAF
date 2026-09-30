@@ -145,6 +145,21 @@ def mechanical_evidence(repo, paths):
     return evidence
 
 
+def scope_prefixes(prefixes):
+    """Normalize a scope path-prefix list. An empty prefix, '.', or './' is the
+    author writing 'no path restriction' — dropping it is what makes that true,
+    because a bare startswith('') matches every path and a literal './' matches
+    none (patch paths never carry the './'). Any other prefix is used verbatim,
+    with a leading './' stripped so './src/' and 'src/' mean the same thing."""
+    out = []
+    for p in prefixes or []:
+        p = p.strip()
+        if p in ("", ".", "./"):
+            continue
+        out.append(p[2:] if p.startswith("./") else p)
+    return out
+
+
 def scope_check(patch_path, spec, repo):
     """Scope: files, size and meaning limits, computed off the patch itself.
     The patch's paths are read against allowed/forbidden prefixes; the changed
@@ -170,8 +185,8 @@ def scope_check(patch_path, spec, repo):
         reasons.append(f"{len(files)} files changed, limit {spec['max_files']}")
     if added + removed > spec.get("max_changed_lines", 10**9):
         reasons.append(f"{added + removed} changed lines, limit {spec['max_changed_lines']}")
-    allowed = spec.get("allowed_paths") or []
-    forbidden = spec.get("forbidden_paths") or []
+    allowed = scope_prefixes(spec.get("allowed_paths"))
+    forbidden = scope_prefixes(spec.get("forbidden_paths"))
     for path in sorted(files):
         if any(path.startswith(f) for f in forbidden):
             reasons.append(f"touches forbidden path {path}")
