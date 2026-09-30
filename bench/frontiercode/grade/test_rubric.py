@@ -132,11 +132,11 @@ class OverlayApplyTests(unittest.TestCase):
         self.assertEqual(note, "applied")
 
     def test_reverse_check_when_already_in_tree(self):
-        # A gold tree already carries the reference test.
-        code, out = rubric.sh(f"git apply --whitespace=nowarn '{self.r.overlay}'",
+        # A tree that already carries the reference change.
+        code, out = rubric.sh(f"git apply --whitespace=nowarn '{self.r.mod_overlay}'",
                               cwd=self.r.repo)
         self.assertEqual(code, 0, out)
-        ok, note = rubric.apply_overlay_idempotent(self.r.repo, str(self.r.overlay))
+        ok, note = rubric.apply_overlay_idempotent(self.r.repo, str(self.r.mod_overlay))
         self.assertTrue(ok, note)
         self.assertIn("already in the tree", note)
 
