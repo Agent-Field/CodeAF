@@ -171,8 +171,8 @@ func TestALandedListKeepsTheFilterAndSaysWhatIsNew(t *testing.T) {
 		t.Fatalf("the landed list ranked to %v, want every gpt row", ids)
 	}
 	// A landed list is a fresh list, shown from its top: the cursor rests on the
-// first ranked row ([picker.cursorToFirst]), and the model in use keeps its
-// mark wherever it now sits.
+	// first ranked row ([picker.cursorToFirst]), and the model in use keeps its
+	// mark wherever it now sits.
 	if chosen, _ := a.pick.choice(); chosen.ID != "gpt-5-classic" {
 		t.Fatalf("the cursor landed on %q, want the landed list's first row", chosen.ID)
 	}
