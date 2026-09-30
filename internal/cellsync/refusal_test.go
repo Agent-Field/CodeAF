@@ -20,7 +20,7 @@ func refused(t *testing.T, r *rig, err error) (*Batcher, *[]string) {
 	var told []string
 	b.OnError = func(e error) {
 		row, _ := RefusalOf(e)
-		told = append(told, row.Line)
+		told = append(told, row.Say(e))
 	}
 	r.publishFirst(map[string]string{"a": "0"})
 	note(b, r.seal(map[string]string{"a": "1"}))
@@ -42,7 +42,7 @@ func TestAFullRelayIsToldAtOnceAndNotRetried(t *testing.T) {
 		t.Fatalf("wait after a full relay = %v, want a halt of %v", d, MaxHalt)
 	}
 	b.flush(context.Background())
-	if len(*told) != 1 || (*told)[0] != chatlist.RelayFull {
+	if len(*told) != 1 || (*told)[0] != chatlist.RelayFull(0) {
 		t.Fatalf("told %q, want the full sentence once", *told)
 	}
 }
@@ -129,10 +129,11 @@ func TestAnUnreachableRelayIsNotARefusal(t *testing.T) {
 func TestEveryRefusalHasOneSentenceAndOneSentinel(t *testing.T) {
 	lines := map[string]bool{}
 	for _, r := range refusals {
-		if r.Line == "" || lines[r.Line] {
-			t.Errorf("refusal %v has an empty or repeated sentence %q", r.Is, r.Line)
+		line := r.Say(r.Is)
+		if line == "" || lines[line] {
+			t.Errorf("refusal %v has an empty or repeated sentence %q", r.Is, line)
 		}
-		lines[r.Line] = true
+		lines[line] = true
 	}
 }
 
@@ -147,5 +148,14 @@ func TestARecoveredRelayMakesTheNextRefusalNews(t *testing.T) {
 	b.flush(context.Background())
 	if len(*told) != 2 {
 		t.Fatalf("told %q, want the full sentence again after a recovery", *told)
+	}
+}
+
+func TestAFullRelayNamesItsCeilingWhenItToldUsOne(t *testing.T) {
+	r := newRig(t)
+	b, told := refused(t, r, blobstore.Capped(blobstore.ErrFull, 5<<30))
+	b.flush(context.Background())
+	if len(*told) != 1 || (*told)[0] != chatlist.RelayFull(5<<30) {
+		t.Fatalf("told %q, want the full sentence naming 5 GiB", *told)
 	}
 }

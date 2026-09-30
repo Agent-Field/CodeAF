@@ -456,11 +456,12 @@ func stopDaemons(t *testing.T) {
 // Each refusal the relay can make reaches the chat as its one sentence.
 func TestARefusalReachesTheChatAsItsSentence(t *testing.T) {
 	for err, want := range map[error]string{
-		blobstore.ErrFull:             chatlist.RelayFull,
-		wireauth.ErrRevoked:           chatlist.Removed,
-		wireauth.ErrSkew:              chatlist.ClockOff,
-		wireauth.ErrRateLimited:       chatlist.SlowDown,
-		wireauth.ErrTooManyIdentities: chatlist.TooManyNew,
+		blobstore.ErrFull:                          chatlist.RelayFull(0),
+		blobstore.Capped(blobstore.ErrFull, 5<<30): chatlist.RelayFull(5 << 30),
+		wireauth.ErrRevoked:                        chatlist.Removed,
+		wireauth.ErrSkew:                           chatlist.ClockOff,
+		wireauth.ErrRateLimited:                    chatlist.SlowDown,
+		wireauth.ErrTooManyIdentities:              chatlist.TooManyNew,
 	} {
 		var said []string
 		d := &Drive{opt: DriveOptions{OnNotice: func(l string) { said = append(said, l) }}}

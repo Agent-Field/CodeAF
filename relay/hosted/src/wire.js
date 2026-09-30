@@ -8,11 +8,12 @@ import { RuleError } from './rules.js';
 import { Conflict, Damaged } from './store.js';
 
 export class Wire extends Error {
-  constructor(code, status, retryAfter) {
+  constructor(code, status, retryAfter, limitBytes) {
     super(code);
     this.code = code;
     this.status = status;
     this.retryAfter = retryAfter; // seconds, for a refusal that time cures
+    this.limitBytes = limitBytes; // the byte ceiling, for a refusal that names one
   }
 }
 
@@ -20,7 +21,8 @@ export class Wire extends Error {
 export const notFound = () => new Wire('not_found', 404);
 export const badRequest = () => new Wire('bad_request', 400);
 export const rateLimited = (seconds) => new Wire('rate_limited', 429, seconds);
-export const full = () => new Wire('full', 507);
+/** full is 507; limitBytes, when the stored-bytes ceiling is what was hit, is told to the client so it can say how big the ceiling is. */
+export const full = (limitBytes) => new Wire('full', 507, undefined, limitBytes);
 export const tooManyIdentities = (seconds) => new Wire('too_many_identities', 429, seconds);
 
 // The IP is the socket peer as Cloudflare reports it (CF-Connecting-IP). A request without one shares a single
@@ -53,7 +55,7 @@ export const json = (value, status = 200) =>
 export const empty = () => new Response(null, { status: 204 });
 
 function refusal(w) {
-  const res = json({ err: w.code }, w.status);
+  const res = json({ err: w.code, ...(w.limitBytes && { limit_bytes: w.limitBytes }) }, w.status);
   if (w.retryAfter) res.headers.set('retry-after', String(Math.ceil(w.retryAfter)));
   return res;
 }
@@ -80,12 +82,12 @@ export async function guarded(fn) {
   try {
     return { ok: await fn() };
   } catch (e) {
-    const { code, status, retryAfter } = wireOf(e);
-    return { err: code, status, retryAfter };
+    const { code, status, retryAfter, limitBytes } = wireOf(e);
+    return { err: code, status, retryAfter, limitBytes };
   }
 }
 
 export function unwrap(answer) {
-  if ('err' in answer) throw new Wire(answer.err, answer.status, answer.retryAfter);
+  if ('err' in answer) throw new Wire(answer.err, answer.status, answer.retryAfter, answer.limitBytes);
   return answer.ok;
 }

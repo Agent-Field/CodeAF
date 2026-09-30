@@ -299,15 +299,27 @@ func TestHTTPRateLimitKeepsRetryAfter(t *testing.T) {
 }
 
 // The relay's 507 is the client's ErrFull, with no wait attached.
-func TestHTTPFullIs507WithoutAWait(t *testing.T) {
+func TestHTTPFullIs507WithItsCeilingAndNoWait(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInsufficientStorage)
-		_, _ = w.Write([]byte(`{"err":"full"}`))
+		_, _ = w.Write([]byte(`{"err":"full","limit_bytes":5368709120}`))
 	}))
 	defer srv.Close()
 	c := blobstore.NewHTTP(srv.URL, fakeSign("alice"), srv.Client())
 	_, err := c.Has(context.Background(), nil)
-	if !errors.Is(err, blobstore.ErrFull) || wireauth.After(err) != 0 {
-		t.Fatalf("Has = %v (after %v), want ErrFull and no wait", err, wireauth.After(err))
+	if !errors.Is(err, blobstore.ErrFull) || wireauth.After(err) != 0 || blobstore.LimitOf(err) != 5<<30 {
+		t.Fatalf("Has = %v (after %v, limit %d), want ErrFull, no wait and the 5 GiB ceiling", err, wireauth.After(err), blobstore.LimitOf(err))
+	}
+}
+
+// A handler whose store names a ceiling sends it in the 507 body, and one whose store does not sends no number.
+func TestHandlerFullCarriesTheCeilingOnlyWhenTheStoreNamedOne(t *testing.T) {
+	for limit, want := range map[int64]int64{5 << 30: 5 << 30, 0: 0} {
+		g := newRig(t)
+		g.memory("alice").FailAfter(0, blobstore.Capped(blobstore.ErrFull, limit))
+		_, err := g.client("alice").Get(context.Background(), strings.Repeat("a", 64))
+		if !errors.Is(err, blobstore.ErrFull) || blobstore.LimitOf(err) != want {
+			t.Errorf("limit %d: Get = %v (limit %d), want ErrFull with ceiling %d", limit, err, blobstore.LimitOf(err), want)
+		}
 	}
 }
