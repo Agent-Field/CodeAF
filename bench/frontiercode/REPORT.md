@@ -364,3 +364,9 @@ test-laws`, `make test-quick` and `make changelog-check` — all pass.
 prompt verdicts; no new judge call was made, so a prompt criterion's verdict is
 the pinned judge's original, not a re-ask. No new agent rollout, cloud VM, key
 change or baseline campaign was run.
+
+**Cost.** No provider spend in this change: no judge call and no rollout. The
+corrected regrade and the smoke reproduction ran in the locally cached verifier
+image. The campaign's own cost is unchanged from above (harness $0.2928 over the
+15 rollouts; provider key delta $1.2299, which includes the discarded first
+wave).
