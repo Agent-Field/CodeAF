@@ -179,6 +179,11 @@ func taskPersonTitle(brief string) string {
 	if len(words) > 8 {
 		words = words[:8]
 	}
+	// The byte ceiling applies before the phrase boundary: otherwise a long
+	// remaining word is cut after the glue was already removed.
+	for len(words) > 1 && len(strings.Join(words, " ")) > titleLimit {
+		words = words[:len(words)-1]
+	}
 	for len(words) > 1 && taskTitleGlue[strings.ToLower(words[len(words)-1])] {
 		words = words[:len(words)-1]
 	}
