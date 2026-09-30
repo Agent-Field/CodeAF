@@ -56,6 +56,7 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.Restart = restart
 	}
 	wireSync(&options)
+	options.Pairing = pairDoor{}
 	options.UpdateRunning = revision
 	options.UpdateCurl = curl
 	options.UpdateArgs = surfaceArguments()

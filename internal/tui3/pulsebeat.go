@@ -75,6 +75,12 @@ func (a *app) pulseBeat() tea.Cmd {
 	// this surface already pays for, on the loop, where the fourth law says a
 	// reading belongs (learned.go's [app.refreshLearning]).
 	a.refreshLearning()
+	// THE PAIRING PANEL'S COUNTDOWN RIDES THIS BEAT rather than a timer of its
+	// own: it counts in whole minutes, and a figure ten seconds old is as true as
+	// that needs (pair.go).
+	if a.pair.open {
+		a.touch()
+	}
 	if a.at(pageHome) {
 		return pulseTick()
 	}

@@ -604,6 +604,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.permPanelKey(msg)
 	}
 
+	// And the pairing panel, on the same terms (pair.go): opened by a command,
+	// nothing typed under it, and while it asks a question the only keys it reads
+	// are the answer and esc.
+	if a.pair.open && msg.String() != "ctrl+c" {
+		return a.pairKey(msg)
+	}
+
 	// And /subharness, which is those panels' twin in every respect that matters
 	// here: opened by a command, nothing being typed under it, and esc leaving
 	// the conversation exactly as it was (subharness.go). Being modal is what

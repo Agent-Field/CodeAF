@@ -445,6 +445,10 @@ type Options struct {
 	// that cannot, and the offer is then absent rather than failing
 	// (homepanel_continue.go).
 	Takeover Taker
+	// Pairing shares this computer's chats with another, and receives another's
+	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
+	// sentence while the first-run screen leaves its code field out.
+	Pairing Pairing
 	// Branches is what a branch row can do. A nil verb is absent from the row.
 	Branches BranchActions
 	// Notices is the desk a goroutine outside the surface puts a sentence on
