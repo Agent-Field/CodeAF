@@ -40,6 +40,8 @@ func (h *handler) watch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer sub.Close()
+	// Accept keeps the headers set on w, so this one rides the 101 answer.
+	w.Header().Set(VouchHeader, "1")
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		return
@@ -47,6 +49,11 @@ func (h *handler) watch(w http.ResponseWriter, r *http.Request) {
 	conn.SetReadLimit(watchRead)
 	serveWatch(r.Context(), conn, sub, c.device)
 }
+
+// VouchHeader on the 101 answer says this relay counts a watch socket that
+// names a hold as proof its holder is alive (contract 21.11.1). A client that
+// does not see it keeps beating.
+const VouchHeader = "Codeaf-Vouch"
 
 // subscribe applies every refusal that precedes the upgrade and takes a place
 // under the identity's cap. An identity that is replaced can only ever be
@@ -66,7 +73,11 @@ func subscribe(c call) (*Sub, error) {
 	case st.Rotation != nil:
 		return nil, ErrRotated
 	}
-	return feed.Feed().Subscribe()
+	holds, err := ParseHolds(c.r.URL.Query()["hold"])
+	if err != nil {
+		return nil, err
+	}
+	return feed.Feed().Subscribe(c.device, holds)
 }
 
 func isUpgrade(r *http.Request) bool {
@@ -81,7 +92,7 @@ func serveWatch(ctx context.Context, conn *websocket.Conn, sub *Sub, device stri
 	defer cancel()
 	go func() {
 		defer cancel()
-		answerPings(ctx, conn)
+		answerPings(ctx, conn, sub)
 	}()
 	conn.Close(tell(ctx, conn, sub, device))
 }
@@ -127,13 +138,16 @@ func sendVersion(ctx context.Context, conn *websocket.Conn, v uint64) error {
 	return sendText(ctx, conn, fmt.Sprintf(`{"v":%d}`, v))
 }
 
-func answerPings(ctx context.Context, conn *websocket.Conn) {
+// answerPings answers each ping, stamping the socket's sign of life first so a
+// peer that has heard the pong can rely on it.
+func answerPings(ctx context.Context, conn *websocket.Conn, sub *Sub) {
 	for {
 		kind, msg, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
 		if kind == websocket.MessageText && string(msg) == "ping" {
+			sub.Ping()
 			if sendText(ctx, conn, "pong") != nil {
 				return
 			}

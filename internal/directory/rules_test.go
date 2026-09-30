@@ -2,6 +2,7 @@ package directory
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -181,5 +182,46 @@ func TestCreated(t *testing.T) {
 	if got.Lease != want || got.DurableAt != now || got.Head != head1 || got.V != 1 ||
 		got.ParentCell != "p" || got.Title != "t" || got.OrphanTurns != 2 || got.Size != 3 {
 		t.Fatalf("cell = %+v", got)
+	}
+}
+
+// Lifted raises a live lease's expiry to the vouched time and does nothing
+// else: a released lease stays released, an earlier vouch changes nothing, and
+// the rest of the cell is untouched.
+func TestLiftedRaisesOnlyALiveLease(t *testing.T) {
+	held := Cell{Head: "h", Lease: Lease{Device: "d", Fence: 3, Expires: 1000, Pending: 2}}
+	for _, tc := range []struct {
+		name    string
+		in      Cell
+		vouched int64
+		want    int64
+	}{
+		{"later vouch lifts", held, 5000, 5000},
+		{"no evidence", held, 0, 1000},
+		{"earlier vouch", held, 400, 1000},
+		{"equal vouch", held, 1000, 1000},
+		{"released stays released", Cell{Lease: Lease{Device: "d", Fence: 3}}, 5000, 0},
+	} {
+		got := Lifted(tc.in, tc.vouched)
+		if got.Lease.Expires != tc.want {
+			t.Errorf("%s: expires %d, want %d", tc.name, got.Lease.Expires, tc.want)
+		}
+		want := tc.in
+		want.Lease.Expires = tc.want
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: lifted changed more than the expiry: %+v", tc.name, got)
+		}
+	}
+}
+
+// The lifted cell is what Acquire reads: a vouched lease refuses another device
+// after its stored expiry, and an unvouched one does not.
+func TestAcquireReadsTheLiftedLease(t *testing.T) {
+	c := Cell{Lease: Lease{Device: "a", Fence: 1, Expires: 1000}}
+	if _, err := Acquire(Lifted(c, 5000), "b", 2000, false); err != ErrLeaseHeld {
+		t.Fatalf("acquire over a vouched lease: %v, want lease_held", err)
+	}
+	if _, err := Acquire(Lifted(c, 0), "b", 2000, false); err != nil {
+		t.Fatalf("acquire over a lapsed lease: %v", err)
 	}
 }
