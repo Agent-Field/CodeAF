@@ -79,6 +79,7 @@ func (p *Publisher) Upload(ctx context.Context, c cell.Cell, head string) (Expor
 	if err != nil {
 		return Export{}, err
 	}
+	ex = p.skipHeld(ctx, c, ex)
 	paths := make([]string, len(ex.Frames))
 	for i, f := range ex.Frames {
 		if err := p.put(ctx, f); err != nil {

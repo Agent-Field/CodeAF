@@ -13,6 +13,8 @@ func TestNarrowNamesOnlyWhatAPersonCanAct(t *testing.T) {
 	for _, tc := range []struct{ in, want error }{
 		{ErrSkew, ErrSkew},
 		{ErrRevoked, ErrRevoked},
+		{ErrGone, ErrGone},
+		{fmt.Errorf("wrapped: %w", ErrGone), ErrGone},
 		{fmt.Errorf("wrapped: %w", ErrRevoked), ErrRevoked},
 		{ErrUnauthorized, ErrUnauthorized},
 		{other, ErrUnauthorized},

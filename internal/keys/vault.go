@@ -248,7 +248,27 @@ func (v *Vault) read() (*vaultDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	return openDoc(v.key, blob)
+	d, err := openDoc(v.key, blob)
+	if errors.Is(err, ErrOtherKey) && v.adoptStaged() {
+		return v.read()
+	}
+	return d, err
+}
+
+// adoptStaged finishes a reseal that stopped between the identity changing and
+// the vault following it: a staged vault that opens under this key replaces the
+// live one. It answers whether it did, so a vault that is simply another
+// identity's is left alone and reported as it is.
+func (v *Vault) adoptStaged() bool {
+	next := filepath.Join(filepath.Dir(v.path), nextFile)
+	blob, err := os.ReadFile(next)
+	if err != nil {
+		return false
+	}
+	if _, err := open(v.key, blob); err != nil {
+		return false
+	}
+	return os.Rename(next, v.path) == nil
 }
 
 // openDoc opens a sealed vault envelope and decodes the document inside.

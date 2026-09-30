@@ -35,12 +35,14 @@ const tests = {
     assert.equal((await put(dev, frame([rid(1)], 'x'.repeat(2000)))).status, 200);
     const over = await put(dev, frame([rid(2)], 'y'.repeat(2000)));
     assert.deepEqual([over.status, answerOf(over)], [507, 'full']);
+    assert.ok(over.json.limit_bytes > 0, 'the 507 body names the byte ceiling');
   },
 
   async StoredObjects() {
     const dev = await fresh();
     const over = await put(dev, frame(Array.from({ length: 13 }, (_, i) => rid(i + 1))));
     assert.deepEqual([over.status, answerOf(over)], [507, 'full']);
+    assert.equal(over.json.limit_bytes, undefined, 'an object ceiling names no byte number');
     assert.equal((await put(dev, frame(Array.from({ length: 12 }, (_, i) => rid(i + 1))))).status, 200);
   },
 

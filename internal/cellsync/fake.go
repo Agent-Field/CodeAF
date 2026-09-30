@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -124,6 +125,20 @@ type FakeEngine struct {
 // NewFakeEngine returns an engine that keeps its frame files under dir.
 func NewFakeEngine(dir string) *FakeEngine {
 	return &FakeEngine{Dir: dir, cells: map[string]*fakeCell{}}
+}
+
+// Ledger returns an engine over the same local objects that has published
+// nothing: what a device's store looks like to a second identity, whose ledger
+// starts empty. Frames go under dir.
+func (f *FakeEngine) Ledger(dir string) *FakeEngine {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	other := NewFakeEngine(dir)
+	other.MaxObjects = f.MaxObjects
+	for id, fc := range f.cells {
+		other.cells[id] = &fakeCell{objects: maps.Clone(fc.objects), published: map[string]bool{}, last: fc.last}
+	}
+	return other
 }
 
 func (f *FakeEngine) cell(c cell.Cell) *fakeCell {

@@ -17,6 +17,13 @@ type Memory struct {
 	identity IdentityRec
 	devices  map[string]Device
 	cells    map[string]Cell
+	grace    GraceBounds
+
+	// version counts the changes a person could see, and feed tells watchers of
+	// each. Only set and its two siblings move the first, and only locked
+	// publishes, so no verb can change a record without both.
+	version uint64
+	feed    *Feed
 }
 
 // NewMemory returns an empty directory that reads time from clock.
@@ -26,7 +33,54 @@ func NewMemory(clock func() time.Time) *Memory {
 		identity: IdentityRec{V: 1},
 		devices:  map[string]Device{},
 		cells:    map[string]Cell{},
+		grace:    DefaultGraceBounds,
+		feed:     NewFeed(),
 	}
+}
+
+var _ Watchable = (*Memory)(nil)
+
+// Feed is how a watcher hears of changes.
+func (m *Memory) Feed() *Feed { return m.feed }
+
+// SetMaxWatchers changes the per-identity watcher cap.
+func (m *Memory) SetMaxWatchers(n int) { m.feed.SetMaxWatchers(n) }
+
+// Close ends every watch.
+func (m *Memory) Close() error {
+	m.feed.Close()
+	return nil
+}
+
+// set stores next under id and counts the change when a person could see it.
+// The caller holds the lock.
+func set[T any](m *Memory, table map[string]T, id string, next T) {
+	old, had := table[id]
+	m.count(!had || differs(old, next, m.now()))
+	table[id] = next
+}
+
+// setIdentity is set for the one identity record.
+func (m *Memory) setIdentity(next IdentityRec) {
+	m.count(differs(m.identity, next, m.now()))
+	m.identity = next
+}
+
+func (m *Memory) count(changed bool) {
+	if changed {
+		m.version++
+	}
+}
+
+// publish tells watchers the directory is now at its current version.
+func (m *Memory) publish() { m.feed.Publish(statusOf(m.version, m.identity, m.devices)) }
+
+// SetGraceBounds changes what a retire may ask for; a test or a relay that
+// wants a short grace says so once, here.
+func (m *Memory) SetGraceBounds(b GraceBounds) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.grace = b
 }
 
 // For returns the Client that device would hold: every write it makes is made
@@ -52,7 +106,7 @@ func (m *Memory) change(id string, fn func(Cell, int64) (Cell, error)) (CellView
 	if err != nil {
 		return CellView{}, err
 	}
-	m.cells[id] = next
+	set(m, m.cells, id, next)
 	return CellView{Now: now, Cell: copyCell(next)}, nil
 }
 
@@ -65,12 +119,28 @@ func (c *memoryClient) locked(fn func() error) error {
 	if c.m.devices[c.device].Revoked {
 		return ErrRevoked
 	}
-	return fn()
+	before := c.m.version
+	err := fn()
+	if c.m.version != before {
+		c.m.publish()
+	}
+	return err
+}
+
+// writing is locked for a verb that changes a record: a replaced identity
+// refuses it, which makes "read-only after a rotation" a fact of one line.
+func (c *memoryClient) writing(fn func() error) error {
+	return c.locked(func() error {
+		if err := refusesWrites(c.m.identity); err != nil {
+			return err
+		}
+		return fn()
+	})
 }
 
 // changed is change under the lock, for the calling device.
 func (c *memoryClient) changed(id string, fn func(Cell, int64) (Cell, error)) (v CellView, err error) {
-	err = c.locked(func() (err error) {
+	err = c.writing(func() (err error) {
 		v, err = c.m.change(id, fn)
 		return err
 	})
@@ -80,7 +150,7 @@ func (c *memoryClient) changed(id string, fn func(Cell, int64) (Cell, error)) (v
 func (c *memoryClient) List(context.Context) (l Listing, err error) {
 	err = c.locked(func() error {
 		l = Listing{
-			Now: c.m.now(), Identity: c.m.identity,
+			Now: c.m.now(), Identity: c.m.identity, Version: c.m.version,
 			Devices: maps.Clone(c.m.devices), Cells: map[string]Cell{},
 		}
 		for id, cell := range c.m.cells {
@@ -91,52 +161,83 @@ func (c *memoryClient) List(context.Context) (l Listing, err error) {
 	return l, err
 }
 
-func (c *memoryClient) Cell(_ context.Context, id string) (CellView, error) {
-	return c.changed(id, func(cell Cell, _ int64) (Cell, error) { return cell, nil })
+func (c *memoryClient) Cell(_ context.Context, id string) (v CellView, err error) {
+	err = c.locked(func() error {
+		cell, ok := c.m.cells[id]
+		if !ok {
+			return ErrNotFound
+		}
+		v = CellView{Now: c.m.now(), Cell: copyCell(cell)}
+		return nil
+	})
+	return v, err
+}
+
+func (c *memoryClient) Rotate(_ context.Context, req RotationReq) (v RotationView, err error) {
+	err = c.locked(func() error {
+		rec, err := RotateBy(c.m.identity, c.device, req, c.m.now(), c.m.grace)
+		if err != nil {
+			return err
+		}
+		c.m.setIdentity(rec)
+		v = viewOf(rec, c.m.now(), c.m.grace)
+		return nil
+	})
+	return v, err
+}
+
+func (c *memoryClient) Rotation(context.Context) (v RotationView, err error) {
+	err = c.locked(func() error {
+		v = viewOf(c.m.identity, c.m.now(), c.m.grace)
+		return nil
+	})
+	return v, err
 }
 
 // PutDevice keeps the stored Revoked flag whatever the record says, so the
 // only way to stop a device is Revoke and a device cannot clear its own stop.
 func (c *memoryClient) PutDevice(_ context.Context, id string, d Device) error {
-	return c.locked(func() error {
+	return c.writing(func() error {
 		d.Revoked = c.m.devices[id].Revoked
-		c.m.devices[id] = d
+		set(c.m, c.m.devices, id, d)
 		return nil
 	})
 }
 
 func (c *memoryClient) Revoke(_ context.Context, id string) error {
-	return c.locked(func() error {
+	return c.writing(func() error {
 		d, ok := c.m.devices[id]
 		if !ok {
 			return ErrNotFound
 		}
 		d, err := RevokeOf(d, c.device, id)
 		if err == nil {
-			c.m.devices[id] = d
+			set(c.m, c.m.devices, id, d)
 		}
 		return err
 	})
 }
 
 func (c *memoryClient) SetVault(_ context.Context, old, next string) error {
-	return c.locked(func() error {
+	return c.writing(func() error {
 		if c.m.identity.Vault != old {
 			return ErrCAS
 		}
-		c.m.identity.Vault = next
+		rec := c.m.identity
+		rec.Vault = next
+		c.m.setIdentity(rec)
 		return nil
 	})
 }
 
 func (c *memoryClient) Create(_ context.Context, id string, in CellInit) (v CellView, err error) {
-	err = c.locked(func() error {
+	err = c.writing(func() error {
 		if _, taken := c.m.cells[id]; taken {
 			return ErrExists
 		}
 		now := c.m.now()
 		cell := Created(in, c.device, now)
-		c.m.cells[id] = cell
+		set(c.m, c.m.cells, id, cell)
 		v = CellView{Now: now, Cell: copyCell(cell)}
 		return nil
 	})

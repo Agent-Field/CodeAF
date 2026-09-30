@@ -41,6 +41,24 @@ type Source interface {
 	Rows(ctx context.Context) ([]Row, error)
 }
 
+// Versioned is a Source that can also say which directory version its answer
+// was read at, so a screen following the change feed can tell a frame it has
+// already read past from one that is news.
+type Versioned interface {
+	Source
+	RowsAt(ctx context.Context) ([]Row, uint64, error)
+}
+
+// RowsAt reads src and reports the version it was read at, or 0 when the
+// source does not keep versions.
+func RowsAt(ctx context.Context, src Source) ([]Row, uint64, error) {
+	if v, ok := src.(Versioned); ok {
+		return v.RowsAt(ctx)
+	}
+	rows, err := src.Rows(ctx)
+	return rows, 0, err
+}
+
 // Static is the fake Source: it always answers with itself.
 type Static []Row
 

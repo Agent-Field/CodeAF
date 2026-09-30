@@ -37,14 +37,15 @@ test('quota refuses a frame past the byte ceiling with one clear code, and count
   q.admit(frame(60), 0);
   q.record(frame(60), 0);
   const e = refusal(() => q.admit(frame(60), 0));
-  assert.deepEqual([e.code, e.status], ['full', 507]);
+  assert.deepEqual([e.code, e.status, e.limitBytes], ['full', 507, 100]);
   q.admit(frame(40), 0);
 });
 
 test('quota refuses past the object ceiling', () => {
   const q = quota({ storeObjects: 3 });
   q.record(frame(1, 2), 0);
-  assert.equal(refusal(() => q.admit(frame(1, 2), 0)).code, 'full');
+  const e = refusal(() => q.admit(frame(1, 2), 0));
+  assert.deepEqual([e.code, e.limitBytes], ['full', undefined], 'an object ceiling names no byte number');
 });
 
 test('frames a day is counted per day and forgiven at the next one', () => {

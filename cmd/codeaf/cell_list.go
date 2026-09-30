@@ -8,8 +8,10 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // cellListAsk bounds one listing so a silent relay ends the command rather
@@ -34,6 +36,9 @@ func cellList(args []string, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), cellListAsk)
 	defer cancel()
 	rows, err := src.Rows(ctx)
+	if r, ok := cellsync.RefusalOf(err); ok && (errors.Is(err, wireauth.ErrRotated) || errors.Is(err, wireauth.ErrGone)) {
+		return errors.New(r.Say(err))
+	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", chatlist.Unreachable, err)
 	}

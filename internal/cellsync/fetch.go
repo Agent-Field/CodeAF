@@ -19,10 +19,19 @@ type Fetcher struct {
 	OnProgress func(have, want int) // optional; want grows as the graph is learned
 }
 
-// Fetch asks the engine what it lacks, gets those objects into the inbox and
-// imports them, until nothing is lacking, then materializes head. A rid the
+// Fetch completes head in the store and then materializes it. A rid the
 // store does not hold is an error that names it.
 func (f *Fetcher) Fetch(ctx context.Context, c cell.Cell, head string) error {
+	if err := f.Complete(ctx, c, head); err != nil {
+		return err
+	}
+	return f.Engine.Materialize(ctx, c, head)
+}
+
+// Complete is Fetch without the restore: everything head needs is in the
+// device's store afterwards and the folder the person works in is not touched.
+// It is how a device holds a chat's objects without taking the chat over.
+func (f *Fetcher) Complete(ctx context.Context, c cell.Cell, head string) error {
 	inbox := f.Inbox(c)
 	if err := os.MkdirAll(inbox, 0o700); err != nil {
 		return err
@@ -34,7 +43,7 @@ func (f *Fetcher) Fetch(ctx context.Context, c cell.Cell, head string) error {
 			return err
 		}
 		if len(want) == 0 {
-			return f.Engine.Materialize(ctx, c, head)
+			return nil
 		}
 		known += len(want)
 		n, err := f.round(ctx, c, head, inbox, want)

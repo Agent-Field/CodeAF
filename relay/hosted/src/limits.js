@@ -16,6 +16,13 @@ export const DEFAULTS = {
   requestsPerMinutePerDevice: 600,
   statsFlushMs: 5_000, // how long a count may wait in memory before it is written (see stats.js)
   concurrentPuts: 2, // a 16 MiB frame costs the isolate 2 to 3 times its size while it arrives
+  // Rotation (contract 20.3): how long a retired identity stays readable before it is deleted.
+  // The minimum and the page size are the test hooks, like the self-hosted relay's --min-grace.
+  minGraceMs: 3_600_000,
+  maxGraceMs: 30 * 86_400_000,
+  defaultGraceMs: 7 * 86_400_000,
+  maxWatchers: 1_000, // directory watch sockets one identity may hold (contract 21.8); the Go relay's directory.MaxWatchers
+  sweepPageSize: 1_000, // R2 objects deleted per alarm turn (R2's own limit per list and per delete)
   // The whole relay, by caller IP: how many identities one address may bring in (contract 6: no accounts).
   newIdentitiesPerIpPerDay: 20,
   // The pairing mailbox (contract 18.4), for callers that have no identity yet.
@@ -76,13 +83,12 @@ export class Quota {
     return { ...row, frames: row.day === Math.floor(now / DAY_MS) ? row.frames : 0 };
   }
 
-  /** admit throws full when storing `frame` ({size, objects}) would pass a stored ceiling. */
+  /** admit throws full when storing `frame` ({size, objects}) would pass a stored ceiling, naming the byte ceiling when that is the one. */
   admit(frame, now) {
     const used = this.today(now);
-    const over =
-      used.frames + 1 > this.limits.framesPerDay ||
-      used.bytes + frame.size > this.limits.storeBytes ||
-      used.objects + frame.objects > this.limits.storeObjects;
+    // Only the byte ceiling is worth telling the person: it is the one they can reason about, so it alone rides in the body.
+    if (used.bytes + frame.size > this.limits.storeBytes) throw full(this.limits.storeBytes);
+    const over = used.frames + 1 > this.limits.framesPerDay || used.objects + frame.objects > this.limits.storeObjects;
     if (over) throw full();
   }
 

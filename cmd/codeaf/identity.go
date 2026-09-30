@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -14,7 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
-const identityUsage = "usage: codeaf identity show | codeaf identity export [<file>] | codeaf identity import [--replace] <file>"
+const identityUsage = "usage: codeaf identity show | codeaf identity export [<file>] | codeaf identity import [--replace] <file> | codeaf identity rotate [--grace 7d] [--yes] [--abandon]"
 
 // identityDoor is what a verb may touch: the codeaf home, where it writes, and
 // how a passphrase is asked for (with a second entry when it is being chosen).
@@ -22,6 +23,11 @@ type identityDoor struct {
 	home       string
 	out        io.Writer
 	passphrase func(confirm bool) (string, error)
+	// in is where a yes or no is read, and rotation opens the rotation of this
+	// computer's identity; only `rotate` uses them.
+	in       io.Reader
+	rotation rotationFactory
+	now      func() time.Time
 }
 
 // identityVerbs maps the word after `identity` to what it does.
@@ -29,6 +35,7 @@ var identityVerbs = map[string]func(d identityDoor, args []string) error{
 	"show":   identityShow,
 	"export": identityExport,
 	"import": identityImport,
+	"rotate": identityRotate,
 }
 
 // runIdentity is the door onto the person's identity. Like `cell` it is
@@ -37,7 +44,7 @@ func runIdentity(args []string) error {
 	if !cell.Enabled() {
 		return errors.New("codeaf identity needs CODEAF_CELLS=1")
 	}
-	return runIdentityAt(args, identityDoor{home: home.Dir(), out: os.Stdout, passphrase: askPassphrase})
+	return runIdentityAt(args, identityDoor{home: home.Dir(), out: os.Stdout, passphrase: askPassphrase, in: os.Stdin, rotation: realRotation, now: time.Now})
 }
 
 func runIdentityAt(args []string, d identityDoor) error {
