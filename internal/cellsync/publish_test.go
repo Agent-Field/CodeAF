@@ -3,6 +3,7 @@ package cellsync
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -153,5 +154,33 @@ func TestTwoDevicesRaceAfterLeaseExpiry(t *testing.T) {
 		if pubErr == nil && got.Head != h2 || pubErr != nil && (!errors.Is(pubErr, ErrSuperseded) || got.Head != h1) {
 			t.Fatalf("run %d: publish %v left head %s", i, pubErr, got.Head)
 		}
+	}
+}
+
+// A device that took a chat holds objects the relay already has. Publishing a
+// small edit on top of them must send the edit alone, not the chat again.
+func TestPublishAfterTakeSendsOnlyTheEdit(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	big := strings.Repeat("x", 64<<10)
+	head := r.publishFirst(map[string]string{"big": big})
+
+	f, c := fetcherFor(t, r.mem)
+	if err := f.Fetch(ctx, c, head); err != nil {
+		t.Fatal(err)
+	}
+	engB := f.Engine.(*FakeEngine)
+	edited := engB.Seal(c, map[string]string{"big": big, "note": "edit"})
+
+	var counters blobstore.Counters
+	pub := &Publisher{Engine: engB, Store: blobstore.Counting{Inner: r.mem, C: &counters}, Dir: r.dirA}
+	if _, err := pub.Upload(ctx, c, edited); err != nil {
+		t.Fatal(err)
+	}
+	if got := counters.ObjectsUp.Load(); got != 2 {
+		t.Fatalf("sent %d objects, want the edit's blob and its snapshot", got)
+	}
+	if got := counters.BytesUp.Load(); got >= int64(len(big)) {
+		t.Fatalf("sent %d bytes, the size of the chat taken (%d) or more", got, len(big))
 	}
 }

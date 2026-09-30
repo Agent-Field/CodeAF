@@ -316,6 +316,8 @@ func (f *FakeEngine) Import(_ context.Context, c cell.Cell, head, inbox string) 
 	}
 	for rid, raw := range files {
 		fc.objects[rid] = raw
+		// What the store handed over is in the store, so it is never sent back.
+		fc.published[rid] = true
 		if err := os.Remove(filepath.Join(inbox, rid)); err != nil {
 			return 0, err
 		}

@@ -29,6 +29,10 @@ type Local interface {
 	Dirty(ctx context.Context, c cell.Cell) (bool, error)
 	// Seal seals the tree as a local turn.
 	Seal(ctx context.Context, c cell.Cell) (head string, turns uint32, err error)
+	// Follow says the tree restored at from was moved to be the tree of to. The
+	// engine knows a tree by its path, so a tree moved into place unannounced
+	// is one it has never heard of, and cannot tell whether it holds edits.
+	Follow(ctx context.Context, from, to cell.Cell) error
 }
 
 // Taker continues a chat on this device.
@@ -131,7 +135,7 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
 	head, fence, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
 	if err == nil {
-		if err = t.install(ctx, stage.Root, c, head); err != nil {
+		if err = t.install(ctx, stage, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
 		}
 	}
@@ -182,14 +186,24 @@ func freshDir(dir string) error {
 // restored in place: everything it needs is already in the store from the
 // staging fetch, so this is only the engine's restore to that tree, and the
 // staging folder is dropped. A copy is replaced by the staging folder.
-func (t Taker) install(ctx context.Context, stage string, c cell.Cell, head string) error {
+func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) error {
 	if t.InPlace == nil || !t.InPlace(c) {
-		return swap(stage, c.Root)
+		return t.replace(ctx, stage, c)
 	}
 	if err := t.Fetch.Fetch(ctx, c, head); err != nil {
 		return err
 	}
-	return os.RemoveAll(stage)
+	return os.RemoveAll(stage.Root)
+}
+
+// replace puts the staging folder in place of c's root and tells the engine the
+// tree moved, so a chat that is taken again before it is ever opened is still
+// known to the engine.
+func (t Taker) replace(ctx context.Context, stage, c cell.Cell) error {
+	if err := swap(stage.Root, c.Root); err != nil {
+		return err
+	}
+	return t.Local.Follow(ctx, stage, c)
 }
 
 // swap puts stage in place of root. What was at root is sealed in the store

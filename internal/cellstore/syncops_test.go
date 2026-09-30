@@ -106,8 +106,8 @@ func TestSyncEngineDaemonArgsCarryKeys(t *testing.T) {
 			map[string]any{"ledger": "l", "frames": []any{"/f"}}},
 		{wantOp{Head: "h", keyArgs: hexKeys(testKeys())},
 			map[string]any{"head": "h", "cell_key": testCellKey, "dedup": testDedup}},
-		{importOp{Head: "h", Inbox: "/i", keyArgs: hexKeys(testKeys())},
-			map[string]any{"head": "h", "inbox": "/i", "cell_key": testCellKey, "dedup": testDedup}},
+		{importOp{Head: "h", Inbox: "/i", Ledger: "L", keyArgs: hexKeys(testKeys())},
+			map[string]any{"head": "h", "inbox": "/i", "ledger": "L", "cell_key": testCellKey, "dedup": testDedup}},
 		{materializeOp{Head: "h"}, map[string]any{"head": "h"}},
 	}
 	for _, tc := range cases {

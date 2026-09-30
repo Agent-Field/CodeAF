@@ -125,8 +125,8 @@ func (c *HTTP) doJSON(ctx context.Context, method, path string, body []byte, int
 // do sends one signed request and answers the body of a 200, or the error the
 // answer names. It never retries: a skew refusal must reach the person once.
 func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.deadline(len(body)))
-	defer cancel()
+	ctx, limit := startBudget(ctx, c.deadline, len(body))
+	defer limit.done()
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
@@ -137,6 +137,7 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
+	limit.answering(resp.ContentLength)
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, MaxFrame+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
