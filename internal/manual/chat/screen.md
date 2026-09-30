@@ -3152,9 +3152,8 @@ Done 6 ▸
 ```
 
 - **The header** is the column's two words in a chat in a team, one word elsewhere. The
-  word in front is bold ink and the other is dim, and each keeps its count; a count of zero
-  is not drawn at all (the word stays, as `Tasks` alone), and a count of new traffic,
-  `3 new`, is in ink. The `alt+l` at the right is dim.
+  word in front is bold ink and the other is dim, and each keeps its count; a count of `0`
+  is dim, and a count of new traffic, `3 new`, is in ink. The `alt+l` at the right is dim.
 - **The needs-you band** is the one place with colour of its own: what is waiting on you
   leads with its `?` in the needs-you amber, and a failure nobody has opened leads with its
   `✕` in ordinary ink. A thin dim rule closes it. With nothing waiting it is not drawn.

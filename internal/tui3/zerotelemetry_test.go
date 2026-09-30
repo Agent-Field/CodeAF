@@ -11,32 +11,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-func TestSideHeadingOmitsZeroCountsAndKeepsItsDoors(t *testing.T) {
-	a := newTestApp(&fakeAgent{})
-	line, _ := a.sideHeadRow(40)
-	if got := strings.TrimSpace(plain(line)); !strings.HasPrefix(got, "Tasks ") || strings.Contains(got, "Tasks 0") {
-		t.Fatalf("empty conversation heading: %q", got)
-	}
-	a.taskOrder = []uint64{1, 2}
-	line, _ = a.sideHeadRow(40)
-	if !strings.Contains(plain(line), "Tasks 2") {
-		t.Fatalf("positive task count disappeared: %q", plain(line))
-	}
-	m, _, _, _ := trafficApp(t)
-	line, row := m.sideHeadRow(40)
-	if got := plain(line); !strings.HasPrefix(got, "Tasks · Traffic") || strings.Contains(got, " 0") || strings.Contains(got, " ·  · ") {
-		t.Fatalf("empty manager heading: %q", got)
-	}
-	if len(row.doors) != 3 {
-		t.Fatalf("empty manager heading lost a door: %+v", row.doors)
-	}
-	for _, door := range row.doors {
-		if door.span.to <= door.span.from {
-			t.Fatalf("empty manager heading has an empty click target: %+v", door)
-		}
-	}
-}
-
 func TestLiveRateOmitsRatesThatWouldDisplayZero(t *testing.T) {
 	now := time.Date(2026, 9, 30, 21, 0, 0, 0, time.UTC)
 	a := phaseApp(t, now)

@@ -1975,8 +1975,7 @@ whole. `Traffic 3 new` is what passes in the team this chat is in; a chat in no 
 only the first word. The word in front is bold ink and the other is dim, and the other one
 keeps its count, so traffic that arrives while you read the tasks still says `3 new` on the
 header. Each word is a button with a hover ground and a hint (`Show this chat's tasks ·
-click`); press the other word to bring it to the front. A zero count is absent: the header
-says `Tasks`, or `Tasks · Traffic` in a team with no work or traffic yet. At the right
+click`); press the other word to bring it to the front. A count of `0` is dim. At the right
 of the header is the column's own key, `alt+l` (`opt+l` on a Mac), and it is a button too:
 press it and the column goes away (*Hiding the task column* below).
 
