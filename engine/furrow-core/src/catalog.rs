@@ -449,6 +449,14 @@ impl Catalog {
         Ok(())
     }
 
+    pub fn rebind_workspace(&self, id: &str, root: &[u8]) -> anyhow::Result<()> {
+        self.conn.execute(
+            "UPDATE workspaces SET root = ?2 WHERE id = ?1",
+            params![id, root],
+        )?;
+        Ok(())
+    }
+
     pub fn workspace_head(&self, id: &str) -> anyhow::Result<Option<ObjectId>> {
         let value: Option<Vec<u8>> = self
             .conn

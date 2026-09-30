@@ -289,11 +289,13 @@ pub fn import_with(
 ) -> anyhow::Result<usize> {
     let store = open_store(data)?;
     let sealer = CellSealer::new(keys);
+    let ledger = Ledger::named(data, LEDGER)?;
     furrow::exchange::fetch::Import {
         store: &store,
         sealer: &sealer,
         head,
         inbox,
+        ledger: &ledger,
     }
     .run()
 }

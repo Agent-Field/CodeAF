@@ -297,18 +297,8 @@ impl ObjectStore {
     pub fn ensure_workspace(&mut self, id: &str, root: &[u8]) -> anyhow::Result<()> {
         let workspace_dir = self.root.join("workspaces").join(id);
         fs::create_dir_all(&workspace_dir)?;
-        let metadata_path = workspace_dir.join("root.path");
-        if !metadata_path.exists() {
-            let temporary = workspace_dir.join("root.path.tmp");
-            let mut file = OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(&temporary)?;
-            file.write_all(root)?;
-            file.sync_all()?;
-            fs::rename(&temporary, &metadata_path)?;
-            File::open(&workspace_dir)?.sync_all()?;
+        if !workspace_dir.join("root.path").exists() {
+            write_root_path(&workspace_dir, root)?;
         }
         self.catalog.ensure_workspace(id, root)?;
         let detached = workspace_dir.join("detached");
@@ -324,6 +314,22 @@ impl ObjectStore {
             }
         }
         Ok(())
+    }
+
+    /// Follows a tree that was moved: the workspace registered at `from` is
+    /// registered at `to` from now on, and keeps its history and head. Any
+    /// workspace already at `to` describes the folder that was there before the
+    /// move, so it is detached, or a path would name two workspaces.
+    pub fn rebind_workspace(&mut self, from: &[u8], to: &[u8]) -> anyhow::Result<String> {
+        let id = self
+            .find_workspace(from)?
+            .context("no workspace is registered at the folder that moved")?;
+        if let Some(previous) = self.find_workspace(to)?.filter(|other| *other != id) {
+            self.detach_workspace(&previous)?;
+        }
+        write_root_path(&self.workspace_data_dir(&id), to)?;
+        self.catalog.rebind_workspace(&id, to)?;
+        Ok(id)
     }
 
     pub fn find_workspace(&self, root: &[u8]) -> anyhow::Result<Option<String>> {
@@ -942,6 +948,22 @@ pub fn object_id(kind: ObjectKind, bytes: &[u8]) -> ObjectId {
     hasher.update(kind.domain());
     hasher.update(bytes);
     *hasher.finalize().as_bytes()
+}
+
+/// Records where a workspace lives, durably and all at once: a reader sees the
+/// old path or the new one, never half of either.
+fn write_root_path(workspace_dir: &Path, root: &[u8]) -> anyhow::Result<()> {
+    let temporary = workspace_dir.join("root.path.tmp");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&temporary)?;
+    file.write_all(root)?;
+    file.sync_all()?;
+    fs::rename(&temporary, workspace_dir.join("root.path"))?;
+    File::open(workspace_dir)?.sync_all()?;
+    Ok(())
 }
 
 #[cfg(test)]

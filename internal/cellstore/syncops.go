@@ -90,13 +90,16 @@ func (o wantOp) Args() []string { return []string{"--json", "want", "--head", o.
 type importOp struct {
 	Head  string `json:"head"`
 	Inbox string `json:"inbox"`
+	// Ledger is the store the objects were fetched from: what it handed over
+	// is recorded as published there, so the next export never sends it back.
+	Ledger string `json:"ledger"`
 	keyArgs
 }
 
 func (importOp) Verb() string { return "import" }
 
 func (o importOp) Args() []string {
-	return []string{"--json", "import", "--head", o.Head, "--inbox", o.Inbox}
+	return []string{"--json", "import", "--head", o.Head, "--inbox", o.Inbox, "--ledger", o.Ledger}
 }
 
 // materializeOp restores a head into the target tree.
@@ -174,7 +177,7 @@ func (e SyncEngine) Import(ctx context.Context, c cell.Cell, head, inbox string)
 	var out struct {
 		Imported int `json:"imported"`
 	}
-	return out.Imported, e.ask(ctx, c, importOp{Head: head, Inbox: inbox, keyArgs: hexKeys(e.Keys)}, &out)
+	return out.Imported, e.ask(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, keyArgs: hexKeys(e.Keys)}, &out)
 }
 
 // Materialize implements the sync seam.

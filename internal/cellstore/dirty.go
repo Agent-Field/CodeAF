@@ -54,3 +54,27 @@ func workChanged(plan []byte) (bool, error) {
 	}
 	return false, nil
 }
+
+// rebindOp tells the engine that the tree it restored at From now stands at the
+// path the verb is run in.
+type rebindOp struct {
+	From string `json:"from"`
+}
+
+func (rebindOp) Verb() string { return "rebind" }
+
+func (o rebindOp) Args() []string { return []string{"--json", "rebind", "--from", o.From} }
+
+// Follow registers the tree of to as the tree of from, which was restored and
+// then moved into place. The engine knows a workspace by its path, so without
+// this the moved folder is one it has never heard of: it cannot say what the
+// folder holds that its newest sealed state does not, until something seals it.
+// The daemon does not serve the verb, so this asks a spawned engine, once per
+// takeover.
+func (e Engine) Follow(ctx context.Context, from, to cell.Cell) error {
+	target := Target{Tree: e.tree(to), DataDir: e.LocalDir(to)}
+	if _, err := (Spawn{Binary: e.Binary}).Do(ctx, target, rebindOp{From: e.tree(from)}); err != nil {
+		return fmt.Errorf("follow: %w", err)
+	}
+	return nil
+}
