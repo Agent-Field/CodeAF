@@ -87,6 +87,9 @@ conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slu
 
 While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
 the conversation stays on its previous model and `enter` on Codex tries again.
+The Codex row in `/settings` uses the same cancellation: the first `esc` cancels
+the pending sign-in while keeping Settings open; later `esc` presses use the
+page's ordinary back-out behavior.
 
 A Codex model's context window is the one that account's model list gives it — `272k` on
 every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
@@ -3691,6 +3694,16 @@ low, half at medium, four fifths at high), and the wait for the reply is sized f
 same ceiling. If a model's list does not say how much it thinks, the first time an answer
 comes back empty with the whole ceiling spent, codeaf remembers that model thinks
 regardless and leaves room from then on; it never remembers it on a guess.
+
+## Do generated images and videos keep their costs in the call log?
+
+Yes. Each media request writes a start and an end record. Image costs supplied
+only in the response headers still appear on the end record, alongside any
+reported token counts. A price explicitly supplied in JSON keeps its value.
+A completed video
+poll records the job's reported cost; downloading its finished file writes its
+own pair without counting that same job cost twice. Unreported costs remain
+absent.
 
 ## Where are the logs of what codeaf sent the model — the model-call log, and reading it with `codeaf logs`
 

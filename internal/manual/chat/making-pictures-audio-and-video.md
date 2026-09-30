@@ -592,7 +592,7 @@ wrong is silent.
 **`edit_video` works in tasks, in adaptive runs and inside saved harnesses**
 under the same one condition, exactly as the making verbs do.
 
-## Where do the pictures, audio, music and video you make end up?
+## Where do I find the file for the image you generated — where pictures, audio, music and video end up?
 
 In one of three places, decided by whose folder the workspace is:
 

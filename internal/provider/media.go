@@ -191,9 +191,7 @@ func (c *MediaClient) GenerateImage(ctx context.Context, request ImageRequest) (
 	if err != nil {
 		return nil, err
 	}
-	if response.Usage == nil {
-		response.Usage = usageFromHeaders(headers)
-	}
+	response.Usage = mediaUsageWithHeaders(response.Usage, headers)
 	return &response, nil
 }
 
@@ -377,6 +375,7 @@ func (c *MediaClient) postJSON(ctx context.Context, path string, request any, ta
 		finishMediaResponse(response, response.StatusCode, err, nil)
 		return nil, fmt.Errorf("decode media response: %w", err)
 	}
+	envelope.Usage = mediaUsageWithHeaders(envelope.Usage, response.Header)
 	if err := json.Unmarshal(payload, target); err != nil {
 		finishMediaResponse(response, response.StatusCode, err, envelope.Usage)
 		return nil, fmt.Errorf("decode media response: %w", err)
@@ -401,11 +400,24 @@ func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any, 
 		finishMediaResponse(response, response.StatusCode, err, nil)
 		return err
 	}
-	if err := json.Unmarshal(payload, target); err != nil {
+	var envelope struct {
+		Usage *ai.Usage `json:"usage"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
 		finishMediaResponse(response, response.StatusCode, err, nil)
 		return fmt.Errorf("decode media response: %w", err)
 	}
-	finishMediaResponse(response, response.StatusCode, nil, nil)
+	envelope.Usage = mediaUsageWithHeaders(envelope.Usage, response.Header)
+	if err := json.Unmarshal(payload, target); err != nil {
+		finishMediaResponse(response, response.StatusCode, err, envelope.Usage)
+		return fmt.Errorf("decode media response: %w", err)
+	}
+	if job, ok := target.(*videoJob); ok {
+		job.Usage = mediaUsageWithHeaders(job.Usage, response.Header)
+	}
+	// The completed poll is the billed job. Its artifact download records its
+	// own request without charging that same job a second time.
+	finishMediaResponse(response, response.StatusCode, nil, envelope.Usage)
 	return nil
 }
 
@@ -556,6 +568,23 @@ func videoErrorDetail(raw json.RawMessage) string {
 // OpenRouter's image response carries usage in JSON. Its raw speech response
 // has no body slot for usage, so accept the cost header when the deployment
 // supplies one; Calls is still accounted by the executor on every success.
+// mediaUsageWithHeaders preserves the body's token counts when only its cost
+// comes through a header. An explicit body cost remains the authority, so two
+// ways of reporting one price cannot replace or charge it twice.
+func mediaUsageWithHeaders(usage *ai.Usage, headers http.Header) *ai.Usage {
+	if usage != nil && usage.Cost != nil {
+		return usage
+	}
+	header := usageFromHeaders(headers)
+	if usage == nil {
+		return header
+	}
+	if header != nil {
+		usage.Cost = header.Cost
+	}
+	return usage
+}
+
 func usageFromHeaders(headers http.Header) *ai.Usage {
 	for _, name := range []string{"X-OpenRouter-Cost", "OpenRouter-Cost"} {
 		raw := strings.TrimSpace(headers.Get(name))
