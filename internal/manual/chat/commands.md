@@ -1026,8 +1026,12 @@ esc itself changes **nothing** — it closes the list and gives your half-typed 
 frame back as they were. What enter already did is already done; esc does not undo it. The
 filter is forgotten when the picker closes.
 
-The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
+The cursor rests on the list's first row when the menu opens, visibly highlighted, so
+you always see where you are; the model in use keeps its mark — bold accent, no
+background — wherever it sits, so enter with nothing typed applies the row the
+highlight names and nothing else. Emptying the filter with ctrl+u puts the cursor back
+on the model in use. The cursor never walks past the ends of the list: holding ↓ or
+scrolling the wheel at the bottom keeps it visibly on the last row, headings included.
 
 The placeholder in the empty filter box reads:
 
