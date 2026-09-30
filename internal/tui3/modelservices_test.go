@@ -1092,10 +1092,13 @@ func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
 	a.openPicker()
 	got := a.pick.rows(100, a.pick.height(100), pal, -1, func(string) string { return "" })
 	// THE ROWS ARE ALPHABETICAL, which is every table's opening order on this
-	// surface (pickersort.go) — so `gpt-5-classic` stands above the model in use.
-	// The mark is still on the model in use, which is what this test is about.
-	want := "  gpt-5-classic\n" +
-		"› openai/gpt-4.1-mini                                                                             1M\n" +
+	// surface (pickersort.go) — so `gpt-5-classic` stands above the model in use,
+	// and the cursor rests on the list's first row ([picker.cursorToFirst]):
+	// the › is the highlight a reader starts reading at. The mark is still on
+	// the model in use, which is what this test is about — its bold accent
+	// strips to the same plain row it always drew.
+	want := "› gpt-5-classic\n" +
+		"  openai/gpt-4.1-mini                                                                             1M\n" +
 		"  + add a provider"
 	if rendered := plain(strings.Join(got, "\n")); rendered != want {
 		t.Fatalf("one-service picker changed:\ngot  %q\nwant %q", rendered, want)
