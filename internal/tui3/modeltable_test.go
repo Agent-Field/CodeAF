@@ -521,6 +521,9 @@ func TestTheMachinesAreDrawnAlphabeticallyAndTheChooserIsNot(t *testing.T) {
 	a := laneApp(t)
 	a.width = 120
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
+	// this test reads is the model in use's, so the walk goes there first.
+	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 
 	names := laneNames(a.pick.lanes)

@@ -548,6 +548,7 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: flash}, laneCatalog)
 	a.profileDir = ""
 	typeLine(t, a, "/model")
+	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned("", talkSlot); !pinned || name != "Cloudflare" {
