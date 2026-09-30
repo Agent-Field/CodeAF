@@ -6,17 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/coder/websocket"
 
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 )
-
-// Versioned is a Client that can say which directory version a listing is.
-type Versioned interface {
-	ListAt(ctx context.Context) (Listing, uint64, error)
-}
 
 // Watcher is a Client that can open the relay's watch socket.
 type Watcher interface {
@@ -24,37 +18,12 @@ type Watcher interface {
 }
 
 var (
-	_ Versioned = (*HTTP)(nil)
-	_ Watcher   = (*HTTP)(nil)
+	_ Watcher = (*HTTP)(nil)
 )
-
-// versionHeader carries the directory's version on a list answer.
-const versionHeader = "Codeaf-Dir-Version"
 
 // watchLimit is the most a frame may weigh. The frames are a few bytes, so a
 // larger one is a fault and is refused before it is buffered.
 const watchLimit = 1 << 10
-
-// ListAt is List plus the version the relay read it at; 0 means the relay did
-// not say, which a feed treats as "unknown, compare nothing".
-func (h *HTTP) ListAt(ctx context.Context) (l Listing, version uint64, err error) {
-	hdr, err := h.doHeader(ctx, http.MethodGet, dirBase+"/list", nil, &l)
-	if err != nil {
-		return l, 0, err
-	}
-	version, _ = strconv.ParseUint(hdr.Get(versionHeader), 10, 64)
-	return l, version, nil
-}
-
-// ListVersioned lists through ListAt when the client has it, and otherwise
-// lists with version 0, so a client without versions still feeds a watcher.
-func ListVersioned(ctx context.Context, c Client) (Listing, uint64, error) {
-	if v, ok := c.(Versioned); ok {
-		return v.ListAt(ctx)
-	}
-	l, err := c.List(ctx)
-	return l, 0, err
-}
 
 // Watch opens the signed watch socket. The upgrade request is signed like any
 // other directory request, with an empty body.

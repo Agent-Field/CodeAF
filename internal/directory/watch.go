@@ -1,0 +1,148 @@
+package directory
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/coder/websocket"
+)
+
+// The close codes a watcher reads. Any other code means reconnect with backoff.
+const (
+	CloseRevoked websocket.StatusCode = 4401 // this device was stopped; never reconnect
+	CloseRotated websocket.StatusCode = 4410 // the identity was replaced; poll only
+)
+
+const (
+	// watchWrite bounds one frame to a peer, so a stalled one cannot hold a
+	// watcher forever.
+	watchWrite = 10 * time.Second
+	// watchRead is the largest client frame; the only one with a meaning is "ping".
+	watchRead = 1 << 10
+)
+
+// watch answers GET /v1/dir/watch: it authenticates like every route, refuses
+// what cannot be watched before the upgrade, and then tells the socket the
+// directory's version now and each time it changes. The socket carries versions
+// only: what changed is read by the list the device already knows how to read.
+func (h *handler) watch(w http.ResponseWriter, r *http.Request) {
+	c, err := h.admit(w, r)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
+	sub, err := subscribe(c)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
+	defer sub.Close()
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
+	if err != nil {
+		return
+	}
+	conn.SetReadLimit(watchRead)
+	serveWatch(r.Context(), conn, sub, c.device)
+}
+
+// subscribe applies every refusal that precedes the upgrade and takes a place
+// under the identity's cap. An identity that is replaced can only ever be
+// thawed, and a thaw is found by the client's slow backstop poll.
+func subscribe(c call) (*Sub, error) {
+	if !isUpgrade(c.r) {
+		return nil, errUpgradeRequired
+	}
+	feed, ok := c.dir.(Watchable)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	st := feed.Feed().Status()
+	switch {
+	case st.Stopped[c.device]:
+		return nil, ErrRevoked
+	case st.Rotation != nil:
+		return nil, ErrRotated
+	}
+	return feed.Feed().Subscribe()
+}
+
+func isUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+}
+
+// serveWatch runs one socket until it or the directory ends. The reader answers
+// "ping" with "pong" and ignores every other frame, so its error is what ends
+// the socket when the peer goes.
+func serveWatch(ctx context.Context, conn *websocket.Conn, sub *Sub, device string) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		defer cancel()
+		answerPings(ctx, conn)
+	}()
+	conn.Close(tell(ctx, conn, sub, device))
+}
+
+// tell sends each version the watcher has not heard, then closes the socket
+// with the code that explains a stop, so a device always hears the bump first.
+func tell(ctx context.Context, conn *websocket.Conn, sub *Sub, device string) (websocket.StatusCode, string) {
+	for {
+		st, err := sub.Next(ctx)
+		if err != nil {
+			return closing(ctx)
+		}
+		if err := sendVersion(ctx, conn, st.Version); err != nil {
+			return websocket.StatusInternalError, "write failed"
+		}
+		if code, why := stopAfter(st, device); code != 0 {
+			return code, why
+		}
+	}
+}
+
+// closing is the close for a socket whose wait ended: going away when the
+// relay closed its directory, and a plain end when the peer hung up.
+func closing(ctx context.Context) (websocket.StatusCode, string) {
+	if ctx.Err() != nil {
+		return websocket.StatusNormalClosure, ""
+	}
+	return websocket.StatusGoingAway, "closing"
+}
+
+// stopAfter is the close a Status calls for, or zero when the socket may stay.
+func stopAfter(st Status, device string) (websocket.StatusCode, string) {
+	switch {
+	case st.Stopped[device]:
+		return CloseRevoked, "revoked"
+	case st.Rotation != nil:
+		return CloseRotated, "rotated"
+	}
+	return 0, ""
+}
+
+func sendVersion(ctx context.Context, conn *websocket.Conn, v uint64) error {
+	return sendText(ctx, conn, fmt.Sprintf(`{"v":%d}`, v))
+}
+
+func answerPings(ctx context.Context, conn *websocket.Conn) {
+	for {
+		kind, msg, err := conn.Read(ctx)
+		if err != nil {
+			return
+		}
+		if kind == websocket.MessageText && string(msg) == "ping" {
+			if sendText(ctx, conn, "pong") != nil {
+				return
+			}
+		}
+	}
+}
+
+func sendText(ctx context.Context, conn *websocket.Conn, s string) error {
+	ctx, cancel := context.WithTimeout(ctx, watchWrite)
+	defer cancel()
+	return conn.Write(ctx, websocket.MessageText, []byte(s))
+}

@@ -34,6 +34,8 @@ var wireErrors = []wireError{
 	{wireauth.ErrRateLimited, "rate_limited", http.StatusTooManyRequests},
 	{wireauth.ErrTooManyIdentities, "too_many_identities", http.StatusTooManyRequests},
 	{wireauth.ErrSkew, "skew", http.StatusUnauthorized},
+	{ErrTooManyWatchers, "too_many_watchers", http.StatusTooManyRequests},
+	{errUpgradeRequired, "upgrade_required", http.StatusUpgradeRequired},
 	{errBadRequest, "bad_request", http.StatusBadRequest},
 	{errTooLarge, "too_large", http.StatusRequestEntityTooLarge},
 }
@@ -42,7 +44,9 @@ var wireErrors = []wireError{
 var (
 	errBadRequest = errors.New("directory: bad request")
 	errTooLarge   = errors.New("directory: request too large")
-	errInternal   = errors.New("directory: internal error")
+	// errUpgradeRequired answers a watch request that is not a WebSocket upgrade.
+	errUpgradeRequired = errors.New("directory: upgrade required")
+	errInternal        = errors.New("directory: internal error")
 )
 
 // classify finds the table row for err; any error the table does not know is
@@ -72,6 +76,9 @@ type errBody struct {
 }
 
 const dirBase = "/v1/dir"
+
+// WatchPath is the signed WebSocket route that says the directory changed.
+const WatchPath = dirBase + "/watch"
 
 // rotationPath is the one signed verb for replacing an identity. It is the
 // identity's, not the directory's, so it sits beside the directory's base.

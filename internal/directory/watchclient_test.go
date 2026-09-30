@@ -173,27 +173,16 @@ func TestWatchCloseCodesAreSentinels(t *testing.T) {
 	}
 }
 
-func TestListAtReadsTheVersionHeader(t *testing.T) {
+func TestListReadsTheVersionHeader(t *testing.T) {
 	for header, want := range map[string]uint64{"42": 42, "": 0, "soon": 0} {
 		c := serve(t, func(w http.ResponseWriter, r *http.Request) {
 			if header != "" {
-				w.Header().Set("Codeaf-Dir-Version", header)
+				w.Header().Set(directory.VersionHeader, header)
 			}
 			io.WriteString(w, `{}`)
 		})
-		if _, v, err := c.ListAt(context.Background()); err != nil || v != want {
-			t.Errorf("header %q: version %d, %v; want %d", header, v, err, want)
+		if l, err := c.List(context.Background()); err != nil || l.Version != want {
+			t.Errorf("header %q: version %d, %v; want %d", header, l.Version, err, want)
 		}
-	}
-}
-
-// plain is a Client with no ListAt: only the embedded interface's List is used.
-type plain struct{ directory.Client }
-
-func (plain) List(context.Context) (directory.Listing, error) { return directory.Listing{}, nil }
-
-func TestListVersionedWithoutListAtIsZero(t *testing.T) {
-	if _, v, err := directory.ListVersioned(context.Background(), plain{}); err != nil || v != 0 {
-		t.Fatalf("version %d, %v", v, err)
 	}
 }

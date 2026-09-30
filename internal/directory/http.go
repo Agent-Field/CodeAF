@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -35,8 +36,15 @@ func cellPath(id, verb string) string {
 	return p
 }
 
+// List reads the directory. The listing carries the version the relay read it
+// at (0 when the relay does not say), which a feed compares with the versions
+// it is told of.
 func (h *HTTP) List(ctx context.Context) (l Listing, err error) {
-	return l, h.do(ctx, http.MethodGet, dirBase+"/list", nil, &l)
+	hdr, err := h.doHeader(ctx, http.MethodGet, dirBase+"/list", nil, &l)
+	if err == nil {
+		l.Version, _ = strconv.ParseUint(hdr.Get(VersionHeader), 10, 64)
+	}
+	return l, err
 }
 
 func (h *HTTP) Cell(ctx context.Context, id string) (v CellView, err error) {

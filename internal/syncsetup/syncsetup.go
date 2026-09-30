@@ -172,13 +172,13 @@ func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
 
 // RowsAt is Rows and the directory version the listing was read at.
 func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
-	l, version, err := directory.ListVersioned(ctx, s.Dir)
+	l, err := s.Dir.List(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), version, nil
+	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
 }
 
 // Follow joins this process's change feed for the identity on this relay, so a
