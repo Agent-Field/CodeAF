@@ -2531,6 +2531,9 @@ func (a *app) openLaneList() bool {
 		keep: filterFor(config.ModelSettingKey(talkSlot)),
 	}
 	sel.pick.startFor(a.modelsFor(sel.keep), a.model, sel.keep)
+	// A DOOR THAT OPENS TO CONFIRM OPENS ON WHAT IT HOLDS ([picker.cursorToCurrent]),
+	// so the fold below is this row's and not the list's first row's.
+	sel.pick.cursorToCurrent()
 	a.armLanes(&sel.pick, slot)
 	// THE FOLD HAS TO BE THE ONE THIS ROW IS ABOUT. [picker.start] leaves the
 	// cursor on row zero when the model in use is not in the list at all — a
