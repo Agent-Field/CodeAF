@@ -8,8 +8,10 @@ package pair
 // rest of codeaf keeps about remote surfaces — the machine that runs the tools
 // is the machine that decides who may run them.
 //
-// THE EMPTINESS LAW APPLIES: a machine with no devices paired prints one
-// sentence saying so, not a heading over an empty table.
+// THE EMPTINESS LAW APPLIES: a machine with no devices of either kind prints
+// one sentence saying so ([NoDevices]), and a kind with nothing in it prints no
+// heading at all. The door in cmd/codeaf decides that, so the functions here
+// only ever draw a table that has rows.
 
 import (
 	"encoding/base64"
@@ -31,16 +33,12 @@ func decodeStoredKey(stored string) ([]byte, error) {
 	return key, nil
 }
 
-// DevicesList is what `codeaf devices` prints on the machine that owns the work.
+// DevicesList is what `codeaf devices` prints about the devices that can use
+// this machine. Its caller has already checked that paired is not empty.
 func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "this machine is reachable as %s\n", name)
 	fmt.Fprintf(&out, "its key is kept in %s\n\n", keeper.Where())
-
-	if len(paired) == 0 {
-		out.WriteString("no devices are paired with this machine.\nrun `codeaf serve` here and `codeaf chat --at " + name + "` there to pair one.\n")
-		return out.String()
-	}
 
 	widest := 0
 	for _, one := range paired {
@@ -48,7 +46,7 @@ func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) str
 			widest = len(one.Label)
 		}
 	}
-	out.WriteString("devices paired with this machine\n\n")
+	out.WriteString("devices that can use this machine\n\n")
 	for _, one := range paired {
 		// The emptiness law, one row at a time: a device that has never
 		// connected shows nothing where its last connection would be, rather
@@ -89,4 +87,55 @@ func MachinesList(known []Known, now time.Time) string {
 // RevokedLine is what a person reads when a device has been stopped.
 func RevokedLine(label string) string {
 	return label + " has been stopped — it can no longer open a conversation here, and it will need a new pairing code to come back."
+}
+
+// NoDevices is the whole answer of `codeaf devices` when nothing of either kind
+// is paired: one sentence, and the two ways to change that.
+const NoDevices = "no devices are paired yet — run `codeaf pair` to share your chats with another computer, or `codeaf serve` to let a device use this machine."
+
+// ChatsDevice is one computer that holds the person's chats, as a row.
+type ChatsDevice struct {
+	Name    string
+	This    bool // the computer the command is typed on
+	Stopped bool // revoked: the relay no longer answers it
+}
+
+// ChatsDevicesList is the table of computers that hold the person's chats. Its
+// caller has already checked that rows is not empty.
+func ChatsDevicesList(rows []ChatsDevice) string {
+	var out strings.Builder
+	out.WriteString("devices with your chats\n\n")
+	widest := 0
+	for _, one := range rows {
+		widest = max(widest, len(one.Name))
+	}
+	for _, one := range rows {
+		fmt.Fprintf(&out, "  %-*s%s\n", widest, one.Name, chatsMarks(one))
+	}
+	out.WriteString("\nstop one with `codeaf devices revoke <name>` — that cuts it off from your chats on the relay, and cannot take back what it already holds.\n")
+	return out.String()
+}
+
+// chatsMarks is what stands after a name: nothing for an ordinary computer,
+// so the common row is only its name.
+func chatsMarks(one ChatsDevice) string {
+	var marks []string
+	if one.This {
+		marks = append(marks, "this computer")
+	}
+	if one.Stopped {
+		marks = append(marks, "stopped")
+	}
+	if len(marks) == 0 {
+		return ""
+	}
+	return "  " + strings.Join(marks, "  ·  ")
+}
+
+// ChatsRevokedLine is what a person reads when a computer that holds their
+// chats has been stopped. It says what stopping cannot do, because the person
+// who has just stopped a stolen computer is the one who most needs to know.
+func ChatsRevokedLine(name string) string {
+	return name + " has been stopped — it can no longer sync your chats through the relay. " +
+		"it cannot take back what that computer already holds: it has your chats and keys, so if it was stolen, treat your chats as exposed."
 }

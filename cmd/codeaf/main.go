@@ -302,6 +302,11 @@ func run() error {
 		// is a command a person runs and watches — which is why it is in the
 		// usage text and `engine` is not (chatv3_at.go).
 		return runServe(os.Args[2:])
+	case "pair":
+		// Share this computer's chats with another one: one side shows a code,
+		// the other types it (pair.go). It is a command a person runs and
+		// watches, so it is in the usage text.
+		return runPair(os.Args[2:])
 	case "relay":
 		// The relay program itself, the same relayserve.Main that cmd/relay
 		// builds: `codeaf relay --listen :8787 --store <dir>`. It is run by
@@ -567,12 +572,16 @@ Housekeeping — changes state on disk or on the network
       delete the build cache; you type "` + cacheCleanWord + `" to confirm, --yes skips it
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
+  codeaf pair [--relay url]
+      show a code that shares your chats with another computer
+  codeaf pair <code> [--relay url] [--replace]
+      type the code another computer shows: this one gets its chats
   codeaf serve [--workspace path] [--relay url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices
-      list the devices paired with this machine
+      list the devices with your chats and the ones that can use this machine
   codeaf devices revoke <name> [--all]
-      stop one device opening a conversation here, --all every device of it
+      stop one device; it cannot take back what a computer already holds
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]

@@ -80,12 +80,13 @@ func (h *handler) admit(w http.ResponseWriter, r *http.Request) (call, error) {
 	return call{cl: dir.For(device), device: device, r: r, body: body}, nil
 }
 
-// denial keeps skew apart from every other refusal, because a person can fix it.
+// denial names a refusal the way the wire does: skew and revoked have their
+// own codes because a person can act on them, every other one is unauthorized.
 func denial(err error) error {
-	if errors.Is(err, wireauth.ErrSkew) {
-		return wireauth.ErrSkew
+	if err = wireauth.Narrow(err); errors.Is(err, wireauth.ErrUnauthorized) {
+		return ErrUnauthorized
 	}
-	return ErrUnauthorized
+	return err
 }
 
 func refuse(w http.ResponseWriter, err error) {
@@ -112,6 +113,7 @@ var routes = map[string]route{
 	"GET " + dirBase + "/list":                  func(c call) (any, error) { return pair(c.cl.List(c.ctx())) },
 	"GET " + dirBase + "/cells/{id}":            func(c call) (any, error) { return pair(c.cl.Cell(c.ctx(), c.id())) },
 	"PUT " + dirBase + "/devices/{id}":          withBody(putDevice),
+	"POST " + dirBase + "/devices/{id}/revoke":  func(c call) (any, error) { return nothing(c.cl.Revoke(c.ctx(), c.id())) },
 	"POST " + dirBase + "/vault":                withBody(setVault),
 	"POST " + dirBase + "/cells/{id}":           withBody(create),
 	"POST " + dirBase + "/cells/{id}/acquire":   func(c call) (any, error) { return pair(c.cl.Acquire(c.ctx(), c.id())) },

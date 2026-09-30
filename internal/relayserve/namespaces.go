@@ -42,6 +42,11 @@ func newNamespaces(root string, now func() time.Time) *namespaces {
 // directory opens (once) the SQLite directory of one identity. A SQLite file
 // is one identity's directory, so the file is per identity: <root>/directory/<id>.db.
 func (n *namespaces) directory(id string) (directory.Directory, error) {
+	return n.sqlite(id)
+}
+
+// sqlite is directory with its concrete type, for what only a relay may ask.
+func (n *namespaces) sqlite(id string) (*directory.SQLite, error) {
 	if err := checkedID(id); err != nil {
 		return nil, err
 	}
@@ -82,4 +87,15 @@ func (n *namespaces) Close() error {
 		delete(n.dirs, id)
 	}
 	return first
+}
+
+// revoked says whether device has been stopped by its identity. It opens the
+// identity's directory (once) and then answers from memory, so the check costs
+// no query per request.
+func (n *namespaces) revoked(identity, device string) (bool, error) {
+	d, err := n.sqlite(identity)
+	if err != nil {
+		return false, err
+	}
+	return d.Revoked(device), nil
 }

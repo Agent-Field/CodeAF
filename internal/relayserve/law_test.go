@@ -20,7 +20,7 @@ func TestRelayImportLaw(t *testing.T) {
 		banned[module+name] = true
 	}
 	for _, dir := range []string{
-		"../blobstore", "../directory", "../reqsign", "../wireauth", ".", "../../cmd/relay",
+		"../blobstore", "../directory", "../reqsign", "../wireauth", "../pairbox", ".", "../../cmd/relay",
 	} {
 		checkDir(t, dir, banned)
 	}

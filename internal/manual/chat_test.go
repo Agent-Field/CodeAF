@@ -2870,6 +2870,38 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// device had been stopped. It cannot any more, and the words a person brings
 		// to that are the two sentences they just read on their own screen.
 		{"it said paired and then that the device was stopped, what happened?", "reaching-this-machine-without-ssh"},
+		// PAIRING ANOTHER COMPUTER, ASKED IN THE WORDS OF SOMEBODY WITH A NEW LAPTOP.
+		// The code, the three words and the one attempt are one page; the verbs
+		// (`/pair`, `codeaf pair`, `/sync`, `/link`, `/laptop`) are how a person
+		// finds it, and none of these asks for the remote-access door.
+		{"how do I use this on my laptop", "use-this-on-another-computer"},
+		{"connect another computer", "use-this-on-another-computer"},
+		{"sync my chats", "use-this-on-another-computer"},
+		{"pair", "use-this-on-another-computer"},
+		{"get my chats on my other computer", "use-this-on-another-computer"},
+		{"move my chats to a new machine", "use-this-on-another-computer"},
+		{"can I use codeaf on two computers", "use-this-on-another-computer"},
+		{"how do I get my chats on my phone", "use-this-on-another-computer"},
+		{"I got a new laptop", "use-this-on-another-computer"},
+		{"log in on another machine", "use-this-on-another-computer"},
+		{"share my conversation with my other computer", "use-this-on-another-computer"},
+		{"what is the code for", "use-this-on-another-computer"},
+		{"the code did not work", "use-this-on-another-computer"},
+		{"I lost my laptop and it had my chats", "use-this-on-another-computer"},
+		{"what does /pair do", "use-this-on-another-computer"},
+		{"what are the three words it shows on both screens", "use-this-on-another-computer"},
+		{"it asks y / n about a device, what do I answer", "use-this-on-another-computer"},
+		{"someone typed a wrong code, new code", "use-this-on-another-computer"},
+		{"how many tries does a pairing code get", "use-this-on-another-computer"},
+		{"does the relay see my chats when I pair", "use-this-on-another-computer"},
+		{"can I use my own relay to pair", "use-this-on-another-computer"},
+		{"sync is off (CODEAF_SYNC_URL=off); pairing needs a relay", "use-this-on-another-computer"},
+		{"does revoking a device take my chats back", "use-this-on-another-computer"},
+		{"what does /laptop do", "use-this-on-another-computer"},
+		{"how do I move my identity to another machine without a relay", "use-this-on-another-computer"},
+		{"no pairing is waiting under 42", "use-this-on-another-computer"},
+		{"what does codeaf pair do", "use-this-on-another-computer"},
+		{"I typed the code on the first screen and nothing happened", "use-this-on-another-computer"},
 		// THE TERMINAL VERBS. Six of them — `why`, `notebook`, `competence`,
 		// `services`, `wake` and `rebuild` — were in no page at all, so a person
 		// who asked the chat how to see what a piece of work did was answered by

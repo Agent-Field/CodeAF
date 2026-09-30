@@ -278,35 +278,77 @@ func TestBatcherRunFlushesAndBeatsOnSchedule(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()
-	sl.settle(2)
+	sl.settle(1) // the flush loop waits for a turn, so only the heartbeat sleeps
 
 	h1 := r.seal(map[string]string{"a": "1"})
 	note(b, h1)
-	sl.settleOn(NudgeWindow) // the first note beat at once, before any lease exists to renew
-	sl.advance(NudgeWindow)
-	sl.settle(2)
-	sl.advance(6 * time.Second) // flush at 7 s
-	sl.settle(2)
+	sl.settleOn(b.Interval) // the first turn went up at once and opened a window
 	if r.head(cellID).Head != h1 {
-		t.Fatal("no flush after one interval")
+		t.Fatal("a lone turn did not go up at once")
 	}
+	sl.advance(NudgeWindow)
 	h2 := r.seal(map[string]string{"a": "2"})
 	note(b, h2)
-	sl.settleOn(NudgeWindow) // the noted turn beat at once, at 7 s, and did not wait for 10 s
+	sl.settleOn(NudgeWindow) // the noted turn beat at once, and did not wait for 10 s
 	if got := r.head(cellID); got.Lease.Pending != 1 || got.Head != h1 {
-		t.Fatalf("at 7 s: %+v", got)
+		t.Fatalf("inside the window: %+v", got)
 	}
-	sl.advance(NudgeWindow) // the window closes; the periodic wait starts again
-	sl.settle(2)
-	sl.advance(6 * time.Second) // flush at 14 s
-	sl.settle(2)
+	sl.advance(6 * time.Second) // the window closes at 7 s and the waiting turn goes up
+	sl.settleOn(b.Interval)
 	if r.head(cellID).Head != h2 {
-		t.Fatal("no second flush")
+		t.Fatal("no trailing flush when the window closed")
 	}
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run = %v", err)
 	}
+}
+
+// A burst of ten seals inside one window costs two publishes, the first at once
+// and the rest together when the window closes; a seal right after that
+// trailing flush waits for the window it opened.
+func TestBurstCostsTwoPublishesAndTheNextSealWaits(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	first := r.publishFirst(map[string]string{"a": "0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(1)
+	puts := r.puts()
+
+	var last string
+	note(b, r.seal(map[string]string{"a": "1"}))
+	sl.settleOn(b.Interval)
+	if r.puts() != puts+1 || r.head(cellID).Head == first {
+		t.Fatalf("the lone first seal made %d puts, want 1", r.puts()-puts)
+	}
+	for i := 2; i <= 10; i++ {
+		last = r.seal(map[string]string{"a": string(rune('0' + i))})
+		note(b, last)
+	}
+	sl.advance(b.Interval)
+	sl.settleOn(b.Interval)
+	if r.puts() != puts+2 || r.head(cellID).Head != last || b.Pending() != 0 {
+		t.Fatalf("burst made %d puts, want 2; pending %d", r.puts()-puts, b.Pending())
+	}
+
+	after := r.seal(map[string]string{"a": "z"})
+	note(b, after)
+	sl.advance(b.Interval - time.Second)
+	sl.settleOn(time.Second)
+	if r.puts() != puts+2 || b.Pending() != 1 {
+		t.Fatalf("a seal right after the trailing flush went up inside its window: %d puts", r.puts()-puts)
+	}
+	sl.advance(time.Second)
+	sl.settleOn(b.Interval)
+	if r.head(cellID).Head != after {
+		t.Fatal("the waiting seal never went up")
+	}
+	cancel()
+	<-done
 }
 
 func TestSupersededDriverStopsAndNotifiesOnce(t *testing.T) {
@@ -365,8 +407,13 @@ func TestNotedTurnBeatsPromptlyAndCoalesces(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()
-	sl.settle(2)
+	sl.settle(1)
 	r.publishFirst(map[string]string{"a": "0"})
+	note(b, r.seal(map[string]string{"a": "9"})) // goes up at once and opens the hour-long window
+	sl.settleOn(time.Hour)
+	sl.settleOn(NudgeWindow)
+	sl.advance(NudgeWindow)
+	sl.settleOn(directory.HeartbeatEvery)
 
 	note(b, r.seal(map[string]string{"a": "1"}))
 	sl.settleOn(NudgeWindow) // the heartbeat loop is in its coalescing window
@@ -401,7 +448,10 @@ func TestIdleUploadsAtOnceWhileBusyWaitsForTheWindow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()
-	sl.settle(2)
+	sl.settle(1)
+	note(b, r.seal(map[string]string{"a": "0"})) // the lone turn goes up at once and opens the window
+	sl.settleOn(b.Interval)
+	first = r.head(cellID).Head
 	puts := r.puts()
 
 	h1, h2 := r.seal(map[string]string{"a": "1"}), r.seal(map[string]string{"a": "2"})
@@ -439,11 +489,13 @@ func TestIdleWithNothingNewIsFree(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()
-	sl.settle(2)
+	sl.settle(1)
 	puts := r.puts()
-	sl.advance(time.Second) // so a new wait of a whole window can only be the one after the idle flush
 	b.Idle()
-	sl.settleOn(b.Interval)
+	for range 10000 { // there is no event to wait for: an idle with nothing noted must simply do nothing
+		runtime.Gosched()
+	}
+	sl.settle(1) // and it opened no window
 	if r.puts() != puts {
 		t.Fatalf("an idle with nothing new made %d puts", r.puts()-puts)
 	}
@@ -466,7 +518,7 @@ func TestIdleDuringBackoffWaitsForTheBackoff(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()
-	sl.settle(2)
+	sl.settle(1)
 
 	note(b, r.seal(map[string]string{"a": "1"}))
 	b.Idle()

@@ -1545,7 +1545,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
 		}
 	}
-	asked = append(asked, a.askMachines())
+	asked = append(asked, a.pollMachines(now))
 	return tea.Batch(asked...)
 }
 

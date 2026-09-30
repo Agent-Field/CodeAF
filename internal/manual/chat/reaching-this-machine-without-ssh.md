@@ -1,5 +1,20 @@
 # Reaching a machine with a pairing code
 
+## Two codes, two grants — remote access and your chats
+
+You learn one thing: **a code shown on a screen you own, typed on the other computer.** A code can grant two different things. They stay two things, because they are two different powers.
+
+| | remote access (`codeaf serve`, `codeaf chat --at <name>`) | your chats (`/pair`, `codeaf pair`) |
+| --- | --- | --- |
+| What the other computer gets | a key to this machine's tools: a hand on that one machine | your identity: your chats, your saved keys and your sync, on every computer you own |
+| The code | six digits, shown `715 302`, typed with the name of the machine | a number, then six digits, shown `42-715-302`; the number is the place, so the code carries it |
+| This machine must | stay on and stay connected | be there only while you pair |
+| Who can undo it | this machine alone, with `codeaf devices revoke <name>`, at once | you, with `codeaf devices revoke <name>`, but it cuts the relay only; see the page *Pairing your chats with a second computer* |
+
+**One code never gives both.** A code for your chats does not give a shell on any machine. A code for a machine does not give your chats.
+
+Both codes are good for 10 minutes and take 1 attempt. For both, the two screens show the same three words, and a person answers `y / n` on the machine being opened. The page *Pairing your chats with a second computer* has the chats door.
+
 ## Reaching a machine behind a router or a firewall
 
 `--host` needs `ssh <machine>` to already work. When it does not — a home server behind a
@@ -10,7 +25,7 @@ name that prints, with a pairing code instead of a key.
 ```
 big-machine$ codeaf serve
   this machine is reachable as  otter-lamp-42
-  pair a new device with code   715 302   (valid 10 minutes)
+  let a device use this machine with code   715 302   (valid 10 minutes)
 
 laptop$ codeaf chat --at otter-lamp-42
 ```
@@ -42,7 +57,7 @@ It prints, exactly:
 
 ```
   this machine is reachable as  otter-lamp-42
-  pair a new device with code   715 302   (valid 10 minutes)
+  let a device use this machine with code   715 302   (valid 10 minutes)
 ```
 
 **The name is not chosen, it is derived from that machine's own key.** Two words and two
@@ -87,7 +102,23 @@ a paired device is a key to that machine: it opens conversations there, runs wha
 enter the code shown on otter-lamp-42:
 ```
 
-Type `715 302` or `715302` — spaces and dashes are thrown away. Then:
+Type `715 302` or `715302` — spaces and dashes are thrown away. Then this device shows three words and waits:
+
+```
+waiting for approval on otter-lamp-42; it should show: amber fox dune
+```
+
+The words are the check. The machine shows the same three words and asks the person at its terminal, which is you:
+
+```
+"laptop" wants to use this machine. Same three words on that screen: amber fox dune?  y / n
+```
+
+**There is no default.** Enter alone does nothing. Answer `y` only if both screens show the same three words. If they differ, answer `n`: somebody else may have used the code. On `n`, or with no answer for 2 minutes, this device says `refused on the other device` and the machine says `a device asked to pair and was not let in`.
+
+**A machine with nobody at its terminal admits nobody.** When `codeaf serve` does not run in a terminal, there is no person to answer `y / n`, and the answer is no. Run `codeaf serve` in a terminal you watch while you pair.
+
+On `y`, the device says:
 
 ```
 paired. this device is now a key to otter-lamp-42.
@@ -104,21 +135,22 @@ That second sentence belongs to a device somebody deliberately stopped. A machin
 cannot write the pairing down does not say it held: it refuses the pairing instead, and
 what you get is the sentence below for a code that did not work.
 
-**A code is good for 10 minutes and for 5 attempts, whichever runs out first**, and one
-successful pairing spends it — the machine shows a fresh one for the next device. A wrong
-code says:
+**A code is good for 10 minutes and for 1 attempt, whichever runs out first.** Any attempt
+spends the code, right or wrong, and the machine shows a fresh one at once — you do not
+press a key. A wrong code says:
 
 ```
 that is not the code shown on otter-lamp-42 — read it again, and note that it is only good for 10 minutes
 ```
 
 **Guessing a code from outside does not work.** Only the machine that minted it can spend
-an attempt against it, and it allows 5 before throwing the code away. A device that turns
-up when there is no live code at all is told the same thing a wrong code is told, because
-from its side it is the same fact. The machine's own screen is where the difference shows:
+an attempt against it, and it allows 1 before throwing the code away. Then a person looks at
+three words on two screens. A device that turns up when there is no live code at all is told
+the same thing a wrong code is told, because from its side it is the same fact. The machine's
+own screen is where the difference shows:
 
 ```
-a device tried to pair with the wrong code
+someone typed a wrong code, so that code is no longer good
 a device tried to pair and there was no code to pair with
 ```
 
@@ -195,7 +227,8 @@ encrypted between the two ends.
 otherwise be easy for it. The six digits are exchanged with a password-authenticated key
 exchange, so a listener — the relay included — learns nothing about the code and cannot
 grind at it offline. The one way to test a guess is to run a whole attempt against the
-machine that minted the code, and that machine allows 5 of them.
+machine that minted the code, and that machine allows 1 of them. A person then compares three
+words on both screens before anything is let in.
 
 After pairing, both ends have written down each other's key. Every later connection is a
 handshake between those two keys, so a relay that pointed you at the wrong machine gets a
@@ -237,7 +270,7 @@ It prints which machine this is, where its key is kept, and the devices it lets 
 this machine is reachable as otter-lamp-42
 its key is kept in a file on this machine, readable only by you (~/.codeaf/v3/remote/device.key)
 
-devices paired with this machine
+devices that can use this machine
 
   laptop   paired 3d ago  ·  last here 2h ago
   desktop  paired 12d ago
@@ -245,8 +278,12 @@ devices paired with this machine
 stop one with `codeaf devices revoke <name>` — it will need a new code to come back.
 ```
 
-With nothing paired it says
-`no devices are paired with this machine.` and how to pair one. A device that has never
+If you also paired computers with `/pair`, a second group under the heading `devices with your chats` lists them, and `revoke <name>` works on both groups. With nothing of either kind it says:
+
+```
+no devices are paired yet — run `codeaf pair` to share your chats with another computer, or `codeaf serve` to let a device use this machine.
+```
+ A device that has never
 connected shows nothing where its last connection would be, rather than a zero.
 
 To stop one:
