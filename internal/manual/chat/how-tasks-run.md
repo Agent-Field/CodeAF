@@ -673,7 +673,7 @@ out when its brief holds parts that do not need each other, at most **20** of th
 may split its own share once more and a piece of that piece cannot. Inside a task
 both are scoped to its own family: `tasks` lists the pieces it handed out and refuses an id
 outside them with `No task "…" among the pieces you handed out.` Its brief is still its
-whole world; the project's history is not its to read. The sessions place has the whole of it,
+whole world; the project's history is not its to read. The tasks page of this manual has the whole of it,
 under *When a task splits its own work*.
 
 Approval inside a task is allow-everything, with the critical floor still under it (things
