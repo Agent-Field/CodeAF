@@ -424,9 +424,24 @@ func TestTheMovedModelIsTheOneTheNextLaunchOpensOn(t *testing.T) {
 	next.width, next.height = 100, 30
 	next.pal = newPalette(tokens.ANSI256, false)
 	next.openPicker()
-	chosen, ok := next.pick.choice()
-	if next.model != want || !ok || chosen.ID != want {
-		t.Fatalf("next launch model/picker = %q/%q (found=%t), want %q", next.model, chosen.ID, ok, want)
+	// The next launch opens on the moved model, and the picker's MARK is on its
+	// row — the cursor now rests on the list's first row ([picker.cursorToFirst]),
+	// so the mark is what says the model came back.
+	if next.model != want {
+		t.Fatalf("next launch model = %q, want %q", next.model, want)
+	}
+	if _, ok := next.pick.choice(); !ok {
+		t.Fatal("the next launch's picker offered no row to choose")
+	}
+	marked := -1
+	for at, row := range next.pick.list {
+		if row.lane == laneNone && next.pick.all[next.pick.hits[row.hit]].ID == want && next.pick.marked(at) {
+			marked = at
+			break
+		}
+	}
+	if marked < 0 {
+		t.Fatalf("the moved model wears no mark on the next launch's picker: %v", pickerIDs(next))
 	}
 }
 
