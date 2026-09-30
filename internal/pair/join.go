@@ -11,8 +11,10 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
 )
 
@@ -41,6 +43,10 @@ type Joined struct {
 	// Already is true when this computer held these chats before, so nothing
 	// was changed.
 	Already bool
+	// Successor is true when this computer was on an identity that the grant's
+	// replaced, and followed it: its vault is sealed again under the new keys
+	// and nothing it held was given up.
+	Successor bool
 }
 
 // Join reads the typed code, runs the introduction and adopts the grant.
@@ -110,8 +116,12 @@ func joinOffer(label string) ([]byte, error) {
 // already holds these chats changes nothing, and one with chats of its own keeps
 // them unless it was told to replace them.
 func adopt(j Joining, grant Grant) (Joined, error) {
-	if held, err := identity.Load(j.Home); err == nil && held.ID() == grant.Identity.ID() {
+	held, err := identity.Load(j.Home)
+	switch {
+	case err == nil && held.ID() == grant.Identity.ID():
 		return Joined{Already: true}, nil
+	case err == nil && slices.Contains(grant.Replaces, held.ID()):
+		return Joined{Successor: true}, follow(j, held, grant)
 	}
 	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace); err != nil {
 		return Joined{}, adoptFailure(err)
@@ -120,6 +130,26 @@ func adopt(j Joining, grant Grant) (Joined, error) {
 		return Joined{}, j.SaveSyncURL(grant.SyncURL)
 	}
 	return Joined{}, nil
+}
+
+// follow moves this computer from an identity that was rotated to the one that
+// replaced it. The vault is sealed under the new key first (into a file beside
+// the live one), then the identity changes, then the vault is put in place; a
+// crash between the last two is finished by the vault's own next read.
+func follow(j Joining, held identity.Identity, grant Grant) error {
+	if _, err := keys.StageReseal(j.Home, held.CellKey(), grant.Identity.CellKey()); err != nil {
+		return err
+	}
+	if _, err := identity.Adopt(j.Home, grant.Identity, true); err != nil {
+		return adoptFailure(err)
+	}
+	if err := errors.Join(keys.CommitReseal(j.Home), identity.RecordPredecessor(j.Home, held.ID())); err != nil {
+		return err
+	}
+	if grant.SyncURL != "" && j.SaveSyncURL != nil {
+		return j.SaveSyncURL(grant.SyncURL)
+	}
+	return nil
 }
 
 func adoptFailure(err error) error {
