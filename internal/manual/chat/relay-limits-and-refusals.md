@@ -24,11 +24,14 @@ Pairing has limits on both kinds of relay: 10 new codes in an hour for one netwo
 
 ## What do I see when the relay says no
 
-**The chat has no message of its own for a full store or for a rate limit.** This is a gap, and these words are not in the chat:
+**The chat says one plain sentence for each refusal.** The turns you save always stay on this computer, and they go up when the relay takes them again. What differs is what the chat says and how it tries again:
 
-- a full store is `507` with the code `full`. The client names it `blobstore: full (507)`;
-- a rate limit or the new-identity limit is `429` (`rate_limited`, `too_many_identities`). The client names it `blobstore: server refused with 429 "rate_limited"`.
+- **The relay is full** (`507`, code `full`). The chat says `the relay has no room left (5 GiB on the hosted relay), so new turns stay on this computer; free space there and reopen this chat`. It says this at once, and then it stops trying: nothing you do in the chat can make room, so it does not ask the relay again until you reopen the chat. On the hosted relay the daily count of new chunks ends the same way, and it clears by itself the next day.
+- **The relay asks this computer to slow down** (`429`, code `rate_limited`). The chat says nothing for the first 3 minutes, because a short burst clears by itself. If the refusals last longer, it says `the relay is asking this computer to slow down; new turns stay here and go up as soon as it allows`. It waits as long as the relay's `Retry-After` says, and never less than its own wait, which doubles after each failure up to 60 seconds.
+- **Too many new identities from this network** (`429`, code `too_many_identities`). The chat says `this network has started too many new identities today; sync begins when the relay allows more` at once, and waits as long as the relay's `Retry-After` says, up to an hour at a time.
+- **Another of your computers stopped this one** (`401`, code `revoked`). The chat says `this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back`, and does not try again: only a new pairing brings the computer back.
+- **The clock is off** (`401`, code `skew`). The chat says `this computer's clock is off by more than 5 minutes`, once, and tries again at each normal turn of sync.
 
-The chat does not stop. The turns you save stay on this computer, and the next try is later: the wait doubles after each failure, up to 60 seconds. When the relay takes the turns again, they go. The only sync message the chat shows is the clock one: `this computer's clock is off by more than 5 minutes`.
+Each sentence is said once for as long as the trouble lasts, and again if the relay answers in between and then refuses again. An unreachable relay is not a refusal: the chat says nothing about it and tries again with the doubling wait.
 
-So a computer that seems not to sync, with nothing said, may be met by a limit. Check that the relay is up and that it is not full. On your own relay look at its log and its disk.
+On your own relay the full case is its disk: free space on the machine that runs it, then reopen the chat.

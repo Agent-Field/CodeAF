@@ -9,12 +9,19 @@ import (
 // The frozen sentences (STAGE-1-CONTRACTS §8.1). Every surface takes its words
 // from here so a respelling happens once.
 const (
-	OfferContinue  = "continue here"
-	LostRace       = "another device continued this chat first"
-	NoIdentity     = "this machine has no identity yet: codeaf identity import"
-	SyncOff        = "sync is off: set CODEAF_SYNC_URL to your relay's address"
-	Unreachable    = "other machines unreachable"
-	ClockOff       = "this computer's clock is off by more than 5 minutes"
+	OfferContinue = "continue here"
+	LostRace      = "another device continued this chat first"
+	NoIdentity    = "this machine has no identity yet: codeaf identity import"
+	SyncOff       = "sync is off: set CODEAF_SYNC_URL to your relay's address"
+	Unreachable   = "other machines unreachable"
+	ClockOff      = "this computer's clock is off by more than 5 minutes"
+	// What the relay's refusals say (one sentence each, in the order the
+	// cellsync table lists them). None names a code or a number of requests:
+	// each says what is true for the person and what, if anything, to do.
+	RelayFull      = "the relay has no room left (5 GiB on the hosted relay), so new turns stay on this computer; free space there and reopen this chat"
+	Removed        = "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back"
+	SlowDown       = "the relay is asking this computer to slow down; new turns stay here and go up as soon as it allows"
+	TooManyNew     = "this network has started too many new identities today; sync begins when the relay allows more"
 	runningOn      = "running on %s"
 	deviceOff      = "%s off"
 	branchLine     = "%s from %s: merge / discard"

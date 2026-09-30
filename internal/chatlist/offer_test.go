@@ -86,6 +86,10 @@ func TestFrozenSentences(t *testing.T) {
 		NoIdentity:  "this machine has no identity yet: codeaf identity import",
 		Unreachable: "other machines unreachable",
 		ClockOff:    "this computer's clock is off by more than 5 minutes",
+		RelayFull:   "the relay has no room left (5 GiB on the hosted relay), so new turns stay on this computer; free space there and reopen this chat",
+		Removed:     "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back",
+		SlowDown:    "the relay is asking this computer to slow down; new turns stay here and go up as soon as it allows",
+		TooManyNew:  "this network has started too many new identities today; sync begins when the relay allows more",
 	} {
 		if got != want {
 			t.Errorf("got %q want %q", got, want)

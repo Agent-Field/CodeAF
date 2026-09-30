@@ -2911,6 +2911,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is there a storage limit on the relay", "relay-limits-and-refusals"},
 		{"why does my chat not sync and say nothing, is the relay full", "relay-limits-and-refusals"},
 		{"what is the limit on new identities from one network", "relay-limits-and-refusals"},
+		{"the chat says the relay has no room left", "relay-limits-and-refusals"},
+		{"the relay is asking this computer to slow down", "relay-limits-and-refusals"},
 		{"I lost all my computers, can I recover my chats", "losing-every-device"},
 		{"is there a codeaf identity rotate", "losing-every-device"},
 		{"I typed the code on the first screen and nothing happened", "use-this-on-another-computer"},

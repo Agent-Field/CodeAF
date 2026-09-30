@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/blobstore/blobstoretest"
@@ -268,6 +269,7 @@ func TestHTTPErrorsRoundTrip(t *testing.T) {
 	all := []error{
 		blobstore.ErrNotFound, blobstore.ErrBadFrame, blobstore.ErrBadRID, blobstore.ErrConflict,
 		blobstore.ErrFull, blobstore.ErrUnreachable, blobstore.ErrTooMany, blobstore.ErrDamaged,
+		wireauth.ErrRateLimited, wireauth.ErrTooManyIdentities,
 	}
 	rid := strings.Repeat("a", 64)
 	for _, want := range all {
@@ -278,5 +280,34 @@ func TestHTTPErrorsRoundTrip(t *testing.T) {
 				t.Fatalf("Get = %v, want %v", err, want)
 			}
 		})
+	}
+}
+
+// A rate limit keeps the wait the relay named, so the client can honour it.
+func TestHTTPRateLimitKeepsRetryAfter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "42")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"err":"rate_limited"}`))
+	}))
+	defer srv.Close()
+	c := blobstore.NewHTTP(srv.URL, fakeSign("alice"), srv.Client())
+	_, err := c.Has(context.Background(), nil)
+	if !errors.Is(err, wireauth.ErrRateLimited) || wireauth.After(err) != 42*time.Second {
+		t.Fatalf("Has = %v (after %v), want ErrRateLimited after 42s", err, wireauth.After(err))
+	}
+}
+
+// The relay's 507 is the client's ErrFull, with no wait attached.
+func TestHTTPFullIs507WithoutAWait(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInsufficientStorage)
+		_, _ = w.Write([]byte(`{"err":"full"}`))
+	}))
+	defer srv.Close()
+	c := blobstore.NewHTTP(srv.URL, fakeSign("alice"), srv.Client())
+	_, err := c.Has(context.Background(), nil)
+	if !errors.Is(err, blobstore.ErrFull) || wireauth.After(err) != 0 {
+		t.Fatalf("Has = %v (after %v), want ErrFull and no wait", err, wireauth.After(err))
 	}
 }

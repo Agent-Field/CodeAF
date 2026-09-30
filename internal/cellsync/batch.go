@@ -9,7 +9,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
-	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const (
@@ -37,18 +36,22 @@ type Batcher struct {
 	Info         func() PublishInfo
 	OnFlush      func(Flush)      // telemetry hook
 	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
-	OnError      func(error)      // wireauth.ErrSkew and other person-facing refusals
+	OnError      func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
+	Now          func() time.Time // default time.Now; tests inject a fake clock
 	// Sleep waits d or until ctx ends; tests inject a fake. Default is real time.
 	Sleep func(ctx context.Context, d time.Duration) error
 
-	mu        sync.Mutex // guards Driving, noted, stale, published and skewShown; never held over the network
+	mu        sync.Mutex // guards Driving, noted, stale, published, refusedSince and told; never held over the network
 	noted     []string   // heads of sealed turns not yet durable, oldest first
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
-	skewShown bool
 
-	work wakeup // tells the flush loop a turn was noted, so a closed window can open at once
-	idle wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
+	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
+	told         string    // the sentence the person has heard in this run, so each is said once
+
+	work  wakeup // tells the flush loop a turn was noted, so a closed window can open at once
+	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
+	freed wakeup // ends a halt: something the relay refused for has changed
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
@@ -102,6 +105,11 @@ func (b *Batcher) Note(t cellstore.Turn) {
 // moment the person is likeliest to pick the chat up on another machine. It
 // never waits, so it is safe to call from the turn's own goroutine.
 func (b *Batcher) Idle() { b.idle.fire() }
+
+// Freed says something a refusal waited on has changed (space was freed on the
+// relay, say), so a halted chat tries again now instead of waiting for a
+// reopen. It never waits, so it is safe to call from any goroutine.
+func (b *Batcher) Freed() { b.freed.fire() }
 
 // wakeup carries at most one pending request from a caller to a loop. The zero
 // value is ready to use.
@@ -192,7 +200,7 @@ func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
 	if !b.failing {
 		return b.nap(ctx, d, &b.idle)
 	}
-	err := b.sleeper()(ctx, d)
+	err := b.nap(ctx, d, &b.freed)
 	select {
 	case <-b.idle.ch():
 	default:
@@ -298,16 +306,17 @@ func (b *Batcher) flush(ctx context.Context) time.Duration {
 	return window
 }
 
-// after turns a flush's outcome into the next wait.
+// after turns a flush's outcome into the next wait. A failure that is not a
+// refusal is the zero Refusal, which backs off and says nothing.
 func (b *Batcher) after(err error) time.Duration {
 	interval := b.interval()
 	b.failing = err != nil
-	switch {
-	case err == nil, b.surface(err):
+	if err == nil {
 		b.backoff = interval
-	default:
-		b.backoff = min(2*max(b.backoff, interval), max(MaxBackoff, interval))
+		return b.backoff
 	}
+	r, _ := b.surface(err)
+	b.backoff = r.next(b.backoff, interval, err)
 	return b.backoff
 }
 
@@ -478,24 +487,46 @@ func (b *Batcher) setFlag(flag *bool, v bool) {
 	*flag = v
 }
 
-// surface shows a person-facing refusal once and answers whether err was one.
-// Skew is not retried on the backoff: the next tick simply tries again.
-func (b *Batcher) surface(err error) bool {
-	if !errors.Is(err, wireauth.ErrSkew) {
-		return false
-	}
-	b.mu.Lock()
-	first := !b.skewShown
-	b.skewShown = true
-	b.mu.Unlock()
-	if first && b.OnError != nil {
+// surface tells the person of a refusal when the run of refusals is news, and
+// answers which refusal err was.
+func (b *Batcher) surface(err error) (Refusal, bool) {
+	r, ok := RefusalOf(err)
+	if ok && b.news(r) && b.OnError != nil {
 		b.OnError(err)
 	}
+	return r, ok
+}
+
+// news says whether the person should hear r now: it has lasted as long as its
+// row asks to stay quiet, and this sentence has not been said in this run. It
+// marks the sentence as said, so asking twice answers true once.
+func (b *Batcher) news(r Refusal) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.now()
+	if b.refusedSince.IsZero() {
+		b.refusedSince = now
+	}
+	if b.told == r.Line || now.Sub(b.refusedSince) < r.Quiet {
+		return false
+	}
+	b.told = r.Line
 	return true
 }
 
-// recovered notes that the directory answered, so a later skew is news again.
-func (b *Batcher) recovered() { b.setFlag(&b.skewShown, false) }
+func (b *Batcher) now() time.Time {
+	if b.Now != nil {
+		return b.Now()
+	}
+	return time.Now()
+}
+
+// recovered notes that the relay answered, so the next refusal is news again.
+func (b *Batcher) recovered() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.refusedSince, b.told = time.Time{}, ""
+}
 
 func (b *Batcher) emit(f Flush) {
 	if b.OnFlush != nil {
