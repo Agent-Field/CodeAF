@@ -143,8 +143,8 @@ class OverlayApplyTests(unittest.TestCase):
         self.assertIn("def test_agent()", tree)
 
     def test_genuine_conflict_is_reported_not_applied(self):
-        # An overlay whose context was rewritten by the agent cannot be placed.
-        write(self.r.test_file, BASE_TEST.replace("TAIL = 1", "TAIL = 2"))
+        # An overlay whose context is gone cannot be placed at any tolerance.
+        write(self.r.test_file, "totally different\ncontent\nhere\n")
         ok, note = rubric.apply_overlay_idempotent(self.r.repo, str(self.r.overlay))
         self.assertFalse(ok)
         self.assertTrue(note.startswith("overlay conflict"), note)
