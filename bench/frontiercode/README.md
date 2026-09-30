@@ -343,8 +343,10 @@ rather than deleted — the append-only records still carry them.
 
 ## 12. What is stubbed or not yet done
 
-- **Adaptive classical** is implemented and machinery-tested, but no live
-  rollout has yet taken the adaptation branch (§5).
+- **Adaptive classical** is implemented and machinery-tested; the first pilot
+  took the adaptation branch live and crashed in phase B, and this change fixed
+  every seam it hit. No live rollout has yet finished *through* phase B to a
+  verdict (§5).
 - **Registry-install version comparison**: the scanner records registry
   installs but does not yet compare installed versions against the base
   commit's dependency pins.
