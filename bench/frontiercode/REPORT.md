@@ -370,3 +370,61 @@ corrected regrade and the smoke reproduction ran in the locally cached verifier
 image. The campaign's own cost is unchanged from above (harness $0.2928 over the
 15 rollouts; provider key delta $1.2299, which includes the discarded first
 wave).
+
+## Independent review and acceptance (2026-09-30)
+
+A defect-first review of the correction above, plus local reproduction against
+the retained bytes. It found one further grading defect, fixed here; the
+acceptance conclusion rests on the reproduced evidence, not on the summaries.
+
+**Reproduced, not re-derived.** `regrade-retained.sh` was rerun on the retained
+`conflicted-files-refname-crash` s1 patch (to a scratch `DEST`, leaving
+`evidence/` and `evidence-corrected/` untouched): the regenerated
+`logs/grade/grade.json` is byte-identical to the committed corrected grade
+(0.75), and the rerun's test log shows 6 tests selected, 6 passed — including
+the reference test the `-C1` apply placed. Every retained `model.patch` in
+`evidence-corrected/` is byte-identical to its original in `evidence/` (sha256
+checked), and no file under `evidence/` was modified by this change.
+
+**One defect found and fixed.** The correction's claim that a patch which does
+not apply "grades the legitimate 0 the code intends" held for phase A but not
+for the combined grade: when the patch never applied, phase A gathered no judge
+input, the judge therefore returned no prompt verdict, and `combine` overwrote
+phase A's `fail` with `rig` for every prompt criterion — so a rubric with a
+prompt criterion (all three pilot tasks have one) still landed at `rig`, not 0.
+`combine` now keeps phase A's fail when `phaseA.json` carries `apply_ok: false`,
+and two regression tests in `grade/test_rubric.py` cover it, including the
+regrade case where a stale retained `judge.json` carries a prompt pass. The
+suite is now 16 tests.
+
+**Acceptance conclusion — all 15 identities and the denominators.**
+
+- 15 retained trial identities (the second execute wave). The discarded first
+  wave (15 empty-`model.patch` attempts) is a campaign-level rig event, not one
+  of the 15.
+- Original evidence: 12 numeric `grade.json` scores, 3 `rig` (conflicted s1–s3),
+  9 scanner-flagged, 6 shipped passes, mean over the 12 numeric = 10.75/12 =
+  0.8958. Corrected regrade: 15 numeric, still 9 flagged, 6 shipped passes,
+  mean 13.25/15 = 0.8833; rubric-view passes 11 original → 14 corrected.
+  Shipped pass rate is 6/15 = 0.40 both ways, because a hard scanner flag is a
+  zero whatever the rubric said.
+- The three recovered grades (0.75, 0.75, 1.00) each trace from the original
+  `model.patch` through the rerun's `phaseA.json`/test log to the weighted
+  rubric: s1 and s2 lose only the scope criterion (22 and 25 changed lines over
+  a 20-line limit), s3 passes all six. They are rubric-view recoveries; all
+  three were already hard-flagged, so no shipped score changes.
+- Costs: harness and guard are two readings of the same guard-usage rows and
+  are equal per run, so the reported $0.2928 is not doubled; the discarded wave
+  and judge spend live only in the provider key delta ($1.2299) and are not
+  added to the harness figure again.
+
+**Unresolved, honestly.** The raw `egress-proxy.log` for the flagged runs was
+never committed and cannot be re-derived, so the cause of `conflicted` s1's and
+`shell-pipe` s1–s5's github-family connections is unknown from the branch — the
+`--check` contract now reports those runs incomplete. The `conflicted` s2/s3/s5
+flags are demonstrably false positives of the scanner's observation-vs-action
+distinction (the upstream URL is inside the task's own `git.py`, returned by a
+`read`); the scanner is left untouched per policy. No live rollout has yet
+finished through phase B to a verdict; phase B is covered by the retained-patch
+smoke and the unit suite. Provider key-delta readings come from the host key
+counter and are recorded in the text above, not re-derivable from the branch.
