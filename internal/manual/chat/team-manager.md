@@ -211,6 +211,11 @@ and does not open another window. The focus stays where it was. The hint says
 
 A deliberate message jump opens the activity and tool-call groups that contain the target before scrolling to it. Other history stays collapsed.
 
+The row keeps its own team's message even with `All` chats shown, or when its manager also
+belongs to `All teams`. Showing another team on the rail does not change which message opens.
+If the message has left that conversation's history, the chat opens at the bottom and the
+hint says `that message is older than this chat's history`.
+
 ## What members say without being asked
 
 A member of a team that has a manager tells the manager, through the traffic, three things it

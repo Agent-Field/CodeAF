@@ -7,11 +7,10 @@ import (
 )
 
 // A start's new receipt carries its traffic number. Older receipts can match
-// only one successful call and one root in the current team's retained history.
+// only one successful call and one root in the source team's retained history.
 // Repeated identical starts are ambiguous, so they never guess another message.
-func (a *app) teamStartEntryAt(id string) int {
-	team, ok := a.teamOfFront()
-	if !ok || team.Manager != a.frontTabKey() {
+func (a *app) teamStartEntryAt(id string, team team) int {
+	if team.Manager != a.frontTabKey() {
 		return -1
 	}
 	var root teamstore.Entry

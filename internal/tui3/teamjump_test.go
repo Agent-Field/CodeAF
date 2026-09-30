@@ -404,3 +404,168 @@ func TestTrafficJumpNeverLandsOnAnotherTeamsSameNumber(t *testing.T) {
 		t.Fatalf("this team's send landed on entry %d, want its own team_send at 1", got)
 	}
 }
+
+// All teams seats an ordinary manager as a member, but the Traffic beside
+// that manager still belongs to the ordinary team, regardless of the filter.
+func trafficAppWithGlobalManager(t *testing.T) (*app, string, string) {
+	t.Helper()
+	a, harbor, _, _ := trafficApp(t)
+	_, globalKey := trafficHandle(t, a, harbor, "openrouter")
+	member, _ := mustTeam(t, a, harbor).Member(globalKey)
+	rootID := ""
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		rootID = f.MakeRoot(a.now())
+		if err := f.AddMember(rootID, member); err != nil {
+			return err
+		}
+		return f.SetManager(rootID, globalKey)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	teamsFlush(t, a)
+	if !mustTeam(t, a, rootID).Holds(a.frontTabKey()) {
+		t.Fatal("All teams did not seat the ordinary manager")
+	}
+	a.width, a.height = 160, 40
+	a.workMode = config.WorkFold
+	return a, harbor, rootID
+}
+
+func TestTrafficRowOpensItsOwnTeamsMessageWithAllTeamsMembership(t *testing.T) {
+	for _, filter := range []string{"all chats", "ordinary team", "All teams"} {
+		t.Run(filter, func(t *testing.T) {
+			a, harbor, rootID := trafficAppWithGlobalManager(t)
+			handle, _ := trafficHandle(t, a, harbor, "Refactor")
+			id, err := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{
+				Kind: teamstore.KindDirective, From: teamstore.FromManager, To: handle, Text: "check the parser totals"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			trafficReadNow(t, a)
+			a.entries = foldFixture()
+			a.entries[3] = entry{kind: entryTool, tool: "team_send", text: "team_send", turn: 1, status: toolOK, settled: true,
+				detail: toolDetail{Args: `{"team":"harbor","to":"` + handle + `","text":"check the parser totals","kind":"directive"}`,
+					Output: "Sent a directive to @" + handle + " (" + teamstore.ThreadNumber(id) + ")."}}
+			// A newer call in the global team has the same team-local number.
+			a.entries = append(a.entries, entry{kind: entryTool, tool: "team_send", text: "team_send", turn: 2, status: toolOK, settled: true,
+				detail: toolDetail{Args: `{"team":"` + rootID + `","to":"someone","text":"different team's work"}`,
+					Output: "Sent to @someone (" + teamstore.ThreadNumber(id) + ")."}})
+			fillEntries(a, 60, "after")
+			switch filter {
+			case "all chats":
+				a.teamActivate("")
+			case "ordinary team":
+				a.teamActivate(harbor)
+			case "All teams":
+				a.teamActivate(rootID)
+			}
+			a.offset, a.stick = 0, true
+			for _, r := range a.visible(a.bodyWidth()) {
+				if r.entry == 3 {
+					t.Fatal("the message should begin inside closed work")
+				}
+			}
+			front, held := a.frontTabKey(), a.railHold
+			_ = railLines(t, a)
+			x, y := sideRowOn(t, a, "thread/"+id)
+			sideClick(t, a, x, y)
+			shown, lifted := landedRow(a, "check the parser totals")
+			if !shown || !lifted || a.traffic.landing.entry != 3 || a.traffic.landing.older || a.frontTabKey() != front || a.railHold != held {
+				t.Fatalf("row did not reveal its own team's message in place: shown=%v lifted=%v landing=%+v front=%q railHold=%v", shown, lifted, a.traffic.landing, a.frontTabKey(), a.railHold)
+			}
+		})
+	}
+}
+
+func TestTrafficMissingMessageDoesNotUseAllTeamsSameNumber(t *testing.T) {
+	a, harbor, rootID := trafficAppWithGlobalManager(t)
+	handle, _ := trafficHandle(t, a, harbor, "Refactor")
+	id, err := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{
+		Kind: teamstore.KindDirective, From: teamstore.FromManager, To: handle, Text: "message no longer in history"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trafficReadNow(t, a)
+	a.teamActivate("")
+	a.entries = []entry{{kind: entryTool, tool: "team_send", text: "team_send", status: toolOK, settled: true,
+		detail: toolDetail{Args: `{"team":"` + rootID + `","to":"someone","text":"different team's work"}`,
+			Output: "Sent to @someone (" + teamstore.ThreadNumber(id) + ")."}}}
+	fillEntries(a, 60, "after")
+	a.offset, a.stick = 0, false
+	_ = railLines(t, a)
+	x, y := sideRowOn(t, a, "thread/"+id)
+	sideClick(t, a, x, y)
+	if !a.stick || !a.traffic.landing.older || a.dockHoverWords() != trafficOlderWords {
+		t.Fatalf("missing message did not retain the history hint: landing=%+v hint=%q", a.traffic.landing, a.dockHoverWords())
+	}
+}
+
+// A handle opens its recipient before a hosted replay arrives. That recipient
+// can manage another team, so its own column must not replace the source team.
+func TestTrafficJumpKeepsItsSourceTeamThroughHostedReplay(t *testing.T) {
+	a, harbor, rootID := trafficAppWithGlobalManager(t)
+	manager := a.frontTabKey()
+	global := mustTeam(t, a, rootID)
+	m, ok := global.Member(manager)
+	if !ok {
+		t.Fatal("the ordinary manager is not in All teams")
+	}
+	id, err := teamstore.AppendTrafficID(a.profileDir, rootID, teamstore.Entry{
+		Kind: teamstore.KindDirective, From: teamstore.FromManager, To: m.Handle, Text: "coordinate the parser"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trafficReadNow(t, a)
+	spend(t, a, a.trafficGo(global.Manager))
+	a.teamActivate(rootID)
+	hosted := replayTestAgent(nil)
+	hosted.entries = []session.DisplayEntry{
+		{Role: "aside", Text: `Team traffic in "All teams" for you:`,
+			Team: []session.TeamLine{{Team: teamstore.RootName, Thread: id, Text: "coordinate the parser"}}},
+		{Role: "aside", Text: `Team traffic in "harbor" for you:`,
+			Team: []session.TeamLine{{Team: "harbor", Thread: id, Text: "another team's same-number message"}}},
+	}
+	a.behind[manager].conv.Agent = hosted
+	jump := a.trafficJump(manager, id)
+	if a.traffic.jump.team != rootID || a.traffic.jump.id != id {
+		t.Fatalf("jump did not retain the source team: %+v", a.traffic.jump)
+	}
+	if own, _, _ := a.sideTeam(); own.ID != harbor {
+		t.Fatalf("recipient's column belongs to %q, want %q", own.ID, harbor)
+	}
+	if !a.hostReplayLoading || a.trafficJumpWords() != "" {
+		t.Fatalf("jump forgot its source before replay: %+v", a.traffic.jump)
+	}
+	drain(t, a, jump)
+	if a.traffic.landing.entry != 0 || a.traffic.landing.older || a.traffic.jump.id != "" {
+		t.Fatalf("replayed jump did not land on its source team's message: %+v", a.traffic.landing)
+	}
+}
+
+// Deliveries keep the team's name from when they arrived. Narrowing a jump
+// to its source must not turn a later rename into missing message history.
+func TestTrafficJumpOpensADeliveryAfterItsTeamIsRenamed(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	handle, member := trafficHandle(t, a, harbor, "openrouter")
+	id, err := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{
+		Kind: teamstore.KindDirective, From: teamstore.FromManager, To: handle, Text: "check the invoice rows"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trafficReadNow(t, a)
+	spend(t, a, a.trafficGo(member))
+	a.entries, _ = a.replayBlocks([]session.DisplayEntry{{Role: "aside", Text: `Team traffic in "harbor" for you:`,
+		Team: []session.TeamLine{{Team: "harbor", From: teamstore.FromManager, Kind: teamstore.KindDirective, Thread: id, Text: "check the invoice rows"}}}}, replayShape{})
+	if err := a.teamRename(harbor, "dock"); err != nil {
+		t.Fatal(err)
+	}
+	teamsFlush(t, a)
+	fillEntries(a, 60, "after")
+	a.offset, a.stick = 0, true
+	spend(t, a, a.trafficJump(member, id))
+	shown, lifted := landedRow(a, "check the invoice rows")
+	if !shown || !lifted || a.traffic.landing.older {
+		t.Fatalf("rename lost a retained message: shown=%v lifted=%v landing=%+v", shown, lifted, a.traffic.landing)
+	}
+}

@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -45,9 +46,9 @@ const trafficOlderWords = "that message is older than this chat's history"
 // trafficJumpTo is a jump waiting for its conversation, and trafficLanding
 // the entry lifted after one, or the hint said when it found nothing.
 type trafficJumpTo struct {
-	key, id string
-	until   time.Time
-	waking  bool
+	key, id, team string
+	until         time.Time
+	waking        bool
 }
 
 type trafficLanding struct {
@@ -66,6 +67,15 @@ type trafficJumpDeadlineMsg struct{}
 // trafficJump opens member key's conversation at Traffic entry id, or in
 // front at id when key is "" or already in front.
 func (a *app) trafficJump(key, id string) tea.Cmd {
+	// The column's team owns the clicked message. The rail filter can instead
+	// name a team above it, where this manager is also an ordinary member.
+	t, _, _ := a.sideTeam()
+	return a.trafficJumpIn(key, id, t.ID)
+}
+
+// trafficJumpIn retains the source team before opening another conversation,
+// whose own team or rail filter must not change the message's identity.
+func (a *app) trafficJumpIn(key, id, teamID string) tea.Cmd {
 	var cmd tea.Cmd
 	if key != "" && key != a.frontTabKey() {
 		cmd = a.trafficGo(key)
@@ -73,7 +83,7 @@ func (a *app) trafficJump(key, id string) tea.Cmd {
 	if key == "" {
 		key = a.frontTabKey()
 	}
-	a.traffic.jump = trafficJumpTo{key: key, id: id, until: a.now().Add(trafficJumpWait)}
+	a.traffic.jump = trafficJumpTo{key: key, id: id, team: teamID, until: a.now().Add(trafficJumpWait)}
 	return tea.Batch(cmd, a.trafficLand())
 }
 
@@ -96,7 +106,7 @@ func (a *app) trafficLand() tea.Cmd {
 	}
 	at := -1
 	if a.now().Before(j.until) {
-		at = a.teamEntryAt(j.id)
+		at = a.teamEntryAtIn(j.id, j.team)
 	}
 	if at < 0 && (a.hostReplayLoading || a.hostReplayWaiting) && a.now().Before(j.until) {
 		if !j.waking {
@@ -150,24 +160,37 @@ func (a *app) revealTrafficEntry(at int) {
 // teamEntryAt is the newest entry of the conversation that carries Traffic
 // entry id, -1 for none.
 func (a *app) teamEntryAt(id string) int {
+	t, _, _ := a.sideTeam()
+	return a.teamEntryAtIn(id, t.ID)
+}
+
+// teamEntryAtIn matches both parts of a Traffic message's identity. Numbers
+// count separately in every team, including the optional All teams group.
+func (a *app) teamEntryAtIn(id, teamID string) int {
 	if id == "" {
+		return -1
+	}
+	shown, inTeam := a.teamByID(teamID)
+	if teamID != "" && !inTeam {
 		return -1
 	}
 	// A START ROOT IS ANSWERED BY ITS OWN TEAM'S MATCHER FIRST. Traffic numbers
 	// count per team, so a `team_send` into another team can carry the same
 	// `(#N)` as this team's start, and the newest-first search below would land
-	// on it; [app.teamStartEntryAt] checks the team, and that search cannot.
-	if at := a.teamStartEntryAt(id); at >= 0 {
-		return at
+	// on a send rather than the start. [app.teamStartEntryAt] also checks the
+	// accepted brief and recipient, so a start keeps its own call.
+	if inTeam {
+		if at := a.teamStartEntryAt(id, shown); at >= 0 {
+			return at
+		}
 	}
 	number := teamstore.ThreadNumber(id)
-	shown, inTeam := a.teamOfFront()
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
 		switch e.kind {
 		case entryTeam:
 			for _, l := range e.team {
-				if l.Thread == id {
+				if l.Thread == id && (!inTeam || a.trafficLineBelongs(l, shown)) {
 					return i
 				}
 			}
@@ -181,6 +204,9 @@ func (a *app) teamEntryAt(id string) int {
 					return i
 				}
 			case "team_post":
+				if inTeam && sentElsewhere(e, shown) {
+					continue
+				}
 				if strings.Contains(e.detail.Output, " as "+number+",") || strings.Contains(e.detail.Output, " as "+number+".") {
 					return i
 				}
@@ -190,9 +216,29 @@ func (a *app) teamEntryAt(id string) int {
 	return -1
 }
 
-// sentElsewhere reports a `team_send` that named a team other than shown, whose
-// `(#N)` counts in that team's traffic and says nothing about this one. A send
-// that names no team went to the sender's own and is still a candidate.
+// trafficLineBelongs keeps deliveries in their source team. A delivery stores
+// the name it arrived under, so after a rename its retained Traffic row must
+// still identify it; a name that belongs to another team never does.
+func (a *app) trafficLineBelongs(line session.TeamLine, target team) bool {
+	if line.Team == "" || line.Team == target.ID || strings.EqualFold(line.Team, target.Name) {
+		return true
+	}
+	for _, t := range a.wall.teams {
+		if line.Team == t.ID || strings.EqualFold(line.Team, t.Name) {
+			return false
+		}
+	}
+	for _, e := range a.traffic.rows[target.ID] {
+		if e.ID == line.Thread && e.Kind == line.Kind && e.From == line.From && strings.TrimSpace(e.Text) == strings.TrimSpace(line.Text) {
+			return true
+		}
+	}
+	return false
+}
+
+// sentElsewhere reports a team tool that named a team other than shown, whose
+// receipt counts in that team's traffic and says nothing about this one. A
+// call that names no team went to the sender's own and is still a candidate.
 func sentElsewhere(e *entry, shown team) bool {
 	var args struct{ Team string }
 	if json.Unmarshal([]byte(e.detail.Args), &args) != nil {
