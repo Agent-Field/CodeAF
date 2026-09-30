@@ -2,7 +2,7 @@ import { getPlatformProxy } from 'wrangler';
 
 /** A real R2 bucket from workerd's local simulator, the engine `wrangler dev --local` uses. */
 export async function openBucket() {
-  const proxy = await getPlatformProxy({ configPath: new URL('../wrangler.toml', import.meta.url).pathname, persist: false });
+  const proxy = await getPlatformProxy({ configPath: new URL('./wrangler.toml', import.meta.url).pathname, persist: false });
   return { bucket: proxy.env.FRAMES, close: () => proxy.dispose() };
 }
 
@@ -25,3 +25,12 @@ export function frame(rids, text = 'x') {
 }
 
 export const init = (head = 'h0') => ({ head, class: 'work', size: 0, keys: { '': { id_x: '' } } });
+
+/** countingBucket answers the bucket and a tally of the calls made on it, by method name. */
+export function countingBucket(bucket) {
+  const calls = {};
+  const counted = new Proxy(bucket, {
+    get: (target, name) => (typeof target[name] === 'function' ? (...a) => ((calls[name] = (calls[name] ?? 0) + 1), target[name](...a)) : target[name]),
+  });
+  return { bucket: counted, calls };
+}

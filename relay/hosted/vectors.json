@@ -21,6 +21,20 @@
    "ok": false
   },
   {
+   "name": "header names in other case",
+   "frame": "QUdFRgGfAAAAeyJ2IjoxLCJDRUxMX0tFWV9JRCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwiT2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0101010101010101010101010101010101010101010101010101010101010101"
+   ],
+   "lens": [
+    6
+   ],
+   "frame_id": "2a59aadf8f22dbe524ac9f2b8c269199160ad6fcff403ea4fa1ef2a92a585739",
+   "js_stricter": true
+  },
+  {
    "name": "header not json",
    "frame": "QUdFRgEEAAAAbm9wZQ==",
    "ok": false
@@ -39,6 +53,20 @@
    "name": "no objects",
    "frame": "QUdFRgFFAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W119",
    "ok": false
+  },
+  {
+   "name": "object names in other case",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3siUklEIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIk9mZiI6MCwiTEVOIjo2fV19QUdFTwF4",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0101010101010101010101010101010101010101010101010101010101010101"
+   ],
+   "lens": [
+    6
+   ],
+   "frame_id": "6c2b627cd9a2922d8fcd5ee55956d09df39d1204bdb2a9506c7c52660a004b97",
+   "js_stricter": true
   },
   {
    "name": "object past payload",
@@ -117,39 +145,39 @@
    "method": "GET",
    "uri": "/v1/store/stats",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "E1sjC_JzjqhVZhirHFlZ80qDTALZoy7wyUPODDsCGDZEkivJgn3q636NP4Jm1aKl7kWaTJEyyhwhnGDNTh0MBg",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "faSCi283nZzqhlncapx38oJH2lLeVDHLA5Puo5jqoef-Y9fcrPnjWNVo8Gj9eDIMFRc9ZlXce-KmcZm_2JpQAg",
     "Codeaf-Time": "1759049990000"
    },
    "body": "",
    "now_ms": 1759049990000,
-   "identity": "id_c2127435c77a3a4f52bbd1b498eca496",
-   "device": "dev_f4877743199f2fa89f01df9ea6bbf86e"
+   "identity": "id_696c911e5518a7fa4910184696b44d1f",
+   "device": "dev_ac2b2f77b1f6a1807651bd37acedc602"
   },
   {
    "name": "valid post with query",
    "method": "POST",
    "uri": "/v1/store/has?x=1",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "TXQbjG_Q1L5Q76qKcSPP0fy-gJ4jhN3e6TP2OLjQf9hN1R_MXexBjVzoAaED-Jw0uARuOOxirJCksiKccGOyBA",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "WxORvLdWGE39EjZTF0c_zVOL2TheEQvqTu5odB6bPNp8U54AJ4dwEFut8c4oB3gRIIYPlzQpYt3q5KF33M88Bg",
     "Codeaf-Time": "1759049990000"
    },
    "body": "eyJyaWRzIjpbIngiXX0=",
    "now_ms": 1759049990000,
-   "identity": "id_c2127435c77a3a4f52bbd1b498eca496",
-   "device": "dev_f4877743199f2fa89f01df9ea6bbf86e"
+   "identity": "id_696c911e5518a7fa4910184696b44d1f",
+   "device": "dev_ac2b2f77b1f6a1807651bd37acedc602"
   },
   {
    "name": "body changed in flight",
    "method": "POST",
    "uri": "/v1/store/has",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "RXRDedkxZwKe9uUAtBqG1oPdIc3GlqxhCqagnYasZ2DqRzvAigscFpkZTFCYP1DI8K-UNtmQpUPv-dr-24NHBA",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "1uV1Y0PAOWvrRJRL7540LDfzwmBduM-FIaVaUH9QxfBphMqs1oAI-zAaDX7udVh2P3fb7W-1GkuMzxJQ8_IGBQ",
     "Codeaf-Time": "1759049990000"
    },
    "body": "e30=",
@@ -161,24 +189,24 @@
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "YaCnHfvrkuyi_ONhbuKM84tVYhdDpZd1ytcIHwNXesxYH8RrE84n0Vv6arQNcXroVmAEz8amt5cYup8S9T5BBg",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "_CUfpf8rZfxtPWIAwtxpjdPxKPfNWBPnW46vmri-IXhhQyOs1rBcfTJ_2Y7_FSItLul9g4KmSogMDukChRb6Bg",
     "Codeaf-Time": "1759049690000"
    },
    "body": "",
    "now_ms": 1759049990000,
-   "identity": "id_c2127435c77a3a4f52bbd1b498eca496",
-   "device": "dev_f4877743199f2fa89f01df9ea6bbf86e"
+   "identity": "id_696c911e5518a7fa4910184696b44d1f",
+   "device": "dev_ac2b2f77b1f6a1807651bd37acedc602"
   },
   {
    "name": "skew six minutes past",
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "1RL5aHCUx8nkrApiqJL4vEv8FvLWGMVYToccQFQoeL5O8NPjhltzcwhaqwBgSFp7ve3kpI3zpZ6lrWNafw3wAg",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "QglbC-__ZRE8568s9hX-4CLMIsjpLEzBtt5IinB_i6pqMGx-m2zGBimYjiARATgB80YHL5xnGa_jm0dh-y53CA",
     "Codeaf-Time": "1759049630000"
    },
    "body": "",
@@ -190,9 +218,9 @@
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "hHMzyvb9n8Ha2OZSAXXJyYTfGKsrBnFxnzVWnsiFt7CmjIZTq7JEyCdzCTKGxuniAtgv3vcfFTjNmjZQFNeDCg",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "7mBWIKOMi3fxPPuStBNwT23JPeCghmJgBPEV-BWKlGruoK-FFByqhjH8kVv_GKJTrRROilK4tFLAh6JlDGxxBA",
     "Codeaf-Time": "1759050350000"
    },
    "body": "",
@@ -204,9 +232,9 @@
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI2YWNiOWQ2ZjRhNWYwYWQyYzBiNzNlNmI5NTk2ZTZmODc3ZGY0MjlmZTJjMTYyMzVlMTdkN2I2YWQ5OWQ5NTBmIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDk0OCwic2lnIjoiODBhMDhkY2E3Nzg3MzY3NDdiMTVjNjVmY2RmNzUyOTQzZWUxMjY0ZjIwOGZjOTg3ZTdhNWFhMzAzODc2OWM3ZDJiODI5ZmY3OGM0ZmFjYzY5ODg5YWI3NmUyYThmMDg3ZGM5NDUyNWYyY2M2NWUyMDJiZWZjN2EzYWNkMzZiMGEifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "B9HZxLLWV4_4Uc14fL9HmE1_NTnna2_ZYDfZFrwyQd5um3qUctkqbUXr5GfazLIoExVRPGBYMujsAjJKhpHCDA",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIxYWFhYWE1ZmU0ZTcyYmJhZDY2OWEwMDEyM2NiZTZkMDAxYzRkOTVkNDQxOGFkODJmMjg5MTU1ODI1MzA4YjI1IiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3OSwic2lnIjoiZDNlYTIyNTNkODM3NThiMWU4M2I0NWRkNDcxNDEzOWZkYWVlNjY1ZTZiNDJiNWFmNDkxN2M0ZTQyNDg0Mjk4MTBmY2RkNGVkOTQwNjEyYWYwZjA1ZDI5ODIwYTIxM2FhOTk1YjE2MWU4Njk5ZmNmNTk2MGNkOTMyZDhjYmYwMGQifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "IYzor07t2JDjNhcStUmjOUbFgcIrk8VEoQUvR7N0G3mmcMbl3EfceB0rc1vd6kClZncU_Hjlu2smWkniRKGgAw",
     "Codeaf-Time": "1759049990000"
    },
    "body": "",
@@ -218,9 +246,9 @@
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "ijQczR2cw8h_sJv_XuuiaQ4FNvEbVZprspl5oy3ar4qaeuLk7fRIP03Eg_UR4RqJ-WmmGi2mD6T9YGjP1VMSCA",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "yA9pVm-Tgc_DSD7baMHahLv7eMCSuSADOTxaBa5c8-9TU5Uif_UORcxj778K9AQPPe4vhzF1jJhGHVg9rKiiDQ",
     "Codeaf-Time": "1759049990000"
    },
    "body": "",
@@ -232,8 +260,8 @@
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
     "Codeaf-Time": "1759049990000"
    },
    "body": "",
@@ -245,9 +273,9 @@
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3F",
-    "Codeaf-Sig": "B9HZxLLWV4_4Uc14fL9HmE1_NTnna2_ZYDfZFrwyQd5um3qUctkqbUXr5GfazLIoExVRPGBYMujsAjJKhpHCDA",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2",
+    "Codeaf-Sig": "IYzor07t2JDjNhcStUmjOUbFgcIrk8VEoQUvR7N0G3mmcMbl3EfceB0rc1vd6kClZncU_Hjlu2smWkniRKGgAw",
     "Codeaf-Time": "1759049990000"
    },
    "body": "",
@@ -259,9 +287,9 @@
    "method": "GET",
    "uri": "/v1/dir/list",
    "headers": {
-    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiIwYmY2YzVlZTE1ZDRmOTg3OWE0NGY2ZjdjZmYwZGI2NDhlNTU4NGQ1NDhjOTMxMjIwMDljYWZmYzU5MzI1ZmYzIiwiY3JlYXRlZCI6MTc5MDcxNzU3NDkzNiwic2lnIjoiMDIwZmJjODk3ODNiMjcyZGJlMWUwN2FlODdhZjEyZTc3ZDczYjMxZjVkMDNhMWIwNDlkNTM0NzQ1MGM5NGM1YjUwZTY2MTAzODFmMWNmMzhiNzk5MTE1YzgzNTAzZWQ5MGMxNmU4OTEyYTVhYmJkNTNkNDIxZDdmNGY2YTExMDAifQ",
-    "Codeaf-Identity": "bSo7jLvr6iJFnRtiqZ3FJOiRnbYr-sFyy4msqglrI8c",
-    "Codeaf-Sig": "E1sjC_JzjqhVZhirHFlZ80qDTALZoy7wyUPODDsCGDZEkivJgn3q636NP4Jm1aKl7kWaTJEyyhwhnGDNTh0MBg",
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI0Y2MyOWMzNjBhMTFlOTk1N2QwODI2MGI3ZTdiMDBjZjAyMGFlMGY0MzNjZDc2NzhjZmE4YzdkNjI5ODg2NzQzIiwiY3JlYXRlZCI6MTc5MDczNTk4NTE3MCwic2lnIjoiZjEwZWZlMmQ5YjdkMTM0MGM5Y2U4MWJiZmM4NTZiNGEyOGZjNmU5NDIzZjMzMzI1NWY2NDcxMzIzZDUxMzAyZjBjZDk1NmIzZDdkMDNmNzk2OTk0MDA5ODNlMjI5NmY0MmQwYWU1M2I0YTY0YTI2OGNhOGViMmU3ZWY2MmE2MDAifQ",
+    "Codeaf-Identity": "a-PPhuIysms3YhqTMOC2OoHoAPrCukyGulmvaXOUlIc",
+    "Codeaf-Sig": "faSCi283nZzqhlncapx38oJH2lLeVDHLA5Puo5jqoef-Y9fcrPnjWNVo8Gj9eDIMFRc9ZlXce-KmcZm_2JpQAg",
     "Codeaf-Time": "1759049990000"
    },
    "body": "",

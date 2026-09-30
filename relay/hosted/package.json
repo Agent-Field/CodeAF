@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "e2e": "sh test/e2e.sh",
     "dev": "wrangler dev --local"
   },
-  "devDependencies": { "wrangler": "^4.144.0" }
+  "devDependencies": {
+    "wrangler": "^4.144.0"
+  }
 }

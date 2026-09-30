@@ -52,19 +52,22 @@ function carve(refs, payload) {
     const body = payload.subarray(next, end);
     if (!OBJECT_MAGICS.some((m) => startsWith(body, m))) throw bad('object is not sealed');
     seen.add(ref.rid);
-    objects.push({ rid: ref.rid, bytes: body });
+    objects.push({ rid: ref.rid, off: ref.off, len: ref.len, bytes: body });
     next = end;
   }
   if (next !== payload.length) throw bad('payload holds bytes no object names');
   return objects;
 }
 
-/** decode validates a frame and answers its cell key id and objects (views of frame). */
+/**
+ * decode validates a frame and answers its cell key id, the payload's offset inside the frame
+ * and its objects (views of frame, each with its offset in the payload and its length).
+ */
 export function decode(frame) {
   if (frame.length > MAX_FRAME) throw bad('frame is larger than the limit');
   const [raw, payload] = split(frame);
   const h = parseHeader(raw);
-  return { cellKeyId: h.cell_key_id, objects: carve(h.objects, payload) };
+  return { cellKeyId: h.cell_key_id, base: frame.length - payload.length, objects: carve(h.objects, payload) };
 }
 
 /**

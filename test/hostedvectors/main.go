@@ -59,6 +59,11 @@ type FrameCase struct {
 	RIDs      []string `json:"rids,omitempty"`
 	Lens      []int    `json:"lens,omitempty"`
 	FrameID   string   `json:"frame_id,omitempty"`
+	// JSStricter marks a frame Go accepts and the JS port refuses on purpose:
+	// encoding/json matches field names case-insensitively, the port does not.
+	// The direction is safe (Go writers always emit the canonical names), and
+	// pinning it here means the gap can only move by a change to a vector.
+	JSStricter bool `json:"js_stricter,omitempty"`
 }
 
 const cellKey = "0123456789abcdef0123456789abcdef"
@@ -109,6 +114,9 @@ func frameCases() []FrameCase {
 		"rid not hex":         rawFrame(strings.Replace(header(1, cellKey, refs(ref(1, 0, 6))), rid(1), strings.Repeat("g", 64), 1), "AGEO\x01x"),
 		"plaintext object":    rawFrame(header(1, cellKey, refs(ref(1, 0, 5))), "hello"),
 		"object too short":    rawFrame(header(1, cellKey, refs(ref(1, 0, 3))), "AGE"),
+		// Accepted by Go's case-insensitive field matching; refused by the JS port.
+		"header names in other case": rawFrame(fmt.Sprintf(`{"v":1,"CELL_KEY_ID":%q,"Objects":%s}`, cellKey, refs(ref(1, 0, 6))), "AGEO\x01x"),
+		"object names in other case": rawFrame(fmt.Sprintf(`{"V":1,"cell_key_id":%q,"objects":[{"RID":%q,"Off":0,"LEN":6}]}`, cellKey, rid(1)), "AGEO\x01x"),
 	}
 	return casesOf(bytesOf)
 }
@@ -129,6 +137,7 @@ func frameCase(name string, f []byte) FrameCase {
 		return c
 	}
 	c.OK, c.CellKeyID, c.FrameID = true, h.CellKeyID, blobstore.IDOf(f)
+	c.JSStricter = strings.HasSuffix(name, "in other case")
 	for _, o := range objs {
 		c.RIDs, c.Lens = append(c.RIDs, o.RID), append(c.Lens, len(o.Bytes))
 	}

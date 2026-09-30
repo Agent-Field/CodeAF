@@ -5,6 +5,14 @@ export const LEASE_TTL_MS = 30_000;
 export const STAGE1 = { ttlMs: LEASE_TTL_MS, renewOnPublish: false };
 export const AMENDED = { ttlMs: 90_000, renewOnPublish: true };
 
+const POLICIES = { stage1: STAGE1, amended: AMENDED };
+
+/** policyOf names the deployed lease law; an unknown name stops the relay rather than guess. */
+export function policyOf(name = 'stage1') {
+  if (!(name in POLICIES)) throw new Error(`unknown LEASE_POLICY ${name}`);
+  return POLICIES[name];
+}
+
 export class RuleError extends Error {
   constructor(code) {
     super(code);
