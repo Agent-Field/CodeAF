@@ -20,9 +20,9 @@ export async function newDevice(identity) {
   return { identity, pair, cert };
 }
 
-/** headers for a request signed by device; body is a Uint8Array. */
-export async function signed(device, method, uri, body = new Uint8Array(0)) {
-  const time = String(Date.now());
+/** headers for a request signed by device; body is a Uint8Array; shiftMs moves the signing clock. */
+export async function signed(device, method, uri, body = new Uint8Array(0), shiftMs = 0) {
+  const time = String(Date.now() + shiftMs);
   const msg = enc.encode(`codeaf-req-v1\n${method}\n${uri}\n${time}\n${await sha(body)}`);
   return {
     'codeaf-identity': b64u(device.identity.pub),
@@ -30,4 +30,9 @@ export async function signed(device, method, uri, body = new Uint8Array(0)) {
     'codeaf-time': time,
     'codeaf-sig': b64u(await sign(device.pair.privateKey, msg)),
   };
+}
+
+/** deviceId is the id the relay knows a device by: dev_ and the first 16 bytes of the hash of its key, in hex. */
+export async function deviceId(device) {
+  return 'dev_' + (await sha(Buffer.from(device.cert.device, 'hex'))).slice(0, 32);
 }

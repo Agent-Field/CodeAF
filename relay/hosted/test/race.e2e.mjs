@@ -1,17 +1,10 @@
-// HTTP-level proof against a running relay (either option): 50 devices race for one free cell,
+// HTTP-level proof against a running relay: the identity Durable Object is the one writer, so 50 devices race for one free cell,
 // then 50 publishes race on one old_head, then a stale fence and a forced takeover.
 import assert from 'node:assert/strict';
-import { newIdentity, newDevice, signed } from './party.js';
+import { newIdentity, newDevice } from './party.js';
 import { init } from './helpers.js';
+import { call } from './client.js';
 
-const BASE = process.env.RELAY ?? 'http://127.0.0.1:18791';
-const enc = new TextEncoder();
-async function call(dev, method, path, body) {
-  const bytes = body === undefined ? new Uint8Array(0) : enc.encode(JSON.stringify(body));
-  const res = await fetch(BASE + path, { method, headers: await signed(dev, method, path, bytes), body: method === 'GET' ? undefined : bytes });
-  const text = await res.text();
-  return { status: res.status, json: text ? JSON.parse(text) : null };
-}
 const tally = (rs) => rs.reduce((m, r) => ((m[r.json?.err ?? r.status] = (m[r.json?.err ?? r.status] ?? 0) + 1), m), {});
 
 const id = await newIdentity();

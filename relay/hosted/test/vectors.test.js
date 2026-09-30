@@ -11,7 +11,7 @@ const H = { identity: 'Codeaf-Identity', cert: 'Codeaf-Cert', time: 'Codeaf-Time
 
 for (const c of vectors.frames) {
   test(`frame: ${c.name}`, () => {
-    if (!c.ok) return assert.throws(() => decode(bytes(c.frame)), BadFrame);
+    if (!c.ok || c.js_stricter) return assert.throws(() => decode(bytes(c.frame)), BadFrame);
     const { cellKeyId, objects } = decode(bytes(c.frame));
     assert.equal(cellKeyId, c.cell_key_id);
     assert.deepEqual(objects.map((o) => o.rid), c.rids);

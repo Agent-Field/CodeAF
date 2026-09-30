@@ -4,6 +4,11 @@ export class Flight {
   n = 0;
   waiters = [];
 
+  /** count is how many puts are in flight now. */
+  get count() {
+    return this.n;
+  }
+
   enter() {
     this.n++;
     let left = false;

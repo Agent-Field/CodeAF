@@ -2,10 +2,30 @@ name = "codeaf-hosted-relay"
 main = "src/worker.js"
 compatibility_date = "2026-09-01"
 
-# Local development only. No account, no deploy: `wrangler dev --local` runs it in workerd.
+# Local development and the base of every deployment: `wrangler dev --local` runs this in workerd
+# with a simulated R2 bucket and Durable Objects. See README.md for what a deployment changes.
+
 [[r2_buckets]]
 binding = "FRAMES"
-bucket_name = "codeaf-frames-dev"
+bucket_name = "codeaf-relay-frames"
+
+[[durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "IdentityDO"
+
+[[durable_objects.bindings]]
+name = "PAIR_GATE"
+class_name = "PairGate"
+
+[[durable_objects.bindings]]
+name = "MAILBOX"
+class_name = "Mailbox"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox"]
 
 [vars]
-DEV_TALLY = "1"
+# The lease law: "stage1" is the frozen contract (30 s TTL); "amended" is contract 8.7 of the
+# stage 1H decision (90 s, a publish renews). Flip it only when the client carries the amendment.
+LEASE_POLICY = "stage1"
