@@ -15,14 +15,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
-// pairDoor is the surface's tui3.Pairing.
-type pairDoor struct{}
+// chatPairDoor is the surface's tui3.Pairing.
+type chatPairDoor struct{}
 
-var _ tui3.Pairing = pairDoor{}
+var _ tui3.Pairing = chatPairDoor{}
 
 // Offer shows a code and shares this computer's chats with the device that types
 // it. Every error it returns is already the sentence a person reads.
-func (pairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) {
+func (chatPairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) {
 	route, err := pairMailbox("")
 	if err != nil {
 		return "", err
@@ -37,7 +37,7 @@ func (pairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) {
 // Join types another computer's code and takes its chats, unless this computer
 // already has chats of its own: replacing them is a flag of the terminal command
 // and never a keystroke in a chat.
-func (pairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error) {
+func (chatPairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error) {
 	route, err := pairMailbox("")
 	if err != nil {
 		return pair.Joined{}, err
