@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -166,6 +167,24 @@ func (v *Vault) Entries(project string) ([]Entry, error) {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// IDs lists the ids that start with prefix, in order, the removed ones too: a
+// reader that keeps one slot per path needs the paths that were deleted as much
+// as the live ones, since a tombstone is what tells it to delete the file.
+func (v *Vault) IDs(prefix string) ([]string, error) {
+	d, err := v.read()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for id := range d.Secrets {
+		if strings.HasPrefix(id, prefix) {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
 	return out, nil
 }
 

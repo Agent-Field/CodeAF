@@ -23,11 +23,13 @@ var magic = []byte("AGEV\x01")
 type VaultFile interface {
 	Export() ([]byte, error) // the vault.enc envelope bytes
 	Merge(enc []byte) error  // per secret id the newer slot wins, a delete included
-	// Entries lists a project's live secrets in stable name order; Inject writes them.
+	// Entries lists a scope's live slots in stable name order.
 	Entries(project string) ([]keys.Entry, error)
 	// Get, Put, Delete and Deleted address one slot by id; the credentials
 	// file rides in one such slot (credentials.go).
 	Get(id string) (keys.Entry, error)
+	// IDs lists the slot ids under a prefix, tombstones included.
+	IDs(prefix string) ([]string, error)
 	PutAt(id string, e keys.Entry, at time.Time) error
 	Delete(id string) error
 	Deleted(id string) (bool, error)
@@ -44,12 +46,9 @@ type Syncer struct {
 	Vault     VaultFile
 	CellKeyID string // this identity's cell key id; empty on a machine with no identity
 	// Carry is the state that rides in the vault beside the secrets, each kept
-	// here in its own Medium (credentials.go, and the provider keys of the
-	// profile config).
+	// here in its own Medium (files.go, credentials.go, and the provider keys of
+	// the profile config).
 	Carry []Carrier
-	// Notify, when set, receives one plain sentence about what Inject skipped.
-	// A sentence names secrets, never their values.
-	Notify func(string)
 }
 
 // Push uploads the local vault and points the directory at it. It merges what

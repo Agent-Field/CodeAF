@@ -235,5 +235,5 @@ func writeLedger(path string, digests map[string]string) error {
 	if have, err := os.ReadFile(path); err == nil && string(have) == string(raw) {
 		return nil
 	}
-	return writeAtomic(path, raw)
+	return writeAtomic(path, raw, 0o600)
 }
