@@ -58,9 +58,10 @@ func TestBareModelOpensThePickerAndASlugDoesNot(t *testing.T) {
 	if !a.pick.open {
 		t.Fatal("/model with no argument has to open the picker")
 	}
-	// The cursor opens on the model in use, so enter confirms rather than moves.
-	if chosen, _ := a.pick.choice(); chosen.ID != "openai/gpt-4.1-mini" {
-		t.Fatalf("the picker opened on %q, want the model in use", chosen.ID)
+	// The cursor opens on the list's first row, visibly highlighted, and the
+	// model in use keeps its mark wherever it sits ([picker.cursorToFirst]).
+	if chosen, _ := a.pick.choice(); chosen.ID != "anthropic/claude-gpt-echo" {
+		t.Fatalf("the picker opened on %q, want the list's first row", chosen.ID)
 	}
 	drive(t, a, key("esc"))
 
