@@ -257,6 +257,9 @@ func TestKeepaliveCommentsReachTheAliveSeam(t *testing.T) {
 	if _, err := decoder.DecodeChunk(); !errors.Is(err, io.EOF) {
 		t.Fatalf("end = %v, want io.EOF", err)
 	}
+	if !decoder.done {
+		t.Fatal("the explicit [DONE] marker was not retained by the decoder")
+	}
 	if alive != 3 {
 		t.Fatalf("alive calls = %d, want one per comment line", alive)
 	}

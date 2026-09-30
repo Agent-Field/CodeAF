@@ -28,7 +28,7 @@ func TestIgnoredFolderStartReceiptNamesWhyItHasNoBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer folder.Finish("")
-	receipt := delegateFolderReceipt(ignored, program, nil)
+	receipt := delegateFolderReceipt(ignored, program)
 	// THE REPOSITORY IS NAMED IN THE RECEIPT'S OWN SPELLING, the canonical one
 	// the home-folder receipt wants too: on macOS the temporary folder the test
 	// named says /var/folders and the system reads /private/var/folders, and a
@@ -55,7 +55,7 @@ func TestHomeRepositoryStartReceiptNamesWhyItHasNoBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer folder.Finish("")
-	receipt := delegateFolderReceipt(folderDir, program, nil)
+	receipt := delegateFolderReceipt(folderDir, program)
 	if !strings.Contains(receipt, "which holds your home folder") || strings.Contains(receipt, "git ignores") {
 		t.Fatalf("home repository start receipt = %q", receipt)
 	}

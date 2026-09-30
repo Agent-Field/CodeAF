@@ -675,6 +675,7 @@ type sheetEndpoint struct {
 	Quantization          string           `json:"quantization"`
 	ContextLength         int              `json:"context_length"`
 	MaxCompletionTokens   int              `json:"max_completion_tokens"`
+	SupportedParameters   []string         `json:"supported_parameters"`
 	Pricing               sheetPricing     `json:"pricing"`
 	SupportsToolChoice    sheetToolChoice  `json:"supports_tool_choice"`
 	Status                int              `json:"status"`
@@ -725,6 +726,16 @@ func (s *Server) serveSheet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, body)
 }
 
+// parameters is the list a real router filters on under `require_parameters`,
+// and the one the sheet reads tool support from: "tools" is on it exactly
+// when the lane says it takes them.
+func (l Lane) parameters() []string {
+	if l.Tools {
+		return []string{"max_tokens", "reasoning", "tools", "tool_choice"}
+	}
+	return []string{"max_tokens", "reasoning"}
+}
+
 // row is the sheet's account of one lane. Percentiles a profile did not state
 // are derived from what it actually does, with the spread a real lane has —
 // which makes "the sheet is right about this lane" the default and leaves
@@ -749,6 +760,7 @@ func (l Lane) row(model string) sheetEndpoint {
 		Quantization:        l.Quant,
 		ContextLength:       l.Context,
 		MaxCompletionTokens: l.MaxOut,
+		SupportedParameters: l.parameters(),
 		Pricing: sheetPricing{
 			Prompt:         money(l.PriceIn),
 			Completion:     money(l.PriceOut),

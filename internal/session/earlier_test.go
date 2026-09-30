@@ -21,6 +21,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -326,7 +327,7 @@ func TestARefusedPassLeavesTheEarlierHistoryAlone(t *testing.T) {
 	agent.messages = append(agent.messages, textMessage("user", "one short question"))
 	agent.mu.Unlock()
 
-	if _, err := agent.compact(context.Background(), nil); err != ErrNothingToCompact {
+	if _, err := agent.compact(context.Background(), nil); !errors.Is(err, ErrNothingToCompact) {
 		t.Fatalf("compact = %v, want ErrNothingToCompact", err)
 	}
 	if got := agent.EarlierHistory(); len(got.Entries) != 0 || got.Floor != 0 {

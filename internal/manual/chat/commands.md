@@ -30,6 +30,19 @@ An empty `!`, attached files, or a busy conversation leaves your draft in place
 and explains what to change. Wait for the turn to finish or stop it first.
 Task pages accept task messages; run `!` commands from the parent conversation.
 
+## Conversation titles after shell commands
+
+A conversation containing only `!` commands keeps a literal command preview as
+its working name. Home and conversation lists preserve its casing and punctuation;
+long commands are clipped to fit. Shell turns do not ask a model for a title.
+After a shell opening, automatic naming waits for the first ordinary message with
+an answer and uses both, skipping recorded human shell turns. The command preview
+stays until the title arrives. This gives a question such as "what did that print?"
+the context of its answer; the answer may quote shell output. An interrupted question
+does not stop naming: if part of its answer had arrived, your next message names the chat
+from that exchange, and if none had, the next answered question does. Conversations that
+begin with an ordinary message still start naming immediately.
+
 ## Typing a slash to see the command list
 
 Type `/` in the home or conversation message box to see every available command in
@@ -192,7 +205,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/drafts` | — | — | lists cleared drafts, newest first; enter restores one to the box and `d` lets one go; an empty ring says `no cleared draft is waiting` |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
-| `/compact` | — | — | summarizes the conversation now |
+| `/compact` | — | — | shortens the conversation now |
 
 ## Home, project and file context commands — what does /workspace path do
 
@@ -248,7 +261,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
 | `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
 | `/crew` | — | `cap task <dollars>` | the most one task may spend — $5 unless set; `-yes-spend` does not lift it |
-| `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
+| `/task` | — | — | opens the full-screen sessions place — the same place as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
 | `/task` | — | `--best <brief>` | starts the task on the strongest crew the allowed models make, this task only |
@@ -426,29 +439,36 @@ new session failed: <error>
 A close that fails says so and the surface continues. A launcher that cannot build the
 replacement says so, and nothing is replaced.
 
-## /compact — summarize the conversation now
+## /compact — shorten the conversation now
 
-`/compact` notes `compacting…` immediately and runs the compaction off the loop.
+`/compact` notes `compacting…` immediately and reduces older completed work, even below
+the automatic threshold. It first turns old tool results into pointers and folds older
+assistant work, which costs nothing. If enough older conversation remains, the conversation's
+own model writes a **summary** in the same pass, replacing older messages.
+Your three most recent messages and
+everything after them stay word for word unless a cut that keeps fewer is what reaches the
+line: codeaf chooses the cut that keeps the most and still gets under it — three, two, your
+latest with the reply before it, or your latest alone. When no cut can reach the line,
+`/compact` keeps all of your last three messages that exist, since summarizing more
+would not reach it either. With only two since the last summary, it keeps both; if
+there is too little before them, it writes no summary and says why. Only recovery
+from a refused request then keeps fewer. The
+latest message and the system prompt always stay word for word. The full record
+stays in the session journal, and the summary names that file.
 
-**There is no success message.** A compaction that worked is silent — the note that it
-started is all you get.
-
-A failure comes back as:
-
-```
-compact failed: <error>
-```
-
+Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
+`⚭ compacted` without a size when it did not; the figures are estimates, and the line
+stays in the conversation as the answer to your command. When nothing
+changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
+last summary — too little to summarize`, `there is nothing before your last 3 messages to
+summarize`, or `the model could not write a summary: ` and the reason. The status line's
+count drops as soon as the pass lands.
+Other failures say `compact failed: ` followed by the reason. The pass runs off the input
+loop, so the surface stays responsive, and a message you send while it runs is not held
+behind it; if that message is too long to send before the pass lands, it waits for the pass
+and then goes. A summary on a slow model can take a minute; the chat waits up to five. If the
+engine is still working after that, it says `still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands`.
 `/compact` has no argument form and no alias.
-
-**A compaction costs nothing and asks no model.** It is two mechanical passes over
-the messages this session already has: tool results the model has already used
-become pointers to their own bytes, and if that is not enough the oldest assistant
-work is replaced by one marker line naming how much went and where it can be read.
-Your own words are never folded. There is **no summariser** and there is **no
-`compaction` role in settings** — there was one, and it was a priced row wired to
-nothing. What the model is handed instead of a summary is the state card, which is
-maintained a little at a time by the reader that runs after each turn.
 
 ## /rewind — go back to an earlier point in the conversation
 
@@ -895,8 +915,18 @@ the same row the Spending tab writes through.
 | `/budget` | opens the Spending tab on `per day` |
 | `/budget 50` | sets the day's limit to $50 |
 | `/budget none` | removes the day's limit — the row then reads `no limit` |
+| `/budget conversation 20` | sets the open conversation’s limit to $20 immediately and saves the default |
+| `/budget conversation none` | removes the open conversation’s limit |
 | `/budget plan 20` | sets one row by name |
 | `/budget plan` | a row named with no figure opens the tab on that row |
+
+If a turn says `conversation limit reached`, use `/budget conversation 20`
+(or another amount above the recorded spend), then send the message again — `↑`
+brings it back, since the box is cleared on enter. `/budget 20`
+changes only the daily limit and cannot release a conversation's separate cap.
+The refusal names `/budget conversation`; a daily refusal names `/budget day`.
+With no amount, either command opens settings on the corresponding row. A failed
+live update says `saved for the next conversation · this one still has its previous limit`.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
@@ -1132,9 +1162,10 @@ esc leaves the conversation exactly as it was.
 Ten rows show, each a name, a description and an age. The name climbs a ladder: the title
 the session gave itself, else the first seven words you said in it, else the transcript's
 file name — then title-cased, with small words left lowercase and nothing ever
-lowercased, so `OpenAI` keeps its shape. The description is the last thing that happened,
-capped at 80 columns. The age (`2h ago`, or a date past a month) is reserved first and
-never cut. **Ids and file names appear nowhere.**
+lowercased, so `OpenAI` keeps its shape. A name that is still a `!` command is the
+exception: it is shown as typed, clipped only to fit, never title-cased or cut to seven
+words. The description is the last thing that happened, capped at 80 columns. The age
+(`2h ago`, or a date past a month) is reserved first and never cut. **Ids and file names appear nowhere.**
 
 The cursor opens on the conversation you are already in. enter on another row closes this
 agent, interrupting a running turn first, opens the chosen transcript, clears everything
@@ -1438,7 +1469,7 @@ The row is called by the first words you typed for a second or two, and then by 
 name a small model gives it.
 
 When a `/task` runs on the run engine (*The worker harness* page), the row it writes to the
-tasks place carries the step its worker is on **right now** — the running glyph `◐`, the shell
+sessions place carries the step its worker is on **right now** — the running glyph `◐`, the shell
 lead `$` and the command — with the task's `N steps · $0.11` under it. The line is there only
 while a step is in flight, and goes the moment the command ends.
 
@@ -1446,10 +1477,10 @@ while a step is in flight, and goes the moment the command ends.
 strips the tag and takes the remaining words through this same road. Backspace
 immediately after the tag makes it plain prose.
 
-**A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
-open, holding every task this project has ever run. It does *not* print a usage line, and
+**A bare `/task` opens the full-screen sessions place** — the same place `/history` and `ctrl+.`
+open, holding this machine's conversation and task record. It does *not* print a usage line, and
 it starts nothing. On a project that has never run one it opens the page anyway, headed
-`tasks` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
+`sessions` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
 row at the foot of the task column types `/task ` into your box, which is why the word on
 its own has an answer worth giving.
 
@@ -1527,43 +1558,30 @@ and nothing to walk between — the arrows keep their ordinary meaning — and w
 forming there is no head that counts, only the block described under *Why is there a line
 next to my task*. A typed `/task` never joins the block: it has no wait in front of it.
 
-## /history — the task history command: past tasks, every task this project has run
+## /history — task history in the sessions place, including past tasks
 
-`/history`, or `ctrl+.`, opens a full-screen page holding the project's whole task record:
-this conversation's work **and every earlier conversation's**. It is the one place that
-answers "what did we do about this last week" — the roster's column beside the conversation
-is built from this session's own work, and carries only a short dulled note of the rest.
+`/history` opens the full-screen `[sessions]` place, the same destination as `ctrl+.`,
+`alt+4` and a bare `/task`. It lists this machine's conversations and their nested
+tasks across projects and earlier sessions. The column beside a conversation holds
+that conversation's tasks; the sessions place holds the broader record. There is no
+`/tasks` command. `/task <brief>` and `/task solo <brief>` start work; `/history`
+only opens the record.
 
-**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
-mean *give codeaf work*; this page starts none, so it does not share their word. Typing
-`/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
-bar, and **`alt+4`** and `tab` reach it without a command at all. The word is a place, not a
-command.
+The place groups conversation trees under `running` and `completed`, with each
+task's state on its row. A conversation with a live or unanswered task stays under
+`running`; its tree moves to `completed` when the work settles. The lists start
+newest first and their age heading reverses the order. Rows can be folded.
 
-Two sections. `running` is the tree of everything still going, drawn whole, with each task's
-current call, clock, tokens and spend under its name — and a row a run writes there carries
-the step its worker is on right now: the running glyph `◐`, the shell lead `$` and the command,
-with the task's `N steps · $0.11` beneath it. `earlier` is a flat list, newest first, of
-everything the project has finished — one line each, the same rows the `@` list offers.
+**Type to filter.** Printable keys, including spaces, narrow the list. The box
+at the foot says `› type to filter this list`; `backspace`, `ctrl+w` and `ctrl+u`
+edit the filter. `esc` clears a filter first, then closes the place. `↑`/`↓`
+move through rows. `enter` opens a task this conversation holds in its room;
+otherwise it opens that task's record card. `→` opens the row's available
+actions. Another window's running task can be opened or located when its row
+offers that action.
 
-**Type to filter.** Any printable key, spaces included, narrows both sections at once
-against the titles, the ids and the outcomes; the bottom of the page shows what was typed
-as `filter · port`, and a section with no match disappears entirely. `backspace`, `ctrl+w`
-and `ctrl+u` edit it. `esc` clears the filter first and closes the page on the second press.
-
-`esc` closes it. `↑`/`↓` move, `enter` opens the row: a task this session is holding opens
-its room, and a task another conversation ran goes into your message box as
-`@its-name` — that conversation is closed, so there is no room to open, and the mention is
-what carries its outcome and its transcript to the model when you send.
-
-Its `running` section also carries **a row for each task every other codeaf window open on
-this directory has out right now**, marked `another window` on the right. Those rows take
-no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
-a mention to point at. They are how you find out that the directory is busy somewhere else.
-
-On a project that has never run a task the page opens on its heading and one line,
-`work you send off with /task lands here, and its record stays`. The tasks pages describe the
-page in full.
+On a machine with no task record, the place still opens under `sessions` with
+`work you send off with /task lands here, and its record stays`.
 
 ## /crew — the crew panel, and the three seats a task runs on
 
@@ -1672,7 +1690,7 @@ this split when it opens; configure the remote profile on that machine.
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
-pages here — the others are `/history` (the task page, ctrl+.) and `/home` — and **only one
+pages here — the others are `/history` (the sessions place, ctrl+.) and `/home` — and **only one
 of the three is ever up at a time**: opening any one closes the other two.
 
 Moving in it:

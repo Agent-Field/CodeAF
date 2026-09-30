@@ -6,6 +6,44 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Context recovery bounds
+
+Conversation request admission sums the existing encoded messages and tool schemas;
+it performs no tokenizer call, network lookup or extra model request. Image payload
+bytes are replaced by a token allowance. The margin is 5% of the effective endpoint
+window, bounded to 512–8,192 tokens. An unspecified output allowance is bounded by
+one quarter of the window and the configured completion reserve; shrinking it retains
+up to 512 tokens as the useful minimum (one eighth for very small windows). A thinking
+budget shrinks to the room left beside an answer of up to 1,024 tokens (a sixteenth of
+the window) and is dropped below 1,024, so thinking never refuses a request. Endpoints
+that take no tools are left out of the window a tool-carrying request is measured
+against.
+
+Manual and emergency reductions retain 4,096 recent tokens, capped to an eighth of
+the window, and always retain the latest assistant/tool batch. Recovery is bounded
+to two changed-request attempts per failed generation and resets after a successful
+response. Tests assert request counts, fitting budgets, tool pairing and actions that
+execute exactly once; they do not wait on real clocks.
+
+Automatic conversation profiles use the existing 32,000-token threshold at request
+boundaries. Only crossing the threshold rebuilds the default prompt and belt; unchanged
+profiles do no schema work. Explicitly loaded capabilities survive the rebuild. Automatic
+no-op compaction emits no seam events, while manual commands retain their no-op feedback.
+
+A compaction pass makes **one model call only when its free rungs fail**: a summary
+(`internal/session/compact_summary.go`) is written when stubbing and folding leave the
+transcript above the pass's line, and never when the tool definitions alone exceed that
+line. An automatic or manual pass needs at least **1,024 tokens** of region the previous
+summary has not read; a refused request's recovery needs **128**. It keeps the **three**
+most recent person messages and everything after them when that still reaches the line,
+then two, then the latest with the reply before it, then the latest alone. A summary is
+asked for at most half its region and at most a twentieth of the window (**128–4,096**
+tokens). A refusal that states its figures reclaims what is missing plus a thirty-second
+of the window; one that does not reclaims a quarter of the transcript. A region larger than one request is summarized in chunks sized to the window,
+each bounded to **two minutes**; the session lock is released during every call. The
+render the summarizer reads caps a tool result at 2,000 bytes and a call's arguments at
+400. Tests use scripted completers and assert request counts and sizes, not clocks.
+
 ## Connection recovery bounds
 
 `internal/provider/connectivity.go` limits a connection-recovery episode to
@@ -1537,10 +1575,10 @@ otherwise getting 57–61% of its prompt back from.
 So the ceiling is a MEASUREMENT now and not a constant: the narrowest prompt this
 model has actually been refused for being too long, learned from the overflow
 refusal itself and remembered across processes
-(`internal/provider`'s `NoteServedWindow` / `ServedWindow`, applied by
-`session.TrustedWindowFor`). A model nobody has refused is believed; one that has
-refused is capped at what it refused, for good. The 386k incident now costs one
-turn per model per machine instead of every model for ever.
+(`internal/provider`'s `NoteServedWindow` / `ServedWindow`, applied while the provider
+sizes each assembled request). `session.TrustedWindowFor` now returns the catalog window
+unchanged: a model-only memo cannot say which endpoint can serve a request with tools.
+The provider uses the refused endpoint's evidence when that request is sized.
 
 Two guards stand behind that trade and neither is new: `guardOversizeRequest`
 still shrinks a transcript that has grown past the trusted window before it goes

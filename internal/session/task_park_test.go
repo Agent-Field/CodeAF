@@ -673,12 +673,18 @@ func TestAParentHandedADivisionBeforeItStartedOpensOnTheReportsAndNotOnTheWait(t
 	// One at a time, each landed only once the parent is back on its park, so the
 	// last report is the one that wakes it and every earlier one is already
 	// counted when it does.
-	partsMu.Lock()
-	landing := append([]*TaskNode(nil), parts...)
-	partsMu.Unlock()
-	if len(landing) != 2 {
-		t.Fatalf("%d parts were admitted, want the two that were proposed", len(landing))
-	}
+	//
+	// BOTH PARTS ARE WAITED FOR, NOT COUNTED AT THE PARK. A part reaches this
+	// test's runner on a goroutine of its own ([TaskGraph.runFrontier]), and the
+	// parent parks on the parts it has outstanding, not on their runners having
+	// started; on a loaded machine the park came first and CI read one part.
+	var landing []*TaskNode
+	waitFor(t, "both proposed parts to start", func() bool {
+		partsMu.Lock()
+		defer partsMu.Unlock()
+		landing = append(landing[:0], parts...)
+		return len(landing) == 2
+	})
 	for index, part := range landing {
 		if index > 0 {
 			// Past the park the previous landing was made against, so this one

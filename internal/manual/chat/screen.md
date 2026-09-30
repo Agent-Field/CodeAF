@@ -672,8 +672,9 @@ Both halves of the line are true and neither one covers for the other:
   the words it was said in — your messages, the replies, the tool calls and their whole
   output. Nothing was thrown away.
 - **The model does not.** Above that line the model is working from a shortened version:
-  old tool results became one-line pointers to the files that hold them, and long runs of
-  its own earlier work became a single line saying how much went. So if you ask about
+  old tool results became one-line pointers to the files that hold them, long runs of
+  its own earlier work became a single line saying how much went, and — when that was not
+  enough — the oldest part of the conversation became a summary it wrote. So if you ask about
   something above the line, it may answer from something shorter than what you are looking
   at — ask it to `read` the file, or paste the part you mean back in.
 
@@ -1169,7 +1170,7 @@ expire on time.
 ## Why the bottom rows of a long list look dimmer — faded, greyed out or washed out rows
 
 The last three rows of a list that runs on past the bottom of its window are drawn a step
-fainter each, fading toward the background. It happens on the task page (`/history`,
+fainter each, fading toward the background. It happens on the sessions place (`/history`,
 `ctrl+.`) and on the task column. Home's panels never fade: each one folds inside itself
 with `N more` instead.
 
@@ -3221,7 +3222,7 @@ Finished work sits under `Done`, which starts folded to its heading: press `Done
 `enter` on it, to open it, and it stays open for the session.
 
 A background job is not a finished task row: it lives in the `jobs` section, and its log
-path is on the job's page. The full record of any task is on the task page (`ctrl+.`,
+path is on the job's page. The full record of any task is on the sessions place (`ctrl+.`,
 `/history`).
 
 ## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it
@@ -3465,7 +3466,7 @@ conversation you are in, the room you are standing in — and the **copy span's*
 are facts about the session rather than about a pointer, and they are true whoever is
 reading. What is dropped is the quieter background the pointer and the cursor share.
 
-## Two other things that move on screen
+## The pulsing ellipsis and "still working" — what moves on screen while a turn waits
 
 **The pulsing ellipsis, and the `still working` fallback.** When a turn is running and
 nothing else on screen is moving, two spaces then a pulsing ellipsis cycles `·` → `··` →
@@ -3489,12 +3490,21 @@ left when neither of the lines above knows anything. It says "still working" and
 "trying again" — a silence is only a silence to this suffix, and the words change to
 `trying again` solely when the request really was cut and re-sent, which is said outright.
 
-**The compaction mark.** A compaction is drawn while it runs and left as a rule once it
-lands, so the conversation never silently loses its middle. Running, it reads
+## The compaction line — what "⚭ compacted" means, and why a summary's line stays after the turn
+
+A compaction is drawn while it runs and left as one quiet line
+once it lands, so the conversation never silently loses its middle. Running, it reads
 `⠙ compacting ~84k tokens · 6s` — a braille spinner on the same grid as the tool
-spinners, dim, with a count-up. Settled, it becomes a centred rule:
-`───── ⚭ compacted from ~84k tokens · took 6s ─────`. The duration is dropped under one
-second. It is never painted the question hue, because nobody is being asked anything.
+spinners, dim, with a count-up. Settled, it becomes a dim line in the notes' lane:
+`· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · full record in the session journal · took 6s`. The duration is
+dropped under one second. It is never painted the question hue, because nobody is being
+asked anything. **A pass that wrote a summary stays after the turn ends**: when the turn's
+work folds behind `▸ worked`, its line stands outside the fold — above the answer when it
+ran mid-turn, under it when it ran at the end — because it rewrote your own words in the
+model's copy of the conversation. A pass that only folded or stubbed is ordinary machinery
+and folds with the rest of the turn; `ctrl+e` opens it. A `/compact`
+you run yourself leaves the same mark: `⚭ compacted · about N to M tokens` when the
+measured count fell, or `⚭ compacted` without a size when it did not.
 
 ## What is it doing right now — connecting, first word, thinking, writing, paced, trying again
 

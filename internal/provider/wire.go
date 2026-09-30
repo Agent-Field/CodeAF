@@ -328,6 +328,13 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		scrubbed.Tools = nil
 		scrubbed.ToolChoice = nil
 	}
+	// A CHOICE AMONG NO TOOLS IS NOT SENT. The SDK sets "auto" beside even an
+	// empty belt — a conversation on a model with no tools carries one
+	// (internal/session's chatpage.go) — and an endpoint that validates the
+	// pair refuses tool_choice without tools.
+	if len(scrubbed.Tools) == 0 {
+		scrubbed.ToolChoice = nil
+	}
 	if knobs.relaxed.has(relaxResponseFormat) {
 		scrubbed.ResponseFormat = nil
 	}
@@ -343,6 +350,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	}
 
 	model := c.modelFor(&scrubbed)
+	// A request without definitions must not replay tool protocol messages to
+	// an endpoint that cannot accept them. The conversion precedes encoding so
+	// the budget counts the text that actually goes out.
+	if len(scrubbed.Tools) == 0 && (knobs.relaxed.has(relaxTools) || c.publishesNoTools(model) || c.toolless.learned(model)) {
+		scrubbed.Messages = readableToolHistory(scrubbed.Messages)
+	}
 
 	// The dialect is resolved once per encode rather than cached on the client,
 	// because the model can be pinned per request by the router and the learned
@@ -372,10 +385,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		Tools:          tools,
 		PromptCacheKey: knobs.cacheKey,
 	}
+	// The knob is decided here and written after the context budget below,
+	// which may shrink the thinking budget to what the window leaves.
+	sentEffort, thinking := EffortNone, 0
 	if !knobs.relaxed.has(relaxReasoning) {
-		wire.Reasoning = reasoningFor(
-			c.resolveEffort(model, knobs.effort),
-			c.resolveReasoningBudget(model, knobs.effort))
+		sentEffort = c.resolveEffort(model, knobs.effort)
+		thinking = c.resolveReasoningBudget(model, knobs.effort)
 	}
 	// The ceiling that travels is the caller's answer plus the thinking pass's
 	// room (thinking.go's ceilingFor), read here and again by the transport so
@@ -399,6 +414,13 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// refusal carries none — so this is set at the one line that puts the
 	// object on the bytes, true or false, and nowhere earlier (prefcarry.go).
 	c.prefWentOut(wire.Provider != nil)
+	ceiling, hasCeiling, thinking, err = c.budgetWire(&scrubbed, knobs, messages, tools, wire.Provider, ceiling, hasCeiling, thinking)
+	if err != nil {
+		return nil, err
+	}
+	if !knobs.relaxed.has(relaxReasoning) {
+		wire.Reasoning = reasoningFor(sentEffort, thinking)
+	}
 	if hasCeiling {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 			wire.MaxCompletionTokens = &ceiling

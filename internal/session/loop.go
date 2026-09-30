@@ -350,6 +350,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// panic.
 	defer a.endPhase()
 
+	if model := a.Model(); model != "" {
+		if err := a.preparePromptProfile(model); err != nil {
+			hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(turn, started, model)})
+			return false
+		}
+	}
+
 	// BEFORE ANY OF IT: WHAT IS THIS SESSION WORKING TOWARDS? On an unattended
 	// session with a budget the goal owner is a [Steward] (principal.go), and a
 	// Steward that carries work on has to be carrying it on towards something.
@@ -802,11 +809,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// have been work is a question with no useful answer.
 	usedTools := false
 
-	// overflowCompacted bounds the compact-and-retry answer to a context
-	// overflow at one pass per turn. A second overflow after a successful
-	// compaction is not a context problem this loop can fix by shrinking
-	// further, and retrying it forever would burn a summary call per attempt.
-	overflowCompacted := false
+	// Recovery is bounded per failed generation. A successful response resets
+	// the allowance: later work in the same turn may fill the window again.
+	overflowAttempts := 0
 
 	// A text-only answer normally closes the turn. A length stop is not an
 	// answer, though: it is the provider saying that the answer did not fit, so
@@ -1042,41 +1047,33 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// CompactEnabled — that flag gates the automatic pass, not the
 			// recovery from a request the provider has already refused.
 			//
-			// AND IT IS THE VERDICT THAT SAYS SO, not a regex over the sentence.
-			// [taxonomy.ActionCompact] is the [taxonomy.Shape] policy's answer to
-			// a request that did not fit, and `overflowCompacted` is what it is
-			// told through [taxonomy.Evidence.Compacted] — so the once-per-turn
-			// rule is stated in the policy and read here rather than kept in two
-			// places that could come to disagree (taxonomy_boundary.go's
-			// [Agent.readOverflow]).
-			if a.readOverflow(err, model, overflowCompacted).Compacts() {
-				overflowCompacted = true
-				// AND THE REFUSAL IS THE ONE THING THAT TEACHES THE WINDOW. Every
-				// other figure in this law is a claim: the catalog's row, the
-				// surface's hint, this package's own default. A provider saying
-				// "that did not fit" is a measurement, and it is the only one
-				// available — so what was in front of it becomes the ceiling on
-				// this model's claim, here and in every later process
-				// ([Agent.learnServedWindow]). Until this line the loop compacted
-				// and re-sent and learned nothing, so the same over-long request
-				// was built again on the next long turn.
-				a.mu.Lock()
-				refused := a.estimateTokensLocked()
-				a.mu.Unlock()
-				a.learnServedWindow(model, refused)
-				if compacted, compactErr := a.compact(ctx, hub); compacted && compactErr == nil {
+			// The policy reads whether this generation exhausted its recovery
+			// allowance. Successful work below resets that allowance.
+			if a.readOverflow(err, model, overflowAttempts >= contextRecoveryAttempts).Compacts() {
+				overflowAttempts++
+				if a.recoverContext(ctx, hub, err) {
 					continue
 				}
 			}
-			// A permanent failure mid-stream is still a step the person
-			// watched: the streamed text is kept and the turn is sealed, so an
-			// error leaves the same record an interrupt does and the surface
-			// gets the turn's duration with the reason.
-			a.keepPartial(partial, hub)
-			hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(turn, started, model)})
+			if ctx.Err() != nil {
+				a.endStoppedTurn(ctx, hub, partial, turn, started, model)
+				return false
+			}
+			// A truncated stream has no completed answer even when its last retry
+			// fails. Withdraw its visible text and leave it out of the journal;
+			// other permanent mid-stream failures still keep what the person saw.
+			cut, isCut := provider.CutFrom(err)
+			discard := isCut && cut.Reason == provider.CutTruncated
+			if discard {
+				partial.reset()
+			} else {
+				a.keepPartial(partial, hub)
+			}
+			hub.send(Event{Kind: EventError, Err: err, Discard: discard, Usage: a.sealTurn(turn, started, model)})
 			return false
 		}
 
+		overflowAttempts = 0
 		turn.Turns++
 		// WHO ANSWERED, AND WHAT THE RESCUE COST, folded onto what was timed
 		// above. It is read here, before the money is banked, because it is the
@@ -1998,6 +1995,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			purpose = purposeTask
 			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
+		if err := a.preparePromptProfile(model); err != nil {
+			return nil, model, err
+		}
 		messages, carried := a.snapshotWithReasoning()
 		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 {
 			rolePage := textMessage("system", strings.TrimSpace(wake.prompt))
@@ -2012,9 +2012,21 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// The place a pointer may name is read ONCE for the whole request, under
 		// the lock an anchor takes to move it (toolcompact.go).
 		place := a.resultPlaceNow()
-		messages = a.compactToolHistory(messages, frozenToolHistory,
+		// The old boundary is an index into a transcript compaction may have
+		// rebuilt. The current floor moves with that rebuild and protects work
+		// from this turn from being mistaken for frozen history.
+		a.mu.Lock()
+		frozenThrough := min(frozenToolHistory, a.turnFloor)
+		a.mu.Unlock()
+		messages = a.compactToolHistory(messages, frozenThrough,
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
+		a.mu.Lock()
+		promptFloor := a.contextTokens
+		a.mu.Unlock()
+		attemptCtx = provider.WithContextBudget(attemptCtx, provider.ContextBudget{
+			Window: a.window(), Reserve: ctxbudget.CompletionReserve(), PromptFloor: promptFloor,
+		})
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
 		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
 			ai.WithTools(a.beltDefinitions()))
@@ -2727,6 +2739,8 @@ func cutNotice(cut *provider.StreamCut) string {
 		return "the reply kept going and never finished — asking again"
 	case provider.CutMachinery:
 		return "the model answered in its own internal markup instead of words — that text was dropped, asking again"
+	case provider.CutTruncated:
+		return "the connection ended before the reply was finished — that text was dropped, asking again"
 	default:
 		return "nothing came back from the model — asking again"
 	}
@@ -2747,6 +2761,8 @@ func cutWords(cut *provider.StreamCut) string {
 		return "the reply kept going and never finished"
 	case provider.CutMachinery:
 		return "the model answered in its own internal markup instead of words"
+	case provider.CutTruncated:
+		return "the connection ended before the reply was finished"
 	default:
 		return "nothing came back from the model"
 	}
@@ -2776,6 +2792,8 @@ func hopNotice(cut *provider.StreamCut, verdict taxonomy.Verdict, next string) s
 		return "the reply kept running on without finishing — finishing this one on " + next
 	case provider.CutMachinery:
 		return "the model kept answering in its own internal markup — finishing this one on " + next
+	case provider.CutTruncated:
+		return "the connection kept ending before the reply was finished — finishing this one on " + next
 	default:
 		return "nothing kept coming back from the model — finishing this one on " + next
 	}
@@ -2804,6 +2822,12 @@ func cutFailure(cut *provider.StreamCut, attempts int, hopped []string) error {
 		said = "the reply lost its thread " + timesWord(attempts) +
 			" — it came back as repetition and jumbled text, so none of it was kept. " +
 			"a different model may hold it (/model), or /compact to lighten the conversation"
+	case cut.Reason == provider.CutTruncated && len(hopped) > 0:
+		said = fmt.Sprintf("%s, %s — the partial reply was dropped. %s",
+			cut.Error(), timesWord(attempts), alsoTried(hopped))
+	case cut.Reason == provider.CutTruncated:
+		said = fmt.Sprintf("%s, %s — the partial reply was dropped. A different model may answer (/model)",
+			cut.Error(), timesWord(attempts))
 	case len(hopped) > 0:
 		said = fmt.Sprintf("%s, %s. %s — /model to pick another one yourself",
 			cut.Error(), timesWord(attempts), alsoTried(hopped))
@@ -4175,6 +4199,7 @@ func (a *Agent) bank(call bankedCall) {
 	}
 	if call.context > 0 {
 		a.contextTokens = call.context
+		a.contextBeltTokens = 0
 	}
 	a.mu.Unlock()
 	if call.ledger {
@@ -4420,48 +4445,19 @@ const (
 	compactReservePercent     = 15
 	compactReserveFloorTokens = 16384
 
-	// compactKeepRecentTokens is how much of the tail survives verbatim. The
-	// summary is lossy by construction, so the recent work — the files just
-	// read, the error just seen — is kept as itself.
+	// compactKeepRecentTokens is the tail protected by routine cleanup.
+	// Manual and necessary reductions use compactRecentTokens instead.
 	compactKeepRecentTokens = 20000
 
 	// bytesPerToken is the estimator used when no provider figure is
-	// available: ~4 bytes per token for code and English prose. It is only
-	// ever compared against a threshold with 16k of slack, so being 30% wrong
-	// moves when compaction fires, never whether the request fits.
+	// available: ~4 bytes per token for code and English prose. It remains an
+	// estimate; the final request check leaves margin and learns from refusals.
 	bytesPerToken = 4
 
-	// THE THRESHOLD FOLLOWS THE WINDOW, AND THE WINDOW IS THE MODEL CARD'S UNTIL
-	// AN ENDPOINT SAYS OTHERWISE.
-	//
-	// There used to be a flat ceiling here — twice [defaultContextWindow], so
-	// 256k — and it was put in for a real failure: the catalog row for
-	// ~deepseek/deepseek-v4-flash-latest claims 1,310,720 tokens, the trigger
-	// followed the claim to 1,114,112, a conversation grew to 386,309 tokens
-	// with compaction never once firing, and what came back at that size was the
-	// model's own template turned inside out.
-	//
-	// The ceiling answered that by disbelieving EVERY claim above 256k, and the
-	// bill for it was paid by every model that was telling the truth. Measured
-	// on 2026-08-31: a two-and-a-half-hour run on a model advertising 1.3M
-	// compacted nineteen times, each pass throwing away the prefix cache the run
-	// was otherwise getting 57–61% of its prompt back from, and the model was
-	// reduced to keeping its own notes file to survive the folding.
-	//
-	// So the ceiling is not a constant any more, it is a MEASUREMENT: the
-	// narrowest prompt this model has actually been refused for, learned from
-	// the overflow refusal itself and remembered across processes
-	// (internal/provider's NoteServedWindow, and the branch in [Agent.runTurn]
-	// that teaches it). A model nobody has refused is believed; one that has
-	// refused is capped at what it refused, for good. The 386k incident now
-	// costs one turn per model per machine instead of every model forever, and
-	// what it costs is paid by the model that earned it.
-	//
-	// Two guards stand behind that trade and neither is new.
-	// [Agent.guardOversizeRequest] still shrinks a transcript that has grown past
-	// the window before it goes out, and the reply guard cuts an answer that has
-	// stopped being language (internal/provider's CutBabble and CutMachinery),
-	// which is exactly the shape the 386k incident came back in.
+	// The catalog governs routine cleanup until this session learns an
+	// explicit endpoint window. Final request admission belongs to the provider,
+	// which also budgets schemas, replayed reasoning and the output allowance.
+
 )
 
 // window is the model's context in tokens, most specific answer first: the one
@@ -4486,30 +4482,9 @@ func (a *Agent) trustedWindow() int {
 	return trustedWindow(a.window(), int(a.servedWindow.Load()))
 }
 
-// learnServedWindow is the closing half of the loop the threshold rides on: an
-// endpoint has just refused a prompt for being too long, so what it refused is
-// now the ceiling on that model's claim — in this session from the next check
-// onward, and in every later process through the memo.
-//
-// It is called with the estimate that was refused rather than with a figure from
-// the error, because no provider states one: what is known is that THIS many
-// tokens was too many, here, and that is the honest ceiling.
-func (a *Agent) learnServedWindow(model string, estimate int) {
-	if estimate <= 0 {
-		return
-	}
-	provider.NoteServedWindow(model, estimate)
-	if learned := provider.ServedWindow(model); learned > 0 {
-		a.servedWindow.Store(int64(learned))
-	}
-}
-
-// noteModelWindow refreshes what is known about the window of the model now in
-// use. It is called wherever the model or the window moves, so that the memo a
-// previous session wrote is in force from this session's first check.
-func (a *Agent) noteModelWindow(model string) {
-	a.servedWindow.Store(int64(provider.ServedWindow(model)))
-}
+// noteModelWindow clears the active endpoint reading when the model changes.
+// Durable endpoint evidence is applied by the provider at the request boundary.
+func (a *Agent) noteModelWindow(_ string) { a.servedWindow.Store(0) }
 
 // childWindow is how large the window of the model a CHILD agent is about to run
 // on should be taken to be — a task node's worker, an adaptive run's worker, a
@@ -4552,30 +4527,13 @@ func (a *Agent) compactThreshold() int {
 	return compactThresholdOf(a.trustedWindow())
 }
 
-// TrustedWindow is a claimed context window with everything this process has
-// learned applied over it — the figure the compaction machinery works from, as
-// opposed to [Agent.window], which stays the model's own claim because the
-// status meter is describing the model rather than this law.
-//
-// Called without a model there is nothing to have learned, so the claim comes
-// back untouched; [TrustedWindowFor] is the door that applies a model's memo.
-//
-// It is exported for the same reason [CompactThreshold] is: a surface that
-// needs to know how much room the guard leaves must read the guard, not a
-// second copy of it.
-func TrustedWindow(window int) int { return TrustedWindowFor("", window) }
+// TrustedWindow returns a catalog window without guessing an endpoint.
+// The provider applies endpoint-specific evidence to each assembled request.
+func TrustedWindow(window int) int { return window }
 
-// TrustedWindowFor is [TrustedWindow] for a NAMED model: the claim, capped by
-// the narrowest prompt that model has been refused for, when this process has
-// ever seen it refused.
-//
-// An empty model, or one nothing has been learned about, gets its claim back
-// unchanged — which is the ordinary case and the emptiness law applied to a
-// measurement: "nothing was learned" may not be spelled the same way as "this
-// model has no room".
-func TrustedWindowFor(model string, window int) int {
-	return trustedWindow(window, provider.ServedWindow(model))
-}
+// TrustedWindowFor preserves the surface API, but a model-only memo is no
+// longer a context limit. Old served_window entries were rejected prompt sizes.
+func TrustedWindowFor(_ string, window int) int { return window }
 
 // trustedWindow is the law itself over two plain numbers, so that an agent
 // holding a learned figure of its own and a surface asking about a model by name
@@ -4764,7 +4722,7 @@ func (a *Agent) compactTargetTokens() int {
 // keepRecentTokens is the verbatim tail budget, capped at a quarter of the
 // window. Keeping 20k of a 200k window is a tail; keeping 20k of an 8k window
 // is not a compaction at all, and without the cap a small-window session would
-// find nothing to summarize and overflow with the pass "succeeding".
+// find nothing to fold and overflow with the pass "succeeding".
 func (a *Agent) keepRecentTokens() int {
 	return keepRecent(a.trustedWindow())
 }
@@ -4794,8 +4752,9 @@ func keepRecent(window int) int {
 // costs the turn: 386,309 tokens went out against a row claiming 1.3M and came
 // back as corrupted template text rather than an error anything could catch.
 //
-// The bar is [TrustedWindow], not the model's own claim, for exactly that
-// reason — the claim is what was wrong.
+// This early estimate excludes encoded schemas and framing. The provider's
+// final encoding guard checks those, output allowance and the serving limit
+// together before any request can leave.
 func (a *Agent) guardOversizeRequest(ctx context.Context, hub *eventHub) {
 	ceiling := a.trustedWindow()
 	if ceiling <= 0 {
@@ -4807,9 +4766,9 @@ func (a *Agent) guardOversizeRequest(ctx context.Context, hub *eventHub) {
 	if estimate <= ceiling {
 		return
 	}
-	// A pass that finds nothing is not an error here: the transcript is then
-	// the person's own words and the recent tail, and the step goes out because
-	// there is nothing left to take out of it.
+	// A no-op here still reaches the provider's final encoding guard. If the
+	// protected content cannot fit, that guard returns a local context refusal
+	// for the bounded emergency pass instead of sending it upstream.
 	_, _ = a.compact(ctx, hub)
 }
 
@@ -4831,39 +4790,99 @@ func (a *Agent) maybeCompact(ctx context.Context, hub *eventHub) {
 	_, _ = a.compact(ctx, hub)
 }
 
-// ErrNothingToCompact says a compaction pass had nothing to do: the whole
-// transcript already fits inside the keep-recent tail. It is a sentinel rather
-// than a silent no-op so a surface's /compact can say "nothing to compact"
+// ErrNothingToCompact says a pass found no eligible history to reduce.
+// User instructions and recent work may still fill the window. It is a
+// sentinel rather than a silent no-op so a surface's /compact can say "nothing to compact"
 // instead of reporting a success that changed nothing.
 var ErrNothingToCompact = errors.New("session: nothing to compact")
+
+// NothingToCompact is [ErrNothingToCompact] with the reason a person can act
+// on: how little older conversation there was, or why the summary that would
+// have shortened it did not land. errors.Is still matches the sentinel.
+type NothingToCompact struct{ Why string }
+
+func (e *NothingToCompact) Error() string {
+	if e.Why == "" {
+		return ErrNothingToCompact.Error()
+	}
+	return ErrNothingToCompact.Error() + ": " + e.Why
+}
+
+func (e *NothingToCompact) Is(target error) bool { return target == ErrNothingToCompact }
+
+// NothingToCompactWhy reads the reason out of a no-op, and reports false for
+// any other error. It reads the words as well as the type, because a remote
+// engine's error reaches a surface as its text alone.
+func NothingToCompactWhy(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	var typed *NothingToCompact
+	if errors.As(err, &typed) {
+		return typed.Why, true
+	}
+	text := err.Error()
+	if !strings.HasPrefix(text, ErrNothingToCompact.Error()) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(text, ErrNothingToCompact.Error()), ":")), true
+}
+
+// SummarySkipped says a pass shortened the conversation while its summary did
+// not land. It travels as a result of /compact so the surface can report both
+// facts even when the pass ran without an event hub.
+type SummarySkipped struct{ Why string }
+
+func (e *SummarySkipped) Error() string { return "session: compacted: summary skipped: " + e.Why }
+
+// SummarySkippedWhy also reads remote errors that carry only their text.
+func SummarySkippedWhy(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	var typed *SummarySkipped
+	if errors.As(err, &typed) {
+		return typed.Why, true
+	}
+	const prefix = "session: compacted: summary skipped: "
+	if strings.HasPrefix(err.Error(), prefix) {
+		return strings.TrimPrefix(err.Error(), prefix), true
+	}
+	return "", false
+}
 
 // ErrCompactionInFlight says another pass is already running. The second caller
 // gets an error for the same reason: it did nothing, and it should say so.
 var ErrCompactionInFlight = errors.New("session: a compaction pass is already running")
 
 // compactionPass is what one pass did, and it is the ONLY thing a pass produces:
-// two counts and, when something was folded, the marker line that stands in its
-// place. There is no summary because there is no summarizer — a pass is a
-// rearrangement of text this session already has (see the file header comment on
-// [Agent.compact]).
+// its counts and, when something was folded, the marker line that stands in its
+// place. A summary, when the last rung writes one, is in the transcript like any
+// message; the pass keeps only how many messages it replaced.
 type compactionPass struct {
 	stubbed int
 	folded  int
-	marker  string
+	// summarized is how many messages the pass's summary note replaced
+	// (compact_summary.go), zero when the free rungs were enough.
+	summarized int
+	marker     string
+	// summarySkipped explains an attempted summary that did not land after
+	// the free rungs changed the conversation.
+	summarySkipped string
 	// stored says the full record went somewhere a later session can still read
 	// it — the store's thread (chatlog.go). It is what makes the difference
 	// between the two announce lines honest.
 	stored bool
 }
 
-func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
+func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 && p.summarized == 0 }
 
-// compact runs one pass, and IT MAKES NO MODEL CALL AT ALL.
+// compact runs one pass, and IT MAKES NO MODEL CALL UNLESS THE FREE RUNGS FAIL.
 //
-// The old pass paid a summarizer to write prose about the prefix it was about to
-// throw away. It was expensive at the worst moment, it was lossy by
+// The pass before 2026-08-18 paid a summarizer to write prose about the prefix
+// on every compaction. It was expensive at the worst moment, it was lossy by
 // construction, and the loss was unrecoverable because the transcript the prose
-// was written from went with it. What replaces it is two mechanical passes over
+// was written from went with it. What replaced it is two mechanical passes over
 // the same messages, in order of how cheap the content is to give up:
 //
 //  1. THE STUB PASS. A tool result the model has already used is a pointer to
@@ -4882,15 +4901,31 @@ func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
 // What the model is handed instead of a summary is the STATE CARD, which rides
 // in the system prompt on every turn and is maintained incrementally by the
 // post-turn extractor (card.go). So the cost of knowing what the conversation is
-// about is amortized across the turns that produced it, and the compaction
-// itself is free.
+// about is amortized across the turns that produced it, and those two rungs are
+// free.
 //
-// The lock is held across the WHOLE pass, which the old one could not do because
-// it was waiting on a provider. That is not a cost, it is the removal of one:
-// the mid-batch race the old pass had to repair — a tool result landing after
-// the cut while the summary was being written — cannot happen when nothing is
-// awaited.
-func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
+//  3. THE SUMMARY, and only when the two above leave the conversation over the
+//     line the pass needs (compact_summary.go). They never touch a person's
+//     words or the turn in hand, so a conversation made mostly of those had no
+//     way down at all: every pass found nothing while the window filled. The
+//     conversation's own model rewrites the oldest part — person and assistant
+//     alike — as one note, keeping the most recent person messages whole and
+//     the original lines in the journal.
+//
+// The lock is held across the two free rungs. The summary is the one wait on a
+// provider, and it is made with the lock released and the region compared
+// before the answer is spliced in; the old summarizer held the lock and could
+// not be interrupted.
+func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
+	return a.compactWithPolicy(ctx, hub, a.automaticCompactPolicy())
+}
+
+func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy compactPolicy) (bool, error) {
+	changed, _, err := a.compactWithPolicyResult(ctx, hub, policy)
+	return changed, err
+}
+
+func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, policy compactPolicy) (bool, string, error) {
 	// A PASS SAYS ITSELF WHILE IT RUNS, and it says itself from OUTSIDE the
 	// lock. A phase post reaches a surface, and a surface answers one by asking
 	// for a frame — so a phase posted with this agent's mutex held is a surface
@@ -4899,23 +4934,19 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	// is refused below still ends this clock on the way out.
 	a.tellPhase(provider.PhaseTidying, "the conversation", time.Now())
 	defer a.endPhase()
+	// The definitions are outside the transcript and take the belt's own lock.
+	// Read their weight before taking the session lock, then use it only for
+	// the person's meter; the policy's transcript-only lines stay unchanged.
+	belt := a.beltTokens()
 
 	a.mu.Lock()
 	if a.compacting {
 		a.mu.Unlock()
-		return false, ErrCompactionInFlight
+		return false, "", ErrCompactionInFlight
 	}
 	a.compacting = true
-	tokensBefore := a.estimateTokensLocked()
-	// AND THE PASS IS ANNOUNCED THE MOMENT IT BEGINS, not only when it ends.
-	// [EventCompacting] has said in its own doc comment since it was declared
-	// that a pass is visible while it runs, and until this line nothing in the
-	// repository ever sent it — three handlers in internal/tui3 waited on an
-	// event with no sender, so a person watching a turn stop to tidy itself saw
-	// the finished line and never the work. The event goes out under the lock
-	// deliberately: [eventHub.send] only appends to queues and cannot block,
-	// which is what makes it safe here and a phase post not.
-	hub.send(Event{Kind: EventCompacting, Hint: "compacting " + approxTokens(tokensBefore) + " tokens"})
+	a.compactDone = make(chan struct{})
+	tokensBefore := max(a.estimateTokensLocked(), a.transcriptTokensLocked()+belt)
 
 	// THE CONVERSATION IS SHAPED FOR THE SCROLLBACK BEFORE IT IS EDITED. This is
 	// the same region a resume recovers from the journal ([replayedSession.earlier]),
@@ -4936,7 +4967,9 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	earlier := shapeEntries(a.messages, a.file, a.presentation)
 
 	pass := compactionPass{stored: a.chatlog != nil}
-	pass.stubbed = a.stubOldOutputsLocked()
+	if !policy.active {
+		pass.stubbed = a.stubOldOutputsLocked()
+	}
 	// THE FOLD IS ASKED FOR AGAINST THE TARGET, NOT THE TRIGGER. The pass fires
 	// at the threshold, and the stub pass alone routinely lands the estimate just
 	// under it — below the trigger, above the target, with no headroom at all. The
@@ -4944,27 +4977,57 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	// thousand tokens crossed the line again, and the session was back in exactly
 	// the once-per-step thrash [compactTarget] exists to end. What buys the
 	// headroom is the same figure the fold already stops at.
-	if a.estimateTokensLocked() > a.compactTargetTokens() {
-		pass.folded, pass.marker = a.foldLocked()
+	if policy.active || a.estimateTokensLocked() > policy.target {
+		pass.folded, pass.marker = a.foldWithPolicyLocked(policy)
+	}
+	// THE LAST RUNG IS A SUMMARY, and it is the only one that waits on a model
+	// (compact_summary.go). The lock is released for the call and taken back
+	// to splice the answer in; [Agent.compacting] still holds every other pass
+	// off, and a transcript that moved in the gap keeps its shape.
+	// why is what a pass that changed nothing says about itself (a person's
+	// /compact reads it; an automatic pass says nothing either way).
+	why := ""
+	appendedDuringSummary := 0
+	attempted := false
+	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
+		plan, short, ok := a.planSummaryLocked(policy)
+		why = short
+		if ok {
+			attempted = true
+			lengthBeforeSummary := len(a.messages)
+			a.mu.Unlock()
+			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
+			summary, err := a.writeSummary(ctx, plan)
+			a.mu.Lock()
+			appendedDuringSummary = max(0, len(a.messages)-lengthBeforeSummary)
+			if err == nil {
+				pass.summarized, why = a.spliceSummaryLocked(plan, summary)
+			} else {
+				why = summaryFailedWhy(ctx, err)
+			}
+		}
+	}
+	// ONLY A SUMMARY THAT WAS ASKED FOR AND DID NOT LAND IS "SKIPPED". Too
+	// little older conversation to be worth a call is not a failure: a fold
+	// that changed something says what it folded, as it always did, and the
+	// reason is kept for the pass that changed nothing ([NothingToCompact]).
+	if attempted && pass.summarized == 0 {
+		pass.summarySkipped = why
 	}
 	a.compacting = false
+	close(a.compactDone)
+	a.compactDone = nil
 
 	if pass.empty() {
-		// Nothing was old enough to stub and nothing was foldable: the whole
-		// transcript is the person's own words and the recent tail, which is
-		// what [ErrNothingToCompact] has always meant.
+		// No eligible material was reduced. A manual pass and a routine pass
+		// protect different tails, so this is not a claim about total size.
 		a.mu.Unlock()
-		// AND [EventCompacted] FOLLOWS [EventCompacting] ON EVERY PATH, which is
-		// the promise the pair is declared with (session.go). A surface opens a
-		// row on the first and settles it on the second; a pass that announced
-		// itself and then said nothing would leave that row open for the rest of
-		// the session, so a pass that found nothing says exactly that.
-		// AND IT SAYS WHICH OF THE TWO THINGS THIS EVENT MEANS. The kind alone
-		// cannot: it is sent on both paths, so a reader that rebased on it
-		// rebased on a replacement that did not happen ([Event.Unchanged]).
-		hub.send(Event{Kind: EventCompacted, Hint: "nothing to compact", Unchanged: true})
-		return false, ErrNothingToCompact
+		return false, "", &NothingToCompact{Why: why}
 	}
+
+	// Mechanical reduction is synchronous. Publish a paired seam only once
+	// it changed something; an automatic no-op leaves no transcript row.
+	hub.send(Event{Kind: EventCompacting, Hint: "compacting " + approxTokens(tokensBefore) + " tokens"})
 
 	// The pass really edited the transcript, so the region above it is now
 	// history and this is the record of it. The region a PREVIOUS pass left is
@@ -4985,12 +5048,15 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	// time, under this lock, at the one moment a person is most likely to be
 	// pressing Esc ([Agent.Interrupt] wants the same lock).
 	a.earlier = earlier
-	a.earlierFloor = countEntries(a.messages)
+	a.earlierFloor = countEntries(a.messages[:len(a.messages)-appendedDuringSummary])
 
 	// The provider's context figure described the request that is now gone.
-	// Zero sends the estimator back to the content until the next response.
+	// Estimate the rebuilt transcript AND the definitions the next request
+	// carries. Keep that weight as the transcript grows until a provider's
+	// next reported count replaces it.
 	a.contextTokens = 0
-	tokensAfter := a.estimateTokensLocked()
+	a.contextBeltTokens = belt
+	tokensAfter := a.meterTokensLocked()
 	// The whole rebuilt window is re-journaled behind the marker, not just the
 	// tail: a stub and a fold are edits to messages the file already holds ABOVE
 	// the marker, and replay discards everything above it. Writing the window is
@@ -5005,9 +5071,9 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	a.mu.Unlock()
 
 	if hub != nil {
-		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter)})
+		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter), Summarized: pass.summarized})
 	}
-	return true, nil
+	return true, pass.summarySkipped, nil
 }
 
 // compactionHint is the one dim line the turn after a pass shows, and every
@@ -5028,7 +5094,13 @@ func compactionHint(pass compactionPass, before, after int) string {
 	if pass.folded > 0 {
 		clauses = append(clauses, fmt.Sprintf("folded %d message%s", pass.folded, plural(pass.folded)))
 	}
-	if before > after {
+	if pass.summarized > 0 {
+		clauses = append(clauses, fmt.Sprintf("summarized %d message%s", pass.summarized, plural(pass.summarized)))
+	}
+	if pass.summarySkipped != "" {
+		clauses = append(clauses, "summary skipped: "+pass.summarySkipped)
+	}
+	if before > after && approxTokens(before) != approxTokens(after) {
 		clauses = append(clauses, fmt.Sprintf("%s → %s tokens", approxTokens(before), approxTokens(after)))
 	}
 	if pass.stored {
@@ -5066,15 +5138,30 @@ func compactionHint(pass compactionPass, before, after int) string {
 // foldable material before it gets there still succeeds with what it took —
 // the target is how far to go, never a condition on the pass.
 func (a *Agent) foldLocked() (int, string) {
+	return a.foldWithPolicyLocked(compactPolicy{target: a.compactTargetTokens(), keep: a.keepRecentTokens()})
+}
+
+func (a *Agent) foldWithPolicyLocked(policy compactPolicy) (int, string) {
 	a.alignReasoningLocked()
-	limit := a.cutPointLocked()
-	protectTurn := a.turnContinuesLocked()
-	target := a.compactTargetTokens() * bytesPerToken
+	limit := a.cutPointForLocked(policy.keep)
+	if policy.active {
+		// The newest call and all of its answers remain whole even when one
+		// batch alone exceeds the recent allowance. Pending calls never fold.
+		for i := len(a.messages) - 1; i > 0; i-- {
+			if a.messages[i].Role == "assistant" {
+				limit = min(limit, i)
+				break
+			}
+		}
+	}
+	protectTurn := !policy.active && a.turnContinuesLocked()
+	target := policy.target * bytesPerToken
 	total := 0
-	for _, message := range a.messages {
-		total += messageBytes(message)
+	for i := range a.messages {
+		total += a.transcriptMessageBytesLocked(i)
 	}
 
+	beforeTotal := total
 	folded := make(map[int]bool, 16)
 	first, last := -1, -1
 	for index := 1; index < limit && total > target; {
@@ -5102,7 +5189,7 @@ func (a *Agent) foldLocked() (int, string) {
 		// A stub is useful only while its tool call remains in the window. Keep
 		// tool batches intact: folding the assistant call would either orphan the
 		// stub or fold the stub too, defeating the required stubs-plus-folds shape.
-		if len(a.messages[index].ToolCalls) > 0 {
+		if !policy.active && len(a.messages[index].ToolCalls) > 0 {
 			keepsStub := false
 			for cursor := index + 1; cursor < batch; cursor++ {
 				if strings.HasPrefix(strings.TrimSpace(messageContentText(a.messages[cursor])), stubMarker) {
@@ -5117,7 +5204,7 @@ func (a *Agent) foldLocked() (int, string) {
 		}
 		for cursor := index; cursor < batch; cursor++ {
 			folded[cursor] = true
-			total -= messageBytes(a.messages[cursor])
+			total -= a.transcriptMessageBytesLocked(cursor)
 			if first < 0 {
 				first = cursor
 			}
@@ -5137,6 +5224,9 @@ func (a *Agent) foldLocked() (int, string) {
 	// when this run actually reached it, since a post can fail and a fold that
 	// sends the model to a store holding nothing is the dead pointer again.
 	marker := foldMarker(len(folded), journal, from, to, a.chatlog.ref(a.messages[first]) != "")
+	if total+messageBytes(textMessage("user", marker)) >= beforeTotal {
+		return 0, ""
+	}
 	rebuilt := make([]ai.Message, 0, len(a.messages)-len(folded)+1)
 	rebuiltReasoning := make([]provider.MessageReasoning, 0, cap(rebuilt))
 	rebuilt = append(rebuilt, a.messages[0])
@@ -5249,12 +5339,14 @@ func foldLineSpan(from, to int) string {
 
 // cutPointLocked walks back from the tail until the keep-recent budget is
 // spent and returns the index the kept tail starts at.
-func (a *Agent) cutPointLocked() int {
-	budget := a.keepRecentTokens() * bytesPerToken
+func (a *Agent) cutPointLocked() int { return a.cutPointForLocked(a.keepRecentTokens()) }
+
+func (a *Agent) cutPointForLocked(keep int) int {
+	budget := keep * bytesPerToken
 	cut := len(a.messages)
 	// index 0 is the system message; it is never summarized and never cut.
 	for cut > 1 {
-		size := messageBytes(a.messages[cut-1])
+		size := a.transcriptMessageBytesLocked(cut - 1)
 		if budget-size < 0 {
 			break
 		}
@@ -5278,11 +5370,22 @@ func (a *Agent) cutPointLocked() int {
 // threshold. Taking the max keeps the honest number as a floor while letting
 // the content speak for everything after it.
 func (a *Agent) estimateTokensLocked() int {
-	total := 0
-	for _, message := range a.messages {
-		total += messageBytes(message)
+	estimate := a.transcriptTokensLocked()
+	if a.contextTokens > estimate {
+		return a.contextTokens
 	}
-	estimate := EstimateTokens(total)
+	return estimate
+}
+
+// meterTokensLocked is what a person is shown: [Agent.estimateTokensLocked]
+// plus, between a compaction and the provider's next count, the tool
+// definitions the next request carries. THE THRESHOLDS DO NOT READ IT. The fold
+// and the automatic trigger are measured on the transcript estimate their laws
+// were written against (compaction_headroom_test.go); only the status line, the
+// /compact note and the ⚭ figures need the whole request, so that a pass does not
+// read as a larger drop than the next request will show.
+func (a *Agent) meterTokensLocked() int {
+	estimate := a.transcriptTokensLocked() + a.contextBeltTokens
 	if a.contextTokens > estimate {
 		return a.contextTokens
 	}

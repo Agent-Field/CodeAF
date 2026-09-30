@@ -856,7 +856,8 @@ While that is happening the status line says, quietly:
 reconnecting to devbox — trying for up to 5 minutes
 ```
 
-Every call still gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
+Ordinary calls give up after 10 seconds. A remote `/compact` waits up to five minutes
+for a summary to finish; the chat stays responsive while it waits.
 
 If it cannot get back at all, you see the sentence you always saw:
 

@@ -229,6 +229,9 @@ type sessionEntry struct {
 	// lines and reconstructs the transcript verbatim rather than from counts.
 	Stubbed int `json:"stubbed,omitempty"`
 	Folded  int `json:"folded,omitempty"`
+	// Summarized is how many messages a summary note replaced
+	// (compact_summary.go). The note itself is in the window like any line.
+	Summarized int `json:"summarized,omitempty"`
 
 	// Window is HOW MANY MESSAGE LINES THE PASS RE-JOURNALED BEHIND THIS MARKER
 	// — the length of the rebuilt window [sessionFile.appendCompaction] writes
@@ -2833,6 +2836,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		TokensBefore: tokensBefore,
 		Stubbed:      pass.stubbed,
 		Folded:       pass.folded,
+		Summarized:   pass.summarized,
 		// The length is written BEFORE the window it describes, which is the only
 		// order that survives a crash halfway through: a reader that finds fewer
 		// lines than the number promised has a truncated file and can say so,

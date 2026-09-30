@@ -55,9 +55,12 @@ readable for one more rotation.
 
 ## A team's daily cap
 
-A team can have a daily cap: `daily cap per team` in `/settings` under **Teams** is the default
-every team inherits (no cap), and a team can set its own. A cap counts the team and every team
-under it together, one pool.
+A team can have a daily cap: `daily cap per team` in `/settings` under **Teams** gives each
+ordinary team that amount as its own default pool. It does not give the `All teams` global
+manager group a cap; that row has no cap until you set one on it. A cap explicitly set on a
+team counts that team and every team under it together, one pool, and descendants inherit that
+ancestor's pool. A team with no such ancestor override gets its own profile-default pool, so
+two teams can each spend up to the default without sharing one company-wide allowance.
 
 When the pool reaches its cap:
 

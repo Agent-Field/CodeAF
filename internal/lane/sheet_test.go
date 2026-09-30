@@ -465,3 +465,30 @@ func TestTheBeatPrimesTheBeliefFromEveryReading(t *testing.T) {
 		}
 	}
 }
+
+// TOOL SUPPORT IS READ FROM THE LIST THE ROUTER FILTERS ON. Every request from
+// this program says `require_parameters`, so a lane whose supported_parameters
+// lacks "tools" never receives a request that carries them, whatever its
+// tool_choice block says. The two rows are deepseek-v3.2's GMICloud and Mara as
+// the router published them on 2026-09-28, where the two fields disagree in
+// both directions; the third row publishes no list and keeps the old reading.
+func TestToolSupportIsReadFromTheParameterListTheRouterFiltersOn(t *testing.T) {
+	body := `{"data":{"endpoints":[
+		{"provider_name":"GMICloud","context_length":163840,"supported_parameters":["max_tokens","tools","tool_choice"],"supports_tool_choice":{"function":false,"auto":true}},
+		{"provider_name":"Mara","context_length":32768,"supported_parameters":["max_tokens","temperature"],"supports_tool_choice":{"function":true,"auto":true}},
+		{"provider_name":"Listless","context_length":65536,"supports_tool_choice":{"function":true}}
+	]}}`
+	rows, _, err := decodeSheet("deepseek/deepseek-v3.2", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"GMICloud": true, "Mara": false, "Listless": true}
+	for _, row := range rows {
+		if row.Facts.Tools != want[row.ID.Lane] {
+			t.Errorf("%s reads Tools=%v, want %v", row.ID.Lane, row.Facts.Tools, want[row.ID.Lane])
+		}
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("decoded %d rows, want %d", len(rows), len(want))
+	}
+}

@@ -263,10 +263,8 @@ type Evidence struct {
 	// envelope code ([provider.APIError.Overflow]).
 	Overflow bool
 
-	// Compacted says this turn has ALREADY made the request smaller once. It is
-	// the difference between [ActionCompact] and giving the overflow back as
-	// [Work]: compaction that did not fit is a request that is not going to fit,
-	// and asking for it twice is a loop.
+	// Compacted says this failed generation exhausted its bounded context
+	// recovery allowance. Successful generations begin a new episode.
 	Compacted bool
 
 	// Spent says the TRANSPORT'S OWN SHAPE LADDER has been climbed and has run

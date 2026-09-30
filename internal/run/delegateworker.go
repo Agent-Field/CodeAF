@@ -53,6 +53,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
@@ -111,9 +112,20 @@ type DelegateSetup struct {
 	// flags for that (delegate.Delegate.PlainFolder).
 	PlainFolder bool
 	// Branch is the run's own task branch; IgnoredFile is its start-time
-	// ignore list. Both are passed to the child before any eager commit.
+	// ignore list, and InputsFile the untracked files copied into its copy
+	// with their fingerprints (session.ProgramFolder.InputsFile). All three are
+	// passed to the child before any eager commit.
 	Branch      string
 	IgnoredFile string
+	InputsFile  string
+	// BriefNote is the line the program's brief opens with when it works in a
+	// copy of the person's repository (session.ProgramFolder.BriefNote): where
+	// the copy is. Empty for a folder worked in itself.
+	BriefNote string
+	// Hold is the file the run's hold on the program's folder is taken on
+	// (session.ProgramFolder.Hold), handed to the program's process so the
+	// folder stays held until it has gone ([delegate.HoldEnv]). Nil hands none.
+	Hold *os.File
 	// Crew is the conversation's crew (session.RunSpec.Crew), which the
 	// program's line carries in its own flags (delegate.Delegate.CrewFlags) so
 	// it works on the models the person chose. Zero leaves it to its own.
@@ -269,6 +281,12 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 
 func (s *delegateSink) Stage(record delegate.StageRecord) {
 	s.remember(delegate.StageAction(time.Now(), record))
+	// THE MODELS THE PROGRAM SAYS IT RUNS ON go on its record the moment it
+	// says them, for the task's page to name ([delegate.StageRecord.Models]).
+	// A child of another build is not this run's program ([delegateSink.Hello]).
+	if s.mismatch == "" && s.record.Heard(record) {
+		_ = delegate.WriteProgram(s.taskDir, s.record)
+	}
 }
 
 func (s *delegateSink) Step(record delegate.StepRecord) {
@@ -478,6 +496,9 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
+	if note := strings.TrimSpace(w.setup.BriefNote); note != "" {
+		brief = note + "\n\n" + brief
+	}
 	started = time.Now()
 	sink.record.StartedAt = started
 	result, err := delegate.Run(launchCtx, delegate.Launch{
@@ -487,10 +508,12 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 			delegate.RunFacts{Plain: w.setup.PlainFolder, Crew: w.setup.Crew}),
 		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the API's
 		// address and token are what its engine needs; model commands lose both.
-		Env:        append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile),
+		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
+			gitidentity.InputsEnv+"="+w.setup.InputsFile),
 		Dir:        w.workspace,
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,
+		Hold:       w.setup.Hold,
 	}, sink)
 	// THE INSTANT THE PROCESS WAS GONE, and not the instant its stdout drained
 	// ([delegate.Result.ExitedAt] says why; a shell run reads it the same way).
@@ -574,6 +597,17 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		reason = w.program.Name + " stopped on its own ceiling: " + t.Message
 	case delegate.StatusCrashed:
 		reason = w.program.Name + " crashed: " + t.Message
+	case delegate.StatusFail:
+		if t.HandedIn() {
+			// A CHANGE THE PROGRAM HANDED IN IS FINISHED, whatever its own check
+			// of the project said ([delegate.Terminal.HandedIn]): the run lands
+			// it, and the check's word rides on as the verdict, for the
+			// conversation to look into rather than to act on.
+			report.Verdict = t.Verdict()
+			end(sink.steps, "finished: "+t.Message, report.Result)
+			return report, nil
+		}
+		reason = w.program.Name + " did not finish: " + t.Message
 	default:
 		// `fail`, and any word this build does not know, is work that does not
 		// stand: the run reads it as incomplete.

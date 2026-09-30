@@ -191,8 +191,8 @@ turn before recording your message or calling a model.
 
 A turn already running and work already delegated may finish. These are not hard
 reservations across every concurrent task, so the final bill can exceed a limit.
-`/budget` remains a separate conversation spending limit; the stricter dollar limit
-applies. Launch limits are changed by relaunching with different flags. A refusal
+`/budget conversation` remains a separate conversation spending limit; the stricter
+dollar limit applies. Launch limits are changed by relaunching with different flags. A refusal
 states which launch limit was reached.
 
 The local persistent host carries these launch settings. Explicit `--host` still

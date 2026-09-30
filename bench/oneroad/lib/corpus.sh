@@ -7,6 +7,10 @@
 # says why. ATTRIBUTION: bench/run.sh (issue_prompt, fresh_clone, setup_python,
 # run_suite, changed_files).
 
+CORPUS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../canary/lib/repo.sh
+source "$CORPUS_HERE/../../canary/lib/repo.sh"
+
 REPO="${REPO:-https://github.com/MALIBA-AI/bambara-text-normalization}"
 OWNER_REPO="$(echo "$REPO" | sed -E 's#^.*github.com[:/]##; s#\.git$##')"
 SLUG="$(basename "$REPO" .git)"
@@ -46,19 +50,12 @@ batch_prompt() {
   printf 'Work in this repository. Implement the changes and make the existing test suite pass. Do not weaken or delete tests to make them pass.\n'
 }
 
-# fresh_clone — bench/run.sh's. A clone of its own per cell, at the same starting
-# commit: reusing one checkout leaks the previous harness's diff into the next
-# one's starting state.
+# fresh_clone — bench/run.sh's. A fetch-only tree of its own per cell, at the
+# same starting commit, with no upstream branches available to inspect.
 fresh_clone() {
   local dir="$1"
-  rm -rf "$dir"
-  if [ -n "$BASE_COMMIT" ]; then
-    git clone --quiet "$REPO" "$dir" || return 1
-    (cd "$dir" && git checkout --quiet "$BASE_COMMIT") || return 1
-  else
-    git clone --depth 1 --quiet "$REPO" "$dir" || return 1
-  fi
-  (cd "$dir" && git rev-parse HEAD)
+  fetch_only_tree "$dir" "$REPO" "${BASE_COMMIT:-HEAD}" || return 1
+  git -C "$dir" rev-parse HEAD
 }
 
 # setup_python — bench/run.sh's. The suite is the judge, so it is installed

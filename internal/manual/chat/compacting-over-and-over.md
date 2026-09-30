@@ -40,8 +40,8 @@ you have not set one yourself; the next section is how to set one.
 Two things used to make a big model fold like a small one, and both are fixed:
 
 - codeaf refused to believe any claim above 256,000 tokens, for every model alike. That
-  ceiling is gone; what can lower a claim now is an endpoint actually **refusing** a request
-  for being too long, which codeaf writes down and never trusts that model past again.
+  ceiling is gone; request admission now reads endpoint-specific windows and explicit limits reported by
+  refusals. A rejected prompt size is not saved as a model-wide window.
 - work that left the conversation — a task's worker, an adaptive run's worker, the
   reader that checks a task — was handed nothing at all when its model differed from yours,
   and so folded against the conservative 128,000-token default whatever its own model held.
@@ -105,8 +105,9 @@ keep appearing is the sign of the defect this page describes.
 ## What happens to tool results while one long answer is still working
 
 A running answer keeps its assistant notes, tool calls, their exact arguments and every
-mutating result in the model's context. General conversation compaction does not fold that
-current-turn work. This is deliberate: it is the working record of what the model tried
+mutating result in the model's context. Routine conversation compaction does not fold that
+current-turn work. Manual compaction and necessary overflow recovery may archive older
+completed batches while retaining the newest batch and a smaller recent working tail. This is deliberate: it is the working record of what the model tried
 and what it changed, and removing it can make the model inspect the same files or repeat
 an edit.
 
@@ -124,15 +125,19 @@ the newest slice stays whole. Each older slice becomes a pointer naming the file
 `offset` and `limit` that read it, and no copy is filed — the file itself is where those
 bytes came from, and `read` brings the slice back.
 
-## A pass that cannot reach its target
+## A pass that cannot reach its target — when folding is not enough
 
 The fold walks the oldest assistant work first and stops at the target, but it never folds
 your own messages, the system prompt, the verbatim tail, or a tool call whose result has
 been stubbed. A conversation that is mostly your own words and recent work can run out of
-foldable material above the target. The pass still succeeds with what it took, and the
-`compacted · …` line reports the real counts; the next step's check may then fire again,
-honestly, because there was nothing more to take. That is the one case where two passes
-in quick succession are not a defect.
+foldable material above the target.
+
+When that leaves the conversation above the line that fired the pass, the pass ends with a
+**summary**: the conversation's own model rewrites the oldest part of the conversation as
+one note, and the `compacted · …` line says `summarized N messages`. See *When compaction
+writes a summary*. A summary is skipped when the tool definitions alone already exceed the
+line — no summary could get under it — and then the next step may fire again, honestly,
+because there was nothing more to take.
 
 ## What happened to the earlier messages — where did the folded messages go — how do I get the compacted text back, why it loses the earlier part of our chat
 
@@ -155,3 +160,91 @@ ever the journal. Neither invents a file to open.
 
 Scrolling up above the fold on the screen also still shows the words; what shrank is the
 model's copy, not yours. The fold is not unrecoverable.
+
+## Why /compact says nothing to compact — manual compaction before the automatic trigger
+
+`/compact` now has its own reduction policy. It can fold older completed assistant work
+before the automatic trigger, including completed batches inside one long turn. It keeps
+your messages, the system prompt, the newest assistant/tool batch, and 4,096 recent tokens
+(at most an eighth of the trusted window). Then, in the same pass, it summarizes whatever
+older conversation is left (see *When compaction writes a summary*), so one `/compact` goes
+as far as it can; a second one right after has nothing left to do.
+
+The old command reused the automatic target. A conversation with 60,000 tokens on a 128k
+model could have older history and still receive `session: nothing to compact`, because it
+was below that target. The manual command no longer has that threshold gate.
+
+A no-op says `nothing to compact — ` and why:
+
+- `only ~400 tokens since the last summary — too little to summarize` (or `before your
+  latest message`): a summary needs about 1,000 tokens of conversation it has not read;
+- `nothing new since the last summary`, or `there is nothing before your last 3 messages
+  to summarize` (or `your latest message`): the messages kept word for word are all that
+  is left;
+- `the model could not write a summary: …`, `the model declined to write a summary`,
+  `the model's summary came back empty or unreadable`, `the summary was interrupted`, or
+  `the conversation changed while the summary was being written` — the conversation is
+  left exactly as it was.
+
+When the free steps did shorten something but the summary did not land, the pass still
+reports what it folded. Its line includes `summary skipped: ` and why the summary did not
+land — the model could not write it, declined, sent back nothing usable, was interrupted,
+or the conversation changed meanwhile;
+an automatic line may have size and journal details after that clause. `/compact` says
+`⚭ compacted · about X to Y tokens · summary skipped: <why>` when its size fell, or
+`⚭ compacted · summary skipped: <why>` when there was no size drop.
+
+None of these means the next request fits: admission also counts schemas, replayed
+reasoning and reserved output.
+
+## Why the provider says maximum context length when the status shows 20 percent — a request refused as too long
+
+The status shows the model catalog's window. The serving endpoint may have less room, and
+its window must hold input **plus output**, including thinking. codeaf budgets the assembled
+request against known endpoint limits before sending and remembers explicit limits from
+errors by base URL, model and endpoint. Old rejected-prompt-size guesses are ignored.
+
+Recovery shortens by what is missing plus a little room — a thirty-second of the window —
+rather than a quarter of the conversation, and it will summarize even a small older part
+when that is what the request is short of. Overflow recovery can run twice per failed
+generation, only while the request changes.
+A DeepInfra refusal saying `Requested input length … exceeds maximum input length …`
+counts as an overflow; its stated maximum is used as that endpoint's limit.
+A successful response resets the allowance. A second overflow later in a long tool turn
+can therefore recover instead of ending the turn just because it compacted earlier.
+If protected material still cannot fit, codeaf explains that locally; it does not
+knowingly send the same oversized request again.
+
+## When compaction writes a summary — does codeaf summarize my conversation, what the summary keeps
+
+Yes, as a last resort. Folding and pointers are tried first because they are free and
+nothing is paraphrased. A summary is written only when they cannot bring the conversation
+under the line the pass needs: the automatic threshold, the size a refused request has to
+shrink to. `/compact` is the exception: it always goes on to summarize whatever older
+conversation is left, because you asked for it as short as it can be.
+
+The summary is written by **the model you are talking to**, with no tools, and it is billed
+like any other call, counting toward the session's spending. It replaces the
+oldest part of the conversation — your older messages and the assistant's work alike —
+with one note that starts `[context compacted]`. It never touches:
+
+- the system prompt;
+- your **up to three most recent messages** and everything after them. If a cut can reach
+  the line, codeaf keeps as many of those messages as that cut allows. If no cut can
+  reach it, an automatic pass or `/compact` still keeps all of the most recent three
+  that exist: summarizing more would not reach the line either. With only two messages
+  since the last summary, `/compact` leaves both word for word when neither can reach
+  the line; if there is too little older conversation, it writes no summary and says why.
+  Recovery from a refused request tries two, then
+  your latest message **with the reply just before it** (what "translate it" or
+  "keep going" is about), then your latest alone — the message being answered always stays;
+- the turn that is running.
+
+Messages codeaf writes into the conversation itself — the note after a reply was cut off
+at the output limit, a `[carry on]` — are not counted as yours.
+
+A later summary folds the earlier one in, so there is only ever one note. The original
+words stay in the session journal, which the note names, and on your screen when you
+scroll up. A summary that fails, is not prose, or is not smaller than what it replaces is
+thrown away and the conversation is left as the free steps left it. While it is being
+written the status row shows `tidying` with a clock.

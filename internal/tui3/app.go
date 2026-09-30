@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -56,6 +58,10 @@ const markdownThrottle = 1500 * time.Millisecond
 // is how often the lock is worth taking in wall time, and that answer does not
 // change because the frames arrived over a wire (link.go's [app.dueEvery]).
 const usageEvery = 10
+
+// compactStillRunning is what /compact says when the engine is still working
+// after the surface's wait ran out: the pass lands on its own.
+const compactStillRunning = "still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands"
 
 // quietBeforeEllipsis is how long the stream has to be silent before the
 // ellipsis appears under a reply that is already streaming. Text arriving in
@@ -301,6 +307,10 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+	// summarized says an [entryCompact] pass replaced some of the conversation
+	// with a summary ([session.Event.Summarized]). Only such a pass stands
+	// outside the turn's fold (workfold.go); a free one folds with the work.
+	summarized bool
 
 	// carried marks the note naming the skills a turn carried (session's
 	// turnSkillsNotice). It is not addressed to the person, so it does not hold
@@ -680,7 +690,11 @@ type (
 		lump bool
 	}
 	streamClosedMsg struct{ gen int }
-	compactedMsg    struct{ err error }
+	compactedMsg    struct {
+		err           error
+		before, after int
+		agent         Agent
+	}
 	// frameMsg is the paint clock: it promotes whatever streamed since the
 	// last one into a frame, and steps the animations.
 	frameMsg struct{}
@@ -5171,9 +5185,61 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.steerFell(msg)
 
 	case compactedMsg:
-		if msg.err != nil {
-			a.toldNote("compact failed: " + msg.err.Error())
+		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
+		// page over that conversation still leaves its reply behind the page.
+		if msg.agent != nil && msg.agent != a.agent {
+			return a, nil
+		}
+		if why, skipped := session.SummarySkippedWhy(msg.err); skipped {
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+				why = compactASCII(why)
+			}
+			line := lead + " compacted"
+			if msg.before > msg.after && msg.after > 0 {
+				line += fmt.Sprintf("%sabout %d to %d tokens", separator, msg.before, msg.after)
+			}
+			a.toldNote(line + separator + "summary skipped: " + why)
+			a.measureContext()
+			a.noticeEvent(eventCompacted)
+		} else if msg.err != nil {
+			if why, nothing := session.NothingToCompactWhy(msg.err); nothing {
+				// THE NO-OP SAYS WHY when the engine knows: too little older
+				// conversation to summarize, or the summary that would have
+				// shortened it did not land. An engine that says nothing more
+				// (a peer built before the reason existed) gets the old line.
+				if why == "" {
+					why = "your messages and recent work are kept"
+				}
+				a.toldNote("nothing to compact — " + why)
+			} else if errors.Is(msg.err, remote.ErrLate) {
+				// A PASS THAT OUTLIVED THE WAIT IS STILL RUNNING. The engine
+				// holds it, not this window, and it lands with the status
+				// line's count dropping; "failed" was the sentence for a pass
+				// that then succeeded (internal/remote's [Agent.Compact]).
+				a.toldNote(compactStillRunning)
+			} else {
+				a.toldNote("compact failed: " + msg.err.Error())
+			}
 		} else {
+			// THE SAME MARK AS A PASS THE ENGINE RAN ON ITS OWN ([app.divider]),
+			// so a person reading back can tell a compaction from any other note
+			// whichever door started it.
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+			}
+			if msg.before > msg.after && msg.after > 0 {
+				a.toldNote(fmt.Sprintf("%s compacted%sabout %d to %d tokens", lead, separator, msg.before, msg.after))
+			} else {
+				a.toldNote(lead + " compacted")
+			}
+			// THE METER FOLLOWS THE PASS, as it does for one inside a turn
+			// ([app.applyEvent]'s EventCompacted). Without this the status line
+			// kept the last request's weight — 585.1k over a conversation /compact
+			// had just taken to 15k — until the next message was sent.
+			a.measureContext()
 			a.noticeEvent(eventCompacted)
 		}
 		return a, nil
@@ -5207,7 +5273,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.err != nil {
-			a.note("could not start the task · " + msg.err.Error())
+			a.note(taskStartFailureNote(msg.err))
 		} else {
 			// WHAT LANDED, AND WHAT IT IS CALLED (payload.go). The id is how a
 			// person names this node to any other command on the surface and the
@@ -6074,13 +6140,15 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
 		//
-		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
-		// paths, so this used to hand the bookkeeping over on a pass that found
-		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
-		// the reader was nowhere near, the seam was marked drawn without being
-		// drawn, and the conversation between the two went quiet. The surface
-		// then said there was nothing above it. Nothing had moved, so there is
-		// nothing to carry over ([session.Event.Unchanged]).
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. A local engine no longer
+		// sends this event for a pass that found nothing, but a remote engine
+		// built before that change sends it on both paths. This used to hand the
+		// bookkeeping over on a pass that found nothing to stub and nothing to
+		// fold: replayFrom was dropped to a floor the reader was nowhere near,
+		// the seam was marked drawn without being drawn, and the conversation
+		// between the two went quiet. The surface then said there was nothing
+		// above it. Nothing had moved, so there is nothing to carry over
+		// ([session.Event.Unchanged]).
 		if !ev.Unchanged {
 			a.rebase()
 		}
@@ -7901,7 +7969,11 @@ func (a *app) slash(line string) tea.Cmd {
 	case "compact":
 		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
-		return func() tea.Msg { return compactedMsg{err: agent.Compact(ctx)} }
+		return func() tea.Msg {
+			before := agent.ContextTokens()
+			err := agent.Compact(ctx)
+			return compactedMsg{err: err, before: before, after: agent.ContextTokens(), agent: agent}
+		}
 
 	case "rewind":
 		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE

@@ -587,11 +587,14 @@ func (a *app) wallOpen(tiles []wallTile, i int) tea.Cmd {
 	tab := tiles[i].tab
 	from, ok := a.wallTileRect(i)
 	a.closeWall()
+	var cmd tea.Cmd
 	if ok && a.wallMotionOK() {
 		a.wall.zoomFrom, a.wall.zoomAt = from, a.now()
-		return tea.Batch(a.tabGo(tab), a.wake())
+		cmd = tea.Batch(a.tabGo(tab), a.wake())
+	} else {
+		cmd = a.tabGo(tab)
 	}
-	return a.tabGo(tab)
+	return a.hopLand(cmd)
 }
 
 // wallToggle marks tile i, or unmarks it. Any tile marked is the selection
@@ -707,7 +710,7 @@ func (a *app) wallAskName(marked []chatTab) tea.Cmd {
 		name, err := namer.NameTeam(ctx, titles)
 		return func(bool) tea.Cmd {
 			a.wallTeamNamed(gen, name, err)
-			return nil
+			return a.wake()
 		}
 	})
 	wait := tea.Tick(teamNameWait, func(time.Time) tea.Msg { return wallNameTimeMsg{gen: gen} })

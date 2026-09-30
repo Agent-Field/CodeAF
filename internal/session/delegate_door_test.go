@@ -31,14 +31,15 @@ func testPrograms(name string) []delegate.Delegate {
 }
 
 // The whole road from the door to the branch: `/fake <brief>` starts a run
-// whose spec names the delegate and whose workspace is THE PERSON'S FOLDER
-// ITSELF, checked out on a branch codeaf cut for it. The program's own commits
-// stay on that branch, what it left uncommitted is committed there in one
-// commit whose subject is the task's title and whose body is the run's result,
-// the branch is left checked out, and the person's own branch never moves. The
-// engine is a double whose `work` hook plays the program: one file committed
-// the way senior-dev commits every edit, and one left uncommitted.
-func TestADelegatedRunWorksOnItsOwnBranchInTheFolderAndLeavesItCheckedOut(t *testing.T) {
+// whose spec names the delegate and whose workspace is A COPY OF THE PERSON'S
+// REPOSITORY, on a branch codeaf cut for it. The program's own commits stay on
+// that branch, what it left uncommitted is committed there in one commit whose
+// subject is the task's title and whose body is the run's result, the copy is
+// removed so the branch is checked out nowhere, and the person's checkout is
+// never touched. The engine is a double whose `work` hook plays the program:
+// one file committed the way senior-dev commits every edit, and one left
+// uncommitted.
+func TestADelegatedRunWorksOnItsOwnBranchInACopyAndLeavesTheCheckoutAlone(t *testing.T) {
 	// The double answers the run's result off the completer it is handed, so
 	// the result is scripted there: the sentence the last commit must carry.
 	const result = "submitted and verified. fake's model said: tests pass"
@@ -84,31 +85,25 @@ func TestADelegatedRunWorksOnItsOwnBranchInTheFolderAndLeavesItCheckedOut(t *tes
 	if spec.Brief != "add two files to the project" {
 		t.Fatalf("brief = %q", spec.Brief)
 	}
-	// THE PROGRAM WORKS IN THE FOLDER ITSELF, on a branch of its own.
-	if canonicalPath(spec.Workspace) != canonicalPath(conversation) || spec.PlainFolder {
-		t.Fatalf("the program works in %q (plain %v), want the person's repository %q itself", spec.Workspace, spec.PlainFolder, conversation)
+	// THE PROGRAM WORKS IN A COPY OF ITS OWN, on a branch of its own.
+	if canonicalPath(spec.Workspace) == canonicalPath(conversation) || spec.PlainFolder {
+		t.Fatalf("the program works in %q (plain %v), want a copy of the person's repository %q", spec.Workspace, spec.PlainFolder, conversation)
 	}
-	branch := currentBranch(conversation)
-	if !strings.HasPrefix(branch, "task/add-two-files-to-the-project-") {
-		t.Fatalf("the checkout is on %q while the program works, want a task branch of its own", branch)
+	branch := currentBranch(spec.Workspace)
+	if !strings.HasPrefix(branch, "task/add-two-files-to-the-project-") || currentBranch(conversation) != "work" {
+		t.Fatalf("the copy is on %q and the checkout on %q while the program works, want a task branch in the copy only", branch, currentBranch(conversation))
 	}
 	endBeltRun(t, agent, double)
 
-	// THE PERSON'S BRANCH NEVER MOVED, and the program's branch is left checked
-	// out with the work in the folder.
-	if tip := strings.TrimSpace(gitOut(t, conversation, "rev-parse", "work")); tip != base {
-		t.Fatalf("the person's branch moved from %s to %s", base, tip)
-	}
-	if head := currentBranch(conversation); head != branch {
-		t.Fatalf("the checkout is on %q after the run, want the program's branch %q left checked out", head, branch)
-	}
-	for _, name := range []string{"one.txt", "two.txt"} {
-		if _, err := os.Stat(filepath.Join(conversation, name)); err != nil {
-			t.Fatalf("%s is not in the person's folder: %v", name, err)
-		}
+	// THE PERSON'S CHECKOUT NEVER MOVED, and the copy is gone.
+	if tip := strings.TrimSpace(gitOut(t, conversation, "rev-parse", "HEAD")); tip != base || currentBranch(conversation) != "work" {
+		t.Fatalf("the person's checkout moved from %s to %s", base, tip)
 	}
 	if status := strings.TrimSpace(gitOut(t, conversation, "status", "--porcelain")); status != "" {
-		t.Fatalf("the run left the folder with changes that are not committed:\n%s", status)
+		t.Fatalf("the run left the person's folder with changes:\n%s", status)
+	}
+	if _, err := os.Stat(spec.Workspace); !os.IsNotExist(err) || worktreeCount(t, conversation) != 1 {
+		t.Fatalf("the copy was not removed: %v", err)
 	}
 	// THE PROGRAM'S COMMIT STAYS, and codeaf's one commit of what was left is on
 	// top of it: the title, then the result.
@@ -127,8 +122,8 @@ func TestADelegatedRunWorksOnItsOwnBranchInTheFolderAndLeavesItCheckedOut(t *tes
 		said = append(said, n.Body)
 	}
 	root := canonicalPath(conversation)
-	want := "its work is on the branch " + branch + " in " + root + ", 2 files, and that branch is checked out there; your branch work is as it was: `git -C '" +
-		root + "' switch work` goes back to it, and `git -C '" + root + "' merge " + branch + "` from there brings the work in"
+	want := "its work is on the branch " + branch + " in " + root + ", 2 files; your checkout was not touched, and `git -C '" +
+		root + "' merge " + branch + "` brings it in"
 	if joined := strings.Join(said, "\n"); !strings.Contains(joined, want) {
 		t.Fatalf("the run's notes = %q, want %q", said, want)
 	}
@@ -509,7 +504,7 @@ func TestTheFolderRuleIsSaidWhereAProgramEditsFilesAndOnlyThere(t *testing.T) {
 	tree := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
 	page := promptWithBeltFacts(tree)
 	for _, want := range []string{
-		"It works in the task's folder itself, on a branch of its own in a repository, so hand\nit the repository the work belongs in",
+		"In a repository it works in a copy of its own, on its own branch, so hand\nit the repository the work belongs in",
 		"clone one this machine lacks into a new folder",
 		"at the commit the work names, and pass it as `ground`.",
 		"Never brief it to work elsewhere.",
@@ -527,7 +522,7 @@ func TestTheFolderRuleIsSaidWhereAProgramEditsFilesAndOnlyThere(t *testing.T) {
 	if !strings.Contains(page, "- `reader`: ") {
 		t.Fatalf("the program that answers is not listed:\n%s", page)
 	}
-	if strings.Contains(page, "task's folder itself") {
+	if strings.Contains(page, "In a repository it works in a copy") {
 		t.Fatalf("a build whose only program reads in place is told about branches:\n%s", page)
 	}
 }
@@ -588,4 +583,35 @@ func TestAProgramsRunIsReadableWithTheSwitchOff(t *testing.T) {
 		t.Fatal("reading the program's page armed the plan for the switch's other roads")
 	}
 	endBeltRun(t, agent, double)
+}
+
+func TestStartingAProgramWithoutChatIsImmediatelyResumable(t *testing.T) {
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	workspace := newTestRepo(t)
+	bucket := t.TempDir()
+	place := Place{Dir: filepath.Join(bucket, "aaaaaaaaaaaaaaaa"), Workspace: workspace}
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(cfg *Config) {
+		cfg.Workspace = workspace
+		cfg.Place = place
+		cfg.SessionFile = place.Transcript()
+		cfg.AskConsent = false
+		cfg.Delegates = testPrograms("fake")
+	})
+	const brief = "repair the parser after the upgrade"
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", brief); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	// Read while the program is still running, without closing the agent or
+	// settling metadata writes; abrupt exit cannot supply either of those.
+	found := RecentSessions(bucket, 10)
+	rows := ReadRows([]string{place.Transcript()})
+	endBeltRun(t, agent, double)
+	if len(found) != 1 || found[0].Opening != brief {
+		t.Fatalf("program opening missing from resume: %+v", found)
+	}
+	if _, ok := rows[place.Transcript()]; !ok {
+		t.Fatal("program opening missing from home")
+	}
 }

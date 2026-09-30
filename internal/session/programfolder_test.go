@@ -1,10 +1,10 @@
 package session
 
-// THE CONTRACT OF A PROGRAM'S FOLDER (programfolder.go), in real git in
-// temporary repositories: which folder, a branch in a repository and nothing
-// of git anywhere else, a checkout that is in the way refused before anything
-// starts, one run per folder, and a run whose process went away settled by the
-// next codeaf that finds it without a single git write.
+// THE CONTRACT OF A PROGRAM'S FOLDER (programfolder.go, programcopy.go), in
+// real git in temporary repositories: which folder, a copy on a branch of its
+// own in a repository and nothing of git anywhere else, the person's checkout
+// never touched, runs side by side on one repository, and a run whose process
+// went away finished by the next codeaf that finds it.
 
 import (
 	"context"
@@ -32,58 +32,104 @@ func programAgent(t *testing.T, folder string) (*Agent, *beltRunDouble) {
 	return agent, double
 }
 
-// A CHECKOUT WITH CHANGES THAT ARE NOT COMMITTED IS REFUSED BEFORE ANYTHING
-// STARTS — a modified file, an untracked one, a staged one — naming them, and
-// nothing is switched, cut or started. The proposal is refused before its
-// card, in the same words.
-func TestAProgramIsRefusedACheckoutWithChangesThatAreNotCommitted(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		dirty func(t *testing.T, repo string)
-		named string
-	}{
-		{"modified", func(t *testing.T, repo string) {
-			writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own line\n")
-		}, "(shared.txt)"},
-		{"untracked", func(t *testing.T, repo string) { writeFile(t, filepath.Join(repo, "notes", "draft.md"), "draft\n") }, "(notes/draft.md)"},
-		{"staged", func(t *testing.T, repo string) {
-			writeFile(t, filepath.Join(repo, "new.go"), "package x\n")
-			mustGit(t, repo, "add", "new.go")
-		}, "(new.go)"},
-		{"many", func(t *testing.T, repo string) {
-			for _, name := range []string{"a.go", "b.go", "c.go", "d.go", "e.go"} {
-				writeFile(t, filepath.Join(repo, name), "x\n")
-			}
-		}, "(a.go, b.go, c.go and 2 more)"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := newTestRepo(t)
-			tc.dirty(t, repo)
-			agent, double := programAgent(t, repo)
-			want := canonicalPath(repo) + " has changes that are not committed " + tc.named + "; commit or stash them, then ask again"
-			_, _, _, err := agent.StartDelegate(context.Background(), "fake", "change the project")
-			if err == nil || err.Error() != want {
-				t.Fatalf("StartDelegate = %v, want %q", err, want)
-			}
-			if double.didRun() {
-				t.Fatal("a refused checkout started a run")
-			}
-			if head := currentBranch(repo); head != "work" {
-				t.Fatalf("a refused checkout was switched to %q", head)
-			}
-			if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
-				t.Fatalf("a refused checkout was given a branch: %q", branches)
-			}
-			stand := agent.resolveTaskGround(taskSpec{via: "fake", ground: repo, brief: "b", deliverable: "d", acceptance: "a"})
-			if stand.refusal != want {
-				t.Fatalf("the proposal's refusal = %q, want %q", stand.refusal, want)
-			}
-		})
+// worktreeCount is how many worktrees git records for repo, its own checkout
+// among them.
+func worktreeCount(t *testing.T, repo string) int {
+	t.Helper()
+	return strings.Count(gitOut(t, repo, "worktree", "list", "--porcelain"), "worktree ")
+}
+
+// A REPOSITORY'S PROGRAM WORKS IN A COPY OF ITS OWN, WHICH STARTS WHERE THE
+// PERSON IS, AND THE PERSON'S CHECKOUT IS NEVER TOUCHED. Uncommitted changes —
+// a modified file, an untracked one, a staged one — used to refuse the run, and
+// then were left out of the copy, so "finish what I'm in the middle of" was
+// handed the last commit. Tracked edits and staged additions are its first
+// commit now; untracked inputs are copied without entering history. They stay
+// uncommitted and staged in the person's folder exactly as they were. When
+// the run ends its work is on its branch, counted from that commit,
+// the copy is gone, and putting the person's changes aside brings in both.
+func TestAProgramWorksInACopyAndLeavesTheCheckoutAlone(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own line\n")
+	writeFile(t, filepath.Join(repo, "notes", "draft.md"), "draft\n")
+	writeFile(t, filepath.Join(repo, "new.go"), "package x\n")
+	mustGit(t, repo, "add", "new.go")
+	status := gitOut(t, repo, "status", "--porcelain")
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	double := newBeltRunDouble("done")
+	double.work = func(workspace string) { writeFile(t, filepath.Join(workspace, "fix.go"), "package fix\n") }
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	id, _, _, err := agent.StartDelegate(context.Background(), "fake", "change the project")
+	if err != nil {
+		t.Fatalf("a checkout with uncommitted changes refused the run: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	copyDir := canonicalPath(spec.Workspace)
+	if copyDir == canonicalPath(repo) || !strings.HasPrefix(copyDir, canonicalPath(programCopyRoot())) {
+		t.Fatalf("the program works in %q, want a copy under %q", copyDir, programCopyRoot())
+	}
+	if spec.PlainFolder || !strings.HasPrefix(spec.ProgramBranch, "task/") || currentBranch(copyDir) != spec.ProgramBranch {
+		t.Fatalf("the copy is on %q (plain %v), want the program's own branch %q", currentBranch(copyDir), spec.PlainFolder, spec.ProgramBranch)
+	}
+	for name, want := range map[string]string{"shared.txt": "the person's own line\n", "notes/draft.md": "draft\n", "new.go": "package x\n"} {
+		if body := readFile(t, filepath.Join(copyDir, name)); body != want {
+			t.Fatalf("the copy's %s = %q, want the person's uncommitted %q", name, body, want)
+		}
+	}
+	snapshot := strings.TrimSpace(gitOut(t, copyDir, "rev-parse", "HEAD"))
+	if parent := strings.TrimSpace(gitOut(t, copyDir, "rev-parse", "HEAD^")); parent != head || snapshot == head {
+		t.Fatalf("the copy's branch begins at %s (parent %s), want one commit on top of the person's %s", snapshot, parent, head)
+	}
+	if !strings.Contains(spec.ProgramBriefNote, "private copy of the repository at "+canonicalPath(repo)) || !strings.Contains(spec.ProgramBriefNote, copyDir) ||
+		!strings.Contains(spec.ProgramBriefNote, "begins with the person's own uncommitted work") {
+		t.Fatalf("the brief does not say where the copy is and what it begins with: %q", spec.ProgramBriefNote)
+	}
+	receipt := delegateReceipt(repo, testPrograms("fake")[0], agent.runRowCopy(id))
+	if !strings.Contains(receipt, "a private copy of "+repo) || !strings.Contains(receipt, "are in its copy, as the first commit on its branch") ||
+		strings.Contains(receipt, "codeaf's own tools write nothing") {
+		t.Fatalf("the receipt = %q, want the copy and the changes it carried in", receipt)
+	}
+	endBeltRun(t, agent, double)
+	if currentBranch(repo) != "work" || strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")) != head || gitOut(t, repo, "status", "--porcelain") != status {
+		t.Fatalf("the person's checkout was touched: on %q\n%s", currentBranch(repo), gitOut(t, repo, "status", "--porcelain"))
+	}
+	if staged := strings.TrimSpace(gitOut(t, repo, "diff", "--cached", "--name-only")); staged != "new.go" {
+		t.Fatalf("the person's index moved: staged %q, want new.go alone", staged)
+	}
+	if own := strings.TrimSpace(gitOut(t, repo, "diff", "--name-only", snapshot, spec.ProgramBranch)); own != "fix.go" {
+		t.Fatalf("the program's own work past the person's = %q, want fix.go", own)
+	}
+	if _, err := os.Stat(copyDir); !os.IsNotExist(err) || worktreeCount(t, repo) != 1 {
+		t.Fatalf("the copy was not removed (%v), %d worktrees", err, worktreeCount(t, repo))
+	}
+	// THE ENDING'S WAY IN WORKS: put the person's changes aside, and the merge
+	// brings them back through the branch, with the program's work on top.
+	// Untracked inputs stay in place because the branch does not hold them.
+	mustGit(t, repo, "stash", "-q")
+	mustGit(t, repo, "merge", "-q", spec.ProgramBranch)
+	mustGit(t, repo, "stash", "drop", "-q")
+	for name, want := range map[string]string{"shared.txt": "the person's own line\n", "notes/draft.md": "draft\n", "new.go": "package x\n", "fix.go": "package fix\n"} {
+		if body := readFile(t, filepath.Join(repo, name)); body != want {
+			t.Fatalf("after the merge %s = %q, want %q", name, body, want)
+		}
+	}
+	if _, err := git(repo, "cat-file", "-e", spec.ProgramBranch+":notes/draft.md"); err == nil {
+		t.Fatal("the branch includes the person's untracked draft")
 	}
 }
 
-// A CHECKOUT IN THE MIDDLE OF A MERGE IS REFUSED, and says what to do.
-func TestAProgramIsRefusedACheckoutInTheMiddleOfAMerge(t *testing.T) {
+// A CHECKOUT IN THE MIDDLE OF A MERGE IS NOT IN THE WAY EITHER, and is left as
+// it is: the copy is cut from the commit it stands on.
+func TestAProgramStartsBesideACheckoutInTheMiddleOfAMerge(t *testing.T) {
 	repo := newTestRepo(t)
 	mustGit(t, repo, "checkout", "-q", "-b", "other")
 	writeFile(t, filepath.Join(repo, "shared.txt"), "theirs\n")
@@ -94,13 +140,22 @@ func TestAProgramIsRefusedACheckoutInTheMiddleOfAMerge(t *testing.T) {
 	if _, err := git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "other"); err == nil {
 		t.Fatal("the merge did not stop on its conflict")
 	}
-	agent, double := programAgent(t, repo)
-	_, _, _, err := agent.StartDelegate(context.Background(), "fake", "change the project")
-	if err == nil || err.Error() != canonicalPath(repo)+" is in the middle of a merge; finish it or abort it, then ask again" {
-		t.Fatalf("StartDelegate = %v, want the merge named", err)
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Fix the parser")
+	// ITS FILES HOLD CONFLICT MARKERS, so they are not carried into the copy,
+	// and the receipt says why.
+	if folder.Snapshot != "" || !strings.Contains(folder.LeftBehindWords(), "are not in its copy: your checkout is in the middle of a merge") {
+		t.Fatalf("a checkout mid-merge was carried: %q, %q", folder.Snapshot, folder.LeftBehindWords())
 	}
-	if double.didRun() {
-		t.Fatal("a checkout in the middle of a merge started a run")
+	if receipt := delegateReceipt(repo, testPrograms("fake")[0], runCopyOf(folder.tree())); !strings.Contains(receipt, "not in its copy: your checkout is in the middle of a merge.") {
+		t.Fatalf("the receipt = %q", receipt)
+	}
+	folder.Finish("")
+	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); after != head {
+		t.Fatalf("the person's merge was concluded: HEAD moved from %s to %s", head, after)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git", "MERGE_HEAD")); err != nil {
+		t.Fatalf("the merge in progress is gone: %v", err)
 	}
 }
 
@@ -197,57 +252,76 @@ func TestAMissingGroundIsMadeWhenTheRunStarts(t *testing.T) {
 	}
 }
 
-// ONE RUN PER FOLDER. A second program run on a folder one is working in —
-// from another conversation here — is refused, naming the run that holds it,
-// at its card and at its start alike; once the first has ended the folder is
-// free again.
-func TestASecondProgramRunOnTheSameFolderIsRefusedWhileTheFirstRuns(t *testing.T) {
+// RUNS ON ONE REPOSITORY WORK SIDE BY SIDE. Each has a copy and a branch of
+// its own, the repository is held by neither, and each copy goes when its run
+// ends while the other's stays.
+func TestTwoProgramRunsWorkOnOneRepositoryAtOnce(t *testing.T) {
 	repo := newTestRepo(t)
 	first, double := programAgent(t, repo)
-	id, title, _, err := first.StartDelegate(context.Background(), "fake", "the first piece of work")
-	if err != nil {
+	if _, _, _, err := first.StartDelegate(context.Background(), "fake", "the first piece of work"); err != nil {
 		t.Fatal(err)
 	}
 	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	if holder := programFolderHolder(canonicalPath(repo)); holder != "" {
+		t.Fatalf("a run in a copy holds the repository: %q", holder)
+	}
 	second, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
 		config.Workspace = repo
 		config.Place = Place{Dir: t.TempDir()}
 		config.AskConsent = false
 		config.Delegates = testPrograms("fake")
 	})
-	want := canonicalPath(repo) + " is busy: fake, " + taskStopName(id, title) + ", is working in it, and one folder takes one program run at a time; ask again when that run has ended"
-	if _, _, _, err := second.StartDelegate(context.Background(), "fake", "a second piece"); err == nil || err.Error() != want {
-		t.Fatalf("the second run's start = %v, want %q", err, want)
+	if stand := second.resolveTaskGround(taskSpec{via: "fake", ground: repo, brief: "b", deliverable: "d", acceptance: "a"}); stand.refusal != "" {
+		t.Fatalf("the second run's proposal was refused: %q", stand.refusal)
 	}
-	if stand := second.resolveTaskGround(taskSpec{via: "fake", ground: repo, brief: "b", deliverable: "d", acceptance: "a"}); stand.refusal != want {
-		t.Fatalf("the second run's proposal = %q, want %q", stand.refusal, want)
+	other := prepareIn(t, testPrograms("fake")[0], repo, "A second piece")
+	if canonicalPath(other.Dir) == canonicalPath(spec.Workspace) || other.Branch == spec.ProgramBranch {
+		t.Fatalf("the second run shares the first's copy %q or branch %q", other.Dir, other.Branch)
+	}
+	if worktreeCount(t, repo) != 3 {
+		t.Fatalf("%d worktrees, want the checkout and two copies", worktreeCount(t, repo))
+	}
+	commitIn(t, other.Dir, "second.txt")
+	if end := other.Finish("done"); !end.Kept || end.CopyLeft != "" {
+		t.Fatalf("the second run ended %+v, want its work kept and its copy gone", end)
+	}
+	if _, err := os.Stat(spec.Workspace); err != nil {
+		t.Fatalf("the first run's copy went with the second's: %v", err)
 	}
 	endBeltRun(t, first, double)
-	if holder := programFolderHolder(canonicalPath(repo)); holder != "" {
-		t.Fatalf("the folder is still held by %q after its run ended", holder)
+	if worktreeCount(t, repo) != 1 {
+		t.Fatalf("%d worktrees after both runs ended, want the checkout alone", worktreeCount(t, repo))
+	}
+	for _, branch := range []string{spec.ProgramBranch, other.Branch} {
+		if branchCommit(repo, branch) == "" {
+			t.Fatalf("the branch %s was not kept", branch)
+		}
 	}
 }
 
 // deadProgramFolder readies repo for a program's run the way a run that went
-// away leaves it: its branch cut, a file of its work left uncommitted, and its
-// hold dropped by a process that is gone, with its record folder keep.
+// away leaves it: its copy cut, a file of its work left uncommitted there, and
+// its hold dropped by a process that is gone, with its record folder keep.
 func deadProgramFolder(t *testing.T, repo, keep string) *ProgramFolder {
 	t.Helper()
 	folder, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The dead run", Holder: "task 9 (The dead run)", Keep: keep})
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(repo, "half.txt"), "half done\n")
+	writeFile(t, filepath.Join(folder.Dir, "half.txt"), "half done\n")
 	folder.release()
 	return folder
 }
 
-// A RUN FOUND INTERRUPTED AT A REOPEN IS SETTLED WITHOUT A COMMIT. Its process
-// went away, so what is uncommitted in its folder may be its last edits or the
-// person's own made on its branch since — here both — and codeaf commits
-// neither: the checkout stays on the run's branch as it was left, and the row
-// and page say where the work is and how much of it is not committed.
-func TestAProgramRunFoundInterruptedAtAReopenIsSettledWithoutACommit(t *testing.T) {
+// A RUN FOUND INTERRUPTED AT A REOPEN IS FINISHED LIKE ONE THAT ENDED. Nothing
+// but its own work can be in its copy, so what it left there is committed on
+// its branch and the copy removed, which releases the branch; the person's
+// checkout, and their edit in it, are not touched; the row says where the work
+// is.
+func TestAProgramRunFoundInterruptedAtAReopenIsCommittedAndItsCopyRemoved(t *testing.T) {
 	repo := newTestRepo(t)
 	var dead *ProgramFolder
 	agent, id, _ := reopenedWith(t, func(_ *plandb.Store, taskDir string, _ time.Time) {
@@ -255,108 +329,78 @@ func TestAProgramRunFoundInterruptedAtAReopenIsSettledWithoutACommit(t *testing.
 		writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own edit, made after codeaf closed\n")
 	})
 	row := reopenedRow(t, agent, id)
-	if head := currentBranch(repo); head != dead.Branch {
-		t.Fatalf("the checkout is on %q after the reopen, want the dead run's branch %q", head, dead.Branch)
+	if files := gitOut(t, repo, "ls-tree", "-r", "--name-only", dead.Branch); !strings.Contains(files, "half.txt") {
+		t.Fatalf("the dead run's work was not committed on its branch:\n%s", files)
 	}
-	if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", dead.Branch)); tip != dead.Start {
-		t.Fatalf("the reopen committed on the dead run's branch: %s, want it still at %s", tip, dead.Start)
+	if status := gitOut(t, repo, "status", "--porcelain"); strings.TrimSpace(status) != "M shared.txt" || currentBranch(repo) != "work" {
+		t.Fatalf("the person's checkout was touched: on %q\n%s", currentBranch(repo), status)
 	}
-	if status := gitOut(t, repo, "status", "--porcelain"); !strings.Contains(status, " M shared.txt") || !strings.Contains(status, "?? half.txt") {
-		t.Fatalf("what was uncommitted was not left as it was:\n%s", status)
+	if _, err := os.Stat(dead.Dir); !os.IsNotExist(err) || worktreeCount(t, repo) != 1 {
+		t.Fatalf("the dead run's copy is still there: %v", err)
 	}
-	want := "its work so far is on its branch " + dead.Branch + " in " + repo + ", which is checked out there, as it left it, with 2 files not committed; commit or stash them there before you go back to your branch work"
+	want := "its work so far is on the branch " + dead.Branch + " in " + repo + ", 1 file, committed when codeaf found its run had gone"
 	if !strings.Contains(row.Report, want) || TaskReasonOf(row.Ending, row.Report) != "codeaf closed while fake was running" {
 		t.Fatalf("the reopened row = %+v, want its ending and %q", row, want)
 	}
-	if again, ok := readProgramFolder(canonicalPath(repo)); !ok || again.Ended != want {
-		t.Fatalf("the folder's record = %+v, want it ended with %q", again, want)
-	}
-	if holder := programFolderHolder(canonicalPath(repo)); holder != "" {
-		t.Fatalf("the reopen still holds the folder: %q", holder)
+	if row.Branch != dead.Branch {
+		t.Fatalf("the reopened row names the branch %q, want %q", row.Branch, dead.Branch)
 	}
 }
 
-// A RUN THAT WENT AWAY IN A FOLDER IS SETTLED BEFORE THE NEXT ONE STARTS THERE,
-// AND NOTHING OF IT IS COMMITTED: the next run meets what is uncommitted the
-// way it meets anybody's changes — refused, naming them — and is told whose
-// they may be. A person's edits made on the dead run's branch used to be swept
-// into a commit under codeaf's name, and the next run cut on top of it.
-func TestTheNextRunInAFolderIsRefusedWhatTheOneThatWentAwayLeft(t *testing.T) {
+// A RUN THAT WENT AWAY IS FINISHED BEFORE THE NEXT ONE ON ITS REPOSITORY
+// STARTS, and the next one is cut from the person's checkout, not from the
+// branch the dead run left.
+func TestTheNextRunOnARepositoryFinishesTheCopyTheOneThatWentAwayLeft(t *testing.T) {
 	repo := newTestRepo(t)
 	dead := deadProgramFolder(t, repo, t.TempDir())
-	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own edit, made after codeaf closed\n")
-	_, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The next run", Holder: "task 10 (The next run)", Keep: t.TempDir()})
-	want := repo + " has changes that are not committed (shared.txt, half.txt); commit or stash them, then ask again; they may be an earlier fake run's, which codeaf could not finish: its branch " + dead.Branch + " is checked out there"
-	if err == nil || err.Error() != want {
-		t.Fatalf("the next run = %v, want %q", err, want)
-	}
-	if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", dead.Branch)); tip != dead.Start {
-		t.Fatalf("the next run committed on the dead run's branch: %s, want it still at %s", tip, dead.Start)
-	}
-	if head := currentBranch(repo); head != dead.Branch {
-		t.Fatalf("the checkout is on %q, want the dead run's branch", head)
-	}
-	if again, ok := readProgramFolder(canonicalPath(repo)); !ok || !strings.HasPrefix(again.Ended, "its work so far is on its branch "+dead.Branch) {
-		t.Fatalf("the dead run's record = %+v, want it settled", again)
-	}
-	if holder := programFolderHolder(canonicalPath(repo)); holder != "" {
-		t.Fatalf("the refused run still holds the folder: %q", holder)
-	}
-}
-
-// A MERGE THE PERSON IS RESOLVING ON A DEAD RUN'S BRANCH IS NOT CONCLUDED: the
-// next run is refused over it, and MERGE_HEAD and the conflict are left alone.
-func TestTheNextRunDoesNotConcludeAMergeOnTheBranchAnEarlierRunLeft(t *testing.T) {
-	repo := newTestRepo(t)
-	dead := deadProgramFolder(t, repo, t.TempDir())
-	if err := os.Remove(filepath.Join(repo, "half.txt")); err != nil {
-		t.Fatal(err)
-	}
-	mustGit(t, repo, "checkout", "-q", "-b", "other", "work")
-	writeFile(t, filepath.Join(repo, "shared.txt"), "theirs\n")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "theirs")
-	mustGit(t, repo, "checkout", "-q", dead.Branch)
-	writeFile(t, filepath.Join(repo, "shared.txt"), "ours\n")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "ours")
-	if _, err := git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "other"); err == nil {
-		t.Fatal("the merge did not stop on its conflict")
-	}
-	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
-	_, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The next run", Holder: "task 10 (The next run)", Keep: t.TempDir()})
-	if err == nil || !strings.HasPrefix(err.Error(), repo+" is in the middle of a merge; finish it or abort it, then ask again") {
-		t.Fatalf("the next run = %v, want the merge named", err)
-	}
-	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); after != head {
-		t.Fatalf("the person's merge was concluded: HEAD moved from %s to %s", head, after)
-	}
-	if _, err := os.Stat(filepath.Join(repo, ".git", "MERGE_HEAD")); err != nil {
-		t.Fatalf("the merge in progress is gone: %v", err)
-	}
-}
-
-// A CLEAN FOLDER A RUN WENT AWAY IN IS WORKED IN AGAIN: its committed work
-// stays on its branch, which the next run is cut from, as it would be from
-// any branch the person had checked out.
-func TestTheNextRunCarriesOnInAFolderTheOneThatWentAwayLeftClean(t *testing.T) {
-	repo := newTestRepo(t)
-	dead := deadProgramFolder(t, repo, t.TempDir())
-	if err := os.Remove(filepath.Join(repo, "half.txt")); err != nil {
-		t.Fatal(err)
-	}
-	commitIn(t, repo, "done.txt")
-	next, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The next run", Holder: "task 10 (The next run)", Keep: t.TempDir()})
-	if err != nil {
-		t.Fatalf("the next run was refused a clean folder: %v", err)
-	}
+	next := prepareIn(t, testPrograms("fake")[0], repo, "The next run")
 	defer next.Finish("")
-	// IT CARRIES ON ON THE DEAD RUN'S BRANCH, which was left checked out, and
-	// the person's branch it names is still theirs ([ProgramFolder.carryOn]).
-	if next.Branch != dead.Branch || next.Home != dead.Home || next.Start != dead.Start || !next.Continues {
-		t.Fatalf("the next run = branch %q home %q start %q continues %v, want it on the dead run's branch %q with its home %q and start %q",
-			next.Branch, next.Home, shortSha(next.Start), next.Continues, dead.Branch, dead.Home, shortSha(dead.Start))
+	if files := gitOut(t, repo, "ls-tree", "-r", "--name-only", dead.Branch); !strings.Contains(files, "half.txt") {
+		t.Fatalf("the dead run's work was not committed on its branch:\n%s", files)
 	}
-	if files := gitOut(t, repo, "ls-tree", "--name-only", dead.Branch); !strings.Contains(files, "done.txt") {
-		t.Fatalf("the dead run's committed work is not on its branch:\n%s", files)
+	if _, err := os.Stat(dead.Dir); !os.IsNotExist(err) {
+		t.Fatalf("the dead run's copy is still there: %v", err)
+	}
+	if next.Branch == dead.Branch || next.Continues || next.Start != strings.TrimSpace(gitOut(t, repo, "rev-parse", "work")) {
+		t.Fatalf("the next run is on %q (continues %v), want a new branch cut from the person's checkout", next.Branch, next.Continues)
+	}
+	if kept, ok := keptProgramFolderEnd(dead.Keep); !ok || !strings.Contains(kept.Sentence(), "its work so far is on the branch "+dead.Branch) {
+		t.Fatalf("the dead run's record folder = %+v, want where its work went", kept)
+	}
+}
+
+// A RUN SENT BACK CARRIES ON ON THE EARLIER RUN'S BRANCH, in a copy of its
+// own, and counts what the line did from where the line began. When the person
+// has since checked that branch out themselves, a copy cannot have it too, so
+// the run carries on on a new branch cut from its tip.
+func TestARunSentBackCarriesOnOnTheEarlierRunsBranch(t *testing.T) {
+	repo := newTestRepo(t)
+	first := prepareIn(t, testPrograms("fake")[0], repo, "The first run")
+	commitIn(t, first.Dir, "done.txt")
+	first.Finish("done")
+	carry := &programCarry{Branch: first.Branch, Root: repo, Home: first.Home, Start: first.Start}
+	again, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The first run, again", Holder: "task 8", Keep: t.TempDir(), Carry: carry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Branch != first.Branch || !again.Continues || again.Start != first.Start || currentBranch(again.Dir) != first.Branch {
+		t.Fatalf("the sent-back run is on %q (continues %v, start %s), want %q from %s", again.Branch, again.Continues, shortSha(again.Start), first.Branch, shortSha(first.Start))
+	}
+	if _, err := os.Stat(filepath.Join(again.Dir, "done.txt")); err != nil {
+		t.Fatalf("the earlier run's work is not in the copy: %v", err)
+	}
+	if end := again.Finish(""); !end.Kept || len(end.Changed) != 1 {
+		t.Fatalf("a sent-back run that added nothing ended %+v, want the line's work still counted", end)
+	}
+
+	mustGit(t, repo, "checkout", "-q", first.Branch)
+	taken, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The first run, once more", Holder: "task 9", Keep: t.TempDir(), Carry: carry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Finish("")
+	if taken.Branch == first.Branch || strings.TrimSpace(gitOut(t, taken.Dir, "rev-parse", "HEAD")) != branchCommit(repo, first.Branch) {
+		t.Fatalf("a run carrying on a branch the person has checked out is on %q at %s, want a new branch at its tip", taken.Branch, gitOut(t, taken.Dir, "rev-parse", "HEAD"))
 	}
 }
 
@@ -370,17 +414,17 @@ func TestAReopenSettlesTheRowOfAProgramThatFinished(t *testing.T) {
 	var dead *ProgramFolder
 	agent, id, _ := reopenedWith(t, func(store *plandb.Store, taskDir string, _ time.Time) {
 		dead = deadProgramFolder(t, repo, taskDir)
-		if err := os.Remove(filepath.Join(repo, "half.txt")); err != nil {
+		if err := os.Remove(filepath.Join(dead.Dir, "half.txt")); err != nil {
 			t.Fatal(err)
 		}
-		commitIn(t, repo, "done.txt")
+		commitIn(t, dead.Dir, "done.txt")
 		if err := store.CompleteRoot("finished: its tests pass"); err != nil {
 			t.Fatal(err)
 		}
 	})
 	row := reopenedRow(t, agent, id)
 	if row.State != TaskDone || !strings.HasPrefix(row.Report, "finished: its tests pass") ||
-		!strings.Contains(row.Report, "its work so far is on its branch "+dead.Branch) {
+		!strings.Contains(row.Report, "its work so far is on the branch "+dead.Branch) {
 		t.Fatalf("the reopened row = %+v, want it done, with its result and where its work is", row)
 	}
 	if row.Branch != dead.Branch || row.Merge != mergeKept || row.EndedAt.IsZero() {
@@ -390,9 +434,9 @@ func TestAReopenSettlesTheRowOfAProgramThatFinished(t *testing.T) {
 
 // A FOLDER ANOTHER PROCESS ENDED IS READ BACK FROM THE RUN'S RECORD FOLDER.
 // Its folder was finished — by the run itself before codeaf closed, or by the
-// next run in that folder, which then wrote its own record over the one beside
-// the hold — and the reopen found nothing owed, so the row said only that
-// codeaf closed. It now says where the work went and names the branch.
+// next run on that repository — and the reopen found nothing owed, so the row
+// said only that codeaf closed. It now says where the work went and names the
+// branch.
 func TestAReopenReadsTheEndingOfAFolderAnotherProcessEnded(t *testing.T) {
 	t.Run("ended by the run", func(t *testing.T) {
 		repo := newTestRepo(t)
@@ -402,7 +446,7 @@ func TestAReopenReadsTheEndingOfAFolderAnotherProcessEnded(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			writeFile(t, filepath.Join(repo, "fix.go"), "package fix\n")
+			writeFile(t, filepath.Join(folder.Dir, "fix.go"), "package fix\n")
 			said, branch = folder.Finish("done").Sentence(), folder.Branch
 		})
 		row := reopenedRow(t, agent, id)
@@ -415,18 +459,11 @@ func TestAReopenReadsTheEndingOfAFolderAnotherProcessEnded(t *testing.T) {
 		var dead *ProgramFolder
 		agent, id, _ := reopenedWith(t, func(_ *plandb.Store, taskDir string, _ time.Time) {
 			dead = deadProgramFolder(t, repo, taskDir)
-			if err := os.Remove(filepath.Join(repo, "half.txt")); err != nil {
-				t.Fatal(err)
-			}
-			commitIn(t, repo, "done.txt")
-			next, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The next run", Holder: "task 10 (The next run)", Keep: t.TempDir()})
-			if err != nil {
-				t.Fatal(err)
-			}
+			next := prepareIn(t, testPrograms("fake")[0], repo, "The next run")
 			next.Finish("")
 		})
 		row := reopenedRow(t, agent, id)
-		if !strings.Contains(row.Report, "its work so far is on its branch "+dead.Branch) || row.Branch != dead.Branch {
+		if !strings.Contains(row.Report, "its work so far is on the branch "+dead.Branch) || row.Branch != dead.Branch {
 			t.Fatalf("the reopened row = %+v, want where the dead run's work is", row)
 		}
 	})

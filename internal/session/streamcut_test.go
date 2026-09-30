@@ -2,6 +2,10 @@ package session
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -108,6 +112,194 @@ func TestTheJunkNeverReachesTheTranscript(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestAnIncompleteReplyIsAskedAgainWithoutKeepingItsText(t *testing.T) {
+	const partial = "answer cut off before it was finished"
+	completer := &scriptedCompleter{steps: []step{
+		cutStep(provider.CutTruncated, partial),
+		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+			return textResponse("the complete answer"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	events, err := agent.Submit(context.Background(), "what happened?")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	retry, retried := firstOfKind(collected, EventRetrying)
+	if !retried || !strings.Contains(retry.Text, "connection ended before the reply was finished") || !strings.Contains(retry.Text, "dropped") {
+		t.Fatalf("retry note = %+v, want the incomplete reply described as dropped", retry)
+	}
+	if _, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("a recovered reply ended in an error; events were %v", kinds(collected))
+	}
+	for _, message := range completer.request(1) {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, partial) {
+				t.Fatalf("the incomplete reply was sent again: %q", part.Text)
+			}
+		}
+	}
+	for _, message := range agent.snapshot() {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, partial) {
+				t.Fatalf("the incomplete reply was saved in the conversation: %q", part.Text)
+			}
+		}
+	}
+}
+
+func TestATruncatedProviderReplyIsNotSettledByTheSession(t *testing.T) {
+	const partial = "Partial ans"
+	const complete = "The complete answer"
+	var attempts int
+	var requests [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+			return
+		}
+		requests = append(requests, body)
+		attempts++
+		writer.Header().Set("Content-Type", "text/event-stream")
+		if attempts == 1 {
+			_, _ = io.WriteString(writer, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\""+partial+"\"}}]}\n\n")
+			return
+		}
+		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\""+complete+"\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer server.Close()
+
+	client, err := provider.NewClient(provider.Config{
+		APIKey: "k", BaseURL: server.URL, Model: "test/model", HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	agent, _ := newTestAgent(t, client, nil)
+	events, err := agent.Submit(context.Background(), "what happened?")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if attempts != 2 || len(requests) != 2 {
+		t.Fatalf("provider attempts = %d, requests = %d, want one truncated call and one retry", attempts, len(requests))
+	}
+	if strings.Contains(string(requests[1]), partial) {
+		t.Fatalf("the truncated text was sent in the retry request: %s", requests[1])
+	}
+	if _, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("a recovered reply ended in an error; events were %v", kinds(collected))
+	}
+	var sawComplete bool
+	for _, event := range collected {
+		sawComplete = sawComplete || event.Kind == EventTextDelta && strings.Contains(event.Text, complete)
+	}
+	if !sawComplete {
+		t.Fatalf("the complete retry answer was not delivered; events were %v", kinds(collected))
+	}
+	for _, message := range agent.snapshot() {
+		if strings.Contains(messageText(message), partial) {
+			t.Fatalf("the truncated reply was kept in the conversation: %q", messageText(message))
+		}
+	}
+}
+
+func TestRepeatedIncompleteRepliesSayWhatWasDropped(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		cutStep(provider.CutTruncated, "first partial"),
+		cutStep(provider.CutTruncated, "second partial"),
+		cutStep(provider.CutTruncated, "third partial"),
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	events, err := agent.Submit(context.Background(), "go on")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	failure, failed := firstOfKind(collected, EventError)
+	if !failed {
+		t.Fatalf("two incomplete replies did not end the turn; events were %v", kinds(collected))
+	}
+	said := failure.Err.Error()
+	for _, want := range []string{"connection ended before the reply was finished", "partial reply was dropped", "/model"} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("the sentence %q does not contain %q", said, want)
+		}
+	}
+}
+
+// A final cut has the same discard obligation as a cut that earns another try.
+// The journal is read back because the transcript, rather than a live snapshot,
+// is what a reopened conversation will carry into its next request.
+func TestExhaustedIncompleteStreamDropsThePersistedPartial(t *testing.T) {
+	const partial = "unfinished answer from the last attempt"
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	completer := &scriptedCompleter{steps: []step{
+		cutStep(provider.CutTruncated, "first unfinished answer"),
+		cutStep(provider.CutTruncated, "second unfinished answer"),
+		cutStep(provider.CutTruncated, partial),
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range ReadTranscript(path).Entries {
+		// Any saved row carrying the text counts, whatever role it is kept under:
+		// an interrupted partial is journaled as an aside, not as a reply.
+		if strings.Contains(entry.Text, partial) {
+			t.Fatalf("the transcript kept cut text: %+v", entry)
+		}
+	}
+	failure, failed := firstOfKind(collected, EventError)
+	if !failed || !failure.Discard || !strings.Contains(failure.Err.Error(), "the partial reply was dropped") {
+		t.Fatalf("ending = %+v, want the dropped-partial error", failure)
+	}
+	lastDelta, ended := -1, -1
+	for index, event := range collected {
+		switch {
+		case event.Kind == EventTextDelta && strings.Contains(event.Text, partial):
+			lastDelta = index
+		case event.Kind == EventError:
+			ended = index
+		}
+	}
+	if lastDelta < 0 || ended <= lastDelta || countOfKind(collected, EventRetrying) != 2 {
+		t.Fatalf("final partial was not withdrawn on the error after two retries: %v", kinds(collected))
+	}
+}
+
+// A provider refusal after streamed words is still an interrupted answer.
+// The truncated-stream exception must not erase that existing record.
+func TestPermanentNonCutFailureKeepsThePersistedPartial(t *testing.T) {
+	const partial = "visible words before a refusal"
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	completer := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		provider.Emit(ctx, provider.StreamDelta, partial)
+		return nil, &provider.APIError{Status: 400, Message: "invalid request"}
+	}}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+	failure, failed := firstOfKind(collected, EventError)
+	if !failed || failure.Discard {
+		t.Fatalf("permanent refusal ended as a discarded cut: %+v", failure)
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range ReadTranscript(path).Entries {
+		if strings.Contains(entry.Text, partial) {
+			return
+		}
+	}
+	t.Fatalf("permanent refusal lost its partial reply: %+v", ReadTranscript(path).Entries)
 }
 
 // TestAReplyThatComesApartTwiceEndsTheTurnInWordsThatHelp: the give-up sentence

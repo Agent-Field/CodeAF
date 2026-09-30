@@ -63,6 +63,30 @@ func TestEffectiveWalksTheChainAndNamesEachOrigin(t *testing.T) {
 	}
 }
 
+// A PROFILE DEFAULT IS EACH TEAM'S OWN POOL. The root is only the global
+// manager group, so it has no default cap; an explicit root cap still flows
+// down as the root's one pool.
+func TestDefaultCapBelongsToEachTeamAndRootDefaultIsUncapped(t *testing.T) {
+	f := tree()
+	root := f.MakeRoot(time.Time{})
+
+	for _, id := range []string{"aaaaaaaaaaaa", "dddddddddddd"} {
+		e := f.Effective(id, defaults)
+		if e.CapUSDDay != defaults.CapUSDDay || e.CapFrom.Kind != OriginSettings || e.CapFrom.Team != id {
+			t.Fatalf("team %q default cap: %+v", id, e)
+		}
+	}
+	if e := f.Effective(root, defaults); e.CapUSDDay != 0 || e.CapFrom.Kind != OriginSettings {
+		t.Fatalf("root inherited the profile cap: %+v", e)
+	}
+
+	capUSD := 20.0
+	must(t, f.SetSettings(root, func(s *Settings) { s.CapUSDDay = &capUSD }))
+	if e := f.Effective("aaaaaaaaaaaa", defaults); e.CapUSDDay != capUSD || e.CapFrom.Kind != OriginAncestor || e.CapFrom.Team != root {
+		t.Fatalf("explicit root cap did not remain the ancestor pool: %+v", e)
+	}
+}
+
 // AN OVERRIDE OUTSIDE ITS BAND IS REFUSED, AND ONE IN A HAND-EDITED FILE IS
 // DROPPED ON LOAD, reading as inherit.
 func TestOverridesAreKeptInTheirBands(t *testing.T) {
@@ -435,12 +459,11 @@ func writeRaw(t *testing.T, dir, raw string) {
 	must(t, os.WriteFile(Path(dir), []byte(raw), 0o600))
 }
 
-// THE GLOBAL MANAGER IS THE MANAGER OF A REAL ROOT, AND EVERY RULE HOLDS
-// WITHOUT A SPECIAL CASE. Making the root moves every top-level team under it;
-// parties in two trees then meet at the root instead of the person; a
-// top-level manager reports to it; its override is inherited as `from All
-// teams`; it is not a level; a team made later at the top lands under it; it
-// cannot be closed; and dissolving it puts the tree back.
+// THE GLOBAL MANAGER IS THE MANAGER OF A REAL ROOT. Making the root moves every
+// top-level team under it; parties in two trees then meet at the root instead
+// of the person; a top-level manager reports to it; its override is inherited
+// as `from All teams`; it is not a level; a team made later at the top lands
+// under it; it cannot be closed; and dissolving it puts the tree back.
 func TestTheRootHoldsEveryTeamAndIsNotALevel(t *testing.T) {
 	f := managed()
 	f.Teams[1].Members = []Member{{Key: "d1"}}

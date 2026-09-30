@@ -118,19 +118,16 @@ func foreignSkillsRun(t *testing.T, memory string) {
 }
 
 // carriedAndFollowed waits for the answer to say the code word only the
-// skill's body holds and for the turn to land, then asks for the dim line
-// naming the skill the turn carried on the settled screen.
-//
-// THE LINE IS LOOKED FOR AFTER THE TURN LANDS, because that is when it used to
-// vanish: the `▸ worked` chip swallowed it with the calls, and an opened chip
-// lists calls, not notes. It now sits under the question with the chip below
-// it (tui3's workfold.go, [entry.carried]), and this is the check that it
-// stays there.
+// skill's body holds, then opens the completed turn's work disclosure to read
+// the carried-skill line. Operational context now lives inside that disclosure.
 func carriedAndFollowed(t *testing.T, r *rig, skill, code string) string {
 	t.Helper()
 	r.waitFor(modelPatience, code)
 	r.waitFor(modelPatience, say(t, "idleWord"))
-	return r.waitFor(10*time.Second, say(t, "skillsCarriedWord")+skill, code)
+	r.keys("C-e")
+	opened := r.waitFor(10*time.Second, say(t, "skillsCarriedWord")+skill, code)
+	r.keys("C-e")
+	return opened
 }
 
 // skillsHome is a state root written from nothing, short enough for the

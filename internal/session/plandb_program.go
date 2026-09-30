@@ -82,6 +82,12 @@ type PlanProgram struct {
 	// and zero when the run set none or the program has not said hello yet —
 	// which the page draws as no ceiling at all rather than as $0.00.
 	CeilingUSD float64
+	// Models and Effort are the models the program said it works on and the
+	// rung it asks them to think at (delegate.ProgramRecord.Models), which the
+	// task's page names so a person can see what the run was launched on. Both
+	// are empty until the program says.
+	Models []string
+	Effort string
 	// Actions is what the program did: the newest [planProgramActions] lines of
 	// its action log, in the order they arrived, each as the program's own
 	// vocabulary reads it (delegate.Delegate.Reader) — the step of its process
@@ -195,7 +201,7 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	if !known && len(all) == 0 && len(logged) == 0 {
 		return nil
 	}
-	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD}
+	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort}
 	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)

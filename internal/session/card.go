@@ -10,7 +10,8 @@ package session
 // exchange (memory.go), and it was already returning a state delta that nothing
 // read ([reflex.ExtractResult.State]). Folding that delta into a small file
 // amortizes the whole cost across the turns that produced it, and leaves
-// compaction with nothing to do but rearrange.
+// compaction to rearrange in all but the last resort, when a pass that cannot
+// shrink the conversation any other way writes a summary (compact_summary.go).
 //
 // ── WHY THIS IS NOT state.json ──
 //

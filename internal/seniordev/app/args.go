@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 )
 
@@ -16,6 +17,37 @@ import (
 // among them call by call (internal/seniordev/router/adaptive); codeaf's funnel
 // then serves the call the router picked.
 const DefaultHighModels = "openrouter/deepseek/deepseek-v4-flash-0731,openrouter/deepseek/deepseek-v4-pro,openrouter/qwen/qwen3.6-plus,openrouter/moonshotai/kimi-k2.6,openrouter/z-ai/glm-5.1,openrouter/minimax/minimax-m2.7"
+
+// DefaultVariant is the reasoning effort every coder call asks for when the
+// command line names none: `--variant` on `codeaf senior-dev run`. senior-dev
+// is handed the long, many-sided work, and a coder left to each model's own
+// default thought as little as the model's makers chose for a chat. It is a
+// rung of codeaf's one ladder (internal/effort), and the summaries a long run
+// writes of its own history send none ([turnCall.Summary]).
+const DefaultVariant = string(effort.High)
+
+// ParseVariant reads a `--variant` word on codeaf's one ladder
+// (internal/effort): a rung is sent as it is spelled, and `none`, `auto`,
+// `off` or nothing send no `reasoning` at all, so the model thinks however it
+// thinks. A word that is neither is refused rather than sent for a provider
+// to reject call after call.
+func ParseVariant(word string) (string, bool) {
+	if strings.EqualFold(strings.TrimSpace(word), "none") {
+		return "", true
+	}
+	rung, ok := effort.Parse(word)
+	return rung.String(), ok
+}
+
+// VariantWords is every word [ParseVariant] takes, for the sentence that
+// refuses one it does not.
+func VariantWords() string {
+	words := make([]string, 0, len(effort.Rungs)+1)
+	for _, rung := range effort.Rungs {
+		words = append(words, rung.String())
+	}
+	return strings.Join(append(words, "none"), ", ")
+}
 
 // cliArgs is what one run was asked to do, as the command line said it: the
 // run command's own flags (internal/seniordev) plus the ceilings codeaf hands

@@ -313,7 +313,8 @@ without that card. When allowed:
 
 - the new team is made under the manager's team, with its share of the pool: the parent's daily
   cap times `sub-team share` (`/settings`, **Teams**; 50% by default), written on the new team.
-  A parent with no cap gives none, and the new team spends from whatever pool is above it;
+  A parent with no effective cap gives no derived child cap, and the new team follows the
+  ordinary cap rules: its own profile-default pool unless an explicit ancestor cap applies;
 - the members named move into it, and its manager is the new conversation, which opens behind
   the one you are in like any start, is a member of the parent team, and is handed the brief
   marked as the manager's together with the words `you were started to manage the team

@@ -367,6 +367,12 @@ var vocabulary = []GlyphBinding{
 		ASCII:     "*",
 		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
 	},
+	{
+		ID: GCompacted, Name: "Compacted", Meaning: "a pass shortened the model's working context",
+		Plain: GlyphCompacted, NerdFont: "\uF066", NFName: "nf-fa-compress",
+		ASCII:     "#",
+		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- the action families (internal/tui3's step gutter) -------------------
 	//

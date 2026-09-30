@@ -418,7 +418,7 @@ func (a *app) teamsOpenButtons(d *teamsDraw, t team, y int, retry string) []stri
 	x := 1
 	if a.teamsManagerMissing(t) {
 		s, w := d.button(teamManagerSlotWord, teamsTarget{act: teamsActManager, id: t.ID, x0: x, y: y,
-			hint: "Start a new manager for " + t.Name + hintSegment + "m"}, pal.ink)
+			hint: "Start a new manager for " + t.Name + hintSegment + "M"}, pal.ink)
 		row += s + "  "
 		x += w + 2
 	}

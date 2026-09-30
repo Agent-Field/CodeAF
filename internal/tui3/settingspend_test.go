@@ -360,8 +360,16 @@ func TestTheMoneySegmentIsADoorOntoTheTab(t *testing.T) {
 
 func TestTheDoorTheTripLineNamesIsRealFromTheBox(t *testing.T) {
 	a, _ := sheetApp(t)
-	if a.slash("/budget"); !a.at(pageSettings) || settingTabs[a.sheet.tab] != tabSpending {
-		t.Fatal("the refusal names /budget and /budget must open the tab")
+	for _, row := range []struct{ word, key string }{
+		{"conversation", config.KeySpendRail},
+		{"day", config.KeyDailyBudget},
+	} {
+		if a.slash("/budget " + row.word); !a.at(pageSettings) || settingTabs[a.sheet.tab] != tabSpending {
+			t.Fatalf("/budget %s must open the Spending tab", row.word)
+		}
+		if item, ok := a.sheet.current(); !ok || item.row.Key != row.key {
+			t.Fatalf("/budget %s must select the limit named by the refusal", row.word)
+		}
 	}
 	if canonicalCommand("limits") != "budget" {
 		t.Fatal("/limits is the same door")

@@ -349,6 +349,49 @@ func TestTeamACapHoldsNewWorkAndAsksThePersonOnce(t *testing.T) {
 	}
 }
 
+// TWO TEAMS MAY EACH SPEND UNDER THE PROFILE DEFAULT. Their separate default
+// pools must not be combined at the global manager group, while an explicit
+// cap on that group still caps both teams together.
+func TestDefaultTeamCapsUseSeparatePools(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	rootID, alphaID, betaID := "root-root-root", "alpha-alpha-a", "beta-beta-b"
+	file := &teams.File{Version: teams.Version, Teams: []teams.Team{
+		{ID: rootID, Name: teams.RootName, Root: true},
+		{ID: alphaID, Name: "alpha", Parent: rootID},
+		{ID: betaID, Name: "beta", Parent: rootID},
+	}}
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	manager.team.mu.Lock()
+	manager.team.file = file
+	manager.team.defaults = teams.Defaults{CapUSDDay: 5}
+	manager.team.mu.Unlock()
+
+	oldOf, oldStamp, oldDay := teamSpendOf, teamSpendStamp, teamToday
+	teamSpendOf = func(_, owner, day string) (teams.Spend, error) {
+		usd := 3.0
+		if owner == rootID {
+			usd = 6
+		}
+		return teams.Spend{Team: owner, Day: day, USD: usd}, nil
+	}
+	teamSpendStamp = func(_, owner, _ string) string { return "default|" + owner }
+	teamToday = func() string { return "2026-09-24" }
+	t.Cleanup(func() { teamSpendOf, teamSpendStamp, teamToday = oldOf, oldStamp, oldDay })
+
+	roles := []teamRole{{id: alphaID, managed: true}, {id: betaID, managed: true}}
+	if held := manager.teamCapHold(fixture.profile, roles); held != "" {
+		t.Fatalf("separate default pools held work: %q", held)
+	}
+
+	capUSD := 5.0
+	if err := file.SetSettings(rootID, func(s *teams.Settings) { s.CapUSDDay = &capUSD }); err != nil {
+		t.Fatal(err)
+	}
+	if held := manager.teamCapHold(fixture.profile, roles); !strings.Contains(held, "All teams reached its $5 cap today") {
+		t.Fatalf("explicit root cap did not hold both teams: %q", held)
+	}
+}
+
 // NO CAP, NO READ: a team with no cap never reads the spend at all.
 func TestTeamNoCapReadsNoSpend(t *testing.T) {
 	fixture := newTeamFixture(t, true)

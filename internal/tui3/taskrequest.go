@@ -37,10 +37,30 @@ func requestDisplayText(e *entry) string {
 // drawn exactly as it was given, and no caller needs to know the difference
 // before it calls.
 func requestDisplayFor(text string) string {
-	if !canonicalTaskRequest(text) {
+	sections, ok := requestSections(text)
+	if !ok {
 		return text
 	}
-	type section struct{ name, body string }
+	out := make([]string, len(sections))
+	for i, s := range sections {
+		out[i] = s.name + "\n" + s.body
+	}
+	return strings.Join(out, "\n\n")
+}
+
+// requestSection is one part of a generated work order as a person reads it:
+// its plain heading and its body.
+type requestSection struct{ name, body string }
+
+// requestSections is the generated work order in the order a person reads it —
+// this task's own work first, then what it inherited — each part under its
+// plain heading, and false for a text that is not the generated document.
+// [requestDisplayFor] joins them into one string; a program's brief page draws
+// them as a document (programbrief.go).
+func requestSections(text string) ([]requestSection, bool) {
+	if !canonicalTaskRequest(text) {
+		return nil, false
+	}
 	labels := map[string]string{
 		"SOME OF WHAT WAS SAID AROUND THIS WORK":                      "Conversation context",
 		"CALLS THAT HAVE ALREADY RUN":                                 "Prior evidence",
@@ -52,8 +72,8 @@ func requestDisplayFor(text string) string {
 		"THE FOLDER THIS WORK IS ABOUT, AND YOUR OWN COPY OF IT": "Workspace",
 		"THE PERSON'S ORIGINAL MESSAGE":                          "Original message reference",
 	}
-	var sections []section
-	var current section
+	var sections []requestSection
+	var current requestSection
 	flush := func() {
 		if current.name != "" {
 			current.body = strings.TrimSpace(current.body)
@@ -65,13 +85,13 @@ func requestDisplayFor(text string) string {
 		name, known := labels[line]
 		if known && (i == 0 || lines[i-1] == "") {
 			flush()
-			current = section{name: name}
+			current = requestSection{name: name}
 			continue
 		}
 		current.body += line + "\n"
 	}
 	flush()
-	var out []string
+	var out []requestSection
 	primary := "Original request"
 	for _, s := range sections {
 		if s.name == "Task request" {
@@ -79,15 +99,15 @@ func requestDisplayFor(text string) string {
 			break
 		}
 	}
-	emit := func(s section) {
+	emit := func(s requestSection) {
 		if s.name == "Original request" {
 			// The priority rule is still available, after the actual quotation.
 			if rule, body, ok := strings.Cut(s.body, "\n\n"); ok {
-				out = append(out, s.name+"\n"+body+"\n\nContext\n"+rule)
+				out = append(out, requestSection{s.name, body}, requestSection{"Context", rule})
 				return
 			}
 		}
-		out = append(out, s.name+"\n"+s.body)
+		out = append(out, s)
 	}
 	// Keep the assignment and acceptance together; inherited context follows.
 	for _, name := range []string{primary, "Deliverable", "Completion criteria", "Workspace"} {
@@ -107,7 +127,7 @@ func requestDisplayFor(text string) string {
 		}
 		emit(s)
 	}
-	return strings.Join(out, "\n\n")
+	return out, true
 }
 
 // Keep the request beside a bounded recent transcript. The explicit seam keeps
