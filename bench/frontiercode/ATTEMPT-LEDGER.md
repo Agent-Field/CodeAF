@@ -167,3 +167,11 @@ score for s1–s3: all three carry hard scanner flags, so the final record still
 zeroes them. The corrected rubric scores are 0.75 / 0.75 / 1.0; the corrected
 shipped scores are 0.0 / 0.0 / 0.0. The point of the regrade is that the work is
 now measurable, not that the flag went away.
+
+The phase-B branch (the one the three conflicts would have taken before the
+reduced-context apply answered them) is reproduced end-to-end by
+`tests/phase-b-smoke.sh`: a forced overlay conflict in phase A, the retained
+`adapted-tests.patch`, and the fixed grader — phase B runs in a fresh
+no-network container, applies the adapted patch, the tests pass, and `combine`
+answers the conflicted classical criterion from the phase-B verdict (score
+0.75). It makes no judge call and no provider spend.
