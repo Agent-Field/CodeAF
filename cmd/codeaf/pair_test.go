@@ -214,7 +214,7 @@ func TestPairBothDoorsOnATerminal(t *testing.T) {
 	if err != nil || second.ID() != first.ID() {
 		t.Fatalf("the second computer holds %v (%v), want the first one's chats", second.ID(), err)
 	}
-	if got := syncsetup.RelayURL(rig.homeB); got != rig.url {
+	if got := syncsetup.Resolve(rig.homeB).URL; got != rig.url {
 		t.Fatalf("the second computer saved the relay %q, want %q", got, rig.url)
 	}
 }

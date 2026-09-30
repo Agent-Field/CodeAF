@@ -18,9 +18,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
-// syncOffWord is the value of CODEAF_SYNC_URL that turns the relay off.
-const syncOffWord = "off"
-
 // pairPollTimeout outlasts one held poll (pairbox.MaxWait) so the relay ends the
 // wait and this client never cuts a healthy one short.
 const pairPollTimeout = pairbox.MaxWait + 10*time.Second
@@ -31,14 +28,15 @@ const pairPollTimeout = pairbox.MaxWait + 10*time.Second
 func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 	flag := strings.TrimSpace(relayFlag)
 	base := flag
-	if base == "" {
-		base = syncsetup.RelayURL(home.Dir())
+	if flag == "" {
+		relay := syncsetup.Resolve(home.Dir())
+		if relay.Off {
+			return pair.Mailbox{}, pair.ErrSyncOff
+		}
+		base = relay.URL
 	}
 	if base == "" {
 		return pair.Mailbox{}, pair.ErrNoSync
-	}
-	if strings.EqualFold(base, syncOffWord) && flag == "" {
-		return pair.Mailbox{}, pair.ErrSyncOff
 	}
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -54,14 +52,17 @@ func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 
 // pairGrant is what this computer hands to the device it pairs: the identity it
 // has, made on first use, and the relay the pairing went through, so the other
-// device syncs through the same one. There is no built-in default relay yet, so
-// every relay is worth naming; the day one exists this is where it is left out.
+// device syncs through the same one. The hosted default is left out: the other
+// device reaches it by default, and a saved copy would pin it to an address the
+// hosted relay may one day leave.
+// It also names the identities this one replaced by rotation, so a computer
+// still on one of them may follow instead of being refused.
 func pairGrant(route pair.Mailbox) (pair.Grant, error) {
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		return pair.Grant{}, err
 	}
-	return pair.Grant{Identity: id, SyncURL: route.URL}, nil
+	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(home.Dir())}, nil
 }
 
 // pairJoining is this computer as the device that types the code.

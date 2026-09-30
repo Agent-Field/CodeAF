@@ -33,5 +33,22 @@ func WaitingChatsLine(words string) string {
 // JoinedLine is what the joining device says when it worked.
 const JoinedLine = "paired. this computer now has your chats."
 
+// FollowedLine is what the joining device says when it was on an identity that
+// was rotated and has moved to the one that replaced it.
+const FollowedLine = "paired. this computer now follows your new identity and keeps its chats and its saved keys."
+
+// Sentence is how a finished join reads: a computer that held these chats
+// already is told nothing changed, one that followed a rotation says so, and any
+// other is told it has the chats now.
+func (j Joined) Sentence() string {
+	switch {
+	case j.Already:
+		return ErrAlreadyPaired.Error()
+	case j.Successor:
+		return FollowedLine
+	}
+	return JoinedLine
+}
+
 // PairedChatsLine is what the sharing device says when it worked.
 func PairedChatsLine(label string) string { return "paired: " + label }

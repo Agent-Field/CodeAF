@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sync"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
-	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // unknownDevice is said for the machine that took a chat when the directory
@@ -133,14 +131,11 @@ func (d *Drive) flushed() func(cellsync.Flush) {
 
 // putDevice upserts this device's record with its sealed name and what it can do.
 func (s *Sync) putDevice(ctx context.Context, name string) error {
-	sealed, err := directory.SealName(directory.MetadataKey(s.Identity.CellKey()), name)
+	rec, err := deviceRecord(s.Identity, name)
 	if err != nil {
 		return err
 	}
-	return s.Dir.PutDevice(ctx, s.Device.ID(), directory.Device{
-		V: 1, Name: sealed, AddedBy: s.Identity.ID(),
-		Caps: directory.Caps{OS: runtime.GOOS, Arch: runtime.GOARCH, Cow: "none"},
-	})
+	return s.Dir.PutDevice(ctx, s.Device.ID(), rec)
 }
 
 // driving finds where this chat stands in the directory: no record yet (fence
@@ -222,10 +217,11 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	d.notice(line)
 }
 
-// refusal shows the person-facing line of a refused request.
+// refusal shows the person-facing line of a refused request, which the
+// refusal table in cellsync holds beside how the request is retried.
 func (d *Drive) refusal(err error) {
-	if errors.Is(err, wireauth.ErrSkew) {
-		d.notice(chatlist.ClockOff)
+	if r, ok := cellsync.RefusalOf(err); ok {
+		d.notice(r.Say(err))
 	}
 }
 

@@ -41,6 +41,9 @@ func namesKey(id string, key []byte) bool {
 	return id == cur || id == cur[:16]
 }
 
+// ErrOtherKey says a vault was sealed under another identity's cell key.
+var ErrOtherKey = errors.New("keys: vault was sealed under a different key")
+
 func seal(key, plain []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {
@@ -61,7 +64,7 @@ func open(key, blob []byte) ([]byte, error) {
 		return nil, err
 	}
 	if !namesKey(env.idOf(), key) {
-		return nil, errors.New("keys: vault was sealed under a different key")
+		return nil, ErrOtherKey
 	}
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {

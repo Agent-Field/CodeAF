@@ -1,6 +1,7 @@
 package relayserve
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -23,6 +24,8 @@ func turningRevokedAway(auth wireauth.Authenticate, revoked func(identity, devic
 		}
 		stopped, err := revoked(id, dev)
 		switch {
+		case errors.Is(err, wireauth.ErrGone):
+			return "", "", wireauth.ErrGone
 		case err != nil:
 			return "", "", wireauth.ErrUnauthorized
 		case stopped:

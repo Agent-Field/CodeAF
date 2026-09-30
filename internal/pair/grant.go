@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/url"
+	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
 )
@@ -31,6 +32,10 @@ type Grant struct {
 	Identity identity.Identity
 	// SyncURL is the relay to sync through, or empty for the default relay.
 	SyncURL string
+	// Replaces lists the identities the Identity replaced by rotation, so a
+	// computer still on one of them may follow it without being told to replace
+	// its chats. Empty for an identity that was never rotated.
+	Replaces []string
 }
 
 // grantDocument is the grant as it travels.
@@ -38,6 +43,7 @@ type grantDocument struct {
 	V        int             `json:"V"`
 	Identity json.RawMessage `json:"identity"`
 	SyncURL  string          `json:"sync_url,omitempty"`
+	Replaces []string        `json:"replaces,omitempty"`
 }
 
 // verdictOf is the reply that carries a grant: a welcome, and the grant after it.
@@ -46,7 +52,7 @@ func (g Grant) verdictOf() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := json.Marshal(grantDocument{V: grantVersion, Identity: raw, SyncURL: g.SyncURL})
+	doc, err := json.Marshal(grantDocument{V: grantVersion, Identity: raw, SyncURL: g.SyncURL, Replaces: g.Replaces})
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +90,16 @@ func readGrant(raw []byte) (Grant, error) {
 	if err := checkSyncURL(doc.SyncURL); err != nil {
 		return Grant{}, err
 	}
-	return Grant{Identity: id, SyncURL: doc.SyncURL}, nil
+	if !wholeLineage(doc.Replaces) {
+		return Grant{}, ErrBadGrant
+	}
+	return Grant{Identity: id, SyncURL: doc.SyncURL, Replaces: doc.Replaces}, nil
+}
+
+// wholeLineage is whether every replaced id is an identity id, and there are no
+// more of them than an identity keeps.
+func wholeLineage(ids []string) bool {
+	return len(ids) <= identity.MaxPredecessors && !slices.ContainsFunc(ids, func(id string) bool { return !identity.ValidID(id) })
 }
 
 // ended is whether nothing but space follows the document, so that a grant is

@@ -33,6 +33,10 @@ const (
 	machinesFast = homeEvery
 	// machinesCap is the longest wait, one ask a minute.
 	machinesCap = time.Minute
+	// machinesBackstop is the wait between asks while the change socket is
+	// healthy. It is the same minute as the cap: a list nobody is editing is
+	// read once a minute whether or not a socket is listening.
+	machinesBackstop = machinesCap
 )
 
 // pace is the ladder of waits. Its zero value is ready to use and starts fast.
@@ -68,8 +72,14 @@ type machinePoll struct {
 // ready reports whether the wait is over.
 func (m *machinePoll) ready(now time.Time) bool { return !now.Before(m.due) }
 
-// landed files an answer: the next ask is due one rung after it arrived.
-func (m *machinePoll) landed(now time.Time, changed bool) {
+// landed files an answer: the next ask is due one rung after it arrived, or,
+// while the change socket is healthy, at the backstop, because the socket says
+// when something changed and the ask is only there for a frame that was lost.
+func (m *machinePoll) landed(now time.Time, changed, watched bool) {
+	if watched {
+		m.due = now.Add(machinesBackstop)
+		return
+	}
 	m.due = now.Add(m.pace.settle(changed))
 }
 
@@ -88,10 +98,12 @@ func (a *app) attended(now time.Time) bool {
 // pollMachines asks the directory if, and only if, the schedule allows: home is
 // showing, somebody is at the window, and the wait is over.
 func (a *app) pollMachines(now time.Time) tea.Cmd {
-	if !a.at(pageHome) || !a.attended(now) || !a.machinePoll.ready(now) {
-		return nil
+	wanted := a.at(pageHome) && a.attended(now)
+	followed := a.tendWatch(wanted)
+	if !wanted || !a.machinePoll.ready(now) {
+		return followed
 	}
-	return a.askMachines()
+	return tea.Batch(followed, a.askMachines())
 }
 
 // hurryMachines asks now, for a person who has just arrived.
@@ -105,8 +117,8 @@ func (a *app) hurryMachines() tea.Cmd {
 func (a *app) fileMachines(msg homeMachinesMsg) {
 	now := a.now()
 	changed := msg.err == nil && !chatlist.Same(a.machineRead.rows, msg.rows)
-	a.machinePoll.landed(now, changed)
+	a.machinePoll.landed(now, changed, a.socketUp())
 	if msg.err == nil {
-		a.machineRead = machineReading{rows: msg.rows, at: now}
+		a.machineRead = machineReading{rows: msg.rows, at: now, version: msg.version}
 	}
 }
