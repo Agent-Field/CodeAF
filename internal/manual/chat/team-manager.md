@@ -58,7 +58,9 @@ like a pinned browser tab so it never scrolls away:
   that one the manager. When the team already has one, the row says which one it replaces:
   `◆ Make this harbor's manager (replaces Shipping the parser)`. On the manager itself the row
   reads **`◇ Make an ordinary member`**, which turns it back into an ordinary conversation with
-  all its history.
+  all its history. When the chip reads `teams ▾` with All shown, choose a team and reopen the
+  chip: All has no manager or Remove row. After you make a manager, the menu stays open and
+  that row changes to `◇ Make an ordinary member`.
 
 Once there is a manager the place reads **`◆ Manager`**, and on the conversations view its tile
 comes first, titled `◆ Manager · <its title>`. Point at the tab to see the team and the title in
@@ -91,28 +93,30 @@ top. Every row reads who it is from and who it is for, then the words:
 
 ```
 Tasks 14 · Traffic 8                 alt+l
-? @model → ◆  keep the old schema?
+? @model → ◆  keep the old schema?  3m
 ✕ parser bench incomplete
 ──────────────────────────────────────────
-◆ → @scrape +2  Please provide a st…   ▸
-◆ → @model      Refactor the rail…     ▾
-  ↳ @model → ◆  ✓ done, 3 files changed
-  ↳ @model → ◆  working…
-General                     2 msgs     ▸
+◆ → @scrape +2  Please provide a st… ▸ 2m
+◆ → @model      Refactor the rail…  ▾ 1h
+  ↳ @model → ◆  ✓ done, 3 files…      4m
+  ↳ @model → ◆  working…              now
+General                     2 msgs   ▸ 1d
 ```
 
 - A row is a thread (below): `◆ → @scrape +2` is the manager to the first member, and `+2`
   for the ones that do not fit, then what it said. The state its answers leave it in
   (`running`, `asking`, `done`, `failed`) and how many messages it holds sit at the right
-  when they fit, and the hint line always says them. The age is not on the row at any width.
-  Pointing at the row says the age on the hint line, and the band's questions do the same.
-  In a narrow column the arrow and the names stay, and only the words are cut, at a word,
-  with `…`.
+  when they fit, and the hint line always says them. How long ago sits at the right of
+  every row, dim: `now`, `2m`, `3h`, `1d`, and past a month `30d`, `12w`, `1y`. A task row
+  switches to a date after thirty days. A Traffic row does not. The band's
+  questions carry it too. In a narrow column the arrow and the names stay, then the age,
+  and only the words are cut, at a word, with `…`.
 - `▸` lays the thread's replies open under it, one `↳` line per member, each `from → to`
-  the same way (`↳ @model → ◆  ✓ done, 3 files changed`): `✓` on an answer from a member
+  the same way (`↳ @model → ◆  ✓ done, 3 files changed  4m`): `✓` on an answer from a member
   that finished its turn, `✗` for one that failed, `working…` for a member the message woke
-  that has not answered. The reply's time is on the hint line, not on the row. `▾` (or
-  `enter` on the row, with the column holding the keyboard) folds them.
+  that has not answered. Each reply keeps its own age at the right. `▾` (or
+  `enter` on the row, with the column holding the keyboard) folds them. `▸` and `▾` are the
+  only part of a thread row that folds it. The rest of the row opens the message.
 - Everything that answers nothing and is answered by nothing (notes, starts, stops, handle
   changes, anything written before threads) is the one **General** thread, laid open the
   same way. A start that made a sub-team reads `◆ manager started @api to run backend`; the
@@ -123,17 +127,24 @@ General                     2 msgs     ▸
 Every `@handle` is a link: point at it for the member's title in the hint line, press it to open
 that member (resumed first when this window does not have it open) **scrolled to the
 message**: a handle on a thread's row opens the member at the directive as it was told it, and a
-handle on a reply opens it at its own post. The message is brought into view and lifted for a
-moment; the focus stays on that conversation. A message from before the conversation's history
-opens it at the bottom, and the hint line says `that message is older than this chat's history`.
-Point anywhere else on a row to read it whole in the hint line; press it to bring that message
-in the manager's conversation into view. Nothing in the column moves your focus but a handle or a question in the band.
+handle on a reply opens it at its own post. A press anywhere else on the row opens the
+conversation that message belongs to, at that message, and lifts it the same way. A message the
+sender wrote opens the sender's chat: `◆ → all` opens the manager at that directive, and
+`you → ◆` in a member's chat scrolls that chat to the reply. A message to you opens the
+manager's chat. If that conversation is already in front, the row scrolls it in place and does
+not open another. The hint says `Open ◆'s message · 2m ago · click` (or `Open your message`
+when the row is yours, and `now` with no "ago" when it just arrived). The message is brought
+into view and lifted for a moment; nothing here takes the keyboard, and nothing opens a new
+window. If a hosted conversation's history is still arriving, the jump waits up to ten seconds
+for its message. A message from before the conversation's history opens it at the bottom, and the hint
+line says `that message is older than this chat's history`.
 
 In a member's chat the Traffic is the messages to or from that member (and to the whole team),
-one line each, newest first, and that member is `you`: `◆ → you  parser numbers?` from the
-manager, `you → ◆  ✓ p50 41ms, p99 180ms` back, `you → @gravity  rebase done` to another
-member. Press one to go to it in the member's conversation. General, laid open, uses the same
-`from → to` on each of its lines.
+one line each, newest first, and that member is `you`: `◆ → you  parser numbers?  2m` from the
+manager, `you → ◆  ✓ p50 41ms, p99 180ms  now` back, `you → @gravity  rebase done  3h` to another
+member. Press the member's own line to scroll this chat to it. Press a line the manager wrote
+to open the manager at it. General, laid open, uses the same `from → to` and the same age on
+each of its lines.
 
 `alt+l` puts the column away and brings it back, and this window remembers the answer (`ctrl+g`
 is the same key under its older name). Put away, the column is an edge down the right with a
@@ -147,9 +158,14 @@ the Traffic is the team's own and a manager set from the laptop is the one the f
 follows. Against a far machine running an older codeaf, `+ Manager` and the menus say managers
 are not available over `--host`, and the column has no Traffic word.
 
-When the manager starts a member with `team_start`, you are asked first, on a card that reads
-`◆ manager wants to start @lexer`, with the brief under it and the clause `a new conversation;
-it spends until it stops`. When you allow it, this window opens the new conversation in the
+## When a manager starts a member — team_start and approvals
+
+When the manager starts a member with `team_start`, the conversation's approval posture
+applies. The default `◇ YOLO` lets it start without a card; `◇ asks` raises a permission
+card headed `◆ manager wants to start @lexer`, with the brief under it and the clause
+`a new conversation; it spends until it stops`. With a card, `1 allow once` permits this
+start, `2 always` permits this tool for the session, `3 deny` refuses, and `esc` leaves it
+for later. An allowed start opens the new conversation in the
 team's folder **behind** the one you are in, never in front of it: what you were typing stays
 where it was. Its tab arrives at the end of the team's run, named `@lexer` until it has a title,
 and its working mark is the only thing that moves. With the team's auto-wake on, the member
@@ -167,10 +183,33 @@ background without a window. Starting a new member still needs a window holding 
 Every Traffic row reads `from → to`, then the words. The manager is `◆`. Several recipients
 are the first handle and `+2` for the rest. In a member's chat that member is `you`, so a
 question to it reads `◆ → you` and its answer reads `you → ◆`. A reply under a thread is the
-same shape after `↳` (`↳ @model → ◆  working…`). The band's question is the same shape in
-amber (`? @model → ◆  keep the old schema?`). The age and the reply's time are on the hint
-line at every width, never on the row. A narrow column keeps the arrow and the names and cuts
-only the words, at a word, with `…`. Press a handle to open that member at the message.
+same shape after `↳` (`↳ @model → ◆  working…  now`). The band's question is the same shape in
+amber (`? @model → ◆  keep the old schema?  3m`). How long ago is on the row, at the right,
+dim, at every width: `now`, `2m`, `3h`, `1d`, and past a month `30d`, `12w`, `1y`. A narrow
+column keeps the arrow and the names,
+then the age, and cuts only the words, at a word, with `…`. Press a handle to open that
+member at the message. Press anywhere else on the row to open the chat that message belongs
+to, at that message. The hint says `Open @model's message · 3m ago · click`.
+
+## How old a Traffic row is, and what pressing it opens
+
+Every Traffic row ends with how long ago it was, dim and at the right: `now` (under a minute),
+`2m`, `3h`, `1d`. Past a month it stays a compact age: `30d`, then weeks from six weeks
+(`6w`, and `12w` at about three months), then years (`1y`). A task row and a home session switch
+to a date after thirty days (`26 Aug`). A Traffic row does not. It is on a thread
+(`◆ → @scrape +2  Please provide… ▸  2m`), on a reply (`↳ @model → ◆  ✓ done  4m`), on General,
+on the band's question, and on a member's own lines (`you → ◆  now`). A narrow column keeps
+the arrow, the names and the age, and cuts only the words, at a word, with `…`.
+
+Press anywhere on the row, not only on a handle, to open the conversation that message belongs
+to, at that message. A message the sender wrote opens the sender's chat: `◆ → all` opens the
+manager at the directive, and `you → ◆` in a member's chat scrolls that chat to the reply. A
+message to you opens the manager's chat. If that chat is already in front, the row scrolls it
+and does not open another window. The focus stays where it was. The hint says
+`Open ◆'s message · 2m ago · click`, or `Open your message · now · click` for your own line.
+`▸` and `▾` still only fold the thread. A handle still opens that member.
+
+A deliberate message jump opens the activity and tool-call groups that contain the target before scrolling to it. Other history stays collapsed.
 
 ## What members say without being asked
 
@@ -222,13 +261,16 @@ on one waits for you.
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running | no |
-| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | yes |
+| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | under `◇ asks` |
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
 | `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
-`team_start` asks because a new conversation spends money for as long as it runs, and it is
+## Why team_start may ask before it starts
+
+`team_start` follows the conversation's approval posture because a new conversation can
+spend money; the default `◇ YOLO` allows it, while `◇ asks` raises the card. It is
 refused while the team is at its daily cap. The others act only inside the team you made, and
 every one of them is logged in the team's traffic. Questions, packets, caps and wrapping up are
 on the page **Team questions, decisions and caps**.
@@ -265,8 +307,9 @@ move wakes it by itself, and a move that was refused writes no line.
 
 A manager can start a **sub-team**: `team_start` with kind `team`, a name for the new team, a
 handle and a brief for its manager, and optionally members of its own team to move into it. You
-are asked first, on the same card as any start, which then reads `a new team "backend" under
-yours`. When you allow it:
+are asked first under `◇ asks`, on the same permission card as a member start, which then
+reads `a new team "backend" under yours, managed by it.` The default `◇ YOLO` starts it
+without that card. When allowed:
 
 - the new team is made under the manager's team, with its share of the pool: the parent's daily
   cap times `sub-team share` (`/settings`, **Teams**; 50% by default), written on the new team.
@@ -281,6 +324,8 @@ yours`. When you allow it:
 It is refused, with the reason, past the team depth (`team depth` in `/settings` under
 **Teams**, three levels by default, a team's own override first), under a closed team, at the
 team's daily cap, or when the name or the handle is taken.
+
+## Sub-team orders and reports
 
 **Orders go one level down, reports one level up.** A manager directs its own team's members,
 and a sub-team's manager is one of them; it never directs a sub-team's members. A `team_send`
@@ -389,3 +434,29 @@ while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to.
+
+## Which approval rules do new members inherit?
+
+A member started by the manager inherits the manager's approval posture before
+it joins and receives work. The conversation saves its own setting for resume.
+If the new conversation cannot apply the posture, the start is refused and the
+manager sees the reason. An untitled manager receives an available handle from
+the team store, so it can be addressed immediately.
+
+## Quiet updates from the team
+
+Team exchanges are work details: they stay in the compact activity view while
+work runs and fold behind the work line afterwards. Open the work line and its
+step to read the complete exchange, or open Traffic. The manager is instructed
+to tell you meaningful new results, blockers, decisions, and requested updates,
+without repeating an unchanged status. Its exact `[no change]` response is kept
+in the model record but does not add another answer to your conversation.
+
+## Opening a new member’s brief from Traffic
+
+Press a new-member Traffic row’s words to reveal the accepted `team_start` call in
+the manager’s conversation. Its receipt carries the message number. Press the
+member’s handle to open the delivered brief in that member’s conversation.
+Collapsed work opens at the selected message. Older unnumbered receipts are
+matched only when the accepted handle and brief identify one successful start
+in the current team; ambiguous or missing history is not guessed.

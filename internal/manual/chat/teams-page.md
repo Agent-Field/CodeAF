@@ -238,7 +238,7 @@ conversation. The page keeps these:
 | `alt+↑` `alt+↓` | put the keyboard on the page's buttons and walk them (`opt+↑` `opt+↓` on a Mac) |
 | `esc` | from the page's buttons, back to the message box |
 | `tab`, `shift+tab` | the next or previous place |
-| `alt+1` … `alt+9`, `alt+.` | jump to a place, draw the map |
+| `alt+1` … `alt+8`, `alt+.` | jump to a place, draw the map |
 
 On the page's buttons, and on a team with no manager in the pane:
 
@@ -292,7 +292,7 @@ cursor is on. A cap is dollars a day (0 for none), a depth is 1 to 10 levels, a 
 100 percent. The name is edited as you type and kept with `enter` or when the card is put
 away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
 
-## Closing a team
+## Closing a team — will closing a sub-team stop its manager if also in the parent team
 
 `Close…`, `c`, `Close team…` on the card, or `D` on the conversations view closes a team.
 

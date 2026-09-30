@@ -37,16 +37,20 @@ until that run is over and then starts its own: it never joins a run on its way 
 
 ## When does a task run's work come home, including commits its workers made
 
-When a `/task` run on the worker harness ends, its copy's uncommitted work is committed and
-merged into the folder it was cut from, the copy is given back, and the run's page
-carries `its work is in <folder> on <branch>`. The conversation is woken with the same
+When a `/task` run on the worker harness ends, any uncommitted work in its copy is committed.
+On a branch eligible for automatic landing, that work is merged into the folder it was
+cut from and the run's page carries `its work is in <folder> on <branch>`. The copy is
+given back in either case. The conversation is woken with the same
 note a landed task sends: the outcome word, how long the run took (`ran 4m 12s`, from the
 hand-off to the moment its work ended, and left out under a second), the result the root
 reported, and where the work went (`landed on <branch>: N files`, or the sentence saying
 why it did not). Work
 that will not go in is never forced: the branch is kept in your repository and the note
 names it, for example `its branch <branch> was kept`, when your checkout moved on after
-the copy was cut. A run whose workers committed everything still names its
+the copy was cut. A protected checkout, including `main` or `master`, also keeps the
+task branch: the card says `branch kept · task/x` and the note says
+`its branch task/x was kept: your checkout is on main, which tasks do not merge into automatically`
+(with the actual branch name in place of `main`). A run whose workers committed everything still names its
 branch and changed files; codeaf signs those commits before the work comes home.
 A file lands under its own name whatever characters it holds, including spaces, quotes,
 accents or a newline; only codeaf's own `plandb.db` and the files beside it, `.codeaf/`
@@ -54,8 +58,8 @@ files, and untracked build caches stay out of the landing commit (see *Why a tas
 commit has no __pycache__* below).
 A run that only read says `nothing to land: the run's working copy holds no change`
 and changes no file. The
-landing card says `merged` when the work is in your folder and `branch kept` only for a
-branch that is waiting. A hand-off that joined the run ends with it: its row settles
+landing card says `merged` when the work is in your folder and `branch kept` when its
+branch is waiting. A hand-off that joined the run ends with it: its row settles
 `done` or `incomplete` when the run's does. The
 row the run was published under settles `done` when the run finished whole and
 `incomplete` on any other ending. Each of these rows is in the project's task list (the
@@ -155,7 +159,7 @@ or the model; the task's room does, where the store's spend has them. The parts 
 row each, the finished ones included. Every one of those rows is a
 door: click the run's row, or select it and press `enter`, and its room opens over the
 conversation; click a part's row or a check's row and THAT task's room opens. It is the
-room the tasks place opens and the run's tab opens: what the task was asked, its steps,
+room the sessions place opens and the run's tab opens: what the task was asked, its steps,
 its notes, and the box that leaves a note. A task handed to a program such as senior-dev
 opens its own program room instead (see *A program's task page is a conversation, not
 steps*). `esc` goes back to the conversation exactly as
@@ -279,7 +283,7 @@ to the column's width; the glyph and the `$` are never spent on it.
 **The line is there only while a step is in flight.** A task that has not started, one held
 behind named work, and one that has landed all draw their ordinary row and no live line — the
 store clears the step the moment its command ends. These rows are a run's **plan rows**, drawn
-in the tasks place (`/history`, `ctrl+.`, `alt+4`, and the roster raised over the frame), not
+in the sessions place (`/history`, `ctrl+.`, `alt+4`, and the roster raised over the frame), not
 on the always-on column, which draws this conversation's own tree.
 
 ## What a run task's room shows while it runs
@@ -315,7 +319,7 @@ it, and the program gets no tab of its own.
 ```
 
 `esc`, a press on the conversation's tab and a press on the `home` tab leave it; none of them
-stops the run. `ctrl+o` opens and folds a long brief. `ctrl+y` turns the page to the
+stops the run. `ctrl+o` opens the whole brief as the page, which scrolls like the page, and closes it. `ctrl+y` turns the page to the
 program's raw calls and back. `x` over an empty box, `/stop`, or `Stop` at the end of the
 line over the page asks `Stop this task?` and ends the whole run.
 
@@ -324,7 +328,7 @@ messages — say it to main` (`senior-dev reads no messages — say it to main`)
 over a sentence says the same line on the page and leaves your words in the box. Once the
 run has ended its foot and its box say `this task has finished — say it to main`.
 
-In the tasks place, `enter` on the program's row opens the same page as a page of that
+In the sessions place, `enter` on the program's row opens the same page as a page of that
 place, with no box at all.
 
 ## Reading a program's actions — the step words down the side, how each came out, the call in flight, how long it has run
@@ -359,7 +363,7 @@ once more after its work has landed, so the note on where the work went is on th
 
 ## A program's raw calls — ctrl+y, the dialogue with its model, what it sent and what the model answered
 
-`ctrl+y` on a program's page — in its room or in the tasks place — turns it to the raw
+`ctrl+y` on a program's page — in its room or in the sessions place — turns it to the raw
 calls the program made, and `ctrl+y` again turns it back to the actions; the key row says
 which: `ctrl+y calls` or `ctrl+y actions`. A page opens on the actions.
 
@@ -460,7 +464,7 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **pause** / **resume** — hold a task and everything under it out of the ready
   frontier without changing its rung, so running steps finish and nothing new in
   the subtree is launched; or release the hold. The key is `p`: a running row
-  reads `p pause` and a held one `p resume`. The key is on the tasks place's
+  reads `p pause` and a held one `p resume`. The key is on the sessions place's
   rows only: in a task's room `p` is a letter in the box. A run cannot be paused
   as a whole, so its own row names no `p pause`.
 - **cancel** — end a task, its descendants and the work hard-depending on it. The
@@ -627,7 +631,7 @@ A stop ends the run now: every part still open is ended, what it was running is 
 off, and no further model call is made for it. The row reads `stopped`. A second stop
 on a run that is already stopping answers that it is already stopping.
 
-`x` on one PART's row in the tasks place ends that part only, at once and without a
+`x` on one PART's row in the sessions place ends that part only, at once and without a
 card, and the rest of the run carries on. In a part's room `x` asks first, with the
 same card, and ends that part only. A row nothing drives any more is cleared the same way:
 the stop settles it as `stopped` and answers `stopped task N (<title>) — nothing was
@@ -927,6 +931,12 @@ A task with **no declared check** is checked by reading its result and by the
 acceptance alone. Commands mentioned only in the task's prose are not declarations,
 so put every command the check must run on the task with `--check`.
 
+When a check names a numbered file with its number missing, such as
+`issue_.go` beside `issue_01.go`, `plandb add` and `plandb task set-checks`
+send the command back: nothing is added or changed in the plan. Write each
+part's check with that part's own file, such as `gofmt -l issue_01.go`, and run
+the command again.
+
 ## Who checks a task's work?
 
 Every leaf that lands **done** is checked, at both doors — `/task` and `codeaf
@@ -953,11 +963,24 @@ finishes with one line, in one of two shapes:
   the acceptance is not met.
 
 **A `does not hold:` finding is work, not a remark.** The checked task keeps its
-done ending and the sentence is left as its note, and the run adds a `fix:` task
-under that task's parent — carrying the acceptance, the finding and the result —
-which must land before the run is over. The fix is checked in turn, but only
-once: a finding on a `fix:` task is a note and no second fix task, so a run
-cannot loop.
+done ending and the sentence is left as its note. Ordinarily the run adds a
+`fix:` task under that task's parent — carrying the acceptance, the finding and
+the result — which must land before the run is over. The fix is checked in
+turn, but only once: a finding on a `fix:` task is a note and no second fix
+task, so a run cannot loop. A check naming a file nothing in the run makes is
+the narrow exception described below.
+
+## Why no fix task started — a check that names a file nothing makes
+
+If a check says a missing file caused its finding, no `fix:` task starts when
+no task names that file in its title or work order and either the filename is a
+numbered placeholder such as `issue_.go` beside `issue_01.go`, or two or more
+tasks declare a check on the same missing file. The checked task keeps the
+finding and gets this note:
+`No fix was started: the check names issue_.go, a file nothing in this run makes.`
+A check on a file only that task's check names
+(its own output), or on a package such as `go test ./internal/rank`, still gets
+its `fix:` task.
 
 ## How to turn it off
 

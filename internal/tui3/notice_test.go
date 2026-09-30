@@ -611,6 +611,37 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	}
 }
 
+// Learning one budget command must not hide the hint for the other scope.
+func TestBudgetHintsRetireOnlyForTheScopeUsed(t *testing.T) {
+	for _, tc := range []struct {
+		command             string
+		daily, conversation bool
+	}{
+		{"/budget", true, false},
+		{"/budget 20", true, false},
+		{"/budget day", true, false},
+		{"/budget daily 20", true, false},
+		{"/budget today 20", true, false},
+		{"/budget conversation", false, true},
+		{"/budget conversation 2", false, true},
+		{"/budget chat 2", false, true},
+		{"/budget session 2", false, true},
+		{"/budget plan", false, false},
+		{"/budget practice", false, false},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			a, _ := sheetApp(t)
+			a.slash(tc.command)
+			if got := a.notices.retired("budget-cap"); got != tc.daily {
+				t.Fatalf("daily hint retired = %v, want %v", got, tc.daily)
+			}
+			if got := a.notices.retired("conversation-budget-cap"); got != tc.conversation {
+				t.Fatalf("conversation hint retired = %v, want %v", got, tc.conversation)
+			}
+		})
+	}
+}
+
 // EVERY RETIRE EVENT IS PROVED BY ITS OWN GESTURE, through the real seam and
 // not by calling [app.noticeEvent] by hand: each driver here does what a
 // person does, and the event has to have been fired by it. A retire rule in the
@@ -672,10 +703,11 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 			runCmd(a.showPage(pageHome))
 			runCmd(a.homeSlash("/project " + t.TempDir()))
 		},
-		eventModelListOpened: func(t *testing.T, a *app) { a.slash("/model") },
-		eventCrewShown:       func(t *testing.T, a *app) { a.slash("/crew") },
-		eventBudgetShown:     func(t *testing.T, a *app) { a.slash("/budget") },
-		eventSpendOpened:     func(t *testing.T, a *app) { a.slash("/spend") },
+		eventModelListOpened:         func(t *testing.T, a *app) { a.slash("/model") },
+		eventCrewShown:               func(t *testing.T, a *app) { a.slash("/crew") },
+		eventBudgetShown:             func(t *testing.T, a *app) { a.slash("/budget") },
+		eventConversationBudgetShown: func(t *testing.T, a *app) { a.slash("/budget conversation") },
+		eventSpendOpened:             func(t *testing.T, a *app) { a.slash("/spend") },
 		eventSteered: func(t *testing.T, a *app) {
 			a.state = stateWorking
 			a.input.setText("go left instead")
@@ -689,7 +721,6 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventChatStarted:      func(t *testing.T, a *app) { drive(t, a, key("ctrl+t")) },
 		eventPlaceJumped:      func(t *testing.T, a *app) { drive(t, a, key("alt+3")) },
 		eventRemembered:       func(t *testing.T, a *app) { a.slash("/remember the parser is under internal") },
-		eventSearchOpened:     func(t *testing.T, a *app) { a.slash("/search") },
 		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
 		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
 		eventAutonomyAsked:    func(t *testing.T, a *app) { a.slash("/autonomy") },

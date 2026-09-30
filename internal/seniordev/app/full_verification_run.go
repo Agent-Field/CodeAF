@@ -127,7 +127,7 @@ func (run *projectVerificationRun) replayPriorTimeout(
 func (run *projectVerificationRun) execute(observation *verificationObservation) {
 	entrypoint := observation.entrypoint
 	bashInput := map[string]any{
-		"command":    strictVerificationPreamble + entrypoint.Command,
+		"command":    strictVerificationPreamble + fullverification.ActivationPreamble(run.runner.workspace, entrypoint.Workdir) + entrypoint.Command,
 		"timeout_ms": fullVerificationTimeoutMS,
 	}
 	if entrypoint.Workdir != "" {

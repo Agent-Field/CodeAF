@@ -43,15 +43,16 @@ var ladderStampers = map[string]string{
 // site cannot join it by accident, because joining it means editing this map and
 // writing down which of the two things the call is.
 var legacyEffortStampers = map[string]string{
-	"harness_build.go":  "a design round's role call, from the designer tier's own suffix",
-	"harness_task.go":   "carries a design's phase effort onto its node",
-	"task_shape.go":     "the shaper's role call, from the shaper tier's own suffix",
-	"task_store.go":     "rebuilds a design's phase effort off the checkpoint",
-	"task_restart.go":   "restores the same saved design phase effort when retrying its checkpoint",
-	"orchestrate.go":    "an adaptive-run node's role call, from the node's own tier",
-	"subharness_env.go": "a saved program's ai() call, from the options its author wrote",
-	"agent.go":          "the per-model dial's doc comment, which names the shape it is NOT",
-	"callwindow.go":     "an answer ask's thinking switched off: a requirement of that one call shape, not a person's depth",
+	"harness_build.go":   "a design round's role call, from the designer tier's own suffix",
+	"harness_task.go":    "carries a design's phase effort onto its node",
+	"task_shape.go":      "the shaper's role call, from the shaper tier's own suffix",
+	"task_store.go":      "rebuilds a design's phase effort off the checkpoint",
+	"task_restart.go":    "restores the same saved design phase effort when retrying its checkpoint",
+	"orchestrate.go":     "an adaptive-run node's role call, from the node's own tier",
+	"subharness_env.go":  "a saved program's ai() call, from the options its author wrote",
+	"agent.go":           "the per-model dial's doc comment, which names the shape it is NOT",
+	"callwindow.go":      "an answer ask's thinking switched off: a requirement of that one call shape, not a person's depth",
+	"compact_summary.go": "a compaction summary asked at low effort: a digest of what already happened is that one call shape's own economy, not a person's depth",
 }
 
 // EVERY FILE THAT STAMPS A RUNG ALSO RESOLVES ONE.

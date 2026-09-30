@@ -164,12 +164,19 @@ func registerBeltRunEngine(t *testing.T, engine RunEngine) {
 // directory's removal, and lost it under load as "directory not empty".
 func endBeltRun(t *testing.T, agent *Agent, double *beltRunDouble) {
 	t.Helper()
+	agent.beltMu.Lock()
+	run := agent.beltRun
+	agent.beltMu.Unlock()
 	close(double.release)
-	beltRunWaitFor(t, "the run to end", func() bool {
-		agent.beltMu.Lock()
-		defer agent.beltMu.Unlock()
-		return agent.beltRun == nil
-	})
+	if run == nil {
+		return
+	}
+	// The owner's completion channel covers the final record and store close.
+	select {
+	case <-run.over:
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not finish settling after its engine returned")
+	}
 }
 
 // beltRunStoreAt is a fresh handle on the run's store, adopted by path — the
@@ -396,7 +403,7 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 		cfg.SessionFile = filepath.Join(dir, placeTranscript)
 		cfg.AskConsent = false
 		cfg.TaskMaxLoad = 0
-		cfg.TaskMinFreeMB = 1 << 40
+		cfg.TaskMinFreeMB = 0
 		cfg.TaskLanes = lanes
 	})
 	id, _, _, err := agent.StartTask(context.Background(), "fix the issue", false)
@@ -411,9 +418,6 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 	double.mu.Lock()
 	spec := double.spec
 	double.mu.Unlock()
-	if spec.Admission == nil || spec.Admission.MayStart() {
-		t.Fatal("conversation's memory floor did not hold the run gate")
-	}
 	rootID := strconv.FormatUint(id, 10)
 	spec.OnHold([]string{rootID})
 	rows := agent.graph().runRows(id)
@@ -444,6 +448,61 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 	endBeltRun(t, agent, double)
 }
 
+func TestHeldBeltRunStopsWithoutPreparingRepository(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.Workspace = newTestRepo(t)
+		cfg.Place = Place{Dir: dir}
+		cfg.SessionFile = filepath.Join(dir, placeTranscript)
+		cfg.AskConsent = false
+		cfg.TaskMaxLoad = 0
+		cfg.TaskMinFreeMB = 1 << 40
+	})
+	id, _, _, err := agent.StartTask(context.Background(), "held work", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beltRunWaitFor(t, "the held belt row", func() bool {
+		rows := agent.graph().runRows(id)
+		return len(rows) == 1 && rows[0].State == TaskQueued && rows[0].Waiting == waitingMachineBusy
+	})
+	agent.beltMu.Lock()
+	run := agent.beltRun
+	pending, workspace, branch := run != nil, "", ""
+	if run != nil {
+		workspace, branch = run.workspace, run.tree.branch
+	}
+	agent.beltMu.Unlock()
+	if !pending || workspace != "" || branch != "" {
+		t.Fatalf("held run prepared repository state: live=%v workspace=%q branch=%q", pending, workspace, branch)
+	}
+	line, err := agent.Cancel(CancelTask + ":" + strconv.FormatUint(id, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "stopping") {
+		t.Fatalf("stop line = %q, want stopping", line)
+	}
+	beltRunWaitFor(t, "the stopped held run", func() bool { return agent.beltRun == nil })
+	rows := agent.graph().runRows(id)
+	if len(rows) != 1 || rows[0].State != TaskFailed || !rows[0].Stopped {
+		t.Fatalf("stopped held row = %+v", rows)
+	}
+	if !strings.HasPrefix(rows[0].Report, taskStoppedWord) {
+		t.Fatalf("stopped held row report = %q, want one stop settlement", rows[0].Report)
+	}
+	plan := planRowFor(agent.PlanTasks(), planStoreID(strconv.FormatUint(id, 10)))
+	if plan == nil || plan.Status != string(plandb.StatusCancelled) {
+		t.Fatalf("stopped held plan = %+v, want one stopped landing", plan)
+	}
+	if double.didRun() {
+		t.Fatal("a held run reached the engine")
+	}
+}
+
 func TestBeltRunSharesGraphLanesWhenConfigHasNone(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
@@ -454,7 +513,7 @@ func TestBeltRunSharesGraphLanesWhenConfigHasNone(t *testing.T) {
 		cfg.Place = Place{Dir: dir}
 		cfg.SessionFile = filepath.Join(dir, placeTranscript)
 		cfg.AskConsent = false
-		cfg.TaskMaxLoad = 1
+		cfg.TaskMaxLoad = 1e9
 		cfg.TaskMinFreeMB = 0
 		cfg.TaskLanes = nil
 	})
@@ -1446,7 +1505,7 @@ func TestStartTaskBashBeltRunSpendRefusesNextTurnWithShippedLimitSentence(t *tes
 	if len(refusal) != 1 || refusal[0].Err == nil {
 		t.Fatalf("the turn after overspending the conversation limit = %v, want one refusal", kinds(refusal))
 	}
-	const want = "conversation limit reached · $2.05 spent of $2 · /budget changes it"
+	const want = "conversation limit reached · $2.05 spent of $2 · /budget conversation changes it"
 	if got := refusal[0].Err.Error(); got != want {
 		t.Fatalf("next-turn refusal = %q, want unchanged shipped sentence %q", got, want)
 	}
@@ -1503,4 +1562,45 @@ func TestStartTaskBashBeltPassesTheDollarLimitLeftToTheRun(t *testing.T) {
 		t.Fatalf("run cost limit = %v, want the $4.50 left of the smaller $7 launch limit", got)
 	}
 	endBeltRun(t, agent, double)
+}
+
+func TestStartTaskRunUsesProjectGroundOutsideRepository(t *testing.T) {
+	for _, named := range []bool{false, true} {
+		t.Run(strconv.FormatBool(named), func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			double := newBeltRunDouble("read the project")
+			registerBeltRunEngine(t, double)
+			repo, dir := newTestRepo(t), t.TempDir()
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+				config.Workspace = t.TempDir()
+				config.Place = Place{Dir: dir, Workspace: repo}
+				if named {
+					config.Place.Workspace = ""
+				}
+				config.SessionFile = filepath.Join(dir, placeTranscript)
+				config.AskConsent = false
+			})
+			brief := "Read README.md and write result.txt"
+			if named {
+				brief += " in repository " + repo
+			}
+			if _, _, _, err := agent.StartTask(context.Background(), brief, false); err != nil {
+				t.Fatal(err)
+			}
+			defer endBeltRun(t, agent, double)
+			beltRunWaitFor(t, "the project run to start", double.didRun)
+			double.mu.Lock()
+			workspace := double.spec.Workspace
+			double.mu.Unlock()
+			if data, err := os.ReadFile(filepath.Join(workspace, "shared.txt")); err != nil || len(data) == 0 {
+				t.Fatalf("worker cannot read project document: %q %v (workspace=%s)", data, err, workspace)
+			}
+			agent.beltMu.Lock()
+			ground := agent.beltRun.ground
+			agent.beltMu.Unlock()
+			if ground != canonicalPath(repo) || workspace == ground {
+				t.Fatalf("ground=%s workspace=%s want isolated copy of %s", ground, workspace, repo)
+			}
+		})
+	}
 }

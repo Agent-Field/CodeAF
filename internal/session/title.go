@@ -24,6 +24,10 @@ package session
 //     needed for. The first message is enough to name a session — it is what the
 //     person came to ask — and the answer, when there is one by then, is added
 //     to the prompt as it always was.
+//     A SHELL OPENING WAITS FOR AN ANSWER. Its first ordinary question can be
+//     only "what did that print?", which says nothing without the reply. Human
+//     shell turns keep their command preview until an ordinary exchange has
+//     an answer; naming then starts through the end-of-turn door.
 //
 //   - AND IT IS NEVER SERIAL WITH THE ANSWER. The errand runs on its own
 //     goroutine, on the SESSION'S lifetime and not the turn's ([Agent.titleCtx]),
@@ -138,8 +142,9 @@ const titleWindow = 2 * time.Minute
 // startTitleLocked starts the session naming itself, if it has no name yet.
 //
 // It runs from [Agent.startTurnLocked] with a.mu held, immediately after the
-// person's first message has been recorded — the gate and the mark are taken
-// under that same hold, so two Submits racing cannot buy two names.
+// person's first message has been recorded, or from [Agent.maybeTitle] once a
+// shell opening has an ordinary answer. The gate and mark share the hold, so
+// two Submits racing cannot buy two names.
 func (a *Agent) startTitleLocked() {
 	if a.file == nil || a.titleTried || strings.TrimSpace(a.title) != "" || a.closed || a.titleCtx == nil {
 		return
@@ -180,7 +185,8 @@ func (a *Agent) startTitleLocked() {
 // IT IS NOW A SECOND DOOR ONTO ONE ERRAND rather than the errand itself, and it
 // is still here for the session whose first message was accepted before this
 // gate could pass — a resume of an untitled journal whose reopening turn is a
-// wake, a turn started with no message of its own at all. [Agent.startTitleLocked]
+// wake, a turn started with no message of its own at all, or a shell opening
+// waiting for its first ordinary answer. [Agent.startTitleLocked]
 // refuses a session that is already naming itself, so the ordinary turn reaches
 // this line and buys nothing.
 func (a *Agent) maybeTitle(context.Context, *eventHub) {
@@ -276,7 +282,7 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 	// answer at all costs one fall-through down the ladder rather than the
 	// session's name. No tools — the namer's only job is to produce the title pair.
 	callCtx, cancel := context.WithTimeout(ctx, titleAskWindow)
-	response, named, err := a.callRoleChecked(callCtx, roles.RoleTitle, model,
+	response, named, err := a.callRoleChecked(withDetachedUsage(callCtx), roles.RoleTitle, model,
 		[]ai.Message{
 			textMessage("system", titleSystem),
 			// THE INSTRUCTION IS LAST, after the exchange rather than above it.
@@ -490,7 +496,9 @@ func (a *Agent) setTitleIfUnnamed(title string, _ ...string) bool {
 }
 
 // firstExchangeLocked returns the session's opening question and the first
-// thing the assistant said back, both as plain text.
+// thing the assistant said back, both as plain text. After a human shell opening,
+// it returns nothing until an ordinary question has an answer without tool calls.
+// Notes the session wrote cannot serve as the person's question.
 //
 // It reads from the front of the transcript rather than from the turn that just
 // ended, which matters for the session whose first turn is not its first
@@ -498,23 +506,58 @@ func (a *Agent) setTitleIfUnnamed(title string, _ ...string) bool {
 // interrupted. The name should describe what the conversation is about, and
 // that is where it was stated.
 func (a *Agent) firstExchangeLocked() (string, string) {
-	question, answer := "", ""
+	question := ""
+	shellOpening := false
 	for _, message := range a.messages {
 		switch message.Role {
 		case "user":
-			if question == "" {
-				question = messageContentText(message)
+			if a.sessionNoteLocked(message) {
+				continue
 			}
+			// Do not borrow an answer from a later, unrelated user turn. After
+			// a shell opening, skip unanswered questions so an interrupted turn
+			// cannot prevent a later completed exchange from naming the chat.
+			if question != "" && !shellOpening {
+				return question, ""
+			}
+			question = strings.TrimSpace(messageContentText(message))
 		case "assistant":
-			if question != "" && answer == "" {
-				answer = messageContentText(message)
+			// Human shell turns journal as user/call/result. Their durable call
+			// mark, not a leading ! in ordinary model input, identifies them.
+			if humanShellReply(message) {
+				shellOpening = true
+				question = ""
+				continue
 			}
-		}
-		if question != "" && answer != "" {
-			break
+			if shellOpening && len(message.ToolCalls) > 0 {
+				// Tool narration is not the answer that explains the output.
+				continue
+			}
+			if answer := strings.TrimSpace(messageContentText(message)); question != "" && answer != "" {
+				return question, answer
+			}
 		}
 	}
-	return strings.TrimSpace(question), strings.TrimSpace(answer)
+	if shellOpening {
+		// Leave titleTried unset until the end-of-turn path has a reply.
+		return "", ""
+	}
+	return question, ""
+}
+
+// sessionNoteLocked identifies user-role messages the session wrote, so only
+// the person's words can anchor a conversation title or a compacted summary.
+func (a *Agent) sessionNoteLocked(message ai.Message) bool {
+	return isCodeafNote(messageContentText(message)) || a.file.isNote(message)
+}
+
+func humanShellReply(message ai.Message) bool {
+	for _, call := range message.ToolCalls {
+		if IsUserBashCall(call.ID) {
+			return true
+		}
+	}
+	return false
 }
 
 func messageContentText(message ai.Message) string {

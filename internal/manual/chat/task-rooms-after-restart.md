@@ -91,8 +91,8 @@ this task has finished — say it to main
 The header is drawn from the same record, which is why it stays correct — the name, the
 state, the elapsed — in every one of these cases.
 
-The room is one of two doors onto old work. The other is the task page (`ctrl+.`,
-`/history`), whose `enter` on an `earlier` row opens a card with the task's report read off
+The room is one of two doors onto old work. The other is the sessions place (`ctrl+.`,
+`/history`), whose `enter` on a completed task's row opens a card with the task's report read off
 the same journal — and which says `its transcript is not on this disk any more` in the same
 case. If the room is empty, the card will be too; the file is the same file.
 

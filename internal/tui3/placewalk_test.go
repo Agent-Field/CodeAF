@@ -119,7 +119,7 @@ func TestTheTasksPlaceOpensOnAChatThatHasDelegatedNothing(t *testing.T) {
 // mean two different things one place apart.
 func TestTheShiftArrowsNeverSwitchPlaces(t *testing.T) {
 	a := placeApp(t)
-	for _, id := range []page{pageHome, pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageHome, pageSpend, pageSettings} {
 		a.showPage(id)
 		if a.page != id {
 			continue
@@ -141,7 +141,7 @@ func TestTheShiftArrowsNeverSwitchPlaces(t *testing.T) {
 // leave the place exactly where it was.
 func TestThePlainArrowsNeverSwitchPlaces(t *testing.T) {
 	a := placeApp(t)
-	for _, id := range []page{pageHome, pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageHome, pageSpend, pageSettings} {
 		a.showPage(id)
 		if a.page != id {
 			continue

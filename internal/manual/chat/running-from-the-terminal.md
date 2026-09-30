@@ -94,11 +94,19 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf` and prints two things: one line
-naming the installed file's `version` (`installed codeaf <tag> built …`), and last,
-when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste. It
-prints nothing about telemetry; codeaf itself shows that notice before any count
-is sent.
+The installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
+when a folder already on `PATH` is writable (`~/.local/bin`, `~/bin`, or
+`/usr/local/bin`) it links `codeaf` there too, so the command works in the same
+terminal with nothing to paste. It never replaces anything there but its own link:
+a file, or a link to another build, stays, and you get the line to paste instead. It prints a few checked steps (`Downloaded`, `Installed codeaf <tag>`, `PATH`,
+`Linked`), then a short *Get started* guide: the `export PATH=…` line to paste when
+the command is not reachable yet, `cd your-project` and `codeaf`, and how to connect a
+model. On a terminal it ends by asking `Start codeaf in <folder> now? [Y/n]`; `enter`
+starts it there, and the first run connects a model. `--no-start` or
+`CODEAF_NO_START=1` skips the question, and nothing is asked when the output is not a
+terminal, when `CI` is set, or when the install runs in your home folder or `/` —
+`cd` into a project and type `codeaf` there instead. It prints nothing about telemetry; codeaf itself shows that
+notice before any count is sent.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 
@@ -267,6 +275,10 @@ reference somebody consults and it used to be more than half of what `--help` pr
 Every verb also answers `<verb> --help` with its own line and its flags, and `codeaf plan
 --help` answers with all four of its subcommands.
 
+The top-level synopsis includes `do` worker limits and model choices (`--slots`,
+`--best`, `--cheap`, `--pin`, and `--check-model`). It also names chat
+`--max-cost` and `--max-hours`; those unattended-work limits require `--yolo`.
+
 ## What $? means after a headless one-shot — the codes it leaves with
 
 **One table, and `codeaf do`, `codeaf exec` and `codeaf run` all leave on it.**
@@ -335,7 +347,11 @@ Asking for help is never a failure: `--help` on any verb exits 0.
 ## The --json result object — one shape, three commands
 
 `--json` on `codeaf do`, `codeaf exec` and `codeaf run` prints **one object on
-stdout, always parseable, printed even when the run failed**:
+stdout, always parseable, printed even when the run failed**. On `do`, that also
+includes a refusal after its flags parse, such as a blank brief or conflicting
+`--best` and `--cheap`: `ok` is false, `stop` is `error`, and `error` carries
+the same refusal stderr prints. An unrecognized flag is refused with usage on
+stderr before the command can enter this envelope path:
 
 ```json
 {
@@ -751,8 +767,10 @@ No competence evidence yet.
 
 ## The Model Pool — what this machine reads from it, with codeaf pool
 
-codeaf picks its models against the public Model Pool: a signed index of
-measured models that your runs improve. Nothing about your code ever leaves
+The public Model Pool is a signed index of measured models. It does not seat
+the task crew: codeaf routes that crew from its built-in prior and this install's
+task outcomes, and all that routing reads of the pool is the model-name aliases in
+the copy built into the binary. Your runs can improve the shared measurements. Nothing about your code ever leaves
 the machine — what is shared is a measurement of the run, not the work. One
 setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
@@ -772,25 +790,31 @@ and the addresses in force with the word saying where each came from
 (`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
 sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
-seed of <date>`. The binary carries a seed index of our own scored runs,
-read until a fresher signed one is cached. `--cells` lists the held
+seed of <date>`. The binary carries a seed index of scored runs, shown until a fresher
+signed one is cached. `--cells` lists the held
 index's cells, one per line — the role, the model, the dims the cell
 spells, the measurement and the installs behind it — and `--json
 --cells` carries them as an array. Your install also keeps
 the scores its judge gave in `own.json`
-under the pool directory — `show` and `status` say what that sheet holds — and
-the crew reads them beside the index. `status` adds how many rows are waiting to be sent
-and whether the mode allows sending and reading; `codeaf telemetry show` prints the
-rows themselves, as JSON. `codeaf pool status` also
-says whether the relay answered, and whether the mirror did, and what the
-last judge did — which model, which seats it scored, or why it failed. `--json` prints
-the same answer as one object; `show` reads nothing off the network.
+under the pool directory — `show` and `status` say what that sheet holds.
+Only `codeaf pool` reads that sheet; it does not pick the next crew.
+
+## What codeaf pool status shows — waiting rows, pending judge, last sweep
+
+`codeaf pool status` reports how many outbox rows wait to be sent and whether the mode
+allows sending and reading. Its `pending` line can also say `dropped N` and `identity set`;
+it counts waiting rows but does not list them. `codeaf telemetry show` prints the rows
+themselves as JSON. Status also says whether the relay and mirror answered, what the last
+judge did, how many runs are `pending judge:`, and what happened in the `last sweep:`.
+`--json` prints the same answer as one object; `show` reads nothing off the network.
+
+## What the own sheet stores — scores from this install
 
 **The scores start here.** In a conversation, after a task lands, a model
 outside the crew is asked to score each seat the work ran on — the worker that
 carried it, and the seat that checked it when there was one. The scores stay
-in your install's own sheet (`own.json`) and are read when the next crew is chosen;
-nothing else reads them. With `model_pool` set to `on` the same scores also
+in your install's own sheet (`own.json`). `codeaf pool` reads this sheet for its display;
+crew routing does not read it. With `model_pool` set to `on` the same scores also
 wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
 measurements; `read` keeps them local, and `off` asks no judge at all and
 writes nothing. The call itself is billed to the `judge` seat, so it shows up
@@ -806,11 +830,13 @@ index is fetched once a day, checked against the key built into the binary —
 or the key in `models.pool.public_key` when one is set — and a changed
 document is read at the next start.
 
+## Verify the Model Pool signature — codeaf pool verify
+
 `verify` fetches a fresh index and checks its detached ed25519 signature,
-then prints the version whose signature checked out:
+then prints the version, generated date and metric names. For example:
 
 ```
-signature good: version 7, generated 2026-09-10, 3 metrics
+signature good: version 1790468332, generated 2026-09-27, metrics acceptable, role_quality
 ```
 
 It wants a public key: `--key <base64 ed25519 public key>`, repeatable, or
@@ -1008,8 +1034,8 @@ there, and `waiting`, the rows themselves, `[]` on the day you install; and `off
 `session_ended` also carries `total_tokens`, the one exact number on it: the input and
 output tokens the provider reported across the session, never which model or what it read.
 `CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
-usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
-from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
+usage counts go quiet and the Model Pool is capped at `read`, so it can still fetch the index
+and sends nothing. The pool's own switch, `model_pool` in `/settings` or
 `CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
 notice names the bargain before the first byte leaves. A chat shows it once, dim,
@@ -1176,3 +1202,11 @@ Two things that account does not cover:
 - **`codeaf manual --help` prints its usage, then the list of pages.** The list is what
   that command can be asked for, so it is still there; it used to be *all* that was there,
   which made one verb in the binary answer `--help` differently from the other twenty-two.
+
+## Why does an empty task brief say no goal was given?
+
+`codeaf do`, `codeaf exec`, and `codeaf plan new` require a nonblank brief.
+An empty quoted argument, whitespace-only arguments, or empty piped input are
+rejected before planning or model work starts. Supply the goal as command
+arguments or pipe it through standard input; a single `-` explicitly selects
+standard input. A missing goal is not a request for the model to invent work.

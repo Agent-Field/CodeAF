@@ -31,3 +31,18 @@ func TestTheModelsAPersonAskedForAreSeniorDevsWorkingPool(t *testing.T) {
 		t.Fatalf("flags = %q, want %q", got, want)
 	}
 }
+
+// The crew's effort rides with its working seat as senior-dev's own
+// `--variant`, and a crew that names none leaves senior-dev on its default.
+func TestTheCrewsEffortBecomesSeniorDevsVariant(t *testing.T) {
+	got := strings.Join(crewFlags(delegate.Crew{Hands: "vendor/hands", Effort: "xhigh"}), " ")
+	if want := "--crew --high openrouter/vendor/hands --variant xhigh"; got != want {
+		t.Fatalf("flags = %q, want %q", got, want)
+	}
+	if got := strings.Join(crewFlags(delegate.Crew{Hands: "vendor/hands"}), " "); strings.Contains(got, "--variant") {
+		t.Fatalf("a crew with no effort named one: %q", got)
+	}
+	if (delegate.Crew{Effort: "low"}).IsZero() {
+		t.Fatal("a crew naming only an effort reads as no crew, so its flag is never passed")
+	}
+}

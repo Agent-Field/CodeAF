@@ -715,6 +715,8 @@ type harnessOfferRecord struct {
 // exists, and no answer could reach one. Left out, the row comes back settled
 // like every other row that was moving, which is the truth about it.
 type runRecord struct {
+	CrewState *TaskCrewRecord `json:"crewState,omitempty"`
+
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
 	Node   string `json:"node,omitempty"`
@@ -752,7 +754,8 @@ type runRecord struct {
 	// saved before this field existed decodes with nil, and a run with no copy
 	// recorded is one that cannot be carried on — which [runCopyTree] says out
 	// loud rather than repairing.
-	Copy *TaskCopyRecord `json:"copy,omitempty"`
+	Copy       *TaskCopyRecord   `json:"copy,omitempty"`
+	PendingRun *PendingRunRecord `json:"pendingRun,omitempty"`
 
 	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS
 	// ([TaskNotice.PlanTask]), carried across a restart for the same reason the
@@ -1092,28 +1095,30 @@ func runRowRecord(notice TaskNotice) runRecord {
 		state = TaskRunning
 	}
 	return runRecord{
-		ID:        notice.ID,
-		Run:       notice.Run,
-		Node:      notice.Node,
-		Parent:    notice.Parent,
-		Title:     notice.Title,
-		Kind:      notice.Kind,
-		Program:   notice.Program,
-		State:     state,
-		Stopped:   notice.Stopped,
-		Report:    notice.Report,
-		Model:     notice.Model,
-		CostUSD:   notice.CostUSD,
-		ElapsedMS: notice.Elapsed.Milliseconds(),
-		StartedAt: notice.StartedAt,
-		EndedAt:   notice.EndedAt,
-		Copy:      notice.Copy,
-		Ending:    notice.Ending,
-		Branch:    notice.Branch,
-		Merge:     notice.Merge,
-		Result:    notice.Result,
-		Changed:   append([]string(nil), notice.Changed...),
-		PlanTask:  notice.PlanTask,
+		CrewState:  notice.CrewState,
+		ID:         notice.ID,
+		Run:        notice.Run,
+		Node:       notice.Node,
+		Parent:     notice.Parent,
+		Title:      notice.Title,
+		Kind:       notice.Kind,
+		Program:    notice.Program,
+		State:      state,
+		Stopped:    notice.Stopped,
+		Report:     notice.Report,
+		Model:      notice.Model,
+		CostUSD:    notice.CostUSD,
+		ElapsedMS:  notice.Elapsed.Milliseconds(),
+		StartedAt:  notice.StartedAt,
+		EndedAt:    notice.EndedAt,
+		Copy:       notice.Copy,
+		PendingRun: notice.PendingRun,
+		Ending:     notice.Ending,
+		Branch:     notice.Branch,
+		Merge:      notice.Merge,
+		Result:     notice.Result,
+		Changed:    append([]string(nil), notice.Changed...),
+		PlanTask:   notice.PlanTask,
 	}
 }
 
@@ -1136,29 +1141,35 @@ func runRowRecord(notice TaskNotice) runRecord {
 // That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
-		ID:      record.ID,
-		Run:     record.Run,
-		Node:    record.Node,
-		Parent:  record.Parent,
-		Title:   record.Title,
-		Kind:    record.Kind,
-		Program: record.Program,
-		State:   record.State,
-		Stopped: record.Stopped,
-		Report:  record.Report,
-		Model:   record.Model,
-		CostUSD: record.CostUSD,
-		Elapsed: time.Duration(record.ElapsedMS) * time.Millisecond,
+		CrewState: record.CrewState,
+		ID:        record.ID,
+		Run:       record.Run,
+		Node:      record.Node,
+		Parent:    record.Parent,
+		Title:     record.Title,
+		Kind:      record.Kind,
+		Program:   record.Program,
+		State:     record.State,
+		Stopped:   record.Stopped,
+		Report:    record.Report,
+		Model:     record.Model,
+		CostUSD:   record.CostUSD,
+		Elapsed:   time.Duration(record.ElapsedMS) * time.Millisecond,
 
-		StartedAt: record.StartedAt,
-		EndedAt:   record.EndedAt,
-		Copy:      record.Copy,
-		Ending:    record.Ending,
-		Branch:    record.Branch,
-		Merge:     record.Merge,
-		Result:    record.Result,
-		Changed:   append([]string(nil), record.Changed...),
-		PlanTask:  record.PlanTask,
+		StartedAt:  record.StartedAt,
+		EndedAt:    record.EndedAt,
+		Copy:       record.Copy,
+		PendingRun: record.PendingRun,
+		Ending:     record.Ending,
+		Branch:     record.Branch,
+		Merge:      record.Merge,
+		Result:     record.Result,
+		Changed:    append([]string(nil), record.Changed...),
+		PlanTask:   record.PlanTask,
+	}
+	if record.CrewState != nil && record.CrewState.Routed {
+		decision := record.CrewState.Decision
+		notice.Crew = &decision
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live
@@ -1988,7 +1999,9 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	// cannot touch would invite it to say something about it.
 	for _, record := range document.Runs {
 		root := record.Parent
-		if root == 0 {
+		if root == 0 || record.Run == "" {
+			// Ordinary joined tasks are published under their own row IDs.
+			// Keeping that grouping makes the live and recovered graph identical.
 			root = record.ID
 		}
 		if g.runs == nil {

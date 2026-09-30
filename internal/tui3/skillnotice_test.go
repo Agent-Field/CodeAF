@@ -10,13 +10,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// THE LINE NAMING WHAT A TURN CARRIED OUTLIVES THE TURN. It sits under the
-// question it belongs to and the work chip starts below it; before, the chip
-// swallowed it the moment the answer landed, and an opened chip lists calls,
-// not notes, so the one screen record that a skill reached the turn was gone
-// for good. It still does not hold the turn open the way a sentence addressed
-// to the person does: the calls fold as they always did.
-func TestTheCarriedSkillsLineStaysAboveTheWorkChip(t *testing.T) {
+// Skills are operational context inside the same work disclosure. Opening it
+// must recover the full carried record, without a permanent extra chat line.
+func TestTheCarriedSkillsLineRemainsInsideWorkDisclosure(t *testing.T) {
 	f := &feed{live: -1, think: -1}
 	f.ingest(session.Event{Kind: session.EventNotice, Text: "skills carried: tide-almanac", Skills: []string{"tide-almanac"}})
 	if len(f.entries) != 1 || !f.entries[0].carried {
@@ -40,26 +36,21 @@ func TestTheCarriedSkillsLineStaysAboveTheWorkChip(t *testing.T) {
 		t.Fatalf("the carried line stopped the chip forming: %#v", folds)
 	}
 	for start := range folds {
-		if start != 2 {
-			t.Fatalf("the chip starts at entry %d, want 2, below the carried line", start)
+		if start != 1 {
+			t.Fatalf("the chip starts at entry %d, want 1, including the carried line", start)
 		}
 	}
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries, a.workMode = entries, config.WorkFold
 	a.touch()
-	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "skills · tide-almanac") || !strings.Contains(got, "worked") {
-		t.Fatalf("want the carried line above a folded chip:\n%s", got)
+	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "skills · tide-almanac") || !strings.Contains(got, "worked") {
+		t.Fatalf("want the carried line inside a folded chip:\n%s", got)
 	}
 
-	// AND THE SAME NOTE WITHOUT THE MARK IS STILL SWALLOWED, so the test fails
-	// on a build that lost the mark rather than passing on one that stopped
-	// folding.
-	plain := append([]entry(nil), entries...)
-	plain[1].carried = false
-	a.entries = plain
+	a.setWorkOpen(a.conversation(), 1, true)
 	a.touch()
-	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "skills · tide-almanac") {
-		t.Fatalf("an unmarked note was not folded, so the control proves nothing:\n%s", got)
+	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "skills · tide-almanac") {
+		t.Fatalf("disclosure lost the carried skills record:\n%s", got)
 	}
 }
 

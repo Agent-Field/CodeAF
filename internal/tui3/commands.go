@@ -75,14 +75,14 @@ var commands = []command{
 	{name: "settings", desc: "open the settings panel · ctrl+,", alias: []string{"set", "config"}},
 	// It sits under /settings because it is the other half of the same errand:
 	// one is what this surface may do, the other is what it may reach.
-	{name: "connect", desc: "your connected accounts · connect another", alias: []string{"connections"}},
+	{name: "connect", desc: "providers and accounts · connect another", alias: []string{"connections"}},
 	// THE VOCABULARY OF THE FRESH START IS BORROWED AND NOT INVENTED. /clear is
 	// what a terminal person's fingers type, /reset is what a chat person's do,
 	// and both of them mean the thing this surface calls /new — so all three land
 	// on it rather than on "unknown command: /clear".
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
-	{name: "compact", desc: "summarize the conversation now"},
+	{name: "compact", desc: "shorten the conversation now"},
 	{name: "drafts", desc: "cleared-but-kept drafts · enter restores one, d lets one go"},
 	{name: "stop", desc: "stop the open task or selected work · asks first"},
 	{name: "autonomy", desc: "how questions are handled while you are away"},
@@ -90,6 +90,7 @@ var commands = []command{
 	// A project-less conversation needs this once, while /compact is a daily
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.
+	{name: "workspace", desc: "choose a folder to anchor this conversation · or /workspace <path>"},
 	{name: "workspace", args: "<path>", desc: "anchor this conversation to a project"},
 	// AND THE OTHER HALF OF THE SAME ERRAND, directly under it: /workspace is
 	// the one-shot anchor a project-less conversation needs once, and this is
@@ -129,6 +130,8 @@ var commands = []command{
 	// looking, /compact is one of them, and a row inserted above it would push
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
+	{name: "dismiss", desc: "hide settled task notifications here"},
+	{name: "dismiss", args: "undo", desc: "restore dismissed task notifications"},
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
@@ -145,7 +148,6 @@ var commands = []command{
 	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
-	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
 	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
 	// conversations big, and this is the team-level view, every member open or
@@ -293,6 +295,7 @@ var commands = []command{
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
 	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
+	{name: "task", desc: "every task this machine has run · ctrl+.", door: sendDoorTask},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// HOW HARD TO TRY THIS ONE TASK is said in the ask and sticks to nothing
@@ -300,6 +303,7 @@ var commands = []command{
 	// --cheap the cheapest, and neither moves the next task.
 	{name: "task", args: "--best <brief>", desc: "…on the strongest crew allowed, this task only", door: sendDoorTask},
 	{name: "task", args: "--cheap <brief>", desc: "…on the cheapest crew allowed, this task only", door: sendDoorTask},
+	{name: "redo", desc: "the last task again, on a stronger crew"},
 	{name: "redo", args: "stronger", desc: "the last task again, on a stronger crew"},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
 	// `adaptive <brief>`, which opened a planner that drew the whole graph before
@@ -683,6 +687,10 @@ type menu struct {
 // unrelated search results on home. A space or path punctuation leaves command
 // mode, and Esc seals a literal token until the caret leaves it.
 func (m *menu) sync(e *editor) {
+	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
+		m.close()
+		return
+	}
 	at, query, ok := slashToken(e.value, e.cursor)
 	if ok {
 		// Inspect the whole token, including text after the caret, so moving

@@ -327,8 +327,11 @@ func (a *Agent) hasClient() bool {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.client != nil
+	return a.hasClientLocked()
 }
+
+// hasClientLocked is [Agent.hasClient] for a caller already holding a.mu.
+func (a *Agent) hasClientLocked() bool { return a.client != nil }
 
 // modelRoutingCompleter is the only completer view of a live Agent that may
 // leave this file. A caller may pin any model onto it; the wrapper reads that
@@ -605,6 +608,10 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	var held float64
 	if purpose != purposeTurn && !isCrewSeatCall(ctx) {
 		task := crewTaskOf(ctx)
+		if err := task.beginCall(); err != nil {
+			return nil, model, err
+		}
+		defer task.endCall()
 		if stopped := task.stoppedAction(); stopped != "" {
 			// A TASK THAT STOPPED ON ITS ACTION buys no more helpers: every
 			// route it could reach already said no.
@@ -630,6 +637,22 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// internal/session that spells it, here and for the three roads that carry a
 	// client of their own.
 	ctx = withPurpose(ctx, purpose)
+	ctx = provider.WithDiscardedUsage(ctx, func(served string, tag string, response *ai.Response) {
+		// Full billing owners (program model APIs) already bank every transport
+		// attempt. Ordinary session callers bank only the returned answer.
+		if provider.BillingSinkFrom(ctx) == nil {
+			if served == "" {
+				served = called
+			}
+			a.addUsageAs(response, served, 1, tag, true, false, detachedUsageFrom(ctx))
+		}
+		if helper != nil {
+			// The final after releases the reservation; this attempt only adds
+			// what was spent, including when the retry returns an error.
+			helper.after(ctx, model, response, 0)
+			crewTaskOf(ctx).addHelperSpend(response)
+		}
+	})
 	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
 	// is this package's to change (callwindow.go says why it cannot be earlier).
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)

@@ -9,6 +9,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -137,7 +138,7 @@ func TestCompactionWithNothingToDoSaysSo(t *testing.T) {
 	agent.messages = append(agent.messages, exchanges(2, nil)...)
 	agent.mu.Unlock()
 
-	if changed, err := agent.compact(context.Background(), nil); changed || err != ErrNothingToCompact {
+	if changed, err := agent.compact(context.Background(), nil); changed || !errors.Is(err, ErrNothingToCompact) {
 		t.Fatalf("compact = %v, %v; want ErrNothingToCompact", changed, err)
 	}
 }

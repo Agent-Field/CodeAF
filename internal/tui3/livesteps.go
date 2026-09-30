@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -68,8 +69,8 @@ import (
 // surface where a reader's expansion does not outlive what it was about.
 //
 // WHAT IT MAY NEVER COVER is [liveWorkKeeps], and the list is the conversation's
-// own: the person's words, a question waiting to be answered, a failed call, a
-// notice this surface wrote, a seam, an answer. A window that swallowed one of
+// own: the person's words, a question waiting to be answered, an explicit
+// user-directed notice, a seam, an answer. A window that swallowed one of
 // those would be hiding the one row on the frame that needed a person.
 //
 // THE LENS OPTS INTO LIVE COMPACTNESS separately from its past folds. A task
@@ -210,6 +211,23 @@ func liveWorkRuns(d deck) map[int]liveWork {
 	if frontier >= 0 {
 		w := out[frontier]
 		w.last = true
+		// Kept conversation does not end the running turn. Keep the waiting
+		// indicator in this window across replies and steering, until another
+		// step arrives. An outstanding decision instead suspends that indicator.
+		w.pending = true
+		for _, e := range es[w.end:] {
+			if e.turn != d.runningTurn || e.kind == entryAssistant && !confirmedAnswer(&e) && !e.addressed || e.kind == entryTool && (e.status == toolConsent || e.decision != "") ||
+				e.kind == entryDone && e.done != nil && e.done.status.Tier == session.TaskTierYourCall {
+				w.pending = false
+				break
+			}
+		}
+		for _, c := range w.steps {
+			if c.ended.IsZero() {
+				w.pending = false
+				break
+			}
+		}
 		out[frontier] = w
 	}
 	return out
@@ -220,12 +238,9 @@ func liveWorkRuns(d deck) map[int]liveWork {
 // [phaseKeeps]'s reason: the list IS the argument, and an argument written as
 // control flow cannot be read.
 //
-// A STEP IS ATOMIC. The second pass is what makes that true: a caption whose
-// batch holds a failed call is kept WHOLE — its narration, its calls, all of it —
-// rather than half-compacted, because a step drawn twice (once as a line in the
-// window and once as the machinery under it) is the same work claiming to be two
-// things. ONLY FAILURE SPEAKS on this surface, and the row that was allowed to
-// raise its voice may not then be filed away by a rolling window.
+// A step remains atomic around an actionable boundary. Ordinary operational
+// notes and failed calls stay within the window; failure is a compact glyph,
+// while the complete error remains available when the reader opens the work.
 func liveWorkKeeps(d deck) []bool {
 	es := d.entries
 	keeps := make([]bool, len(es))
@@ -260,6 +275,12 @@ func liveWorkKeeps(d deck) []bool {
 // liveWorkKeepsRow is the per-row half of the table above.
 func liveWorkKeepsRow(e *entry) bool {
 	switch e.kind {
+	case entryDone:
+		return e.done != nil && e.done.status.Tier == session.TaskTierYourCall
+	case entryNote:
+		return e.told
+	case entryTeam, entryCompact:
+		return false
 	case entryThinking:
 		// PRIVATE MACHINERY, AND THE LOUDEST OF IT. A wall of dim italic scrolling
 		// under the answer a person is waiting for is the defect this whole block
@@ -274,18 +295,10 @@ func liveWorkKeepsRow(e *entry) bool {
 		// exactly as the person left it, and shutting the work hides it again.
 		return false
 	case entryTool:
-		// A CALL THAT FAILED IS NEVER COVERED, and neither is one waiting on a
-		// person: a consent question is a thing the work could not decide alone
-		// (consent.go), and hiding it would hide the only row on the frame that
-		// needs a hand.
-		//
-		// AND NEITHER IS ONE THE PERSON ANSWERED. [entry.decision] is the receipt
-		// of their own keypress — `allowed`, `denied`, and the `always · saved —
-		// /permissions to change` slot beside it — and a window that swallowed the
-		// row a moment after they pressed the key would be answering a decision
-		// they made with a screen that says nothing happened. It is theirs, like
-		// their words, and it stands.
-		return e.status == toolFailed || e.status == toolConsent || e.decision != ""
+		// Consent and the person's decision remain actionable. Failed calls
+		// use a status glyph in the compact caption; error output is disclosed
+		// only when the reader opens that step.
+		return session.IsUserBashCall(e.callID) || e.status == toolConsent || e.decision != ""
 	case entryAssistant:
 		// NARRATION IS THE STEP TITLE ITSELF — its first line is lifted into the
 		// caption this block draws (hierarchy.go's [stampCaptions]), so covering it
@@ -294,11 +307,7 @@ func liveWorkKeepsRow(e *entry) bool {
 		// streamed prose stays compact until that response boundary arrives.
 		return !e.demoted
 	}
-	// EVERYTHING ELSE STANDS. The person's own words and their corrections, a
-	// proposal, a standing card, a sign-in, a sub-harness offer, a landed task, a
-	// seam, a compaction with its own clock, a divider, and every note this
-	// surface wrote in its own voice — each of them is either something said TO
-	// the person or something they have to answer.
+	// Other explicit conversation boundaries and actionable cards stand.
 	return true
 }
 
@@ -354,18 +363,25 @@ func (a *app) collapseLiveWork(turn int) {
 // liveStepBlock is the compact block itself: the last few steps, oldest faintest,
 // the live one shimmering.
 //
-// THE NEWEST STEP IS NEVER CHOPPED, which is what the budget costs on a narrow
-// frame. Rows are taken newest-first and a step is only admitted whole, so a
-// caption that wraps to two lines pushes the oldest step out of the window
-// rather than being cut to fit. A current caption that alone wraps past the
-// budget is drawn in full. Between calls, the current activity takes priority:
-// a finished caption too tall to fit beside it remains behind the disclosure. A step title is five to ten words that
-// somebody has to be able to read; an ellipsis in the middle of one would be the
-// surface saving a row at the cost of the only thing the row was for.
+// The compact display spends at most three rows. Whole older steps leave first;
+// a newest caption taller than the budget ends with an ellipsis. Its complete
+// text is retained behind the work disclosure.
 func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	room := width - workIndentCols(width) - actionGutter
 	if room < 1 {
 		room = 1
+	}
+	// Subharness progress is the newest step of this same activity window.
+	// Keep its name and result visible without spending a fourth footer row.
+	harnessAt := -1
+	if w.last && d.lens.clock && a.state == stateWorking && a.harnessStep != "" {
+		text := a.harnessStep
+		if a.harnessName != "" {
+			text = "harness · " + a.harnessName + " · " + text
+		}
+		harnessAt = len(w.steps)
+		w.steps = append(append([]caption(nil), w.steps...), caption{text: text})
+		w.pending = false
 	}
 	// Hidden reasoning needs a visible door even before the first caption.
 	// It uses the same width budget, including on the smallest terminal.
@@ -406,6 +422,7 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	type step struct {
 		lines    []string
 		live     bool
+		failed   bool
 		age      string
 		category session.ActionCategory
 	}
@@ -413,14 +430,29 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	used := 0
 
 	for at := len(w.steps) - 1; at >= 0; at-- {
-		lines := wrap(captionText(w.steps[at]), room)
+		text := captionText(w.steps[at])
+		if at == harnessAt {
+			text = w.steps[at].text
+		}
+		lines := wrap(text, room)
 		if len(lines) == 0 {
 			continue
+		}
+		// A very narrow pane must keep the same reading budget. The full
+		// caption remains available through the work disclosure.
+		if len(picked) == 0 && len(lines) > liveStepRows {
+			lines = lines[:liveStepRows]
+			lines[liveStepRows-1] = ansi.Truncate(lines[liveStepRows-1], max(1, room-1), "") + "…"
 		}
 		if len(picked) > 0 && used+len(lines) > liveStepRows {
 			break
 		}
-		picked = append(picked, step{lines: lines, live: w.steps[at].ended.IsZero(),
+		failed := false
+		from, to := captionTools(w.steps[at], d.entries)
+		for i := from; i < to && i < len(d.entries); i++ {
+			failed = failed || d.entries[i].status == toolFailed
+		}
+		picked = append(picked, step{failed: failed, lines: lines, live: w.steps[at].ended.IsZero(),
 			age: compactStepAge(w.steps[at].began, a.now()), category: stepCategory(w.steps[at], d.entries)})
 		used += len(lines)
 		if used >= liveStepRows {
@@ -466,6 +498,9 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 			}
 			// The action icon remains still while its caption carries the sweep.
 			lead := a.actionLead(s.category, i == 0)
+			if s.failed && i == 0 {
+				lead = a.linearMark(a.icon(tokens.GFailed), "x") + " "
+			}
 			if waiting {
 				lead = a.pal.narr(lead)
 				if !inline && i == 0 {

@@ -361,7 +361,7 @@ func runDo(args []string) error {
 	noteRenamedFlags(flags)
 	slots, err := parseSlots(*slotsRaw)
 	if err != nil {
-		return err
+		return refuseDoBeforeRun(*asJSON, "", err)
 	}
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
 	// can make a call, so that every record this errand leaves names the same
@@ -380,10 +380,10 @@ func runDo(args []string) error {
 	run := trace.RunFrom(ctx)
 	task, err := readText(flags.Name(), flags.Args())
 	if err != nil {
-		return err
+		return refuseDoBeforeRun(*asJSON, run, err)
 	}
 	if *best && *cheap {
-		return fmt.Errorf("--best and --cheap ask for two different crews · say one")
+		return refuseDoBeforeRun(*asJSON, run, fmt.Errorf("--best and --cheap ask for two different crews · say one"))
 	}
 	effort := crewroute.EffortKnee
 	switch {
@@ -400,6 +400,21 @@ func runDo(args []string) error {
 		contextFill: *contextFill, completionReserve: *completionReserve, slots: slots,
 		stdout: os.Stdout, stderr: os.Stderr,
 	})
+}
+
+// Once flags parse, a JSON caller always receives the shared envelope, even
+// when the door refuses the request before it can start an errand. The human
+// refusal stays on stderr; without JSON the ordinary error keeps its old path.
+func refuseDoBeforeRun(asJSON bool, run string, err error) error {
+	if !asJSON {
+		return err
+	}
+	// A missing brief's error also carries command usage on later lines. The
+	// refusal is its first line; usage is not part of the machine error field.
+	reason, _, _ := strings.Cut(plainWords(err.Error()), "\n")
+	fmt.Fprintln(os.Stderr, "error:", reason)
+	return reportErrand(doRequest{asJSON: true, stdout: os.Stdout, stderr: os.Stderr},
+		headlessOutcome{run: run, Error: reason, stop: stopError})
 }
 
 // doRequest is one invocation, with its streams named so a test drives the
@@ -3712,7 +3727,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, completerFor),
+		}, doStanding(workspace), completerFor),
 	})
 	errand := headlessOutcome{
 		Artifacts: []string{},

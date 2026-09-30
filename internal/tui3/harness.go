@@ -141,9 +141,10 @@ func (a *app) noteHarness(name string) {
 		return
 	}
 	a.harnessStep = ""
+	a.harnessName = name
 	// WHICH HARNESS is the only thing this line says that the person does not
 	// already have, so it is the one that steps up (payload.go).
-	a.noteFacts("harness · "+name, name)
+	a.feed.noteWritten("harness · "+name, false, []string{name})
 }
 
 // stepHarness draws one session.EventHarnessStep: the step the run just
@@ -174,6 +175,7 @@ func (a *app) stepHarness(ev session.Event) {
 // dropHarnessStep clears that row. A run that is over is a run with no step in
 // flight, and the report is on screen by then saying what every step did.
 func (a *app) dropHarnessStep() {
+	a.harnessName = ""
 	if a.harnessStep == "" {
 		return
 	}

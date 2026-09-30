@@ -103,8 +103,8 @@ func TestResponseConfirmationSurvivesTrailingReasoning(t *testing.T) {
 		}
 	}
 	a.event(session.Event{Kind: session.EventToolBegin, Tool: "read", CallID: "later", Args: `{"path":"later.md"}`})
-	if page := livePage(a); strings.Contains(page, "Recent growth") {
-		t.Fatalf("new work failed to compact the earlier reply:\n%s", page)
+	if page := livePage(a); !strings.Contains(page, "Recent growth") {
+		t.Fatalf("new work hid the delivered earlier reply:\n%s", page)
 	}
 }
 
@@ -128,8 +128,8 @@ func TestConfirmationPromotesEveryInterleavedAnswerFragment(t *testing.T) {
 	}
 	a.event(session.Event{Kind: session.EventTextDelta, Text: "A later response is still unclassified. It must not keep the previous answer promoted."})
 	a.touch()
-	if page = livePage(a); strings.Contains(page, "Its complete details") {
-		t.Fatalf("later response failed to demote prior answer:\n%s", page)
+	if page = livePage(a); !strings.Contains(page, "Its complete details") {
+		t.Fatalf("later response hid the delivered prior answer:\n%s", page)
 	}
 }
 
@@ -212,7 +212,7 @@ func TestConfirmedReplyKeepsSurfaceNoticeBelowTheWholeAnswer(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.state, a.turn, a.linear = stateWorking, 1, true
 	a.event(session.Event{Kind: session.EventTextDelta, Text: "The complete first section. "})
-	a.event(session.Event{Kind: session.EventNotice, Text: "Connection settings updated"})
+	a.note("Connection settings updated")
 	a.event(session.Event{Kind: session.EventTextDelta, Text: "The complete second section."})
 	a.event(session.Event{Kind: session.EventAssistantDone})
 	page := livePage(a)
@@ -272,8 +272,8 @@ func TestConfirmedAnswerBeforeQueuedMessageDuringReasoning(t *testing.T) {
 					return plain(frame(a))
 				}
 				page := read()
-				if !room && !strings.Contains(page, "cached") {
-					t.Fatalf("completion lost cache receipt:\n%s", page)
+				if !room && strings.Contains(page, "cached") {
+					t.Fatalf("completion exposed cache receipt:\n%s", page)
 				}
 				answerAt, userAt := strings.Index(page, "Second answer section"), strings.Index(page, "Queued next question")
 				if !strings.Contains(page, "First answer section") || answerAt < 0 || userAt <= answerAt || strings.Contains(page, "PRIVATE TRAILING") || strings.Contains(page, "thought for") {
@@ -289,7 +289,7 @@ func TestConfirmedAnswerBeforeQueuedMessageDuringReasoning(t *testing.T) {
 	}
 }
 
-func TestReasoningOnlyFoldRequiresAConfirmedOwner(t *testing.T) {
+func TestSettledReasoningFoldsWithoutInventingAnAnswer(t *testing.T) {
 	for _, state := range []string{"confirmed", "unconfirmed", "new response", "live", "cut", "failed tool"} {
 		t.Run(state, func(t *testing.T) {
 			owner := &responseConfirmation{done: state != "unconfirmed"}
@@ -304,7 +304,7 @@ func TestReasoningOnlyFoldRequiresAConfirmedOwner(t *testing.T) {
 			for _, fold := range deriveWorkfolds(es, 0) {
 				got = got || !fold.stopped
 			}
-			if got != (state == "confirmed") {
+			if got != (state != "live" && state != "cut") {
 				t.Fatalf("state %s folded=%v", state, got)
 			}
 		})
@@ -343,14 +343,14 @@ func TestQueuedContinuationCannotSurviveRetryOrToolBoundary(t *testing.T) {
 func TestConfirmedReasoningAfterNoticeHasItsOwnClosedDisclosure(t *testing.T) {
 	a, _ := streaming(t, "The first section. ")
 	a.linear = true
-	a.event(session.Event{Kind: session.EventNotice, Text: "Connection settings updated"})
+	a.note("Connection settings updated")
 	a.event(session.Event{Kind: session.EventReasoning, Text: "PRIVATE AFTER NOTICE"})
 	a.event(session.Event{Kind: session.EventTextDelta, Text: "The second section."})
 	a.event(session.Event{Kind: session.EventAssistantDone})
 	a.event(session.Event{Kind: session.EventTurnDone, Usage: session.Usage{Input: 12000, CacheRead: 9000}})
 	page := livePage(a)
 	answerAt, noteAt := strings.Index(page, "second section"), strings.Index(page, "Connection settings updated")
-	if answerAt < 0 || noteAt <= answerAt || !strings.Contains(page, "cached") || strings.Contains(page, "PRIVATE AFTER") || strings.Contains(page, "thought for") {
+	if answerAt < 0 || noteAt <= answerAt || strings.Contains(page, "cached") || strings.Contains(page, "PRIVATE AFTER") || strings.Contains(page, "thought for") {
 		t.Fatalf("notice or receipt displaced the answer or exposed private work:\n%s", page)
 	}
 	drive(t, a, key("ctrl+e"))

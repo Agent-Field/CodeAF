@@ -234,3 +234,31 @@ func TestChooseHandleClashesAndTypedHandles(t *testing.T) {
 		t.Errorf("an unusable answer changed the member: %+v", after)
 	}
 }
+
+func TestFallbackHandle(t *testing.T) {
+	team := Team{ID: "t1", Name: "harbor", Members: []Member{{Key: "m1", Word: ""}}}
+	fb := FallbackHandle(team, "m1")
+	if fb != "harbor" {
+		t.Errorf("got %q, want harbor", fb)
+	}
+	if err := ValidHandle(fb); err != nil {
+		t.Errorf("fallback handle %q is invalid: %v", fb, err)
+	}
+
+	// Collision resolution:
+	team.Members = append(team.Members, Member{Key: "m2", Handle: "harbor"})
+	fb2 := FallbackHandle(team, "m1")
+	if fb2 != "harbor2" {
+		t.Errorf("got %q, want harbor2", fb2)
+	}
+
+	// Root team falls back to lead
+	rootTeam := Team{ID: "root", Name: RootName, Root: true, Members: []Member{{Key: "gm"}}}
+	rfb := FallbackHandle(rootTeam, "gm")
+	if rfb != "lead" {
+		t.Errorf("got %q, want lead", rfb)
+	}
+	if err := ValidHandle(rfb); err != nil {
+		t.Errorf("root fallback %q is invalid: %v", rfb, err)
+	}
+}

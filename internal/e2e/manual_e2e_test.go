@@ -40,6 +40,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -551,8 +552,7 @@ func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
 // who has not set codeaf up yet.
 func runManualCommand(t *testing.T, codeaf, home string, args ...string) (string, int) {
 	t.Helper()
-	run := exec.Command(codeaf, append([]string{"manual"}, args...)...)
-	run.Env = append(withoutKeys(os.Environ()), "CODEAF_HOME="+home, "CODEAF_PROFILE_DIR=")
+	run := guardedCommand(t, context.Background(), home, append(withoutKeys(os.Environ()), "CODEAF_HOME="+home, "CODEAF_PROFILE_DIR="), codeaf, append([]string{"manual"}, args...)...)
 	out, err := run.CombinedOutput()
 	code := 0
 	var exit *exec.ExitError

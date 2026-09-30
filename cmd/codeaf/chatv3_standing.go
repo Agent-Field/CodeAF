@@ -75,7 +75,7 @@ func v3Standing(profileDir string) *session.Standing {
 		// The person's own daily budget is what the card quotes beside the
 		// per-run cap. A profile that cannot be read quotes nothing rather than
 		// a figure nobody set, which is the emptiness law applied to money.
-		DailyRailUSD: v3StandingDailyRail(profileDir),
+		DailyRail: func() float64 { return v3StandingDailyRail(profileDir) },
 	}
 }
 
@@ -460,8 +460,7 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 // named as an interface so a test can hand it a definition pointing at a dead
 // path without going anywhere near this machine's launchd.
 type backgroundTimer interface {
-	Drift() (standing.WatchDrift, error)
-	Install(ctx context.Context) error
+	Repair(ctx context.Context) (standing.WatchDrift, error)
 }
 
 // repairBackgroundChecks puts a drifted timer back, and says one line about it
@@ -489,11 +488,11 @@ func repairBackgroundChecks(watch backgroundTimer, wanted bool) string {
 	if watch == nil || !wanted {
 		return ""
 	}
-	drift, err := watch.Drift()
-	if err != nil || !drift.Present || !drift.Stale {
+	drift, err := watch.Repair(context.Background())
+	if !drift.Present {
 		return ""
 	}
-	if err := watch.Install(context.Background()); err != nil {
+	if err != nil {
 		return "could not put the background check back: " + err.Error()
 	}
 	if drift.Gone && drift.Executable != "" {
@@ -526,3 +525,18 @@ func startBackgroundRepair(profileDir string) {
 }
 
 var backgroundOnce sync.Once
+
+// doStanding is the standing section a headless `codeaf do` run's workers close
+// on, resolved against the workspace the run edits and NO conversation: a
+// headless errand is a place with no conversation ([standing.Item.Reaches]),
+// so only the project and the machine's orders reach it — which is exactly what
+// the resolver answers for the place. The ambient side off, or a store that
+// cannot be opened, is no section, the same emptiness law every caller reads
+// ([v3Standing]). Empty is what a run with nothing standing over it gets.
+func doStanding(workspace string) string {
+	store, err := standing.Open(v3StandingRoot())
+	if err != nil {
+		return ""
+	}
+	return session.StandingWorld(store, workspace, "")
+}

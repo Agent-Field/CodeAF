@@ -340,8 +340,10 @@ your money to learn what it was going to be told anyway. If the pieces share wha
 learn, they are one quick task's items instead, and they stay in order.
 ## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
 
-**Yes, under exactly the bounds every task is under.** A quick task's worker carries
-`quick_task` and `propose_task` on the same terms as any other worker.
+**Yes, on the node belt selected with `CODEAF_TASK_BELT=node`.** A quick task's worker carries `quick_task` and
+`propose_task` on the same terms as another node worker. These bounds describe the
+session task tree, including ordinary tasks on that belt. With the switch unset,
+the bash worker harness is the default and the conversation has no quick task.
 
 **Depth is 3 levels.** The conversation starts work; that work may start more; what it
 started may start more once again; the level below that may not. A worker at the floor
@@ -356,6 +358,12 @@ may.` and to do the rest in its own hands.
 
 And a quick task takes a slot like anything else: if you have set `task.parallel`, quick
 tasks queue behind it with everything else.
+
+On the default bash belt, a task starts a run instead. Its workers have neither
+`quick_task` nor `propose_task`; they split work with `plandb split`. The plan store
+allows at most 256 tasks in one added batch and 1024 in one run; a composite worker
+can wake at most four times to integrate its children. The tree's 3/20 bounds do not
+describe that run road.
 
 ## A quick task started inside a task — a quick row appeared under my task, and who reads its answer
 
@@ -545,24 +553,32 @@ block in the conversation shows:
   left out entirely when it would only repeat the name;
 - the facts about the work: which other window is already in these files, `where:` it will
   run, and `from your folder as it stands — unsaved edits included` (not on a program's
-  card: senior-dev works in the folder itself, and its `where:` names the folder and says
-  `on a branch of its own` in a repository);
+  card: its `where:` names the folder and says `in a copy of its own on a branch of its
+  own` in a repository, which senior-dev starts from your folder as it stands, uncommitted
+  changes included);
 - a dim meta line reading `model <full id> · ctrl+e for the brief`. The model id leads
   because it is the one fact nothing else on screen will say again; on a narrow frame the
   hint is dropped and the model kept.
 
-**There is no row of answers on it and no meter.** Those were a decision drawn in a place
+## What the task proposal asks above the message box
+
+**There is no row of answers on the transcript block and no meter.** Those were a decision drawn in a place
 no other decision on this screen is drawn. The question is above the box:
 
 ```
-? wants to start a task: Fix the nil-map crash
+? wants to start a task: Fix the nil-map crash     codeaf asks · start it in 15s
   The parser drops a key on an empty map. · codeaf
-  ▸ 1  start it
+  ▸ 1  start it                                ◆ recommended
+       it starts on its own unless you say otherwise · fairly sure
     2  no
-  enter take it · esc later · c change · start it in 9s
+  any key stops the clock · you can still change the answer afterwards
+  esc later · o other · ? clarify
 ```
 
-`▸` marks the answer the clock is about to take. The question is **not modal**: the message
+`▸` marks the answer the clock is about to take. The default clock is 15 seconds
+(`task.autoapprove_seconds` changes it). `◆ recommended` marks the asker's pick;
+the reason and confidence appear below it when supplied. The clock sits at the top
+right, and the keys sit at the bottom edge. The question is **not modal**: the message
 box stays live, and what you type into it is the correction.
 
 Only one proposal is a live question at a time. If a second one arrives while the first is
@@ -1387,7 +1403,8 @@ grammar every question on this screen takes:
 | `enter` | box has words | sends what you typed as a correction, and starts the corrected work |
 | `enter` | box empty | takes the answer marked `▸`, which is the one the clock would take |
 | `esc` | always | **later** — folds the question to the chip and answers nothing |
-| `c` | box empty | answer in words: the same thing as typing and pressing `enter` |
+| `o` | box empty | opens **something else…** for your own answer or correction |
+| `?` | box empty | asks for clarification |
 | `ctrl+e` | box empty | opens or closes the brief in the conversation |
 
 **Bare letters are ordinary text.** The question is not modal: the moment there is anything
@@ -1403,6 +1420,8 @@ moving hand is not answered by a keystroke aimed at your sentence.
 
 You can also click an answer: each answer's row is pressable along its whole width.
 
+## Choosing a different model or opening the task proposal's brief
+
 **Honest limit:** there is no longer any way to pick the model from the proposal. When a
 word matched more than one model the card used to offer them on a row of chips answered by
 `1`–`4`, and those digits are the question's answers now. The work runs on the closest
@@ -1417,11 +1436,16 @@ Expanding the brief: `ctrl+e` with an empty box, or `ctrl+o` on a block you sele
 on its own labelled line. Clicking the block's body does not open the brief — it opens the
 task's room.
 
-## The countdown on a task proposal — start it in 9s
+## The countdown on a task proposal — start it in 15s by default
 
-The clock is the last thing on the question's own answers row, and it says which answer is
-about to be taken and when: `start it in 9s`. It is rounded up, so the last second you have
+The clock sits at the top right of the card, beside `codeaf asks`, and says which answer is
+about to be taken and when: `start it in 15s` at the default setting. It is rounded up, so the last second you have
 is drawn as a second; above a minute it reads `2m 13s`.
+
+While it runs, the card says `any key stops the clock · you can still change the answer afterwards`.
+Its bottom edge reads `esc later · o other · ? clarify`.
+
+## What happens when a task proposal clock stops
 
 **The clock runs toward yes.** Silence approves the work as briefed, with no correction
 appended, and the block settles as `approved · the clock`. This is the opposite of the
@@ -1432,6 +1456,13 @@ While that countdown runs, the main footer says `starting task`. You do not have
 Holding the proposal removes the countdown; the footer then says `waiting · your call`, and
 other windows report `waiting on you` too. An automatic proposal does not hide a separate
 question that really needs an answer.
+
+**A key pressed the instant the card appears is not taken as an answer.** For its first
+quarter-second the card drops keys, because they were aimed at whatever was there before.
+The dropped key still holds the clock and moves the pointer to `2 no`, so an `enter` straight
+after it declines; it never starts the task. After that, `1` starts and `2` declines at once.
+
+## Changing the task proposal countdown
 
 The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
 is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
@@ -1742,27 +1773,32 @@ means the check did judge it and named the next work.
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
+## Where did my task's result go when it finished while codeaf was still answering
+
+If a task finishes while codeaf is still answering, its landed card and its crew line (the
+`task N crew · …` line with what it cost and `not right? /redo stronger`) appear after that
+answer ends, under it, and never inside the `▸ worked` chip the answer's steps fold into.
+They still appear if the answer fails or you stop it. A task that finishes while nothing is
+being answered appears at once. When two tasks finish, their landings stay in the order they
+arrived.
+
 ## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
-Every landing writes a card into the conversation, with a blank row on each side, and moves
-the task's row on the roster.
+Every landing writes a compact, expandable notification into the conversation and moves
+the task's row on the roster. A settled notification takes one line:
 
 ```
-✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
-  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
+✓ ◆ Fix nil-map crash · done · 4m12s · 3 files · ctrl+o
 ```
 
-The head is what happened. The muted line under it is what came of it, in the task's own
-first sentence, quoted because they are its words and not codeaf's.
+Click the notification or select it and press `ctrl+o` to read its output and details.
+Press `enter` on the selected notification to open the task's room. Pending `your call`
+decisions keep their reason visible, including inside a folded batch.
 
-**The quoted sentence is the first line of the report that says something**, not its
-literal first line. Work that ran a command, produced a diff or answered in JSON often
-opens its report with the code fence around that — the fence is how the answer is spelled,
-not a sentence — so a fence marker, three backticks or three tildes with or without a
-language word after it, is passed over the way a blank line is. The first line that is
-neither is what the card quotes, which for a report that is nothing but a fenced block is
-the first line inside it. A report with no line to quote draws no quotation marks at all,
-only the start stamp.
+With an empty message box, select a notification and press `delete` to dismiss it.
+Use `/dismiss` to hide settled task notifications from this conversation view, or
+`/dismiss undo` to show them again. Dismissal does not delete tasks, output or history,
+and cannot hide a pending `your call` decision. The task remains available in Sessions.
 
 **The conversation replies only when its task was started while answering your question.**
 That task carries the question until its family lands, then one short reply answers from the
@@ -1820,7 +1856,7 @@ git's: `a branch of your repository`, `its own copy of the folder`, or `your own
 the same labels the settled card uses, listed under *Does a task touch my working copy?* in
 *how tasks run*. A landing whose copy codeaf has no record of falls back to `branch`.
 
-More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
+Two or more landings in a row become one folded rollup — `✓ 3 tasks done · 9m14s` on one line. Click it or select it and press `ctrl+o` to show a compact
 row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
 `your call` swaps it to `? N tasks landed`. A task you answered straight after it landed is
 counted once, by what became of it — the `?` goes with the answer. A delivery that did not land also keeps a
@@ -1964,7 +2000,9 @@ and its heading wears no mark, because it does not fold. The other three start f
 one line, `Done 6 ▸`; press the heading, or `enter` on it, to open the group (`Done 6 ▾`)
 and again to fold it. What you open stays open for the rest of the session, through new
 work, new landings and switching chats. A group with nothing in it is not drawn at all;
-there are no empty headings and no `none` rows.
+there are no empty headings and no `none` rows. When only queued tasks remain and the
+conversation is idle, the main box footer says `queued`. It says `working` when a task
+or background command is running.
 
 **Every task is one line**: its state glyph two cells in, its name cut with `…` where the
 column is too narrow, and how long it has been at it (or how long it took) in the muted ink
@@ -2007,7 +2045,7 @@ tree of who started whom; the task's own page (its kin line) and the task page h
 family.
 
 **A run's rows are on this column too.** Under the conversation that started a run, the
-column draws that run's tree out of the tasks place's reading: one line per task (the
+column draws that run's tree out of the sessions place's reading: one line per task (the
 connector, the state mark and the fitted title) with `waits: <that task>` at the end of a
 line held behind named work, and the run's own row ending in the dot row (*what are the
 dots next to a task?* has the cells). While a task's worker is on a step, its row spends one
@@ -2331,8 +2369,8 @@ work, shapes the brief and starts it. The column's other section, `standing`, en
 
 ## What a bare /task does — /task with nothing after it opens the task page
 
-**`/task` typed on its own opens the full-screen task page** — the same page `/history` and
-`ctrl+.` open, holding every task this project has ever run. It used to print a one-line
+**`/task` typed on its own opens the full-screen sessions place** — the same place `/history` and
+`ctrl+.` open, holding this machine's conversations and their tasks. It used to print a one-line
 usage instead. It does not any more.
 
 The reason is the `+ /task` row at the foot of the task column: that row puts `/task ` in
@@ -2380,11 +2418,11 @@ conversation's work into another one's without the column ever saying it had. Ev
 they offered is on the other side of the door, whole: every row, the filter, the cards, and
 `m` for the mention.
 
-**Where old work is listed now:** the task page (`ctrl+.`, `/history`, or that line), and
+**Where old work is listed now:** the sessions place (`ctrl+.`, `/history`, or that line), and
 home (`/home`, or space twice on an empty box). The chat can also read the whole project
 record for you with its `tasks` tool; just ask.
 
-**Running work in another codeaf window** is on no surface but the task page. An ordinary
+**Running work in another codeaf window** is on no surface but the sessions place. An ordinary
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
@@ -2517,7 +2555,7 @@ server still has the jobs section to put a cursor on, so `alt+t` takes it.
 
 **The walk stops at this conversation's last job, after its last task.** `↓` walks the band,
 the groups and then the jobs section under them, and clamps there rather than carrying on
-into the project's record. Old work is walked on the task page (`ctrl+.`), where `enter`
+into the project's record. Old work is walked on the sessions place (`ctrl+.`), where `enter`
 goes inside its card.
 
 The cursor follows the task, not the row, when a task moves from one group to another. If
@@ -3123,7 +3161,7 @@ originating conversation and available evidence. Press `esc` to return to the li
 
 ## Going inside an old task — see what a past task did, read a finished task's report, where is the story my task wrote
 
-`enter` on any row of the task page (`ctrl+.`, `/history`) that this conversation did not
+`enter` on any task row of the sessions place (`ctrl+.`, `/history`) that this conversation did not
 run **goes inside that task**. A click does the same on the first press. The task column carries no rows of old
 work — its `ctrl+. earlier` line is the door onto this page — so the page is where every
 old task is opened.
@@ -3210,7 +3248,7 @@ one more dim line:
 ctrl+. earlier
 ```
 
-Click it, or press `ctrl+.`, and the full-screen task page opens. The column is left exactly
+Click it, or press `ctrl+.`, and the full-screen sessions place opens. The column is left exactly
 as it was: the page is somewhere you go and come back from, not a state the column enters.
 
 **There is exactly one such line, never two.** It is drawn when the record holds tasks
@@ -3582,14 +3620,15 @@ Scrolling a finished task, including at the top of its page, keeps those details
 collapsed. Open work shows `▾ worked`; closed work shows `▸ worked`. Click the chip
 or press `ctrl+e` again to collapse the whole outline, including open tool steps.
 Your later messages and corrections remain visible at their original boundaries.
-A stretch with no final reply keeps its available work visible, so an interrupted
-or tool-only record does not pretend to have an answer.
+Settled work without a final reply also has a disclosure; it never invents an
+answer. Failed work carries a `×` count. Open the chip to inspect error details.
 
-While a task is running, settled phases keep their individual chips. Current work
-uses the conversation’s compact step display: recent step headings, with a moving
+While a task is running, its current turn uses one shared compact activity window.
+Earlier steps stay behind that disclosure. It shows recent step headings, with a moving
 heading for the active call or `Working` between calls. Click it or press `ctrl+e`
-to open the details, and use the same control to close them. Questions, failures,
-your corrections, and the final reply remain visible outside this display.
+to open the details, and use the same control to close them. Questions,
+your corrections, and confirmed replies remain visible outside this display.
+Failed calls show `×` in compact activity, without opening error output.
 When the task finishes, live expansion choices reset so they do not accidentally
 expand the entire finished task. `ui.work = open` still opens details by default.
 
@@ -3615,10 +3654,11 @@ Within expanded work, the existing disclosure controls still apply:
 
 ## Why a task’s progress paragraph changes to a step caption
 
-A paragraph followed by more work in the same stretch becomes progress narration,
-even if it previously ended a settled phase. It uses the quieter work styling and
-can supply the next step’s caption. The trailing reply keeps answer styling; a
-message or correction from you preserves the reply before that boundary.
+Prose accompanying a tool call becomes progress narration and can supply that
+step’s caption. A completed response with no tool calls is a confirmed reply to
+you: it stays visible and formatted even when later work starts. This rule also
+applies in the manager, ordinary chat and nested task pages. Opened narration
+renders markdown in quieter ink rather than showing raw formatting markers.
 
 The caption is a short summary. Open it to read any narration left out of the
 heading alongside that step’s calls; shortening a heading does not discard text.
@@ -4213,8 +4253,8 @@ which is why neither is in the settings panel.
 
 Two hard bounds, and they behave differently on purpose.
 
-**Both bounds count quick tasks and ordinary ones together**, and `quick_task` is withheld
-at the floor exactly as `propose_task` is.
+**On the optional node belt, both bounds count quick tasks and ordinary ones together**,
+and `quick_task` is withheld at the floor exactly as `propose_task` is.
 
 **Depth: 3 levels.** The conversation proposes a task; that task may propose pieces; a
 piece may propose pieces of its own share; a piece of a piece may not. Neither
@@ -4242,6 +4282,14 @@ splits.
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
 
+## How the bash belt run splits work instead of nesting node tasks
+
+With the switch unset, or `CODEAF_TASK_BELT=bash`, a task uses the run engine instead of the node tree.
+Run workers have neither `quick_task` nor `propose_task`; they split with `plandb split`.
+The plan store allows up to 256 tasks in one added batch and 1024 tasks in one run.
+A composite worker can wake at most four times to integrate its children. The node
+tree's 3/20 bounds do not apply to that run.
+
 ## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
 
 **There is no limit by default.** codeaf does not cap the number of tasks running at the
@@ -4266,7 +4314,9 @@ starts instead:
 
 Both gate starts only. Nothing already running is ever touched; pressure drains
 as running work finishes. The older node road re-asks every 5 seconds; the
-default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
+default run road re-asks each supervisor pass, every 300 milliseconds. Changing either
+setting in `/settings` is noticed without restarting the engine, and a held row is
+re-evaluated under the new ceiling. `codeaf do`
 uses the same profile limits and, having no rail, says a hold on stderr, once:
 `waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
 nothing happens* on the terminal page).
@@ -4316,6 +4366,9 @@ to ask again:
 ```
 task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 · $0.021 (est $0.023) · not right? /redo stronger
 ```
+
+When you explicitly stop a task, its line says `stopped` and does not offer
+`/redo stronger`; a stop is not a crew failure and teaches the router nothing.
 
 A seat you pinned wears the pin mark `⌖` in front of its model.
 
@@ -4540,6 +4593,10 @@ The cursor opens on `keep going` — the destructive answer is never under the k
 press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep going`.
 **`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
 a list and the work behind it may be an hour old.
+
+From the main box, `/stop` offers the only queued or machine-held task when it is the
+sole active task, even when its queued group is folded. With more than one active task,
+open the task or focus its row before stopping it.
 
 With a pointer, the `Stop` at the right end of a room's facts row — the second row of its
 header, under the breadcrumbs — raises the same card.
@@ -5164,7 +5221,7 @@ same word. The row's kind is not drawn, and its cost is available in the detail 
 `←` folds the branch under the cursor and `→` opens it again. When you fold one, the
 section heading says how many rows are hidden, such as `completed · 4 folded away`.
 The list scrolls through every conversation tree selected by the time window.
-This includes tasks from the run store. The compact rail inside a conversation instead keeps running work first and groups finished children into a count; that compact view does not change the Sessions page’s folds or chronological order.
+This includes tasks from the run store. The side column inside a conversation has its own groups: Done starts folded, and opening it shows every task row its heading counts, including separate attempts at the same request. That column does not change the Sessions page's folds or chronological order.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
@@ -5226,18 +5283,14 @@ A task's **page** shows everything below it under its steps the same way, each
 with its live step while its worker is on one. Opening a row (`enter`) and
 leaving a note are unchanged by the tree.
 
-## Why is this group one line? — finished families fold on the rail
+## Why is this group one line? — Done folds its task rows
 
-The rail shows the run's tree. It puts families with running work first, newest
-activity on top, then queued families, then done families folded with their age.
-Inside a family it keeps store order, except that running rows float to the top and
-its done rows fold into one `✔ N done` line at the bottom.
-
-A family becomes one rail line when every task in it is done or failed. The line
-keeps the family title and says how many settled below it — `· 3 done`, or
-`· 3 failed` when the family failed. This is a fold, not missing work: select the
-line and press `enter` to open the family's page. A family with anything running
-or queued stays open on the rail.
+The side column puts each task under Running, Queued, Waiting or Done. Running
+stays open; the other groups start folded to one heading, such as `Done 2 ▸`.
+Press the heading or use `enter` on it to see its task rows (`Done 2 ▾`). Every
+task the heading counts gets a row, even when two attempts at the same request
+have the same title. A run's parts fold with the task row that carries them.
+Press a task row to open its page and see the work inside it.
 
 ## What does queued behind it mean? — open tasks are waiting on this one
 
@@ -5681,3 +5734,25 @@ refresh, not two. A run with no rows yet buys none, and neither does a task
 handed to a program such as senior-dev: its page is the actions it took, each
 under the step of its process, and its row already says the step it is in, so it has
 no four lines.
+
+
+## A task waiting on a busy machine after restarting the engine
+
+An ordinary task backed by its plan resumes when its conversation opens again.
+A task waiting for machine capacity keeps its accepted brief and exact folder,
+and waits at the same admission gate. It takes no folder lock or branch while
+waiting. A task that had already started uses its recorded working copy and plan;
+completed plan steps are retained rather than starting a new task. Its accepted
+crew seats, pins, fallback history, and already-spent task and checker budgets
+are retained even if the current profile names different models.
+
+`/stop` in the main box offers the single open task, including one queued because
+its machine is busy. With multiple tasks, open the intended task first. The task
+room's stop reaches the same operation. A stopped task stays stopped after restart.
+
+An older record that lacks its working folder or complete crew policy reads
+`interrupted` and asks you to request the task again. A model call interrupted
+before its cost was saved also stays interrupted: inspect the saved work before
+asking again. Its cost is never guessed or reset to make it resume, it is never
+counted as completed, and its folder is never guessed. Programs that had already started keep their existing
+interrupted-program behavior; this restart rule concerns ordinary planned tasks.

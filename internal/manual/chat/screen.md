@@ -47,14 +47,14 @@ column closed the conversation is laid out at the full width of the terminal, ru
 still draws the strip along the top, and the keys row under the box reads `alt+l tasks`
 once the session has tasks to come back to and no running-turn line owns that row.
 
-**Eight places take the whole frame instead of sharing it**, at every width: home, teams,
-sessions, standing, memory, spend, search and settings. Five are on the tab bar with the way back to the chats, `home  teams  chats
-sessions  spend  settings`, and `tab` walks the five rooms; `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) jump
-straight to any of the eight from wherever you are standing, a place or a conversation,
+**Seven places take the whole frame instead of sharing it**, at every width: home, teams,
+sessions, standing, memory, spend and settings. Five are on the tab bar with the way back to the chats, `home  teams  chats
+sessions  spend  settings`, and `tab` walks the five rooms; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
+straight to any of those seven or back to the chats from wherever you are standing, a place or a conversation,
 and each
 has commands of its own (`/home`, `/teams`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
-deliberately not one of the eight: it is something you do to this conversation rather than
+deliberately not one of the seven: it is something you do to this conversation rather than
 a room in the machine.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
@@ -293,6 +293,8 @@ program, ask
 their own question about work in flight, and act on every conversation this window holds
 at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
 three answers does.
+The session cancels its routing-cache refresh and waits for that refresh's remaining
+local writes before shutdown completes.
 
 On the switcher card, `ctrl+w` closes a selected background tab while keeping
 its work running, and that row drops behind the fold. For the current conversation it uses the same close card when
@@ -670,8 +672,9 @@ Both halves of the line are true and neither one covers for the other:
   the words it was said in — your messages, the replies, the tool calls and their whole
   output. Nothing was thrown away.
 - **The model does not.** Above that line the model is working from a shortened version:
-  old tool results became one-line pointers to the files that hold them, and long runs of
-  its own earlier work became a single line saying how much went. So if you ask about
+  old tool results became one-line pointers to the files that hold them, long runs of
+  its own earlier work became a single line saying how much went, and — when that was not
+  enough — the oldest part of the conversation became a summary it wrote. So if you ask about
   something above the line, it may answer from something shorter than what you are looking
   at — ask it to `read` the file, or paste the part you mean back in.
 
@@ -945,14 +948,16 @@ If the answer is just the word `codeaf`, this conversation has no project — it
 started somewhere with nothing to borrow, and works in a directory of its own. `/status`
 prints where that actually is.
 
-## The task name above an answer that appeared on its own
+## The task sources behind an answer that appeared on its own
 
-A reply that begins because a task finished has a dim task line immediately above it in
-the transcript. The line uses the same identity mark and name as the task column and quotes
-your original request. Several finished tasks answered by one turn make several lines in
-arrival order. A reply to something you just typed has no task line, and a task with no
-recorded request shows its name without an empty quote. These lines return with the reply
-after `/resume`; the finished-task strip above the input is unchanged.
+A reply that begins because tasks finished keeps their source details inside the
+work disclosure. Press `ctrl+e` to inspect each task's identity, name, and full
+original request, in arrival order. Closing the disclosure keeps repeated
+requests out of the conversation while the assistant's answer stays visible.
+A reply to something you just typed has no task sources; a task with no recorded
+request shows its name without an empty quote. The same source details remain
+available after `/resume`, and the tasks themselves remain accessible in the task
+column.
 
 ## Provider missing or tok/s not showing — why via or the machine in brackets or the rate is not there, no rate after a follow-up
 
@@ -1165,7 +1170,7 @@ expire on time.
 ## Why the bottom rows of a long list look dimmer — faded, greyed out or washed out rows
 
 The last three rows of a list that runs on past the bottom of its window are drawn a step
-fainter each, fading toward the background. It happens on the task page (`/history`,
+fainter each, fading toward the background. It happens on the sessions place (`/history`,
 `ctrl+.`) and on the task column. Home's panels never fade: each one folds inside itself
 with `N more` instead.
 
@@ -1765,26 +1770,20 @@ look like a reply that opened in bold, which is a different thing.
 
 ## Why is part of the reply grey, and where is the actual answer
 
-Because that part was never the answer. It was codeaf saying what it was about to do.
+Prose that accompanies tool calls describes work. In the compact view it supplies
+step descriptions; inside the opened outline it uses the work gutter and quieter ink.
+A response with no tool calls confirms a reply to you. That reply stays visible,
+with full markdown formatting, even if the model resumes work afterwards.
 
-A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
-work start under it in the same turn is narration** — "let me check the config first" —
-and the moment the next tool call opens, that paragraph becomes work. In the compact
-conversation it supplies a step description; inside the opened outline it uses the same
-two-column gutter as the tool rows and drops one shade below the body text.
+Your messages and confirmed replies stand outside the work disclosure. Team
+exchanges, reasoning and compaction details stay inside it. A failed call shows a compact `×` status; its details open only when you ask. An
+approval question remains visible so you can act on it. Open the work with
+`ctrl+e` to inspect the retained details, then open a step to see its calls.
 
-**The answer is the last thing the turn says, and it is the only flush-left, full-ink
-block in it.** So: scan down the left edge. Text that starts at the margin was said to
-you. Text that starts two columns in was done for you. There is one blank row above the
-answer whenever the turn did any work, so it stands away from the machinery.
-
-Grey narration carries **no markdown** — no bold, no headings, no code colouring. That is
-deliberate: a bold heading inside working notes would be heavier than the answer under it,
-and the loudest thing on screen would be the part you did not ask for.
-
-Nothing here reads what the model wrote. It is decided entirely by the shape of the turn —
-what came after what — so it is the same on a conversation you resume as it was live, and
-the same on a task's own page.
+Disclosed narration renders markdown structure in quiet ink: headings, lists and
+code remain readable without exposing raw markdown markers. Classification uses
+response and tool boundaries, not guessed keywords in the model's prose. The same
+rule applies in ordinary chat, the manager and task pages.
 
 One thing that is **not** work, and so never greys the paragraph above it: a line codeaf
 writes about the turn itself. What the turn changed, what it cost, a notice that a request
@@ -1797,23 +1796,20 @@ no colour at all, the gutter alone does.
 
 ## I pressed esc and the reply stayed grey — why nothing became the answer
 
-That is the screen telling you the truth: **an interrupted turn never reached an answer.**
+Press `esc` while a turn is running to stop its unfinished work. Completed replies
+and updates already addressed to you remain readable. An explicitly addressed
+update interrupted while streaming also stays visible, with an `interrupted`
+label; it does not claim to be a completed answer.
 
-Press `esc` while a turn is running and whatever had been written stays on screen,
-because the session keeps it — but it stays at the working shade, in the working column, for good. The missing
-flush-left paragraph *is* the statement that you did not get an answer, so nothing has to
-be added to say it. Asking something else afterwards does not promote it later.
+Unfinished operational narration and tool details collapse into the stopped-work
+chip. Click it or press `ctrl+e` to inspect the retained details. Your messages,
+steering and actionable decisions remain outside the disclosure.
 
-The turn also collapses to a chip that says who stopped it —
-`▸ stopped by you at 40s · 4 tool calls · ctrl+e` — with nothing left standing under it.
-`ctrl+e` over an empty message box, or a click on the chip, opens it again. codeaf's own
-lines about the stop, `· stopped` and anything it dropped from the queue, stay outside
-the chip.
-
-One limit worth knowing: the session file keeps the words a stopped turn managed to say
-and keeps no mark saying it was stopped. So if you close codeaf and **resume** that
-conversation later, that turn is rebuilt from its shape alone and its last paragraph reads
-as an answer again.
+Newly recorded conversations preserve the audience and interruption state when
+you reopen them. Engine-generated handover and interruption notes stay inside
+operational disclosure. For older journals without this metadata, only complete
+reserved interruption records can be recognized safely; ambiguous mixed prose is
+preserved rather than removing words that might have been intended for you.
 
 ## My message appeared in the middle of the reply — a message never lands mid-stream
 
@@ -2984,10 +2980,10 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+9`, `opt+.`,
+running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+8`, `opt+.`,
 `opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
 calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
-chords are drawn `alt+1`…`alt+9`, `alt+.`, `alt+enter` and so on. Every hint line, the key
+chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint line, the key
 map, the composer layer's rows and the key sheet `/help` draws read that one spelling, so
 what is on your screen is what is on your keyboard.
 
@@ -3020,7 +3016,7 @@ appears under the list:
 
 It names the terminal you are actually in, it is said once, and the first real chord that
 arrives retires it for the rest of the session. The first-run setup says the same thing ahead
-of time, as a condition rather than a diagnosis: `the places answer opt+1…opt+9 · if opt types
+of time, as a condition rather than a diagnosis: `the places answer opt+1…opt+8 · if opt types
 a character instead, turn on "use option as meta" in …`.
 
 **`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
@@ -3052,8 +3048,8 @@ are worth the one setting.
 
 **And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
 terminals run the kitty keyboard protocol and report it, and where that report arrives codeaf
-binds `ctrl+1` … `ctrl+9` as a second spelling of the jump and `ctrl+.` as a second spelling of
-the map. The map's own line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is
+binds `ctrl+1` … `ctrl+8` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is
 live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
 why it can only ever be the second spelling and never the first — a terminal that has said
 nothing is never promised it.
@@ -3091,7 +3087,7 @@ legend while one is up. Its whole value is that seeing it anywhere means one thi
 
 ## Home and the places use the same colours as the chat — and their own background, none
 
-**Home and the six places beside it — tasks, standing, memory, spend, search, settings —
+**Home and the five places beside it — tasks, standing, memory, spend, settings —
 paint from the table you just read.** Same inks, same three background steps, same
 terminal background showing through. A place is the chat's palette applied to a list.
 
@@ -3226,7 +3222,7 @@ Finished work sits under `Done`, which starts folded to its heading: press `Done
 `enter` on it, to open it, and it stays open for the session.
 
 A background job is not a finished task row: it lives in the `jobs` section, and its log
-path is on the job's page. The full record of any task is on the task page (`ctrl+.`,
+path is on the job's page. The full record of any task is on the sessions place (`ctrl+.`,
 `/history`).
 
 ## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it
@@ -3470,7 +3466,7 @@ conversation you are in, the room you are standing in — and the **copy span's*
 are facts about the session rather than about a pointer, and they are true whoever is
 reading. What is dropped is the quieter background the pointer and the cursor share.
 
-## Two other things that move on screen
+## The pulsing ellipsis and "still working" — what moves on screen while a turn waits
 
 **The pulsing ellipsis, and the `still working` fallback.** When a turn is running and
 nothing else on screen is moving, two spaces then a pulsing ellipsis cycles `·` → `··` →
@@ -3494,12 +3490,21 @@ left when neither of the lines above knows anything. It says "still working" and
 "trying again" — a silence is only a silence to this suffix, and the words change to
 `trying again` solely when the request really was cut and re-sent, which is said outright.
 
-**The compaction mark.** A compaction is drawn while it runs and left as a rule once it
-lands, so the conversation never silently loses its middle. Running, it reads
+## The compaction line — what "⚭ compacted" means, and why a summary's line stays after the turn
+
+A compaction is drawn while it runs and left as one quiet line
+once it lands, so the conversation never silently loses its middle. Running, it reads
 `⠙ compacting ~84k tokens · 6s` — a braille spinner on the same grid as the tool
-spinners, dim, with a count-up. Settled, it becomes a centred rule:
-`───── ⚭ compacted from ~84k tokens · took 6s ─────`. The duration is dropped under one
-second. It is never painted the question hue, because nobody is being asked anything.
+spinners, dim, with a count-up. Settled, it becomes a dim line in the notes' lane:
+`· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · full record in the session journal · took 6s`. The duration is
+dropped under one second. It is never painted the question hue, because nobody is being
+asked anything. **A pass that wrote a summary stays after the turn ends**: when the turn's
+work folds behind `▸ worked`, its line stands outside the fold — above the answer when it
+ran mid-turn, under it when it ran at the end — because it rewrote your own words in the
+model's copy of the conversation. A pass that only folded or stubbed is ordinary machinery
+and folds with the rest of the turn; `ctrl+e` opens it. A `/compact`
+you run yourself leaves the same mark: `⚭ compacted · about N to M tokens` when the
+measured count fell, or `⚭ compacted` without a size when it did not.
 
 ## What is it doing right now — connecting, first word, thinking, writing, paced, trying again
 
@@ -4083,7 +4088,7 @@ one.** Whether you reached a row with the mouse or with `↓`, the row you are o
 same — it does not change appearance depending on which hand you used. In a list the
 conversation opens over you, what tells the two apart is the mark in front: `›` where
 enter would act, `·` where the pointer is. On the places (tasks, standing, memory, spend,
-search, settings) there is no mark at all: the row under either hand wears the same ground
+settings) there is no mark at all: the row under either hand wears the same ground
 with its name in bold, the way a row on home does.
 
 The step above that is for the thing you have actually **chosen**, and it stays drawn
@@ -4120,7 +4125,7 @@ are inside codeaf, and it changes as you move:
 - a conversation that has not named itself yet: `new conversation · codeaf`, which becomes
   the name the moment the conversation has one
 - a task page: `Fix the nil-map crash · task · codeaf`
-- the tasks, standing, memory, spend, search or settings place: its own word, as in
+- the tasks, standing, memory, spend or settings place: its own word, as in
   `memory · codeaf`
 - over `--host`, the machine comes before the product: `Token counter @ devbox · codeaf`
   (home at rest there is `codeaf @ devbox`)
@@ -4245,16 +4250,18 @@ press `ctrl+e` to inspect the complete words while they arrive.
 When the response finishes with an answer and no tool calls, the full reply opens
 as formatted text. Questions open at that same boundary, before later completion
 checks finish. This means full answers no longer appear at full size token by
-token in the compact view. A response that calls a tool stays a step. If work
-continues later, earlier prose returns to the work hierarchy.
+token in the compact view. Ordinary narration that calls a tool stays a step. A confirmed reply remains
+visible when later work starts. An explicit human update streams as formatted
+text immediately, with its protocol marker hidden, even before more tool calls.
 
 The same behavior applies inside task rooms. Saved answers remain readable when
 you return, and completion still collapses the intermediate work. Explicitly
 expanded work and `ui.work = open` keep the detailed reading view available.
 
 A message queued beneath a streaming reply, or a notice displayed there, stays
-below the complete answer when its response is confirmed. Stopping the turn keeps
-its partial response dim even if a confirmation was already in flight.
+below the complete answer when its response is confirmed. Stopping preserves
+explicit human updates with an interrupted label and folds unfinished operational
+narration, even if a confirmation was already in flight.
 
 If private work falls below a queued message, its finished work stays behind a
 separate closed `worked` chip. Expanding that chip still reveals its details.

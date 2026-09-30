@@ -182,6 +182,19 @@ func TestARoutedTaskSaysItsCrewTwice(t *testing.T) {
 	}
 }
 
+func TestAStoppedTaskCrewLineDoesNotOfferRedo(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 8, State: session.TaskRunning, Crew: crew})
+	a.sayTaskCrew(session.TaskNotice{ID: 8, State: session.TaskFailed, Stopped: true, Crew: crew})
+	line := lastNote(t, a)
+	if !strings.Contains(line, "task 8 crew · stopped") || strings.Contains(line, "/redo stronger") {
+		t.Fatalf("stopped crew line = %q", line)
+	}
+}
+
 // crewEffortAgent is a task door that records the effort word it was handed.
 type crewEffortAgent struct {
 	*fakeAgent
@@ -223,6 +236,7 @@ func TestTaskEffortWordsReachTheSession(t *testing.T) {
 }
 
 // `/redo stronger` is the one form of /redo, and it reaches the session.
+// Bare `/redo` defaults to stronger.
 func TestRedoStrongerReachesTheSession(t *testing.T) {
 	a, _ := sheetApp(t)
 	door := &crewEffortAgent{fakeAgent: &fakeAgent{model: "openai/gpt-4.1-mini"}}
@@ -230,6 +244,11 @@ func TestRedoStrongerReachesTheSession(t *testing.T) {
 	runCmd(a.runRedo("stronger"))
 	if !door.redone {
 		t.Fatal("/redo stronger never reached the session")
+	}
+	door.redone = false
+	runCmd(a.runRedo(""))
+	if !door.redone {
+		t.Fatal("bare /redo never reached the session")
 	}
 	door.redone = false
 	runCmd(a.runRedo("harder"))

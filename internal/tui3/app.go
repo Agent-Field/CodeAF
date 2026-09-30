@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -56,6 +58,10 @@ const markdownThrottle = 1500 * time.Millisecond
 // is how often the lock is worth taking in wall time, and that answer does not
 // change because the frames arrived over a wire (link.go's [app.dueEvery]).
 const usageEvery = 10
+
+// compactStillRunning is what /compact says when the engine is still working
+// after the surface's wait ran out: the pass lands on its own.
+const compactStillRunning = "still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands"
 
 // quietBeforeEllipsis is how long the stream has to be silent before the
 // ellipsis appears under a reply that is already streaming. Text arriving in
@@ -301,6 +307,10 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+	// summarized says an [entryCompact] pass replaced some of the conversation
+	// with a summary ([session.Event.Summarized]). Only such a pass stands
+	// outside the turn's fold (workfold.go); a free one folds with the work.
+	summarized bool
 
 	// carried marks the note naming the skills a turn carried (session's
 	// turnSkillsNotice). It is not addressed to the person, so it does not hold
@@ -530,6 +540,10 @@ type entry struct {
 	// Provisional prose has arrived, but the response has not yet confirmed
 	// whether it ends in an answer or a tool call. It stays in the work view.
 	provisional bool
+	// addressed is an explicit assistant update, visible while its body streams.
+	// Completion remains a separate response confirmation, so stopping a partial
+	// update cannot present it as a finished reply.
+	addressed bool
 	// The same identity can be attached while the reply is still pending. Its
 	// done flag confirms ownership before any private tail receives a work fold.
 	confirmed *responseConfirmation
@@ -646,8 +660,9 @@ func (e *entry) forming() bool {
 // replaced it.
 type (
 	submittedMsg struct {
-		ch  <-chan session.Event
-		err error
+		call *hostCall
+		ch   <-chan session.Event
+		err  error
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -675,7 +690,11 @@ type (
 		lump bool
 	}
 	streamClosedMsg struct{ gen int }
-	compactedMsg    struct{ err error }
+	compactedMsg    struct {
+		err           error
+		before, after int
+		agent         Agent
+	}
 	// frameMsg is the paint clock: it promotes whatever streamed since the
 	// last one into a frame, and steps the animations.
 	frameMsg struct{}
@@ -855,6 +874,11 @@ type (
 )
 
 type app struct {
+	hostReplayLoading bool
+	hostReplayPending []followingMsg
+	hostReplayWaiting bool
+	hostCalls         int
+	hostDeferred      []func() tea.Cmd
 	// telemetryNotice is the usage notice still owed to the person, drawn on the
 	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
 	// is owed or once the greeting that showed it has gone.
@@ -1457,6 +1481,12 @@ type app struct {
 	// reader could reach before it existed would be a race on this field.
 	news    *doorbell
 	leaving *doorbell
+	// landedBell and serviceLands are the third and fourth of those doors: a
+	// provider listing that a launch warm or a ctrl+r walk stocked behind the
+	// frame (servicelands.go). Made with the surface for the same reason news
+	// is — the fan-out may ring before Init — and read only on the loop.
+	landedBell   *doorbell
+	serviceLands *serviceLands
 	// frontGen counts the conversations this window has taken up, and it is
 	// WHICH ONE IS IN FRONT rather than how many there have been: a door asked
 	// of one conversation and answered after the person switched to another
@@ -1636,12 +1666,7 @@ type app struct {
 	// memory is the store the place reads and changes. It is optional because
 	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
-	// searchStore is the conversation index the search place reads, while
-	// searchStatus names the web plug the session's next call will use.
-	// usageLedger is the file the spend place reads. Each is optional and absent
-	// rather than broken when it is: search says what it is for, /status keeps no
-	// empty row, and an empty ledger draws the spend place's own teaching.
-	searchStore  SearchStore
+	// searchStatus names the web plug the next call will use.
 	searchStatus func() string
 	usageLedger  string
 	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
@@ -1799,6 +1824,7 @@ type app struct {
 	// is replaced in place: the run's report carries the whole trail, and a step
 	// left in the transcript would be that trail written twice.
 	harnessStep string
+	harnessName string
 	// designLane is the standing subscription to what the harness DESIGNER is
 	// doing (harness.go's design lane) and designGen the generation it belongs
 	// to. It is a lane of its own rather than the turn's stream because a design
@@ -1820,6 +1846,11 @@ type app struct {
 	connAsks  []connAsk
 	conns     Connections
 	connPanel connectPanel
+	// addPanel the add-a-provider door ([app.openAddProvider]): opened from
+	// the model picker's last row, it walks the machine for live servers and
+	// offers the vendored catalog beside them. Every row it activates ends in
+	// the one mint flow (startModelConnect, startCustomAdd).
+	addPanel addProviderPanel
 	// sources and sourceModels are the live model-service side of /connect.
 	// The default catalog still comes through models; only additional services
 	// live in sourceModels, keyed by their stable persisted id.
@@ -2215,7 +2246,13 @@ type app struct {
 	// list reopened while it is out must not start a second one.
 	refreshModels       func(ctx context.Context) ([]Model, time.Time, error)
 	serviceModelRefresh func(context.Context, modelsource.Connected, []Model) ([]Model, error)
-	modelsFetching      bool
+	// refreshAllModels is [Options.RefreshAllModels]: ctrl+r walks every
+	// provider, not only the default catalog.
+	refreshAllModels func(ctx context.Context)
+	// warmEmptyProviders is [Options.WarmEmptyProviders]: the launch fetch.
+	warmEmptyProviders func(ctx context.Context)
+	providerFetchError func(id string) string
+	modelsFetching     bool
 
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
@@ -2302,18 +2339,8 @@ type app struct {
 	// puts one word on the pointer's ground and changes nothing else on the
 	// frame (topnav.go's [app.navHover]).
 	tabHover page
-	// searchArm is how the search place's QUIET INTERVAL is armed, and nil — the
-	// real 150ms timer — everywhere but a test (place_search.go's
-	// [app.searchQuiet] holds the whole argument). It is a seam rather than a
-	// clock because what a test needs is not a different duration but no real
-	// time at all: the tick is delivered by hand, at the instant the test means.
-	searchArm func(gen int) tea.Cmd
-	// spend and search are those two places' own state: the ledger window and
-	// the lines it is over (spendpage.go), and the query in flight with the
-	// results it is answering for (searchpage.go). Closed, both cost the frame
-	// nothing and neither has read anything.
-	spend  spendPage
-	search searchPage
+	// spend holds the ledger window and the lines it is over.
+	spend spendPage
 	// places is the seam the tab bar's counts come through: the cached answer
 	// per place, recomputed on the clock ([app.refreshPlaceCounts]). It is nil
 	// until the first beat, and a nil seam draws no number anywhere, which is the
@@ -2535,6 +2562,10 @@ type app struct {
 	// is said once and rewritten in place, so a row that updates twenty times
 	// is one line in the thread.
 	crewSaid map[uint64]crewLineSaid
+	// turnLandings holds only ids: the node and the crew line already hold the
+	// landing's facts. The turn boundary moves their conversation rows past its
+	// answer, where a closed work fold cannot hide them.
+	turnLandings []uint64
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard
@@ -2924,6 +2955,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		sources:             opts.Sources,
 		refreshModels:       opts.RefreshModels,
 		serviceModelRefresh: opts.RefreshModelsForService,
+		refreshAllModels:    opts.RefreshAllModels,
+		warmEmptyProviders:  opts.WarmEmptyProviders,
+		providerFetchError:  opts.ProviderFetchError,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
@@ -2949,7 +2983,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
 		memory:              opts.Memory,
-		searchStore:         opts.Search,
 		searchStatus:        opts.SearchStatus,
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
@@ -3386,10 +3419,17 @@ func (a *app) Init() tea.Cmd {
 		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing(),
+		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
 		a.teamsWrite()}
+	if a.warmEmptyProviders != nil {
+		warm := a.warmEmptyProviders
+		standing = append(standing, func() tea.Msg {
+			warm(a.ctx)
+			return nil
+		})
+	}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3594,6 +3634,40 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// door is parked again in the same breath, which is what keeps exactly
 		// one command waiting on it (doorbell.go).
 		return a, a.news.waitRing()
+
+	case customAddressCheckedMsg:
+		return a, a.customAddressChecked(msg)
+
+	case localServersProbedMsg:
+		p := &a.addPanel
+		if !p.open || msg.ctx != p.probeContext || msg.ctx == nil || msg.ctx.Err() != nil {
+			return a, nil
+		}
+		selected, hadSelection := p.current()
+		p.loading = false
+		p.rebuild(msg.probes, nil)
+		if hadSelection {
+			for i, item := range p.items {
+				if !item.heading && (selected.custom && item.custom || selected.sourceID != "" && item.sourceID == selected.sourceID) {
+					p.cursor = i
+					break
+				}
+			}
+		}
+		a.touch()
+		return a, nil
+	case serviceModelsLandedMsg:
+		// A PROVIDER'S LISTING LANDED BEHIND THE FRAME (servicelands.go): a
+		// launch warm or a ctrl+r walk stocked that provider's compartment off
+		// the loop. The desk is read HERE, on the loop, each pair's memo is
+		// dropped, and an open picker restocks — so a group fills without a
+		// reopen. The door is parked again in the same breath (doorbell.go).
+		if a.serviceLands != nil {
+			for _, pair := range a.serviceLands.take() {
+				a.serviceModelsLanded(pair[0], pair[1])
+			}
+		}
+		return a, a.landedBell.waitRing()
 
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
@@ -3902,7 +3976,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pictureOpenedMsg:
 		if msg.err != nil {
-			a.note(filesOpenFailedWord + drawableLine(msg.path))
+			a.toldNote(filesOpenFailedWord + drawableLine(msg.path))
 		}
 		return a, nil
 
@@ -5008,15 +5082,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// field on the left (onboarding.go).
 		return a, a.setupDemoBeatAt(msg.gen)
 
-	case searchTickMsg:
-		// The quiet interval after a keystroke, arriving. It becomes a store read
-		// only when the words have not moved on since (searchpage.go).
-		return a, a.searchTick(msg)
-
-	case searchDoneMsg:
-		a.searchDone(msg)
-		return a, nil
-
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)
 
@@ -5103,9 +5168,61 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.steerFell(msg)
 
 	case compactedMsg:
-		if msg.err != nil {
-			a.note("compact failed: " + msg.err.Error())
+		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
+		// page over that conversation still leaves its reply behind the page.
+		if msg.agent != nil && msg.agent != a.agent {
+			return a, nil
+		}
+		if why, skipped := session.SummarySkippedWhy(msg.err); skipped {
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+				why = compactASCII(why)
+			}
+			line := lead + " compacted"
+			if msg.before > msg.after && msg.after > 0 {
+				line += fmt.Sprintf("%sabout %d to %d tokens", separator, msg.before, msg.after)
+			}
+			a.toldNote(line + separator + "summary skipped: " + why)
+			a.measureContext()
+			a.noticeEvent(eventCompacted)
+		} else if msg.err != nil {
+			if why, nothing := session.NothingToCompactWhy(msg.err); nothing {
+				// THE NO-OP SAYS WHY when the engine knows: too little older
+				// conversation to summarize, or the summary that would have
+				// shortened it did not land. An engine that says nothing more
+				// (a peer built before the reason existed) gets the old line.
+				if why == "" {
+					why = "your messages and recent work are kept"
+				}
+				a.toldNote("nothing to compact — " + why)
+			} else if errors.Is(msg.err, remote.ErrLate) {
+				// A PASS THAT OUTLIVED THE WAIT IS STILL RUNNING. The engine
+				// holds it, not this window, and it lands with the status
+				// line's count dropping; "failed" was the sentence for a pass
+				// that then succeeded (internal/remote's [Agent.Compact]).
+				a.toldNote(compactStillRunning)
+			} else {
+				a.toldNote("compact failed: " + msg.err.Error())
+			}
 		} else {
+			// THE SAME MARK AS A PASS THE ENGINE RAN ON ITS OWN ([app.divider]),
+			// so a person reading back can tell a compaction from any other note
+			// whichever door started it.
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+			}
+			if msg.before > msg.after && msg.after > 0 {
+				a.toldNote(fmt.Sprintf("%s compacted%sabout %d to %d tokens", lead, separator, msg.before, msg.after))
+			} else {
+				a.toldNote(lead + " compacted")
+			}
+			// THE METER FOLLOWS THE PASS, as it does for one inside a turn
+			// ([app.applyEvent]'s EventCompacted). Without this the status line
+			// kept the last request's weight — 585.1k over a conversation /compact
+			// had just taken to 15k — until the next message was sent.
+			a.measureContext()
 			a.noticeEvent(eventCompacted)
 		}
 		return a, nil
@@ -5113,13 +5230,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case landNoteMsg:
 		// A landing's whole answer is one line, the clean one and the one that
 		// could not go in alike (landcmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case cacheNoteMsg:
 		// A cache errand's whole answer is one line, success and refusal alike
 		// (cachecmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case spelledMsg:
@@ -5147,7 +5264,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// while the mode word and `started` stay in the note's own dim.
 			started := msg.kind + " task " + msg.id + " started · " + msg.title
 			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
-				a.noteFacts(started, msg.id, msg.title)
+				a.feed.noteWritten(started, false, []string{msg.id, msg.title})
 			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
 			// about it: the ground ladder's redirect, said when the work goes
@@ -5155,7 +5272,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// under the started one, in the same slot [app.noteFacts] already
 			// carries facts in; empty is every ordinary start and says nothing.
 			if msg.note != "" {
-				a.note(msg.note)
+				a.feed.note(msg.note)
 			}
 			a.noticeEvent(eventTaskStarted)
 		}
@@ -5563,7 +5680,8 @@ func promoteBlock(e *entry, at *time.Time) {
 //
 // The generation is assigned HERE and never at submit time, because a steering
 // submit must not invalidate the stream it is steering.
-func (a *app) adopt(msg submittedMsg) tea.Cmd {
+func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
+	defer func() { cmd = tea.Batch(cmd, a.hostCallSettled(msg.call)) }()
 	// The attachment tray settles on the same answer: a refused message keeps
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
@@ -5716,6 +5834,9 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 // clock should walk (reveal.go). Only [waitEvent] can answer that for a folded
 // run, which is why the bit is a parameter rather than a length read here.
 func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
+	if owner, ok := a.agent.(interface{ ReplayCovers(session.Event) bool }); ok && owner.ReplayCovers(ev) {
+		return nil
+	}
 	// after is what this event asks the program loop to DO, as opposed to what
 	// it asks the screen to say. Two events produce one — a turn ending, which
 	// may ring a terminal nobody is looking at (notify.go), and a task node
@@ -6002,13 +6123,15 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
 		//
-		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
-		// paths, so this used to hand the bookkeeping over on a pass that found
-		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
-		// the reader was nowhere near, the seam was marked drawn without being
-		// drawn, and the conversation between the two went quiet. The surface
-		// then said there was nothing above it. Nothing had moved, so there is
-		// nothing to carry over ([session.Event.Unchanged]).
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. A local engine no longer
+		// sends this event for a pass that found nothing, but a remote engine
+		// built before that change sends it on both paths. This used to hand the
+		// bookkeeping over on a pass that found nothing to stub and nothing to
+		// fold: replayFrom was dropped to a floor the reader was nowhere near,
+		// the seam was marked drawn without being drawn, and the conversation
+		// between the two went quiet. The surface then said there was nothing
+		// above it. Nothing had moved, so there is nothing to carry over
+		// ([session.Event.Unchanged]).
 		if !ev.Unchanged {
 			a.rebase()
 		}
@@ -6136,6 +6259,7 @@ func (a *app) settle() tea.Cmd {
 	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
 	// into ([app.settleTurn]).
 	a.settleTurn()
+	a.sayTurnLandings()
 	// A browser wait belongs to the turn that opened it. Once that turn is over,
 	// the loopback listener is gone as well, so its report must stop claiming the
 	// browser can still finish and must stop bypassing the render cache.
@@ -6526,10 +6650,8 @@ func (a *app) take(u session.Usage) {
 	}
 }
 
-// note is the conversation's own [feed.note] WITH ONE MORE PLACE TO SAY IT, and
-// it shadows the embedded method deliberately: `a.note(…)` is what four hundred
-// call sites already spell, and a second verb for "say this where the person is
-// standing" would be four hundred chances to pick the wrong one.
+// note answers a UI action or reports something requiring the person's attention.
+// Engine bookkeeping uses feed.note so its audience is explicit at the producer.
 func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 
 // noteWritten is the one body behind all three of the app's note doors, and the
@@ -6555,6 +6677,10 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // for. The flag is raised around the ONE dispatch home makes on its own behalf.
 func (a *app) noteWritten(text string, block bool, facts []string) {
 	a.feed.noteWritten(text, block, facts)
+	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
+		a.entries[n-1].told = true
+		a.entries[n-1].stale = true
+	}
 	if a.echoHome && a.at(pageHome) {
 		a.home.say(firstLine(text), "")
 	}
@@ -6637,6 +6763,11 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 // the transcript keeps. Slash tags are stripped from the payload but remain in
 // the person's message as the chipped token that explains which door acted.
 func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, start) }) {
+		return nil
+	}
+	call := a.hostCallStarted()
+
 	// STEERING IS NOT A SECOND TURN, and this is [app.startClock]'s law said
 	// about the transcript rather than about the burn window: a plain enter with
 	// a turn already streaming is a message spliced into THAT turn, queued by the
@@ -6689,7 +6820,7 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
 	}, a.wake())
 }
 
@@ -6899,11 +7030,11 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 // IT IS internal/session's OWN [foldsInto] SAID ON THIS SIDE OF THE CHANNEL. The
 // hub folds a slow subscriber's backlog by that rule; [waitEvent] folds a fast
 // stream's arrivals by this one, and both rest on the same law: EventTextDelta
-// and EventReasoning are each emitted as a kind and a text and nothing more, at
-// every one of the places that emit them. A kind that grows a second field comes
-// off BOTH lists in the same change, or each fold quietly drops it.
+// and EventReasoning preserve their kind and source audience while joining
+// text. Both folding layers keep audience boundaries, so a queued human update
+// cannot inherit an internal event's presentation.
 func foldsInto(prev, next session.Event) bool {
-	if prev.Kind != next.Kind {
+	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
 	return prev.Kind == session.EventTextDelta || prev.Kind == session.EventReasoning
@@ -6934,6 +7065,9 @@ func (a *app) unfold(turn int) {
 // folded the transcript's newest turn while a node's page was up would be
 // folding a cluster nobody can see.
 func (a *app) bodyTurn() int {
+	if run := a.orchOf(); run != nil && run.transcript != "" && len(run.journal) > 0 {
+		return run.journal[len(run.journal)-1].turn
+	}
 	if a.room != nil {
 		return a.room.turn
 	}
@@ -7389,6 +7523,10 @@ func (a *app) slash(line string) tea.Cmd {
 		}
 		return a.quit()
 
+	case "dismiss":
+		a.dismissNotifications(rest)
+		return nil
+
 	case "help":
 		// THE KEY SHEET CARRIES ITS PAYLOAD ON THE LEFT (payload.go): the chord is
 		// the thing a person came here to find and the sentence beside it is the
@@ -7514,35 +7652,9 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "workspace":
 		if rest == "" {
-			a.note("usage: /workspace <path>")
-			return nil
+			return a.openWorkspacePick()
 		}
-		if a.anchorWorkspace == nil {
-			a.note("this conversation already has a workspace")
-			return nil
-		}
-		resolved, err := a.anchorWorkspace(rest)
-		if err != nil {
-			a.note("could not set the workspace: " + err.Error())
-			return nil
-		}
-		a.workspace = resolved
-		a.owned = false
-		a.place = placeShown(resolved, false, a.host)
-		// THE BRANCH IS ASKED FOR, NOT WAITED ON. This used to call the probe
-		// straight — two `git` processes under one four-hundred-millisecond
-		// ceiling, run on the update loop, so a person who typed `/workspace`
-		// into a large repository watched the whole surface stop for up to four
-		// tenths of a second before their own keystroke was drawn. It takes the
-		// road every other reading of the repository takes ([app.probeGit],
-		// armed at `open` and at every turn end): the command runs off the loop
-		// and the branch arrives as a gitMsg, which is exactly the same nothing
-		// the legend draws until a probe answers.
-		a.branch, a.branchDirty = "", false
-		a.anchorWorkspace = nil
-		a.note("workspace · " + a.hostedPath(resolved))
-		a.touch()
-		return a.probeGit()
+		return a.setWorkspace(rest)
 
 	case "folder":
 		// WHICH FOLDER DO YOU MEAN, asked at any moment. Bare, it is the picker
@@ -7599,15 +7711,6 @@ func (a *app) slash(line string) tea.Cmd {
 		// want, and a command that took a project name would be asking a person
 		// to remember what home exists to show them (home.go).
 		return a.showPage(pageHome)
-
-	case "search":
-		// THE TYPED DOOR ONTO THE SEARCH PLACE, and it takes no argument on
-		// purpose. The place IS a box — typing in it searches and the read goes
-		// out when the box has been quiet for a moment (place_search.go) — so a
-		// query handed in at the command line would be a second way of asking the
-		// same question that could rank its answers differently from the one the
-		// person then keeps typing into.
-		return a.showPage(pageSearch)
 
 	case "wall":
 		// EVERY OPEN CONVERSATION AT ONCE, as a grid of live tiles (wall.go).
@@ -7849,7 +7952,11 @@ func (a *app) slash(line string) tea.Cmd {
 	case "compact":
 		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
-		return func() tea.Msg { return compactedMsg{err: agent.Compact(ctx)} }
+		return func() tea.Msg {
+			before := agent.ContextTokens()
+			err := agent.Compact(ctx)
+			return compactedMsg{err: err, before: before, after: agent.ContextTokens(), agent: agent}
+		}
 
 	case "rewind":
 		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE
@@ -8181,18 +8288,18 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// conversation they were in is still running.
 	switch {
 	case replacing && a.file != "":
-		a.note("new session · " + a.hostedPath(a.file))
+		a.toldNote("new session · " + a.hostedPath(a.file))
 	case replacing:
-		a.note("new session")
+		a.toldNote("new session")
 	default:
-		a.note("new conversation · " + a.place)
+		a.toldNote("new conversation · " + a.place)
 	}
 	if conv.Notice != "" {
 		// The door had something to say about HOW this conversation came to be
 		// open — "session open elsewhere — started a new one" is the sentence
 		// that exists — and the entry line is where the first conversation's own
 		// notice lands too ([Options.Notice]).
-		a.note(conv.Notice)
+		a.toldNote(conv.Notice)
 	}
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
@@ -8377,6 +8484,8 @@ func (a *app) interruptTurn() {
 		return
 	}
 	a.agent.Interrupt()
+	a.flushUpdatePrefix()
+	a.finishResponse(true)
 	a.state = stateInterrupted
 	// AND THE STOP IS BOUNDED FROM THIS INSTANT. See the block below
 	// [app.windingDown]: the letting-go is the engine's and it takes as long as
@@ -9044,6 +9153,10 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // no draft can put the caret in both at once (slashchip.go's [slashToken],
 // files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
+	if _, bash := session.BashCommand(a.input.String()); bash {
+		a.closeLists()
+		return nil
+	}
 	wasOpen := a.menu.open
 	a.menu.sync(&a.input)
 	if a.menu.open && !wasOpen {
@@ -9356,7 +9469,7 @@ func (a *app) cacheNote(u session.Usage) {
 			line += " · saved " + savedWord(saved)
 		}
 	}
-	a.note(line)
+	a.feed.note(line)
 }
 
 // repriceCache is what the session's cache reads have been worth, worked out

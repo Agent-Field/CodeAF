@@ -1256,12 +1256,12 @@ func (a *Agent) graph() *TaskGraph {
 		graph.home = a
 		graph.run = graph.runOwned
 		graph.report = a.reportTaskNode
-		// The two ceilings, resolved once for the life of the session. They are
-		// read off the config rather than off the settings file for the reason
-		// every other task row is: a scheduler that re-read a person's profile
-		// mid-run would be a run whose rules changed under it.
+		// The two ceilings start from config and refresh from the profile's one
+		// settings generation. A held task must be able to start when its person
+		// changes the limit, without requiring an engine restart; run admission
+		// uses the same governor refresh seam.
 		graph.limit = a.config.TaskParallel
-		graph.governor = newAdmissionGovernor(a.config.TaskMaxLoad, a.config.TaskMinFreeMB)
+		graph.governor = newAdmissionGovernorForProfile(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir)
 		// AND THE MACHINE'S OWN ACCOUNT, if this process opened more than one
 		// conversation onto the same machine (task_pressure.go, #907).
 		if a.config.TaskLanes != nil {
@@ -6407,11 +6407,7 @@ func (t taskTree) releaseKeptLocked() {
 	left := leftBehind(t.dir)
 	rememberLeftBehind(t.dir, left)
 	if t.ownRepository() {
-		// A universe was never registered as a worktree of anybody, so there is
-		// no registration to unpick and `git worktree remove` would be asking
-		// the person's repository about a directory it has never heard of. Its
-		// leavings are already written down, and its record is furrow's to drop.
-		t.dropUniverse()
+		// A retained copy keeps its registered timeline until the copy is reaped.
 		return
 	}
 	// AND THE RELEASE IS WRITTEN DOWN BEFORE THE REGISTRATION GOES. This is the
@@ -8144,9 +8140,16 @@ type taskTree struct {
 	rung GroundRung
 	seal string
 	// continues says a program's run carries on on the branch an earlier run
-	// of it left checked out ([ProgramFolder.Continues]); false for every
-	// other tree.
+	// of it left ([ProgramFolder.Continues]); false for every other tree. from
+	// is the branch a program's own was cut from instead of the person's, when
+	// it was ([ProgramFolder.From]).
 	continues bool
+	from      string
+	// snapshot is the commit a program's branch begins with that carries the
+	// person's uncommitted changes ([ProgramFolder.Snapshot]).
+	snapshot string
+	// untracked is the program's copied local input list, carried across retries.
+	untracked []string
 	// base is the machine commit the parent's world was sealed into, when a rung
 	// made one. It is the replay point the landing takes the inheritance back out
 	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing
@@ -8772,7 +8775,10 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 	}
 	// The working copy is given back only once its work is in, and which road
 	// that takes is the rung's own (groundladder.go's [taskTree.releaseLanded]).
-	t.releaseLanded()
+	if err := t.releaseLanded(); err != nil {
+		return mergeMerged, withReport(withReport(said, stranded),
+			"the work landed; its task copy remains at "+t.dir+" because cleanup failed: "+err.Error()), nil, refusedNothing
+	}
 	// The working copy has just gone, and the sentence says where its leavings
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.

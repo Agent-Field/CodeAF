@@ -440,6 +440,26 @@ func (a *app) stopVisible() (int, *taskNode) {
 	return count, sole
 }
 
+// stopQueued finds a sole queued task even when its group is folded. A machine
+// hold is active work from the person's point of view, so hiding that row must
+// not make the main-box stop command say there is nothing to stop.
+func (a *app) stopQueued() (int, *taskNode) {
+	var sole *taskNode
+	count := 0
+	for _, id := range a.taskOrder {
+		node := a.tasks[id]
+		if node == nil || node.state != session.TaskQueued || a.stopTaskTarget(node).empty() {
+			continue
+		}
+		count++
+		if count > 1 {
+			return count, nil
+		}
+		sole = node
+	}
+	return count, sole
+}
+
 // stopHere is the work `x` and the header's ✕ are aimed at, or the empty target
 // when there is nothing here to stop.
 //
@@ -483,11 +503,37 @@ func (a *app) stopHere() stopTarget {
 	// header's third law — and two or more are the case the focus requirement was
 	// written for: nothing to aim at, so the key is the letter it is.
 	if node := a.railFocusNode(); node != nil {
-		return a.stopTaskTarget(node)
+		if target := a.stopTaskTarget(node); !target.empty() {
+			return target
+		}
 	}
 	count, sole := a.stopVisible()
+	// The live side column also draws the plan's root without a graph node.
+	// Use its durable identity only when there is one unambiguous target.
+	if count == 0 {
+		rows, _ := a.heldPlanRows()
+		var target stopTarget
+		for _, row := range rows {
+			if !planOwnTask(row) || planEnded(row) {
+				continue
+			}
+			if !target.empty() {
+				return stopTarget{}
+			}
+			target = stopTarget{plan: row.ID, noun: stopTaskNoun, detail: stopTaskDetail}
+		}
+		if !target.empty() {
+			return target
+		}
+	}
 	if count == 1 {
 		return a.stopTaskTarget(sole)
+	}
+	if count == 0 {
+		count, sole = a.stopQueued()
+		if count == 1 {
+			return a.stopTaskTarget(sole)
+		}
 	}
 	return stopTarget{}
 }
@@ -518,6 +564,26 @@ func stopRunTarget(id string, snap orchestrate.Snapshot, known bool) stopTarget 
 func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 	if node == nil {
 		return stopTarget{}
+	}
+	// A replayed graph row can lag the plan after a reconnect. Its store row
+	// is authoritative for both identity and settlement, including joined tasks.
+	if rows, ok := a.heldPlanRows(); ok {
+		for _, row := range rows {
+			if row.ID == node.planTask || strings.TrimPrefix(row.ID, "t-") == itoa(int(node.id)) {
+				if planEnded(row) {
+					return stopTarget{}
+				}
+				return stopTarget{plan: row.ID, noun: stopTaskNoun, detail: stopTaskDetail}
+			}
+		}
+	}
+	// Plan rows carry store identities, not graph task numbers. The rail and
+	// room must reach the same cancellation door, including machine-held work.
+	if node.planRow != nil {
+		if planEnded(*node.planRow) {
+			return stopTarget{}
+		}
+		return stopTarget{plan: node.planRow.ID, noun: stopTaskNoun, detail: stopTaskDetail}
 	}
 	switch node.state {
 	case session.TaskQueued, session.TaskRunning:

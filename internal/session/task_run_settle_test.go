@@ -163,6 +163,17 @@ func TestClosingAfterTheProgramExitedSaysItHadEnded(t *testing.T) {
 		t.Fatalf("StartDelegate: %v", err)
 	}
 	<-double.entered
+	agent.beltMu.Lock()
+	over := agent.beltRun.over
+	agent.beltMu.Unlock()
+	defer func() {
+		close(double.release)
+		select {
+		case <-over:
+		case <-time.After(10 * time.Second):
+			t.Fatal("run did not finish settling after its engine returned")
+		}
+	}()
 	double.mu.Lock()
 	store := double.spec.Store
 	double.mu.Unlock()
@@ -179,8 +190,6 @@ func TestClosingAfterTheProgramExitedSaysItHadEnded(t *testing.T) {
 	if root.Error != "fake had ended; codeaf closed before it could say where its work is" || !root.CompletedAt.Equal(exited) {
 		t.Fatalf("after Close the run's task = %s (%q, ended %v), want it ended at the program's exit %v in a true sentence", root.Status, root.Error, root.CompletedAt, exited)
 	}
-	close(double.release)
-	<-double.finished
 }
 
 // AND THE SAME ON THE REOPEN ROAD: a store left open over a program that had

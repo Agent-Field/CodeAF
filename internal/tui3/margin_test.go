@@ -24,7 +24,7 @@ import (
 func marginApp(t *testing.T, stand ...standing.Item) (*app, *standingPlaceFake) {
 	t.Helper()
 	a, agent := standingPlaceApp(t, stand, nil)
-	a.width, a.height = 140, 24
+	a.width, a.height = 140, 25 // the head's air row costs the frame one row
 	return a, agent
 }
 
@@ -307,7 +307,7 @@ func TestBareStandingStillOpensThePage(t *testing.T) {
 // chord answers with (standmark.go).
 func TestStandingWithWordsSaysSoWhereNothingCanHoldOne(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.width, a.height = 140, 24
+	a.width, a.height = 140, 25 // the head's air row costs the frame one row
 	typeLine(t, a, "/standing always run the tests")
 	if !strings.Contains(plain(frame(a)), standMarkNowhere) {
 		t.Fatalf("the refusal is not on the frame:\n%s", plain(frame(a)))

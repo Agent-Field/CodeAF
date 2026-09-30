@@ -516,15 +516,41 @@ func TestPaceGrowsAsTheCapNears(t *testing.T) {
 }
 
 func TestGapsNameAMissingStrongChecker(t *testing.T) {
-	if gaps := Gaps(catalogCandidates()); len(gaps) != 0 {
+	if gaps := Gaps(catalogCandidates(), nil); len(gaps) != 0 {
 		t.Errorf("a set with a strong checker has gaps %+v", gaps)
 	}
-	gaps := Gaps([]Candidate{candidateOf(v4Flash)})
+	gaps := Gaps([]Candidate{candidateOf(v4Flash)}, nil)
 	if len(gaps) != 1 || gaps[0].Seat != Checker || gaps[0].Class != OpenEnded {
 		t.Errorf("v4-flash alone: gaps %+v, want the open-ended checker", gaps)
 	}
 }
 
+// A PINNED CHECKER IS THE CHECKER. The gap is asked of the pin alone: a strong
+// pin closes it over a weak set, a weak pin opens it over a strong one and names
+// itself, and a pin on another seat changes nothing.
+func TestGapsCountAPinnedChecker(t *testing.T) {
+	weakSet := []Candidate{candidateOf(v4Flash)}
+	if gaps := Gaps(weakSet, map[Seat]Model{Checker: kimiK3}); len(gaps) != 0 {
+		t.Errorf("a strong pinned checker over a weak set: gaps %+v, want none", gaps)
+	}
+	// The pin is read from the candidates when they carry it, and from the
+	// figures it came with when they do not.
+	if gaps := Gaps(append(weakSet, candidateOf(kimiK3)), map[Seat]Model{Checker: {ID: kimiK3.ID}}); len(gaps) != 0 {
+		t.Errorf("a strong pinned checker the candidates carry: gaps %+v, want none", gaps)
+	}
+	gaps := Gaps(catalogCandidates(), map[Seat]Model{Checker: v4Flash})
+	want := "checker pinned to deepseek-v4-flash · open-ended work will be checked weakly"
+	if len(gaps) != 1 || gaps[0].Seat != Checker || gaps[0].Class != OpenEnded || gaps[0].Line != want {
+		t.Errorf("a weak pinned checker over a strong set: gaps %+v, want %q", gaps, want)
+	}
+	if gaps := Gaps(catalogCandidates(), map[Seat]Model{Worker: v4Flash, Planner: v4Flash}); len(gaps) != 0 {
+		t.Errorf("an unpinned checker over a strong set, other seats pinned weak: gaps %+v", gaps)
+	}
+	gaps = Gaps(weakSet, map[Seat]Model{Worker: kimiK3})
+	if len(gaps) != 1 || !strings.HasPrefix(gaps[0].Line, "no strong checker among the models you allow") {
+		t.Errorf("an unpinned checker over a weak set, the worker pinned strong: gaps %+v", gaps)
+	}
+}
 func TestTheDecisionLine(t *testing.T) {
 	cands := catalogCandidates()
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pins: map[Seat]Pin{Checker: {Model: "moonshotai/kimi-k3"}}})

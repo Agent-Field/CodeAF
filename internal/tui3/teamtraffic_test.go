@@ -1,7 +1,9 @@
 package tui3
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -107,7 +109,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 	}
 	head := railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord)
 	general := railRowOf(rows, "General")
-	work := railRowOf(rows, "@"+rail+"  take the scope model")
+	work := railRowOf(rows, "take the scope")
 	note := railRowOf(rows, "@"+price+" → ")
 	if head < 0 || !strings.HasSuffix(rows[head], sideHideKey) || general != head+1 || note != general+1 || work <= note {
 		t.Fatalf("the column does not draw its header, General open with the note, and the work under it (%d, %d, %d, %d):\n%s", head, general, note, work, joined)
@@ -138,7 +140,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 	a.dropHover()
 
 	// The note's handle goes to the member who wrote it.
-	px, py := sideRowDoor(t, a, railKeyOfReply(t, a, "prices are in"), sideActJump)
+	px, py := sideRowDoor(t, a, railKeyOfReply(t, a, "prices are"), sideActJump)
 	sideClick(t, a, px, py)
 	if a.frontTabKey() != priceKey {
 		t.Fatalf("the handle went to %q, want %q", a.frontTabKey(), priceKey)
@@ -513,5 +515,74 @@ func TestAReplayedBriefIsTheManagersCard(t *testing.T) {
 	rows := ansi.Strip(strings.Join(a.teamCardRows(e, 60), "\n"))
 	if !strings.Contains(rows, teamManagerGlyph+" manager → @lexer") || !strings.Contains(rows, "│ rewrite the lexer") || strings.Contains(rows, "›") {
 		t.Fatalf("the brief draws as:\n%s", rows)
+	}
+}
+
+type postureTestAgent struct {
+	fakeAgent
+	posture string
+	setErr  error
+}
+
+func (p *postureTestAgent) SetApprovalPosture(posture string) error {
+	p.posture = posture
+	return p.setErr
+}
+
+func TestTrafficStartInheritsApprovalPosture(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	var fresh *postureTestAgent
+	tmpDir := t.TempDir()
+	sessionFile := filepath.Join(tmpDir, "session.jsonl")
+	a.start = func(workspace string) (Conversation, error) {
+		fresh = &postureTestAgent{fakeAgent: fakeAgent{model: "m"}}
+		return Conversation{Agent: fresh, SessionFile: sessionFile, Workspace: workspace}, nil
+	}
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "submgr", Text: "lead the sub team", Approval: session.PostureAllow})
+	trafficReadNow(t, a)
+	trafficReadNow(t, a)
+
+	if fresh == nil || fresh.posture != session.PostureAllow {
+		t.Fatalf("started agent did not inherit posture: got %+v", fresh)
+	}
+
+}
+
+func TestUntitledManagerGetsFallbackHandle(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	tab := chatTab{key: "mgr-key-untitled", word: ""}
+	if err := a.teamMakeManager(harbor, tab); err != nil {
+		t.Fatalf("teamMakeManager failed: %v", err)
+	}
+	teamsFlush(t, a)
+	team := mustTeam(t, a, harbor)
+	m, ok := team.Member("mgr-key-untitled")
+	if !ok {
+		t.Fatalf("manager not in team: %+v", team.Members)
+	}
+	if m.Handle == "" {
+		t.Fatalf("manager has empty handle: %+v", m)
+	}
+	if err := teamstore.ValidHandle(m.Handle); err != nil {
+		t.Fatalf("fallback handle %q is invalid: %v", m.Handle, err)
+	}
+}
+
+// A child must not join the team and wake under a gate it failed to inherit.
+func TestTrafficStartRefusesFailedApprovalInheritance(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	fresh := &postureTestAgent{setErr: errors.New("cannot rebuild rules")}
+	file := filepath.Join(t.TempDir(), "session.jsonl")
+	a.start = func(workspace string) (Conversation, error) {
+		return Conversation{Agent: fresh, SessionFile: file, Workspace: workspace}, nil
+	}
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "worker", Text: "start", Approval: session.PostureDeny})
+	trafficReadNow(t, a)
+	trafficReadNow(t, a)
+	if fresh.closes != 1 {
+		t.Fatalf("failed child closed %d times", fresh.closes)
+	}
+	if _, ok := mustTeam(t, a, harbor).ByHandle("worker"); ok {
+		t.Fatal("failed child joined team")
 	}
 }

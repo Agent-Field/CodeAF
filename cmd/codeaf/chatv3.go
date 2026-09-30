@@ -492,13 +492,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Agent:             agent,
 		Build:             buildinfo.String(),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
-		// The memory place and the search place read the SAME database the
-		// conversation remembers into, through two seams that fail apart: memory
-		// turned off in the settings opens no store at all and both are then
-		// absent, which is what keeps "memory off makes no calls" a property of
-		// the wiring rather than a branch in every caller (v3Memory).
+		// The memory place reads the conversation's store; memory off supplies no seam.
 		Memory:       v3MemorySeam(cfg.Memory),
-		Search:       v3SearchSeam(cfg.Memory),
 		SearchStatus: v3SearchStatus(cfg.SearchProvider, settings.ProfileDir),
 		// The machine-wide spending ledger the spend place adds up. It is the
 		// same file every window on this machine appends a model call to, named
@@ -515,9 +510,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// use, and one that has not resolved answers nil instead of waiting.
 		// It reads the shelf, which ctrl+r in /model refills with today's list.
 		Models:                  func() []tui3.Model { return v3Models(proc.Shelf) },
-		RefreshModels:           proc.Shelf.refresh,
+		RefreshModels:           proc.refreshDefaultModels,
 		ModelsForService:        proc.Shelf.modelsForService,
 		RefreshModelsForService: proc.Shelf.refreshService,
+		RefreshAllModels:        proc.refreshAllModels,
+		WarmEmptyProviders:      proc.warmEmptyProviders,
+		SubscribeServiceModels:  proc.registerServiceNotice,
+		ProviderFetchError:      proc.Shelf.fetchErrorFor,
 		Sources:                 settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
@@ -940,17 +939,23 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// door: a mode that forbids reading builds no hook, and a nil hook is the
 	// engine's own nothing. The ask is built once and a client is made from it
 	// per call, each billed to the judge's own seat.
-	taskLanded := poolJudgeHook(settings, settings.ProfileDir, workspace,
-		config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
-	// The runs a live process would have judged but a process death left unjudged,
-	// and the headless doors that never had this hook: at start, on a goroutine
-	// nobody waits on, judge the resumed session's own final-state nodes and the
-	// pending file's rows, each exactly once, bounded so it never holds the prompt. The
-	// process tracker cancels and joins it at close.
-	poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
-		poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
-			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
-	})
+	var taskLanded func(session.TaskLanding)
+	// AN INDEPENDENT JUDGE CANNOT SHARE THE CREW MODEL. A one-model
+	// launch therefore leaves this optional scoring to an ordinary launch;
+	// it must neither judge new landings nor sweep earlier pending work.
+	if !opts.OneModel {
+		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
+			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+		// The runs a live process would have judged but a process death left unjudged,
+		// and the headless doors that never had this hook: at start, on a goroutine
+		// nobody waits on, judge the resumed session's own final-state nodes and the
+		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
+		// process tracker cancels and joins it at close.
+		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
+			poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
+				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
+		})
+	}
 
 	cfg := session.Config{
 		Workspace:      workspace,
@@ -1026,7 +1031,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// --reasoning went to every model blind — and on a router, a knob no
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
-		SupportsParameter: activeModels.SupportsParameter,
+		//
+		// AND IT IS ASKED ABOUT THE ID THE SERVICE IS SENT. A model behind a
+		// connected service is named here with the service's written prefix
+		// (`stub/z-ai/glm-5.3-flash`), and the adapter asks the same catalog
+		// about the id it puts on the wire (`z-ai/glm-5.3-flash`): answered only
+		// about the prefixed name, the session kept the working page for a
+		// model the adapter was already sending no tools (chatpage.go).
+		SupportsParameter: v3SupportsParameter(proc.Shelf, activeModels),
 		ReasoningProfile:  config.ReasoningProfileSeam(activeModels),
 		// And the model's own published price, which is what bounds the latency
 		// ask: this session wants the fastest endpoint, not the dearest one
@@ -2152,18 +2164,6 @@ func v3MemorySeam(brain *store.Store) tui3.MemoryStore {
 	return v3Brain{brain: brain}
 }
 
-// v3SearchSeam is the same store as the search place asks for it: one full-text
-// query across every thread. It is a SECOND seam beside the memory one because
-// the two capabilities fail apart — a build with memory off has neither today,
-// and the day one of them moves to a different store the other does not have to
-// move with it.
-func v3SearchSeam(brain *store.Store) tui3.SearchStore {
-	if brain == nil {
-		return nil
-	}
-	return brain
-}
-
 // v3RolesSource is the closure internal/roles reads its ladder through: the four
 // tier models under [roles.TierKey], the per-role pins under [roles.PinKey].
 //
@@ -2499,6 +2499,25 @@ func v3AnswersText(outputs []string) bool {
 // The file is read at most once per session: it is the same rows for the whole
 // warming window, and re-reading it per message would put I/O on the message
 // path to learn nothing new.
+// v3SupportsParameter is the catalog's answer about a model, asked first as
+// named and then as the id its service is sent — the same id the adapter asks
+// about, so the session's page and the adapter's body cannot disagree about
+// what the model accepts.
+func v3SupportsParameter(shelf *v3ModelShelf, models *catalog.Catalog) func(string, string) (bool, bool) {
+	return func(model, parameter string) (bool, bool) {
+		if models == nil {
+			return false, false
+		}
+		if supported, known := models.SupportsParameter(model, parameter); known {
+			return supported, known
+		}
+		if bare := shelf.wireModel(model); bare != "" && !strings.EqualFold(bare, model) {
+			return models.SupportsParameter(bare, parameter)
+		}
+		return false, false
+	}
+}
+
 func v3SeesImages(models v3Catalog) func(string) bool {
 	var once sync.Once
 	var cached []tui3.Model

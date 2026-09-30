@@ -72,6 +72,10 @@ func crewWishOf(ctx context.Context) crewWish {
 // taskCrew is one task's crew as this conversation remembers it: enough to
 // settle its log row and to redo it stronger.
 type taskCrew struct {
+	persistMu sync.Mutex
+	persist   func() error
+	inFlight  int
+
 	call    string
 	title   string
 	brief   string
@@ -93,6 +97,7 @@ type taskCrew struct {
 	// and ladders each unpinned seat's rungs as routed.
 	original map[crewroute.Seat]string
 	ladders  map[crewroute.Seat][]crewroute.Pick
+	rescue   map[crewroute.Seat][]crewroute.Pick
 	// bad are routes that failed here; broke are accounts that ran out of
 	// credit here; gone are providers whose key was refused here.
 	bad, broke, gone map[string]bool
@@ -208,7 +213,11 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	for _, pick := range decision.Crew {
 		crew.original[pick.Seat] = pick.Send
 	}
-	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, false)
+	crew.rescue = map[crewroute.Seat][]crewroute.Pick{}
+	for _, seat := range crewroute.Seats {
+		crew.rescue[seat] = config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+	}
+	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -358,6 +367,10 @@ type crewSeatCompleter struct {
 
 func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	crew := c.run.crew
+	if err := crew.beginCall(); err != nil {
+		return nil, err
+	}
+	defer crew.endCall()
 	key, err := c.seatKey(options)
 	if err != nil {
 		return nil, err
@@ -370,6 +383,13 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		// It is a call of this task, so it counts against the task's limit.
 		return c.agent.completeWithModel(withCrewTask(ctx, crew), purposeInherited, messages, key, options...)
 	}
+	return c.completeSeat(ctx, key, messages, options)
+}
+
+// completeSeat owns retries and fallback movement for an identified crew seat.
+// Its caller keeps the durable in-flight checkpoint around the whole loop.
+func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, messages []ai.Message, options []ai.Option) (*ai.Response, error) {
+	crew := c.run.crew
 	retried := false
 	for {
 		current := crew.sendFor(key)
@@ -391,7 +411,10 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		}
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
-		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
+		callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
+			crew.guard.after(ctx, current, response, 0)
+		})
+		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
 		crew.guard.after(ctx, current, response, held)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
@@ -561,7 +584,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	if capUSD > 0 {
-		guard.Day = NewSpendDay(spentTodayOnLedger())
+		guard.Day = newLedgerSpendDay(spentTodayOnLedger, time.Now)
 	}
 	return guard
 }
@@ -571,7 +594,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // call after — seats and helpers alike — so a helper's call counts against
 // the cap a seat's next call is priced under, and the other way round.
 func (a *Agent) crewDay() *SpendDay {
-	a.crewDayOnce.Do(func() { a.crewDayHeld = NewSpendDay(spentTodayOnLedger()) })
+	a.crewDayOnce.Do(func() { a.crewDayHeld = newLedgerSpendDay(spentTodayOnLedger, time.Now) })
 	return a.crewDayHeld
 }
 
@@ -581,15 +604,16 @@ func (a *Agent) crewDay() *SpendDay {
 // seats are priced against. Nil where there is no crew — a conversation under
 // --one-model.
 func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
-	if a.config.RouteCrew == nil {
+	if a.config.RouteCrew == nil && crew == nil {
 		return nil
 	}
 	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
-	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
+	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, true); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
 	if crew != nil && crew.guard != nil {
 		guard.TaskCap, guard.TaskAction, guard.Task = crew.guard.TaskCap, crew.guard.TaskAction, crew.guard.tally()
+		guard.Cap, guard.CapAction = crew.guard.Cap, crew.guard.CapAction
 	}
 	return guard
 }
@@ -789,8 +813,11 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 		if pick.Send != current || pick.Pinned || crew.original[seat] != key {
 			continue
 		}
-		rung, ok := crew.takeRungLocked(seat, append(append([]crewroute.Pick(nil), crew.ladders[seat]...),
-			config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())...))
+		rescue := config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+		if run.recoveredCrew != nil {
+			rescue = crew.rescue[seat]
+		}
+		rung, ok := crew.takeRungLocked(seat, append(append([]crewroute.Pick(nil), crew.ladders[seat]...), rescue...))
 		if !ok {
 			continue
 		}

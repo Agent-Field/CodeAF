@@ -365,6 +365,11 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	if root, ok := repositoryRoot(workspace); ok {
 		return taskStand{dir: root, rung: taskGroundStandingIn}
 	}
+	if projectWorkspace := strings.TrimSpace(a.config.Place.Workspace); spec.parent == 0 && projectWorkspace != "" && projectWorkspace != workspace {
+		if root, ok := repositoryRoot(projectWorkspace); ok {
+			return taskStand{dir: root, rung: taskGroundStandingIn}
+		}
+	}
 	return taskStand{dir: workspace, rung: taskGroundNothing}
 }
 
@@ -425,16 +430,16 @@ func programGround(spec taskSpec, workspace string, program delegate.Delegate) t
 // nothing would. It moves dir to the folder the program would work in, and it
 // changes nothing on disk.
 func programGroundRefusal(program delegate.Delegate, dir *string) string {
-	folder, repo, _, refusal := programFolderAt(program, *dir, "say which folder the work is in, as ground")
+	folder, _, _, refusal := programFolderAt(program, *dir, "say which folder the work is in, as ground")
 	if refusal != "" || !program.LandsTree() {
 		return refusal
 	}
 	*dir = folder
+	// A REPOSITORY'S CHECKOUT IS NEVER IN THE WAY: the program works in a copy
+	// cut from its last commit (programcopy.go), so what the person has not
+	// committed is left behind and said, not refused over.
 	if hold, busy := programHoldNear(canonicalPath(folder), ""); busy {
 		return programFolderBusy(folder, hold)
-	}
-	if repo {
-		return programCheckoutInTheWay(folder, program.Notes)
 	}
 	return ""
 }

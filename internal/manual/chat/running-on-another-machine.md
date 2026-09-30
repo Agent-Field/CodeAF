@@ -100,7 +100,7 @@ a real machine. For that, use a machine you actually ssh to.
 terminal kill the ssh child this session started:
 
 ```
-pkill -f "ssh -T localhost codeaf engine"
+pkill -f '[s]sh -T .* localhost codeaf engine'
 ```
 
 The status line grows its `connection` segment, the surface redials itself, and the answer
@@ -112,8 +112,9 @@ in a moment`, and pressing enter again once it is back sends it.
 
 The failed dial says what it found, rather than guessing:
 
-- codeaf missing over there:
-  `codeaf is not installed on <dest> — install it there, or put it on the PATH that a non-login ssh command sees`
+- codeaf missing over there: the message says the program is called codeaf now,
+  gives its former name and date, and asks you to install it under the current name:
+  `the program is called codeaf now (it was … before 2026-09-14) and must be installed on <dest> under that name — put it on the PATH that a non-login ssh command sees`
 - ssh could not get a session at all: `ssh could not open a session on <dest>`. ssh has
   already printed its own reason on the line above.
 - no ssh on this machine: `this machine has no ssh on its path, and --host is ssh`, or
@@ -272,8 +273,8 @@ that conversation beside the one you are in — the engine gives it a connection
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
-Three of the eight places still read the machine this window is running on, and each says so
-in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
+Home search uses the far machine's conversation list. Spend and memory use their remote
+stores; when an older engine cannot supply them, each says so instead of showing local data. The whole table,
 and why the look-stamp behind each tab's number is kept per machine, is on the Places page
 under *The places over --host*.
 
@@ -578,15 +579,14 @@ The task roster lists this far conversation's work. Its rows come from the far
     keep it, or drop it — goes back the same way. Running a harness that already exists was
     never affected.
 
-13. **Three of the eight places still read this machine.** Spend adds up the ledger every
-    model call on the machine this window runs on writes into, search reads the index of what
-    was said here, and memory reads what sessions here learned — and there is no door on the
-    wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
-    says one line where its rows would be:
+13. **Spend and memory read the far machine, and say so when its engine cannot.** Spend adds
+    up that machine's priced model calls and memory reads and writes its memory store. Against
+    an older engine without one of those doors the place still opens, keeps its head and its
+    bar, and says one line where its rows would be instead of showing this computer's files:
     `spend shows what this machine has cost, and this session is on another`
-    `search reads what was said on this machine, and this session is on another`
     `memory shows what this machine has learned, and this session is on another`
-    Home, tasks, standing and settings all work and all answer for the right machine.
+    To find an old conversation, type on home: it searches the far machine's conversation
+    list. There is no separate Search page or `/search` command.
 
 14. **File paths are clickable again, and this is now a capability rather than a limit.**
     They were not for a wave: the only thing your terminal could open was a path of the
@@ -856,7 +856,8 @@ While that is happening the status line says, quietly:
 reconnecting to devbox — trying for up to 5 minutes
 ```
 
-Every call still gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
+Ordinary calls give up after 10 seconds. A remote `/compact` waits up to five minutes
+for a summary to finish; the chat stays responsive while it waits.
 
 If it cannot get back at all, you see the sentence you always saw:
 

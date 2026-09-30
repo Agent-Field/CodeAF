@@ -69,6 +69,9 @@ const (
 	// the distinction the one-glyph-one-meaning gate exists to keep.
 	GlyphAssumed = "≈"
 
+	// GlyphRemove offers to detach an unsent attachment; it reports no failure.
+	GlyphRemove = "×"
+
 	// Disclosure and navigation.
 	GlyphCollapsed = "▸"
 	GlyphExpanded  = "▾"
@@ -196,6 +199,9 @@ const (
 	GlyphSearch  = "⌕" // a call that went out to the world
 	GlyphFilter  = "⌕" // narrowing what is already on the page
 	GlyphWrite   = "✎" // a call that wrote something down
+
+	// GlyphCompacted marks a pass that shortened the model's working context.
+	GlyphCompacted = "⚭"
 
 	// The action families (internal/tui3's step gutter). One still, monochrome
 	// mark per FAMILY of work — searching, editing, running a command — keyed
@@ -442,6 +448,7 @@ func Glyphs() []GlyphInfo {
 		{"Working", GlyphWorking, '◐', true},
 		{"Settled", GlyphSettled, '✓', false},
 		{"Failed", GlyphFailed, '✕', false},
+		{"Remove", GlyphRemove, '×', true},
 		{"Stopped", GlyphStopped, '■', true},
 		{"Paused", GlyphPaused, '=', false},
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
@@ -472,9 +479,11 @@ func Glyphs() []GlyphInfo {
 		{"Pinned", GlyphPinned, '⌖', false},
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
+		{"PromptShell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
 		{"Filter", GlyphFilter, '⌕', false},
 		{"Write", GlyphWrite, '✎', false},
+		{"Compacted", GlyphCompacted, '⚭', false},
 		{"ActionRead", GlyphActionRead, '▤', true},
 		{"ActionCreate", GlyphActionCreate, '+', false},
 		{"ActionTest", GlyphActionTest, '◎', true},

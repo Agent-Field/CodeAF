@@ -105,7 +105,7 @@ const standingPastGrace = 30 * time.Second
 const standingWatchOffer = "watch-offer.json"
 
 // standingWatchAnswer is that marker's whole content. It is journaled BEFORE
-// [standing.Watch.Install] is called, so a person whose launchd would not take
+// [standing.Watch.Ensure] is called, so a person whose launchd would not take
 // the file is somebody this build knows it has already spoken to — rather than
 // somebody it tells again tomorrow.
 //
@@ -251,12 +251,13 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
+	`"isolate":{"type":"boolean","description":"Task only: keep a separate Git worktree for review. Set true for branch-only or PR-without-merge requests; shown on approval."},` +
 	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
 	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when they named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
 	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
-	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one less than one check (` + standing.Interval.String() + `) after the item's OWN first firing, which would retire it before it ever ran: checks are that far apart and a check asks about the end before it asks what is due, so an end a minute after a one-minute reminder is found expired at the moment it would have been found due. A one-off needs no end at all, since it retires the moment it fires."}` +
+	`"expires":{"type":"string","description":"Local RFC3339 retirement time; omit for never. Must be future and at least one check (` + standing.Interval.String() + `) after its first firing, since expiry is checked before due work. One-offs retire on firing and need no end."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
 	`"cost_words":{"type":"string","description":"When the person named money, quote their limit in their words — \"at most a dollar a run\". Omit when they named none; codeaf quotes the shared allowance."},` +
@@ -294,6 +295,7 @@ type standArguments struct {
 		Hint       string `json:"hint"`
 	} `json:"when"`
 	Does struct {
+		Isolate    bool   `json:"isolate"`
 		Kind       string `json:"kind"`
 		Say        string `json:"say"`
 		Brief      string `json:"brief"`
@@ -372,7 +374,7 @@ func standingPassed(field string, moment, now time.Time, tail string) string {
 // The minute is the right grain everywhere else, because a person names minutes
 // and a model writes them back. It is the wrong grain for [standingRetires],
 // where the whole mistake can live inside one minute: a model that wrote
-// `in 1 minute — 23:11` for the words and `23:11` for the end, against a moment
+// `in 1 minute · 23:11` for the words and `23:11` for the end, against a moment
 // the engine resolved to 23:11:11, would otherwise be told that 23:11 is not
 // after 23:11 and have nothing to work with.
 func standingClockExact(moment time.Time) string { return moment.Format("15:04:05 -07:00") }
@@ -494,11 +496,10 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	switch {
 	case answer.Once:
-		// Nothing is created and nothing is scheduled. The person wanted the
-		// action, not the arrangement. The result says the next step in so
-		// many words, because "nothing was set up" sent a model off to read
-		// this program's source looking for a reminder that was never missing.
-		return "Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.", false, nil
+		if !StandingOnceIsAnAnswer(item) {
+			return "this card does not offer doing it once now; nothing was set up or run", true, nil
+		}
+		return standingOnceHandoff(item), false, nil
 	case !answer.Approved:
 		if correction := strings.TrimSpace(answer.Change); correction != "" {
 			// AND THE CORRECTION MAY BE ABOUT ANY OF IT. The card's one change
@@ -520,17 +521,55 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	created = a.standingFileTheExchange(store, created)
 	a.emitStandingUpdate("stood", created, "")
-	// AND THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON. It
-	// is said to the person and not to the model: the line goes on the screen
-	// as its own dim row, and the model's whole reply is still the one sentence
-	// about what now stands ([standingRatifiedLine]).
+	// Implicit setup reports to the surface once. The tool result also carries
+	// current availability: saving an item is not a promise that this home
+	// owns the shared timer, even after the first-setup notice was already sent.
 	a.standingBackgroundOn(store, created)
 	line := fmt.Sprintf("set up %s: %s", created.ID, created.Words)
 	if when := strings.TrimSpace(notice.WhenWords); when != "" {
 		line += "\nit wakes: " + when
 	}
 	line += "\n" + standingRatifiedLine
+	line += a.standingBackgroundLimitation(created)
 	return line, false, nil
+}
+
+// standingOnceHandoff records an approval, not execution. Keep the entire
+// approved action on the tool boundary: the continuation must not reconstruct
+// its brief, workspace, acceptance or watch probe from the scheduling request.
+// Work stays in the ordinary turn under its existing tool permissions.
+func standingOnceHandoff(item standing.Item) string {
+	payload := struct {
+		Decision      string        `json:"decision"`
+		Execution     string        `json:"execution"`
+		StandingSaved bool          `json:"standing_saved"`
+		Instruction   string        `json:"next_step"`
+		Approved      standing.Item `json:"approved_action"`
+	}{
+		Decision:    "run_once_now",
+		Execution:   "pending",
+		Instruction: "The person approved this action once now. This is not a decline. Execute approved_action in its workspace using the ordinary tools, respecting its grant, rails and the current permissions. For a watch, check its probe or condition once before the action. Ignore the future schedule: do not save or re-propose it. Report actual results or a concrete blocker; approval alone does not mean the work ran.",
+		Approved:    item,
+	}
+	// standing.Item contains only validated JSON data from this tool's input.
+	raw, _ := json.Marshal(payload)
+	return string(raw)
+}
+
+// Waking items need a truthful timer status in every approval receipt, not just
+// the first-setup UI notice. A saved permission rule never needs a timer.
+func (a *Agent) standingBackgroundLimitation(item standing.Item) string {
+	if item.When.Kind == standing.WhenHold || a.config.Standing == nil || a.config.Standing.Watch == nil {
+		return ""
+	}
+	status, err := a.config.Standing.Watch.Status()
+	if err != nil {
+		return "\nBackground check status could not be confirmed. Say that the item was saved but do not promise it runs after the window closes."
+	}
+	if !status.Installed {
+		return "\nBackground checks are not installed for this home. Say that the item was saved, but scheduled work needs a codeaf window open for this home; do not promise it runs with the window closed. Do not take another profile's timer or suggest the item failed to save."
+	}
+	return ""
 }
 
 // standingRatifiedLine is what a model is told the instant something stands,
@@ -578,8 +617,7 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold {
 		when.Words = words
 	}
-	return standing.Item{
-		Schema:    standing.Schema,
+	item := standing.Item{
 		Words:     words,
 		Workspace: a.standingWorkspace(),
 		Origin:    a.standingOrigin(),
@@ -594,7 +632,9 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 		// as the person's own words.
 		Brief: standing.Brief{Title: strings.TrimSpace(parsed.Title)},
 		Grant: strings.TrimSpace(parsed.Grant),
-	}, ""
+	}
+	item.Schema = standing.SchemaOf(item)
+	return item, ""
 }
 
 // standingAltitude is the reach the card will name.
@@ -642,7 +682,7 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		// THE ECHO IS A FALLBACK AND NEVER AN OVERRIDE. [Agent.standingItem]
 		// puts the model's own when_words over the top of this when it sent
 		// any; what is left here is the case it sent none, where a card reading
-		// "in 2 minutes — 06:54" is the difference between a person checking a
+		// "in 2 minutes · 06:54" is the difference between a person checking a
 		// stamp and a person reading a sentence.
 		when.Words = echo
 	case standing.WhenEvery:
@@ -693,6 +733,7 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 // an action to be the content of; every other kind must say what it does.
 func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Action, string) {
 	does := standing.Action{
+		Isolate:    parsed.Does.Isolate,
 		Kind:       standing.ActionKind(strings.ToLower(strings.TrimSpace(parsed.Does.Kind))),
 		Say:        strings.TrimSpace(parsed.Does.Say),
 		Brief:      strings.TrimSpace(parsed.Does.Brief),
@@ -705,7 +746,7 @@ func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Acti
 		// that asked for a rule AND a line to say meant one of the two, and
 		// standing something up with an action nothing will ever run would leave
 		// the person holding a card whose promise cannot be kept.
-		if does.Kind != "" {
+		if does.Kind != "" || does.Isolate {
 			return standing.Action{}, "Invalid arguments: a hold does nothing — it holds. Leave does out, or give it a when that wakes."
 		}
 		return standing.Action{}, ""
@@ -775,7 +816,7 @@ func standingRails(parsed standArguments, when standing.When, now time.Time) (st
 		// for the same reason.
 		//
 		// The defect this pins is exact arithmetic and not a slip: the model
-		// wrote `in 1 minute — 23:11` for the words and took `23:11` for the end
+		// wrote `in 1 minute · 23:11` for the words and took `23:11` for the end
 		// from the same words, while the engine resolved the moment to
 		// 23:11:11 — eleven seconds later. So the refusal is spelled to the
 		// SECOND, or it would read as a moment that is not after itself.
@@ -857,8 +898,14 @@ func (a *Agent) standingCostWords(item standing.Item, parsed standArguments) str
 	if parsed.Rails.PerRunUSD != nil || parsed.Rails.MaxPerDay != nil {
 		return strings.TrimSpace(parsed.CostWords)
 	}
-	if a.config.Standing != nil && a.config.Standing.DailyRailUSD > 0 {
-		return "shares the day's $" + strconv.FormatFloat(a.config.Standing.DailyRailUSD, 'f', 2, 64) + " allowance"
+	if runtime := a.config.Standing; runtime != nil {
+		rail := runtime.DailyRailUSD
+		if runtime.DailyRail != nil {
+			rail = runtime.DailyRail()
+		}
+		if rail > 0 {
+			return "shares the day's $" + strconv.FormatFloat(rail, 'f', 2, 64) + " allowance"
+		}
 	}
 	return "shares the day's allowance"
 }
@@ -889,7 +936,7 @@ func standingAtMoment(rawAt, rawIn string, now time.Time) (moment time.Time, ech
 			return time.Time{}, "", "Invalid arguments: when.in has to be a distance into the future"
 		}
 		landed := now.Add(span)
-		return landed, "in " + standingSpanWords(span) + " — " + landed.Format("15:04"), ""
+		return landed, "in " + standingSpanWords(span) + " · " + landed.Format("15:04"), ""
 	}
 	parsed, err := standingMoment(rawAt)
 	if err != nil {
@@ -1213,8 +1260,8 @@ func (a *Agent) emitStandingNews(update string, item standing.Item, text string)
 
 // ── background checks, on by default, said once ─────────────────────────────
 
-// standingBackgroundOn installs this machine's timer the first time anything
-// ever stands, and says the one dim line about it.
+// standingBackgroundOn ensures background checks the first time anything stands,
+// without taking another profile's timer, and says the result in one dim line.
 //
 // NOBODY IS ASKED, AND IT HAPPENS ONCE, EVER. There used to be a question here
 // — keep checking when no window is open? — and it had one sensible answer:
@@ -1242,7 +1289,7 @@ func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) {
 		return
 	}
 	standingRememberWatch(store.Root(), true)
-	if err := a.config.Standing.Watch.Install(context.Background()); err != nil {
+	if err := a.config.Standing.Watch.Ensure(context.Background()); err != nil {
 		// SAID HONESTLY AND NOT SWALLOWED. The person is about to walk away from
 		// a machine they think is watching something for them.
 		a.emitStandingUpdate(standingBackgroundUpdate, item,

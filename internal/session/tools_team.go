@@ -668,12 +668,13 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if _, taken := team.ByHandle(handle); taken {
 		return fmt.Sprintf("@%s is already a member of %q. Pick another handle, or team_send it the work.", handle, team.Name), true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief}
-	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
+	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture()}
+	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
+	if err != nil {
 		return "The start could not be written to the team's traffic: " + err.Error(), true, nil
 	}
-	return fmt.Sprintf("Asked for a new member @%s in %q. The conversations view opens it in the team's folder, and it is handed your brief, marked as from you, on its first request; "+
-		"it shows in team_status once it has joined. Anything you team_send it before then is waiting for it.", handle, team.Name), false, nil
+	return fmt.Sprintf("Asked for a new member @%s in %q (%s). The conversations view opens it in the team's folder, and it is handed your brief, marked as from you, on its first request; "+
+		"it shows in team_status once it has joined. Anything you team_send it before then is waiting for it.", handle, team.Name, teams.ThreadNumber(id)), false, nil
 }
 
 // teamStartCost is the clause a start's permission card carries under the

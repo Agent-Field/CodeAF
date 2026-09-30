@@ -231,7 +231,7 @@ func TestNoPlaceFileMentionsTheBar(t *testing.T) {
 func TestTheReadingLayersImportNoApp(t *testing.T) {
 	readings := []string{
 		"switcher.go", "tasksplace.go", "standingplace.go",
-		"memoryplace.go", "spendplace.go", "searchplace.go", "placeprose.go",
+		"memoryplace.go", "spendplace.go", "placeprose.go",
 	}
 	fset := token.NewFileSet()
 	for _, name := range readings {
@@ -322,8 +322,7 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	// doors rather than counted out again here.
 	wantFor := func(id page, size [2]int) edges {
 		height := size[1]
-		got := edges{bar: navRow, headRule: 1, blank: placeHeadRows - 1,
-			footRule: height - placeFootRowsFor(id, height) + 1, box: -1, hint: height - 1}
+		got := edges{bar: navRow, headRule: placeHeadRows - 2, blank: placeHeadRows - 1, footRule: height - placeFootRowsFor(id, height) + 1, box: -1, hint: height - 1}
 		if id == pageHome {
 			got.box = height - 1 - boxFloor(height)
 		}
@@ -339,8 +338,8 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 				rows[i] = ansi.Strip(line)
 			}
 			got := edges{bar: a.tabRow, headRule: -1, blank: -1, footRule: -1, box: -1, hint: len(rows) - 1}
-			if len(rows) > 1 && strings.HasPrefix(rows[1], "──") {
-				got.headRule = 1
+			if len(rows) > 2 && strings.HasPrefix(rows[2], "──") {
+				got.headRule = 2
 			}
 			if strings.TrimSpace(rows[placeHeadRows-1]) == "" {
 				got.blank = placeHeadRows - 1
@@ -426,7 +425,6 @@ func TestAPlaceNeverReadsTheDiskOnADraw(t *testing.T) {
 				t.Fatalf("the %s place walked the standing store on a draw or a keystroke", place.id.word())
 				return nil
 			}
-			a.searchStore = panicSearch{t: t, place: place.id.word()}
 
 			for _, width := range []int{44, 60, 120, 200} {
 				a.width = width
@@ -511,17 +509,6 @@ func (p panicMemory) ChangedSince(since time.Time) (int, int, error) {
 
 func (p panicMemory) ListMemories(scope string, limit int) ([]store.Memory, error) {
 	p.blame("list what is remembered")
-	return nil, nil
-}
-
-// panicSearch is the conversation index on the same terms.
-type panicSearch struct {
-	t     *testing.T
-	place string
-}
-
-func (p panicSearch) SearchConversations(terms string, limit int) ([]store.ConversationHit, error) {
-	p.t.Fatalf("the %s place searched what was said while drawing its body", p.place)
 	return nil, nil
 }
 

@@ -29,6 +29,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // SetSpendRail binds a setting written in an open chat before the next turn
@@ -60,6 +62,19 @@ func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
+	if !a.config.InTask && !a.config.Errand {
+		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
+			spentToday := spentTodayOnLedger()
+			if a.crewDayHeld != nil {
+				spentToday = max(spentToday, a.crewDayHeld.Total())
+			}
+			if spentToday >= daily {
+				return spendRailReached{said: fmt.Sprintf(
+					"daily limit reached · %s spent of %s · /budget day changes it",
+					railMoney(spentToday), railMoney(daily))}
+			}
+		}
+	}
 	rail := a.spendRailUSD()
 	if rail <= 0 {
 		return nil
@@ -73,12 +88,13 @@ func (a *Agent) railBlockLocked() error {
 	//
 	// It says `limit` and not `rail`: the machinery's word is this file's and the
 	// person's word is theirs. And it names `/budget` rather than a bare letter,
-	// because the person reading this is standing in front of a message box —
+	// with its scope, because an amount without one changes only the daily limit.
+	// The person reading this is standing in front of a message box —
 	// their refused message is still in it, theirs to send again — and every
 	// printable key there belongs to that box. A door a refusal names has to be
 	// one that works from where the refusal is read.
 	return spendRailReached{said: fmt.Sprintf(
-		"conversation limit reached · %s spent of %s · /budget changes it",
+		"conversation limit reached · %s spent of %s · /budget conversation changes it",
 		railMoney(spent), railMoney(rail))}
 }
 

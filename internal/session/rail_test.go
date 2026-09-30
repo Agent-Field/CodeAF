@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // spend puts a session's accumulated cost where the rail reads it, the way a
@@ -136,7 +137,7 @@ func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
 	if !errors.Is(err, ErrSpendRail) {
 		t.Fatalf("the refusal must carry the sentinel: %v", err)
 	}
-	want := "conversation limit reached · $2.05 spent of $2 · /budget changes it"
+	want := "conversation limit reached · $2.05 spent of $2 · /budget conversation changes it"
 	if got := err.Error(); got != want {
 		t.Fatalf("the refusal reads\n  %s\nwant\n  %s", got, want)
 	}
@@ -158,5 +159,66 @@ func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
 	// AND A SUB-CENT FIGURE IS A FIGURE. `$0.00 spent of $0.00` names nothing.
 	if got := railMoney(0.0006); got != "$0.0006" {
 		t.Fatalf("a sub-cent figure reads %q", got)
+	}
+}
+
+func TestSpendRailRefusesTurnWhenDailyBudgetExceeded(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			t.Error("a refused turn reached the provider")
+			return textResponse("should not happen"), nil
+		},
+	}}
+	profileDir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
+		t.Fatalf("write daily budget: %v", err)
+	}
+	agent, _ := newTestAgent(t, completer, func(cfg *Config) {
+		cfg.ProfileDir = profileDir
+	})
+	agent.crewDayHeld = NewSpendDay(1.50)
+
+	events := collect(t, mustSubmit(t, agent, "keep going"))
+	if len(events) != 1 || events[0].Kind != EventError {
+		t.Fatalf("events = %v, want one EventError", kinds(events))
+	}
+	if !errors.Is(events[0].Err, ErrSpendRail) {
+		t.Fatalf("error = %v, want it to wrap ErrSpendRail", events[0].Err)
+	}
+	if !strings.Contains(events[0].Err.Error(), "daily limit reached") || !strings.Contains(events[0].Err.Error(), "/budget day changes it") {
+		t.Fatalf("error = %v, want it to say daily limit reached", events[0].Err)
+	}
+}
+
+// Raising the day's allowance does not remove a conversation's separate cap.
+// The named conversation setting must release the same live agent on retry.
+func TestBudgetScopeAndLiveConversationRecovery(t *testing.T) {
+	profile := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profile, 20); err != nil {
+		t.Fatal(err)
+	}
+	c := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("carried on"), nil },
+	}}
+	a, _ := newTestAgent(t, c, func(cfg *Config) { cfg.ProfileDir = profile; cfg.SpendRailUSD = 5 })
+	spend(a, 5.5)
+	for _, daily := range []float64{20, 1000} {
+		if err := config.WriteDailyBudgetUSD(profile, daily); err != nil {
+			t.Fatal(err)
+		}
+		events := collect(t, mustSubmit(t, a, "continue"))
+		if len(events) != 1 || !errors.Is(events[0].Err, ErrSpendRail) || !strings.Contains(events[0].Err.Error(), "/budget conversation changes it") {
+			t.Fatalf("daily $%.0f: want conversation-specific recovery hint, got %+v", daily, events)
+		}
+	}
+	if c.requests() != 0 {
+		t.Fatal("blocked messages reached the model")
+	}
+	if err := a.SetSpendRail(20); err != nil {
+		t.Fatal(err)
+	}
+	events := collect(t, mustSubmit(t, a, "continue"))
+	if events[len(events)-1].Kind != EventTurnDone || messageText(lastMessage(a)) != "carried on" {
+		t.Fatalf("raising the conversation limit did not unblock the live agent: %v", kinds(events))
 	}
 }

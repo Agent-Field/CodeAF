@@ -41,6 +41,8 @@ package tokens
 const NFFailedCell = "nf-fa-times_circle_o"
 
 var vocabulary = []GlyphBinding{
+	{ID: GPromptShell, Name: "PromptShell", Meaning: "composer prompt (shell)",
+		Plain: GlyphShell, UsualTint: Amber, Geometry: true},
 	// -- state (card line 1, rail card, agent row) ---------------------------
 	{
 		ID: GQueued, Name: "Queued", Meaning: "queued",
@@ -68,6 +70,12 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphFailed, NerdFont: "\uF00D", NFName: "nf-fa-times",
 		ASCII:     "x",
 		UsualTint: Coral, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GRemove, Name: "Remove", Meaning: "detach an unsent attachment",
+		Plain: GlyphRemove, NerdFont: "\uF057", NFName: "nf-fa-times_circle",
+		// Multiplication signs in prose must remain text; the tray resolves this slot explicitly.
+		ASCII: "x", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: false,
 	},
 	{
 		ID: GStopped, Name: "Stopped", Meaning: "stopped by the person",
@@ -358,6 +366,12 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphWrite, NerdFont: "\uF040", NFName: "nf-fa-pencil",
 		ASCII:     "*",
 		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GCompacted, Name: "Compacted", Meaning: "a pass shortened the model's working context",
+		Plain: GlyphCompacted, NerdFont: "\uF066", NFName: "nf-fa-compress",
+		ASCII:     "#",
+		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
 	// -- the action families (internal/tui3's step gutter) -------------------

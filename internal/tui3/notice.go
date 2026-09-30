@@ -166,8 +166,10 @@ const (
 	eventModelListOpened = "model-list-opened"
 	// eventCrewShown is /crew answered, bare or with a subcommand (crew.go).
 	eventCrewShown = "crew-shown"
-	// eventBudgetShown is /budget answered, bare or with a figure (budget.go).
+	// eventBudgetShown is /budget reaching the daily limit (budget.go).
 	eventBudgetShown = "budget-shown"
+	// eventConversationBudgetShown is /budget reaching the conversation limit.
+	eventConversationBudgetShown = "conversation-budget-shown"
 	// eventSpendOpened is the spend place raised by any door (pages.go).
 	eventSpendOpened = "spend-opened"
 	// eventSteered is enter over a running answer steering it (steer.go).
@@ -181,8 +183,6 @@ const (
 	eventPlaceJumped = "place-jumped"
 	// eventRemembered is /remember reaching its command (memory.go).
 	eventRemembered = "remembered"
-	// eventSearchOpened is the search place raised by any door (pages.go).
-	eventSearchOpened = "search-opened"
 	// eventSubharnessOpened is /subharness reaching its command, bare or named
 	// (app.go).
 	eventSubharnessOpened = "subharness-opened"
@@ -208,8 +208,9 @@ var noticeEvents = []string{
 	eventStandingOpened, eventDeliverableMade,
 	eventAsked, eventTaskTyped, eventManualAsked, eventTabReopened, eventAtOpened, eventAttached,
 	eventFolderPicked, eventProjectSet, eventModelListOpened, eventCrewShown, eventBudgetShown,
+	eventConversationBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
-	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
+	eventPlaceJumped, eventRemembered, eventSubharnessOpened,
 	eventConnectOpened, eventAutonomyAsked, eventHomeGesture,
 }
 
@@ -342,7 +343,7 @@ var notices = []notice{
 			pct, ok := a.ctxPercent()
 			return ok && pct >= contextHintPct
 		},
-		text:   "/compact summarizes the conversation now",
+		text:   "/compact shortens the conversation now",
 		retire: eventCompacted,
 	},
 	{
@@ -499,8 +500,14 @@ var notices = []notice{
 	{
 		id: "budget-cap", slot: slotHint,
 		armed:  ready,
-		text:   "/budget sets the spending cap for the day",
+		text:   "/budget sets the daily spending limit across all conversations",
 		retire: eventBudgetShown,
+	},
+	{
+		id: "conversation-budget-cap", slot: slotHint,
+		armed:  ready,
+		text:   "/budget conversation sets the per-conversation spending limit",
+		retire: eventConversationBudgetShown,
 	},
 	// ── steering a running answer ───────────────────────────────────────────
 	{
@@ -532,7 +539,7 @@ var notices = []notice{
 	{
 		id: "connect-accounts", slot: slotHint,
 		armed:  ready,
-		text:   "/connect links Notion, Slack and other services",
+		text:   "/connect links Notion, Slack and other accounts",
 		retire: eventConnectOpened,
 	},
 	{

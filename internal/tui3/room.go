@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -628,6 +629,9 @@ const roomTail = 120
 // — and three copies of the same eight fields is three chances for the fourth
 // one to be built wrong.
 func (a *app) newRoom(id uint64, title string) *taskRoom {
+	// Opening a task hands its page the keyboard as well as the composer.
+	// Otherwise the roster keeps Enter while typed notes reach the room.
+	a.railTake(false)
 	// Replacing a view must release its subscription just as Escape does.
 	// Leaving the old lane open does not keep useful work running; it leaks a reader.
 	a.closeRoom()
@@ -1207,7 +1211,13 @@ func (a *app) openRoomFor(id uint64, title string) {
 // pressed: the read may come back after the rail has been redrawn, and an
 // absent page still opens exactly what this gesture chose.
 func (a *app) openRailRoom(node *taskNode) tea.Cmd {
-	if node == nil || a.roomStandingOn(node) {
+	if node == nil {
+		return nil
+	}
+	if a.roomStandingOn(node) {
+		// Selecting the open room returns to its existing draft without
+		// replacing the page or its subscription.
+		a.railTake(false)
 		return nil
 	}
 	id, title, run, part := node.id, node.title, node.run, node.node
@@ -1488,7 +1498,7 @@ func (a *app) roomNote(text string) {
 			a.touch()
 			return
 		}
-		a.room.note(text)
+		a.room.toldNote(text)
 	}
 }
 
@@ -1561,6 +1571,10 @@ const roomTraySteerWord = "attached files do not go with a correction · they st
 // of it: what the page says the instant enter is pressed, and what it says when
 // the answer comes back.
 func (a *app) steer() tea.Cmd {
+	if _, bash := session.BashCommand(a.pastesUnfolded(a.input.String())); bash {
+		a.roomNote("run ! commands in the conversation, not a task page")
+		return nil
+	}
 	room := a.room
 	line := strings.TrimSpace(a.input.String())
 	if room == nil || line == "" {
@@ -2238,7 +2252,7 @@ func (a *app) roomHint() string {
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		if p := a.programOf(); p != nil {
-			return roomStopHint + railSep + programCallsHint(p.calls)
+			return roomStopHint + railSep + a.programViewHint()
 		}
 		return roomStopHint
 	case a.roomLandingAsking():
@@ -2255,8 +2269,8 @@ func (a *app) roomHint() string {
 	}
 	// A PROGRAM'S ROOM WITH NOTHING TO STOP still turns between its actions and
 	// its raw calls, and says the key that does it.
-	if p := a.programOf(); p != nil {
-		return programCallsHint(p.calls)
+	if a.programOf() != nil {
+		return a.programViewHint()
 	}
 	return ""
 }
@@ -2706,7 +2720,7 @@ func (a *app) roomHeadRows(width int) []string {
 	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
 	switch {
 	case a.programHeadsRoom():
-		head = append([]string{a.roomTitleRow(width)}, a.programHeadBriefRows(width)...)
+		head = []string{a.roomTitleRow(width)}
 	case a.roomOrganized():
 		head = []string{a.roomTrailRow(width), a.roomTitleRow(width)}
 	}
@@ -2729,8 +2743,7 @@ const roomHeadRowCount = 2
 // Compact frames already name the task in their navigation row.
 func (a *app) roomHeadCount() int {
 	if a.programHeadsRoom() {
-		width, _ := a.size()
-		return 1 + len(a.programHeadBriefRows(width))
+		return 1
 	}
 	if a.roomOrganized() {
 		return roomHeadRowCount
@@ -3515,6 +3528,10 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// on the rail's row under the node; the header has one line and spends it
 		// on the state.
 		return a.taskStatus(node).Word
+	case session.TaskInterrupted:
+		// Recovery is an ending of its own, read from the same store-backed
+		// status as the rail rather than the successful-merge fallback.
+		return a.taskStatus(node).Word
 	case session.TaskUnverified:
 		// NOT THE MERGE SENTENCE, for the reason the rail states in the same words
 		// (task.go's [app.railUnder]): a node whose landing is somebody's call
@@ -4155,6 +4172,13 @@ func (a *app) roomUnfoldAtTop(total, height int) bool {
 	if room == nil || room.done {
 		return false
 	}
+	// The nested node can be finished while its containing run is still live.
+	// Scrolling that transcript must not reopen completed work automatically.
+	if run := a.orchOf(); run != nil && run.transcript != "" {
+		if node, ok := orchNodeOf(run.snap, run.transcript); !ok || node.State != orchestrate.Running {
+			return false
+		}
+	}
 	rows := a.roomRows(a.bodyWidth())
 	end := min(height, total)
 	var open func()
@@ -4204,7 +4228,7 @@ func (a *app) roomFoldDoor(r row) func() {
 	case hitWorkFold:
 		// A CHIP ALREADY SHOWING ITS WORK IS NOT A DOOR — whether the reader
 		// opened it or `ui.work = open` did (render.go's [app.deckRows]).
-		if a.room == nil || a.workFoldOpen(a.room.deck(), r.turn) {
+		if a.room == nil || a.workFoldOpen(a.bodyDeck(), r.turn) {
 			return nil
 		}
 		return func() { a.openWorkfold(r.turn) }

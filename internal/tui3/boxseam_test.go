@@ -93,7 +93,7 @@ func TestTheRuleOverHomesBoxSaysTheSameFourThingsAsTheSeam(t *testing.T) {
 			t.Fatalf("home's rule does not say %q:\n%s", want, text)
 		}
 	}
-	for _, id := range []page{pageTasks, pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageTasks, pageSpend, pageSettings} {
 		a.showPage(id)
 		if text := placeFrameText(a); strings.Contains(text, targetProjectLead) || strings.Contains(text, gate) {
 			t.Fatalf("the %s place drew the draft's rule:\n%s", id.word(), text)

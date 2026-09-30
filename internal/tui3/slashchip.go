@@ -127,6 +127,9 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 }
 
 func commandSpans(value []rune, boundary bool) []segment {
+	if strings.HasPrefix(strings.TrimSpace(string(value)), "!") {
+		return nil
+	}
 	all := recognizedCommandSpans(value, boundary)
 	out := all[:0]
 	for _, s := range all {

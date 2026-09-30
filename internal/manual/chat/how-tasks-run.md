@@ -673,7 +673,7 @@ out when its brief holds parts that do not need each other, at most **20** of th
 may split its own share once more and a piece of that piece cannot. Inside a task
 both are scoped to its own family: `tasks` lists the pieces it handed out and refuses an id
 outside them with `No task "…" among the pieces you handed out.` Its brief is still its
-whole world; the project's history is not its to read. The tasks page has the whole of it,
+whole world; the project's history is not its to read. The tasks page of this manual has the whole of it,
 under *When a task splits its own work*.
 
 Approval inside a task is allow-everything, with the critical floor still under it (things
@@ -1400,7 +1400,7 @@ and inside a task the work then *waits* for that command instead of asking what 
 Nothing is asked over the wait, no step is counted, and no `[stuck]` note can be earned,
 because a task that is waiting makes no calls at all. What wakes it is the command's own
 ending, and that ending arrives whole: the exit line, the command's last lines, and the path
-to the full log, all in the one turn. This is why a task does not `sleep` and `tail` its own
+to the log, all in the one turn. This is why a task does not `sleep` and `tail` its own
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately
@@ -2557,7 +2557,9 @@ Either one set to 0 turns that check off. With both at 0 there is no machine gat
 Readings are cached for **1 second**. A held node on the older task road is
 re-asked every **5 seconds**; the run engine checks again on each supervisor
 pass, every **300 milliseconds**, so a quiet machine starts held work without
-another request. `codeaf do` uses the same governor from its profile.
+another request. Changing `task.max_load` or `task.min_free_mb` in `/settings` is
+picked up on the next admission poll, including when the chat and engine are separate
+processes, so held work is re-evaluated without restarting the engine. `codeaf do` uses the same governor from its profile.
 
 **How many start at once when a lot of work is handed out together.** A task that has just
 started is invisible to the memory reading — its own memory arrives with its first build,
@@ -2623,13 +2625,13 @@ its own and does not spend any of those three (see *Models, context, and what it
 **Routing around a full pool.** Some *too many requests* answers name which upstream
 provider's pool is full — one machine room out of the several that can serve the same
 model. When that happens, codeaf remembers the name and asks the router to route new
-calls around that provider for the next five minutes (or for the comeback time it named,
+calls around that host for the next five minutes (or for the comeback time it named,
 if shorter), so fresh work lands on machines with room instead of queueing behind the
 full one. The call that drew the answer still waits its own wait — only calls sent after
-it steer around. A model served by a single provider has nowhere else to go, and simply
+it steer around. A model served by a single host has nowhere else to go, and simply
 waits as described above.
 
-**Why things can stay slow afterwards.** codeaf watches how many calls the provider will
+**Why things can stay slow afterwards.** codeaf watches how many calls the host will
 take at once and pulls that number in half when it is told *too many requests* — once per
 burst, not once per answer. It gives it back on the clock: after **20 seconds** with no
 further pacing, one call's worth returns every **5 seconds** until it is back where it
@@ -2666,6 +2668,12 @@ When a session comes back:
   it again instead (*What a quick task cannot do*);
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
+
+A held plan task that never started comes back `interrupted`, not `working` or `done`.
+Its store row may still say `running`, but the recovered run row records that nothing
+was driving it; the room and rail use `interrupted` and keep the task's recorded steps.
+Rows recovered as `failed` read `incomplete`. Both belong under `Incomplete` on the
+rail, never under `Done`.
 
 You see one line about it, as context for your first turn rather than as a reason to start
 one:
@@ -3332,3 +3340,42 @@ object beside its matching tool result, within the existing context budget. A la
 input is explicitly marked omitted, rather than shown as a partial object. Earlier
 failures remain part of the evidence. The model continuing the work is told to check a
 reader's objection against the actual work before changing an already-correct result.
+
+## Worker starts in home instead of the project — missing relative documents
+
+When a top-level task has no stronger folder instruction and the conversation's
+working directory is outside a repository, codeaf uses its configured project
+repository. A child keeps its parent's directory, including an ordinary folder;
+a project fallback must not move it elsewhere. Explicit placement still wins.
+
+Every bash worker and checker receives its assigned working directory before the
+work order. Original checkout paths in the request stay quoted, but project edits
+and checks belong in the assigned directory; unrelated reference paths stay literal.
+
+Bash workers search the assigned project with `rg` or `git grep`. A missing
+relative document calls for checking the working directory and project first,
+not a recursive search of the whole home directory. `plandb --help` explains
+the available plan commands without looking for repository design documents.
+
+## plandb done says already terminal — cancelled tasks and ownership
+
+A task cancelled by its supervisor stays cancelled. A late `plandb done` reports
+`task "<id>" is already terminal (cancelled)` instead of `is not claimed`.
+The refusal does not reopen the task or change its result. Active tasks still
+require their owner; an automatically completed composite's empty placeholder
+can still receive its final report.
+
+## Task copies and Furrow disk usage after a merge
+
+After a repository task lands, codeaf retires its Furrow copy and timeline
+before removing the task directory. Furrow garbage collection can then reclaim
+objects that no other timeline needs. This does not erase shared parent history.
+
+A cleanup failure does not undo a successful merge. The report names the copy
+that remains, and a later sweep of the closed conversation retries using its
+saved task record. If you add files, edit files, or commit new work in that copy
+after the failure, the sweep keeps it and names why; only a copy with no work of
+its own is retired. Failed tasks and work kept for review retain their copies
+and timelines. Old temporary conversations still follow the usual seven-day
+retention policy. Previously orphaned timelines are not automatically purged:
+a missing directory alone does not prove that its history is disposable.

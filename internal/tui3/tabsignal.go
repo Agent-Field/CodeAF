@@ -240,6 +240,17 @@ func (a *app) tasksInFlight() bool {
 	return false
 }
 
+// tasksExecuting is the execution half of tasksInFlight. The footer needs
+// this narrower fact because an admitted task may still be waiting for a slot.
+func (a *app) tasksExecuting() bool {
+	for _, state := range a.taskSeen {
+		if state == session.TaskRunning {
+			return true
+		}
+	}
+	return false
+}
+
 // tabSignalGlyph is the mark itself, or "" for a tab with nothing to say.
 //
 // THE TWO MARKS ARE THE ONES THIS PROGRAM ALREADY USES for these two states —

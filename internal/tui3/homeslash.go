@@ -195,7 +195,7 @@ func homeFate(word, rest string) string {
 		// /project IS THE PIN AND /folder IS NOT, since 2026-09-22
 		// (projectcmd.go says what the two used to share).
 		return fateTargetFolder
-	case "settings", "search", "spend", "history", "home", "wall", "teams":
+	case "settings", "spend", "history", "home", "wall", "teams":
 		return fatePlace
 	case "resume":
 		return fateResume
@@ -205,7 +205,7 @@ func homeFate(word, rest string) string {
 		return fateQuit
 	case "new":
 		return fateFresh
-	case "land", "workspace":
+	case "land", "workspace", "dismiss":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "skill",
 		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
@@ -296,6 +296,9 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
 	word := canonicalCommand(strings.ToLower(name))
+	// Bind the submission before clearing the draft rebuilds the list. The
+	// folder shown beside this draft is its destination, not the next row.
+	target := a.targetWhere()
 	h.box.reset()
 	h.build()
 	switch homeFate(word, rest) {
@@ -323,8 +326,14 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		// the conversation `enter` is going to open. So the line under the box
 		// says which conversation actually changed, and the refusals travel here
 		// through the seam [app.renewRefusing] exists for.
+		if !a.mainComposer().empty() && (a.agent == nil || a.convKey(a.file) == "") {
+			h.say(startDraftUnownedWord, "")
+			return nil
+		}
 		renewed, started := a.renewRefusing(func(text string) { h.say(text, "") })
 		if started {
+			// The old conversation keeps its draft even when /new is asked on Home.
+			a.putComposer(composerState{})
 			h.say(homeFreshBehindWord, "")
 		}
 		return renewed
@@ -334,7 +343,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		// used to compact a conversation behind the screen, and `/files` opened a
 		// shelf over one. Both are now about the conversation this line is
 		// opening, which is the conversation the rule above the box named.
-		started, opened := a.homeOpenAtTarget()
+		started, opened := a.homeOpenAt(target)
 		if !opened {
 			return nil
 		}
@@ -393,17 +402,17 @@ func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
 			}
 		}
 	}
-	held := len(a.chips)
+	held := len(a.home.chips)
 	a.echoHome = true
 	cmd := a.slash("/" + word + " " + rest)
 	a.echoHome = false
 	// A REFUSAL — no such file, not a picture, over the ceiling, already on the
 	// tray — has already put its own sentence on this line through the echo, and
 	// it is the truer one.
-	if len(a.chips) > held {
-		a.home.say(folderAttachedWord+a.chips[len(a.chips)-1].name()+homeRidesWord, "")
+	if len(a.home.chips) > held {
+		a.home.say(folderAttachedWord+a.home.chips[len(a.home.chips)-1].name()+homeRidesWord, "")
 	}
-	a.home.carrying = len(a.chips) > 0
+	a.home.carrying = len(a.home.chips) > 0
 	a.home.build()
 	a.touch()
 	return cmd

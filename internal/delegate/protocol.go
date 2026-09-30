@@ -22,6 +22,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -96,6 +97,35 @@ type StageRecord struct {
 	// OPTIONAL AND ADDITIVE: a reader of version 2 that predates it reads the
 	// record without it.
 	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// Models is the models a stage record's data says the program works on — its
+// `models`, a list of model ids, and its `effort`, the rung it asks them to
+// think at — and false for a record that names none.
+//
+// THE PROGRAM SAYS WHICH MODELS IT RUNS ON, because only the program knows. The
+// flags codeaf puts on its line are a request: the program folds in its own
+// defaults, a person's own flags on a shell line, and drops a model it cannot
+// use, and a page that named the request would name models the run never
+// touched. Any stage may carry the pair; senior-dev's `bootstrap` does.
+func (s StageRecord) Models() ([]string, string, bool) {
+	var named struct {
+		Models []string `json:"models"`
+		Effort string   `json:"effort"`
+	}
+	if len(s.Data) == 0 || json.Unmarshal(s.Data, &named) != nil {
+		return nil, "", false
+	}
+	models := make([]string, 0, len(named.Models))
+	for _, model := range named.Models {
+		if model = label(model); model != "" && !slices.Contains(models, model) {
+			models = append(models, model)
+		}
+	}
+	if len(models) == 0 {
+		return nil, "", false
+	}
+	return models, label(named.Effort), true
 }
 
 // StepRecord is one `step` record: one finished action, what was run and the
@@ -184,6 +214,27 @@ func (t Terminal) Observed() string {
 // senior-dev's inner status (`pass`, `pass-unverified`, `fail`) — beside the
 // protocol's status word, and "" when the record carried none.
 func (t Terminal) Verdict() string { return t.text("status") }
+
+// HandedIn says the program handed in a change of its own — senior-dev's
+// `submitted` — whatever its own check of that change then said, and false
+// when the record does not say.
+//
+// A CHANGE HANDED IN IS FINISHED WORK, AND A PROGRAM'S OWN CHECK OF IT IS A
+// LEAD, NOT A VERDICT. senior-dev ends `fail` when its guess at the project's
+// build and tests exits non-zero, and in a fortnight of real runs every such
+// ending came from the guess — a CI line cut in half, `python3 -m pytest` on a
+// machine with no pytest — and none from a change that broke the project. Read
+// as unfinished work, each one woke the conversation to "fix" work that was
+// never broken; the host reads a handed-in change as finished instead
+// (internal/run's DelegateWorker), with what the check said kept beside it.
+func (t Terminal) HandedIn() bool {
+	raw, ok := t.Data["submitted"]
+	if !ok {
+		return false
+	}
+	var handedIn bool
+	return json.Unmarshal(raw, &handedIn) == nil && handedIn
+}
 
 // Deliverable is the answer text of a delegate that lands text.
 func (t Terminal) Deliverable() string { return t.text("deliverable") }

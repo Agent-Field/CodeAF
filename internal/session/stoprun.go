@@ -335,6 +335,13 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	var merge, branch string
 	var changed []string
 	if run.folder != nil {
+		// THE STOPPED RUN'S COMMIT CREDITS WHO ANSWERED, as an ended one's does
+		// ([Agent.landDelegateRun]), and never the conversation's own model.
+		if err := SetProgramAnswerAttribution(run.folder, a.signsGitWork().named); err != nil {
+			if g := a.graph(); g != nil {
+				g.planNote("the program's answered models could not be read: " + err.Error())
+			}
+		}
 		end := run.folder.Finish(report)
 		report += " · " + end.Sentence()
 		merge, changed = mergeInPlace, end.Changed

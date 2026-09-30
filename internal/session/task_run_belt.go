@@ -44,6 +44,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/router"
@@ -183,13 +184,30 @@ type RunSpec struct {
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
 	// ProgramBranch and ProgramIgnoredFile fence the child's eager commits to
-	// its own branch and the ignore rules recorded before it started.
+	// its own branch and the ignore rules recorded before it started, and
+	// ProgramInputsFile to the untracked files it changed of those copied in
+	// ([ProgramFolder.InputsFile]).
 	ProgramBranch      string
 	ProgramIgnoredFile string
+	ProgramInputsFile  string
+	// ProgramBriefNote is the line a program working in a copy is told where
+	// the copy is by, ahead of its brief ([ProgramFolder.BriefNote]).
+	ProgramBriefNote string
+	// ProgramFolderHold is the file the run's hold on the program's folder is taken
+	// on, handed to the program's process ([ProgramFolder.Hold]).
+	ProgramFolderHold *os.File
 	// Crew is the conversation's crew as a delegated run's program is handed it
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
 	Crew delegate.Crew
+	// Standing is the person's standing orders over this place, already
+	// rendered as the section a worker's brief closes on ([StandingWorld],
+	// resolved once per run against the conversation's own place). It is the
+	// same answer a task node starting in this conversation reads
+	// ([TaskGraph.standingWorld]) — a plan-born worker and a node worker must
+	// never disagree about what stands (#1549). Empty when nothing stands or
+	// the ambient side is off: no orders is no section, never an empty heading.
+	Standing string
 }
 
 // ProgramEnding is a delegated run's program's own ending when it did not
@@ -305,6 +323,13 @@ type beltRun struct {
 	root  string
 	row   uint64
 	title string
+	brief string
+	stand taskStand
+	// pending is true until the run's machine admission has passed. A pending
+	// run has a plan store but no folder or working copy, so stopping it cannot
+	// leave a repository lock or branch behind.
+	pending   bool
+	admission RunAdmission
 	// workspace is the run's own copy, the directory every worker types in, and
 	// ground is the folder that copy was cut from and comes home to. tree is the
 	// copy as the ground ladder made it, kept so the run's landing is the ladder's
@@ -356,9 +381,16 @@ type beltRun struct {
 	// delegate and folder belong to the program's one run.
 	delegate *delegate.Delegate
 	folder   *ProgramFolder
+	// thinking, carry and crewEffort are what the hand-off asked of a
+	// program's run beyond its brief ([programWish]) and the crew word it
+	// carried ([crewWish]); zero for every other run.
+	thinking   effort.Rung
+	carry      *programCarry
+	crewEffort crewroute.Effort
 	// crew is routed for an ordinary task. A program keeps its requested
 	// models and run ceiling instead of receiving a task router's seats.
-	crew *taskCrew
+	crew          *taskCrew
+	recoveredCrew *TaskCrewRecord
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -381,7 +413,11 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
-	stand := taskStand{dir: a.config.Workspace, mode: TaskModeWorktree}
+	// The default run door uses the same placement evidence as a proposal or
+	// legacy task. Starting from home must not discard the named project.
+	stand := a.taskGroundOrStandingIn(taskSpec{
+		title: title, request: brief, brief: brief, acceptance: taskPersonAcceptance,
+	})
 	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, stand, question); err != nil {
 		if errors.Is(err, errRunRoadUnavailable) {
 			return a.startTaskLegacy(ctx, brief, solo)
@@ -529,7 +565,7 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	}
 	if live != nil {
 		a.publishRunRow(g, TaskNotice{
-			ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow(),
+			ID: id, Title: title, State: TaskQueued, Parent: live.row, StartedAt: a.taskClockNow(),
 			// AND THE ROW SAYS WHICH STORE TASK IT IS, from its first breath, for
 			// the reason the copy is written down in the same breath below: the
 			// store is the authority for this work's state and for the page
@@ -542,9 +578,26 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 			// under. The bare stored id is answered under by nothing.
 			PlanTask: planStoreID(storeID),
 		})
+		a.publishJoinedRunRows(g, live)
 		return true, nil
 	}
 
+	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds
+	// only its plan store so stopping it cannot leave a repository claim behind;
+	// the admitted road below keeps the original synchronous refusal order.
+	admission := newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
+	held := admission != nil && !admission.MayStart()
+	if held {
+		return a.startHeldBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
+	}
+
+	return a.startAdmittedBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
+}
+
+// startAdmittedBeltRun is the original synchronous road after admission: route
+// the crew, ready the folder, seed the store, prepare the copy, then publish
+// the running row and hand the run to its engine.
+func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *TaskGraph, path, storeID string, id uint64, title, brief string, stand taskStand, question string, via *delegate.Delegate, asked []string, admission RunAdmission) (bool, error) {
 	crew, folder, err := a.prepareBeltRunStart(ctx, id, title, brief, filepath.Dir(path), stand, via)
 	if err != nil {
 		return false, err
@@ -563,9 +616,9 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	}
 	tree, ground := folder.tree(), canonicalPath(stand.dir)
 	if folder != nil {
-		// A PROGRAM'S GROUND IS THE FOLDER IT WORKS IN, which is the
-		// repository's root when it was handed a folder inside one.
-		ground = canonicalPath(folder.Dir)
+		// A PROGRAM'S GROUND IS THE FOLDER ITS WORK IS ABOUT: the person's
+		// repository's root, whose copy it works in, or the plain folder itself.
+		ground = canonicalPath(folder.Ground())
 	} else {
 		tree, err = beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
 		if err != nil {
@@ -584,10 +637,11 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	born := a.taskClockNow()
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
-		workspace: tree.dir, ground: ground, tree: tree, cut: cut,
-		born: born, over: make(chan struct{}),
+		workspace: tree.dir, ground: ground, tree: tree, admission: admission,
+		cut: cut, born: born, over: make(chan struct{}),
 		delegate: via, folder: folder, asked: asked, crew: crew,
 	}
+	run.wishedFrom(ctx)
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
 	// the branch it names exists only in this variable until it is: the road that
@@ -607,10 +661,9 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 		// twice rather than two pieces of work ([TaskNotice.PlanTask]). In
 		// [planStoreID]'s spelling, which is the one the plan read answers under.
 		PlanTask: planStoreID(storeID),
-		Crew:     run.crewDecision(),
-		Model:    run.crewWorker(),
+		Crew:     run.crewDecision(), CrewState: a.initialCrewRecord(run),
+		Model: run.crewWorker(),
 	})
-
 	spec := a.beltRunSpec(run, brief)
 	if programName(via) == "senior-dev" {
 		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
@@ -618,6 +671,56 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
 	}
 	go a.driveBeltRun(runCtx, engine, run, spec)
+	return false, nil
+}
+
+// startHeldBeltRun seeds the only state a machine-held run may own: its plan
+// store and queued row. Crew routing remains synchronous, while folder and
+// copy preparation stay behind the driver's later admission.
+func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskGraph, path, storeID string, id uint64, title, brief string, stand taskStand, question string, via *delegate.Delegate, asked []string, admission RunAdmission) (bool, error) {
+	var crew *taskCrew
+	var err error
+	if via == nil {
+		crew, err = a.routeTaskCrew(ctx, id, title, brief)
+		if err != nil {
+			return false, err
+		}
+	}
+	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
+	if err != nil {
+		return false, err
+	}
+	if question = strings.TrimSpace(question); question != "" {
+		if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+			discardUnstartedRunStore(store)
+			return false, err
+		}
+	}
+	// THE RUN'S CONTEXT IS ONE A PERSON'S STOP CAN CUT. It outlives the turn that
+	// started it, which is the caller's business (task.go hands this door a
+	// context no turn's ending cancels); what it must not outlive is the person
+	// saying stop, and until this cancel was kept nothing could say it (stoprun.go).
+	runCtx, cut := context.WithCancel(ctx)
+	born := a.taskClockNow()
+	run := &beltRun{
+		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: brief,
+		stand: stand, ground: canonicalPath(stand.dir), pending: true, admission: admission,
+		machineHeld: map[string]bool{planStoreID(storeID): true},
+		cut:         cut, born: born, over: make(chan struct{}),
+		delegate: via, asked: asked, crew: crew,
+	}
+	run.wishedFrom(ctx)
+	a.installBeltRun(g, run)
+	// A HELD RUN IS QUEUED, not working: there is no worker and deliberately no
+	// copy yet. Its plan id is present from the first publish, which gives stop
+	// and recovery one persisted identity to reconcile.
+	a.publishRunRow(g, TaskNotice{
+		ID: id, Title: title, State: TaskQueued, Program: programName(via),
+		PlanTask: planStoreID(storeID), Crew: run.crewDecision(), CrewState: a.initialCrewRecord(run),
+		Model: run.crewWorker(), Waiting: waitingMachineBusy,
+		PendingRun: &PendingRunRecord{Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
+	})
+	go a.driveBeltRun(runCtx, engine, run, RunSpec{})
 	return false, nil
 }
 
@@ -634,11 +737,22 @@ func (a *Agent) prepareBeltRunStart(ctx context.Context, id uint64, title, brief
 			return nil, nil, err
 		}
 	}
-	folder, err := a.readyRunFolder(id, title, sessionDir, stand, via)
+	folder, err := a.readyRunFolder(id, title, sessionDir, stand, via, programWishOf(ctx).carry)
 	if err != nil {
 		return nil, nil, err
 	}
 	return crew, folder, nil
+}
+
+// wishedFrom keeps what the hand-off that started a program's run asked of it
+// beyond its brief ([programWish]) and the crew word it carried ([crewWish]),
+// so a held run that is readied later still has them.
+func (run *beltRun) wishedFrom(ctx context.Context) {
+	if run.delegate == nil {
+		return
+	}
+	wish := programWishOf(ctx)
+	run.thinking, run.carry, run.crewEffort = wish.thinking, wish.carry, crewWishOf(ctx).effort
 }
 
 // seniorDevConversationTimeLimit reports whether the person's remaining wall
@@ -772,15 +886,16 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 // thing a run does, so a folder that refuses refuses before a store is seeded
 // or a row is published. sessionDir is the folder the run's store is in.
 //
-//   - A PROGRAM THAT EDITS FILES WORKS IN THE FOLDER ITSELF (programfolder.go),
-//     readied here: refused over changes that are not committed or another
-//     program's run in or around it, and otherwise held for the run.
+//   - A PROGRAM THAT EDITS FILES IS READIED HERE (programfolder.go): in a
+//     repository a copy of its own, cut on a branch of its own and held for
+//     the run; in a plain folder the folder itself, held, and refused while
+//     another program's run holds it or a folder in or around it.
 //   - AN ORDINARY RUN IS REFUSED A FOLDER A PROGRAM'S RUN HOLDS
 //     (programhold.go), before a copy is cut from it.
 //
 // A program that only answers reads the folder where it is and changes
 // nothing, so it is neither readied nor refused, and nil is its folder.
-func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskStand, via *delegate.Delegate) (*ProgramFolder, error) {
+func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskStand, via *delegate.Delegate, carry *programCarry) (*ProgramFolder, error) {
 	if via == nil {
 		if refusal := standHeldRefusal(stand, a.config.Workspace); refusal != "" {
 			return nil, errors.New(refusal)
@@ -793,7 +908,7 @@ func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskSt
 	return PrepareProgramFolder(ProgramFolderOrder{
 		Program: *via, Dir: stand.dir, Title: title, Holder: taskStopName(id, title),
 		Keep: plandb.TaskDir(sessionDir, strconv.FormatUint(id, 10)), Instead: "say which folder the work is in, as ground",
-		Place: a.config.Place, SignModel: a.signsGitWork().namedModel(),
+		Place: a.config.Place, SignModel: a.signsGitWork().namedModel(), Carry: carry,
 	})
 }
 
@@ -805,11 +920,11 @@ func programJoinRefusal(via *delegate.Delegate, live *beltRun) error {
 		return nil
 	}
 	where := "in a copy of " + live.ground
-	if live.folder != nil {
+	if live.folder != nil && !live.folder.Copied() {
 		where = "in " + live.ground
 	}
 	return errors.New("work is already underway " + where +
-		"; " + aloneName(via, live.delegate) + " runs alone, so propose it again when that work has ended")
+		"; " + aloneName(via, live.delegate) + " runs alone in a conversation, so propose it again when that work has ended")
 }
 
 // aloneName is the program a refused join is about: the one asked for, or the
@@ -877,6 +992,17 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		workSeat, planSeat, checkSeat = oneModel, oneModel, oneModel
 	}
 
+	// A recovered factory asks for original send IDs; the crew completer then
+	// applies the saved swaps instead of treating moved seats as auxiliary calls.
+	if run.crew != nil && run.recoveredCrew != nil {
+		workSeat = run.crew.original[crewroute.Worker]
+		planSeat = run.crew.original[crewroute.Planner]
+		checkSeat = run.crew.original[crewroute.Checker]
+		oneModel = ""
+	} else if saved := run.recoveredCrew; saved != nil {
+		workSeat, planSeat, checkSeat, oneModel = saved.Work, saved.Plan, saved.Check, saved.OneModel
+	}
+
 	wallLeft, _ := a.config.Budget.Left()
 	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
 		wallLeft = a.config.Budget.Wall - time.Since(a.startedAt)
@@ -888,6 +1014,10 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	if programName(run.delegate) == "senior-dev" {
 		ceilings := a.seniorDevCeilings(a.Usage().CostUSD)
 		cost, wallLeft = ceilings.CostUSD, ceilings.Elapsed()
+	}
+	admission := run.admission
+	if admission == nil {
+		admission = newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	}
 	return RunSpec{
 		Store:     run.store,
@@ -902,7 +1032,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		StepsPerTask: taskMaxSteps,
 		// The graph already owns the fallback account when the door handed
 		// none. Run and node workers must charge that same conversation.
-		Admission:    NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes),
+		Admission:    admission,
 		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
 		ProfileDir:   a.config.ProfileDir,
 		WorkModel:    workSeat,
@@ -922,7 +1052,15 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 			return run.folder.Branch
 		}(),
 		ProgramIgnoredFile: run.folder.IgnoredFile(),
+		ProgramInputsFile:  run.folder.InputsFile(),
+		ProgramBriefNote:   run.folder.BriefNote(),
+		ProgramFolderHold:  run.folder.Hold(),
 		Crew:               programCrew,
+		// THE ORDERS ARE RESOLVED HERE AND NOT PER WORKER, for the same reason
+		// the frontier resolves them once per pass: every worker of one run
+		// sits in one place, and reading a folder per worker would be the same
+		// question asked ten times (standing_world.go).
+		Standing: a.standingWorld(),
 	}
 }
 
@@ -940,21 +1078,28 @@ func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
 		return delegate.Crew{}
 	}
 	source := roles.Source(a.config.RolesSource)
-	seat := func(tier roles.Tier) string {
+	seat := func(tier roles.Tier) (string, string) {
 		value, _ := roles.TierModel(source, tier)
-		model, _ := roles.SplitEffort(strings.TrimSpace(value))
-		return strings.TrimSpace(model)
+		model, rung := roles.SplitEffort(strings.TrimSpace(value))
+		return strings.TrimSpace(model), rung
 	}
+	brain, _ := seat(roles.TierMastermind)
+	hands, handsEffort := seat(roles.TierWorker)
+	light, _ := seat(roles.TierLow)
 	crew := delegate.Crew{
-		Brain: seat(roles.TierMastermind), Hands: seat(roles.TierWorker), Light: seat(roles.TierLow),
-		Asked: append([]string(nil), run.asked...),
+		Brain: brain, Hands: hands, Light: light,
+		Asked:  append([]string(nil), run.asked...),
+		Effort: programEffort(run.thinking, handsEffort),
 	}
 	// The routed crew has no permanent worker row. A program keeps a single
 	// worker recommendation from the profile when nobody pinned that row; its
 	// explicit model list still takes precedence inside the program. This does
 	// not route the program by its brief or put it under an ordinary task cap.
 	if crew.Hands == "" && a.config.RouteCrew != nil {
-		if decision, err := a.config.RouteCrew(config.CrewAsk{ChatModel: a.Model()}); err == nil {
+		// THE PERSON'S ONE-TASK WORD MOVES A PROGRAM'S WORKER TOO: `/task --best`,
+		// or "do this one properly" set on the hand-off, buys the strongest
+		// worker the allowed models make, as it does for codeaf's own worker.
+		if decision, err := a.config.RouteCrew(config.CrewAsk{ChatModel: a.Model(), Effort: run.crewEffort}); err == nil {
 			crew.Hands = decision.Seat(crewroute.Worker).Send
 		}
 	}
@@ -1290,10 +1435,16 @@ func (a *Agent) setBeltRunMachineHold(run *beltRun, ids []string) {
 		if len(held) != 0 {
 			waiting = waitingMachineBusy
 		}
-		a.publishRunRow(g, TaskNotice{
-			ID: run.row, Title: run.title, State: TaskRunning,
-			StartedAt: run.born, PlanTask: planStoreID(run.root), Waiting: waiting,
-		})
+		a.beltMu.Lock()
+		pending := run.pending
+		started := run.born
+		a.beltMu.Unlock()
+		state := TaskRunning
+		if pending {
+			state, started = TaskQueued, time.Time{}
+		}
+		a.publishRunRow(g, TaskNotice{ID: run.row, Title: run.title, State: state,
+			StartedAt: started, PlanTask: planStoreID(run.root), Waiting: waiting})
 	}
 }
 
@@ -1406,6 +1557,9 @@ func setAsideRunStore(path string) error {
 // joins. The plan is set under the graph's plan gate, the same lock every other
 // plan reader takes, and the run itself under the Agent's own.
 func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
+	if run.crew != nil {
+		a.bindCrewCheckpoint(run.row, run.crew)
+	}
 	g.planMu.Lock()
 	if g.plan == nil {
 		g.plan = run.plan
@@ -1414,6 +1568,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 	a.beltMu.Lock()
 	a.beltRun = run
 	a.beltMu.Unlock()
+	a.publishJoinedRunRows(g, run)
 }
 
 // publishRunRow hands one run row to whoever is watching and keeps it for a
@@ -1451,22 +1606,11 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // halfway through would send the place back to guessing by title exactly when
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
-	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil {
-		for _, kept := range g.runRows(notice.ID) {
-			if kept.ID != notice.ID {
-				continue
-			}
-			if notice.Copy == nil && kept.Copy != nil {
-				notice.Copy = kept.Copy
-			}
-			if notice.PlanTask == "" && kept.PlanTask != "" {
-				notice.PlanTask = kept.PlanTask
-			}
-			if notice.Crew == nil && kept.Crew != nil {
-				notice.Crew = kept.Crew
-			}
-			break
-		}
+	notice = carryRunRow(g, notice)
+	if crew := a.crews.get(notice.ID); crew != nil {
+		crew.persistMu.Lock()
+		defer crew.persistMu.Unlock()
+		notice.CrewState = crew.record()
 	}
 	notice.Program = keptRunProgram(g, notice)
 	if notice.Elapsed == 0 {
@@ -1483,6 +1627,21 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
 	a.indexRunRow(notice)
+}
+
+// carryRunRow preserves the durable identity fields across partial updates.
+// Pending admission survives queued updates only; a started run sheds it.
+func carryRunRow(g *TaskGraph, notice TaskNotice) TaskNotice {
+	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil || notice.CrewState == nil {
+		for _, kept := range g.runRows(notice.ID) {
+			if kept.ID != notice.ID {
+				continue
+			}
+			notice = carryRunIdentity(notice, kept)
+			break
+		}
+	}
+	return notice
 }
 
 // keptRunProgram is the program a run row names: its own when it names one,
@@ -1553,12 +1712,132 @@ func (a *Agent) cutBeltRun() {
 	}
 }
 
+// waitForBeltAdmission keeps a newly seeded run queued until the machine gate
+// admits its first worker. It is deliberately the run's existing goroutine:
+// stopping the row cuts this wait directly, without a polling goroutine that
+// could outlive the run.
+func (a *Agent) waitForBeltAdmission(ctx context.Context, run *beltRun) bool {
+	for {
+		if run.admission == nil || run.admission.MayStart() {
+			return true
+		}
+		a.setBeltRunMachineHold(run, []string{run.root})
+		timer := time.NewTimer(taskPressurePoll)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return false
+		case <-timer.C:
+		}
+	}
+}
+
+// preparePendingBeltRun is the only road from a held run to a repository. The
+// admission check has passed before this function calls either folder or copy
+// preparation, which is the lock-ownership seam for held tasks.
+func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
+	folder, err := a.readyRunFolder(run.row, run.title, filepath.Dir(run.store.Path()), run.stand, run.delegate, run.carry)
+	if err != nil {
+		return err
+	}
+	tree, ground := taskTree{}, canonicalPath(run.stand.dir)
+	if folder != nil {
+		ground = canonicalPath(folder.Ground())
+		tree = folder.tree()
+	} else {
+		tree, err = beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), run.row, run.title, run.stand)
+		if err != nil {
+			return err
+		}
+	}
+	tree.bashBelt = true
+	a.beltMu.Lock()
+	stopped := run.stopped
+	run.folder, run.tree, run.ground = folder, tree, ground
+	run.workspace, run.pending = tree.dir, false
+	a.beltMu.Unlock()
+	if stopped || ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if g := a.graph(); g != nil {
+		a.publishRunRow(g, TaskNotice{
+			ID: run.row, Title: run.title, State: TaskRunning, StartedAt: run.born,
+			Copy: runCopyOf(tree), Program: programName(run.delegate),
+			PlanTask: planStoreID(run.root), Crew: run.crewDecision(), Model: run.crewWorker(),
+		})
+		a.publishJoinedRunRows(g, run)
+	}
+	return nil
+}
+
+// settlePendingBeltRun closes the two ways a held run can leave before its
+// engine starts. A person stop uses the same stopped landing as an admitted
+// run; a folder refusal keeps that refusal's words on both the store and row.
+func (a *Agent) settlePendingBeltRun(run *beltRun, err error) {
+	a.beltMu.Lock()
+	stopped, why := run.stopped, run.stopReason
+	run.ending = true
+	a.beltMu.Unlock()
+	defer a.releaseBeltRun(run)
+	if stopped {
+		a.settleStoppedBeltRun(run, why, nil)
+		a.settleTaskCrew(run.row, router.CrewStopped, 0)
+		return
+	}
+	if err == nil {
+		return
+	}
+	reason := strings.TrimSpace(err.Error())
+	_ = run.store.FailRoot(reason)
+	if g := a.graph(); g != nil {
+		a.publishRunRow(g, TaskNotice{
+			ID: run.row, Title: run.title, State: TaskFailed,
+			Report: reason, EndedAt: a.taskClockNow(),
+		})
+	}
+	a.settleTaskCrew(run.row, router.CrewNotKept, 0)
+}
+
+// startPendingBeltRun admits a held run and prepares the repository only after
+// admission. It returns false after settling a stop, close, or preparation
+// refusal, so the driver has one short road for every pending exit.
+func (a *Agent) startPendingBeltRun(ctx context.Context, run *beltRun) (RunSpec, bool) {
+	if !a.waitForBeltAdmission(ctx, run) {
+		a.settlePendingBeltRun(run, nil)
+		return RunSpec{}, false
+	}
+	// The successful admission supersedes the last held reading before the
+	// copy is prepared; otherwise the plan reader would keep drawing the old
+	// `machine busy` reason on a now-running root.
+	a.setBeltRunMachineHold(run, nil)
+	if err := a.preparePendingBeltRun(ctx, run); err != nil {
+		a.settlePendingBeltRun(run, err)
+		return RunSpec{}, false
+	}
+	spec := a.beltRunSpec(run, run.brief)
+	if programName(run.delegate) == "senior-dev" {
+		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
+		run.conversationCostLimit = a.railCap(0) > 0 && runCostLeft(a.railCap(0), a.Usage().CostUSD) <= delegate.DefaultSeniorDevCostUSD
+		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
+	}
+	return spec, true
+}
+
 // driveBeltRun runs one run to its outcome and writes the ending back where the
 // conversation reads it: the store's root carries the outcome and the landing,
 // the person's conversation is told with the same note a landed task sends, and
 // the row the run was published under settles. The store is closed and the run
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
+	if run.pending {
+		var ok bool
+		spec, ok = a.startPendingBeltRun(ctx, run)
+		if !ok {
+			return
+		}
+	}
 	// THE RUN'S MONEY REACHES THE CONVERSATION'S BOOKS THROUGH ONE FOLD
 	// (task_run_money.go): each call whole as a program's model API meters it,
 	// and whatever the run's running total holds beyond those — a bash
@@ -1598,7 +1877,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
 		// own sentence said it would be, and the ending is the stop's (stoprun.go).
 		a.settleStoppedBeltRun(run, why, summary.Cut)
-		a.settleTaskCrew(run.row, router.CrewNotKept, summary.USD)
+		a.settleTaskCrew(run.row, router.CrewStopped, summary.USD)
 		return
 	}
 	if closing && run.delegate == nil && summary.Outcome != beltRunOutcomeDone {
@@ -1879,6 +2158,50 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 	a.settleJoinedRows(g, run, notice.EndedAt, beltRunLimitEnding(summary.Limit), summary.Cut)
 }
 
+// publishJoinedRunRows brings adopted obligations into the same lifecycle as
+// their owner. A checkpoint's interrupted word is historical once that exact
+// plan is owned again; pending admission still means no worker has started.
+func (a *Agent) publishJoinedRunRows(g *TaskGraph, run *beltRun) {
+	a.beltMu.Lock()
+	joined := append([]uint64(nil), run.joined...)
+	pending := run.pending
+	a.beltMu.Unlock()
+	for _, id := range joined {
+		notice, found := runRowOf(g, id)
+		if !found || notice.Stopped || (notice.State.settled() && notice.State != TaskInterrupted) {
+			continue
+		}
+		task := run.store.Task(strconv.FormatUint(id, 10))
+		if task == nil {
+			continue
+		}
+		notice.State, notice.Waiting = TaskRunning, ""
+		if terminalStoreStatus(task.Status) {
+			notice = settledJoinedNotice(notice, task)
+		} else if pending {
+			notice.State, notice.Waiting = TaskQueued, waitingMachineBusy
+		}
+		a.publishRunRow(g, notice)
+	}
+}
+
+// settledJoinedNotice restores the task's recorded result independently of
+// the root's landing receipt; a completed child does not claim a merged copy.
+func settledJoinedNotice(notice TaskNotice, task *plandb.Task) TaskNotice {
+	notice.State = TaskFailed
+	if task.Status == plandb.StatusDone {
+		notice.State = TaskDone
+	}
+	notice.Stopped = planStopReason(task.Error)
+	notice.EndedAt = task.CompletedAt
+	notice.Result = strings.TrimSpace(task.Result)
+	notice.Report = notice.Result
+	if notice.Report == "" {
+		notice.Report = strings.TrimSpace(task.Error)
+	}
+	return notice
+}
+
 // settleJoinedRows ends the row of every hand-off that joined the run. A JOINED
 // HAND-OFF IS A ROW OF ITS OWN AND ENDS WITH THE RUN IT JOINED: it was published
 // running when it joined and nothing ever published its ending, so on the real
@@ -1910,6 +2233,7 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 			}
 		}
 		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil {
+			notice.Stopped = planStopReason(task.Error)
 			if task.Status == plandb.StatusDone {
 				notice.State = TaskDone
 			}
@@ -2160,4 +2484,33 @@ func (run *beltRun) crewWorker() string {
 		return d.Seat(crewroute.Worker).Model
 	}
 	return ""
+}
+
+// initialCrewRecord records the accepted seats even when routing is disabled.
+func (a *Agent) initialCrewRecord(run *beltRun) *TaskCrewRecord {
+	if run.crew != nil {
+		return run.crew.record()
+	}
+	return a.unroutedCrewRecord()
+}
+
+// carryRunIdentity fills only absent identity fields from the matching row.
+// A queued update keeps pending admission; a started update sheds it.
+func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
+	if notice.State == TaskQueued && notice.PendingRun == nil {
+		notice.PendingRun = kept.PendingRun
+	}
+	if notice.Copy == nil && kept.Copy != nil {
+		notice.Copy = kept.Copy
+	}
+	if notice.PlanTask == "" && kept.PlanTask != "" {
+		notice.PlanTask = kept.PlanTask
+	}
+	if notice.CrewState == nil {
+		notice.CrewState = kept.CrewState
+	}
+	if notice.Crew == nil && kept.Crew != nil {
+		notice.Crew = kept.Crew
+	}
+	return notice
 }

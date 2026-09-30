@@ -207,7 +207,7 @@ func (a *Agent) askForHandleOnce(ctx context.Context, title, model string) ([]st
 	callCtx, cancel := context.WithTimeout(ctx, titleAskWindow)
 	defer cancel()
 	ask := "Conversation title:\n" + clip(title, titleClip) + "\n\n" + handleAsk
-	response, named, err := a.callRoleChecked(callCtx, roles.RoleTitle, model,
+	response, named, err := a.callRoleChecked(withDetachedUsage(callCtx), roles.RoleTitle, model,
 		[]ai.Message{textMessage("system", titleSystem), textMessage("user", ask)},
 		func(response *ai.Response, named string) bool {
 			if len(cleanHandleChoices(response.Text())) > 0 {

@@ -6,6 +6,44 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Context recovery bounds
+
+Conversation request admission sums the existing encoded messages and tool schemas;
+it performs no tokenizer call, network lookup or extra model request. Image payload
+bytes are replaced by a token allowance. The margin is 5% of the effective endpoint
+window, bounded to 512–8,192 tokens. An unspecified output allowance is bounded by
+one quarter of the window and the configured completion reserve; shrinking it retains
+up to 512 tokens as the useful minimum (one eighth for very small windows). A thinking
+budget shrinks to the room left beside an answer of up to 1,024 tokens (a sixteenth of
+the window) and is dropped below 1,024, so thinking never refuses a request. Endpoints
+that take no tools are left out of the window a tool-carrying request is measured
+against.
+
+Manual and emergency reductions retain 4,096 recent tokens, capped to an eighth of
+the window, and always retain the latest assistant/tool batch. Recovery is bounded
+to two changed-request attempts per failed generation and resets after a successful
+response. Tests assert request counts, fitting budgets, tool pairing and actions that
+execute exactly once; they do not wait on real clocks.
+
+Automatic conversation profiles use the existing 32,000-token threshold at request
+boundaries. Only crossing the threshold rebuilds the default prompt and belt; unchanged
+profiles do no schema work. Explicitly loaded capabilities survive the rebuild. Automatic
+no-op compaction emits no seam events, while manual commands retain their no-op feedback.
+
+A compaction pass makes **one model call only when its free rungs fail**: a summary
+(`internal/session/compact_summary.go`) is written when stubbing and folding leave the
+transcript above the pass's line, and never when the tool definitions alone exceed that
+line. An automatic or manual pass needs at least **1,024 tokens** of region the previous
+summary has not read; a refused request's recovery needs **128**. It keeps the **three**
+most recent person messages and everything after them when that still reaches the line,
+then two, then the latest with the reply before it, then the latest alone. A summary is
+asked for at most half its region and at most a twentieth of the window (**128–4,096**
+tokens). A refusal that states its figures reclaims what is missing plus a thirty-second
+of the window; one that does not reclaims a quarter of the transcript. A region larger than one request is summarized in chunks sized to the window,
+each bounded to **two minutes**; the session lock is released during every call. The
+render the summarizer reads caps a tool result at 2,000 bytes and a call's arguments at
+400. Tests use scripted completers and assert request counts and sizes, not clocks.
+
 ## Connection recovery bounds
 
 `internal/provider/connectivity.go` limits a connection-recovery episode to
@@ -1232,6 +1270,32 @@ only omit what the reader is already holding. On the inherited-brief road the
 address rides the prerequisite's HEADER, which the shared pot above does not
 clip. Pinned by `internal/session/task_result_e2e_test.go`.
 
+## A background job's disk spool is bounded
+
+`internal/session/jobs.go` used to spool everything a background job wrote to
+one `<id>.log` with no ceiling: a watcher printing for a week filled the disk
+at whatever rate it printed, and the in-memory ring appended one Write before
+trimming, so a single multi-megabyte Write grew a temporary to match.
+
+The spool is now a window of at most **jobSpoolChunks (2) chunks of
+jobSpoolChunkBytes (4MB)** — `<id>.log` live and `<id>.log.1` kept — rotated by
+copying a full chunk once at its boundary, then truncating and seeking the
+same live inode. The previous backup is removed before copying, keeping even
+transient usage within two chunks. No job ID or writer lock is released during
+rotation. One huge Write spools in chunk-sized pieces and hands
+only its newest **64KB** (`jobRingBytes`) to the ring. The retained output
+stays addressable by the read tool exactly as before, so no limit grows for
+the reader.
+
+The honesty is the point, and it is pinned: a spool that has discarded
+anything — or a spool write, short write or close that failed — sets the
+sink's notice, and every footer a model reads stops saying `full log:` and
+names the truncation or the failure beside the file instead
+(`TestJobFooterNamesTruncationInsteadOfFullLog`); rotation, the discard, the
+huge-Write tail and the injected failure are pinned by
+`internal/session/jobspool_test.go`. The bound is a fact about the code, not
+about the box: the window is fixed bytes per job, not a disk-filling rate.
+
 ## Specialist tool discovery
 
 Chat starts with core tools and one local `load_capability` registry operation
@@ -1511,10 +1575,10 @@ otherwise getting 57–61% of its prompt back from.
 So the ceiling is a MEASUREMENT now and not a constant: the narrowest prompt this
 model has actually been refused for being too long, learned from the overflow
 refusal itself and remembered across processes
-(`internal/provider`'s `NoteServedWindow` / `ServedWindow`, applied by
-`session.TrustedWindowFor`). A model nobody has refused is believed; one that has
-refused is capped at what it refused, for good. The 386k incident now costs one
-turn per model per machine instead of every model for ever.
+(`internal/provider`'s `NoteServedWindow` / `ServedWindow`, applied while the provider
+sizes each assembled request). `session.TrustedWindowFor` now returns the catalog window
+unchanged: a model-only memo cannot say which endpoint can serve a request with tools.
+The provider uses the refused endpoint's evidence when that request is sized.
 
 Two guards stand behind that trade and neither is new: `guardOversizeRequest`
 still shrinks a transcript that has grown past the trusted window before it goes
@@ -2615,3 +2679,73 @@ Rendering selects a phrase by elapsed ten-second interval and samples the existi
 decoding ripple with 240 ms letter steps and a 1.8-second pause per pass. The 28-column caption and
 nine-column mark have fixed widths. This uses the existing clock and one
 foreground span; it adds no timer, I/O, model call or per-frame randomness.
+
+## Completed job log retention
+
+`internal/session/jobretention.go` limits eligible completed managed spools in
+one jobs directory to **128 MiB and 64 job groups**, counting the base and
+rotation together. Active spools have separate per-job limits; unmarked legacy
+logs and unsafe files remain outside the budget because older writers may not
+hold leases. This is not a machine-wide bound. Startup retains the existing
+seven-day (`sweepTTL`) expiry for eligible inactive groups only: both chunks
+must be older than the cutoff. Expired groups are removed before applying the
+byte/count budget to fresh groups; metadata and active/legacy logs do not expire.
+
+Maintenance runs at log creation, sink close, and the existing startup sweep,
+never per output write. It
+lists one jobs directory, sorts candidates by allocated ID, and takes
+nonblocking independent file leases; a deletion holds its lease through unlink.
+Directory locks serialize allocation and maintenance across processes. Counter
+and ownership metadata reads are capped at 256 bytes. ID allocation persists a
+high-water value before cleanup and keeps the writer lease before publishing
+the marker, preventing both reused IDs and newborn-log eviction. The stable
+lock file remembers initialization if a counter later disappears.
+
+A claim with damaged metadata fails explicitly. Cleanup failures remain
+retryable and are surfaced in the sink notice. Existing journals, worktrees,
+legacy logs, and unrelated directories are not retention candidates. Tests use
+explicit byte/count budgets with small payloads, avoiding mutable global limits.
+
+The startup TTL sweeper delegates `logs/jobs/` to this retention instead of
+expiring the stable allocation metadata or ownership markers by age.
+## Runtime-safe file search
+
+The structured `grep` tool excludes known codeaf runtime output for both engines,
+including custom state homes and searches starting inside those directories.
+The policy preserves source under `work/`, `trees/`, and ordinary user `logs/`
+directories. Ripgrep receives exclusions after user globs and runs without user
+config or symlink traversal. Shell commands do not inherit these protections.
+
+### Foreground bash snapshots
+
+Foreground bash retains at most **8 MiB** of initial output per spill under the
+state home's `logs/bash/`, separately from its bounded latest-result tail.
+Completed snapshots share **128 MiB / 64 files** and expire after **seven days**;
+retention runs at creation and close. Active writers hold independent leases
+and are outside the completed-file budget. A directory lock serializes cleanup
+and publication. Unknown and unsafe linked files, and old `pi-bash-*.log`
+temporary files, remain outside retention. These are per-directory bounds.
+
+Write and close failures stop spooling, not draining. Incomplete output never
+claims to be full. Promotion closes the foreground snapshot and sends later
+bytes only to the job sink. Structured recursive search excludes new snapshot
+directories and legacy pi-bash files in the current temporary directory.
+
+`internal/exec/bare/bash_spill_test.go` covers the byte bound, initial-prefix
+preservation, real foreground shell output, disk failures, promotion, retention
+budgets, expiry, cross-process active leases, and linked-path refusal.
+
+Recursive search skips files above **8 MiB**. The walking engine and explicit
+single-file inspection read a snapshot bounded by `min(size-at-open, 8 MiB)`;
+one **64 KiB** line buffer drains and skips oversized lines, with an incomplete
+result notice. Stored matches are clipped to the existing 500-byte display cap,
+with at most **1000 matches** and **20 context lines per side**. Context rendering
+streams the same bounded snapshot reader and stops accumulating output once the
+result byte budget has been reached. Directory traversal and total files searched
+remain governed by the caller's context, rather than a machine-wide byte cap.
+
+Ripgrep JSON records are limited to **1 MiB**; scanner errors and match limits
+kill and reap the child so `Wait` cannot hang behind a full stdout pipe. Stderr
+capture retains at most **4 KiB** while continuing to drain. Regression fixtures
+cover both engines, direct runtime roots, aliases, broad globs, subprocess
+termination, source worktrees, and growth during a snapshot read.

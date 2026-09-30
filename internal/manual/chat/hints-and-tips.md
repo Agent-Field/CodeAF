@@ -44,7 +44,7 @@ screen you pass through, so the tip worth saying differs: a conversation gets th
 urgent thing that is true right now, and home gets everything in turn. Home's row does not
 wait for quiet; a conversation's waits 15 seconds.
 
-Both rows draw from **one list** of twenty-three tips (below), and using a gesture on
+Both rows draw from **one list** of twenty-four tips (below), and using a gesture on
 either retires it on both.
 
 **A conversation's tip has moved several times.** It was the keys row's lowest rung until
@@ -116,18 +116,18 @@ that is true for you gets its turn before any repeats, and a tip that stops bein
 stands down at once for the next. (A conversation's keys row does not take turns: it ranks,
 and the first tip in the list that is true for you there is the one it says.) Nothing outranks anything — with one exception. **A tip
 that has just become true jumps the queue**: when a conversation crosses half its context
-window, `/compact summarizes the conversation now` is said next rather than forty minutes
+window, `/compact shortens the conversation now` is said next rather than forty minutes
 later when the ring comes round. It jumps once and then takes its turn like the rest.
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are twenty-three, one list for both boxes. Each one says the moment it first appears
+There are twenty-four, one list for both boxes. Each one says the moment it first appears
 and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
 **Starting work**
 
-- `/compact summarizes the conversation now` — when the conversation passes half its
+- `/compact shortens the conversation now` — when the conversation passes half its
   context window. Retired when a `/compact` finishes.
 - `/cost says what this conversation has spent` — once the conversation has spent about
   ten cents. Retired when you run `/cost`.
@@ -174,7 +174,11 @@ build if the two disagree), so a tip you saw is on it word for word.
   opens, over a conversation or over home's draft.
 - `/crew sets the models codeaf uses on its own behalf` — retired when `/crew` answers,
   bare or with a preset.
-- `/budget sets the spending cap for the day` — retired when `/budget` answers.
+- `/budget sets the daily spending limit across all conversations` — retired when
+  `/budget` opens or edits the daily setting, bare, with an amount, or with `day`, `daily` or `today`.
+- `/budget conversation sets the per-conversation spending limit` — retired when
+  `/budget conversation` (or `chat` or `session`) is used, with or without an amount.
+  Changing the daily limit leaves this separate hint available, and vice versa.
 
 **Steering a running answer**
 
@@ -192,7 +196,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   It is the only row that names two commands as a pair, because the two rows about keeping
   something used to be told apart by nothing: a standing order is a condition the work has
   to honour and a memory is a fact carried forward.
-- `/connect links Notion, Slack and other services` — retired when the connect panel
+- `/connect links Notion, Slack and other accounts` — retired when the connect panel
   is reached for.
 - `/autonomy sets how questions are handled while you are away` — after the first
   exchange. Retired when `/autonomy` is typed, bare or with a rule. (It took the seat
@@ -205,7 +209,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 of the commands they named still works** — only the tips about them are gone.
 
 - `alt+3 shows what this machine has spent, by the day`, `alt+1 to alt+7 jump straight to a
-  place`, `/search finds anything ever said on this machine` and `/subharness lists the
+  place` and `/subharness lists the
   programs you can run` name doors the tab bar or the `/` list already puts in front of
   you, which is the argument that kept `alt+p`, `alt+e` and `/` off the list in the first
   place.
@@ -221,8 +225,8 @@ of the commands they named still works** — only the tips about them are gone.
 - `/attach lets you browse anywhere for files` was a second row about one command, which
   is one row too many.
 - `ctrl+. sees every task this project has run` came off on the owner's word, the last of
-  the three reads. The chord still opens the task page, `/history` still opens it too, and
-  the *tasks* page still says so.
+  the three reads. The chord still opens the sessions place, `/history` still opens it too, and
+  the *tasks* manual page still says so.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
 the first exchange in a conversation.

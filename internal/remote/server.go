@@ -54,6 +54,7 @@ package remote
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -408,6 +409,7 @@ type Session struct {
 	engine     *Engine
 	agent      WrappedAgent
 	persistent bool
+	instance   string
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -526,6 +528,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		engine:     engine,
 		agent:      engine.Agent,
 		persistent: persistent,
+		instance:   rand.Text(),
 		rings:      map[uint64]*ring{},
 		held:       newHeldSet(),
 		surfaces:   map[*server]struct{}{},
@@ -1055,7 +1058,13 @@ func (sess *Session) attach(s *server, hello Hello) error {
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
-	replay := sess.replayLocked(hello.Resume)
+	cursors := hello.Resume
+	// A reopened transcript is a new stream namespace. Old cursors must not
+	// suppress the beginning of work that has already resumed in this owner.
+	if hello.SessionInstance != "" && hello.SessionInstance != sess.instance {
+		cursors = nil
+	}
+	replay := sess.replayLocked(cursors)
 	sess.mu.Unlock()
 
 	if err := s.sendLocked(Frame{Kind: "welcome", Payload: mustJSON(welcome)}); err != nil {
@@ -1177,6 +1186,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Live:                       sess.liveLocked(),
 		Held:                       sess.heldWaitingLocked(s.arrived),
 		Persistent:                 sess.persistent,
+		SessionInstance:            sess.instance,
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
@@ -1996,7 +2006,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2424,6 +2434,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return nil, nil
 
+	case MethodSubmitBash:
+		args, err := arg[SubmitArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SubmitBash(context.Context, string) (<-chan session.Event, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot run ! commands")
+		}
+		events, err := door.SubmitBash(context.Background(), args.Text)
+		return s.stream(MethodSubmitBash, args.Text, events, err)
+
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
@@ -2547,7 +2571,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return mustJSON(door.AnswerLaneOffer(yes)), nil
 
 	case MethodCompact:
-		return nil, agent.Compact(context.Background())
+		err := agent.Compact(context.Background())
+		if why, skipped := session.SummarySkippedWhy(err); skipped {
+			// An older surface ignores a successful call's optional result and
+			// still reads a true success, while a newer one can show the reason.
+			sess.announce()
+			return mustJSON(why), nil
+		}
+		// The command's reply follows the new size, so hosted surfaces show
+		// the same before/after reading as a local conversation.
+		sess.announce()
+		return nil, err
 
 	case MethodClose:
 		// The surface said goodbye politely, and it is saying it about the

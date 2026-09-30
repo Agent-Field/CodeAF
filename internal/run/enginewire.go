@@ -47,7 +47,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// AND UNDER `--one-model` ONE MODEL IS EVERY SEAT, the probe and the
 		// check's environment rung included ([Seats.One]).
 		One: spec.OneModel,
-	}, spec.CompleterFor)
+	}, spec.Standing, spec.CompleterFor)
 	if spec.Delegate != nil {
 		// A DELEGATED RUN SEATS THE PROGRAM ON ITS ROOT and has no review
 		// round: a check seat is a bash-belt worker, which the belt switch may
@@ -66,6 +66,9 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			PlainFolder:  spec.PlainFolder,
 			Branch:       spec.ProgramBranch,
 			IgnoredFile:  spec.ProgramIgnoredFile,
+			InputsFile:   spec.ProgramInputsFile,
+			BriefNote:    spec.ProgramBriefNote,
+			Hold:         spec.ProgramFolderHold,
 			Crew:         spec.Crew,
 			// AND ITS MONEY IS THE CONVERSATION'S, CALL BY CALL: every ledger row
 			// names the conversation and the task, and every call is folded

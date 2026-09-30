@@ -1079,6 +1079,11 @@ var OperatorEnvPins = []string{
 	// still be found and ended (internal/processgroup). codeaf sets it and reads
 	// it back, and a person has nothing to say to it, so it is plumbing too.
 	"CODEAF_DELEGATE_RUN",
+	// The descriptor a program's process holds its host's hold on its folder
+	// by (internal/delegate's HoldEnv), so the folder stays held until the
+	// program has gone too. codeaf sets it on the launch and the program reads
+	// it back; it is a number only that one process can mean, so plumbing.
+	"CODEAF_PROGRAM_HOLD_FD",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
@@ -2114,16 +2119,16 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
-			Hint: "one model id is served by many providers, and they answer at very " +
+			Hint: "one model id is served by many hosts, and they answer at very " +
 				"different speeds AND very different prices. Left alone — simple — codeaf " +
-				"sends no preference of its own at all: with no provider pinned the router's own " +
-				"default routing answers, and a provider you pinned is the whole request, that " +
-				"provider and no fallbacks. Choosing another word here changes that " +
+				"sends no preference of its own at all: with no host pinned the router's own " +
+				"default routing answers, and a host you pinned is the whole request, that " +
+				"host and no fallbacks. Choosing another word here changes that " +
 				"everywhere: latency asks " +
-				"for the fastest provider for every call, capped at a quarter over the " +
+				"for the fastest host for every call, capped at a quarter over the " +
 				"model's list price, and times every answer, demoting one that keeps being " +
 				"slow; price asks for the cheapest for every call; off asks for nothing and " +
-				"measures nothing — and with nothing measured there is no provider to choose, " +
+				"measures nothing — and with nothing measured there is no host to choose, " +
 				"no sheet of them to open and no speed guard. A change lands on " +
 				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
@@ -2142,7 +2147,7 @@ func (s *Settings) build() []Setting {
 				"goes lean. lean takes one section off the page, leaves seven verbs one " +
 				"load_capability call away, puts ask straight in the list, turns saved " +
 				"memories off and cuts the project's own instructions to 2KiB. full sends " +
-				"everything. Choose one of those two when the provider reports a window its " +
+				"everything. Choose one of those two when the host reports a window its " +
 				"model does not really have. A change lands the next time codeaf starts.",
 			read:  func() string { return PromptProfileAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyPromptProfile, raw, PromptProfileModes) },
@@ -2152,15 +2157,15 @@ func (s *Settings) build() []Setting {
 		// to, for the person who has watched the numbers and knows.
 		Setting{
 			Key: LaneSettingKey(LaneSlotTalk), Category: CategoryModels, Kind: SettingText,
-			Label: "provider", EmptyLabel: LaneAuto,
-			Hint: "which provider answers your model, for requests from this home. One model id is served by " +
-				"a dozen providers that differ by seven times on the wait before the first " +
+			Label: "host", EmptyLabel: LaneAuto,
+			Hint: "which host answers your model, for requests from this home. One model id is served by " +
+				"a dozen hosts that differ by seven times on the wait before the first " +
 				"word, so this is often a bigger change than switching model. auto lets the router " +
-				"route — and codeaf takes over choosing the provider when its answers start coming " +
+				"route — and codeaf takes over choosing the host when its answers start coming " +
 				"back refused or unusable, handing it back once it has been well for a while; " +
 				"a name — `cloudflare` — pins it and nothing else is asked; " +
 				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
-				"a slow answer be rescued elsewhere; openrouter asks for no provider at all and " +
+				"a slow answer be rescued elsewhere; openrouter asks for no host at all and " +
 				"lets the router balance on price, with no takeover. enter on this row opens them with what " +
 				"has been measured of each, and so does → on a model row in the picker — " +
 				"under /model and under `your model` in the settings panel alike.",
@@ -2170,7 +2175,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyLaneGuard, Category: CategoryModels, Kind: SettingBool,
 			Label: "speed guard",
-			Hint: "when an answer takes much longer to start than that provider normally " +
+			Hint: "when an answer takes much longer to start than that host normally " +
 				"does, the same question is asked of the next-best one and whichever replies " +
 				"first is the one you read. It hedges at most one extra call, under a tenth of " +
 				"spend; off under price routing.",
@@ -2298,7 +2303,7 @@ func (s *Settings) build() []Setting {
 			Label: "tasks at once", EmptyLabel: "no limit", Unit: UnitInLabel,
 			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
 				"default: what actually runs out is this machine — the two rows below hold new " +
-				"tasks back when it is loaded — and the model provider's own rate limit, which " +
+				"tasks back when it is loaded — and the model host's own rate limit, which " +
 				"codeaf already paces itself against. A cap is a queue, never a refusal.",
 			read: func() string {
 				if value := TaskParallelAt(dir); value > 0 {
@@ -4276,19 +4281,34 @@ func TaskParallelAt(profileDir string) int {
 // TaskMaxLoadAt resolves the per-core load average above which no new task is
 // started. 0 turns the check off.
 func TaskMaxLoadAt(profileDir string) float64 {
-	if value, ok := persistedFloat(profileDir, KeyTaskMaxLoad); ok && value >= 0 {
-		return value
-	}
-	return DefaultTaskMaxLoad
+	maxLoad, _ := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
+	return maxLoad
 }
 
 // TaskMinFreeMBAt resolves the available-memory floor under starting a task, in
 // mebibytes. 0 turns the check off.
 func TaskMinFreeMBAt(profileDir string) int {
-	if value, ok := persistedInt(profileDir, KeyTaskMinFreeMB); ok && value >= 0 {
-		return value
+	_, minFreeMB := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
+	return minFreeMB
+}
+
+// TaskAdmissionLimitsAt overlays current persisted ceilings on the caller's
+// startup values. Missing keys preserve those values, including explicit zero.
+// Both settings come from one read so a newly created gate sees one profile.
+func TaskAdmissionLimitsAt(profileDir string, maxLoad float64, minFreeMB int) (float64, int) {
+	values, err := readProfileConfig(profileDir)
+	if err != nil {
+		return maxLoad, minFreeMB
 	}
-	return DefaultTaskMinFreeMB
+	var load float64
+	if raw, found := values[KeyTaskMaxLoad]; found && json.Unmarshal(raw, &load) == nil && load >= 0 {
+		maxLoad = load
+	}
+	var memory int
+	if raw, found := values[KeyTaskMinFreeMB]; found && json.Unmarshal(raw, &memory) == nil && memory >= 0 {
+		minFreeMB = memory
+	}
+	return maxLoad, minFreeMB
 }
 
 // TaskModelAt resolves the model tasks run on, as the person wrote it. Empty

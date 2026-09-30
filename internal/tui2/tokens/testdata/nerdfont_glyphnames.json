@@ -47,6 +47,9 @@
  "nf-fa-code_fork": {
   "code": "f126"
  },
+ "nf-fa-compress": {
+  "code": "f066"
+ },
  "nf-fa-cog": {
   "code": "f013"
  },
@@ -142,6 +145,9 @@
  },
  "nf-fa-terminal": {
   "code": "f120"
+ },
+ "nf-fa-times_circle": {
+  "code": "f057"
  },
  "nf-fa-times_circle_o": {
   "code": "f05c"

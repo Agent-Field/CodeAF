@@ -144,9 +144,10 @@ var delegateFact = beltFact{
 // its job, done before the proposal.
 //
 // AND IT PROMISES NO MERGE, because there is none: in a repository the work is
-// left on the program's own branch, checked out in that folder, and bringing
-// it into the person's branch is a separate step the landing's line names.
-const delegateFolderRule = "\nIt works in the task's folder itself, on a branch of its own in a repository, so hand\n" +
+// left on the program's own branch, cut in a private copy and checked out
+// nowhere once it ends, and bringing it into the person's branch is a
+// separate step the landing's line names.
+const delegateFolderRule = "\nIn a repository it works in a copy of its own, on its own branch, so hand\n" +
 	"it the repository the work belongs in: clone one this machine lacks into a new folder,\n" +
 	"at the commit the work names, and pass it as `ground`. Never brief it to work elsewhere."
 
@@ -194,15 +195,83 @@ func (c Config) delegateGuides() string {
 // The receipt's next sentence invites the model to carry on with other work,
 // and a model that did it by writing into the program's folder was refused one
 // file at a time; told once here, it works elsewhere or waits.
+//
+// A RUN IN A COPY HOLDS NOTHING OF THE PERSON'S, so its receipt makes no such
+// promise, and says instead what the copy does not have: the changes their
+// checkout had not committed ([programCopyReceipt]).
 func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
 	if !via.LandsTree() {
 		return "It is " + via.Name + "'s: it works alone, and its answer arrives when it ends."
 	}
-	return delegateFolderReceipt(ground, via, record) + " Until it ends, codeaf's own tools write nothing in " + ground + "."
+	if record != nil && record.Branch != "" {
+		return programCopyReceipt(ground, via, record)
+	}
+	// A RUN THAT HAS NOT STARTED YET — one waiting its turn — has no record to
+	// read a branch off, and a repository is still a repository: it is told
+	// where the run will work, not that it works in the folder itself.
+	if _, repo, _, _ := programFolderOf(ground); repo {
+		said := "It is " + via.Name + "'s: when it starts it works alone in a private copy of " + ground +
+			", on a new branch of its own cut from your last commit; your checkout is not touched, and when it ends that branch holds its work, checked out nowhere."
+		if left := uncommittedPaths(ground, via.Notes); len(left) > 0 && halfDone(ground) == "" {
+			return said + " Your uncommitted changes (" + namedFew(left, programFolderShown) +
+				") go into its copy as they are when it starts, as the first commit on its branch; in your folder they stay uncommitted."
+		}
+		return said + leftBehindReceipt(ground, via)
+	}
+	return delegateFolderReceipt(ground, via) + " Until it ends, codeaf's own tools write nothing in " + ground + "."
 }
 
-// delegateFolderReceipt is where a program that edits files works, as its
-// receipt says it ([delegateReceipt]).
+// leftBehindReceipt is the receipt's sentence about the changes the person's
+// checkout has not committed that a copy does not have, read now without
+// refreshing anything of git's; "" when there are none.
+func leftBehindReceipt(ground string, via delegate.Delegate) string {
+	why := ""
+	if half := halfDone(ground); half != "" {
+		why = "your checkout is in the middle of a " + half
+	}
+	if words := leftBehindWords(uncommittedPaths(ground, via.Notes), why); words != "" {
+		return " " + words
+	}
+	return ""
+}
+
+// programCopyReceipt is where a program working in a copy of the person's
+// repository works, as its receipt says it: the branch, where it was cut
+// from, that their checkout is not touched, and the uncommitted changes the
+// copy does not have. They are read now, without refreshing anything of git's.
+func programCopyReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
+	from := "the commit " + shortSha(record.HomeSha)
+	if record.Home != "" {
+		from = "your branch " + record.Home + " as last committed"
+	}
+	on := "on a new branch " + record.Branch + " cut from " + from
+	switch {
+	case record.Continues:
+		on = "carrying on on its branch " + record.Branch + ", where the last run left it"
+	case record.From != "":
+		on = "on a new branch " + record.Branch + " cut from " + record.From + ", whose work passed and which it leaves as it is"
+	}
+	said := "It is " + via.Name + "'s: it works alone in a private copy of " + ground + ", " + on +
+		"; your checkout is not touched, and when it ends " + record.Branch + " holds its work, checked out nowhere."
+	if words := copiedUntrackedWords(record.Untracked); words != "" {
+		said += " " + words
+	}
+	switch {
+	case record.Continues || record.From != "":
+		// A RUN THAT TAKES UP AN EARLIER RUN'S BRANCH starts from that branch,
+		// which began where the line's first run found the person.
+		return said
+	case record.Snapshot != "":
+		return said + " " + carriedInWords(withoutUntracked(uncommittedPaths(ground, via.Notes), record.Untracked))
+	}
+	if len(record.Untracked) > 0 {
+		return strings.TrimSpace(said + " " + leftBehindWords(withoutUntracked(uncommittedPaths(ground, via.Notes), record.Untracked), ""))
+	}
+	return said + leftBehindReceipt(ground, via)
+}
+
+// delegateFolderReceipt is where a program that edits files works in a folder
+// codeaf cuts no branch in, as its receipt says it ([delegateReceipt]).
 //
 // A FOLDER WITH NO BRANCH IS NOT ALWAYS A FOLDER WITH NO HISTORY. One inside a
 // repository whose root holds the home folder — a dotfiles repository — is
@@ -210,35 +279,15 @@ func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecor
 // receipt that said it "has no git history" had the chat telling the person so,
 // or advising `git init` inside their dotfiles; it names the repository, the
 // way the run's ending does ([ProgramFolderEnd.Sentence]).
-func delegateFolderReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
-	if record == nil || record.Branch == "" {
-		if _, _, outer, _ := programFolderOf(ground); outer != "" && !holdsHomeFolder(outer) {
-			return "It is " + via.Name + "'s: it works alone in " + ground + " itself; git ignores this folder inside " + outer +
-				", so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
-		} else if outer != "" {
-			return "It is " + via.Name + "'s: it works alone in " + ground + " itself, inside the git repository at " + outer +
-				", which holds your home folder, so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
-		}
-		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
+func delegateFolderReceipt(ground string, via delegate.Delegate) string {
+	if _, _, outer, _ := programFolderOf(ground); outer != "" && !holdsHomeFolder(outer) {
+		return "It is " + via.Name + "'s: it works alone in " + ground + " itself; git ignores this folder inside " + outer +
+			", so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
+	} else if outer != "" {
+		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, inside the git repository at " + outer +
+			", which holds your home folder, so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
 	}
-	folder := ProgramFolder{Home: record.Home, Start: record.HomeSha}
-	stays := folder.homeWords() + " does not move"
-	// THE PROMISE IS READ BEFORE IT IS MADE ([ProgramFolder.homeMoved]): a
-	// branch of the person's that has already moved from where the run was
-	// cut is said to have, rather than promised to stay. One that cannot be
-	// read at all, or a record that never wrote down where it stood, is a
-	// branch this receipt cannot hold up against anything, and keeps the
-	// promise the run itself keeps.
-	if tip := branchCommit(ground, record.Home); tip != "" && record.HomeSha != "" && tip != record.HomeSha {
-		stays = "your branch " + record.Home + " has already moved, from " + shortSha(record.HomeSha) + " to " + shortSha(tip) +
-			", and codeaf does not move it"
-	}
-	on := "on a new branch " + record.Branch
-	if record.Continues {
-		on = "carrying on on its branch " + record.Branch + ", where the last run left it"
-	}
-	return "It is " + via.Name + "'s: it works alone in " + ground + " itself, " + on + "; " +
-		stays + ", and when it ends " + record.Branch + " stays checked out there with its work."
+	return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
 }
 
 // runRowCopy is the record a run's row was published with as it started
@@ -256,13 +305,13 @@ func (a *Agent) runRowCopy(id uint64) *TaskCopyRecord {
 }
 
 // programPlace is where a program works, in a person's words: the folder
-// itself, on a branch of its own when it is a repository and the program
-// edits code.
+// itself, or a copy of its own on a branch of its own when it is a repository
+// and the program edits code (programcopy.go).
 func programPlace(program delegate.Delegate, ground string) string {
 	if !program.LandsTree() || !hasGitHistory(ground) {
 		return ground
 	}
-	return ground + ", on a branch of its own"
+	return ground + ", in a copy of its own on a branch of its own"
 }
 
 // hasGitHistory says a program handed ground works there on a branch of its

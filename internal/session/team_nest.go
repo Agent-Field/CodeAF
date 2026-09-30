@@ -241,8 +241,9 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	// here, where the membership was written. A refusal returned above and
 	// wrote nothing.
 	_ = teams.WriteMoveNotices(profile, movedIn)
-	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID}
-	if err := teams.AppendTraffic(profile, team.ID, start); err != nil {
+	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture()}
+	startID, err := teams.AppendTrafficID(profile, team.ID, start)
+	if err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true
 	}
 	made := fmt.Sprintf("made by the manager of %q; its manager @%s starts on the brief: %s", team.Name, handle, cutRunesTeam(firstLineTeam(brief), 200))
@@ -257,8 +258,8 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	case pool != "":
 		money = fmt.Sprintf("It has no cap of its own and spends from %q's pool.", pool)
 	}
-	said := fmt.Sprintf("Made the team %q under %q and asked for its manager @%s. The conversations view opens @%s in %q's folder as a member of %q; it is handed your brief marked as yours, "+
-		"makes itself the manager of %q, and reports to you. %s", name, team.Name, handle, handle, team.Name, team.Name, name, money)
+	said := fmt.Sprintf("Made the team %q under %q and asked for its manager @%s (%s). The conversations view opens @%s in %q's folder as a member of %q; it is handed your brief marked as yours, "+
+		"makes itself the manager of %q, and reports to you. %s", name, team.Name, handle, teams.ThreadNumber(startID), handle, team.Name, team.Name, name, money)
 	if len(moved) > 0 {
 		said += " Moved in: " + strings.Join(moved, ", ") + "; they are its manager's to direct now, not yours."
 	}

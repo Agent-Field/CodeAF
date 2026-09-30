@@ -30,8 +30,15 @@ func TestSeniorDevEngineLandingStandsOutsideWakeFold(t *testing.T) {
 		if roomOpen {
 			a.closeRoom()
 		}
+		// The compact receipt identifies the task; its explanation remains inspectable.
+		cardInfo := a.doneCardFor(7)
+		cardInfo.open = true
+		if detail := strings.Join(a.doneRows(cardInfo, a.width, false), "\n"); !strings.Contains(detail, "senior-dev's ending went to the chat") {
+			t.Fatalf("program landing lost its retained explanation: %s", detail)
+		}
+		cardInfo.open = false
 		first := taskText(a)
-		if !strings.Contains(first, "senior-dev's ending went to the chat") {
+		if !strings.Contains(first, "Repair the parser") {
 			t.Fatalf("room open %t: the first conversation frame hid the landing:\n%s", roomOpen, first)
 		}
 		a.entries = append(a.entries,
@@ -39,7 +46,7 @@ func TestSeniorDevEngineLandingStandsOutsideWakeFold(t *testing.T) {
 			entry{kind: entryAssistant, text: "The change is on its branch.", turn: 2, settled: true})
 		a.touch()
 		settled := taskText(a)
-		card := strings.Index(settled, "senior-dev's ending went to the chat")
+		card := strings.Index(settled, "Repair the parser")
 		fold := strings.LastIndex(settled, "worked")
 		answer := strings.Index(settled, "The change is on its branch.")
 		if card < 0 || fold < 0 || answer < 0 || !(card < fold && fold < answer) {
@@ -54,7 +61,7 @@ func TestSeniorDevEngineLandingStandsOutsideWakeFold(t *testing.T) {
 		reopened.entries = append([]entry(nil), a.entries...)
 		reopened.touch()
 		again := taskText(reopened)
-		if card, fold, answer := strings.Index(again, "senior-dev's ending went to the chat"),
+		if card, fold, answer := strings.Index(again, "Repair the parser"),
 			strings.LastIndex(again, "worked"), strings.Index(again, "The change is on its branch."); card < 0 || fold < 0 || answer < 0 || !(card < fold && fold < answer) {
 			t.Fatalf("room open %t: reopened conversation changed the landing order:\n%s", roomOpen, again)
 		}
@@ -80,7 +87,7 @@ func TestSeniorDevNoHostLandingStandsOutsideWakeFold(t *testing.T) {
 		entry{kind: entryAssistant, text: "The change is on its branch.", turn: 2, settled: true})
 	a.touch()
 	text := taskText(a)
-	if card, fold, answer := strings.Index(text, "senior-dev's ending went to the chat"),
+	if card, fold, answer := strings.Index(text, "Repair the parser"),
 		strings.LastIndex(text, "worked"), strings.Index(text, "The change is on its branch."); card < 0 || fold < 0 || answer < 0 || !(card < fold && fold < answer) {
 		t.Fatalf("direct session lane hid the landing or wake fold:\n%s", text)
 	}
@@ -103,7 +110,7 @@ func TestSeniorDevLandingAfterWakeReplyStaysVisible(t *testing.T) {
 		session.TaskNotice{Program: "senior-dev"})})
 	a.Update(taskEventMsg{gen: a.taskGen, ev: update(7, "Repair the parser", session.TaskDone,
 		session.TaskNotice{Program: "senior-dev", Report: "submitted a change"})})
-	if got := taskText(a); !strings.Contains(got, "senior-dev's ending went to the chat") {
+	if got := taskText(a); !strings.Contains(got, "Repair the parser") {
 		t.Fatalf("landing behind the settled wake disappeared:\n%s", got)
 	}
 	reopened := newTestApp(&fakeAgent{model: "m"})
@@ -111,7 +118,7 @@ func TestSeniorDevLandingAfterWakeReplyStaysVisible(t *testing.T) {
 	reopened.workMode = config.WorkFold
 	reopened.entries = append([]entry(nil), a.entries...)
 	reopened.touch()
-	if got := taskText(reopened); !strings.Contains(got, "senior-dev's ending went to the chat") {
+	if got := taskText(reopened); !strings.Contains(got, "Repair the parser") {
 		t.Fatalf("reopening hid a landing delivered after the wake:\n%s", got)
 	}
 }

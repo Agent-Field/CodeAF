@@ -72,9 +72,9 @@ func budgetWords() string {
 //	/budget plan 20    one row by name
 //	/budget plan       the tab, on that row
 func (a *app) budget(rest string) tea.Cmd {
-	a.noticeEvent(eventBudgetShown)
 	rest = strings.TrimSpace(rest)
 	if rest == "" {
+		a.noticeEvent(eventBudgetShown)
 		return a.openSpending(config.KeyDailyBudget)
 	}
 	key, amount := config.KeyDailyBudget, rest
@@ -82,6 +82,13 @@ func (a *app) budget(rest string) tea.Cmd {
 		if named, ok := budgetRowFor(word); ok {
 			key, amount = named, strings.TrimSpace(tail)
 		}
+	}
+	// Each hint teaches a separate limit, so using one leaves the other available.
+	switch key {
+	case config.KeyDailyBudget:
+		a.noticeEvent(eventBudgetShown)
+	case config.KeySpendRail:
+		a.noticeEvent(eventConversationBudgetShown)
 	}
 	// A ROW NAMED WITH NO FIGURE IS A QUESTION, and the answer to a question is
 	// the row itself: `/budget plan` opens the tab on `per plan` rather than

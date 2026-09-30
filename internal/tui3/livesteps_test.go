@@ -407,29 +407,14 @@ func TestTheWindowNeverCoversWordsFailuresOrNotices(t *testing.T) {
 	page := livePage(a)
 	for _, want := range []string{
 		"check the parser instead", // their correction
-		"context is 84% full",      // this surface's own voice
 		"Running the suite",        // the failed step's own heading, kept whole
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the window swallowed %q:\n%s", want, page)
 		}
 	}
-	// AND THE FAILURE IS DRAWN WHERE IT HAPPENED, AS MACHINERY. The step that
-	// failed keeps the outline row it has always had — its own door and its own
-	// count — rather than becoming a faded line in a window that says nothing
-	// went wrong. Whether a PAST step shows its calls unasked is
-	// [app.captionCallsOpen]'s answer and this block does not change it.
-	failed := false
-	for _, r := range rows(a) {
-		if r.hit == hitCaption && strings.Contains(plain(r.text), "Running the suite") {
-			failed = true
-		}
-		if r.hit == hitWorkFold && strings.Contains(plain(r.text), "Running the suite") {
-			t.Fatalf("a failed step was compacted into the window: %q", plain(r.text))
-		}
-	}
-	if !failed {
-		t.Fatalf("the failed step lost its outline row:\n%s", page)
+	if strings.Contains(page, "prefix mismatch") || strings.Contains(page, "context is 84% full") || !strings.Contains(page, a.icon(tokens.GFailed)) {
+		t.Fatalf("operational details escaped the compact window:\n%s", page)
 	}
 	// The step still running is compact all the same.
 	if !strings.Contains(page, "Checking what changed") || strings.Contains(page, "git status --porcelain") {
@@ -459,8 +444,12 @@ func TestAFailureAtTheFrontierIsDrawnWithItsRow(t *testing.T) {
 	a.touch()
 
 	page := livePage(a)
-	if !strings.Contains(page, "go test") {
-		t.Fatalf("the failed call is not on the page:\n%s", page)
+	if !strings.Contains(page, a.icon(tokens.GFailed)) || strings.Contains(page, "prefix mismatch") {
+		t.Fatalf("failure should be a compact status until opened:\n%s", page)
+	}
+	a.toggleLatestWorkfold()
+	if expanded := livePage(a); !strings.Contains(expanded, "go test") {
+		t.Fatalf("failure details are not reachable:\n%s", expanded)
 	}
 	if !strings.Contains(page, "Reading the loader first") {
 		t.Fatalf("the step before the failure was swallowed:\n%s", page)
@@ -522,28 +511,30 @@ func TestTheLinearTierDrawsTheWindowStill(t *testing.T) {
 	}
 }
 
-// ── ONE SURFACE ONLY ────────────────────────────────────────────────────────
-
-// A node transcript is an explicitly detailed view. Its lens does not opt
-// into compact live work; task rooms are covered by roomcompact_test.go.
+// Nested node transcripts use the same compact view and retain every detail.
 func TestTheNodeTranscriptKeepsItsMachinery(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 80, 40
-	for _, l := range []lens{transcriptLens} {
-		d := deck{entries: liveStepsFixture(), unfolded: map[int]bool{},
-			workOpen: map[int]bool{}, capOpen: map[int]bool{}, lens: l, runningTurn: 1}
-		d.captions = deriveCaptions(d.entries, d.runningTurn)
-		if got := deriveLiveWork(d); len(got) != 0 {
-			t.Fatalf("a page that is not the conversation derived a window: %#v", got)
+	d := deck{entries: liveStepsFixture(), unfolded: map[int]bool{},
+		workOpen: map[int]bool{}, capOpen: map[int]bool{}, lens: transcriptLens, runningTurn: 1}
+	d.captions = deriveCaptions(d.entries, d.runningTurn)
+	if got := deriveLiveWork(d); len(got) == 0 {
+		t.Fatal("node transcript has no compact work window")
+	}
+	text := func() string {
+		rows, _ := a.deckRows(d, 60)
+		var b strings.Builder
+		for _, r := range rows {
+			b.WriteString(plain(r.text) + "\n")
 		}
-		drawn, _ := a.deckRows(d, 60)
-		var page strings.Builder
-		for _, r := range drawn {
-			page.WriteString(plain(r.text) + "\n")
-		}
-		if !strings.Contains(page.String(), "git status --porcelain") {
-			t.Fatalf("the page lost its live machinery:\n%s", page.String())
-		}
+		return b.String()
+	}
+	if page := text(); strings.Contains(page, "git status --porcelain") {
+		t.Fatalf("raw call escaped compact view:\n%s", page)
+	}
+	d.unfolded[1] = true
+	if page := text(); !strings.Contains(page, "git status --porcelain") {
+		t.Fatalf("expanded transcript lost work:\n%s", page)
 	}
 }
 
@@ -719,6 +710,84 @@ func TestRoomLiveActivityDoesNotBorrowTheParentPhase(t *testing.T) {
 			if !tc.wantsPhase && !strings.Contains(text.String(), map[bool]string{false: "Working", true: "Reading the loader"}[afterCaption]) {
 				t.Fatalf("room lost truthful working state: %s", text.String())
 			}
+		}
+	}
+}
+
+// Count the entire transcript, not just hitWorkFold rows: fallback animation
+// and subharness status used to add a fourth line outside the compact window.
+func TestCleanChatInterimReplyKeepsOneActivityWindowWhileWaiting(t *testing.T) {
+	for _, addressed := range []bool{false, true} {
+		for _, harness := range []string{"", "gathering subharness results"} {
+			a := liveStepsApp(t)
+			a.width = 140
+			a.entries[9].status = toolOK
+			a.entries[9].ended = liveStepsBase.Add(8 * time.Second)
+			reply := entry{kind: entryAssistant, turn: 1, text: "The first result is ready.", settled: true, confirmed: &responseConfirmation{done: true}}
+			if addressed {
+				reply.settled, reply.provisional, reply.addressed = false, true, true
+				reply.confirmed = nil
+			}
+			a.entries = append(a.entries, reply)
+			a.live = -1
+			a.harnessStep = harness
+			a.touch()
+			rendered := rows(a)
+			activity, nonblank := 0, 0
+			for _, r := range rendered {
+				if strings.TrimSpace(plain(r.text)) != "" {
+					nonblank++
+				}
+				if r.activity {
+					activity++
+				}
+			}
+			page := livePage(a)
+			if harness != "" && !strings.Contains(page, harness) {
+				t.Fatalf("compact work lost named harness progress:\n%s", page)
+			}
+			// One user line, one delivered reply, and the existing three work lines.
+			if nonblank != 5 || activity != 1 || !strings.Contains(page, reply.text) {
+				t.Fatalf("addressed=%t harness=%q: %d nonblank rows, %d animated rows:\n%s", addressed, harness, nonblank, activity, page)
+			}
+		}
+	}
+}
+
+func TestCleanChatSubharnessFallbackRemainsWithoutCompactWork(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.state, a.turn = stateWorking, 1
+	a.harnessStep = "gathering subharness results"
+	a.entries = []entry{{kind: entryUser, text: "Check the result.", turn: 1}}
+	a.touch()
+	if !strings.Contains(livePage(a), a.harnessStep) {
+		t.Fatal("lost the standalone subharness activity")
+	}
+}
+
+func TestCleanChatKeptBoundaryDoesNotAddFourthActivityRow(t *testing.T) {
+	for _, boundary := range []entry{
+		{kind: entrySteer, turn: 1, steer: &steerElbow{id: 1, words: "Use the second option", consumed: true}},
+		{kind: entryTool, turn: 1, tool: "bash", status: toolConsent},
+	} {
+		a := liveStepsApp(t)
+		a.width = 140
+		a.entries[9].status, a.entries[9].ended = toolOK, liveStepsBase.Add(8*time.Second)
+		a.entries = append(a.entries, boundary)
+		a.live = -1
+		a.harnessStep = "waiting for subharness"
+		a.touch()
+		activity := 0
+		for _, r := range rows(a) {
+			if r.hit == hitWorkFold {
+				activity++
+			}
+			if r.entry == -1 && r.hit != hitWorkFold && strings.TrimSpace(plain(r.text)) != "" {
+				t.Fatalf("boundary %v added a standalone activity row: %q\n%s", boundary.kind, plain(r.text), livePage(a))
+			}
+		}
+		if activity > liveStepRows {
+			t.Fatalf("boundary %v: %d activity lines", boundary.kind, activity)
 		}
 	}
 }

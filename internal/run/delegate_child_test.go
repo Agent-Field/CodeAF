@@ -64,7 +64,7 @@ func childBody(ctx context.Context, host delegate.Host, args []string) error {
 		_ = os.WriteFile(path, []byte(strings.Join(os.Environ(), "\n")), 0o600)
 	}
 	host.Hello([]string{"implement", "verify"})
-	host.Stage(delegate.StageRecord{Stage: "implement", Status: "running"})
+	host.Stage(delegate.StageRecord{Stage: "implement", Status: "running", Data: json.RawMessage(`{"models":["deepseek/deepseek-v4-flash-0731"],"effort":"high"}`)})
 	calls, _ := strconv.Atoi(os.Getenv("FAKE_CALLS"))
 	for call := 1; call <= calls; call++ {
 		if ctx.Err() != nil {

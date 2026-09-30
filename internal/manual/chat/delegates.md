@@ -4,10 +4,10 @@
 
 codeaf carries programs of its own that take one whole coding task and do it alone, for as
 long as an hour or more. People call them delegates. You hand one a task the way codeaf
-hands a task to its own worker: it works in your folder itself, under this
-conversation's dollar and time limits, shows on the rail while it runs, can be stopped,
-and in a git repository leaves its work on a branch of its own, checked out, when it
-ends.
+hands a task to its own worker: in a git repository it works in a private copy of its
+own and leaves its work on a branch of its own when it ends; in a folder with no git
+history it works in the folder itself. It runs under this conversation's dollar and time
+limits, shows on the rail while it runs, and can be stopped.
 
 Each one is **built into codeaf**. There is nothing to install and nothing to set up, and
 none of them runs on its own outside codeaf. Each is a command in the chat, `/<name>
@@ -24,10 +24,13 @@ task's, shows the actions the program took, each under the step of its own proce
 program asks for, the run's own work model answers, and the raw calls name the model that
 did.
 
+## Where a program's badge appears — and where it does not
+
 **Every program's tasks wear its name as a badge**: `[<name>]` after the task's title on
-the side list, the card, the task's page, the `@` list, the tasks place and home, and its
+the side list, the proposal card, the task's page, the `@` list, the sessions place and home, and its
 initials (`[sd]` for senior-dev) where a list is narrow. A task codeaf's own worker does
 wears none, and a program added to codeaf later gets its own badge from its name.
+The landed card's head shows the title and outcome without a program badge.
 
 This is different from a harness or a subharness, which are built out of codeaf's own
 parts. A program codeaf carries has an engine of its own.
@@ -103,14 +106,17 @@ next message that starts a turn of its own is read on its own.
 
 ## Which folder a program works in — a repository I have not cloned, it edited files outside its folder, a folder with no git
 
-A program that edits code works in one folder itself, never a copy: the one the task
-names as its `ground`, or this conversation's own folder when it names none (a typed
-`/<name>` names none). Nothing else moves it — not `where`, not a path in the brief, not
-where the conversation has been working — and the task's receipt names the folder.
-Inside a git repository it is the repository's root. A `ground` that is not there yet is
+A program that edits code works on one folder: the one the task names as its `ground`, or
+this conversation's own folder when it names none (a typed `/<name>` names none). Nothing
+else moves it — not `where`, not a path in the brief, not where the conversation has been
+working — and the task's receipt names the folder. **Inside a git repository it works in a
+private copy of the repository's root** — a git worktree in codeaf's cache folder, on a
+branch of its own, removed when it ends — so your checkout is never touched and several runs can
+work on one repository at once. **In a folder with no git history it works in the folder
+itself**, and while it runs that folder is the program's: codeaf's own file tools and
+tasks keep out of it (senior-dev's page says how). A `ground` that is not there yet is
 made, empty, when the run starts, as long as the folder it would be made in is there.
-Only what it changes there is part of the task. While it runs the folder is the
-program's: codeaf's own file tools and tasks keep out of it (senior-dev's page says how).
+Only what it changes there is part of the task.
 
 **It is never handed your home folder**, or a folder above it: that is not a project. A
 conversation opened in your home folder names the project's folder (making one first when
@@ -161,56 +167,60 @@ program itself checked is reported in its result, kept apart from what its model
 window only detaches it. If that engine stops or crashes, the conversation is closed, or a
 `--no-host` codeaf quits, the run ends with `codeaf closed while <name> was running` where
 it was last seen working, or `<name> had ended; codeaf closed before it could say where its
-work is` at the program's exit; the next codeaf to find the run says where its work is,
-as it was left, and commits nothing. Nothing carries it on; the next hand-off starts a
-run of its own.
+work is` at the program's exit; the next codeaf to find the run finishes its copy —
+commits what it left on its branch and removes the copy — or, in a folder with no git
+history, says where its work is and commits nothing. Nothing carries it on; the next
+hand-off starts a run of its own.
 
 ## Why was the delegate refused — uncommitted changes, the folder is busy, it runs alone, no such program
 
-**It needs a clean checkout.** In a repository with changes that are not committed
-(modified, staged or untracked files), or a merge, rebase or cherry-pick half done, it is
-refused before anything starts, and nothing is switched or spent: `<folder> has changes
-that are not committed (<files>); commit or stash them, then ask again`, or `<folder> is
-in the middle of a merge; finish it or abort it, then ask again`. The model reads this
-before you are shown a card.
+**Uncommitted changes do not refuse it.** In a repository its copy starts from your folder
+as it stands: modified tracked files and staged additions form the first commit on its
+branch. Untracked files are copied in as they are: any the run changes are committed as
+its work, and the rest stay off its branch. Your files stay untouched; the receipt names
+both. A merge,
+rebase or cherry-pick half done is not carried, and the run starts from your last commit.
 
-**One folder takes one program run at a time**, from any conversation, any window or a
+**Runs on one repository work side by side**, each in a copy of its own. **A folder with
+no git history takes one program run at a time**, from any conversation, any window or a
 shell: `<folder> is busy: <name>, task 4 (…), is working in it, and one folder takes one
 program run at a time; ask again when that run has ended`. So do the folders inside it
 and around it: `… is working in <held folder>, which holds it, …` (or `which is inside
 it`).
 
-**It runs alone.** While one is running, no other task can join it, and it cannot be
-started under another run of this conversation: `work is already underway in <folder>;
-<name> runs alone, so propose it again when that work has ended` (`in a copy of
-<folder>` when the work underway is a task of codeaf's own). codeaf's own tasks run as the
-conversation's run too, so a `/task` typed in a conversation while senior-dev is working
-there is refused the same way, as a task that did not start; another conversation can
-run one, on a different folder.
+**It runs alone in a conversation.** While one is running, no other task can join it, and
+it cannot be started under another run of this conversation: `work is already underway in
+a copy of <folder>; <name> runs alone in a conversation, so propose it again when that work
+has ended` (`in <folder>` when the program works in a folder with no git history).
+codeaf's own tasks run as the conversation's run too, so a `/task` typed in a conversation
+while senior-dev is working there is refused the same way, as a task that did not start.
+Another conversation, window or shell can run one beside it, on the same repository
+too.
 
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.
 
-## Where a delegate's work goes — its own branch, checked out in my folder, not merged into mine, not squashed, the wip commits, what it costs
+## Where a delegate's work goes — its own branch, not checked out, not merged into mine, not squashed, the wip commits, what it costs
 
-In a git repository codeaf cuts the program a branch of its own (`task/<title>-<id>`) in
-your folder and checks it out, and the program works there; its own commits (senior-dev's
-`wip(edit): …`) stay on that branch, and nothing squashes them. When it ends, codeaf commits what
-it left uncommitted onto that branch — the task's title, with the program's own account
-of the ending as the body — and **leaves the branch checked out**, so the work is in your
-folder. **Your own branch never moves**, and nothing is merged into it; if anything else
-moved it during the run, the page says so instead of `as it was`. The task's page
-and the conversation say ``its work is on the branch <branch> in <folder>, N files, and
-that branch is checked out there; your branch <yours> is as it was: `git -C '<folder>'
-switch <yours>` goes back to it, and `git -C '<folder>' merge <branch>` from there brings
-the work in``. Ask the chat to merge it, or run that yourself, when you are ready.
+In a git repository codeaf cuts the program a branch of its own (`task/<title>-<id>`) from
+the commit your checkout stands on, in a private copy of the repository, and the program
+works there; its own commits (senior-dev's `wip(edit): …`) stay on that branch, and
+nothing squashes them. When it ends — finished, stopped, crashed, or codeaf gone — codeaf
+commits what it left uncommitted onto that branch (the task's title, with the program's
+own account of the ending as the body) and removes the copy, so **the branch is kept and
+checked out nowhere**, even when the run changed nothing. **Your checkout is never
+touched**: tracked edits and staged additions become its branch's first commit while staying
+uncommitted in your folder. Untracked files it changed go on its branch; the rest stay off it
+(senior-dev's page says how to bring the branch in).
+The task's page and the conversation say ``its work is on the branch <branch> in <folder>,
+N files; your checkout was not touched, and `git -C '<folder>' merge <branch>` brings it
+in``. Ask the chat to merge it, or run that yourself, when you are ready.
 
-A run you stop keeps its work the same way. A run that changed nothing leaves nothing:
-your branch is checked out again and the empty branch is deleted (`it changed nothing, so
-<folder> is back on your branch <yours> and its branch <branch> was deleted`). If the
-program's own shell left the folder on another branch, codeaf commits and switches
-nothing and says where it was left. Its own notes (senior-dev's `.senior-dev/`) are moved
-out of the folder into the task's record folder, in any kind of folder.
+If the program's own shell left its copy on another branch, codeaf commits nothing there
+and keeps what was loose as a patch in the run's record folder. Its own notes
+(senior-dev's `.senior-dev/`) are moved into the task's record folder, in any kind of
+folder. In a folder with no git history its work is simply there, and nothing is
+committed.
 
 A program that only answers works in your folder in place and changes nothing. Its answer
 arrives in the conversation the way a task's landing does.
@@ -228,4 +238,5 @@ absent there rather than failing every time. With no program available, the mode
 told about one and `propose_task` does not offer `via`.
 
 Over `--host`, the programs are the far machine's build's. The rows come from that build,
-and a run you start happens there, in that machine's folder, on a branch of its own.
+and a run you start happens there, on that machine's folder, in a copy of its own on a branch
+of its own.

@@ -497,9 +497,13 @@ model's (`gpt-4.1-mini:high`), and the name came off it on 2026-09-17 because a 
 takes the room the numbers need.
 
 **It starts with your first message.** The small model on the `title` role is shown the
-opening question and asked for one descriptive **5–8 word phrase**. The answer and the naming request run independently. A late name still
-reaches an idle chat, a background tab, or a hosted chat after the connection is restored;
-no refresh or follow-up message is needed.
+opening question and asked for one descriptive **5–8 word phrase**. A `!` shell command
+is not that message: a conversation that opens with `!` commands keeps the command as its
+name until an ordinary message has an answer, and is then named from that question and
+answer. Unanswered questions are skipped after a shell opening. For an ordinary opening,
+the answer and naming still run independently from the start. A late name reaches an idle
+chat, a background tab, or a hosted chat after the connection is restored; no refresh or
+follow-up message is needed.
 
 Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing
 fallback promptly. Temporary provider failures are asked again for as long as the
@@ -569,12 +573,20 @@ appear nowhere.
 The name of a conversation is the title it gave itself; failing that, the first seven words
 you said; failing that, the file name with `.jsonl` stripped.
 
+A conversation started with `/senior-dev` or `/task` is listed even if you never
+sent an ordinary chat message, including after an abrupt exit. Until you send one, its
+saved task brief is the row's description, and its name too unless the conversation
+has earned a title. Empty-launch cleanup preserves saved task work. Listing the
+conversation does not restart or finish the interrupted task.
+
 There is **no argument form** of `/resume`. A conversation is named by a title the model
 wrote and lives in a timestamped file, so the only honest way to ask for one is to be shown
 them.
 
-The list is read without locking anything: open, scan, close. It never writes and never
-creates a file, so it can show a conversation another window is holding open. One known
+The list is read without locking anything: open, scan, close. It never writes to a
+conversation, so it can show a conversation another window is holding open. The one
+exception is a task-only conversation: reading its saved brief opens the task store
+read-only, which can leave SQLite's `plandb.db-wal` and `plandb.db-shm` files beside it. One known
 staleness: the list reads what the file says rather than the transcript a resume would
 rebuild, so a rewind with nothing typed after it leaves the taken-back message as the row's
 description.

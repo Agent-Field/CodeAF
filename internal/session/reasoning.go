@@ -174,15 +174,7 @@ func assembledReasoningDetails(raw json.RawMessage) json.RawMessage {
 }
 
 func (a *Agent) recordAssistant(message ai.Message, reasoning provider.MessageReasoning) {
-	a.mu.Lock()
-	a.alignReasoningLocked()
-	a.messages = append(a.messages, message)
-	a.messageReasoning = append(a.messageReasoning, reasoning)
-	if a.file != nil {
-		a.file.appendReasonedMessage(message, reasoning)
-	}
-	a.chatlog.post(message)
-	a.mu.Unlock()
+	a.recordPresentedAssistant(message, reasoning, nil)
 }
 
 // snapshotWithReasoning takes both aligned slices under one lock. THE SIDECAR

@@ -105,6 +105,7 @@ func pinEveryTextModel(t *testing.T) {
 		}
 	}
 	write(config.KeyTierReflexModel, e2eModel)
+	write(config.KeyTierWorkerModel, e2eModel)
 	write(config.KeyTierMastermindModel, e2eModel)
 	write(config.KeyTaskModel, e2eModel)
 	write(config.KeyModelFallbacks, e2eModel)
@@ -120,13 +121,17 @@ func pinEveryTextModel(t *testing.T) {
 
 // textRoles is every role in internal/roles that answers with words. The media
 // four are absent for [pinEveryTextModel]'s reason.
-var textRoles = []roles.Role{
-	roles.RoleTitle, roles.RoleConsolidate, roles.RoleGuardian,
-	roles.RolePlanner, roles.RoleDesigner, roles.RoleWorker, roles.RoleAuditor,
-	roles.RoleReflex, roles.RoleRouter, roles.RoleRouterConfirm, roles.RoleMarkReader,
-	roles.RoleHandoff, roles.RoleTaskName, roles.RoleShaper, roles.RoleIntake,
-	roles.RoleDivision, roles.RoleCareful,
-}
+var textRoles = func() []roles.Role {
+	var text []roles.Role
+	for _, role := range roles.Vocabulary() {
+		switch role {
+		case roles.RoleVision, roles.RoleImageGen, roles.RoleSpeech, roles.RoleVideo:
+			continue
+		}
+		text = append(text, role)
+	}
+	return text
+}()
 
 // familyConfig is what the v3 door wires for work, applied to a conversation
 // this lane drives directly. Everything here is a row cmd/codeaf reads

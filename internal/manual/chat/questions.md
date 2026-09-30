@@ -78,15 +78,17 @@ Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
-**A task proposal and a reversible recommendation may carry a clock.** The answers
-row says which answer is about to be taken and when — `start it in 9s` — and when
+**A task proposal and a reversible recommendation may carry a clock.** The card's
+top edge, beside who is asking, says which answer is about to be taken and when —
+`start it in 15s` at the task proposal's default — and when
 the time runs out the work STARTS. It is your chance to correct it, not a gate the
 work waits on. Any key you press stops that clock, and a proposal you hold loses
-its deadline and then waits like everything else, with `waiting` on the end of the
-row instead of a countdown.
+its deadline and then waits like everything else, showing `waiting` instead of a countdown.
+
+## What a question's clock says before it acts
 
 **A clock says what it is going to do, in that shape's own words.** Where there
-is a recommended answer the tail is that answer — `start it in 9s`. Where there
+is a recommended answer the clock names that answer — `start it in 9s`. Where there
 is not, the words depend on the shape: a proposal reads `starts on its own in 9s`
 because something begins when it runs out, and an assumptions card reads
 `goes on in 9s`, because nothing begins — the asker simply stops waiting for you
@@ -744,7 +746,7 @@ Almost nothing does. A wait that ended is not a no, and nothing on the block
 answers in your place if you say nothing.
 
 There is exactly one thing that decides by itself: **a task proposal**, whose
-card says which answer it is going to take and when — `start it in 9s`. That
+card says which answer it is going to take and when — `start it in 15s` at the default. That
 card is your chance to redirect the work, not a gate the work waits on, and it
 starts on its own if nobody says otherwise. Nothing else on this surface acts
 without you, and nothing that cannot be taken back ever will.
@@ -1290,7 +1292,9 @@ and `2 not now`. A service connected by a KEY has no `1`: a bare yes to one of
 those connects nothing, so the question asks for the key in the message box under
 it, masked to a bullet a character with the count beside it, and `enter` sends it.
 The one answer it keeps is `2 not now`, because a question the turn is waiting on
-with no visible no is a question nobody can end.
+with no visible no is a question nobody can end. The waiting mark and the
+sentence arrive as one fact: the moment a sign-in needs you, the line is already
+`connect your <Name> account?`, on this page, on home and on the tab.
 
 **So does the harness lane's pair.** An offer to run a saved program is one line —
 `run harness "research"?` with `1 run it` and `2 not now`. A finished harness
@@ -1398,3 +1402,11 @@ older blocks — the connect offer, with its own answers row and its own keys �
 gone. The one card in this program that still answers to keys of its own is the
 intake form `/subharness` opens for a saved program, which is a fullscreen page
 with fields to fill in rather than a question above the box.
+
+## Does accepting a standing card mean it repeats?
+
+The answer depends on the kind shown on the card. A one-off reminder says
+`Reminds you then. Nothing repeats.` A repeating check says
+`It repeats on that cadence until you stop it.` A rule says
+`The rule is kept until you stop it.` These are the engine's own answer
+consequences, shared by the home screen and the conversation.

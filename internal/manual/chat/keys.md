@@ -170,9 +170,10 @@ enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
 ```
 
 That is the terminal-capable form when no command can be kept. A running foreground
-command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
-cannot deliver `ctrl+shift+enter` leaves that clause out. `cmd+enter` still waits, but the
-one-line slot no longer advertises it.
+command that can be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`;
+a `!` command cannot be kept. A terminal that cannot deliver `ctrl+shift+enter`
+leaves that clause out. `cmd+enter` still waits, but the one-line slot no longer
+advertises it.
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -243,7 +244,7 @@ transcript where you can scroll it. A row that is wider than the window wraps un
 column its sentence already starts in, so the next line does not sit at the left edge as
 if it were another key.
 
-**On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
+**On a place** — home, tasks, standing, memory, spend, settings — `?` draws **the
 map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
 was already using. One meaning, two screens: show me the keys for where I am standing.
 
@@ -408,6 +409,14 @@ two-tap people make mid-turn, press it again harder because the first did not se
 land, stops the answer and then quits. Nothing you typed is lost when it does: the box
 and anything waiting for an answer are written to disk on the way out. See "Quitting
 codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
+
+## Reopen a conversation after stopping an answer — where did the answer I stopped go
+
+When you stop an answer with `esc` or `ctrl+c`, its unfinished words fold behind
+`▸ stopped by you`. Reopening the conversation keeps that chip. Press `ctrl+e`
+to open it and read the words that arrived before you stopped. They stay
+unfinished work, not a completed answer. After reopening, the chip may leave out
+how long the answer ran, because that time is not saved.
 
 ## Esc is not stopping it — how long does a stop take, why the turn is still finishing, how long stopping takes, and what happens if it will not stop or will not let go
 
@@ -616,9 +625,9 @@ key arrives as ordinary `enter` and the message steers instead.
 | `alt+l` (`opt+l`) | Close the column on the right, or bring it back, in every chat: the same column holds the Tasks and, in a chat in a team, the Traffic. The key is named at the right of the column's header. Under 100 columns it lays the column over the body, and a second press takes it off. Remembered for the next session |
 | `alt+m` | In a team that has a manager: go to the manager. Over `--host` against an older codeaf on the far machine it says managers are not available there |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise it does what `alt+l` does: close the column, or bring it back; the column stands even with no tasks in it. Remembered for the next session |
-| `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
+| `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest completed work inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
-| `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
+| `tab` | Take the highlighted slash command on Home or in a conversation; otherwise open or commit path completion over a command's path argument — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
 ## Keys in the message box: moving the caret
 
@@ -635,7 +644,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `super+right` / `meta+right` | End of the line — one of the two spellings `cmd+→` can arrive as |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
-| `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
+| `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest completed work inside a task's page), falling through to the most recent thinking block when there is no chip |
 | `shift+←` / `shift+→` | Select a character at a time, the way shift does in any text field. Does nothing over an empty box |
 | `shift+↑` / `shift+↓` | Select a line at a time |
 | `shift+home` / `shift+end` | Select to the start or end of the line |
@@ -671,7 +680,7 @@ person means by one — a path, a hash, a flag, `go.mod`, a URL are each one wor
 same boundary a double-click uses in the conversation above.
 
 **It works in every box you type into**: the message box in a conversation, the box at
-the foot of home, and the composer on tasks, standing, memory, spend, search and
+the foot of home, and the composer on tasks, standing, memory, spend and
 settings. Sweeping out of the box carries the selection to the end of what is in it,
 rather than stopping at the edge.
 
@@ -808,8 +817,8 @@ text when you click on the prompt's side of it. It works on a wrapped, multi-lin
 draft.
 
 It answers **on home as well as in the conversation** — home is the one place with
-a box at its foot (the Places page, *Typing on a place*); the filters on tasks,
-memory and search are rows of their own bodies.
+a box at its foot (the Places page, *Typing on a place*); the filters on tasks and
+memory are rows of their own bodies.
 
 Two things it does not do. With **nothing typed** there is no caret to place, so
 the click falls through to the place underneath — the row is carrying a dim
@@ -1400,12 +1409,15 @@ answers every picture question here, whether you attached the file or not.
 Attaching is for a picture you are handing over as part of what you are saying.
 
 **The tray.** Attached pictures sit in a one-row tray directly above the message box,
-one dim chip each, drawn as `▣ #1 name.png` — `*` in place of the square on an ASCII
-terminal. The number is the picture's place in the message and the number `[image #1]`
+one dim chip each, drawn as `▣ #1 name.png ×` — `*` in place of the square and
+`x` for removal on an ASCII terminal. The number is the picture's place in the message and the number `[image #1]`
 in your sentence refers to. The message box stays the sentence. `backspace` over an
 empty box drops the last chip, and clicking a chip removes that one — and takes its
 `[image #n]` out of your sentence, counting the ones behind it down so the numbers
-stay true.
+stay true. Returning to Home preserves your unsent prompt, cursor and attachments in
+that conversation. Reopening it restores them. Home starts with an empty box and tray;
+a new conversation receives only what you type or attach there. Queued messages keep
+their own attachments.
 
 ## Dragging or pasting a screenshot in
 
@@ -1604,7 +1616,7 @@ follows what you type. Only these keys are taken from you:
 | `down` / `ctrl+n` | Move the list cursor down |
 | `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
 | `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted team, conversation, task or file; if nothing is picked, the line is sent |
-| `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/attach ` or `/export `. With nothing to complete and an empty box it goes back to the last conversation |
+| `tab` | Command list on Home or in a conversation: take the highlighted command, as Enter does. Mid-sentence it only completes the word; a finished send tag is not submitted. No match leaves the draft alone. Otherwise opens or commits path completion over `/attach ` or `/export `; with an empty conversation box it goes back to the last conversation |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 
 ## Keys in the model picker and the sessions roster
@@ -1626,7 +1638,7 @@ Every column is two rungs — its own direction, then reversed — so `alt+s` wa
 `model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
 published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
 column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
-sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the tasks place gives:
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the sessions place gives:
 `s` is one of the commonest letters a filter starts with, and the list a person was
 narrowing would re-sort instead.
 
@@ -1647,7 +1659,7 @@ With the providers open, `enter` on one of them pins it instead of switching mod
 
 Its placeholder reads exactly `filter by name · ctrl+r refresh` — the keys are on the FOOT, because
 a placeholder vanishes under the first typed character and the foot does not. The hint slot
-follows the cursor: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
+follows the cursor: `→ hosts · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
 providers, and `enter unpin · ← back · esc` on the provider already pinned, where `enter` takes
 the pin off — with `tab providers` and `tab back` in place of the arrows while you are
 mid-typing and the arrow would step over a character instead. The foot always names whichever
@@ -1745,10 +1757,10 @@ and `space` activates too — except while a search is on, when it goes into the
 a phrase like `shell command` can be written · `backspace`, `ctrl+u`, `ctrl+w` edit the
 search · anything else types into it.
 
-**Task page** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
+**Sessions place** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
 column, `ctrl+. earlier`): `esc` closes it (or clears the filter first, if one is being typed),
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
-over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
+over the `running` and `completed` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
 · **`1` and `2` answer the row under the cursor, but only while the pane beside the list is
 drawing those two answers for it** — a frame at least 110 columns wide, over a task of this
@@ -1777,7 +1789,7 @@ the pane there is nothing for a first click to show, so one click opens as it al
 click on one of the pane's own answers presses that answer and opens nothing. The wheel
 walks the cursor. The tasks pages describe what is on it.
 
-**Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
+**Inside an old task's card** (`enter` on a completed task's row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
 `space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
 message box** and closes the page. Its foot reads
@@ -1861,8 +1873,8 @@ see *Switch between open conversations*.
 It works while either conversation is running, over every door: the one you leave keeps
 streaming into its own transcript and is all there when you come back.
 
-**On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
-search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
+**On a place, `tab` is the next place instead.** Home, teams, sessions, spend and settings form the circle it walks; `shift+tab` walks it back.
+From standing or memory, `tab` returns to Home. That is
 the same key doing the same kind of thing — going to the next thing of the kind you are
 looking at — and it is the only meaning `tab` has while a place is up. See **Places**.
 
@@ -2202,8 +2214,8 @@ inside a conversation, and `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the six places on
 the top line, `home  teams  chats  sessions  spend  settings`, and each answers to its position there,
-`alt+1` through `alt+6`. **`alt+7`, `alt+8` and `alt+9` are kept**, on the three places that
-are off the bar — standing, memory and search — so those keys still open a room rather than
+`alt+1` through `alt+6`. **`alt+7` and `alt+8` are kept**, on the two places that
+are off the bar — standing and memory — so those keys still open a room rather than
 doing nothing; `alt+.` draws them all with their numbers. `alt+2` is the teams page, and
 `alt+3` is `chats`, the way back to the conversation in front (a new chat when none is open);
 it is not a room, so `tab` steps over it. Hold
@@ -2212,12 +2224,12 @@ that keycap; it is the same key and the same chord, and on Linux and on Windows 
 `alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
 rather than on `ctrl`.
 
-**`ctrl+1` … `ctrl+9` are a second spelling, on the terminals that can send them.** `ctrl`
+**`ctrl+1` … `ctrl+8` are a second spelling, on the terminals that can send them.** `ctrl`
 and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
 the first spelling and never will be — but a terminal running the kitty keyboard protocol
 sends exactly the keys that scheme cannot spell, and it tells codeaf it does. Where that
-report arrives, `ctrl+1` … `ctrl+9` jump to the same eight places and `ctrl+.` draws the same
-map, and the map's own line says `alt+1…9 or ctrl+1…9 go to a place` so you can see it is
+report arrives, `ctrl+1` … `ctrl+8` jump to the same eight destinations; `ctrl+.` draws the same
+map, and the map's own line says `alt+1…8 or ctrl+1…8 go to a place` so you can see it is
 live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
 WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
 way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
@@ -2234,7 +2246,7 @@ tasks, on standing orders and on memory alike: a foot that offered `enter` or `t
 filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
-taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
+taken, and `ctrl+.` is the sessions place (`/history`) from a conversation — while a place is
 standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
 takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already clears messages waiting from the turn, and a third
@@ -2248,7 +2260,7 @@ spaces. A machine with one conversation, or none, opens an empty home; so does a
 over `--host`, where what opens is the **far machine's** home.
 
 **It answers from every place as well as from a conversation.** Wherever a place is
-standing, the two spaces are read against that place's own filter — tasks, memory, search —
+standing, the two spaces are read against that place's own filter — tasks and memory —
 and open home just as they do from a draft; on spend and standing, which have nothing to
 type into, two bare spaces open it and any key between them disarms it. On home itself the
 door is a no-op: the page is already open, and two spaces type into home's own filter. It also does not answer from under a layer that owns the
@@ -2397,7 +2409,7 @@ to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
 the six place words on the top line after the `codeaf` wordmark (seven while you stand in
-standing, memory or search, whose word is drawn after the six). The chat tab strip is
+standing or memory, whose word is drawn after the six). The chat tab strip is
 not on a place. It is the row under that top line only while a conversation is in front.
 The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:
@@ -2411,7 +2423,7 @@ band there instead of its usual mark, and five keys mean something on that row:
 | `↑` | nothing. The bar is on the top line, and there is nothing above it |
 
 Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
-next and previous place, `alt+1` … `alt+9` jump, `alt+.` draws the map, and **any printable
+next and previous place, `alt+1` … `alt+8` jump, `alt+.` draws the map, and **any printable
 key goes into the composer** — taking the cursor back down into the page with it, because
 somebody who has started typing has stopped looking at the bar.
 
@@ -2454,6 +2466,10 @@ The third door on the same subject is the **money segment of the status line**: 
 ink once this conversation has spent four fifths of its own `per conversation` limit.
 
 ## Keys in the task roster and inside a room
+
+Opening a task's room gives the keyboard to that room. For a task that accepts
+notes, type one and press `enter` to send it; you do not need to press `alt+t` again first.
+Use `alt+t` when you want to navigate the roster again.
 
 **While the task roster holds the keyboard** (`alt+t`, `opt+t`): `esc` gives the keyboard
 back · `up`/`down` move over the needs-you band, the group headings and the tasks ·
@@ -2538,10 +2554,12 @@ deliberately **not** taken here — it falls through to the message box's
 back-navigation.
 
 **Inside a program's room** — a task handed to senior-dev — `ctrl+y` turns the page
-between the actions it took and its raw calls to its model, `ctrl+o` folds its brief, and
-the box sends nothing. While it works the keys row under the box reads
+between the actions it took and its raw calls to its model, `ctrl+o` opens its whole brief
+as the page (scroll it like the page) and closes it again, and the box sends nothing.
+While it works the keys row under the box reads
 `/stop · x with empty input · esc main · ctrl+y calls`, ending `ctrl+y actions` while the
-calls are showing; once it has ended the row is the `ctrl+y` clause alone.
+calls are showing and `ctrl+o close brief` while the brief is; once it has ended the row
+is that last clause alone.
 
 **`up` and `down` in a room mean what they mean in the message box**, in the same order:
 inside a multi-line message they move the caret; on the first line — or over an empty box
@@ -2614,7 +2632,7 @@ A program's task page — senior-dev's — opens on the actions it took, each un
 of its process. **`ctrl+y` turns it to the raw calls** it made to its model: what it sent,
 what the model answered, which model it was, and the call in flight. `ctrl+y` again turns
 it back. It works in the program's room, whichever door opened it — its row, its card, or
-the tasks place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
+the sessions place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
 over the calls. Every page opens on the actions.
 
 It is a chord, so it never costs a character: the room's box keeps what you typed. It is
@@ -2741,7 +2759,7 @@ Only the left button acts. A press is resolved in this order:
    follows it, and a second press on the same row opens it — on a frame too narrow for that
    pane one press opens, as it always did; a press on a section word or on
    empty padding does nothing. Inside an old task's record card, the head row and the foot
-   go back to the list and its body is read. On standing, spend and search a press on a
+   go back to the list and its body is read. On standing and spend a press on a
    row opens it on the first press too; on memory it opens a line's card, or folds a
    shelf. On home a click puts the cursor on a row and a second click opens it. On the rewind timeline a click places the pick and a click on the
    point already placed does the rewind.
@@ -2974,7 +2992,7 @@ snapshot.
 
 **The terminal is too narrow for the word you are aiming at.** The top line folds its
 trailing places into `more ▾` as the frame narrows; click `more ▾` and pick the place from
-its menu. `tab`, `shift+tab` and `alt+1`…`alt+9` still go everywhere.
+its menu. `tab`, `shift+tab` and `alt+1`…`alt+8` still go everywhere.
 
 **A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
@@ -3193,7 +3211,7 @@ answer:
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
 | `ctrl+y` | **Bound** on a program's task page: it turns the page between the actions the program took and its raw model calls; on a Home project row and in the `/files` list it copies the path under the cursor. Nowhere else |
 | `ctrl+z` | **Bound**: undo in every box, with `ctrl+shift+z` to redo — see "Undo what I typed" |
-| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak, which is why `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) are the first spelling and always will be, but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+9` reach the same eight places. The map's line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak, which is why `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) are the first spelling and always will be, but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+8` reach the same seven places and the chats destination. The map's line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
@@ -3374,8 +3392,8 @@ two-column gutter is work done on your behalf: thinking, tool calls and their de
 results, and assistant text that was followed by another call. Below 60 columns the
 gutter disappears and the dim treatment carries the same distinction.
 
-Indented reply text is also **greyer** than the answer, and carries no markdown — no
-bold, no headings, no code colouring. See "Why is part of the reply grey, and where is
+Indented reply text is also **greyer** than the answer. Opened narration renders
+markdown structure in quiet ink, so headings, lists and code remain readable. See "Why is part of the reply grey, and where is
 the actual answer" on the screen page.
 
 ## How do I see what codeaf did — see codeaf's work and tool calls behind the answer
@@ -3388,13 +3406,13 @@ When a successful turn has work and a trailing answer, the finished work collaps
 one indented chip between your message and the answer, such as
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e`. Its figures are the whole turn's
 elapsed time, the thinking block's time when there was one, and the real call count.
-There is a blank row between the chip and the answer under it.
+There is a blank row between the chip and the answer under it. Detailed time,
+token and spend receipts appear only when you open the work.
 
-**A turn you stopped with `esc` says so instead**, and it collapses whole:
-`▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
-A stopped turn never reached an answer, so there is no answer to leave out of the chip —
-that is the point of the wording. codeaf's own lines about the stop (`· stopped`, and
-what it dropped from the queue) stay outside the chip where you can read them.
+**A turn you stopped with `esc` says so instead**. Its unfinished work collapses
+into a stopped-work chip. Completed replies and explicitly addressed updates stay
+outside it; a human update interrupted mid-stream is labeled `interrupted`.
+The retained audience and interruption state survive reopening the conversation.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
 no transcript cursor, so the key first chooses the running conversation’s compact
@@ -3402,25 +3420,26 @@ steps, then the latest completed turn’s work. The running view shows up to thr
 wrapped rows of recent captions, with the newest live step shimmering. Opening
 shows the existing outline: click a caption to inspect its calls, or click the
 whole-work door to return to the compact steps. Completion collapses work opened
-during the turn. The newest caption may exceed three rows on a narrow frame so
-its words remain intact.
-Questions, approval prompts, failure lines, text-only turns, and work with no trailing
-answer are never hidden — nor is a second message you sent into a running turn, which
+during the turn. A caption longer than three rows ends with an ellipsis in the
+compact view; open the work to read its full text.
+Confirmed replies stay visible even when later work follows them. An important
+interim result, blocker, decision or requested update also stays visible when
+codeaf explicitly addresses it to you with a leading `[update]` marker. The
+interface removes the marker and renders the message normally, including when
+that same response calls tools. Routine tool narration has no marker and folds
+with the work; you do not need to type any marker yourself. Team exchanges
+and compaction details stay inside the work disclosure; opening it preserves
+reasoning, notes and receipts alongside the step captions.
+Questions, approval prompts and text-only answers are never hidden — nor is a second message you sent into a running turn, which
 ends the chip above it and starts a new one. Fold state belongs to this window; resumed
 sessions derive fresh closed chips from their saved entries.
 
-**A task's page has chips too, cut differently.** The conversation folds by turn — one
-chip per question you asked. A task's page is one long turn, so it folds by **phase**
-instead: the work that came before each paragraph the task wrote goes behind its own
-chip, and every paragraph stays standing. The work it is doing right now never folds.
-`ctrl+e` opens the newest chip there, a click opens any of them, and scrolling up when
-the page is already at its top opens the one nearest the top. `ui.work = open` opens them
-all, exactly as it does out here. Where a task's page has no chip yet, `ctrl+e` falls
-through to the thinking block as before.
-
-**A node's transcript inside an adaptive run's page never folds.** You got there by
-asking to see what that one node did, and the page draws the tail of its journal under
-the graph — so there is nothing there to fold away.
+**The same rule applies inside tasks and nested task transcripts.** Current work
+uses one compact activity window of at most three rows. Earlier steps in that
+turn stay behind its disclosure, including across a correction or an interim
+reply. When work finishes, settled operations collapse into work chips around
+your messages and confirmed replies. `ctrl+e` or a click opens the details;
+`ui.work = open` opens them by default. No journal detail is deleted.
 
 ## How do I keep everything expanded?
 

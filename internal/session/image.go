@@ -410,7 +410,7 @@ func visionUserMessage(text string, refs []journalPart) userMessage {
 // half is this function and it should move to agent.go beside the original.
 func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, live ai.Message, seer string) <-chan Event {
 	a.running = true
-	hub := newEventHub()
+	hub := a.newReplayHubLocked()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
@@ -473,7 +473,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	// words — including for an interrupt, where the buffer is what survives.
 	partial := &partialBuffer{}
 	partial.write(note)
-	hub.send(Event{Kind: EventTextDelta, Text: note})
+	hub.send(Event{Kind: EventTextDelta, Addressed: true, Text: note})
 
 	var streamed atomic.Int64
 	ctx = provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
@@ -481,7 +481,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 		case provider.StreamDelta:
 			streamed.Add(int64(len(event.Delta)))
 			partial.write(event.Delta)
-			hub.send(Event{Kind: EventTextDelta, Text: event.Delta})
+			hub.send(Event{Kind: EventTextDelta, Addressed: true, Text: event.Delta})
 		case provider.StreamThinking:
 			hub.send(Event{Kind: EventThinking})
 		case provider.StreamReasoning:
@@ -515,7 +515,14 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 		// only the note would be a reply that says who spoke and not what they
 		// said.
 		if streamed.Load() > 0 {
-			a.keepPartial(partial, hub)
+			// This producer knows its partial is an answer to the person's
+			// image question, including the attribution they already saw.
+			text := partial.take()
+			if !a.stoppedSoup(text, hub) {
+				mark := humanPresentation(text)
+				mark.Interrupted = true
+				a.recordPresentedAssistant(textMessage("assistant", text), provider.MessageReasoning{}, mark)
+			}
 		} else {
 			partial.reset()
 		}
@@ -535,7 +542,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	// and only when nothing streamed — is what keeps a non-streaming endpoint
 	// from showing a blank reply and a streaming one from showing two copies.
 	if streamed.Load() == 0 {
-		hub.send(Event{Kind: EventTextDelta, Text: answer})
+		hub.send(Event{Kind: EventTextDelta, Addressed: true, Text: answer})
 	}
 	partial.reset()
 	a.record(textMessage("assistant", note+answer))

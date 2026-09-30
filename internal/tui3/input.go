@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // prompt is the input line's mark. Two cells, and the only furniture below the
@@ -477,7 +478,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// five (pages.go). Each of the seven takes the whole frame, so there is
 	// nothing under it a key could mean anything to — and the six classes of the
 	// grammar are read before the place's own keys, on every place, which is what
-	// makes `tab`, `alt+1…9` and `→` mean one thing wherever a person is standing
+	// makes `tab`, `alt+1…8` and `→` mean one thing wherever a person is standing
 	// ([app.placeKeyPress]).
 	//
 	// IT USED TO BE FIVE ARMS AT THREE DIFFERENT RUNGS. The settings panel and
@@ -566,6 +567,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// under it, and esc leaves everything exactly as it was (connectpanel.go).
 	if a.connPanel.open && msg.String() != "ctrl+c" {
 		return a.connectPanelKey(msg)
+	}
+
+	// And the add-provider panel, which is that panel's door raised from the
+	// model picker's last row: opened by a row, nothing being typed under it,
+	// and esc leaving the conversation exactly as it was (addprovider.go).
+	if a.addPanel.open && msg.String() != "ctrl+c" {
+		return a.addPanelKey(msg)
 	}
 
 	// And the harness panel, which is that panel's twin in every respect that
@@ -735,7 +743,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// tab is the path completion's key: "/image " with tab after it offers this
+	// Tab chooses an open command row first. Otherwise, "/attach " offers this
 	// directory's files, and tab again takes the one under the cursor
 	// (files.go). It is read before the lists below because everything above it
 	// has already had its say.
@@ -754,6 +762,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// things — one of them irreversible — and a person would arrive in another
 	// conversation with a rail focus they cannot see.
 	if msg.String() == "tab" {
+		if a.menu.open {
+			// Tab completes the chosen token without submitting a sentence or
+			// a live send tag. Bare commands still run through the menu's door.
+			if a.startingChat() {
+				return a.startMenuEnter()
+			}
+			return a.runMenu()
+		}
 		if cmd := a.completePath(); cmd != nil {
 			return cmd
 		}
@@ -784,7 +800,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// AND alt+1…9 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
+	// AND alt+1…8 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
 	// of the place grammar that belongs to no place — it is how a person GETS to
 	// a room — and every claim above has already had its say, so a modal overlay
 	// that wants the chord still gets it first and nothing below has taken a
@@ -1095,6 +1111,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return a.edited()
 	case "delete":
+		if len(a.input.value) == 0 && !a.roomOpen() && a.dismissDone(a.sel) {
+			return nil
+		}
 		if a.dropDraftPick() {
 			return a.edited()
 		}
@@ -1445,6 +1464,9 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// keeps its text and says so, with neither becoming a model message.
 	if windowsDroppedLineShape(line) && a.inputDroppedLine(line) {
 		return a.edited()
+	}
+	if _, bash := session.BashCommand(a.pastesUnfolded(line)); bash {
+		return a.enterBash(line)
 	}
 	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
 	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a
@@ -1836,12 +1858,16 @@ func draftBlockTacked(e *editor, pal palette, width, maxRows int, hint, lead, ta
 // [app.draftInk]) — a dim box is how the walk says these words were never
 // sent.
 func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment, ink func(string) string) ([]string, int, int) {
-	return draftBlockFull(e, pal, width, maxRows, hint, lead, "", demoted, ink)
+	return draftBlockFull(e, pal, width, maxRows, hint, lead, "", demoted, ink, lead == "")
 }
 
 // draftBlockFull is the whole of it, and the only one of these four that takes
 // every knob. The three above are the shapes that are actually asked for.
-func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack string, demoted []segment, ink func(string) string) ([]string, int, int) {
+func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack string, demoted []segment, ink func(string) string, shell ...bool) ([]string, int, int) {
+	mark := pal.dim(prompt)
+	if len(shell) > 0 && shell[0] && len(e.value) > 0 && e.value[0] == '!' {
+		mark = pal.warn(pal.glyph(tokens.GPromptShell) + " ")
+	}
 	chip := ""
 	if tack != "" {
 		chip = pal.chip(tack) + " "
@@ -1863,7 +1889,7 @@ func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack
 		// out and keeps the way out itself, which is the same ladder the foot of
 		// every place is fitted by; on a hint with nothing to drop it is exactly
 		// [fit], so the boxes whose placeholder is a plain phrase lose nothing.
-		return []string{lead + pal.dim(prompt) + chip + pal.dim(hintFit(hint, room))}, head, 0
+		return []string{lead + mark + chip + pal.dim(hintFit(hint, room))}, head, 0
 	}
 
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the
@@ -1897,7 +1923,7 @@ func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack
 		row0 := under
 		switch {
 		case i == 0 && opening:
-			row0 = lead + pal.dim(prompt) + chip
+			row0 = lead + mark + chip
 		case i == top:
 			// The block is scrolled: say so where the prompt would be, in the
 			// same two cells, so the rows do not shift under the caret.

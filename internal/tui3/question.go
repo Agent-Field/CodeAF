@@ -2139,6 +2139,29 @@ func (a *app) holdQuestionClocks() {
 	}
 }
 
+// holdSafePick moves one question's pointer to the answer that loses nothing,
+// for a key the settle guard has just dropped.
+//
+// IT READS THE SAFE MARK AND NOT THE POSITION. Where the question draws an
+// answer flagged [AnswerOption.Safe] the pointer goes to it; a question with no
+// such mark keeps the pointer it had, because a drop that moved a cursor
+// somewhere invisible would be a second ambiguity laid over the first. The task
+// proposal's decline is the marked one, which is the whole case #1547 asks
+// about: the card whose silence starts the work must not have `enter` standing
+// on that silence after a key was thrown away.
+func (a *app) holdSafePick(head questionShown) {
+	if !questionClockAnswers(head.question) {
+		return
+	}
+	safe := questionSafeAt(head.question)
+	open := a.questionHeld(head.token())
+	if open == nil || open.pick == safe {
+		return
+	}
+	open.pick = safe
+	a.touch()
+}
+
 // refocusQuestions hands every waiting question its whole reading time back,
 // because the window it is drawn on has just got the keyboard.
 //
@@ -3077,6 +3100,15 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	// was there before it, and applying it late is applying it to the wrong
 	// question rather than to none.
 	if !a.questionSettled(head) {
+		// AND A DROP ON A CLOCK THAT ANSWERS IS NOT A SILENT ONE (#1547). The
+		// task proposal is the one question whose silence starts paid work, and
+		// this guard exists to throw away a keystroke aimed at whatever was on
+		// screen a quarter-second ago — but the throw is a READING of the key,
+		// not an absence of one: the person was here. Leaving the pointer on the
+		// answer the clock would have taken turns a dropped `2` into an `enter`
+		// that starts the task, so the pointer goes where a key that loses
+		// nothing lives, and `enter` after the drop declines instead.
+		a.holdSafePick(head)
 		return nil, true
 	}
 	if cmd, taken := a.questionBeatKey(head, key); taken {
@@ -3186,8 +3218,27 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	// as a decline; it does nothing, the question stands, and the way out is the
 	// answer that says so ([questionOwnsBox] is the same fact from the other
 	// side, and takes this key while there ARE words).
+	//
+	// AND THE WAY OUT IS NOT THE WHOLE QUESTION. A correction, a connect key or
+	// a standing card is still a question WITH ANSWERS, and every question with
+	// answers has a pointer the arrows walk ([questionPointerStart]) — a
+	// standing card whose Enter did nothing while the pointer stood on
+	// `1 keep this rule` was the owner, 2026-09-25 (#1506). So the give-up below
+	// yields to a pointer: enter over an empty box takes the answer the pointer
+	// is on, and only a question with nothing under the pointer — and no
+	// asker's pick beside it — hands the key back untouched.
 	if head.question.Input.Kind == session.InputText {
-		return nil, false
+		// THE POINTER STANDS FOR A PICK ONLY WHERE A PICK EXISTS. A connect
+		// question keeps exactly one answer, the way out, and that answer is
+		// taken by a digit, never by enter — enter there means the words ([#1506
+		// broke it wide]). A standing card is a real choice between answers, so
+		// a pointer standing on one of them IS the pick enter takes.
+		choice := head.question.Ask == session.AskChoice || head.question.Ask == session.AskJudgement
+		under := choice && head.pick >= 0 && head.pick < len(head.question.Options)
+		picked := head.question.Pick != nil && strings.TrimSpace(head.question.Pick.Key) != ""
+		if !under && !picked {
+			return nil, false
+		}
 	}
 	// ENTER TAKES THE ANSWER THE POINTER IS ON, through the same door a digit
 	// goes through, so a widening answer still gets its second beat and a

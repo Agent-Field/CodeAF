@@ -143,7 +143,7 @@ const modelHead = "model"
 // to it ([colTable]), because the providers behind one model are read exactly
 // the way the models are: down the page, comparing. A ranked `·` tail put each
 // row's price wherever that row's note happened to end.
-const laneHead = "provider"
+const laneHead = "host"
 
 var laneColumns = []tableColumn{
 	{head: "first", right: true, sorts: true, up: true},
