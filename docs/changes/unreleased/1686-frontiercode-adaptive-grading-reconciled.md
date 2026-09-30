@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: bench/frontiercode — the adaptive grading path runs and the pilot's 15 outcomes reconcile
-pr: 1701
+pr: 1686
 surface: [build, docs]
 invalidates:
   - "A classical criterion whose reference test overlay conflicted was `rig`, and that rig poisoned the whole run even when the judge had adapted the tests. Three of the pilot's trials (conflicted-files-refname-crash s1-s3) were lost this way. The overlay now applies with one line of reduced context when the agent's own test moved its anchor, phase B runs (the container gets /logs/grade and the adapted patch, and phase B creates its output directory), and a phase-B verdict answers the conflicted classical criterion."
