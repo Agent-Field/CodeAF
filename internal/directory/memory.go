@@ -17,6 +17,7 @@ type Memory struct {
 	identity IdentityRec
 	devices  map[string]Device
 	cells    map[string]Cell
+	grace    GraceBounds
 }
 
 // NewMemory returns an empty directory that reads time from clock.
@@ -26,7 +27,16 @@ func NewMemory(clock func() time.Time) *Memory {
 		identity: IdentityRec{V: 1},
 		devices:  map[string]Device{},
 		cells:    map[string]Cell{},
+		grace:    DefaultGraceBounds,
 	}
+}
+
+// SetGraceBounds changes what a retire may ask for; a test or a relay that
+// wants a short grace says so once, here.
+func (m *Memory) SetGraceBounds(b GraceBounds) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.grace = b
 }
 
 // For returns the Client that device would hold: every write it makes is made
@@ -68,9 +78,20 @@ func (c *memoryClient) locked(fn func() error) error {
 	return fn()
 }
 
+// writing is locked for a verb that changes a record: a replaced identity
+// refuses it, which makes "read-only after a rotation" a fact of one line.
+func (c *memoryClient) writing(fn func() error) error {
+	return c.locked(func() error {
+		if err := refusesWrites(c.m.identity); err != nil {
+			return err
+		}
+		return fn()
+	})
+}
+
 // changed is change under the lock, for the calling device.
 func (c *memoryClient) changed(id string, fn func(Cell, int64) (Cell, error)) (v CellView, err error) {
-	err = c.locked(func() (err error) {
+	err = c.writing(func() (err error) {
 		v, err = c.m.change(id, fn)
 		return err
 	})
@@ -91,14 +112,43 @@ func (c *memoryClient) List(context.Context) (l Listing, err error) {
 	return l, err
 }
 
-func (c *memoryClient) Cell(_ context.Context, id string) (CellView, error) {
-	return c.changed(id, func(cell Cell, _ int64) (Cell, error) { return cell, nil })
+func (c *memoryClient) Cell(_ context.Context, id string) (v CellView, err error) {
+	err = c.locked(func() error {
+		cell, ok := c.m.cells[id]
+		if !ok {
+			return ErrNotFound
+		}
+		v = CellView{Now: c.m.now(), Cell: copyCell(cell)}
+		return nil
+	})
+	return v, err
+}
+
+func (c *memoryClient) Rotate(_ context.Context, req RotationReq) (v RotationView, err error) {
+	err = c.locked(func() error {
+		rec, err := RotateBy(c.m.identity, c.device, req, c.m.now(), c.m.grace)
+		if err != nil {
+			return err
+		}
+		c.m.identity = rec
+		v = viewOf(rec, c.m.now(), c.m.grace)
+		return nil
+	})
+	return v, err
+}
+
+func (c *memoryClient) Rotation(context.Context) (v RotationView, err error) {
+	err = c.locked(func() error {
+		v = viewOf(c.m.identity, c.m.now(), c.m.grace)
+		return nil
+	})
+	return v, err
 }
 
 // PutDevice keeps the stored Revoked flag whatever the record says, so the
 // only way to stop a device is Revoke and a device cannot clear its own stop.
 func (c *memoryClient) PutDevice(_ context.Context, id string, d Device) error {
-	return c.locked(func() error {
+	return c.writing(func() error {
 		d.Revoked = c.m.devices[id].Revoked
 		c.m.devices[id] = d
 		return nil
@@ -106,7 +156,7 @@ func (c *memoryClient) PutDevice(_ context.Context, id string, d Device) error {
 }
 
 func (c *memoryClient) Revoke(_ context.Context, id string) error {
-	return c.locked(func() error {
+	return c.writing(func() error {
 		d, ok := c.m.devices[id]
 		if !ok {
 			return ErrNotFound
@@ -120,7 +170,7 @@ func (c *memoryClient) Revoke(_ context.Context, id string) error {
 }
 
 func (c *memoryClient) SetVault(_ context.Context, old, next string) error {
-	return c.locked(func() error {
+	return c.writing(func() error {
 		if c.m.identity.Vault != old {
 			return ErrCAS
 		}
@@ -130,7 +180,7 @@ func (c *memoryClient) SetVault(_ context.Context, old, next string) error {
 }
 
 func (c *memoryClient) Create(_ context.Context, id string, in CellInit) (v CellView, err error) {
-	err = c.locked(func() error {
+	err = c.writing(func() error {
 		if _, taken := c.m.cells[id]; taken {
 			return ErrExists
 		}

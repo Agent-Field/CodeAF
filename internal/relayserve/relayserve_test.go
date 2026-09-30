@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -28,6 +29,9 @@ const (
 )
 
 var bg = context.Background()
+
+// testGrace is a grace period short enough for a fake clock to pass.
+var testGrace = directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}
 
 // device is one machine: a real device key and cert under a real identity.
 type device struct {
@@ -87,7 +91,7 @@ func (r *rig) logf(format string, args ...any) {
 
 // start brings the relay up on a fresh port over the same store: a restart.
 func (r *rig) start() {
-	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf})
+	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf, Grace: testGrace})
 	r.srv = httptest.NewServer(r.svc.Handler)
 	r.t.Cleanup(r.stop)
 }
@@ -276,4 +280,10 @@ func TestRelayWithoutStoreIsOnlyThePipe(t *testing.T) {
 			t.Fatalf("%s: status %d, Codeaf-Now %q", path, resp.StatusCode, resp.Header.Get("Codeaf-Now"))
 		}
 	}
+}
+
+func bytesReader(s string) *strings.Reader { return strings.NewReader(s) }
+
+func signAs(req *http.Request, body []byte, d device, r *rig) {
+	reqsign.Sign(req, body, d, r.clock.Now())
 }

@@ -1,6 +1,7 @@
 package relayserve
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // identityID is the only shape of identity id that may become part of a path:
@@ -28,15 +30,19 @@ func checkedID(id string) error {
 // namespaces gives each identity its own directory file and its own blob
 // tree under one root, so an identity can only reach what its id names.
 type namespaces struct {
-	root string
-	now  func() time.Time
+	root  string
+	now   func() time.Time
+	grace directory.GraceBounds // what a retire may ask for; the zero value is the default
 
 	mu   sync.Mutex
 	dirs map[string]*directory.SQLite
 }
 
-func newNamespaces(root string, now func() time.Time) *namespaces {
-	return &namespaces{root: root, now: now, dirs: map[string]*directory.SQLite{}}
+func newNamespaces(root string, now func() time.Time, grace directory.GraceBounds) *namespaces {
+	if grace == (directory.GraceBounds{}) {
+		grace = directory.DefaultGraceBounds
+	}
+	return &namespaces{root: root, now: now, grace: grace, dirs: map[string]*directory.SQLite{}}
 }
 
 // directory opens (once) the SQLite directory of one identity. A SQLite file
@@ -49,6 +55,9 @@ func (n *namespaces) directory(id string) (directory.Directory, error) {
 func (n *namespaces) sqlite(id string) (*directory.SQLite, error) {
 	if err := checkedID(id); err != nil {
 		return nil, err
+	}
+	if n.gone(id) {
+		return nil, wireauth.ErrGone
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -63,16 +72,37 @@ func (n *namespaces) sqlite(id string) (*directory.SQLite, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.SetGraceBounds(n.grace)
 	n.dirs[id] = d
 	return d, nil
 }
 
-// blobs opens one identity's disk store at <root>/blobs/<id>/.
+// blobs opens one identity's disk store at <root>/blobs/<id>/. A replaced
+// identity's store takes no frame: reads stay open for the grace period.
 func (n *namespaces) blobs(id string) (blobstore.Store, error) {
-	if err := checkedID(id); err != nil {
+	d, err := n.sqlite(id)
+	if err != nil {
 		return nil, err
 	}
-	return blobstore.NewDisk(filepath.Join(n.root, "blobs", id))
+	disk, err := blobstore.NewDisk(filepath.Join(n.root, "blobs", id))
+	if err != nil {
+		return nil, err
+	}
+	return readOnlyOnceReplaced{Store: disk, rotation: d.Rotated}, nil
+}
+
+// readOnlyOnceReplaced is a store that refuses a put when its identity has been
+// replaced by a rotation, and is the store unchanged otherwise.
+type readOnlyOnceReplaced struct {
+	blobstore.Store
+	rotation func() *directory.Rotation
+}
+
+func (r readOnlyOnceReplaced) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
+	if r.rotation() != nil {
+		return "", wireauth.ErrRotated
+	}
+	return r.Store.PutFrame(ctx, frame)
 }
 
 // Close releases every directory file this relay opened.

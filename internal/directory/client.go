@@ -25,6 +25,12 @@ type Client interface {
 	Publish(ctx context.Context, id string, p Publish) (CellView, error)        // ErrFenceStale, ErrHeadMoved
 	Release(ctx context.Context, id string, fence uint64) error                 // ErrFenceStale
 	Archive(ctx context.Context, id string) error                               // idempotent
+
+	// Rotate makes one move of the identity's replacement (freeze, thaw,
+	// retire); Rotation reads where it stands. A replaced identity answers every
+	// write with ErrRotated and every read as before.
+	Rotate(ctx context.Context, req RotationReq) (RotationView, error)
+	Rotation(ctx context.Context) (RotationView, error)
 }
 
 // AcquireOpts says how a device takes a lease. Its JSON is the acquire
@@ -63,4 +69,5 @@ var (
 	ErrSelfRevoke   = errors.New("directory: a device cannot revoke itself")
 	ErrUnauthorized = errors.New("directory: unauthorized")
 	ErrUnreachable  = errors.New("directory: unreachable") // transport; callers degrade
+	ErrTooOld       = errors.New("directory: this relay is too old for that")
 )

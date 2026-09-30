@@ -27,6 +27,10 @@ var wireErrors = []wireError{
 	{ErrUnauthorized, "unauthorized", http.StatusUnauthorized},
 	{ErrRevoked, "revoked", http.StatusUnauthorized},
 	{ErrSelfRevoke, "self_revoke", http.StatusBadRequest},
+	{ErrRotated, "rotated", http.StatusGone},
+	{wireauth.ErrGone, "gone", http.StatusGone},
+	{ErrRotationStep, "rotation_step", http.StatusConflict},
+	{ErrBadGrace, "bad_grace", http.StatusBadRequest},
 	{wireauth.ErrSkew, "skew", http.StatusUnauthorized},
 	{errBadRequest, "bad_request", http.StatusBadRequest},
 	{errTooLarge, "too_large", http.StatusRequestEntityTooLarge},
@@ -66,3 +70,7 @@ type errBody struct {
 }
 
 const dirBase = "/v1/dir"
+
+// rotationPath is the one signed verb for replacing an identity. It is the
+// identity's, not the directory's, so it sits beside the directory's base.
+const rotationPath = "/v1/identity/rotation"

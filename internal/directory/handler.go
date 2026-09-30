@@ -121,6 +121,8 @@ var routes = map[string]route{
 	"POST " + dirBase + "/cells/{id}/publish":   withBody(publish),
 	"POST " + dirBase + "/cells/{id}/release":   withBody(release),
 	"POST " + dirBase + "/cells/{id}/archive":   func(c call) (any, error) { return nothing(c.cl.Archive(c.ctx(), c.id())) },
+	"GET " + rotationPath:                       func(c call) (any, error) { return pair(c.cl.Rotation(c.ctx())) },
+	"POST " + rotationPath:                      withBody(rotate),
 }
 
 // pair and nothing adapt a Client's return shapes to a route's.
@@ -170,11 +172,12 @@ type fenceBody struct {
 	Fence uint64 `json:"fence"`
 }
 
-func setVault(c call, s vaultSwap) (any, error)  { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }
-func create(c call, in CellInit) (any, error)    { return pair(c.cl.Create(c.ctx(), c.id(), in)) }
-func acquire(c call, o AcquireOpts) (any, error) { return pair(c.cl.Acquire(c.ctx(), c.id(), o)) }
-func heartbeat(c call, b Beat) (any, error)      { return pair(c.cl.Heartbeat(c.ctx(), c.id(), b)) }
-func publish(c call, p Publish) (any, error)     { return pair(c.cl.Publish(c.ctx(), c.id(), p)) }
+func rotate(c call, req RotationReq) (any, error) { return pair(c.cl.Rotate(c.ctx(), req)) }
+func setVault(c call, s vaultSwap) (any, error)   { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }
+func create(c call, in CellInit) (any, error)     { return pair(c.cl.Create(c.ctx(), c.id(), in)) }
+func acquire(c call, o AcquireOpts) (any, error)  { return pair(c.cl.Acquire(c.ctx(), c.id(), o)) }
+func heartbeat(c call, b Beat) (any, error)       { return pair(c.cl.Heartbeat(c.ctx(), c.id(), b)) }
+func publish(c call, p Publish) (any, error)      { return pair(c.cl.Publish(c.ctx(), c.id(), p)) }
 func release(c call, f fenceBody) (any, error) {
 	return nothing(c.cl.Release(c.ctx(), c.id(), f.Fence))
 }

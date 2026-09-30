@@ -4,12 +4,14 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
 // No id that is not "id_" plus 32 lowercase hex may become a path.
 func TestNamespacesRefuseIdsThatAreNotIdentities(t *testing.T) {
 	root := t.TempDir()
-	n := newNamespaces(root, time.Now)
+	n := newNamespaces(root, time.Now, directory.GraceBounds{})
 	defer n.Close()
 	for _, id := range []string{
 		"", "../escape", "id_../../etc", "id_" + "0123456789abcdef0123456789abcde", // one short

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -31,20 +32,58 @@ type Config struct {
 	// Pair is what the pairing mailbox enforces; the zero value is
 	// pairbox.DefaultLimits.
 	Pair pairbox.Limits
+
+	// Grace is what a rotation may ask for as its grace period; the zero value
+	// is one hour to thirty days, a week unless told. A relay a test drives
+	// shortens it.
+	Grace directory.GraceBounds
+	// SweepEvery is how often identities whose retirement is due are deleted;
+	// zero is hourly.
+	SweepEvery time.Duration
 }
 
 // Service is a built relay: one handler and the files it holds open.
 type Service struct {
 	Handler http.Handler
 	ns      *namespaces
+	stop    chan struct{}
+	swept   sync.WaitGroup
 }
 
-// Close releases the directory files. It is safe on a pipe-only service.
+// Close stops the sweep and releases the directory files. It is safe on a
+// pipe-only service.
 func (s *Service) Close() error {
 	if s.ns == nil {
 		return nil
 	}
+	close(s.stop)
+	s.swept.Wait()
 	return s.ns.Close()
+}
+
+// Sweep deletes the identities whose retirement is due now. The relay runs it on
+// its own every SweepEvery; it is exported for a caller that keeps its own time.
+func (s *Service) Sweep() error {
+	if s.ns == nil {
+		return nil
+	}
+	return s.ns.sweep()
+}
+
+// sweepLoop sweeps once at start, so a relay that was down past a deadline
+// catches up, and then every interval.
+func (s *Service) sweepLoop(every time.Duration, logf func(string, ...any)) {
+	defer s.swept.Done()
+	for {
+		if err := s.Sweep(); err != nil && logf != nil {
+			logf("sweep: %v", err)
+		}
+		select {
+		case <-s.stop:
+			return
+		case <-time.After(every):
+		}
+	}
 }
 
 // New builds the relay. Every relay is the blind pipe and the pairing mailbox,
@@ -62,11 +101,23 @@ func New(cfg Config) *Service {
 	if cfg.Store == "" {
 		return svc
 	}
-	svc.ns = newNamespaces(cfg.Store, now)
+	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace)
 	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
-	mux.Handle("/v1/dir/", logged(cfg.Logf, directory.Handler(auth, svc.ns.directory)))
+	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
+	mux.Handle("/v1/dir/", dirs)
+	mux.Handle("/v1/identity/", dirs)
 	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, auth, svc.ns.blobs)))
+	svc.stop = make(chan struct{})
+	svc.swept.Add(1)
+	go svc.sweepLoop(sweepInterval(cfg.SweepEvery), cfg.Logf)
 	return svc
+}
+
+func sweepInterval(d time.Duration) time.Duration {
+	if d <= 0 {
+		return time.Hour
+	}
+	return d
 }
 
 // mountPairing serves the pairing mailbox outside request signing, because the
