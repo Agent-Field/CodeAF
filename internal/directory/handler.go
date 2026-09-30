@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -18,6 +19,7 @@ const MaxBody = 1 << 20
 // call is everything one route needs: the Client of the verified device and
 // the request it answers. Routes never see an identity or a device to trust.
 type call struct {
+	dir    Directory
 	cl     Client
 	device string
 	r      *http.Request
@@ -39,6 +41,7 @@ func Handler(auth wireauth.Authenticate, open func(identity string) (Directory, 
 	for pattern, rt := range routes {
 		mux.HandleFunc(pattern, h.serve(rt))
 	}
+	mux.HandleFunc("GET "+WatchPath, h.watch)
 	return mux
 }
 
@@ -77,7 +80,7 @@ func (h *handler) admit(w http.ResponseWriter, r *http.Request) (call, error) {
 	if err != nil {
 		return call{}, err
 	}
-	return call{cl: dir.For(device), device: device, r: r, body: body}, nil
+	return call{dir: dir, cl: dir.For(device), device: device, r: r, body: body}, nil
 }
 
 // denial names a refusal the way the wire does: skew and revoked have their
@@ -94,7 +97,17 @@ func refuse(w http.ResponseWriter, err error) {
 	send(w, we.status, errBody{Err: we.code})
 }
 
+// headed is an answer that also sets headers, as a list sets its version.
+type headed interface{ header(http.Header) }
+
+func (l Listing) header(h http.Header) {
+	h.Set(VersionHeader, strconv.FormatUint(l.Version, 10))
+}
+
 func reply(w http.ResponseWriter, out any) {
+	if h, ok := out.(headed); ok {
+		h.header(w.Header())
+	}
 	if out == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
