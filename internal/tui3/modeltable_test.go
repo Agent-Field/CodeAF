@@ -444,6 +444,9 @@ func TestTheMachinesAreASecondFoldUnderOpenrouter(t *testing.T) {
 	a := laneApp(t)
 	a.width = 120
 	typeLine(t, a, "/model")
+	// The menu opens on the list's first row ([picker.cursorToFirst]); this
+	// fold is the model in use's, so the walk goes there first.
+	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"))
 	if names := laneNames(a.pick.lanes); len(names) == 0 {
