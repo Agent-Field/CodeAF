@@ -615,3 +615,17 @@ without another message from you. It appears as a new turn, preserving earlier
 answers above it. If your window is still drawing the previous reply, it finishes
 that stream before drawing the queued reply. Returning midway through a reply uses
 the same stream and its recorded events.
+
+## Are saved memories available on the default engine launch?
+
+Yes. Plain `codeaf` holds the conversation in this machine's engine and reads
+its saved notes. `/memory` or `alt+8` opens the memory place; `/remember <text>`
+saves one note, `/memories` lists saved notes and `/forget <query>` removes the
+best match. The page and commands use the same engine store. A demo home's
+seeded notes are available on this road too.
+
+Over `--host`, these same doors reach the other machine's store. With memory
+off for the conversation, both the page and the commands say
+`memory is off for this session · turn it on under /settings`. The memory row
+applies when a conversation is built; an already running engine keeps its
+existing memory wiring until it is stopped and a new conversation is opened.

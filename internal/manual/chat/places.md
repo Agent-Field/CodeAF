@@ -901,6 +901,15 @@ model calls, and memory reads and writes its memory store. `e` and `f` on a memo
 computer's. If the engine is an older build without one of these doors, the place keeps its
 honest dim sentence instead of falling through to this computer's files.
 
+## Does memory work when I connect to another machine
+
+Yes. `/memory` and `alt+8` show the connected machine's saved notes, and edits
+and forgetting write back to that same store. `/remember <text>` saves a note,
+`/memories` lists them and `/forget <query>` drops the best match. Plain `codeaf`
+uses this machine's engine through these same doors. With memory off for the
+conversation, the commands and page say
+`memory is off for this session · turn it on under /settings`.
+
 ## Can I put away a conversation on the other machine from home
 
 Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.

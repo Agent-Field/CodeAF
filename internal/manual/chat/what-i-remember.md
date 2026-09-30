@@ -15,11 +15,9 @@ handful of lines; what was actually said is looked up when it is asked for.
 
 The memory commands have two postures:
 
-- `/memory` — open the memory panel.
+- `/memory` or `/memories` — open the memory place.
 - `/memory <query>` or `/memories <query>` — print only matching memories into
   the conversation.
-- `/memories` — print every memory into the conversation, preserving its older
-  list posture.
 - `/remember <text>` — keep one thing.
 - `/forget <query>` — drop the one thing that best matches.
 
@@ -42,6 +40,35 @@ what they reach is the heading `memory` and its one line, with that same sentenc
 once into the rule above the composer — *What the memory place shows when there is nothing
 in it* below. It used to refuse to open at all, which made the memory key on a fresh machine a key
 that did nothing.
+
+## Does memory work on the ordinary launch and over --host?
+
+Yes. Plain `codeaf` connects to this machine's engine, and `--host devbox`
+connects to devbox's engine. `/remember <text>`, `/memories` and `/forget <query>`
+use the connected conversation's memory on both roads. `/memory` and `alt+8`
+show the same store, including notes saved in earlier conversations and notes
+just added with `/remember`; the page refreshes on its three-second beat.
+`--no-host` uses this machine's store directly.
+
+The engine's memory setting decides whether it remembers. With memory off,
+the commands and the memory place say
+`memory is off for this session · turn it on under /settings`.
+Changing the memory row applies to conversations opened afterwards; an engine
+already holding conversations keeps their existing memory wiring until it is
+stopped and a new conversation is opened. Existing saved notes stay in the store.
+
+## Remember has not answered yet — should I try saving the note again?
+
+On the engine road, a save can take longer than the connection waits for its
+receipt. `/remember` then says exactly:
+
+`saving that has not answered yet · check /memory before trying again`
+
+This does not mean the save failed. The engine may still be saving your words,
+and codeaf does not retry the write automatically. Open `/memory` or use
+`/memories <query>` to check what landed before sending the same note again.
+The page refreshes on its three-second beat. A completed save normally says
+`remembered · <title>`; an actual error says `could not remember that · <reason>`.
 
 ## It said memory is off and I never turned it off
 

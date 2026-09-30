@@ -1,8 +1,10 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -72,7 +74,13 @@ func (a *app) runRemember(text string) {
 	}
 	title, err := agent.Remember(text)
 	if err != nil {
-		a.note("could not remember that · " + err.Error())
+		if errors.Is(err, remote.ErrLate) {
+			// A LATE RECEIPT IS NOT A FAILED WRITE. The engine keeps the save
+			// running, and retrying here could keep the same words twice.
+			a.note("saving that has not answered yet · check /memory before trying again")
+		} else {
+			a.note("could not remember that · " + err.Error())
+		}
 		return
 	}
 	a.note("remembered · " + title)
