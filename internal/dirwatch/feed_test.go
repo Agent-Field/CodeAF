@@ -132,7 +132,7 @@ type rig struct {
 	outcome func() (Stream, error)
 }
 
-// newRig starts a feed whose every dial runs script, with jitter fixed at one half.
+// newRig starts a feed whose every dial runs script, with jitter fixed at 0.4, a fraction that keeps every wait distinct from the keepalive's.
 func newRig(t *testing.T, script func(n int) (*fakeStream, error)) *rig {
 	t.Helper()
 	r := &rig{t: t, clock: newFakeClock(), dials: make(chan time.Time, 64)}
@@ -146,7 +146,7 @@ func newRig(t *testing.T, script func(n int) (*fakeStream, error)) *rig {
 		}
 		return s, nil
 	}
-	r.feed = newFeed(dial, r.clock, func() float64 { return 0.5 })
+	r.feed = newFeed(dial, r.clock, func() float64 { return 0.4 })
 	r.sub = r.feed.follow("k")
 	r.feed.start()
 	t.Cleanup(func() { r.feed.stop() })
@@ -237,8 +237,8 @@ func TestADroppedSocketComesBackWithJitteredBackoffAndResetsOnSpeech(t *testing.
 	r := newRig(t, sockets(list))
 	first := r.dialAt()
 	(<-list).send(Frame{}, errors.New("reset"))
-	// The jitter is one half, so the waits are half of 1 s, 2 s, 4 s ... until the cap.
-	want := []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second, 30 * time.Second}
+	// The jitter is 0.4, so the waits are 0.4 of a ceiling that doubles from 1 s to the 60 s cap.
+	want := []time.Duration{400 * time.Millisecond, 800 * time.Millisecond, 1600 * time.Millisecond, 3200 * time.Millisecond, 6400 * time.Millisecond, 12800 * time.Millisecond, 24 * time.Second, 24 * time.Second}
 	last := first
 	for _, w := range want {
 		r.clock.await(w)
@@ -252,14 +252,14 @@ func TestADroppedSocketComesBackWithJitteredBackoffAndResetsOnSpeech(t *testing.
 		(<-list).send(Frame{}, errors.New("reset"))
 	}
 	// A socket that speaks puts the ladder back to the bottom.
-	r.clock.tick(30 * time.Second)
+	r.clock.tick(24 * time.Second)
 	r.dialAt()
 	speaker := <-list
 	speaker.send(Frame{Version: 1}, nil)
 	r.changed()
-	// The next drop waits from the bottom rung again: half of one second.
+	// The next drop waits from the bottom rung again: 0.4 of one second.
 	speaker.send(Frame{}, errors.New("reset"))
-	r.clock.tick(500 * time.Millisecond)
+	r.clock.tick(400 * time.Millisecond)
 	r.dialAt()
 }
 
@@ -330,7 +330,7 @@ func TestAMissedPongWithinTheKeepaliveIsADeadSocket(t *testing.T) {
 	if r.sub.State().Up {
 		t.Fatal("a socket that never answered was left up")
 	}
-	r.clock.tick(RetryBase / 2)
+	r.clock.tick(RetryBase * 2 / 5)
 	r.dialAt()
 }
 

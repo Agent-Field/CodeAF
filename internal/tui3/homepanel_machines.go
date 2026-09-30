@@ -34,6 +34,9 @@ type machineReading struct {
 	// row keeps ageing on the clock between two asks instead of standing still.
 	at   time.Time
 	down bool
+	// version is the directory version the listing was read at (0 when the
+	// source keeps none), which is what a change frame is compared with.
+	version uint64
 	// merge says a branch row can be merged from here, which decides the
 	// sentence it says (chatlist.BranchLine).
 	merge bool
@@ -41,8 +44,9 @@ type machineReading struct {
 
 // homeMachinesMsg is one listing, coming BACK from the source.
 type homeMachinesMsg struct {
-	rows []chatlist.Row
-	err  error
+	rows    []chatlist.Row
+	version uint64
+	err     error
 }
 
 // machinesAskTimeout bounds one ask, so a silent relay is unreachable rather
@@ -61,19 +65,20 @@ func (a *app) askMachines() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
-		rows, err := src.Rows(ctx)
-		return homeMachinesMsg{rows: rows, err: err}
+		rows, version, err := chatlist.RowsAt(ctx, src)
+		return homeMachinesMsg{rows: rows, version: version, err: err}
 	}
 }
 
 // tookMachines files the answer. An error keeps the last rows and only marks
 // them stale.
-func (a *app) tookMachines(msg homeMachinesMsg) {
+func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machinesAsking = false
 	a.fileMachines(msg)
 	a.machineRead.down = msg.err != nil
 	a.machineRead.merge = a.branches.Merge != nil
 	a.rebuildMachines()
+	return a.readOwedByFrames(msg.err == nil)
 }
 
 // into merges the other machines' chats into the panel's own lines, newest
