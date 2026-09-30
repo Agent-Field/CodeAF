@@ -681,7 +681,7 @@ func (p *picker) rowLines(at int, atTop bool) int {
 	if p.groupHead(at, atTop) != "" {
 		take++
 	}
-	if p.laneHead(at, atTop) != "" {
+	if p.laneHead(at, atTop, p.width) != "" {
 		take++
 	}
 	if p.rowUnavailable(at) {
