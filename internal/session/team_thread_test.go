@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -146,5 +147,45 @@ func TestTeamThreadAWakeNotesDeliveryReadsBack(t *testing.T) {
 	}
 	if teamNewsLines("Your team's replies started this turn.\n\nWhat your members did:\n@web finished its turn") != nil {
 		t.Error("a wake note with no delivery read as one")
+	}
+}
+
+// An ordinary manager is also a member under All teams' manager. The member
+// post selects that role when no team was named, and its receipt records the
+// executed team so a surface can distinguish the teams' local numbers.
+func TestTeamThreadOmittedPostUsesTheManagersMemberTeam(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	rootID := ""
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		rootID = f.MakeRoot(time.Now())
+		member, _ := f.Teams[1].Member(convKeyOf(t, fixture.parser))
+		if err := f.AddMember(rootID, member); err != nil {
+			return err
+		}
+		if err := f.SetManager(rootID, member.Key); err != nil {
+			return err
+		}
+		for i := range f.Teams {
+			if f.Teams[i].ID == rootID {
+				off := false
+				f.Teams[i].Settings.Wake = &off
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	manager.teamBoundary()
+	if !holds(manager, teamSendToolName) || !holds(manager, teamPostToolName) {
+		t.Fatal("dual-role manager lacks its manager or member verb")
+	}
+	receipt, failed, err := manager.teamPostTool(context.Background(), json.RawMessage(`{"to":"manager","text":"global progress"}`))
+	if failed || err != nil || receipt != `Posted to the manager in "All teams" as #1. It arrives at the start of their next step.` {
+		t.Fatalf("omitted-team post: receipt=%q failed=%v err=%v", receipt, failed, err)
+	}
+	posted, err := teams.ReadTraffic(fixture.profile, rootID, "", 0)
+	if err != nil || len(posted) != 1 || posted[0].Text != "global progress" || len(threadLog(t, fixture)) != 0 {
+		t.Fatalf("post did not write only the executed team: traffic=%+v err=%v", posted, err)
 	}
 }

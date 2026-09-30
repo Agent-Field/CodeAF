@@ -38,6 +38,17 @@ type TeamLine struct {
 	Thread string
 }
 
+// TeamDeliveryText is a Traffic entry's words as the session delivers them.
+// Briefs retain their larger allowance; a surface identifying an older card
+// must apply the same trimming and clipping as that kind of delivery itself.
+func TeamDeliveryText(entry teams.Entry) string {
+	limit := teamEntryText
+	if entry.Kind == teams.KindStart {
+		limit = teamBriefText
+	}
+	return cutRunesTeam(strings.TrimSpace(entry.Text), limit)
+}
+
 // teamNewsLead opens every group of a delivery ([teamNewsGroup]).
 const teamNewsLead = "Team traffic in "
 

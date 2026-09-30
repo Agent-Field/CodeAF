@@ -371,7 +371,7 @@ func teamBriefLine(role teamRole, entry teams.Entry) string {
 	if text == "" {
 		return ""
 	}
-	return teamBriefWord + teamNumber(entry) + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
+	return teamBriefWord + teamNumber(entry) + ": " + indentAfterFirst(TeamDeliveryText(entry))
 }
 
 // teamBriefWord opens the brief's line, beside "◆ from manager" and

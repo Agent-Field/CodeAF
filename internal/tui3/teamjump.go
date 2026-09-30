@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -217,35 +218,53 @@ func (a *app) teamEntryAtIn(id, teamID string) int {
 }
 
 // trafficLineBelongs keeps deliveries in their source team. A delivery stores
-// the name it arrived under, so after a rename its retained Traffic row must
-// still identify it; a name that belongs to another team never does.
+// the name it arrived under, so its retained Traffic identity takes precedence
+// over a name another team acquired later. Identical retained identities in
+// multiple teams cannot establish which historical team delivered the card.
 func (a *app) trafficLineBelongs(line session.TeamLine, target team) bool {
-	if line.Team == "" || line.Team == target.ID || strings.EqualFold(line.Team, target.Name) {
+	if line.Team == "" || line.Team == target.ID {
 		return true
 	}
-	for _, t := range a.wall.teams {
-		if line.Team == t.ID || strings.EqualFold(line.Team, t.Name) {
-			return false
+	matched := ""
+	for id, rows := range a.traffic.rows {
+		for _, e := range rows {
+			if e.ID != line.Thread || e.Kind != line.Kind || e.From != line.From || session.TeamDeliveryText(e) != strings.TrimSpace(line.Text) {
+				continue
+			}
+			if matched != "" && matched != id {
+				return false
+			}
+			matched = id
+			break
 		}
 	}
-	for _, e := range a.traffic.rows[target.ID] {
-		if e.ID == line.Thread && e.Kind == line.Kind && e.From == line.From && strings.TrimSpace(e.Text) == strings.TrimSpace(line.Text) {
-			return true
-		}
+	if matched != "" {
+		return matched == target.ID
+	}
+	if strings.EqualFold(line.Team, target.Name) {
+		return true
 	}
 	return false
 }
 
 // sentElsewhere reports a team tool that named a team other than shown, whose
-// receipt counts in that team's traffic and says nothing about this one. A
-// call that names no team went to the sender's own and is still a candidate.
+// receipt counts in that team's traffic and says nothing about this one. An
+// omitted post team is resolved through the executed receipt: a manager can
+// also be a member elsewhere, where its post verb belongs.
 func sentElsewhere(e *entry, shown team) bool {
 	var args struct{ Team string }
 	if json.Unmarshal([]byte(e.detail.Args), &args) != nil {
 		return false
 	}
 	target := strings.TrimSpace(args.Team)
-	return target != "" && target != shown.ID && target != shown.Name
+	if target == "" && e.tool == "team_post" {
+		if _, after, ok := strings.Cut(e.detail.Output, " in "); ok {
+			if quoted, err := strconv.QuotedPrefix(after); err == nil {
+				target, _ = strconv.Unquote(quoted)
+			}
+		}
+	}
+	return target != "" && target != shown.ID && !strings.EqualFold(target, shown.Name)
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the
