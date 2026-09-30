@@ -56,15 +56,29 @@ func (m *Memory) change(id string, fn func(Cell, int64) (Cell, error)) (CellView
 	return CellView{Now: now, Cell: copyCell(next)}, nil
 }
 
-// locked runs fn holding the directory lock.
-func (m *Memory) locked(fn func()) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	fn()
+// locked runs fn holding the directory lock, unless the calling device has
+// been revoked: then fn never runs and the caller is told so. Every verb goes
+// through here, which makes "refused on every verb" a fact of one line.
+func (c *memoryClient) locked(fn func() error) error {
+	c.m.mu.Lock()
+	defer c.m.mu.Unlock()
+	if c.m.devices[c.device].Revoked {
+		return ErrRevoked
+	}
+	return fn()
+}
+
+// changed is change under the lock, for the calling device.
+func (c *memoryClient) changed(id string, fn func(Cell, int64) (Cell, error)) (v CellView, err error) {
+	err = c.locked(func() (err error) {
+		v, err = c.m.change(id, fn)
+		return err
+	})
+	return v, err
 }
 
 func (c *memoryClient) List(context.Context) (l Listing, err error) {
-	c.m.locked(func() {
+	err = c.locked(func() error {
 		l = Listing{
 			Now: c.m.now(), Identity: c.m.identity,
 			Devices: maps.Clone(c.m.devices), Cells: map[string]Cell{},
@@ -72,81 +86,84 @@ func (c *memoryClient) List(context.Context) (l Listing, err error) {
 		for id, cell := range c.m.cells {
 			l.Cells[id] = copyCell(cell)
 		}
+		return nil
 	})
-	return l, nil
+	return l, err
 }
 
-func (c *memoryClient) Cell(_ context.Context, id string) (v CellView, err error) {
-	c.m.locked(func() {
-		v, err = c.m.change(id, func(cell Cell, _ int64) (Cell, error) { return cell, nil })
-	})
-	return v, err
+func (c *memoryClient) Cell(_ context.Context, id string) (CellView, error) {
+	return c.changed(id, func(cell Cell, _ int64) (Cell, error) { return cell, nil })
 }
 
+// PutDevice keeps the stored Revoked flag whatever the record says, so the
+// only way to stop a device is Revoke and a device cannot clear its own stop.
 func (c *memoryClient) PutDevice(_ context.Context, id string, d Device) error {
-	c.m.locked(func() { c.m.devices[id] = d })
-	return nil
+	return c.locked(func() error {
+		d.Revoked = c.m.devices[id].Revoked
+		c.m.devices[id] = d
+		return nil
+	})
 }
 
-func (c *memoryClient) SetVault(_ context.Context, old, next string) (err error) {
-	c.m.locked(func() {
+func (c *memoryClient) Revoke(_ context.Context, id string) error {
+	return c.locked(func() error {
+		d, ok := c.m.devices[id]
+		if !ok {
+			return ErrNotFound
+		}
+		d, err := RevokeOf(d, c.device, id)
+		if err == nil {
+			c.m.devices[id] = d
+		}
+		return err
+	})
+}
+
+func (c *memoryClient) SetVault(_ context.Context, old, next string) error {
+	return c.locked(func() error {
 		if c.m.identity.Vault != old {
-			err = ErrCAS
-			return
+			return ErrCAS
 		}
 		c.m.identity.Vault = next
+		return nil
 	})
-	return err
 }
 
 func (c *memoryClient) Create(_ context.Context, id string, in CellInit) (v CellView, err error) {
-	c.m.locked(func() {
+	err = c.locked(func() error {
 		if _, taken := c.m.cells[id]; taken {
-			err = ErrExists
-			return
+			return ErrExists
 		}
 		now := c.m.now()
 		cell := Created(in, c.device, now)
 		c.m.cells[id] = cell
 		v = CellView{Now: now, Cell: copyCell(cell)}
+		return nil
 	})
 	return v, err
 }
 
-func (c *memoryClient) Acquire(_ context.Context, id string) (v CellView, err error) {
-	c.m.locked(func() {
-		v, err = c.m.change(id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now) })
-	})
-	return v, err
+func (c *memoryClient) Acquire(_ context.Context, id string) (CellView, error) {
+	return c.changed(id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now) })
 }
 
-func (c *memoryClient) Heartbeat(_ context.Context, id string, b Beat) (v CellView, err error) {
-	c.m.locked(func() {
-		v, err = c.m.change(id, func(cell Cell, now int64) (Cell, error) { return Heartbeat(cell, c.device, b, now) })
-	})
-	return v, err
+func (c *memoryClient) Heartbeat(_ context.Context, id string, b Beat) (CellView, error) {
+	return c.changed(id, func(cell Cell, now int64) (Cell, error) { return Heartbeat(cell, c.device, b, now) })
 }
 
-func (c *memoryClient) Publish(_ context.Context, id string, p Publish) (v CellView, err error) {
-	c.m.locked(func() {
-		v, err = c.m.change(id, func(cell Cell, now int64) (Cell, error) { return PublishTo(cell, c.device, p, now) })
-	})
-	return v, err
+func (c *memoryClient) Publish(_ context.Context, id string, p Publish) (CellView, error) {
+	return c.changed(id, func(cell Cell, now int64) (Cell, error) { return PublishTo(cell, c.device, p, now) })
 }
 
-func (c *memoryClient) Release(_ context.Context, id string, fence uint64) (err error) {
-	c.m.locked(func() {
-		_, err = c.m.change(id, func(cell Cell, _ int64) (Cell, error) { return ReleaseOf(cell, c.device, fence) })
-	})
+func (c *memoryClient) Release(_ context.Context, id string, fence uint64) error {
+	_, err := c.changed(id, func(cell Cell, _ int64) (Cell, error) { return ReleaseOf(cell, c.device, fence) })
 	return err
 }
 
-func (c *memoryClient) Archive(_ context.Context, id string) (err error) {
-	c.m.locked(func() {
-		_, err = c.m.change(id, func(cell Cell, _ int64) (Cell, error) {
-			cell.Archived = true
-			return cell, nil
-		})
+func (c *memoryClient) Archive(_ context.Context, id string) error {
+	_, err := c.changed(id, func(cell Cell, _ int64) (Cell, error) {
+		cell.Archived = true
+		return cell, nil
 	})
 	return err
 }

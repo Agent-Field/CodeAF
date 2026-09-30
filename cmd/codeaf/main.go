@@ -579,9 +579,9 @@ Housekeeping — changes state on disk or on the network
   codeaf serve [--workspace path] [--relay url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices
-      list the devices paired with this machine
+      list the devices with your chats and the ones that can use this machine
   codeaf devices revoke <name> [--all]
-      stop one device opening a conversation here, --all every device of it
+      stop one device; it cannot take back what a computer already holds
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
