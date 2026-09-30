@@ -129,7 +129,7 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (s
 // staging folder never outlives a failed claim.
 func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, error) {
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
-	head, fence, err := t.fetchAndAcquire(ctx, stage, head, how)
+	head, fence, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
 	if err == nil {
 		if err = t.install(ctx, stage.Root, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
@@ -142,11 +142,14 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 }
 
 // fetchAndAcquire is the part of a claim that touches only the staging folder
-// and the directory.
-func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, head string, how directory.AcquireOpts) (string, uint64, error) {
+// and the directory. The staging folder starts as a copy of the tree this
+// device already holds at from, made of hard links, so the fetch writes only
+// the paths the new head changed; with nothing at from it starts empty.
+func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, error) {
 	if err := freshDir(stage.Root); err != nil {
 		return "", 0, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
 	}
+	seedFrom(from, stage.Root)
 	if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
 		return "", 0, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
 	}
