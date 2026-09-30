@@ -53,6 +53,14 @@ Directory revocation is `POST /v1/dir/devices/{id}/revoke` (204; unknown id 404 
 caller itself 400 `self_revoke`; twice is fine). A revoked device is `401 revoked` on both wires, and
 a device record cannot set or clear its own flag.
 
+Directory watch (contract 21) is `GET /v1/dir/watch`, a signed WebSocket upgrade on the same object
+(`src/watch.js`). It replaces the home screen's polling: the object keeps a durable version of the
+directory (`dirver` in its SQLite), bumps it on every change a person could see (a heartbeat that only
+moves a lease's expiry is not one), and sends `{"v":N}` to every socket. It accepts with the hibernation
+API and answers the client's `ping` with the platform's auto-response, so an open, quiet socket wakes
+nothing and bills nothing. `test/request-scoped.test.js` keeps the object free of timers (but `Has`'s
+bounded wait) and of outbound connections. `maxWatchers` (default 1000) caps sockets per identity.
+
 Rotation (contract 20) is `POST|GET /v1/identity/rotation` on the same object (`src/rotation.js`, a
 port of `internal/directory/rotation.go`). The state is the `rotation` field of the identity record in
 the object's SQLite. The first device to freeze owns the rotation, any device may thaw a frozen
