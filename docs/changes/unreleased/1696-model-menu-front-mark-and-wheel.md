@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the /model menu's current model wears no band and the picker owns the wheel
-pr: 1693
+pr: 1696
 surface: [chat]
 invalidates:
   - "The /model list drew the model in use on the ladder's selected ground, a full-width highlighted row wherever the cursor was. The current model keeps its accent and its weight and wears no band now; the cursor alone indicates the highlighted row."

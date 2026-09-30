@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the /model menu opens with its cursor on the first row and the cursor's row is always on the screen
-pr: 1693
+pr: 1696
 surface: [chat]
 invalidates:
   - "The /model menu opened with the cursor on the model in use, whose row the window's headings could push past the rendered bottom edge — the highlight was not on the screen at all on the frame the menu opened with. The menu now opens with the cursor visibly highlighted on the list's first selectable row; the model in use keeps its bold accent with no background wherever it sits, and the doors that open to confirm (a settings slot, a task's model word, home's draft, alt+o) still open ON the row they hold."
