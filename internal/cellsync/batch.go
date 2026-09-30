@@ -47,7 +47,7 @@ type Batcher struct {
 	published bool       // a publish renewed the lease since the last heartbeat tick
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
-	told         string    // the sentence the person has heard in this run, so each is said once
+	told         string    // the kind of refusal the person has heard of in this run, so each is said once
 
 	work  wakeup // tells the flush loop a turn was noted, so a closed window can open at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
@@ -507,10 +507,10 @@ func (b *Batcher) news(r Refusal) bool {
 	if b.refusedSince.IsZero() {
 		b.refusedSince = now
 	}
-	if b.told == r.Line || now.Sub(b.refusedSince) < r.Quiet {
+	if b.told == r.Is.Error() || now.Sub(b.refusedSince) < r.Quiet {
 		return false
 	}
-	b.told = r.Line
+	b.told = r.Is.Error()
 	return true
 }
 

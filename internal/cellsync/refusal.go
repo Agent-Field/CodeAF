@@ -19,11 +19,11 @@ const MaxHalt = time.Hour
 // below is the only place these three meet, so a new refusal is one row and no
 // call site learns of it.
 type Refusal struct {
-	Is    error         // the sentinel the wire returns
-	Line  string        // what the person is told
-	Quiet time.Duration // how long the refusal must last before the person hears of it
-	Flat  bool          // retry every interval: only time cures it, so backing off adds nothing
-	Halts bool          // retrying is pointless until something changes, so stop until Freed or close
+	Is    error              // the sentinel the wire returns
+	Say   func(error) string // what the person is told; it may read the refusal, for a number the relay named
+	Quiet time.Duration      // how long the refusal must last before the person hears of it
+	Flat  bool               // retry every interval: only time cures it, so backing off adds nothing
+	Halts bool               // retrying is pointless until something changes, so stop until Freed or close
 }
 
 // refusals is listed from most to least final. A refusal that time cures
@@ -31,12 +31,18 @@ type Refusal struct {
 // before anyone could act is noise; one that only the person can cure is
 // said at once.
 var refusals = []Refusal{
-	{Is: blobstore.ErrFull, Line: chatlist.RelayFull, Halts: true},
-	{Is: wireauth.ErrRevoked, Line: chatlist.Removed, Halts: true},
-	{Is: wireauth.ErrSkew, Line: chatlist.ClockOff, Flat: true},
-	{Is: wireauth.ErrTooManyIdentities, Line: chatlist.TooManyNew},
-	{Is: wireauth.ErrRateLimited, Line: chatlist.SlowDown, Quiet: 3 * time.Minute},
+	{Is: blobstore.ErrFull, Say: fullLine, Halts: true},
+	{Is: wireauth.ErrRevoked, Say: said(chatlist.Removed), Halts: true},
+	{Is: wireauth.ErrSkew, Say: said(chatlist.ClockOff), Flat: true},
+	{Is: wireauth.ErrTooManyIdentities, Say: said(chatlist.TooManyNew)},
+	{Is: wireauth.ErrRateLimited, Say: said(chatlist.SlowDown), Quiet: 3 * time.Minute},
 }
+
+// said is the Say of a refusal whose sentence never varies.
+func said(line string) func(error) string { return func(error) string { return line } }
+
+// fullLine names the ceiling the relay told us, when it told us one.
+func fullLine(err error) string { return chatlist.RelayFull(blobstore.LimitOf(err)) }
 
 // RefusalOf finds the row err is, and false for a failure that is not a
 // refusal (an unreachable relay, say), which is retried on the plain backoff

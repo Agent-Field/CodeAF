@@ -86,13 +86,25 @@ func TestFrozenSentences(t *testing.T) {
 		NoIdentity:  "this machine has no identity yet: codeaf identity import",
 		Unreachable: "other machines unreachable",
 		ClockOff:    "this computer's clock is off by more than 5 minutes",
-		RelayFull:   "the relay has no room left (5 GiB on the hosted relay), so new turns stay on this computer; free space there and reopen this chat",
 		Removed:     "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back",
 		SlowDown:    "the relay is asking this computer to slow down; new turns stay here and go up as soon as it allows",
 		TooManyNew:  "this network has started too many new identities today; sync begins when the relay allows more",
 	} {
 		if got != want {
 			t.Errorf("got %q want %q", got, want)
+		}
+	}
+}
+
+func TestRelayFullNamesTheCeilingOnlyWhenTheRelayDid(t *testing.T) {
+	for limit, want := range map[int64]string{
+		0:         "the relay has no room left, so new turns stay on this computer; free space there and reopen this chat",
+		5 << 30:   "the relay has no room left (5 GiB), so new turns stay on this computer; free space there and reopen this chat",
+		3 << 29:   "the relay has no room left (1.5 GiB), so new turns stay on this computer; free space there and reopen this chat",
+		512 << 20: "the relay has no room left (512 MiB), so new turns stay on this computer; free space there and reopen this chat",
+	} {
+		if got := RelayFull(limit); got != want {
+			t.Errorf("RelayFull(%d) = %q, want %q", limit, got, want)
 		}
 	}
 }

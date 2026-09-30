@@ -76,13 +76,12 @@ export class Quota {
     return { ...row, frames: row.day === Math.floor(now / DAY_MS) ? row.frames : 0 };
   }
 
-  /** admit throws full when storing `frame` ({size, objects}) would pass a stored ceiling. */
+  /** admit throws full when storing `frame` ({size, objects}) would pass a stored ceiling, naming the byte ceiling when that is the one. */
   admit(frame, now) {
     const used = this.today(now);
-    const over =
-      used.frames + 1 > this.limits.framesPerDay ||
-      used.bytes + frame.size > this.limits.storeBytes ||
-      used.objects + frame.objects > this.limits.storeObjects;
+    // Only the byte ceiling is worth telling the person: it is the one they can reason about, so it alone rides in the body.
+    if (used.bytes + frame.size > this.limits.storeBytes) throw full(this.limits.storeBytes);
+    const over = used.frames + 1 > this.limits.framesPerDay || used.objects + frame.objects > this.limits.storeObjects;
     if (over) throw full();
   }
 

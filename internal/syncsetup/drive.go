@@ -225,7 +225,7 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 // refusal table in cellsync holds beside how the request is retried.
 func (d *Drive) refusal(err error) {
 	if r, ok := cellsync.RefusalOf(err); ok {
-		d.notice(r.Line)
+		d.notice(r.Say(err))
 	}
 }
 

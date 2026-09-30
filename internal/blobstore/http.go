@@ -156,7 +156,7 @@ func answerError(status int, h http.Header, answer []byte) error {
 	var e errBody
 	_ = json.Unmarshal(answer, &e)
 	if named := errOf(e.Err); named != nil {
-		return wireauth.Wait(fmt.Errorf("%w (%d)", named, status), h)
+		return Capped(wireauth.Wait(fmt.Errorf("%w (%d)", named, status), h), e.LimitBytes)
 	}
 	if status >= 500 {
 		return fmt.Errorf("%w: server answered %d", ErrUnreachable, status)
