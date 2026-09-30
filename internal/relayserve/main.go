@@ -30,10 +30,11 @@ func Main(args []string) error {
 	trust := flags.Bool("trust-proxy", false, "count the address in X-Forwarded-For as the caller's network in the pairing limits; only for a relay behind a proxy that sets it")
 	minGrace := flags.Duration("min-grace", 0, "shortest grace period a rotation may ask for (default 1h); a test hook")
 	sweepEvery := flags.Duration("sweep-every", 0, "how often replaced identities whose grace has ended are deleted (default 1h); a test hook")
+	watchers := flags.Int("max-watchers", 0, "directory watch sockets one identity may hold (default 1000); a test hook")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	cfg := Config{Store: *store, Status: *status, TrustProxy: *trust, SweepEvery: *sweepEvery}
+	cfg := Config{Store: *store, Status: *status, TrustProxy: *trust, SweepEvery: *sweepEvery, MaxWatchers: *watchers}
 	if *minGrace > 0 {
 		cfg.Grace = directory.DefaultGraceBounds
 		cfg.Grace.Min = *minGrace

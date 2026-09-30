@@ -19,6 +19,7 @@ const schema = `
 CREATE TABLE IF NOT EXISTS identity (id INTEGER PRIMARY KEY CHECK (id = 1), rec TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS devices  (id TEXT PRIMARY KEY, rec TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS cells    (id TEXT PRIMARY KEY, rec TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS version  (id INTEGER PRIMARY KEY CHECK (id = 1), n INTEGER NOT NULL);
 `
 
 // SQLite is a directory kept in one SQLite file, so a relay restart keeps every
@@ -29,16 +30,15 @@ type SQLite struct {
 	db    *sql.DB
 	clock func() time.Time
 
-	// stopped is the ids of the revoked devices, kept so a relay can turn one
-	// away without a query on every request. Revoke adds to it only after its
-	// transaction commits, and init fills it from the file, so it is never
-	// ahead of the records and only behind them while a Revoke is in flight.
-	mu      sync.RWMutex
-	stopped map[string]bool
-	// rotation is the identity's Rotation as last committed, for the same
-	// reason: the blob wire asks it on every frame put.
-	rotation *Rotation
-	grace    GraceBounds
+	// feed is the Status as last committed: the revoked devices a relay turns
+	// away and the rotation the blob wire asks on every frame put, both without
+	// a query, and the version watchers hear. inTx is the only thing that
+	// publishes to it, after a commit, so it is never ahead of the records and
+	// only behind them while a write is in flight.
+	feed *Feed
+
+	mu    sync.RWMutex
+	grace GraceBounds
 }
 
 // OpenSQLite opens (creating when absent) the directory file at path. Write
@@ -50,7 +50,7 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &SQLite{db: db, clock: clock, stopped: map[string]bool{}, grace: DefaultGraceBounds}
+	s := &SQLite{db: db, clock: clock, feed: NewFeed(), grace: DefaultGraceBounds}
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
@@ -58,22 +58,68 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 	return s, nil
 }
 
+// init makes the tables and their one row each, and publishes where the file
+// stands. It cannot run through inTx, which reads the version row first.
 func (s *SQLite) init() error {
-	return s.inTx(context.Background(), func(tx *sql.Tx) error {
-		if _, err := tx.Exec(schema); err != nil {
-			return err
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	st, err := seed(tx)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.feed.Publish(st)
+	return nil
+}
+
+// seed creates what is missing in tx and answers the Status the file holds.
+func seed(tx *sql.Tx) (Status, error) {
+	start, _ := json.Marshal(IdentityRec{V: 1})
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{schema, nil},
+		{`INSERT OR IGNORE INTO identity (id, rec) VALUES (1, ?)`, []any{string(start)}},
+		{`INSERT OR IGNORE INTO version (id, n) VALUES (1, 0)`, nil},
+	} {
+		if _, err := tx.Exec(q.sql, q.args...); err != nil {
+			return Status{}, err
 		}
-		start, _ := json.Marshal(IdentityRec{V: 1})
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO identity (id, rec) VALUES (1, ?)`, string(start)); err != nil {
-			return err
-		}
-		var rec IdentityRec
-		if err := get(tx, "identity", "1", &rec); err != nil {
-			return err
-		}
-		s.setRotation(rec.Rotation)
-		return s.loadStopped(tx)
-	})
+	}
+	return statusIn(tx)
+}
+
+var _ Watchable = (*SQLite)(nil)
+
+// Feed is how a watcher hears of changes.
+func (s *SQLite) Feed() *Feed { return s.feed }
+
+// SetMaxWatchers changes the per-identity watcher cap.
+func (s *SQLite) SetMaxWatchers(n int) { s.feed.SetMaxWatchers(n) }
+
+// versionIn reads the directory version inside tx.
+func versionIn(tx *sql.Tx) (n uint64, err error) {
+	return n, tx.QueryRow(`SELECT n FROM version WHERE id = 1`).Scan(&n)
+}
+
+// statusIn reads the whole Status inside tx.
+func statusIn(tx *sql.Tx) (Status, error) {
+	var rec IdentityRec
+	devices := map[string]Device{}
+	n, err := versionIn(tx)
+	if err == nil {
+		err = get(tx, "identity", "1", &rec)
+	}
+	if err == nil {
+		err = scanAll(tx, "devices", devices)
+	}
+	return statusOf(n, rec, devices), err
 }
 
 // SetGraceBounds changes what a retire may ask for.
@@ -91,48 +137,17 @@ func (s *SQLite) bounds() GraceBounds {
 
 // Rotated answers the identity's Rotation, nil while it is live. It never reads
 // the file, so a relay may ask it on every request.
-func (s *SQLite) Rotated() *Rotation {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.rotation
-}
-
-func (s *SQLite) setRotation(r *Rotation) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.rotation = r
-}
-
-// loadStopped fills the revoked set from the devices already on file.
-func (s *SQLite) loadStopped(tx *sql.Tx) error {
-	devices := map[string]Device{}
-	if err := scanAll(tx, "devices", devices); err != nil {
-		return err
-	}
-	for id, d := range devices {
-		if d.Revoked {
-			s.stopped[id] = true
-		}
-	}
-	return nil
-}
+func (s *SQLite) Rotated() *Rotation { return s.feed.Status().Rotation }
 
 // Revoked says whether device has been stopped. It never reads the file, so a
 // relay may ask it on every request.
-func (s *SQLite) Revoked(device string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.stopped[device]
-}
+func (s *SQLite) Revoked(device string) bool { return s.feed.Status().Stopped[device] }
 
-func (s *SQLite) stop(device string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.stopped[device] = true
+// Close ends every watch and releases the file.
+func (s *SQLite) Close() error {
+	s.feed.Close()
+	return s.db.Close()
 }
-
-// Close releases the file.
-func (s *SQLite) Close() error { return s.db.Close() }
 
 // For returns the Client that device would hold.
 func (s *SQLite) For(device string) Client { return &sqliteClient{s: s, device: device} }
@@ -177,17 +192,45 @@ func (c *sqliteClient) txw(ctx context.Context, fn func(*sql.Tx) error) error {
 }
 
 // inTx runs fn in one write transaction and commits only if fn succeeds, so a
-// refused rule or a crash leaves the old records untouched.
+// refused rule or a crash leaves the old records untouched. It is also the one
+// place a change is announced: put moves the version inside the transaction, and
+// when the version moved, the Status read before the commit is published after
+// it. Every verb runs here, so no verb can change a record and forget to tell
+// the watchers.
 func (s *SQLite) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if err := fn(tx); err != nil {
+	st, err := s.run(tx, fn)
+	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if st != nil {
+		s.feed.Publish(*st)
+	}
+	return nil
+}
+
+// run is fn inside tx, answering the Status to publish when fn changed the
+// version and nil when it did not.
+func (s *SQLite) run(tx *sql.Tx, fn func(*sql.Tx) error) (*Status, error) {
+	before, err := versionIn(tx)
+	if err != nil {
+		return nil, err
+	}
+	if err := fn(tx); err != nil {
+		return nil, err
+	}
+	if after, err := versionIn(tx); err != nil || after == before {
+		return nil, err
+	}
+	st, err := statusIn(tx)
+	return &st, err
 }
 
 // get decodes the record stored under (table, id) into v; ErrNotFound if absent.
@@ -203,13 +246,38 @@ func get(tx *sql.Tx, table, id string, v any) error {
 	return json.Unmarshal([]byte(rec), v)
 }
 
-// put stores v under (table, id), replacing any earlier record.
-func put(tx *sql.Tx, table, id string, v any) error {
+// put stores v under (table, id), replacing any earlier record, and moves the
+// directory version by one when the record is new or differs from the stored
+// one in a way a person could see at time now.
+func put[T any](tx *sql.Tx, table, id string, v T, now int64) error {
+	changed, err := visiblyChanges(tx, table, id, v, now)
+	if err == nil && changed {
+		err = bump(tx)
+	}
+	if err != nil {
+		return err
+	}
 	rec, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	_, err = tx.Exec(`INSERT INTO `+table+` (id, rec) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET rec = excluded.rec`, id, string(rec))
+	return err
+}
+
+// visiblyChanges says whether storing v under (table, id) would show a person
+// something new: the record is absent, or differs from the stored one.
+func visiblyChanges[T any](tx *sql.Tx, table, id string, v T, now int64) (bool, error) {
+	var old T
+	err := get(tx, table, id, &old)
+	if errors.Is(err, ErrNotFound) {
+		return true, nil
+	}
+	return err == nil && differs(old, v, now), err
+}
+
+func bump(tx *sql.Tx) error {
+	_, err := tx.Exec(`UPDATE version SET n = n + 1 WHERE id = 1`)
 	return err
 }
 
@@ -226,7 +294,7 @@ func (c *sqliteClient) change(ctx context.Context, id string, fn func(Cell, int6
 			return err
 		}
 		v = CellView{Now: now, Cell: next}
-		return put(tx, "cells", id, next)
+		return put(tx, "cells", id, next, now)
 	})
 	return v, err
 }
@@ -234,6 +302,10 @@ func (c *sqliteClient) change(ctx context.Context, id string, fn func(Cell, int6
 func (c *sqliteClient) List(ctx context.Context) (l Listing, err error) {
 	err = c.tx(ctx, func(tx *sql.Tx) error {
 		l = Listing{Now: c.s.now(), Devices: map[string]Device{}, Cells: map[string]Cell{}}
+		var err error
+		if l.Version, err = versionIn(tx); err != nil {
+			return err
+		}
 		if err := get(tx, "identity", "1", &l.Identity); err != nil {
 			return err
 		}
@@ -275,8 +347,8 @@ func (c *sqliteClient) Cell(ctx context.Context, id string) (v CellView, err err
 }
 
 func (c *sqliteClient) Rotate(ctx context.Context, req RotationReq) (v RotationView, err error) {
-	var rec IdentityRec
 	err = c.tx(ctx, func(tx *sql.Tx) error {
+		var rec IdentityRec
 		if err := get(tx, "identity", "1", &rec); err != nil {
 			return err
 		}
@@ -285,11 +357,8 @@ func (c *sqliteClient) Rotate(ctx context.Context, req RotationReq) (v RotationV
 			return err
 		}
 		v = viewOf(rec, now, c.s.bounds())
-		return put(tx, "identity", "1", rec)
+		return put(tx, "identity", "1", rec, now)
 	})
-	if err == nil {
-		c.s.setRotation(rec.Rotation)
-	}
 	return v, err
 }
 
@@ -314,12 +383,12 @@ func (c *sqliteClient) PutDevice(ctx context.Context, id string, d Device) error
 			return err
 		}
 		d.Revoked = old.Revoked
-		return put(tx, "devices", id, d)
+		return put(tx, "devices", id, d, c.s.now())
 	})
 }
 
 func (c *sqliteClient) Revoke(ctx context.Context, id string) error {
-	err := c.txw(ctx, func(tx *sql.Tx) error {
+	return c.txw(ctx, func(tx *sql.Tx) error {
 		var d Device
 		if err := get(tx, "devices", id, &d); err != nil {
 			return err
@@ -328,12 +397,8 @@ func (c *sqliteClient) Revoke(ctx context.Context, id string) error {
 		if err != nil {
 			return err
 		}
-		return put(tx, "devices", id, d)
+		return put(tx, "devices", id, d, c.s.now())
 	})
-	if err == nil {
-		c.s.stop(id)
-	}
-	return err
 }
 
 func (c *sqliteClient) SetVault(ctx context.Context, old, next string) error {
@@ -346,7 +411,7 @@ func (c *sqliteClient) SetVault(ctx context.Context, old, next string) error {
 			return ErrCAS
 		}
 		rec.Vault = next
-		return put(tx, "identity", "1", rec)
+		return put(tx, "identity", "1", rec, c.s.now())
 	})
 }
 
@@ -362,7 +427,7 @@ func (c *sqliteClient) Create(ctx context.Context, id string, in CellInit) (v Ce
 		now := c.s.now()
 		cell := Created(in, c.device, now)
 		v = CellView{Now: now, Cell: cell}
-		return put(tx, "cells", id, cell)
+		return put(tx, "cells", id, cell, now)
 	})
 	return v, err
 }

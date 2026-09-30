@@ -40,6 +40,9 @@ type Config struct {
 	// SweepEvery is how often identities whose retirement is due are deleted;
 	// zero is hourly.
 	SweepEvery time.Duration
+	// MaxWatchers is how many directory watch sockets one identity may hold; the
+	// zero value is directory.MaxWatchers. A relay a test drives lowers it.
+	MaxWatchers int
 }
 
 // Service is a built relay: one handler and the files it holds open.
@@ -101,7 +104,7 @@ func New(cfg Config) *Service {
 	if cfg.Store == "" {
 		return svc
 	}
-	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace)
+	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
 	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
 	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
 	mux.Handle("/v1/dir/", dirs)
