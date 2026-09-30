@@ -225,7 +225,10 @@ old name has since been given to another team. The name on an older delivered ca
 what the team was called when the message arrived.
 
 Pressing a member's own post row still finds its retained `team_post` receipt after a rename
-when the post did not name a team.
+when the post did not name a team and loaded Traffic identifies its owner. Matching uses this
+conversation's sender handle in each team; identical words and message numbers under different
+handles cannot make another team's receipt open. A receipt naming another current team cannot
+be claimed by the renamed team. A historical name with unresolved ownership keeps the history hint.
 
 The jump needs a message it can identify in that conversation's loaded history. If the
 retained messages cannot distinguish it from another team's message, codeaf does not choose
