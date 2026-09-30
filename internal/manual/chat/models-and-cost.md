@@ -315,7 +315,9 @@ stay still too. Close the list and open it again to see the latest.
 The `via` beside the model above the message box is a different fact: that one is who is
 answering the turn that is in flight, and it is allowed to move. It carries no rate: how
 fast the stream is producing stands at the right of the status line beside the state word
-while the turn writes, as `38 tok/s`.
+while the turn writes, as `38 tok/s`. An unknown rate or one below 1 token per second
+draws nothing; the line never says `0 tok/s`. The work pulse and model rows keep
+their rounded `t/s` rates, with a rate that rounds to zero absent there too.
 
 ## Why does the model picker keep jumping
 

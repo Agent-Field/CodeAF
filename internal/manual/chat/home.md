@@ -945,8 +945,10 @@ its tasks keep running, it keeps its lock — and the new one is built on **its 
 workspace, with that project's approval rules, its crew, its spend ceiling and its saved
 shapes of work. Nothing is carried across, because nothing crosses.
 
-The **tab strip** above the transcript then shows both, and `tab` over an empty message
-box goes back.
+The **tab strip** above the transcript shows conversations that have a name. An
+untouched conversation has no tab; a draft or first sent message names it and adds
+its tab. Opening a saved, named conversation shows its tab straight away. `tab`
+over an empty message box goes back.
 
 One refusal is still possible and it leaves home standing: the folder is gone —
 `that folder is gone · <path>`, and nothing is opened. Home already knew — the row reads
@@ -1100,8 +1102,9 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
   this one. Press it again and you are back. It is `cd -`.
 - **`/new`** adds a conversation in this project — unless the one on screen is fresh and
   empty, in which case it takes its place.
-- **the tab strip** above the transcript draws one tab per open conversation, and marks the
-  ones stopped on a question.
+- **the tab strip** above the transcript draws one tab per open conversation that has a
+  draft or a message — an untouched new conversation gets its tab when you type in it — and
+  marks the ones stopped on a question.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves codeaf
   only when that was the last one.
 - **`ctrl+c`** closes all of them, on the press that lands and with nothing asked

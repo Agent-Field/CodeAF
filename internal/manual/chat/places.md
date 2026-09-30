@@ -265,6 +265,19 @@ control row at the top beside the `⌕` mark. On **memory** the head row echoes 
 into the empty filter and taken back out; on spend and standing, which have nothing to type
 into, the two bare spaces are counted, and any other key between them disarms the door.
 
+## A new conversation in Sessions — no title, counted chat below the screen
+
+Sessions calls a conversation with no readable name `new conversation`. Work whose
+owning conversation is known only by an id uses that same word; the task keeps its
+own landing state and record door.
+
+The headline counts the conversations in the selected window, including the unused
+conversation this window is in. A short terminal shows only part of the list. Work
+that landed `your call` keeps its conversation under `running`, while an idle
+conversation with no work stands under `completed`; the extra section can put the
+unused row below the visible screen. Use `↑` and `↓` to reach it. The count does not
+promise that every row fits on the screen at once.
+
 ## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
 
 The line over home's box is the same shape as the line over a conversation's own message
