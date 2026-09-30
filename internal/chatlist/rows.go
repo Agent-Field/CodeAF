@@ -29,6 +29,7 @@ type Row struct {
 	Cell, Title, Device, DeviceID, Parent string
 	Status                                Status
 	DurableAgo                            time.Duration // Listing.Now - DurableAt, directory clock only
+	DurableAt                             int64         // directory ms of the last durable turn: the fact DurableAgo is read from
 	Pending, OrphanTurns                  uint32
 }
 
@@ -83,6 +84,7 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		Parent:      c.ParentCell,
 		Status:      statusOf(c, l.Now, self),
 		DurableAgo:  time.Duration(l.Now-c.DurableAt) * time.Millisecond,
+		DurableAt:   c.DurableAt,
 		Pending:     c.Lease.Pending,
 		OrphanTurns: c.OrphanTurns,
 	}

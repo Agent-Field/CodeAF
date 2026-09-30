@@ -168,3 +168,44 @@ func TestSQLiteDevicesAndVaultSurviveReopen(t *testing.T) {
 		t.Fatalf("lost on reopen: %+v", l)
 	}
 }
+
+// A revoke is on disk: a reopened directory still turns the device away, both
+// from the relay's memory set and from the verbs themselves.
+func TestSQLiteRevokeSurvivesReopen(t *testing.T) {
+	path, clock := filepath.Join(t.TempDir(), "dir.db"), directorytest.NewFakeClock()
+	d := openAt(t, path, clock)
+	for _, id := range []string{tA, tB} {
+		if err := d.For(id).PutDevice(bg, id, directory.Device{V: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.For(tA).Revoke(bg, tB); err != nil {
+		t.Fatal(err)
+	}
+	if !d.Revoked(tB) || d.Revoked(tA) {
+		t.Fatalf("revoked set: B %v, A %v", d.Revoked(tB), d.Revoked(tA))
+	}
+	d.Close()
+
+	again := openAt(t, path, clock)
+	if !again.Revoked(tB) || again.Revoked(tA) {
+		t.Fatalf("after reopen: B %v, A %v", again.Revoked(tB), again.Revoked(tA))
+	}
+	if _, err := again.For(tB).List(bg); !errors.Is(err, directory.ErrRevoked) {
+		t.Fatalf("revoked device listed after reopen: %v", err)
+	}
+}
+
+// Revoked is set by Revoke alone: a record that says so, put by the device
+// itself, neither stops a live device nor lets a stopped one come back.
+func TestPutDeviceNeverChangesRevoked(t *testing.T) {
+	d := openAt(t, filepath.Join(t.TempDir(), "dir.db"), directorytest.NewFakeClock())
+	a := d.For(tA)
+	if err := a.PutDevice(bg, tA, directory.Device{V: 1, Revoked: true}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := a.List(bg)
+	if err != nil || l.Devices[tA].Revoked {
+		t.Fatalf("a device stopped itself by writing its record: %+v, %v", l.Devices, err)
+	}
+}

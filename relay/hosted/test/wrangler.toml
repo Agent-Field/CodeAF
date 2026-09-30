@@ -1,0 +1,7 @@
+# Only the R2 bucket, so unit tests get a real workerd bucket without the Durable Object noise.
+name = "codeaf-hosted-relay-test"
+compatibility_date = "2026-09-01"
+
+[[r2_buckets]]
+binding = "FRAMES"
+bucket_name = "codeaf-relay-frames-test"

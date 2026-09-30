@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite" // the one SQLite driver the repo uses
@@ -27,6 +28,13 @@ CREATE TABLE IF NOT EXISTS cells    (id TEXT PRIMARY KEY, rec TEXT NOT NULL);
 type SQLite struct {
 	db    *sql.DB
 	clock func() time.Time
+
+	// stopped is the ids of the revoked devices, kept so a relay can turn one
+	// away without a query on every request. Revoke adds to it only after its
+	// transaction commits, and init fills it from the file, so it is never
+	// ahead of the records and only behind them while a Revoke is in flight.
+	mu      sync.RWMutex
+	stopped map[string]bool
 }
 
 // OpenSQLite opens (creating when absent) the directory file at path. Write
@@ -38,7 +46,7 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &SQLite{db: db, clock: clock}
+	s := &SQLite{db: db, clock: clock, stopped: map[string]bool{}}
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
@@ -52,9 +60,39 @@ func (s *SQLite) init() error {
 			return err
 		}
 		start, _ := json.Marshal(IdentityRec{V: 1})
-		_, err := tx.Exec(`INSERT OR IGNORE INTO identity (id, rec) VALUES (1, ?)`, string(start))
-		return err
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO identity (id, rec) VALUES (1, ?)`, string(start)); err != nil {
+			return err
+		}
+		return s.loadStopped(tx)
 	})
+}
+
+// loadStopped fills the revoked set from the devices already on file.
+func (s *SQLite) loadStopped(tx *sql.Tx) error {
+	devices := map[string]Device{}
+	if err := scanAll(tx, "devices", devices); err != nil {
+		return err
+	}
+	for id, d := range devices {
+		if d.Revoked {
+			s.stopped[id] = true
+		}
+	}
+	return nil
+}
+
+// Revoked says whether device has been stopped. It never reads the file, so a
+// relay may ask it on every request.
+func (s *SQLite) Revoked(device string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.stopped[device]
+}
+
+func (s *SQLite) stop(device string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stopped[device] = true
 }
 
 // Close releases the file.
@@ -69,6 +107,23 @@ type sqliteClient struct {
 }
 
 func (s *SQLite) now() int64 { return s.clock().UnixMilli() }
+
+// tx is inTx for the calling device: inside the same transaction that would
+// write, it first refuses a revoked device, so no verb can be the one that
+// forgets to. The record is read from the file, not from the revoked set, so
+// two connections to one file agree.
+func (c *sqliteClient) tx(ctx context.Context, fn func(*sql.Tx) error) error {
+	return c.s.inTx(ctx, func(tx *sql.Tx) error {
+		var me Device
+		if err := get(tx, "devices", c.device, &me); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		if me.Revoked {
+			return ErrRevoked
+		}
+		return fn(tx)
+	})
+}
 
 // inTx runs fn in one write transaction and commits only if fn succeeds, so a
 // refused rule or a crash leaves the old records untouched.
@@ -109,7 +164,7 @@ func put(tx *sql.Tx, table, id string, v any) error {
 
 // change reads cell id, applies fn at the directory time and stores the result.
 func (c *sqliteClient) change(ctx context.Context, id string, fn func(Cell, int64) (Cell, error)) (v CellView, err error) {
-	err = c.s.inTx(ctx, func(tx *sql.Tx) error {
+	err = c.tx(ctx, func(tx *sql.Tx) error {
 		var cell Cell
 		if err := get(tx, "cells", id, &cell); err != nil {
 			return err
@@ -126,7 +181,7 @@ func (c *sqliteClient) change(ctx context.Context, id string, fn func(Cell, int6
 }
 
 func (c *sqliteClient) List(ctx context.Context) (l Listing, err error) {
-	err = c.s.inTx(ctx, func(tx *sql.Tx) error {
+	err = c.tx(ctx, func(tx *sql.Tx) error {
 		l = Listing{Now: c.s.now(), Devices: map[string]Device{}, Cells: map[string]Cell{}}
 		if err := get(tx, "identity", "1", &l.Identity); err != nil {
 			return err
@@ -164,12 +219,39 @@ func (c *sqliteClient) Cell(ctx context.Context, id string) (CellView, error) {
 	return c.change(ctx, id, func(cell Cell, _ int64) (Cell, error) { return cell, nil })
 }
 
+// PutDevice keeps the stored Revoked flag whatever the record says, so the
+// only way to stop a device is Revoke and a device cannot clear its own stop.
 func (c *sqliteClient) PutDevice(ctx context.Context, id string, d Device) error {
-	return c.s.inTx(ctx, func(tx *sql.Tx) error { return put(tx, "devices", id, d) })
+	return c.tx(ctx, func(tx *sql.Tx) error {
+		var old Device
+		if err := get(tx, "devices", id, &old); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		d.Revoked = old.Revoked
+		return put(tx, "devices", id, d)
+	})
+}
+
+func (c *sqliteClient) Revoke(ctx context.Context, id string) error {
+	err := c.tx(ctx, func(tx *sql.Tx) error {
+		var d Device
+		if err := get(tx, "devices", id, &d); err != nil {
+			return err
+		}
+		d, err := RevokeOf(d, c.device, id)
+		if err != nil {
+			return err
+		}
+		return put(tx, "devices", id, d)
+	})
+	if err == nil {
+		c.s.stop(id)
+	}
+	return err
 }
 
 func (c *sqliteClient) SetVault(ctx context.Context, old, next string) error {
-	return c.s.inTx(ctx, func(tx *sql.Tx) error {
+	return c.tx(ctx, func(tx *sql.Tx) error {
 		var rec IdentityRec
 		if err := get(tx, "identity", "1", &rec); err != nil {
 			return err
@@ -183,7 +265,7 @@ func (c *sqliteClient) SetVault(ctx context.Context, old, next string) error {
 }
 
 func (c *sqliteClient) Create(ctx context.Context, id string, in CellInit) (v CellView, err error) {
-	err = c.s.inTx(ctx, func(tx *sql.Tx) error {
+	err = c.tx(ctx, func(tx *sql.Tx) error {
 		var taken Cell
 		switch err := get(tx, "cells", id, &taken); {
 		case err == nil:

@@ -26,3 +26,20 @@ var ErrSkew = errors.New("wireauth: clock skew")
 
 // ErrUnauthorized is every other refusal.
 var ErrUnauthorized = errors.New("wireauth: unauthorized")
+
+// ErrRevoked is a refusal of a device whose identity has stopped it. It is kept
+// apart from every other refusal because retrying can never help: only a fresh
+// pairing, which makes a new device key, brings the machine back.
+var ErrRevoked = errors.New("wireauth: device revoked")
+
+// Narrow reduces any authentication failure to the three the wires name: skew
+// and revoked, which the person can act on, and the rest. Both wires call it,
+// so they cannot disagree about what a refusal is.
+func Narrow(err error) error {
+	for _, named := range []error{ErrSkew, ErrRevoked} {
+		if errors.Is(err, named) {
+			return named
+		}
+	}
+	return ErrUnauthorized
+}
