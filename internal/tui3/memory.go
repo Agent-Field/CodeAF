@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -86,6 +87,8 @@ type memoryTicket struct {
 	previous <-chan struct{}
 	done     chan struct{}
 	once     sync.Once
+	delivery sync.Once
+	stop     func() bool
 	// after keeps the grace clock local to this operation, so a controlled
 	// clock can prove timeout ordering without waiting out model patience.
 	after func(time.Duration) <-chan time.Time
@@ -93,7 +96,8 @@ type memoryTicket struct {
 
 // memoryTails holds only outstanding operations, not a permanent conversation
 // registry. Issuing a command links its predecessor before Bubble Tea can run
-// either command, and the final delivered receipt removes its tail.
+// either command. Delivery or surface cancellation removes the final tail, so
+// a receipt dropped during shutdown cannot retain a surface and its agent.
 var memoryTails = struct {
 	sync.Mutex
 	tickets map[memoryConversation]*memoryTicket
@@ -107,27 +111,43 @@ func queueMemory(origin memoryConversation) *memoryTicket {
 		ticket.previous = previous.done
 	}
 	memoryTails.tickets[origin] = ticket
+	// The cancellation hook is registered while the tail lock is held, so its
+	// retirement cannot read stop before AfterFunc has returned it. Each ticket
+	// is covered even when Bubble Tea never schedules its command or receipt.
+	ticket.stop = context.AfterFunc(origin.surface.ctx, func() { ticket.retire(origin) })
 	return ticket
 }
 
-func (ticket *memoryTicket) finish(origin memoryConversation, grace <-chan time.Time) {
+func (ticket *memoryTicket) retire(origin memoryConversation) {
 	ticket.once.Do(func() {
-		retire := func() {
-			memoryTails.Lock()
-			defer memoryTails.Unlock()
-			close(ticket.done)
-			if memoryTails.tickets[origin] == ticket {
-				delete(memoryTails.tickets, origin)
-			}
+		memoryTails.Lock()
+		defer memoryTails.Unlock()
+		if ticket.stop != nil {
+			ticket.stop()
 		}
+		close(ticket.done)
+		if memoryTails.tickets[origin] == ticket {
+			delete(memoryTails.tickets, origin)
+		}
+	})
+}
+
+func (ticket *memoryTicket) finish(origin memoryConversation, grace <-chan time.Time) {
+	ticket.delivery.Do(func() {
 		if grace == nil {
-			retire()
+			ticket.retire(origin)
 			return
 		}
 		// THE WIRE DEADLINE DOES NOT STOP THE WRITE. Older engines cannot
 		// report its eventual completion, so the successor waits one full
 		// decider patience after the timeout rather than racing that write.
-		go func() { <-grace; retire() }()
+		go func() {
+			select {
+			case <-grace:
+				ticket.retire(origin)
+			case <-ticket.done:
+			}
+		}()
 	})
 }
 
@@ -135,12 +155,26 @@ func (ticket *memoryTicket) finish(origin memoryConversation, grace <-chan time.
 // returns to the surface, so typing and repainting never wait for the engine.
 func (a *app) memoryCall(call func() (string, error)) tea.Cmd {
 	origin := memoryConversation{surface: a, agent: a.agent, file: a.file}
+	ctx := a.ctx
 	ticket := queueMemory(origin)
 	return func() tea.Msg {
 		if ticket.previous != nil {
-			<-ticket.previous
+			select {
+			case <-ticket.previous:
+			case <-ctx.Done():
+			}
+		}
+		// Cancellation can make both select arms ready. Check it again before
+		// starting the successor, so releasing abandoned tickets starts no work.
+		if ctx.Err() != nil {
+			ticket.retire(origin)
+			return nil
 		}
 		text, err := call()
+		if ctx.Err() != nil {
+			ticket.retire(origin)
+			return nil
+		}
 		var grace <-chan time.Time
 		if errors.Is(err, remote.ErrLate) {
 			grace = ticket.after(roles.PatienceFor(roles.RoleReflex))

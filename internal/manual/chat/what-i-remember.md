@@ -80,6 +80,15 @@ the earlier operation; a timeout does not cancel or retry it. Each conversation
 has its own queue. This does not order commands sent from different conversations
 or other windows.
 
+## What happens if I close the window while memory commands wait?
+
+Closing the window cancels memory commands still waiting behind another command;
+they do not start a save, removal or query after the window closes. This also
+applies during the extra wait after a connection timeout. A command already
+received by the engine may still finish, and closing the window does not undo
+its save. Reopen `/memory` to check saved notes before trying again. The next
+window has its own queue.
+
 ## Does changing to a smaller model turn memory off?
 
 With automatic profiles, a model with a context window under 32,000 tokens

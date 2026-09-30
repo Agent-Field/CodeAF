@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -263,5 +264,140 @@ func testMemoryFIFO(t *testing.T, secondLine, secondReceipt string, want []strin
 				t.Fatalf("final saved cobalt notes = %+v, %v", lines, err)
 			}
 		})
+	}
+}
+
+// Shutdown cannot depend on Update adopting a receipt after Bubble Tea has
+// stopped. The first write is held in a real session on each actual road.
+func TestMemorySurfaceShutdownReleasesQueuedCommandsWithoutStartingThem(t *testing.T) {
+	for _, hosted := range []bool{false, true} {
+		road := "no-host"
+		if hosted {
+			road = "engine"
+		}
+		t.Run(road, func(t *testing.T) {
+			a, s, release := fifoMemoryApp(t, hosted)
+			ctx, cancel := context.WithCancel(a.ctx)
+			a.ctx = ctx
+			t.Cleanup(cancel)
+			first := a.slash("/remember cobalt shipment fixture")
+			origin := memoryConversation{surface: a, agent: a.agent, file: a.file}
+			memoryTails.Lock()
+			firstTicket := memoryTails.tickets[origin]
+			memoryTails.Unlock()
+			second := a.slash("/forget cobalt")
+			memoryTails.Lock()
+			secondTicket := memoryTails.tickets[origin]
+			memoryTails.Unlock()
+			t.Cleanup(func() {
+				release()
+				firstTicket.finish(origin, nil)
+				secondTicket.finish(origin, nil)
+			})
+			firstReplies, secondReplies := make(chan tea.Msg, 1), make(chan tea.Msg, 1)
+			go func() { firstReplies <- first() }()
+			select {
+			case <-s.entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("first save did not reach its held real session write")
+			}
+			go func() { secondReplies <- second() }()
+			cancel()
+			select {
+			case reply := <-secondReplies:
+				if reply != nil {
+					t.Fatalf("cancelled queued operation produced a receipt: %#v", reply)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("surface shutdown stranded a queued memory command")
+			}
+			assertMemoryShutdownRetired(t, origin, firstTicket, secondTicket)
+			// A started save can still finish, but its discarded receipt must
+			// never be needed to retire the queue or start the queued forget.
+			release()
+			if reply := fifoMemoryReply(t, firstReplies); reply != nil {
+				t.Fatalf("closed surface produced a late receipt: %#v", reply)
+			}
+			lines, err := s.Agent.Memories("cobalt")
+			if err != nil || len(lines) != 1 {
+				t.Fatalf("shutdown started the queued forget or undid the accepted save: %+v, %v", lines, err)
+			}
+			s.mu.Lock()
+			applied := append([]string(nil), s.applied...)
+			s.mu.Unlock()
+			if strings.Join(applied, "\n") != "remember cobalt shipment fixture" {
+				t.Fatalf("operations applied after shutdown = %q", applied)
+			}
+		})
+	}
+}
+
+func TestMemorySurfaceShutdownRetiresUndeliveredAndUnscheduledCommands(t *testing.T) {
+	a := newTestApp(&rememberingAgent{})
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.ctx = ctx
+	t.Cleanup(cancel)
+	first := a.slash("/remember amber dispatch beacon")
+	origin := memoryConversation{surface: a, agent: a.agent, file: a.file}
+	memoryTails.Lock()
+	firstTicket := memoryTails.tickets[origin]
+	memoryTails.Unlock()
+	_ = first() // Bubble Tea drops this receipt when the surface closes.
+	second := a.slash("/forget amber")
+	memoryTails.Lock()
+	secondTicket := memoryTails.tickets[origin]
+	memoryTails.Unlock()
+	t.Cleanup(func() { firstTicket.finish(origin, nil); secondTicket.finish(origin, nil) })
+	cancel()
+	assertMemoryShutdownRetired(t, origin, firstTicket, secondTicket)
+	if reply := second(); reply != nil {
+		t.Fatalf("scheduling an abandoned command started it: %#v", reply)
+	}
+}
+
+func TestMemorySurfaceShutdownRetiresTimeoutGraceWithoutWaitingForClock(t *testing.T) {
+	a := newTestApp(&rememberingAgent{})
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.ctx = ctx
+	t.Cleanup(cancel)
+	first := a.memoryCall(func() (string, error) { return "saving that has not answered yet", remote.ErrLate })
+	origin := memoryConversation{surface: a, agent: a.agent, file: a.file}
+	grace := make(chan time.Time, 1)
+	memoryTails.Lock()
+	firstTicket := memoryTails.tickets[origin]
+	firstTicket.after = func(time.Duration) <-chan time.Time { return grace }
+	memoryTails.Unlock()
+	a.Update(first())
+	second := a.slash("/forget amber")
+	memoryTails.Lock()
+	secondTicket := memoryTails.tickets[origin]
+	memoryTails.Unlock()
+	t.Cleanup(func() {
+		grace <- time.Time{}
+		secondTicket.finish(origin, nil)
+	})
+	replies := make(chan tea.Msg, 1)
+	go func() { replies <- second() }()
+	cancel()
+	assertMemoryShutdownRetired(t, origin, firstTicket, secondTicket)
+	if reply := fifoMemoryReply(t, replies); reply != nil {
+		t.Fatalf("shutdown during grace started a successor: %#v", reply)
+	}
+}
+
+func assertMemoryShutdownRetired(t *testing.T, origin memoryConversation, tickets ...*memoryTicket) {
+	t.Helper()
+	for _, ticket := range tickets {
+		select {
+		case <-ticket.done:
+		case <-time.After(time.Second):
+			t.Fatal("surface shutdown retained an abandoned memory ticket")
+		}
+	}
+	memoryTails.Lock()
+	_, outstanding := memoryTails.tickets[origin]
+	memoryTails.Unlock()
+	if outstanding {
+		t.Fatal("surface shutdown retained its memory queue tail")
 	}
 }
