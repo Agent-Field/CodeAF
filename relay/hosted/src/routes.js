@@ -40,9 +40,12 @@ const octets = (bytes) => new Response(bytes, { headers: { 'content-type': 'appl
 // a put in flight, which Has must not overtake.
 const STORE = { over: 'bad_frame' };
 const DIR = { over: 'too_large' };
+// `write` marks a route a replaced identity refuses: every verb that changes a record or a frame.
+const STORE_WRITE = { ...STORE, write: true };
+const DIR_WRITE = { ...DIR, write: true };
 
 const ROUTES = [
-  ['POST', /^\/v1\/store\/frames$/, { ...STORE, limit: MAX_FRAME, frames: true }, async (c) => json(await c.tenant.putFrame(c.body))],
+  ['POST', /^\/v1\/store\/frames$/, { ...STORE_WRITE, limit: MAX_FRAME, frames: true }, async (c) => json(await c.tenant.putFrame(c.body))],
   ['GET', /^\/v1\/store\/objects\/([^/]+)$/, STORE, async (c, [rid]) => {
     if (!isRid(rid)) throw new Wire('bad_rid', 400);
     return octets(await c.tenant.getObject(rid));
@@ -52,30 +55,32 @@ const ROUTES = [
   ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json(c.tenant.stats.snapshot())],
   ['GET', /^\/v1\/dir\/list$/, DIR, (c) => json(c.tenant.dir.list())],
   ['GET', /^\/v1\/dir\/cells\/([^/]+)$/, DIR, (c, [id]) => json(c.tenant.dir.cell(id))],
-  ['PUT', /^\/v1\/dir\/devices\/([^/]+)$/, DIR, (c, [id]) => {
+  ['PUT', /^\/v1\/dir\/devices\/([^/]+)$/, DIR_WRITE, (c, [id]) => {
     if (id !== c.device) throw new Wire('unauthorized', 401);
     c.tenant.dir.putDevice(id, object(c.body));
     return empty();
   }],
-  ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR, (c, [id]) => (c.tenant.dir.revoke(id, c.device), empty())],
-  ['POST', /^\/v1\/dir\/vault$/, DIR, (c) => {
+  ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.revoke(id, c.device), empty())],
+  ['POST', /^\/v1\/dir\/vault$/, DIR_WRITE, (c) => {
     const { old, new: next } = object(c.body);
     c.tenant.dir.setVault(old, next);
     return empty();
   }],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)$/, DIR, (c, [id]) => json(c.tenant.dir.create(id, object(c.body), c.device))],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/acquire$/, DIR, (c, [id]) => json(c.tenant.dir.acquire(id, c.device, object(c.body).force === true))],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/heartbeat$/, DIR, (c, [id]) => json(c.tenant.dir.heartbeat(id, c.device, object(c.body)))],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/publish$/, DIR, (c, [id]) => json(c.tenant.dir.publish(id, c.device, object(c.body)))],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/release$/, DIR, (c, [id]) => (c.tenant.dir.release(id, c.device, object(c.body).fence), empty())],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/archive$/, DIR, (c, [id]) => (c.tenant.dir.archive(id), empty())],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.create(id, object(c.body), c.device))],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/acquire$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.acquire(id, c.device, object(c.body).force === true))],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/heartbeat$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.heartbeat(id, c.device, object(c.body)))],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/publish$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.publish(id, c.device, object(c.body)))],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/release$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.release(id, c.device, object(c.body).fence), empty())],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/archive$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.archive(id), empty())],
+  ['GET', /^\/v1\/identity\/rotation$/, DIR, (c) => json(c.tenant.rotationView())],
+  ['POST', /^\/v1\/identity\/rotation$/, DIR, (c) => json(c.tenant.rotate(c.device, object(c.body)))],
 ];
 
-/** matchRoute answers {limit, over, frames, handler, args} for a request, or throws not_found. */
+/** matchRoute answers {limit, over, frames, write, handler, args} for a request, or throws not_found. */
 export function matchRoute(method, path) {
-  for (const [m, pattern, { limit = MAX_SMALL, over, frames = false }, handler] of ROUTES) {
+  for (const [m, pattern, { limit = MAX_SMALL, over, frames = false, write = false }, handler] of ROUTES) {
     const hit = m === method && pattern.exec(path);
-    if (hit) return { limit, over, frames, handler, args: hit.slice(1) };
+    if (hit) return { limit, over, frames, write, handler, args: hit.slice(1) };
   }
   throw notFound();
 }

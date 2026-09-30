@@ -53,6 +53,17 @@ Directory revocation is `POST /v1/dir/devices/{id}/revoke` (204; unknown id 404 
 caller itself 400 `self_revoke`; twice is fine). A revoked device is `401 revoked` on both wires, and
 a device record cannot set or clear its own flag.
 
+Rotation (contract 20) is `POST|GET /v1/identity/rotation` on the same object (`src/rotation.js`, a
+port of `internal/directory/rotation.go`). The state is the `rotation` field of the identity record in
+the object's SQLite. The first device to freeze owns the rotation, any device may thaw a frozen
+identity, nothing thaws a retired one. Routes marked `write` in `src/routes.js` (every directory verb
+that changes a record, and a frame put) are `410 rotated` once the identity is frozen or retired;
+reads stay open. A retire arms the object's alarm at its deadline. The alarm (`src/erasure.js`) writes
+the tombstone first (`gone` in the object's storage), deletes the identity's R2 prefix a page per turn,
+then drops the SQLite tables, so a crash half way is finished by the next alarm; afterwards every
+request is `410 gone` and makes no table and no R2 object. The one alarm slot is shared with the stats
+flush, so `#arm` only ever moves it earlier and the alarm handler re-arms the deadline.
+
 The pairing mailbox (`src/pair/`) is unauthenticated because the joining device has no identity yet,
 so it cannot become free storage: every limit is by IP (`CF-Connecting-IP`), boxes live one TTL and
 are deleted by an alarm, and `PairGate` caps the live boxes. Its counters are stored, so waiting for
@@ -147,6 +158,7 @@ per-IP identity cap); production sets none of them. The pairing wire words are t
 | Limit | Default | Refusal |
 |---|---|---|
 | stored bytes per identity | 5 GiB | `507 full` |
+| rotation grace: min / max / default (`minGraceMs`, `maxGraceMs`, `defaultGraceMs`; tests lower the min) | 1 h / 30 d / 7 d | `400 bad_grace` |
 | stored objects per identity (the index is SQLite rows; the byte cap rules) | 5,000,000 | `507 full` |
 | new identities per IP per day (first sight only; existing identities never counted) | 20 | `429 too_many_identities`, `Retry-After` |
 | new frames per identity per day | 5,000 | `507 full` |

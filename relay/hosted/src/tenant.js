@@ -5,7 +5,9 @@ import { Quota } from './limits.js';
 import { Meta } from './meta.js';
 import { Stats } from './stats.js';
 import { encode } from './frame.js';
+import { rotateBy, rotationView } from './rotation.js';
 import { R2Store, sealFrame } from './store.js';
+import { RuleError } from './rules.js';
 import { Wire } from './wire.js';
 
 // How long Has waits for the puts in flight before it fails: a stuck put must not hang Has,
@@ -16,15 +18,17 @@ const HAS_WAIT_MS = 30_000;
 const MANY_KEY_ID = '0'.repeat(32);
 
 export class Tenant {
-  constructor({ identity, sql, bucket, clock, policy, limits, flight, scheduleFlush }) {
+  constructor({ identity, sql, bucket, clock, policy, limits, flight, arm }) {
     this.identity = identity;
     this.clock = clock;
+    this.limits = limits;
+    this.arm = arm;
     this.flight = flight;
     this.dir = new Directory(sql, identity, clock, policy);
     this.quota = new Quota(sql, limits);
     this.store = new R2Store(bucket, sql, identity);
     this.meta = new Meta(sql);
-    this.stats = new Stats(this.meta, scheduleFlush);
+    this.stats = new Stats(this.meta, () => arm(clock() + limits.statsFlushMs));
   }
 
   /**
@@ -62,5 +66,27 @@ export class Tenant {
     this.stats.add({ has: 1 });
     if (!(await this.flight.idle(HAS_WAIT_MS))) throw new Wire('unreachable', 503);
     return this.store.has(rids);
+  }
+
+  /** assertWritable refuses a write to an identity a rotation has replaced, whichever device asks. */
+  assertWritable() {
+    if (this.dir.rotation()) throw new RuleError('rotated');
+  }
+
+  /** rotate makes one move of the rotation state machine; a retire also wakes the object at its deadline to delete. */
+  rotate(device, req) {
+    const next = rotateBy(this.dir.rotation(), device, req, this.clock(), this.limits);
+    this.dir.setRotation(next);
+    if (next?.retire_at) this.arm(next.retire_at);
+    return this.rotationView();
+  }
+
+  rotationView() {
+    return rotationView(this.dir.rotation(), this.clock(), this.limits);
+  }
+
+  /** retireAt is the directory time the identity is deleted at, or undefined while it is not retired. */
+  retireAt() {
+    return this.dir.rotation()?.retire_at;
   }
 }

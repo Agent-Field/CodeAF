@@ -91,10 +91,23 @@ export class Directory {
     return this.read('devices', device)?.revoked === true;
   }
 
+  #identityRec() {
+    return this.read('identity', '') ?? { V: 1, identity: this.identity };
+  }
+
   setVault(old, next) {
-    const cur = this.read('identity', '') ?? { V: 1, identity: this.identity };
+    const cur = this.#identityRec();
     if ((cur.vault ?? '') !== old) throw refuse('cas');
     this.write('identity', '', { ...cur, vault: next });
+  }
+
+  /** rotation answers what the identity's record says about its replacement; undefined while it is live. */
+  rotation() {
+    return this.#identityRec().rotation;
+  }
+
+  setRotation(rotation) {
+    this.write('identity', '', { ...this.#identityRec(), rotation });
   }
 
   /** list answers the whole Listing: the identity record, every device and every cell. */

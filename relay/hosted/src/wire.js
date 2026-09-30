@@ -23,6 +23,8 @@ export const badRequest = () => new Wire('bad_request', 400);
 export const rateLimited = (seconds) => new Wire('rate_limited', 429, seconds);
 /** full is 507; limitBytes, when the stored-bytes ceiling is what was hit, is told to the client so it can say how big the ceiling is. */
 export const full = (limitBytes) => new Wire('full', 507, undefined, limitBytes);
+/** gone is an identity the relay replaced and deleted; its id is answered forever and never made again. */
+export const gone = () => new Wire('gone', 410);
 export const tooManyIdentities = (seconds) => new Wire('too_many_identities', 429, seconds);
 
 // The IP is the socket peer as Cloudflare reports it (CF-Connecting-IP). A request without one shares a single
@@ -36,7 +38,7 @@ export function ipOf(request, env) {
 const forwarded = (request) => request.headers.get('x-forwarded-for')?.split(',')[0].trim() || null;
 
 // The status of each rule refusal the directory rules raise.
-const RULE_STATUS = { not_found: 404, exists: 409, lease_held: 409, fence_stale: 409, head_moved: 409, cas: 409, self_revoke: 400 };
+const RULE_STATUS = { not_found: 404, exists: 409, lease_held: 409, fence_stale: 409, head_moved: 409, cas: 409, self_revoke: 400, bad_request: 400, rotated: 410, rotation_step: 409, bad_grace: 400 };
 
 /** wireOf names any failure as the Wire refusal a client should see. */
 export function wireOf(e) {
