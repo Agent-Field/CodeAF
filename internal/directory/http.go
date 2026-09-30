@@ -55,8 +55,8 @@ func (h *HTTP) Create(ctx context.Context, id string, in CellInit) (v CellView, 
 	return v, h.do(ctx, http.MethodPost, cellPath(id, ""), in, &v)
 }
 
-func (h *HTTP) Acquire(ctx context.Context, id string) (v CellView, err error) {
-	return v, h.do(ctx, http.MethodPost, cellPath(id, "acquire"), nil, &v)
+func (h *HTTP) Acquire(ctx context.Context, id string, o AcquireOpts) (v CellView, err error) {
+	return v, h.do(ctx, http.MethodPost, cellPath(id, "acquire"), o, &v)
 }
 
 func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, err error) {

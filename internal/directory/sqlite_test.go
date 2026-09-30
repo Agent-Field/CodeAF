@@ -50,7 +50,7 @@ func TestSQLiteLeaseSurvivesReopen(t *testing.T) {
 	first.Close()
 
 	second := openAt(t, path, clock)
-	if _, err := second.For(tB).Acquire(bg, tCell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := second.For(tB).Acquire(bg, tCell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("live lease lost across reopen: %v", err)
 	}
 	v, err := second.For(tA).Heartbeat(bg, tCell, directory.Beat{Fence: 1})
@@ -58,7 +58,7 @@ func TestSQLiteLeaseSurvivesReopen(t *testing.T) {
 		t.Fatalf("heartbeat after reopen: %v %+v", err, v)
 	}
 	clock.Advance(directory.LeaseTTL + time.Second)
-	if v, err = second.For(tB).Acquire(bg, tCell); err != nil || v.Cell.Lease.Fence != 2 {
+	if v, err = second.For(tB).Acquire(bg, tCell, directory.AcquireOpts{}); err != nil || v.Cell.Lease.Fence != 2 {
 		t.Fatalf("expired lease not takeable: %v %+v", err, v)
 	}
 }
@@ -84,7 +84,7 @@ func TestSQLiteConcurrentAcquireTwoConnections(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := d.For(dev).Acquire(bg, tCell)
+			_, err := d.For(dev).Acquire(bg, tCell, directory.AcquireOpts{})
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -108,7 +108,7 @@ func TestSQLiteConcurrentAcquireTwoConnections(t *testing.T) {
 	if v.Cell.Lease.Device == tB {
 		other = tA
 	}
-	if _, err := one.For(other).Acquire(bg, tCell); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := one.For(other).Acquire(bg, tCell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("loser can acquire: %v", err)
 	}
 }

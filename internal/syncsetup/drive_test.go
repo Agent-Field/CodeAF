@@ -280,11 +280,11 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 	if err := r.b.putDevice(ctx, "blackmac"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID); !errors.Is(err, directory.ErrLeaseHeld) {
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
 		t.Fatalf("B acquired a live lease: %v", err)
 	}
 	r.clock.advance(directory.LeaseTTL + time.Second)
-	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID); err != nil {
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); err != nil {
 		t.Fatalf("B could not acquire after LeaseTTL: %v", err)
 	}
 
@@ -348,7 +348,7 @@ func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 	if got := r.directoryHead(r.cell.ID); got != r.head() {
 		t.Fatalf("Close left the directory at %q, want the chat's head", got)
 	}
-	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID); err != nil {
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); err != nil {
 		t.Fatalf("B could not take a released chat at once: %v", err)
 	}
 	if err := c.drive.Close(ctx); err != nil {

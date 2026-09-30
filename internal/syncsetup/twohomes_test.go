@@ -643,27 +643,34 @@ func TestTwoHomesTakeBackKeepsHandEdit(t *testing.T) {
 	}
 }
 
-// TestTwoHomesLostRaceLeavesNoTree: B is still fetching when another device
-// wins the lease, and B's root holds nothing of the chat.
-func TestTwoHomesLostRaceLeavesNoTree(t *testing.T) {
+// TestTwoHomesTakeARunningChatAtOnce: B continues a chat A is still running. B
+// does not wait for A's lease to run out; it takes the chat at once, A's next
+// turn is refused as superseded, and what A had not yet sent becomes a branch.
+func TestTwoHomesTakeARunningChatAtOnce(t *testing.T) {
 	h := newTwoHomes(t)
+	ctx := context.Background()
 	seedTree(t, h.work)
 	a := h.openA()
 	a.mustSay("a one")
 	h.durable(h.cell.ID, h.cell)
 
-	_, err := h.continuerB().Take(context.Background(), h.cell.ID)
-	if !errors.Is(err, directory.ErrLeaseHeld) {
-		t.Fatalf("Take = %v; want the lease refused while A holds it", err)
+	row, ok := rowOf(t, h.b, h.cell.ID)
+	if !ok || row.Status != chatlist.Running || chatlist.OfferFor(row).Kind != chatlist.ContinueHere {
+		t.Fatalf("B's row = %+v, %v; want a running chat that offers continue here", row, ok)
 	}
-	root := filepath.Join(h.rootsB, h.cell.ID)
-	for _, path := range []string{root, root + ".taking"} {
-		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("%s exists after a lost race (%v)", path, err)
-		}
+	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
+		t.Fatalf("Take of a running chat = %v; want it taken at once", err)
 	}
-	if v, _ := h.a.Dir.Cell(context.Background(), h.cell.ID); v.Cell.Lease.Device != h.a.Device.ID() {
-		t.Fatalf("a refused takeover moved the lease to %s", v.Cell.Lease.Device)
+	if v, _ := h.a.Dir.Cell(ctx, h.cell.ID); v.Cell.Lease.Device != h.b.Device.ID() {
+		t.Fatalf("the lease is with %s, want B's", v.Cell.Lease.Device)
+	}
+	a.mustSay("orphaned") // A does not know it lost the chat; its publish is refused and becomes a branch
+	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	if _, ok := branchRowOf(t, h.a, h.cell.ID); !ok {
+		t.Fatal("A's refused turns did not become a branch")
+	}
+	if err := a.drive.Close(ctx); err != nil {
+		t.Fatal(err)
 	}
 }
 

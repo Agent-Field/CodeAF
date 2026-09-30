@@ -31,6 +31,11 @@ func Run(t *testing.T, factory Factory) {
 		"FullLeavesNoPointer":    fullLeavesNoPointer,
 		"not found":              notFound,
 		"bad rid":                badRID,
+		"GetManyInOrder":         getManyInOrder,
+		"GetManyStopsAtAbsent":   getManyStopsAtAbsent,
+		"GetManyFirstAbsent":     getManyFirstAbsent,
+		"GetManyFitsOneFrame":    getManyFitsOneFrame,
+		"GetManyRefusals":        getManyRefusals,
 		"has order":              hasOrder,
 		"has bound":              hasBound,
 		"bad frames":             badFrames,
@@ -139,6 +144,89 @@ func badRID(t *testing.T, s blobstore.Store) {
 		if _, err := s.Has(ctx, []string{rid}); !errors.Is(err, blobstore.ErrBadRID) {
 			t.Errorf("Has(%q) = %v, want ErrBadRID", rid, err)
 		}
+	}
+}
+
+// getManyInOrder: every object asked for comes back in the order asked, which is
+// not the order the store holds them in.
+func getManyInOrder(t *testing.T, s blobstore.Store) {
+	a, b, c := object("a"), object("b"), object("c")
+	put(t, s, frameOf(t, a, b))
+	put(t, s, frameOf(t, c))
+	got, err := s.GetMany(ctx, []string{c.RID, a.RID, b.RID})
+	must(t, err)
+	wantObjects(t, got, c, a, b)
+}
+
+// getManyStopsAtAbsent: an absent object ends the answer, with what came before
+// it, so the caller learns which rid is missing by asking for the rest.
+func getManyStopsAtAbsent(t *testing.T, s blobstore.Store) {
+	a, b := object("a"), object("b")
+	put(t, s, frameOf(t, a, b))
+	got, err := s.GetMany(ctx, []string{a.RID, object("absent").RID, b.RID})
+	must(t, err)
+	wantObjects(t, got, a)
+}
+
+func getManyFirstAbsent(t *testing.T, s blobstore.Store) {
+	if _, err := s.GetMany(ctx, []string{object("absent").RID, object("a").RID}); !errors.Is(err, blobstore.ErrNotFound) {
+		t.Fatalf("GetMany with the first object absent = %v, want ErrNotFound", err)
+	}
+}
+
+// getManyFitsOneFrame: the answer is about a frame's worth of bytes, so a caller
+// that asked for more asks again, and the pieces add up to what it asked for.
+func getManyFitsOneFrame(t *testing.T, s blobstore.Store) {
+	big := make([]blobstore.Object, 4)
+	rids := make([]string, len(big))
+	for i := range big {
+		big[i] = blobstore.Object{RID: object(string(rune('p' + i))).RID, Bytes: sealed(strings.Repeat("x", blobstore.TargetFrame/3))}
+		rids[i] = big[i].RID
+	}
+	put(t, s, frameOf(t, big...))
+	first, err := s.GetMany(ctx, rids)
+	must(t, err)
+	if len(first) == 0 || len(first) >= len(big) {
+		t.Fatalf("GetMany of four thirds of a frame answered %d objects, want a proper prefix", len(first))
+	}
+	rest, err := s.GetMany(ctx, rids[len(first):])
+	must(t, err)
+	got := append(first, rest...)
+	wantObjects(t, got, big[:len(got)]...)
+}
+
+func getManyRefusals(t *testing.T, s blobstore.Store) {
+	rids := make([]string, blobstore.MaxGetMany+1)
+	for i := range rids {
+		rids[i] = object(strings.Repeat("y", i+1)).RID
+	}
+	if _, err := s.GetMany(ctx, rids); !errors.Is(err, blobstore.ErrTooMany) {
+		t.Errorf("GetMany of MaxGetMany+1 ids = %v, want ErrTooMany", err)
+	}
+	if _, err := s.GetMany(ctx, []string{object("a").RID, "abc"}); !errors.Is(err, blobstore.ErrBadRID) {
+		t.Errorf("GetMany with a bad id = %v, want ErrBadRID", err)
+	}
+	if got, err := s.GetMany(ctx, nil); err != nil || len(got) != 0 {
+		t.Errorf("GetMany of no ids = %v, %v; want empty, nil", got, err)
+	}
+}
+
+func wantObjects(t *testing.T, got []blobstore.Object, want ...blobstore.Object) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("GetMany answered %d objects, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].RID != want[i].RID || string(got[i].Bytes) != string(want[i].Bytes) {
+			t.Fatalf("object %d is %s, want %s", i, got[i].RID[:8], want[i].RID[:8])
+		}
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

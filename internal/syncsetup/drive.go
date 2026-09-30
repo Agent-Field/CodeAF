@@ -155,7 +155,7 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	if id := branches.Resolve(c.ID); id != c.ID {
 		drv.Remote = id
 	}
-	v, err := s.Dir.Acquire(ctx, drv.ID())
+	v, err := s.Dir.Acquire(ctx, drv.ID(), directory.AcquireOpts{})
 	switch {
 	case errors.Is(err, directory.ErrNotFound):
 		return drv, "", nil

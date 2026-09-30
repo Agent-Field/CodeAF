@@ -114,7 +114,7 @@ var routes = map[string]route{
 	"PUT " + dirBase + "/devices/{id}":          withBody(putDevice),
 	"POST " + dirBase + "/vault":                withBody(setVault),
 	"POST " + dirBase + "/cells/{id}":           withBody(create),
-	"POST " + dirBase + "/cells/{id}/acquire":   func(c call) (any, error) { return pair(c.cl.Acquire(c.ctx(), c.id())) },
+	"POST " + dirBase + "/cells/{id}/acquire":   optionalBody(acquire),
 	"POST " + dirBase + "/cells/{id}/heartbeat": withBody(heartbeat),
 	"POST " + dirBase + "/cells/{id}/publish":   withBody(publish),
 	"POST " + dirBase + "/cells/{id}/release":   withBody(release),
@@ -133,6 +133,18 @@ func withBody[T any](f func(call, T) (any, error)) route {
 			return nil, errBadRequest
 		}
 		return f(c, v)
+	}
+}
+
+// optionalBody is withBody for a request whose body may be absent, which then
+// decodes as the zero T, so a client that sends none still gets its old meaning.
+func optionalBody[T any](f func(call, T) (any, error)) route {
+	return func(c call) (any, error) {
+		if len(c.body) == 0 {
+			var zero T
+			return f(c, zero)
+		}
+		return withBody(f)(c)
 	}
 }
 
@@ -156,10 +168,11 @@ type fenceBody struct {
 	Fence uint64 `json:"fence"`
 }
 
-func setVault(c call, s vaultSwap) (any, error) { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }
-func create(c call, in CellInit) (any, error)   { return pair(c.cl.Create(c.ctx(), c.id(), in)) }
-func heartbeat(c call, b Beat) (any, error)     { return pair(c.cl.Heartbeat(c.ctx(), c.id(), b)) }
-func publish(c call, p Publish) (any, error)    { return pair(c.cl.Publish(c.ctx(), c.id(), p)) }
+func setVault(c call, s vaultSwap) (any, error)  { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }
+func create(c call, in CellInit) (any, error)    { return pair(c.cl.Create(c.ctx(), c.id(), in)) }
+func acquire(c call, o AcquireOpts) (any, error) { return pair(c.cl.Acquire(c.ctx(), c.id(), o)) }
+func heartbeat(c call, b Beat) (any, error)      { return pair(c.cl.Heartbeat(c.ctx(), c.id(), b)) }
+func publish(c call, p Publish) (any, error)     { return pair(c.cl.Publish(c.ctx(), c.id(), p)) }
 func release(c call, f fenceBody) (any, error) {
 	return nothing(c.cl.Release(c.ctx(), c.id(), f.Fence))
 }

@@ -116,6 +116,15 @@ func (d *Disk) Get(_ context.Context, rid string) ([]byte, error) {
 	return d.readObject(p)
 }
 
+// GetMany implements Store: the prefix of rids that fits in one frame, read one
+// pointer at a time.
+func (d *Disk) GetMany(ctx context.Context, rids []string) ([]Object, error) {
+	if err := checkMany(rids); err != nil {
+		return nil, err
+	}
+	return gatherPrefix(rids, func(rid string) ([]byte, error) { return d.Get(ctx, rid) })
+}
+
 // readObject reads the bytes a pointer names. A pointer whose frame is gone or
 // short is damage, and is reported as damage rather than as an absent object.
 func (d *Disk) readObject(p pointer) ([]byte, error) {

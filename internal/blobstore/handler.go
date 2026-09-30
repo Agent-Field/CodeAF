@@ -28,6 +28,7 @@ func HandlerAt(now func() time.Time, auth wireauth.Authenticate, open func(ident
 	mux := http.NewServeMux()
 	mux.Handle("POST "+pathFrames, h.route(MaxFrame, (*tenant).putFrame, true))
 	mux.Handle("GET "+pathObjects+"{rid}", h.route(maxSmallBody, (*tenant).getObject, false))
+	mux.Handle("POST "+pathMany, h.route(maxSmallBody, (*tenant).getMany, false))
 	mux.Handle("POST "+pathHas, h.route(maxSmallBody, (*tenant).has, false))
 	mux.Handle("GET "+pathStats, h.route(maxSmallBody, (*tenant).statsReply, false))
 	return h.stamped(mux)
@@ -193,6 +194,26 @@ func (t *tenant) getObject(ctx context.Context, r *http.Request, _ []byte) (repl
 	}
 	t.bytesOut.Add(int64(len(b)))
 	return reply{"application/octet-stream", b}, nil
+}
+
+// getMany answers a batch of rids with one frame holding the objects the store
+// gave, whichever Store is behind it.
+func (t *tenant) getMany(ctx context.Context, _ *http.Request, body []byte) (reply, error) {
+	var req getManyRequest
+	if err := json.Unmarshal(body, &req); err != nil || len(req.Rids) == 0 {
+		return reply{}, errBadRequest
+	}
+	t.gets.Add(1)
+	objects, err := t.store.GetMany(ctx, req.Rids)
+	if err != nil {
+		return reply{}, err
+	}
+	frame, err := Encode(manyKeyID, objects)
+	if err != nil {
+		return reply{}, err
+	}
+	t.bytesOut.Add(sizeOf(objects))
+	return reply{"application/octet-stream", frame}, nil
 }
 
 func (t *tenant) has(ctx context.Context, _ *http.Request, body []byte) (reply, error) {

@@ -7,9 +7,11 @@ package directory
 const ttlMs = int64(LeaseTTL / 1e6)
 
 // Acquire takes the lease for device unless another device still holds it. The
-// same device may re-take its own live lease; the fence still goes up.
-func Acquire(c Cell, device string, now int64) (Cell, error) {
-	if c.Lease.Expires > now && c.Lease.Device != device {
+// same device may re-take its own live lease; the fence still goes up. A forced
+// acquire is a person's choice to displace a live holder: it skips the refusal,
+// and the fence still goes up, so the old holder's next write fails as stale.
+func Acquire(c Cell, device string, now int64, force bool) (Cell, error) {
+	if !force && c.Lease.Expires > now && c.Lease.Device != device {
 		return c, ErrLeaseHeld
 	}
 	c.Lease = Lease{Device: device, Fence: c.Lease.Fence + 1, Expires: now + ttlMs}
@@ -27,7 +29,8 @@ func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
 	return c, nil
 }
 
-// PublishTo moves the durable head. The fence is checked before the head, so a
+// PublishTo moves the durable head and renews the lease, because a publish is
+// proof that the holder is alive. The fence is checked before the head, so a
 // superseded holder always learns it lost the lease first.
 func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	if err := holder(c, device, p.Fence); err != nil {
@@ -38,6 +41,7 @@ func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	}
 	c.Head, c.Size, c.Class = p.Head, p.Size, p.Class
 	c.Lease.Pending, c.DurableAt = p.Pending, now
+	c.Lease.Expires = now + ttlMs
 	c.Title = keepIfEmpty(p.Title, c.Title)
 	return c, nil
 }

@@ -59,13 +59,23 @@ func BranchLine(r Row, merge bool) string {
 func BranchShort(r Row) string { return fmt.Sprintf(branchShort, turns(r.OrphanTurns), r.Device) }
 
 // TakeoverLine is the takeover screen's sentence; the clause about turns still
-// on the other machine is left out when none are.
+// on the other machine is left out when none are. A chat that is running now
+// says where first, because continuing it here stops it there.
 func TakeoverLine(r Row) string {
 	line := fmt.Sprintf(takeoverLine, int64(r.DurableAgo/time.Second))
-	if r.Pending == 0 {
-		return line
+	if r.Pending > 0 {
+		line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
 	}
-	return line + fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
+	return holderLead(r) + line
+}
+
+// holderLead names the device a live chat runs on, and is empty for a chat
+// nobody is running.
+func holderLead(r Row) string {
+	if r.Status != Running {
+		return ""
+	}
+	return fmt.Sprintf(runningOn+"; ", r.Device)
 }
 
 // KeptEdits is said after a takeover kept local edits as a branch.

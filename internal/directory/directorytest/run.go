@@ -77,10 +77,12 @@ var cases = map[string]func(*testing.T, env){
 	"AcquireRefusedWhileHeld":        acquireRefusedWhileHeld,
 	"AcquireAfterExpiry":             acquireAfterExpiry,
 	"AcquireOwnLeaseRaisesFence":     acquireOwnLeaseRaisesFence,
+	"ForcedAcquireBeatsLiveLease":    forcedAcquireBeatsLiveLease,
 	"HeartbeatRenews":                heartbeatRenews,
 	"LateHeartbeatSameFence":         lateHeartbeatSameFence,
 	"HeartbeatWrongFenceRefused":     heartbeatWrongFenceRefused,
 	"PublishMovesHead":               publishMovesHead,
+	"PublishRenewsLease":             publishRenewsLease,
 	"PublishKeepsTitleWhenEmpty":     publishKeepsTitleWhenEmpty,
 	"PublishStaleOldHeadRefused":     publishStaleOldHeadRefused,
 	"PublishAfterTakeoverRefused":    publishAfterTakeoverRefused,
@@ -143,20 +145,20 @@ func createExists(t *testing.T, e env) {
 func cellNotFound(t *testing.T, e env) {
 	_, err := e.as(devA).Cell(ctx, cell)
 	wantErr(t, err, directory.ErrNotFound)
-	_, err = e.as(devA).Acquire(ctx, cell)
+	_, err = e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{})
 	wantErr(t, err, directory.ErrNotFound)
 }
 
 func acquireRefusedWhileHeld(t *testing.T, e env) {
 	start(t, e)
-	_, err := e.as(devB).Acquire(ctx, cell)
+	_, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	wantErr(t, err, directory.ErrLeaseHeld)
 }
 
 func acquireAfterExpiry(t *testing.T, e env) {
 	start(t, e)
 	expire(e)
-	v, err := e.as(devB).Acquire(ctx, cell)
+	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if v.Cell.Lease.Device != e.id(devB) || v.Cell.Lease.Fence != 2 || v.Cell.Lease.Pending != 0 {
 		t.Fatalf("lease = %+v", v.Cell.Lease)
@@ -165,11 +167,26 @@ func acquireAfterExpiry(t *testing.T, e env) {
 
 func acquireOwnLeaseRaisesFence(t *testing.T, e env) {
 	start(t, e)
-	v, err := e.as(devA).Acquire(ctx, cell)
+	v, err := e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if v.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence = %d, want 2", v.Cell.Lease.Fence)
 	}
+}
+
+// forcedAcquireBeatsLiveLease: a person who continues a chat where it runs now
+// takes the lease at once, and the displaced holder is refused as in L7.
+func forcedAcquireBeatsLiveLease(t *testing.T, e env) {
+	start(t, e)
+	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
+	must(t, err)
+	if l := v.Cell.Lease; l.Device != e.id(devB) || l.Fence != 2 || l.Pending != 0 {
+		t.Fatalf("lease = %+v", l)
+	}
+	_, err = e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
+	wantErr(t, err, directory.ErrFenceStale)
+	_, err = e.as(devA).Heartbeat(ctx, cell, directory.Beat{Fence: 1})
+	wantErr(t, err, directory.ErrFenceStale)
 }
 
 func heartbeatRenews(t *testing.T, e env) {
@@ -213,6 +230,18 @@ func publishMovesHead(t *testing.T, e env) {
 	}
 }
 
+// publishRenewsLease: a publish is proof of life, so a holder that publishes
+// often never needs a heartbeat.
+func publishRenewsLease(t *testing.T, e env) {
+	start(t, e)
+	e.clock.Wait(directory.HeartbeatEvery)
+	v, err := e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
+	must(t, err)
+	if want := v.Now + directory.LeaseTTL.Milliseconds(); v.Cell.Lease.Expires != want {
+		t.Fatalf("expires = %d, want %d", v.Cell.Lease.Expires, want)
+	}
+}
+
 func publishKeepsTitleWhenEmpty(t *testing.T, e env) {
 	start(t, e)
 	v, err := e.as(devA).Publish(ctx, cell, directory.Publish{Fence: 1, OldHead: head, Head: next})
@@ -236,7 +265,7 @@ func publishStaleOldHeadRefused(t *testing.T, e env) {
 func publishAfterTakeoverRefused(t *testing.T, e env) {
 	start(t, e)
 	expire(e)
-	b, err := e.as(devB).Acquire(ctx, cell)
+	b, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if b.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence = %d, want 2", b.Cell.Lease.Fence)
@@ -259,7 +288,7 @@ func releaseFreesLeaseKeepsFence(t *testing.T, e env) {
 	if l.Expires != 0 || l.Pending != 0 || l.Fence != 1 || l.Device != e.id(devA) {
 		t.Fatalf("lease = %+v", l)
 	}
-	v, err := e.as(devB).Acquire(ctx, cell)
+	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{})
 	must(t, err)
 	if v.Cell.Lease.Fence != 2 {
 		t.Fatalf("fence = %d, want 2", v.Cell.Lease.Fence)
@@ -330,7 +359,7 @@ func concurrentAcquireOneWins(t *testing.T, e env) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := e.as(fmt.Sprintf("dev_%032x", i+1)).Acquire(ctx, cell)
+			_, err := e.as(fmt.Sprintf("dev_%032x", i+1)).Acquire(ctx, cell, directory.AcquireOpts{})
 			errs <- err
 		}()
 	}

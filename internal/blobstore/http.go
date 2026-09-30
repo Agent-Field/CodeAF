@@ -52,6 +52,41 @@ func (c *HTTP) Get(ctx context.Context, rid string) ([]byte, error) {
 	return c.do(ctx, http.MethodGet, pathObjects+rid, nil)
 }
 
+// GetMany implements Store: one request, answered by a frame holding a prefix of
+// the objects asked for. The frame is decoded with the same checks as any
+// other, and its objects must be that prefix, in order, or the answer is
+// refused, so a relay cannot hand a taker objects it did not ask for.
+func (c *HTTP) GetMany(ctx context.Context, rids []string) ([]Object, error) {
+	if len(rids) == 0 {
+		return nil, nil
+	}
+	if err := checkMany(rids); err != nil {
+		return nil, err
+	}
+	frame, err := c.do(ctx, http.MethodPost, pathMany, mustJSON(getManyRequest{Rids: rids}))
+	if err != nil {
+		return nil, err
+	}
+	_, objects, err := Decode(frame)
+	if err != nil || !isPrefix(objects, rids) {
+		return nil, fmt.Errorf("%w: the answer to a GetMany is not the objects asked for", ErrUnreachable)
+	}
+	return objects, nil
+}
+
+// isPrefix says whether objects are exactly the first len(objects) of rids.
+func isPrefix(objects []Object, rids []string) bool {
+	if len(objects) > len(rids) {
+		return false
+	}
+	for i, o := range objects {
+		if o.RID != rids[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Has implements Store.
 func (c *HTTP) Has(ctx context.Context, rids []string) ([]bool, error) {
 	if rids == nil {

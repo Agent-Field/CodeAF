@@ -316,21 +316,24 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 ## Continue a chat here that another machine left — "studio off", takeover, "continue here", the chat is running on another computer
 
-Press enter on a row that says `<device> off` and home asks **Continue this chat here?**
+Press enter on a row that says `<device> off` or `running on <device>` and home asks **Continue this chat here?**
 with the answer under the cursor on `leave it there`, so leaning on enter loses nothing.
 The card says how fresh the copy is: `last durable turn <N>s ago; up to <K> turns may still
-be on <device>`. The `up to` clause is left out when nothing is waiting there. Press `1`,
-then enter, to continue: the chat is fetched, this machine takes it over and it opens. On a
-narrow frame the same question takes the whole screen, with the sentence wrapped.
+be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
+`running on <device>` row the card starts with that: `running on <device>; last durable turn
+<N>s ago`. Press `1`, then enter, to continue: the chat is fetched, this machine takes it
+over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
+running there stops taking new turns there the moment you take it, and its window says
+`<device> continued this chat; this window now only shows it`. Anything it had not yet sent
+is kept as a branch, `<K> turns from <device>: merge / discard`. On a narrow frame the same
+question takes the whole screen, with the sentence wrapped.
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
   branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
-- If another machine took the chat first, the row goes back to `running on <device>` with one
+- If another machine took an `off` chat first, the row goes back to `running on <device>` with one
   line saying another device continued it first. Nothing was changed.
 - If the other machines cannot be reached, enter says `other machines unreachable` and asks
   nothing: no chat can be taken without them.
-- A row that says `running on <device>` only says so on enter; watching it from here is not
-  part of this screen yet.
 - With no way to continue set up, an off row has no `continue here`: enter says its sentence.
 
 ## What comes with a continued chat — the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed

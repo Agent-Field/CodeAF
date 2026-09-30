@@ -97,6 +97,21 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	}
 }
 
+// A chat running on another machine is continued from the same screen: it says
+// where the chat runs now, and confirming takes it.
+func TestTakeoverScreenOffersARunningChat(t *testing.T) {
+	taker := &fakeTaker{}
+	a := continueHome(t, taker, continueRows, 200)
+	standOn(t, a, "c-run")
+	if text := homeText(a); !strings.Contains(text, "running on studio; last durable turn 120s ago") {
+		t.Fatalf("the screen does not name where the chat runs:\n%s", text)
+	}
+	confirm(t, a)
+	if fmt.Sprint(taker.cells) != "[c-run]" {
+		t.Fatalf("Take was asked for %v", taker.cells)
+	}
+}
+
 func TestTakeoverScreenConfirmCallsTake(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, continueRows, 200)
