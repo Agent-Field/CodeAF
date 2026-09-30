@@ -49,6 +49,11 @@ pub enum Exchange {
         /// there as published, so an export never sends them back.
         #[arg(long)]
         ledger: String,
+        /// Priming mode: an inbox file no pass wanted is deleted rather than
+        /// an error, because the caller knows the inbox holds more than this
+        /// head wants.
+        #[arg(long)]
+        primed: bool,
     },
     /// Tell the engine that the folder it restored into `--from` was moved to
     /// the --repo path, so the tree keeps its history there.
@@ -100,7 +105,8 @@ fn execute(verb: Exchange, repo: &Path) -> anyhow::Result<Value> {
             head,
             inbox,
             ledger,
-        } => ops::import(&data_dir, &keys_from_env()?, &head, &ledger, &inbox),
+            primed,
+        } => ops::import(&data_dir, &keys_from_env()?, &head, &ledger, &inbox, primed),
         Exchange::Rebind { from } => ops::rebind(&data_dir, &from, repo),
         Exchange::Materialize { head, cell_dir } => {
             ops::restore_head(&data_dir, repo, cell_dir, &head)

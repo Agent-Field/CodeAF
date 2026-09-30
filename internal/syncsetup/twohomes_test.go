@@ -911,6 +911,36 @@ func TestTwoHomesTakeOfAnUnopenedTakenChat(t *testing.T) {
 	}
 }
 
+// TestTwoHomesSecondTakeAfterRestoredSecretsIsClean: a take writes the vault's
+// secret files into subfolders, and that write moves the folders' times. Writing
+// back a file the seals withheld is not an edit, so a second take with nothing
+// touched in between finds the tree clean and keeps no branch.
+func TestTwoHomesSecondTakeAfterRestoredSecretsIsClean(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	seedTree(t, h.work)
+	h.vaultTheEnv()
+	a := h.openA()
+	a.mustSay("first")
+	h.durable(h.cell.ID, h.cell)
+	if err := a.drive.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	first, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEnvInjected(t, workspaceOf(first.Taken.Cell.Root))
+	again, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatalf("the second take failed: %v", err)
+	}
+	if again.Taken.Kept != "" {
+		t.Fatalf("a tree nobody touched kept %s after its secrets were restored", again.Taken.Kept)
+	}
+	assertEnvInjected(t, workspaceOf(again.Taken.Cell.Root))
+}
+
 // bigFile writes n bytes that do not compress or repeat, so what a publish
 // sends can be told from what the chat merely holds.
 func bigFile(t *testing.T, path string, n int) {
