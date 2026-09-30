@@ -1,0 +1,68 @@
+{
+  "criteria": {
+    "refname-collision-no-crash": {
+      "status": "pass",
+      "note": "overlay applied with one line of reduced context (-C1); tests exit 0",
+      "exit_code": 0
+    },
+    "conflict-set-still-complete": {
+      "status": "host",
+      "note": "answered on the host"
+    },
+    "git-test-suite-pass": {
+      "status": "pass",
+      "note": "exit 0",
+      "exit_code": 0
+    },
+    "reverse-tests-fail": {
+      "status": "pass",
+      "note": "tests exit 1 after revert (fail expected)",
+      "exit_code": 1
+    },
+    "scope-focused": {
+      "status": "fail",
+      "note": "22 changed lines, limit 20",
+      "stats": {
+        "files": [
+          "pre_commit/git.py",
+          "tests/git_test.py"
+        ],
+        "added": 21,
+        "removed": 1,
+        "binary": false
+      }
+    },
+    "adapted-tests-pass": {
+      "status": "host",
+      "note": "answered on the host"
+    }
+  },
+  "judge_input": {
+    "base": "7b88c63ae691cb243c3137bce8fb870523e0a884",
+    "criteria": {
+      "conflict-set-still-complete": {
+        "question": "The brief says the enumeration must return BOTH kinds of\nfiles: the merge-conflict filenames and the merge-diff filenames, nothing\nadded, nothing lost. Read the diff hunk. Does the fix separate the refnames\nfrom pathspecs without narrowing the diff \u2014 an empty-but-successful result\nwould be silent data loss, worse than the crash it replaced? A change that\nsilences the ambiguity by moving a separator to the wrong position, dropping\none of the two diff modes, or catching the error and returning a partial set\nfails.",
+        "paths": [
+          "pre_commit/git.py"
+        ],
+        "hunks": {
+          "pre_commit/git.py": "diff --git a/pre_commit/git.py b/pre_commit/git.py\nindex 19aac38..cb3c273 100644\n--- a/pre_commit/git.py\n+++ b/pre_commit/git.py\n@@ -126,7 +126,10 @@ def get_conflicted_files() -> set[str]:\n     merge_diff_filenames = zsplit(\n         cmd_output(\n             'git', 'diff', '--name-only', '--no-ext-diff', '-z',\n-            '-m', tree_hash, 'HEAD', 'MERGE_HEAD',\n+            '-m', tree_hash,\n+            # pull the refs in front of the `--` so they are unambiguously\n+            # revisions even if the worktree has a tracked file named HEAD\n+            'HEAD', 'MERGE_HEAD', '--',\n         )[1],\n     )\n     return set(merge_conflict_filenames) | set(merge_diff_filenames)\n"
+        },
+        "mechanical": {
+          "pre_commit/git.py": {
+            "exists": true,
+            "std_cerr_statements": 0,
+            "std_cerr_lines": [],
+            "log_warning_calls": 0
+          }
+        }
+      }
+    },
+    "test_files": {
+      "tests/git_test.py": "st_get_root_deeper(in_git_dir):\n    expected = os.path.normcase(in_git_dir.strpath)\n    with in_git_dir.join('foo').ensure_dir().as_cwd():\n        assert os.path.normcase(git.get_root()) == expected\n\n\ndef test_get_root_in_git_sub_dir(in_git_dir):\n    expected = os.path.normcase(in_git_dir.strpath)\n    with pytest.raises(FatalError):\n        with in_git_dir.join('.git/objects').ensure_dir().as_cwd():\n            assert os.path.normcase(git.get_root()) == expected\n\n\ndef test_get_root_not_in_working_dir(in_git_dir):\n    expected = os.path.normcase(in_git_dir.strpath)\n    with pytest.raises(FatalError):\n        with in_git_dir.join('..').ensure_dir().as_cwd():\n            assert os.path.normcase(git.get_root()) == expected\n\n\ndef test_in_exactly_dot_git(in_git_dir):\n    with in_git_dir.join('.git').as_cwd(), pytest.raises(FatalError):\n        git.get_root()\n\n\ndef test_get_root_bare_worktree(tmpdir):\n    src = tmpdir.join('src').ensure_dir()\n    cmd_output('git', 'init', str(src))\n    git_commit(cwd=str(src))\n\n    bare = tmpdir.join('bare.git').ensure_dir()\n    cmd_output('git', 'clone', '--bare', str(src), str(bare))\n\n    cmd_output('git', 'worktree', 'add', 'foo', 'HEAD', cwd=bare)\n\n    with bare.join('foo').as_cwd():\n        assert git.get_root() == os.path.abspath('.')\n\n\ndef test_get_git_dir(tmpdir):\n    \"\"\"Regression test for #1972\"\"\"\n    src = tmpdir.join('src').ensure_dir()\n    cmd_output('git', 'init', str(src))\n    git_commit(cwd=str(src))\n\n    worktree = tmpdir.join('worktree').ensure_dir()\n    cmd_output('git', 'worktree', 'add', '../worktree', cwd=src)\n\n    with worktree.as_cwd():\n        assert git.get_git_dir() == src.ensure_dir(\n            '.git/worktrees/worktree',\n        )\n        assert git.get_git_common_dir() == src.ensure_dir('.git')\n\n\ndef test_get_root_worktree_in_git(tmpdir):\n    src = tmpdir.join('src').ensure_dir()\n    cmd_output('git', 'init', str(src))\n    git_commit(cwd=str(src))\n\n    cmd_output('git', 'worktree', 'add', '.git/trees/foo', 'HEAD', cwd=src)\n\n    with src.join('.git/trees/foo').as_cwd():\n        assert git.get_root() == os.path.abspath('.')\n\n\ndef test_get_staged_files_deleted(in_git_dir):\n    in_git_dir.join('test').ensure()\n    cmd_output('git', 'add', 'test')\n    git_commit()\n    cmd_output('git', 'rm', '--cached', 'test')\n    assert git.get_staged_files() == []\n\n\ndef test_is_not_in_merge_conflict(in_git_dir):\n    assert git.is_in_merge_conflict() is False\n\n\ndef test_is_in_merge_conflict(in_merge_conflict):\n    assert git.is_in_merge_conflict() is True\n\n\ndef test_is_in_merge_conflict_submodule(in_conflicting_submodule):\n    assert git.is_in_merge_conflict() is True\n\n\ndef test_cherry_pick_conflict(in_merge_conflict):\n    cmd_output('git', 'merge', '--abort')\n    foo_ref = cmd_output('git', 'rev-parse', 'foo')[1].strip()\n    cmd_output('git', 'cherry-pick', foo_ref, check=False)\n    assert git.is_in_merge_conflict() is False\n\n\ndef resolve_conflict():\n    with open('conflict_file', 'w') as conflicted_file:\n        conflicted_file.write('herp\\nderp\\n')\n    cmd_output('git', 'add', 'conflict_file')\n\n\ndef test_get_conflicted_files(in_merge_conflict):\n    resolve_conflict()\n    with open('other_file', 'w') as other_file:\n        other_file.write('oh hai')\n    cmd_output('git', 'add', 'other_file')\n\n    ret = set(git.get_conflicted_files())\n    assert ret == {'conflict_file', 'other_file'}\n\n\ndef test_get_conflicted_files_in_submodule(in_conflicting_submodule):\n    resolve_conflict()\n    assert set(git.get_conflicted_files()) == {'conflict_file'}\n\n\ndef test_get_conflicted_files_unstaged_files(in_merge_conflict):\n    \"\"\"This case no longer occurs, but it is a useful test nonetheless\"\"\"\n    resolve_conflict()\n\n    # Make unstaged file.\n    with open('bar_only_file', 'w') as bar_only_file:\n        bar_only_file.write('new contents!\\n')\n\n    ret = set(git.get_conflicted_files())\n    assert ret == {'conflict_file'}\n\n\nMERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\nOTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n\n\n@pytest.mark.parametrize(\n    ('input', 'expected_output'),\n    (\n        (MERGE_MSG, ['conflict_file']),\n        (OTHER_MERGE_MSG, ['conflict_file', 'other_conflict_file']),\n    ),\n)\ndef test_parse_merge_msg_for_conflicts(input, expected_output):\n    ret = git.parse_merge_msg_for_conflicts(input)\n    assert ret == expected_output\n\n\ndef test_get_changed_files(in_git_dir):\n    git_commit()\n    in_git_dir.join('a.txt').ensure()\n    in_git_dir.join('b.txt').ensure()\n    cmd_output('git', 'add', '.')\n    git_commit()\n    files = git.get_changed_files('HEAD^', 'HEAD')\n    assert files == ['a.txt', 'b.txt']\n\n    # files changed in source but not in origin should not be returned\n    files = git.get_changed_files('HEAD', 'HEAD^')\n    assert files == []\n\n\ndef test_get_changed_files_disparate_histories(in_git_dir):\n    \"\"\"in modern versions of git, `...` does not fall back to full diff\"\"\"\n    git_commit()\n    in_git_dir.join('a.txt').ensure()\n    cmd_output('git', 'add', '.')\n    git_commit()\n    cmd_output('git', 'branch', '-m', 'branch1')\n\n    cmd_output('git', 'checkout', '--orphan', 'branch2')\n    cmd_output('git', 'rm', '-rf', '.')\n    in_git_dir.join('a.txt').ensure()\n    in_git_dir.join('b.txt').ensure()\n    cmd_output('git', 'add', '.')\n    git_commit()\n\n    assert git.get_changed_files('branch1', 'branch2') == ['b.txt']\n\n\n@pytest.mark.parametrize(\n    ('s', 'expected'),\n    (\n        ('foo\\0bar\\0', ['foo', 'bar']),\n        ('foo\\0', ['foo']),\n        ('', []),\n        ('foo', ['foo']),\n    ),\n)\ndef test_zsplit(s, expected):\n    assert git.zsplit(s) == expected\n\n\n@pytest.fixture\ndef non_ascii_repo(in_git_dir):\n    git_commit()\n    in_git_dir.join('\u0438\u043d\u0442\u0435\u0440\u0432\u044c\u044e').ensure()\n    cmd_output('git', 'add', '.')\n    git_commit()\n    yield in_git_dir\n\n\ndef test_all_files_non_ascii(non_ascii_repo):\n    ret = git.get_all_files()\n    assert ret == ['\u0438\u043d\u0442\u0435\u0440\u0432\u044c\u044e']\n\n\ndef test_staged_files_non_ascii(non_ascii_repo):\n    non_ascii_repo.join('\u0438\u043d\u0442\u0435\u0440\u0432\u044c\u044e').write('hi')\n    cmd_output('git', 'add', '.')\n    assert git.get_staged_files() == ['\u0438\u043d\u0442\u0435\u0440\u0432\u044c\u044e']\n\n\ndef test_changed_files_non_ascii(non_ascii_repo):\n    ret = git.get_changed_files('HEAD^', 'HEAD')\n    assert ret == ['\u0438\u043d\u0442\u0435\u0440\u0432\u044c\u044e']\n\n\ndef test_get_conflicted_files_non_ascii(in_merge_conflict):\n    open('\u0438\u043d\u0442\u0435\u0440\u0432\u044c\u044e', 'a').close()\n    cmd_output('git', 'add', '.')\n    ret = git.get_conflicted_files()\n    assert ret == {'conflict_file', '\u0438\u043d\u0442\u0435\u0440\u0432\u044c\u044e'}\n\n\ndef test_intent_to_add(in_git_dir):\n    in_git_dir.join('a').ensure()\n    cmd_output('git', 'add', '--intent-to-add', 'a')\n\n    assert git.intent_to_add_files() == ['a']\n\n\ndef test_status_output_with_rename(in_git_dir):\n    in_git_dir.join('a').write('1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n')\n    cmd_output('git', 'add', 'a')\n    git_commit()\n    cmd_output('git', 'mv', 'a', 'b')\n    in_git_dir.join('c').ensure()\n    cmd_output('git', 'add', '--intent-to-add', 'c')\n\n    assert git.intent_to_add_files() == ['c']\n\n\ndef test_no_git_env():\n    env = {\n        'http_proxy': 'http://myproxy:80',\n        'GIT_EXEC_PATH': '/some/git/exec/path',\n        'GIT_SSH': '/usr/bin/ssh',\n        'GIT_SSH_COMMAND': 'ssh -o',\n        'GIT_DIR': '/none/shall/pass',\n        'GIT_CONFIG_KEY_0': 'user.name',\n        'GIT_CONFIG_VALUE_0': 'anthony',\n        'GIT_CONFIG_KEY_1': 'user.email',\n        'GIT_CONFIG_VALUE_1': 'asottile@example.com',\n        'GIT_CONFIG_COUNT': '2',\n    }\n    no_git_env = git.no_git_env(env)\n    assert no_git_env == {\n        'http_proxy': 'http://myproxy:80',\n        'GIT_EXEC_PATH': '/some/git/exec/path',\n        'GIT_SSH': '/usr/bin/ssh',\n        'GIT_SSH_COMMAND': 'ssh -o',\n        'GIT_CONFIG_KEY_0': 'user.name',\n        'GIT_CONFIG_VALUE_0': 'anthony',\n        'GIT_CONFIG_KEY_1': 'user.email',\n        'GIT_CONFIG_VALUE_1': 'asottile@example.com',\n        'GIT_CONFIG_COUNT': '2',\n    }\n\n\ndef test_init_repo_no_hooks(tmpdir):\n    git.init_repo(str(tmpdir), remote='dne')\n    assert not tmpdir.join('.git/hooks').exists()\n"
+    },
+    "overlay": "diff --git a/tests/git_test.py b/tests/git_test.py\nindex 93f5a1c..02b6ce3 100644\n--- a/tests/git_test.py\n+++ b/tests/git_test.py\n@@ -141,6 +141,15 @@ def test_get_conflicted_files_unstaged_files(in_merge_conflict):\n     assert ret == {'conflict_file'}\n \n \n+def test_get_conflicted_files_with_file_named_head(in_merge_conflict):\n+    resolve_conflict()\n+    open('HEAD', 'w').close()\n+    cmd_output('git', 'add', 'HEAD')\n+\n+    ret = set(git.get_conflicted_files())\n+    assert ret == {'conflict_file', 'HEAD'}\n+\n+\n MERGE_MSG = b\"Merge branch 'foo' into bar\\n\\nConflicts:\\n\\tconflict_file\\n\"\n OTHER_MERGE_MSG = MERGE_MSG + b'\\tother_conflict_file\\n'\n \n"
+  },
+  "apply_ok": true,
+  "apply_note": ""
+}

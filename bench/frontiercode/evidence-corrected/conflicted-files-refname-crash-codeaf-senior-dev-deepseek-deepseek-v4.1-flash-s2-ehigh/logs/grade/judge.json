@@ -1,0 +1,65 @@
+{
+  "criteria": {
+    "conflict-set-still-complete": {
+      "pass": true,
+      "reasoning": "The diff adds a '--' separator after 'MERGE_HEAD' in the git diff command. This separator disambiguates refnames (tree_hash, HEAD, MERGE_HEAD) from pathspecs without changing what files are returned. The command still uses '-m' flag with the same three refs (tree_hash, HEAD, MERGE_HEAD), so it will still produce the merge-diff filenames. The function also still computes merge_conflict_filenames (not shown in diff but referenced in the return statement) and returns the union of both sets. The '--' separator prevents ambiguity errors when refnames could be confused with paths, but does not narro",
+      "usage": {
+        "prompt_tokens": 596,
+        "completion_tokens": 206,
+        "total_tokens": 802,
+        "cost": 0.004878,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.004878,
+          "upstream_inference_prompt_cost": 0.001788,
+          "upstream_inference_completions_cost": 0.00309
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      }
+    }
+  },
+  "model": "openrouter/anthropic/claude-sonnet-4.5",
+  "prompt_version": "fc-judge-1",
+  "usage": {
+    "prompt_tokens": 5238,
+    "completion_tokens": 1076,
+    "calls": 2
+  },
+  "adaptive": {
+    "adapted": true,
+    "reasoning": "The agent's solution correctly fixes the ambiguity issue by adding '--' to the git diff command, and provides a more comprehensive parametrized test that checks both 'HEAD' and 'MERGE_HEAD' filename collisions. The reference test checks only 'HEAD'. Both tests verify the same core behavior: that files named after git refs are properly included in the conflicted files set. The agent's test is functionally equivalent and more thorough, so the reference test can be adapted to match the agent's parametrized structure.",
+    "usage": {
+      "prompt_tokens": 4642,
+      "completion_tokens": 870,
+      "total_tokens": 5512,
+      "cost": 0.026976,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.026976,
+        "upstream_inference_prompt_cost": 0.013926,
+        "upstream_inference_completions_cost": 0.01305
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  }
+}
