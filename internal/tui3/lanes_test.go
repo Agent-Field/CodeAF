@@ -488,6 +488,7 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	if a.pick.pin != "Cloudflare" {
 		t.Fatalf("the picker opened with pin %q", a.pick.pin)
 	}
+	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"))         // walks in, onto the pinned lane
 	drive(t, a, key("up"), key("up")) // past openrouter, back onto auto
