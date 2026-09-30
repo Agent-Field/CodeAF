@@ -34,8 +34,17 @@ def test_a():
     assert True
 
 
-TAIL = 1
+ANCHOR = 1
+MID = 2
+TAIL = 3
 """
+
+# The agent's own test is long enough that it displaces the overlay's trailing
+# context beyond git apply's search window — the conflicted-files shape, where
+# the agent added a full test where the reference added its own.
+AGENT_BLOCK = "def test_agent():\n" + "".join(
+    f"    step_{i} = {i}\n" for i in range(25)
+) + "\n\nANCHOR = 1"
 
 
 def git(repo, *args):
