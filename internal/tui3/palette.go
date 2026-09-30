@@ -689,10 +689,13 @@ func (p *picker) rowLines(at int, atTop bool) int {
 		// own tail would have wrapped.
 		return take + 1
 	}
-	if phoneList(p.width) {
+	if p.width > 0 && phoneList(p.width) {
 		// A PHONE WRAPS A ROW'S TAIL onto a line of its own, and whether there
 		// is a tail is what decides the row's height. Wide frames spend one
-		// line on every row, so the ask stays off the common path.
+		// line on every row, so the ask stays off the common path — and a
+		// width nobody has drawn at yet counts one line per row, the wide
+		// reading: the frame that draws re-asks with its own width before it
+		// lays anything out ([picker.rows]).
 		_, note := p.entryText(at, p.width, nil)
 		take += overlayItemLines(p.width, note)
 	} else {
