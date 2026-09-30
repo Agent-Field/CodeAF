@@ -342,17 +342,27 @@ def combine(task_dir, grade_dir):
     # the adaptive path silently reported "phase B did not run" even when it
     # had; the verdicts are this key's value, never the top-level object.
     phase_b_criteria = phase_b.get("criteria", {})
+    # A patch that never applied is a legitimate 0, not a rig. Phase A marks
+    # every criterion fail; phase A also gathers no judge input for a tree that
+    # does not exist, so the judge returns nothing and an unguarded prompt read
+    # turned that empty result into rig. Keep phase A's fail when apply failed.
+    apply_ok = phase_a.get("apply_ok", True)
 
     criteria = {}
     for c in rubric["criteria"]:
         cid, kind = c["id"], c["kind"]
         entry = dict(phase_a["criteria"].get(cid, {"status": RIG, "note": "no phase A result"}))
         if kind == "prompt":
-            verdict = judge_criteria.get(cid, {})
-            entry["status"] = PASS if verdict.get("pass") else (
-                FAIL if verdict else RIG)
-            entry["judge"] = verdict
-            entry["note"] = verdict.get("reasoning", entry["note"])[:300]
+            if not apply_ok:
+                # Phase A already recorded the fail this run earns; the judge
+                # never saw the tree, so there is no verdict to prefer.
+                pass
+            else:
+                verdict = judge_criteria.get(cid, {})
+                entry["status"] = PASS if verdict.get("pass") else (
+                    FAIL if verdict else RIG)
+                entry["judge"] = verdict
+                entry["note"] = verdict.get("reasoning", entry["note"])[:300]
         elif kind == "adaptive-classical":
             # Three honest paths. The verbatim overlay applied and passed: the
             # tests fit the solution as written, and the criterion is derived.
