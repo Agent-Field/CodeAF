@@ -2351,7 +2351,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// (taxonomy_boundary.go's [providerCouldNotServe]) — and with the
 			// person's own words in front of it, because the router's sentence is
 			// not one anybody outside this process can act on ([endingWords]).
-			return nil, model, endingWords(err, verdict, a.failureServiceWord(model))
+			return nil, model, endingWords(err, verdict, a.failureServiceWord(model), a.failureKeySource(model))
 		case verdict.Retries():
 			// A CUT IS SAID AT ONCE AND THEN PAYS THE VERDICT'S WAIT LIKE ANY
 			// OTHER FAILURE. Its junk is already gone from the page, so the
@@ -2434,7 +2434,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if isCut {
 			return nil, model, cutFailure(cut, cuts, hopped)
 		}
-		return nil, model, transportFailure(lastErr, verdict, origin, attempt+1, hopped, a.failureServiceWord(model))
+		return nil, model, transportFailure(lastErr, verdict, origin, attempt+1, hopped, a.failureServiceWord(model), a.failureKeySource(model))
 	}
 	// AND THE LOOP FALLS OUT HERE ONLY WHEN THE DEADLINE WENT WITHOUT A FAILURE
 	// TO READ — every attempt cut short and re-asked until the give-up was gone.
@@ -2868,9 +2868,12 @@ func (e *cutGaveUp) Unwrap() error { return e.cut }
 // the one this build has always ended on — `after 3 retries: …` — which is not
 // prose anybody loves and IS what several layers out and a good deal of the
 // record already read, so it is left exactly as it was.
-func transportFailure(err error, verdict taxonomy.Verdict, origin string, attempts int, hopped []string, service string) error {
+func transportFailure(err error, verdict taxonomy.Verdict, origin string, attempts int, hopped []string, service, keySource string) error {
 	if said, ok := terminalFailureWords(err, service); ok {
 		return &transportGaveUp{err: err, said: said}
+	}
+	if verdict.Reason == taxonomy.ReasonUnauthorized && strings.TrimSpace(keySource) != "" {
+		return &transportGaveUp{err: err, said: transportWordsFor(verdict, keySource)}
 	}
 	if len(hopped) == 0 {
 		return fmt.Errorf("after %d retries: %w", attempts-1, err)
@@ -2878,7 +2881,7 @@ func transportFailure(err error, verdict taxonomy.Verdict, origin string, attemp
 	return &transportGaveUp{
 		err: err,
 		said: fmt.Sprintf("%s: %s was asked %s, and %s. /model to pick another one yourself",
-			transportWords(verdict), origin, timesWord(attempts), alsoTried(hopped)),
+			transportWordsFor(verdict, keySource), origin, timesWord(attempts), alsoTried(hopped)),
 	}
 }
 
@@ -2897,18 +2900,26 @@ func transportFailure(err error, verdict taxonomy.Verdict, origin string, attemp
 // layer that decides anything about a provider failure decides it from the
 // error's TYPE, so the typed refusal stays reachable through Unwrap and only the
 // words on the front change.
-func endingWords(err error, verdict taxonomy.Verdict, service string) error {
+func endingWords(err error, verdict taxonomy.Verdict, service, keySource string) error {
 	if err == nil {
 		return nil
 	}
 	if said, ok := terminalFailureWords(err, service); ok {
 		return &transportGaveUp{err: err, said: said}
 	}
-	said := strings.TrimSpace(transportWords(verdict))
+	said := strings.TrimSpace(transportWordsFor(verdict, keySource))
 	if said == "" {
 		return err
 	}
 	return &transportGaveUp{err: err, said: said}
+}
+
+func transportWordsFor(verdict taxonomy.Verdict, keySource string) string {
+	said := transportWords(verdict)
+	if verdict.Reason == taxonomy.ReasonUnauthorized && strings.TrimSpace(keySource) != "" {
+		said += " — " + strings.TrimSpace(keySource)
+	}
+	return said
 }
 
 // terminalFailureWords preserves the three endings whose typed error carries
@@ -2942,6 +2953,18 @@ func (a *Agent) failureServiceWord(model string) string {
 	sources := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
 	service, _ := sources.For(model)
 	return strings.TrimSpace(service.Source.Written)
+}
+
+// failureKeySource names where the default service's key came from, and only
+// for a model the default service serves: a model on a connected service
+// talks with that service's own key, which this ladder does not describe.
+func (a *Agent) failureKeySource(model string) string {
+	sources := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
+	service, _ := sources.For(model)
+	if service.Source.ID != sources.Default().Source.ID {
+		return ""
+	}
+	return config.APIKeySourceAt(a.config.ProfileDir)
 }
 
 // transportGaveUp is that sentence WITH the failure still reachable under it, on

@@ -252,10 +252,11 @@ type headlessOutcome struct {
 	// callers must never parse the bounded person's account, and it is never
 	// clipped.
 	Checklist []revision.PointOutcome `json:"checklist,omitempty"`
-	// Error is the sentence a run that never reached an outcome left behind:
+	// Error is the sentence a run that could not finish left behind:
 	// the store that would not open, the working directory that could not be
 	// made, the resident that never picked the command up, a journal read that
-	// failed mid-flight. It is empty on every run that produced an answer.
+	// failed mid-flight, or a worker's reason it could not continue. It is
+	// empty on every run that produced an answer.
 	//
 	// It exists because --json's whole promise is one object on stdout, and a
 	// promise that only holds when the work succeeds is not one a script can be
@@ -3418,6 +3419,9 @@ func withoutSummaryFileList(deliverable string, artifacts []string) string {
 // most common thing anyone does with a one-shot is pipe it somewhere.
 func reportErrand(request doRequest, outcome headlessOutcome) error {
 	sayBlocked(request.stderr, outcome)
+	if !request.asJSON && request.stderr != nil && strings.TrimSpace(outcome.Error) != "" {
+		fmt.Fprintln(request.stderr, "error: "+outcome.Error)
+	}
 	if outcome.recordKept != "" && request.stderr != nil {
 		fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
 	}
@@ -3734,6 +3738,8 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 		Nodes:     summary.Nodes,
 		Seconds:   summary.Seconds,
 		Spend:     summary.USD,
+		tokensIn:  summary.TokensIn,
+		tokensOut: summary.TokensOut,
 	}
 	switch summary.Outcome {
 	case runengine.OutcomeDone:
@@ -3750,6 +3756,9 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	default:
 		// ran and did not finish: a leaf failed, or the clock arrived.
 		errand.stop, errand.Settled = stopIncomplete, true
+		// The run already kept the worker's reason; both receipt formats
+		// need it to explain an incomplete ending.
+		errand.Error = plainWords(strings.TrimSpace(summary.Failure))
 	}
 	// THE RUN'S OWN CLOCK, read off the context because the summary's word is
 	// the same one a failed leaf leaves and a caller raising a timeout has to be

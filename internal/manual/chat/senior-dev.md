@@ -251,6 +251,12 @@ handed in nothing, stopped on a limit, or broke — and acts on it:
 - **broke**: the chat hands it back once if the cause looks passing (a network or model
   service failure), and otherwise tells you what broke.
 
+If the project's checks passed but the model never called `submit`, the ending says plainly
+`the checks passed, but nothing was submitted`. There is no resume or submit command for an
+ended run. The ending names the kept tree and gives the one command to start senior-dev in
+that tree and hand it in: `codeaf senior-dev --dir <kept-tree> -- "submit the existing work"`.
+The run still ends incomplete, with exit 2, because passing checks are not a submission.
+
 **codeaf sends senior-dev back at most twice on its own** for one piece of work. A third
 hand-off it tries, or one after a limit, is refused
 (`senior-dev has been sent back to this work 2 times already, the most codeaf does on its
