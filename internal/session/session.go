@@ -21,6 +21,8 @@ package session
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +30,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -84,21 +87,21 @@ const (
 	EventTurnDone
 	// EventError ends the turn abnormally; Err says why.
 	EventError
-	// EventCompacting says a compaction pass has started, which is work a
-	// surface should show rather than silence. Hint sizes the pass
+	// EventCompacting says a compaction pass has edited the transcript, which is
+	// work a surface should show rather than silence. Hint sizes the pass
 	// ("compacting ~84k tokens").
 	//
-	// EventCompacted always follows it, success or failure — a surface opens a
-	// row on this one and settles it on that one, and a pass that found nothing
-	// to do says so rather than leaving the row open (loop.go's [Agent.compact]).
-	// There is no summarizer behind it any more: the pass is two mechanical
-	// walks over messages this session already holds, so what it costs is a lock
-	// and not a model call.
+	// EventCompacted always follows it — a surface opens a row on this one and
+	// settles it on that one. A pass that found nothing to do sends neither, so
+	// it opens no row that would need settling (loop.go's [Agent.compactWithPolicy]);
+	// `/compact` hears that from [ErrNothingToCompact] instead. Most passes are
+	// two mechanical walks over messages this session already holds, so what
+	// they cost is a lock; only a pass those walks cannot finish writes a summary
+	// with the conversation's model (compact_summary.go).
 	EventCompacting
 	// EventCompacted marks a compaction pass; Hint summarizes
-	// ("compacted from ~84k tokens, kept last ~20k"), and [Event.Unchanged]
-	// separates the pass that edited the transcript from the one that found
-	// nothing to do.
+	// ("compacted from ~84k tokens, kept last ~20k"). [Event.Unchanged] is only
+	// ever set on it by a peer built before a no-op pass went silent.
 	EventCompacted
 	// EventReasoning carries one streamed chunk of the model's REASONING in
 	// Text, for the models that put their working on the wire (OpenRouter's
@@ -629,6 +632,9 @@ const (
 	EventRowNews
 	// EventQuestionDiscussion carries a reply beside a pending decision.
 	EventQuestionDiscussion
+	// EventToolOutput carries literal stdout/stderr in Text while a user shell
+	// command is running. CallID owns the bytes; its result still ends the call.
+	EventToolOutput
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -665,9 +671,15 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	ReplayCursor   ReplayCursor `json:",omitempty"`
+	ReplayObserved bool         `json:"-"`
+
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
-	Kind       EventKind
+	Kind EventKind
+	// Addressed is a producer's declaration that streamed text is for the person.
+	// It does not imply a completed response and survives interruption.
+	Addressed  bool `json:"Addressed,omitempty"`
 	Text       string
 	ShortTitle string `json:"ShortTitle,omitempty"`
 	Tool       string
@@ -696,6 +708,16 @@ type Event struct {
 	// otherwise — a sentence like "no skills used" is a claim this field
 	// cannot support.
 	Skills []string `json:"Skills,omitempty"`
+
+	// Summarized is how many messages a compaction pass replaced with a
+	// summary, on [EventCompacted]; zero for a pass that only stubbed and
+	// folded. It is the field a surface decides by, never the hint's words:
+	// a pass that rewrote the person's own messages is the one whose line
+	// stays standing (internal/tui3's workfold.go), and a free pass folds
+	// with the rest of the turn's machinery. Omitted when zero, so an event
+	// with no summary serialises exactly as it did before this field, and a
+	// surface talking to an older engine folds every pass.
+	Summarized int `json:"Summarized,omitempty"`
 
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
@@ -731,6 +753,12 @@ type Event struct {
 	// It rides the wire behind a json tag of its own, so a peer built before it
 	// existed does not send it, reads false, and behaves exactly as it always
 	// did (internal/remote embeds this struct whole).
+	//
+	// NO PASS IN THIS BUILD SETS IT. A pass that finds nothing now sends neither
+	// EventCompacting nor EventCompacted, so there is no row to settle. The field
+	// stays, and a surface still honours it, because a remote engine built
+	// between the two changes announces every pass and settles a refused one
+	// with it.
 	Unchanged bool `json:"Unchanged,omitempty"`
 
 	// Args is the tool call's arguments rendered for display: the JSON the
@@ -1471,6 +1499,13 @@ type Config struct {
 	// model — roles.Resolve's floor, not a failure.
 	RolesSource func(key string) (string, bool)
 
+	// RouteCrew picks one task's crew — worker, planner and checker — for the
+	// task in the ask (internal/config's RouteCrew over this profile, wired by
+	// the surface). NIL IS NO ROUTER: the run's seats are then the role
+	// ladder's, as they were before crews were routed, and no crew row is
+	// logged. It is never a model this package chooses (taskcrew.go).
+	RouteCrew func(config.CrewAsk) (crewroute.Decision, error)
+
 	// SupportsImages reports whether a model can read image content parts. It
 	// gates [Agent.SubmitImage] and NIL IS FALSE — the opposite of every other
 	// nil-is-permissive hook here, and deliberately so: a model that cannot see
@@ -1634,6 +1669,14 @@ type Config struct {
 	// surface built against them draws nothing rather than an error — which is
 	// the "absent, not broken" law arriving at a door that was never wired.
 	Subharnesses *exec.Registry
+
+	// Delegates is the programs this build carries that a task can be handed to
+	// whole — senior-dev first (delegate_door.go, internal/delegate). The
+	// surface hands in the build's list (internal/delegate/builtin) rather than
+	// this package importing it, so a test of this package never carries a
+	// program's whole engine. EMPTY IS NONE: the door lists nothing, `via`
+	// refuses every name, and the prompt says nothing about them.
+	Delegates []delegate.Delegate
 
 	// SubharnessMemory is where a running subharness keeps what it has learned
 	// about its OWN domain — its file in its own bundle, never this
@@ -2216,16 +2259,12 @@ type Config struct {
 	// (promptprofile.go's [resolvePromptProfile] is the whole ladder).
 	PromptProfile string
 
-	// profile is which of the two fixed prefixes this session sends, SETTLED
-	// ONCE by newAgent before anything is built from it (promptprofile.go).
-	//
-	// It is a field on the config rather than on the agent because everything
-	// that reads it reads it before the agent exists — the page is rendered
-	// first and the belt is built from the same config a moment later — which is
-	// the law beltfacts.go's predicates are already written under. Empty means
-	// nobody has settled it, and [Config.promptProfile] then derives the answer
-	// live, which is what a test asking the question of a bare Config wants.
+	// profile is the initial shape, settled before the page and belt exist.
+	// liveProfile follows model changes for automatic conversation profiles;
+	// neither field requires mutation of this shared Config after construction.
 	profile promptProfile
+	// liveProfile publishes automatic window changes without mutating Config.
+	liveProfile *livePromptProfile
 }
 
 // Agent is one conversation. It is safe for concurrent use, but Submit
@@ -2235,6 +2274,10 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// crewDayHeld is the day's spend crews and their helpers are held to
+	// ([Agent.crewDay]), read once.
+	crewDayOnce sync.Once
+	crewDayHeld *SpendDay
 	// Clarification streams and their deferred history share the agent lock.
 	// questionParent is installed before a child becomes reachable.
 	questionParent     func(Event)
@@ -2249,7 +2292,12 @@ type Agent struct {
 	discussionPending []string
 
 	config Config
-	client Completer
+	// An open conversation's changed rail is separate from its launch config:
+	// proposal cards read it while holding mu, while runs also read it outside
+	// that lock. Atomic publication keeps both roads on the same figure.
+	liveSpendRail    atomic.Uint64
+	liveSpendRailSet atomic.Bool
+	client           Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
@@ -2338,16 +2386,20 @@ type Agent struct {
 	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction — rebuilding them per step would re-marshal every schema on
-	// the hot path — and thereafter APPEND-ONLY, under armMu (connect.go).
+	// the hot path — and thereafter grown only at the tail under armMu
+	// (connect.go), with one exception: the team verbs leave when the role that
+	// gave them does (team.go's [Agent.retireTeamTools]).
 	//
 	// Both are COPY-ON-WRITE: arming allocates a new array and swaps the header,
 	// so a reader that took a snapshot under armMu may walk it without the lock
 	// and can never see a half-written slice. Nothing already in either is ever
-	// moved, rewritten or removed, because the definition block rides at the
-	// front of every request and a definition that shifts re-bills the whole
-	// prompt behind it (internal/exec's tools.go states the law).
-	tools       []bare.Tool
-	definitions []ai.ToolDefinition
+	// moved or rewritten, and nothing but a team verb is removed, because the
+	// definition block rides at the front of every request and a definition that
+	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
+	// the law).
+	presentation *presentationIndex
+	tools        []bare.Tool
+	definitions  []ai.ToolDefinition
 	// served is what the belt cannot say about the tools an ACCOUNT named
 	// rather than this build (served.go): whose account each one is, what the
 	// account calls it, and which capability governs it. Keyed by the name the
@@ -2380,6 +2432,9 @@ type Agent struct {
 	// already on its way onto the belt (tools_capabilities.go). Nil on every
 	// shape that pre-arms nothing, which is every full-profile belt.
 	prearm []bare.Tool
+	// profileArmed retains explicitly loaded tools across profile changes.
+	// Like the belt itself, this ordered list is guarded by armMu.
+	profileArmed []bare.Tool
 	// withdrawn is the record of a belt narrowed ON PURPOSE (withdrawn.go): the
 	// hands the harness took, why, and what is left. Nil whenever the belt is
 	// whole, which is nearly always.
@@ -2388,6 +2443,9 @@ type Agent struct {
 	// dispatcher that found a name missing needs to know whether it was taken or
 	// never existed, and the two answers must not be able to disagree.
 	withdrawn *toolWithdrawal
+	// teamRetired names team verbs a role change took away, so a remembered
+	// call gets the role's reason instead of being called an unknown tool.
+	teamRetired map[string]string
 	// armMu guards those headers, those maps, the shelf and nothing else. It is not mu:
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
@@ -2459,16 +2517,11 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
-	// laneStop ends this session's lane-sheet beat (agent.go's
-	// [Agent.startLaneBeat]), and is nil for every session that runs no beat —
-	// routing off, a base that is not a router, no model to fetch a sheet for.
-	//
-	// It is a CANCEL AND NOT A WAIT, which is where it parts company with
-	// memoryStop above. A memory pass owes the store a write and Close waits for
-	// it; a beat owes nothing to anybody — the sheet it was about to fetch is a
-	// prior the next session will fetch again — so a quit cuts it and does not
-	// look back.
+	// laneStop cancels the session's lane context, including probes. laneDone
+	// joins the optional sheet beat, whose cache writes must finish before Close
+	// returns. Both are established before the agent is published.
 	laneStop context.CancelFunc
+	laneDone chan struct{}
 	// laneCtx is the context the beat runs under and the one a probe rides. It
 	// is the SESSION'S life rather than a turn's, deliberately: a probe is
 	// bought while somebody is typing and outlives the keystroke that bought it,
@@ -2656,6 +2709,22 @@ type Agent struct {
 	// landingOutcomes are owed landing reports returned in this turn. They are
 	// completion evidence, not another part of the person's ask.
 	landingOutcomes []string
+	// programOutcomeNow is the program run's ending the turn now running was
+	// woken with, nil for every other turn: a hand-off it makes is a re-attempt
+	// of that run ([Agent.programRetryRefusal]). Cleared with owedAsks.
+	programOutcomeNow *programOutcome
+	// programHold is the last program ending since the person's own words. It
+	// survives wake turns and reloads from the conversation's sidecar record.
+	programHold    *programOutcome
+	programHoldErr string
+	// programAttempts is each started program run's place in its line of runs,
+	// by row ([Agent.keepProgramAttempt]).
+	programAttempts map[uint64]programAttempt
+	// personCardAnswers are the compact lines for cards a person answered
+	// during THIS turn (checkpoint.go's [personCardAnswerLine]). Cleared when
+	// the next turn opens, with the owed asks, because a later turn is not
+	// still bound by a card this one already settled.
+	personCardAnswers []string
 	// turnResults are the tasks whose RESULTS ARRIVED IN THIS TURN, by id, in
 	// arrival order and cleared with owedAsks when a turn opens.
 	//
@@ -2701,6 +2770,19 @@ type Agent struct {
 	// person is not currently saying under their live authority
 	// (task_forward.go).
 	personHeard uint64
+	// programBounced is where a proposal was last turned back because the
+	// person's message named a program and the proposal did not
+	// (delegate_asked.go): that message, and the step of the turn whose
+	// proposals were turned back. It is what makes the bounce once per message:
+	// a proposal for the same message from a later step, after the model has
+	// read the bounce, passes as it is.
+	programBounced bounceMark
+	// programsHeard is what the person's messages of the turn they last spoke
+	// in said about the programs this build carries: the newest one named,
+	// the message that named it, and every one asked for (delegate_asked.go). It is
+	// written where their words are recorded ([Agent.rememberAskLocked]), so a
+	// steer that names nothing does not unsay what the turn opened by asking.
+	programsHeard programsHeard
 	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is
@@ -2725,6 +2807,10 @@ type Agent struct {
 	// the transcript, so without this bit a digest can only repeat the cut-off
 	// prose and falsely make the node look complete.
 	lastTurnTruncated bool
+	// teamTurnAt and teamTurnSerial identify the current turn for a manager's
+	// stop, so a late watch read cannot stop a later turn.
+	teamTurnAt     time.Time
+	teamTurnSerial uint64
 	// memoryText is the <memory> block message[0] currently carries: what the
 	// router asked for at the start of this turn, or the block a task node was
 	// opened with (memory.go). It is under mu because it is rendered into the
@@ -2789,7 +2875,20 @@ type Agent struct {
 	// block would name a landing on one turn and forget it on the next —
 	// see [deltaRemember].
 	elsewhereTold []deltaLanding
-	usage         Usage
+	// teamDigestText is the team note's block (team.go): the digest of every
+	// team this conversation manages, "" for one that manages none. It sits
+	// under mu and rides its own note at the tail, like elsewhereText, so an
+	// unchanged team lands no second note.
+	teamDigestText string
+	// teamRoleText is what this conversation is in its teams (team.go's
+	// [teamRoleBlock]), set at every step boundary before the request and
+	// landed in a note of its own ahead of the others.
+	teamRoleText string
+	// team is this conversation's account of its teams: its key, its roles and
+	// its Traffic cursors (team.go). It has its own lock and is never read
+	// under mu.
+	team  teamSeat
+	usage Usage
 	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
 	// never nil: a session built with no posture at all gets a [Person], which
 	// answers every question the way this package answered it before the
@@ -3018,7 +3117,8 @@ type Agent struct {
 	// hub is the in-flight turn's fan-out, non-nil exactly while running. Every
 	// Submit that lands on the turn subscribes to it, so a steering caller gets
 	// a live channel of its own instead of a closed one.
-	hub *eventHub
+	hub          *eventHub
+	replayCursor ReplayCursor
 	// abandon is closed by [Agent.Abandon] and by nothing else. It is the SECOND
 	// STAGE OF A STOP: a cancellation reaches every wait that looks at a context,
 	// and this reaches the waits that were deliberately written not to — the tool
@@ -3058,26 +3158,25 @@ type Agent struct {
 	// cutPointLocked, which already holds the lock: a second acquisition there
 	// would deadlock the one call — Interrupt — that must always be answerable.
 	contextWindow atomic.Int64
-	// servedWindow is what this process has LEARNED about the window the model
-	// now in use really has, as opposed to the one its catalog row claims: the
-	// narrowest prompt that model has been refused for being too long
-	// (internal/provider's ServedWindow). Zero means nothing has been learned
-	// and the claim stands alone, which is the ordinary case.
-	//
-	// It is a field rather than a call because the memo is keyed by MODEL and
-	// the model is guarded by mu, while the threshold is read from
-	// cutPointLocked with mu already held — so it is atomic for
-	// [Agent.contextWindow]'s reason, word for word, and refreshed wherever the
-	// model or the window moves.
+	// servedWindow is the explicit total context limit most recently learned
+	// in this session. It is atomic because fold helpers read it under mu;
+	// endpoint-scoped persistence belongs to the provider, not the model id.
 	servedWindow atomic.Int64
 
 	// compacting serializes compaction passes. One pass reads the transcript,
 	// releases the lock to summarize, then rebuilds; a second pass entering
 	// that window would summarize a prefix the first one is about to drop.
 	compacting bool
+	// compactDone wakes a refused turn waiting for that pass to finish. It is
+	// closed under the same lock that clears compacting, so no wake is missed.
+	compactDone chan struct{}
 	// contextTokens is the last provider-reported context size, the honest
 	// figure when there is one. Zero means "estimate from content".
 	contextTokens int
+	// contextBeltTokens belongs only to a rebuilt window after compaction. It
+	// keeps later transcript growth on the same footing until a provider count
+	// replaces the estimate.
+	contextBeltTokens int
 
 	// followups is the second injection queue (agent.go). Steering drains at a
 	// step boundary INTO the running turn; a follow-up waits for the turn to
@@ -3252,12 +3351,19 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// runSummaryBusy holds the roots whose card reading is being bought right
+	// now ([Agent.RefreshRunSummary]), so a second surface that asks in the same
+	// moment keeps the last reading rather than paying for a second one.
+	runSummaryBusy sync.Map
 	// beltStartMu is the start lock: it is held from a hand-off's look for a
 	// live run until the run it opens is registered on beltRun, so a batch of
 	// hand-offs committed at one moment is one run and never several racing to
 	// one store ([Agent.lockBeltStart]). It is never taken while beltMu is
 	// held; beltMu is taken inside it.
 	beltStartMu sync.Mutex
+	// crews is every task's crew this conversation routed, by row: what its
+	// log row settles with and what `/redo stronger` escalates (taskcrew.go).
+	crews crewBook
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active

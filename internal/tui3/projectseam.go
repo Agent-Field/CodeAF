@@ -60,11 +60,9 @@ func (a *app) seamProjectPress(x, y int) (tea.Cmd, bool) {
 	return a.openFolderPick(""), true
 }
 
-// THERE IS NO CROSS ON A CONVERSATION'S TIP. `tipClosePress` stood here for
-// one build on 2026-09-22, while the tip had a row of its own over the rule;
-// the tip is the keys row's lowest rung again (render.go's [app.footHint]) and
-// the keys row has never had one. Home's row keeps its cross (home.go's
-// [app.homePress]).
+// A CONVERSATION'S TIP COVERS THIS DOOR WHILE IT IS UP, at the keys row's
+// right end, and the cross at its end is the tip's own (notice.go's
+// [app.chatTipPress]); the project comes back the moment the tip goes.
 
 // seamModelPaint keeps the current model bold and bright even while underlined.
 func seamModelPaint(pal palette, text string, hovered bool) string {

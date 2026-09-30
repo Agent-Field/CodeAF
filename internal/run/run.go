@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -162,6 +163,20 @@ type Supervisor struct {
 	steps      int
 	rootResult string
 	rootFailed bool
+	// rootProgram is how the program a delegated run's root was handed to
+	// ended, when it ended without finishing ([ProgramEndedError]); nil for
+	// every other run.
+	rootProgram *ProgramEndedError
+	// rootVerdict is the program's own word for the work it finished
+	// ([Report.Verdict]); empty for every other run.
+	rootVerdict string
+	// rootFailure is the root worker's error when it failed, which the run's
+	// ending writes onto the root ([plandb.Store.FailRoot]).
+	rootFailure string
+	// rootCut says the root worker came home with a context's ending as its
+	// error: the run was cut, and its own task did not fail. The store is not
+	// ended for it ([Supervisor.pass] says why).
+	rootCut bool
 	// limitHit is which limit a person set ended this run, and empty while none
 	// has. It is set the moment the run decides a limit was reached (the
 	// elapsed signal in Run, the spend counters in countLiveSpend and
@@ -274,6 +289,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.steps = 0
 	s.rootResult = ""
 	s.rootFailed = false
+	s.rootCut = false
 	s.limitHit = ""
 	s.cut = make(map[string]bool)
 	s.dispatchedRoot = false
@@ -287,6 +303,13 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.staleAfter = s.limits.StaleAfter
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
+	}
+	// A RUN HANDED NOTHING OF ITS DOLLAR LIMIT STARTS NO WORKER. The limit was
+	// spent before the run began ([Limits.costReached]), so the first pass
+	// launches nothing and answers the limit: no worker is seated to make the
+	// one paid call that would have told the loop so.
+	if s.limits.costReached(s.spent) {
+		s.limitHit = LimitCost
 	}
 	// TAKE-OVER BEFORE THE FIRST PASS: a claim a dead process left behind is
 	// released here, so the ready set the first pass reads can offer it again
@@ -415,6 +438,24 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	}
 
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit != "") {
+		if s.rootFailed && s.limitHit == "" && !s.rootCut && ctx.Err() == nil {
+			// THE RUN'S OWN TASK FAILED, SO THE RUN IS OVER, and the store says
+			// so: left open it read as running for ever, and a door that
+			// adopts open stores would take it up as live work
+			// ([plandb.Store.FailRoot]). A run a limit ended keeps its open
+			// work, which is what lets it be taken up again under a wider bound.
+			//
+			// AND A RUN THE CALLER CUT IS NOT A RUN THAT FAILED. When the
+			// caller's context ends, the root worker comes home with the
+			// context's own error, and that return and the context's end are
+			// both ready at the loop's select at once; Go picks either. Picked
+			// first, the return reached this line and wrote `context canceled`
+			// over the root as though the work had failed, on a run the caller's
+			// wall below deliberately leaves open for a later pass. Whichever
+			// the select picks, a cut root now ends the same way: incomplete,
+			// with the store as the run left it.
+			_ = s.store.FailRoot(s.rootFailure)
+		}
 		// Nothing of ours is running and the run cannot complete itself: the
 		// root's own worker failed, or the run has reached a limit a person set,
 		// in dollars or in time.
@@ -705,7 +746,8 @@ func (s *Supervisor) countLiveSpend() {
 // after the time limit already ended the run does not rename that ending, and
 // the workers are already ended by it.
 func (s *Supervisor) reachCostLimit() {
-	if s.limits.CostUSD <= 0 || s.spent < s.limits.CostUSD || s.limitHit != "" {
+	// A LIMIT WITH NOTHING LEFT IS REACHED WITH NOTHING SPENT ([Limits.costReached]).
+	if !s.limits.costReached(s.spent) || s.limitHit != "" {
 		return
 	}
 	s.limitHit = LimitCost
@@ -837,9 +879,27 @@ func (s *Supervisor) absorb(ret workerReturn) {
 				s.addReviewCheck(ret.task, root.Result)
 			} else {
 				s.rootFailed = true
+				s.rootFailure = ret.err.Error()
+				s.rootCut = errors.Is(ret.err, context.Canceled) || errors.Is(ret.err, context.DeadlineExceeded)
+				// A PROGRAM THAT ENDED WITHOUT FINISHING SAID WHY, and its words
+				// are the run's to carry, never to drop: the session draws the
+				// row out of them ([Summary.Program]).
+				var ended *ProgramEndedError
+				if errors.As(ret.err, &ended) {
+					s.rootProgram = ended
+					if ended.Limit != "" && s.limitHit == "" {
+						s.limitHit = ended.Limit
+						// A refusal at the estimated ceiling ends peer work too,
+						// even when metered spend has not reached the figure.
+						for _, cancel := range s.cancels {
+							cancel()
+						}
+					}
+				}
 			}
 		} else {
 			s.rootResult = ret.report.Result
+			s.rootVerdict = ret.report.Verdict
 			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other. If
 			// its worker already wrote the ending, the store preserves that result
 			// and moves the root back to waiting on the check; CompleteRoot writes
@@ -974,13 +1034,14 @@ func (s *Supervisor) reviewLanded(task plandb.Task, result string) {
 // recordCheckFinding turns a check's "does not hold" into work. A check's result
 // begins "holds:" or "does not hold:" and closes with one sentence; the second is
 // the finding, so it is left on the checked leaf in the check's own voice —
-// author "check" — AND it is made into a fix task under the checked leaf's
-// parent, the coordinator that owns the work.
+// author "check" — and an actionable finding is made into a fix task under
+// the checked leaf's parent, the coordinator that owns the work.
 //
 // A FINDING IS WORK, NOT A REMARK. The note alone left the coordinator to notice
 // a sentence nobody read; the fix task is the repair, and the run is not over
-// until it lands. The fix carries the leaf's acceptance, the finding and the
-// leaf's own result, and depends on nothing, so it is ready at once.
+// until it lands. A check on a file nothing in the run makes has no possible
+// repair and gets a second note instead. A fix carries the leaf's acceptance,
+// the finding and the leaf's own result, and depends on nothing.
 //
 // ONE ROUND ONLY: a finding on a fix task is a note and no second fix task, so a
 // run cannot loop.
@@ -1010,6 +1071,10 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 	if prefix == checkAnswer || strings.HasPrefix(checked.Title, fixTitlePrefix) {
 		return
 	}
+	if file := s.fileNothingMakes(checked, sentence); file != "" {
+		_, _ = s.store.AddNote(leaf, "check", "No fix was started: the check names "+file+", a file nothing in this run makes.")
+		return
+	}
 	id := s.store.NextID()
 	_, _ = s.store.AddMany([]plandb.TaskSpec{{
 		ID:          id,
@@ -1018,6 +1083,111 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		Checks:      append([]string(nil), checked.Checks...),
 		ParentID:    checked.ParentID,
 	}})
+}
+
+// fileNothingMakes withholds a fix only for a missing file named by no part.
+// A FIX MUST HAVE A FILE THE RUN CAN MAKE: #1573 spent ten paid `fix:` tasks
+// chasing issue_.go. #1604 showed that a broad refusal breaks a check on a
+// package a part creates, so only a numbered placeholder or a file shared by
+// checks qualifies.
+func (s *Supervisor) fileNothingMakes(checked *plandb.Task, finding string) string {
+	tasks := s.store.Tasks()
+	var texts []string
+	for _, task := range tasks {
+		if task.Role == plandb.RoleCheck || strings.HasPrefix(task.Title, fixTitlePrefix) || strings.HasPrefix(task.Title, checkTitlePrefix) {
+			continue
+		}
+		text := task.Title + " " + task.Description
+		for _, check := range task.Checks {
+			text = strings.ReplaceAll(text, check, "")
+		}
+		texts = append(texts, text)
+	}
+	for _, check := range checked.Checks {
+		for _, file := range plandb.CheckFiles(check) {
+			base := filepath.Base(file)
+			if !findingNamesFile(finding, base) {
+				continue
+			}
+			path := file
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(s.workspace, path)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				continue
+			}
+			namedByTask := false
+			for _, text := range texts {
+				for _, named := range plandb.NamedFiles(text) {
+					if filepath.Base(named) == base {
+						namedByTask = true
+						break
+					}
+				}
+				if namedByTask {
+					break
+				}
+			}
+			if namedByTask {
+				continue
+			}
+			shared := 0
+			for _, task := range tasks {
+				if task.Role == plandb.RoleCheck || strings.HasPrefix(task.Title, fixTitlePrefix) || strings.HasPrefix(task.Title, checkTitlePrefix) {
+					continue
+				}
+				taskNamesFile := false
+				for _, declaration := range task.Checks {
+					for _, named := range plandb.CheckFiles(declaration) {
+						if filepath.Base(named) == base {
+							taskNamesFile = true
+							break
+						}
+					}
+					if taskNamesFile {
+						break
+					}
+				}
+				if taskNamesFile {
+					shared++
+				}
+				if shared >= 2 {
+					return file
+				}
+			}
+			if len(plandb.PlaceholderSiblings(file, s.workspace, texts)) > 0 {
+				return file
+			}
+		}
+	}
+	return ""
+}
+
+// findingNamesFile requires a whole base name because a finding about data.go
+// says nothing about a missing a.go even though those bytes appear inside it.
+func findingNamesFile(finding, base string) bool {
+	if base == "" {
+		return false
+	}
+	for at := 0; at <= len(finding)-len(base); {
+		next := strings.Index(finding[at:], base)
+		if next < 0 {
+			return false
+		}
+		start := at + next
+		end := start + len(base)
+		before := start == 0 || (!fileNameWordByte(finding[start-1]) && finding[start-1] != '.')
+		after := end == len(finding) || !fileNameWordByte(finding[end])
+		if before && after {
+			return true
+		}
+		at = start + 1
+	}
+	return false
+}
+
+func fileNameWordByte(b byte) bool {
+	return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '_' || b == '-'
 }
 
 // The two prefixes the review round mints: the check it adds under a leaf, and
@@ -1721,6 +1891,14 @@ type Summary struct {
 	// run that did not end on one. The outcome word is the same sentence for
 	// both limits; this is what tells them apart.
 	Limit Limit
+	// Program is how a delegated run's program ended when it ended without
+	// finishing: its status word and its own account ([ProgramEndedError]).
+	// Nil for a run that finished, and for every run no program worked.
+	Program *ProgramEndedError
+	// Verdict is a delegated run's program's own word for the work it
+	// finished ([Report.Verdict]): senior-dev's `pass` or `pass-unverified`.
+	// Empty for every other run.
+	Verdict string
 	// Cut is every task the run's own ending cut mid-flight, by store id: its
 	// wall, its spend ceiling, or a person's stop ended the context their
 	// workers ran under. A task that failed on its own before the ending is
@@ -1830,6 +2008,8 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		Outcome: outcome,
 		Result:  result,
 		Limit:   supervisor.limitHit,
+		Program: supervisor.rootProgram,
+		Verdict: supervisor.rootVerdict,
 		Cut:     supervisor.cutIDs(),
 		Nodes:   supervisor.nodes,
 		Steps:   supervisor.steps,

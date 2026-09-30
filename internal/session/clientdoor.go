@@ -75,6 +75,33 @@ func modelServiceCanAnswer(service modelsource.Connected) bool {
 	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
 }
 
+// ServesModel answers whether one of these services can take a call on model:
+// the service the model's id resolves to ([modelsource.Set.For], which reads a
+// service prefix such as `openrouter/` off the id) holds a key, or is one that
+// needs none. It is the pool's own test ([modelServiceCanAnswer]) opened to the
+// run's model API (internal/provider/modelapi), which decides the same question
+// for a program's call and may not answer it a second way: a program that
+// names a model this machine cannot reach is answered on the run's work seat
+// instead, and the pool and the API must agree about what cannot be reached.
+func ServesModel(sources modelsource.Set, model string) bool {
+	model = strings.TrimSpace(model)
+	if model == "" || sources.Empty() {
+		return false
+	}
+	service, _ := sources.For(model)
+	return service.Source.ID != "" && modelServiceCanAnswer(service)
+}
+
+// servesModel is [ServesModel] over this conversation's own services, read live
+// under the lock the surface moves them under ([Agent.SetSources],
+// [Agent.SetAPIKey]), so a key pasted after the run began counts for its next
+// call.
+func (a *Agent) servesModel(model string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return ServesModel(a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL), model)
+}
+
 // setSeat moves the one live fallback beside the source snapshot. A model
 // chosen after launch must carry the next turn; construction-time config is a
 // receipt of how the conversation opened, not an answer about where it sits.
@@ -300,8 +327,11 @@ func (a *Agent) hasClient() bool {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.client != nil
+	return a.hasClientLocked()
 }
+
+// hasClientLocked is [Agent.hasClient] for a caller already holding a.mu.
+func (a *Agent) hasClientLocked() bool { return a.client != nil }
 
 // modelRoutingCompleter is the only completer view of a live Agent that may
 // leave this file. A caller may pin any model onto it; the wrapper reads that
@@ -567,6 +597,37 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
+	// (taskcrew.go's [Agent.healthyModel]).
+	model = a.healthyModel(ctx, purpose, model)
+	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
+	// and, made for a task, that task's limit — before it is made, and on the
+	// day after. A crew seat's own call is its
+	// task's guard's (taskcrew.go), and the person's turn is theirs.
+	var helper *SpendGuard
+	var held float64
+	if purpose != purposeTurn && !isCrewSeatCall(ctx) {
+		task := crewTaskOf(ctx)
+		if err := task.beginCall(); err != nil {
+			return nil, model, err
+		}
+		defer task.endCall()
+		if stopped := task.stoppedAction(); stopped != "" {
+			// A TASK THAT STOPPED ON ITS ACTION buys no more helpers: every
+			// route it could reach already said no.
+			return nil, model, crewStopped{action: stopped}
+		}
+		helper = a.helperGuard(task)
+		var err error
+		if held, err = helper.before(ctx, model, messages, options); err != nil {
+			return nil, model, err
+		}
+		if helper != nil {
+			// NOBODY WAITS ON A HELPER, so it never sits out a limit: a 429
+			// comes back at once and the errand's next rung is asked.
+			ctx = provider.WithoutPatientRateLimits(ctx)
+		}
+	}
 	client, wire, called, err := a.completerFor(model)
 	if err != nil {
 		return nil, called, err
@@ -576,9 +637,29 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// internal/session that spells it, here and for the three roads that carry a
 	// client of their own.
 	ctx = withPurpose(ctx, purpose)
+	ctx = provider.WithDiscardedUsage(ctx, func(served string, tag string, response *ai.Response) {
+		// Full billing owners (program model APIs) already bank every transport
+		// attempt. Ordinary session callers bank only the returned answer.
+		if provider.BillingSinkFrom(ctx) == nil {
+			if served == "" {
+				served = called
+			}
+			a.addUsageAs(response, served, 1, tag, true, false, detachedUsageFrom(ctx))
+		}
+		if helper != nil {
+			// The final after releases the reservation; this attempt only adds
+			// what was spent, including when the retry returns an error.
+			helper.after(ctx, model, response, 0)
+			crewTaskOf(ctx).addHelperSpend(response)
+		}
+	})
 	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
 	// is this package's to change (callwindow.go says why it cannot be earlier).
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
+	if helper != nil {
+		helper.after(ctx, model, response, held)
+		crewTaskOf(ctx).addHelperSpend(response)
+	}
 	return response, called, err
 }
 
@@ -625,6 +706,7 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 	if configured.ModelPrice == nil {
 		configured.ModelPrice = c.ModelPrice
 	}
+	configured.RouteGate = c.routeGate(model, configured.Model)
 	return configured
 }
 

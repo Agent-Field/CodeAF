@@ -12,10 +12,9 @@ package session
 // resume machinery here and no second scheduler: carrying on is the ordinary
 // pass, run by a process that was not there for the last one.
 //
-// IT HAS NO CALLER YET, ON PURPOSE. Continuing seats workers and spends money,
-// and a door that spends money reachable before anything means to reach it is
-// not a smaller version of the feature — it is a worse thing than no door. The
-// card that calls it is the next change.
+// Startup uses this same door to reconnect an already accepted ordinary task.
+// It never creates a fresh working copy or adopts a different plan, and a
+// settled or explicitly stopped run is never carried on.
 
 import (
 	"context"
@@ -67,10 +66,22 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	if !found {
 		return "", fmt.Errorf("there is no run %d in this conversation", row)
 	}
+	if why := runCannotContinue(kept.Copy, kept.Program); kept.Program != "" {
+		// A PROGRAM'S ROW IS REFUSED BEFORE ITS STATE IS READ. It carries no
+		// copy (the program works in the folder itself), so the copy road below
+		// would refuse it in a sentence about a copy, and nothing here seats the
+		// program itself: the run rebuilt would be codeaf's own workers.
+		return "", fmt.Errorf("%s", why)
+	}
 	if kept.State != TaskInterrupted {
 		// A run that finished, failed or was stopped has said its last word.
 		// Only work nothing is driving is waiting to be picked up.
 		return "", fmt.Errorf("%s is %s, so there is nothing to carry on", taskStopName(row, kept.Title), kept.State)
+	}
+
+	crew, err := a.restoreTaskCrew(row, kept.CrewState)
+	if err != nil {
+		return "", err
 	}
 
 	// THE COPY IS ADOPTED AND NEVER MADE. This is the line the whole of the
@@ -97,8 +108,9 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	runCtx, cut := context.WithCancel(context.WithoutCancel(ctx))
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: row, title: kept.Title,
-		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut,
+		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut, crew: crew, recoveredCrew: kept.CrewState,
 		born: a.taskClockNow(), over: make(chan struct{}),
+		joined: recoveredJoinedRows(g, row),
 	}
 	a.installBeltRun(g, run)
 	// THE ROW GOES BACK TO RUNNING AND KEEPS THE COPY IT NAMED. Publishing

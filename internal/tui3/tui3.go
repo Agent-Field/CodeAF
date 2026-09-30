@@ -388,6 +388,21 @@ type TaskOwnerView struct {
 	// Nil is a door that cannot offer it. The page then says exactly what it said
 	// before, which is what a capability that cannot work is owed.
 	Questions func() (<-chan session.Event, func())
+	// TaskPage reads ONE TASK'S STORED PAGE in the owner's own store — the page
+	// a program's task is drawn from, since a program writes no worker journal
+	// for [TaskOwnerView.Room] to read ([session.PlanTaskPage.Program]). It is
+	// the same read this window's own program room makes of its own store
+	// ([session.Agent.PlanTaskPage]), made on this view's connection so the id
+	// is answered in the owner's numbering and never in this window's.
+	//
+	// IT KEEPS THE ENGINE'S REFUSAL, where the agent's own read folds every
+	// failure into "not found": a page this window is reading learns that the
+	// conversation under it was replaced from exactly this error
+	// ([remote.ErrJoinedGone]), and a program's page reads nothing else.
+	//
+	// Nil is a door that cannot offer it, and every page opened through that
+	// door is the journal reading it always was.
+	TaskPage func(id string) (session.PlanTaskPage, bool, error)
 	// Close gives back THIS VIEW'S connection and nothing else. The conversation
 	// goes on running, the window that owns it keeps its keyboard, and the
 	// engine is untouched.
@@ -453,25 +468,24 @@ type Options struct {
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
 
+	// TelemetryNotice is the anonymous usage counts' notice while this install
+	// still owes it to the person, and empty once it has been seen. The first
+	// conversation's screen draws it whole, beside the greeting, because the
+	// notice promises to be read BEFORE any count is sent, and a line printed on
+	// the normal screen just before this surface covered it was read only after
+	// quitting, by which time the exit had already sent (docs/TELEMETRY.md).
+	TelemetryNotice string
+	// TelemetryNoticeShown is the door's record that the notice was seen. It is
+	// called once, on the update loop, after a frame has drawn TelemetryNotice —
+	// never from the frame, which may not touch the disk — and never for a notice
+	// that no frame drew: a frame too short for it, or a setup standing in front.
+	TelemetryNoticeShown func()
+
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
 	// session, wrapped so that the two READING methods are spelled the way this
 	// surface asks for them (cmd/codeaf's v3MemorySeam).
 	Memory MemoryStore
-
-	// Search is the conversation index the search place reads: one full-text
-	// query over every message this machine has kept ([store.Store.SearchConversations]).
-	//
-	// IT IS A SEAM AND NOT THE STORE for [Options.Memory]'s reason — the door
-	// owns where the database lives — and it is a SECOND seam beside Memory
-	// rather than a method on it because the two are different capabilities that
-	// fail apart: memory turned off in the settings opens no store, and searching
-	// what was said is not memory at all. A build with one and not the other is
-	// the ordinary case, and each place is absent on its own terms.
-	//
-	// Nil is a surface that cannot search, and the place says what it is for
-	// rather than drawing an empty result list.
-	Search SearchStore
 
 	// SearchStatus names the web-search plug the conversation's next call will
 	// use and whether it has a key. Nil means that conversation has no web-search
@@ -607,6 +621,23 @@ type Options struct {
 	// --host, where the holder is a window on this laptop and the journal is on
 	// the far machine. Every one of them keeps the road it had.
 	EngineAnswers func(workspace string) bool
+
+	// Elsewhere reads what the project's OTHER conversations have out right
+	// now — the presence files beside the transcript this window is drawing —
+	// for a window whose agent cannot answer that itself
+	// ([session.ElsewhereOf] is the shape).
+	//
+	// IT IS THE HALF OF THE TASKS PAGE THE ENGINE ROAD HAD LOST. The rows of
+	// work another conversation is running are minted from that reading
+	// ([app.refreshElsewhere]), and it was asked of the agent alone: the
+	// in-process agent reads its own disk, and the connection bare `codeaf`
+	// holds to its engine does not ([remote.Agent] has no such method). So on
+	// the ordinary launch no such row was ever drawn, and [Options.OpenTaskOwner]
+	// — the door behind exactly those rows — could never be reached.
+	//
+	// Nil is a window whose disk is not the engine's (--host) or whose agent
+	// answers for itself (the in-process door); both keep the road they had.
+	Elsewhere func(transcript string, now time.Time) session.Elsewhere
 
 	// OpenTaskOwner attaches a SECOND VIEW onto a conversation that is ALREADY
 	// RUNNING, for as long as one task page is on screen: a reader for that
@@ -823,6 +854,26 @@ type Options struct {
 	// shelf. The connect command runs it off the event loop, just as ctrl+r runs
 	// RefreshModels, so opening /model never waits on the network.
 	RefreshModelsForService func(context.Context, modelsource.Connected, []Model) ([]Model, error)
+	// RefreshAllModels refreshes the default catalog AND every connected
+	// provider's listing, on the same ctrl+r chord (issue #1508). One provider's
+	// failure must not stop the others: the door walks them all and reports
+	// nothing here — the groups say their own reasons. The door owns the
+	// per-provider memo drops and the open picker's restock through
+	// SubscribeServiceModels; when this is set it REPLACES the single-catalog meaning
+	// of the chord and the surface offers the key unconditionally as before.
+	RefreshAllModels func(ctx context.Context)
+	// WarmEmptyProviders fetches, off the loop, every connected provider whose
+	// cache is missing or empty. The door calls it once at launch (issue
+	// #1508's first acceptance); groups fill as each fetch lands, without a
+	// reopen. Nil keeps the old launch: cache only, nothing fetched.
+	WarmEmptyProviders func(ctx context.Context)
+	// SubscribeServiceModels registers this surface's nonblocking notification
+	// callback and returns its unsubscribe function. Run owns the subscription
+	// until the window closes; all picker changes remain on the update loop.
+	SubscribeServiceModels func(tell func(source, address string)) (unsubscribe func())
+	// ProviderFetchError reports the error from the most recent fetch attempt
+	// for a connected provider, if any, for rendering status lines in /model.
+	ProviderFetchError func(id string) string
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the
@@ -980,7 +1031,7 @@ type Options struct {
 	//     is nothing left here to close.
 	//
 	// WHAT IT COSTS A PERSON is that these doors hold ONE conversation at a time:
-	// opening another from home, the switcher or the search place swaps to it and
+	// opening another from home, the switcher or Sessions swaps to it and
 	// closes what was in front, rather than keeping it running beside. The surface
 	// says so on the entry line ([oneConversationWord]) rather than letting
 	// somebody discover it.
@@ -1099,6 +1150,17 @@ type Options struct {
 	// the status line grows no segment, and /status says nothing about keeping
 	// watch. Nothing half-works and nothing claims to.
 	Standing StandingSeam
+
+	// Teams is where the teams file and the Traffic logs are: the profile of
+	// the machine the SESSION runs on, because the team tools a model calls
+	// keep them there ([TeamsSeam] says what each function owes).
+	//
+	// The zero value is this machine's own profile ([Options.ProfileDir]),
+	// which is every local launch. The --host door hands one that asks the
+	// engine; over --host with no seam (an engine without the teams doors) the
+	// window keeps no teams at all rather than keeping them here, where the far
+	// session would never read them (host.go).
+	Teams TeamsSeam
 
 	// Link is what the door can tell this surface about the connection the
 	// conversation is on the far end of: the sentence to draw while a dropped
@@ -1314,6 +1376,8 @@ func Run(ctx context.Context, opts Options) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if opts.ReadCredits != nil {
 		var closeReads func()
 		opts.ReadCredits, closeReads = ownedCreditReader(ctx, opts.ReadCredits)
@@ -1333,6 +1397,7 @@ func Run(ctx context.Context, opts Options) error {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
 	surface := newApp(ctx, opts)
+	defer listenForServiceModels(surface, opts.SubscribeServiceModels)()
 	p := tea.NewProgram(surface, program...)
 	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT ITS NEWS, and the loop a door to
 	// be rung through that never waits for it ([listenForNews], doorbell.go). They

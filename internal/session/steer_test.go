@@ -867,13 +867,15 @@ func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
 
 func TestASteerWaitsForAYoungBash(t *testing.T) {
 	t.Parallel()
+	release := filepath.Join(t.TempDir(), "release-young-bash")
 	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("young-bash", "bash", `{"command":"sleep 0.5; echo young-finished"}`), nil
-		},
+		bashCall("young-bash", "while [ ! -f "+shellQuoted(release)+" ]; do sleep 0.01; done; echo young-finished"),
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}}
 	agent, _ := newTestAgent(t, completer, nil)
+	// The command stays observable until released; its age is a separate
+	// input, not a race against a half-second sleep on a busy test machine.
+	advanceSteerAge(agent, 0)
 	turn := mustSubmit(t, agent, "run the quick check")
 	waitFor(t, "young foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
 	agent.mu.Lock()
@@ -882,18 +884,23 @@ func TestASteerWaitsForAYoungBash(t *testing.T) {
 	if generation != nil {
 		t.Fatal("a young bash still had a model generation to cut")
 	}
-	began := time.Now()
 	steered := mustSteer(t, agent, "then read the result")
-	collect(t, turn)
-	events := collect(t, steered)
-	if elapsed := time.Since(began); elapsed < 200*time.Millisecond {
-		t.Fatalf("young bash landed in %s, want the batch to finish first", elapsed)
+	select {
+	case event := <-steered:
+		if got := steerLanding([]Event{event}); got != "waiting for the running step" {
+			t.Fatalf("steer landing while bash is held = %q", got)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the steer was not accepted while the bash was held")
 	}
 	if list := agent.jobs.list(); list != "No background jobs." {
 		t.Fatalf("young bash became a job: %q", list)
 	}
-	if got := steerLanding(events); got != "waiting for the running step" {
-		t.Fatalf("steer landing = %q", got)
+	writeFile(t, release, "finish now")
+	collect(t, turn)
+	collect(t, steered)
+	if got := roleText(completer.request(1), "tool"); !strings.Contains(got, "young-finished") {
+		t.Fatalf("the resumed turn did not receive the foreground result: %q", got)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
@@ -76,6 +77,10 @@ const (
 	// CategoryTasks is how work you can walk away from is run — how it starts,
 	// how it is checked, how much of it happens at once, and on whose hands.
 	CategoryTasks = "tasks"
+	// CategoryTeams is what every team inherits when it says nothing of its
+	// own: who answers a member's question, what a team may spend in a day,
+	// and how deep teams may nest (teamdefaults.go).
+	CategoryTeams = "teams"
 	// CategoryPractice is what codeaf does with its own time, and what it
 	// remembers of yours.
 	CategoryPractice = "memory & practice"
@@ -98,7 +103,7 @@ const (
 // safety and tasks follow it in the order the design's own hierarchy names.
 var SettingCategories = []string{
 	CategoryModels, CategorySpending, CategorySafety, CategoryTasks,
-	CategoryPractice, CategoryInterface,
+	CategoryTeams, CategoryPractice, CategoryInterface,
 }
 
 // Persisted keys are also the json field names in the profile's config.json.
@@ -220,50 +225,6 @@ const (
 	// [ValidateTierValue] is the same gate on all five — but this is the one the
 	// shipped crew writes it into.
 	KeyTierMastermindModel = "models.tiers.mastermind"
-	// KeyCrew is the five tiers answered as ONE DECISION. Nobody arrives wanting
-	// to name five model ids; they arrive wanting to spend pennies, or to spend
-	// what it takes. So the row takes one word — frugal, balanced, max — and
-	// writes all five tier rows from it.
-	//
-	// IT IS NOT STORED. The row's reading is DERIVED from the five live tier
-	// values: they match a preset and it says so, or they do not and it says
-	// custom. A stored word would be a claim about five other rows that any one
-	// of them could falsify by being edited, and a settings sheet that told you
-	// "balanced" over a hand-pinned tier would be lying in the one place a person
-	// went to check.
-	//
-	// THE BUILD WRITES NO WORD HERE, AND READS ONE THAT IS. The derivation above is
-	// what every profile this product shapes reads — but a run that wrote the
-	// word itself (a harness, a hand edit) named a budget, and a crew word that
-	// reached nobody is worse than a row five others can falsify: [storedCrewWord]
-	// reads it as the budget its seats run at, and the class rows under it are
-	// that run's own pins ([pickedSeat]).
-	KeyCrew = "models.crew"
-	// KeyCrewSource is which family the crew words draw from: `open`, the
-	// open-weight table this build ships, or `all`, the same three words
-	// resolved over the whole catalog with closed and frontier models in it.
-	// IT IS A ROW RATHER THAN A SECOND VOCABULARY because the three words are
-	// the only thing anybody learns: the question a person arrives with is how
-	// much to spend, and which shelf the answer comes off is one more answer to
-	// the same question, not six new preset words. The row is read by the
-	// crew's own machinery (crew.go's [CrewSourceAt]) and never by a caller
-	// spelling the ids itself, so the family and the tables cannot disagree
-	// about what a preset means. It is PROFILE-ONLY with the tier rows, for the
-	// worker row's own reason: a repository that could answer it could send a
-	// visitor's work, and their credit, to a vendor they never chose.
-	KeyCrewSource = "models.crew.source"
-	// KeyCrewPick is where the crew's seats are picked from when a tier row
-	// does not hold a model id of its own. The three words are read and
-	// answered by the crew's own machinery (crew.go's [CrewPickAt] and
-	// [SetCrewPick]) beside the words [KeyCrew] and [KeyCrewSource] take: the
-	// crew row says how much to spend, the family row says which shelf those
-	// budgets name, and this row says where the models for that money come
-	// from — the rows this build measured, or a computation off the catalog
-	// made again on every read, with or without what the Model Pool measured.
-	// It is PROFILE-ONLY with the crew and family rows, for the worker row's
-	// own reason: a repository that could answer it could send a visitor's
-	// work, and their credit, to a model nobody on that machine chose.
-	KeyCrewPick = "models.crew.pick"
 	// KeyMouse is whether the surface reports the mouse at all. ON is the
 	// default ([DefaultMouse]), because hover, click and the wheel are v3's own
 	// language and the thing they cost is bought back by a key: an alt-screen
@@ -1030,45 +991,24 @@ const (
 // [tierKeyFor] is total over it.
 var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}
 
-// THE SHIPPED CREW. All five tiers arrive pointed at a model, and the five
-// together are exactly the `balanced` row of the DEFAULT FAMILY (crew.go's
-// [crewAllModels], named by [DefaultCrewSource]) — which is what makes the crew
-// row read "balanced" on a profile nobody has touched instead of reading
-// "custom" about its own defaults.
+// THE TWO ROWS THAT ARE NOT CREW SEATS arrive pointed at a model. The reflex
+// and small-work tiers carry the calls a conversation makes on its own behalf —
+// twice a turn for the reflex — so a person who never opened the sheet gets a
+// model that costs near nothing rather than the one they are talking to. The
+// three crew seats have no shipped model at all: an unpinned seat is routed per
+// task (crew.go), and a build-chosen worker, planner or checker would be the
+// implicit fallback the router exists to remove.
 //
 // Each is a bare OpenRouter id, spelled ONCE here and read by every caller
-// through [TierModelAt], so the model this build considers near-free is one
-// string rather than a figure repeated in a row, a resolver and a page.
-//
-// Blank is still an answer on every one of them: a row a person emptied on
-// purpose reads empty and the roles on it follow the model the person is talking
+// through [TierModelAt]. Blank is still an answer on both: a row a person
+// emptied on purpose reads empty and follows the model the person is talking
 // to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
-// here, and that distinction is the whole mechanism ([TierModelAt] says how).
-//
-// The ids are read off the catalog's own published rows — its intelligence,
-// coding and agentic indexes against its prompt, completion and cache-read
-// prices, priced under each seat's own call shape (crew.go's [crewAllModels]
-// comment owns the method and the date). The low row is pinned to a DATED build
-// on purpose: the bare `deepseek/deepseek-v4-flash` id resolves to the April
+// here ([TierModelAt] says how). The low row is pinned to a DATED build on
+// purpose: the bare `deepseek/deepseek-v4-flash` id resolves to the April
 // build, and the July build costs the same.
 const (
 	DefaultReflexModel = "google/gemini-2.5-flash"
 	DefaultLowModel    = "deepseek/deepseek-v4-flash-0731"
-	// The worker is the seat that pays most of a task's bill, so it is the last
-	// seat a preset spends on: a step here multiplies through every token a task
-	// runs up, where a step on the two low-volume seats is paid a handful of
-	// times. glm-5.3-flash is the point on the long-cached-loop front that
-	// balanced runs at, and it can see images, which the parent can hand it
-	// without a vision detour.
-	DefaultWorkerModel = "z-ai/glm-5.3-flash"
-	// The careful tier is ALWAYS A DIFFERENT VENDOR FROM THE WORKER, in every
-	// preset, and always a model that sees images: a check from a second vendor
-	// catches what the first vendor's blind spots let through, and the vision
-	// role rides this row.
-	DefaultHighModel = "anthropic/claude-fable-5.1"
-	// The mastermind names a capable planning model. Its generation behavior is
-	// left to the provider unless an operator adds a level to the model id.
-	DefaultMastermindModel = "anthropic/claude-opus-5"
 )
 
 // DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.
@@ -1128,6 +1068,22 @@ var OperatorEnvPins = []string{
 	// would be promising an override that does nothing, which is worse than
 	// saying nothing at all.
 	"CODEAF_PROFILE_DIR",
+	// The model API codeaf serves one program's run, and the token for it
+	// (internal/delegate's ChildEnv). codeaf sets them on the child it starts
+	// and nobody else does; they are an address and a credential, so plumbing,
+	// and the footer names them and never shows a value.
+	"CODEAF_MODEL_API",
+	"CODEAF_MODEL_TOKEN",
+	// The mark codeaf sets on a program's process so that, if the program's
+	// engine is killed outright, the processes its commands left behind can
+	// still be found and ended (internal/processgroup). codeaf sets it and reads
+	// it back, and a person has nothing to say to it, so it is plumbing too.
+	"CODEAF_DELEGATE_RUN",
+	// The descriptor a program's process holds its host's hold on its folder
+	// by (internal/delegate's HoldEnv), so the folder stays held until the
+	// program has gone too. codeaf sets it on the launch and the program reads
+	// it back; it is a number only that one process can mean, so plumbing.
+	"CODEAF_PROGRAM_HOLD_FD",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
@@ -2163,16 +2119,16 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
-			Hint: "one model id is served by many providers, and they answer at very " +
+			Hint: "one model id is served by many hosts, and they answer at very " +
 				"different speeds AND very different prices. Left alone — simple — codeaf " +
-				"sends no preference of its own at all: with no provider pinned the router's own " +
-				"default routing answers, and a provider you pinned is the whole request, that " +
-				"provider and no fallbacks. Choosing another word here changes that " +
+				"sends no preference of its own at all: with no host pinned the router's own " +
+				"default routing answers, and a host you pinned is the whole request, that " +
+				"host and no fallbacks. Choosing another word here changes that " +
 				"everywhere: latency asks " +
-				"for the fastest provider for every call, capped at a quarter over the " +
+				"for the fastest host for every call, capped at a quarter over the " +
 				"model's list price, and times every answer, demoting one that keeps being " +
 				"slow; price asks for the cheapest for every call; off asks for nothing and " +
-				"measures nothing — and with nothing measured there is no provider to choose, " +
+				"measures nothing — and with nothing measured there is no host to choose, " +
 				"no sheet of them to open and no speed guard. A change lands on " +
 				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
@@ -2191,7 +2147,7 @@ func (s *Settings) build() []Setting {
 				"goes lean. lean takes one section off the page, leaves seven verbs one " +
 				"load_capability call away, puts ask straight in the list, turns saved " +
 				"memories off and cuts the project's own instructions to 2KiB. full sends " +
-				"everything. Choose one of those two when the provider reports a window its " +
+				"everything. Choose one of those two when the host reports a window its " +
 				"model does not really have. A change lands the next time codeaf starts.",
 			read:  func() string { return PromptProfileAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyPromptProfile, raw, PromptProfileModes) },
@@ -2201,15 +2157,15 @@ func (s *Settings) build() []Setting {
 		// to, for the person who has watched the numbers and knows.
 		Setting{
 			Key: LaneSettingKey(LaneSlotTalk), Category: CategoryModels, Kind: SettingText,
-			Label: "provider", EmptyLabel: LaneAuto,
-			Hint: "which provider answers your model, for requests from this home. One model id is served by " +
-				"a dozen providers that differ by seven times on the wait before the first " +
+			Label: "host", EmptyLabel: LaneAuto,
+			Hint: "which host answers your model, for requests from this home. One model id is served by " +
+				"a dozen hosts that differ by seven times on the wait before the first " +
 				"word, so this is often a bigger change than switching model. auto lets the router " +
-				"route — and codeaf takes over choosing the provider when its answers start coming " +
+				"route — and codeaf takes over choosing the host when its answers start coming " +
 				"back refused or unusable, handing it back once it has been well for a while; " +
 				"a name — `cloudflare` — pins it and nothing else is asked; " +
 				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
-				"a slow answer be rescued elsewhere; openrouter asks for no provider at all and " +
+				"a slow answer be rescued elsewhere; openrouter asks for no host at all and " +
 				"lets the router balance on price, with no takeover. enter on this row opens them with what " +
 				"has been measured of each, and so does → on a model row in the picker — " +
 				"under /model and under `your model` in the settings panel alike.",
@@ -2219,7 +2175,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyLaneGuard, Category: CategoryModels, Kind: SettingBool,
 			Label: "speed guard",
-			Hint: "when an answer takes much longer to start than that provider normally " +
+			Hint: "when an answer takes much longer to start than that host normally " +
 				"does, the same question is asked of the next-best one and whichever replies " +
 				"first is the one you read. It hedges at most one extra call, under a tenth of " +
 				"spend; off under price routing.",
@@ -2347,7 +2303,7 @@ func (s *Settings) build() []Setting {
 			Label: "tasks at once", EmptyLabel: "no limit", Unit: UnitInLabel,
 			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
 				"default: what actually runs out is this machine — the two rows below hold new " +
-				"tasks back when it is loaded — and the model provider's own rate limit, which " +
+				"tasks back when it is loaded — and the model host's own rate limit, which " +
 				"codeaf already paces itself against. A cap is a queue, never a refusal.",
 			read: func() string {
 				if value := TaskParallelAt(dir); value > 0 {
@@ -2385,12 +2341,12 @@ func (s *Settings) build() []Setting {
 		// are made.
 		Setting{
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
-			Label: "task model", EmptyLabel: "follows the conversation",
-			Hint: "the model a task runs on when you have not asked for another one — " +
-				"`anthropic/claude-opus-5`. Leave it blank and a task rides the crew's " +
-				"worker row, and the model you are talking to when that row is blank too. " +
-				"You can still say which model a particular piece of work should go to, and " +
-				"the proposal names the one it will start on.",
+			Label: "task model", EmptyLabel: "the crew's worker",
+			Hint: "the model a task's worker runs on when you have not asked for another one — " +
+				"`anthropic/claude-opus-5`. Leave it blank and the worker is the crew's: " +
+				"your /crew pin, or the model the crew picks for that task. You can still " +
+				"say which model a particular piece of work should go to, and the proposal " +
+				"names the one it will start on.",
 			read:  func() string { return TaskModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyTaskModel, raw) },
 		},
@@ -2400,7 +2356,7 @@ func (s *Settings) build() []Setting {
 			Hint: "what one conversation may spend before it stops starting new turns. " +
 				"When it is reached the next turn is refused and your message is still " +
 				"yours to send again once you raise it; the turn in flight always " +
-				"finishes. Say none for no limit. A change lands on the next session.",
+				"finishes. Say none for no limit. A change binds this conversation before the row confirms it.",
 			read:    func() string { return moneyValue(SpendRailUSDAt(dir)) },
 			write:   func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
 			receipt: s.spentThisSessionReceipt,
@@ -2420,62 +2376,13 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
 		},
-		// THE CREW, AND THEN THE FOUR CLASSES IN IT. The tiers are what a person
-		// actually configures for the calls codeaf makes on its own — the name it
-		// gives a session, the check on work a task says is finished, the plan an
-		// adaptive run steers by (internal/roles). Four rows, not one per feature: a new
-		// call joins a class and needs no row of its own.
-		//
-		// The crew row comes FIRST because it is the only one most people will
-		// ever touch: one word writes all four (crew.go). The four below it are
-		// what that word wrote, and each is answerable on its own — which is what
-		// turns the crew reading to "custom".
-		Setting{
-			Key: KeyCrew, Category: CategoryModels, Kind: SettingChoice,
-			Label: "crew", Choices: CrewPresets,
-			Hint: "the five models codeaf works with, chosen as one word. `frugal`, " +
-				"`balanced` and `max` each pick their own roster, listed by /crew and under " +
-				"the crew row, and which shelf they draw from is the `model family` row " +
-				"below. Change one of the five rows below and this reads `custom`.",
-			read:  func() string { return CrewAt(dir) },
-			write: func(raw string) error { return writeCrew(dir, raw) },
-		},
-		// WHERE THE SEATS ARE PICKED FROM, one row under the crew. The crew row
-		// says how much to spend and this says where the models for that money
-		// come from when a tier row does not hold a person's own id: the rows
-		// this build measured and shipped, or the same three budgets recomputed
-		// off the catalog on every read, with or without what the Model Pool
-		// and the person's own judged runs measured. The words are the crew's
-		// own (crew.go), so the row and the ladder cannot disagree about what a
-		// pick means.
-		Setting{
-			Key: KeyCrewPick, Category: CategoryModels, Kind: SettingChoice,
-			Label: "picked from", Choices: CrewPicks,
-			Hint: "where the crew's models come from. table: the rows we measured. " +
-				"catalog: recomputed from today's published prices and scores at your " +
-				"crew's budget. learn: catalog plus the Model Pool's measurements and " +
-				"your own judged runs.",
-			read:  func() string { return CrewPickAt(dir) },
-			write: func(raw string) error { return SetCrewPick(dir, raw) },
-		},
-		// THE FAMILY THE THREE WORDS DRAW FROM, one row under the crew. It sits
-		// beside the crew row because it is the same decision read one level up:
-		// the crew row says which five models, and this says which shelf those
-		// five come off. `all` is the default and what the shipped five are the
-		// balanced row of; `open` narrows the same three words to open weights.
-		Setting{
-			Key: KeyCrewSource, Category: CategoryModels, Kind: SettingChoice,
-			Label: "model family", Choices: CrewSources,
-			Hint: "which family the crew words draw from. `all` is the default: frugal, " +
-				"balanced and max read off the whole catalog, closed and frontier models " +
-				"included, and cost what those models cost. `open` reads the same three " +
-				"words off the open-weight rows only, so no seat is a bet on one vendor's " +
-				"pricing. Seats nobody pinned move with the family at " +
-				"once, because an unwritten seat is the default crew; rows already written " +
-				"keep their ids until you pick the crew again.",
-			read:  func() string { return CrewSourceAt(dir) },
-			write: func(raw string) error { return SetCrewSource(dir, raw) },
-		},
+		// THE TWO ROWS THAT ARE NOT THE CREW, AND THEN THE CREW'S THREE PINS.
+		// The tiers are what a person configures for the calls codeaf makes on
+		// its own — the name it gives a session, the check on work a task says is
+		// finished, the plan an adaptive run steers by (internal/roles). The
+		// crew's three rows are PINS: blank is `auto`, the router picking that
+		// seat for each task, and /crew is where they are read and set with the
+		// allowed models and the cap beside them (crew.go).
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
 			Label: "reflex", EmptyLabel: "follows the conversation",
@@ -2494,37 +2401,32 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return TierModelAt(dir, ModelTierLow) },
 			write: func(raw string) error { return writeTierModel(dir, ModelTierLow, raw) },
 		},
-		// The worker row is the one most people will change second, after the
-		// crew: it is the seat that does the work and pays most of a task's bill.
 		Setting{
 			Key: KeyTierWorkerModel, Category: CategoryModels, Kind: SettingText,
-			Label: "worker", EmptyLabel: "follows the conversation",
-			Hint: "the model that does the work — every task you hand off, the parts it " +
-				"divides into, and the nodes of an adaptive run. Most of what a task costs " +
-				"is spent here. Leave it blank and tasks ride the model you are talking to; " +
-				"the `task model` row under Tasks, when set, wins over this one.",
-			read:  func() string { return TierModelAt(dir, ModelTierWorker) },
-			write: func(raw string) error { return writeTierModel(dir, ModelTierWorker, raw) },
+			Label: "worker", EmptyLabel: CrewAuto,
+			Hint: "the model that does the work of every task — blank is auto: codeaf picks it " +
+				"for each task from the kind of work it is. Pin one with a model id, or " +
+				"`model@provider` to pin the route too. /crew shows all three seats.",
+			read:  func() string { return crewSeatRow(dir, crewroute.Worker) },
+			write: func(raw string) error { return SetCrewPin(dir, crewroute.Worker, raw) },
 		},
 		Setting{
 			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
-			Label: "careful work", EmptyLabel: "follows the conversation",
-			Hint: "the capable model for the things that must not be wrong — the check on " +
-				"finished task work, the brief a task is shaped into, reading an image.",
-			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
-			write: func(raw string) error { return writeTierModel(dir, ModelTierHigh, raw) },
+			Label: "checker", EmptyLabel: CrewAuto,
+			Hint: "the model that checks finished task work, and reads an image for a model " +
+				"that cannot — blank is auto: a strong checker for open-ended work, a cheap one " +
+				"for a narrow fix. Pin one with a model id, or `model@provider`.",
+			read:  func() string { return crewSeatRow(dir, crewroute.Checker) },
+			write: func(raw string) error { return SetCrewPin(dir, crewroute.Checker, raw) },
 		},
-		// The fourth tier is the one whose value may name a LEVEL as well as a
-		// model, because it is the one class of call where how hard the model
-		// thinks is the point rather than the price.
 		Setting{
 			Key: KeyTierMastermindModel, Category: CategoryModels, Kind: SettingText,
-			Label: "mastermind", EmptyLabel: "follows the conversation",
-			Hint: "the model that plans adaptive runs and designs saved harnesses — the one " +
-				"answer that decides what every other call does. Add `:low`, `:medium` or " +
+			Label: "planner", EmptyLabel: CrewAuto,
+			Hint: "the model that plans a task's work and designs saved harnesses — blank is " +
+				"auto. Pin one with a model id, or `model@provider`; add `:low`, `:medium` or " +
 				"`:high` to ask it to think that hard: `moonshotai/kimi-k3:high`.",
-			read:  func() string { return TierModelAt(dir, ModelTierMastermind) },
-			write: func(raw string) error { return writeTierModel(dir, ModelTierMastermind, raw) },
+			read:  func() string { return crewSeatRow(dir, crewroute.Planner) },
+			write: func(raw string) error { return SetCrewPin(dir, crewroute.Planner, raw) },
 		},
 		Setting{
 			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,
@@ -2701,11 +2603,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
 			Label: "disable hints",
-			Hint: "on silences the one-line tips — the keys row's in a conversation and the " +
-				"row above the rule on home — and the what's-new line a new build may say " +
-				"with them. Off, the default, shows each tip until the key or command it " +
-				"names has been used once. A change lands at the end of the next turn.",
-			read: func() string { return formatBool(!HintsAt(dir)) },
+			Hint:  "disable💡 tips everywhere (requires restart)",
+			read:  func() string { return formatBool(!HintsAt(dir)) },
 			write: func(raw string) error {
 				disabled, err := parseBool(raw)
 				if err != nil {
@@ -2765,6 +2664,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeySSHIPQoS, raw, SSHIPQoSChoices) },
 		},
 	)
+	rows = append(rows, teamRows(dir)...)
 	return rows
 }
 
@@ -2834,9 +2734,30 @@ func SpentFigure(usd float64) string {
 		return ""
 	}
 	if usd < 0.01 {
-		return fmt.Sprintf("$%.4f", usd)
+		return SubCent(usd)
 	}
 	return fmt.Sprintf("$%.2f", usd)
+}
+
+// MoneyFloor is the smallest amount any surface writes as a figure: a hundredth
+// of a cent, four places after the point. It is the number [SubCent] compares
+// against AND the number it prints, so it is spelled once.
+const MoneyFloor = 0.0001
+
+// SubCent is how a positive amount SMALLER THAN A CENT is written, everywhere.
+//
+// ONE RULE, BECAUSE TWO DREW ONE FIGURE TWO WAYS. The chat's own money word
+// gained a floor so a real spend too small for four places reads `<$0.0001`,
+// while [SpentFigure] kept a bare four places and wrote the same spend as
+// `$0.0000`. The Spending tab then said `today <$0.0001` on one row and
+// `$0.0000 today` on the next, about the same day: four zeros for money that
+// was spent, which is the emptiness law's failure turned inside out. Every
+// sub-cent figure is written here now, and the floor never rounds to a lie.
+func SubCent(usd float64) string {
+	if usd < MoneyFloor/2 {
+		return "<" + fmt.Sprintf("$%.4f", MoneyFloor)
+	}
+	return fmt.Sprintf("$%.4f", usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
@@ -4038,33 +3959,20 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 	return pairs, nil
 }
 
-// TierModelAt resolves the model one auxiliary tier runs on. Empty means the
-// tier follows the session's own model, which is internal/roles' floor.
+// TierModelAt resolves the model one tier runs on. Empty means the tier follows
+// the session's own model, which is internal/roles' floor.
 //
-// UNSET AND CLEARED ARE DIFFERENT ANSWERS, on all five tiers. A profile that has
-// never held the key gets this build's own choice for that class of work
-// ([DefaultReflexModel] and its four neighbours), because a person who never
-// opened the sheet should not have the whole crew answering on the most
-// expensive model in the build — which is what following the conversation means
-// once there is a mastermind tier in it. A row somebody emptied ON PURPOSE reads
-// empty and follows the conversation, because refusing to let them turn it off
-// would make a default into a rule.
+// A CREW SEAT'S TIER — worker, mastermind (the planner), high (the checker) —
+// reads its pin, or the router's standing pick when it has none ([TierSeatAt]),
+// so the calls that ride those tiers outside a task follow the crew without a
+// second place to set it.
 //
-// AND UNSET HAS TWO READINGS OF ITS OWN, which is the rung this function learned
-// in #312. A key that was never held on a profile OLDER THAN ITS SEAT is not a
-// person declining to answer — it is a crew chosen before the row existed — so
-// the read climbs [TierSeatAt], where an unheld key asks the row it was split
-// out of first ([tierLineage]) and only a profile with nothing above it reaches
-// the build's choice. Every caller of this function therefore reads the model a
-// conversation ACTUALLY runs that class of work on: the role map cmd/codeaf
-// builds, the settings sheet's five rows, and [CrewAt], which is why the crew
-// word and the work cannot disagree. A caller that also needs to say WHERE the
-// answer came from asks [TierSeatAt] for the seat instead of this for the model.
-//
-// The reflex tier was the first row written this way, for the reason its key
-// still states: a call made twice a turn is a bill nobody agreed to. The other
-// three joined it when the crew landed, and the four defaults together are one
-// preset rather than four opinions (crew.go).
+// THE OTHER TWO ROWS KEEP THE RULE THEY HAVE ALWAYS HAD: UNSET AND CLEARED ARE
+// DIFFERENT ANSWERS. A profile that has never held the key gets this build's
+// own near-free model ([DefaultReflexModel], [DefaultLowModel]), because a call
+// made twice a turn is a bill nobody agreed to; a row somebody emptied ON
+// PURPOSE reads empty and follows the conversation, because refusing to let
+// them turn it off would make a default into a rule.
 //
 // The value may carry a level (`moonshotai/kimi-k3:low`) and IS RETURNED WHOLE.
 // Splitting is [roles.SplitEffort]'s job at the point of resolution, because a
@@ -4089,35 +3997,12 @@ func tierKeyFor(tier string) string {
 	return KeyTierLowModel
 }
 
-// defaultTierModel is what a tier answers on a profile that has never held its
-// key: the DEFAULT CREW, resolved in the family the profile chose. It is not the
-// build's constant alone, because a profile that answered the family row and no
-// tier row would otherwise run one family's crew under the other's label: the
-// family saying one thing and the ladder another. Under the default family the
-// answer is the constant, which is what [DefaultWorkerModel] and its kin name,
-// because that family's default row and the builtin five name the same set by
-// construction (crew_test.go pins it).
-func defaultTierModel(family, tier string) string {
-	if table, ok := CrewModelsForSource(family, DefaultCrew); ok {
-		if model, held := table[tier]; held {
-			return model
-		}
-	}
-	return builtinTierModel(tier)
-}
-
-// builtinTierModel is the build's own five. It is reachable only for a tier word
-// no family table holds, because both tables answer every tier this build knows.
+// builtinTierModel is the build's own model for the two rows that are not crew
+// seats. A crew seat's tier has none — it is routed — and reads the small-work
+// model only if a caller asks for a tier word this build does not know.
 func builtinTierModel(tier string) string {
-	switch tier {
-	case ModelTierReflex:
+	if tier == ModelTierReflex {
 		return DefaultReflexModel
-	case ModelTierWorker:
-		return DefaultWorkerModel
-	case ModelTierHigh:
-		return DefaultHighModel
-	case ModelTierMastermind:
-		return DefaultMastermindModel
 	}
 	return DefaultLowModel
 }
@@ -4396,19 +4281,34 @@ func TaskParallelAt(profileDir string) int {
 // TaskMaxLoadAt resolves the per-core load average above which no new task is
 // started. 0 turns the check off.
 func TaskMaxLoadAt(profileDir string) float64 {
-	if value, ok := persistedFloat(profileDir, KeyTaskMaxLoad); ok && value >= 0 {
-		return value
-	}
-	return DefaultTaskMaxLoad
+	maxLoad, _ := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
+	return maxLoad
 }
 
 // TaskMinFreeMBAt resolves the available-memory floor under starting a task, in
 // mebibytes. 0 turns the check off.
 func TaskMinFreeMBAt(profileDir string) int {
-	if value, ok := persistedInt(profileDir, KeyTaskMinFreeMB); ok && value >= 0 {
-		return value
+	_, minFreeMB := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
+	return minFreeMB
+}
+
+// TaskAdmissionLimitsAt overlays current persisted ceilings on the caller's
+// startup values. Missing keys preserve those values, including explicit zero.
+// Both settings come from one read so a newly created gate sees one profile.
+func TaskAdmissionLimitsAt(profileDir string, maxLoad float64, minFreeMB int) (float64, int) {
+	values, err := readProfileConfig(profileDir)
+	if err != nil {
+		return maxLoad, minFreeMB
 	}
-	return DefaultTaskMinFreeMB
+	var load float64
+	if raw, found := values[KeyTaskMaxLoad]; found && json.Unmarshal(raw, &load) == nil && load >= 0 {
+		maxLoad = load
+	}
+	var memory int
+	if raw, found := values[KeyTaskMinFreeMB]; found && json.Unmarshal(raw, &memory) == nil && memory >= 0 {
+		minFreeMB = memory
+	}
+	return maxLoad, minFreeMB
 }
 
 // TaskModelAt resolves the model tasks run on, as the person wrote it. Empty

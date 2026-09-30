@@ -23,7 +23,7 @@ func TestStandingOffersTheWordsFormFirstWhileTyping(t *testing.T) {
 }
 
 func TestAFinishedCommandWordChoosesItsBareForm(t *testing.T) {
-	for _, word := range []string{"standing", "orders"} {
+	for _, word := range []string{"standing", "orders", "task", "redo", "workspace"} {
 		var m menu
 		m.open = true
 		m.rank(word)
@@ -31,8 +31,12 @@ func TestAFinishedCommandWordChoosesItsBareForm(t *testing.T) {
 		if !ok {
 			t.Fatalf("%q matched nothing", word)
 		}
-		if got.name != "standing" || got.args != "" {
-			t.Fatalf("enter on the finished word %q would take /%s %q — want the bare form, the page", word, got.name, got.args)
+		want := word
+		if word == "orders" {
+			want = "standing"
+		}
+		if got.name != want || got.args != "" {
+			t.Fatalf("enter on the finished word %q would take /%s %q — want the bare form", word, got.name, got.args)
 		}
 	}
 }

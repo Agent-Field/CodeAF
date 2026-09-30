@@ -693,7 +693,7 @@ func (a *app) answerExchangeCard(ex *homeExchange, notice *session.StandingNotic
 func (a *app) changeExchangeCard(ex *homeExchange, notice *session.StandingNotice, words string) tea.Cmd {
 	ex.box.reset()
 	ex.changing = false
-	ex.settle(standChangedWord, standChangeWord)
+	ex.settle(standChangedWord, session.StandingChangeWord(ex.view.item))
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: words})
 	ex.said = a.now()
 	// THE CORRECTION IS A TURN LIKE ANY OTHER from the pane's point of view: the
@@ -1023,7 +1023,7 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	// rather than being copied: two trays holding one file would be two answers
 	// to what the next message carries, which is the law attach.go states about
 	// there being one tray and not two.
-	ex.chips, a.chips = a.chips, nil
+	ex.chips, a.home.chips = a.home.chips, nil
 	a.home.carrying = false
 	text = errandSentence(text, ex.chips)
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
@@ -2195,7 +2195,7 @@ func exchangeHint(ex *homeExchange) string {
 			// `change when or where`, which the card itself says on the row it
 			// settles into; here it is the one word every question spells it with.
 			if verb, ok := questionVerbFor(questionCommentKey); ok {
-				parts = append(parts, verb.key+" "+verb.word)
+				parts = append(parts, verb.key+" "+questionVerbWord(*ex.ask, verb))
 			}
 		}
 	}

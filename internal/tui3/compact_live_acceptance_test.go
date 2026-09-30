@@ -58,13 +58,17 @@ func TestCompactLiveKeepsAnEarlierFailureAndThePersonsCorrection(t *testing.T) {
 	a.setCapOpen(a.conversation(), 1, true)
 	a.touch()
 	page := strings.Join(plainRows(a), "\n")
-	for _, want := range []string{"build failed: missing target", "Keep the existing configuration", "Running the final check"} {
+	for _, want := range []string{"Keep the existing configuration", "Running the final check"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("compact work hid %q:\n%s", want, page)
 		}
 	}
-	if strings.Contains(page, "hidden-successful-call") {
-		t.Fatalf("compact work exposed ordinary call details:\n%s", page)
+	if strings.Contains(page, "hidden-successful-call") || strings.Contains(page, "build failed: missing target") {
+		t.Fatalf("compact work exposed call details:\n%s", page)
+	}
+	showLiveWork(t, a)
+	if page = livePage(a); !strings.Contains(page, "build failed: missing target") {
+		t.Fatalf("explicit disclosure lost the earlier failure:\n%s", page)
 	}
 }
 

@@ -697,11 +697,19 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			})
 
 		case "assistant":
+			var confirmation *responseConfirmation
+			if e.Answer {
+				confirmation = &responseConfirmation{done: true}
+			}
 			if text == "" {
 				continue // a step that only called tools; its calls follow
 			}
+			if len(e.ReplyTags) > 0 {
+				blocks = append(blocks, taskReplySourceEntry(e.ReplyTags, turn))
+			}
 			blocks = append(blocks, entry{
-				kind: entryAssistant, text: text, turn: turn, settled: true,
+				kind: entryAssistant, text: text, turn: turn, settled: true, confirmed: confirmation,
+				addressed: e.Addressed, cut: e.Interrupted,
 				replyTags: append([]session.TaskReplyTag(nil), e.ReplyTags...),
 			})
 
@@ -723,6 +731,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			}
 			blocks = append(blocks, entry{
 				kind: entryTool, tool: e.Tool, text: e.Hint, turn: turn, status: status,
+				open: session.IsUserBashCall(e.CallID),
 				// THE CALL'S OWN IDENTITY IS KEPT because it is what a live end has
 				// to land on: a page drawn out of the record and then kept listening
 				// pairs the end that arrives a second later with the row already
@@ -772,6 +781,29 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			if text == "" {
 				continue
 			}
+			// AN INTERRUPTED OPERATIONAL PARTIAL IS STILL THE MODEL'S WORK.
+			// The journal gives it an aside audience so it cannot stand as an
+			// answer, but a generic note at the end of a stopped turn is left
+			// outside the fold as news from the surface. Keep the partial as cut
+			// assistant work so the stopped chip can disclose its exact words.
+			if e.Interrupted {
+				blocks = append(blocks, entry{
+					kind: entryAssistant, text: text, turn: turn, settled: true, cut: true,
+				})
+				continue
+			}
+			// A LINE THE TEAM SENT IS A CARD, headed by who said it to whom
+			// (teamcard.go), and never the person's `›`. A TEAM WAKE WITH
+			// NOTHING DELIVERED IN IT IS NOT DRAWN: it is the sentence that told
+			// the model nobody typed this turn, which the live conversation
+			// never draws either (followup.go).
+			switch asideShapeOf(e) {
+			case asideTeam:
+				blocks = append(blocks, entry{kind: entryTeam, text: text, team: e.Team, turn: turn})
+				continue
+			case asideHidden:
+				continue
+			}
 			// A LINE THE SESSION WROTE GOES IN THE SESSION'S OWN LANE — the dim
 			// "· " row this surface says everything of its own in ([feed.note]) —
 			// and NOT above a "›" as though somebody had typed it.
@@ -786,7 +818,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			// A note from a file written before the mark arrives as "user" and
 			// draws exactly as it always did.
 			blocks = append(blocks, entry{
-				kind: entryNote, text: firstLine(text), turn: turn,
+				kind: entryNote, text: text, turn: turn, cut: e.Interrupted,
 			})
 		}
 	}

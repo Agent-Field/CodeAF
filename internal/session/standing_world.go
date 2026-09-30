@@ -188,11 +188,32 @@ func (g *TaskGraph) standingWorld() string {
 	if g.home == nil {
 		return ""
 	}
-	store := g.home.standingOrders()
+	return g.home.standingWorld()
+}
+
+// standingWorld is the conversation answering for a piece of its own work: the
+// one resolver call ([Agent.standingOrders] against [Agent.standingPlace]) and
+// the one section every birth seam renders. Both a node starting here
+// ([TaskGraph.standingWorld] above) and a plan-born run worker seated by the
+// door (RunSpec.Standing, task_run_belt.go) read THIS answer, so a conversation,
+// a node and a run worker can never disagree about what stands.
+func (a *Agent) standingWorld() string {
+	workspace, sessionID := a.standingPlace()
+	return StandingWorld(a.standingOrders(), workspace, sessionID)
+}
+
+// StandingWorld renders the section the person's orders put into the world of
+// work being born, or "" when nothing stands over the place or the ambient side
+// is off. It is the exported door on the birth seam for the callers outside the
+// package that are seated at the same moment a node is — a run's door handing
+// its workers a brief — and it is ONE CALL to [standing.Store.Applicable] with
+// the caller's place, because which orders govern a place is the resolver's
+// question and nobody else's (this file's header).
+func StandingWorld(store *standing.Store, workspace, sessionID string) string {
 	if store == nil {
 		return ""
 	}
-	items, err := store.Applicable(g.home.standingPlace())
+	items, err := store.Applicable(workspace, sessionID)
 	if err != nil {
 		return ""
 	}

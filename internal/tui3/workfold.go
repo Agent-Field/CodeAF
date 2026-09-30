@@ -1,12 +1,15 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // workfold is render-time structure. Nothing here is journaled: replaying the
@@ -26,6 +29,7 @@ type workfold struct {
 	key                 int
 	turn, start, answer int
 	tools               int
+	failures            int
 	thought             time.Duration
 	took                time.Duration
 	// stopped says this chip covers A TURN THE PERSON STOPPED (hierarchy.go's
@@ -84,46 +88,64 @@ func (a *app) deckFolds(d deck) map[int]workfold {
 	if !ok {
 		return nil
 	}
-	return fold(d)
+	folds := fold(d)
+	// Startup housekeeping belongs to the first conversation's disclosure,
+	// rather than minting a phantom work chip before the person speaks.
+	for at, f := range folds {
+		if !housekeepingFold(d.entries, f) {
+			continue
+		}
+		for next := f.answer; next < len(d.entries); next++ {
+			if groupBreaks(&d.entries[next]) {
+				if f.turn == 0 {
+					f.key = d.entries[next].turn
+					folds[at] = f
+				}
+				break
+			}
+		}
+	}
+	return folds
 }
 
-// ── A PHASE IS SETTLED WORK WITH A SETTLED PARAGRAPH AFTER IT ───────────────
-//
-// derivePhaseFolds is the room's chips. A PHASE is the settled work — thought,
-// calls, compaction, the surface's own notes — that precedes a settled block of
-// the node's prose. A step's introducing narration belongs to the same chip as
-// its calls. The latest paragraph stays visible; if another step follows it,
-// that paragraph becomes working narration and folds with that next step.
-//
-// THE LIVE FRONTIER NEVER BECOMES A SETTLED PHASE. A run with no settled
-// paragraph after it never closes, so this walk mints no chip over it. The
-// independent live policy can compact that unowned frontier (livesteps.go);
-// opening it retains the room's whole-screenful tool tail.
-//
-// WHAT NEVER FOLDS, AND WHY EACH ONE. A run carrying any of these keeps every
-// row it has, exactly as the conversation's `blocked` runs do:
-//
-//   - THE PERSON'S OWN WORDS — the brief, and every correction they typed into
-//     running work. A FOLD MAY NEVER HIDE THE PERSON'S WORDS ([groupBreaks]),
-//     and an elbow ends a run for the same reason it ends one out in the thread.
-//     The brief keeps its own three-lines-and-a-door instead (brieffold.go).
-//   - A FAILED CALL. ONLY FAILURE SPEAKS on this surface, so the one row that
-//     was allowed to raise its voice may not then be filed away by a chip.
-//   - AN ASK — a consent question, a task proposal, a standing card. It is a
-//     thing the work could not decide alone, and the record of what the person
-//     answered is the only account of where the next hour came from.
-//   - A CALL STILL IN FLIGHT, which is not settled work and therefore not part
-//     of a settled phase at all.
-//   - A SEAM, for [deriveWorkfolds]'s reason: a fold that swallowed one would be
-//     claiming the page above it is the same unbroken page.
-//
-// THE FINAL REPORT STANDS BY CONSTRUCTION. It is the last settled paragraph, so
-// it is the block the last chip stops at rather than a case anything tests for.
-//
-// Nothing here is journaled and nothing is summarised: a chip states counted
-// facts about the rows it covers, and a phrase that paraphrased the work would
-// be a second account of it that can drift from the work
-// ([app.workfoldLabel]).
+// housekeepingFold is retained operational bookkeeping, not another phase of
+// work. Its entries share the turn's disclosure without drawing a second chip.
+func housekeepingFold(es []entry, f workfold) bool {
+	if f.start >= f.answer {
+		return false
+	}
+	for at := f.start; at < f.answer; at++ {
+		e := &es[at]
+		switch e.kind {
+		case entryNote:
+			if e.told {
+				return false
+			}
+		case entryAssistant:
+			// Response assembly and no-change delivery can leave an empty
+			// placeholder. It must not mint a second visible work chip.
+			if strings.TrimSpace(e.text) != "" {
+				return false
+			}
+		case entryCompact, entryTeam, entryDivider:
+		case entryDone:
+			if e.done == nil || !e.done.dismissed {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// derivePhaseFolds groups settled operational phases in running task pages.
+// A settled paragraph closes the work before it. Confirmed tool-free responses
+// remain visible even when later tools arrive; unconfirmed tool narration can
+// belong to its following step. User messages, consent and decisions are
+// boundaries. Failures stay compact with a status count and retain their full
+// details inside disclosure. In-flight tools remain in the live activity window.
+// A completed page uses deriveWorkfolds, including for settled tool-only tails.
 func derivePhaseFolds(es []entry) map[int]workfold {
 	out := make(map[int]workfold)
 	phase := phaseRun{start: -1}
@@ -131,10 +153,14 @@ func derivePhaseFolds(es []entry) map[int]workfold {
 		e := &es[i]
 		switch {
 		case groupBreaks(e) || phaseKeeps(e):
-			// The run is abandoned, not emitted: whatever it held, this row is
-			// something a chip may not cover, and a chip that stopped short of it
-			// would be a fold whose reason nobody can see.
-			phase = phaseRun{start: -1, key: phase.key, floor: phase.floor}
+			// Important rows stand outside the disclosure. Their preceding
+			// settled work can still close without hiding the decision or fault.
+			if phase.start >= 0 && askSegmentSettled(es, phase.start, i) {
+				if f, ok := phase.close(es, i); ok {
+					out[f.start] = f
+				}
+			}
+			phase = phaseRun{start: -1, key: phase.key, floor: i + 1}
 		case e.kind == entryAssistant && e.settled && strings.TrimSpace(e.text) != "":
 			if f, ok := phase.close(es, i); ok {
 				out[f.start] = f
@@ -189,7 +215,7 @@ func (p *phaseRun) close(es []entry, answer int) (workfold, bool) {
 		}
 		for at := p.start - 1; at >= p.floor && es[at].turn == f.turn; at-- {
 			e := &es[at]
-			if groupBreaks(e) || phaseKeeps(e) || e.kind == entryTool {
+			if groupBreaks(e) || phaseKeeps(e) || confirmedAnswer(e) || e.kind == entryTool {
 				break
 			}
 			if e.kind == entryAssistant && e.settled && strings.TrimSpace(e.text) != "" {
@@ -204,28 +230,26 @@ func (p *phaseRun) close(es []entry, answer int) (workfold, bool) {
 	return f, true
 }
 
-// phaseKeeps reports whether this row is one a chip may never cover. The list is
-// the argument in [derivePhaseFolds]'s comment, said once, as a table of
-// predicates rather than a condition spelled into the walk.
+// phaseKeeps preserves actionable boundaries and calls still in flight.
 func phaseKeeps(e *entry) bool {
+	if interruptedUpdate(e) {
+		return true
+	}
 	switch e.kind {
 	case entryTask, entryStanding, entryConnect, entrySeam, entryHarness, entryDone:
 		return true
+	case entryNote:
+		return e.told
 	case entryTool:
-		return e.status != toolOK
+		return (e.status != toolOK && e.status != toolFailed) || e.decision != ""
 	}
 	return false
 }
 
-// deriveWorkfolds finds completed turns with machinery followed by a real
-// trailing answer. A question, failure, cancellation, or tools-only tail has
-// no eligible trailing answer and therefore cannot disappear into a chip.
-//
-// AND TURNS THE PERSON STOPPED, which are the one kind that folds with NOTHING
-// left standing under the chip (hierarchy.go). A stopped turn reached no answer,
-// so there is no block to promote and no block to leave out of the fold: the
-// machinery and the half-sentence it got to are all working material, and the
-// chip says so in its own words ([app.workfoldLabel]).
+// deriveWorkfolds groups completed operational work between user messages,
+// confirmed replies and actionable decisions. Tool-only settled tails still get
+// a disclosure without inventing an answer. Failed calls count toward its
+// failure status and remain inspectable. Stopped turns say who stopped them.
 func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 	out := make(map[int]workfold)
 	for lo := 0; lo < len(es); {
@@ -238,7 +262,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// middle of it would fold that question away — and the one thing on this
 		// surface a fold may never hide is the person's own words.
 		hi := lo + 1
-		for hi < len(es) && es[hi].turn == es[lo].turn && !groupBreaks(&es[hi]) {
+		for hi < len(es) && es[hi].turn == es[lo].turn && !groupBreaks(&es[hi]) && !confirmedAnswer(&es[hi-1]) {
 			hi++
 		}
 		answer := -1
@@ -249,6 +273,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// machine the router refuses — and a chip that hid it left them with a
 		// pin that disappeared and no sentence anywhere saying why.
 		blocked, stopped := false, false
+		var asks, compactions []int
 		for i := lo; i < hi; i++ {
 			if es[i].kind == entryAssistant && strings.TrimSpace(es[i].text) != "" {
 				answer = i
@@ -256,9 +281,28 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if es[i].cut {
 				stopped = true
 			}
-			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding ||
-				(es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel"))) {
-				blocked = true
+			// A landed task owns its compact, dismissible receipt. Treat every
+			// landing as a boundary so unrelated housekeeping on either side
+			// still folds, even when an async command acknowledgement arrived
+			// after the response without a new user message.
+			if interruptedUpdate(&es[i]) || es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding || es[i].kind == entryDone {
+				asks = append(asks, i)
+			}
+			if es[i].kind == entryTool && ((es[i].status != toolOK && es[i].status != toolFailed && !es[i].cut) || es[i].decision != "") {
+				asks = append(asks, i)
+			}
+			// A FINISHED SUMMARY STANDS LIKE AN ASK. A pass that summarized
+			// rewrote the person's own words in the model's copy of the
+			// conversation, and it is rare, so its line stays when the turn's
+			// work folds. A pass that only stubbed and folded is machinery like
+			// any other step and folds with it (#1627's intent): on a small
+			// window those run almost every step, and a standing line for each
+			// drew five marks between five chips on one turn (review of #1658).
+			if es[i].kind == entryCompact && !es[i].ended.IsZero() && es[i].summarized {
+				compactions = append(compactions, i)
+			}
+			if es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel")) {
+				asks = append(asks, i)
 			}
 			// A SEAM IS NEVER FOLDED AWAY. A chip hides the machinery between a
 			// question and its answer, and the run of blocks it hides is chosen by
@@ -266,10 +310,80 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			// with it, and the fold would be quietly claiming that the
 			// conversation above it is the same unbroken conversation. The whole
 			// group keeps its rows instead (replay.go's [entrySeam]).
-			if es[i].kind == entrySeam {
-				blocked = true
+			// The output of a command the person ran is its answer, so it
+			// stays visible even though it has the journal shape of a tool.
+			if es[i].kind == entrySeam || session.IsUserBashCall(es[i].callID) {
+				asks = append(asks, i)
+			}
+			// Team exchanges are operational work. Their replies remain available
+			// inside the disclosure and in Traffic after the turn settles.
+
+		}
+		// A settled tool preamble is not an answer when its calls are the
+		// last record. Fold that complete operational span without inventing
+		// a reply or leaving its caption outside the disclosure.
+		if answer >= 0 && !confirmedAnswer(&es[answer]) {
+			for at := answer + 1; at < hi; at++ {
+				if es[at].kind == entryTool || es[at].kind == entryThinking {
+					answer = -1
+					break
+				}
 			}
 		}
+		// A SUMMARY STANDS WHEREVER IT RAN. Before the answer it splits the
+		// fold; after it — the end-of-turn check, the ordinary case — it would
+		// otherwise be taken into the turn's disclosure as bookkeeping
+		// ([housekeepingFold]), and a person reading back would find no sign
+		// that their words were summarized.
+		asks = append(asks, compactions...)
+		sort.Ints(asks)
+		// AN ASK STANDS, AND THE WORK BEFORE IT STILL FOLDS. A task proposal, a
+		// sign-in or a standing card is a thing the work could not decide alone,
+		// so no chip may cover it. It used to keep the WHOLE turn open instead:
+		// the moment a turn ended on `/senior-dev`'s approval card, every thought
+		// and call above the card unfolded at once, a screenful of machinery
+		// arriving exactly when the person had one question to answer. So a turn
+		// with asks in it is cut at each of them: the settled work between two
+		// asks folds behind a chip that ends at the ask, the ask stands, and the
+		// stretch after the last ask folds by the ordinary rule, up to its answer.
+		// A running turn, a stopped one and a blocked one are unchanged below.
+		if len(asks) > 0 && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
+			from := lo
+			for _, at := range asks {
+				end := at
+				if !stopped && answer >= from && answer < at {
+					end = answer
+				}
+				if stopped || askSegmentSettled(es, from, end) {
+					f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: end, stopped: stopped}
+					if countWork(es, from, end, &f); f.start >= 0 {
+						out[f.start] = f
+					}
+				}
+				// Receipts between an answer and a later user-directed notice
+				// belong to the same disclosure, not to the visible answer.
+				if end < at && end >= from && settledBackgroundTail(es[end+1:at]) {
+					f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: at}
+					if countWork(es, end+1, at, &f); f.start >= 0 {
+						out[f.start] = f
+					}
+				}
+				from = at + 1
+			}
+			end := answer
+			if stopped || (answer < from && settledBackgroundTail(es[from:hi])) {
+				end = hi
+			}
+			if end >= from && (end == hi || es[end].settled) {
+				f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: end, stopped: stopped}
+				if countWork(es, from, end, &f); f.start >= 0 {
+					out[f.start] = f
+				}
+			}
+			lo = hi
+			continue
+		}
+		blocked = blocked || len(asks) > 0
 		// THE END OF WHAT THE CHIP SWALLOWS. An ordinary fold stops at the answer
 		// and leaves it standing; a stopped turn's fold runs to the end of the
 		// group, because there is nothing in it that was said TO the person.
@@ -307,13 +421,13 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if answer >= 0 {
 				from = answer + 1
 			}
-			for from < to && (groupBreaks(&es[from]) || es[from].kind == entryNote || es[from].kind == entryDivider) {
+			for from < to && (groupBreaks(&es[from]) || es[from].kind == entryDivider) {
 				from++
 			}
-			for to > from && (es[to-1].kind == entryNote || es[to-1].kind == entryDivider) {
+			for to > from && (es[to-1].kind == entryDivider) {
 				to--
 			}
-			if confirmedReasoningTail(es[from:to]) {
+			if confirmedReasoningTail(es[from:to]) || settledBackgroundTail(es[from:to]) {
 				f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: to}
 				if countWork(es, from, to, &f); f.start >= 0 {
 					out[f.start] = f
@@ -323,6 +437,26 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		lo = hi
 	}
 	return out
+}
+
+// askSegmentSettled reports whether the rows before an ask are settled work a
+// chip may cover: no prose still streaming or call still running/waiting on
+// the person. Failed calls are settled work with a visible compact status.
+func askSegmentSettled(es []entry, from, to int) bool {
+	for i := from; i < to; i++ {
+		e := &es[i]
+		switch e.kind {
+		case entryAssistant:
+			if e.provisional && !e.settled {
+				return false
+			}
+		case entryTool:
+			if e.status != toolOK && e.status != toolFailed {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Only a settled tail owned by a confirmed response may fold without a later
@@ -342,6 +476,45 @@ func confirmedReasoningTail(es []entry) bool {
 	return found
 }
 
+// Background deliveries can follow a completed response without producing a
+// second answer. Keep these receipts behind the same disclosure in that case.
+func settledBackgroundTail(es []entry) bool {
+	found := false
+	for i := range es {
+		e := &es[i]
+		switch e.kind {
+		case entryAssistant:
+			if !e.settled || confirmedAnswer(e) {
+				return false
+			}
+		case entryNote:
+			if e.told {
+				return false
+			}
+		case entryThinking:
+			if !e.settled {
+				return false
+			}
+		case entryTeam:
+			if !e.settled {
+				return false
+			}
+		case entryTool:
+			if e.status != toolOK && e.status != toolFailed {
+				return false
+			}
+		case entryCompact:
+			if e.ended.IsZero() {
+				return false
+			}
+		default:
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
 // countWork fills in WHAT A CHIP COUNTS over es[from:to] — where the work it
 // covers begins, how many calls it made, how long it thought, and how long the
 // whole of it took.
@@ -350,10 +523,7 @@ func confirmedReasoningTail(es []entry) bool {
 // grammar, and a chip that counted differently on two pages would be the same
 // sentence meaning two things. THE PERSON'S OWN ROWS ARE NOT WORK and never
 // start a chip: a question, a divider and an elbow are all things a fold stops
-// at rather than things it measures. Nor is the line naming the skills the
-// question carried ([entry.carried]) while it still sits directly under the
-// question: the chip starts below it, so the record stays beside the words it
-// belongs to.
+// at rather than things it measures. Skill-loading notes are retained work.
 func countWork(es []entry, from, to int, f *workfold) {
 	f.start = -1
 	var began, ended time.Time
@@ -362,7 +532,7 @@ func countWork(es []entry, from, to int, f *workfold) {
 		if e.kind == entryUser || e.kind == entryDivider || e.kind == entrySteer {
 			continue
 		}
-		if f.start < 0 && e.kind == entryNote && e.carried {
+		if e.kind == entryDone && e.done != nil && e.done.dismissed {
 			continue
 		}
 		if f.start < 0 {
@@ -370,6 +540,9 @@ func countWork(es []entry, from, to int, f *workfold) {
 		}
 		if e.kind == entryTool {
 			f.tools++
+			if e.status == toolFailed {
+				f.failures++
+			}
 		}
 		if e.kind == entryThinking {
 			f.thought += e.ended.Sub(e.began)
@@ -391,6 +564,17 @@ func workIndent(width int) string {
 		return ""
 	}
 	return strings.Repeat(" ", spacingConversationLead)
+}
+
+// Interrupted updates retain their explicit audience without completing a reply.
+func interruptedUpdate(e *entry) bool {
+	return e.kind == entryAssistant && e.addressed && e.cut && strings.TrimSpace(e.text) != ""
+}
+
+// A tool-free response boundary is an explicit message to the person, even
+// when the session continues working afterwards. No prose keywords are guessed.
+func confirmedAnswer(e *entry) bool {
+	return e.kind == entryAssistant && strings.TrimSpace(e.text) != "" && e.confirmed != nil && e.confirmed.done && !e.cut
 }
 
 // workIndentCols is what the indent law costs, in columns. It is asked at
@@ -415,6 +599,11 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	if e.kind != entryAssistant {
 		return false
 	}
+	// Audience survives interruption: these words were meant for the person.
+	// A cut update stays visible without claiming the response completed.
+	if e.addressed {
+		return false
+	}
 	// Streaming content can still be a preamble to an upcoming tool. The
 	// response boundary confirms it before the answer receives full emphasis.
 	if e.provisional && !e.settled {
@@ -426,6 +615,9 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	// a turn that was stopped reached no answer on any page that draws it.
 	if e.cut {
 		return true
+	}
+	if confirmedAnswer(&e) {
+		return false
 	}
 	// A block inside a chip is work. A turn fold certifies its final answer,
 	// including when a task card later lands in the same turn. A phase endpoint
@@ -469,7 +661,10 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 				continue
 			}
 		}
-		if es[at].kind != entryDivider && es[at].kind != entryNote && !entryWithdrawn(&es[at]) {
+		// Background receipts and team deliveries are not the next step of
+		// this response. Only response work can demote its preceding prose.
+		if (es[at].kind == entryAssistant || es[at].kind == entryTool ||
+			es[at].kind == entryThinking) && !entryWithdrawn(&es[at]) {
 			return true
 		}
 	}
@@ -531,6 +726,9 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 		// ([toolCallWord]) — the receipt six rows under this chip counts the same
 		// calls and used to spell them differently.
 		parts = append(parts, toolCallWord(f.tools))
+	}
+	if f.failures > 0 {
+		parts = append(parts, a.linearMark(a.icon(tokens.GFailed), "x")+" "+itoa(f.failures)+" failed")
 	}
 	parts = append(parts, "ctrl+e")
 	return strings.Join(parts, " · ")

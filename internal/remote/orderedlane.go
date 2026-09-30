@@ -28,9 +28,10 @@ import "sync"
 // a surface whose call reaches [callDeadline] is free to send another, so the
 // true bound is its outstanding calls plus one per deadline per goroutine — which
 // is what "bounded by that surface's own patience" means; and after a long
-// [MethodCompact] the lane replays ordered calls nobody is waiting for any more,
+// ordered call the lane replays ordered calls nobody is waiting for any more,
 // which is what the socket buffer did before this type existed and is therefore
-// the same behaviour rather than a new one.
+// the same behaviour rather than a new one. [MethodCompact], the longest there
+// was, no longer rides here (callclass.go's [classWork]).
 //
 // It is a type rather than a channel and a goroutine written inline because
 // "run these in the order they came, off the goroutine that received them" is a

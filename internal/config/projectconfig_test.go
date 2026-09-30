@@ -93,12 +93,14 @@ func TestEveryProjectRowResolvesProjectOverProfileOverDefault(t *testing.T) {
 	}{
 		{KeyToolApprovalMode, "deny", "allow", DefaultToolApprovalMode},
 		{KeyToolApprovals, "bash:deny", "bash:allow", ""},
-		// The two tier rows ARRIVE WITH A MODEL IN THEM since the crew landed
-		// (crew.go), so their built-in reading is this build's own choice for
-		// that class of work rather than nothing. The ladder is unchanged: the
-		// repository's answer, then the person's, then the shipped one.
+		// The small-work row ARRIVES WITH A MODEL IN IT, so its built-in
+		// reading is this build's own near-free model. The checker row is a
+		// crew seat and has no shipped model: unpinned, it is routed, and a
+		// profile with no provider connected has nothing to route to — empty,
+		// which follows the conversation. The ladder is unchanged: the
+		// repository's answer, then the person's, then the built-in one.
 		{KeyTierLowModel, "project/cheap", "profile/cheap", DefaultLowModel},
-		{KeyTierHighModel, "project/capable", "profile/capable", DefaultHighModel},
+		{KeyTierHighModel, "project/capable", "profile/capable", ""},
 		{KeyModelRoles, "title:project/title", "title:profile/title", ""},
 	} {
 		got, err := ProjectStringAt(project, profile, row.key)
@@ -475,5 +477,39 @@ func TestH4ProjectConfigReadFallbackAndWritePath(t *testing.T) {
 	}
 	if body, err := os.ReadFile(legacyPath); err != nil || string(body) != string(legacyBody) {
 		t.Fatalf("write path changed legacy file: %q, %v", body, err)
+	}
+}
+
+// A LIST OF NAMES IS TAKEN AS TEXT OR AS A LIST, and any other shape is an
+// error naming the file (law 3): `program.links` written the way a person
+// hand-writing JSON reaches for first once linked nothing without a word.
+func TestAListOfNamesIsTextOrAListAndNothingElse(t *testing.T) {
+	for body, want := range map[string][]string{
+		`{"program.links": "node_modules, .env ,, vendor"}`: {"node_modules", ".env", "vendor"},
+		`{"program.links": ["node_modules", " .env", ""]}`:  {"node_modules", ".env"},
+		`{"program.links": ""}`:                             {},
+	} {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, []byte(body))
+		project, err := LoadProjectConfig(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		names, found, err := project.Names(ProjectProgramLinks)
+		if err != nil || !found || strings.Join(names, "|") != strings.Join(want, "|") {
+			t.Fatalf("%s = %q (%v, %v), want %q", body, names, found, err, want)
+		}
+	}
+	dir := t.TempDir()
+	writeProjectFile(t, dir, []byte(`{"program.links": {"node_modules": true}}`))
+	project, err := LoadProjectConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := project.Names(ProjectProgramLinks); err == nil || !strings.Contains(err.Error(), ProjectConfigPath(dir)) {
+		t.Fatalf("an object for a list = %v, want an error naming the file", err)
+	}
+	if _, found, err := (ProjectConfig{}).Names(ProjectProgramLinks); found || err != nil {
+		t.Fatal("an empty layer answered a list")
 	}
 }

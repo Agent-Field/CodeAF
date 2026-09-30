@@ -360,6 +360,11 @@ func LoadKeyless() (Config, error) { return load(false) }
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
 	KeySetupSeen,
+	// The talk lane's borrow row sits beside its lane row and is read by
+	// [LaneBorrowAt], but it is set from the lane page and not from a settings
+	// row of its own. Missing here, every profile the lane page had written
+	// was told at launch that a key codeaf reads was unread.
+	LaneBorrowKey(LaneSlotTalk),
 	KeySplitPct,
 	KeyStandingBackground,
 	KeyResponseAttempts,
@@ -372,6 +377,22 @@ var nonSettingProfileFields = []string{
 	// [LaneBorrowAt] reads it. Left off this list, every launch after the row
 	// was saved told the person their profile carried an ignored key.
 	LaneBorrowKey(LaneSlotTalk),
+	// THE CREW'S STANDING ROWS. They are written by /crew's shortcuts and
+	// panel and read by the router (crew.go), and no settings-registry row owns
+	// them: the panel is where a rule, a cap and the providers turned off are
+	// read beside the day's spend.
+	KeyCrewAllowed,
+	KeyCrewCap,
+	KeyCrewTaskCap,
+	// And the free-routes switch beside them, which the crew's providers list
+	// turns on and off.
+	KeyCrewFreeRoutes,
+	KeyCrewProvidersOff,
+	// Route pins are read beside the model-only tier rows and have no
+	// settings row of their own, so the unread-key notice must know them.
+	KeyCrewRouteWorker,
+	KeyCrewRoutePlanner,
+	KeyCrewRouteChecker,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once
@@ -391,6 +412,12 @@ var retiredProfileKeys = map[string]bool{
 	"practice_demand_pct":  true, // reader removed by 84ba8503e
 	"propose_new_skills":   true, // reader removed by 84ba8503e
 	"attribution":          true, // reader removed on 2026-09-23: signing has no off
+	// The retired crew rows are read once more, by the migration that removes
+	// them and says so in its own line (crewmigrate.go's [MigrateCrew]); the
+	// unread check must not say it a second time in a worse sentence.
+	legacyKeyCrew:       true, // presets retired on 2026-09-24: seats are routed per task
+	legacyKeyCrewSource: true, // family row retired on 2026-09-24: `open` became the allowed rule
+	legacyKeyCrewPick:   true, // pick row retired on 2026-09-24
 }
 
 // retiredRowNotes are the retired keys a person set ON PURPOSE, each with the

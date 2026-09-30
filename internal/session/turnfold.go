@@ -80,7 +80,7 @@ type turnFoldReplacement struct {
 // range it held (turnFoldReadRepeats); every other result keeps the filed
 // pointer it always got.
 func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]bool, hub *eventHub) {
-	line := turnWorkingSet(a.window())
+	line := turnWorkingSet(a.trustedWindow())
 	if line <= 0 {
 		return
 	}
@@ -98,7 +98,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 		limit := a.turnFoldLimitLocked(seenThrough)
 		batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
 		keepNewest, _ := turnFoldReadRepeats(a.messages, batches)
-		selected = turnFoldSelection(a.messages, batches, keepNewest, total, turnWorkingTarget(a.window())*bytesPerToken)
+		selected = turnFoldSelection(a.messages, batches, keepNewest, total, turnWorkingTarget(a.trustedWindow())*bytesPerToken)
 	}
 	a.mu.Unlock()
 	if total <= line*bytesPerToken || selected == 0 {
@@ -125,9 +125,9 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 		return
 	}
 
-	earlier := shapeEntries(a.messages, a.file)
+	earlier := shapeEntries(a.messages, a.file, a.presentation)
 	place := a.resultPlaceLocked()
-	target := turnWorkingTarget(a.window()) * bytesPerToken
+	target := turnWorkingTarget(a.trustedWindow()) * bytesPerToken
 	batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
 	keepNewest, superseded := turnFoldReadRepeats(a.messages, batches)
 	// A pass that cannot buy the whole headroom does not run. Every rewrite
@@ -214,6 +214,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	note := textMessage("user", marker)
 	a.messages = append(a.messages, note)
 	a.contextTokens = 0
+	a.contextBeltTokens = 0
 
 	// The original transcript becomes the scroll-back region, and the rebuilt
 	// window is journaled behind a compaction marker exactly as the cross-turn

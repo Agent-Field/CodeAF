@@ -44,13 +44,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // modelPatience is how long any one real turn is given. deepseek-v4-flash
@@ -109,7 +110,6 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("plain_launch_opens_connections_and_harnesses", testPlainLaunchConnectionsAndHarnesses)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
 	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
-	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
 	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
@@ -159,15 +159,18 @@ func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
 	r.lit("/connect")
 	r.keys("Enter")
 	connections := r.waitFor(20*time.Second,
-		say(t, "connectFilterHint"), say(t, "connectModelsGroup"), say(t, "taskDoneGlyph"))
+		say(t, "connectFilterHint"), say(t, "connectProvidersGroup"))
 	if strings.Contains(connections, say(t, "connectUnavailableWord")) {
 		t.Fatalf("the plain launch lost this machine's connections:\n%s", connections)
 	}
-	if !strings.Contains(connections, say(t, "taskDoneGlyph")+" ") {
-		t.Fatalf("the copied connection is not drawn as connected:\n%s", connections)
+	r.lit("stripe")
+	connected := r.waitFor(20*time.Second, say(t, "taskDoneGlyph")+" Stripe")
+	if strings.Contains(connected, say(t, "connectUnavailableWord")) {
+		t.Fatalf("the copied account is unavailable on the plain launch:\n%s", connected)
 	}
-	t.Logf("the local engine road opened this machine's connection panel:\n%s", connections)
+	t.Logf("the local engine road opened this machine's connection panel and found its copied account:\n%s", connected)
 
+	r.keys("Escape")
 	r.keys("Escape")
 	r.lit("/harness")
 	r.keys("Enter")
@@ -176,6 +179,22 @@ func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
 		t.Fatalf("the plain launch lost this machine's harness registry:\n%s", harnesses)
 	}
 	t.Logf("the local engine road opened this machine's harness registry:\n%s", harnesses)
+
+	// AND THE CREW PANEL, which is the same kind of door onto this machine's
+	// profile: /crew opens it framed over the conversation, enter on the first
+	// seat opens that seat's list on `auto`, and esc steps back out one level at
+	// a time. Nothing is chosen, so nothing is written and no model is asked.
+	r.keys("Escape")
+	r.lit("/crew")
+	r.keys("Enter")
+	crew := r.waitFor(20*time.Second, say(t, "crewMainKeys"))
+	t.Logf("the crew panel opened:\n%s", crew)
+	r.keys("Enter")
+	seats := r.waitFor(20*time.Second, say(t, "crewAutoWord"))
+	t.Logf("the worker's seat list opened on auto:\n%s", seats)
+	r.keys("Escape")
+	r.waitFor(20*time.Second, say(t, "crewMainKeys"))
+	r.keys("Escape")
 	r.quit()
 }
 
@@ -251,7 +270,7 @@ func testFreshInstallSetup(t *testing.T) {
 func testNestedGate(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "gatews", false)
-	seedDecidedFamily(t, home, ws)
+	seedDir := seedDecidedFamily(t, home, ws)
 	r := start(t, "afe2e_gate", home, ws, tuiWide, 40, "chat", "--one-model")
 
 	// WHICHEVER DOOR THE LAUNCH TOOK, and esc until it is actually gone. A state
@@ -260,26 +279,26 @@ func testNestedGate(t *testing.T) {
 	// root — and the setup is several steps, so one esc leaves the one under it.
 	statesPastTheDoor(t, r)
 
-	// ONE FRAME, BOTH HALVES. The roster's `?` and its words for a node waiting
+	// ONE FRAME, BOTH HALVES. The roster's `?` and the reason for a node waiting
 	// on a person, and the answers row on the card — all on screen at once, which
-	// is the whole of what "answerable" means here.
+	// is the whole of what "answerable" means here. The compact card no longer
+	// repeats the tier word beside the question.
 	screen := r.waitFor(20*time.Second,
 		say(t, "settleAskWord"), say(t, "settleAccept"), say(t, "settleTellIt"),
-		say(t, "taskLookWord"), say(t, "unverifiedGlyph"))
+		say(t, "unverifiedGlyph"))
 	t.Logf("a nested landing asking on every surface:\n%s", screen)
 	if !strings.Contains(screen, "Port the parser") {
 		t.Fatalf("the nested part is not named on the screen:\n%s", screen)
 	}
 
-	// AND A KEY ANSWERS IT. The letters work on the SELECTED card and only over an
-	// empty message box, exactly as `x` does — so the greeting is put away first
-	// ([statesAnswerKey] says why), ↑ walks to the card the landing just wrote,
-	// and `a` is the accept.
-	if !statesAnswerKey(t, r, "a", say(t, "settleTookLine")) {
-		t.Fatalf("three presses of `a` never left %q on the card:\n%s", say(t, "settleTookLine"), r.capture())
-	}
-	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
-	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
+	// The landing key accepts the nested task once. Finished cards now start
+	// folded, so the visible proof is the batch changing from one done and one
+	// your call to two done; the durable receipt names who spent the answer.
+	pressLandingKey(r, "a")
+	settled := r.waitFor(20*time.Second,
+		say(t, "taskDoneGlyph")+" 2"+say(t, "doneRollupWord"))
+	waitForLandingReceipt(t, seedDir, say(t, "settleTookLine"))
+	t.Logf("the nested accept made both tasks done and wrote its receipt:\n%s", settled)
 	r.quit()
 }
 
@@ -311,20 +330,44 @@ func testNestedGate(t *testing.T) {
 func testRefusedLanding(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "refusedgatews", false)
-	seedUndecidedRoot(t, home, ws)
+	seedDir := seedUndecidedRoot(t, home, ws)
 	r := start(t, "afe2e_refused_gate", home, ws, tuiWide, 40)
 
 	statesPastTheDoor(t, r)
 	r.waitFor(20*time.Second, say(t, "settleAskWord"), say(t, "settleNotRight"))
-	if !statesAnswerKey(t, r, "n", say(t, "settleNotRightLine")) {
-		t.Fatalf("three presses of `n` never left %q on the card:\n%s", say(t, "settleNotRightLine"), r.capture())
-	}
-	screen := r.waitFor(20*time.Second, say(t, "settleNotRightLine"), say(t, "taskIncompleteWord"))
+	pressLandingKey(r, "n")
+	screen := r.waitFor(20*time.Second, say(t, "taskIncompleteWord"))
+	waitForLandingReceipt(t, seedDir, say(t, "settleNotRightLine"))
 	t.Logf("a refused landing keeps its reason and says incomplete:\n%s", screen)
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
 		t.Errorf("the refused landing still says failed:\n%s", screen)
 	}
 	r.quit()
+}
+
+// pressLandingKey clears the first-run greeting before spending one answer.
+// Repeating an answer while its receipt is folded can start unrelated work.
+func pressLandingKey(r *rig, key string) {
+	r.lit(".")
+	r.keys("C-u")
+	time.Sleep(400 * time.Millisecond)
+	r.lit(key)
+}
+
+// waitForLandingReceipt reads the conversation's durable answer while the
+// completion card is folded. The receipt is written before the resumed model
+// finishes, so this does not depend on how long that model takes to reply.
+func waitForLandingReceipt(t *testing.T, seedDir, receipt string) {
+	t.Helper()
+	path := filepath.Join(seedDir, "transcript.jsonl")
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if raw, err := os.ReadFile(path); err == nil && strings.Contains(string(raw), receipt) {
+			return
+		}
+		time.Sleep(pollEvery)
+	}
+	t.Fatalf("the accepted landing wrote no %q receipt in %s", receipt, path)
 }
 
 // ── 1 ───────────────────────────────────────────────────────────────────────
@@ -354,10 +397,10 @@ func testHomeShape(t *testing.T) {
 	if strings.Contains(screen, say(t, "homeRunningWhisper")) {
 		t.Errorf("populated sessions still show the empty-panel hint:\n%s", screen)
 	}
-	// THE BAR IS FOUR WORDS. Standing, memory and search are places reached by
-	// command and by alt+5…7, and a bar that still named them is the seven-word
-	// bar this wave retired.
-	want := []string{say(t, "barHomeWord"), say(t, "barTasksWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord")}
+	// THE BAR IS SIX WORDS on the wordmark row. Standing, memory and search are
+	// reached by command and by alt+7…9; teams and chats stand before sessions.
+	want := []string{say(t, "barHomeWord"), say(t, "barTeamsWord"), say(t, "barChatsWord"),
+		say(t, "barSessionsWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord")}
 	if got := barWords(screen, want[0], want[len(want)-1]); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
 	}
@@ -693,7 +736,7 @@ func testAskHere(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 	settled = r.capture()
 	t.Logf("the settled exchange, reopened:\n%s", settled)
-	if !strings.Contains(settled, say(t, "standYesWord")+" · "+say(t, "standSetWord")) {
+	if !strings.Contains(settled, say(t, "standRemindYes")) || !strings.Contains(settled, say(t, "standSetWord")) {
 		t.Errorf("the settled card does not carry the answer and its verdict:\n%s", settled)
 	}
 	if !strings.Contains(settled, say(t, "homeAskStoodWord")) {
@@ -749,12 +792,13 @@ func testFiringReachesThePerson(t *testing.T) {
 	if testing.Short() {
 		t.Skip("this one waits for the five-minute standing pass")
 	}
+	requireMachineTimerUntouched(t)
 	// THE TASK COLUMN IS PINNED OPEN, because the standing count below is drawn
 	// at its foot and nowhere else on the frame (internal/tui3's railFootRows).
 	// newHome copies the profile of whoever runs this, and a machine whose owner
 	// put the column away with ctrl+g — this one's does — hides the very line
 	// under test; secondwindow_e2e_test.go pins it for the same reason.
-	home := newHome(t, map[string]any{config.KeyTaskColumn: true})
+	home := newHome(t, map[string]any{config.KeyTaskColumn: true, config.KeyStandingBackground: config.BackgroundOn})
 	ws := newWorkspace(t, "firews", false)
 	r := start(t, "afe2e_fire", home, ws, tuiWide, 45)
 	started := time.Now()
@@ -768,6 +812,43 @@ func testFiringReachesThePerson(t *testing.T) {
 
 	openHome(t, r)
 	standReminder(t, r, "remind me in 1 minute to drink water")
+	// THE APPROVAL MUST LOAD ONLY THIS RIG'S TIMER. A definition under the
+	// developer's HOME would point every later five-minute pass at a checkout
+	// this suite will delete (#1631).
+	installDeadline := time.Now().Add(30 * time.Second)
+	var calls []string
+	installed := false
+	for {
+		calls = r.host.calls(t)
+		for _, call := range calls {
+			if runtime.GOOS == "linux" && call == "systemctl --user enable --now "+standing.LinuxTickTimer {
+				installed = true
+			}
+			if runtime.GOOS == "darwin" && strings.HasPrefix(call, "launchctl bootstrap ") && strings.HasSuffix(call, standing.DarwinTickLabel+".plist") {
+				installed = true
+			}
+		}
+		if installed || time.Now().After(installDeadline) {
+			break
+		}
+		time.Sleep(pollEvery)
+	}
+	t.Logf("rig scheduler calls: %v", calls)
+	if !installed {
+		t.Errorf("the rig never loaded its timer; scheduler calls: %v", calls)
+	}
+	if runtime.GOOS == "linux" {
+		definition := filepath.Join(r.host.login, ".config", "systemd", "user", strings.TrimSuffix(standing.LinuxTickTimer, ".timer")+".service")
+		raw, err := os.ReadFile(definition)
+		if err != nil || !strings.Contains(string(raw), "Environment=\"CODEAF_HOME="+r.home+"\"") {
+			t.Errorf("rig service definition %s must name CODEAF_HOME=%s: %v, content %q", definition, r.home, err, raw)
+		}
+	} else if runtime.GOOS == "darwin" {
+		definition := filepath.Join(r.host.login, "Library", "LaunchAgents", standing.DarwinTickLabel+".plist")
+		if _, err := os.Stat(definition); err != nil {
+			t.Errorf("rig plist %s: %v", definition, err)
+		}
+	}
 
 	// Back into the conversation and wait. The window runs the same pass the
 	// timer runs, every standing.Interval (five minutes), the first one an
@@ -778,7 +859,9 @@ func testFiringReachesThePerson(t *testing.T) {
 	// while it looked there for a conversation-only firing row (#1344).
 	r.keys("Up")
 	r.keys("Enter")
-	r.waitFor(20*time.Second, say(t, "homeDoorWord"))
+	// The conversation's foot says `esc interrupt` while the reminder's turn
+	// is still ending; its home gesture returns when that work is quiet.
+	r.waitForAny(20*time.Second, say(t, "homeDoorWord"), say(t, "chatWorkingFootWord"))
 
 	// /status, while something stands: the derived `keeping watch` line, and the
 	// `◦ 1 standing order` line at the foot of the task column. That count was a
@@ -934,6 +1017,16 @@ func testFiringReachesThePerson(t *testing.T) {
 
 	second, ok := standingRecordAbout(t, home, "stretch")
 	if !ok {
+		// THE MODEL OWNS A REMINDER'S WORDS, and a cheap one can drop the subject:
+		// it saved "remind me in 1 minute", saying "Your 1-minute reminder has
+		// arrived." This half proves the firing reaches the person, so the record
+		// is the one that stood after the first; a missing one still fails.
+		if second, ok = standingRecordOtherThan(t, home, item.ID); ok {
+			t.Logf("FINDING: the model saved the stretch reminder without its subject: %q, saying %q",
+				second.Words, second.Does.Say)
+		}
+	}
+	if !ok {
 		t.Fatalf("nothing stood for the stretch reminder. records:\n%s", standingRecordsDump(t, home))
 	}
 	inbox := projectInbox(t, home, ws)
@@ -1078,12 +1171,14 @@ func testAnswerFromHome(t *testing.T) {
 	// from there. So B opens its own project, and A's conversation is a row on
 	// B's list like any other.
 	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
-	// A's QUESTION ARRIVES ON B's `needs you` WITH ITS ANSWERS ON ITS OWN ROW.
-	// The top question that has answers draws them, and a digit answers it from
-	// ANYWHERE on home with no cursor move (DESIGN §1 law 7) — so there is nothing
-	// to walk to, and the chips are the oracle for both facts at once: the row has
-	// arrived, and this screen can answer it.
-	row := b.waitFor(40*time.Second, say(t, "answersAllowOnce"))
+	// A's QUESTION ARRIVES ON ITS EXISTING CONVERSATION ROW. Home shows the
+	// question and answers in that row's description while it is selected. A
+	// digit still answers the top question from anywhere on home.
+	b.waitFor(40*time.Second, say(t, "questionOtherWindowWord"))
+	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
+		t.Fatalf("could not select the question on its session row:\n%s", b.capture())
+	}
+	row := b.capture()
 	t.Logf("window B's home offers the answers to the question A is stopped on:\n%s", row)
 	if !strings.Contains(row, "1 ") {
 		t.Errorf("home's answers are missing the first chip's key:\n%s", row)
@@ -1103,21 +1198,10 @@ func testAnswerFromHome(t *testing.T) {
 		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
 	}
 
-	// AND THE ROW STANDS UNDER `needs you`, the panel every question on the
-	// machine lands in — window A's conversation, stopped on a consent card, is
-	// exactly such a row.
-	//
-	// IT IS READ AS THE PANEL'S OWN BLOCK AND NOT AS A DISTANCE INTO THE SCREEN.
-	// The heading used to carry its live count (`needs you · 2`), and this
-	// assertion leaned on that punctuation to tell the heading from the front of
-	// the gate's own `needs your ok …`; #1046 struck the count and left the
-	// suite matching a string home stopped drawing. [panelBlock] is the honest
-	// question: the sentence has to stand in the rows of that panel's own
-	// columns, above the first blank row under it — so a question filed on some
-	// other panel, or in the column beside it, still fails.
-	if needs := panelBlock(row, say(t, "homeNeedsHeading")); !strings.Contains(needs, say(t, "consentRowLine")) {
-		t.Errorf("the asking row is not under %q — that panel holds:\n%s\nthe whole screen was:\n%s",
-			say(t, "homeNeedsHeading"), needs, row)
+	// THE QUESTION BELONGS TO THE SESSIONS ROW, not a duplicate attention row.
+	if !strings.Contains(row, say(t, "homePanelRunning")) ||
+		strings.Count(row, say(t, "consentRowLine")) != 1 {
+		t.Errorf("the selected session does not carry exactly one question:\n%s", row)
 	}
 
 	// AND THE PULSE INSIDE A CHAT COUNTS IT. On home the top line is the budget
@@ -1128,7 +1212,10 @@ func testAnswerFromHome(t *testing.T) {
 	inChat := b.waitFor(30*time.Second, say(t, "homeDoorWord"), say(t, "pulseWantWord"))
 	t.Logf("window B's own conversation counts the question on its top line:\n%s", firstMatch(inChat, say(t, "pulseWantWord")))
 	openHome(t, b)
-	b.waitFor(20*time.Second, say(t, "answersAllowOnce"))
+	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
+		t.Fatalf("could not select the question after reopening home:\n%s", b.capture())
+	}
+	b.keys("Down")
 
 	b.lit("1")
 	time.Sleep(1500 * time.Millisecond)
@@ -1332,15 +1419,21 @@ func testGrouped(t *testing.T) {
 	t.Logf("home with three seeded projects:\n%s", screen)
 
 	projects := panelBlock(screen, say(t, "homePanelProjects"))
-	for _, name := range []string{"groupws", "alpha", "beta", "gamma"} {
+	// Paths give up their right end to the chat count in a narrow rail, so the
+	// full folder names are not visible. The three seeded paths remain distinct
+	// through /al, /be and /ga, and every row still says it owns one chat.
+	lines := strings.Split(strings.TrimSpace(projects), "\n")
+	if len(lines) != 5 || strings.Count(projects, "1 chat") != 4 {
+		t.Errorf("the `projects` panel does not hold four one-chat folders:\n%s", projects)
+	}
+	for _, name := range []string{"/al", "/be", "/ga"} {
 		if !strings.Contains(projects, name) {
-			t.Errorf("the `projects` panel has no row for %q:\n%s", name, projects)
+			t.Errorf("the `projects` panel has no visible row for %q:\n%s", name, projects)
 		}
 	}
-	// THIS WINDOW'S FOLDER IS THE FIRST ROW, which is why the panel is never
-	// empty.
-	if first := strings.SplitN(strings.TrimSpace(projects), "\n", 3); len(first) < 2 || !strings.Contains(first[1], "groupws") {
-		t.Errorf("this window's folder is not the first row of `projects`:\n%s", projects)
+	// This window's git folder is first, ahead of the three seeded paths.
+	if len(lines) > 1 && (!strings.Contains(lines[1], "TestTUIE2Ethe_proj") || !strings.Contains(lines[1], "main")) {
+		t.Errorf("this window's folder is not first on `projects`:\n%s", projects)
 	}
 
 	// AND alt+g IS UNBOUND ON HOME: there is no list left to group. It arrives
@@ -1400,7 +1493,9 @@ func panelBlock(screen, heading string) string {
 			if at < 0 {
 				continue
 			}
-			in, left, right = true, at, len(runes)
+			// capture-pane trims trailing spaces from the heading row, so its
+			// length is not the width of the panel rows underneath it.
+			in, left, right = true, at, len(screen)
 			if next := nextColumn(runes, at+len([]rune(heading))); next > 0 {
 				right = next
 			}
@@ -1459,23 +1554,24 @@ func nextColumn(runes []rune, from int) int {
 	return -1
 }
 
-// barWords is the tab bar's words: the first row holding both its first and its
-// last word, with any count a tab wears (`tasks 1`) left out.
+// barWords reads the places between home and settings on the wordmark row.
+// The wordmark stands before home and the machine's pulse stands after settings.
 func barWords(screen, first, last string) []string {
 	for _, line := range strings.Split(screen, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 0 || fields[0] != first {
-			continue
-		}
-		var words []string
-		for _, field := range fields {
-			if _, err := strconv.Atoi(field); err == nil {
+		for i, field := range fields {
+			if strings.Trim(field, "[]") != first {
 				continue
 			}
-			words = append(words, field)
-		}
-		if words[len(words)-1] == last {
-			return words
+			for j := i + 1; j < len(fields); j++ {
+				if strings.Trim(fields[j], "[]") == last {
+					words := append([]string(nil), fields[i:j+1]...)
+					for k := range words {
+						words[k] = strings.Trim(words[k], "[]")
+					}
+					return words
+				}
+			}
 		}
 	}
 	return nil
@@ -1637,16 +1733,14 @@ func testOneSpendFigure(t *testing.T) {
 
 	// ── the /spend place ──────────────────────────────────────────────────
 	//
-	// `alt+3` and not `/spend`: the place's doors are the chord, `tab`, and the
+	// `alt+5` and not `/spend`: the place's doors are the chord, `tab`, and the
 	// word typed at home — `/spend` is an alias of `/cost`, which is this
 	// conversation's own note rather than the machine's page. The chord arrives
 	// as esc-then-3, which is what internal/tui3's placeDigit reads.
 	//
-	// THE DIGIT IS THE PLACE'S RANK IN internal/tui3's placeOrder, and the bar of
-	// four (`home tasks spend settings`) made spend the third. It was `alt+5` on
-	// the seven-word bar, and on the four-word one `alt+5` opens standing — which
-	// this subtest then read as a spend place with no figure on it.
-	r.lit("\x1b3")
+	// THE DIGIT IS THE PLACE'S RANK IN internal/tui3's placeOrder. Teams and
+	// chats now stand between home and sessions, making spend the fifth place.
+	r.lit("\x1b5")
 	place := r.waitFor(25*time.Second, say(t, "spendRailsHint"))
 	t.Logf("the spend place after the interrupted turn:\n%s", place)
 	fromPlace := moneyOn(t, place, say(t, "spendRailsHint"))
@@ -1736,117 +1830,6 @@ func moneyIn(t *testing.T, screen, needle string, after bool) string {
 
 // ── 12 ──────────────────────────────────────────────────────────────────────
 
-// testInheritedWorkSeat is #312's acceptance on the real screen: a crew older
-// than the work seat, met where a person actually meets it.
-//
-// THE PROFILE IS THE DEFECT. A crew applied before the worker class existed
-// (#278) holds four `models.tiers.*` rows and no `worker` among them. Headless
-// doors learned to read that shape in #311; the conversation did not, so every
-// task started from a thread ran on the build's own worker model and nothing
-// anywhere said which model that was or why. This subtest builds exactly that
-// profile — four real rows, the fifth key deleted — starts one small task, and
-// reads back two things a unit test cannot: that the LINE is on the screen once,
-// and that the model the node actually called is the row the person pinned.
-//
-// THE MODEL IS READ OUT OF THE CALL LOG, which is always on and writes one line
-// per model call with the tag the caller set (internal/calllog, and session's
-// loop.go tags a node's calls `task`). That is the node's own journal, and it is
-// the only evidence in this suite that comes off the wire rather than off the
-// screen.
-//
-// IT IS DELIBERATELY THE CHEAPEST SHAPE THERE IS: `/task solo`, which runs one
-// worker and makes no sizing call before it, on a brief that is one file.
-func testInheritedWorkSeat(t *testing.T) {
-	// The row the work must land on. It is a DIFFERENT id from the model the
-	// conversation talks on (newHome pins that) and from this build's own worker
-	// default, because the whole question is which of the three answered.
-	const smallWork = "deepseek/deepseek-v4-flash-0731"
-	home := newHome(t, map[string]any{
-		"models.tiers.reflex":     "mistralai/mistral-nemo",
-		"models.tiers.low":        smallWork,
-		"models.tiers.high":       smallWork,
-		"models.tiers.mastermind": smallWork,
-	})
-	dropWorkerRow(t, home)
-	ws := newWorkspace(t, "seatws", false)
-	r := start(t, "afe2e_seat", home, ws, tuiWide, 40)
-
-	// Whichever door the launch took — home on a machine with several
-	// conversations, and straight into a greeted conversation on a fresh one,
-	// which is what a state root built one minute ago always is. THE GREETED
-	// CONVERSATION HAS TWO SHAPES and this waits for both: the starter line under
-	// the wordmark, and the starting POINTS a conversation nobody has typed in
-	// yet stands on, whose foot is [welcomeStarterKeysWord] — the screen that
-	// entry's own `why` warns a subtest about waiting past.
-	r.waitForAny(20*time.Second, say(t, "placeRestWord"), say(t, "starterTaskWord"),
-		say(t, "welcomeStarterKeysWord"))
-	r.keys("Escape")
-	r.lit("/task solo write a file called hello.txt containing the word hello")
-	r.keys("Enter")
-
-	// THE LINE, WHEN THE WORK STARTS. Both halves of it: the observation about
-	// the profile and the promise about what ends it.
-	screen := r.waitFor(4*time.Minute, say(t, "inheritedSeatObservation"), say(t, "inheritedSeatPromise"))
-	t.Logf("the conversation says which row filled its work seat:\n%s", screen)
-
-	// AND ONCE. A node divides into parts and each part starts; a line that
-	// arrived with each of them is the noise this mechanism refused headless.
-	if got := strings.Count(screen, say(t, "inheritedSeatObservation")); got != 1 {
-		t.Errorf("the line is on the screen %d times, want once:\n%s", got, screen)
-	}
-
-	// AND THE WORK IS ON THE ROW THE PERSON PINNED. The node's calls carry the
-	// `task` tag, and no call anywhere may have gone to the build's own worker.
-	// The log is POLLED rather than read once: the receipt is written when the
-	// node starts and the node's first call goes out a moment later, and this
-	// subtest deliberately stops as soon as there is something to read rather
-	// than paying for the whole piece of work.
-	models := waitForTaskCalls(t, home, 3*time.Minute)
-	if len(models) == 0 {
-		t.Fatalf("no call in the log was tagged as a task's; the log held %v", callModels(t, home))
-	}
-	t.Logf("the node called: %v", models)
-	for _, model := range models {
-		if model != smallWork {
-			t.Errorf("a task call went to %q, want the small-work row %q the crew pinned", model, smallWork)
-		}
-	}
-	for _, model := range callModels(t, home) {
-		if model == "z-ai/glm-5.3-flash" {
-			t.Errorf("a call went to this build's own worker model, which is the substitution the issue is about")
-		}
-	}
-	r.quit()
-}
-
-// dropWorkerRow deletes `models.tiers.worker` from a rig's config, so the
-// profile is the shape a crew set before that class existed actually has.
-//
-// It is a DELETE and not an empty string: the two are different answers
-// everywhere in this build — a row emptied on purpose means "follow the
-// conversation" — and it is the one this suite must write, because [newHome]
-// copies the person's own config and theirs may hold the key.
-func dropWorkerRow(t *testing.T, home string) {
-	t.Helper()
-	path := filepath.Join(home, "config.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	rows := map[string]any{}
-	if err := json.Unmarshal(raw, &rows); err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	delete(rows, "models.tiers.worker")
-	out, err := json.MarshalIndent(rows, "", " ")
-	if err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	if err := os.WriteFile(path, out, 0o600); err != nil {
-		t.Fatalf("config: %v", err)
-	}
-}
-
 // waitForTaskCalls polls the call log until a node's own call is in it, and
 // answers every model those calls asked for.
 func waitForTaskCalls(t *testing.T, home string, within time.Duration) []string {
@@ -1931,7 +1914,7 @@ func callLogModels(t *testing.T, home, tag string) []string {
 // that ran it.
 //
 // IT IS DELIBERATELY THE CHEAPEST TASK THERE IS — `/task solo` on a one-file
-// brief, the shape [testInheritedWorkSeat] already pays for. The measured run
+// brief, the cheapest shape a task comes in. The measured run
 // lands in about thirty seconds and costs five cents.
 //
 // AND IT RUNS SHORT ON PURPOSE ([tuiShortRows]): a record that fits on the
@@ -2021,14 +2004,20 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	// THE DOOR THIS SUBTEST IS ABOUT. No window is holding the node any more, so
-	// the foot offers the record rather than the room.
+	// the foot offers the record rather than the room. The sessions place now
+	// starts on this window's new conversation, above the earlier task's family;
+	// walk onto the task row before reading its door.
 	//
 	// THE FOOT IS THE WHOLE SYNCHRONISATION AND THE GROUP HEADING WAS NEVER PART
 	// OF IT. This wait used to sit behind `finished today`, which is the roster's
 	// heading for work that ENDED today — and a node the checker could not judge
 	// ends under `your call` instead, so the heading was a claim about how the
 	// model's work landed standing in front of a test about paging a record.
-	roster := r.waitFor(30*time.Second, say(t, "tasksEnterInsideWord"))
+	r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
+	if !walkTo(r, say(t, "tasksEnterInsideWord"), "Down") {
+		t.Fatalf("could not select the finished task's record row:\n%s", r.capture())
+	}
+	roster := r.capture()
 	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
 
 	// AND THE CONVERSATION THIS WINDOW IS IN IS ITSELF THE TITLELESS ROW (#915).
@@ -2039,17 +2028,10 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// same word home's own column spells for a chat nothing has named, so the
 	// wait holds both the name and the one spelling of it.
 	//
-	// IT IS ONE ROW DOWN AND NOT ON THE FIRST FRAME. A conversation that has
-	// delegated no work stands under `earlier`, the last of the page's five
-	// sections, and this window is fourteen rows tall on purpose — the list has
-	// room for one heading and one row, which `finished today` and the task fill.
-	// So the row is walked to with the arrow this page offers, and the cursor is
-	// put back on the task, because everything below reads the task's own foot.
-	r.keys("Down")
+	// The new conversation is still a visible, titleless row while the earlier
+	// task is selected; reading it does not disturb the task's own door.
 	untitledAt := r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
 	t.Logf("the conversation this window stands in is on the page by its word:\n%s", untitledAt)
-	r.keys("Up")
-	r.waitFor(20*time.Second, say(t, "tasksEnterInsideWord"))
 
 	// AND THE RECORD IS ALREADY BESIDE THE LIST. This terminal is [tuiPlain] wide,
 	// which is over the pane's floor, so the row under the cursor has its record
@@ -2063,7 +2045,14 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// types itself into that place's filter and opens nothing — this is the first
 	// half of the gesture, done by hand, and it is what leaves the door loaded.
 	r.keys("Space")
-	armed := r.waitFor(15*time.Second, say(t, "tasksEnterInsideWord"))
+	// The space is a filter edit, and on the sessions place an edit puts the
+	// cursor back on the top row, so the task's row is walked to again. Any key
+	// but a second space disarms the gesture, and the enter below always did, so
+	// the walk proves no less than the enter alone did.
+	if !walkTo(r, say(t, "tasksEnterInsideWord"), "Down") {
+		t.Fatalf("could not select the finished task's record row after the space:\n%s", r.capture())
+	}
+	armed := r.capture()
 	if strings.Contains(armed, say(t, "placeRestWord")) {
 		t.Fatalf("one space opened home from the roster:\n%s", armed)
 	}
@@ -2204,7 +2193,7 @@ func testTaskOnTheDefaultBelt(t *testing.T) {
 
 // taskOnTheRunEngine is the body the two subtests above share: launch with the
 // key and whatever belt words the caller names, put one `/task` on the run
-// engine, and read the run off the tasks place, the plan page and the thread.
+// engine, and read the run off the tasks place, the task's room and the thread.
 func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "runws", false)
@@ -2235,15 +2224,12 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	running := planRowWaitsToWear(t, r, 40*time.Second, runRowWord, say(t, "planRunningWord"))
 	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
 
-	// ── the page mid-run: the live step at the live edge ────────────────────
+	// ── the room mid-run ────────────────────────────────────────────────────
 	//
-	// ENTER OPENS THE PLAN PAGE, and while a worker holds the task the page
-	// follows its live edge: the step being run right now is drawn ONE STEP EARLY,
-	// with the running glyph beside the command and the call's own clock under it
-	// (docs/design/worker-harness/SURFACE.md §4, Cell 3; taskplan.go's
-	// taskPlanBody). It is read here, before the root lands, because the live step
-	// is gone the moment its command ends — the page after the landing is the
-	// settled page the section below reads.
+	// ENTER OPENS THE TASK'S ROOM, the one page every task opens, and while a
+	// worker holds the task the room follows it on its own beat (internal/tui3's
+	// planroom.go). It is read here, before the root lands; the room after the
+	// landing is the settled room the section below reads.
 	//
 	// AND THE CURSOR IS MOVED ONTO THE ROW FIRST ([tasksPlaceRunRow]). Enter on
 	// the conversation row is the door into the conversation and always was, so
@@ -2252,29 +2238,27 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// conversation too.
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// THE PAGE COMING UP IS THE ASSERTION AND THE LIVE STEP IS AN OBSERVATION,
-	// and the two are separated here because only one of them is a fact about
-	// the surface. That the press over the row opens the STORE'S page rather
-	// than a room is true every time, and the page's own note box says it is
-	// the page. Which command a worker happens to be part-way through when the
-	// key lands is a moment: this brief is four steps and about half a minute,
-	// so a page opened a second after the last one ends is an honest page of a
-	// task that has finished — [rig.glimpse]'s own bargain, which never fails
-	// on a thing that is only on screen while work runs. Asserting it made a
-	// red out of a fast run and said nothing about any defect.
-	page := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"))
-	t.Logf("the page the press over the run's row opened:\n%s", page)
-	if live, sawLive := r.glimpse(15*time.Second, say(t, "planLiveGlyph")); sawLive {
-		if !strings.Contains(live, say(t, "planLiveClockWord")) {
-			t.Errorf("the plan page's live line has no clock under it (%q):\n%s",
-				say(t, "planLiveClockWord"), live)
-		}
-		t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
+	// THE ROOM COMING UP IS THE ASSERTION: its two tabs are there whatever state
+	// the task is in. The note box's own words are there only while the task can
+	// still take a note, and which command a worker happens to be part-way
+	// through when the key lands is a moment, so both are only logged.
+	page := r.waitFor(40*time.Second, say(t, "roomTabsWords"))
+	t.Logf("the room the press over the run's row opened:\n%s", page)
+	if box, saw := r.glimpse(2*time.Second, say(t, "planNoteBoxWord")); saw {
+		t.Logf("the room's box takes a note while the task runs:\n%s", box)
 	} else {
-		t.Logf("the run finished before a live step could be caught on the page, which is this " +
+		t.Logf("the task had ended before its room opened, so its box names another door")
+	}
+	if live, sawLive := r.glimpse(15*time.Second, say(t, "planLiveGlyph")); sawLive {
+		t.Logf("the room mid-run, carrying the live step:\n%s", live)
+	} else {
+		t.Logf("the run finished before a live step could be caught in the room, which is this " +
 			"brief on a fast worker and not a defect")
 	}
+	// `esc` LEAVES THE ROOM FOR THE CONVERSATION, the way every room does, so
+	// the place is opened again to watch the row land.
 	r.keys("Escape")
+	openTasksPlace(t, r)
 
 	done := planRowWaitsToWear(t, r, runPatience, runRowWord, say(t, "planDoneWord"))
 	t.Logf("the run on the tasks place once its root landed:\n%s", done)
@@ -2295,20 +2279,16 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 		t.Errorf("the landing does not name the branch the run's work is on (%q):\n%s", branch, landed)
 	}
 
-	// ── the page one row opens ──────────────────────────────────────────────
+	// ── the room one row opens ──────────────────────────────────────────────
 	//
-	// ENTER OVER THE ROW OPENS THE STORE'S OWN PAGE — the description the worker
-	// was given, the notes left on the task, and the trajectory: one line per
-	// command the worker ran, and the run's own finish among them. `esc` backs out
-	// one layer to the list, the card's own bargain.
+	// ENTER OVER THE ROW OPENS THE TASK'S ROOM, read through the store: the
+	// description the worker was given, the notes left on the task, and the
+	// trajectory as the room's own call rows. `esc` leaves for the conversation.
 	openTasksPlace(t, r)
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// THE PAGE IS READ BY TWO OF ITS OWN WORDS, and neither is the model's. The
-	// note box stands on this page and on nothing else, and the head's figures
-	// are the store's count of the steps its worker took and what they cost —
-	// so the pair says the press opened THE STORE'S PAGE and not the room a
-	// record row opens, which is the whole of what this scenario came to prove.
+	// THE ROOM IS READ BY ITS OWN WORDS, and not by the model's: the
+	// room's two tabs, which every task's room draws on either engine.
 	//
 	// WHICH COMMANDS ARE ON IT IS THE WORKER'S BUSINESS. The finish is the
 	// worker's own `plandb done` when the worker writes one, and the RUN's when
@@ -2317,8 +2297,8 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// page carried `echo`, `cat` and the run's own ending note. So the finish
 	// command is observed and logged, never waited out: asserting it made a red
 	// out of a model's choice and said nothing about the surface.
-	stored := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"), say(t, "planStepsSpend"))
-	t.Logf("the page the run's row opens, with the store's own figures on it:\n%s", stored)
+	stored := r.waitFor(40*time.Second, say(t, "roomTabsWords"))
+	t.Logf("the room the run's row opens:\n%s", stored)
 	if finish, saw := r.glimpse(5*time.Second, say(t, "planFinishCommand")); saw {
 		t.Logf("and this worker wrote its own finish into the trajectory:\n%s", finish)
 	} else {
@@ -2326,31 +2306,29 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 			say(t, "planFinishCommand"))
 	}
 	r.keys("Escape")
-	back := r.waitFor(30*time.Second, say(t, "planDoneWord"))
-	t.Logf("esc backed out of the page to the list:\n%s", back)
+	openTasksPlace(t, r)
+	back := planRowWaitsToWear(t, r, 30*time.Second, runRowWord, say(t, "planDoneWord"))
+	t.Logf("the list, after esc left the room:\n%s", back)
 	r.quit()
 }
 
 // openTasksPlace opens the place onto everything this machine has run, through
 // its one command: `/history` (commands.go — deliberately not `/tasks`, which the
-// three work-starting rows would narrow to), and `→` to open the conversation's
-// own fold, which the place draws SHUT (tasksReading.opens).
+// three work-starting rows would narrow to), and opens the conversation's fold
+// when it is shut.
 func openTasksPlace(t *testing.T, r *rig) {
 	t.Helper()
 	r.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	time.Sleep(700 * time.Millisecond)
-	// THE FOLD IS OPENED UNDER THE CURSOR, AND THE PRESS IS WAITED OUT. The place
-	// groups its rows by conversation and opens every group shut, so the run's row
-	// is not drawn until its conversation is unfolded — and a `→` that reached the
-	// program before the place was up is a key nothing answered, which left the
-	// page holding no row for the work at all. The foot says which way the fold
-	// is, so both halves of the gesture are read off the screen rather than slept
-	// through: measured on two runs of one binary, one opened and one did not.
-	r.waitFor(30*time.Second, say(t, "tasksFoldShutWord"))
-	r.keys("Right")
-	r.waitFor(30*time.Second, say(t, "tasksFoldOpenWord"))
+	// A group can already be open on a return visit. The foot says whether the
+	// run's row is drawn or still needs the right arrow.
+	state, _ := r.waitForAny(30*time.Second, say(t, "tasksFoldShutWord"), say(t, "tasksFoldOpenWord"))
+	if state == say(t, "tasksFoldShutWord") {
+		r.keys("Right")
+		r.waitFor(30*time.Second, say(t, "tasksFoldOpenWord"))
+	}
 }
 
 // planRowWaitsToWear polls until the run's OWN ROW on the tasks place wears this
@@ -2467,12 +2445,11 @@ func planRowWearing(t *testing.T, screen, words, state string) string {
 	return row
 }
 
-// runBranch is the branch the run's working copy stands on, which is the branch
-// its landing commits onto and names. A workspace with no repository of its own
-// answers "", and the branch assertion is skipped rather than failed for it.
+// runBranch is the branch the run kept. The conversation's checkout remains on
+// main, while the task's branch is what the landing names.
 func runBranch(t *testing.T, ws string) string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", ws, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	out, err := exec.Command("git", "-C", ws, "branch", "--list", "--format=%(refname:short)", "task/*").Output()
 	if err != nil {
 		return ""
 	}

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"log"
 	"os"
@@ -28,12 +29,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -41,7 +44,20 @@ import (
 
 func main() {
 	home.Adopt(log.Printf)
+	registerRunningCLI()
 	os.Exit(execute())
+}
+
+// registerRunningCLI tells the worker harness which binary a worker's `codeaf`
+// reaches: THIS one, under whatever file name it was installed. A worker's shell
+// is taught `codeaf patch`, and without this the word resolved on the machine's
+// PATH — nothing on a devaf install, an older codeaf on the fresh-install check
+// of 2026-09-25 (internal/session's [session.SetRunningCLI] says why it is
+// registered here rather than probed there).
+func registerRunningCLI() {
+	if self, err := os.Executable(); err == nil {
+		session.SetRunningCLI(self)
+	}
 }
 
 // surfaceMaxProcs is the GOMAXPROCS a surface runs under on a machine bigger
@@ -393,6 +409,12 @@ func run() error {
 	case "-h", "--help", "help":
 		return usage(os.Args[2:])
 	default:
+		// A PROGRAM THIS BUILD CARRIES IS A VERB OF ITS OWN: `codeaf senior-dev
+		// <brief>` (carried.go). It is asked last, after every verb above, so
+		// no program's name can shadow one of codeaf's own words.
+		if program, ok := builtin.Find(os.Args[1]); ok {
+			return runCarried(program, os.Args[2:])
+		}
 		return unknownCommand(os.Args[1])
 	}
 }
@@ -452,11 +474,9 @@ const (
 // per-command pages — which is where somebody writing a script actually looks,
 // and where taking it out of the group's lines had silently removed it. One
 // source of truth, two places it is read.
-var handWorkFooter = `  the three differ by how much thinking happens first: do plans and may split
-  the job, exec does not plan, run follows a plan somebody saved. None takes
-  --yolo, and What do and run can still refuse is a plan whose price crosses
-  your limit — --yes-spend answers that in advance. All three end the same
-  way, and why is in --json's stop field:
+var handWorkFooter = `  do plans and may split the job, exec skips planning, run follows a saved plan.
+  None takes --yolo. do and run may refuse a plan over your spending limit;
+  --yes-spend answers in advance. The reason is in --json's stop field:
   ` + foldedExitLadder(2, helpWidth) + `
   CODEAF_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
 
@@ -468,14 +488,17 @@ Talk to it — a surface you sit in front of
   codeaf chat [--model slug] [--reasoning level] [--session path] [--yolo]
               [--host host[:path]] [--at name[:path]] [--once "text"]
               [--no-compact] [--one-model] [--no-host] [--debug]
-      --no-host runs the conversation in this process rather than on this
-      workspace's session host; --debug keeps the whole record of the run
+              [--max-cost dollars] [--max-hours hours]
+      --no-host stays in this process; --debug keeps the full run record
+      --max-cost and --max-hours bound unattended work and require --yolo
   codeaf resume
       pick an earlier conversation by name and open it — /resume inside the chat
 
 Hand it work — nobody is watching, the answer is on stdout
   codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
               [--json] [--yes-spend] [--model slug] [--plan-model slug]
+              [--check-model slug] [--slots N] [--best|--cheap]
+              [--pin seat=model[@provider]]
               [--context-fill 60] [--completion-reserve 65536] [--debug]
       do one task and exit — the same living agent the chat runs, unwatched
   codeaf exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
@@ -485,8 +508,7 @@ Hand it work — nobody is watching, the answer is on stdout
       run one worker for one pass, with no planning at all
   codeaf run  <program> --input <file.json|-> [--dir dir] [--model slug]
               [--journal path] [--json]
-      run one saved program: typed input in, its typed output on stdout. A
-      question it was not told how to answer stops it rather than being guessed
+      run a saved program: typed input and output; unanswered questions stop it
 ` + handWorkFooter + `
 
 Look at what happened — read-only, no key, nothing spent
@@ -514,11 +536,11 @@ Look at what happened — read-only, no key, nothing spent
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
   codeaf connect
-      list the model services this profile knows and which are connected
-  codeaf connect <service> [--no-browser] [--region intl|cn]
+      list the providers this profile knows and which are connected
+  codeaf connect <provider> [--no-browser] [--region intl|cn]
       connect one: openrouter and codex sign in in your browser; the others
       take a key on stdin, or ask for one without echo
-  codeaf disconnect <service>
+  codeaf disconnect <provider>
       forget a service and the key or sign-in behind it
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
       check or install a release; this build's own channel is the default
@@ -705,7 +727,10 @@ func usage(args []string) error {
 		fmt.Fprintln(usageOut, environmentText)
 		return nil
 	}
-	fmt.Fprintln(usageOut, usageText)
+	// The table with the programs this build carries in it (carried.go): a
+	// verb nobody can find on the page that lists the verbs is a verb nobody
+	// types.
+	fmt.Fprintln(usageOut, frontPage())
 	return nil
 }
 
@@ -800,7 +825,7 @@ func runPlanNew(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, goal)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
@@ -980,7 +1005,7 @@ func runRevise(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, graph.Goal+"\n\n"+event)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
@@ -1074,11 +1099,15 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 // lines, the environment included — for the sake of one missing quoted string,
 // and the one line that mattered scrolled off the top of the terminal.
 func readText(name string, args []string) (string, error) {
-	if len(args) == 1 && args[0] == "-" {
-		return readPipedText(name)
-	}
 	if len(args) > 0 {
-		return strings.TrimSpace(strings.Join(args, " ")), nil
+		text := strings.TrimSpace(strings.Join(args, " "))
+		if text == "" {
+			return "", noGoalGiven(name)
+		}
+		if len(args) == 1 && args[0] == "-" {
+			return readPipedText(name)
+		}
+		return text, nil
 	}
 	if stdinIsTerminal(os.Stdin) {
 		return "", noGoalGiven(name)
@@ -1212,22 +1241,21 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 	}
 }
 
-// THE TWO MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
+// THE THREE MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
 //
-// The wording they replaced was `(default CODEAF_MODEL)`, which named one rung
-// of four and hid the two that decide most runs: a profile's crew, and this
-// build's own default when nobody has said anything at all. A help string that
-// names the whole ladder is the shortest place a person can learn that their
-// crew reaches this command (config.ResolveSeats).
+// Each is a ONE-TASK PIN: the flag, then its variable, then the crew — a pin
+// the profile holds (/crew pin) or the router's pick for this task
+// (config.ResolveSeats). The check seat never falls to the plan seat, and no
+// seat falls to a model this build chose for everybody.
 const (
-	workLadderHelp    = "flag › CODEAF_MODEL › crew › default"
-	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew mastermind › the work model"
-	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › plan pinned by flag or environment › crew careful"
-	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
-	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
-	// The check seat's ladder names its environment rung and the resolved
-	// plan seat fallback before the crew's careful row.
-	checkModelFlagHelp = "model that checks finished work (" + checkLadderHelp + ")"
+	workLadderHelp    = "flag › CODEAF_MODEL › crew pin › crew routed per task"
+	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew pin › crew routed per task"
+	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › crew pin › crew routed per task"
+	modelFlagHelp     = "work model for this run, a one-task pin (" + workLadderHelp + ")"
+	planModelFlagHelp = "model that plans, a one-task pin (" + planLadderHelp + ")"
+	// The check seat's ladder is its own: a pinned planner says something about
+	// planning and nothing about who grades the work.
+	checkModelFlagHelp = "model that checks finished work, a one-task pin (" + checkLadderHelp + ")"
 )
 
 // yesSpendFlagHelp is what `--yes-spend` MEANS, said once, on both doors that
@@ -1294,6 +1322,32 @@ func debugRecordRoot() string {
 // environment reading underneath. One assignment per seat, so the models a
 // door's receipt names and the clients it then builds cannot be different
 // models.
+// doorSeats is the crew every headless door that is not `codeaf do` runs on:
+// the flags as one-task pins, and every seat nothing named routed for the task
+// text the door has (empty reads as open-ended work, the router's safe
+// default). A profile written before crews were routed is migrated first, with
+// its one line.
+//
+// AT THE DAILY CAP THESE DOORS WARN AND GO ON. `codeaf do` refuses there
+// unless told -yes-spend, because it is the door campaigns run through; these
+// are a person at a terminal running one plan step or one program, and the
+// line on stderr is said before anything is spent. A seat nothing allowed can
+// sit is said too, and the seat is left for the door's own model to fill.
+func doorSeats(settings config.Config, model, planModel, task string) config.Seats {
+	if line, _ := config.MigrateCrew(settings.ProfileDir); line != "" {
+		fmt.Fprintln(os.Stderr, line)
+	}
+	seats, err := config.ResolveSeats(settings.ProfileDir, config.SeatFlags{Model: model, PlanModel: planModel},
+		config.CrewAsk{Task: crewroute.Task{Text: task}})
+	switch {
+	case errors.Is(err, config.ErrCrewAtCap):
+		fmt.Fprintln(os.Stderr, "note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped")
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "note: "+err.Error())
+	}
+	return seats
+}
+
 func applySeats(settings *config.Config, seats config.Seats) {
 	settings.Model = seats.Work.Model
 	settings.PlanModel = seats.Plan.Model

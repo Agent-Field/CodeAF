@@ -20,7 +20,7 @@ import (
 //	↑↓ enter esc tab      move, open, back out, next place      never text
 //	any printable         goes to the composer, always          never a verb
 //	alt+enter             send what you typed off as a task     one chord
-//	alt+1…7               jump straight to a place              drawn on the map
+//	alt+1…8               jump straight to a place              drawn on the map
 //	alt+<letter>          change how THIS place is shown        drawn on the map
 //	shift+←→↑↓            move this place's time window         no letters spent
 //	→ then a letter       act on the row — letters are verbs only here
@@ -71,7 +71,15 @@ import (
 // was five copies of the same two lines — a place added later that forgot them
 // would be a room `tab` could not leave.
 func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
-	a.keyboardPlaceSelection()
+	// A SEARCH CARD'S KEYS ACT ON THE ROW IT SHOWS. The usual keyboard handoff
+	// clears hover before the place handles a key; doing that for a card verb
+	// would make the key act on the cursor's different row. Keep the pointer
+	// through this one dispatch, then retire it so the next key owns the cursor.
+	if a.at(pageHome) && a.home.searching() && a.home.hover >= 0 && homeSearchCardKey(msg.String()) {
+		defer a.keyboardPlaceSelection()
+	} else {
+		a.keyboardPlaceSelection()
+	}
 	pl := a.showing()
 	if pl == nil {
 		return nil
@@ -108,6 +116,15 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 	return pl.key(a, msg)
+}
+
+// homeSearchCardKey names keys whose subject is the visible search card.
+func homeSearchCardKey(key string) bool {
+	switch key {
+	case "right", "ctrl+t", "ctrl+o", "ctrl+y", "ctrl+e", "ctrl+x", effortKey:
+		return true
+	}
+	return false
 }
 
 // placeKey is the router's claim on one keypress. It reports whether it took it;
@@ -185,6 +202,15 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "tab":
+		if a.at(pageHome) && a.home.cmd.open {
+			// The visible command list owns completion before page navigation.
+			// An unmatched token stays editable instead of leaving Home.
+			if line, ok := a.home.focusedLine(); ok && line.kind == homeCommand {
+				a.touch()
+				return a.homeRunCommand(line), true
+			}
+			return nil, true
+		}
 		// THE NEXT PLACE A PERSON CAN ACTUALLY GET INTO. A place that refuses to
 		// open is walked past rather than walked into ([app.walkPage] tells the
 		// whole story of what pressing `tab` on a fresh machine used to do).
@@ -345,7 +371,8 @@ func placeDigitAt(prefix, key string) (page, bool) {
 		return 0, false
 	}
 	at := int(key[len(prefix)] - '1')
-	all := pages()
+	// The digits are the BAR's order, the chats included (place_chats.go).
+	all := placeOrder
 	if at < 0 || at >= len(all) {
 		return 0, false
 	}
@@ -446,7 +473,7 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		if a.placeSpaceArmed {
 			a.placeSpaceArmed = false
-			return a.openHome(), true
+			return a.homeByTwoSpaces(), true
 		}
 		a.placeSpaceArmed = true
 		return nil, true
@@ -455,7 +482,17 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	box.reset()
-	return a.openHome(), true
+	return a.homeByTwoSpaces(), true
+}
+
+// homeByTwoSpaces opens home and THEN says the gesture happened, from a
+// conversation's box or a place's. Said first, the event decided home's row
+// while the conversation was in front, where home's own tips read as unarmed,
+// so the first of them came back fresh and jumped the ring on every trip.
+func (a *app) homeByTwoSpaces() tea.Cmd {
+	cmd := a.openHome()
+	a.noticeEvent(eventHomeGesture)
+	return cmd
 }
 
 // placeSend is `alt+enter` over a composer with something in it: THE COMPOSER

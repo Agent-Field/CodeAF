@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"os"
 	"path/filepath"
@@ -346,6 +347,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	chosen, cfg := launch.Model, launch.Config
 
 	if text := strings.TrimSpace(*once); text != "" {
+		// A --once chat draws no surface, so an owed usage notice is printed
+		// here, ahead of the answer it would otherwise never be seen beside.
+		payTelemetryNoticeOnStderr()
 		// Nobody is watching a --once run, so nobody can answer a question. The
 		// policy's "prompt" therefore refuses the call with a result the model
 		// can act on (internal/session's consent.go), and a person who wants
@@ -488,13 +492,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Agent:             agent,
 		Build:             buildinfo.String(),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
-		// The memory place and the search place read the SAME database the
-		// conversation remembers into, through two seams that fail apart: memory
-		// turned off in the settings opens no store at all and both are then
-		// absent, which is what keeps "memory off makes no calls" a property of
-		// the wiring rather than a branch in every caller (v3Memory).
+		// The memory place reads the conversation's store; memory off supplies no seam.
 		Memory:       v3MemorySeam(cfg.Memory),
-		Search:       v3SearchSeam(cfg.Memory),
 		SearchStatus: v3SearchStatus(cfg.SearchProvider, settings.ProfileDir),
 		// The machine-wide spending ledger the spend place adds up. It is the
 		// same file every window on this machine appends a model call to, named
@@ -511,9 +510,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// use, and one that has not resolved answers nil instead of waiting.
 		// It reads the shelf, which ctrl+r in /model refills with today's list.
 		Models:                  func() []tui3.Model { return v3Models(proc.Shelf) },
-		RefreshModels:           proc.Shelf.refresh,
+		RefreshModels:           proc.refreshDefaultModels,
 		ModelsForService:        proc.Shelf.modelsForService,
 		RefreshModelsForService: proc.Shelf.refreshService,
+		RefreshAllModels:        proc.refreshAllModels,
+		WarmEmptyProviders:      proc.warmEmptyProviders,
+		SubscribeServiceModels:  proc.registerServiceNotice,
+		ProviderFetchError:      proc.Shelf.fetchErrorFor,
 		Sources:                 settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
@@ -936,17 +939,23 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// door: a mode that forbids reading builds no hook, and a nil hook is the
 	// engine's own nothing. The ask is built once and a client is made from it
 	// per call, each billed to the judge's own seat.
-	taskLanded := poolJudgeHook(settings, settings.ProfileDir, workspace,
-		config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now, "task")
-	// The runs a live process would have judged but a process death left unjudged,
-	// and the headless doors that never had this hook: at start, on a goroutine
-	// nobody waits on, judge the resumed session's own final-state nodes and the
-	// pending file's rows, each exactly once, bounded so it never holds the prompt. The
-	// process tracker cancels and joins it at close.
-	poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
-		poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
-			config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
-	})
+	var taskLanded func(session.TaskLanding)
+	// AN INDEPENDENT JUDGE CANNOT SHARE THE CREW MODEL. A one-model
+	// launch therefore leaves this optional scoring to an ordinary launch;
+	// it must neither judge new landings nor sweep earlier pending work.
+	if !opts.OneModel {
+		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
+			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+		// The runs a live process would have judged but a process death left unjudged,
+		// and the headless doors that never had this hook: at start, on a goroutine
+		// nobody waits on, judge the resumed session's own final-state nodes and the
+		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
+		// process tracker cancels and joins it at close.
+		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
+			poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
+				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
+		})
+	}
 
 	cfg := session.Config{
 		Workspace:      workspace,
@@ -1022,7 +1031,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// --reasoning went to every model blind — and on a router, a knob no
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
-		SupportsParameter: activeModels.SupportsParameter,
+		//
+		// AND IT IS ASKED ABOUT THE ID THE SERVICE IS SENT. A model behind a
+		// connected service is named here with the service's written prefix
+		// (`stub/z-ai/glm-5.3-flash`), and the adapter asks the same catalog
+		// about the id it puts on the wire (`z-ai/glm-5.3-flash`): answered only
+		// about the prefixed name, the session kept the working page for a
+		// model the adapter was already sending no tools (chatpage.go).
+		SupportsParameter: v3SupportsParameter(proc.Shelf, activeModels),
 		ReasoningProfile:  config.ReasoningProfileSeam(activeModels),
 		// And the model's own published price, which is what bounds the latency
 		// ask: this session wants the fastest endpoint, not the dearest one
@@ -1070,6 +1086,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		SubharnessMemory:    subharnesses.Memory,
 		SubharnessLastRun:   subharnesses.LastRun,
 		SubharnessRecordRun: subharnesses.Record,
+		// AND THE PROGRAMS THIS BUILD CARRIES that a task can be handed to
+		// whole (chatv3_delegate.go). Empty is none, on the terms above.
+		Delegates: v3Delegates(),
 		// The hand that paints, and the model it asks (internal/session's
 		// tools_image.go). The pair is CONDITIONAL on the other side — a nil
 		// client leaves generate_image off the belt entirely — so this is
@@ -1627,6 +1646,16 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	cfg.ApprovalPolicy = policy
 	cfg.RolesSource = source
 	cfg.OneModel = oneModel
+	// EVERY TASK THIS CONVERSATION STARTS IS ROUTED ITS OWN CREW — worker,
+	// planner, checker picked for that task from the profile's allowed models
+	// and pins (internal/config's RouteCrew, internal/session's taskcrew.go).
+	// Under `--one-model` there is no crew: every call rides the conversation's
+	// model, which is what the flag says, so no router is handed over.
+	if !oneModel {
+		cfg.RouteCrew = func(ask config.CrewAsk) (crewroute.Decision, error) {
+			return config.RouteCrew(profileDir, ask)
+		}
+	}
 	cfg.SpendRailUSD = rail
 	// The fallback chain reads PROFILE-ONLY, like the search keys below and
 	// unlike the three rows above it. A repository that could answer this could
@@ -1979,24 +2008,39 @@ func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) 
 //   - Pure reads of this machine — read, grep, find, ls. Nothing here changes a
 //     file, so the blanket mode's prompt is free to land where it matters, on
 //     bash, edit and write.
+//
 //   - jobs, whose list and output are reads of processes the person already
 //     started. Its kill is not on the floor: it inherits the blanket mode,
 //     which asks.
+//
 //   - The agent's own bookkeeping — remember, track and recall. These write to
 //     and read from the memories and working state it keeps for itself
 //     (internal/session's memory.go and state.go); no hand outside this process
 //     reads them, and asking somebody to approve the agent writing itself a
 //     reminder is asking about the wrong thing.
+//
 //   - manual, which reads pages compiled into this binary and touches no disk
 //     at all (internal/session's tools_manual.go). A person who asks "what can
 //     you do" and is answered with a permission prompt has been asked to
 //     approve the program looking up its own documentation.
+//
 //   - settings, which reads the person's own settings rows back through the
 //     registry (internal/session's tools_settings.go). It is manual's shape one
 //     file over — the answer to "what is my daily budget" is a lookup, and the
 //     credential rows read MASKED through the registry itself
 //     ([config.Setting.Secret]), so there is nothing here a prompt would be
 //     protecting.
+//
+//   - The team verbs that stay inside a team the person made
+//     (internal/session's tools_team.go): a manager reading its members'
+//     states and pages, sending them a line, ending a member's turn the way
+//     the person's own Stop does, and a member posting to its room. Every one
+//     of them is a line in the team's own traffic log, which the person watches
+//     on the manager's rail, and none of them reaches a permission prompt.
+//
+// team_start is DELIBERATELY NOT HERE. It opens a new conversation that spends
+// money for as long as it runs, so the blanket mode asks, the way it asks about
+// propose_task.
 //
 // commit is DELIBERATELY NOT HERE, and it is the interesting half of the split.
 // It is the fifth hand on the same working state, but it is the only one that
@@ -2020,6 +2064,15 @@ func v3BuiltinApprovals() map[string]any {
 		"jobs":     "allow",
 		"remember": "allow", "track": "allow", "recall": "allow",
 		"manual": "allow", "settings": "allow",
+		"team_status": "allow", "team_read": "allow", "team_send": "allow",
+		"team_stop": "allow", "team_post": "allow",
+		// A manager deciding or sending up a packet waiting on it, and bringing
+		// the person its closing report: each is a line in the team's own
+		// record, and none spends or starts anything.
+		"team_decide": "allow", "team_escalate": "allow", "team_close_report": "allow",
+		// A conflict raised to the manager above the parties: a packet and a
+		// line of Traffic, and nothing spent or started.
+		"team_raise": "allow",
 	}
 }
 
@@ -2111,25 +2164,13 @@ func v3MemorySeam(brain *store.Store) tui3.MemoryStore {
 	return v3Brain{brain: brain}
 }
 
-// v3SearchSeam is the same store as the search place asks for it: one full-text
-// query across every thread. It is a SECOND seam beside the memory one because
-// the two capabilities fail apart — a build with memory off has neither today,
-// and the day one of them moves to a different store the other does not have to
-// move with it.
-func v3SearchSeam(brain *store.Store) tui3.SearchStore {
-	if brain == nil {
-		return nil
-	}
-	return brain
-}
-
 // v3RolesSource is the closure internal/roles reads its ladder through: the four
 // tier models under [roles.TierKey], the per-role pins under [roles.PinKey].
 //
 // IT IS LIVE. It used to be resolved once, at boot, on the argument that two
 // calls in one conversation must not answer to different settings — and the
 // crew is what makes that argument the wrong way round. A person who types
-// `/crew max` because the planner is not thinking hard enough has said something
+// `/crew pin planner …` because the planner is not thinking hard enough has said something
 // about the run they are about to start, not about the next launch, and a source
 // that made them restart to be heard would be a knob that does nothing on the
 // surface that offers it.
@@ -2260,6 +2301,12 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 	// the cheapest question in it. The mastermind tier: it plans adaptive runs
 	// and designs saved harnesses, and a repository that could point it at a
 	// model would be spending a visitor's credit on the run it asked for.
+	// A CHECKER NO PROJECT NAMED IS THE CREW'S: its pin, or the router's
+	// standing pick ([config.TierModelAt]) — never an empty row that would
+	// fall to the conversation's model.
+	if strings.TrimSpace(high) == "" {
+		high = config.TierModelAt(c.profileDir, config.ModelTierHigh)
+	}
 	values := map[string]string{
 		roles.TierKey(roles.TierReflex):     config.TierModelAt(c.profileDir, config.ModelTierReflex),
 		roles.TierKey(roles.TierMastermind): config.TierModelAt(c.profileDir, config.ModelTierMastermind),
@@ -2452,6 +2499,25 @@ func v3AnswersText(outputs []string) bool {
 // The file is read at most once per session: it is the same rows for the whole
 // warming window, and re-reading it per message would put I/O on the message
 // path to learn nothing new.
+// v3SupportsParameter is the catalog's answer about a model, asked first as
+// named and then as the id its service is sent — the same id the adapter asks
+// about, so the session's page and the adapter's body cannot disagree about
+// what the model accepts.
+func v3SupportsParameter(shelf *v3ModelShelf, models *catalog.Catalog) func(string, string) (bool, bool) {
+	return func(model, parameter string) (bool, bool) {
+		if models == nil {
+			return false, false
+		}
+		if supported, known := models.SupportsParameter(model, parameter); known {
+			return supported, known
+		}
+		if bare := shelf.wireModel(model); bare != "" && !strings.EqualFold(bare, model) {
+			return models.SupportsParameter(bare, parameter)
+		}
+		return false, false
+	}
+}
+
 func v3SeesImages(models v3Catalog) func(string) bool {
 	var once sync.Once
 	var cached []tui3.Model

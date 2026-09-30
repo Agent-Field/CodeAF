@@ -118,6 +118,24 @@ The gutter says what family a step is and NEVER how it went: `test` draws a
 flask and never a checkmark, because the family is the act of checking and not
 its verdict.
 
+### Attachment action
+
+| Meaning | Slot | Plain | Nerd font | ASCII |
+| --- | --- | --- | --- | --- |
+| remove an unsent attachment | `GRemove` | `×` | nf-fa-times_circle | `x` |
+
+The dim action mark is distinct from the failed-work mark. It is drawn only where
+a click can remove the attachment, and is resolved explicitly through the vocabulary.
+
+### Conversation compaction
+
+| Meaning | Slot | Plain | Nerd font | ASCII |
+| --- | --- | --- | --- | --- |
+| working context shortened | `GCompacted` | `⚭` | nf-fa-compress | `#` |
+
+The Font Awesome 4 `fa-compress` mark is U+F066. Both the automatic pass line and
+the `/compact` reply resolve this slot through the chat surface's glyph door.
+
 ### File kinds (chips, and the gutter beside a call that made or opened one)
 
 | Kind | Slot | Plain | Nerd font | ASCII |

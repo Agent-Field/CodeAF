@@ -10,6 +10,7 @@ package remote
 // machinery.
 
 import (
+	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -143,6 +144,7 @@ func TestAWindowWithoutTheKeyboardIsRefusedInWordsAndNotInSilence(t *testing.T) 
 		payload any
 	}{
 		{MethodSubmit, SubmitArgs{Text: "go"}},
+		{MethodSubmitBash, SubmitArgs{Text: "!pwd"}},
 		{MethodFollowUp, SubmitArgs{Text: "and also"}},
 		{MethodSteer, SubmitArgs{Text: "use the other file"}},
 		{MethodSubmitImage, SubmitImageArgs{Text: "look"}},
@@ -419,6 +421,7 @@ func TestAWatchingSurfaceIsRefusedEveryDoorThatChangesAnything(t *testing.T) {
 	}{
 		{MethodSetModel, "someone/else"},
 		{MethodSubmit, "go"},
+		{MethodSubmitBash, SubmitArgs{Text: "!pwd"}},
 		{MethodInterrupt, nil},
 		{MethodSessionNew, nil},
 		{MethodTaskStop, TaskStopArgs{ID: "7"}},
@@ -443,6 +446,55 @@ func TestAWatchingSurfaceIsRefusedEveryDoorThatChangesAnything(t *testing.T) {
 	// The window that owns the work still drives and is untouched.
 	if told := driverOf(desk); !told.Yours {
 		t.Fatalf("the reader took the keyboard: %+v", told)
+	}
+}
+
+// A READING SURFACE MAY READ ONE TASK'S STORED PAGE AND NONE OF ITS VERBS. A
+// program's task writes no worker journal, so the page another window opens
+// onto it reads the task's page in the owner's store instead
+// (internal/tui3's taskowner.go). The page's verbs — a note, a pause, a stop —
+// act on the owner's work and stay refused. And the read is bound to the
+// conversation the reader joined, as the journal is: once the owner opens
+// something else, it is told rather than handed the replacement's task.
+func TestAReadingSurfaceReadsAProgramsPageAndNoneOfItsVerbs(t *testing.T) {
+	first := &fakeAgent{model: "a/b", title: "the one being read"}
+	second := &fakeAgent{model: "a/b", title: "something else"}
+	engine := engineOn(first)
+	engine.Fresh = func() (WrappedAgent, string, error) { return second, "/sessions/two.jsonl", nil }
+	sess := NewSession(engine, true)
+
+	owner := dialSession(t, sess)
+	owner.hello(Hello{Version: Version, Surface: "macbook"})
+	reader := dialSession(t, sess)
+	reader.hello(Hello{
+		Version: Version, Surface: "reader",
+		Session: engine.SessionFile, Join: true, Watch: true,
+	})
+
+	if frame := reader.call(1, MethodPlanTaskPage, PlanTaskPageArgs{ID: "7"}); frame.Error != "" {
+		t.Fatalf("the reader was refused a program's page: %v", frame.Error)
+	}
+	for id, call := range []struct {
+		method  string
+		payload any
+	}{
+		{MethodPlanNote, PlanTextArgs{ID: "7", Text: "go faster"}},
+		{MethodPlanPause, PlanTaskArgs{ID: "7"}},
+		{MethodPlanCancel, PlanTaskArgs{ID: "7"}},
+	} {
+		frame := reader.call(uint64(id+10), call.method, call.payload)
+		if !strings.Contains(frame.Error, watchingWord) {
+			t.Fatalf("%s on a reading surface answered %q, want the reader's own refusal", call.method, frame.Error)
+		}
+	}
+	if len(first.planSteers) != 0 {
+		t.Fatalf("a reading surface acted on the owner's work: %v", first.planSteers)
+	}
+
+	owner.ok(20, MethodSessionNew, nil)
+	frame := reader.call(21, MethodPlanTaskPage, PlanTaskPageArgs{ID: "7"})
+	if !strings.Contains(frame.Error, "not open here any more") {
+		t.Fatalf("after the owner opened something else the reader's page read answered %q, want the sentence its page acts on", frame.Error)
 	}
 }
 
@@ -508,20 +560,11 @@ func TestTheSurfaceLearnsItHasBecomeAWatcherWithNobodyTouchingIt(t *testing.T) {
 // loopSession is [Loopback] onto a conversation that already exists — the same
 // difference [dialSession] is to [dial], and for the same reason.
 func loopSession(sess *Session, hello Hello) (*Loop, error) {
-	surface, engine := Pipe()
-	served := make(chan error, 1)
-	go func() {
-		served <- ServeAttach(engine, engine, AttachOptions{
+	return loopOver(hello, func(engine io.ReadWriteCloser) error {
+		return ServeAttach(engine, engine, AttachOptions{
 			Open: func(Hello) (*Session, error) { return sess, nil },
 		})
-		_ = engine.Close()
-	}()
-	client, err := Dial(surface, "loopback", hello)
-	if err != nil {
-		_ = surface.Close()
-		return nil, err
-	}
-	return &Loop{Client: client, Served: served, surface: surface}, nil
+	})
 }
 
 // ── the name on the wire ────────────────────────────────────────────────────

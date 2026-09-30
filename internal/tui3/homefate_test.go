@@ -69,8 +69,9 @@ func TestTheFateReadsTheArgumentWhereItChangesTheAnswer(t *testing.T) {
 	}{
 		{"standing", "", fatePlace},
 		{"standing", "keep the tests green", fateNeedsChat},
-		{"crew", "", fateNeedsChat},
-		{"crew", "frugal", fateAnswers},
+		{"crew", "", fateCrew},
+		{"crew", "cap 5", fateCrew},
+		{"redo", "stronger", fateNeedsChat},
 		{"task", "", fatePlace},
 		{"task", "port the parser", fateNeedsChat},
 		{"memory", "", fatePlace},
@@ -326,8 +327,8 @@ func TestAttachAtHomeLandsOnHomesTrayAndSaysSo(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatal("/attach <path> at home opened a conversation")
 	}
-	if len(a.chips) != 1 || a.chips[0].name() != "notes.md" {
-		t.Fatalf("the file did not reach home's tray: %+v", a.chips)
+	if len(a.home.chips) != 1 || a.home.chips[0].name() != "notes.md" {
+		t.Fatalf("the file did not reach home's tray: %+v", a.home.chips)
 	}
 	if want := folderAttachedWord + "notes.md" + homeRidesWord; a.home.msg != want {
 		t.Fatalf("home said %q, want %q", a.home.msg, want)
@@ -342,8 +343,8 @@ func TestAttachAtHomeLandsOnHomesTrayAndSaysSo(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatal("/attach <picture> at home opened a conversation")
 	}
-	if len(a.chips) != 2 || a.chips[1].name() != "shot.png" {
-		t.Fatalf("the picture did not reach home's tray: %+v", a.chips)
+	if len(a.home.chips) != 2 || a.home.chips[1].name() != "shot.png" {
+		t.Fatalf("the picture did not reach home's tray: %+v", a.home.chips)
 	}
 	if want := folderAttachedWord + "shot.png" + homeRidesWord; a.home.msg != want {
 		t.Fatalf("home said %q, want %q", a.home.msg, want)
@@ -380,8 +381,8 @@ func TestAttachAFolderAtHomePinsTheTarget(t *testing.T) {
 	if a.target.where != inner {
 		t.Fatalf("a folder after /attach pinned %q, want %q", a.target.where, inner)
 	}
-	if len(a.chips) != 0 {
-		t.Fatalf("a folder reached the tray: %+v", a.chips)
+	if len(a.home.chips) != 0 {
+		t.Fatalf("a folder reached the tray: %+v", a.home.chips)
 	}
 	if a.home.msg != "" {
 		t.Fatalf("the project selection added a footer message: %q", a.home.msg)
@@ -398,6 +399,8 @@ func TestNewAtHomeSaysItWasTheConversationBehindHome(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
+	a.input.setText("old unsent prompt")
+	a.chips = []chip{{path: "old.png"}}
 	runCmd(a.openHome())
 
 	next := &fakeAgent{model: "m"}
@@ -407,6 +410,9 @@ func TestNewAtHomeSaysItWasTheConversationBehindHome(t *testing.T) {
 	typeHome(a, "/new")
 	runCmd(a.key(key("enter")))
 
+	if a.input.String() != "" || len(a.chips) != 0 {
+		t.Fatal("/new on Home carried the old conversation draft")
+	}
 	if !a.at(pageHome) {
 		t.Fatal("/new at home left the screen")
 	}

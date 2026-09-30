@@ -219,6 +219,12 @@ func TestTheHarnessRunIsANote(t *testing.T) {
 	typeLine(t, a, "research the pricing tiers")
 
 	got := plain(frame(a))
+	if strings.Contains(got, "harness · research") || !strings.Contains(got, "the report") {
+		t.Fatalf("harness bookkeeping should fold while the report stays: %s", got)
+	}
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
+	got = plain(frame(a))
 	if !strings.Contains(got, "harness · research") {
 		t.Fatalf("the run was never drawn:\n%s", got)
 	}

@@ -82,6 +82,9 @@ func TestMediaOriginalClickMatchesItsPaintedAction(t *testing.T) {
 				e = entry{kind: entryTool, tool: "view_image", status: toolOK, detail: toolDetail{Args: `{"path":` + strconvQuote(path) + `}`, Output: "looked at it"}}
 			}
 			a.entries = []entry{e}
+			if tool {
+				revealTestWork(a)
+			}
 			opened := watchOpener(t)
 			found := false
 			for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
@@ -183,6 +186,7 @@ func TestClickingPreviewPixelsOpensFullQuality(t *testing.T) {
 			a.entries = []entry{{kind: entryUser, text: "look", pictures: []string{path}, picturesHere: true, pictureExpanded: 1}}
 			if tool {
 				a.entries = []entry{{kind: entryTool, tool: "view_image", status: toolOK, detail: toolDetail{Args: `{"path":` + strconvQuote(path) + `}`, Output: "seen"}}}
+				revealTestWork(a)
 				a.openTool(0)
 			}
 			// THE FIXTURE PUTS AN ALREADY-EXPANDED PICTURE ON SCREEN, which in the

@@ -599,7 +599,7 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 		// a person then had to work out for themselves that the thing they asked
 		// for was not there. A door onto a thing this build cannot find is worse
 		// than no door at all, and the place's own message line is where a
-		// refusal goes (place_search.go's [app.openConversationRow] says it the
+		// refusal goes (conversationrow.go's [app.openConversationRow] says it the
 		// same way).
 		a.pageMsg = spendGoneTaskWord
 		return nil, true
@@ -613,7 +613,7 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 		// page, with the conversation they named nowhere on it.
 		//
 		// [app.openConversationRow] is the door every place that is not home
-		// already uses (place_search.go), with all of its refusals: a transcript
+		// already uses (conversationrow.go), with all of its refusals: a transcript
 		// this terminal is already holding is brought forward rather than
 		// reopened, a folder that has since gone says so, and the conversation
 		// this window was in is detached rather than closed.
@@ -926,6 +926,8 @@ const (
 // hold them ([app.spendWindowKey] asks [placeWindowFits] the same question), and
 // a foot promising them under a head that is not drawing them would be this
 // surface advertising a key that does nothing.
+func (placeSpend) about() string { return "what the work has cost" }
+
 func (placeSpend) hint(a *app) string {
 	var parts []string
 	stop := a.spendStopAt(a.spend.cursor)

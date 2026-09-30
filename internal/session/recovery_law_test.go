@@ -58,6 +58,8 @@ var boundsACount = map[string]string{
 	"SilentCutAttempts":       "internal/taxonomy's, named here only where a test states the same figure",
 	"DegenerateCutAttempts":   "internal/taxonomy's, as above",
 	"BlindCutAttempts":        "internal/taxonomy's, as above",
+	"programAutoRetries":      "hand-offs of one piece of work to a program that codeaf starts on its own, each a new billed run on a sharper brief — the owner's cap on spending without them, not a patience for one call",
+	"contextRecoveryAttempts": "compaction rounds after a context refusal, each sending a SMALLER conversation and only when something shrank or was learned — never the refused request again",
 }
 
 // TestNoAttemptCountingLoopInTheSession refuses a loop that counts its own

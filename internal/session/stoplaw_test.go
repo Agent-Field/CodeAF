@@ -31,8 +31,10 @@ import (
 // here because they are not built from a literal state: their notices copy the
 // node's state, and the graph is the owner `task:N` has always reached.
 var stoppableRowPublishers = map[string]struct{ kind, proof string }{
-	"startOrJoinTaskRun":    {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
-	"setBeltRunMachineHold": {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
+	"startOrJoinTaskRunVia": {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
+	"startHeldBeltRun":      {CancelTask, "TestHeldBeltRunStopsWithoutPreparingRepository"},
+	"startAdmittedBeltRun":  {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
+	"preparePendingBeltRun": {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
 	"ContinueRun":           {CancelTask, "TestAStopReachesARunThatWasCarriedOn"},
 	"newOrchestrateFamily":  {CancelRun, "TestCancelStopsAnAdaptiveRun"},
 	"sayForming":            {CancelRun, "TestCancelStopsAnAdaptiveRun"},

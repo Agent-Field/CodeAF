@@ -112,6 +112,7 @@ func (a *Agent) SettleWrites() {
 	a.toldStamp().settle()
 	a.fixShelfFor().settle()
 	a.treesAhead().Settle()
+	a.settleTeamEvents()
 }
 
 // stampWriter is [offpath.Write] with the patch it is to perform carried beside
@@ -159,6 +160,9 @@ func (s *stampWriter) settle() {
 // name that turned out not to be one is thrown away and the words have to come
 // back ([openingPlaceholder]).
 func placeholderTitle(text string) string {
+	if _, shell := BashCommand(text); shell {
+		return clip(strings.TrimSpace(firstLine(text)), metaTitleLimit)
+	}
 	return clip(strings.Join(strings.Fields(firstLine(text)), " "), metaTitleLimit)
 }
 

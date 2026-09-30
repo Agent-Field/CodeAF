@@ -620,11 +620,11 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// lets go (#1274): its fetch writes a cache when it lands, and one nobody
 	// joined could write after this window had closed.
 	fleet.own(models.Close)
-	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
-	config.AutoModels = models.ModelsNow
-	// The pool's index is seated beside it, read once here and refreshed in the
-	// background, against the same profile the catalog was read from.
+	seatCrewRows(models.ModelsNow)
+	// The pool's errands start beside it, against the same profile the catalog
+	// was read from.
 	wirePoolIndex(profileDir)
 	// The refresh key in /model asks the same router THIS machine's list came
 	// from, and refills the same shelf — the list is this laptop's list of
@@ -679,6 +679,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		ContextWindow:              v3Window(models, welcome.Model),
 		Models:                     func() []tui3.Model { return v3Models(shelf) },
 		RefreshModels:              shelf.refresh,
+		ProviderFetchError:         shelf.fetchErrorFor,
 		// /export writes on THIS machine (host.go's honesty table), so its row
 		// goes in this machine's index — the same one the local launch spells.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -711,7 +712,6 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// conversation's transcript is the only thing left to key it by.
 		Ledger: ledger.read,
 		Memory: memory,
-		Search: client,
 		// AND THE ONE WRITE HOME MAKES AGAINST THAT WORLD GOES THROUGH THE SAME
 		// CACHE IT READS. A bare client.Archive landed on the engine's disk and
 		// left what is held saying the opposite, so the row `ctrl+e` put away sat
@@ -736,6 +736,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// which is not an optimization but the seam's stated law, because that
 		// segment is asked on the frame. Save travels synchronously: it is a
 		// keystroke, it is rare, and somebody is waiting for its answer.
+		// THE TEAMS, AS THE ENGINE MACHINE KEEPS THEM. The far session's team
+		// tools write the teams file and each team's Traffic into the engine's
+		// profile, so the window reads and writes those, over the wire
+		// ([hostTeams]); an engine without the doors hands no seam and the
+		// surface turns teams off rather than keeping them on this laptop.
+		Teams: hostTeamsSeam(far, welcome),
 		Standing: tui3.StandingSeam{
 			Items: stands.list,
 			Save:  stands.save,
@@ -853,6 +859,24 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// replaces a closure that named this session file and was left bound to it
 	// through every switch.
 	options.TaskIndex = farTaskRows(options.World, welcome.SessionFile)
+	if dest == "" {
+		// The linked engine and this window read the same profile, so its shelf
+		// can list every connected provider just as the in-process door does.
+		engineProfile := strings.TrimSpace(welcome.ProfileDir)
+		if engineProfile == "" {
+			engineProfile = profileDir
+		}
+		shelf.options.Dir = engineProfile
+		shelf.setSources(config.ResolveSources(engineProfile, settings.APIKey, settings.BaseURL))
+		listing := &v3Process{Shelf: shelf}
+		options.RefreshModels = listing.refreshDefaultModels
+		options.ModelsForService = shelf.modelsForService
+		options.RefreshModelsForService = shelf.refreshService
+		options.RefreshAllModels = listing.refreshAllModels
+		options.WarmEmptyProviders = listing.warmEmptyProviders
+		options.SubscribeServiceModels = listing.registerServiceNotice
+		options.ApplyModelSources = shelf.setSources
+	}
 	if !fleet.canBeside() {
 		// A DOOR THAT CANNOT DIAL AGAIN REALLY DOES HOLD ONE CONVERSATION AT A
 		// TIME, and says so ([tui3.Options.SharedAgent]) rather than letting
@@ -1023,7 +1047,7 @@ func hostFollow(seams hostSeams) func() <-chan tui3.Following {
 				// again.
 				defer close(out)
 				for turn := range seams.Follow() {
-					out <- tui3.Following{Said: turn.Said, Events: turn.Events}
+					out <- tui3.Following{Said: turn.Said, Events: turn.Events, Covered: turn.Covered, Replay: turn.Replay}
 				}
 			})
 		})

@@ -156,9 +156,11 @@ type Client struct {
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
 	// their ids belong to this connection and never enter turn replay cursors.
-	calls     map[uint64]chan result
-	streams   map[uint64]*stream
-	observers map[uint64]*stream
+	calls        map[uint64]chan result
+	streams      map[uint64]*stream
+	observers    map[uint64]*stream
+	replayCursor session.ReplayCursor
+	replayOrder  uint64
 
 	// driver is who holds the keyboard, as the engine last told this surface.
 	// It is set from the welcome and moved by every "driver" frame, and it is
@@ -334,8 +336,19 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	}
 	c.mu.Lock()
 	first := c.welcome.Version == 0
+	replaced := !first && c.welcome.Persistent && welcome.Persistent &&
+		c.welcome.SessionInstance != "" && welcome.SessionInstance != "" &&
+		c.welcome.SessionInstance != welcome.SessionInstance
 	c.welcome = welcome
 	c.mu.Unlock()
+	// A persistent host can restart without changing the transcript. Reset its
+	// stream namespace before following any live turn in the new welcome; its
+	// first reply may reuse an ID whose old channel is already closed.
+	if replaced {
+		if c.forgetStreams("the engine restarted, so the previous answer stopped; ask again to continue") {
+			c.note("the engine restarted; the previous answer stopped")
+		}
+	}
 	// THE FIRST WELCOME AND THE STREAM ARE TWO ROADS FOR THE SAME QUESTION.
 	// The surface draws Held separately; suppress its copies in the initial
 	// replay without skipping the other events or losing the stream cursor.
@@ -358,8 +371,10 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// EITHER, and it reaches the screen by the same road. It carries no sentence:
 	// the message that opened it is in the journal, which this surface reads on
 	// its way in ([Turn.Said] states which of the two moments needs one).
-	if welcome.Live != 0 {
-		c.follows(Following{Events: c.stream(welcome.Live).events()})
+	if !first && c.hasReplayBoundary() {
+		c.follows(Following{Replay: true})
+	} else if welcome.Live != 0 {
+		c.followStream(welcome.Live, "")
 	}
 	// The welcome's word on the keyboard is a driver frame by another road, and
 	// it goes through the same door so that a redial that came back as a watcher
@@ -382,6 +397,7 @@ func (c *Client) helloNow() Hello {
 	c.mu.Lock()
 	hello := c.hello
 	open := c.welcome.SessionFile
+	hello.SessionInstance = c.welcome.SessionInstance
 	c.mu.Unlock()
 	// The session file the engine last told us about beats the one the door
 	// asked for: /new and /resume both move it, and a redial that asked for the
@@ -485,6 +501,8 @@ const followingRoom = 8
 // it with the code that draws every turn, and the only thing it lacks is the
 // [StreamRef] it would have got from opening it.
 type Following struct {
+	Replay  bool
+	Covered func() bool
 	// Said is the message that opened the turn, empty when the transcript
 	// already has it — see [Turn.Said].
 	Said string
@@ -786,7 +804,7 @@ func (c *Client) read() {
 		case "turn":
 			var turn Turn
 			if err := json.Unmarshal(frame.Payload, &turn); err == nil && turn.Stream != 0 {
-				c.follows(Following{Said: turn.Said, Events: c.stream(turn.Stream).events()})
+				c.followStream(turn.Stream, turn.Said)
 			}
 		case "driver":
 			var note Driver
@@ -1128,8 +1146,19 @@ func (c *Client) late() error {
 	if roaming {
 		return errors.New(c.roamingRefusal())
 	}
-	return errors.New(c.where() + lateCallTail)
+	return lateError{where: c.where()}
 }
+
+// ErrLate is what a call that outlived this end's patience matches with
+// [errors.Is]. The engine may still be doing the work, so a surface that can
+// say "still running" rather than "failed" reads it through this.
+var ErrLate = errors.New("the engine did not answer in time")
+
+// lateError is [Client.late]'s sentence, and it is [ErrLate].
+type lateError struct{ where string }
+
+func (e lateError) Error() string        { return e.where + lateCallTail }
+func (e lateError) Is(target error) bool { return target == ErrLate }
 
 // forget drops a call nobody is waiting for any more.
 func (c *Client) forget(id uint64) {
@@ -1559,6 +1588,66 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	return started.ID, started.Title, started.Note, nil
 }
 
+// Delegates is the programs the engine machine's build carries, as the surface
+// draws its rows from them (internal/session's delegate_door.go). A failed read
+// is the zero report — no rows — because a list is a reading and never worth a
+// refusal at the door.
+func (a *Agent) Delegates() session.DelegateReport {
+	payload, err := a.c.call(context.Background(), MethodDelegateList, nil)
+	if err != nil {
+		return session.DelegateReport{}
+	}
+	var report session.DelegateReport
+	if err := json.Unmarshal(payload, &report); err != nil {
+		return session.DelegateReport{}
+	}
+	return report
+}
+
+// StartDelegate hands the brief to the named program on the engine machine
+// and returns the same receipt StartTask does. It is an ordinary call with the
+// ordinary deadline: the engine admits the run at once.
+func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
+	payload, err := a.c.call(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
+	if err != nil {
+		return 0, "", "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", "", err
+	}
+	return started.ID, started.Title, started.Note, nil
+}
+
+// StartTaskEffort is [Agent.StartTask] with the one-task effort word said
+// (`/task --best`, `/task --cheap`); the engine's router reads it for this task
+// and nothing after it.
+func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, effort string) (uint64, string, string, error) {
+	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
+	if err != nil {
+		return 0, "", "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", "", err
+	}
+	return started.ID, started.Title, started.Note, nil
+}
+
+// RedoStronger runs a task again on the engine machine with a stronger crew
+// (`/redo stronger`); row 0 is the newest task the conversation started.
+func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, error) {
+	payload, err := a.c.call(ctx, MethodTaskRedoStronger, TaskRedoArgs{ID: row})
+	if err != nil {
+		return 0, "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", err
+	}
+	return started.ID, started.Title, nil
+}
+
 // StartPlannerRun opens the adaptive form on the engine machine.
 func (a *Agent) StartPlannerRun(ctx context.Context, brief, hint string) (string, string, error) {
 	payload, err := a.c.call(ctx, MethodPlannerStart, PlannerStartArgs{Brief: brief, Hint: hint})
@@ -1589,6 +1678,12 @@ func (a *Agent) Client() *Client { return a.c }
 // signature should know which of the two it is holding.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
 	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
+}
+
+// SubmitBash explicitly runs the person's command; ordinary Submit never
+// interprets message content as executable shell syntax.
+func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {
+	return a.open(ctx, MethodSubmitBash, SubmitArgs{Text: text})
 }
 
 // SubmitStanding is Submit for a draft the person marked as something to keep
@@ -1688,8 +1783,22 @@ func (a *Agent) StopWork() error {
 }
 
 // Compact runs a compaction pass on the far side.
+//
+// IT WAITS AS LONG AS A PASS CAN TAKE, not [callDeadline]. A pass may ask the
+// model for a summary, which on a slow model is longer than ten seconds, and a
+// surface that gave up sooner said "did not answer in time" about a pass that
+// landed a moment later. The surface asks from a command rather than from its
+// update loop, so the longer wait is a line saying "compacting…", never a
+// terminal that stops drawing. It runs beside the ordered lane (callclass.go's
+// [classWork]), so nothing the person sends meanwhile queues behind it.
 func (a *Agent) Compact(ctx context.Context) error {
-	_, err := a.c.call(ctx, MethodCompact, nil)
+	result, err := a.c.callWithin(ctx, MethodCompact, nil, session.CompactPatience)
+	if err == nil && len(result) > 0 && string(result) != "null" {
+		var why string
+		if json.Unmarshal(result, &why) == nil && why != "" {
+			return &session.SummarySkipped{Why: why}
+		}
+	}
 	return err
 }
 
@@ -1749,6 +1858,13 @@ func (a *Agent) Model() string { return a.c.facts.read().Model }
 func (a *Agent) SetModel(model string) {
 	a.c.facts.setModel(model)
 	_, _ = a.c.call(nil, MethodSetModel, model)
+}
+
+// SetSpendRail waits for the engine to bind the new conversation limit before
+// a setting receipt can claim that the open chat has it.
+func (a *Agent) SetSpendRail(usd float64) error {
+	_, err := a.c.call(nil, MethodSetSpendRail, usd)
+	return err
 }
 
 // SetContextWindow is deliberately a no-op here. The surface's catalog belongs
@@ -1970,15 +2086,49 @@ func (a *Agent) PlanTasks() []session.PlanTaskRow {
 
 // PlanTaskPage reads one complete task page from the engine.
 func (a *Agent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
-	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	page, found, err := a.ReadPlanTaskPage(id)
 	if err != nil {
 		return session.PlanTaskPage{}, false
 	}
-	var result PlanTaskPageResult
-	if json.Unmarshal(payload, &result) != nil {
-		return session.PlanTaskPage{}, false
+	return page, found
+}
+
+// ReadPlanTaskPage is [Agent.PlanTaskPage] with the engine's refusal kept.
+//
+// A READING WINDOW NEEDS THE REFUSAL. A page opened onto another
+// conversation's program task reads nothing but this, and the one way it
+// learns the conversation under it was replaced is the engine's own sentence
+// ([ErrJoinedGone]) — which the plan capability's (page, found) shape has
+// nowhere to put (internal/tui3's [tui3.TaskOwnerView.TaskPage]).
+func (a *Agent) ReadPlanTaskPage(id string) (session.PlanTaskPage, bool, error) {
+	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	if err != nil {
+		return session.PlanTaskPage{}, false, err
 	}
-	return result.Page, result.OK
+	var result PlanTaskPageResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return session.PlanTaskPage{}, false, err
+	}
+	return result.Page, result.OK, nil
+}
+
+// PlanTaskWork reads the run's working copy over the wire. An engine that
+// has no such door answers "no such method", which is [PlanTaskWork.NoDoor]:
+// the work tab draws its absence sentence, the same one it draws for an
+// agent that was never given the door.
+func (a *Agent) PlanTaskWork(id string) (session.PlanTaskWork, bool) {
+	payload, err := a.c.call(nil, MethodPlanTaskWork, PlanTaskArgs{ID: id})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such method") {
+			return session.PlanTaskWork{NoDoor: true}, false
+		}
+		return session.PlanTaskWork{}, false
+	}
+	var result PlanTaskWorkResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.PlanTaskWork{}, false
+	}
+	return result.Work, result.OK
 }
 
 func (a *Agent) PlanNote(id, text string) error {
@@ -2108,12 +2258,14 @@ func (a *Agent) entries(method string, args any) []session.DisplayEntry {
 // an UNBUFFERED channel for the same events, so the buffering added here is the
 // buffering the wire needs and no more of a promise than the local lane makes.
 type stream struct {
-	mu     sync.Mutex
-	wake   *sync.Cond
-	queue  []session.Event
-	closed bool
-	out    chan session.Event
-	once   sync.Once
+	observed     bool
+	replayCursor session.ReplayCursor
+	mu           sync.Mutex
+	wake         *sync.Cond
+	queue        []session.Event
+	closed       bool
+	out          chan session.Event
+	once         sync.Once
 	// inWelcome identifies questions already handed to this surface outside
 	// the stream. It lasts only as long as this turn's stream does.
 	inWelcome map[heldKey]struct{}
@@ -2177,7 +2329,14 @@ func (s *stream) push(seq uint64, payload json.RawMessage) {
 			return
 		}
 	}
-	s.deliver(wired.Unwire())
+	ev := wired.Unwire()
+	s.mu.Lock()
+	if ev.ReplayCursor.Owner != "" {
+		s.replayCursor = ev.ReplayCursor
+	}
+	ev.ReplayObserved = s.observed
+	s.mu.Unlock()
+	s.deliver(ev)
 }
 
 // cursor is how far the surface got and whether this turn is still open — the

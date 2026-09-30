@@ -434,6 +434,39 @@ func ReadWorld(root string) World {
 // ReadHome is every project under this machine's state root.
 func ReadHome() World { return ReadWorld(PlacesRoot()) }
 
+// ReadRows is the rows of the named conversations and of nothing else, keyed by
+// each transcript's cleaned path: one [readSessionRow] per name, read exactly as
+// the walk reads that folder.
+//
+// IT IS FOR A SURFACE THAT KNOWS WHICH CONVERSATIONS IT DRAWS. The teams page
+// draws its members, twenty-five on a big machine, and it used to walk every
+// session under the root on its opening and on every beat to find them: a stat,
+// a meta.json, a presence file and a lock taken and let go for each of hundreds
+// of folders, to keep a handful. A name that is not a session folder's journal,
+// or whose folder is not a conversation somebody has had, is simply absent.
+//
+// THE TASK ROLL-UP IS NOT READ. The index is the bucket's ([TaskIndexPath]'s
+// law) and nothing that asks for rows by name draws it, so [SessionRow.Tasks]
+// is the zero roll-up here, as are the project fields.
+func ReadRows(transcripts []string) map[string]SessionRow {
+	now := time.Now()
+	rows := make(map[string]SessionRow, len(transcripts))
+	for _, name := range transcripts {
+		transcript := filepath.Clean(strings.TrimSpace(name))
+		if transcript == "." || filepath.Base(transcript) != placeTranscript {
+			continue
+		}
+		if _, done := rows[transcript]; done {
+			continue
+		}
+		dir := filepath.Dir(transcript)
+		if row, ok := readSessionRow(dir, filepath.Base(dir), now); ok {
+			rows[transcript] = row
+		}
+	}
+	return rows
+}
+
 // Adopt puts the conversation a window is sitting in into the world when the
 // walk did not find it, and reports whether it had to.
 //
@@ -615,7 +648,7 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // transcript in it is not a session at all and is skipped. A folder whose
 // meta.json says nobody has ever spoken — a `lastUserAt` that is not there — is
 // the empty shell a launch mints and the groom reuses (cmd/codeaf's
-// v3ScanBucket), and it is skipped too. But a folder whose meta.json is MISSING
+// v3ScanBucket), and it is skipped too unless a saved task supplies its brief. But a folder whose meta.json is MISSING
 // or unreadable is kept, for the reason the sweep keeps it: a session that
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
@@ -628,8 +661,17 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	}
 	meta, _ := LoadMeta(dir)
 	named := strings.TrimSpace(meta.ID) != ""
-	if named && meta.LastUserAt.IsZero() {
-		return SessionRow{}, false
+	if meta.LastUserAt.IsZero() {
+		saved, ok := savedTaskSummary(transcript)
+		if !ok && named {
+			return SessionRow{}, false
+		}
+		if ok {
+			meta.LastUserAt = saved.At
+			if strings.TrimSpace(meta.Title) == "" {
+				meta.Title = saved.Opening
+			}
+		}
 	}
 	at := meta.LastUserAt
 	if at.IsZero() {

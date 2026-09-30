@@ -61,6 +61,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -1092,15 +1093,14 @@ func questionsAutonomy(t *testing.T) {
 func questionsHeadless(t *testing.T) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "q-headless", false)
-	command := exec.Command(binary(t), "chat", "--once",
+	command := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home,
+		config.APIKeyEnv+"="+liveKey(t)), binary(t), "chat", "--once",
 		`Call the ask tool now, exactly once, and run nothing else. `+
 			`head "which store should the ledger sit on?", kind choice, `+
 			`reason "the schema change is next", stakes reversible, `+
 			`options [{"key":"1","label":"postgres"},{"key":"2","label":"sqlite"}], `+
 			`pick {"key":"1"}.`)
 	command.Dir = ws
-	command.Env = append(os.Environ(), "CODEAF_HOME="+home,
-		config.APIKeyEnv+"="+liveKey(t))
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("codeaf chat --once: %v\n%s", err, out)
@@ -1138,8 +1138,7 @@ func questionsDefaultDoor(t *testing.T) {
 	ws := newWorkspace(t, "q-door", false)
 	r := start(t, "q-door", root, ws, questionCols, questionRows)
 	t.Cleanup(func() {
-		stop := exec.Command(binary(t), "engine", "--stop", "--workspace", ws)
-		stop.Env = append(os.Environ(), "CODEAF_HOME="+root)
+		stop := guardedCommand(t, context.Background(), root, append(os.Environ(), "CODEAF_HOME="+root), binary(t), "engine", "--stop", "--workspace", ws)
 		_ = stop.Run()
 	})
 	// AND IT PROVES WHICH ROAD IT IS ON BEFORE IT MEASURES ANYTHING. The rule

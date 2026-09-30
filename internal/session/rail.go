@@ -28,7 +28,28 @@ package session
 import (
 	"errors"
 	"fmt"
+	"math"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
+
+// SetSpendRail binds a setting written in an open chat before the next turn
+// or delegated run reads the ceiling. In-flight work keeps its admitted limit.
+func (a *Agent) SetSpendRail(usd float64) error {
+	if usd < 0 || math.IsNaN(usd) || math.IsInf(usd, 0) {
+		return fmt.Errorf("conversation limit must be a finite non-negative amount")
+	}
+	a.liveSpendRail.Store(math.Float64bits(usd))
+	a.liveSpendRailSet.Store(true)
+	return nil
+}
+
+func (a *Agent) spendRailUSD() float64 {
+	if a.liveSpendRailSet.Load() {
+		return math.Float64frombits(a.liveSpendRail.Load())
+	}
+	return a.config.SpendRailUSD
+}
 
 // ErrSpendRail is what a refused turn carries in its EventError. It is a named
 // sentinel so a surface can match it with errors.Is and say the one thing worth
@@ -41,7 +62,20 @@ func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
-	rail := a.config.SpendRailUSD
+	if !a.config.InTask && !a.config.Errand {
+		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
+			spentToday := spentTodayOnLedger()
+			if a.crewDayHeld != nil {
+				spentToday = max(spentToday, a.crewDayHeld.Total())
+			}
+			if spentToday >= daily {
+				return spendRailReached{said: fmt.Sprintf(
+					"daily limit reached · %s spent of %s · /budget day changes it",
+					railMoney(spentToday), railMoney(daily))}
+			}
+		}
+	}
+	rail := a.spendRailUSD()
 	if rail <= 0 {
 		return nil
 	}
@@ -54,12 +88,13 @@ func (a *Agent) railBlockLocked() error {
 	//
 	// It says `limit` and not `rail`: the machinery's word is this file's and the
 	// person's word is theirs. And it names `/budget` rather than a bare letter,
-	// because the person reading this is standing in front of a message box —
+	// with its scope, because an amount without one changes only the daily limit.
+	// The person reading this is standing in front of a message box —
 	// their refused message is still in it, theirs to send again — and every
 	// printable key there belongs to that box. A door a refusal names has to be
 	// one that works from where the refusal is read.
 	return spendRailReached{said: fmt.Sprintf(
-		"conversation limit reached · %s spent of %s · /budget changes it",
+		"conversation limit reached · %s spent of %s · /budget conversation changes it",
 		railMoney(spent), railMoney(rail))}
 }
 
@@ -105,7 +140,7 @@ func railMoney(usd float64) string {
 // A session with no rail changes nothing: the caller's tank is the caller's, and
 // zero there still means the run nobody bounded.
 func (a *Agent) railCap(asked float64) float64 {
-	rail := a.config.SpendRailUSD
+	rail := a.spendRailUSD()
 	if launch := a.interactiveBudget().USD; launch > 0 && (rail <= 0 || launch < rail) {
 		rail = launch
 	}

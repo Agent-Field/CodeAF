@@ -220,7 +220,9 @@ func ActionCategoryForTool(tool string) ActionCategory {
 	case "read", "read_document", "ls", "manual", "view_image", "settings",
 		"use_skill", "tasks", "jobs", "list_harnesses", "list_subharnesses", "services",
 		"gmail_read", "slack_read_thread", "slack_list_channels",
-		"calendar_list", "workspace_snapshots":
+		"calendar_list", "workspace_snapshots",
+		// A manager looking at its team: the states, and a member's page.
+		"team_status", "team_read":
 		return ActionRead
 
 	// Changing something that exists.
@@ -246,11 +248,17 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionTransfer
 
 	// Saying something to a person.
-	case "slack_send", "gmail_send", "speak", "ask":
+	case "slack_send", "gmail_send", "speak", "ask",
+		// A line into a team's traffic, from its manager or one of its members,
+		// a packet sent up, and a closing report to the person.
+		"team_send", "team_post", "team_escalate", "team_close_report", "team_raise":
 		return ActionCommunicate
 
 	// Work handed out, or this mind copied to run beside itself.
-	case "propose_task", "quick_task", "divide_work", "workspace_fork", "stand":
+	case "propose_task", "quick_task", "divide_work", "workspace_fork", "stand",
+		// A manager starting a member or ending its turn, or deciding what a
+		// member asked it.
+		"team_start", "team_stop", "team_decide":
 		return ActionCoordinate
 
 	// Keeping the account of the work rather than doing it. `items` is a quick

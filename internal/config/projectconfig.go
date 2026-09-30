@@ -97,6 +97,15 @@ var ProjectKeys = []string{
 	KeyTelemetry,
 }
 
+// ProjectProgramLinks is a key only a project file answers, and no settings
+// row: the folders git ignores that a program's copy of this repository links
+// in from the person's checkout, comma-separated (`"node_modules, .env"`) or a
+// list ([ProjectConfig.Names]), an empty one linking none. It is a fact about the repository — which ignored
+// folders its build and tests need — and nobody's profile has an answer to it,
+// so it is read straight off the project file (internal/session's
+// programcopy.go) rather than through the registry the rows above are.
+const ProjectProgramLinks = "program.links"
+
 // ProjectKeyAllowed reports whether a row may live in a project file.
 func ProjectKeyAllowed(key string) bool {
 	for _, allowed := range ProjectKeys {
@@ -202,6 +211,32 @@ func (p ProjectConfig) String(key string) (string, bool, error) {
 		return "", false, p.wants(key, encoded, "text, or an object of name to value")
 	}
 	return "", false, p.wants(key, encoded, "text")
+}
+
+// Names reads one row that lists names, written either as comma-separated
+// text (`"node_modules, .env"`) or as a JSON list of text — the list is what a
+// person hand-writing the file reaches for, and a shape that read as nothing
+// would be a setting that silently does not apply (law 3). Each name is
+// trimmed and a blank one dropped, so an empty text is an empty list.
+func (p ProjectConfig) Names(key string) ([]string, bool, error) {
+	encoded, found := p.values[key]
+	if !found {
+		return nil, false, nil
+	}
+	var text string
+	var listed []string
+	if err := json.Unmarshal(encoded, &text); err == nil {
+		listed = strings.Split(text, ",")
+	} else if err := json.Unmarshal(encoded, &listed); err != nil {
+		return nil, false, p.wants(key, encoded, "comma-separated text, or a list of names")
+	}
+	names := []string{}
+	for _, name := range listed {
+		if name = strings.TrimSpace(name); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, true, nil
 }
 
 // Bool reads one on/off row. The words the sheet shows — on, off, yes, no — are

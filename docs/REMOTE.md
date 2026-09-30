@@ -127,6 +127,12 @@ file it was started from was removed or rebuilt and it is holding nothing
 holds a workspace on that machine — asking politely first, and naming the
 process through the socket's peer credentials when it is too old to be asked.
 
+**Version 20 adds the explicit `SubmitBash` door and `EventToolOutput`.** Only the
+conversation's driver can submit a human shell command. Ordinary `Submit` keeps
+leading `!` as model text, including automated submissions. Output events carry
+literal stdout/stderr in `Text`, paired by `CallID`, before the final tool result.
+A version mismatch refuses this feature rather than interpreting it as a chat.
+
 ## Decision 4 — Version 2 separates a conversation's life from a pipe's
 
 **Decision.** In version 1 the engine *was* the ssh command: it read frames on

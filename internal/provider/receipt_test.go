@@ -676,3 +676,266 @@ func TestReceiptWorkersRetireAfterTheirQueueDrains(t *testing.T) {
 		t.Fatal("a receipt arriving after retirement never restarted its worker")
 	}
 }
+
+// TestAQueuedReceiptIsOwedUntilItsSinkHasBankedIt pins the pending door that
+// lets a run wait for the price of the call it was cut in the middle of: the
+// work is told a receipt is owed before the fetch begins, and told it was
+// answered only after the sink has had the money — never the other way round,
+// or a caller could read its total in the gap. A call that queues no receipt
+// (a usage block, or no id and no text) owes nothing.
+func TestAQueuedReceiptIsOwedUntilItsSinkHasBankedIt(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		fmt.Fprint(w, `{"data":{"total_cost":0.058,"tokens_prompt":52139,"tokens_completion":4895}}`)
+	}))
+	t.Cleanup(server.Close)
+	client := receiptTestClient(t, server)
+	var mu sync.Mutex
+	var owed int
+	var order []string
+	pending := func() func() {
+		mu.Lock()
+		owed++
+		mu.Unlock()
+		return func() {
+			mu.Lock()
+			owed--
+			order = append(order, "answered")
+			mu.Unlock()
+		}
+	}
+	results := make(chan Reconciled, 1)
+	ctx := WithReceiptPending(WithReconcile(t.Context(), func(result Reconciled) {
+		mu.Lock()
+		order = append(order, "banked")
+		mu.Unlock()
+		results <- result
+	}), pending)
+
+	// Neither of these queues a receipt, so neither is owed.
+	cost := 0.01
+	client.settle(ctx, "sim/model", &ai.Response{Usage: &ai.Usage{PromptTokens: 1, Cost: &cost}}, "stalled", 0)
+	client.settle(ctx, "sim/model", &ai.Response{}, "stalled", 0)
+	mu.Lock()
+	if owed != 0 {
+		mu.Unlock()
+		t.Fatalf("owed = %d after two calls that queued no receipt", owed)
+	}
+	mu.Unlock()
+
+	client.settle(ctx, "sim/model", &ai.Response{ID: "cut-in-flight"}, "stopped", 12)
+	mu.Lock()
+	if owed != 1 {
+		mu.Unlock()
+		t.Fatalf("owed = %d while the receipt is being fetched, want 1", owed)
+	}
+	mu.Unlock()
+	close(release)
+	if result := receiptResult(t, results); !result.Found || result.Cost != 0.058 {
+		t.Fatalf("receipt = %+v", result)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		settled := owed == 0 && len(order) == 2
+		got := append([]string(nil), order...)
+		mu.Unlock()
+		if settled {
+			if got[0] != "banked" || got[1] != "answered" {
+				t.Fatalf("order = %v, want the money banked before the receipt is marked answered", got)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the receipt was never marked answered: order %v", got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// writeWholeWithoutUsage streams a whole, finished answer that names its
+// generation and never sends a usage block.
+func writeWholeWithoutUsage(w http.ResponseWriter, id string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `data: {"id":%q,"choices":[{"index":0,"delta":{"content":"a whole answer"}}]}`+"\n\n", id)
+	fmt.Fprintf(w, `data: {"id":%q,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", id)
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	w.(http.Flusher).Flush()
+}
+
+// TestAnAnswerWithNoUsageIsSettledOnlyWhereTheWorkAskedForIt pins the opt-in
+// door: a whole answer that carried no usage block is settled like a cut one —
+// its receipt asked for and banked — only when the work armed
+// WithUnmeteredReceipts, and never on a direct service. Every other caller's
+// road is exactly what it was: no receipt request and nothing reported.
+func TestAnAnswerWithNoUsageIsSettledOnlyWhereTheWorkAskedForIt(t *testing.T) {
+	for _, row := range []struct {
+		name   string
+		armed  bool
+		direct bool
+		want   bool
+	}{
+		{name: "armed on the routed service", armed: true, want: true},
+		{name: "not armed", armed: false},
+		{name: "armed on a direct service", armed: true, direct: true},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			var receipts atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/generation" {
+					receipts.Add(1)
+					fmt.Fprint(w, `{"data":{"total_cost":0.032296144,"tokens_prompt":116000,"tokens_completion":40}}`)
+					return
+				}
+				writeWholeWithoutUsage(w, "gen-unmetered")
+			}))
+			t.Cleanup(server.Close)
+			client, err := NewClient(Config{
+				APIKey: "receipt-key", BaseURL: server.URL, Model: "moonshotai/kimi-k2.6",
+				Direct: row.direct, HTTPClient: server.Client(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.velocity = newVelocityLedger()
+			client.wait = func(context.Context, time.Duration) error { return nil }
+			results := make(chan Reconciled, 1)
+			ctx := WithReconcile(WithStreamObserver(t.Context(), func(StreamEvent) {}), func(result Reconciled) { results <- result })
+			if row.armed {
+				ctx = WithUnmeteredReceipts(ctx)
+			}
+			response, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+			if err != nil || response == nil || response.Usage != nil {
+				t.Fatalf("response %+v err %v, want a whole answer with no usage block", response, err)
+			}
+			if !row.want {
+				select {
+				case result := <-results:
+					t.Fatalf("an answer this work did not arm was settled: %+v", result)
+				case <-time.After(200 * time.Millisecond):
+				}
+				if receipts.Load() != 0 {
+					t.Fatalf("a receipt was asked for %d times", receipts.Load())
+				}
+				return
+			}
+			result := receiptResult(t, results)
+			if !result.Found || result.Cost != 0.032296144 || result.Ref != "gen-unmetered" || result.Reason != "unmetered" {
+				t.Fatalf("settled = %+v, want the receipt's $0.032296144", result)
+			}
+		})
+	}
+}
+
+// TestACutAnswerWithNoUsageIsStillSettledWhereTheWorkAskedForIt pins the opt-in
+// door on the roads that end in a cut. A paid 200 with no usage block that is
+// cut after it arrived — the model's own tool grammar written as text, or a
+// rescue that is not language — was billed through the ordinary door, which
+// banks nothing without a usage block, so on work that armed
+// WithUnmeteredReceipts the provider's charge reached no book at all.
+func TestACutAnswerWithNoUsageIsStillSettledWhereTheWorkAskedForIt(t *testing.T) {
+	const leak = `<｜DSML｜_web_search>{\"query\":\"x\"}<｜/DSML｜_web_search>`
+	for _, row := range []struct {
+		name   string
+		stream bool
+		rescue bool
+		body   string
+	}{
+		{name: "a whole answer that leaked its grammar", body: `{"id":"gen-cut","model":"sim/model","choices":[{"index":0,` +
+			`"finish_reason":"stop","message":{"role":"assistant","content":"` + leak + `"}}]}`},
+		{name: "a streamed answer that leaked its grammar", stream: true,
+			body: `data: {"id":"gen-cut","choices":[{"index":0,"delta":{"content":"` + leak + `"},"finish_reason":"stop"}]}` + "\n\n" + "data: [DONE]\n\n"},
+		{name: "a rescue that is not language", stream: true, rescue: true,
+			body: `data: {"id":"gen-cut","choices":[{"index":0,"delta":{"content":"half an answer \ufffd\ufffd"},"finish_reason":"stop"}]}` + "\n\n" + "data: [DONE]\n\n"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			forgetLanes(t)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/generation" {
+					fmt.Fprint(w, `{"data":{"total_cost":0.0125,"tokens_prompt":9000,"tokens_completion":40}}`)
+					return
+				}
+				if row.stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+				}
+				fmt.Fprint(w, row.body)
+			}))
+			t.Cleanup(server.Close)
+			client, err := NewClient(Config{
+				APIKey: "receipt-key", BaseURL: server.URL, Model: "sim/model", HTTPClient: server.Client(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.velocity = newVelocityLedger()
+			client.wait = func(context.Context, time.Duration) error { return nil }
+			results := make(chan Reconciled, 1)
+			ctx := WithUnmeteredReceipts(WithReconcile(t.Context(), func(result Reconciled) { results <- result }))
+			if row.stream {
+				ctx = WithStreamObserver(ctx, func(StreamEvent) {})
+			}
+			if row.rescue {
+				ctx = withHedgeLane(ctx, "rescue")
+			}
+			_, err = client.CompleteWithMessages(ctx, userMessages("look this up"), ai.WithTools(machineryTools("web_search")))
+			if _, ok := CutFrom(err); !ok {
+				t.Fatalf("err = %v, want the answer cut", err)
+			}
+			result := receiptResult(t, results)
+			if !result.Found || result.Cost != 0.0125 || result.Ref != "gen-cut" {
+				t.Fatalf("settled = %+v, want the receipt's $0.0125", result)
+			}
+		})
+	}
+}
+
+// ReceiptWait IS COUNTED FROM THE QUEUE, NOT FROM THE WORKER. A client drains
+// its receipts with four workers, so a fifth owed receipt waits behind four slow
+// ones before any worker asks for it; its whole schedule used to start there,
+// and it was answered about eighty seconds after it was queued — past the
+// seventy a run's books wait for it ([ReceiptWait]), so the run closed without
+// that call's price. A receipt now carries the instant it was queued, and its
+// ceiling is that instant plus the schedule's own.
+func TestAReceiptIsAnsweredWithinReceiptWaitOfBeingQueued(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// The generation is never priced, so only the ceiling can end the schedule.
+		fmt.Fprint(w, `{"data":{}}`)
+	}))
+	t.Cleanup(server.Close)
+	client := receiptTestClient(t, server)
+
+	// The queue stamps each receipt as it is admitted. No worker is started
+	// here, so the queued work can be read back as it was admitted.
+	client.receiptRunning = receiptWorkerCount
+	before := time.Now()
+	client.settle(WithReconcile(t.Context(), func(Reconciled) {}), "sim/model", &ai.Response{ID: "gen-queued"}, "torn", 0)
+	after := time.Now()
+	queued := <-client.receipts
+	if queued.queued.Before(before) || queued.queued.After(after) {
+		t.Fatalf("the receipt was stamped %v, want the instant it was queued (%v to %v)", queued.queued, before, after)
+	}
+
+	// A receipt that has already waited in the queue for nearly the whole bound
+	// is given only what is left of it, however long its pauses would run.
+	client.wait = func(ctx context.Context, _ time.Duration) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	results := make(chan Reconciled, 1)
+	late := receiptWork{
+		result: Reconciled{Ref: "gen-late"},
+		sink:   func(result Reconciled) { results <- result },
+		queued: time.Now().Add(-(ReceiptWait - 300*time.Millisecond)),
+	}
+	go client.reconcile(late)
+	if result := receiptResult(t, results); result.Found {
+		t.Fatalf("a receipt the provider never priced was found: %+v", result)
+	}
+	if answered := time.Since(late.queued); answered > ReceiptWait+2*time.Second {
+		t.Fatalf("the receipt was answered %v after it was queued, past ReceiptWait %v", answered, ReceiptWait)
+	}
+}

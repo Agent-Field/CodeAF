@@ -166,7 +166,7 @@ func workerJournalName() string {
 // of what they did — every child's title, status and result — in place of the
 // interrupted-predecessor sentence, which is a fact about a different worker
 // and not about this one. The resume flag still rides the trajectory's steps.
-func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake string) string {
+func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake, orders string, workspace ...string) string {
 	role := planIsTask
 	if root {
 		role = planIsRoot
@@ -176,6 +176,15 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
 		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	// The runtime's directory is authority, while the work order may still
+	// quote the source checkout. Preserve those words and explain their scope
+	// before the worker sees them, as the checker already does for its probes.
+	if len(workspace) > 0 && strings.TrimSpace(workspace[0]) != "" {
+		assignment := "ASSIGNED WORKING DIRECTORY\n\n" + workspace[0] +
+			"\n\nRun project edits and checks here, using relative project paths. A repository path in the request may name the original checkout; it does not change this assigned directory. Do not cd back to that checkout to do the work. Unrelated read-only reference paths remain as written."
+		identity, work, _ := strings.Cut(doc, "\n\n")
+		doc = identity + "\n\n" + assignment + "\n\n" + work
+	}
 	// THE ASK, FOR EVERY LEAF AND ONLY A LEAF. The section is absent on the
 	// root's own document (its work order is the ask) and absent when the store
 	// holds no root row to read it from, which is the emptiness law and not a
@@ -197,6 +206,22 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		doc = withReport(doc, wake)
 	case resume:
 		doc = withReport(doc, taskResumeClause)
+	}
+	// THE PERSON'S STANDING ORDERS, LAST — the same road a node's brief takes
+	// ([TaskGraph.briefLocked]): the job is above, and the conditions the job is
+	// done under close the document. The section is already rendered by the
+	// caller ([StandingWorld]); an empty one is no section, the emptiness law,
+	// and a brief for a place with no orders reads as it always read.
+	//
+	// WITHOUT THIS A PLAN-BORN WORKER RAN WITH NO HOUSE RULES (#1549): the
+	// composition above is built from the store's task rows, and nothing on
+	// that road asked the resolver — the standing section a task node gets in
+	// [TaskGraph.briefLocked] never reached the run's workers. It rides the
+	// brief and not the harness's note because it is a birth fact, not a
+	// mid-work sentence: the worker must read it on the opening message or it
+	// governed nothing.
+	if t := strings.TrimSpace(orders); t != "" {
+		doc += "\n\n" + t
 	}
 	return doc
 }
@@ -228,11 +253,20 @@ func askSection(ask string) string {
 // A DOER: it reads the acceptance above against the result above, proves each
 // sentence with the leaf's own tests or one probe, and answers in one of the two
 // shapes the finding is read from ([internal/run]'s recordCheckFinding reads
-// "does not hold:"). It is written to stay under 120 words, because the whole
+// "does not hold:"). It is written to stay under 200 words, because the whole
 // job is one comparison and a wall of instruction is the drift it exists to stop.
+//
+// AND IT SAYS WHERE THE WORK IS. Nothing else in a check's opening does: the
+// footer's working directory is the run's copy, and its path spells the
+// person's checkout inside the project folder's name. A check told nothing
+// decoded that name, stood in the person's checkout, read an unrelated diff
+// there, and was moved home only when a write was refused — and a check that
+// only reads is never refused, so it would have answered on the wrong tree.
 const checkSection = `## Who checks this work
 
 You are the check, not the doer: you read the acceptance above against the result above, and you do not redo the work.
+
+The work is in your working directory: that copy holds the worker's result, so run every check and probe there. The person's own checkout is not the work — it does not hold this result until the run lands, and it may hold changes that are not this task's — so never check it.
 
 Read the acceptance sentence by sentence. First run every command declared under Checks:, in order and exactly as spelled. Then, for every acceptance sentence those checks do not cover, run one probe — the smallest command that would fail were that sentence not met.
 

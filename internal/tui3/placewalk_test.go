@@ -27,7 +27,7 @@ func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 	a := placeApp(t)
 	ring := barPages(pageHome, false)
 	seen := map[page]bool{a.page: true}
-	for range len(ring) {
+	for range len(ring) - 1 {
 		was := a.page
 		drive(t, a, key("tab"))
 		if a.page == was {
@@ -38,13 +38,14 @@ func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 		}
 		seen[a.page] = true
 	}
-	if len(seen) != len(ring) {
+	// The walk steps over the way back to the chats (place_chats.go).
+	if len(seen) != len(ring)-1 {
 		t.Fatalf("tab visited %d of the %d places on the bar: %v", len(seen), len(ring), seen)
 	}
 	if a.page != pageHome {
 		t.Fatalf("the circle came back to %q rather than home", a.page.word())
 	}
-	for _, id := range pages()[placeBarPlaces:] {
+	for _, id := range placeOrder[placeBarPlaces:] {
 		drive(t, a, key(placeChord(id)))
 		if a.page != id || !a.pageShowing() {
 			t.Fatalf("%s left the router on %q with the frame %v", placeChord(id), a.page.word(), a.pageShowing())
@@ -104,7 +105,7 @@ func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 // was every door onto it.
 func TestTheTasksPlaceOpensOnAChatThatHasDelegatedNothing(t *testing.T) {
 	a := placeApp(t)
-	drive(t, a, key("alt+2"))
+	drive(t, a, key(placeChord(pageTasks)))
 	if a.page != pageTasks || !a.at(pageTasks) {
 		t.Fatal("the tasks place did not open")
 	}
@@ -118,7 +119,7 @@ func TestTheTasksPlaceOpensOnAChatThatHasDelegatedNothing(t *testing.T) {
 // mean two different things one place apart.
 func TestTheShiftArrowsNeverSwitchPlaces(t *testing.T) {
 	a := placeApp(t)
-	for _, id := range []page{pageHome, pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageHome, pageSpend, pageSettings} {
 		a.showPage(id)
 		if a.page != id {
 			continue
@@ -140,7 +141,7 @@ func TestTheShiftArrowsNeverSwitchPlaces(t *testing.T) {
 // leave the place exactly where it was.
 func TestThePlainArrowsNeverSwitchPlaces(t *testing.T) {
 	a := placeApp(t)
-	for _, id := range []page{pageHome, pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageHome, pageSpend, pageSettings} {
 		a.showPage(id)
 		if a.page != id {
 			continue

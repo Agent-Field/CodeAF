@@ -2,9 +2,9 @@
 
 ## What happens when I type /task
 
-On this road, `/task <brief>` starts a **run** rather than a node of the
-conversation's own tree. Everything here hangs on one switch, named under *How to
-turn it on* below, and the older road is what a build without it does.
+On this shipped default road, `/task <brief>` starts a **run** rather than a
+node of the conversation's own tree. *How to turn it off* below names the
+switch to the older road.
 
 Typing `/task` asks you nothing and waits for nothing in front of it: the work
 exists as soon as you press enter. What it does instead is:
@@ -27,27 +27,68 @@ says `It joined the work already underway and shares its copy.` A proposed task 
 ANOTHER folder is refused while that run is underway, with both folders named and
 `tasks that run together share one copy of one folder. Propose it again when that work
 has ended`. A task handed off after the run has ended starts a run of its own, in a new
-copy cut from your folder as the first run left it. A task handed off in the few seconds
-while a run is finishing (its work landing, its summary being written) waits until that
-run is over and then starts its own: it never joins a run on its way out.
+copy cut from your folder as the first run left it. So does one handed off after a run
+that nothing is driving any more (a limit you set ended it, or codeaf closed under it):
+the old run's store is kept beside the new one as its record — an ordinary run's ended as
+`interrupted`, and a program's run nothing had ended first ended where it was last seen,
+in its own words — and new work never runs inside it. A task handed off in the few
+seconds while a run is finishing (its work landing, its summary being written) waits
+until that run is over and then starts its own: it never joins a run on its way out.
 
-**When the run ends its work comes home by itself.** The copy's work is committed and
-merged into the folder it was cut from, the copy is given back, and the run's page
-carries `its work is in <folder> on <branch>`. The conversation is woken with the same
-note a landed task sends: the outcome word, the result the root reported, and where the
-work went (`landed on <branch>: N files`, or the sentence saying why it did not). Work
+## When does a task run's work come home, including commits its workers made
+
+When a `/task` run on the worker harness ends, any uncommitted work in its copy is committed.
+On a branch eligible for automatic landing, that work is merged into the folder it was
+cut from and the run's page carries `its work is in <folder> on <branch>`. The copy is
+given back in either case. The conversation is woken with the same
+note a landed task sends: the outcome word, how long the run took (`ran 4m 12s`, from the
+hand-off to the moment its work ended, and left out under a second), the result the root
+reported, and where the work went (`landed on <branch>: N files`, or the sentence saying
+why it did not). Work
 that will not go in is never forced: the branch is kept in your repository and the note
 names it, for example `its branch <branch> was kept`, when your checkout moved on after
-the copy was cut. A run that only read says `nothing to land: the run's working copy holds no change` and changes no file. The
-landing card says `merged` when the work is in your folder and `branch kept` only for a
-branch that is waiting. A hand-off that joined the run ends with it: its row settles
+the copy was cut. A protected checkout, including `main` or `master`, also keeps the
+task branch: the card says `branch kept · task/x` and the note says
+`its branch task/x was kept: your checkout is on main, which tasks do not merge into automatically`
+(with the actual branch name in place of `main`). A run whose workers committed everything still names its
+branch and changed files; codeaf signs those commits before the work comes home.
+A file lands under its own name whatever characters it holds, including spaces, quotes,
+accents or a newline; only codeaf's own `plandb.db` and the files beside it, `.codeaf/`
+files, and untracked build caches stay out of the landing commit (see *Why a task's
+commit has no __pycache__* below).
+A run that only read says `nothing to land: the run's working copy holds no change`
+and changes no file. The
+landing card says `merged` when the work is in your folder and `branch kept` when its
+branch is waiting. A hand-off that joined the run ends with it: its row settles
 `done` or `incomplete` when the run's does. The
 row the run was published under settles `done` when the run finished whole and
-`incomplete` on any other ending.
+`incomplete` on any other ending. Each of these rows is in the project's task list (the
+`@` list, other conversations' `tasks` tool, other windows) from the moment it starts, and
+is closed there with its time when it settles.
 
-**With the switch unset, none of this is reached.** `/task` raises an ordinary
-task on this session's own tree, briefed beside its worker and landed through the
-task graph. See *How to turn it on*.
+**With the switch unset, this is the road `/task` takes.** Set
+`CODEAF_TASK_BELT=node` to use the older session tree road instead. See *How
+to turn it off*.
+
+## Why a task's commit has no __pycache__ or .pyc files, and no scratch files — what a landing leaves out
+
+A run's landing commits the files its copy holds, except three kinds:
+
+- codeaf's own files: `plandb.db` and the files beside it, and `.codeaf/`;
+- **untracked build caches**, the ones the interpreter and the test tools write while a
+  worker runs your tests: `__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`,
+  `.ruff_cache/` and `.DS_Store`. These are matched by exact name, never by resemblance, so
+  `poetry.lock`, `bench-results/` or `pycache_notes.md` still land;
+- nothing else.
+
+**A cache your repository already tracks still lands when it changes**, and so does one the
+worker staged with `git add` or committed itself. Only a cache file git has never been told
+about stays out. The task's `work` tab leaves the same files out of its list, so it never
+shows a file that will not come home.
+
+**Scratch copies are the worker's to clean up.** A worker is told to delete every scratch
+file it made in its copy before it reports done, because anything left there lands on your
+branch.
 
 ## The tasks pane and a task's page
 
@@ -76,31 +117,36 @@ Each row wears one state word, mapped off the store's own status:
 Beside the word a row may carry the steps its worker recorded and the dollars its
 spend rows hold — each left out when it is nothing.
 
-**`enter` opens the task's page.** It is built from the store's own read and is the
-same full frame, the same `esc`, and the same way back as a record row's card. Its
-head is a task room's head: the trail, `<conversation> ▸ <task>` with `esc back` at
-its far end, and under it the rule that leads with the task's state mark and word —
-the spinner while it runs — then how long it has run, its steps and how many of its
-parts are running or queued, with what it has cost at the far end. Each figure is
-left out when it is nothing. Under the head it shows, in order, each section left
-out when nothing is behind it:
+**`enter` opens the task's room**, the same room every task opens on either engine:
+the same full frame, the same head, the same `esc`, the same box and the same two tabs.
+The only difference is where it reads from: a run's task is read from the run's store.
 
-- `description` — the work order the worker was given;
-- `notes` — every note left on the task, with its moment. A note you left reads
-  `you`. A note a worker or the run left names no author: the store knows those
-  only by ids of its own, and an id is never drawn on this page;
-- `steps` — the trajectory its worker recorded: each command that ran, led by the
-  shell's mark (`$`) as a task room leads a command, with the head of what came back
-  dim under it, the whole observation on disk behind the row. The step in flight is
-  the newest row, with `running <clock>` under it once it has run ten seconds. A call known not to
-  have run stays in the record and its count and is never drawn as a step: a command the
-  worker tried and was refused is one dim line, `refused` and the command, and any other
-  has no row.
+- The head is a task room's head: the trail with the way back at its far end, then
+  the task's name with its state word, how long it has run, what it has cost, and the
+  tokens its worker read and wrote. Each figure is left out when the store has not
+  got it. The model its worker spent the most through is shown with the task's setup
+  on the right. A task whose store holds no spend for it shows neither.
+- The `transcript` tab opens on the work order the worker was given, then the
+  trajectory its worker recorded: each command that ran is the room's own shell
+  call, folded the way any task's calls are folded, with what came back
+  behind it. The step in flight is the newest call. A call known not to have run
+  stays in the record and in the step count and is never drawn as a call: a command
+  the worker tried and was refused is one dim line, `refused` and the command, and
+  any other has no row. Then the notes left on the task: a note you left is drawn
+  where your own corrections are drawn, and a note a worker or the run left names no
+  author, because the store knows those only by ids of its own.
+- Under the transcript, the tasks it hangs on (`waits`) and the tasks under it
+  (`under it`), each drawn as the side list draws a task. A press on any of those
+  rows opens that task's room.
+- The `work` tab is the run's working copy: what every task of the run changed in
+  it against the commit it was cut from, and the files it added. The files codeaf
+  itself keeps there are left out. `tab` over an empty box moves between the two
+  tabs, and a click on either name does the same.
 
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
-## Open a run's task from the side list — click its row, or one of its parts
+## Open a run's task from the side list — click its row, or one of its parts, and leave it with esc
 
 With the switch on, a run is drawn in the conversation's side list as its own row,
 `#N`, with its parts and their checks hanging under it. **Every one of those rows
@@ -108,28 +154,32 @@ looks exactly like any other task row**: the state mark (the spinner while it
 works), the name, its `#id` at the far end — a part's id is the store's own, such
 as `#k3x9qa` — and, under a row that is running, the command it is on and a
 `4m · $0.02` line of how long it has run and what it has cost, each figure left
-out when the store has not got it. Tokens and the model are not in the store, so
-a run's rows never show them. The parts hang in the tree's own connectors, one
+out when the store has not got it. The rows on the side list do not show tokens
+or the model; the task's room does, where the store's spend has them. The parts hang in the tree's own connectors, one
 row each, the finished ones included. Every one of those rows is a
-door: click the run's row, or select it and press `enter`, and its page opens over the
-conversation; click a part's row or a check's row and THAT task's page opens. The page
-is the one the tasks place opens: what the task was asked, its notes, its steps, and the
-box that leaves a note. `esc` goes back to the conversation exactly as you left it, with
-whatever you had typed still in the box.
+door: click the run's row, or select it and press `enter`, and its room opens over the
+conversation; click a part's row or a check's row and THAT task's room opens. It is the
+room the sessions place opens and the run's tab opens: what the task was asked, its steps,
+its notes, and the box that leaves a note. A task handed to a program such as senior-dev
+opens its own program room instead (see *A program's task page is a conversation, not
+steps*). `esc` goes back to the conversation exactly as
+you left it, with whatever you had typed still in the box.
 
-The page can take a moment to arrive. From the press on, what you type belongs to the
-page and never to the conversation: the keys are kept in order and land in the page's
-note box when it opens, `enter` included. `esc` in that moment withdraws the press. If
-the row turns out to have no page and its room opens instead, those keys are dropped.
+The room can take a moment to arrive. From the press on, what you type belongs to the
+room and never to the conversation: the keys are kept in order and land in the room's
+box when it opens, `enter` included, unsent. `esc` in that moment withdraws the press.
+If the row turns out to have no store page and its ordinary room opens instead, those
+keys are dropped.
 
-A page opened on a task that is queued or running follows it: it reads the task again
+A room opened on a task that is queued or running follows it: it reads the task again
 every three seconds, so a new step shows within that, and it stops reading when the task
-has settled. A page on a task that has ended is read once, to open it. A step whose command is many lines long is drawn as
-its first line and `…`; what ran is unchanged.
+has settled. A room on a task that has ended is read once, to open it. A step whose
+command is many lines long is drawn as its first line and `…`; what ran is unchanged.
 
-A row the store has no page for opens what it always opened, its room. That is every
-task when the switch is off. A task of an earlier run keeps its page after a later run
-has started.
+A row the store has no page for opens what it always opened, its room: with the switch
+off that is every task, except one handed to a program, which opens the program's room
+with the switch on or off. A task of an earlier run keeps its page after a later run has
+started.
 
 ## Can I still read a task from an earlier run?
 
@@ -174,8 +224,9 @@ aside, and none of it starts on the older engine instead.
 **A task whose run could not start says so, and nothing else starts.** If the run's
 plan could not be opened or its copy could not be cut, the answer is
 `task N did not start: <the reason>. Nothing is running for it and nothing was
-started in its place; propose it again, or tell the person what stopped it.` A typed
-`/task` answers the same sentence. It reads as a failure, never as `task N started`,
+started in its place.` A typed `/task` answers the same sentence; the model, reading
+it at the proposal door, is told besides to propose it again or tell you what stopped
+it — words for the model, never shown to you. It reads as a failure, never as `task N started`,
 and the task is not quietly put on the older engine's tree. Only a build with no run
 engine at all, or a conversation with nowhere to keep a plan, uses the older engine,
 because there the run road was never there to take.
@@ -187,8 +238,8 @@ task>), not this worker's run (t-<its own>), so nothing was read or written`.
 
 ## Typing into a run's row, and a row nothing drives any more
 
-A message typed in the room of a run's row is left as a note on that task's page,
-and the room says `left on the task's page — its worker reads it between steps`.
+A message typed in the room of a run's task is left as a note on that task, and once
+the store has it the room says `the worker reads a note at its next step`.
 
 A run row that nothing drives any more, because its run is not the one this
 conversation is driving or its plan holds no such task, answers a message with
@@ -232,36 +283,99 @@ to the column's width; the glyph and the `$` are never spent on it.
 **The line is there only while a step is in flight.** A task that has not started, one held
 behind named work, and one that has landed all draw their ordinary row and no live line — the
 store clears the step the moment its command ends. These rows are a run's **plan rows**, drawn
-in the tasks place (`/history`, `ctrl+.`, `alt+2`, and the roster raised over the frame), not
+in the sessions place (`/history`, `ctrl+.`, `alt+4`, and the roster raised over the frame), not
 on the always-on column, which draws this conversation's own tree.
 
-## What a run task's page shows while it runs
+## What a run task's room shows while it runs
 
-`enter` on a run's row opens the task's page, and while the task is running the page follows
-its newest step: it re-reads itself on the clock and stays stuck to the bottom — the newest
-step in view — until you scroll up, which releases it. Scrolling back to the bottom takes the
-follow up again without your pressing anything.
+`enter` on a run's row opens the task's room, and while the task is running the room follows
+its newest step: it re-reads the store every three seconds and stays stuck to the bottom,
+the newest step in view, until you scroll up, which releases it. Scrolling back to the
+bottom takes the follow up again without your pressing anything.
 
-The step being run right now is drawn **one step early**, as the newest row of the page's
-`steps` section, and, once the call has been open ten seconds, its own clock dim under it.
-The page's head says the task is running with the spinner, as a task room's head does:
+The step being run right now is the newest call in the transcript, drawn running. The
+room's head says the task is working, how long it has run and what it has cost, as every
+task room's head does. When the command ends the store clears the live step and the next
+read draws it as an ordinary call, with what came back behind it.
+
+## A program's task page is the actions it took, not steps — a delegate's page: open it, leave it, no tab of its own, no note box, what the box says
+
+A task handed to a program codeaf carries (`/<name> <brief>`, such as `/senior-dev`)
+opens **inside the conversation's own tab**, as any task does: from its row on the side
+list, its card in the conversation, a task link, the task strip or the home panel. The
+tab strip stays on top with the conversation's tab the one selected and the `home` tab beside
+it, and the program gets no tab of its own.
 
 ```
-  the chat ▸ Add rate limiter to /api/upload                  esc back
-─ ⠋ running   6m · 12 steps ──────────────────────────────── $0.11 ─
-
-brief
-Add a per-IP rate limiter to the upload handler; …
-steps
-$ sed -n 40,120p internal/api/upload.go
-$ git grep -n RateLimit internal/api
-  3 hits
-$ go test ./internal/api/...
-  running 41s
+  the run ▸ rewrite the auth middleware                              esc/← main
+─ implement · $1.24 of $5.00 · 3 calls · 14m 3s ─────────────────── Stop ─
+  BRIEF      rewrite the auth middleware to use the new session store
+  SETUP      set up its workspace                                     git
+  SPEC       wrote your brief down as its spec
+  EXPLORE    read internal/auth/middleware.go
+             ran go test ./internal/auth/...                fails · exit 1
+  IMPLEMENT  edited internal/auth/middleware.go
+             ◐ thinking · 12s
 ```
 
-When the command ends the store clears the live step and the next read draws it as an ordinary
-step, with the head of what came back.
+`esc`, a press on the conversation's tab and a press on the `home` tab leave it; none of them
+stops the run. `ctrl+o` opens the whole brief as the page, which scrolls like the page, and closes it. `ctrl+y` turns the page to the
+program's raw calls and back. `x` over an empty box, `/stop`, or `Stop` at the end of the
+line over the page asks `Stop this task?` and ends the whole run.
+
+**The box sends nothing.** A program reads no message. The box says `<program> reads no
+messages — say it to main` (`senior-dev reads no messages — say it to main`), and `enter`
+over a sentence says the same line on the page and leaves your words in the box. Once the
+run has ended its foot and its box say `this task has finished — say it to main`.
+
+In the sessions place, `enter` on the program's row opens the same page as a page of that
+place, with no box at all.
+
+## Reading a program's actions — the step words down the side, how each came out, the call in flight, how long it has run
+
+The page shows what the program did, as the program itself says it: every stage, step and
+ending it reported, kept as codeaf received them, each read in the program's own words.
+The word down the left is the step of the program's own process the action served
+(senior-dev's page has its own section on its steps). It is printed on the first action
+of each run of actions in one step and left blank for the rest, so a word comes back when
+the program comes back to that step. How an action came out is at the right edge, dim:
+`passes`, `fails · exit 2`, `4 files`. Under about 28 cells of room the step's word
+stands on its own line and its actions hang under it.
+
+The page opens on the brief, under `BRIEF`. What only the program's model calls know is
+put in where it happened, each one plain line: `compacted its memory` when the program
+rewrote its history as a summary, `switched to <model>` when another model started
+answering its work (with the program's reason after it when it gave one), `codeaf
+refused a call · <why>` and `a call to its model failed · <why>`. A model is named nowhere
+else. While a call is out the last line is `◐ thinking` and its seconds. A long run shows
+its newest actions under a line such as `…142 earlier actions`. A run from before codeaf
+kept a program's actions is drawn from its model calls, each tool asked for as one action
+with no step word, and a long one shows its newest under `…142 earlier calls`.
+
+The line over the page stays put while you scroll: the step the program is in (before it
+names one, its stage in the word it gives a person; the task's own word, such as
+`running` or `done`, when there is neither), what the run has spent (`of` its ceiling when
+the page knows it), how many model calls it has made, and how long it has been going. A
+figure with nothing behind it is left out, and a narrow window drops the time first. The
+time counts from the moment codeaf handed the work over and stops when the program's own
+process ends. The page reads the store again every three seconds while the run works, and
+once more after its work has landed, so the note on where the work went is on the page.
+
+## A program's raw calls — ctrl+y, the dialogue with its model, what it sent and what the model answered
+
+`ctrl+y` on a program's page — in its room or in the sessions place — turns it to the raw
+calls the program made, and `ctrl+y` again turns it back to the actions; the key row says
+which: `ctrl+y calls` or `ctrl+y actions`. A page opens on the actions.
+
+The calls are the conversation between the program and the model that answered it, for
+seeing exactly what it was sent. Each call is the program's side — a tool's result as
+`<tool>: <first line>`, its own words, or `summarized its history so far` — and the
+model's, named by its short name: the first line of its answer, and one dim row per tool
+it asked for behind that tool's mark. A call codeaf refused is one line from `codeaf`,
+`refused · <why>`; a failed one is `the call failed · <why>`. The call in flight is the
+last line, `◐`, the model and its seconds. Only the first line of each message is drawn,
+and a long run shows its newest calls under a line such as `…142 earlier calls`; the
+task's own record keeps more of every call.
 
 ## Why is a step missing, the step numbers skip, the cd at the front of a command is gone
 
@@ -342,7 +456,7 @@ The person's door onto a run's plan is six verbs, each resolving an id **inside
 this conversation's plan**, so a task another chat spawned is never reachable:
 
 - **note** — a note in your own voice on one task, which that task's worker is
-  handed between its own steps. On a plan task's page it is what the composer
+  handed between its own steps. In a run task's room it is what the box
   sends: type in it and press `enter`, under the placeholder `a note for this
   task`. It is not a chat turn — the words go to the store and never to the
   conversation's model. "Does a note actually reach the worker" has its own
@@ -350,21 +464,23 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **pause** / **resume** — hold a task and everything under it out of the ready
   frontier without changing its rung, so running steps finish and nothing new in
   the subtree is launched; or release the hold. The key is `p`: a running row
-  reads `p pause` and a held one `p resume`. A run cannot be paused as a whole:
-  under the run's own task no `p pause` is named, and there `p` is a letter in the note.
+  reads `p pause` and a held one `p resume`. The key is on the sessions place's
+  rows only: in a task's room `p` is a letter in the box. A run cannot be paused
+  as a whole, so its own row names no `p pause`.
 - **cancel** — end a task, its descendants and the work hard-depending on it. The
-  key is `x stop it` (the roster's own cancel key), on the row and on the page.
-  On the run's own row and page that key ends the whole run and asks first; see
-  "How do I stop a run?" below.
+  key is `x stop it` (the roster's own cancel key), on the row and in the room.
+  In a room, `x` over an empty box raises the `Stop this task?` card first, for a
+  part as for the run. On the run's own row and room that key ends the whole run
+  and asks first; see "How do I stop a run?" below.
 - **amend** — prepend text to a task's description, the way the CLI's `task amend
   --prepend` does, so the plan learns while it runs.
 - **priority** — set a task's priority through the store's revision verb.
 
 `x` and `p` are read only over an **empty box**: the moment there is a note to
 type, a letter is a letter. A task that has ended, `done` or `incomplete`, is offered
-neither: its row and its page name no `x stop it` and no `p pause`, because the store
-would refuse both — **and neither key does anything there**. On an ended task's page
-both are letters in the note box; on an ended row in the list they are letters too. No
+neither: its row and its room name no `x stop it` and no `p pause`, because the store
+would refuse both, **and neither key does anything there**. In an ended task's room
+both are letters in the box; on an ended row in the list they are letters too. No
 `Stop this task?` card is raised over a run that has already finished.
 
 Two refusals are this layer's own, and they are the words the pane reads back:
@@ -447,7 +563,7 @@ answer for those rows too, in words that say what happened:
 Neither ever answers that the row does not exist. A number no run of this
 conversation holds still goes on to the ordinary task reader.
 
-## Does a note actually reach the worker, when does it read it, does it have to ask for it
+## I left a note and the task ignored it — does a note reach the worker, when does it read it, does it have to ask?
 
 Yes, and it does not have to ask. The run looks for unread notes each time the
 worker finishes a step, and hands them over at once, through the same door your
@@ -483,13 +599,13 @@ note is something somebody knows, not a direction, and that its work order has
 not changed. A note can never move what a task is judged by: asking for
 something *different* is a revised assignment, not a note.
 
-Three hands write notes — you, from the task's page; another worker in the run;
+Three hands write notes — you, from the task's room; another worker in the run;
 and the conversation itself — and each is named where the note is drawn: `the
 person`, `task t-…`, or `you` when it was the conversation.
 
 ## Where do I see the notes on a run, why didn't the chat know about the note
 
-Every note is on the task's page, under `notes`, oldest first.
+Every note is in the task's room, after its steps, oldest first.
 
 The conversation reads them too, and you can ask it: the run's listing puts the
 newest note on each row after the row's state, as `note: …`, and asking about one
@@ -504,9 +620,10 @@ what you actually asked for would list every row of the run and never learn it.
 ## How do I stop a run? Stop it did nothing and the task kept running, cancel the whole run
 
 Press `x` over an empty box while the run's row is the one task row on the side list,
-or open the run's own page and press `x stop it` there. Both raise the same card,
-`Stop this task?`, with `stop it` and `keep going`; the page steps aside so the card
-is drawn in the conversation. A digit moves the choice, `enter` takes it, and `esc` is
+or open the run's task room and press `x` there over an empty box. Both raise the same
+card, `Stop this task?`, with `stop it` and `keep going`. On a task handed to a program,
+`x` over an empty box, `/stop`, or `Stop` at the end of the line over its conversation
+raises the same card. A digit moves the choice, `enter` takes it, and `esc` is
 `keep going`. Nothing ends on one keystroke. Telling the chat "stop task 1" ends a run
 the same way and asks nothing, because your sentence is the decision.
 
@@ -514,8 +631,9 @@ A stop ends the run now: every part still open is ended, what it was running is 
 off, and no further model call is made for it. The row reads `stopped`. A second stop
 on a run that is already stopping answers that it is already stopping.
 
-`x` on one PART of a run ends that part only, at once and without a card, and the
-rest of the run carries on. A row nothing drives any more is cleared the same way:
+`x` on one PART's row in the sessions place ends that part only, at once and without a
+card, and the rest of the run carries on. In a part's room `x` asks first, with the
+same card, and ends that part only. A row nothing drives any more is cleared the same way:
 the stop settles it as `stopped` and answers `stopped task N (<title>) — nothing was
 driving it any more`. A run cannot be paused as a whole, so under the run's own
 task no `p pause` is named.
@@ -559,8 +677,16 @@ same code path the tool runs, so the two cannot drift:
 - `codeaf web fetch URL` / `codeaf web search QUERY` — the belt's web verbs.
 - `codeaf image PROMPT --out PATH` — one picture the way `generate_image` makes one.
 
-A few hands a shell cannot be are kept too — the billed `read_document`, `jobs`,
-`manual`, and the web, media and services families.
+**`codeaf` in a worker's shell is always the codeaf that is running**, whatever
+file name it was installed under — `devaf`, `stageaf`, or a `--name` word. The
+run's own `bin/codeaf` sits first on the worker's PATH, so an older or different
+codeaf elsewhere on the machine is never reached, and a devaf install does not
+answer `command not found`.
+
+A few hands a shell cannot be are kept too, and a worker calls them directly, one call
+per response exactly as it calls `bash` — the billed `read_document`, `jobs` (which
+reads and stops a job the worker started), `manual`, and the web, media and services
+families.
 
 **A worker cannot ask you a question.** `ask` is not on its belt: the loop reaches
 the person through the plan CLI and not a consent gate, so a thing it cannot have
@@ -695,28 +821,28 @@ Every task a run launches sits in one of two **seats**, and each seat is a model
 named on a door or in the profile:
 
 - **`--model` is the work seat** — the model a leaf that does the work itself
-  runs on. `codeaf do` reads it from `--model`, then `CODEAF_MODEL`, then the
-  profile's crew, then this build's default; a `/task` in a conversation reads it
-  from the conversation's own worker row. A root is born a leaf, so its first
+  runs on. `codeaf do` reads it from `--model`, then `CODEAF_MODEL`, then a
+  `/crew pin`, then the worker the crew picks for this task; a `/task` in a
+  conversation takes the worker its crew picked for it. A root is born a leaf, so its first
   launch rides this seat, and so does every task the plan adds under it.
 - **`--plan-model` is the plan seat** — the model the root and every task that
   has children run their coordinating turns on. `codeaf do` resolves it the same
-  way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then the crew; a
-  conversation takes it from its mastermind row. A leaf that splits moves onto
+  way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then a `/crew pin`, then
+  the crew picked for this task; a `/task` takes its crew's planner. A leaf that splits moves onto
   this seat for the turns where it is a coordinator.
 - **`--check-model` is the check seat**: the model a check the review round
   adds reads a finished leaf against. `codeaf do` resolves it from
-  `--check-model`, then the `CODEAF_CHECK_MODEL` environment value, then a plan
-  seat pinned by `--plan-model` or `CODEAF_PLAN_MODEL`. A run pinned to two models checks on
-  the plan seat and no third model appears from the profile. A `/task` has no flags, so
-  its check reads `CODEAF_CHECK_MODEL` alone. Without those pins,
-  the check takes the crew's careful row, the same row a conversation's checker rides. The
-  **probe** seat is the one the profile's own `low` row answers alone: nothing
-  on a door names it, so a probe runs on the crew you set in `/crew`.
+  `--check-model`, then the `CODEAF_CHECK_MODEL` environment value, then a
+  `/crew pin`, then the checker the crew picks for this task. **It never inherits the
+  plan seat**: a `--plan-model` says who plans and nothing about who checks. A `/task`
+  takes its crew's checker. The **probe** seat is the one the profile's own
+  **small work** row answers alone: nothing on a door names it, and no crew pin moves it.
 
 The seat a person names is the seat **every** launch takes — a task launched
 after the door resolved the seats still runs on them, not on whichever row the
-profile happens to hold. Read it back with `plandb spend --by seat`.
+profile happens to hold. Read it back with `plandb spend --by seat`. A conversation
+started with `--one-model` seats all four — work, plan, check and probe — on the model you
+are talking to, and neither the crew rows nor `CODEAF_CHECK_MODEL` moves them.
 
 ## Headless: codeaf do — the exit code it leaves with
 
@@ -742,12 +868,14 @@ it was (`done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`,
 `deadline`, `price`, `question`), and `ok` is true on exactly the runs that leave
 with 0.
 
-## Does codeaf do commit my changes? It edits the folder in place and commits nothing
+## Does codeaf do commit my changes? It edits the folder in place and makes no commit of its own
 
 `codeaf do` works in the directory you hand it with `-w` / `--dir` (the current
-directory by default), **edited in place, on whatever branch is checked out there,
-and nothing is committed**. The run's files are left uncommitted for you to read,
-commit or throw away, exactly as the older engine left them.
+directory by default), **edited in place, on whatever branch is checked out there**.
+codeaf makes no commit of its own. Its workers can commit their changes; when
+the run ends, codeaf adds the bare `Assisted-by: CodeAF` and co-author lines to
+those commits once. Any work still uncommitted is left for you to read, commit
+or throw away.
 
 Your own work is never touched by the run's accounting: an edit you had not
 committed, or an untracked file such as a secrets file, is still yours after the
@@ -803,6 +931,12 @@ A task with **no declared check** is checked by reading its result and by the
 acceptance alone. Commands mentioned only in the task's prose are not declarations,
 so put every command the check must run on the task with `--check`.
 
+When a check names a numbered file with its number missing, such as
+`issue_.go` beside `issue_01.go`, `plandb add` and `plandb task set-checks`
+send the command back: nothing is added or changed in the plan. Write each
+part's check with that part's own file, such as `gofmt -l issue_01.go`, and run
+the command again.
+
 ## Who checks a task's work?
 
 Every leaf that lands **done** is checked, at both doors — `/task` and `codeaf
@@ -829,11 +963,24 @@ finishes with one line, in one of two shapes:
   the acceptance is not met.
 
 **A `does not hold:` finding is work, not a remark.** The checked task keeps its
-done ending and the sentence is left as its note, and the run adds a `fix:` task
-under that task's parent — carrying the acceptance, the finding and the result —
-which must land before the run is over. The fix is checked in turn, but only
-once: a finding on a `fix:` task is a note and no second fix task, so a run
-cannot loop.
+done ending and the sentence is left as its note. Ordinarily the run adds a
+`fix:` task under that task's parent — carrying the acceptance, the finding and
+the result — which must land before the run is over. The fix is checked in
+turn, but only once: a finding on a `fix:` task is a note and no second fix
+task, so a run cannot loop. A check naming a file nothing in the run makes is
+the narrow exception described below.
+
+## Why no fix task started — a check that names a file nothing makes
+
+If a check says a missing file caused its finding, no `fix:` task starts when
+no task names that file in its title or work order and either the filename is a
+numbered placeholder such as `issue_.go` beside `issue_01.go`, or two or more
+tasks declare a check on the same missing file. The checked task keeps the
+finding and gets this note:
+`No fix was started: the check names issue_.go, a file nothing in this run makes.`
+A check on a file only that task's check names
+(its own output), or on a package such as `go test ./internal/rank`, still gets
+its `fix:` task.
 
 ## How to turn it off
 

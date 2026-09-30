@@ -9,7 +9,7 @@ A new conversation opens on **one centred group** and nothing else. From the top
 ┌─  ┌─┐ ┌─┤ ┌─┐ │ │ ├─          the codeaf wordmark, drawn CodeAF
 │   │ │ │ │ ├─╴ ├─┤ │
 └─  └─┘ └─┘ └─┘ ╵ ╵ ╵
-anthropic/claude-sonnet-4.5 · balanced crew
+anthropic/claude-sonnet-4.5 · auto crew
                                  a blank row
 › _                              the message box, cursor in it
 try "what is in this folder" · /task <brief> starts work · / shows commands
@@ -20,8 +20,8 @@ recent sessions                  only when this folder has earlier conversations
 ```
 
 The line under the wordmark is the model that will answer, as its full routing
-address, and the crew preset behind it (`frugal`, `balanced`, `max`, or `custom`) —
-the two facts that decide what a turn costs. The group is centred in the window, a
+address, and `auto crew` — tasks get their own worker, planner and checker, picked per
+task — the two facts that decide what the work costs. The group is centred in the window, a
 shade above the middle. It shows once, arrives with a slow sweep across the letters
 over about a second and a quarter, and is then still.
 

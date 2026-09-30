@@ -53,6 +53,9 @@ func CurlLine(executable, channel string) string {
 	if name == "devaf" {
 		return "curl -fsSL https://agentfield.ai/get/devaf | bash"
 	}
+	if name == "stageaf" {
+		return "curl -fsSL https://agentfield.ai/get/stageaf | bash"
+	}
 	address := "https://agentfield.ai/get/codeaf"
 	if channel != "stable" {
 		address += "/" + channel

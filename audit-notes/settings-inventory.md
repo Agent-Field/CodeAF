@@ -39,7 +39,7 @@ sentence of the registry's own Hint (`settings.go:663`).
   rows; a search → every tab's matches under faint headings, and the tab bar
   follows the first match.
 - Providers is led by `modelsSection` (`settings.go:700`): your model,
-  provider, speed guard, routing, prompt profile, crew, then the five tier
+  provider, speed guard, routing, prompt profile, then the five tier
   rows in `roles.Tiers` order (reflex, low, worker, high, mastermind), then
   pinned roles. Every other row follows in registry order
   (`tabRows`, `settings.go:1430`). The registry builds the 10 model rows
@@ -229,12 +229,11 @@ rows land between the roles section and "looking"):
 | lane.guard | speed guard | toggle | bool | on (settings.go:935) | "an answer that is slow to start is asked of the next-best provider as well, and you read whichever replies first. One extra call, under a tenth of spend." | registry `settings.go:2055`, skin `settings.go:703` |
 | routing | routing | cycle | choice: simple/latency/price/off | simple | "one model is served by many providers. simple is the one it ships with and sends no preference of ours — no pinned provider means the router's own default answers, and a pinned provider is the whole request; latency asks for the fastest and demotes one that keeps being slow; price asks for the cheapest; off asks for nothing, measures nothing, and leaves the two rows above it with no provider to name. a change here takes effect on your next message." | registry `settings.go:1999`, skin `settings.go:779` |
 | prompt.profile | prompt profile | cycle | choice: auto/lean/full | auto | "how much codeaf tells the model before you type. auto reads the model's context window and goes lean under 32,000 tokens; lean and full say so yourself, for a provider that reports a window its model does not really have." | registry `settings.go:2022`, skin `settings.go:710` |
-| models.crew | crew | cycle | choice: frugal/balanced/max (+ reads custom) | balanced — derived; the five shipped tiers are exactly the balanced preset (`settings.go:1017-1031`) | dynamic, built by `crewAbout` (`settings.go:716`): "the five below, chosen as one word: frugal — …; balanced — …; max — …. Answer one yourself and this reads custom." (the preset sentences come from `config.CrewLineFor`) | registry `settings.go:2269`, skin `settings.go:322` |
 | models.tiers.reflex | reflex | select | model | mistralai/mistral-nemo (shipped, settings.go:1017) | "near-free · reads every turn — memory, titles, safety" | registry `settings.go:2297`, skin `settings.go:334` |
 | models.tiers.low | small work | select | model | deepseek/deepseek-v4-flash-0731 (shipped) | "cheap · the small calls — names, digests, the safety gate" | registry `settings.go:2306`, skin `settings.go:364` |
-| models.tiers.worker | worker | select | model | z-ai/glm-5.3-flash (shipped) | "does the work · every task, its parts, every run node — most of the bill" | registry `settings.go:2317`, skin `settings.go:368` |
-| models.tiers.high | careful work | select | model | moonshotai/kimi-k3 (shipped) | "careful · checks what must not be wrong — audits, briefs, vision" | registry `settings.go:2327`, skin `settings.go:372` |
-| models.tiers.mastermind | mastermind | text | model, may carry :low/:medium/:high | moonshotai/kimi-k3 (shipped) | "thinks · plans runs and designs harnesses — add :low, :medium or :high" | registry `settings.go:2338`, skin `settings.go:380` |
+| models.tiers.worker | worker | select | model | empty — auto, routed per task | "does the work · every task, its parts, every run node — most of the bill" | registry `settings.go:2317`, skin `settings.go:368` |
+| models.tiers.high | checker | select | model | empty — auto, routed per task | "checks what must not be wrong — audits, briefs, vision" | registry `settings.go:2327`, skin `settings.go:372` |
+| models.tiers.mastermind | planner | text | model, may carry :low/:medium/:high | empty — auto, routed per task | "plans runs and designs harnesses — add :low, :medium or :high" | registry `settings.go:2338` |
 | models.roles | pinned roles | text | text (role:model pairs) | none | "exceptions to the five rows above, one per role: title:openai/gpt-5-mini." | registry `settings.go:2347`, skin `settings.go:386` |
 | model.plan | planning | select | model | blank, "follows execution" | firstSentence of hint: "the model that plans and reviews the work." (full hint `settings.go:2965`: "the model that plans and reviews the work. Empty follows the work model.") | registry `settings.go:2686` (modelRow), skin `settings.go:683` (init) |
 | model.work | execution | select | model | the work model | "the model that does the work." (full hint: "the model that does the work. It changes on the next job.") | registry modelRow; skin init |
@@ -249,7 +248,6 @@ rows land between the roles section and "looking"):
 | effort | thinking | cycle | choice: auto + the effort rungs (auto, plus five explicit levels; `EffortChoices`, `config/effort.go:29`) | auto (effort.Ship = None, `effort/effort.go:63`) | "how hard the model thinks, unless something nearer the work says otherwise. ctrl+v moves the rung of whatever you stand on — the rung beside the model above the message box for one conversation, a task, or a standing item — and ctrl+t in /model dials one model. This row answers for everything nobody dialled." | registry `settings.go:1789`, skin `settings.go:757` |
 | document_engine | reading | cycle | choice: auto/local/free/ocr | auto (config.go:62) | "which rung reads your documents. auto walks local, then free, then paid OCR." | registry `settings.go:1798`, skin `settings.go:680` |
 | api_key | openrouter key | text | text, secret | not set | "the key codeaf talks to models with. A missing default key opens connect openrouter in your browser; paste a replacement here if needed. A change lands on this conversation at once." | registry `settings.go:1829`, skin `settings.go:476` |
-| models.crew.source | model family | cycle | choice: open/all | open (crew.go:86) | "which models the crew word draws from: open weights, or the whole catalog with closed and frontier models in it. Open is the default." | registry `settings.go:2284`, skin `settings.go:341` |
 | reply.guard | reply guard | cycle | choice: on/off | on | "on cuts a reply that has come apart — one line or one letter repeated, alphabets mixed inside words — throws it away and asks once more. Code blocks are never judged." | registry `settings.go:2417`, skin `settings.go:427` |
 
 ### The roles section (generated, not registry rows)
@@ -266,8 +264,8 @@ registered from internal/session init functions. 23 rows in 5 groups:
 | roles · reflex | reflex |
 | roles · small work | title, caption, router, consolidate, task-name, job-name, intake, guardian, sentinel, spellout |
 | roles · worker | worker |
-| roles · careful work | careful, auditor, repair, shaper, vision |
-| roles · mastermind | planner, designer, mark-reader, handoff, division, router-confirm |
+| roles · checker | careful, auditor, repair, shaper, vision |
+| roles · planner | planner, designer, mark-reader, handoff, division, router-confirm |
 
 Each row shows the model the role resolves to right now; a pinned row also says
 "pinned". The one line under a row (verbatim): unpinned → "<description> ·
@@ -378,12 +376,11 @@ branch can, because its registry tops out at 77 (78 with split_pct).
 |---|---|---|
 | model_pool | CategoryModels, choice, label "model pool" (dev settings.go:1911) | fde49a587, #1194 |
 | models.pool.public_key | CategoryModels, text, label "pool key" (dev settings.go:1926) | fde49a587, #1194 |
-| models.crew.pick | CategoryModels, choice, label "picked from" (dev settings.go:2400) | fde49a587, #1194 |
 | telemetry | CategoryInterface, bool, label "telemetry", default on (dev settings.go:2627) | cc8bea7e9, #1095 |
 
-The `Key:` diff between this branch's build and dev's is exactly those four
+The `Key:` diff between this branch's build and dev's is exactly those three
 rows and nothing else: every key this branch has, dev has too, and no key dev
-has is missing here but those four. The four-row difference is fixed rows that
+has is missing here but those three. The three-row difference is fixed rows that
 landed on dev after the fork, not conditional rows and not rows this branch
 retired. The deletion comment at settings.go:3046 names two rows gone outright
 (`practice_demand_pct`, `propose_new_skills`), and an earlier draft of this
@@ -465,16 +462,9 @@ for the word "budget" will not find it — though the search does match the key
   the panel moved the row to Spending as "per conversation" — a person reading
   the Session tab's promise ("this conversation and only this conversation")
   will not find the row that bounds this conversation.
-- THE CREW ROW'S NEIGHBOUR MOVED. The skin comment on "model family"
-  (models.crew.source) claims "it sits directly under the crew word"
-  (settings.go:337), but `modelsSection` does not lead it, so on the drawn
-  Providers tab it reads after the openrouter-key row (and after the roles and
-  services sections when they stand), ~25 rows below the crew word it changes.
-  The comment describes registry order, not the tab's reading order — a
-  redesign should either lead it or fix the comment.
-- "thinking" (effort) vs mastermind's ":high". Two rows both about how hard a
+- "thinking" (effort) vs the planner row's ":high". Two rows both about how hard a
   model thinks; effort's about says it "answers for everything nobody dialled"
-  and names ctrl+v and /model's ctrl+t, and the mastermind row's about says
+  and names ctrl+v and /model's ctrl+t, and the planner row's about says
   "add :low, :medium or :high". The distinction (install-wide rung vs one
   tier's level) is stated only in the about lines.
 - The Connections tab name does double duty: it is the accounts tab, and the

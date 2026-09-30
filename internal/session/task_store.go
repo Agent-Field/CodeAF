@@ -715,6 +715,8 @@ type harnessOfferRecord struct {
 // exists, and no answer could reach one. Left out, the row comes back settled
 // like every other row that was moving, which is the truth about it.
 type runRecord struct {
+	CrewState *TaskCrewRecord `json:"crewState,omitempty"`
+
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
 	Node   string `json:"node,omitempty"`
@@ -727,6 +729,12 @@ type runRecord struct {
 	// log where a run's shows how its branch came home, and it refuses the ✕ that
 	// a run's row offers (session's TaskKindJob, internal/tui3's task.go).
 	Kind TaskKind `json:"kind,omitempty"`
+	// Program is the program the run was handed to ([TaskNotice.Program]). It
+	// survives for Kind's reason: it decides how the row is DRAWN — a program's
+	// row wears its badge — and a conversation reopened tomorrow redraws its
+	// runs from these records long before any plan row is read. Absent is every
+	// run no program had, and every record written before the field existed.
+	Program string `json:"program,omitempty"`
 
 	State   TaskState `json:"state"`
 	Stopped bool      `json:"stopped,omitempty"`
@@ -746,7 +754,8 @@ type runRecord struct {
 	// saved before this field existed decodes with nil, and a run with no copy
 	// recorded is one that cannot be carried on — which [runCopyTree] says out
 	// loud rather than repairing.
-	Copy *TaskCopyRecord `json:"copy,omitempty"`
+	Copy       *TaskCopyRecord   `json:"copy,omitempty"`
+	PendingRun *PendingRunRecord `json:"pendingRun,omitempty"`
 
 	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS
 	// ([TaskNotice.PlanTask]), carried across a restart for the same reason the
@@ -757,12 +766,27 @@ type runRecord struct {
 	// is all the place has.
 	PlanTask string `json:"planTask,omitempty"`
 
-	// ElapsedMS is whatever age the row was last published with, frozen. A run's
-	// rows do not carry one today — the family publishes no Elapsed — so it is
-	// absent on every record this code writes, and it is here rather than left
-	// out because the record's job is to carry the notice, not to decide which
-	// half of it matters. Zero renders as nothing, which is the emptiness law.
+	// ElapsedMS is whatever age the row was last published with, frozen. A
+	// hand-off's run row carries its wall time from the row that settles it —
+	// the span from the hand-off to the instant its program was gone, or its
+	// engine answered ([runSpan]) — and an adaptive family's rows publish no
+	// Elapsed, so theirs is absent. Zero renders as nothing, which is the
+	// emptiness law.
 	ElapsedMS int64 `json:"elapsed_ms,omitempty"`
+
+	// Ending, Branch, Merge, Result and Changed are HOW THE ROW ENDED AND WHERE
+	// ITS WORK IS, which a settled run row carries and a conversation reopened
+	// tomorrow must still say. They were left out, and the drop was visible: a
+	// program that judged its own work unfinished came back as `a fault: …` —
+	// the failed-with-no-ending reading — instead of its own sentence, a run
+	// ended by a limit its person set lost which limit it was, and a row whose
+	// work was kept on a branch came back naming no branch at all. Each is
+	// omitted when empty, so an older file decodes exactly as it always did.
+	Ending  TaskEnding `json:"ending,omitempty"`
+	Branch  string     `json:"branch,omitempty"`
+	Merge   string     `json:"merge,omitempty"`
+	Result  string     `json:"result,omitempty"`
+	Changed []string   `json:"changed,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, the nodes in
@@ -1060,23 +1084,41 @@ func (g *TaskGraph) documentLocked() taskDocument {
 // They are a pair and they are next to each other so that a field added to one
 // is missing from the other in the same eyeful.
 func runRowRecord(notice TaskNotice) runRecord {
+	// AN INTERRUPTED ROW IS WRITTEN DOWN AS THE MOVING ROW IT WAS. Interrupted
+	// is what a reader makes of a row that was moving when its process went
+	// away ([runRowNotice]); it is not a state this file holds, and the row was
+	// written back verbatim, so the next reopen refused the whole checkpoint and
+	// the conversation lost every task it had, finished ones included. Written
+	// as running, it comes back interrupted again, and an older build reads it.
+	state := notice.State
+	if state == TaskInterrupted {
+		state = TaskRunning
+	}
 	return runRecord{
-		ID:        notice.ID,
-		Run:       notice.Run,
-		Node:      notice.Node,
-		Parent:    notice.Parent,
-		Title:     notice.Title,
-		Kind:      notice.Kind,
-		State:     notice.State,
-		Stopped:   notice.Stopped,
-		Report:    notice.Report,
-		Model:     notice.Model,
-		CostUSD:   notice.CostUSD,
-		ElapsedMS: notice.Elapsed.Milliseconds(),
-		StartedAt: notice.StartedAt,
-		EndedAt:   notice.EndedAt,
-		Copy:      notice.Copy,
-		PlanTask:  notice.PlanTask,
+		CrewState:  notice.CrewState,
+		ID:         notice.ID,
+		Run:        notice.Run,
+		Node:       notice.Node,
+		Parent:     notice.Parent,
+		Title:      notice.Title,
+		Kind:       notice.Kind,
+		Program:    notice.Program,
+		State:      state,
+		Stopped:    notice.Stopped,
+		Report:     notice.Report,
+		Model:      notice.Model,
+		CostUSD:    notice.CostUSD,
+		ElapsedMS:  notice.Elapsed.Milliseconds(),
+		StartedAt:  notice.StartedAt,
+		EndedAt:    notice.EndedAt,
+		Copy:       notice.Copy,
+		PendingRun: notice.PendingRun,
+		Ending:     notice.Ending,
+		Branch:     notice.Branch,
+		Merge:      notice.Merge,
+		Result:     notice.Result,
+		Changed:    append([]string(nil), notice.Changed...),
+		PlanTask:   notice.PlanTask,
 	}
 }
 
@@ -1099,23 +1141,35 @@ func runRowRecord(notice TaskNotice) runRecord {
 // That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
-		ID:      record.ID,
-		Run:     record.Run,
-		Node:    record.Node,
-		Parent:  record.Parent,
-		Title:   record.Title,
-		Kind:    record.Kind,
-		State:   record.State,
-		Stopped: record.Stopped,
-		Report:  record.Report,
-		Model:   record.Model,
-		CostUSD: record.CostUSD,
-		Elapsed: time.Duration(record.ElapsedMS) * time.Millisecond,
+		CrewState: record.CrewState,
+		ID:        record.ID,
+		Run:       record.Run,
+		Node:      record.Node,
+		Parent:    record.Parent,
+		Title:     record.Title,
+		Kind:      record.Kind,
+		Program:   record.Program,
+		State:     record.State,
+		Stopped:   record.Stopped,
+		Report:    record.Report,
+		Model:     record.Model,
+		CostUSD:   record.CostUSD,
+		Elapsed:   time.Duration(record.ElapsedMS) * time.Millisecond,
 
-		StartedAt: record.StartedAt,
-		EndedAt:   record.EndedAt,
-		Copy:      record.Copy,
-		PlanTask:  record.PlanTask,
+		StartedAt:  record.StartedAt,
+		EndedAt:    record.EndedAt,
+		Copy:       record.Copy,
+		PendingRun: record.PendingRun,
+		Ending:     record.Ending,
+		Branch:     record.Branch,
+		Merge:      record.Merge,
+		Result:     record.Result,
+		Changed:    append([]string(nil), record.Changed...),
+		PlanTask:   record.PlanTask,
+	}
+	if record.CrewState != nil && record.CrewState.Routed {
+		decision := record.CrewState.Decision
+		notice.Crew = &decision
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live
@@ -1394,7 +1448,7 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("run row %d is also a node", record.ID)
 		case drawn[record.ID]:
 			return taskDocument{}, fmt.Errorf("run row %d appears twice", record.ID)
-		case !validTaskState(record.State):
+		case !validRunRowState(record.State):
 			return taskDocument{}, fmt.Errorf("run row %d is in state %q", record.ID, record.State)
 		case record.ElapsedMS < 0:
 			return taskDocument{}, fmt.Errorf("run row %d has a negative elapsed", record.ID)
@@ -1408,6 +1462,15 @@ func decodeTasks(content []byte) (taskDocument, error) {
 		return taskDocument{}, fmt.Errorf("the id counter is %d behind node %d", document.Seq, highest)
 	}
 	return document, nil
+}
+
+// validRunRowState is a run row's state as a checkpoint may hold it: a node's
+// states, and interrupted too. A FILE AN EARLIER BUILD WROTE WITH AN
+// INTERRUPTED ROW is read, not set aside whole: that build wrote the row back
+// as the reader had drawn it ([runRowRecord] says why that no longer happens),
+// and refusing the file for it cost the conversation every task it had.
+func validRunRowState(state TaskState) bool {
+	return validTaskState(state) || state == TaskInterrupted
 }
 
 func validTaskState(state TaskState) bool {
@@ -1936,7 +1999,9 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	// cannot touch would invite it to say something about it.
 	for _, record := range document.Runs {
 		root := record.Parent
-		if root == 0 {
+		if root == 0 || record.Run == "" {
+			// Ordinary joined tasks are published under their own row IDs.
+			// Keeping that grouping makes the live and recovered graph identical.
 			root = record.ID
 		}
 		if g.runs == nil {

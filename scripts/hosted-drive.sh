@@ -236,21 +236,22 @@ copies() { ls -d "$HOME_DIR"/v3/projects/*/*/trees/* 2>/dev/null; }
 
 only_my_file() { [ "$(git -C "$WORK" status --short)" = "?? notes.txt" ]; }
 one_copy() { [ "$(copies | wc -l | tr -d ' ')" = "1" ]; }
-second_on_the_list() { screen | grep -q '#2'; }
-column_open() { screen | grep -q 'ctrl+g hide'; }
+second_on_the_list() { screen | cut -c119- | grep -q 'write README'; }
+first_on_the_list() { screen | cut -c119- | grep -q 'add Mul and Div'; }
+column_open() { screen | grep -Eq '│ Tasks [0-9]+.*alt\+l'; }
 first_run_home() { [ -f "$WORK/README.md" ] && [ -f "$WORK/muldiv.go" ]; }
 one_new_commit() { [ "$(git -C "$WORK" log --oneline | wc -l | tr -d ' ')" = "2" ]; }
 my_file_untouched() { [ "$(cat "$WORK/notes.txt")" = "mine, unsaved" ] && only_my_file; }
 copy_given_back() { [ -z "$(copies)" ]; }
 no_task_branch() { [ -z "$(git -C "$WORK" branch --list 'task/*')" ]; }
 card_says_merged() { screen | grep -q '· merged' && ! screen | grep -q 'branch kept'; }
-nothing_running() { ! screen | cut -c138- | grep -q '[⠀-⣿]'; }
+nothing_running() { ! screen | cut -c119- | grep -Eq 'Running [1-9][0-9]*'; }
 second_run_home() { grep -q 'func Neg' "$WORK"/*.go 2>/dev/null; }
 first_record_kept() { ls "$HOME_DIR"/v3/projects/*/*/plandb.db.1 >/dev/null 2>&1; }
-page_drawn() { screen | grep -q '^ brief'; }
-page_is_the_first_runs() { page_drawn && screen | grep -q 'add Mul and Div'; }
+page_drawn() { screen | grep -q 'transcript · work   esc/← main'; }
+page_is_the_first_runs() { page_drawn && screen | grep -q '› add Mul and Div with table tests'; }
 no_record_id() { ! screen | grep -Eq '(^| )t-[a-z0-9]{6}( |$)|^ [0-9]+ · '; }
-ended_run_answers() { screen | grep -q "that task.s run has ended"; }
+ended_run_answers() { screen | grep -q '· this task has finished — say it to main'; }
 draft_is_back() { screen | grep -q '› my draft stays'; }
 
 profile=${CODEAF_HOME:-$HOME/.codeaf}/config.json
@@ -284,7 +285,7 @@ typed '/task add Mul and Div with table tests in muldiv.go and muldiv_test.go'
 # seconds the two hand-offs were always apart by.
 sleep 2
 column_open || {
-	t send-keys -t x C-g
+	t send-keys -t x M-l
 	sleep 1
 }
 sleep 3
@@ -311,8 +312,10 @@ sleep 12
 check "the first run's record was kept beside the live one" first_record_kept
 t send-keys -t x -l 'my draft stays'
 sleep 1
-# AN ENDED RUN'S ROW FOLDS ITS PARTS AWAY AND WEARS THE FOLD'S COUNT WHERE ITS
-# NUMBER WAS, so the row is found by its title and not by `#1`.
+# FINISHED TASKS FOLD UNDER DONE. Open that group before looking for the first
+# run's row; the row is found by its title and not by `#1`.
+press 'Done ' || fail "the finished tasks group is not on the side list"
+wait_for 100 0.1 first_on_the_list || fail "the first run's row is not on the side list"
 press 'add Mul and Div' || fail "the first run's row is not on the side list"
 # The page is read off the update loop, so it is drawn a moment after the press.
 wait_for 100 0.1 page_drawn || fail "the page did not draw inside ten seconds"

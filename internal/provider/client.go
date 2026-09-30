@@ -63,6 +63,13 @@ type Config struct {
 	Effort  Effort
 	Timeout time.Duration
 
+	// RouteGate, when set, is asked before every body this client sends, with
+	// the model the body names and the call's tag ([WithCallTag]); an error
+	// is the call's answer and nothing is sent. It is how a session keeps
+	// EVERY road — a helper, a child's loop, a road that carries a client of
+	// its own — off a route its route health says will not answer, at the one
+	// door every body passes, rather than caller by caller.
+	RouteGate func(ctx context.Context, model, tag string) error
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
 	// answer is reported by returning known=false, never by waiting.
@@ -170,6 +177,9 @@ type Client struct {
 	// carry (withdrawn.go). It is beside `encodes` for the same reason: a fact
 	// about one router and one account, over the span of one conversation.
 	withdrawn withdrawnMemo
+	// toolless is which models this client has said it sends no tools to
+	// (toolless.go).
+	toolless toollessMemo
 	// encodes is what this client already knows its transcript and its tool
 	// block serialize to (memo.go). It changes nothing about the bytes and is
 	// carried per client because a transcript belongs to a conversation.
@@ -409,7 +419,8 @@ type callKnobs struct {
 	relaxed relaxSet
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
-	reasoning []MessageReasoning
+	reasoning     []MessageReasoning
+	contextBudget ContextBudget
 	// noProvider takes the `provider` object OFF this one encode entirely, and
 	// it is set by exactly one caller: the single widened retry that asks
 	// whether a base's 400 was about the field at all (endpoints.go's
@@ -483,17 +494,18 @@ func (k callKnobs) carriesTheDemand() bool {
 
 func knobsFrom(ctx context.Context) callKnobs {
 	knobs := callKnobs{
-		cacheKey:   CacheKeyFrom(ctx),
-		effort:     effortFrom(ctx),
-		role:       RoleFrom(ctx),
-		intent:     routingIntentFrom(ctx),
-		lambda:     valueOfTimeFrom(ctx),
-		horizon:    callHorizonFrom(ctx),
-		hedgeLane:  hedgeLaneFrom(ctx),
-		reasoning:  MessageReasoningFrom(ctx),
-		refused:    &refusedHere{},
-		retryAvoid: RetryAvoidFrom(ctx),
-		trace:      newCallTrace(),
+		cacheKey:      CacheKeyFrom(ctx),
+		effort:        effortFrom(ctx),
+		role:          RoleFrom(ctx),
+		intent:        routingIntentFrom(ctx),
+		lambda:        valueOfTimeFrom(ctx),
+		horizon:       callHorizonFrom(ctx),
+		hedgeLane:     hedgeLaneFrom(ctx),
+		reasoning:     MessageReasoningFrom(ctx),
+		contextBudget: contextBudgetFrom(ctx),
+		refused:       &refusedHere{},
+		retryAvoid:    RetryAvoidFrom(ctx),
+		trace:         newCallTrace(),
 	}
 	// The choice this call was already made on, if it was. See
 	// [Client.withLaneChoice]: it is carried rather than recomputed because it
@@ -588,6 +600,9 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 		return nil, withdrawnRefusal(model)
 	}
 	noteModelTried(ctx, model)
+	// A MODEL THE CATALOG SAYS TAKES NO TOOLS IS SENT NONE (toolless.go), before
+	// any body is encoded, so the size check measures what really goes out.
+	knobs = c.leaveOffTools(ctx, model, knobs, len(request.Tools) > 0)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
 	// AN ANSWER MEANS IT IS CARRIED AGAIN. A memo nothing clears takes a model
 	// away for the life of the process on the strength of one bad minute.
@@ -621,6 +636,41 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 		// on a budget nobody above could see (endpoints.go's deleted
 		// recoverFromPacing). The layer that owns the turn owns the model.
 		return nil, err
+	}
+	// Simple routing has no hard parameter filter. The router can send a tool
+	// request to a tool-less endpoint with a smaller window than local sizing
+	// used. Re-send once before the conversation pays for a summary; a second
+	// overflow goes to its usual recovery owner without another loop. ONLY A
+	// ROUTER CAN ANSWER A RESEND FROM ANOTHER ENDPOINT: a direct base is the one
+	// endpoint, and resending it the same request would pay a refusal twice.
+	if response != nil && endpointRefusalStatus(response.StatusCode) && knobs.contextBudget.Window > 0 && !c.config.Direct && c.baseServesLanes() {
+		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		if readErr == nil {
+			prefs := refusedWirePreferences(response)
+			choice, chosen := laneChoiceFromContext(ctx)
+			if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow && failure.FromUpstream() &&
+				failure.ContextLimit > 0 && failure.ContextLimit < c.servingWindow(c.modelFor(request), prefs, knobs.contextBudget.Window, len(request.Tools) > 0) {
+				if prefs != nil && len(prefs.Only) == 1 || chosen && choice.Pinned && len(choice.Only) == 1 {
+					c.rememberContextLimit(c.modelFor(request), failure)
+					response.Body = rewound(peek, response.Body)
+					return response, nil
+				}
+				c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+					attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+					err: apiError(response.StatusCode, peek), responseBody: peek})
+				response.Body.Close()
+				retried, retryErr := c.sendRepaired(ctx, request, knobs, stream)
+				c.rememberContextLimit(c.modelFor(request), failure)
+				if retryErr != nil {
+					return nil, retryErr
+				}
+				response = retried
+			} else {
+				response.Body = rewound(peek, response.Body)
+			}
+		} else {
+			response.Body = rewound(peek, response.Body)
+		}
 	}
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
@@ -759,7 +809,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, encodeFailure(err)
 	}
 	began := logNow()
 	response, err := c.send(ctx, request, knobs, body, stream)
@@ -835,7 +885,7 @@ func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnob
 	refused.Body.Close()
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, encodeFailure(err)
 	}
 	return c.send(ctx, request, knobs, body, stream)
 }
@@ -947,7 +997,17 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 // be served this way says so on the wire — a gateway that takes `stream: true`
 // and answers one whole JSON completion — and [Client.unstreamable] remembers it
 // from what actually happened, so the fallback is a memo rather than a guess.
-func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (response *ai.Response, err error) {
+	// Every failed completion can teach the next encode, including the retry
+	// after an empty thinking-only answer.
+	defer func() {
+		if failure, ok := RefusalFrom(err); ok {
+			request, requestErr := c.newRequest(messages, options)
+			if requestErr == nil {
+				c.rememberContextLimit(c.modelFor(request), failure)
+			}
+		}
+	}()
 	ctx = WithPlanOverflowGuard(ctx)
 	observer := streamObserverFrom(ctx)
 	response, relearned, err := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
@@ -966,6 +1026,9 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	// The reading is done inside the call so that the row it writes can SAY what
 	// the answer taught; the decision to do it twice is made here.
 	if relearned {
+		// Bank the superseded answer before another request can fail or be cut.
+		// Its usage must not be folded into the final answer's context size.
+		noteDiscardedUsage(ctx, response)
 		again, _, againErr := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
 		return again, againErr
 	}
@@ -1101,7 +1164,12 @@ func (c *Client) completionInOnePiece(
 			began: logBegan, status: status, served: served, err: cut,
 			responseBody: payload,
 		})
-		c.bill(ctx, c.modelFor(request), &response)
+		// THROUGH THE ANSWERED DOOR, not the bare one: the provider charged for
+		// this 200 whether or not its text was language, and on work that asked
+		// for it an answer with no usage block is priced by its receipt
+		// ([Client.billAnswered]). The bare door banks nothing without usage, so
+		// that charge reached no book at all.
+		c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
 		return nil, false, cut
 	}
 	reasonWord, servedWell := answerOutcome(&response)
@@ -1124,7 +1192,7 @@ func (c *Client) completionInOnePiece(
 	})
 	// The money, banked at the same instant the log row is written and for the
 	// same reason: this is where the fact is known. See billing.go.
-	c.bill(ctx, c.modelFor(request), &response)
+	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
 	return &response, len(relearned) > 0, nil
 }
 
@@ -2180,7 +2248,8 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.bill(ctx, c.modelFor(request), response)
+		// Through the answered door, for the reason the whole-body twin gives.
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 		return nil, false, cut
 	}
 	// A RESCUE IS NOT THE TURN UNTIL IT READS AS LANGUAGE. The hedge used
@@ -2194,7 +2263,9 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.bill(ctx, c.modelFor(request), response)
+		// A rescue that is not language was still paid for, so it goes through
+		// the answered door too.
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 		return nil, false, cut
 	}
 	// PAST EVERY GUARD, SO THIS LANE SERVED — the recovery half of the quality
@@ -2224,7 +2295,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
 	// blind to one of the two transports is a ledger nobody can reconcile.
-	c.bill(ctx, c.modelFor(request), response)
+	c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, relearned, nil
@@ -2541,6 +2612,12 @@ type APIError struct {
 	// envelope's own `code`, with the sentence kept only as a hint for a body
 	// that carries neither ([overflowRefusal]).
 	Overflow bool
+	// Context facts are optional evidence, parsed once at the refusal boundary.
+	ContextLimit  int
+	InputTokens   int
+	OutputTokens  int
+	Local         bool
+	BudgetChanged bool
 	// Code is the error envelope's `code`, as text. The router types that field
 	// as a number, as a string, and sometimes omits it, so it is normalised here
 	// once rather than decoded at each reader.
@@ -2773,6 +2850,7 @@ func apiError(status int, payload []byte) error {
 	// built and is therefore true of every APIError this build makes, including
 	// the ones a stream raises in-band.
 	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
+	readContextLimit(failure)
 	return failure
 }
 

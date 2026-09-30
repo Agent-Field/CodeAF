@@ -53,7 +53,7 @@ refused visibly rather than lost.
 A recent ssh connection is kept reusable for 300 seconds, so a new channel can avoid a
 full handshake when the underlying ssh connection is still healthy. Its control socket
 lives under this machine's codeaf state directory at `~/.codeaf/v3/ssh/` (moved by
-`CODEAF_HOME`). The same **104-byte** socket-path limit applies there: a state path too
+`CODEAF_HOME`). The same **103-byte** socket-path limit applies there: a state path too
 long disables reuse only; the ordinary ssh connection still opens.
 
 These network-dependent defaults are editable on `/settings`' **Workspace** tab as `ssh
@@ -479,6 +479,12 @@ in the middle of stops where it is and keeps what it had written — and they re
 new build. Windows that were on it reconnect to the new one. `codeaf engine --daemon` does
 the same and prints the same line.
 
+When both ends support restart detection, that reconnect retires the old reply channels
+before displaying new replies. If an answer was still open, the window says
+`the engine restarted; the previous answer stopped`. Your saved conversation remains;
+asking a follow-up starts a fresh answer instead of silently losing it. A temporary link
+loss to the same running engine still resumes its existing answer.
+
 "Older" is when the build was made, whichever file it runs from: another binary built two
 days ago is older, and so is one too old to say. **A newer engine is never replaced** by an
 older codeaf — that window joins it — and two copies of one build never take the slot from
@@ -575,9 +581,10 @@ the one a person really does type; it has its own section above. None of them ap
 ## Why does codeaf take ten seconds to start, or say the conversation ends with this terminal — a state folder too long for a socket
 
 The thing that holds a conversation after you close the terminal is reached on a unix
-socket under codeaf's own state folder, and a socket path may weigh at most **104
-bytes**. It is 104 rather than Linux's own 108 because the smallest limit is the one that
-travels: macOS stops at 104, and the same folder can be shared over a network mount.
+socket under codeaf's own state folder, and a socket path may weigh at most **103
+bytes**. That is macOS's limit (104 bytes, one of them the end of the name) rather than
+Linux's larger one, because the smallest limit is the one that travels: the same folder
+can be shared over a network mount.
 
 If `CODEAF_HOME` puts that folder deep enough to push the path past the limit, there is
 nowhere for a session host to answer, and the launch opens the conversation in this
@@ -586,7 +593,7 @@ under `v3/hosts`. Everything else about the conversation works exactly as it alw
 It simply ends when this terminal does. The entry notice says so:
 
 ```
-this conversation opened in this terminal instead, and ends with it: codeaf's state folder is a longer path than the 104 bytes a socket may be named in — CODEAF_HOME moves it somewhere shorter
+this conversation opened in this terminal instead, and ends with it: codeaf's state folder is a longer path than the 103 bytes a socket may be named in — CODEAF_HOME moves it somewhere shorter
 ```
 
 **It used to cost ten seconds.** The launch started a host into a path it could never
@@ -598,7 +605,7 @@ The way out is to point `CODEAF_HOME` at a shorter path — that is the whole of
 the next launch holds its conversation in the background again. `codeaf chat --no-host`
 is the same floor asked for on purpose, on any machine.
 
-The same 104 bytes govern the reusable ssh control socket under **How quickly a dead ssh
+The same 103 bytes govern the reusable ssh control socket under **How quickly a dead ssh
 link is noticed and retried**: a path past it turns ssh reuse off and nothing else.
 
 ## Background replies while another reply finishes

@@ -26,6 +26,7 @@ package tui3
 //     that has to be dismissed before it can be told it was useless.
 
 import (
+	"github.com/Agent-Field/codeaf/internal/session"
 	"sort"
 	"strings"
 	"time"
@@ -280,7 +281,7 @@ func humanName(session Session) string {
 		// called the same thing (sessionrows.go).
 		name = strings.TrimSuffix(sessionStem(session.File), ".jsonl")
 	}
-	return titleCase(unpackName(name))
+	return listTitle(name)
 }
 
 // openingWords is how much of a first message becomes a name. Seven words is
@@ -291,6 +292,9 @@ const openingWords = 7
 // openingName is a name derived from the first thing the person said: its
 // opening words, with the punctuation a sentence ends on taken off.
 func openingName(opening string) string {
+	if _, shell := session.BashCommand(opening); shell {
+		return strings.TrimSpace(opening)
+	}
 	words := strings.Fields(strings.TrimSpace(opening))
 	if len(words) == 0 {
 		return ""

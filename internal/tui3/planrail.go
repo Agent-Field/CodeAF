@@ -12,8 +12,8 @@ package tui3
 // SO THERE IS ONE RENDERER AND THIS FILE IS ITS ADAPTER. A store row is lent a
 // [taskNode] ([planRailNode]) carrying only what the store knows — its title,
 // its state, when it started, what it has cost, and the step it is running —
-// and that node is drawn by [app.railEntryRows], the function every node row on
-// the column is drawn by. A figure the store does not keep, such as tokens or
+// and that node is drawn by [app.railEntryRow], the function every node row on
+// the side column is drawn by: one line, its glyph, its name and its time. A figure the store does not keep, such as tokens or
 // the model, is left unset, and the renderer's emptiness law draws nothing for
 // it rather than a zero.
 
@@ -22,9 +22,6 @@ import (
 	"hash/fnv"
 	"sort"
 	"strings"
-	"time"
-
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -60,6 +57,9 @@ func planNodeState(row session.PlanTaskRow) session.TaskState {
 	}
 	if row.Interrupted {
 		return session.TaskInterrupted
+	}
+	if row.Hold != "" && (row.Status == "ready" || row.Status == "running") {
+		return session.TaskQueued
 	}
 	switch strings.TrimSpace(row.Status) {
 	case "pending":
@@ -101,11 +101,15 @@ func planRailNode(row session.PlanTaskRow) *taskNode {
 		planRow:  &held,
 		handle:   planRailHandle(row.ID),
 		state:    planNodeState(row),
+		waiting:  strings.TrimSpace(row.Hold),
 		stopped:  row.Stopped,
 		began:    row.Started,
 		started:  row.Started,
 		ended:    row.Ended,
 		cost:     row.USD,
+		// AND WHICH PROGRAM HAS THE WORK, so the row wears its badge
+		// (programbadge.go) like the node row it stands in for.
+		program: strings.TrimSpace(row.Program),
 	}
 	node.title = taskTitleOf(node.label, "", node.id)
 	if row.Live.Step > 0 {
@@ -224,22 +228,39 @@ func planTwigsOf(rows []session.PlanTaskRow) []*planTwig {
 }
 
 // planRailLines draws a run's parts under a row, each one THROUGH THE NODE
-// RENDERER and in the old tree's connectors: `stems` is the ancestry of the row
-// they hang from, and `more` says whether rows of that one's own come after
-// them, so the last part closes its branch only when nothing else hangs there.
+// RENDERER and one line each, as every task on the side column is (sidecol.go):
+// depth is how far under the row they hang, two cells a level, which is the
+// only shape the column gives a family now that its forest is gone.
 //
 // Every line a part draws carries its store id, which is what makes it a door
 // onto that task's page ([app.openRailPlan]).
-func (a *app) planRailLines(kids []*planTwig, stems []bool, more bool, width int) []railLine {
+func (a *app) planRailLines(kids []*planTwig, depth, width int) []railLine {
 	var out []railLine
-	for i, kid := range kids {
-		after := i < len(kids)-1 || more
-		at := append(append([]bool(nil), stems...), after)
-		rows, _, _ := a.railEntryRows(railEntry{node: planRailNode(kid.row), stems: at, root: len(kid.kids) > 0}, width)
-		for j, text := range rows {
-			out = append(out, railLine{text: text, entry: -1, plan: kid.row.ID, head: j == 0})
+	lead := strings.Repeat("  ", depth)
+	for _, kid := range kids {
+		text := a.railEntryRow(railEntry{node: planRailNode(kid.row)}, max(width-len(lead), 0))
+		out = append(out, railLine{text: lead + text, entry: -1, plan: kid.row.ID, head: true})
+		out = append(out, a.planRailLines(kid.kids, depth+1, width)...)
+	}
+	return out
+}
+
+// planPageLines is [app.planRailLines] for a task's page, which has the room
+// the side column gave up: under each part's one line stand the lines the
+// column moved to its hint ([app.railUnder]), what the part is doing and what
+// it is costing, so the page still names a call in flight the way the rail
+// once did beside the row.
+func (a *app) planPageLines(kids []*planTwig, depth, width int) []railLine {
+	var out []railLine
+	lead := strings.Repeat("  ", depth)
+	room := max(width-len(lead), 0)
+	for _, kid := range kids {
+		node := planRailNode(kid.row)
+		out = append(out, railLine{text: lead + a.railEntryRow(railEntry{node: node}, room), entry: -1, plan: kid.row.ID, head: true})
+		for _, under := range a.railUnder(node, max(room-4, 0)) {
+			out = append(out, railLine{text: lead + "    " + under, entry: -1, plan: kid.row.ID})
 		}
-		out = append(out, a.planRailLines(kid.kids, at, false, width)...)
+		out = append(out, a.planPageLines(kid.kids, depth+1, width)...)
 	}
 	return out
 }
@@ -247,121 +268,7 @@ func (a *app) planRailLines(kids []*planTwig, stems []bool, more bool, width int
 // planRailRoot draws one run whose own row no node on the column carries: its
 // row, then its parts, every one of them through the node renderer.
 func (a *app) planRailRoot(twig *planTwig, width int) []railLine {
-	rows, _, _ := a.railEntryRows(railEntry{node: planRailNode(twig.row), root: len(twig.kids) > 0}, width)
-	out := make([]railLine, 0, len(rows))
-	for j, text := range rows {
-		out = append(out, railLine{text: text, entry: -1, plan: twig.row.ID, head: j == 0})
-	}
-	return append(out, a.planRailLines(twig.kids, nil, false, width)...)
-}
-
-// ── THE PAGE A RUN'S ROW OPENS ─────────────────────────────────────────────
-
-// taskPlanTrail is the page's first row in the task room's shape
-// ([app.roomTrailRow]): where this task sits — the conversation, the tasks a
-// step into a part came through, and the task itself — with the way back at
-// the row's far end.
-//
-// NONE OF ITS CRUMBS IS A DOOR. The way back is `esc`, named on the key line and
-// at this row's end, and a crumb that lit under the hand without going anywhere
-// would be a control that lies; so the crumbs are drawn inert and record no hit.
-func (a *app) taskPlanTrail(width int) string {
-	crumbs := []roomCrumb{{word: a.chatCrumbWord(), kind: crumbOwner}}
-	for _, back := range a.taskSheet.planBack {
-		crumbs = append(crumbs, roomCrumb{word: strings.TrimSpace(back.Row.Title), kind: crumbAncestor})
-	}
-	crumbs = append(crumbs, roomCrumb{word: strings.TrimSpace(a.taskSheet.plan.Row.Title), kind: crumbHere})
-	back := " " + taskCardBackWord + " "
-	room := width - headLabelAt - ansi.StringWidth(back) - 3
-	label, hits, _ := fitCrumbChain(crumbs, max(room, 0))
-	if label == "" {
-		label, hits, _ = fitCrumbChain(crumbs, max(width-headLabelAt, 0))
-	}
-	placed := make([]crumbHit, len(hits))
-	for i, hit := range hits {
-		hit.span = hudSpan{from: hit.span.from + headLabelAt, to: hit.span.to + headLabelAt}
-		placed[i] = hit
-	}
-	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbHits(label, headLabelAt, placed, crumbHit{}, false)
-	used := headLabelAt + ansi.StringWidth(label)
-	if used+2+ansi.StringWidth(back)+1 <= width {
-		from := width - ansi.StringWidth(back) - 1
-		return line + strings.Repeat(" ", from-used) + a.pal.dim(back) + " "
-	}
-	return line
-}
-
-// taskPlanFacts is the page's second row in the task room's shape
-// ([app.roomGroupedFacts]): the rule, led by the state's own mark and word in
-// the state's own ink — the spinner every working row on this surface wears —
-// then how long it has run, how many steps it has taken and how many of its
-// parts are running or queued, and at the far end what it has cost.
-//
-// EVERY FIGURE IS DROPPED WHEN THE STORE HAS NOT GOT IT, the room's own law per
-// segment: a task that has not started has no clock, one that has taken no step
-// no count, and one that has spent nothing no price — never `$0.00`.
-func (a *app) taskPlanFacts(width int) string {
-	page := a.taskSheet.plan
-	row := page.Row
-	status := planStatus(row)
-	state := a.tierMark(status)
-	if word := planStateWord(row); word != "" {
-		state += " " + word
-	}
-	var activity []string
-	if clock := planClockWord(row, a.now()); clock != "" {
-		activity = append(activity, clock)
-	}
-	if steps := planStepWords(row.Steps); steps != "" {
-		activity = append(activity, steps)
-	}
-	running, queued := 0, 0
-	for _, kid := range page.Children {
-		switch strings.TrimSpace(kid.Status) {
-		case "ready", "claimed", "running":
-			running++
-		case "pending":
-			queued++
-		}
-	}
-	if running > 0 {
-		activity = append(activity, itoa(running)+" running")
-	}
-	if queued > 0 {
-		activity = append(activity, itoa(queued)+" queued")
-	}
-	left := state
-	if len(activity) > 0 {
-		left += "   " + strings.Join(activity, rowSep)
-	}
-	right := planSpendWord(row.USD)
-	lead := ansi.StringWidth(state)
-	ink := tierInk(a.pal, status)
-	paint := func(label string) string {
-		cols := ansi.StringWidth(label)
-		if lead >= cols {
-			return ink(label)
-		}
-		return ink(ansi.Cut(label, 0, lead)) + a.pal.muted(ansi.Cut(label, lead, cols))
-	}
-	for _, try := range [][2]string{{left, right}, {left, ""}, {state, right}, {state, ""}} {
-		if line, _, ok := a.legendLinePainted(try[0], try[1], a.pal.muted(try[1]), width, paint); ok {
-			return line
-		}
-	}
-	return a.pal.dim(rule(width))
-}
-
-// planClockWord is how long a store task has run: to now while it is open, to
-// its landing once it has one, and nothing when the store never said when it
-// started.
-func planClockWord(row session.PlanTaskRow, now time.Time) string {
-	if row.Started.IsZero() {
-		return ""
-	}
-	end := now
-	if !row.Ended.IsZero() {
-		end = row.Ended
-	}
-	return countUpWord(end.Sub(row.Started))
+	text := a.railEntryRow(railEntry{node: planRailNode(twig.row)}, width)
+	out := []railLine{{text: text, entry: -1, plan: twig.row.ID, head: true}}
+	return append(out, a.planRailLines(twig.kids, 1, width)...)
 }

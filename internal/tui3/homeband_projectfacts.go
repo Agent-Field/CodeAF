@@ -57,10 +57,12 @@ func projectFacts(project session.Project, now time.Time) string {
 	var touched time.Time
 	for _, row := range project.Sessions {
 		tasks += row.Tasks.Total()
-		// The talking and the work it commissioned, added the way [homeFacts]
-		// adds them for one conversation: one figure, because one figure is what
-		// "what has this project cost" means.
-		spend += row.Spend + row.Tasks.Spend
+		// The talking and the work it commissioned, joined the way [homeFacts]
+		// joins them for one conversation ([conversationSpend]'s larger of the
+		// two, because the books already hold the work they folded), then summed
+		// across conversations: one figure, because one figure is what "what has
+		// this project cost" means.
+		spend += conversationSpend(row)
 		// The later of "somebody spoke" and "work landed", exactly as
 		// [homeFacts] takes it for one conversation: both are this project being
 		// active, and the footer is asked when, not how.

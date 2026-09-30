@@ -85,7 +85,7 @@ func TestRefusalStripsOptionalParametersInOrderAndSaysSo(t *testing.T) {
 		"Retry 1/4: relaxed the endpoint filter",
 		"Retry 2/4: removed reasoning",
 		"Retry 3/4: removed max_tokens",
-		"Retry 4/4: removed tools",
+		"Retry 4/4: sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer",
 	}
 	if len(notices) != len(want) {
 		t.Fatalf("notices = %#v, want %d lines", notices, len(want))

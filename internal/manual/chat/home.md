@@ -8,7 +8,7 @@ answering one question you would ask walking up to a colleague's desk:
 
 ```
  codeaf                                                      $0.14 / $20 · thu 9:49am
-  home   tasks   spend   settings
+  home   teams   chats   sessions   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
  Understanding Hash Tables                  2m    projects
@@ -45,7 +45,8 @@ in the right-hand rail instead — heading and one dim line each — so the left
 is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
-nothing was sent while you were looking. The resting foot reads
+nothing was sent while you were looking; `alt+3` (`chats` on the bar) does the same. The
+resting foot reads
 `alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`.
 The project, approvals and chats hints appear only where those controls can act.
 The controls stay the same as the cursor walks between rows. `→` opens the selected
@@ -57,7 +58,9 @@ whole map over the cells you are already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`.
+Home is the **first place on the top line**, right after the `codeaf` wordmark:
+`home  teams  chats  sessions  spend  settings`.
+The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
 
@@ -285,6 +288,13 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
+## Why does home show a session id for an untitled chat, untitled conversation, new conversation
+
+**A conversation nothing has named yet reads `new conversation`** on home's sessions
+list, the same word the sessions place uses. It never reads as its session id, including
+the id with its first letter raised (`D53cceead3f99593`). A conversation that has a title
+keeps that title.
+
 ## Close or put away a task from home — task row options, new in project, open folder, copy project
 
 **`→` offers task options just as it does for threads:** `x close`,
@@ -487,7 +497,7 @@ names none of them; `alt+.` draws the map when you want the rest.
 A digit answers the question row drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
 
-## Why is a heading highlighted, why is one project name darker than the others
+## Why is a heading highlighted, which section is my cursor in, why is one project name darker than the others
 
 **Because the cursor is in that panel.** The heading of the panel holding the cursor wears
 the cursor's ground — one heading per frame, following the keyboard, and never the mouse.
@@ -508,8 +518,8 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 **On a launch** — home greeting you — the cursor is on the conversation this window is
 holding, the row `esc` drops back into.
 
-**`↑` off the top row of home stays on it.** The tab bar — the row of four words — is
-reached by clicking a word, by `tab`, or by a place's own chord (`alt+2` and the rest); on
+**`↑` off the top row of home stays on it.** The tab bar, the row of six words, is
+reached by clicking a word, by `tab`, or by a place's own chord (`alt+4` and the rest); on
 every other place `↑` off the top row still walks up onto it. On the bar `←`
 and `→` walk along the words without opening anything, `enter` or `↓` goes into the one under the
 cursor, and `esc` puts the cursor back on the row it came from. Walking up onto the bar does
@@ -591,19 +601,26 @@ under it.
 
 ## The line at the top of home — the pulse, want you, moving, spend and allowance, the clock
 
-The top line is the program's name and, right-aligned, what is true of the **whole
-machine** right now. It is the first row of **every** frame — home, every place, and the
-chat itself, where it sits over the tab strip (` home  <your chats>`), a rule and a blank:
-the same four rows at the top wherever you are standing. **Inside a chat** and on every
-place but home it reads:
+The top line is the program's name, the places you can go, and, right-aligned, what is true
+of the **whole machine** right now. It is the first row of **every** frame: home, every
+place, and the chat itself, and it does not move. Under it, **inside a chat**, is the tab
+strip of your chats, then a rule and a blank: four rows. On home and every other place
+there is no strip. The rule and a blank come next, three rows, and the page starts one
+row higher. **Inside a chat** and on every place but home the top line reads:
 
 ```
- codeaf              2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
-**On home it drops the two counts** and keeps the budget and the clock —
-` codeaf                              $0.55 / $500 · tue 1:11pm` — because the `needs you`
-and `sessions` panels are those counts, row by row.
+**On home it drops the two counts** and keeps the budget and the clock, because the
+`needs you` and `sessions` panels are those counts, row by row.
+
+**On a narrow window the right end gives way first**: the clock, then `4 moving`, then
+the words of `2 want you`, which becomes `2 ?` in the same amber, then the allowance
+(`$0.55 / $500` becomes `$0.55`); only then do the places fold into `more ▾`, and then the
+day's figure goes. **The count of things waiting on you never goes**: `2 ?` is on the line at
+every width, because it is the one number you must not have to go looking for. The **Places** page of
+this manual has the whole order and the `more ▾` menu.
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
   answer, a standing order that will not fire until you say so, an errand holding a
@@ -626,20 +643,17 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing, memory and search go — the four places on the tab bar
+## Where did standing and memory go: the six words on the tab bar
 
-**They are still places; they are just off the bar.** The tab bar under the top line is four
-words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
-memory and search open exactly as they did:
+The top line reads `home  teams  chats  sessions  spend  settings`. `alt+1` through
+`alt+6` go to each; `chats` (`alt+3`) returns to your conversation.
 
-- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `standing` row;
-- **`/memory`** (or `/memories`), `alt+6`, or `enter` on memory's line in `since you left`;
-- **`/search`**, `alt+7`, or the typed door on home's box.
+- `/standing` (or `/orders`) and `alt+7` open Standing.
+- `/memory` (or `/memories`) and `alt+8` open Memory.
 
-While you stand in one of the three, its word is drawn after the four so you can see where
-you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
-numbers. Home's own panels already summarise the three on the bar: `sessions` is a glimpse of
-tasks, `spend` of spend, `standing` of standing.
+Their words appear after the six while open. `tab` returns to Home; `alt+.` shows
+all eight numbered destinations. Search is on Home: type into its box to find a
+conversation. There is no separate Search tab or `/search` command.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -1317,14 +1331,20 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | --- | --- | --- |
 | **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
 | **`next conversation's folder`** | `/project` · `/project <path>` | Bare, opens the folder browser **aimed at the next conversation**; picking a folder pins it, with no duplicate footer message. With a path, pins that folder at once, opens nothing and says nothing. Either way `project: ~/src/parser` at the right of the keys row shows the selection, and neither road writes a second sentence over the keys. |
-| **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
+| **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
 | **`onto home's tray`** | `/attach <path>` | The file — or picture — rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` opens the browser aimed at the next conversation's folder, and a file chosen there lands on the tray. |
-| **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/skill` `/skills` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder at the right of the keys row and the model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
-| **`answers here`** | `/help` · `/status` · `/cost` · `/cache` · `/budget` · `/crew <preset>` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
+| **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/skill` `/skills` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder at the right of the keys row and the model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
+| **`answers here`** | `/help` · `/status` · `/cost` · `/cache` · `/budget` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
+| **`opens the crew panel`** | `/crew` and every `/crew` shortcut | Home steps aside and the crew panel opens over the conversation behind it; `esc` on the panel brings you back to home. A shortcut opens it with a tick on the row it changed. |
 | **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` | Acts on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
 | **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
 | **`closes the conversation behind home`** | `/quit` `/exit` `/q` | Closes it and says `closed · <its name>`. When it was the last conversation this terminal was holding, codeaf leaves. |
+
+**A task typed on home uses the project shown before you press enter.** Clearing the
+command from the box does not retarget it to a newer conversation in another project.
+An ordinary message and `/task <brief>` open in that same displayed project, even when
+another project's engine is still running.
 
 **The fate is never the half that gets cut.** On a narrow window the command's own
 description gives way first, whole, and what `enter` will do stays on the row.
@@ -1350,11 +1370,14 @@ lands on home's tray. Choosing `/attach` on the `/` list with `enter` opens it a
 conversation's folder — the same decision `/project` makes — and updates the project
 path at the right end of the keys row.
 
-**The tray belongs to you, not to a conversation.** It survives walking into a conversation
-and back out to home, and the chips you put on it here are the chips the next conversation
-starts with. Home's tray is a reading and not a target: a chip comes off on the row above a
-conversation's own box, where the `x` is. At phone width home draws no tray row at all; the
-files are still there, and the conversation you open shows them.
+**Home's tray belongs to the conversation home starts next.** The chips you put on it here
+are the chips that conversation starts with, and nothing else rides along: an unsent draft
+or attachment in another conversation stays there and comes back when you reopen it. Leave
+home without starting anything and its tray is emptied — home opens clean on every visit.
+Home's tray is a reading and not a target: a chip comes off on the row above a
+conversation's own box, at its remove mark (`×`, or `x` in ASCII mode). At phone width
+home draws no tray row at all; the files are still there, and the conversation you start
+from home carries them.
 
 ## Change the model before starting — /model on home, the seam above the box
 
@@ -1370,7 +1393,7 @@ same door:
 - **`/model`**, or **pressing the model's name on that rule**, opens the model list in home's
   own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
   `↑↓` to walk it, `enter` to take the row, `esc` to leave it alone. The foot while it is up
-  follows the cursor and reads `↑↓ pick · → providers · alt+s sort · enter choose · ctrl+t
+  follows the cursor and reads `↑↓ pick · → hosts · alt+s sort · enter choose · ctrl+t
   effort · esc back` on a model, and `↑↓ pick · ← back · alt+s sort · enter choose · esc back`
   inside an open provider fold. `← back` stands beside `↑↓ pick` because both move the cursor.
 - **`/model <slug>`** typed into the box pins it straight away, with no list.
@@ -1443,9 +1466,9 @@ home and every two minutes at rest, and each tip goes away for good the first ti
 what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it
 means ENOUGH FOR NOW, and the row stays blank until you leave home and come back, when a
 different tip is there. The tip you put away keeps its whole allowance and comes round
-again. **A conversation says its tips differently**: there the tip is the lowest rung of
-the keys row at the very foot, with no bulb, no cross and no clock — it is simply there
-whenever nothing else is happening. Both rows draw from the same one list. The whole list,
+again. **A conversation says its tips differently**: its tip stands at the right end of
+the keys row, over the project, with the bulb and the cross, and it appears only after
+15 seconds in which you have not pressed, clicked, scrolled or pasted anything. Both rows draw from the same one list. The whole list,
 what makes each one appear and disappear, and the **disable hints** row on the Workspace
 tab that turns them off, are on the *hints and tips* page.
 
@@ -1481,7 +1504,7 @@ and opens home. So a space you actually wanted is never eaten: space then `x` le
 **Wherever the door is drawn, two spaces open it.** That includes a box holding only blank
 lines, from a `ctrl+j` or an `alt+enter` you did not mean. It also includes the other
 places: the same two spaces, typed into a place's own empty box — the tasks roster's filter,
-the memory filter and the search query — open home from there. Places without a box,
+the memory filter — open home from there. Places without a box,
 such as spend and standing, count the two spaces directly. The door still
 loses to a space that already means something where you are standing: on the settings panel
 space is the row's `activate` verb, inside a task's record `space` pages the card, and on
@@ -1505,6 +1528,11 @@ and not decoration. It also goes while a turn is running, where the same row has
 more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
 advertised. (Until 2026-09-17 these words were the right end of the rule above the box.)
 
+**It stays when a tip is showing.** A conversation's tip covers the project at the keys
+row's right end, never the keys. Until 2026-09-24 a tip took the whole row and the
+door went with it. One of the tips is about the door itself:
+`space space takes you back to home`.
+
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.
 
@@ -1512,6 +1540,9 @@ It appears on a fresh machine too, from the first minute, and over `--host` as w
 machine with one conversation or with none still has a home to go to. The rule that keeps
 home from *greeting* a first run is a different rule — not being greeted by home and not
 being able to reach it are two different things.
+
+From home, `alt+3` (`chats` on the bar) goes straight back to the conversation you were
+in, and `alt+k` chooses one.
 
 ## space space does nothing — why the gesture did not open home
 
@@ -1547,17 +1578,19 @@ this folder as the first row of `projects`.
 ## Is there a key for home?
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-four places on the tab bar, and each answers to its own position, `alt+1` through `alt+4`
-(the three places off the bar answer `alt+5` through `alt+7`).
+six words on the tab bar, and each answers to its own position, `alt+1` through `alt+6`
+(standing and memory, the two places off the bar, answer `alt+7` and `alt+8`).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
 `alt+<digit>` arrives in every terminal codeaf runs in — it is sent as escape-then-digit and
 has been for forty years — which is why the place keys are on `alt`. `ctrl+<digit>` has no
-encoding a terminal can send at all.
+encoding in the scheme most terminals speak; a terminal running the kitty keyboard protocol
+reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spelling that the
+map's own line names while it is live.
 
-There is still no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
-tasks place, `/history`).
+Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
+sessions place, `/history`).
 
 ## What landed while I was away — since you left, and the look stamp
 
@@ -1610,21 +1643,24 @@ see the next section.
 
 ## Answer a question from home — approve a command in another window
 
-**You can answer it here, without opening the window it is in.** The top `needs you` row
-that has answers draws them on its second line, out at the right, while the row is being
-read — under the pointer or the cursor — and **pressing the digit answers it, from anywhere
-on home**, whether or not the chips are on the screen at that moment. No row says `enter`;
-`enter` on any of them opens the conversation to answer it there.
+**You can answer it here, without opening the window it is in.** The topmost row wearing
+the amber `?` whose question has answers shows the question and its answers in its
+description while it is selected — under the pointer or the cursor — and **pressing the
+digit answers it, from anywhere on home**, whether or not the chips are on the screen at
+that moment. There is no `needs you` heading; the question stays on the conversation's or
+task's own row. No row says `enter`; `enter` on any of them opens the conversation to
+answer it there.
 
 The chips are the ones the question has:
 
 - It is **waiting for permission to run something**: `1 allow once  2 always  3 deny`.
 - It is **asking whether to start a task**: `1 yes  2 no`.
-- It is **asking whether to keep an eye on something**: `1 yes  3 just once  0 not set up`
-  — or `1 yes  0 not set up`, when what it is asking about is a **one-off reminder**, which
-  has no `once` answer at all. **`0` is how you say no from home**: nothing is set up,
-  nothing is run, and the card in that window settles as `not set up`. There is no
-  `2 change when or where` here, on purpose: that answer is a request for a text box; open
+- It is **asking whether to keep something going**. The chips are that card's own
+  words: a repeating check is `1 Set it up · <cadence>`, `3 Only now, don't repeat`,
+  `0 Don't set it up`. A one-off reminder has no once, and its no is `Don't remind me`.
+  A watch's no is `Don't watch`. A rule's no is `Don't keep it`. **`0` is how you say
+  no from home**: nothing is set up, nothing is run, and the card settles as `not set up`.
+  There is no change chip here, on purpose: that answer is a request for a text box. Open
   the conversation to say a different time or place.
 
 `2 always` means what it means in the window: **that session stops asking about that
@@ -1670,8 +1706,8 @@ one (*Why is the home screen empty*).
 
 Over `--host` home lists **the machine your session is running on**. The projects, the
 conversations in them and the work each of those ran are read on the far end and carried
-here, so what you are looking at is the server's afternoon rather than your laptop's — and
-the right end of the tab bar says `on <machine>` so you can see which. Enter on a row opens
+here, so what you are looking at is the server's afternoon rather than your laptop's, and
+the right end of the top line says `on <machine>` so you can see which. Enter on a row opens
 that conversation beside the one you are in rather than in place of it.
 
 Two things a remote home does not do, and both are silences rather than sentences. **No row
@@ -1715,7 +1751,7 @@ opens the conversation; on a `standing` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
-after the last time you spoke in the conversation behind it. The standing place (`alt+5`,
+after the last time you spoke in the conversation behind it. The standing place (`alt+7`,
 `/standing`) is every promise this machine has made, with how much rope each has.
 
 **Retired items are nowhere on home.** Something that fired once and finished, or that you
@@ -1819,32 +1855,30 @@ standup note" — a card appears in the conversation and **nothing is set up unt
 you answer it**:
 
 ```
-╭─ ? ◦ every Monday at 9, post the standup ──────────────────────────────────
+╭─ ? wants to set up a repeating check ──────────────────────────────────────
 │ every Monday at 9, post the standup note from the git log
-│ when · Mondays at 9am
+│ Mondays at 9am · about $0.02 a run, at most once a day
 │ where · for this project
-│ costs · about $0.02 a run, at most once a day
-│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
-│ I'll keep doing this Mondays at 9am, for this project, until you stop it
 ╰────────────────────────────────────────────────────────────────────────────
 ```
 
-Three bands make it different from the card that proposes a task: **`when ·`**, in
-the words you said or the words it worked out; **`where ·`**, how far it reaches;
-and **`costs ·`** — what one run may spend and how often it may run. A watch that
-has to *look* at something adds `checked every 5 minutes`. If it made the timing up
-rather than reading it off what you said, the band asks instead of stating:
-`Mondays at 9am — you didn't say, so that's my guess. Right?`
+The head says what kind of thing it is. The next line is what it does. The line
+after that is when, and what one time costs. **`where ·`** is how far it reaches.
+A watch that has to look at something adds `checked every 5 minutes` on that
+cost line. If it made the timing up rather than reading it off what you said,
+the line asks instead of stating:
+`Mondays at 9am. You didn't say, so that's my guess. Right?`
 
 **The answers**, by key, by `←`/`→` and `enter`, or by clicking one:
 
-- `1 yes, set it up` — it gets set up and starts happening.
-- `2 change when or where` — the box below becomes a place to say the **time or
-  the place** you want instead: "make it 8", "only in this project", "everywhere".
-  Nothing is set up until a new card comes with them in it.
-- `3 just once` — do it now and leave nothing behind.
-- `0 no` — nothing is set up, nothing is run, and the row settles as
-  `not set up`. `esc` does exactly the same thing.
+- `1` sets it up. On a repeating check the button reads `Set it up · <cadence>`.
+- `o Change…` turns the box into a place to say the time or the place you want
+  instead: "make it 8", "only in this project", "everywhere". Nothing is set up
+  until a new card comes with them in it. On a rule the button reads `Change where…`.
+- `3` does it now and leaves nothing behind. On a check it reads `Only now, don't repeat`.
+  This used to say `just once`.
+- `0` sets nothing up. The button's words depend on the kind: `Don't set it up`,
+  `Don't remind me`, `Don't watch`, or `Don't keep it`. The row settles as `not set up`.
 
 **The line under the answers says what the one you are on will actually do**, written
 out of this card's own facts. A **one-off reminder's card draws no `3`**: "do it now" for
@@ -1926,7 +1960,8 @@ a `made <file>` line in `since you left`, and where you left off is the line und
 selects it; the next arrow key takes over and removes the mouse highlight. A stationary
 pointer cannot override that choice. `→` and its options always act on the latest
 selection. Leaving the list keeps that selection, and there is no separate right-hand
-preview at rest.
+preview at rest. A typed search is different: its pointer previews a match without moving
+the keyboard cursor, and leaving the match restores the cursor's card.
 
 **The one card left is beside a search.** On a frame 136 columns or wider, while you are
 typing, the match under the cursor has a card to the right of the list (*The card beside a
@@ -1935,14 +1970,16 @@ phone*).
 
 **The machine's own card is gone too.** `↑` off the top of the column stays on the top row,
 and each thing that card said has a place: `keeping an eye on` is the standing place
-(`alt+5`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
+(`alt+7`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
 `4 moving`, and `thinking` is the `thinking` row of `/settings`.
 
 ## The card beside a search — the preview on the right while you type
 
 **While something is typed, on a frame 136 columns or wider, a card stands to the right of
 the matches**, about the match under the cursor — or the one under your pointer while it is
-on one. It is read top to bottom as bands with blank lines between them, and each band is
+on one. Moving the pointer off the matches gives the card back to the cursor's match.
+Even a match whose row says `folder gone` has a card; its unavailable folder actions say
+so there. The card is read top to bottom as bands with blank lines between them, and each band is
 drawn only when it has something to say:
 
 1. the conversation's **name**, the brightest text on the screen;
@@ -2216,7 +2253,7 @@ words that set one up. On a short terminal `standing` is the first panel to give
 **The `spend` panel, pinned in the rail under `projects`**, is the day and the fortnight in three dim lines.
 **Nothing under its heading is selectable or clickable**: the arrows step over its lines, the
 pointer does not light them, and a press on one does nothing. The heading is the door — `enter`
-cannot reach it, but a click on the word `spend` opens the spend place, as does `/spend` or `alt+3`:
+cannot reach it, but a click on the word `spend` opens the spend place, as does `/spend` or `alt+5`:
 
 ```
  spend
@@ -2245,14 +2282,17 @@ to the cent.
 zero or unknown files, spend and tokens are omitted, and a line with no true fact at all is
 not drawn. The resting panels do not carry it — `spend` is the whole machine's day.
 
-**It counts the talking and the work the talking started, in one figure.** The turns —
-your messages, the answers, and the small calls beside them — are added up by the session
-itself and written to the session folder at the end of every turn, so home can read them
-without opening the transcript. Every task and every unattended run this conversation
-commissioned is added from the project's task index. `spent $1.25` is those two halves
-together.
+**It counts the talking and the work the talking started, in one figure, and each dollar
+once.** The session keeps one set of books: your messages, the answers, the small calls
+beside them, and every task and senior-dev run this conversation started, folded in as each
+one finishes. It writes that total to the session folder at the end of every turn and again
+when a task or run finishes, so home can read it without opening the transcript. The
+project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
+of those two figures, never their sum: the books already hold every finished task and run, so
+adding the index on top would count them twice. While work is still running the index can be
+ahead, and then its figure is the one shown.
 
-`tokens` is input plus output as one sum, over the same two halves. `touched 12 files` is how
+`tokens` is input plus output as one sum, read the same way. `touched 12 files` is how
 many files this conversation's work wrote, summed over its tasks.
 
 `/cost` and `/status` inside the conversation still answer for the live session. A whole
@@ -2399,9 +2439,13 @@ keeps its status bullet, with the most recently active running conversation anim
 A task awaiting your decision has its own question indicator; its parent conversation
 does not repeat that indicator unless it has a separate question.
 
-## Does a run create another conversation in Sessions or the chats menu
+## Does a run create another conversation in Sessions or the chats menu — a run's tab, senior-dev's task has no tab
 
-A run’s tab is a view inside its parent conversation. Home’s Sessions list and the chats menu keep one row for that conversation, using its conversation title. The run’s own tab remains available beside it.
+No. Home’s Sessions list and the chats menu keep one row for the conversation, using its conversation title.
+
+A run the task-belt switch (`CODEAF_TASK_BELT=bash`) drives also has a tab of its own on the strip beside its conversation’s, named after the task the run is working on, for as long as the run works. It is a view inside that conversation: while it is open it is the one tab drawn selected, and a press on the conversation’s tab, a press on the `home` tab, or `esc` leaves it.
+
+A task handed to a program such as senior-dev has no tab. It opens inside the conversation’s own tab, as any task does, and `esc`, the conversation’s tab and the `home` tab leave it.
 
 ## Why does a closed conversation say another window
 

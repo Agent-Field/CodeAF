@@ -29,6 +29,92 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"why does a wrapped help line stay under its key", "keys"},
+		// The conversations view and its teams (conversations-and-teams.md).
+		{"how do I see all my conversations at once", "conversations-and-teams"},
+		{"what is the tabs dock under the message box", "conversations-and-teams"},
+		// The product's own words for that view are the wall: `/wall`, `alt+v`
+		// opens the wall. A person asks for it by that word.
+		{"what is the conversations wall", "conversations-and-teams"},
+		{"how do I open the wall", "conversations-and-teams"},
+		{"what is the chats dock under the message box", "conversations-and-teams"},
+		{"how do I group conversations into a team", "conversations-and-teams"},
+		{"how do I switch teams from the tab strip", "conversations-and-teams"},
+		{"does deleting a team close its conversations", "conversations-and-teams"},
+		{"where are my teams saved", "conversations-and-teams"},
+		// The teams page (teams-page.md).
+		{"how do I see all my teams and what waits on me", "teams-page"},
+		{"does renaming a team update the message box", "teams-page"},
+		{"how do I close a team", "teams-page"},
+		{"will closing a sub-team stop its manager if that manager is also in the parent team", "teams-page"},
+		{"the pane said the manager was open in another window", "teams-page"},
+		{"how do I reopen a closed team", "teams-page"},
+		{"why does my closed team say its report is not readable", "teams-page"},
+		{"can a team cap be less than a cent", "team-questions-and-caps"},
+		{"the wall said my team was not saved", "conversations-and-teams"},
+		{"how long does my team have left to wrap up", "team-questions-and-caps"},
+		{"does the conversations view show what each conversation spent", "conversations-and-teams"},
+		{"where do I change one team's settings", "teams-page"},
+		{"what does the ? 2 mark on a team mean", "teams-page"},
+		// Nesting on the teams page (teams-page.md).
+		{"how do I move a team inside another team", "teams-page"},
+		{"can I drag a team onto another team", "teams-page"},
+		{"how do I add a chat to another team from the teams page", "teams-page"},
+		{"why is a team greyed out when I move a team", "teams-page"},
+		{"how do I undo moving a team", "teams-page"},
+		{"is a team move written to traffic", "teams-page"},
+		{"what happens in traffic when I move a conversation between teams", "conversations-and-teams"},
+		{"does the manager learn when a member moves to another team", "team-manager"},
+		{"what does +4 idle mean on a team", "teams-page"},
+		{"how do I mention a team or another conversation with @", "conversations-and-teams"},
+		{"what does clicking a team name in a chat do", "conversations-and-teams"},
+		{"where does a team link in a chat open", "teams-page"},
+		// The team manager (team-manager.md).
+		{"what can the team manager do", "team-manager"},
+		{"can the manager answer a member's permission prompt", "team-manager"},
+		{"how does a member post to the room", "team-manager"},
+		{"does a directive wake an idle member", "team-manager"},
+		{"why did my manager wake twice for one reply", "team-manager"},
+		{"can a manager stop a member working in the background without a window", "team-manager"},
+		{"what tools does a conversation lose when it stops being the manager", "team-manager"},
+		// Questions, packets, caps and wrapping up (team-questions-and-caps.md).
+		{"does a member's question go to the manager or to me", "team-questions-and-caps"},
+		{"what is a decision packet", "team-questions-and-caps"},
+		{"what happens when a team reaches its daily cap", "team-questions-and-caps"},
+		{"what if codeaf cannot read today's team spending", "team-questions-and-caps"},
+		{"do answered team questions survive packet file rotation", "team-questions-and-caps"},
+		{"why did two windows both ask me about the team cap", "team-questions-and-caps"},
+		{"how do I wrap up a team before closing it", "team-questions-and-caps"},
+		{"what happens to a wrap-up when codeaf restarts", "team-questions-and-caps"},
+		{"does a wrap-up keep going if I quit codeaf", "team-questions-and-caps"},
+		{"what if the wrap-up report could not be sent", "team-questions-and-caps"},
+		{"can a manager direct a member of another team", "team-manager"},
+		{"can a manager start a sub-team", "team-manager"},
+		{"what is the global manager", "team-manager"},
+		{"how do two members of different teams settle a conflict", "team-manager"},
+		{"who decides a conflict between two sub-teams", "team-manager"},
+		{"what happens when auto-wake is off and the manager starts a member", "team-manager"},
+		{"why is a member still asking after it crashed", "team-manager"},
+		{"does it ask again if the handle model times out", "team-manager"},
+		{"how does a member reply to a thread", "team-manager"},
+		{"why is the traffic rail drawn as threads", "team-manager"},
+		{"open a member's chat at the message it answered from the traffic", "team-manager"},
+		// The one column (sidecol.go): the two words in a team chat, and the
+		// band of what waits on the person above them.
+		{"how do I switch between tasks and traffic in a manager chat", "team-manager"},
+		{"what does Traffic 3 new mean in the column header", "team-manager"},
+		{"who is a traffic row from and who is it to", "team-manager"},
+		{"how old is a traffic row", "team-manager"},
+		{"how old is a traffic row after a month", "team-manager"},
+		{"what does pressing a traffic row open", "team-manager"},
+		{"what does chats on the tab bar do", "places"},
+		{"how do I get back to my conversation from a place", "places"},
+		// The places sit on the top line. The chat strip is only inside a chat
+		// (places.md, head.go).
+		{"where did the places go", "places"},
+		{"what does more on the top line do", "places"},
+		{"why are my chat tabs showing on the home page", "places"},
+		{"why is there no tab strip on the teams page", "places"},
 		{"can you use my claude code skills", "skills-from-other-tools"},
 		{"why is my claude code plugin skill missing", "skills-from-other-tools"},
 		{"do codex skills work here", "skills-from-other-tools"},
@@ -51,14 +137,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my service called z-ai-direct", "services"},
 		{"do I need an openrouter key if I connected z.ai", "services"},
 		{"why did my model change after I connected z.ai", "services"},
-		{"what model does codeaf use after I connect a service", "services"},
+		{"what model does codeaf use after I connect a provider", "services"},
 		{"I only have a zhipu key can I use codeaf", "services"},
 		{"what happens when my plan runs out", "services"},
 		{"will it spend pay as you go automatically", "services"},
 		{"why are only four glm models listed", "services"},
 		{"is codeaf supported by zhipu", "services"},
-		{"how do I reconnect a model service", "services"},
-		{"I exported the model service key after the engine started", "services"},
+		{"how do I reconnect a model provider", "services"},
+		{"I exported the model provider key after the engine started", "services"},
 		{"why does /connect say connections are unavailable", "accounts"},
 		{"connect says unavailable on my own machine", "accounts"},
 		{"credentials.json is damaged but where are my models", "accounts"},
@@ -181,6 +267,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// seen, and wanting it gone.
 		{"why is there a co-author on my commit", "permissions"},
 		{"does codeaf sign my commits", "permissions"},
+		{"does the task sign the commits it makes itself", "permissions"},
+		{"why does my commit from codeaf do have a co-author line", "permissions"},
 		{"who is agentfield-bot", "permissions"},
 		{"what is the drafted with line at the bottom of my pull request", "permissions"},
 		{"stop adding a co-author trailer to my commits", "permissions"},
@@ -197,6 +285,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// `no` that used to decline and now corrects, and the model shortlist,
 		// which is a hole in a sentence walked with the arrows rather than a
 		// row of chips answered with the digits.
+		// THE FRESH-INSTALL CHECK (2026-09-25) asked three things a new user asks
+		// in their own words, and the chat answered from the wrong pages: the
+		// per-task `/model` and never `/crew pin worker`; "your code goes to the
+		// provider and nowhere else", which leaves out the crew's fall onto free
+		// routes that may log prompts; and a model answer that never named the
+		// crew or what a task costs.
+		{"how do I change the model the task worker uses?", "models-and-cost"},
+		{"is my code sent anywhere that logs it?", "models-and-cost"},
+		{"which model are you using and what does a task cost?", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
@@ -424,7 +521,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// own sentence and in the words somebody reaches for after reading it.
 		{"all providers have been ignored", "lanes"},
 		{"I switched off some providers in my openrouter account", "lanes"},
-		{"does codeaf know which providers my account has turned off", "lanes"},
+		{"does codeaf know which hosts my account has turned off", "lanes"},
 		{"why did every provider get ignored", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
 		{"why does it say paid model training violation", "models-and-cost"},
@@ -719,6 +816,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// The run's checker is told the work is in its own copy; a person who
+		// saw it read their checkout asks in these words.
+		{"did the checker read my checkout instead of the task's copy", "how-tasks-run"},
+		{"can a task stop a job it started", "how-tasks-run"},
 		// C14: repository placement, protected landings and kept dependency
 		// inheritance are reachable in the words a person uses after meeting them.
 		{"why didn't my task merge", "how-tasks-run"},
@@ -909,6 +1010,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did the folded messages go", "compacting-over-and-over"},
 		{"how do I get the compacted text back", "compacting-over-and-over"},
 		{"what happened to the earlier messages", "compacting-over-and-over"},
+		// Summaries came back as compaction's last rung on 2026-09-28.
+		{"does codeaf summarize my conversation", "compacting-over-and-over"},
+		{"when does compaction write a summary", "compacting-over-and-over"},
+		// A tool-less model is told once rather than retried every turn (2026-09-28).
+		{"why does it say the model can't use tools", "models-and-cost"},
+		{"what does retry removed tools mean", "models-and-cost"},
+		{"what does the summary keep", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
@@ -925,6 +1033,85 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I stop a run writing outside one folder", "adaptive-runs"},
 		{"it broke a rule I set", "adaptive-runs"},
 		{"what is a harness", "saved-shapes-of-work"},
+		{"what is a delegate", "delegates"},
+		{"can you hand this whole task to another coding agent", "delegates"},
+		{"what does the command for a delegate do", "delegates"},
+		{"delegate this to another coding agent", "delegates"},
+		{"why can't the delegate ask me anything", "delegates"},
+		{"why is there no command for my delegate", "delegates"},
+		{"where does a delegate's work go, does it squash the commits", "delegates"},
+		// senior-dev, the program codeaf carries, asked the ways somebody meets
+		// it: what the command does, whether it will stop to ask, where its
+		// commits went, what it cost, its flags, and why a Windows build has none.
+		{"what does /senior-dev do", "senior-dev"},
+		{"will senior-dev stop and ask me questions while it works", "senior-dev"},
+		{"where did senior-dev's commits go", "senior-dev"},
+		{"how much does a senior-dev run cost", "senior-dev"},
+		{"which model is my senior-dev run using", "senior-dev"},
+		{"how do I read the whole brief senior-dev was given", "senior-dev"},
+		{"scroll senior-dev's brief", "senior-dev"},
+		{"senior-dev finished my new file but it is not on the branch", "senior-dev"},
+		{"will senior-dev commit my credentials.json", "senior-dev"},
+		{"what models was senior-dev launched with", "senior-dev"},
+		{"does a senior-dev run have its own dollar limit", "senior-dev"},
+		{"what flags does codeaf senior-dev take", "senior-dev"},
+		{"why is there no /senior-dev on windows", "senior-dev"},
+		{"run senior-dev on a benchmark task from a repository I have not cloned", "senior-dev"},
+		{"can senior-dev work in a folder that is not a git repository", "senior-dev"},
+		{"senior-dev says workspace is not a git repository", "senior-dev"},
+		{"senior-dev finished but its work is not in my folder", "senior-dev"},
+		{"how do I merge senior-dev's branch", "senior-dev"},
+		{"which models does senior-dev use", "senior-dev"},
+		{"make senior-dev use my crew models", "senior-dev"},
+		{"how long did the senior-dev run take", "senior-dev"},
+		{"can a senior-dev task wait for another task to finish first", "senior-dev"},
+		{"retry a senior-dev task that failed", "senior-dev"},
+		{"senior-dev's page still says running after codeaf crashed", "senior-dev"},
+		{"codeaf closed while senior-dev was running where is its work", "senior-dev"},
+		{"my ssh connection dropped during codeaf senior-dev", "senior-dev"},
+		{"can my other window see the senior-dev run", "senior-dev"},
+		{"watch a senior-dev run from another window", "senior-dev"},
+		// Its page is the actions it took, each under the step of its process,
+		// asked the ways somebody watching it would ask.
+		{"what is senior-dev doing", "senior-dev"},
+		{"what do the steps on senior-dev's page mean", "senior-dev"},
+		{"how do I see senior-dev's raw calls to its model", "senior-dev"},
+		// And its badge, asked by somebody who has just seen a bracketed word on a
+		// task and does not know what it is, and by somebody looking for one.
+		{"how do I tell a senior-dev task from a normal task", "senior-dev"},
+		{"what does [senior-dev] mean on a task", "senior-dev"},
+		{"what is the [sd] next to a task on the side list", "senior-dev"},
+		{"which of my tasks are senior-dev's", "senior-dev"},
+		{"does every delegate get its own badge", "delegates"},
+		// And whether codeaf reaches for it on its own, asked the ways somebody
+		// who has just watched it do the work itself, or wants it to, puts it.
+		{"will codeaf use senior-dev by itself", "senior-dev"},
+		{"when does codeaf hand work to senior-dev", "senior-dev"},
+		{"how do I make codeaf use senior-dev", "senior-dev"},
+		{"I asked for senior-dev and it did the work itself", "senior-dev"},
+		{"how do I stop it using senior-dev for this", "senior-dev"},
+		{"will codeaf hand work to a program without being asked", "delegates"},
+		{"is naming a delegate enough to make codeaf use it", "delegates"},
+		{"I typed a correction and it forgot I named the delegate", "delegates"},
+		{"does a correction undo naming a program", "delegates"},
+		{"why did it revert the delegate's commit itself instead of using the delegate", "delegates"},
+		{"which folder does a delegate work in", "delegates"},
+		// A program works in the folder itself, on a branch of its own in a
+		// repository (internal/session's programfolder.go), asked the ways
+		// somebody meets it: where the work went, whether their branch moved,
+		// how to get back, and the refusals that stop a run before it starts.
+		{"where does senior-dev put its work", "senior-dev"},
+		{"does senior-dev change my branch", "senior-dev"},
+		{"how do I go back to my own branch after senior-dev", "senior-dev"},
+		{"senior-dev says my branch moved during the run", "senior-dev"},
+		{"senior-dev refused: changes that are not committed", "senior-dev"},
+		{"senior-dev says my folder is busy", "senior-dev"},
+		{"why can't I run senior-dev in a folder inside the one another run is working in", "senior-dev"},
+		{"can I run senior-dev in a folder that is not a git repo", "senior-dev"},
+		{"where do senior-dev's notes go", "senior-dev"},
+		{"why can't codeaf edit files while senior-dev is working", "senior-dev"},
+		{"my task was refused because senior-dev is working in the folder", "senior-dev"},
+		{"the delegate was refused because of uncommitted changes", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets
@@ -1046,6 +1233,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the status line not show the cost before I type", "empty-screen"},
 		{"what does try what is in this folder mean", "empty-screen"},
 		{"where did the recent sessions list go", "empty-screen"},
+		{"why does home show a session id for an untitled chat", "home"},
+		{"the hint line stayed after I resized", "places"},
 
 		// A task's page with heavy tool use, asked the ways the screenshot
 		// provoked: the wheel doing nothing, the calls that are not there, and
@@ -1361,10 +1550,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the money on the status line include what my tasks are spending", "models-and-cost"},
 		{"is a task's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
+		// #1671: a daily limit and a conversation limit both apply, and the
+		// person who raised the wrong one says the command does not work.
+		{"my budget command doesn't work", "models-and-cost"},
+		{"why is my conversation blocked", "models-and-cost"},
+		{"I raised the budget but my conversation is still blocked", "models-and-cost"},
+		{"conversation limit vs daily limit", "models-and-cost"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
 		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},
-		{"why didn't crew max change the crew on the remote machine", "running-on-another-machine"},
+		{"why didn't /crew pin change the crew on the remote machine", "running-on-another-machine"},
 		{"why does remember over host not say whether memory is off", "running-on-another-machine"},
 		{"does subharness know whether the remote machine has saved programs", "running-on-another-machine"},
 		{"what does the indented part mean", "keys"},
@@ -1924,36 +2119,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it started answering and then handed the work over", "tasks"},
 		{"why did my reply stop halfway and become a task", "tasks"},
 
-		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
-		// writes four class models and the session picks them up on its next
-		// call — and the model on the status line does not move, because that one
-		// is the CONVERSATION's and the crew never touches it. So a person reads
-		// the confirmation, looks at a frame that says exactly what it said
-		// before, and asks these in front of it.
+		// The fifteenth wave: the crew that looks like it did nothing. `/crew pin`
+		// moves the next task's seat — and the model on the status line does not
+		// move, because that one is the CONVERSATION's and the crew never touches
+		// it. So a person reads the confirmation, looks at a frame that says
+		// exactly what it said before, and asks these in front of it.
 		{"I changed the crew but the model didn't change", "models-and-cost"},
 		{"why does the bottom still show the old model after /crew", "models-and-cost"},
 		{"does /crew change the model I'm talking to", "models-and-cost"},
-		// A crew older than the worker class: the run says `inherited` and the
-		// person asks about the word, or about the model they never picked.
-		{"why does my run say inherited", "models-and-cost"},
-		{"my crew was set before the work seat existed", "models-and-cost"},
-		// And the same substitution met in the conversation, where the person
-		// has no models line to read the word off — they ask about the task.
+		// The crew picked per task: the person meets a model they never named on
+		// a task's crew line and asks where it came from.
 		{"why is my task running on a model I did not pick", "models-and-cost"},
-		{"my work seat is inherited from small work", "models-and-cost"},
+		{"which model does a task run on", "models-and-cost"},
 		// The same crew question asked from outside the conversation, by
 		// somebody whose runs happen with nobody watching.
 		{"what models does a headless run use", "models-and-cost"},
-		// The onboarding wave: the five seats. /crew and /model became two dials
-		// a person can see as two — the confirm line names the model it left
-		// alone, bare /crew opens with seat one, and the status line carries
-		// `crew max` beside the model — and these are the questions the framing
-		// invites.
-		{"what are the five models", "models-and-cost"},
+		// The panel and its shortcuts, asked the ways the panel invites.
 		{"does /crew change my chat model", "models-and-cost"},
 		{"why did my model not change", "models-and-cost"},
-		{"what does crew max on the status line mean", "models-and-cost"},
-		{"what is the you talk to line in /crew", "commands"},
+		{"how do I pin the checker", "models-and-cost"},
+		{"what is the daily cap on the crew", "models-and-cost"},
+		{"what does /redo stronger do", "models-and-cost"},
+		{"my old crew preset is gone", "models-and-cost"},
 
 		{"how do I quit", "keys"},
 		{"how do I exit codeaf", "keys"},
@@ -2187,6 +2374,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I cancel this card", "keeping-an-eye"},
 		{"I don't understand these options", "keeping-an-eye"},
 		{"what does just once mean", "keeping-an-eye"},
+		{"what kind of standing card is this", "keeping-an-eye"},
+		{"why did it say the reminder was never set up after I said just once", "keeping-an-eye"},
 		{"can I change everywhere to just this project", "standing-orders"},
 		// The twelfth wave: answering a question from home. Both are asked by
 		// somebody looking at a `▲` row and wondering whether they have to walk
@@ -2458,6 +2647,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I work on the same conversation from two computers", "running-on-another-machine"},
 		{"what is the difference between another window and another machine", "running-on-another-machine"},
 		{"does home work over --host", "running-on-another-machine"},
+		{"can I change the Teams settings on another machine", "running-on-another-machine"},
+		{"where do team defaults go over a connection", "running-on-another-machine"},
+		{"can I edit team defaults over --host", "commands"},
 
 		// The wave that stopped a rebuild on the far machine from trapping
 		// somebody. These are the words a person actually uses at the moment it
@@ -2494,6 +2686,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I paste an image from the clipboard", "attaching-files"},
 		{"can I drop a file after a slash command", "attaching-files"},
 		{"can I attach a whole folder", "attaching-files"},
+		{"how do I mention a file, a team or another chat with @", "attaching-files"},
 		{"how do I download a file from my dev box", "opening-files-from-that-machine"},
 		{"can I drag a file onto the browse page to upload it", "opening-files-from-that-machine"},
 		{"where do the files I fetched from the other machine go", "opening-files-from-that-machine"},
@@ -2632,14 +2825,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// codeaf has timed anything of theirs.
 		{"does codeaf do pick the fastest endpoint too", "lanes"},
 		{"does a headless run choose between lanes", "lanes"},
-		{"why did it pick that provider on my very first message", "lanes"},
+		{"why did it pick that host on my very first message", "lanes"},
 		{"why did my first message go to the most expensive provider", "lanes"},
 		// Naming the machine yourself — asked as the worry underneath it, which
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
 		{"does codeaf do use the lane I pinned", "lanes"},
-		{"is my pinned provider used when I run from a terminal", "lanes"},
+		{"is my pinned host used when I run from a terminal", "lanes"},
 		// And the one thing that ends a pin without the person: the router
 		// saying that machine cannot serve that model at all (issue #456). It
 		// is asked as somebody reads it on the screen and wants to know what it
@@ -2660,8 +2853,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The picker's lanes, asked by somebody who pressed the arrows and saw
 		// nothing move, and by somebody reading `@cloudflare` on the name
 		// (docs/design/lanes-picker/DESIGN.md).
-		{"how do I change the provider for a model", "lanes"},
-		{"which provider am I pinned to", "lanes"},
+		{"how do I change the host for a model", "lanes"},
+		{"which host am I pinned to", "lanes"},
 		{"left and right arrows in the model picker do nothing", "lanes"},
 		{"what does the @ after the model name mean", "lanes"},
 		{"the model picker says no machine has been measured for this model yet", "lanes"},
@@ -2703,6 +2896,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I install the latest dev build beside my codeaf", "running-from-the-terminal"},
 		{"what is devaf", "running-from-the-terminal"},
 		{"devaf", "running-from-the-terminal"},
+		{"what is stageaf", "running-from-the-terminal"},
+		{"stageaf", "running-from-the-terminal"},
+		{"how do I install the staging build", "running-from-the-terminal"},
+		{"how often does staging update", "running-from-the-terminal"},
 		{"can I run two versions of codeaf side by side", "running-from-the-terminal"},
 		{"how do I keep my dev build up to date", "running-from-the-terminal"},
 		{"install codeaf with a different file name", "running-from-the-terminal"},
@@ -2788,6 +2985,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// second road for a task and the plan pane a run draws, each asked the
 		// way somebody meets it rather than in the machinery's own words.
 		{"how do I pause a task", "worker-harness"},
+		{"why did __pycache__ files not land in my task's commit", "worker-harness"},
 		{"how do I open one part of a run from the side list", "worker-harness"},
 		{"can I add a note to a running task", "worker-harness"},
 		{"why did the task refuse my cancel", "worker-harness"},
@@ -2801,6 +2999,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does codeaf do exit with", "worker-harness"},
 		{"does a subtask see my original request", "worker-harness"},
 		{"who checks a task's work", "worker-harness"},
+		{"why did my task's check say issue_.go does not exist", "worker-harness"},
+		{"why was no fix task started for a check", "worker-harness"},
 		{"why do the step numbers skip", "worker-harness"},
 		{"a step is missing and the cd at the front of the command is gone", "worker-harness"},
 		{"a line under steps says refused with no number in front", "worker-harness"},
@@ -2812,6 +3012,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// watching something the plan does not name is the shape the note was
 		// written for, and these are the words of a person holding it.
 		{"my task is waiting on a build outside the plan", "worker-harness"},
+		// A program's task page (internal/tui3's taskconversation.go), asked
+		// the way somebody meets it: a page that is not the list of steps every
+		// other task opens on, and the exchange they are watching on it.
+		{"what is the program saying to the model on its task page", "worker-harness"},
+		{"what does the delegate's task page show", "worker-harness"},
+		{"can I leave a note for the delegate", "worker-harness"},
+		{"what are the words down the side of a program's task page", "worker-harness"},
+		{"what does ctrl+y do on a program's page", "keys"},
 		// Notes as a channel rather than a log (internal/run's note channel and
 		// the chat's own `tasks` listing): whether the note was read, when, and
 		// where anyone else can see it. The first four are the question a person
@@ -2834,6 +3042,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which engine process is holding my folder", "staying-on-that-machine"},
 		{"the other window will not let go of my conversation", "home"},
 		{"does max-hours close the window when the time runs out", "starting-codeaf"},
+		{"does the Model Pool choose my task models", "running-from-the-terminal"},
+		{"what does codeaf pool status show", "running-from-the-terminal"},
+		{"how many tasks can a bash run split into", "tasks"},
+		{"what does the task proposal card look like", "tasks"},
+		{"why did team_start not ask me first", "team-manager"},
+		{"why did setup show only one screen", "getting-started"},
+		{"where are my cleared drafts", "commands"},
+		{"what does /workspace path do", "commands"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -2854,6 +3070,46 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+// People should be told when a provider skips the key box and when its list
+// can fill before they press refresh, at either manual door they may reach.
+func TestManualDescribesProviderKeyAndFirstModelFetch(t *testing.T) {
+	cases := []struct {
+		page, title, want string
+	}{
+		{"commands", "/connect — your connected accounts", "401 or 403"},
+		{"services", "Connect a provider — what is asked for, and what codeaf checks before it saves anything", "401 or 403"},
+		{"commands", "What the model picker lists, and what it will not do", "empty cached list"},
+		{"models-and-cost", "Why left and right arrows do the wrong thing in the model picker — the caret and the providers share one pair of keys", "empty cached list"},
+	}
+	for _, check := range cases {
+		found := false
+		for _, section := range Chat().Sections() {
+			if section.Page == check.page && section.Title == check.title {
+				found = true
+				if !strings.Contains(section.Body, check.want) {
+					t.Errorf("%s/%s does not explain %q", check.page, check.title, check.want)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("manual section %s/%s is missing", check.page, check.title)
+		}
+	}
+}
+
+// The ordinary task's Spending row stays as written, but each general page
+// must point to the separate ceiling before it can answer for senior-dev.
+func TestGeneralTaskCostPagesNameSeniorDevCeiling(t *testing.T) {
+	pages := flatChatPages(t)
+	for _, name := range []string{"tasks", "models-and-cost", "commands"} {
+		page := pages[name]
+		if !strings.Contains(page, "ordinary `/task`") || !strings.Contains(page, "senior-dev") || !strings.Contains(page, "ceiling") {
+			t.Errorf("%s does not distinguish the ordinary task row from senior-dev's ceiling", name)
 		}
 	}
 }
@@ -2902,6 +3158,22 @@ func TestV9DevafQuestionsReachTheTerminalManual(t *testing.T) {
 	}
 }
 
+// C24: Staging installer and cadence questions reach the terminal manual section.
+func TestC24StageafQuestionsReachTheTerminalManual(t *testing.T) {
+	for _, asked := range []string{"what is stageaf", "stageaf", "how do I install the staging build", "how often does staging update"} {
+		var reached bool
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach running-from-the-terminal", asked)
+		}
+	}
+}
+
 func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *testing.T) {
 	page, ok := Chat().Page("services")
 	if !ok {
@@ -2910,11 +3182,12 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 	for _, sentence := range []string{
 		"enter again to disconnect",
 		"the disconnected sentence first and then says",
-		"A direct-service row and status line draw no `via` at all and open no provider\nsheet",
-		"That name is the connection everywhere",
-		"a **Custom OpenAI-compatible API** service must provide the compatible chat path",
+		"A direct-provider row and status line draw no `via` at all and open no host\nsheet",
+		"That name is the provider everywhere",
+		"a **Custom OpenAI-compatible API** provider must provide the compatible chat path",
 		"tries `GET <base>/models` first",
-		"When that address is absent, codeaf connects the service without inventing rows",
+		"A new custom address must answer its model-list check before it can be saved",
+		"when the model-list endpoint answers 401 or 403",
 		"z-ai-direct is connected · coding plan · 4 models",
 		"z-ai-direct is connected · pay-as-you-go · 10 models",
 		"when the plan is paused",
@@ -3234,6 +3507,29 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 				t.Errorf("%s · %q still says a place can refuse to open: %q",
 					section.Page, section.Title, phrase)
 			}
+		}
+	}
+}
+
+// THE FRESH-INSTALL QUESTIONS REACH THE SECTION THAT ANSWERS THEM, not only
+// the right page: the worker question has to meet `/crew pin worker`, the
+// privacy question the crew's fall onto free routes that may log prompts, and
+// the model-and-cost question the crew picked per task and its estimate.
+func TestTheFreshInstallQuestionsReachTheirAnswers(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"how do I change the model the task worker uses?", "/crew pin worker"},
+		{"is my code sent anywhere that logs it?", "free routes in use (may log prompts)"},
+		{"which model are you using and what does a task cost?", "picked for each task"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "models-and-cost" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the models-and-cost section that says %q", probe.asked, probe.says)
 		}
 	}
 }

@@ -457,7 +457,7 @@ func TestTheMachinesAreASecondFoldUnderOpenrouter(t *testing.T) {
 	}
 	// The foot says the row can be opened, on the row that can be.
 	drive(t, a, key("down"))
-	if got := a.pick.keysHint(); !strings.Contains(got, "→ providers") {
+	if got := a.pick.keysHint(); !strings.Contains(got, "→ hosts") {
 		t.Fatalf("the openrouter row does not offer its fold: %q", got)
 	}
 	drive(t, a, key("right"))

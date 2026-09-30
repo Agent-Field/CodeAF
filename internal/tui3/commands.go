@@ -75,14 +75,14 @@ var commands = []command{
 	{name: "settings", desc: "open the settings panel · ctrl+,", alias: []string{"set", "config"}},
 	// It sits under /settings because it is the other half of the same errand:
 	// one is what this surface may do, the other is what it may reach.
-	{name: "connect", desc: "your connected accounts · connect another", alias: []string{"connections"}},
+	{name: "connect", desc: "providers and accounts · connect another", alias: []string{"connections"}},
 	// THE VOCABULARY OF THE FRESH START IS BORROWED AND NOT INVENTED. /clear is
 	// what a terminal person's fingers type, /reset is what a chat person's do,
 	// and both of them mean the thing this surface calls /new — so all three land
 	// on it rather than on "unknown command: /clear".
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
-	{name: "compact", desc: "summarize the conversation now"},
+	{name: "compact", desc: "shorten the conversation now"},
 	{name: "drafts", desc: "cleared-but-kept drafts · enter restores one, d lets one go"},
 	{name: "stop", desc: "stop the open task or selected work · asks first"},
 	{name: "autonomy", desc: "how questions are handled while you are away"},
@@ -90,6 +90,7 @@ var commands = []command{
 	// A project-less conversation needs this once, while /compact is a daily
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.
+	{name: "workspace", desc: "choose a folder to anchor this conversation · or /workspace <path>"},
 	{name: "workspace", args: "<path>", desc: "anchor this conversation to a project"},
 	// AND THE OTHER HALF OF THE SAME ERRAND, directly under it: /workspace is
 	// the one-shot anchor a project-less conversation needs once, and this is
@@ -129,6 +130,8 @@ var commands = []command{
 	// looking, /compact is one of them, and a row inserted above it would push
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
+	{name: "dismiss", desc: "hide settled task notifications here"},
+	{name: "dismiss", args: "undo", desc: "restore dismissed task notifications"},
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
@@ -145,7 +148,11 @@ var commands = []command{
 	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
-	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
+	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
+	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
+	// conversations big, and this is the team-level view, every member open or
+	// not, the manager's conversation and what waits on you (place_teams.go).
+	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
@@ -256,22 +263,20 @@ var commands = []command{
 	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
 	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
 	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
-	// AND WHAT codeaf WORKS WITH, beside what it knows about you. The five models
-	// it uses on your behalf, answered as one word (crew.go). FIVE, because
-	// [config.CrewModels] sets five seats in every preset — reflex, low, worker,
-	// high and mastermind — and the one these rows used to leave out was the
-	// worker, which is the seat that pays most of a task's bill. Two rows for one
-	// command, the way /model and /export have two: the bare form is the listing
-	// nearly everybody wants, and a single row carrying <preset> would make it
-	// unreachable from this list — [app.runMenu] puts a row that TAKES something
-	// into the draft instead of running it.
+	// AND WHAT codeaf WORKS WITH, beside what it knows about you: the crew a
+	// task runs on — worker, planner, checker — picked per task (crew.go). The
+	// bare form is the panel; the four shortcuts are how anything on it
+	// changes, one row each, because [app.runMenu] puts a row that TAKES
+	// something into the draft instead of running it, and each of these takes
+	// something.
 	//
 	// It sits here, under the memory rows, because those three are "what does it
-	// know" and this is "what does it think WITH", and because position in this
-	// table is a claim about frequency: a person sets their crew once and then
-	// occasionally regrets it, which is exactly where /memories sits too.
-	{name: "crew", desc: "the five models codeaf uses on its own behalf, beside the one you talk to"},
-	{name: "crew", args: "<preset>", desc: "…set the five to frugal, balanced or max · /model stays"},
+	// know" and this is "what does it think WITH".
+	{name: "crew", desc: "the crew tasks run on · picked per task, with your pins, allowed models and daily cap"},
+	{name: "crew", args: "pin <seat> <model[@provider]>", desc: "…pin the worker, planner or checker · /model stays"},
+	{name: "crew", args: "unpin <seat|all>", desc: "…put a seat back on auto"},
+	{name: "crew", args: "models <rule>", desc: "…which models a seat may be picked from · all, open, ≤in/out, ids"},
+	{name: "crew", args: "cap <dollars|off>", desc: "…the most tasks' crews may spend in a day"},
 	// AND HOW HARD THE ONE YOU TALK TO THINKS, under the two rows about WHICH
 	// models it thinks with, because that is the order the two questions arrive
 	// in: a person picks the model and then decides how much of it to spend.
@@ -290,8 +295,16 @@ var commands = []command{
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
 	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
+	{name: "task", desc: "every task this machine has run · ctrl+.", door: sendDoorTask},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
+	// HOW HARD TO TRY THIS ONE TASK is said in the ask and sticks to nothing
+	// (crew.go): --best puts the strongest crew the allowed models make on it,
+	// --cheap the cheapest, and neither moves the next task.
+	{name: "task", args: "--best <brief>", desc: "…on the strongest crew allowed, this task only", door: sendDoorTask},
+	{name: "task", args: "--cheap <brief>", desc: "…on the cheapest crew allowed, this task only", door: sendDoorTask},
+	{name: "redo", desc: "the last task again, on a stronger crew"},
+	{name: "redo", args: "stronger", desc: "the last task again, on a stronger crew"},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
 	// `adaptive <brief>`, which opened a planner that drew the whole graph before
 	// any of the work had been looked at. The measured road answers that question
@@ -524,7 +537,7 @@ func (c command) aliasNote() string {
 // AND IT IS WHERE A ROW'S CHORD IS SPELLED FOR THIS KEYBOARD. Two of these
 // descriptions carry a place's own chord ([placeChord]), baked in at init where
 // no terminal has been detected yet — so on a Mac the list said `/spend … alt+3`
-// while the map two keystrokes away said `opt+1…opt+7`. The substitution has to
+// while the map two keystrokes away said `opt+1…opt+8`. The substitution has to
 // happen HERE rather than at either paint, because `⌘` is one cell where `cmd+`
 // is four and [menu.fit] counts the lines this string will take before
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
@@ -674,6 +687,10 @@ type menu struct {
 // unrelated search results on home. A space or path punctuation leaves command
 // mode, and Esc seals a literal token until the caret leaves it.
 func (m *menu) sync(e *editor) {
+	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
+		m.close()
+		return
+	}
 	at, query, ok := slashToken(e.value, e.cursor)
 	if ok {
 		// Inspect the whole token, including text after the caret, so moving
@@ -1009,7 +1026,7 @@ func helpText(file string, chords chordSpelling) string {
 		// know how to open, which is a help sheet behind the thing it explains.
 		//
 		// The three rows are spelled through [chordSpelling.say] like the
-		// `alt+enter` row above them, so a Mac reads `opt+1…opt+7` and a Linux box
+		// `alt+enter` row above them, so a Mac reads `opt+1…opt+8` and a Linux box
 		// reads what is authored here — one substitution, one door (chords.go).
 		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
@@ -1074,8 +1091,13 @@ func helpText(file string, chords chordSpelling) string {
 		// answer to the question that test asks). The card is named by what it is
 		// instead.
 		helpKeyRow(closeTabChord, "close this tab · select the last open chat · keep your draft"),
+		// THE TEAM'S TWO CHORDS (teamrail.go). They do something only in a team
+		// with a manager, and the rows say so rather than leaving a person to
+		// find out by pressing them anywhere else.
+		helpKeyRow(chords.say(trafficKey), "with a team's manager in front: show or hide its Traffic"),
+		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
-		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
+		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -1107,6 +1129,11 @@ func helpText(file string, chords chordSpelling) string {
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",
+		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
+		// selected team, and the chord that puts the keyboard on those buttons
+		// while the manager's conversation has the box (teamspagehost.go).
+		"s c w n o      in /teams: settings · close · open on the wall · new team · organize",
+		helpKeyRow(chords.say("alt+↑↓"), "in /teams: onto the page's buttons while the manager has the box · esc back"),
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {

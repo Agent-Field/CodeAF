@@ -260,6 +260,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
 	tellTakeover(ctx)
+	if gate := c.config.RouteGate; gate != nil {
+		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
+			return nil, err
+		}
+	}
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.
@@ -529,6 +534,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			//
 			// The cap is still the cap: [maxProviderWait] bounds one wait
 			// whatever asked for it, which is what keeps an interrupt prompt.
+			// A CALL THAT HANDS A LIMIT BACK DOES NOT SIT IT OUT (patience.go's
+			// [WithoutPatientRateLimits]): its caller's next move is another
+			// route or another model, which beats any window.
+			if handsBackRateLimits(ctx, lastErr) {
+				return nil, lastErr
+			}
 			delay := backoffFor(attempt, providerWait)
 			if move.Kind == control.MoveWait && move.Wait > 0 {
 				delay = min(move.Wait, maxProviderWait)
@@ -782,6 +793,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// A relayed refusal above has already read it and must not read it twice.
 		if peek == nil {
 			peek, _ = io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		}
+		// A context refusal needs a smaller request, even when the router names
+		// the machine that refused it. Return it to the conversation before an
+		// endpoint walk can resend the same oversized bytes.
+		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow {
+			response.Body = rewound(peek, response.Body)
+			sharedLimiter.release(false, 0)
+			return response, nil
 		}
 		response.Body.Close()
 		cancelAttempt()
@@ -1219,6 +1238,14 @@ func (c *Client) recoverFromRefusal(
 			return nil, err
 		}
 		if response != nil {
+			// THE RUNG THAT LANDED IS REMEMBERED WHEN IT WAS THE TOOLS: every
+			// cheaper rung was already on and refused, so this model is not
+			// served with tools here, and the next turn is sent without them
+			// rather than refused again (toolless.go).
+			if step.bit == relaxTools && response.StatusCode < 400 {
+				c.toolless.learn(model)
+				c.leaveOffTools(ctx, model, relaxed, false)
+			}
 			return response, nil
 		}
 		last = payload

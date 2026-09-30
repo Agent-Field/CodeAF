@@ -105,9 +105,9 @@ var tuiWords = map[string]tuiWord{
 		screen: "filter · ↑↓ · enter connect · esc close",
 		why:    "the local connection catalog opened as its searchable panel",
 	},
-	"connectModelsGroup": {
-		screen: "models",
-		why:    "the connection panel includes model services rather than only account rows",
+	"connectProvidersGroup": {
+		screen: "providers",
+		why:    "the connection panel includes model providers before the connected account rows",
 	},
 	"connectUnavailableWord": {
 		screen: "connections are unavailable here",
@@ -120,6 +120,14 @@ var tuiWords = map[string]tuiWord{
 	"harnessUnavailableWord": {
 		screen: "harnesses are unavailable here",
 		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
+	},
+	"crewMainKeys": {
+		screen: "enter change · esc close · ? keys",
+		why:    "/crew opened its panel, framed, with its keys in the bottom edge",
+	},
+	"crewAutoWord": {
+		screen: "auto — codeaf picks per task",
+		why:    "enter on a seat opened the seat list on its first row, auto",
 	},
 
 	// ── the bounded stop ─────────────────────────────────────────────────────
@@ -146,10 +154,9 @@ var tuiWords = map[string]tuiWord{
 	"skillsCarriedWord": {
 		screen: "skills · ",
 		pkg:    "internal/tui3",
-		why: "the dim note under a message naming the skills its turn carried, kept above the turn's " +
-			"`▸ worked` chip — the only screen evidence that a skill from another tool's folder reached " +
-			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
-			"engine's own `skills carried: ` sentence instead",
+		why: "the dim note naming the skills a turn carried inside its opened `▸ worked` chip, " +
+			"which proves a skill from another tool's folder reached the turn by itself or by /skill " +
+			"([testForeignSkills]); the headless --once door prints the engine's own `skills carried: ` sentence instead",
 	},
 	"skillNoShelfWord": {
 		screen: "this conversation has no skill shelf",
@@ -224,15 +231,33 @@ var tuiWords = map[string]tuiWord{
 
 	"barHomeWord": {
 		screen: "home",
-		why:    "the first of the four words on the tab bar",
+		why:    "the first of the six places on the wordmark row",
 	},
-	"barTasksWord": {
+	"barTeamsWord": {
+		screen: "teams",
+		why:    "the second place on the wordmark row",
+	},
+	"barChatsWord": {
+		screen: "chats",
+		why:    "the third place on the wordmark row",
+	},
+	"barSessionsWord": {
 		screen: "sessions",
-		why:    "the second word on the bar, and the place the sessions heading opens",
+		why:    "the fourth place on the wordmark row, and the place the sessions heading opens",
 	},
 	"barSettingsWord": {
 		screen: "settings",
-		why:    "the last of the four — standing, memory and search are off the bar and reached by command",
+		why:    "the last of the six — standing, memory and search are off the bar and reached by command",
+	},
+	"chatFootEffortWord": {
+		screen: "alt+e effort · alt+a approvals",
+		source: "alt+e",
+		why: "the live conversation's control row, even after a reply has ended and the composer is empty; " +
+			"an ordinary resumed conversation has no setup, starter or pending question needle to greet the rig",
+	},
+	"chatWorkingFootWord": {
+		screen: "esc interrupt",
+		why:    "the conversation's working foot while a reminder's turn is ending, before the home gesture returns",
 	},
 	"pulseWantWord": {
 		screen: " want you",
@@ -300,8 +325,9 @@ var tuiWords = map[string]tuiWord{
 		why:    "the pane saying the exchange is filed under what it made",
 	},
 	"exchangeAnswerHint": {
-		screen: "1 yes, set it up · 0 no · o other",
-		source: "yes, set it up",
+		screen: "Don't remind me",
+		source: "Don't remind me",
+		pkg:    "internal/session",
 		why: "the answers a ONE-OFF REMINDER's card offers, spelled in full under the box at every width. " +
 			"There are two rows and the key that asks for the box: a reminder has no `3 just once` to give, " +
 			"and since #189 the line is built from the answers the question carries rather than typed out, so " +
@@ -321,9 +347,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter or tab answer this ",
 		why:    "the hint while the cursor stands on an errand row that is asking something",
 	},
-	"standYesWord": {
-		screen: "yes, set it up",
-		why:    "the first chip on a standing card, and half of the settled card's `yes, set it up · set up`",
+	"standRemindYes": {
+		screen: "Remind me",
+		pkg:    "internal/session",
+		why:    "the yes on a one-off reminder, which is what the errand in this suite asks for",
 	},
 	"standSetWord": {
 		screen: "set up",
@@ -378,7 +405,7 @@ var tuiWords = map[string]tuiWord{
 	// THE PHASE CLOCK COMPOSES BOTH OF ITS SENTENCES AT THE DRAW, out of halves
 	// two packages own (internal/tui3's phase.go, and the clock that feeds it in
 	// internal/provider). So each half is its own row and the suite asserts the
-	// join, which is the shape `standYesWord` and `standSetWord` already have.
+	// join, which is the shape `standRemindYes` and `standSetWord` already have.
 	// What varies is not a needle: the machine that went quiet is whatever this
 	// run pinned, and the provider a rescue would go to is whatever the frontier
 	// named. What stands still is the clause around them.
@@ -398,7 +425,7 @@ var tuiWords = map[string]tuiWord{
 			"an offer whose key was cut is a question nobody can answer",
 	},
 	"phaseAllSlowWord": {
-		screen: "all providers slow",
+		screen: "all hosts slow",
 		why:    "every reachable provider is believed slow, so there is nowhere better to be",
 	},
 	"phaseWaitingWord": {
@@ -486,6 +513,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "you said it is not finished",
 		pkg:    "internal/session",
 		why:    "the receipt proving the not-right answer reached the engine's settle door",
+	},
+	"doneRollupWord": {
+		screen: " tasks done",
+		why:    "the folded completion batch counts both seeded tasks after the nested landing is accepted",
 	},
 	"taskIncompleteWord": {
 		screen: " · incomplete",
@@ -637,38 +668,37 @@ var tuiWords = map[string]tuiWord{
 		source: "plandb done",
 		pkg:    "internal/session",
 		why: "the command a bash-belt worker finishes its store task with, recorded in the task's own " +
-			"trajectory and drawn as a step line on the plan page (taskplan.go's taskPlanBody reads " +
+			"trajectory and drawn as a call row in the task's room (planroom.go reads " +
 			"PlanTaskPage.Steps). THE PAGE DOES NOT SPELL IT — the worker runs it — so the gate looks where " +
 			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish. " +
 			"IT IS OBSERVED AND NEVER WAITED OUT, because whether it is on a page is the WORKER'S " +
 			"choice: the run writes the ending itself for a task whose worker stopped calling tools " +
 			"without writing one (internal/run's worker.go), which a small brief on a fast model " +
-			"regularly is. What the suite asserts about that page instead is that it is the store's " +
-			"page at all — planNoteBoxWord and planStepsSpend, two words no room draws",
+			"regularly is. What the suite asserts about that room instead is that it is the task's " +
+			"room at all: roomTabsWords",
 	},
 	"planNoteBoxWord": {
 		screen: "a note for this task",
-		why: "the plan page's own note box (taskplan.go's taskPlanNoteWord), and the one word on it " +
-			"that is there whatever state the task is in. It is what says the press over a run's row " +
-			"opened THE STORE'S PAGE rather than a room — the assertion that defect #1359 was about — " +
-			"where the live step beside it is a moment and is only ever observed",
+		why: "the note box a run's task takes its notes in (taskplan.go's taskPlanNoteWord, drawn as " +
+			"the task room's steer box by room.go) while the task can still take a note. A task that has " +
+			"ended names another door in its box, so the suite only observes this word; what it asserts " +
+			"about the room is roomTabsWords",
+	},
+	"roomTabsWords": {
+		screen: "transcript · work",
+		source: "transcript",
+		why: "the two tabs every task's room draws on its trail, on either engine (roomtabs.go): the " +
+			"transcript and the work the task changed. A run's task opens the same room as any other " +
+			"task, so the tabs are what say the press opened the room and not a page of its own",
 	},
 	"planLiveGlyph": {
 		screen: tokens.GlyphStepRunning,
 		pkg:    tokensPkg,
-		why: "the mark the plan page leads the step it is running RIGHT NOW with, where the recorded " +
-			"steps lead with their number (taskplan.go's taskPlanBody, drawn through palette.glyph so the " +
-			"tier picks the rune rather than a literal in the surface). It is tokens.GStepRunning — one " +
+		why: "the mark the task's room leads the step it is running RIGHT NOW with (planroom.go draws " +
+			"the store's live step as a call in flight, through palette.glyph so the tier picks the rune " +
+			"rather than a literal in the surface). It is tokens.GStepRunning — one " +
 			"shape for one state, the same rune `working` wears — so the gate looks where the rune is " +
 			"spelled, and this suite sees the plain tier its throwaway profile pins",
-	},
-	"planLiveClockWord": {
-		screen: "running ",
-		source: "running ",
-		why: "the call's own clock, said under the live step on the plan page: the same ten-second " +
-			"count the rail keeps (taskplan.go's taskPlanBody reads PlanTaskPage.Live and taskToolFloor " +
-			"gates it, the 10-second clock the rail already keeps). It is the page's word, so the gate " +
-			"looks for it in the surface",
 	},
 
 	// ── the run's plan row, on the live edge (c185, SURFACE.md §2A/§3) ────────
@@ -705,26 +735,6 @@ var tuiWords = map[string]tuiWord{
 			"planFigures). It is the same `N steps` and `$` the row already spends in its two columns",
 	},
 
-	// ── the seat a crew older than it never wrote ────────────────────────────
-	//
-	// The two halves of one line, and it is the ENGINE'S sentence: the surface
-	// says it in the thread and every headless door prints it under the models
-	// line, out of one composer (internal/config's Seat.Notice), so the gate
-	// looks for it where it is spelled rather than in the surface that relays it.
-	"inheritedSeatObservation": {
-		screen: "your crew was set before the work seat existed",
-		source: "your crew was set before the ",
-		pkg:    "internal/config",
-		why:    "the observation half: a profile older than the seat is told so, once, when work starts on it",
-	},
-	"inheritedSeatPromise": {
-		screen: "it is running on your small work seat's model",
-		source: "it is running on your ",
-		pkg:    "internal/config",
-		why: "the promise half, naming the row the work is actually on. It stops at the row rather " +
-			"than at `until you pick a crew again` because a transcript line is cut to make room for " +
-			"the task rail, and the sentence is longer than an ordinary window minus that column",
-	},
 	"taskLookWord": {
 		screen: "your call",
 		pkg:    "internal/session",

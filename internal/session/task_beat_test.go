@@ -184,14 +184,20 @@ func TestARunningNodesHeartbeatAdvancesAcrossItsCalls(t *testing.T) {
 // tells them apart, and it goes back to the work's own word when each of them
 // ends.
 func TestTheHeartbeatSaysWhichPhaseTheNodeIsIn(t *testing.T) {
-	repo := newGoModuleRepo(t)
+	// This test observes phase transitions, not the Go compiler. The checker
+	// must fail before the repair and succeed only after the test file exists.
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "Makefile"), "test:\n\t@test -f greet_test.go\n\t@echo greeting-test-present\n")
+	mustGit(t, repo, "add", "Makefile")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "phase check fixture")
+	const check = "make test"
 	t.Setenv("HOME", t.TempDir())
 
 	var agent *Agent
 	working, checking, repairing := &beatWatch{}, &beatWatch{}, &beatWatch{}
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and a test for it", "go test ./..."),
+			proposeCall("Add the greeting", "write greet.go and a test for it", check),
 			finalText("handed off"),
 		},
 		child: nodeLane(8, func(repairs, wrote bool) *ai.Response {
@@ -214,14 +220,14 @@ func TestTheHeartbeatSaysWhichPhaseTheNodeIsIn(t *testing.T) {
 			}
 		}),
 		audit: []step{
-			checkingStep(&agent, checking, bashCall("call-verify", "go test ./...")),
-			checkingStep(&agent, checking, verdictFromEvidence("ok  \t",
-				"VERIFIED — go test ./... ok",
-				"REFUTED — go test ./... reports no test files: the acceptance asks for a test and there is none")),
-			checkingStep(&agent, checking, bashCall("call-verify-again", "go test ./...")),
-			checkingStep(&agent, checking, verdictFromEvidence("ok  \t",
-				"VERIFIED — go test ./... ok · the greeting test runs",
-				"REFUTED — go test ./... still reports no test files")),
+			checkingStep(&agent, checking, bashCall("call-verify", check)),
+			checkingStep(&agent, checking, verdictFromEvidence("greeting-test-present",
+				"VERIFIED — the greeting test file exists",
+				"REFUTED — the greeting test file is absent: the acceptance asks for a test and there is none")),
+			checkingStep(&agent, checking, bashCall("call-verify-again", check)),
+			checkingStep(&agent, checking, verdictFromEvidence("greeting-test-present",
+				"VERIFIED — the greeting test file exists",
+				"REFUTED — the greeting test file is still absent")),
 		},
 	}
 	agent = beatSession(t, repo, completer, func(config *Config) { config.TaskRepairRounds = 1 })

@@ -201,3 +201,29 @@ func TestElsewhereIsEmptyForASessionWithNoFolder(t *testing.T) {
 		t.Fatal("a memory-only conversation found other windows on a project it is not in")
 	}
 }
+
+// A SURFACE THAT HOLDS ONLY A TRANSCRIPT READS THE SAME OTHER WINDOWS its agent
+// would. The ordinary window talks to its engine over a socket and holds no
+// agent; the presence files are on this machine's disk beside the transcript it
+// was handed, and the reading off that path is the reading off the [Place].
+func TestElsewhereOfATranscriptIsTheReadingItsAgentWouldTake(t *testing.T) {
+	bucket := t.TempDir()
+	writeWindow(t, bucket, "mine", "", time.Second,
+		PresenceTask{ID: "1", Title: "My own task", State: string(TaskRunning)})
+	writeWindow(t, bucket, "theirs", "docs pass", time.Second,
+		PresenceTask{ID: "7", Title: "Their task", State: string(TaskRunning)})
+
+	away := ElsewhereOf(Place{Dir: filepath.Join(bucket, "mine")}.Transcript(), time.Now())
+	tasks := away.Tasks()
+	if len(tasks) != 1 || tasks[0].Task.Title != "Their task" || tasks[0].SessionID != "theirs" {
+		t.Fatalf("the reading is %+v, want only the other window's work", tasks)
+	}
+	if got := tasks[0].Session; got != "docs pass" {
+		t.Fatalf("the other window is called %q", got)
+	}
+	for _, empty := range []string{"", "transcript.jsonl"} {
+		if ElsewhereOf(empty, time.Now()).Any() {
+			t.Fatalf("a transcript with no folder (%q) found other windows", empty)
+		}
+	}
+}

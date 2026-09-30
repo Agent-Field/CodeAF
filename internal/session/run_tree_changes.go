@@ -12,7 +12,7 @@ import (
 // RunTreeSnapshot is what a working copy held before a run touched it: the
 // commit it stood on and, for every path git already saw as changed, what
 // that path held. A door that runs IN PLACE — `codeaf do`, which edits the
-// directory it was handed and commits nothing — takes one before the run and
+// directory it was handed and makes no commit of its own — takes one before the run and
 // asks it afterwards which paths the RUN changed, so the files it names are
 // the run's and never the person's own edits that were sitting there first.
 //
@@ -31,9 +31,23 @@ type RunTreeSnapshot struct {
 	dir  string
 	root string
 	head string
+	// unborn means the repository existed but its branch had no commit when
+	// the run started; an unknown base in a non-repository is different.
+	unborn bool
 	// held is every path git saw as changed before the run, by absolute path,
 	// and what it held then: a digest of its bytes, or empty when it was gone.
 	held map[string]string
+}
+
+// SignRunCommits signs commits made since this snapshot in an in-place run.
+// A snapshot on an unborn branch can sign the run's first commits; a snapshot
+// outside git has no branch whose new history belongs to the run.
+func (s RunTreeSnapshot) SignRunCommits(model string) (int, error) {
+	sign := gitSignature{named: model != "", model: model}
+	if s.unborn {
+		return signUnbornRunCommits(s.root, sign)
+	}
+	return signRunCommits(s.root, s.head, sign)
 }
 
 // SnapshotRunTree reads dir's working copy as it stands now.
@@ -45,6 +59,7 @@ func SnapshotRunTree(dir string) RunTreeSnapshot {
 	}
 	snapshot.root = root
 	snapshot.head = runTreeHead(root)
+	snapshot.unborn = snapshot.head == ""
 	snapshot.held = make(map[string]string)
 	for _, path := range runTreeStatus(root) {
 		snapshot.held[path] = runTreeDigest(path)
@@ -87,12 +102,18 @@ func (s RunTreeSnapshot) Changed() []string {
 	}
 	// A RUN THAT COMMITTED ITS OWN WORK moved HEAD, and what it committed is
 	// clean in the status above. Those paths are the run's too.
-	if head := runTreeHead(s.root); s.head != "" && head != "" && head != s.head {
-		if out, err := git(s.root, "diff", "--name-only", "-z", s.head, head); err == nil {
-			for _, name := range strings.Split(out, "\x00") {
-				if name = strings.TrimSpace(name); name != "" {
+	if head := runTreeHead(s.root); head != "" && head != s.head && (s.head != "" || s.unborn) {
+		if s.unborn {
+			// The unborn branch has no base for git diff; its first commits
+			// still belong in an in-place run's file envelope.
+			if paths, err := runTouchedPaths(s.root, "", head); err == nil {
+				for _, name := range paths {
 					add(filepath.Join(s.root, filepath.FromSlash(name)))
 				}
+			}
+		} else if out, err := git(s.root, "diff", "--name-only", "-z", s.head, head); err == nil {
+			for _, name := range gitNULPaths(out) {
+				add(filepath.Join(s.root, filepath.FromSlash(name)))
 			}
 		}
 	}
@@ -117,7 +138,8 @@ func (s RunTreeSnapshot) harnessOwns(path string) bool {
 // harnessWrote is THE ONE ANSWER to which paths inside a working copy are the
 // harness's own rather than the work: its folder of droppings, its plan store
 // under the name every road agrees on ([planStoreFilename], and the files the
-// store's engine keeps beside it), and the shim it arms. It is read by the belt
+// store's engine keeps beside it), and the two shims it arms (`plandb` and
+// `codeaf`, plandb_plan.go's armShim). It is read by the belt
 // landing ([beltTreeWork]) and by an in-place run's account of what it changed
 // ([RunTreeSnapshot.Changed]), so the two cannot disagree about it.
 //
@@ -135,7 +157,7 @@ func harnessWrote(path string) bool {
 		strings.HasPrefix(path, planStoreFilename+"."),
 		strings.HasPrefix(path, planStoreFilename+"-"):
 		return true
-	case path == "bin/"+planShimFilename:
+	case path == "bin/"+planShimFilename, path == "bin/"+codeafShimFilename:
 		return true
 	}
 	return false
@@ -172,20 +194,10 @@ func runTreeStatus(root string) []string {
 		return nil
 	}
 	var paths []string
-	fields := strings.Split(out, "\x00")
-	for i := 0; i < len(fields); i++ {
-		entry := fields[i]
-		if len(entry) < 4 {
-			continue
-		}
-		code, name := entry[:2], entry[3:]
-		paths = append(paths, filepath.Join(root, filepath.FromSlash(name)))
-		if code[0] == 'R' || code[0] == 'C' {
-			// The next field is the name it came from.
-			if i+1 < len(fields) && fields[i+1] != "" {
-				paths = append(paths, filepath.Join(root, filepath.FromSlash(fields[i+1])))
-			}
-			i++
+	for _, entry := range porcelainEntries(out) {
+		paths = append(paths, filepath.Join(root, filepath.FromSlash(entry.Path)))
+		if entry.From != "" {
+			paths = append(paths, filepath.Join(root, filepath.FromSlash(entry.From)))
 		}
 	}
 	return paths

@@ -94,7 +94,7 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 		GlyphStepBlocked: "blocked on something else, at two scales",
 		GlyphProseBullet: "a middle dot: the telemetry separator's byte, a different slot",
 		GlyphProseQuote:  "an eighth block: the code fence's gutter, and the blockquote's — both are a margin beside a block set apart",
-		GlyphShell:       "a dollar: the spend mark's byte, told apart by what follows it",
+		GlyphShell:       "a dollar: a shell call, its composer prompt, and the spend mark, told apart by position and what follows it",
 		GlyphActionCreate: "a plus: the diffstat's byte, and the step gutter's mark for a thing " +
 			"that was not there — one is bound to a number, the other stands alone in a gutter",
 		GlyphFileDocument: "a page of text, at two scales: a call that read one, and one on an " +

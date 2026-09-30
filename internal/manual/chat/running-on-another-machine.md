@@ -100,7 +100,7 @@ a real machine. For that, use a machine you actually ssh to.
 terminal kill the ssh child this session started:
 
 ```
-pkill -f "ssh -T localhost codeaf engine"
+pkill -f '[s]sh -T .* localhost codeaf engine'
 ```
 
 The status line grows its `connection` segment, the surface redials itself, and the answer
@@ -112,8 +112,9 @@ in a moment`, and pressing enter again once it is back sends it.
 
 The failed dial says what it found, rather than guessing:
 
-- codeaf missing over there:
-  `codeaf is not installed on <dest> — install it there, or put it on the PATH that a non-login ssh command sees`
+- codeaf missing over there: the message says the program is called codeaf now,
+  gives its former name and date, and asks you to install it under the current name:
+  `the program is called codeaf now (it was … before 2026-09-14) and must be installed on <dest> under that name — put it on the PATH that a non-login ssh command sees`
 - ssh could not get a session at all: `ssh could not open a session on <dest>`. ssh has
   already printed its own reason on the line above.
 - no ssh on this machine: `this machine has no ssh on its path, and --host is ssh`, or
@@ -272,8 +273,8 @@ that conversation beside the one you are in — the engine gives it a connection
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
-Three of the seven places still read the machine this window is running on, and each says so
-in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
+Home search uses the far machine's conversation list. Spend and memory use their remote
+stores; when an older engine cannot supply them, each says so instead of showing local data. The whole table,
 and why the look-stamp behind each tab's number is kept per machine, is on the Places page
 under *The places over --host*.
 
@@ -454,11 +455,14 @@ exact sentence each one says.
    travels on the wire like every other answer; nothing about it needs a browser or a
    port. This is the one entry on the list that is a capability, not a limit.
 
-5. **`/settings` opens anyway, and says one sentence as it opens.** Half these rows are
-   this surface's own — the mouse, the timestamps, the draft — and genuinely apply; the
-   other half govern the conversation, which reads them from the far machine's profile. It
-   says exactly:
-   `these rows are this machine's — the ones that govern the conversation are read from the profile on the other one`
+5. **`/settings` opens anyway, and says whose rows these are.** Every tab but Teams writes
+   this machine. The Teams tab is saved on the other machine when that machine can take the
+   change. Opening on any other tab says exactly:
+   `these rows belong to this machine; the Teams tab is saved on the other one.`
+   On the Teams tab it says only what is true there:
+   `these rows are saved on <machine>.`
+   An older engine, where the Teams tab cannot be saved over the connection, says exactly:
+   `these rows belong to this machine; this conversation reads its profile on the other one.`
 
 ## More of what does not work over --host
 
@@ -470,7 +474,7 @@ machine that runs the session, but this build has no wire door for them. They do
 or change this machine's copy. The cache, permissions, crew and harness commands name the
 connected machine and say `change it on that machine`; the memory commands say `memory
 shows what this machine has learned, and this session is on another`. In particular,
-`/cache clean now` deletes nothing here, `/crew <preset>` writes nothing here, and
+`/cache clean now` deletes nothing here, `/crew pin` writes nothing here, and
 `/subharness` does not claim the far registry is empty.
 
 ## Did cache clean delete the laptop cache or the remote machine's cache?
@@ -479,11 +483,12 @@ Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot 
 connected machine's build cache and refuse before touching this machine's cache. The
 answer names the connected machine and says to change it there.
 
-## Why didn't crew max change the crew on the remote machine?
+## Why didn't /crew pin change the crew on the remote machine?
 
-`/crew` has no far-profile door yet. Over `--host`, both the picker and `/crew <preset>`
-refuse before reading or writing this machine's profile, name the connected machine, and
-say to change the crew there.
+`/crew` has no far-profile door yet. Over `--host`, the panel and every shortcut —
+`pin`, `unpin`, `models`, `cap` — refuse before reading or writing this machine's profile,
+name the connected machine, and say to change the crew there:
+`devbox owns the crew · change it on that machine`.
 
 ## Why does remember over host not say whether memory is off?
 
@@ -574,15 +579,14 @@ The task roster lists this far conversation's work. Its rows come from the far
     keep it, or drop it — goes back the same way. Running a harness that already exists was
     never affected.
 
-13. **Three of the seven places still read this machine.** Spend adds up the ledger every
-    model call on the machine this window runs on writes into, search reads the index of what
-    was said here, and memory reads what sessions here learned — and there is no door on the
-    wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
-    says one line where its rows would be:
+13. **Spend and memory read the far machine, and say so when its engine cannot.** Spend adds
+    up that machine's priced model calls and memory reads and writes its memory store. Against
+    an older engine without one of those doors the place still opens, keeps its head and its
+    bar, and says one line where its rows would be instead of showing this computer's files:
     `spend shows what this machine has cost, and this session is on another`
-    `search reads what was said on this machine, and this session is on another`
     `memory shows what this machine has learned, and this session is on another`
-    Home, tasks, standing and settings all work and all answer for the right machine.
+    To find an old conversation, type on home: it searches the far machine's conversation
+    list. There is no separate Search page or `/search` command.
 
 14. **File paths are clickable again, and this is now a capability rather than a limit.**
     They were not for a wave: the only thing your terminal could open was a path of the
@@ -671,21 +675,51 @@ browser and no port, so that road stays open over `--host`.
 
 ## Settings over --host
 
-`/settings` opens over a connection and says one sentence as it opens:
+`/settings` opens over a connection. On any tab but Teams it says exactly:
 
 ```
-these rows are this machine's — the ones that govern the conversation are read from the profile on the other one
+these rows belong to this machine; the Teams tab is saved on the other one.
 ```
 
-Half the rows are this surface's own — the mouse, the timestamps, the draft — and those
-genuinely apply to what you are looking at. The other half govern the conversation, and
-the conversation reads them from the profile on the far machine. Change those over there.
+On the Teams tab it says only what is true there:
+
+```
+these rows are saved on <machine>.
+```
+
+An older engine, where that tab cannot be saved over the connection, says exactly:
+
+```
+these rows belong to this machine; this conversation reads its profile on the other one.
+```
+
+The rows on every tab but Teams are this machine's, and those changes apply to what you
+are looking at. The Teams tab is the other machine's when the connection can save it.
 
 **Asking codeaf to change a setting goes the other way.** `settings` and `change_setting`
-run inside the session, which is on the far machine, so they read and write **that**
-machine's profile — which is the profile the conversation actually obeys. So over a
+run inside the session, which is on the far machine, so they read and write that
+machine's profile, which is the profile the conversation actually obeys. So over a
 connection the two doors land in two different files: the panel edits this laptop, and
-asking edits the machine the work is on.
+asking edits the machine the work is on. The Teams tab is the exception on the panel.
+It saves on the other machine, the same place asking would write a team default.
+
+## Can I change the Teams settings on another machine, and where do team defaults go over a connection
+
+The **Teams** tab is the exception. Team defaults over a connection are what every team on
+the far machine inherits, so the tab shows that machine's values and a change is saved
+there, not on this computer. A value reads `from Settings`, the same words a team's own
+card uses when the team has not overridden it.
+
+You can change `questions go to the manager`, `team messages wake`, `daily cap per team`,
+`team depth` and `sub-team share`. The foot line says
+`a team can override any of these on its card · saved on <machine>`. The note on this tab
+says exactly `these rows are saved on <machine>.`
+
+An older engine, one that can show the teams but cannot take this change, keeps the tab
+read only. The note says exactly
+`these rows are on <machine>. changing them is not available over this connection.`
+The foot line says `changing them is not available over this connection`, and
+pressing enter on a row says the same sentence. Nothing is written on either machine.
 
 ## Approvals over --host
 
@@ -822,7 +856,8 @@ While that is happening the status line says, quietly:
 reconnecting to devbox — trying for up to 5 minutes
 ```
 
-Every call still gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
+Ordinary calls give up after 10 seconds. A remote `/compact` waits up to five minutes
+for a summary to finish; the chat stays responsive while it waits.
 
 If it cannot get back at all, you see the sentence you always saw:
 

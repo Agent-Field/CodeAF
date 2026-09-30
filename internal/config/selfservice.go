@@ -102,6 +102,18 @@ var selfServiceGuards = map[string]string{
 	KeyTaskMinFreeMB:       guardPressure,
 	KeyBashBackgroundAfter: guardPressure,
 
+	// The team defaults: a team's day and the share a sub-team is handed are
+	// money; how deep a manager may build teams is how much unattended work it
+	// may start; and whether a member's question goes to its manager rather
+	// than to you is the consent question asked one level up. A manager is a
+	// model, and each of these is a rail on managers.
+	KeyTeamsCapUSDDay:   guardSpending,
+	KeyTeamsSubSharePct: guardSpending,
+	KeyTeamsDepthLimit:  guardPressure,
+	KeyTeamsQuestionsUp: guardConsent,
+	// Waking starts a model turn nobody typed: unattended work, so pressure.
+	KeyTeamsWake: guardPressure,
+
 	KeyTaskAudit: guardProof,
 	// The signature itself has no row; what is left of it is whether the
 	// `Assisted-by` line names the model, and that is the person's to decide.

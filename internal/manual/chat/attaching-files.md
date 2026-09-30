@@ -197,7 +197,7 @@ at all.
 
 **The tray lights `start` even with nothing typed.** A file on the tray *is* a message, so
 `enter` starts a new conversation and sends it — and the pictures go with you into that
-conversation, because the tray belongs to you rather than to the screen. The same is true
+conversation, because home's tray is that conversation's first message. The same is true
 of `ctrl+enter`: an errand carries what was dropped into it.
 
 **The list underneath keeps working.** Home's box is a search over every project on the
@@ -458,9 +458,14 @@ browser on local home, and it is aimed at which folder the next conversation ope
 "Choosing a folder"); `/folder` on home opens a conversation first and browses there. Over
 `--host`, both say why this machine's folder cannot be that far conversation's folder.
 
-**The tray survives the walk.** Attach a file on home, go into a conversation, come back: it
-is still there. Home's tray row cannot be clicked; a chip comes off on a conversation's own
-tray, where the `✕` is.
+**Returning to Home keeps your unsent prompt and attachments in their conversation.**
+Reopen that conversation to find the same words, cursor position and picture tokens.
+They never appear on Home or in another conversation. Home starts with an empty box
+and tray; only words and files you add there go into the new conversation. Queued
+messages keep their own attachments. If the current draft has no conversation identity
+to save it under, starting another says `finish or clear the draft in the current chat before starting another`.
+Home's tray row cannot be clicked; on a conversation's tray, click the
+chip or its remove mark (`×`, or `x` in ASCII mode).
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of
 them — the file arrived with no usable name, or with a name that was really a path:
@@ -509,7 +514,8 @@ and were told the file is not there, that is what happened.
 Three ways, all the same as for a picture:
 
 - **`backspace` over an empty message box** removes the last thing on the tray.
-- **Click a chip** and it comes off.
+- **Click a chip or its remove mark** on a conversation's tray and it comes off.
+  Its mark is `×` in plain mode, a circled cross with a rich font, and `x` in ASCII mode.
 - **Send the message** — the tray empties into it.
 
 Removing a picture also takes its `[image #n]` token out of your sentence and counts the
@@ -546,3 +552,25 @@ own record, so on a connection that has no file door it still says as it opens:
 ```
 these are the files made on this machine — what that session made is written down on the other one
 ```
+
+## Mention a file, a team or another chat with @
+
+Type `@` in the message box. The list under it has three words on the first row,
+**team**, **chat** and **file**, then teams, conversations, tasks, and files. Typing
+filters every section at once. `@file:` keeps only files, `@team:` only teams,
+`@chat:` only conversations. The three words are buttons: a press types that prefix,
+the word under the pointer takes a background, and the hint names the key, `click`.
+
+Choosing a file still puts `@` and the path in the sentence, and nothing is read
+until the model asks. Choosing a team puts `●harbor` in the team's colour. Choosing
+a conversation puts `@handle`, or a short slug of the title when it has no handle,
+and the hint on the row is the full title. A conversation that is in no team is
+still on the list.
+
+After you send, that team mark and that `@handle` stay clickable. A press on the
+team opens the teams page with it selected. A press on the conversation opens it. Over
+`--host`, against an engine with no teams doors, a press on the team opens the
+conversations view on it instead. The
+model is handed a short digest of each one, not the transcript, and the other
+conversation is not messaged and not woken. The words in your transcript are the
+words you typed.

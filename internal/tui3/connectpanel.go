@@ -103,6 +103,11 @@ const connectFilterHint = "filter · ↑↓ · enter connect · esc close"
 type connectPanel struct {
 	open bool
 
+	// crew is where /crew's providers row was when its `+` opened this panel,
+	// nil otherwise: backing out of the panel — esc, or a press outside it —
+	// stands the crew panel back up there ([app.dismissConnect]).
+	crew *crewReturn
+
 	// groups is the catalog as a person browses it — the held accounts, then one
 	// category per group — and all is those same rows flattened, which is the
 	// STABLE SLICE everything else in here indexes into. Both are built once per
@@ -540,7 +545,7 @@ func (a *app) connectPanelKey(msg tea.KeyPressMsg) tea.Cmd {
 			p.filter.reset()
 			p.rank()
 		default:
-			p.close()
+			a.dismissConnect()
 		}
 
 	case "up", "ctrl+p":
@@ -580,16 +585,17 @@ func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 	entry := p.entry
 	switch msg.String() {
 	case "esc":
+		a.cancelModelEntry(entry)
 		p.entry = nil
 
 	case "enter":
 		answer := entry.value()
 		p.entry = nil
-		if answer == "" {
-			break
-		}
 		if _, model := modelConnectionSource(entry.id); model {
 			return a.modelEntryAnswer(entry)
+		}
+		if answer == "" {
+			break
 		}
 		p.close()
 		a.touch()
@@ -653,7 +659,7 @@ func (a *app) connectPanelPress(y int) tea.Cmd {
 	if !ok || mark.kind != chromeOverlay {
 		// A press anywhere else closes it, which is what pressing outside a list
 		// means everywhere a list is modal.
-		p.close()
+		a.dismissConnect()
 		a.touch()
 		return nil
 	}

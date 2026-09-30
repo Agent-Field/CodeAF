@@ -85,6 +85,9 @@ func readingWorkAnchor(es []entry, start, end int) int {
 func readingWorkAnchors(d deck) (map[int]liveWork, map[int]caption) {
 	lives := make(map[int]liveWork)
 	for _, live := range liveWorkRuns(d) {
+		if !live.last {
+			continue
+		}
 		lives[readingWorkAnchor(d.entries, live.start, live.end)] = live
 	}
 	caps := make(map[int]caption, len(d.captions))

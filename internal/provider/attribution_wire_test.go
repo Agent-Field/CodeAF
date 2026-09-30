@@ -264,7 +264,7 @@ func TestOwnClientKeepsTheRefusalLadder(t *testing.T) {
 	// The ladder narrated itself and ended on the rung that takes tools off.
 	mu.Lock()
 	defer mu.Unlock()
-	if len(notices) == 0 || !strings.Contains(notices[len(notices)-1], "removed tools") {
+	if len(notices) == 0 || !strings.Contains(notices[len(notices)-1], "sent without tools") {
 		t.Fatalf("retry notices = %#v", notices)
 	}
 	// More than one request was made, and every one of them was ours.

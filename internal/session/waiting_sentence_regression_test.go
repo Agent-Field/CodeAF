@@ -42,12 +42,34 @@ func TestWaitingSentenceConnectSignIn(t *testing.T) {
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// THE FIRST OBSERVATION IS THE ONE THAT USED TO BE EMPTY. The lane and the
+	// sentence are published together, so the first read that sees a person is
+	// needed already carries the sign-in line. Waiting on the map and then
+	// sleeping let that read land in the gap.
+	bad := make(chan personAsk, 1)
+	saw := make(chan struct{}, 1)
+	go func() {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			waiting := agent.waitingOnPerson()
+			if !waiting.waiting {
+				continue
+			}
+			if !strings.Contains(waiting.reason, "connect your Notion account?") {
+				bad <- waiting
+				return
+			}
+			saw <- struct{}{}
+			return
+		}
+	}()
 	go func() { _, _ = agent.askConnect(ctx, connectStatus{ID: "notion", Name: "Notion"}) }()
-	waitForPersonLane(t, agent, connectLaneActive)
-
-	waiting := agent.waitingOnPerson()
-	if !waiting.waiting || !strings.Contains(waiting.reason, "connect your Notion account?") {
+	select {
+	case waiting := <-bad:
 		t.Fatalf("sign-in says a person is needed without the sign-in sentence: waiting=%v reason=%q", waiting.waiting, waiting.reason)
+	case <-saw:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the question lane never became active")
 	}
 }
 

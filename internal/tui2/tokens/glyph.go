@@ -69,6 +69,9 @@ const (
 	// the distinction the one-glyph-one-meaning gate exists to keep.
 	GlyphAssumed = "≈"
 
+	// GlyphRemove offers to detach an unsent attachment; it reports no failure.
+	GlyphRemove = "×"
+
 	// Disclosure and navigation.
 	GlyphCollapsed = "▸"
 	GlyphExpanded  = "▾"
@@ -173,6 +176,13 @@ const (
 	// prompt's mapped-into arrow one slot up: a draft has gone nowhere yet, it
 	// sits on the wrong side of the line that one draws.
 	GlyphDraftUnsent = "✐"
+	// GlyphPinned is a crew seat a PERSON PINNED, beside the seats the router
+	// picks per task (internal/tui3's crew.go). It marks the one seat on a crew
+	// line nothing will move for the next task — the same fact the headless
+	// line marks with a pin. U+2316 POSITION INDICATOR is a fixed point, which is
+	// what a pin is, and it is East_Asian_Width=Neutral and one cell under both
+	// shipping rulers.
+	GlyphPinned = "⌖"
 
 	// The execution voices (5.5). A work record is four speakers and no
 	// labels: the model thinking, the tools it reached for, the reader
@@ -189,6 +199,9 @@ const (
 	GlyphSearch  = "⌕" // a call that went out to the world
 	GlyphFilter  = "⌕" // narrowing what is already on the page
 	GlyphWrite   = "✎" // a call that wrote something down
+
+	// GlyphCompacted marks a pass that shortened the model's working context.
+	GlyphCompacted = "⚭"
 
 	// The action families (internal/tui3's step gutter). One still, monochrome
 	// mark per FAMILY of work — searching, editing, running a command — keyed
@@ -435,6 +448,7 @@ func Glyphs() []GlyphInfo {
 		{"Working", GlyphWorking, '◐', true},
 		{"Settled", GlyphSettled, '✓', false},
 		{"Failed", GlyphFailed, '✕', false},
+		{"Remove", GlyphRemove, '×', true},
 		{"Stopped", GlyphStopped, '■', true},
 		{"Paused", GlyphPaused, '=', false},
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
@@ -462,11 +476,14 @@ func Glyphs() []GlyphInfo {
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
 		{"ReplyIn", GlyphReplyIn, '↳', false},
 		{"DraftUnsent", GlyphDraftUnsent, '✐', false},
+		{"Pinned", GlyphPinned, '⌖', false},
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
+		{"PromptShell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
 		{"Filter", GlyphFilter, '⌕', false},
 		{"Write", GlyphWrite, '✎', false},
+		{"Compacted", GlyphCompacted, '⚭', false},
 		{"ActionRead", GlyphActionRead, '▤', true},
 		{"ActionCreate", GlyphActionCreate, '+', false},
 		{"ActionTest", GlyphActionTest, '◎', true},

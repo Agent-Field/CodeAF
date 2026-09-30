@@ -27,7 +27,17 @@ package remote
 // the classes says why the longer window it was given first had to come back
 // out.
 //
-// AND LETTING EITHER OF THEM OVERTAKE AN ORDERED CALL COSTS NOTHING, which is
+// WORK is a long piece of the engine's own labour that a surface asked for and
+// nothing else waits on: [MethodCompact], which may ask the model for a summary
+// and take a minute doing it. It ran on the ordered lane until 2026-09-28, and
+// everything the person sent while it ran queued behind it and waited out its
+// own deadline there. It owes no order for the reason below: the surface asks
+// for it from a command goroutine of its own, so nothing it sends was ever
+// ordered after it, and the conversation guards itself — a summary is spliced
+// in only if the region it read is unchanged (internal/session's
+// compact_summary.go), which is what an in-process surface already relied on.
+//
+// AND LETTING ANY OF THEM OVERTAKE AN ORDERED CALL COSTS NOTHING, which is
 // the whole licence for this split and is worth stating plainly: EVERY CALL ON
 // THIS WIRE IS A SYNCHRONOUS ROUND TRIP ([Client.callAnswered] waits for the
 // result frame). A caller that makes two calls therefore has the first one's
@@ -72,6 +82,7 @@ const (
 	classOrdered callClass = iota
 	classGetter
 	classAct
+	classWork
 )
 
 // road is WHERE a class of call runs, and this is the one place a class is
@@ -87,8 +98,8 @@ const (
 	// inOrder is the connection's one ordered lane: off the reader, and in the
 	// order the frames arrived (orderedlane.go).
 	inOrder road = iota
-	// onItsOwn is a goroutine per call. A getter and a small act owe nothing to
-	// each other, so neither owes a queue.
+	// onItsOwn is a goroutine per call. A getter, a small act and a piece of
+	// work owe nothing to each other, so none of them owes a queue.
 	onItsOwn
 )
 
@@ -138,7 +149,7 @@ func classify(method string) callClass {
 	case MethodPing,
 		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
 		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
-		MethodPlanTasks, MethodPlanTaskPage, MethodPlanRunSummary, MethodRefreshRunSummary,
+		MethodPlanTasks, MethodPlanTaskPage, MethodPlanTaskWork, MethodPlanRunSummary, MethodRefreshRunSummary,
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
 		MethodAttachedSkills, MethodSkillShelf,
 		MethodSessionsRecent, MethodHeldQuestions,
@@ -146,7 +157,11 @@ func classify(method string) callClass {
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,
 		MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList, MethodMemoryProvenance,
 		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
-		MethodListDir, MethodStatPaths, MethodFetchFile:
+		MethodListDir, MethodStatPaths, MethodFetchFile,
+		// The wall's two model asks are reads of the naming role, asked off the
+		// update loop and bounded by the wall; queued behind a turn they would
+		// wait out the wall's patience and answer nobody.
+		MethodTeamsName, MethodTeamsPropose:
 		return classGetter
 	case MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
@@ -156,6 +171,8 @@ func classify(method string) callClass {
 		MethodPlanNote, MethodPlanPause, MethodPlanResume, MethodPlanCancel, MethodPlanAmend, MethodPlanPriority,
 		MethodTyping:
 		return classAct
+	case MethodCompact:
+		return classWork
 	default:
 		return classOrdered
 	}

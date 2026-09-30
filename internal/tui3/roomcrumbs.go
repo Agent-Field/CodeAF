@@ -215,6 +215,11 @@ func (a *app) roomAncestors() []*taskNode {
 	if node == nil || a.roomIsGuest() {
 		return nil
 	}
+	// A RUN'S TASK HANGS UNDER THE RUN'S TASKS, which are rows of its store and
+	// not nodes of this graph (planroom.go).
+	if a.roomPlan() != nil {
+		return a.planRoomAncestors()
+	}
 	seen := map[uint64]bool{node.id: true}
 	var up []*taskNode
 	for parent := node.ParentID(); parent != ""; {
@@ -411,7 +416,8 @@ func (a *app) roomTrail() string {
 // headLabelAt is the column a pinned label starts on. It is two cells for both
 // room labels: [app.legendLine] opens the room's header with the border's own
 // `─ `, keeping the crumb over the transcript's words. The navigation strip
-// uses [tabLead] instead so its Home target aligns with the places bar.
+// starts here too, and the places bar with it ([placeBarLead]), so the home
+// target sits in the same cells on the dashboard and in a conversation.
 //
 // It is stated once because the crumb spans are measured from the label's start
 // and pressed in the terminal's own columns, and a bar that recorded one and read
@@ -445,7 +451,7 @@ func (a *app) paintCrumbs(label string, at int, paint func(string) string) strin
 
 // paintCrumbHits is [app.paintCrumbs] over a trail the caller laid out, so a
 // page that draws the room's trail shape without being a room — a store task's
-// page ([app.taskPlanTrail]) — paints its crumbs in the same inks.
+// page — paints its crumbs in the same inks.
 func (a *app) paintCrumbHits(label string, at int, hits []crumbHit, hot crumbHit, hovering bool) string {
 	width, cursor := ansi.StringWidth(label), 0
 	var out strings.Builder
