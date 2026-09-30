@@ -24,8 +24,6 @@ package pair
 // handshake and never as a connection that quietly means something else.
 
 import (
-	"crypto/hkdf"
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -51,86 +49,40 @@ const (
 	whoMachine = "aforge machine" // legacy-name
 )
 
-// pakeContext binds the exchange to THIS machine and THIS protocol, so that a
+// machineScheme binds the exchange to THIS machine and THIS protocol, so that a
 // transcript from one pairing cannot be replayed into another.
-func pakeContext(machineName string) *cpace.ContextInfo {
-	return cpace.NewContextInfo(whoSurface, whoMachine+" "+machineName, []byte(protocol))
-}
-
-// pskFrom stretches the PAKE's key into the 32 bytes Noise wants for a
-// pre-shared key. cpace's own documentation says its output is for feeding to
-// HKDF, and this is that, with a label of its own.
-func pskFrom(key []byte) ([]byte, error) {
-	return hkdf.Expand(sha256.New, key, protocol+" pairing psk", 32)
+func machineScheme(machineName string) scheme {
+	return scheme{
+		protocol: protocol,
+		pake:     cpace.NewContextInfo(whoSurface, whoMachine+" "+machineName, []byte(protocol)),
+		prologue: protocol + " pairing " + machineName,
+	}
 }
 
 // pairAsSurface runs the introduction from the device that wants in.
 //
 // It is handed the machine name the person typed and the code they read off
 // that machine's screen, and it answers with what this device should remember.
-func pairAsSurface(conn io.ReadWriteCloser, service, machineName, code, label string, me Device, now time.Time) (Known, error) {
+// seen is told the join words as soon as they exist, which is before the machine
+// has answered: they are what the person compares while they wait.
+func pairAsSurface(conn io.ReadWriteCloser, service, machineName, code, label string, me Device, now time.Time, seen func(words string)) (Known, error) {
 	if _, err := conn.Write([]byte{intentPair}); err != nil {
 		return Known{}, err
 	}
-
-	// ── the PAKE ────────────────────────────────────────────────────────────
-	first, state, err := cpace.Start(code, pakeContext(machineName))
-	if err != nil {
-		return Known{}, err
-	}
-	if err := writeRecord(conn, first); err != nil {
-		return Known{}, err
-	}
-	second, err := readRecord(conn)
-	if err != nil {
-		return Known{}, wrongCodeOrGone(err)
-	}
-	agreed, err := state.Finish(second)
-	if err != nil {
-		return Known{}, ErrWrongCode
-	}
-	psk, err := pskFrom(agreed)
-	if err != nil {
-		return Known{}, err
-	}
-
-	// ── the keys, carried under it ──────────────────────────────────────────
-	//
-	// A WRONG CODE FAILS HERE AND NOWHERE ELSE. Both ends reached "a key" above
-	// whatever they typed; only a matching one decrypts the machine's reply.
-	handshake, err := noise.NewHandshakeState(noise.Config{
-		CipherSuite:  suite,
-		Pattern:      noise.HandshakeNN,
-		Initiator:    true,
-		Prologue:     []byte(protocol + " pairing " + machineName),
-		PresharedKey: psk,
-		// Placement 0 mixes the pre-shared key in before anything else, so the
-		// very first message is already protected by the code.
-		PresharedKeyPlacement: 0,
-	})
-	if err != nil {
-		return Known{}, err
-	}
 	offer := append(append([]byte{}, me.Public()...), label...)
-	message, _, _, err := handshake.WriteMessage(nil, offer)
+	intro, err := begin(streamLink{conn}, machineScheme(machineName), code, offer)
 	if err != nil {
 		return Known{}, err
 	}
-	if err := writeRecord(conn, message); err != nil {
+	seen(intro.Words)
+	said, err := intro.verdict()
+	if err != nil {
 		return Known{}, err
 	}
-	reply, err := readRecord(conn)
+	machineKey, err := hearMachine(said)
 	if err != nil {
-		return Known{}, wrongCodeOrGone(err)
+		return Known{}, err
 	}
-	said, _, _, err := handshake.ReadMessage(nil, reply)
-	if err != nil {
-		return Known{}, ErrWrongCode
-	}
-	if len(said) < 32 {
-		return Known{}, errors.New("that machine answered with something this build cannot read")
-	}
-	machineKey := said[:32]
 
 	// THE NAME MUST BE THE ONE THIS KEY DERIVES. The relay already checks this
 	// before it lets a machine register, but a surface that took the relay's
@@ -148,60 +100,51 @@ func pairAsSurface(conn io.ReadWriteCloser, service, machineName, code, label st
 	}, nil
 }
 
+// hearMachine reads the machine's answer: its key, in the shape every build has
+// sent, or a short refusal. A refusal is told apart by its length, because a
+// key is always 32 bytes and a verdict never is.
+func hearMachine(said []byte) ([]byte, error) {
+	if len(said) >= 32 {
+		return said[:32], nil
+	}
+	if len(said) > 0 && said[0] == verdictNo {
+		return nil, ErrRefused
+	}
+	return nil, errors.New("that machine answered with something this build cannot read")
+}
+
 // pairAsMachine runs the introduction from the machine that showed the code.
 //
-// admit is handed the device the introduction produced, and is this machine
-// writing it into its own book. It is asked BEFORE the reply that tells the
-// surface the pairing held, and it is never nil: every caller has a book, and
-// the whole point of the argument is that there is no way to run this exchange
-// without one.
-func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device, now time.Time, admit func(Paired) error) (Paired, error) {
-	first, err := readRecord(conn)
-	if err != nil {
-		return Paired{}, err
-	}
-	second, agreed, err := cpace.Exchange(code, pakeContext(machineName), first)
-	if err != nil {
-		return Paired{}, err
-	}
-	if err := writeRecord(conn, second); err != nil {
-		return Paired{}, err
-	}
-	psk, err := pskFrom(agreed)
-	if err != nil {
-		return Paired{}, err
-	}
-
-	handshake, err := noise.NewHandshakeState(noise.Config{
-		CipherSuite:           suite,
-		Pattern:               noise.HandshakeNN,
-		Initiator:             false,
-		Prologue:              []byte(protocol + " pairing " + machineName),
-		PresharedKey:          psk,
-		PresharedKeyPlacement: 0,
-	})
-	if err != nil {
-		return Paired{}, err
-	}
-	message, err := readRecord(conn)
-	if err != nil {
-		return Paired{}, err
-	}
-	offer, _, _, err := handshake.ReadMessage(nil, message)
+// approve is handed the device's name and the join words and answers nil only
+// when a person, looking at the other device's screen, said yes. admit is handed
+// the device the introduction produced, and is this machine writing it into its
+// own book. Neither is ever nil: every caller has a book and a person, and the
+// whole point of the arguments is that there is no way to run this exchange
+// without either.
+func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device, now time.Time, approve func(label, words string) error, admit func(Paired) error) (Paired, error) {
+	intro, err := answer(streamLink{conn}, machineScheme(machineName), code)
 	if err != nil {
 		// THE WRONG CODE LANDS HERE ON THIS SIDE, and it is the only thing that
 		// can land here: the record was written by somebody who derived a
 		// different key from a different six digits.
-		return Paired{}, ErrWrongCode
+		return Paired{}, err
 	}
-	if len(offer) < 32 {
+	if len(intro.Offer) < 32 {
 		return Paired{}, errors.New("that device offered something this build cannot read")
 	}
-	deviceKey := append([]byte{}, offer[:32]...)
+	deviceKey := append([]byte{}, intro.Offer[:32]...)
 	one := Paired{
-		Label: readableLabel(string(offer[32:])),
+		Label: readableLabel(string(intro.Offer[32:])),
 		Key:   base64.RawURLEncoding.EncodeToString(deviceKey),
 		Since: now,
+	}
+
+	// A PERSON LOOKS BEFORE ANYTHING IS WRITTEN. The join words are on both
+	// screens by now; a refusal is a short verdict inside the encryption, so the
+	// device that asked can say it was refused and not that a code was wrong.
+	if err := approve(one.Label, intro.Words); err != nil {
+		_ = intro.reply(sayVerdict("refused"))
+		return Paired{}, ErrRefused
 	}
 
 	// THE MACHINE WRITES THE DEVICE DOWN BEFORE IT SAYS THE PAIRING HELD.
@@ -217,23 +160,16 @@ func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device,
 	// A WRITE THAT FAILS SENDS NOTHING AT ALL. There is no room in this message
 	// for a machine to say why it stopped — its shape is the machine's key and
 	// its name, and it is the same shape every build of codeaf has ever sent — so
-	// the refusal is the silence of a machine that hangs up, which is exactly what
-	// this machine already does when the six digits were wrong. The device is left
+	// the refusal is the silence of a machine that hangs up, exactly as this
+	// machine already does when the six digits were wrong. The device is left
 	// knowing the pairing did not hold, which is the fact that matters to it, and
 	// the reason is kept where it can be acted on: this machine's own screen.
 	if err := admit(one); err != nil {
 		return Paired{}, notWrittenDown{err}
 	}
-
-	answer := append(append([]byte{}, me.Public()...), machineName...)
-	reply, _, _, err := handshake.WriteMessage(nil, answer)
-	if err != nil {
+	if err := intro.reply(append(append([]byte{}, me.Public()...), machineName...)); err != nil {
 		return Paired{}, err
 	}
-	if err := writeRecord(conn, reply); err != nil {
-		return Paired{}, err
-	}
-
 	return one, nil
 }
 

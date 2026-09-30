@@ -1,4 +1,4 @@
-package relayserve
+package pairbox
 
 import (
 	"go/parser"
@@ -9,19 +9,19 @@ import (
 	"testing"
 )
 
-// L0, EXTENDED (contract §0). The packages that carry a person's data over the
-// wire must not be able to name the packages that hold what a session, a cell
-// or a vault keeps in the clear. A package that cannot import a type cannot
-// decode one, so the ban is read out of the source and not out of a comment.
-func TestRelayImportLaw(t *testing.T) {
+// TestImportBan holds the mailbox to contract section 18.4: it and its
+// conformance suite cannot name the packages that hold what a mailbox must
+// never see, the pairing itself, a session, a cell, a key or an identity. A
+// package that cannot import a type cannot decode one, so the ban is read out
+// of the source and not out of a comment. Test files are exempt, since a test
+// may build the two devices that use the mailbox.
+func TestImportBan(t *testing.T) {
 	const module = "github.com/Agent-Field/codeaf/internal/"
 	banned := map[string]bool{}
-	for _, name := range []string{"remote", "pair", "session", "cell", "cellstore", "keys", "tui3"} {
+	for _, name := range []string{"pair", "session", "cell", "cellstore", "keys", "tui3", "identity", "reqsign"} {
 		banned[module+name] = true
 	}
-	for _, dir := range []string{
-		"../blobstore", "../directory", "../reqsign", "../wireauth", "../pairbox", ".", "../../cmd/relay",
-	} {
+	for _, dir := range []string{".", "pairboxtest"} {
 		checkDir(t, dir, banned)
 	}
 }

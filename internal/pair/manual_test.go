@@ -59,7 +59,7 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 	}
 	for _, quoted := range []string{
 		"10 minutes",              // CodeValidFor
-		"5 attempts",              // CodeAttempts
+		"1 attempt",               // CodeAttempts
 		"up to 16",                // relay.MaxStreams
 		"30 connections a minute", // relay.DialsPerMinute
 		"~/.codeaf/v3/remote/device.key",
@@ -77,8 +77,8 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 	if int(CodeValidFor.Minutes()) != 10 {
 		t.Fatalf("CodeValidFor is %v and the page says 10 minutes", CodeValidFor)
 	}
-	if CodeAttempts != 5 {
-		t.Fatalf("CodeAttempts is %d and the page says 5", CodeAttempts)
+	if CodeAttempts != 1 {
+		t.Fatalf("CodeAttempts is %d and the page says 1", CodeAttempts)
 	}
 }
 
