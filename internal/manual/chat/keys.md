@@ -1629,7 +1629,9 @@ Providers tab (the same list and the same keys, drawn in the panel's place):
 effort · `ctrl+r` fetch the newest model list (`/model` only — not the settings panel's
 rows) · `tab` and `→` open the providers under the model the cursor is on and move the
 cursor into them, `tab` and `←` close them and put it back on the model ·
-`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
+`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list · the **mouse wheel**
+walks it too while the list is up, three rows a notch, and stops at the first and last
+rows rather than scrolling the conversation behind the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
 column and **`alt+shift+s`** turns that column round · anything else types into it.
@@ -2845,9 +2847,11 @@ under the pointer".
 
 The wheel moves three rows per notch, on whichever surface owns the frame. It is
 routed to copy mode, then the settings panel, then the task page, then home, then the
-rewind timeline, then the status deck, then the phone tool sheet, then the fullscreen
-roster, then **the task column** when the pointer is over it, then an open room, and
-otherwise the conversation.
+rewind timeline, then the status deck, then the phone tool sheet, then an open command
+menu or the `/model` picker — each walks its own list while it is up, and a list whose
+window follows its cursor stops at its own ends rather than scrolling anything behind
+it — then the fullscreen roster, then **the task column** when the pointer is over it,
+then an open room, and otherwise the conversation.
 
 On the settings panel, the task page, home, the rewind timeline and the fullscreen roster
 the wheel walks the **cursor** rather than a scroll offset of its own, because on those the

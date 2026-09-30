@@ -68,6 +68,10 @@ func hoverLead(pal palette) string {
 // meaninglessness: the whole id is there, and so is the whole tail.
 func TestAPhonePickerRowWrapsItsNoteOntoASecondLine(t *testing.T) {
 	a := phonePicker(t, phoneWidth)
+	// The menu opens on the list's first row ([picker.cursorToFirst]) and that
+	// row is the one this test reads, so the walk moves off it first: the wrap
+	// is the row's shape at rest, not the cursor's.
+	drive(t, a, key("down"))
 	lines := overlayBlock(a)
 
 	at := -1
@@ -140,10 +144,11 @@ func TestThePhoneSelectionBandSpansBothLinesOfARow(t *testing.T) {
 // answer to both, or half of every row is dead to the mouse.
 func TestThePointerOverEitherLineLightsTheWholeRow(t *testing.T) {
 	a := phonePicker(t, phoneWidth)
+	// The menu opens on the list's first row ([picker.cursorToFirst]) — the row
+	// this test hovers — so the walk moves the cursor two rows down and the
+	// pointer is the only hand on the rows the test reads.
+	drive(t, a, key("down"), key("down"))
 	// The FIRST row of the block, whichever of its two lines the pointer is on.
-	// It is not the cursor's row — the picker opens on the model in use, which
-	// is the second — because a band and a hover on one row would make either
-	// answer look right.
 	for _, on := range []int{0, 1} {
 		a.hot = hoverAt{kind: hoverOverlay, index: on}
 		lines := overlayBlock(a)
@@ -251,7 +256,11 @@ func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 
 // EVERY OTHER TIER DRAWS EXACTLY WHAT IT ALWAYS DREW. The wide, standard and
 // narrow frames are asserted against [overlayRow] itself — the one-line law,
-// unchanged — byte for byte, escape sequences included.
+// unchanged — byte for byte, escape sequences included. The palette carries
+// the picker's own front-mark grammar ([palette.frontUnlifted]): the drawn
+// row and the expected one are painted with it, so the law this test holds is
+// that the list draws through the shared row function, not that the menu's
+// chosen row wears the band it no longer does.
 func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 	for _, width := range []int{120, 80, 60} {
 		a := phonePicker(t, width)
@@ -266,10 +275,12 @@ func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 				width, len(lines), len(phoneCatalog), head)
 		}
 		lines = lines[head:]
+		pal := a.pal
+		pal.frontUnlifted = true
 		for i, line := range lines {
 			model := a.pick.all[a.pick.hits[i]]
 			label, note := a.pick.rowText(model, a.reasoningFor(model.ID), width)
-			want := overlayRow(label, note, i == a.pick.cursor, model.ID == a.pick.current, false, width, a.pal)
+			want := overlayRow(label, note, i == a.pick.cursor, model.ID == a.pick.current, false, width, pal)
 			if line != want {
 				t.Fatalf("at %d columns row %d changed:\n got %q\nwant %q", width, i, line, want)
 			}

@@ -43,6 +43,34 @@ func typeInto(t *testing.T, a *app, text string) {
 	}
 }
 
+// pickerWalkTo drives the open picker's cursor onto one model's row. The menu
+// opens on the list's first row ([picker.cursorToFirst]), so a test that means
+// a model further down walks there — the walk is the same ↑/↓ a person presses,
+// never a written cursor index.
+func pickerWalkTo(t *testing.T, a *app, id string) {
+	t.Helper()
+	want := -1
+	for at, row := range a.pick.list {
+		if row.lane == laneNone && a.pick.all[a.pick.hits[row.hit]].ID == id {
+			want = at
+			break
+		}
+	}
+	if want < 0 {
+		t.Fatalf("%s is not on the open picker's list", id)
+	}
+	for a.pick.cursor != want {
+		if a.pick.cursor < want {
+			drive(t, a, key("down"))
+		} else {
+			drive(t, a, key("up"))
+		}
+	}
+	if chosen, _ := a.pick.choice(); chosen.ID != id {
+		t.Fatalf("the walk rests on %q, want %s", chosen.ID, id)
+	}
+}
+
 var pickerCatalog = []Model{
 	{ID: "anthropic/claude-gpt-echo", ContextLength: 200_000},
 	{ID: "openai/gpt-4.1-mini", ContextLength: 1_000_000},
@@ -58,9 +86,10 @@ func TestBareModelOpensThePickerAndASlugDoesNot(t *testing.T) {
 	if !a.pick.open {
 		t.Fatal("/model with no argument has to open the picker")
 	}
-	// The cursor opens on the model in use, so enter confirms rather than moves.
-	if chosen, _ := a.pick.choice(); chosen.ID != "openai/gpt-4.1-mini" {
-		t.Fatalf("the picker opened on %q, want the model in use", chosen.ID)
+	// The cursor opens on the list's first row, visibly highlighted, and the
+	// model in use keeps its mark wherever it sits ([picker.cursorToFirst]).
+	if chosen, _ := a.pick.choice(); chosen.ID != "anthropic/claude-gpt-echo" {
+		t.Fatalf("the picker opened on %q, want the list's first row", chosen.ID)
 	}
 	drive(t, a, key("esc"))
 
