@@ -198,3 +198,33 @@ reduced-context apply answered them) is reproduced end-to-end by
 no-network container, applies the adapted patch, the tests pass, and `combine`
 answers the conflicted classical criterion from the phase-B verdict (score
 0.75). It makes no judge call and no provider spend.
+## Independent review and acceptance (2026-09-30)
+
+A defect-first review of this change against the retained bytes, with local
+reproduction, found one grading defect still standing and fixed it at its
+source.
+
+- **The unappliable-patch 0 was not reached in `combine`.** With `apply_ok`
+  false, phase A marks every criterion `fail` but gathers no judge input; the
+  judge returns no verdict; and `combine` replaced each prompt criterion's
+  `fail` with `rig`. A rubric with a prompt criterion — all three pilot tasks —
+  therefore still graded `rig`, not the legitimate 0. `combine` now keeps phase
+  A's `fail` when `apply_ok` is false, and `grade/test_rubric.py` covers both a
+  fresh combine and the regrade case where a stale retained `judge.json` holds
+  a prompt pass. The suite is 16 tests.
+- **Reproduction.** `regrade-retained.sh` rerun on `conflicted` s1 (scratch
+  `DEST`, originals untouched) reproduced the committed corrected
+  `grade.json` byte-for-byte at 0.75, with 6 of 6 selected tests passing.
+  Every `model.patch` under `evidence-corrected/` is byte-identical to its
+  original under `evidence/`; no file under `evidence/` was modified.
+- **Denominators confirmed against the bytes** (see the tables above): 15
+  identities, 12 original numeric grades / 3 rig, 9 flagged, 6 shipped passes;
+  original rubric mean 10.75/12 = 0.8958, corrected 13.25/15 = 0.8833, shipped
+  mean 6/15 = 0.4000 both ways.
+- **Acceptance.** The corrected change is accepted for step 1 of the campaign:
+  the three recovered grades have traceable provenance and policy eligibility
+  (rubric-view only; the scanner flags that zero them are untouched), the
+  denominators agree, costs are not double-counted, and the original evidence
+  is preserved. The unresolved items remain the missing raw `egress-proxy.log`
+  files, the three observation-vs-action scanner false positives, and the fact
+  that no live rollout has finished through phase B to a verdict.
