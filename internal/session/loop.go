@@ -2960,11 +2960,7 @@ func (a *Agent) failureServiceWord(model string) string {
 // talks with that service's own key, which this ladder does not describe.
 func (a *Agent) failureKeySource(model string) string {
 	sources := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
-	service, _ := sources.For(model)
-	if service.Source.ID != sources.Default().Source.ID {
-		return ""
-	}
-	return config.APIKeySourceAt(a.config.ProfileDir)
+	return config.APIKeySourceForModel(a.config.ProfileDir, sources, model)
 }
 
 // transportGaveUp is that sentence WITH the failure still reachable under it, on

@@ -3731,7 +3731,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, doStanding(workspace), completerFor),
+		}, doStanding(workspace), completerFor, settings.Sources),
 	})
 	errand := runErrandOutcome(summary, workspace, bound)
 	// THE RUN'S OWN CLOCK, read off the context because the summary's word is

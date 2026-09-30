@@ -122,9 +122,9 @@ type Config struct {
 	// reading, which is a run's worker, and an attended one for a shell run a
 	// person is watching. Empty is unattended.
 	Role lanes.Role
-	// AuthKeySource is the safe person-facing name of the key used by the
-	// completer. It is added to 401/403 failures, never the key itself.
-	AuthKeySource string
+	// AuthKeySource answers the safe credential source for the served model.
+	// It is added to 401/403 failures, never the key itself. Nil says nothing.
+	AuthKeySource func(model string) string
 	// Node names the work the calls belong to in the model-call log — the
 	// program's name — so `codeaf logs --node <name>` reads one program's calls.
 	// Their tag is `task`, the word every call made inside a piece of work
@@ -1063,12 +1063,21 @@ func (s *Server) failure(err error, request context.Context, model string) (int,
 		if status < 400 || status > 599 {
 			status = http.StatusBadGateway
 		}
-		return modelFailureStatus(status), authSourceSentence(refusal.Error(), status, s.config.AuthKeySource)
+		return modelFailureStatus(status), authSourceSentence(refusal.Error(), status, s.authKeySource(model))
 	}
 	if status, ok := provider.StatusOf(err); ok {
-		return modelFailureStatus(status), authSourceSentence(err.Error(), status, s.config.AuthKeySource)
+		return modelFailureStatus(status), authSourceSentence(err.Error(), status, s.authKeySource(model))
 	}
 	return http.StatusBadGateway, firstLine(err.Error())
+}
+
+// authKeySource asks about the model actually served, because a fallback may
+// have moved a program's request onto a different provider.
+func (s *Server) authKeySource(model string) string {
+	if s.config.AuthKeySource == nil {
+		return ""
+	}
+	return s.config.AuthKeySource(model)
 }
 
 // modelFailureStatus reserves authentication responses for the program's own

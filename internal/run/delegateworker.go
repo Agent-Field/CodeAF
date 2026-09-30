@@ -108,9 +108,9 @@ type DelegateSetup struct {
 	Ledger string
 	// Keepalive overrides the model API's keepalive interval, for a test.
 	Keepalive time.Duration
-	// AuthKeySource is the safe source name to show when the model service
-	// rejects the conversation's key.
-	AuthKeySource string
+	// AuthKeySource names the safe credential source for the served model,
+	// so a connected provider never borrows the default provider's explanation.
+	AuthKeySource func(model string) string
 	// PlainFolder says the program works in its folder without git
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
 	// flags for that (delegate.Delegate.PlainFolder).

@@ -97,6 +97,17 @@ func APIKeySourceAt(profileDir string) string {
 	return source
 }
 
+// APIKeySourceForModel explains the default provider's credential only when
+// that provider actually serves the model. Connected providers have their own
+// key ladders, so borrowing the default explanation would name another key.
+func APIKeySourceForModel(profileDir string, sources modelsource.Set, model string) string {
+	service, _ := sources.For(model)
+	if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+		return ""
+	}
+	return APIKeySourceAt(profileDir)
+}
+
 // WriteAPIKey persists a key a person handed over, through the same atomic
 // writer every other setting uses. The file is created owner-readable only
 // (writeProfileValues), which is the property [EnsurePersistedAPIKey] tightens

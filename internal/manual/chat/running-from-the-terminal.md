@@ -1027,7 +1027,10 @@ without retrying it as a provider failure. The ending names the safe source of t
 `the shell's OPENAI_API_KEY`, or `the key saved in your profile`. It never prints the key itself.
 `codeaf do` prints that sentence on stderr; `codeaf do --json` carries it in `error`,
 with `stop:"incomplete"` and exit 2. A directly connected provider uses its own key,
-so its refusal does not name the default provider's key source.
+so its refusal does not name the default provider's key source. This also applies to
+bash workers in `do` runs: they use the profile admitted by `CODEAF_PROFILE_DIR`,
+including its saved key and connected providers. Delegated programs resolve the key
+explanation for the model actually served, including a fallback onto another model.
 
 **These change state without model spending**: `connect`, `disconnect`, `cache clean`,
 `rebuild`, `notebook retract|restore`, `services stop` and `devices revoke`. A browser
@@ -1228,3 +1231,21 @@ An empty quoted argument, whitespace-only arguments, or empty piped input are
 rejected before planning or model work starts. Supply the goal as command
 arguments or pipe it through standard input; a single `-` explicitly selects
 standard input. A missing goal is not a request for the model to invent work.
+
+## A brief containing literal -- or words that look like flags
+
+For delegated programs such as `codeaf senior-dev`, the first standalone `--`
+ends flag parsing. Every argument after it belongs to the brief, including
+another literal `--`. For example, `codeaf senior-dev -- --` supplies the brief
+`--`; `codeaf senior-dev -- --max-cost 2` supplies the words `--max-cost 2`
+as the brief rather than setting a cost ceiling. Put ceilings before the first
+`--` when using this form.
+
+## Do receipt tokens and spending after an incomplete turn
+
+On `codeaf do`'s default run road, paid calls remain in `tokens.in`, `tokens.out`
+and the spend total when a later call fails in the same turn. Auxiliary summary
+calls count too. A worker settles outstanding provider receipts before reporting
+its final totals; it waits at most the provider's receipt deadline and keeps
+the figures already received when a receipt cannot be settled. An incomplete
+receipt therefore reports the work's paid calls as well as its failure reason.

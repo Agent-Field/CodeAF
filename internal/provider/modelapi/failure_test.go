@@ -22,7 +22,7 @@ func TestAuthFailureSentenceNamesKeySourceWithoutTheKey(t *testing.T) {
 		{"profile", http.StatusUnauthorized, "the key saved in your profile", fakeKey("sk-or-v1-", "fedcba9876543210")},
 	} {
 		t.Run(row.name, func(t *testing.T) {
-			server := &Server{ctx: context.Background(), config: Config{AuthKeySource: row.source}}
+			server := &Server{ctx: context.Background(), config: Config{AuthKeySource: func(string) string { return row.source }}}
 			status, said := server.failure(&provider.APIError{Status: row.status, Message: row.key}, context.Background(), "test/model")
 			// The upstream account is separate from the program's loopback
 			// token, so its refusal retains the gateway's status.

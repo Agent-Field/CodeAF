@@ -1087,3 +1087,12 @@ API told it for each call, not a catalog estimate, and a call nobody priced adds
 no task, so its record — that log, its conversation with codeaf, its actions, its stages
 and when it started and ended — is kept in a folder of its own under
 `~/.codeaf/v3/carried/senior-dev/`, one per run.
+
+## My key was refused — does senior-dev make another landing call?
+
+An upstream authentication refusal (`401` or `403`) ends model work immediately.
+There is no retry or model landing turn using the same refused credential. The
+local finalization still runs: senior-dev accounts for the tree it leaves and
+reports the reason it stopped. The local model gateway reports an upstream
+account refusal as `502`; its message retains the upstream authentication status
+so the program can distinguish it from a temporary provider failure.
