@@ -7,7 +7,8 @@
 #
 # Env: TASK_ID (default: read from the result dir's meta.json), EGRESS_SCAN=1
 # for runs that had a live agent (the controls pass --no-egress), FORCE_IMAGE=1
-# to rebuild the verifier image.
+# to rebuild the verifier image, REGRADE=1 to reuse the run's retained judge
+# verdicts and rewrite only the deterministic phases and grade.json.
 #
 # The phases, in order — each one's output written even when it fails, because
 # the question a failed grade has to answer is which layer broke:
