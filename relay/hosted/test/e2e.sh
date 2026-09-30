@@ -38,6 +38,7 @@ for script in api race flight dedup; do node "test/$script.e2e.mjs"; done
 node test/caps.e2e.mjs
 node test/pair.e2e.mjs
 node test/watch.e2e.mjs
+node test/watch.e2e.mjs lease
 WATCH_LOG="$work/18791.log" node test/watch.e2e.mjs idle
 IDENTITY_DO_DIR="$work/18791/v3/do/codeaf-hosted-relay-IdentityDO" R2_DIR="$work/18791/v3/r2/miniflare-R2BucketObject" node test/rotation.e2e.mjs
 IDENTITY_DO_DIR="$work/18792/v3/do/codeaf-hosted-relay-IdentityDO" node test/newcomers.e2e.mjs
