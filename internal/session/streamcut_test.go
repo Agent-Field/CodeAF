@@ -252,8 +252,10 @@ func TestExhaustedIncompleteStreamDropsThePersistedPartial(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range ReadTranscript(path).Entries {
-		if entry.Role == "assistant" && strings.Contains(entry.Text, partial) {
-			t.Fatalf("the persisted assistant reply kept cut text: %+v", entry)
+		// Any saved row carrying the text counts, whatever role it is kept under:
+		// an interrupted partial is journaled as an aside, not as a reply.
+		if strings.Contains(entry.Text, partial) {
+			t.Fatalf("the transcript kept cut text: %+v", entry)
 		}
 	}
 	failure, failed := firstOfKind(collected, EventError)
@@ -293,7 +295,7 @@ func TestPermanentNonCutFailureKeepsThePersistedPartial(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range ReadTranscript(path).Entries {
-		if entry.Role == "assistant" && strings.Contains(entry.Text, partial) {
+		if strings.Contains(entry.Text, partial) {
 			return
 		}
 	}
