@@ -75,9 +75,9 @@ func TestTheCurrentModelKeepsBoldAccentButNoGround(t *testing.T) {
 	}
 
 	// AND THE CURSOR ON THE MARKED ROW STILL LIFTS IT — the mark must not have
-	// made the row unhighlightable, only unhighlighted on its own. One down
-	// from the first row reaches the model in use.
-	drive(t, a, key("down"))
+	// made the row unhighlightable, only unhighlighted on its own. The walk
+	// down from the list's first row reaches the model in use on its own row.
+	drive(t, a, key("down"), key("down"), key("down"))
 	both := modelMenuRow(t, a, "openai/gpt-4.1-mini")
 	if groundsAreDrawn(a) && !strings.Contains(both, "\x1b[48;") {
 		t.Fatalf("the cursor on the current model's row lifts nothing:\n%q", both)
