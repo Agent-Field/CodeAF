@@ -1916,7 +1916,7 @@ func replaceEnv(environment []string, key, value string) []string {
 
 // AllowProviderKeysInShell is the opt-in that keeps a provider credential in a
 // model's shell. It is read from codeaf's own environment through env.Get, so
-// it carries the same one-release AFORGE_ fallback every owned variable does,
+// it carries the same retired-prefix fallback every owned variable does,
 // and it is never read from a model's command, so only whoever started codeaf
 // can grant it — a task that genuinely needs the running key (a script that
 // calls the provider's API itself, say) gets it by exporting this before
@@ -1983,6 +1983,11 @@ func providerKeyEnvNames() []string {
 	for _, row := range config.PersistedSources(config.ProfileDir()) {
 		if row.KeyEnv != "" {
 			names = append(names, row.KeyEnv)
+			// A custom owned variable has the same compatibility read as
+			// every other owned variable, so its former spelling is a key too.
+			if strings.HasPrefix(row.KeyEnv, "CODEAF_") {
+				names = append(names, env.Legacy(row.KeyEnv))
+			}
 		}
 	}
 	return names
