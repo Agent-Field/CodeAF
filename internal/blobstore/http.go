@@ -87,6 +87,27 @@ func isPrefix(objects []Object, rids []string) bool {
 	return true
 }
 
+// GetFrame implements Store. The id is checked here as well as on the server,
+// because it becomes part of a URL and a hostile one must not rewrite the path.
+func (c *HTTP) GetFrame(ctx context.Context, frame string) ([]byte, error) {
+	if err := checkGet(frame); err != nil {
+		return nil, err
+	}
+	return c.do(ctx, http.MethodGet, pathFrames+"/"+frame, nil)
+}
+
+// Locate implements Store: one request answering where each held rid lies.
+func (c *HTTP) Locate(ctx context.Context, rids []string) (map[string]Location, error) {
+	if rids == nil {
+		rids = []string{}
+	}
+	var out locateAnswer
+	if err := c.doJSON(ctx, http.MethodPost, pathLocate, mustJSON(locateRequest{Rids: rids}), &out); err != nil {
+		return nil, err
+	}
+	return out.At, nil
+}
+
 // Has implements Store.
 func (c *HTTP) Has(ctx context.Context, rids []string) ([]bool, error) {
 	if rids == nil {
