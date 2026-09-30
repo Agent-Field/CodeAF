@@ -614,8 +614,102 @@ func (p *picker) rowUnavailable(at int) bool {
 	return p.all[p.hits[row.hit]].Unavailable
 }
 
-// follow scrolls the window by the least that keeps the cursor inside it.
-func (p *picker) follow(height int) { p.top = listTop(p.cursor, p.top, len(p.list), height) }
+// follow scrolls the window by the least that keeps the cursor's row on the
+// screen. `lines` is the SCREEN lines the rows may spend — not the number of
+// list rows — because the drawing spends extra lines on a group's heading, on
+// the machines' heading and on a why line, and a window counted in rows
+// handed the cursor a place the frame never drew: the highlight vanished at
+// the bottom of the list and on the frame the menu opened with (owner's
+// report, 2026-09-30). [listTop]'s item arithmetic is the other lists' law;
+// this one is the picker's, because the picker is the list that grows headings.
+func (p *picker) follow(lines int) {
+	if lines <= 0 || len(p.list) == 0 || p.cursor < 0 || p.cursor >= len(p.list) {
+		return
+	}
+	if p.cursor < p.top {
+		p.top = p.cursor
+		return
+	}
+	// THE CURSOR'S ROW IS ALREADY INSIDE THE WINDOW: scroll by the least, which
+	// is nothing. The count runs from the window's own top, where a heading the
+	// edge rule draws is a line the window pays for ([picker.groupHead]).
+	if p.spanLines(p.top, p.cursor, lines) <= lines {
+		return
+	}
+	p.top = p.endingTop(p.cursor, lines)
+}
+
+// spanLines is how many screen lines the rows from `from` through `to` spend,
+// drawn from the top at `from` — the count [picker.follow] reads to answer
+// "is the cursor on the screen", and the count [picker.height] reads to
+// reserve the frame. One function, or the two answers drift.
+func (p *picker) spanLines(from, to, _ int) int {
+	lines := 0
+	for at := from; at <= to && at < len(p.list); at++ {
+		lines += p.rowLines(at, at == from)
+	}
+	return lines
+}
+
+// endingTop is the window that ENDS at row `at` and spends no more than
+// `lines` screen lines: the top walked back from the cursor until the budget
+// runs out, each candidate top charged with the heading the edge rule would
+// draw at it. The bottom of the list is where this earns its keep — the walk
+// stops at the budget, so the last rows and the door past them are what the
+// window shows, with the cursor's row the last one drawn.
+func (p *picker) endingTop(at, lines int) int {
+	top := at
+	used := 0
+	for top > 0 {
+		cost := p.rowLines(top-1, true)
+		if used+cost > lines {
+			break
+		}
+		used += cost
+		top--
+	}
+	return top
+}
+
+// rowLines is how many screen lines drawing the row `at` costs: the group's
+// heading and the machines' heading ride ahead of their row, the why line
+// rides under it, and an unavailable row draws its notice as one plain line.
+//
+// atTop says whether this row would be the window's FIRST. A heading is drawn
+// at the window's edge even mid-block ([picker.groupBefore],
+// [picker.laneHeadBefore]) so the columns stay explained — which is a line the
+// scroll must pay for, and the scroll is the only asker that does not yet know
+// where the window starts.
+func (p *picker) rowLines(at int, atTop bool) int {
+	if at < 0 || at >= len(p.list) {
+		return 0
+	}
+	take := 0
+	if p.groupHead(at, atTop) != "" {
+		take++
+	}
+	if p.laneHead(at, atTop) != "" {
+		take++
+	}
+	if p.rowUnavailable(at) {
+		// THE NOTICE IS ONE PLAIN LINE ([picker.rowsOwned]), wherever the row's
+		// own tail would have wrapped.
+		return take + 1
+	}
+	if phoneList(p.width) {
+		// A PHONE WRAPS A ROW'S TAIL onto a line of its own, and whether there
+		// is a tail is what decides the row's height. Wide frames spend one
+		// line on every row, so the ask stays off the common path.
+		_, note := p.entryText(at, p.width, nil)
+		take += overlayItemLines(p.width, note)
+	} else {
+		take++
+	}
+	if p.lineUnder(at) != "" {
+		take++
+	}
+	return take
+}
 
 // ── THE LANES UNDER A MODEL ─────────────────────────────────────────────────
 //
