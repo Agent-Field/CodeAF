@@ -145,7 +145,7 @@ func (a *app) runDelegateCommand(name, brief string) tea.Cmd {
 			return func() tea.Msg {
 				return taskStartedMsg{
 					kind: "single", id: strconv.FormatUint(id, 10), title: title,
-					err: err, note: note, brief: brief, conv: conv,
+					err: err, note: note, brief: brief, conv: conv, program: name,
 				}
 			}
 		}

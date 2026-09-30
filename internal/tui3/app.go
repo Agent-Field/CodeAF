@@ -5263,7 +5263,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
 			started := msg.kind + " task " + msg.id + " started · " + msg.title
-			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
+			if msg.program != "" {
+				// A TYPED PROGRAM HAS NO PROPOSAL CARD. Its start receipt is the
+				// person's only account of the effective ceiling, so the work fold
+				// must keep it. The engine supplies the shell's own ceiling words.
+				started = msg.program + " task " + msg.id + " started · " + msg.title
+				if msg.note != "" {
+					started += " · " + msg.note
+				}
+				a.feed.toldNote(started, msg.program, msg.id, msg.title)
+			} else if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
 				a.feed.noteWritten(started, false, []string{msg.id, msg.title})
 			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
@@ -5271,7 +5280,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// somewhere other than where it was asked to go. Its own dim line
 			// under the started one, in the same slot [app.noteFacts] already
 			// carries facts in; empty is every ordinary start and says nothing.
-			if msg.note != "" {
+			if msg.note != "" && msg.program == "" {
 				a.feed.note(msg.note)
 			}
 			a.noticeEvent(eventTaskStarted)

@@ -490,12 +490,18 @@ func (a *app) doneHead(card *taskDone, width int, sel bool) string {
 	// own rule for the same reason (toolview.go): the name is the substance, and
 	// an outcome hung off a title nobody can read is a fact about nothing.
 	room := width - 4
-	if space := room - ansi.StringWidth(tail); space >= doneTitleFloor {
+	floor := doneTitleFloor
+	if card.program != "" {
+		// The badge is part of the identity, so the telemetry gives way before
+		// it can leave too little room for even the badge's short spelling.
+		floor = min(ansi.StringWidth(card.title), railTitleFloor) + programCells(programBadge(card.program).short)
+	}
+	if space := room - ansi.StringWidth(tail); space >= floor {
 		room = space
 	} else {
 		tail = ""
 	}
-	line := lead + a.pal.ink(fit(card.title, room))
+	line := lead + a.pal.programTitled(card.title, card.program, room, a.pal.ink)
 	if tail != "" {
 		line += a.pal.dim(tail)
 	}
