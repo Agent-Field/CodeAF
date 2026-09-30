@@ -3,6 +3,7 @@ package pair
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/relay"
@@ -41,10 +42,67 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 		Busy().Error(),
 		Stopped(),
 		RevokedLine("laptop"),
+		// The join words on the machine being opened, and what its own screen
+		// says about the attempts it turned away.
+		WaitingLine("otter-lamp-42", "amber fox dune"),
+		AskMachineLine("laptop", "amber fox dune"),
+		AskChoice,
+		ErrRefused.Error(),
+		"a device asked to pair and was not let in",
+		"someone typed a wrong code, so that code is no longer good",
+		"a device tried to pair and there was no code to pair with",
 	}
 	for _, sentence := range said {
 		if !manual.Chat().Mentions(sentence) {
 			t.Errorf("no chat manual page says %q — add it to internal/manual/chat/reaching-this-machine-without-ssh.md", sentence)
+		}
+	}
+}
+
+// THE PAIRING OF A PERSON'S CHATS HAS ITS OWN PAGE, and every sentence a screen
+// shows for it is quoted there whole. The page is named rather than searched
+// for, so a sentence that moved to some other page still fails: a person who
+// asks how to use codeaf on a second computer is sent to this one.
+func TestEverySentenceOfPairingChatsIsOnItsOwnPage(t *testing.T) {
+	const name = "use-this-on-another-computer"
+	page, ok := manual.Chat().Page(name)
+	if !ok {
+		t.Fatalf("the page %s is not in the corpus", name)
+	}
+	page = strings.ToLower(page)
+	code := &Code{digits: "715302", plate: "42"}
+	said := []string{
+		// What each side shows while a person pairs, in the order they meet it.
+		strings.TrimRight(ChatLines(code, ""), "\n"),
+		strings.TrimRight(ChatLines(code, "https://relay.example.com"), "\n"),
+		WaitingChatsLine("amber fox dune"),
+		AskChatsLine("laptop", "amber fox dune"),
+		AskChoice,
+		BurnLine,
+		JoinedLine,
+		PairedChatsLine("laptop"),
+		// What can go wrong, each one sentence naming its own cause.
+		ErrCodeShape.Error(),
+		ErrCodeDidNotWork.Error(),
+		ErrRefused.Error(),
+		NothingWaitingUnder("42").Error(),
+		ErrStopped.Error(),
+		ErrSomeoneElse.Error(),
+		ErrDidNotFinish.Error(),
+		ErrOffering.Error(),
+		ErrBadGrant.Error(),
+		ErrSyncOff.Error(),
+		ErrNoSync.Error(),
+		ErrRelayBusy.Error(),
+		ErrRelayTooOld.Error(),
+		ErrDifferentChats.Error(),
+		ErrAlreadyPaired.Error(),
+		CannotReachHost("relay.example.com").Error(),
+		TooManyFor(7 * time.Minute).Error(),
+	}
+	for _, sentence := range said {
+		if !strings.Contains(page, strings.ToLower(sentence)) {
+			t.Errorf("the page %s does not say %q — add it to internal/manual/chat/%s.md", name, sentence, name)
 		}
 	}
 }
