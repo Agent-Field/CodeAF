@@ -459,15 +459,16 @@ func (p *picker) rank() {
 	p.cursor, p.top = 0, 0
 	p.relist()
 	// AND A BOX WITH NOTHING IN IT IS THE LIST THE PICKER OPENED ON, so the
-	// cursor goes back to where it opened: on the model in use. Emptying the
-	// box with ctrl+u used to leave it on row zero, which made the enter that
-	// followed a switch to whatever sorted first.
+	// cursor goes back to where it opened: on the list's first row. Emptying
+	// the box with ctrl+u used to leave it wherever the narrowed list had put
+	// it, which read as the walk surviving an edit that emptied the list it
+	// walked.
 	//
 	// THE SORT KEY MOVES IT TO THE TOP ITSELF ([picker.sortNext]) rather than this
 	// being asked to tell the two cases apart: opening the list and pressing the
 	// sort key both end here, and only the second of them wants row one.
 	if len(tokens) == 0 {
-		p.cursorToCurrent()
+		p.cursorToFirst()
 	}
 	// THE DOOR IS NOT A MODEL AND NEVER RANKS: the add-provider row rides the
 	// list's end whatever the sort reads, because a door is not a row a
