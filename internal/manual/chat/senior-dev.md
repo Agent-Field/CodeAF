@@ -86,7 +86,11 @@ turns it back; the key row says `ctrl+y calls` or `ctrl+y actions`.
 `esc`, a press on the conversation's tab, or a press on the `home` tab leaves it, and the run goes
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
 Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
-it to main`, and `enter` says the same line and keeps your words in the box.
+it to main`, and `enter` says the same line and keeps your words in the box. The chat
+cannot reach it either: a `say` or note it sends to a running senior-dev task is refused
+with `nothing was noted: senior-dev reads no messages, and nothing reaches it until it
+ends`, and nothing is written on the task. To change its direction, stop it and hand off
+the right ask.
 
 ## Reading senior-dev's whole brief — ▸ brief, what senior-dev was told, scroll the brief
 

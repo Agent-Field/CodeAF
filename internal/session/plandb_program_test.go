@@ -393,3 +393,42 @@ func TestAProgramsPageCarriesTheNewestActionsAndCountsTheRest(t *testing.T) {
 		t.Fatalf("carried %d actions from %q with %d earlier, want the newest %d and 5 earlier", len(shown), shown[0].Text, earlier, planProgramActions)
 	}
 }
+
+// A NOTE NOBODY READS IS NOT A NOTE DELIVERED. A program's worker never reads
+// its task's notes, so the note doors refuse one for a program's task — in the
+// person's voice and the conversation's alike — and write nothing, while an
+// ordinary task in the same run still takes its note. The `tasks` tool's `say`
+// answers the refusal, never the old "its worker is handed it" receipt.
+func TestANoteForAProgramsTaskIsRefusedAndNothingIsWritten(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a",
+		plandb.TaskSpec{ID: "alpha", Title: "Alpha", Description: "rewrite the auth middleware"},
+		plandb.TaskSpec{ID: "beta", Title: "Beta"},
+	)
+	if err := delegate.WriteProgram(plandb.TaskDir(dir, "alpha"), delegate.ProgramRecord{Name: "senior-dev"}); err != nil {
+		t.Fatalf("write the program record: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+
+	for name, write := range map[string]func(string, string) error{
+		"the person's note": agent.PlanNote, "the conversation's note": agent.PlanNoteFromChat,
+	} {
+		err := write("t-alpha", "stop chasing the flaky test")
+		if err == nil || !strings.Contains(err.Error(), "senior-dev reads no messages") {
+			t.Fatalf("%s for a program's task = %v, want the refusal", name, err)
+		}
+	}
+	if page, ok := agent.PlanTaskPage("t-alpha"); !ok || len(page.Notes) != 0 {
+		t.Fatalf("a refused note was written anyway: %#v", page.Notes)
+	}
+	if err := agent.PlanNoteFromChat("t-beta", "also handle the empty case"); err != nil {
+		t.Fatalf("an ordinary task's note was refused: %v", err)
+	}
+
+	reply, isError, err := agent.writePlanNote(PlanTaskRow{ID: "t-alpha", Title: "Alpha"}, "#1", "stop chasing the flaky test", planSayLead)
+	if err != nil || !isError || strings.Contains(reply, "handed it") || !strings.Contains(reply, "tasks id alpha stop") {
+		t.Fatalf("the tasks tool answered %q (error %v, %v), want the refusal naming stop", reply, isError, err)
+	}
+}

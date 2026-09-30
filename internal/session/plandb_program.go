@@ -23,6 +23,7 @@ package session
 // beat ([Agent.PlanTasks]), and never on a frame.
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -183,6 +184,33 @@ func (a *Agent) planRootIsProgram(store *plandb.Store, rootID string) bool {
 	_, ok := planProgramRecord(filepath.Dir(store.Path()), id, a.planCarriedPrograms()[id])
 	return ok
 }
+
+// programHearsNothing refuses a note for a task a program is working, and is
+// nil for every other task.
+//
+// A NOTE NOBODY READS IS NOT A NOTE DELIVERED. A program runs as a process of
+// its own and codeaf has no road into it while it works: its worker never reads
+// the task's notes. The note door used to write one anyway and answer "its
+// worker is handed it as soon as the step it is on ends", so the conversation
+// believed it had steered senior-dev and the words sat unread on the row until
+// the run ended. The refusal says what is true and names the one door that does
+// reach a running program.
+func (a *Agent) programHearsNothing(store *plandb.Store, taskID string) error {
+	id := planTaskID(taskID)
+	record, ok := planProgramRecord(filepath.Dir(store.Path()), id, a.planCarriedPrograms()[id])
+	if !ok {
+		return nil
+	}
+	name := strings.TrimSpace(record.Name)
+	if name == "" {
+		name = "its program"
+	}
+	return fmt.Errorf(programHearsNothingWord, name, id)
+}
+
+// programHearsNothingWord is the refusal, in the words the task page and the
+// `@` block already use for the same fact ("reads no messages").
+const programHearsNothingWord = "nothing was noted: %s reads no messages, and nothing reaches it until it ends. If its work is going the wrong way, stop it with `tasks id %s stop` and hand off the right ask"
 
 // planProgramPage reads one task's program and conversation for its page, or
 // nil for a task that is not a program's: no record in its folder, no name the
