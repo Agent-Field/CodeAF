@@ -302,6 +302,23 @@ func (p *picker) cursorToFirst() {
 	p.follow(pickerRows)
 }
 
+// cursorToCurrent puts the cursor on the model in use, and is the law of the
+// DOORS THAT OPEN TO CONFIRM: a settings slot's picker and a task's model
+// word (settings.go, app.go's [app.openTaskPicker]) each open ON the row the
+// door already holds, because enter there — the key a person presses to
+// confirm — must not change what the row says. /model's own door opens on the
+// list's first row instead ([picker.cursorToFirst]), where the highlight on
+// the screen is what makes the choice explicit.
+func (p *picker) cursorToCurrent() {
+	for at, row := range p.list {
+		if row.lane == laneNone && p.all[p.hits[row.hit]].ID == p.current {
+			p.cursor = at
+			break
+		}
+	}
+	p.follow(pickerRows)
+}
+
 // pickRow is one drawn row: which hit it belongs to, and which of that model's
 // lanes it is.
 //
