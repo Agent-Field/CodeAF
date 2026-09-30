@@ -7,11 +7,11 @@ Arithmetic (every number comes from the run, the SHAPE block below, or model.PRI
               home_hours_per_day * 3600 * days_per_month seconds it is the background month.
   warm move   warm_moves phase usage divided by its count.
   cold move   cold_moves phase usage divided by its count.
-  month       background + warm_per_day * days * warm + cold_per_day * days * cold.
+  month       background + warm_per_month * warm + cold_per_month * cold.
   The result is a usage vector per user-month with the same keys as a billed phase.
 Dollars: the per-user vector times N users, then charged with model.py's tier arithmetic (`over`, PRICE):
   Workers base once, Worker requests and CPU ms, DO requests, DO GB-s, DO rows, R2 Class A and B.
-  Rows read and rows written are summed and charged at the one DO row price PRICE has, which over-charges reads.
+  Rows read and rows written are separate meters (ROWS_READ, ROWS_WRITTEN).
   No storage line is billed here; storage is in model.py's common().
 Marginal dollars (the per-user column) use no free tier and no Workers base, the cost of one more user.
 """
@@ -23,7 +23,12 @@ import sys
 from model import PRICE, over
 
 # One place for the assumed heavy-user shape; the manifest's "shape" and the command line override it.
-SHAPE = dict(home_hours_per_day=8, warm_per_day=40, cold_per_day=4, days_per_month=22)
+# The plan's heavy user: a home screen open 8 h on each of 22 working days, and 40 warm plus 4 cold moves in the MONTH.
+SHAPE = dict(home_hours_per_day=8, days_per_month=22, warm_per_month=40, cold_per_month=4)
+# Durable Object SQLite rows, from developers.cloudflare.com/durable-objects/platform/pricing (fetched 2026-09-30):
+# reads are a thousand times cheaper than writes, so they are two meters and not the one PRICE has.
+ROWS_READ = dict(free=25e9, per_m=0.001)
+ROWS_WRITTEN = dict(free=50e6, per_m=1.0)
 SCENARIOS = [(10_000, 0.25), (10_000, 1.0), (100_000, 0.25), (100_000, 1.0)]
 KEYS = ["worker_requests", "worker_cpu_ms", "do_requests", "do_active_s", "do_gb_s",
         "do_rows_read", "do_rows_written", "r2_class_a", "r2_class_b"]
@@ -32,6 +37,7 @@ USAGE_ROWS = [("Worker requests", "worker_requests"), ("Worker CPU ms", "worker_
               ("DO rows read", "do_rows_read"), ("DO rows written", "do_rows_written"),
               ("R2 Class A", "r2_class_a"), ("R2 Class B", "r2_class_b")]
 PENDING = "n/a (pending)"
+HEARTBEAT_S = 30  # directory.HeartbeatEvery: an idle held lease sends one directory write this often
 HEADING = "## 9. Billed heavy-user run"
 
 
@@ -50,24 +56,41 @@ def month_usage(manifest, billed, shape):
     days = shape["days_per_month"]
     background_s = shape["home_hours_per_day"] * 3600 * days
     background = scale(used["idle_hold"], background_s / phases["idle_hold"]["seconds"])
-    warm = scale(used["warm_moves"], shape["warm_per_day"] * days / phases["warm_moves"]["count"])
-    cold = scale(used["cold_moves"], shape["cold_per_day"] * days / phases["cold_moves"]["count"])
+    warm = scale(used["warm_moves"], shape["warm_per_month"] / phases["warm_moves"]["count"])
+    cold = scale(used["cold_moves"], shape["cold_per_month"] / phases["cold_moves"]["count"])
     return add(background, warm, cold)
 
 
-def charge(u, free, base):
-    """Dollars for one usage vector; a `free` of 0 and `base` of 0 gives the marginal cost."""
+def meters(u, free, base):
+    """One row per priced meter: (name, quantity, price text, dollars). free=0 and base=0 is the marginal cost."""
     p = PRICE
-    tier = lambda key, used, per_m: over(used, free * p[key], per_m)
-    rows = u["do_rows_read"] + u["do_rows_written"]
-    return (base * p["workers_base"]
-            + tier("req_free", u["worker_requests"], p["req_per_m"])
-            + tier("cpu_free_ms", u["worker_cpu_ms"], p["cpu_per_m_ms"])
-            + tier("do_req_free", u["do_requests"], p["do_req_per_m"])
-            + tier("do_gbs_free", u["do_gb_s"], p["do_gbs_per_m"])
-            + tier("do_rows_free", rows, p["do_rows_per_m"])
-            + tier("r2_a_free", u["r2_class_a"], p["r2_a_per_m"])
-            + tier("r2_b_free", u["r2_class_b"], p["r2_b_per_m"]))
+    def meter(name, key, qty, free_qty, per_m, unit):
+        return (name, qty, f"${per_m:g} per million {unit} after {free_qty * free:,.0f}", over(qty, free_qty * free, per_m))
+    return [
+        ("Workers base", base, "$5 a month", base * p["workers_base"]),
+        meter("Worker requests", "req", u["worker_requests"], p["req_free"], p["req_per_m"], "requests"),
+        meter("Worker CPU ms", "cpu", u["worker_cpu_ms"], p["cpu_free_ms"], p["cpu_per_m_ms"], "ms"),
+        meter("DO requests", "doreq", u["do_requests"], p["do_req_free"], p["do_req_per_m"], "requests"),
+        meter("DO GB-s", "gbs", u["do_gb_s"], p["do_gbs_free"], p["do_gbs_per_m"], "GB-s"),
+        meter("DO rows read", "rr", u["do_rows_read"], ROWS_READ["free"], ROWS_READ["per_m"], "rows"),
+        meter("DO rows written", "rw", u["do_rows_written"], ROWS_WRITTEN["free"], ROWS_WRITTEN["per_m"], "rows"),
+        meter("R2 Class A", "a", u["r2_class_a"], p["r2_a_free"], p["r2_a_per_m"], "ops"),
+        meter("R2 Class B", "b", u["r2_class_b"], p["r2_b_free"], p["r2_b_per_m"], "ops"),
+    ]
+
+
+def charge(u, free, base):
+    """Dollars for one usage vector."""
+    return sum(m[3] for m in meters(u, free, base))
+
+
+def breakdown(user_month, n, active):
+    """The markdown table of every meter for one scenario, so its total can be added by eye."""
+    rows = meters(scale(user_month, n * active), 1, 1)
+    lines = [f"Dollar breakdown, {n:,} users, {active:.0%} active (free tiers and Workers base applied).", "",
+             "| Meter | Monthly quantity | Price | Dollars |", "|---|---:|---|---:|"]
+    lines += [f"| {name} | {num(q)} | {price} | ${d:,.2f} |" for name, q, price, d in rows]
+    return lines + [f"| **Total** | | | **${sum(r[3] for r in rows):,.2f}** |"]
 
 
 def dollars(user_month):
@@ -102,13 +125,25 @@ def ratio_line(before, after):
     return "Ratio after/before per user-month: " + ", ".join(parts) + "." if parts else ""
 
 
+def rows_sentence(manifest, billed):
+    """Which verb writes the rows: the idle hold sends only heartbeats and list reads, and only heartbeats write."""
+    idle = next(p for p in manifest["phases"] if p["name"] == "idle_hold")
+    beats = idle["seconds"] / HEARTBEAT_S
+    written = billed["phases"]["idle_hold"]["do_rows_written"]
+    return (f"Rows written are the largest line because a held lease heartbeats every {HEARTBEAT_S} s for the whole time the "
+            f"home is open: in the idle hold (about {beats:.0f} heartbeats, nothing else writes) the relay wrote {written:,.0f} "
+            f"rows, {written / beats:.1f} per heartbeat (the cell's row and its version). Reads come from the list polls.")
+
+
 def intro(manifest, billed, shape):
     s = shape
+    notes = " ".join([manifest.get("note", "")] + [p["note"].capitalize() + "." for p in manifest["phases"] if p.get("note")]).strip()
     return (f"Script `{billed['script']}`, window {manifest['start']} to {manifest['end']}. Shape per user: home screen open "
-            f"{s['home_hours_per_day']} h/day, {s['warm_per_day']} warm moves and {s['cold_per_day']} cold moves per day, "
-            f"{s['days_per_month']} days/month. The idle_hold phase rate per second times the open-home seconds is the "
+            f"{s['home_hours_per_day']} h/day on {s['days_per_month']:g} days a month, and {s['warm_per_month']:g} warm plus "
+            f"{s['cold_per_month']:g} cold moves in the month. The idle_hold phase rate per second times the open-home seconds is the "
             "background month; each move type adds its phase cost per move times its monthly count. Dollars charge the "
-            "usage times N users with the free tiers and Workers base in model.py; storage is not billed here.")
+            "usage times N users with the free tiers and Workers base in model.py; storage is not billed here. "
+            + rows_sentence(manifest, billed) + (" " + notes if notes else ""))
 
 
 def render(manifest, billed, shape, after=None):
@@ -120,6 +155,7 @@ def render(manifest, billed, shape, after=None):
     lines += table("Usage", usage_rows(before_m, after_m))
     lines += ["", "Dollars per month.", ""]
     lines += table("Scenario", pair(bd, ad, lambda d: f"${d:,.2f}" if d < 100 else f"${d:,.0f}"))
+    lines += [""] + breakdown(before_m, 10_000, 1.0)
     if after_m:
         lines += ["", ratio_line(before_m, after_m)]
     return "\n".join(lines) + "\n"

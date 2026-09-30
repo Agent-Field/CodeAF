@@ -23,15 +23,15 @@ class BillTest(unittest.TestCase):
     def test_extrapolation(self):
         u = bill.month_usage(MANIFEST, billed(), bill.SHAPE)
         bg = 8 * 3600 * 22 / 100            # 6336 times the 100 s phase
-        self.assertAlmostEqual(u["do_requests"], 50 * bg + 100 / 10 * 40 * 22 + 40 / 2 * 4 * 22)
-        self.assertAlmostEqual(u["do_gb_s"], 2 * bg + 1 / 10 * 880 + 4 / 2 * 88)
+        self.assertAlmostEqual(u["do_requests"], 50 * bg + 100 / 10 * 40 + 40 / 2 * 4)
+        self.assertAlmostEqual(u["do_gb_s"], 2 * bg + 1 / 10 * 40 + 4 / 2 * 4)
         self.assertAlmostEqual(u["worker_requests"], 60 * bg)
-        self.assertAlmostEqual(u["r2_class_a"], 20 / 10 * 880)
-        self.assertAlmostEqual(u["r2_class_b"], 30 / 2 * 88)
+        self.assertAlmostEqual(u["r2_class_a"], 20 / 10 * 40)
+        self.assertAlmostEqual(u["r2_class_b"], 30 / 2 * 4)
 
     def test_shape_override(self):
-        shape = bill.shape_for({"shape": {"warm_per_day": 1}}, {"cold_per_day": 0, "days_per_month": None})
-        self.assertEqual((shape["warm_per_day"], shape["cold_per_day"], shape["days_per_month"]), (1, 0, 22))
+        shape = bill.shape_for({"shape": {"warm_per_month": 1}}, {"cold_per_month": 0, "days_per_month": None})
+        self.assertEqual((shape["warm_per_month"], shape["cold_per_month"], shape["days_per_month"]), (1, 0, 22))
 
     def test_charge(self):
         u = vec(do_requests=2e6, r2_class_a=3e6)
@@ -39,8 +39,8 @@ class BillTest(unittest.TestCase):
         self.assertAlmostEqual(bill.charge(u, 1, 1), PRICE["workers_base"] + 1 * PRICE["do_req_per_m"]
                                + 2 * PRICE["r2_a_per_m"])
 
-    def test_rows_summed(self):
-        self.assertAlmostEqual(bill.charge(vec(do_rows_read=1e6, do_rows_written=1e6), 0, 0), 2 * PRICE["do_rows_per_m"])
+    def test_rows_priced_apart(self):
+        self.assertAlmostEqual(bill.charge(vec(do_rows_read=1e6, do_rows_written=1e6), 0, 0), bill.ROWS_READ["per_m"] + bill.ROWS_WRITTEN["per_m"])
 
     def test_render_pending(self):
         out = bill.render(MANIFEST, billed(), bill.SHAPE)

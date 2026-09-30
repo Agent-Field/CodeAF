@@ -68,6 +68,7 @@ func Run(ctx context.Context, cfg Config, url string, counter *Counter) (Manifes
 	if err := r.setup(); err != nil {
 		return r.out, err
 	}
+	r.quiet() // the priming moves end in a minute of their own, apart from the idle hold's
 	steps := []func() (Phase, error){r.idle, r.warm, r.cold}
 	r.out.Start = time.Now().UTC()
 	for _, step := range steps {
