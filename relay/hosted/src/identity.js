@@ -45,8 +45,9 @@ export class IdentityDO extends DurableObject {
     try {
       const body = await readBody(request, route.limit, route.over);
       const who = await checkRequest(caller, { method: request.method, uri: url.pathname + url.search }, body, Date.now());
+      await this.#admitted.get(ipOf(request));
       const tenant = this.#tenantOf(who.identity);
-      await this.#admit(tenant, who.device, ipOf(request));
+      this.#admit(tenant, who.device);
       return await route.handler({ tenant, device: who.device, body }, route.args);
     } finally {
       leave();
@@ -81,26 +82,25 @@ export class IdentityDO extends DurableObject {
   }
 
   /**
-   * #admit lets a request through: a first-time identity is counted against its IP, a revoked
-   * device is turned away, and the request is charged to the device's rate and the identity's.
-   * The device goes first, so one noisy device that is refused spends none of the identity's
-   * share, which its other devices still need.
+   * #admit turns away a revoked device, then charges the request to the device's rate and the
+   * identity's. The device goes first, so one noisy device that is refused spends none of the
+   * identity's share, which its other devices still need.
    */
-  async #admit(tenant, device, ip) {
-    await this.#admitted.get(ip);
+  #admit(tenant, device) {
     if (tenant.dir.revoked(device)) throw new Refusal('revoked', 'device revoked');
     const now = Date.now();
     this.deviceRate.admit(device, now);
     this.identityRate.admit('', now);
   }
 
-  // An identity is new until its first admitted request; from then on it is remembered, so the
-  // count never touches an existing identity, whatever address it comes from.
+  // An identity is new until its first admitted request, and admission happens before the tenant
+  // exists, so a refused identity has created no table and written nothing: only an admitted one
+  // is ever stored. Admitted identities are remembered, so the count never touches an existing
+  // identity, whatever address it comes from.
   async #admitNewcomer(ip) {
-    const { meta } = this.#tenant;
-    if (meta.get('admitted')) return;
+    if (await this.ctx.storage.get('admitted')) return;
     const gate = this.env.NEWCOMERS;
     unwrap(await gate.get(gate.idFromName('gate')).admit(ip));
-    meta.set('admitted', true);
+    await this.ctx.storage.put('admitted', true);
   }
 }

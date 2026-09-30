@@ -41,7 +41,8 @@ it, checks the device is not revoked, spends the caller's rate budget, and serve
   most those few seconds.
 - An identity is admitted on its first authenticated request, and that first sight is counted
   against the caller's IP in one `NewcomerGate` object (`src/newcomers.js`). Existing identities are
-  never counted again, from any address, so the cap cannot affect the current client.
+  never counted again, from any address, so the cap cannot affect the current client. Admission
+  happens before the identity's tables exist, so a refused identity stores nothing.
 
 The pairing mailbox (`src/pair/`) is unauthenticated because the joining device has no identity yet,
 so it cannot become free storage: every limit is by IP (`CF-Connecting-IP`), boxes live one TTL and

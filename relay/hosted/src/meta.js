@@ -1,5 +1,5 @@
 // Meta is a small key-value table of JSON values in an identity's SQLite: the few facts about the
-// identity that are not the directory or the frames (that it was admitted, its running counts).
+// identity that are not the directory or the frames (its running counts).
 export class Meta {
   constructor(sql) {
     this.sql = sql;

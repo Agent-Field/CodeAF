@@ -29,7 +29,7 @@ start 18792 --var "CAF_LIMITS:$TIGHT"
 for script in api race flight; do node "test/$script.e2e.mjs"; done
 node test/caps.e2e.mjs
 node test/pair.e2e.mjs
-node test/newcomers.e2e.mjs
+IDENTITY_DO_DIR="$work/18792/v3/do/codeaf-hosted-relay-IdentityDO" node test/newcomers.e2e.mjs
 
 # Counts survive the relay process: count, wait for the flush, stop the relay, start it again over the same port (so the same storage).
 PERSIST='{"newIdentitiesPerIpPerDay":1000000,"statsFlushMs":300}'
