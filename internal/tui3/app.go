@@ -2228,6 +2228,7 @@ type app struct {
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
+	machinePoll    machinePoll
 	// newsAsking and leftOffAsking are the same idea for the two readings a card
 	// takes of its own row (homecardread.go).
 	newsAsking    map[string]bool
@@ -3796,7 +3797,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// frame there has been anybody to read it (question.go's
 		// [app.tickQuestion]).
 		a.refocusQuestions()
-		return a, nil
+		// AND HOME IS READ AT ONCE, because a list left to age a minute while
+		// nobody looked must not be what the person sees on arrival.
+		return a, a.hurryMachines()
 
 	case tea.BlurMsg:
 		a.focused, a.seenFocus = false, true
