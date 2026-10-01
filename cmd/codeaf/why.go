@@ -23,7 +23,7 @@ func runWhyTo(args []string, output io.Writer, now time.Time) error {
 		return err
 	}
 	if flags.NArg() != 1 {
-		return fmt.Errorf("usage: codeaf why self|<node-id> [--db path]")
+		return fmt.Errorf("usage: codeaf why self|<part-id> [--db path]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {

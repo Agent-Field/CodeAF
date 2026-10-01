@@ -55,8 +55,8 @@ func renderSpine(graph *plan.Graph) {
 }
 
 func renderNodes(graph *plan.Graph) {
-	fmt.Printf("\n── nodes ───────────────────────────────────────────────────────────\n")
-	fmt.Printf("   #  %-24s %-11s %-12s %s\n", "node", "size", "waits for", "context received")
+	fmt.Printf("\n── parts ───────────────────────────────────────────────────────────\n")
+	fmt.Printf("   #  %-24s %-11s %-12s %s\n", "part", "size", "waits for", "context received")
 	for _, node := range graph.Nodes {
 		waits, context := "—", "goal only"
 		if len(node.Needs) > 0 {
@@ -136,12 +136,12 @@ func renderSchedule(graph *plan.Graph) {
 	if len(stageWaves) > 0 {
 		freed = len(waves[0]) - len(stageWaves[0])
 	}
-	fmt.Printf("\n  %d of %d nodes start immediately", graph.Roots(), len(graph.Nodes))
+	fmt.Printf("\n  %d of %d parts start immediately", graph.Roots(), len(graph.Nodes))
 	if freed > 0 {
 		fmt.Printf(" — %d freed from the stage barrier", freed)
 	}
 	fmt.Printf("\n  %s across %s, critical path %d (%d doing real work)\n",
-		plural(graph.Edges(), "edge"), plural(len(graph.Nodes), "node"), len(waves), graph.WorkDepth())
+		plural(graph.Edges(), "edge"), plural(len(graph.Nodes), "part"), len(waves), graph.WorkDepth())
 	fmt.Printf("  %s to execute, decomposed %s deep",
 		plural(len(graph.Leaves()), "leaf"), plural(graph.Depth()+1, "level"))
 	if unresolved := graph.Unresolved(); unresolved > 0 {
@@ -163,7 +163,7 @@ func renderOperations(operations []plan.Operation) {
 		}
 		label := operation.Title
 		if label == "" {
-			label = fmt.Sprintf("node %d", operation.Node)
+			label = fmt.Sprintf("part %d", operation.Node)
 		}
 		fmt.Printf("  %-8s %-22s %s\n", operation.Op, clip(label, 22), status)
 		if operation.Reason != "" {

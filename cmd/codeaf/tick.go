@@ -26,7 +26,7 @@ import (
 
 func runTick(args []string) error {
 	if len(args) > 0 {
-		return fmt.Errorf("codeaf tick takes no arguments")
+		return fmt.Errorf("codeaf tick accepts no arguments")
 	}
 	store, err := standing.Open(home.Join("v3", "standing"))
 	if err != nil {

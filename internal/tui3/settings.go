@@ -410,7 +410,7 @@ var settingUI = map[string]settingMeta{
 	// is most of what makes this row worth having.
 	config.KeyModelFallbacks: {
 		tab: tabSession, label: "fallback models", widget: widgetText,
-		about: "where a conversation goes when no host will take the request: " +
+		about: "where a conversation goes when no host will accept the request: " +
 			"slugs, comma-separated, first tried first. Blank picks the nearest one.",
 	},
 	// It sits with the model rows and not with the approval ones because the
@@ -726,7 +726,7 @@ var settingUI = map[string]settingMeta{
 			"answers, and a pinned host is the whole request; latency asks for the fastest " +
 			"and demotes one that keeps being slow; price asks for the cheapest; off asks " +
 			"for nothing, measures nothing, and leaves the two rows above it with no " +
-			"host to name. a change here takes effect on your next message.",
+			"host to name. a change here applies on your next message.",
 	},
 	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
 	// prefers; this is about which endpoint your conversation actually lands on.
@@ -3641,7 +3641,7 @@ func laneRowTail(row string, force laneForce) string {
 		return config.LaneAuto + " " + provider.RetiredPinTail(strings.ToLower(stood))
 	}
 	if !provider.BaseTakesLaneChoice() {
-		return word + " (not taken on this base)"
+		return word + " (not available on this base)"
 	}
 	return word
 }
