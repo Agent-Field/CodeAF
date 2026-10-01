@@ -308,7 +308,7 @@ func notDrivingWord(driver Driver) string {
 	if !driver.Here && strings.TrimSpace(driver.Machine) != "" {
 		where = "on " + driver.Machine
 	}
-	return "the keyboard is " + where + " right now — press enter here to take it back"
+	return "the keyboard is " + where + " right now — press enter here to move it here"
 }
 
 // ── the move ────────────────────────────────────────────────────────────────
