@@ -56,7 +56,7 @@ func spark(now time.Time) PendingDevice {
 		RequestedAt: now.Add(-2 * time.Minute), ExpiresAt: now.Add(8 * time.Minute)}
 }
 
-const testLink = "https://codeaf.link/p/k7m2q9xd#Qm9v"
+const testLink = "https://codeaf.agentfield.ai/p/k7m2q9xd#Qm9v"
 
 func approveApp(t *testing.T, door Approvals) (*app, *pairRig) {
 	a := newTestApp(&fakeAgent{model: "test/model"})
@@ -68,8 +68,8 @@ func approveApp(t *testing.T, door Approvals) (*app, *pairRig) {
 
 func TestLinkShapeRoutesAndSixDigitsDoNot(t *testing.T) {
 	for typed, want := range map[string]bool{
-		testLink: true, "k7m2q9xd": true, "k7m2q9xd.Qm9v": true, "codeaf.link/p/k7m2q9xd#Qm9v": true,
-		"42-715-302": false, "715 302": false, "": false, "hello": false,
+		testLink: true, "k7m2q9xd": true, "k7m2q9xd.Qm9v": true, "codeaf.agentfield.ai/p/k7m2q9xd#Qm9v": true,
+		"https://example.com/p/k7m2q9xd#Qm9v": false, "42-715-302": false, "715 302": false, "": false, "hello": false,
 	} {
 		if got := isLinkShape(typed); got != want {
 			t.Errorf("isLinkShape(%q) = %t, want %t", typed, got, want)
@@ -205,7 +205,7 @@ func TestDeviceListShowsPresenceAndRevokesWithOneKey(t *testing.T) {
 func TestOnlineDotsComeFromTheFeed(t *testing.T) {
 	a, _ := approveApp(t, devicesFake())
 	a.dirFeed = stillFeed{online: []string{"dev_B"}}
-	if got := a.onlineNow(); !got["dev_B"] || got["dev_C"] {
+	if got, up := a.presence(); !up || !got["dev_B"] || got["dev_C"] {
 		t.Fatalf("online = %v", got)
 	}
 }
@@ -277,5 +277,73 @@ func TestSameNameDevicesAreToldApart(t *testing.T) {
 	}
 	if strings.Contains(got, "dumb #") {
 		t.Fatalf("a unique name got a tail:\n%s", got)
+	}
+}
+
+// A DEVICE RUNNING ELSEWHERE IS ONLINE ON /devices WHICHEVER SCREEN OPENED IT:
+// presence is read from the feed at each draw, so a feed that comes up after
+// the card opened (a chat screen holds none until then) still lights the dot.
+func TestDevicesOpenedFromAChatTakesPresenceFromTheFeed(t *testing.T) {
+	door := devicesFake()
+	a, r := approveApp(t, door)
+	r.slash("/devices")
+	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
+	if a.dirFeed != nil || !strings.Contains(plain(frame(a)), "○ spark") {
+		t.Fatalf("setup: no feed yet, spark is not known online:\n%s", plain(frame(a)))
+	}
+	a.dirFeed = stillFeed{online: []string{"dev_B"}}
+	if got := plain(frame(a)); !strings.Contains(got, "● spark") {
+		t.Fatalf("a running device reads offline:\n%s", got)
+	}
+}
+
+func TestSeenTailReadsWholeWords(t *testing.T) {
+	now := time.Now()
+	for ago, want := range map[time.Duration]string{
+		0: "seen just now", 5 * time.Minute: "seen 5m ago", 3 * time.Hour: "seen 3h ago", 2 * 24 * time.Hour: "seen 2d ago",
+	} {
+		if got := seenTail(now.Add(-ago), now); got != want {
+			t.Errorf("got %q want %q", got, want)
+		}
+	}
+	if got := seenTail(now.Add(-90*24*time.Hour), now); strings.HasSuffix(got, "ago") {
+		t.Errorf("a date reads %q", got)
+	}
+}
+
+func TestARevokedRowNeverShowsAnOnlineDot(t *testing.T) {
+	door := devicesFake()
+	a, r := approveApp(t, door)
+	a.dirFeed = stillFeed{online: []string{"dev_B"}}
+	r.slash("/devices")
+	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
+	r.press("down", "r")
+	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "was revoked") })
+	got := plain(frame(a))
+	if !strings.Contains(got, "○ spark") || strings.Contains(got, "● spark") || !strings.Contains(got, "revoked") {
+		t.Fatalf("revoked row:\n%s", got)
+	}
+}
+
+// REVOKING A DEVICE ENDS THE FLEET'S COUNT OF IT: the add-machine card is
+// asked for again, so a fleet of one plus a revoked device offers the card.
+func TestRevokingAsksTheFleetAgain(t *testing.T) {
+	a, _ := approveApp(t, devicesFake())
+	a.fleet = &fakeFleet{size: 1}
+	a.addMachine = addMachine{size: 2, known: true}
+	a.devRow.devices = rosterOf
+	if cmd := a.forgetDevice("dev_spark"); cmd == nil {
+		t.Fatal("nothing was asked again")
+	}
+	if a.addMachine.known {
+		t.Fatal("the old fleet count was kept")
+	}
+	for _, d := range a.devRow.devices {
+		if d.ID == "dev_spark" {
+			t.Fatal("the revoked device is still on the row")
+		}
+	}
+	if a.askFleet() == nil && !a.addMachine.asking {
+		t.Fatal("fleet not asked")
 	}
 }

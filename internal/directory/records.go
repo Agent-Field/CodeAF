@@ -13,7 +13,7 @@
 //
 //	asked, _ := reqs.CreateRequest(ctx, directory.NewRequest{
 //		Pubkey: pub, X25519: box, NameSealed: sealed, Platform: "linux"})
-//	// show asked.Code, asked.Check and the link https://codeaf.link/p/<code>#<k>
+//	// show asked.Code, asked.Check and the link https://codeaf.agentfield.ai/p/<code>#<k>
 //	for {
 //		r, err := reqs.GetRequest(ctx, asked.Code, 25*time.Second)
 //		if errors.Is(err, directory.ErrStillPending) { continue }
@@ -96,6 +96,7 @@ type Cell struct {
 	Lease       Lease                        `json:"lease"`
 	OrphanTurns uint32                       `json:"orphan_turns,omitempty"` // turns in a death branch
 	Archived    bool                         `json:"archived,omitempty"`     // a merged or discarded branch
+	Frames      []string                     `json:"frames,omitempty"`       // hex64 ids of the frames holding the head's closure; a hint, never a condition
 }
 
 // Listing is everything a home list needs, in one read.
@@ -107,6 +108,16 @@ type Listing struct {
 	// Version is the directory version the records were read at, which is
 	// sent as the VersionHeader and not in the body.
 	Version uint64 `json:"-"`
+}
+
+// withoutFrames drops every cell's frames from a list answer: the list is the
+// home screen's hot read, and frame plans are for takers, who read the cell.
+func withoutFrames(l Listing) Listing {
+	for id, c := range l.Cells {
+		c.Frames = nil
+		l.Cells[id] = c
+	}
+	return l
 }
 
 // CellView is one cell with the directory time it was read at.
@@ -124,6 +135,7 @@ type CellInit struct {
 	Size        uint64                       `json:"size"`
 	Keys        map[string]map[string]string `json:"keys"`
 	OrphanTurns uint32                       `json:"orphan_turns,omitempty"`
+	Frames      []string                     `json:"frames,omitempty"`
 }
 
 // Beat renews a lease the caller holds.
@@ -134,11 +146,12 @@ type Beat struct {
 
 // Publish moves a cell's durable head under a lease the caller holds.
 type Publish struct {
-	Fence   uint64 `json:"fence"`
-	OldHead string `json:"old_head"`
-	Head    string `json:"head"`
-	Size    uint64 `json:"size"`
-	Class   string `json:"class"`
-	Title   string `json:"title,omitempty"` // empty keeps the current title
-	Pending uint32 `json:"pending"`         // turns still not durable after this one
+	Fence   uint64   `json:"fence"`
+	OldHead string   `json:"old_head"`
+	Head    string   `json:"head"`
+	Size    uint64   `json:"size"`
+	Class   string   `json:"class"`
+	Title   string   `json:"title,omitempty"`  // empty keeps the current title
+	Pending uint32   `json:"pending"`          // turns still not durable after this one
+	Frames  []string `json:"frames,omitempty"` // empty or absent replaces the record's plan with none
 }

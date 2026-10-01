@@ -59,10 +59,10 @@ Wire form for the `device` object written into the directory on approval is sect
 ## 2. Short link and mapping to the existing code
 
 ```
-https://codeaf.link/p/<code>#<k>
+https://codeaf.agentfield.ai/p/<code>#<k>
 ```
 
-`<k>` is `b64u(16 bytes)`, the link key of section 1. `codeaf.link/p/*` is a redirect/handoff page: it
+`<k>` is `b64u(16 bytes)`, the link key of section 1. `codeaf.agentfield.ai/p/*` is a redirect/handoff page: it
 sends the visitor to the installed app (`codeaf://pair?code=<code>#<k>`), or shows install and CLI steps.
 The fragment never leaves the browser.
 
@@ -76,7 +76,7 @@ entered:
 | Entered text | Path |
 |---|---|
 | `^\d{1,4}-\d{3}-\d{3}$` or `\d{3} \d{3}` | existing pairbox + CPace, no change |
-| `^[0-9a-hjkmnp-tv-z]{8}([.#].+)?$` (case-insensitive) or a `codeaf.link/p/` URL | link pairing, this file |
+| `^[0-9a-hjkmnp-tv-z]{8}([.#].+)?$` (case-insensitive) or a `codeaf.agentfield.ai/p/` URL (the old `codeaf.link` host is not a codeaf link and is answered as such) | link pairing, this file |
 
 There is no secret in the short code, so link pairing has two guards instead of the PAKE: a human
 approves on an already-paired device, and the approver sees `check` and the name. The grant is sealed

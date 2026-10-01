@@ -37,7 +37,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 
 	j.step("2 B: codeaf pair prints link and waits", true, func() {
 		b = startCommand(t, env, "b", homeB, wsB, "pair")
-		screen, ok := waitPlain(b, 15*time.Second, "codeaf.link/p/", "Check number")
+		screen, ok := waitPlain(b, 15*time.Second, "codeaf.agentfield.ai/p/", "Check number")
 		j.require(ok, "B never printed a link and a check number")
 		link = linkShape.FindString(screen)
 		j.check(link != "", "no link on B's screen")
@@ -217,11 +217,15 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 
 // downToOtherDevice is the Down presses from the first device row to the first
 // row that does not say "this device".
+// deviceRow is a line of the device list: a presence dot, a name, and a short id tail.
+// The tab bar also carries a dot, so the dot alone does not mark a row.
+var deviceRow = regexp.MustCompile(`[●○]\s+\S+ #[0-9a-f]{4}\b`)
+
 func downToOtherDevice(list string) []string {
 	n := 0
 	for _, line := range strings.Split(list, "\n") {
 		switch {
-		case !strings.ContainsAny(line, "●○"):
+		case !deviceRow.MatchString(line):
 		case strings.Contains(line, "this device"):
 			n++
 		default:

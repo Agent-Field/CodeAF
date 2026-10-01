@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -93,13 +95,28 @@ type importOp struct {
 	// Ledger is the store the objects were fetched from: what it handed over
 	// is recorded as published there, so the next export never sends it back.
 	Ledger string `json:"ledger"`
+	// Primed relaxes one rule (contract §22.7): an inbox file no pass wanted is
+	// deleted, not an error. A take primes its inbox with whole frames, whose
+	// frame-mates the head may not want; the want loop's answers stay strict.
+	Primed bool `json:"primed,omitempty"`
+	// Partial is the take of an inbox still filling: the engine stores what the
+	// walk wants from what has arrived and leaves every other file in place.
+	// It excludes Primed.
+	Partial bool `json:"partial,omitempty"`
 	keyArgs
 }
 
 func (importOp) Verb() string { return "import" }
 
 func (o importOp) Args() []string {
-	return []string{"--json", "import", "--head", o.Head, "--inbox", o.Inbox, "--ledger", o.Ledger}
+	args := []string{"--json", "import", "--head", o.Head, "--inbox", o.Inbox, "--ledger", o.Ledger}
+	if o.Primed {
+		args = append(args, "--primed")
+	}
+	if o.Partial {
+		args = append(args, "--partial")
+	}
+	return args
 }
 
 // materializeOp restores a head into the target tree.
@@ -174,10 +191,39 @@ func (e SyncEngine) Want(ctx context.Context, c cell.Cell, head string) ([]strin
 
 // Import implements the sync seam.
 func (e SyncEngine) Import(ctx context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return e.runImport(ctx, c, head, inbox, false)
+}
+
+// ImportPrimed implements the sync seam: the import of a primed inbox, whose
+// frame-mates are deleted rather than refused.
+func (e SyncEngine) ImportPrimed(ctx context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return e.runImport(ctx, c, head, inbox, true)
+}
+
+// ImportPartial stores what the head wants from an inbox that is still filling
+// and leaves every other file, so a take can import while frames download.
+func (e SyncEngine) ImportPartial(ctx context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return e.importWith(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, Partial: true})
+}
+
+func (e SyncEngine) runImport(ctx context.Context, c cell.Cell, head, inbox string, primed bool) (int, error) {
+	return e.importWith(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, Primed: primed})
+}
+
+func (e SyncEngine) importWith(ctx context.Context, c cell.Cell, op importOp) (int, error) {
+	op.keyArgs = hexKeys(e.Keys)
 	var out struct {
 		Imported int `json:"imported"`
 	}
-	return out.Imported, e.ask(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, keyArgs: hexKeys(e.Keys)}, &out)
+	return out.Imported, e.ask(ctx, c, op, &out)
+}
+
+// Holds implements the sync seam: the ledger file the engine keeps beside the
+// store is written by every export and import against this relay, so it has
+// content exactly when the device has exchanged objects with the relay.
+func (e SyncEngine) Holds(c cell.Cell) bool {
+	info, err := os.Stat(filepath.Join(e.Target(c).DataDir, "published."+e.Ledger))
+	return err == nil && info.Size() > 0
 }
 
 // Materialize implements the sync seam.

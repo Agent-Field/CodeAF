@@ -32,16 +32,21 @@ type Brancher struct {
 // not. What an earlier refused publish already uploaded is reused, because
 // objects are content-addressed.
 func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns uint32, in PublishInfo) (string, error) {
-	if _, err := b.Publisher.Upload(ctx, from.Cell, head); err != nil {
+	_, frames, err := b.Publisher.uploadPlan(ctx, from.Cell, head)
+	if err != nil {
 		return "", err
 	}
+	// The branch's own upload is the only writer of the orphan frames, and
+	// skipHeld never re-uploads them later, so the branch's plan must be born
+	// naming them: the parent's covers only the parent's closure.
+	plan := unionFrames(from.Frames, frames)
 	id, err := b.NewID()
 	if err != nil {
 		return "", err
 	}
 	_, err = b.Dir.Create(ctx, id, directory.CellInit{
 		Head: head, Class: in.Class, Title: in.Title, Size: in.Size, Keys: in.Keys,
-		ParentCell: from.ID(), OrphanTurns: turns,
+		ParentCell: from.ID(), OrphanTurns: turns, Frames: plan,
 	})
 	if err != nil {
 		return "", err

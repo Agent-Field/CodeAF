@@ -20,6 +20,7 @@ var wireErrors = []struct {
 	{"bad_rid", http.StatusBadRequest, ErrBadRID},
 	{"too_many", http.StatusBadRequest, ErrTooMany},
 	{"not_found", http.StatusNotFound, ErrNotFound},
+	{"range_not_satisfiable", http.StatusRequestedRangeNotSatisfiable, errRange},
 	{"conflict", http.StatusConflict, ErrConflict},
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
@@ -113,11 +114,20 @@ type hasAnswer struct {
 	Have []bool `json:"have"`
 }
 
+// locateRequest names the rids a Locate asks about; locateAnswer answers where
+// each held one lies, keyed by rid.
+type locateRequest = hasRequest
+
+type locateAnswer struct {
+	At map[string]Location `json:"at"`
+}
+
 const (
 	pathFrames  = "/v1/store/frames"
 	pathObjects = "/v1/store/objects/"
 	pathMany    = "/v1/store/objects"
 	pathHas     = "/v1/store/has"
+	pathLocate  = "/v1/store/locate"
 	pathStats   = "/v1/store/stats"
 
 	// maxSmallBody bounds every request body that is not a frame: a Has

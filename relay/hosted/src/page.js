@@ -23,8 +23,8 @@ document.getElementById('open').onclick=()=>{location.href=deepLink(code,key);};
 const BODY = `<h1>Add this device</h1>
 <p>Open this on your computer: run</p>
 <code id="cmd">codeaf pair approve &lt;paste the link&gt;</code>
-<p>Or, if CodeAF is installed here:</p>
-<button id="open" type="button">Open in CodeAF</button>`;
+<p>Or, if codeaf is installed here:</p>
+<button id="open" type="button">Open in codeaf</button>`;
 
 const digest = async (text) => {
   const sum = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));

@@ -144,8 +144,8 @@ func TestDevicesRevokeText(t *testing.T) {
 	// stopping cannot undo what the computer holds, and the sentence after a
 	// stop says what that means for a stolen one.
 	says := map[string][]string{
-		usageForCommand("devices revoke"): {"cannot take back"},
-		said:                              {"cannot take back", "treat your chats as exposed", "codeaf identity rotate"},
+		usageForCommand("devices revoke"): {"cannot undo"},
+		said:                              {"cannot undo", "treat your chats as exposed", "codeaf identity rotate"},
 	}
 	for text, wants := range says {
 		for _, want := range wants {
