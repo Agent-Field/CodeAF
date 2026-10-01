@@ -2957,7 +2957,7 @@ conversation's own ceiling on **Session**. They are all on **Spending** now, and
 The settings panel's tab bar reads, in order:
 
 ```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
