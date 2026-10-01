@@ -32,7 +32,7 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 		strings.TrimRight(Lines("otter-lamp-42", code), "\n"),
 		// The four ways `--at` fails, each naming its own cause.
 		NoRelay("otter-lamp-42").Error(),
-		Unreachable("https://relay.example.com").Error(),
+		Unreachable("https://service.example.com").Error(),
 		NotConnected("otter-lamp-42").Error(),
 		NotPaired("otter-lamp-42").Error(),
 		// And the ones a person meets less often.

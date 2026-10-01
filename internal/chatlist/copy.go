@@ -41,6 +41,8 @@ const (
 	copyCame       = "the working copy of a task came along: %s"
 	setupAsk       = "Set this machine up like %s had it?"
 	setupAskAnon   = "Set this machine up like it was?"
+	arrivedHead    = "Moved from %s. Here is where it stands."
+	arrivedAnon    = "Moved here. Here is where it stands."
 	notBrought     = "not brought along: %s"
 	wasRunning     = "was running there: %s"
 	alsoNeeded     = "also needed: %s"
@@ -57,6 +59,7 @@ const (
 	// knows the door is still open.
 	OfferSetUp  = "set up"
 	OfferNotNow = "not now"
+	OfferGotIt  = "got it"
 	SetupLater  = "/setup does this later"
 )
 
@@ -80,6 +83,15 @@ func SetupHead(device string) string {
 		return setupAskAnon
 	}
 	return fmt.Sprintf(setupAsk, device)
+}
+
+// ArrivedHead is the heading of the card a takeover raises when there is
+// nothing to set up and only where the chat stands to say.
+func ArrivedHead(device string) string {
+	if device == "" {
+		return arrivedAnon
+	}
+	return fmt.Sprintf(arrivedHead, device)
 }
 
 // SetupReasons are the lines under the question, one for each list that is not

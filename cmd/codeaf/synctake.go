@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -59,10 +60,10 @@ const standingWithin = 15 * time.Second
 // let in, and says the refusal (removed from the fleet, replaced) as soon as the
 // surface is up. A conversation that is only resumed, and so has no drive side
 // yet, would otherwise open as if nothing were wrong until its first message.
-// A home that was never in a pairing cannot have been stopped, so it asks
-// nothing: a fresh install sends the sync service no request on its own.
+// A solo identity (made here, never shared) cannot have been stopped, so it
+// asks nothing: a fresh install sends the sync service no request on its own.
 func checkStanding(dir string, d directory.Client, say func(string)) {
-	if !identity.Paired(dir) {
+	if identity.Solo(dir) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), standingWithin)
@@ -84,7 +85,7 @@ func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
 	if err != nil {
 		return tui3.Taken{}, err
 	}
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Elapsed: elapsed}, nil
+	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}, nil
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

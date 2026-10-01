@@ -21,18 +21,21 @@ func (c *countingDir) List(context.Context) (directory.Listing, error) {
 	return directory.Listing{}, wireauth.ErrRevoked
 }
 
-func TestCheckStandingAsksOnlyAPairedHome(t *testing.T) {
+func TestCheckStandingAsksOnlyASharedHome(t *testing.T) {
 	cases := []struct {
 		name   string
-		paired bool
+		shared bool
 		asked  int
 		said   int
-	}{{"fresh home sends nothing", false, 0, 0}, {"paired home asks once and says so", true, 1, 1}}
+	}{{"solo home sends nothing", false, 0, 0}, {"shared home asks once and says so", true, 1, 1}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			home := t.TempDir()
-			if tc.paired {
-				if err := identity.MarkPaired(home); err != nil {
+			if _, err := identity.EnsureSolo(home); err != nil {
+				t.Fatal(err)
+			}
+			if tc.shared {
+				if err := identity.EndSolo(home); err != nil {
 					t.Fatal(err)
 				}
 			}

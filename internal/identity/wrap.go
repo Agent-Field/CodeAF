@@ -135,8 +135,8 @@ func Adopt(home string, next Identity, replace bool) (replaced bool, err error) 
 	if err := Save(home, next); err != nil {
 		return false, err
 	}
-	if _, err = deviceFor(home, next); err != nil { // this machine's own device under the imported root
+	if _, err := deviceFor(home, next); err != nil { // this machine's own device under the imported root
 		return replaced, err
 	}
-	return replaced, MarkPaired(home)
+	return replaced, EndSolo(home) // taking another's identity is joining a fleet
 }
