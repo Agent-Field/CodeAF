@@ -103,13 +103,24 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		Device:      deviceName(l.Devices, c.Lease.Device, open),
 		DeviceID:    c.Lease.Device,
 		Parent:      c.ParentCell,
-		Status:      statusOf(c, l.Now, self),
+		Status:      heldStatus(c, l, self),
 		Mine:        c.Lease.Device == self,
 		DurableAgo:  time.Duration(l.Now-c.DurableAt) * time.Millisecond,
 		DurableAt:   c.DurableAt,
 		Pending:     c.Lease.Pending,
 		OrphanTurns: c.OrphanTurns,
 	}
+}
+
+// heldStatus is the chat's status, except that a lease held by a revoked device
+// is no lease: that device can no longer release it or be reached, so the chat
+// reads as released and is never offered as running or lapsed elsewhere.
+func heldStatus(c directory.Cell, l directory.Listing, self string) Status {
+	st := statusOf(c, l.Now, self)
+	if holder, ok := l.Devices[c.Lease.Device]; ok && holder.Revoked && (st == Running || st == Off) {
+		return Idle
+	}
+	return st
 }
 
 // statusOf applies the precedence Branch, Here, Running, Off, Idle.

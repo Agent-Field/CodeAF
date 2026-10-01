@@ -130,7 +130,7 @@ func homeTick(gen int) tea.Cmd {
 func (a *app) homeBeat(gen int) tea.Cmd {
 	if !a.at(pageHome) {
 		// Home is not showing, so nobody needs the change socket (machinewatch.go).
-		a.tendWatch(false)
+		a.tendWatch(a.devicesCardOpen())
 		return nil
 	}
 	if gen != a.homeGen {

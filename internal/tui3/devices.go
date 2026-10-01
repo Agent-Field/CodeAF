@@ -15,11 +15,14 @@ package tui3
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -35,10 +38,13 @@ const (
 
 // deviceCard is the list's state. Online comes from the feed when the card opens.
 type deviceCard struct {
-	rowsOf []DeviceRow
-	loaded bool
-	cursor int
-	line   string
+	// presence reads who is online and whether the feed can say, at each draw,
+	// so a socket that comes up after the card opened still lights its dots.
+	presence func() (map[string]bool, bool)
+	rowsOf   []DeviceRow
+	loaded   bool
+	cursor   int
+	line     string
 }
 
 type devicesMsg struct {
@@ -61,8 +67,20 @@ func (m devicesMsg) land(a *app) tea.Cmd {
 		m.card.line = m.err.Error()
 		return nil
 	}
+	online, _ := m.card.livePresence()
+	for i := range m.rows {
+		m.rows[i].Online = online[m.rows[i].ID] && !m.rows[i].Revoked
+	}
 	m.card.rowsOf, m.card.loaded = orderDevices(m.rows), true
 	return nil
+}
+
+// livePresence is the card's presence, or none when it was given no source.
+func (c *deviceCard) livePresence() (map[string]bool, bool) {
+	if c.presence == nil {
+		return nil, false
+	}
+	return c.presence()
 }
 
 func (m revokedMsg) land(a *app) tea.Cmd {
@@ -75,7 +93,17 @@ func (m revokedMsg) land(a *app) tea.Cmd {
 	}
 	m.card.mark(m.row.ID)
 	m.card.line = fmt.Sprintf(devicesRevoked, m.row.Name)
-	return nil
+	return a.forgetDevice(m.row.ID)
+}
+
+// forgetDevice drops a revoked device from the row of who is online and asks
+// the fleet and the chats again, so the card that offers another machine, the
+// sessions panel and the Continue prompt stop naming it.
+func (a *app) forgetDevice(id string) tea.Cmd {
+	a.devRow.devices = slices.DeleteFunc(slices.Clone(a.devRow.devices), func(d chatlist.Device) bool { return d.ID == id })
+	a.addMachine.known = false
+	a.touch()
+	return a.askMachines()
 }
 
 // orderDevices puts this device first, then online ones, then the rest, each
@@ -119,7 +147,7 @@ func (c *deviceCard) shownName(d DeviceRow) string {
 func (c *deviceCard) mark(id string) {
 	for i := range c.rowsOf {
 		if c.rowsOf[i].ID == id {
-			c.rowsOf[i].Revoked = true
+			c.rowsOf[i].Revoked, c.rowsOf[i].Online = true, false
 		}
 	}
 }
@@ -154,6 +182,8 @@ func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 // row is one device: its dot, name, system and, when it is off, when it was
 // last seen. The cursor row is ink; the others are dim.
 func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palette) string {
+	online, _ := c.livePresence()
+	d.Online = online[d.ID] && !d.Revoked
 	text := fmt.Sprintf("%s %s  %s", d.dot(pal), c.shownName(d), platformOf(d.Platform).word)
 	for _, tail := range d.tails(now) {
 		text += "  " + tail
@@ -166,7 +196,7 @@ func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palet
 
 // dot is `●` for a device online now, `○` otherwise.
 func (d DeviceRow) dot(pal palette) string {
-	if d.Online || d.Self {
+	if !d.Revoked && (d.Online || d.Self) {
 		return "●"
 	}
 	return pal.glyph(tokens.GQueued)
@@ -178,10 +208,23 @@ func (d DeviceRow) tails(now time.Time) []string {
 		return []string{"revoked"}
 	case d.Self:
 		return []string{devicesSelf}
-	case !d.Online && !d.LastSeen.IsZero():
-		return []string{"seen " + sinceAt(d.LastSeen, now) + " ago"}
+	case d.Online || d.LastSeen.IsZero():
+		return nil
 	}
-	return nil
+	return []string{seenTail(d.LastSeen, now)}
+}
+
+// seenTail is when an away device was last seen, in words that read whole:
+// `seen just now`, `seen 3h ago`, `seen 2 Jan`.
+func seenTail(at, now time.Time) string {
+	ago := sinceAt(at, now)
+	switch {
+	case ago == "now":
+		return "seen just now"
+	case strings.HasSuffix(ago, "m"), strings.HasSuffix(ago, "h"), strings.HasSuffix(ago, "d"):
+		return "seen " + ago + " ago"
+	}
+	return "seen " + ago
 }
 
 func (c *deviceCard) key(a *app, name string) (tea.Cmd, bool) {
@@ -223,29 +266,22 @@ func (a *app) openDevices() tea.Cmd {
 		a.note(pairUnavailableWord)
 		return nil
 	}
-	card := &deviceCard{}
+	card := &deviceCard{presence: a.presence}
 	a.showCard(card)
-	door, online := a.approvals, a.onlineNow()
-	return func() tea.Msg {
+	door := a.approvals
+	return tea.Batch(a.joinWatchIfAbsent(), func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), approveTimeout)
 		defer cancel()
 		rows, err := door.Devices(ctx)
-		for i := range rows {
-			rows[i].Online = online[rows[i].ID]
-		}
 		return devicesMsg{card: card, rows: rows, err: err}
-	}
+	})
 }
 
-// onlineNow is the set of devices holding a watch socket, from the feed when
-// this screen follows one.
-func (a *app) onlineNow() map[string]bool {
-	set := map[string]bool{}
-	if a.dirFeed == nil {
-		return set
+// joinWatchIfAbsent gives the card the change feed on any screen, not only
+// from home, so presence is the feed's wherever /devices was opened.
+func (a *app) joinWatchIfAbsent() tea.Cmd {
+	if a.dirFeed != nil || a.machines == nil {
+		return nil
 	}
-	for _, id := range a.dirFeed.State().Online {
-		set[id] = true
-	}
-	return set
+	return a.joinWatch()
 }
