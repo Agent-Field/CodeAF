@@ -703,9 +703,10 @@ func TestASweptCopyStaysWhenItsCandidateCannotBeKept(t *testing.T) {
 	}
 }
 
-// A RUN SENT BACK COUNTS FROM WHERE THE LINE'S FIRST RUN FOUND THE PERSON. It
+// A RUN SENT BACK TAKES UP WHERE THE LINE'S FIRST RUN FOUND THE PERSON. It
 // takes the branch up, the person's changes already its first commit, and
-// neither those changes nor the person's newer ones are carried again.
+// neither those changes nor the person's newer ones are carried again; the
+// branch still holds the line's work, and none of it is counted as this run's.
 func TestARunSentBackCountsFromThePersonsCarriedInWork(t *testing.T) {
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, "half.go"), "package half\n")
@@ -730,8 +731,8 @@ func TestARunSentBackCountsFromThePersonsCarriedInWork(t *testing.T) {
 	if got := readFile(t, filepath.Join(second.Dir, "credentials.json")); got != "local input\n" {
 		t.Fatalf("the retry lost its original local input: %q", got)
 	}
-	if end := second.Finish(""); !end.Kept || strings.Join(end.Changed, " ") != "done.go" {
-		t.Fatalf("the sent-back run counts %q, want the line's own done.go", end.Changed)
+	if end := second.Finish(""); !end.Kept || end.Added || len(end.Changed) != 0 {
+		t.Fatalf("the sent-back run ended kept %v, added %v, counting %q; want the line's done.go kept and not counted as its own", end.Kept, end.Added, end.Changed)
 	}
 }
 
