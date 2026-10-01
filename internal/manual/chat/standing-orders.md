@@ -145,8 +145,9 @@ On a build with no ambient side at all it refuses in one line:
 2026-09-30, when queueing took the chord over (see the keys page, *The queued
 messages*). The command is the explicit road now, and it works on every terminal — no
 chord required. The queue chord is plain enter at rest, on the new-chat start page
-or over a `/command`; it queues only non-empty words mid-turn from the conversation's
-own composer. It works wherever the terminal sends it, while its hint and tip require
+or over a `/command`; a live `/standing`, `/orders` or `/task` tag also keeps plain
+enter's door. It queues only non-empty words mid-turn from the conversation's own
+composer with no live send-door tag. It works wherever the terminal sends it, while its hint and tip require
 the terminal's key-support reply. Unsupported terminals deliver enter or a newline
 on some keyboards.
 

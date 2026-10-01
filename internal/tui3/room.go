@@ -1917,7 +1917,7 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 	// not main's, so a remove would delete the crash insurance for a sentence
 	// still sitting in the box this keystroke just came back to.
 	a.keepMainDraft()
-	return a.submitShown(line, shown)
+	return a.submitShown(line, shown, restingDoorWords([]rune(shown)))
 }
 
 // ── the guard, drawn ────────────────────────────────────────────────────────

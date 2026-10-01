@@ -4,7 +4,9 @@
 
 `ctrl+enter` over a `/command` takes plain enter's command action, even while a turn
 is running. With no turn running or on the new-chat start page it also acts as plain
-enter. It queues only non-empty words mid-turn from this conversation's own composer.
+enter. A live `/standing`, `/orders` or `/task` tag inside a sentence also keeps
+plain enter's door. It queues only non-empty words mid-turn from this conversation's
+own composer, with no live send-door tag.
 The decoded chord works wherever the terminal sends it; the queue hint and tip are
 advertised only after the terminal's key-support reply. A terminal that cannot send
 it delivers plain enter or, on some keyboards, a newline.
@@ -111,19 +113,24 @@ handling; typing `/` there does not open this composer list.
 
 A command codeaf recognizes is not drawn as ordinary text. `/task`, `/compact`, `/clear`
 and the rest get a **chip**: a tinted background behind exactly the letters of the
-command — the same tint the *chosen* row of a list wears, the one that marks the model in
-use or the conversation you are in — with the accent ink on top.
+command — the same tint the *chosen* row in `/resume` wears, marking the
+conversation you are in — with the accent ink on top.
 No brackets, no border, and nothing added to the line.
 
 It happens in two places: **live in the message box as you type**, and in your message
 after it is sent, where it stays for as long as the conversation is scrolled back
 through.
 
-Only a command this surface will act on gets one. At the start of the box that is every
-recognized command. In the middle or at the end it is one of the two send-door tags,
-`/standing` or `/task`, including `/orders`. Other commands there are plain words. A typo
-is plain too: `/tsak` stays ordinary text. A path is never chipped, for the reasons in
-"Why a file path does not pop up the command list".
+A sentence you send into a running answer keeps its chips. A message waiting for
+the answer shows them while it waits.
+
+A chip marks any command codeaf recognises, wherever it stands — at the start, in
+the middle, or at the end. `/compact`, `/clear`, `/model` and the rest wear it
+exactly as a leading command does. It does not mean enter will run that word:
+enter acts only on a leading command, and on a send-door tag away from the head
+(the next section). A typo is plain: `/tsak` stays ordinary text. A path is never
+chipped, for the reasons in "Why a file path does not pop up the command list".
+A command glued to punctuation — `/model,` or `(/model)` — is plain, like a typo.
 
 The chip never adds a cell. A leading command runs in its usual form. A live send-door
 tag is removed from the words handed through its door, while your transcript keeps the
@@ -144,12 +151,14 @@ tags** anywhere else in a draft:
 
 Both roads end at something you can see: standing raises its ratification card, and task
 starts one worker in the open — its started row, and its row on the roster, where it can be
-stopped. A pasted tag does not silently do work, because the chip says what enter will do. With no other words, each tag behaves like that command's existing
+stopped. A pasted tag does not silently do work: a live send-door tag is named on
+the hint line under the box, and it only ever opens the door you can see. With no other words, each tag behaves like that command's existing
 bare form. With two live tags codeaf sends nothing, leaves the draft in the box, and says
 `one tag per send — backspace one to make it plain words`.
 
 Other commands remain ordinary prose away from the start. `later I will run /compact on
-this` is sent literally, and `/compact` is plain rather than chipped.
+this` is sent literally, and codeaf still chips `/compact` there — the mark says the word
+is recognised, not that enter will run it.
 
 ## Backspace after a slash tag makes it plain words
 
@@ -158,16 +167,18 @@ backspace removes its chip but deletes no letter. The word is now plain prose an
 sends it to the conversation normally. A second backspace edits the word as usual.
 
 Editing the demoted word makes codeaf recognize its current spelling afresh. Edits before
-it merely move the annotation with the text. Emptying or sending the draft forgets all
-demotions.
+it merely move the annotation with the text. The word stays plain in the sent message
+too, including one typed while an answer was still coming that waited its turn, and a
+waiting message pulled back into the box keeps it plain there. Emptying the draft forgets
+all demotions.
 
 ## Slash command did nothing
 
 A command in the middle of a sentence acts only when it is `/standing`, `/orders`, or
-`/task`, and a chip is the promise that it will act. `/clear`, `/model`, `/compact` and
-the other commands are plain prose there. Put one of those commands at the start if you
-want to run it. If a send-door word is plain, it was demoted with backspace; edit it or
-type it again to make it live.
+`/task`. Every other command there is still highlighted — `/compact`, `/clear` and
+`/model` wear the same chip as any recognized word — but enter sends it as ordinary
+words. Put one of those commands at the start if you want to run it. If a send-door word
+is plain, it was demoted with backspace; edit it or type it again to make it live.
 
 The command list follows that rule when you choose a row from it:
 

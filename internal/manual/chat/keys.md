@@ -28,8 +28,9 @@ work already under way. At rest it does nothing at all. **On Linux and Windows t
 is called `super+enter`** — see "What cmd+enter is called on your keyboard" below.
 
 `ctrl+enter` queues non-empty words **only while this conversation's turn is
-running**, from its own composer, and only when the draft is not a `/command`.
-With no turn running, on the new-chat start page, or over a `/command`, it is
+running**, from its own composer, and only when the draft is not a `/command`
+and has no live send-door tag. With no turn running, on the new-chat start page,
+over a `/command`, or with a live `/standing`, `/orders` or `/task` tag, it is
 plain `enter`: send, start the chat, or run the command at once. An empty box
 also takes enter's ordinary action. It works wherever the terminal sends the
 chord, including modifyOtherKeys terminals; the hint and tip advertise it only
@@ -129,14 +130,16 @@ to the follow-up queue, so the words are never dropped.
 ## The queued messages — what ctrl+enter holds, and how to take one back
 
 `ctrl+enter` queues non-empty words from this conversation's own box while its
-turn is running. With no turn running, on the new-chat start page, over a
-`/command`, or with an empty box, it takes plain enter's action. It works whenever
+turn is running and has no live send-door tag. With no turn running, on the
+new-chat start page, over a `/command`, with a live `/standing`, `/orders` or
+`/task` tag, or with an empty box, it takes plain enter's action. It works whenever
 the terminal sends it; hints and tips require the terminal's key-support reply.
 Terminals that cannot send it deliver plain enter or, on some, a newline.
 
 Each queued message is drawn above the box behind a dim reply arrow `↳`, wrapping
 within the frame. Nothing is written under the block. Its words reach the
-transcript as an ordinary sent line only when its turn begins.
+transcript as an ordinary sent line only when its turn begins. Slash words made
+plain with Backspace stay plain there.
 
 **Taking one back before it runs.** Only messages you queued from this window
 light under the pointer and take a click. Rows admitted from another window or

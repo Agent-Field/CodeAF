@@ -265,10 +265,13 @@ type entry struct {
 	kind entryKind
 	text string
 	turn int
-	// actedTags are send-door words kept in the displayed sentence after they
-	// were stripped from the payload. Mid-sentence slash prose has no ranges,
-	// so a demoted tag stays plain in the transcript as promised.
-	actedTags []segment
+	// plainTags are the slash words the person demoted with backspace before
+	// sending, as rune ranges into the displayed message text (entry.text). A
+	// demoted word stays plain in the transcript exactly as it did in the box:
+	// [transcriptCommandSpans] subtracts these ranges before painting a chip,
+	// and an edit before the word carries the range along with it. They are
+	// empty on every message with no demotion.
+	plainTags []segment
 	// replyTags are the finished tasks this assistant block answers. They are
 	// empty for every ordinary person-prompted reply.
 	replyTags []session.TaskReplyTag
@@ -6812,9 +6815,9 @@ func (a *app) submit(text string) tea.Cmd {
 	return a.submitting(text, submitStart(agent, ctx, text))
 }
 
-func (a *app) submitShown(text, shown string) tea.Cmd {
+func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submittingShown(text, shown, submitStart(agent, ctx, text))
+	return a.submittingShown(text, shown, plain, submitStart(agent, ctx, text))
 }
 
 // submitStart is the one plain-message engine call used by both front and held
@@ -6833,14 +6836,17 @@ func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan s
 // The second door is a picked harness, which is a turn in every respect except
 // which function starts it (harnesspick.go's [app.runPickedHarness]).
 func (a *app) submitting(text string, start func() (<-chan session.Event, error)) tea.Cmd {
-	return a.submittingShown(text, text, start)
+	return a.submittingShown(text, text, nil, start)
 }
 
 // submittingShown separates the words a door receives from the honest line
 // the transcript keeps. Slash tags are stripped from the payload but remain in
 // the person's message as the chipped token that explains which door acted.
-func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
-	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, start) }) {
+//
+// plain carries the words the person demoted with backspace, as ranges into
+// shown, so the transcript leaves them plain (entry.plainTags).
+func (a *app) submittingShown(text, shown string, plain []segment, start func() (<-chan session.Event, error)) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, plain, start) }) {
 		return nil
 	}
 	call := a.hostCallStarted()
@@ -6870,18 +6876,10 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	// conversation. It is asked rather than assumed so that the day the engine
 	// routes a conversation's turn into a named thread, the line that says so is
 	// already being drawn — one mechanism, keyed off what the session exposes.
-	var acted []segment
-	if shown != text {
-		for _, s := range commandSpans([]rune(shown), true) {
-			if s.from > 0 {
-				acted = append(acted, s)
-			}
-		}
-	}
 	if a.openingPrompt == "" {
 		a.openingPrompt = shown
 	}
-	a.said(entry{kind: entryUser, text: shown, turn: a.turn, actedTags: acted, began: a.now(), context: a.turnContext()})
+	a.said(entry{kind: entryUser, text: shown, turn: a.turn, plainTags: plain, began: a.now(), context: a.turnContext()})
 	// AND OVER A CONNECTION THE LINE IS MARKED UNTIL THE ENGINE HAS IT. The
 	// sentence is already on the page — the line above put it there, in the place
 	// it will keep — and what a connection adds is a gap between that and the far

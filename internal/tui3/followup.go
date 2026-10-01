@@ -200,8 +200,19 @@ func (a *app) startFollow() tea.Cmd {
 		// The context the turn runs in rides with it, for [app.submitting]'s reason
 		// (turncontext.go): a follow-up is the person's own sentence arriving one
 		// turn late, and where it goes is the same fact about it either way.
+		value := []rune(next.text)
+		plain := restingDoorWords(value)
+		// A DEMOTION TRAVELS WITH THE QUEUED WORDS. The fallback knows only
+		// resting door words, so the queue's own annotations must join it. Match
+		// against this text's command spans to drop stale ranges and duplicates.
+		for _, s := range commandSpans(value, true) {
+			if containsSegment(next.demoted, s) && !containsSegment(plain, s) {
+				plain = append(plain, s)
+			}
+		}
 		a.entries = append(a.entries, entry{
 			kind: entryUser, text: next.text, turn: a.turn, context: a.turnContext(),
+			plainTags: plain,
 		})
 	}
 	a.state = stateWorking
@@ -277,13 +288,14 @@ func (a *app) trayEmptyForQueue() bool {
 const queueFootWord = "ctrl+enter queue"
 
 // queueSendOffered is the key's predicate: words for this conversation's
-// running turn, from its own composer. Commands take enter's ordinary road and
-// the tray refusal remains [app.followUp]'s answer, rather than a send that
-// quietly splits one message in two.
+// running turn, from its own composer. Commands and live send-door tags take
+// enter's ordinary road, so queueing cannot discard a tag's meaning. The tray
+// refusal remains [app.followUp]'s answer, rather than a send that quietly
+// splits one message in two.
 func (a *app) queueSendOffered() bool {
 	line := strings.TrimSpace(a.input.String())
 	return a.runSendOffered() && !a.startingChat() && a.composerOwner == mainRecipient &&
-		line != "" && !strings.HasPrefix(line, "/")
+		line != "" && !strings.HasPrefix(line, "/") && len(a.liveTags()) == 0
 }
 
 // queueFootOffered advertises the chord only after the terminal says it can

@@ -426,3 +426,89 @@ func TestTakeBackKeepsPlainTagsWhenQueueingTrimsTheDraft(t *testing.T) {
 		t.Fatalf("queue trimming lost the plain tag's position: draft=%q plain=%+v", a.input.String(), a.input.demotedTags)
 	}
 }
+
+// A LIVE SEND TAG KEEPS ENTER'S DOOR. Queueing its words would spend the tag
+// without ever asking the standing door to keep the sentence true.
+func TestCtrlEnterKeepsALiveStandingTagsDoorMidTurn(t *testing.T) {
+	a, agent, _ := standMarkLab(t)
+	a.state, a.stream, a.keysDisambiguated = stateWorking, make(chan session.Event), true
+	typeInto(t, a, "always run the tests /standing")
+	if len(a.liveTags()) != 1 {
+		t.Fatal("the draft has no live standing tag")
+	}
+	if a.queueSendOffered() || a.queueFootOffered() || strings.Contains(a.hintWord(), queueFootWord) {
+		t.Error("the queue key or foot offers to discard the live standing tag")
+	}
+	drive(t, a, key("ctrl+enter"))
+	if a.followWaiting() != 0 || len(a.parks) != 1 || !a.parks[0].standing || a.parks[0].text != "always run the tests" || !a.input.empty() {
+		t.Fatalf("ctrl+enter bypassed the standing door: follows=%+v parks=%+v draft=%q", a.follows, a.parks, a.input.String())
+	}
+	// The door runs immediately, and its marked words wait for this turn's end
+	// just as they do on plain enter. The parked send must still be marked.
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if len(agent.marked) != 1 || agent.marked[0] != "always run the tests" {
+		t.Fatalf("the standing words lost their mark after the running turn: %v", agent.marked)
+	}
+}
+
+// A QUEUED DEMOTION MUST REACH THE TRANSCRIPT. The door-only fallback cannot
+// recover a demoted recognition chip from the words alone.
+func TestFollowUpKeepsQueuedDemotionsInTheTranscript(t *testing.T) {
+	agent, a := queuedConversation(t)
+	typeInto(t, a, "say /model now")
+	// Backspace currently demotes send-door tags alone. Seed the non-door
+	// snapshot here to prove this queue boundary preserves it independently.
+	want := segment{from: 4, to: 10}
+	a.input.demotedTags = []segment{want}
+	drive(t, a, key("ctrl+enter"))
+	if len(agent.asked) != 1 || agent.asked[0] != "say /model now" || len(a.follows) != 1 || !containsSegment(a.follows[0].demoted, want) {
+		t.Fatalf("the queue did not keep the demotion: asked=%v follows=%+v", agent.asked, a.follows)
+	}
+	_, _ = a.route(streamClosedMsg{gen: a.gen})
+	e := lastUserEntry(t, a)
+	if e.text != "say /model now" || !containsSegment(e.plainTags, want) {
+		t.Fatalf("the started follow-up lost its plain /model: text=%q plain=%+v", e.text, e.plainTags)
+	}
+	if got := transcriptCommandSpans([]rune(e.text), e.plainTags, 0); len(got) != 0 {
+		t.Fatalf("the demoted follow-up would draw chips: %+v", got)
+	}
+}
+
+// The transcript keeps both fallback door ranges and the queue's own ranges.
+// Duplicate or stale offsets must not become additional plain annotations.
+func TestFollowUpUnionsOnlyValidQueuedDemotions(t *testing.T) {
+	_, a := wired(nil)
+	words := "say /model now /standing"
+	model := segment{from: 4, to: 10}
+	door := segment{from: 15, to: 24}
+	a.follows = []queued{{
+		text: words, ch: make(chan session.Event),
+		demoted: []segment{model, model, door, {from: -1, to: 4}, {from: 4, to: 99}, {from: 0, to: 3}},
+	}}
+	a.startFollow()
+	e := lastUserEntry(t, a)
+	if len(e.plainTags) != 2 || !containsSegment(e.plainTags, model) || !containsSegment(e.plainTags, door) {
+		t.Fatalf("the follow-up did not union valid plain ranges once: %+v", e.plainTags)
+	}
+}
+
+// Backspace's real send-door demotion still queues as words, and the started
+// transcript must retain the same plain range after the composer resets.
+func TestFollowUpKeepsABackspacedStandingTagPlain(t *testing.T) {
+	_, a := queuedConversation(t)
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"))
+	want := segment{from: 4, to: 13}
+	if a.input.String() != "say /standing" || !containsSegment(a.input.demotedTags, want) || len(a.liveTags()) != 0 {
+		t.Fatal("backspace did not demote the standing tag")
+	}
+	drive(t, a, key("ctrl+enter"))
+	if len(a.follows) != 1 || !containsSegment(a.follows[0].demoted, want) {
+		t.Fatalf("the demoted standing tag did not queue as words: %+v", a.follows)
+	}
+	_, _ = a.route(streamClosedMsg{gen: a.gen})
+	e := lastUserEntry(t, a)
+	if e.text != "say /standing" || len(e.plainTags) != 1 || e.plainTags[0] != want {
+		t.Fatalf("the backspaced tag did not stay plain: text=%q plain=%+v", e.text, e.plainTags)
+	}
+}
