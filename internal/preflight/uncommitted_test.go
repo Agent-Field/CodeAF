@@ -1,6 +1,7 @@
 package preflight
 
 import (
+	"github.com/Agent-Field/codeaf/internal/inventory"
 	"reflect"
 	"testing"
 )
@@ -15,5 +16,15 @@ func TestChangedNamesReadsPathsAndRenames(t *testing.T) {
 func TestUncommittedOfNoRepositoryIsNone(t *testing.T) {
 	if got := Uncommitted(t.TempDir()); len(got) != 0 {
 		t.Fatalf("got %v", got)
+	}
+}
+
+func TestCompareCarriesTheRecordedTestRun(t *testing.T) {
+	run := &inventory.TestRun{Command: "go test ./...", Passed: true}
+	if got := Compare("", inventory.Inventory{Tests: run}, here{}, Report{}).Tests; got != run {
+		t.Fatalf("got %v", got)
+	}
+	if Compare("", inventory.Inventory{}, here{}, Report{}).Tests != nil {
+		t.Fatal("a run was invented")
 	}
 }
