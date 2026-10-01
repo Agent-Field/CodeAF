@@ -1810,20 +1810,20 @@ tab's `hints` row does not hide it, and a conversation over `--host` says it abo
 profile on the machine running the work. Nothing is rewritten: to act on it, move the
 value to the key a settings row names (`settings` lists every one), or delete the key.
 
-## The nine settings tabs
+## The ten settings tabs
 
 The tabs, in order:
 
 ```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
 ```
 
 ## The settings tab strip on a narrow terminal
 
-The nine tabs need about 96 columns. On anything narrower the strip **scrolls** rather
+On a terminal too narrow for all ten tabs, the strip **scrolls** rather
 than being cut: the tab you are standing on is always drawn and always inked, its
 neighbours are drawn while they fit, and each end that had to give a tab up wears a `…`
-saying there is more that way. `←` and `→` still walk the nine one at a time, and the
+saying there is more that way. `←` and `→` still walk the tabs one at a time, and the
 strip follows.
 
 It anchors left while you are near `Session` and right while you are near `Connections`,
@@ -2032,7 +2032,7 @@ Connections tab — the foot drops `tab next place`, because the layer has taken
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
-one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
+one call codeaf makes outside a turn — `title`, `guardian`, `checker`,
 `planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
@@ -2053,7 +2053,8 @@ above` or `follows small work above` instead.
   and del does nothing on any other row of the sheet.
 - Typing filters these rows too: they answer to their own names and to the line that says
   what they do — neither of which is in any settings key. Searching for `image` finds
-  `vision`, whose description mentions it.
+  `vision`, whose description mentions it. Searching for `checker` finds the seat that
+  checks finished work; its row and model picker both use that word.
 
 Every pin is written into the "pinned roles" registry row and nowhere else, so the list and
 that text box are one setting seen two ways. What each role does and how the tiers work is
@@ -2163,7 +2164,7 @@ Every command in the terminal answers `--help` (and `-h`) with its own usage: th
 that names its shape and its flags, then its flags one to a row, then
 
 ```
-run `codeaf --help` for every command and the environment table.
+run `codeaf --help` for every command, `codeaf help env` for the variables.
 ```
 
 It goes to **standard output** and the command leaves with **0**. Asking a program what
@@ -2213,8 +2214,8 @@ questions about codeaf out of it rather than out of what it remembers about othe
 
 ## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 
-`codeaf --help` prints every command, what each is for, and the environment table under
-them. **Any single command answers for itself the same way:**
+`codeaf --help` prints every command and what each is for, then points to
+`codeaf help env` for every variable and its default. **Any single command answers for itself the same way:**
 
 ```
 codeaf do --help

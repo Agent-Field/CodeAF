@@ -53,6 +53,7 @@ func TestRateManualExplainsAbsentAndRoundedThroughput(t *testing.T) {
 // 2026-09-30 pass found repeated after their first copy had been fixed.
 func TestNoSectionRepeatsAStaleDisplayClaim(t *testing.T) {
 	stale := []string{
+		"| `auditor` | checker |",
 		"draws one tab per open conversation, and",
 		"names every open conversation, and",
 	}
@@ -63,5 +64,51 @@ func TestNoSectionRepeatsAStaleDisplayClaim(t *testing.T) {
 				t.Errorf("%s: %s still says %q", section.Page, section.Title, claim)
 			}
 		}
+	}
+}
+
+// A correct answer elsewhere cannot repair a stale claim in a section that
+// is retrieved on its own. Check headings as well as bodies across the corpus.
+func TestNoSectionRepeatsStaleHelpSettingsGreetingOrManagerClaims(t *testing.T) {
+	stale := []string{
+		"run `codeaf --help` for every command and the environment table.",
+		"`codeaf --help` prints every command, what each is for, and the environment table under them.",
+		"The nine settings tabs",
+		"The nine tabs need",
+		"walk the nine one at a time",
+		"Tasks · Providers · Connections",
+		"a plain launch opens straight on home",
+		"deterministic `@manager-...` fallback",
+	}
+	for _, section := range Chat().Sections() {
+		text := flatten(section.Title + " " + section.Body)
+		for _, claim := range stale {
+			if strings.Contains(text, claim) {
+				t.Errorf("%s: %s still says %q", section.Page, section.Title, claim)
+			}
+		}
+	}
+}
+
+func TestManualStatesHelpSettingsGreetingAndManagerDisplayTruth(t *testing.T) {
+	for _, test := range []struct {
+		page, title string
+		facts       []string
+	}{
+		{"commands", "codeaf <command> --help — asking one command what it takes, which is not a failure", []string{"run `codeaf --help` for every command, `codeaf help env` for the variables."}},
+		{"commands", "codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage", []string{"`codeaf help env`", "every variable and its default"}},
+		{"commands", "The ten settings tabs", []string{"Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections"}},
+		{"models-and-cost", "Where are the spending limits — the Spending tab, and every door onto it", []string{"Tasks · Teams · Providers"}},
+		{"getting-started", "Getting started — first time setup, what happens the first time I run codeaf", []string{"nothing elsewhere", "What would you like to work on?", "home", "`--no-host`"}},
+		{"team-manager", "Making a manager", []string{"team's name", "`@second`", "`@lead`", "All teams"}},
+	} {
+		t.Run(test.page+"/"+test.title, func(t *testing.T) {
+			answer := chatSection(t, test.page, test.title)
+			for _, fact := range test.facts {
+				if !strings.Contains(answer, fact) {
+					t.Errorf("the section does not state %q:\n%s", fact, answer)
+				}
+			}
+		})
 	}
 }

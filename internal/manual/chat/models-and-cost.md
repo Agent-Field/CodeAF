@@ -893,7 +893,7 @@ role**, grouped under the row answering it, saying which model comes out:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `auditor` | checker | whether finished-looking work is actually finished |
+| `checker` | checker | whether finished-looking work is actually finished (a saved pin still names this role `auditor`) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
 | `careful` | checker | a part of a task that needs judgement |
@@ -2957,7 +2957,7 @@ conversation's own ceiling on **Session**. They are all on **Spending** now, and
 The settings panel's tab bar reads, in order:
 
 ```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two

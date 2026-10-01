@@ -4166,7 +4166,10 @@ block to expand or collapse that block. Inside the opened work, or on a task pag
 streaming thinking uses a dim three-line window under a `thinking · N tok` header; the moment the first word of the reply lands it
 collapses to one row — `thought for 6s · 148 tok · ctrl+e`. Clicking the row
 reopens it; `ctrl+e` prioritizes the whole work disclosure when one is available. The count of tokens on the row is how much working the model wrote, and the
-seconds are how long it spent.
+seconds are how long it spent. When the timing is unknown or less than one second,
+the row says `thought for this turn · 148 tok · ctrl+e` without a duration. An unknown
+token count is also absent, leaving `thought for this turn · ctrl+e`; the disclosure
+still opens the working.
 
 Some models keep thinking in between the words of their own answer, a few tokens at a
 time. That does not split the reply and does not stack up extra rows: the one thought row

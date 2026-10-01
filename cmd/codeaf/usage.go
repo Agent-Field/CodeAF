@@ -378,8 +378,18 @@ func usageForCommand(name string) string {
 			block = append(block, following)
 			index = next
 		}
-		if commandLine(block[0], name) {
-			blocks = append(blocks, strings.Join(block, "\n"))
+		// The front page shares a row to stay inside its line cap, but each
+		// command's own help needs its own shape. Only an explicit codeaf
+		// prefix starts another command; pipes inside arguments or alternate
+		// forms of the same command remain part of its synopsis.
+		for at, shape := range strings.Split(block[0], " | codeaf ") {
+			if at > 0 {
+				shape = "  codeaf " + shape
+			}
+			if commandLine(shape, name) {
+				own := append([]string{shape}, block[1:]...)
+				blocks = append(blocks, strings.Join(own, "\n"))
+			}
 		}
 	}
 	// AND WHAT THE GROUP SAYS ONCE, EACH OF ITS PAGES SAYS TOO. The exit ladder

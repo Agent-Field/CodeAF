@@ -115,10 +115,13 @@ func (candidate *frozenCandidate) describe() string {
 	if candidate == nil {
 		return "nothing frozen"
 	}
-	return fmt.Sprintf(
-		"%d bytes across %d file(s), tree %s",
-		candidate.PatchBytes, candidate.PatchFiles, shortSHA(candidate.TreeSHA),
-	)
+	description := fmt.Sprintf("across %d file(s), tree %s", candidate.PatchFiles, shortSHA(candidate.TreeSHA))
+	// The snapshot recorder supplies changed paths without patch text. Its
+	// absent byte count must not claim a measured size of zero in the ending.
+	if candidate.PatchBytes > 0 {
+		description = fmt.Sprintf("%d bytes %s", candidate.PatchBytes, description)
+	}
+	return description
 }
 
 func shortSHA(value string) string {
