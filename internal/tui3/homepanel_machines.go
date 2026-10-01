@@ -41,6 +41,10 @@ type machineReading struct {
 	// merge says a branch row can be merged from here, which decides the
 	// sentence it says (chatlist.BranchLine).
 	merge bool
+	// away says the device a row names is not online now; nil says none is
+	// known to be away. It is set when home is rebuilt, so presence is as new as
+	// the feed.
+	away func(chatlist.Row) bool
 }
 
 // homeMachinesMsg is one listing, coming BACK from the source.
@@ -113,6 +117,9 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 	}
 	var out []homeLine
 	for _, row := range m.rows {
+		if m.away != nil && m.away(row) {
+			row = row.Quiet()
+		}
 		if drawnAsRemote(row, local[row.Cell]) {
 			out = append(out, machineLine(row, m.at, in.now, m.merge))
 		}
