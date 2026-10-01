@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
 type listOnly struct {
@@ -17,7 +18,11 @@ func (l listOnly) List(context.Context) (directory.Listing, error) { return l.li
 // A revoked device is not part of the fleet: the card that offers another
 // machine must not be switched off by one that was stopped.
 func TestFleetSizeCountsDevicesNotRevoked(t *testing.T) {
-	s := &Sync{Dir: listOnly{list: directory.Listing{Devices: map[string]directory.Device{
+	home := t.TempDir()
+	if _, err := identity.Ensure(home); err != nil {
+		t.Fatal(err)
+	}
+	s := &Sync{Home: home, Dir: listOnly{list: directory.Listing{Devices: map[string]directory.Device{
 		"dev_a": {}, "dev_b": {Revoked: true},
 	}}}}
 	got, err := s.FleetSize(context.Background())
