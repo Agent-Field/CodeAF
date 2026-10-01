@@ -4827,6 +4827,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
 		displayText := messageContentText(msg)
+		// personWords removes only this message's recorded skills injection.
+		if role == "user" {
+			displayText = presentation.personWords(msg)
+		}
 		interrupted, explicitlyHuman := false, false
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			interrupted = mark.Interrupted

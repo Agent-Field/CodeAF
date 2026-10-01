@@ -50,8 +50,8 @@ var stageDataKeys = map[string]bool{
 	// compaction-capacity and compaction.
 	"limit_tokens": true, "pinned_capacity_tokens": true,
 	"before_tokens": true, "after_tokens": true, "summary_status": true,
-	// model-switch.
-	"from": true, "to": true,
+	// model-switch, and a message handed to the model (steering.go).
+	"from": true, "to": true, "messages": true,
 }
 
 // stageDataTextMost is the most bytes one sentence on the record keeps: a

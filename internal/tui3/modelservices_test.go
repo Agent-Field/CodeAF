@@ -1092,9 +1092,9 @@ func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
 	}
 	a.openPicker()
 	got := a.pick.rows(100, a.pick.height(100), pal, -1, func(string) string { return "" })
-	// THE ROWS ARE ALPHABETICAL, which is every table's opening order on this
-	// surface (pickersort.go) — so `gpt-5-classic` stands above the model in use.
-	// The mark is still on the model in use, which is what this test is about.
+	// THE ROWS ARE ALPHABETICAL, so `gpt-5-classic` stands above the model
+	// in use. The cursor opens on the held model and supplies its band; the
+	// model's bold accent adds no band of its own when the cursor moves away.
 	want := "  gpt-5-classic\n" +
 		"› openai/gpt-4.1-mini                                                                             1M\n" +
 		"  + add a provider"

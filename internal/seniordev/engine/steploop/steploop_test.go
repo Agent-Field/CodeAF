@@ -807,3 +807,58 @@ func TestFinishCostsWhatTheServiceChargedWhenItSaid(t *testing.T) {
 }
 
 func floatPtr(value float64) *float64 { return &value }
+
+// A WORD INJECTED BETWEEN STEPS REACHES THE NEXT REQUEST. The reminder hook runs
+// before every model call; what it adds after the tool step is on the second
+// request, after the tool's result, and the first request carries nothing it
+// did not add then. senior-dev's steering rides this hook (app/steering.go).
+func TestAReminderInjectedBetweenStepsReachesTheNextRequest(t *testing.T) {
+	fixedSeams(t)
+	store := &memoryStore{messages: []msgmodel.WithParts{baseUser("msg_0000", "build", msgmodel.Parts{
+		msgmodel.TextPart{PartBase: msgmodel.PartBase{ID: "prt_0000", SessionID: "ses_1", MessageID: "msg_0000"}, Text: "double one"},
+	})}}
+	client := &scriptedClient{scripts: [][]orclient.StreamPart{
+		{
+			orclient.ToolInputStartPart{ID: "call_1", ToolName: "double"},
+			orclient.ToolCallPart{ToolCallID: "call_1", ToolName: "double", Input: `{"x":1}`},
+			finishPart(orclient.FinishToolCalls),
+		},
+		{
+			orclient.TextStartPart{ID: "text_1"},
+			orclient.TextDeltaPart{ID: "text_1", Delta: "done"},
+			orclient.TextEndPart{ID: "text_1"},
+			finishPart(orclient.FinishStop),
+		},
+	}}
+	calls := 0
+	loop := Loop{Store: store, Client: client, Models: testResolver(), Executor: &immediateTool{}}
+	_, err := loop.Run(context.Background(), RunOptions{
+		SessionID: "ses_1", Workspace: "/work", Worktree: "/work",
+		Tools: []ToolDefinition{{Provider: orclient.Tool{
+			Type: "function", Name: "double", Description: "double", InputSchema: json.RawMessage(`{"type":"object"}`),
+		}}},
+		InjectReminders: func(_ context.Context, messages []msgmodel.WithParts, user msgmodel.User) ([]msgmodel.WithParts, error) {
+			calls++
+			if calls != 2 {
+				return messages, nil
+			}
+			reminder := msgmodel.User{MessageBase: msgmodel.MessageBase{ID: "msg_steer", SessionID: "ses_1"}, Agent: user.Agent, Model: user.Model}
+			part := msgmodel.TextPart{PartBase: msgmodel.PartBase{ID: "prt_steer", SessionID: "ses_1", MessageID: "msg_steer"}, Text: "the grader is in grade.sh"}
+			return append(messages, msgmodel.WithParts{Info: reminder, Parts: msgmodel.Parts{part}}), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || len(client.requests) != 2 {
+		t.Fatalf("hook ran %d times over %d requests, want once before each", calls, len(client.requests))
+	}
+	first, _ := json.Marshal(client.requests[0].Prompt)
+	second, _ := json.Marshal(client.requests[1].Prompt)
+	if strings.Contains(string(first), "grade.sh") || !strings.Contains(string(second), "the grader is in grade.sh") {
+		t.Fatalf("the injected word is not on the second request only:\nfirst %s\nsecond %s", first, second)
+	}
+	if got := modelRoles(client.requests[1].Prompt); strings.Join(got, ",") != "user,assistant,tool,user" {
+		t.Fatalf("second prompt roles = %v, want the word after the tool's result", got)
+	}
+}

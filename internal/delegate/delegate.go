@@ -103,6 +103,11 @@ type Delegate struct {
 	// as its own. codeaf moves the folder this names into the run's own record
 	// folder when the run ends, unless it was there before the run began.
 	Notes string
+	// Listens says the program reads the messages codeaf sends it while it
+	// works (inbox.go): the person's words from its task's page and the
+	// conversation's `say`. A program that does not listen is refused a message
+	// in so many words, never handed one nothing reads.
+	Listens bool
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every
 	// run it starts from a conversation. Nil is a program that picks its own

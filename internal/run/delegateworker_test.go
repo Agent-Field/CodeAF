@@ -4,17 +4,25 @@ package run_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
@@ -604,4 +612,548 @@ func TestDelegateWorkerStopsAChildOfAnotherBuild(t *testing.T) {
 	if _, ok := delegate.ReadProgram(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())); ok {
 		t.Fatal("a child of another build was written down as this run's program")
 	}
+}
+
+// A LISTENING PROGRAM IS FED ITS TASK'S NOTES, AND A NOTE IS HAD ONLY WHEN IT
+// SAYS SO. The program's hello accepts messages, so a note on its task reaches
+// the inbox codeaf named in its environment, with who it is from; the
+// program's `heard` marks that note had on the trajectory; its closed `inbox`
+// is kept on the program's record with the reason, beside the fact it listened.
+func TestDelegateWorkerFeedsAListeningProgramItsNotesAndMarksThemOnlyWhenHeard(t *testing.T) {
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	note, err := store.AddNote(store.RootID(), plandb.NoteAgentChat, "the grader is in grade.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "seen")
+	t.Setenv("FAKE_SEEN", seen)
+	script := filepath.Join(t.TempDir(), "listening.sh")
+	program := "#!/bin/sh\n" + strings.Join([]string{
+		`echo '{"type":"hello","protocol":2,"delegate":"fake","stages":["implement"],"accepts":["messages"]}'`,
+		`i=0; while [ $i -lt 100 ] && [ ! -s "$CODEAF_INBOX" ]; do sleep 0.1; i=$((i+1)); done`,
+		`cp "$CODEAF_INBOX" "$FAKE_SEEN"`,
+		`id=$(sed -n 's/.*"id":"\([^"]*\)".*/\1/p' "$CODEAF_INBOX" | head -1)`,
+		`echo "{\"type\":\"heard\",\"ids\":[\"$id\"]}"`,
+		`echo '{"type":"inbox","open":false,"reason":"it has handed in its work"}'`,
+		passLine("heard the grader note"),
+	}, "\n") + "\n"
+	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listening := delegate.Delegate{Name: "fake", Summary: "a fake program", Default: "run", Listens: true}
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), listening, run.DelegateSetup{Exe: script}, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+		t.Fatalf("the listening program's run failed: %v", err)
+	}
+	inbox, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("the program found no inbox: %v", err)
+	}
+	if !strings.Contains(string(inbox), `"id":"`+note.ID+`"`) || !strings.Contains(string(inbox), `"from":"conversation"`) ||
+		!strings.Contains(string(inbox), "the grader is in grade.sh") {
+		t.Fatalf("the inbox held %s", inbox)
+	}
+	had := false
+	for _, line := range rawTrajectory(t, storeDir, store.RootID()) {
+		var step run.Step
+		if json.Unmarshal([]byte(line), &step) == nil && step.Kind == "notes" && slices.Contains(step.Notes, note.ID) {
+			had = true
+		}
+	}
+	if !had {
+		t.Fatalf("the heard note was not marked had on the trajectory:\n%s", strings.Join(rawTrajectory(t, storeDir, store.RootID()), "\n"))
+	}
+	record, ok := delegate.ReadProgram(plandb.TaskDir(storeDir, store.RootID()))
+	if !ok || !record.Listening || record.InboxClosed != "it has handed in its work" {
+		t.Fatalf("program record = %+v %v", record, ok)
+	}
+}
+
+// A MESSAGE THE PROGRAM NEVER READ IS SAID NOT TO HAVE BEEN READ. A listening
+// program that closes its inbox without a receipt — the words arrived during
+// the call that handed its work in — leaves one note on the task naming them
+// and why, which no later worker of the task is handed as a message.
+func TestDelegateWorkerSaysWhichMessagesTheProgramNeverRead(t *testing.T) {
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	if _, err := store.AddPersonNote(store.RootID(), "also add a line saying bye"); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(t.TempDir(), "deaf.sh")
+	program := "#!/bin/sh\n" + strings.Join([]string{
+		`echo '{"type":"hello","protocol":2,"delegate":"fake","stages":["implement"],"accepts":["messages"]}'`,
+		`i=0; while [ $i -lt 100 ] && [ ! -s "$CODEAF_INBOX" ]; do sleep 0.1; i=$((i+1)); done`,
+		`echo '{"type":"inbox","open":false,"reason":"it has handed in its work"}'`,
+		passLine("handed in"),
+	}, "\n") + "\n"
+	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listening := delegate.Delegate{Name: "fake", Summary: "a fake program", Default: "run", Listens: true}
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), listening, run.DelegateSetup{Exe: script}, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+		t.Fatalf("the run failed: %v", err)
+	}
+	var report *plandb.Note
+	for _, note := range store.Notes(store.RootID(), 0) {
+		if note.Agent == "fake" {
+			report = &note
+		}
+	}
+	if report == nil || report.Body != "fake did not read this before it stopped reading (it has handed in its work): “also add a line saying bye”" {
+		t.Fatalf("the unread message was not reported: %+v", report)
+	}
+	marked := false
+	for _, line := range rawTrajectory(t, storeDir, store.RootID()) {
+		var step run.Step
+		if json.Unmarshal([]byte(line), &step) == nil && step.Kind == "notes" && slices.Contains(step.Notes, report.ID) {
+			marked = true
+		}
+	}
+	if !marked {
+		t.Fatal("the worker's own report would be handed to a later worker as a message")
+	}
+}
+
+// A LATER WORKER OF THE SAME TASK STARTS ON AN EMPTY INBOX, AND A PROGRAM IS
+// NEVER HANDED ITS OWN WORDS. The task's folder outlives a run, so the inbox a
+// first run was fed is still there when a second worker launches: its lines
+// are gone before the program reads its first, and a note codeaf left in the
+// program's own name is not forwarded beside the conversation's.
+func TestDelegateWorkerStartsEveryLaunchOnAnEmptyInbox(t *testing.T) {
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	taskDir := plandb.TaskDir(storeDir, store.RootID())
+	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := delegate.Message{ID: "n-stale", From: delegate.FromPerson, Text: "the last run's steer"}
+	if err := delegate.AppendInbox(filepath.Join(taskDir, delegate.InboxName), stale); err != nil {
+		t.Fatal(err)
+	}
+	own, err := store.AddNote(store.RootID(), "fake", "fake did not read this before it stopped reading (it ended): “old”")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := store.AddNote(store.RootID(), plandb.NoteAgentChat, "the grader is in grade.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "seen")
+	t.Setenv("FAKE_SEEN", seen)
+	script := filepath.Join(t.TempDir(), "second.sh")
+	program := "#!/bin/sh\n" + strings.Join([]string{
+		`echo '{"type":"hello","protocol":2,"delegate":"fake","stages":["implement"],"accepts":["messages"]}'`,
+		`i=0; while [ $i -lt 100 ] && ! grep -q grader "$CODEAF_INBOX" 2>/dev/null; do sleep 0.1; i=$((i+1)); done`,
+		`sleep 1.5`,
+		`cp "$CODEAF_INBOX" "$FAKE_SEEN"`,
+		`echo '{"type":"inbox","open":false,"reason":"it has handed in its work"}'`,
+		passLine("read its inbox"),
+	}, "\n") + "\n"
+	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listening := delegate.Delegate{Name: "fake", Summary: "a fake program", Default: "run", Listens: true}
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), listening, run.DelegateSetup{Exe: script}, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+		t.Fatalf("the second run failed: %v", err)
+	}
+	inbox, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("the program found no inbox: %v", err)
+	}
+	if strings.Contains(string(inbox), stale.ID) || strings.Contains(string(inbox), own.ID) {
+		t.Fatalf("the inbox handed over a stale line or the program's own words:\n%s", inbox)
+	}
+	if !strings.Contains(string(inbox), `"id":"`+fresh.ID+`"`) {
+		t.Fatalf("the fresh note did not arrive:\n%s", inbox)
+	}
+}
+
+// A FIFO makes publication observable without sleeping through a forwarding
+// tick: the child cannot finish until a complete message reaches it.
+func inboxDelegateScript(t *testing.T, body string) (delegate.Delegate, run.DelegateSetup) {
+	t.Helper()
+	script := filepath.Join(t.TempDir(), "inbox.sh")
+	text := "#!/bin/sh\n" + `rm "$CODEAF_INBOX"
+mkfifo "$CODEAF_INBOX"
+echo '{"type":"hello","protocol":2,"delegate":"fake","accepts":["messages"]}'
+` + body + "\n" + passLine("done") + "\n"
+	if err := os.WriteFile(script, []byte(text), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return delegate.Delegate{Name: "fake", Default: "run", Listens: true}, run.DelegateSetup{Exe: script, Grace: time.Millisecond}
+}
+
+func runInboxDelegate(t *testing.T, store *plandb.Store, body string) {
+	t.Helper()
+	program, setup := inboxDelegateScript(t, body)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), program, setup, 0, 0).Run(ctx, *store.Task(store.RootID())); err != nil {
+		t.Fatalf("message did not reach the child: %v", err)
+	}
+}
+
+func TestDelegateForwarderReachesNotesAfterTheFirstFifty(t *testing.T) {
+	store := runOpenStore(t)
+	ids := repeatedPersonNotes(t, store, 50, "old direction")
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())
+	if err := os.MkdirAll(taskDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	mark, err := json.Marshal(run.Step{Kind: "notes", Notes: ids})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(taskDir, "trajectory.jsonl"), append(mark, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	n, err := store.AddPersonNote(store.RootID(), "the next direction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "seen")
+	runInboxDelegate(t, store, "cat \"$CODEAF_INBOX\" > "+strconv.Quote(seen))
+	raw, err := os.ReadFile(seen)
+	if err != nil || !bytes.Contains(raw, []byte(n.ID)) {
+		t.Fatalf("note 51 never reached the child: %q, %v", raw, err)
+	}
+	found := false
+	for _, report := range store.Notes(store.RootID(), 200) {
+		if report.Agent == "fake" && strings.Contains(report.Body, "the next direction") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("note 51 never reached the unread report")
+	}
+}
+
+func TestDelegateOwnNotesDoNotConsumeTheMessageBatch(t *testing.T) {
+	store := runOpenStore(t)
+	for i := 0; i < 5; i++ {
+		if _, err := store.AddNote(store.RootID(), "fake", "own observation"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := store.AddPersonNote(store.RootID(), "fresh direction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "seen")
+	runInboxDelegate(t, store, "cat \"$CODEAF_INBOX\" > "+strconv.Quote(seen))
+	raw, err := os.ReadFile(seen)
+	if err != nil || !bytes.Contains(raw, []byte(n.ID)) || bytes.Contains(raw, []byte("own observation")) {
+		t.Fatalf("wrong inbox: %q, %v", raw, err)
+	}
+}
+
+// Damaged or future records can exceed the writer's message limit. One such
+// note must stay unread without holding every later valid message behind it.
+func TestDelegateInvalidMessageDoesNotBlockLaterNotes(t *testing.T) {
+	store := runOpenStore(t)
+	bad, err := store.AddPersonNote(store.RootID(), "damaged note")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE notes SET body = ? WHERE id = ?", strings.Repeat("x", 2<<20), bad.ID); err != nil {
+		t.Fatal(err)
+	}
+	good, err := store.AddPersonNote(store.RootID(), "later direction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "seen")
+	runInboxDelegate(t, store, "cat \"$CODEAF_INBOX\" > "+strconv.Quote(seen))
+	raw, err := os.ReadFile(seen)
+	if err != nil || !bytes.Contains(raw, []byte(good.ID)) || bytes.Contains(raw, []byte(bad.ID)) {
+		t.Fatalf("invalid message blocked or entered the inbox: %d bytes, %v", len(raw), err)
+	}
+	found := false
+	for _, n := range store.Notes(store.RootID(), 200) {
+		if n.Agent == "fake" && strings.Contains(n.Body, "xxx") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("rejected message was not named by the unread report")
+	}
+}
+
+// The child answers after the header is visible but before a pipe-sized
+// message finishes writing, so its only receipt crosses during AppendInbox.
+func TestDelegateKeepsAReceiptDuringInboxPublication(t *testing.T) {
+	store := runOpenStore(t)
+	note, err := store.AddPersonNote(store.RootID(), strings.Repeat("\x00", 32<<10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())
+	if err := os.MkdirAll(taskDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	actionsPath := filepath.Join(taskDir, delegate.ActionsFile)
+	if err := syscall.Mkfifo(actionsPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	actions, err := os.OpenFile(actionsPath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer actions.Close()
+	gate := filepath.Join(t.TempDir(), "drain")
+	if err := syscall.Mkfifo(gate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	exitGate := filepath.Join(t.TempDir(), "exit")
+	if err := syscall.Mkfifo(exitGate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	barrier := make(chan error, 1)
+	go func() {
+		reader := bufio.NewReader(actions)
+		for {
+			raw, err := reader.ReadBytes('\n')
+			if err != nil {
+				barrier <- err
+				return
+			}
+			var action delegate.Action
+			if json.Unmarshal(raw, &action) != nil {
+				continue
+			}
+			if action.Stage == "receipt-barrier" {
+				if err := os.WriteFile(gate, []byte("drain\n"), 0600); err != nil {
+					barrier <- err
+					return
+				}
+			}
+			if action.Kind == delegate.ActionEnd {
+				barrier <- os.WriteFile(exitGate, []byte("exit\n"), 0600)
+				return
+			}
+		}
+	}()
+	program, setup := inboxDelegateScript(t, `exec 3< "$CODEAF_INBOX"
+dd bs=256 count=1 <&3 >/dev/null 2>/dev/null
+echo '{"type":"heard","ids":["`+note.ID+`"]}'
+echo '{"type":"stage","stage":"receipt-barrier","status":"running"}'
+read line < `+strconv.Quote(gate)+`
+cat <&3 >/dev/null
+exec 3<&-`)
+	script, err := os.ReadFile(setup.Exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script = append(script, []byte("read line < "+strconv.Quote(exitGate)+"\n")...)
+	if err := os.WriteFile(setup.Exe, script, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), program, setup, 0, 0).Run(ctx, *store.Task(store.RootID())); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-barrier; err != nil {
+		t.Fatal(err)
+	}
+
+	had := false
+	for _, raw := range rawTrajectory(t, filepath.Dir(store.Path()), store.RootID()) {
+		var step run.Step
+		if json.Unmarshal([]byte(raw), &step) == nil && step.Kind == "notes" && slices.Contains(step.Notes, note.ID) {
+			had = true
+		}
+	}
+	if !had {
+		t.Fatal("the child's only receipt during publication was discarded")
+	}
+}
+
+func TestDelegateExitClosesListeningBeforeTheUnreadReport(t *testing.T) {
+	store := runOpenStore(t)
+	if _, err := store.AddPersonNote(store.RootID(), "last direction"); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(t.TempDir(), "exits.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho '{\"type\":\"hello\",\"protocol\":2,\"delegate\":\"fake\",\"accepts\":[\"messages\"]}'\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = run.NewDelegateWorker(store, t.TempDir(), delegate.Delegate{Name: "fake", Default: "run", Listens: true}, run.DelegateSetup{Exe: script}, 0, 0).Run(runContext(t), *store.Task(store.RootID()))
+	record, ok := delegate.ReadProgram(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID()))
+	if !ok || record.InboxClosed != "it has stopped working" || record.EndedAt.IsZero() {
+		t.Errorf("exited program still advertised an open inbox: %+v", record)
+	}
+	found := false
+	for _, n := range store.Notes(store.RootID(), 200) {
+		if n.Agent == "fake" && strings.Contains(n.Body, "(it has stopped working)") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("unread report and stopped record disagree")
+	}
+}
+
+func TestDelegateUnreadReportFitsLargeAndManyMessages(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		count   int
+		words   string
+		omitted string
+	}{
+		{"large", 2, strings.Repeat("x", 20<<10), ""},
+		{"one omitted", 26, strings.Repeat("😀", 5000), "… 1 more message was not read."},
+		{"many omitted", 32, strings.Repeat("😀", 5000), "more messages were not read."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := runOpenStore(t)
+			repeatedPersonNotes(t, store, tc.count, tc.words)
+			program, setup := fakeDelegate(t, passLine("done"))
+			script, err := os.ReadFile(setup.Exe)
+			if err != nil {
+				t.Fatal(err)
+			}
+			script = bytes.Replace(script, []byte(`"stages":["implement","verify"]`), []byte(`"stages":["implement","verify"],"accepts":["messages"]`), 1)
+			if err := os.WriteFile(setup.Exe, script, 0700); err != nil {
+				t.Fatal(err)
+			}
+			program.Listens = true
+			if _, err := run.NewDelegateWorker(store, t.TempDir(), program, setup, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range store.Notes(store.RootID(), 200) {
+				if n.Agent != "fake" {
+					continue
+				}
+				if len(n.Body) >= 32<<10 || !utf8.ValidString(n.Body) || !strings.Contains(n.Body, "fake did not read these before it stopped reading (") || !strings.Contains(n.Body, "…") {
+					t.Fatalf("invalid unread report (%d bytes): %.150s", len(n.Body), n.Body)
+				}
+				if tc.omitted != "" && !strings.HasSuffix(n.Body, tc.omitted) {
+					t.Errorf("report has the wrong omitted-message wording: want %q", tc.omitted)
+				}
+				return
+			}
+			t.Fatal("valid messages produced no saved unread report")
+		})
+	}
+}
+
+func TestDelegateLaunchRemovesThePreviousRecordBeforeHello(t *testing.T) {
+	store := runOpenStore(t)
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())
+	if err := delegate.WriteProgram(taskDir, delegate.ProgramRecord{Name: "fake", Listening: true, InboxClosed: "the PREVIOUS run handed in", StartedAt: time.Unix(1, 0), Stages: []string{"old"}}); err != nil {
+		t.Fatal(err)
+	}
+	// Wait for the terminal to reach the reader before the child exits, so
+	// startup-state proof does not depend on stdout-close scheduling.
+	exitPath := filepath.Join(t.TempDir(), "exit")
+	if err := syscall.Mkfifo(exitPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	actionsPath := filepath.Join(taskDir, delegate.ActionsFile)
+	if err := syscall.Mkfifo(actionsPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	actions, err := os.OpenFile(actionsPath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer actions.Close()
+	released := make(chan error, 1)
+	go func() {
+		reader := bufio.NewReader(actions)
+		for {
+			raw, err := reader.ReadBytes('\n')
+			if err != nil {
+				released <- err
+				return
+			}
+			var action delegate.Action
+			if json.Unmarshal(raw, &action) == nil && action.Kind == delegate.ActionEnd {
+				released <- os.WriteFile(exitPath, []byte("exit\n"), 0600)
+				return
+			}
+		}
+	}()
+	dir := t.TempDir()
+	readyPath, gatePath := filepath.Join(dir, "ready"), filepath.Join(dir, "gate")
+	for _, path := range []string{readyPath, gatePath} {
+		if err := syscall.Mkfifo(path, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ready, err := os.OpenFile(readyPath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ready.Close()
+	script := filepath.Join(dir, "child.sh")
+	text := "#!/bin/sh\nprintf x > " + strconv.Quote(readyPath) + "\nread line < " + strconv.Quote(gatePath) + "\necho '{\"type\":\"hello\",\"protocol\":2,\"delegate\":\"fake\"}'\n" + passLine("done") + "\nread line < " + strconv.Quote(exitPath) + "\n"
+	if err := os.WriteFile(script, []byte(text), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := run.NewDelegateWorker(store, dir, delegate.Delegate{Name: "fake", Default: "run", Listens: true}, run.DelegateSetup{Exe: script, Grace: time.Millisecond}, 2.5, 0).Run(ctx, *store.Task(store.RootID()))
+		done <- err
+	}()
+	started := make(chan error, 1)
+	go func() { var mark [1]byte; _, err := io.ReadFull(ready, mark[:]); started <- err }()
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case err := <-done:
+		t.Fatalf("child failed before starting: %v", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if _, err := os.Stat(filepath.Join(taskDir, delegate.ProgramFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a record exists before this launch's hello: %v", err)
+	}
+	if err := os.WriteFile(gatePath, []byte("continue\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-released; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Repeated notes share one accepted body and one transaction, so the boundary
+// fixture does not pay fifty disk syncs on the shared box.
+func repeatedPersonNotes(t *testing.T, store *plandb.Store, count int, words string) []string {
+	t.Helper()
+	sample, err := store.AddPersonNote(store.RootID(), words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := storePoke(t, store.Path())
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	ids := []string{sample.ID}
+	for i := 1; i < count; i++ {
+		id := fmt.Sprintf("n-repeated-%d", i)
+		if _, err := tx.Exec(`INSERT INTO notes (seq,id,task_id,agent,body,at,project,chat,"from") SELECT ?,?,task_id,agent,body,at,project,chat,"from" FROM notes WHERE id=?`, i, id, sample.ID); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	return ids
 }

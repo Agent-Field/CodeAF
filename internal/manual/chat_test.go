@@ -293,6 +293,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// crew or what a task costs.
 		{"how do I change the model the task worker uses?", "models-and-cost"},
 		{"is my code sent anywhere that logs it?", "models-and-cost"},
+		{"why does my openrouter activity say codeaf dev instead of agentfield ai", "models-and-cost"},
 		{"which model are you using and what does a task cost?", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
@@ -1064,6 +1065,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"senior-dev finished but its work is not in my folder", "senior-dev"},
 		{"how do I merge senior-dev's branch", "senior-dev"},
 		{"which models does senior-dev use", "senior-dev"},
+		{"can I tell senior-dev something while it works", "senior-dev"},
+		{"senior-dev is going the wrong way, how do I redirect it", "senior-dev"},
+		{"send senior-dev a message to stop chasing the flaky test", "senior-dev"},
 		{"make senior-dev use my crew models", "senior-dev"},
 		{"how long did the senior-dev run take", "senior-dev"},
 		{"can a senior-dev task wait for another task to finish first", "senior-dev"},

@@ -18,10 +18,16 @@ Those names come from the turn's skill list, not by taking apart the words in th
 line. The row is a record of what that turn carried with it. It is not a warning,
 a question or work waiting for you, so it has no attention mark, count or action.
 
-The message in the transcript is your words and nothing else. What a turn
-carries for the model — the skill bodies it reads with your sentence — rides the
-copy the model reads, and no surface prints it: the row above is the one thing
-you are shown.
+The message in the transcript is your words and nothing else. Rewinding to that
+message hands back only your words, too. What a turn carries for the model — the
+skill bodies it reads with your sentence — rides the copy the model reads; the
+row above tells you which skills it carried.
+
+A conversation compacted by an older build may already have the skills block
+saved as part of its message. `/export` and rewinding to a message from before the
+update may still carry that saved block; the conversation on screen does not show
+it. codeaf does not remove blocks by their wording, because a block you pasted
+yourself must keep every word.
 
 ## Did it use my skill?
 

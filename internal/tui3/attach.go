@@ -902,10 +902,10 @@ func userLine(text string, chips []chip, pal palette) string {
 // was attached — and a refusal that also lost the person's attachments would
 // make them go and find the files again.
 func (a *app) submitImages(text string) tea.Cmd {
-	return a.submitImagesShown(text, text)
+	return a.submitImagesShown(text, text, nil)
 }
 
-func (a *app) submitImagesShown(text, shown string) tea.Cmd {
+func (a *app) submitImagesShown(text, shown string, plain []segment) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
 	chips := append([]chip(nil), a.chips...)
 	a.chips, a.sent = nil, chips
@@ -926,7 +926,7 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	paths := chipPaths(pictures)
 	a.said(entry{
 		kind: entryUser, text: userLine(shown, chips, a.pal), turn: a.turn,
-		context: a.turnContext(), pictures: paths, picturesHere: true,
+		plainTags: plain, context: a.turnContext(), pictures: paths, picturesHere: true,
 	})
 	// AND EACH FILE IS STAT'D HERE, AT ITS ARRIVAL, because the row above is
 	// about to be drawn with a thumbnail in it and `body` may not ask the disk

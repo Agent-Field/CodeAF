@@ -7,15 +7,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
+// The tag grammar is internal/buildinfo's, read from there rather than spelled
+// again, because the provider decides which OpenRouter app a binary reports
+// as from the same patterns and cannot import this package to ask.
 var (
-	stableTagPattern  = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
-	rcTagPattern      = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$`)
-	devTagPattern     = regexp.MustCompile(`^dev-[0-9]{8}-[0-9a-f]{12}$`)
-	stagingTagPattern = regexp.MustCompile(`^staging-[0-9]{8}-[0-9a-f]{12}$`)
-	shaPattern        = regexp.MustCompile(`^[0-9a-fA-F]{12,40}$`)
-	datePattern       = regexp.MustCompile(`^[0-9]{8}$`)
+	stableTagPattern = buildinfo.StableTag
+	rcTagPattern     = buildinfo.CandidateTag
+	shaPattern       = regexp.MustCompile(`^[0-9a-fA-F]{12,40}$`)
+	datePattern      = regexp.MustCompile(`^[0-9]{8}$`)
 )
 
 // Version is the stable semantic part of a release tag.
@@ -153,18 +156,7 @@ func ParseRC(tag string) (RCTag, bool) {
 
 // Kind names the release channel encoded by a tag.
 func Kind(tag string) string {
-	switch {
-	case stableTagPattern.MatchString(tag):
-		return "stable"
-	case rcTagPattern.MatchString(tag):
-		return "rc"
-	case devTagPattern.MatchString(tag):
-		return "dev"
-	case stagingTagPattern.MatchString(tag):
-		return "staging"
-	default:
-		return "other"
-	}
+	return buildinfo.Channel(tag)
 }
 
 // FollowedChannel names the release channel a build takes its updates from.

@@ -144,7 +144,8 @@ folder with `--dir`.
 
 **It cannot ask you anything.** Nobody is at its keyboard. Write the brief so that
 everything it would stop and ask is already settled. The model is told the same thing when
-it proposes one.
+it proposes one. A program that listens, as senior-dev does until it hands in, can still be
+told something while it works; it never waits for a reply.
 
 **It has no step cap.** senior-dev has finite dollar and wall-clock ceilings even when
 the conversation sets none; `/budget conversation` can lower the dollar ceiling,
@@ -215,7 +216,8 @@ uncommitted in your folder. Untracked files it changed go on its branch; the res
 (senior-dev's page says how to bring the branch in).
 The task's page and the conversation say ``its work is on the branch <branch> in <folder>,
 N files; your checkout was not touched, and `git -C '<folder>' merge <branch>` brings it
-in``. Ask the chat to merge it, or run that yourself, when you are ready.
+in``. Ask the chat to merge it, or run that yourself, when you are ready; a branch published
+under its own name is pushed instead (see senior-dev's "A run codeaf sends back").
 
 If the program's own shell left its copy on another branch, codeaf commits nothing there
 and keeps what was loose as a patch in the run's record folder. Its own notes

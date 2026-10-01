@@ -36,8 +36,13 @@ type Invocation struct {
 	JSON bool
 	// Args is what the flags left: the brief's words.
 	Args []string
-	// Line is the arguments exactly as given after the name, so a host can hand
-	// its child the same line it was handed.
+	// Line is the arguments as given after the name, with the flags put ahead
+	// of the brief the way [Parse] reads them, so a host can hand its child a
+	// line that reads back to the same invocation. THE BRIEF IS ITS TAIL: a
+	// shell run swaps the person's --dir for its copy and puts the copy's note
+	// ahead of the brief by counting [Invocation.Args] back from the end, and a
+	// line kept in the person's own order put that note between a trailing
+	// --max-cost and its value.
 	Line []string
 	// ExplicitFlags records values the caller actually wrote, so a host can
 	// distinguish a model pin from a program's default after parsing.
@@ -86,7 +91,8 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	if body == nil {
 		return nil, fmt.Errorf("%s %s: %w", program.Name, command.Name, errNoBody)
 	}
-	if err := fs.Parse(interspersedFlags(fs, rest)); err != nil {
+	ordered := interspersedFlags(fs, rest)
+	if err := fs.Parse(ordered); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			commandHelp(program, command, fs, out)
 			return nil, ErrHelp
@@ -116,7 +122,7 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 		Ceilings:      ceilings,
 		JSON:          *asJSON,
 		Args:          fs.Args(),
-		Line:          append([]string(nil), line...),
+		Line:          append(append([]string(nil), line[:len(line)-len(rest)]...), ordered...),
 		ExplicitFlags: explicitFlags,
 		body:          body,
 	}, nil
@@ -254,11 +260,22 @@ func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
 	api, _ := ModelAPIFromEnv()
 	emitter := NewEmitter(stdout)
 	host := &childHost{inv: inv, emitter: emitter, api: api, ending: StatusFail}
+	// A PROGRAM THAT LISTENS, STARTED WITH AN INBOX, IS HANDED A HOST THAT IS
+	// ALSO A LISTENER (inbox.go). Either missing, the body gets the plain host,
+	// so a type assertion is the whole of how a program learns whether anybody
+	// can talk to it.
+	var body Host = host
+	if inv.Program.Listens {
+		if in := inboxFromEnv(); in != nil {
+			host.inbox = in
+			body = &listeningHost{childHost: host}
+		}
+	}
 	var err error
 	if !api.Ready() {
 		err = errors.New("this run has no model API: codeaf starts " + inv.Program.Name + " with one, and a shell run hosts its own")
 	} else {
-		err = inv.body(ctx, host, inv.Args)
+		err = inv.body(ctx, body, inv.Args)
 	}
 	if !emitter.Ended() {
 		switch {
@@ -337,13 +354,20 @@ type childHost struct {
 	emitter *Emitter
 	api     ModelAPI
 	ending  string
+	// inbox is where codeaf's messages arrive, nil for a program nobody
+	// talks to (inbox.go).
+	inbox *inbox
 }
 
 func (h *childHost) Workspace() string  { return h.inv.Workspace }
 func (h *childHost) Ceilings() Ceilings { return h.inv.Ceilings }
 func (h *childHost) Models() ModelAPI   { return h.api }
 func (h *childHost) Hello(stages []string) {
-	_ = h.emitter.Hello(h.inv.Program.Name, stages)
+	var accepts []string
+	if h.inbox != nil {
+		accepts = []string{AcceptMessages}
+	}
+	_ = h.emitter.HelloAccepting(h.inv.Program.Name, stages, accepts)
 }
 func (h *childHost) Stage(stage StageRecord) { _ = h.emitter.Stage(stage) }
 func (h *childHost) Step(step StepRecord)    { _ = h.emitter.Step(step) }
@@ -356,6 +380,24 @@ func (h *childHost) Terminal(end Ending) {
 	}
 	h.ending = end.Status
 	_ = h.emitter.Terminal(end)
+}
+
+// listeningHost is the Host of a child started with an inbox: the plain host,
+// and a [Listener] over its inbox.
+type listeningHost struct {
+	*childHost
+}
+
+func (h *listeningHost) Messages() []Message { return h.inbox.Messages() }
+func (h *listeningHost) Heard(ids []string) {
+	if len(ids) > 0 {
+		_ = h.emitter.Heard(ids)
+	}
+}
+func (h *listeningHost) CloseInbox(reason string) {
+	if h.inbox.close() {
+		_ = h.emitter.InboxClosed(reason)
+	}
 }
 
 // firstLineOf is an error's first line, because an ending's message is one

@@ -171,7 +171,8 @@ pays for.
 Two things codeaf does **not** ask, and the manual page says so:
 
 - **No questions.** senior-dev auto-rejects its own `question` tool and has no
-  stdin road. Write the brief so nobody needs to be asked.
+  stdin road. Write the brief so nobody needs to be asked. It can still be told
+  things while it works, through its inbox (PROTOCOL.md §5a), until it hands in.
 - **No step cap.** senior-dev has cost and hours only. The step count on the
   task page is whatever the reader can count off the stream.
 
