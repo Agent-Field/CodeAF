@@ -984,7 +984,9 @@ func (s *Service) installCapacityFallback(
 			written = true
 			continue
 		}
-		if ok && compactionRole(part) == "authoritative_task" {
+		// Durable direction stands beside the task even when generated state
+		// cannot fit; steering is already bounded by steeringPinMost.
+		if ok && (compactionRole(part) == "authoritative_task" || compactionRole(part) == "steering") {
 			continue
 		}
 		switch raw.(type) {
