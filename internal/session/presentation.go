@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -15,8 +16,9 @@ import (
 // [Agent.attachTurnSkillsLocked] spliced onto the copy of THIS message the
 // model reads, so shapeEntries can take them off the display by record rather
 // than by pattern — a block the person typed themselves has no mark and keeps
-// every word. It is memory only: the journal keeps the typed words, so a
-// restored message has no block and nothing to strip.
+// every word. It is memory only: new journal writes keep the typed words, so
+// those restored messages need no mark. An older compacted journal can still
+// carry the saved block without a mark.
 type messagePresentation struct {
 	Audience    string  `json:"audience"`
 	Text        *string `json:"text,omitempty"`
@@ -56,6 +58,22 @@ func (p *presentationIndex) of(message ai.Message) *messagePresentation {
 		return nil
 	}
 	return &mark
+}
+
+// personWords keeps the person's words separate from the model's skills context.
+// THE MODEL'S SKILLS CONTEXT IS NOT CONVERSATION. It rides the copy in a.messages
+// the provider reads, and quoting it as the person's message would put words in
+// their mouth. The strip is by PROVENANCE, never by pattern: only a message
+// attachTurnSkillsLocked marked, and only the exact suffix it appended, comes
+// off. A skills block the person typed or pasted themselves keeps every word.
+// New journal writes keep these words too; an older compacted journal has no
+// injection mark, so its saved bytes remain untouched. A nil index has no marks.
+func (p *presentationIndex) personWords(message ai.Message) string {
+	text := messageContentText(message)
+	if mark := p.of(message); mark != nil && mark.SkillsBlock != "" {
+		return strings.TrimSuffix(text, mark.SkillsBlock)
+	}
+	return text
 }
 
 func humanPresentation(text string) *messagePresentation {

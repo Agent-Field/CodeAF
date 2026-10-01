@@ -1,21 +1,17 @@
 ---
 kind: fixed
-title: the skills block no longer prints as part of a person's message
+title: skills context stays out of messages, rewind, reopened chats and titles
 pr: 1713
 surface: [chat]
 invalidates:
-  - "#1504 was believed to have fixed `Skills suited to this message:` printing at the top of a conversation and after messages. It proved the journal and store keep only the typed words — which they do — but the engine's in-memory transcript still carried the block, and every display door (Transcript, AttachReplay, and the replay that redraws an opened conversation) drew it straight from there. The display layer now strips the block by injection provenance, so the record a surface draws is the person's words only."
+  - "#1627 was believed to have fixed #1504 (the `Skills suited to this message:` list inside your message). It kept the journal and store to your words, but the live copy still carried the block into reopened conversations, `/export`, rewind drafts, compaction and title input. Now those keep only your words for new messages; the model's copy still carries the block."
 ---
-`Skills suited to this message:` is per-turn skill selection, context for the model.
-`attachTurnSkillsLocked` splices it onto the copy the provider reads in
-`a.messages`, and that array is also what `shapeEntries` walks to build every
-`DisplayEntry`, so replaying or reopening a conversation drew the block as
-though the person had typed it. The strip lives in `shapeEntries` — the one place
-a message becomes a displayed row — and it reads PROVENANCE, never the text:
-`attachTurnSkillsLocked` marks the one message it spliced with the exact bytes
-it appended (a memory-only `messagePresentation` mark; the journal keeps only
-the typed words, so a restored message carries no mark), and the display takes
-off exactly those bytes from exactly that message. The model-bound copy is
-untouched, and a person who pastes a whole skills block into a message of their
-own keeps every word — suffix matching could not tell the two apart, and this
-can.
+`Skills suited to this message:` is context for the model. One shared helper
+reads the message's injection mark so display, rewind, compaction, the turn's
+explanation and title input keep only the person's words. The model's copy keeps
+the block, and a block the person pasted keeps every word.
+
+A conversation compacted by an earlier build may already have the block saved in
+its journal. `/export` and rewinding to a message from before the update can still
+carry that saved block; the conversation on screen does not show it. Nothing
+removes it by matching its wording: a pasted block must keep every word.

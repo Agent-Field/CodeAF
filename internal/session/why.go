@@ -40,7 +40,7 @@ func (a *Agent) Why() string {
 		return "Nothing to explain yet: this session has not been asked for anything."
 	}
 
-	asked := clip(strings.TrimSpace(messageContentText(a.messages[start])), whyLimit)
+	asked := clip(strings.TrimSpace(a.presentation.personWords(a.messages[start])), whyLimit)
 	turn := a.messages[start+1:]
 
 	results := toolResults(turn)

@@ -3,7 +3,9 @@ package session
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/plan"
@@ -13,8 +15,8 @@ import (
 // are model context ([attachTurnSkillsLocked]); the copy in a.messages keeps
 // them because it is also the history the provider reads, so every display door
 // — Transcript and AttachReplay, both through shapeEntries — takes the block
-// off the row it draws. The journal and store already held the person's words
-// alone (#1504 pinned that half); this is the display half it never touched.
+// off the row it draws. Ordinary journal lines already held the person's words
+// alone (#1410); #1627 pinned the store's copy too.
 func TestTheTranscriptShowsTheWordsWhenTheBlockRidesTheModelCopy(t *testing.T) {
 	brain := openTestBrain(t)
 	activeSkill(t, brain, "tool:lint", "checks the lint rules for this repo", "/shelf/lint")
@@ -64,8 +66,8 @@ func TestTheTranscriptShowsTheWordsWhenTheBlockRidesTheModelCopy(t *testing.T) {
 // [attachTurnSkillsLocked] marked — and only the exact bytes it appended —
 // come off a displayed row. A block the person typed or pasted themselves has
 // no mark and keeps every word, however well-formed it is: suffix matching
-// cannot tell the two apart, and a restored message never had an injection at
-// all (the journal keeps the typed words; the mark is memory-only).
+// cannot tell the two apart. New journal writes keep the typed words, and
+// restoring a saved message does not manufacture a memory-only injection mark.
 func TestTheStripReadsProvenanceNeverTheText(t *testing.T) {
 	rendered := turnSkillsLead + plan.RenderSkillsBlock([]plan.SkillEntry{
 		{Name: "lint", Doc: "checks the lint rules for this repo", ShelfPath: "/shelf/lint"},
@@ -160,6 +162,8 @@ func TestAttachReplayMidTurnKeepsTheStrip(t *testing.T) {
 	// a.running and a.hub are both live — the state AttachReplay splits on.
 	midTurn := make(chan struct{})
 	carryOn := make(chan struct{})
+	var release sync.Once
+	resume := func() { release.Do(func() { close(carryOn) }) }
 	completer := &scriptedCompleter{steps: []step{
 		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
 			close(midTurn)
@@ -170,13 +174,20 @@ func TestAttachReplayMidTurnKeepsTheStrip(t *testing.T) {
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Memory = brain
 	})
+	// Release before the agent's cleanup so a failed assertion cannot leave
+	// its provider waiting while Close tries to settle the turn.
+	t.Cleanup(resume)
 
 	words := "how should I lint this repo?"
 	events, err := agent.Submit(context.Background(), words)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	<-midTurn
+	select {
+	case <-midTurn:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the turn never reached the provider")
+	}
 
 	entries, stream, stop := agent.AttachReplay()
 	if stream == nil {
@@ -199,7 +210,7 @@ func TestAttachReplayMidTurnKeepsTheStrip(t *testing.T) {
 		t.Fatalf("the in-flight replay never showed the person's words whole: %#v", entries)
 	}
 
-	close(carryOn)
+	resume()
 	collect(t, events)
 	collect(t, stream)
 }
