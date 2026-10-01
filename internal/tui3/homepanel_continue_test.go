@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 )
 
 // fakeTaker is a [Taker] that records what it was asked and answers as told.
@@ -344,5 +345,38 @@ func TestTakenSaidJoinsWhatTheTakeoverDid(t *testing.T) {
 	}
 	if got := takenSaid(Taken{}); got != "" {
 		t.Errorf("a takeover that did nothing said %q", got)
+	}
+}
+
+// TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat is the seam the
+// card depends on: it is raised when the takeover ends, not when home happens to
+// list the chat by then.
+func TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		listed bool
+	}{{"listed", true}, {"not listed", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			lab := newHomeLab(t)
+			workspace := lab.workspace("project")
+			mine := lab.session("project", "0000000000000001", "Mine", workspace, time.Now())
+			a := lab.app(mine)
+			a.width, a.height = 200, 70
+			drain(t, a, a.openHome())
+			a.machines = continueRows
+			ft := &fakeTaker{taken: Taken{Resume: machine.Resume{From: "desk", Now: workspace, Uncommitted: []string{"README.md"}}}}
+			ft.on = func(cell string) {
+				id := cell
+				if !tc.listed {
+					id = "0000000000000009" // home lists this one; the take names another
+				}
+				ft.taken.Transcript = lab.session("project", id, "Port the picker", workspace, time.Now())
+			}
+			a.taker = ft
+			drain(t, a, a.askMachines())
+			standOn(t, a, "c-off")
+			confirm(t, a)
+			askedCard(t, a)
+		})
 	}
 }
