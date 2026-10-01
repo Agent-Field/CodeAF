@@ -18,6 +18,9 @@ pub struct Survey {
 /// Walks from `head` breadth-first, stopping once `missing_limit` objects are
 /// known to be absent.
 pub fn survey(store: &ObjectStore, head: ObjectId, missing_limit: usize) -> anyhow::Result<Survey> {
+    // One maintenance section for the whole walk: every object read inside it
+    // reuses the lock and the open pack instead of taking them again.
+    let _section = store.acquire_maintenance_shared()?;
     let mut found = Survey::default();
     let mut seen = HashSet::from([head]);
     let mut queue = VecDeque::from([(ObjectKind::Snapshot, head)]);
