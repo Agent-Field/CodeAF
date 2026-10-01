@@ -1784,6 +1784,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// first would send a seal that ends before them.
 	procexec.Settle(context.Background(), a.config.seat())
 	a.tellTurnEnded()
+	a.noticeSealed()
 	return turn
 }
 
