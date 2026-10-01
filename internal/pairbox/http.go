@@ -9,8 +9,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // HTTP is a Box over the wire, and cannot tell a self-hosted relay from a
@@ -23,7 +24,7 @@ type HTTP struct {
 // NewHTTP reaches the relay at base. The client's timeout must outlast MaxWait,
 // or a long poll is cut off by the caller instead of ended by the relay.
 func NewHTTP(base string, hc *http.Client) *HTTP {
-	return &HTTP{base: strings.TrimRight(base, "/"), hc: hc}
+	return &HTTP{base: base, hc: hc}
 }
 
 var _ Box = (*HTTP)(nil)
@@ -83,7 +84,7 @@ var errNoContent = errors.New("pairbox: no content")
 // do sends one request and turns the answer into a decoded body or one of the
 // package's errors. want is the status that means success.
 func (h *HTTP) do(ctx context.Context, method, tail string, header http.Header, body []byte, want int, into any) error {
-	req, err := http.NewRequestWithContext(ctx, method, h.base+Path+tail, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, wireauth.Endpoint(h.base, Path+tail), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@
 // (needs no body), count a put as in flight, read the body under its cap, verify the request
 // signature over it, and only then spend the caller's rate budget and serve.
 import { DurableObject } from 'cloudflare:workers';
+import { signedUri } from './base.js';
 import { readBody } from './body.js';
 import { dropTables, erasePage } from './erasure.js';
 import { Flight } from './flight.js';
@@ -70,7 +71,7 @@ export class IdentityDO extends DurableObject {
     const leave = route.frames ? this.#enterPut() : () => {};
     try {
       const body = await readBody(request, route.limit, route.over);
-      const who = await checkRequest(caller, { method: request.method, uri: url.pathname + url.search }, body, Date.now());
+      const who = await checkRequest(caller, { method: request.method, uri: signedUri(this.env, url) }, body, Date.now());
       await this.#refuseGone();
       await this.#admitted.get(ipOf(request, this.env));
       const tenant = this.#tenantOf(who.identity);

@@ -7,6 +7,7 @@ import { Directory } from '../src/directory.js';
 import { STAGE1 } from '../src/rules.js';
 import { memorySql } from './sql.js';
 import { openBucket } from './helpers.js';
+import { Tenant } from '../src/tenant.js';
 
 const NOW = 5_000;
 const move = (cur, device, op, grace_ms) => rotateBy(cur, device, { op, grace_ms }, NOW, DEFAULTS);
@@ -85,4 +86,14 @@ test('dropTables removes every relay table and is safe to run twice', () => {
   dropTables(sql);
   assert.deepEqual(sql.exec("SELECT name FROM sqlite_master WHERE type = 'table'").toArray(), []);
   dropTables(sql);
+});
+
+test('a retire answers a deadline of exactly the answer\'s own time plus the grace, even on a clock that moves between reads', async () => {
+  // A wall clock that has moved on by the next read is what a real object sees between two calls.
+  let t = NOW;
+  const clock = () => t++;
+  const tenant = new Tenant({ identity: 'id_t', sql: memorySql(), bucket: env.bucket, clock, policy: STAGE1, limits: DEFAULTS, flight: { count: 0 }, arm: () => {}, watchers: undefined });
+  tenant.rotate('a', { op: 'freeze' });
+  const view = tenant.rotate('a', { op: 'retire', grace_ms: DEFAULTS.minGraceMs });
+  assert.equal(view.rotation.retire_at, view.now + DEFAULTS.minGraceMs);
 });

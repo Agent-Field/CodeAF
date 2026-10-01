@@ -8,12 +8,15 @@ export const TIGHT = process.env.RELAY_TIGHT ?? 'http://127.0.0.1:18792';
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+/** target is the path a client signs: the base URL's own path (a deployment's prefix) and the route. */
+export const target = (base, path) => new URL(base).pathname.replace(/\/+$/, '') + path;
+
 const bytesOf = (body) => (body === undefined ? new Uint8Array(0) : body instanceof Uint8Array ? body : enc.encode(JSON.stringify(body)));
 
 /** call sends one request signed by dev and answers {status, headers, buf, json}. */
 export async function call(dev, method, path, body, { shiftMs = 0, base = BASE } = {}) {
   const bytes = bytesOf(body);
-  const res = await fetch(base + path, { method, headers: await signed(dev, method, path, bytes, shiftMs), body: method === 'GET' ? undefined : bytes });
+  const res = await fetch(base + path, { method, headers: await signed(dev, method, target(base, path), bytes, shiftMs), body: method === 'GET' ? undefined : bytes });
   const buf = new Uint8Array(await res.arrayBuffer());
   const text = dec.decode(buf);
   return { status: res.status, headers: res.headers, buf, json: text.startsWith('{') || text.startsWith('[') ? JSON.parse(text) : null };
