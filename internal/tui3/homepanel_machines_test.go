@@ -108,8 +108,8 @@ func TestUnreachableKeepsLastListing(t *testing.T) {
 	}
 }
 
-// The rows at 80 and 40 columns are pinned as drawn: at 40 a status sentence
-// that does not fit gives way whole and the name stays whole.
+// The rows at 80 and 40 columns are pinned as drawn: at 40 the name is cut
+// with an ellipsis before the status sentence is dropped.
 func TestHomeMachineRowsGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
@@ -119,9 +119,9 @@ func TestHomeMachineRowsGolden(t *testing.T) {
 			"   Notes on the migration                                                     1d",
 		},
 		40: {
-			"  Nightly index rebuild               2m",
+			"  Nightly index...  running on studio 2m",
 			"  Port the picker  studio off         3h",
-			"  Fix the flaky test                  5h",
+			"  Fix the flaky ...  2 turns · laptop 5h",
 			"  Notes on the migration              1d",
 		},
 	}
