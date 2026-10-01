@@ -79,7 +79,7 @@ type Vault struct {
 // Open prepares the vault under home, creating the home and the identity on
 // first use. The vault seals under the identity's cell key: one root secret.
 func Open(home string) (*Vault, error) {
-	id, err := identity.Ensure(home)
+	id, err := identity.EnsureSolo(home)
 	if err != nil {
 		return nil, err
 	}

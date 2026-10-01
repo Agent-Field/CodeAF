@@ -36,7 +36,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellindex"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -798,24 +797,12 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	watch := &cellstore.SealWatch{Say: say}
 	failed(watch, err)
 	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	if drive != nil {
+		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
+	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive))
 	failed(watch, err)
-	if drive != nil {
-		watch.OnTurnEnd = uploadAtTurnEnd(seat, drive)
-	}
 	return executor.Gated(seat, driveGate(drive)), machine, watch
-}
-
-// uploadAtTurnEnd is what runs when the agent stops to wait for the person: the
-// tree is sealed as the turn left it, so the reply and the last tool output are
-// in a seal, and then what is sealed goes up. It never waits for the seal.
-func uploadAtTurnEnd(seat executor.Seat, drive *liveDrive) func() {
-	return func() {
-		guard.Go("chatv3/turn-end-seal", func() {
-			executor.Settle(context.Background(), seat)
-			drive.Idle()
-		})
-	}
 }
 
 // observerOf is the machine's observer, and no observer where the inventory

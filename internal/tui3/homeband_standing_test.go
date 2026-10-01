@@ -12,7 +12,7 @@ import (
 // cursor (an empty home, or a chat that lives on another device).
 func TestDevicesRowAndRescueStandOnAnEmptyHome(t *testing.T) {
 	a, _ := devicesRig("dev_spark")
-	a.considerResume(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "dumb", chatlist.Off, time.Hour)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "dumb", chatlist.Off, time.Hour)}})
 	a.openHome()
 	got := strings.Join(strings.Fields(homeText(a)), " ")
 	for _, want := range []string{"● This Mac ● spark ○ dumb (offline)", "Continue where you left off on dumb?"} {
