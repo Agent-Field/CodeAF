@@ -1,6 +1,15 @@
 package cellstore
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
+
+// TailQuiet is how long the record must be still, after a turn ended, before
+// the writes that came after the turn-end seal are sealed. Titles, summaries and
+// memories are written seconds after the answer, in bursts; one seal after the
+// burst covers all of it and costs one upload.
+const TailQuiet = 2 * time.Second
 
 // SealWatch remembers whether the last seal held, so a seat that stops sealing
 // is a state a person can see for as long as it lasts and not one sentence
@@ -22,10 +31,20 @@ type SealWatch struct {
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
 	// sets it to the sync side's idle call.
 	OnTurnEnd func()
-	mu        sync.Mutex
-	cause     string
-	said      []string
-	failing   bool
+	// OnTail, when set, is called once the record has been quiet for Quiet after
+	// writes that came behind the turn-end seal. The door seals the tree and asks
+	// the sync side to upload, exactly as it does at the end of a turn, so there
+	// is one way to make a record durable and this is only another moment to use
+	// it.
+	OnTail func()
+	// Quiet is TailQuiet unless a test sets it shorter.
+	Quiet   time.Duration
+	mu      sync.Mutex
+	idle    bool
+	tail    *time.Timer
+	cause   string
+	said    []string
+	failing bool
 }
 
 // Report takes the outcome of one seal: nil when it held, the error when it did
@@ -65,9 +84,61 @@ func (w *SealWatch) say(sentence string) {
 	w.said = append(w.said, sentence)
 }
 
+// TurnStarted is the session's word that a turn began: the turn writes the
+// record itself and every call seals it, so no tail seal is owed.
+func (w *SealWatch) TurnStarted() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.idle = false
+	w.stopTail()
+}
+
+// Wrote is the session's word that something the chat owns was written: a line
+// of its transcript or a row of its memories. Written while the agent waits for
+// the person, it is behind the last seal and no turn is coming to seal it, so a
+// trailing seal is owed once the writes stop. Each write moves it back, so a
+// burst of them is one seal.
+func (w *SealWatch) Wrote() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.idle || w.OnTail == nil {
+		return
+	}
+	w.stopTail()
+	w.tail = time.AfterFunc(w.quiet(), w.sealTail)
+}
+
+func (w *SealWatch) quiet() time.Duration {
+	if w.Quiet > 0 {
+		return w.Quiet
+	}
+	return TailQuiet
+}
+
+func (w *SealWatch) stopTail() {
+	if w.tail != nil {
+		w.tail.Stop()
+		w.tail = nil
+	}
+}
+
+func (w *SealWatch) sealTail() {
+	w.mu.Lock()
+	owed := w.idle && w.tail != nil
+	w.tail = nil
+	w.mu.Unlock()
+	if owed {
+		w.OnTail()
+	}
+}
+
 // TurnEnded is the session's word that the agent finished a turn. It only
 // forwards, so a watch without a listener costs nothing.
 func (w *SealWatch) TurnEnded() {
+	w.mu.Lock()
+	w.idle = true
+	w.stopTail()
+	w.mu.Unlock()
 	if w.OnTurnEnd != nil {
 		w.OnTurnEnd()
 	}
