@@ -719,8 +719,12 @@ func TestTheExampleDemonstrationDoesNotAnimateInTheLinearTier(t *testing.T) {
 	}
 }
 
-// MODEL NAMES ARE READ AS NAMES AND THE ID IS STILL AVAILABLE. The form is a
-// place to decide between two models, not to type an address into.
+// MODEL NAMES ARE READ AS NAMES WHERE THE FORM SPEAKS, AND THE LIST KEEPS THE
+// ID. The field row and the typed search carry the friendly name — the form is
+// a place to decide between two models, not to type an address into — while
+// each row of the open list is the exact id, one row per model
+// ([TestTheModelListIsAFlatListOfExactIds]), because that is what /model and a
+// settings file take.
 func TestModelNamesReadAsNamesAndKeepTheirLevel(t *testing.T) {
 	for _, c := range []struct{ id, want string }{
 		{"deepseek/deepseek-v4-flash", "DeepSeek V4 Flash"},
@@ -736,15 +740,21 @@ func TestModelNamesReadAsNamesAndKeepTheirLevel(t *testing.T) {
 	a, _ := controlsApp(t, nil)
 	a.models = func() []Model { return []Model{{ID: "deepseek/deepseek-v4-flash"}} }
 	walkToControl(t, a, controlChatModel)
-	// The model in use heads the list when the catalog does not carry it, so the
-	// cursor walks one row to reach the catalog's own.
+	// The field row reads as a name before the list opens...
+	if screen := setupScreen(a); !strings.Contains(screen, controlModelLabel+" "+modelWord(a.model)) {
+		t.Fatalf("the chat model field must read as a name; got:\n%s", screen)
+	}
+	// ...and the open list carries the exact id on every row, the one in use
+	// heading it when the catalog does not carry it.
 	pressSetup(a, key("enter"), key("down"))
 	screen := setupScreen(a)
-	if !strings.Contains(screen, "DeepSeek V4 Flash") {
-		t.Fatalf("the list must read as names; got:\n%s", screen)
+	for _, id := range []string{a.model, "deepseek/deepseek-v4-flash"} {
+		if !strings.Contains(screen, id) {
+			t.Fatalf("the list must carry the exact id %q; got:\n%s", id, screen)
+		}
 	}
-	if !strings.Contains(screen, "deepseek/deepseek-v4-flash") {
-		t.Fatalf("the row under the cursor must still show its exact id; got:\n%s", screen)
+	if strings.Contains(screen, "DeepSeek V4 Flash") {
+		t.Fatalf("the list drew a friendly name over the id; got:\n%s", screen)
 	}
 }
 
