@@ -1475,19 +1475,28 @@ the keys row, over the project, with the bulb and the cross, and it appears only
 what makes each one appear and disappear, and the **disable hints** row on the Workspace
 tab that turns them off, are on the *hints and tips* page.
 
-## Typing @ on home — does the @ file list work on home, complete a path into home's box
+## Typing @ on home — does the @ list work on home, mention a team, a chat or a file from home's box
 
-Yes, since 2026-09-22. Type `@` and a letter or two into home's box and the same list a
-conversation's box opens appears in home's column: files and folders under the folder the
-next conversation opens in (the one at the right of the keys row), ranked as you type,
-`folder` and `img` tags on the right. `↑`/`↓` pick, `enter` puts the path into your sentence
-after the `@`, and choosing a picture takes the half-typed token out and puts the picture on
-home's tray instead, saying `attached · shot.png · rides with the next conversation`. `esc`
-closes the list and leaves the word alone — and it is the innermost layer of the three esc
-walks through on home, so the first `esc` takes the list and a later one leaves home. Tasks
-are not on this list — a task pointer is minted when a conversation sends, and home has none
-yet. While the walk is still running the column reads `looking…`; with no match it reads
-`no file matches`.
+Yes. Type `@` into home's box and the same list a conversation's box opens appears in
+home's column, with the same sections and the same prefixes. Its first row is the words
+**team**, **chat** and **file**; under them come **teams**, then **conversations**, then
+files and folders under the folder the next conversation opens in (the one at the right
+of the keys row), ranked as you type, `folder` and `img` tags on the right. `@team:`
+keeps only teams, `@chat:` only conversations, `@file:` only files, exactly as in a
+conversation. The conversations are every tab open in this window — including the one
+behind home, since the sentence opens a new conversation — then the twenty most recent
+in this project, read again each time the list opens.
+
+`↑`/`↓` pick and `enter` puts the row in: a team as `●harbor` in the team's colour, a
+conversation as `@handle` or a short slug of its title, a path after the `@`. Choosing a
+picture takes the half-typed token out and puts the picture on home's tray instead, saying
+`attached · shot.png · rides with the next conversation`. `esc` closes the list and leaves
+the word alone — and it is the innermost layer of the three esc walks through on home, so
+the first `esc` takes the list and a later one leaves home. Tasks are not on this list — a
+task pointer is minted when a conversation sends, and home has none yet. While the walk is
+still running the column reads `looking…`; with no match it reads `no matches`, or under a
+prefix `no team matches`, `no conversation matches` or `no file matches`. On home the three
+words on the first row are not buttons: type the prefix.
 
 ## How do I get back to the dashboard or the home screen from any page — press space twice
 

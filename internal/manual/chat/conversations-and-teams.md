@@ -334,6 +334,10 @@ deploy` — against the title, the handle and the slug, never the transcript.
 The bare `@` keeps eight teams and eight conversations beside the tasks and files;
 `@chat:` keeps every conversation on the list (thirty-two at most) and scrolls.
 
+**Home's box has the same list**, the same sections and the same three prefixes, with one
+difference: it leaves no conversation off, because a sentence sent from home opens a new
+one. The three words on its first row are not buttons there; type the prefix.
+
 Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
 inserts `@handle`, or a short slug of its title when it has none, and the row's
 hint is the full title. After you send, both stay links. A press on the team opens

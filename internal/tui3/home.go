@@ -1516,7 +1516,7 @@ func (h *homeView) build() {
 	if h.comp.open {
 		// The `@` list keeps the completion's own cursor, which rank() moves
 		// with the query (homeat.go).
-		h.cursor = h.clamp(h.comp.cursor)
+		h.cursor = h.clamp(h.completionCursor())
 		h.picked = len(h.lines) > 0
 		return
 	}
@@ -3197,8 +3197,9 @@ func (a *app) homeEnter() tea.Cmd {
 		// (homeslash.go's [app.homeRunCommand]).
 		return a.homeRunCommand(line)
 	case homeCompletion:
-		// ENTER PUTS THE PATH IN, or a picture on the tray (homeat.go).
-		return a.homeCompleteFile(line)
+		// ENTER PUTS THE TEAM, THE CONVERSATION OR THE PATH IN, or a picture on
+		// the tray (homeat.go).
+		return a.homeComplete(line)
 	case homeAskHere:
 		// The same sentence, asked rather than opened (homeexchange.go).
 		return a.askHere(strings.TrimSpace(h.box.String()))
@@ -4638,7 +4639,7 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 		case h.comp.open && !h.comp.loaded:
 			word = homeLookingWord
 		case h.comp.open:
-			word = homeNoFileWord
+			word = h.comp.emptyWord()
 		case h.searching():
 			word = homeNoMatchWord
 		case !h.known:
@@ -4772,8 +4773,9 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	case homePlace:
 		// A PLACE, OFFERED BECAUSE THE WORDS MATCH ITS NAME (homeplaces.go).
 		return a.homePlaceRow(line, at, width, pal)
-	case homeCompletion:
-		// A PATH, OFFERED BECAUSE THE WORDS AFTER `@` MATCH IT (homeat.go).
+	case homeCompletion, homeCompletionRule:
+		// A TEAM, A CONVERSATION OR A PATH, OFFERED BECAUSE THE WORDS AFTER `@`
+		// MATCH IT, and the rules of that list (homeat.go).
 		return a.homeCompletionRow(line, at, width, pal)
 	case homeCommand:
 		// A COMMAND, OFFERED BECAUSE THE WORDS MATCH ITS NAME OR AN ALIAS

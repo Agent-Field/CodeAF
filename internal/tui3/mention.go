@@ -262,7 +262,14 @@ func (a *app) mentionTeams() []mentionTeam {
 // are not already open. The conversation in front is left off: pointing at the
 // chat you are typing in is not a reference.
 func (a *app) mentionChats() []mentionChat {
-	front := a.frontTabKey()
+	return a.mentionChatsExcept(a.frontTabKey())
+}
+
+// mentionChatsExcept is that catalog with one conversation left off, or none
+// for "". Home's box leaves none off: its sentence opens a NEW conversation,
+// and the one behind the screen is as much a reference as any other
+// (homeat.go's [app.fillHomeMentions]).
+func (a *app) mentionChatsExcept(front string) []mentionChat {
 	var out []mentionChat
 	seen := map[string]bool{}
 	for _, tab := range a.tabList() {
@@ -379,6 +386,12 @@ func (a *app) mentionRecentsLoaded(rows []Session) {
 		a.fillMentions()
 		a.comp.rank()
 	}
+	// AND HOME'S LIST IS THE OTHER READER OF THE SAME SNAPSHOT (homeat.go).
+	if a.home.comp.open {
+		a.fillHomeMentions()
+		a.home.comp.rank()
+		a.home.build()
+	}
 	a.touch()
 }
 
@@ -388,37 +401,47 @@ func (a *app) mentionRecentsLoaded(rows []Session) {
 // comes out: the bullet is the mark, and a second mark in front of it would
 // be two names for one thing.
 func (a *app) completeTeam(team mentionTeam) {
+	completeTeamIn(&a.input, &a.comp, team)
+	a.touch()
+}
+
+// completeTeamIn is that edit on ANY box its list is bound to — the
+// conversation's, or home's (homeat.go) — so the two cannot grow two spellings
+// of what choosing a team types.
+func completeTeamIn(e *editor, c *completion, team mentionTeam) {
 	slug := team.slug
 	if slug == "" {
 		slug = mentionSlug(team.name)
 	}
 	token := "●" + slug
-	e := &a.input
-	head := append([]rune(nil), e.value[:a.comp.at]...)
+	head := append([]rune(nil), e.value[:c.at]...)
 	tail := append([]rune(nil), e.value[e.cursor:]...)
 	e.value = append(append(head, []rune(token)...), tail...)
-	e.cursor = a.comp.at + len([]rune(token))
-	a.comp.done = ""
-	a.comp.close()
-	a.touch()
+	e.cursor = c.at + len([]rune(token))
+	c.done = ""
+	c.close()
 }
 
 // completeChat types "@" and the handle, or the title's slug when the
 // conversation has no handle.
 func (a *app) completeChat(chat mentionChat) {
+	completeChatIn(&a.input, &a.comp, chat)
+	a.touch()
+}
+
+// completeChatIn is that edit on any box, for [completeTeamIn]'s reason.
+func completeChatIn(e *editor, c *completion, chat mentionChat) {
 	token := mentionToken(chat)
 	if token == "" {
-		a.comp.close()
+		c.close()
 		return
 	}
-	e := &a.input
-	head := append([]rune(nil), e.value[:a.comp.at+1]...)
+	head := append([]rune(nil), e.value[:c.at+1]...)
 	tail := append([]rune(nil), e.value[e.cursor:]...)
 	e.value = append(append(head, []rune(token)...), tail...)
-	e.cursor = a.comp.at + 1 + len([]rune(token))
-	a.comp.done = token
-	a.comp.close()
-	a.touch()
+	e.cursor = c.at + 1 + len([]rune(token))
+	c.done = token
+	c.close()
 }
 
 // ── the prefix words ────────────────────────────────────────────────────────

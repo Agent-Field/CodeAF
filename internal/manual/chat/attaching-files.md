@@ -564,7 +564,8 @@ the word under the pointer takes a background, and the hint names the key, `clic
 The conversations on it are the tabs open in this window, except the one you are
 typing in, and then the twenty most recent in this project, read again each time
 the list opens. One older than that, or in another project, is not on it. The bare
-`@` shows eight of them; `@chat:` shows them all and scrolls.
+`@` shows eight of them; `@chat:` shows them all and scrolls. Home's box opens the
+same list with the same sections and prefixes, leaving no conversation off.
 
 Choosing a file still puts `@` and the path in the sentence, and nothing is read
 until the model asks. Choosing a team puts `●harbor` in the team's colour. Choosing
