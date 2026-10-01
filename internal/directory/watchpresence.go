@@ -216,11 +216,11 @@ func (f *Feed) Online(device string) bool { return f.pres.online(device) }
 // OnlineSet is every device that holds a watch socket now. The caller owns the map.
 func (f *Feed) OnlineSet() map[string]bool { return f.pres.onlineSet() }
 
-// AnnounceJoined tells the event sockets of every device but the new one that
-// device joined. The backend calls it in the turn that approves the device;
-// name is the sealed name as stored.
-func (f *Feed) AnnounceJoined(device, name, platform string) {
-	f.pres.announce(dirwatch.JoinedEvent(device, name, platform, f.pres.now()), device)
+// announceJoin tells the event sockets of every device but the new one that it
+// joined. A backend calls it, through SetOnJoin, in the turn that approves the
+// device; the name is the sealed name as stored.
+func (f *Feed) announceJoin(j Joined) {
+	f.pres.announce(dirwatch.JoinedEvent(j.Device, j.Name, j.Platform, j.At), j.Device)
 }
 
 // OnSeen registers fn to stamp a device's last_seen: it is called with the

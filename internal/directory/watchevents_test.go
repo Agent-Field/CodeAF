@@ -82,7 +82,6 @@ func TestASocketThatNamesHoldsAndSkipsEventsHearsNoEvent(t *testing.T) {
 	defer holder.Close()
 	read(t, holder)
 	watcher(t, g.as("id_one", devB))
-	g.dirs.dirs["id_one"].Feed().AnnounceJoined(devB, "bg==", "linux")
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	if f, err := holder.Next(ctx); err == nil {
@@ -90,17 +89,13 @@ func TestASocketThatNamesHoldsAndSkipsEventsHearsNoEvent(t *testing.T) {
 	}
 }
 
-func TestAFollowerStateShowsOnlinePeersAndJoinedDevices(t *testing.T) {
+func TestAFollowerStateShowsOnlinePeers(t *testing.T) {
 	g := newEventRig(t)
 	c := g.as("id_one", devA)
 	f := dirwatch.Follow(t.Name(), c.(directory.Watcher).Watch)
 	defer f.Close()
 	watcher(t, g.as("id_one", devB))
 	waitFor(t, f, func(s dirwatch.State) bool { return len(s.Online) == 1 && s.Online[0] == devB })
-	g.dirs.dirs["id_one"].Feed().AnnounceJoined("dev_new", "bg==", "darwin")
-	waitFor(t, f, func(s dirwatch.State) bool {
-		return len(s.Joined) == 1 && s.Joined[0].Device == "dev_new" && s.Joined[0].Platform == "darwin"
-	})
 }
 
 func waitFor(t *testing.T, f dirwatch.Follower, ok func(dirwatch.State) bool) {
@@ -112,5 +107,28 @@ func waitFor(t *testing.T, f dirwatch.Follower, ok func(dirwatch.State) bool) {
 		case <-deadline:
 			t.Fatalf("state never matched: %+v", f.State())
 		}
+	}
+}
+
+func TestPresenceAnswersWhoIsOnlineAndWhenTheOthersWereSeen(t *testing.T) {
+	g := newEventRig(t)
+	ctx := context.Background()
+	a, b := g.as("id_one", devA), g.as("id_one", devB)
+	for _, c := range []directory.Client{a, b} {
+		if err := c.PutDevice(ctx, map[directory.Client]string{a: devA, b: devB}[c], directory.Device{V: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := watcher(t, b)
+	read(t, s)
+	g.clock.Advance(time.Minute)
+	v, err := a.(interface {
+		Presence(context.Context) (directory.PresenceView, error)
+	}).Presence(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.Devices[devB].Online || v.Devices[devB].LastSeen != v.Now || v.Devices[devA].Online || v.Version == 0 {
+		t.Fatalf("presence is %+v", v)
 	}
 }

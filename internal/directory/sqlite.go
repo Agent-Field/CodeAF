@@ -56,6 +56,7 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 		db.Close()
 		return nil, err
 	}
+	wireFeed(s.feed, &s.pairing, s.seen)
 	return s, nil
 }
 
