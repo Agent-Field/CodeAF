@@ -251,10 +251,14 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
             cdir = box.cell_dir(f"-work-c{i}")
             self.wait_durable(box, os.path.basename(os.path.dirname(cdir)), cdir)
             time.sleep(30)   # the chat is named a little after its first turn
+            self.start_chat(B, f"{B_R}/work/b")   # a fresh window each time, as on a first take
+            B.drive("home")
             take = B.drive("take", "-", timeout=900)
             bcell = os.path.basename(os.path.dirname(cdir))
             inv = json.loads(B.run(f"cat {B_R}/home/v3/projects/*/{bcell}/.cell/env/inventory.json").stdout or "{}")
             out.append({"i": i, "take_s": round((take["taken_ms"] - take["confirm_ms"]) / 1000, 3) if take.get("taken_ms") else None,
+                        "listed_s": round((take["listed_ms"] - take["confirm_ms"]) / 1000, 3) if take.get("listed_ms") else None,
+                        "auto_opened": take.get("auto_opened"),
                         "card": bool(take.get("resume_card_ms")), "withheld": inv.get("withheld"), "running": inv.get("running"), "error": take.get("error")})
             self.save(f"card{i}-screen.txt", take.get("resume_card") or take.get("first_screen", ""))
             log("card test", out[-1])
@@ -334,6 +338,9 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
         if take.get("taken_ms"):
             res["cold_take_s"] = round((take["taken_ms"] - take["confirm_ms"]) / 1000, 3)
             res["resume_card_shown"] = bool(take.get("resume_card_ms"))
+            if take.get("listed_ms"):
+                res["cold_take_listed_s"] = round((take["listed_ms"] - take["confirm_ms"]) / 1000, 3)
+                res["cold_take_auto_opened"] = take.get("auto_opened")
             if take.get("resume_card_ms"):
                 res["resume_card_after_open_ms"] = take["resume_card_ms"] - take["taken_ms"]
             log("cold take (confirm to chat open)", res["cold_take_s"], "s; resume card", res["resume_card_shown"])
