@@ -57,9 +57,17 @@ var _ executor.Lifecycle = (*Live)(nil)
 func jobKey(id int) string     { return fmt.Sprintf("job:%d", id) }
 func groupKey(pgid int) string { return fmt.Sprintf("group:%d", pgid) }
 
+// put stores the command under key. A process group is one thing however many
+// sites saw it (a foreground call that was then made a job), so an earlier item
+// for the same group is replaced rather than listed twice.
 func (l *Live) put(key string, item liveItem) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	for other, seen := range l.items {
+		if seen.pgid == item.pgid {
+			delete(l.items, other)
+		}
+	}
 	item.since = l.now().UnixMilli()
 	l.items[key] = item
 }
@@ -104,10 +112,12 @@ func (l *Live) Alive(probe Probe) []Running {
 	return out
 }
 
-// Cleaned is a command line as it may be recorded: secrets replaced, and cut to
-// the bound at a character boundary. A secret never enters the record (L3).
+// Cleaned is a command line as it may be recorded: on one line, secrets
+// replaced, and cut to the bound at a character boundary. A secret never enters
+// the record (L3). It is one line because a script's line breaks would otherwise
+// reach the card a person reads, which shows the first line and loses the rest.
 func Cleaned(command string) string {
-	line := keys.Clean(strings.TrimSpace(command))
+	line := keys.Clean(oneLine(command))
 	if len(line) <= maxCommand {
 		return line
 	}
@@ -116,6 +126,17 @@ func Cleaned(command string) string {
 		cut--
 	}
 	return line[:cut]
+}
+
+// oneLine joins the lines of a script with "; ", dropping blank ones.
+func oneLine(command string) string {
+	var lines []string
+	for _, line := range strings.Split(command, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "; ")
 }
 
 // Cwd is a folder as the record spells it: cell-relative, with "." for the root.

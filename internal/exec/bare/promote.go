@@ -263,10 +263,27 @@ func watchCancel(ctx context.Context, call *BashCall, done <-chan struct{}) {
 	guard.Go("exec/bare cancel watch", func() {
 		select {
 		case <-ctx.Done():
+			if finished(done) {
+				return
+			}
 			if _, _, adopted := call.close(); !adopted {
 				killProcessGroup(call.cmd)
 			}
 		case <-done:
 		}
 	})
+}
+
+// finished reports that the call already returned. A call's context is cancelled
+// right behind its return, so a watcher that had not run yet finds both of its
+// cases ready and is handed one at random; taking the cancellation then killed
+// the group of a call that had ended cleanly, and with it any server the command
+// had deliberately left running. A call that returned has nothing left to cancel.
+func finished(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
 }
