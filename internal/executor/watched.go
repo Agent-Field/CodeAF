@@ -39,23 +39,29 @@ func (w watched) NoteModelCall(m ModelCall) { NoteModelCall(w.Seat, m) }
 // the answer is the seat beneath's.
 func (w watched) Interrupted() Interrupted { return InterruptedOn(w.Seat) }
 
-// Around implements Seat: the call runs on the seat beneath, then the commands
-// its command line named are observed, each with the whole of its words and the
-// call's own outcome. A call the seat refused ran nothing.
+// Around implements Seat: the call runs on the seat beneath, and the commands
+// its command line named, and whatever it left running, are observed as soon as
+// it has run, each with the whole of its words and the call's own outcome. That
+// is inside the seat beneath and not after it, because the seat seals the tree
+// once the call has run: a record told afterwards would miss the one seal that
+// can carry it to another machine. A call the seat refused ran nothing, so
+// nothing is observed.
 func (w watched) Around(ctx context.Context, call Call, run func() ([]byte, bool)) error {
-	failed := false
-	err := w.Seat.Around(ctx, call, func() ([]byte, bool) {
-		out, bad := run()
-		failed = bad
-		return out, bad
+	return w.Seat.Around(ctx, call, func() ([]byte, bool) {
+		out, failed := run()
+		w.observe(call, failed)
+		return out, failed
 	})
-	if err != nil {
-		return err
-	}
+}
+
+// observe tells the observer each command the call ran and each service it left.
+func (w watched) observe(call Call, failed bool) {
 	for _, words := range shellCommands(call) {
 		w.obs.Observe(ExecRequest{Argv: words}, ExecResult{Exit: exitOf(failed)})
 	}
-	return nil
+	for _, s := range Left(call) {
+		w.obs.Observe(ExecRequest{Argv: s.Argv}, ExecResult{Exit: exitOf(failed), Services: []Service{s}})
+	}
 }
 
 // exitOf is the exit status a shell call's outcome stands for: the call is the

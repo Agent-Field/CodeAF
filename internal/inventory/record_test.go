@@ -261,3 +261,10 @@ func TestLiveListsOldestFirst(t *testing.T) {
 		t.Fatalf("alive = %+v", got)
 	}
 }
+
+func TestARecordedScriptIsOneLine(t *testing.T) {
+	got := Cleaned("npm ci --offline\n\n  nohup node server.js 3000 >server.log 2>&1 &\nsleep 2\n")
+	if want := "npm ci --offline; nohup node server.js 3000 >server.log 2>&1 &; sleep 2"; got != want {
+		t.Fatalf("Cleaned = %q, want %q", got, want)
+	}
+}

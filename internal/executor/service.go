@@ -19,12 +19,27 @@ func services(ctx context.Context, cmd *exec.Cmd, req ExecRequest, root string) 
 	return []Service{describe(req, root, pgid, processgroup.Members(pgid))}
 }
 
-// describe fills a service record from its surviving members. The first member
-// names it; the ports of all members are its ports.
+// Left is the services a finished tool call left running: each process group it
+// started that still has a member. A shell tool starts its process through
+// Command, so no [ExecResult] carries these; the call's own account of the
+// groups it started is the only place they are known.
+func Left(call Call) []Service {
+	var out []Service
+	for _, pgid := range call.Spawns.Groups() {
+		if members := processgroup.Members(pgid); len(members) > 0 {
+			out = append(out, describe(ExecRequest{Argv: []string{shellTool}}, "", pgid, members))
+		}
+	}
+	return out
+}
+
+// describe fills a service record from its surviving members. The member that
+// listens names it, because it is the server; with none listening the first
+// member does. The ports of all members are its ports.
 func describe(req ExecRequest, root string, pgid int, members []int) Service {
 	argv := req.Argv
-	if len(members) > 0 {
-		if a := cmdline(members[0]); len(a) > 0 {
+	if name := namingMember(members); name > 0 {
+		if a := cmdline(name); len(a) > 0 {
 			argv = a
 		}
 	}
@@ -84,4 +99,19 @@ func inside(root, dir, path string) string {
 		return ""
 	}
 	return filepath.ToSlash(rel)
+}
+
+// namingMember is the member that names a service: the first that listens on a
+// port, else the first member, else 0. A shell that started a server lingers
+// beside it, and the shell's command line says nothing of what is being served.
+func namingMember(members []int) int {
+	for _, m := range members {
+		if len(listenPorts([]int{m})) > 0 {
+			return m
+		}
+	}
+	if len(members) > 0 {
+		return members[0]
+	}
+	return 0
 }
