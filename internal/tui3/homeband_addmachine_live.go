@@ -24,34 +24,34 @@ type LivePairLinker interface {
 	PairByLink(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error)
 }
 
-// cardRun is one wait for an answer: the context that ends it and its road.
-type cardRun struct {
+// linkCardRun is one wait for an answer: the context that ends it and its road.
+type linkCardRun struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	events chan cardEvent
+	events chan linkCardEvent
 }
 
-// cardEvent is one thing the door tells the card; each kind files itself.
-type cardEvent interface{ apply(m *addMachine) }
+// linkCardEvent is one thing the door tells the card; each kind files itself.
+type linkCardEvent interface{ apply(m *addMachine) }
 
 type (
-	cardInvited struct{ link, check string }
-	cardEnded   struct {
+	linkCardInvited struct{ link, check string }
+	linkCardEnded   struct {
 		line   string
 		paired bool
 	}
 )
 
-func (e cardInvited) apply(m *addMachine) { m.link, m.check = e.link, e.check }
-func (e cardEnded) apply(m *addMachine)   { m.ended, m.paired = e.line, e.paired }
+func (e linkCardInvited) apply(m *addMachine) { m.link, m.check = e.link, e.check }
+func (e linkCardEnded) apply(m *addMachine)   { m.ended, m.paired = e.line, e.paired }
 
-// cardMsg is one event arriving; the run names the wait it belongs to.
-type cardMsg struct {
-	run   *cardRun
-	event cardEvent
+// linkCardMsg is one event arriving; the run names the wait it belongs to.
+type linkCardMsg struct {
+	run   *linkCardRun
+	event linkCardEvent
 }
 
-func (r *cardRun) send(e cardEvent) {
+func (r *linkCardRun) send(e linkCardEvent) {
 	select {
 	case r.events <- e:
 	case <-r.ctx.Done():
@@ -59,16 +59,16 @@ func (r *cardRun) send(e cardEvent) {
 }
 
 // Invited is the door showing the link.
-func (r *cardRun) Invited(in pair.Invite) {
-	r.send(cardInvited{link: in.Ref.URL(), check: in.Check})
+func (r *linkCardRun) Invited(in pair.Invite) {
+	r.send(linkCardInvited{link: in.Ref.URL(), check: in.Check})
 }
 
 // wait hands the next event to the loop, and nothing once the wait is closed.
-func (r *cardRun) wait() tea.Cmd {
+func (r *linkCardRun) wait() tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case e := <-r.events:
-			return cardMsg{run: r, event: e}
+			return linkCardMsg{run: r, event: e}
 		case <-r.ctx.Done():
 			return nil
 		}
@@ -78,7 +78,7 @@ func (r *cardRun) wait() tea.Cmd {
 // startLive begins the wait and returns the command that reads its news.
 func (a *app) startLive(door LivePairLinker) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &cardRun{ctx: ctx, cancel: cancel, events: make(chan cardEvent, 4)}
+	run := &linkCardRun{ctx: ctx, cancel: cancel, events: make(chan linkCardEvent, 4)}
 	a.addMachine.run = run
 	go func() {
 		joined, err := door.PairByLink(ctx, run)
@@ -88,11 +88,11 @@ func (a *app) startLive(door LivePairLinker) tea.Cmd {
 }
 
 // endOf is how a finished wait reads on the card.
-func endOf(joined pair.LinkJoined, err error) cardEvent {
+func endOf(joined pair.LinkJoined, err error) linkCardEvent {
 	if err != nil {
-		return cardEnded{line: err.Error()}
+		return linkCardEnded{line: err.Error()}
 	}
-	return cardEnded{line: pair.JoinedFleetLine(joined.Fleet.Workspaces), paired: true}
+	return linkCardEnded{line: pair.JoinedFleetLine(joined.Fleet.Workspaces), paired: true}
 }
 
 // stopLive takes the request back, if one is waiting.
@@ -103,15 +103,15 @@ func (m *addMachine) stopLive() {
 	m.run, m.link, m.check, m.ended, m.paired = nil, "", "", "", false
 }
 
-// tookCard files one event and re-arms the road until the wait has ended.
-func (a *app) tookCard(msg cardMsg) tea.Cmd {
+// tookLinkCard files one event and re-arms the road until the wait has ended.
+func (a *app) tookLinkCard(msg linkCardMsg) tea.Cmd {
 	m := &a.addMachine
 	if msg.run != m.run || !m.open {
 		return nil
 	}
 	msg.event.apply(m)
 	a.touch()
-	if _, over := msg.event.(cardEnded); over {
+	if _, over := msg.event.(linkCardEnded); over {
 		return nil
 	}
 	return m.run.wait()

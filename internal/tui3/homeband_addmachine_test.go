@@ -195,15 +195,15 @@ func (l *liveDoor) PairByLink(ctx context.Context, ui pair.LinkUI) (pair.LinkJoi
 	return l.join(ctx, ui)
 }
 
-// cardPump feeds the command's messages back through Update until the wait ends.
-func cardPump(t *testing.T, a *app, cmd tea.Cmd) {
+// linkCardPump feeds the command's messages back through Update until the wait ends.
+func linkCardPump(t *testing.T, a *app, cmd tea.Cmd) {
 	t.Helper()
 	for cmd != nil {
-		msg, ok := cmd().(cardMsg)
+		msg, ok := cmd().(linkCardMsg)
 		if !ok {
 			return
 		}
-		cmd = a.tookCard(msg)
+		cmd = a.tookLinkCard(msg)
 	}
 }
 
@@ -216,8 +216,8 @@ func TestAddMachineCardShowsALiveLinkAndEndsOnPaired(t *testing.T) {
 	}}
 	a := addMachineRig(door, 1, true)
 	cmd := a.toggleAddMachine()
-	first := cmd().(cardMsg)
-	cmd = a.tookCard(first)
+	first := cmd().(linkCardMsg)
+	cmd = a.tookLinkCard(first)
 	got := addMachineFrame(a, 80)
 	for _, want := range []string{"codeaf.link/p/", "Check number: 4821"} {
 		if !strings.Contains(got, want) {
@@ -225,7 +225,7 @@ func TestAddMachineCardShowsALiveLinkAndEndsOnPaired(t *testing.T) {
 		}
 	}
 	close(approve)
-	cardPump(t, a, cmd)
+	linkCardPump(t, a, cmd)
 	got = addMachineFrame(a, 80)
 	if !strings.Contains(got, "Paired - 3 workspaces available.") || strings.Contains(got, addMachineCLI) {
 		t.Fatalf("card did not end on Paired:\n%s", got)
@@ -250,7 +250,7 @@ func TestAddMachineCardShowsWhyTheWaitFailedAndClosingTakesItBack(t *testing.T) 
 		return pair.LinkJoined{}, pair.ErrLinkExpired
 	}}
 	b := addMachineRig(failing, 1, true)
-	cardPump(t, b, b.toggleAddMachine())
+	linkCardPump(t, b, b.toggleAddMachine())
 	if got := addMachineFrame(b, 80); !strings.Contains(got, pair.ErrLinkExpired.Error()[:20]) {
 		t.Fatalf("failure not shown:\n%s", got)
 	}
