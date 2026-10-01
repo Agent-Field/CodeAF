@@ -54,11 +54,11 @@ import (
 //   - IT SPENDS NOTHING. Opening a model list reads the catalog this process
 //     already has; nothing on this screen sends a prompt or calls a model.
 //
-// The example on the right is labelled as an example. It is one request somebody
-// could make and the kind of result it leads to, and it moves only when the
-// person moves — a deliberate focus change or the arrow keys, never a timer and
-// never a keystroke inside a field. No invented cost, no fabricated activity, no
-// claim that anything has already run.
+// The example under the form is labelled as an example. It is one request
+// somebody could make and the kind of result it leads to, and it moves only when
+// the person moves — a deliberate focus change or the arrow keys, never a timer
+// and never a keystroke inside a field. No invented cost, no fabricated
+// activity, no claim that anything has already run.
 
 // setupControl is one row of the controls screen, in the order tab walks them.
 // The day's limit comes first because it is the consequential one; the two model
@@ -940,22 +940,26 @@ func titleWord(word string) string {
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
-// The composition, in cells. At 120×24 it is a 54-cell form, an eight-cell gap
-// and a 36-cell example, centred as one 98-cell object with eleven cells of
-// margin either side. Under [setupWideCols] the example is not drawn at all —
-// stacking it under the form would put promotional content between a person and
-// the thing they came here to do.
+// The composition, in cells: ONE COLUMN. The form stands at the top, the legend
+// under it, and the example panel under that, at the composition's full width,
+// so the request and the three lines it leads to each stand on one row instead
+// of wrapping inside a thirty-six-cell box. Until 2026-10-01 the example was a
+// second column to the right of the form, drawn only from 112 columns up and
+// level with the first field; on a tall window that left the whole lower half
+// of the screen empty while the panel squeezed its sentences three ways. The
+// panel now takes the rows the form leaves, WHOLE OR NOT AT ALL — a window with
+// no rows to spare under the form draws the form alone, which is also what keeps
+// the panel from ever standing between a person and `Start a conversation`.
 const (
-	setupFormWidth = 54
-	setupShowGap   = 8
-	setupShowWidth = 36
-	// setupWideCols is the width at which the pair fits with the three-cell
-	// margins the design asks for, rounded to the round number the design study
-	// states.
-	setupWideCols = 112
-	// setupNarrowForm is the form's width when it stands alone, which is a
-	// comfortable measure for a sentence and no wider.
-	setupNarrowForm = 64
+	// setupFormWidth is the form's width, a comfortable measure for a sentence
+	// and no wider.
+	setupFormWidth = 64
+	// setupShowcaseWidth is the example panel's width on a window that has it —
+	// the old pair's own width, which the two columns used to share — and
+	// setupShowcaseMinWidth is the least a panel is drawn at, which is the width
+	// the design gave the old column.
+	setupShowcaseWidth    = 92
+	setupShowcaseMinWidth = 36
 	// setupMargin is the least the composition is ever inset from the frame.
 	setupMargin = 3
 )
@@ -969,17 +973,20 @@ const (
 // floated up and down as its rows opened and closed would move the thing a person
 // is aiming at every time they pressed a key.
 func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
-	wide := width >= setupWideCols
-	form := min(width-2*setupMargin, setupNarrowForm)
-	pair := form
-	if wide {
-		form = setupFormWidth
-		pair = setupFormWidth + setupShowGap + setupShowWidth
-	}
+	s := &a.setup
+	form := min(width-2*setupMargin, setupFormWidth)
 	if form < 20 {
 		form = max(width-2, 1)
-		pair = form
 	}
+	show := min(width-2*setupMargin, setupShowcaseWidth)
+	if show < setupShowcaseMinWidth {
+		show = 0
+	}
+	// The composition is centred on the wider of the two, and the form keeps to
+	// its own measure inside it: a sentence set ninety cells wide is a sentence
+	// nobody reads to the end, where a panel that wide is a panel whose lines
+	// do not wrap.
+	pair := max(form, show)
 	lead := max((width-pair)/2, 0)
 	pad := strings.Repeat(" ", lead)
 
@@ -1000,37 +1007,41 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	// THE DOORS ARE KEPT WITH THE FRAME THAT DREW THEM, so a press reads the
 	// rows that are actually on the screen: body row i is frame row i+2, under
 	// the header and the blank, and it spans the form's own columns.
-	a.setup.doors = setupDoors{rows: doors, top: 2, left: lead, width: form}
+	s.doors = setupDoors{rows: doors, top: 2, left: lead, width: form}
 
-	var show []string
-	if wide {
-		show = a.setupShowcase(setupShowWidth, len(body))
+	// THE EXAMPLE TAKES THE ROWS THE FORM LEAVES, and only the whole of it.
+	// Four rows are spoken for around the form — the header, the blank under
+	// it, the legend, and the blank between the legend and the panel — and a
+	// panel that does not fit whole in what is left is not drawn: a cut panel
+	// is a panel without the line at its foot that says nothing in it has run.
+	// The decision is made before the legend is written, because the legend
+	// names the arrows only when there is a panel for them to browse.
+	var block []string
+	if show > 0 {
+		block = a.setupShowcaseBlock(show, height-2-len(body)-2)
 	}
+	s.exampleShown = len(block) > 0
 
 	lines := make([]string, 0, height)
 	lines = append(lines, pad+head, "")
-	for i, line := range body {
-		row := pad + line
-		if i < len(show) && show[i] != "" {
-			// The example is placed at a fixed column so its own left edge is
-			// straight down the screen: a column whose rows started wherever the
-			// form's row happened to end would not read as a column at all.
-			row = pad + padTo(line, setupFormWidth+setupShowGap) + show[i]
-		}
-		lines = append(lines, row)
+	for _, line := range body {
+		lines = append(lines, pad+line)
 	}
-	// THE KEYBOARD GUIDANCE FOLLOWS THE FORM WITH ONE BLANK ROW UNDER IT, and the
-	// window's own empty rows fall below that. It is measured against the WHOLE
-	// composition rather than the form, because it is the only row the example
-	// column never stands beside — budgeting it at the form's fifty-four cells cut
-	// `←→ examples` off the one screen the arrows exist on
-	// ([app.setupControlsKeys] then cuts by whole clauses, never mid-word).
-	//
-	// It is not pinned to the last row of the window. A legend nailed to the foot
-	// of a twenty-four-row frame under an eighteen-row form leaves a hole in the
-	// middle of the composition, and a hole reads as a screen that stopped.
+	// THE KEYBOARD GUIDANCE FOLLOWS THE FORM, and the panel follows that with
+	// one blank row between them. The legend is measured against the whole
+	// composition rather than the form ([app.setupControlsKeys] then cuts by
+	// whole clauses, never mid-word). It is not pinned to the last row of the
+	// window: a legend nailed to the foot of a frame under a short form leaves a
+	// hole in the middle of the composition, and a hole reads as a screen that
+	// stopped.
 	if len(lines) < height {
 		lines = append(lines, pad+a.pal.dim(a.setupControlsKeys(pair)))
+	}
+	if len(block) > 0 {
+		lines = append(lines, "")
+		for _, line := range block {
+			lines = append(lines, pad+line)
+		}
 	}
 	for len(lines) < height {
 		lines = append(lines, "")
@@ -1694,7 +1705,9 @@ func (a *app) setupControlsKeys(width int) string {
 		if s.control <= controlChatModel {
 			parts = append(parts, "? detail")
 		}
-		if w, _ := a.size(); w >= setupWideCols {
+		// The arrows are named only on a frame that drew the panel they browse
+		// ([app.setupControlsFrame] decides that before it writes this row).
+		if s.exampleShown {
 			parts = append(parts, "←→ examples")
 		}
 	}
@@ -1771,22 +1784,14 @@ const (
 	showcaseCaretASCII = "_"
 )
 
-// setupShowcase draws the right-hand column: a framed panel holding one example
-// request and what it leads to, with where in the four it is on the bottom edge.
-//
-// It is drawn LOWER CONTRAST than the form beside it — nothing in it is at ink
-// weight except the request being typed — because it is an illustration standing
-// beside the thing a person came here to do, and the active control on the left
-// is the anchor.
-//
-// The panel is a FIXED HEIGHT for a given example: the rows the leads will land
-// in are drawn empty before they arrive, so the frame that is on screen at the
-// first beat is the same size as the frame at the last. A box that grew three
-// rows while somebody was reading the form would be motion in the corner of
-// their eye that means nothing.
-func (a *app) setupShowcase(width, height int) []string {
+// setupShowcaseBlock is the example panel as a framed block at the given width,
+// or nil when the window cannot hold the whole of it in maxHeight rows. It is
+// whole or nothing: the line at its foot — that nothing in it has run — is the
+// sentence that keeps the panel from being read as a report about this machine,
+// and a panel trimmed from the bottom would lose exactly that line first.
+func (a *app) setupShowcaseBlock(width, maxHeight int) []string {
 	pal := a.pal
-	if len(setupExamples) == 0 || height <= 0 || width < 20 {
+	if len(setupExamples) == 0 || width < setupShowcaseMinWidth {
 		return nil
 	}
 	at := clampIndex(a.setup.example, len(setupExamples))
@@ -1794,17 +1799,9 @@ func (a *app) setupShowcase(width, height int) []string {
 	inner := frameInner(width) - 2 // one cell of air inside each edge
 
 	body := a.showcaseBody(example, inner)
-	// The frame comes off the top of what the window has left, whole rows at a
-	// time, and the leads go before the title does: a panel with no title is
-	// still labelled by its own top edge, where a panel with no request is a
-	// panel about nothing.
-	for len(body)+2 > height && len(body) > 0 {
-		body = body[:len(body)-1]
-	}
-	if len(body)+2 > height {
+	if len(body)+2 > maxHeight {
 		return nil
 	}
-
 	rows := make([]string, 0, len(body))
 	for _, line := range body {
 		rows = append(rows, " "+padTo(line, inner)+" ")
@@ -1813,19 +1810,7 @@ func (a *app) setupShowcase(width, height int) []string {
 		title:     pal.dim(showcaseTitle(pal)),
 		keysAside: pal.dim(setupShowcaseCount(at, len(setupExamples))),
 	}.draw(pal, width, rows)
-
-	// showcaseTop is where the panel begins: level with the first field, which is
-	// three rows into the form (heading, lead, blank). A short window has dropped
-	// those, and the panel comes up with them rather than floating.
-	showcaseTop := min(3, max(height-len(block), 0))
-	out := make([]string, height)
-	for i, line := range block {
-		if showcaseTop+i >= height {
-			break
-		}
-		out[showcaseTop+i] = line
-	}
-	return out
+	return block
 }
 
 // showcaseBody is what stands inside the frame, at the inner width, with the

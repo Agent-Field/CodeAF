@@ -27,7 +27,9 @@ func controlsApp(t *testing.T, seed func(dir string)) (*app, string) {
 	t.Helper()
 	a, dir, _ := setupApp(t, seed)
 	a.pal = newPalette(tokens.ANSI256, false)
-	a.width, a.height = 120, 24
+	// Tall enough for the form AND the example panel under it; the tests about
+	// a short window size the frame themselves.
+	a.width, a.height = 120, 44
 	pressSetup(a, key("enter"))
 	if !a.setup.open || a.setup.step() != setupControls {
 		t.Fatalf("the fixture is not on the controls screen (open=%v)", a.setup.open)
@@ -405,12 +407,10 @@ func rawSetupFrame(a *app) string {
 }
 
 // showcasePanel is the example panel cut out of the frame, one row per line and
-// each row the panel's own columns and nothing else.
-//
-// THE TWO COLUMNS SHARE EVERY ROW, so a claim about what the panel says cannot
-// be made against the frame: the form's own sentence runs into it on the left of
-// every line. Cutting the panel out first is what makes "the panel says X" a
-// question with an answer.
+// each row the panel's own columns and nothing else — the columns its own top
+// edge spans, from its top-left corner to its top-right one. Cutting the panel
+// out first is what makes "the panel says X" a question with an answer, and
+// what makes a claim about its frame a claim about a box.
 func showcasePanel(a *app) []string {
 	box := framePiecesOf(a.pal)
 	rows := strings.Split(rawSetupFrame(a), "\n")
@@ -430,12 +430,14 @@ func showcasePanel(a *app) []string {
 	// them, so the byte offset the search answered becomes a rune offset before
 	// any row is cut with it.
 	left = len([]rune(rows[top][:left]))
+	topRunes := []rune(strings.TrimRight(rows[top], " "))
+	width := len(topRunes) - left
 	cut := func(row string) string {
 		runes := []rune(row)
 		if left >= len(runes) {
 			return ""
 		}
-		return string(runes[left:min(left+setupShowWidth, len(runes))])
+		return string(runes[left:min(left+width, len(runes))])
 	}
 	// THE TOP EDGE IS TAKEN BEFORE THE LOOP AND THE LOOP ENDS ON THE BOTTOM ONE.
 	// In the ascii tier every corner is the same `+`, so a walk that stopped at
@@ -522,11 +524,57 @@ func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.
 	if a.setup.limitText != limit {
 		t.Fatal("browsing the examples changed a control")
 	}
-	// And below the width the pair needs, the column is gone entirely.
-	a.width, a.height = setupWideCols-1, 24
-	narrow, _, _ := a.frame()
-	if strings.Contains(plain(narrow), showcaseTitleWord) {
-		t.Fatalf("the example panel was drawn under %d columns:\n%s", setupWideCols, plain(narrow))
+	// And on a window with no rows to spare under the form, the panel is gone
+	// entirely — never cut, because its last line is the one that says nothing
+	// in it has run.
+	a.width, a.height = 120, 24
+	short, _, _ := a.frame()
+	if strings.Contains(plain(short), showcaseTitleWord) {
+		t.Fatalf("the example panel was drawn on a 24-row window with no room for the whole of it:\n%s", plain(short))
+	}
+	if strings.Contains(plain(short), "←→ examples") {
+		t.Fatalf("the legend names the arrows on a frame with no panel:\n%s", plain(short))
+	}
+}
+
+// THE PANEL STANDS UNDER THE FORM, AT THE COMPOSITION'S WIDTH. It used to be a
+// second column beside the form, drawn from 112 columns up; on a tall window
+// that left the lower half of the screen empty while the panel wrapped every
+// sentence three ways. Now it follows the legend, one blank row under it, and
+// its top edge is as wide as the composition, so the request stands on one row.
+func TestTheExamplePanelStandsUnderTheFormAtTheCompositionsWidth(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.settleSetupDemo()
+	rows := strings.Split(rawSetupFrame(a), "\n")
+	legend, top := -1, -1
+	for i, row := range rows {
+		if strings.Contains(row, "tab moves") {
+			legend = i
+		}
+		if strings.Contains(row, showcaseTitleWord) {
+			top = i
+		}
+	}
+	if legend < 0 || top < 0 {
+		t.Fatalf("no legend (%d) or no panel (%d) on the frame:\n%s", legend, top, rawSetupFrame(a))
+	}
+	if top != legend+2 {
+		t.Fatalf("the panel's top edge is on row %d and the legend on row %d; want the panel two rows under the legend", top, legend)
+	}
+	panel := showcasePanel(a)
+	if got := len([]rune(panel[0])); got != setupShowcaseWidth {
+		t.Fatalf("the panel is %d cells wide, want the composition's %d:\n%s", got, setupShowcaseWidth, panel[0])
+	}
+	// The request stands on one row inside it, which is what the width is for.
+	ask := setupExamples[a.setup.example].ask
+	found := false
+	for _, row := range panel {
+		if strings.Contains(row, ask) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the request %q wrapped inside a %d-cell panel:\n%s", ask, setupShowcaseWidth, strings.Join(panel, "\n"))
 	}
 }
 
@@ -562,9 +610,9 @@ func TestTheExamplePanelIsFramedAndFallsBackToAscii(t *testing.T) {
 		// EVERY ROW IS THE SAME WIDTH, which is the difference between a box and
 		// four characters that happen to be near each other.
 		for _, row := range panel {
-			if got := len([]rune(row)); got != setupShowWidth {
+			if got := len([]rune(row)); got != setupShowcaseWidth {
 				t.Fatalf("ascii=%v: a panel row is %d cells, want %d: %q",
-					ascii, got, setupShowWidth, row)
+					ascii, got, setupShowcaseWidth, row)
 			}
 		}
 	}
@@ -924,7 +972,7 @@ func TestAClickOnTheControlsScreenActsLikeTheKeyOnThatRow(t *testing.T) {
 		t.Fatalf("a press on the limit row left the focus on %v", a.setup.control)
 	}
 	// A press on a sentence does nothing.
-	x, y = setupRowOf(t, a, "new work waits until midnight")
+	x, y = setupRowOf(t, a, "waits until midnight")
 	pressSetup(a, clickAt(x, y))
 	if a.setup.control != controlLimit || a.setup.modelOpen {
 		t.Fatalf("a press on a sentence changed the focus to %v (list open=%v)", a.setup.control, a.setup.modelOpen)

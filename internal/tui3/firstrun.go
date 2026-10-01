@@ -123,6 +123,9 @@ type setupFlow struct {
 	// (onboarding.go's [setupDoors]): a press is answered against the rows that
 	// are on the screen, and nothing else.
 	doors setupDoors
+	// exampleShown says the last frame drew the example panel under the form,
+	// which is what decides whether the legend names the arrows that browse it.
+	exampleShown bool
 	// auth is the default provider's browser trip. Starting covers the short
 	// interval before its listener is handed back; flow and link cover the wait
 	// after that. id names the attempt so a late answer after esc is dropped.

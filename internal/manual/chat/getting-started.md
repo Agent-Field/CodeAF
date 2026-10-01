@@ -216,13 +216,17 @@ If a **task model** is pinned (`task.model`), one dim line under the chat model 
 `Tasks are pinned to … · /settings changes that` — because that pin decides the worker
 seat, and a screen that did not mention it would be hiding where tasks run.
 
-At **112 columns and wider** a bordered panel stands beside these rows, labelled
-`○ Example · what you can do` and footed `An illustration. Nothing here has run.` — the
-only bordered surface codeaf draws, so it cannot be read as more form. It holds one
-request you could type and what it leads to, and follows the row you are on: beside the
-review row it shows `/task Fix the failing tests and explain the changes.` That request **types
-itself out once** on arriving and on `←`/`→`, then settles; typing settles it at once.
-Under 112 columns it is not drawn and the form is unchanged.
+**Under the form**, below the keys line, a bordered panel labelled
+`○ Example · what you can do` and footed `An illustration. Nothing here has run.` stands
+on any window with the rows to hold the whole of it — the only bordered surface codeaf
+draws, so it cannot be read as more form. It is as wide as the screen allows, up to 92
+columns, so the request in it stands on one row. It holds one request you could type and
+what it leads to, and follows the row you are on: on the review row it shows `/task Fix the
+failing tests and explain the changes.` That request **types itself out once** on arriving
+and on `←`/`→`, then settles; typing settles it at once. On a window too short to hold the
+form and the whole panel — 24 rows, say — the panel is not drawn and the keys line does not
+name the arrows; the form is unchanged. (Until 2026-10-01 the panel was a second column to
+the right of the form, drawn only from 112 columns up.)
 
 The controls screen shows **once, ever**. The default OpenRouter prerequisite above is the only
 step that may return.
