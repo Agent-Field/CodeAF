@@ -218,3 +218,26 @@ func TestAnotherIdentityIsNotServed(t *testing.T) {
 		t.Fatal("a device cert from another identity was accepted")
 	}
 }
+
+func TestOpenFirstMakesTheFirstIdentity(t *testing.T) {
+	t.Setenv(URLVar, "http://relay.example:8787")
+	home := t.TempDir()
+	s, ok, err := OpenFirst(home)
+	if s == nil || !ok || err != nil {
+		t.Fatalf("OpenFirst = %v, %v, %v; want a sync", s, ok, err)
+	}
+	if _, err := identity.Load(home); err != nil {
+		t.Fatalf("OpenFirst left no identity: %v", err)
+	}
+}
+
+func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
+	t.Setenv(URLVar, "")
+	home := filepath.Join(t.TempDir(), "home")
+	if _, ok, err := OpenFirst(home); ok || err != nil {
+		t.Fatalf("OpenFirst = ok %v, err %v; want nothing", ok, err)
+	}
+	if _, err := os.Stat(home); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("OpenFirst with no relay touched the home: %v", err)
+	}
+}
