@@ -89,13 +89,17 @@ func (l *liveDrive) Store(e cellstore.Engine) cellstore.Store {
 
 // Close ends the drive side if one ever started.
 func (l *liveDrive) Close(ctx context.Context) error {
-	l.mu.Lock()
-	d := l.drive
-	l.mu.Unlock()
-	if d == nil {
-		return nil
+	if d := l.started(); d != nil {
+		return d.Close(ctx)
 	}
-	return d.Close(ctx)
+	return nil
+}
+
+// started is the drive side if one ever started, without trying to start it.
+func (l *liveDrive) started() *syncsetup.Drive {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.drive
 }
 
 // lateStore seals on whichever store the chat has now.
