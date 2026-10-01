@@ -77,6 +77,8 @@ Each line is left out when it has nothing to say.
 
 On the set-up card, `set up` runs only the commands the card lists, and `not now` leaves it and says `/setup does this later`.
 
+**The project label.** If the folder the chat was left in is not on this device, the chat works in a copy of it that came along, and the label at the right of the keys row says so: `project: proj-a (copy here)`, with the folder's name. If this device does not know the folder, the label shows the chat's name instead.
+
 **If nothing happens when you press Continue here**, the cause is one of these:
 
 - `another device continued this chat first`: another device was faster. The row goes back to `running on <device>`. Nothing changed.

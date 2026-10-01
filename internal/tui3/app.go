@@ -2748,6 +2748,8 @@ type app struct {
 	// than a project somebody opened codeaf inside of (Options.Owned). It is
 	// read by [app.placeWord] and [app.contextStart].
 	owned bool
+	// movedName names a chat moved here whose project is not on this machine.
+	movedName string
 	// handedApproval is the tool-approval posture this launch knows the
 	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
 	// --host it is the engine's row; locally it is --yolo's forced allow. Empty
@@ -2939,7 +2941,11 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	owned := opts.Owned || session.OwnsFolder(place)
+	movedName := movedWord(place, opts.Owned)
 	shown := placeShown(place, owned, host)
+	if movedName != "" {
+		shown = movedName
+	}
 	a := &app{
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
@@ -2968,6 +2974,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		handedApproval:      strings.TrimSpace(opts.ApprovalMode),
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
 		owned:               owned,
+		movedName:           movedName,
 		landing:             opts.Landing,
 		takeOverAt:          opts.TakeOver,
 		pickSession:         opts.PickSession,
@@ -8127,6 +8134,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		a.workspace = workspace
 	}
 	a.owned = conv.Owned || session.OwnsFolder(a.workspace)
+	a.movedName = movedWord(a.workspace, conv.Owned)
 	a.anchorWorkspace = conv.AnchorWorkspace
 	if shown := strings.TrimSpace(conv.Place); shown != "" {
 		a.place = shown
@@ -8135,6 +8143,9 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		// CALLED is a rendering question and this is the package that answers it
 		// (host.go's [placeShown]).
 		a.place = placeShown(a.workspace, a.owned, a.host)
+		if a.movedName != "" {
+			a.place = a.movedName
+		}
 	}
 	if conv.ContextWindow > 0 {
 		// Zero is nobody knowing, and a meter drawn against an unknown window
