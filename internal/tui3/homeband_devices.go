@@ -47,7 +47,7 @@ const (
 
 func init() {
 	registerHomeBand(homeBand{name: "devices", order: bandOrderDevices,
-		kinds: []bandKind{bandKindSession, bandKindProject}, draw: drawDevicesBand})
+		standing: true, draw: drawDevicesBand})
 }
 
 // deviceRoster is the row's whole state: the devices last read, and whether a

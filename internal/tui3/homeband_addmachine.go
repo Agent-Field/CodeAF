@@ -64,7 +64,7 @@ const (
 
 func init() {
 	registerHomeBand(homeBand{name: "addmachine", order: bandOrderAddMachine,
-		kinds: []bandKind{bandKindSession, bandKindProject}, draw: drawAddMachineBand})
+		standing: true, draw: drawAddMachineBand})
 }
 
 // addMachine is the card's whole state.
@@ -164,27 +164,6 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 	}
 	keys := func(s string) string { return paintHint(s, ctx.pal, ctx.pal.dim) }
 	return append(rows, bandClauses(ctx.width, 0, keys, a.chords.say(key))...)
-}
-
-// addMachineStrip is the card standing at the foot of the resting home, drawn
-// whatever the cursor is on and whether or not home has any row at all: the
-// pitch is for the person with one machine, and an empty home is theirs most
-// of all. It is a blank row and the card, indented as the panels are, and it
-// is absent where it would take more than half of the room.
-func (a *app) addMachineStrip(width, room int) []placeRow {
-	inner := width - homeGridMargin
-	if inner < 1 || !a.addMachineWanted() {
-		return nil
-	}
-	card := drawAddMachineBand(a, bandContext{width: inner, pal: a.pal, now: a.now()})
-	if len(card)+1 > room/2 {
-		return nil
-	}
-	rows := []placeRow{{hit: homeMark{line: -1, pane: -1}}}
-	for _, text := range card {
-		rows = append(rows, placeRow{text: strings.Repeat(" ", homeGridMargin) + text, hit: homeMark{line: -1, pane: -1}})
-	}
-	return rows
 }
 
 // addMachineHow is the opened card: two steps, and the field the link goes in.

@@ -45,6 +45,9 @@ type Taken struct {
 	// lacks. A takeover with something in it raises the setup card in the chat
 	// it opens.
 	Resume machine.Resume
+	// Transcript is the journal of the chat as it lies here. The chat may live
+	// in a folder home does not list, so the takeover names it.
+	Transcript string
 	// Elapsed is how long the takeover took, measured by whoever ran it.
 	Elapsed time.Duration
 }
@@ -270,7 +273,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	a.refreshHome()
 	kept := takenSaid(msg.taken)
 	moved := movedSaid(msg.taken)
-	line, ok := a.homeLineOf(msg.row.Cell)
+	line, ok := a.takenLine(msg)
 	if !ok {
 		a.home.say(joinSaid(moved, kept), "")
 		return a.askMachines()
@@ -281,6 +284,20 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		a.offerSetup(msg.taken.Resume)
 	}
 	return tea.Batch(cmd, a.askMachines())
+}
+
+// takenLine is the line of the chat a takeover just materialized: the one home
+// lists, else one built from where the takeover put it, so the chat opens
+// whether or not home lists its folder.
+func (a *app) takenLine(msg homeTakenMsg) (homeLine, bool) {
+	if line, ok := a.homeLineOf(msg.row.Cell); ok {
+		return line, true
+	}
+	t := msg.taken
+	if t.Transcript == "" {
+		return homeLine{}, false
+	}
+	return homeLine{kind: homeSession, row: session.SessionRow{ID: msg.row.Cell, Transcript: t.Transcript, ProjectDir: t.Resume.Now}}, true
 }
 
 // movedSaid is the line every takeover says, with the time it took.
