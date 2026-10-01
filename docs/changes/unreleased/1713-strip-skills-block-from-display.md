@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the skills block no longer prints as part of a person's message
-pr: 1710
+pr: 1713
 surface: [chat]
 invalidates:
   - "#1504 was believed to have fixed `Skills suited to this message:` printing at the top of a conversation and after messages. It proved the journal and store keep only the typed words — which they do — but the engine's in-memory transcript still carried the block, and every display door (Transcript, AttachReplay, and the replay that redraws an opened conversation) drew it straight from there. The display layer now strips a well-formed trailing block, so the record a surface draws is the person's words only."
