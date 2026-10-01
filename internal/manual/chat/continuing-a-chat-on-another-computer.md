@@ -69,7 +69,7 @@ The lines under the heading are:
 
 Each line is left out when it has nothing to say.
 
-- `not brought along:` folders the copy left behind.
+- `not brought along:` folders the copy left behind, and any log or saved output that was too big or looked like a secret, with the reason.
 - `was running there:` commands that were running on the other device. They are listed so you can start them again.
 - `also needed:` what this device also needs.
 - `not committed yet:` the files with changes that are not committed, up to three names and then `and N more`.
@@ -85,3 +85,11 @@ On the set-up card, `set up` runs only the commands the card lists, and `not now
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here`: the move failed. The row stays where it was; try again.
 - With no way to continue set up, an off row has no `continue here`: enter says why.
+
+## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
+
+Yes. A chat's messages name files that sit beside the chat and not in your project: the log of a background job (`log at …/logs/jobs/2.log`), the full output of a tool result that was cut short (`full: logs/stubs/9c2f.txt`), and the journals of its tasks. They move with the chat. The other computer puts them back in the chat's own folder, so the same names open there, and the first message it receives after the move says where they are now (`… that earlier messages name under <old folder> were carried: they are under <new folder> here`). A path in an old message still shows the old folder; use the new one.
+
+Three limits keep a move light. A single file over 1 MiB stays behind, and so does whatever does not fit in 16 MiB together (the oldest go first). A file that looks like it holds a secret (a key, a token) stays behind too. Each one is named under `not brought along:` with the reason and `stayed on the machine that made it`; read it there by asking that machine, and never assume the other computer has it.
+
+Two things are made again on the other computer and are not carried: the project's task history (the list of finished tasks home and the tasks tool show), which is rebuilt from the chat's own record, and the git bookkeeping inside a task's working copy. A task that finished on a kept branch keeps that branch in your project on the other computer, at the same commit.
