@@ -143,3 +143,21 @@ func TestALongListEndsWithHowManyMore(t *testing.T) {
 		t.Fatal("a line was said about nothing")
 	}
 }
+
+func TestTheLastTestRunIsSaidOnlyWhenOneWasRecorded(t *testing.T) {
+	if got := testsLine(machine.Resume{}); got != "" {
+		t.Fatalf("a chat with no run said %q", got)
+	}
+	cases := map[string]inventory.TestRun{
+		"last tests: passed":   {Passed: true},
+		"last tests: failed 3": {Failed: 3},
+		"last tests: failed":   {},
+	}
+	for want, run := range cases {
+		run := run
+		reasons := chatlist.SetupReasons(setupFacts(machine.Resume{Tests: &run}))
+		if len(reasons) != 1 || reasons[0] != want {
+			t.Errorf("run %+v said %v, want %q", run, reasons, want)
+		}
+	}
+}

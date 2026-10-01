@@ -129,7 +129,7 @@ func TestRotateSyncOff(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv("CODEAF_SYNC_URL", "")
 	_, _, err := realRotation(0, nil)
-	if err == nil || !strings.Contains(err.Error(), "needs a relay") {
+	if err == nil || !strings.Contains(err.Error(), "needs sync") {
 		t.Fatalf("realRotation with sync off = %v", err)
 	}
 }

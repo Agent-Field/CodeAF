@@ -137,7 +137,7 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 	drain(t, a, a.openHome())
 	a.machines = continueRows
 	a.taker = &fakeTaker{
-		taken: Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk"},
+		taken: Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk", Elapsed: 3200 * time.Millisecond},
 		on: func(cell string) {
 			lab.session("project", cell, "Port the picker", workspace, time.Now())
 		},
@@ -148,8 +148,9 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 	if a.at(pageHome) {
 		t.Fatalf("a takeover that worked left the person on home:\n%s", homeText(a))
 	}
-	if got, want := plain(lastNote(t, a)), chatlist.KeptEdits(2, "desk"); got != want {
-		t.Errorf("the kept-edits sentence is %q, want %q", got, want)
+	want := chatlist.Moved("", 3200*time.Millisecond, false) + " " + chatlist.KeptEdits(2, "desk")
+	if got := plain(lastNote(t, a)); got != want {
+		t.Errorf("the takeover sentence is %q, want %q", got, want)
 	}
 }
 

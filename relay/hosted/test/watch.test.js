@@ -16,6 +16,7 @@ function open(sql = memorySql()) {
     broadcast: (v) => heard.push(`v${v}`),
     closeDevice: (d, code) => heard.push(`close ${d} ${code}`),
     closeAll: (code) => heard.push(`closeAll ${code}`),
+    announce: (f) => heard.push(`${f.t} ${f.device}`),
   };
   return { sql, clock, heard, dir: new Directory(sql, 'id_t', () => clock.now, STAGE1, watchers) };
 }
@@ -66,7 +67,7 @@ test('an identical device record, a repeated archive and a repeated revoke chang
   dir.archive('c1');
   dir.revoke('dev_b', 'dev_a');
   dir.revoke('dev_b', 'dev_a');
-  assert.deepEqual(heard, ['v4', 'v5', 'close dev_b 4401', 'close dev_b 4401']);
+  assert.deepEqual(heard, ['v4', 'v5', 'revoked dev_b', 'close dev_b 4401', 'revoked dev_b', 'close dev_b 4401']);
 });
 
 test('a refused rule writes nothing and counts nothing', () => {
@@ -86,7 +87,7 @@ test('revoke asks for its device sockets to close with 4401, rotation for all wi
   dir.revoke('dev_b', 'dev_a');
   dir.setRotation({ state: 'frozen', by: 'dev_a', at: 1 });
   dir.setRotation(undefined);
-  assert.deepEqual(heard, ['v2', `close dev_b ${CLOSE_REVOKED}`, 'v3', `closeAll ${CLOSE_ROTATED}`, 'v4']);
+  assert.deepEqual(heard, ['v2', 'revoked dev_b', `close dev_b ${CLOSE_REVOKED}`, 'v3', `closeAll ${CLOSE_ROTATED}`, 'v4']);
 });
 
 test('the version outlives the object: a new Directory over the same storage continues the count', () => {
@@ -117,4 +118,18 @@ test('an idempotent freeze, and a thaw of a live identity, bump nothing; a real 
   assert.deepEqual(heard.filter((h) => h.startsWith('v')), ['v1']);
   dir.setRotation(undefined);
   assert.equal(dir.version, 2, 'a thaw of a frozen identity is visible');
+});
+
+test('last_seen is stamped without a version, and a device PUT neither sets nor clears it', () => {
+  const { dir, heard } = open();
+  dir.putDevice('dev_a', DEVICE);
+  heard.length = 0;
+  dir.seen('dev_a', 777);
+  dir.seen('dev_nobody', 778);
+  assert.deepEqual(heard, [], 'a sign of life is no change a person sees');
+  assert.equal(dir.read('devices', 'dev_a').last_seen, 777);
+  dir.putDevice('dev_a', { ...DEVICE, last_seen: 5 });
+  assert.equal(dir.read('devices', 'dev_a').last_seen, 777, 'the client value is ignored');
+  assert.deepEqual(heard, [], 'and the identical record is no change');
+  assert.equal(dir.read('devices', 'dev_nobody'), null, 'seen never creates a device');
 });
