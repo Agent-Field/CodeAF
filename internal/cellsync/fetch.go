@@ -45,7 +45,12 @@ func (f *Fetcher) Complete(ctx context.Context, c cell.Cell, head string) error 
 	if err := os.MkdirAll(inbox, 0o700); err != nil {
 		return err
 	}
-	if err := f.prime(ctx, c, head, inbox); err != nil {
+	// Priming works in an inbox of its own beside the shared one: a device's
+	// daemon fetches a head it watches through the same inbox the take uses,
+	// and a primed import deletes what no pass wanted — in a shared inbox that
+	// is another fetcher's file, read one moment and gone the next. Each
+	// priming owns its own files and the strict loop never sees them.
+	if err := f.prime(ctx, c, head, inbox+".prime"); err != nil {
 		return err
 	}
 	have, known := 0, 0
@@ -115,6 +120,10 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 	if f.Dir == nil {
 		return nil // no directory, no plan: exactly today's want loop
 	}
+	if err := os.MkdirAll(inbox, 0o700); err != nil {
+		return err
+	}
+	defer os.RemoveAll(inbox)
 	// A device that already holds the head wants nothing: priming it would
 	// re-download the plan for objects the store has, so the first survey —
 	// which a cold take pays as round 1 either way — decides whether to prime.
