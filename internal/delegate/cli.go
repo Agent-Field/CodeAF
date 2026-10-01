@@ -36,8 +36,13 @@ type Invocation struct {
 	JSON bool
 	// Args is what the flags left: the brief's words.
 	Args []string
-	// Line is the arguments exactly as given after the name, so a host can hand
-	// its child the same line it was handed.
+	// Line is the arguments as given after the name, with the flags put ahead
+	// of the brief the way [Parse] reads them, so a host can hand its child a
+	// line that reads back to the same invocation. THE BRIEF IS ITS TAIL: a
+	// shell run swaps the person's --dir for its copy and puts the copy's note
+	// ahead of the brief by counting [Invocation.Args] back from the end, and a
+	// line kept in the person's own order put that note between a trailing
+	// --max-cost and its value.
 	Line []string
 	// ExplicitFlags records values the caller actually wrote, so a host can
 	// distinguish a model pin from a program's default after parsing.
@@ -86,7 +91,8 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	if body == nil {
 		return nil, fmt.Errorf("%s %s: %w", program.Name, command.Name, errNoBody)
 	}
-	if err := fs.Parse(interspersedFlags(fs, rest)); err != nil {
+	ordered := interspersedFlags(fs, rest)
+	if err := fs.Parse(ordered); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			commandHelp(program, command, fs, out)
 			return nil, ErrHelp
@@ -116,7 +122,7 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 		Ceilings:      ceilings,
 		JSON:          *asJSON,
 		Args:          fs.Args(),
-		Line:          append([]string(nil), line...),
+		Line:          append(append([]string(nil), line[:len(line)-len(rest)]...), ordered...),
 		ExplicitFlags: explicitFlags,
 		body:          body,
 	}, nil
