@@ -99,7 +99,7 @@ When you have two or more devices, home shows one row of them:
 ● This Mac  ● spark  ○ dumb (offline)
 ```
 
-A filled dot `●` is a device that is online now, and always your own. A hollow dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. The row changes by itself within a second or two when a device comes or goes. If home cannot tell who is online, the row is not drawn, because a row that guessed would be wrong.
+A filled green dot `●` is a device that is online now, and always your own. A hollow dim dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. The row changes by itself within a second or two when a device comes or goes. If home cannot tell who is online, the row is not drawn, because a row that guessed would be wrong.
 
 Under the row, `alt+m bring work here` brings the newest chat of an online device to this one. With more than one choice it asks `Which device?` and the last choice is `leave it there`. If there is nothing to bring it says `no other device that is online has a chat to bring here`. The page *Continuing a chat on another device* tells what happens next.
 
