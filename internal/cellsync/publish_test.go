@@ -130,6 +130,27 @@ func TestPublishSupersededIsErrSuperseded(t *testing.T) {
 	}
 }
 
+// checkRaceOutcome accepts the two orders the race can end in, and nothing
+// else. A publish renews its own lease, so when the owner's publish lands first
+// the other device's plain take is refused and the head moved; when the take
+// lands first the owner's publish is superseded or had already gone up.
+func checkRaceOutcome(t *testing.T, run int, r *rig, h1, h2 string, pubErr, takeErr error) {
+	t.Helper()
+	got := r.head(cellID)
+	if errors.Is(takeErr, directory.ErrLeaseHeld) {
+		if pubErr != nil || got.Head != h2 || got.Lease.Device != devA {
+			t.Fatalf("run %d: owner renewed first, yet publish %v left %+v", run, pubErr, got)
+		}
+		return
+	}
+	if takeErr != nil || got.Lease.Device != devB || got.Lease.Fence != 2 {
+		t.Fatalf("run %d: B did not end up holding the lease: %v %+v", run, takeErr, got.Lease)
+	}
+	if pubErr == nil && got.Head != h2 || pubErr != nil && (!errors.Is(pubErr, ErrSuperseded) || got.Head != h1) {
+		t.Fatalf("run %d: publish %v left head %s", run, pubErr, got.Head)
+	}
+}
+
 func TestTwoDevicesRaceAfterLeaseExpiry(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		r := newRig(t)
@@ -147,13 +168,7 @@ func TestTwoDevicesRaceAfterLeaseExpiry(t *testing.T) {
 		}()
 		wg.Wait()
 
-		got := r.head(cellID)
-		if takeErr != nil || got.Lease.Device != devB || got.Lease.Fence != 2 {
-			t.Fatalf("run %d: B did not end up holding the lease: %v %+v", i, takeErr, got.Lease)
-		}
-		if pubErr == nil && got.Head != h2 || pubErr != nil && (!errors.Is(pubErr, ErrSuperseded) || got.Head != h1) {
-			t.Fatalf("run %d: publish %v left head %s", i, pubErr, got.Head)
-		}
+		checkRaceOutcome(t, i, r, h1, h2, pubErr, takeErr)
 	}
 }
 
