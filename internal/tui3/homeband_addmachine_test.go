@@ -71,7 +71,7 @@ func TestAddMachineOpensTwoStepsAndAPasteField(t *testing.T) {
 			t.Fatalf("opened card lacks %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "codeaf.link") {
+	if strings.Contains(got, "codeaf.agentfield.ai") {
 		t.Fatalf("this machine showed a link:\n%s", got)
 	}
 	a.toggleAddMachine()

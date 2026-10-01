@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/relay"
@@ -125,18 +126,31 @@ func (h *Host) Run(ctx context.Context) error {
 	}
 }
 
-// hold answers arrivals until the registration ends.
+// hold answers arrivals until the registration ends, and returns only after
+// every conversation it started has ended.
+//
+// A CONVERSATION OUTLIVING ITS HOST IS A LEAK. Closing the registration closes
+// every stream on it, so each worker is already on its way out when Accept
+// fails; waiting for them is what makes "Run returned" mean that nothing of
+// this machine is still writing its book or speaking to its screen.
 func (h *Host) hold(ctx context.Context, registration *relay.Registration) {
 	go func() {
 		<-ctx.Done()
 		_ = registration.Close()
 	}()
+	var workers sync.WaitGroup
+	defer workers.Wait()
 	for {
 		stream, err := registration.Accept()
 		if err != nil {
+			_ = registration.Close()
 			return
 		}
-		go h.answer(stream)
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			h.answer(stream)
+		}()
 	}
 }
 

@@ -30,7 +30,6 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		"engine/models":           {kind: "joined writer", stop: "warmModels waiter on the pool errand context, and the catalog's own warm context", join: "v3Process.closeAll calls stopPoolErrands for the waiter (since #1179) and Models.Close, which cancels and joins the internal/catalog warm"},
 		"chatv3/sweep-home":       {kind: "joined writer", stop: "v3Process.sweepCancel cancels the walk's context, checked between entries and before every destructive operation", join: "v3Process.closeAll calls stopPlaceSweep, which waits on sweepDone (since #1276)"},
 		"chatv3/cell-budget":      {kind: "one-shot", stop: "Manager.Auto returns after one pass; a process that exits inside it leaves a crash-safe state (pointer written before any file is removed)"},
-		"chatv3/turn-end-seal":    {kind: "one-shot", stop: "Settle returns after one seal of the tree; a process that exits inside it leaves the last call's seal as the head, as before"},
 		"chatv3/background":       {kind: "one-shot", stop: "repairBackgroundChecks returns after one bounded Drift/Install pass"},
 		"chatv3/skill-import":     {kind: "one-shot", stop: "ReconcileImportedSkills returns after one pass; the launch stops waiting after skillImportBudget and the pass is idempotent"},
 		"chatv3/once-questions":   {kind: "one-shot", stop: "agent.Close closes the WatchQuestions channel consumed by the range"},

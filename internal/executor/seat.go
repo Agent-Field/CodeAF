@@ -40,6 +40,43 @@ type Call struct {
 	// call, so a record of the call can name what to end if the harness dies
 	// while it runs. Nil is a call nobody follows.
 	Spawns *Spawns
+	// Deferred asks the seat to record the call and leave the seal to a later
+	// [Settler.Settle], because the caller still has to write the call's result
+	// into the transcript and a seal taken before that carries a call whose work
+	// is present and whose result is absent. A caller that sets it owes the Settle.
+	Deferred bool
+}
+
+// Settler is a seat that can hold a call's seal back until its caller says the
+// call's result is written down.
+type Settler interface {
+	// Settle seals whatever calls were recorded as Deferred, and the transcript
+	// lines written since the last seal, when there are any. It never fails the
+	// caller: a seal that did not hold is reported to the seat's own watch and
+	// rides the next one.
+	Settle(ctx context.Context)
+}
+
+// Settle is the seat's [Settler.Settle]. A seat that keeps no record has nothing
+// to settle, the way ForSetup leaves a seat that cannot tell setup apart.
+func Settle(ctx context.Context, s Seat) {
+	if settler, ok := s.(Settler); ok {
+		settler.Settle(ctx)
+	}
+}
+
+type deferKey struct{}
+
+// Deferring returns a context whose tool calls ask their seat to defer the
+// seal. The turn loop uses it for the batch whose results it writes itself.
+func Deferring(ctx context.Context) context.Context {
+	return context.WithValue(ctx, deferKey{}, true)
+}
+
+// Deferred reports whether ctx came from [Deferring].
+func Deferred(ctx context.Context) bool {
+	deferred, _ := ctx.Value(deferKey{}).(bool)
+	return deferred
 }
 
 // Stance is a seat that runs every call under one declared class and records
