@@ -46,6 +46,7 @@ type namespaces struct {
 	mu    sync.Mutex
 	clock *directorytest.FakeClock
 	dirs  map[string]*directory.Memory
+	links directory.Decider
 }
 
 func newNamespaces(clock *directorytest.FakeClock) *namespaces {
@@ -57,6 +58,7 @@ func (n *namespaces) open(identity string) (directory.Directory, error) {
 	defer n.mu.Unlock()
 	if n.dirs[identity] == nil {
 		n.dirs[identity] = directory.NewMemory(n.clock.Now)
+		n.dirs[identity].SetLinks(n.links)
 	}
 	return n.dirs[identity], nil
 }

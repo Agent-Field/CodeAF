@@ -77,6 +77,12 @@ so it cannot become free storage: every limit is by IP (`CF-Connecting-IP`), box
 are deleted by an alarm, and `PairGate` caps the live boxes. Its counters are stored, so waiting for
 the object to be evicted does not reset them.
 
+Link pairing (`src/link/`, `docs/ux-pairing-contract.md`) is the sibling for a new device that asks a paired
+device to approve it: `LinkGate` holds the per-IP decisions and allocates the 8-character code, one
+`LinkRequest` object per code holds the record and moves it once (pending, then approved or denied), and the
+signed approve and deny routes under `/v1/dir/requests/` are served by the identity's own object, which
+writes the device in one synchronous turn. The relay stores the grant and the sealed name as opaque bytes.
+
 The frozen Go code is not compiled into the Worker. The three pure parts (frame decode, request
 verify, lease rules) are ported to JavaScript and pinned to Go by vectors that Go generates.
 
@@ -130,6 +136,8 @@ canonical names, so the stricter side is the safe one.
 | `NEWCOMERS` | Durable Object `NewcomerGate` (SQLite) | new identities per IP, one object |
 | `PAIR_GATE` | Durable Object `PairGate` (SQLite) | nameplates, per-IP counters, one object |
 | `MAILBOX` | Durable Object `Mailbox` | one pairing, one per nameplate |
+| `LINK_GATE` | Durable Object `LinkGate` (SQLite) | link-request codes, per-IP counters, one object |
+| `LINK_REQUEST` | Durable Object `LinkRequest` | one pending request, one per code |
 | `LEASE_POLICY` | var | `amended` (default: 90 s, a publish renews; stage 1H decision 8.7) or `stage1` (the frozen 30 s law) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
 | `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
@@ -177,6 +185,10 @@ per-IP identity cap); production sets none of them. The pairing wire words are t
 | pairing: TTL, message, messages per side | 10 min, 4 KiB, 4 | `404`, `413`, `409 full` |
 | pairing: creates per hour, writes per minute, open polls, per IP | 10, 30, 4 | `429 rate_limited`, `Retry-After` |
 | pairing: live mailboxes in all (32 KiB each, so also 64 MiB) | 2,000 | `503 full` |
+| link requests: TTL, create body, grant | 10 min, 1 KiB, 4 KiB | `404 gone`, `413 too_big` |
+| link requests: creates an hour, pending at once, per IP | 10, 3 | `429 rate_limited`, `Retry-After` |
+| link requests: reads a minute, misses a minute, open polls, per IP | 60, 20, 4 | `429 rate_limited` |
+| link requests: live in all | 2,000 | `503 full` |
 
 Stored quotas (bytes, objects, frames a day), the stats counts and the per-IP counters live in the identity object's SQLite and survive
 eviction. A frame the store already holds costs no quota, so a client that resends is never refused

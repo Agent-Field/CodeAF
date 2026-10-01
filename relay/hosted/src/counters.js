@@ -15,4 +15,10 @@ export class Counters {
     this.sql.exec('INSERT OR REPLACE INTO hits VALUES (?,?,?)', key, until, n);
     return { n, retryAfter: (until - now) / 1000 };
   }
+
+  /** peek answers the count key holds now, without counting an event. */
+  peek(key, now) {
+    const row = this.sql.exec('SELECT until, n FROM hits WHERE key = ?', key).toArray()[0];
+    return row && row.until > now ? { n: row.n, retryAfter: (row.until - now) / 1000 } : { n: 0, retryAfter: 0 };
+  }
 }
