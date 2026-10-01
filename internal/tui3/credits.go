@@ -122,6 +122,16 @@ func (a *app) tookCredits(msg creditReadMsg) tea.Cmd {
 	}
 	if msg.err == nil {
 		a.refreshCreditWarnings()
+		// A READING THAT LANDS WHILE THE SETUP'S LIST IS OPEN RE-AIMS IT. The
+		// list is cut to free rows the moment the account reads low
+		// (onboarding.go's [app.setupModelChoices]), so a cursor that was on
+		// the ninth row of the whole catalog would be on the ninth row of a
+		// much shorter list — or past its end. The filter pass puts the cursor
+		// back on the model in use, which is where it opened.
+		if a.setup.open && a.setup.modelOpen {
+			a.filterSetupModels(a.setup.modelFind)
+			a.touch()
+		}
 	}
 	return a.takeCreditWake()
 }

@@ -157,12 +157,13 @@ func TestDocPropertyTableMatchesTheAllowlist(t *testing.T) {
 	}
 }
 
-func TestDocCarriesTheNoticeAndTheSwitches(t *testing.T) {
+// THE DOC IS THE DISCLOSURE. The product prints no notice and has no command
+// about the counts since 2026-10-01, so the page in the repository is the one
+// place a person is told what leaves and how to stop it, and it must name
+// every switch and everything that is never sent.
+func TestDocCarriesTheDisclosureAndTheSwitches(t *testing.T) {
 	body := docBody(t)
-	if !strings.Contains(body, Notice) {
-		t.Error("docs/TELEMETRY.md must quote the notice byte for byte")
-	}
-	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "telemetry info", "telemetry show"} {
+	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "/settings", "codeaf sends anonymous usage counts"} {
 		if !strings.Contains(body, wanted) {
 			t.Errorf("docs/TELEMETRY.md must mention %q", wanted)
 		}

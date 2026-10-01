@@ -402,6 +402,14 @@ func (a *app) setupControlsEnter() bool {
 				a.takeSetupModel(models[s.modelAt].ID)
 			}
 			s.closeChoosers()
+			// AND THEN ENTER GOES ON, as it does on the limit. A model taken
+			// from the list is this row answered; an earlier build left the
+			// focus on it, so the next enter opened the list again and a person
+			// pressing enter to get through the form never got past this row.
+			// A refusal keeps the focus here so it can be read.
+			if s.refusal == "" {
+				s.focusControl(a, 1)
+			}
 			return false
 		}
 		// A ROW THE ENVIRONMENT OWNS DOES NOT OPEN A LIST. Offering a choice that
@@ -418,12 +426,103 @@ func (a *app) setupControlsEnter() bool {
 		return false
 
 	case controlReview:
-		s.reviewOpen = !s.reviewOpen
+		// Enter shows the review, and enter on a review already showing goes
+		// on to the way out rather than folding it away: the rows stay readable
+		// and the form keeps moving under repeated enters.
+		if s.reviewOpen {
+			s.focusControl(a, 1)
+			return false
+		}
+		s.reviewOpen = true
 		return false
 	}
 	// `Start a conversation` — everything the screen holds is written down, and
 	// a row that refused keeps the screen up with its refusal on it.
 	return a.commitSetupControls()
+}
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// setupDoors is what the last frame of the controls screen drew for the pointer:
+// a door per body row, and where the body stands in the window. It is written by
+// [app.setupControlsFrame] and read by [app.setupPress], so a press is answered
+// against the rows a person can see rather than against a form rebuilt from
+// state that may have moved under them.
+type setupDoors struct {
+	rows []setupDoor
+	// top is the frame row the first body row is on; left and width are the
+	// form's columns, so a press on the example column beside the form — which
+	// is an illustration — selects nothing.
+	top, left, width int
+}
+
+// setupPress is a left press on the controls screen, answered the way the keys
+// would have answered it. It reports whether the screen is finished.
+//
+// THE SCREEN USED TO SWALLOW EVERY PRESS, on the argument that the setup was
+// three keystrokes. It is a form now, with rows that look like rows and a list
+// that looks like a list, and the first thing a person who sees a list does is
+// click on it. So a press on a control is a tab to it, and a press on a row that
+// enter would act on — the model field, the review, the way out, or one model of
+// the open list — is that enter. The limit row is only focused, because what a
+// press on an amount means is "I want to type here". A press anywhere else on
+// the screen — a sentence, a blank, the example — does nothing, which is what a
+// press on words should do.
+func (a *app) setupPress(x, y int) bool {
+	s := &a.setup
+	if s.step() != setupControls {
+		return false
+	}
+	d := s.doors
+	row := y - d.top
+	if row < 0 || row >= len(d.rows) || x < d.left || x >= d.left+d.width {
+		return false
+	}
+	door := d.rows[row]
+	switch door.kind {
+	case doorModel:
+		models := a.setupModelChoices()
+		if door.model < 0 || door.model >= len(models) {
+			return false
+		}
+		s.modelAt = door.model
+		a.touch()
+		return a.setupControlsEnter()
+	case doorControl:
+		if s.control != door.control {
+			// A tab to the row, which closes whatever was open on the way and
+			// moves the example with it ([setupFlow.focusControl]).
+			s.focusControl(a, int(door.control)-int(s.control))
+		} else if s.modelOpen && door.control == controlChatModel {
+			// A press on the field whose list is open puts the list away and
+			// chooses nothing, which is esc's rule: a cursor is not an answer.
+			s.closeChoosers()
+			a.touch()
+			return false
+		}
+		if door.control == controlLimit {
+			a.touch()
+			return false
+		}
+		a.touch()
+		return a.setupControlsEnter()
+	}
+	return false
+}
+
+// setupWheel is the wheel over the controls screen. It turns the open model
+// list — the one thing on the screen that scrolls — and nothing else.
+func (a *app) setupWheel(down bool) {
+	s := &a.setup
+	if s.step() != setupControls || !s.modelOpen {
+		return
+	}
+	delta := -1
+	if down {
+		delta = 1
+	}
+	a.moveSetupModel(delta)
+	a.touch()
 }
 
 // clampIndex keeps a cursor inside a list that may have changed under it.
@@ -537,6 +636,22 @@ const setupModelUnsavedWord = "this conversation is on it, but it could not be s
 // catalog does not carry it, and the cursor opens on it either way.
 func (a *app) setupModelChoices() []Model {
 	models := a.modelList()
+	if a.setupFreeOnly() {
+		// ONLY THE FREE ROWS WHILE THE ACCOUNT READS LOW. The warning under the
+		// message box says some models may not be available; on this screen,
+		// where a person who has never run the program is choosing by name, a
+		// list of three hundred paid models they cannot use is a list they will
+		// pick the wrong row from (five new people did, 2026-09-30). The same
+		// test the warning uses decides a row ([app.paidCreditModel]): a `:free`
+		// id, a catalog row priced at zero, or a model another service serves.
+		free := make([]Model, 0, len(models))
+		for _, model := range models {
+			if !a.paidCreditModel(model.ID, models) {
+				free = append(free, model)
+			}
+		}
+		models = free
+	}
 	if current := strings.TrimSpace(a.model); current != "" {
 		found := false
 		for _, model := range models {
@@ -579,6 +694,15 @@ func (a *app) setupModelChoices() []Model {
 		out = append(out, h.model)
 	}
 	return out
+}
+
+// setupFreeOnly reports whether the model list is cut to free rows: the default
+// provider's account is known low, by the same reading the warning under the
+// message box follows ([app.refreshCreditWarnings]). It is read live rather than
+// at seed time because the balance is read AFTER the key lands, on its own
+// goroutine, and usually answers while this screen is already up.
+func (a *app) setupFreeOnly() bool {
+	return a.readCredits != nil && a.creditsLow
 }
 
 // setupModelSlots is how many models the list SHOWS AT ONCE, and it is a height
@@ -864,7 +988,11 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	// order the form itself ranked them. A wrapped sentence cut off in the middle
 	// is worse than a sentence that is not there. Three rows are spoken for
 	// before the form gets any: the header, the blank under it, and the legend.
-	body, caretRow := sheet.trim(max(height-3, 1))
+	body, doors, caretRow := sheet.trim(max(height-3, 1))
+	// THE DOORS ARE KEPT WITH THE FRAME THAT DREW THEM, so a press reads the
+	// rows that are actually on the screen: body row i is frame row i+2, under
+	// the header and the blank, and it spans the form's own columns.
+	a.setup.doors = setupDoors{rows: doors, top: 2, left: lead, width: form}
 
 	var show []string
 	if wide {
@@ -950,12 +1078,43 @@ type controlsSheet struct {
 	// block is the block id each row belongs to, or zero for a row that is never
 	// given up: a field's value, an open chooser, the primary action, the legend.
 	block []int
+	// door is what each row is a door onto for the pointer, row for row with
+	// rows: the control a press on it focuses, or the model it chooses. A row
+	// that is only words carries the zero value, which is a row a press lands on
+	// and nothing happens.
+	door []setupDoor
 	// ranked is every droppable block with how willingly it goes.
 	ranked  []controlsRank
 	next    int
 	caretAt int
 	caretX  int
 }
+
+// setupDoor is what one row of the form means to a press. A row is one of three
+// things: nothing (a sentence, a blank, the count under the list), a control
+// (its label-and-value row, or the primary action), or one model of the open
+// list — in which case model is its index into [app.setupModelChoices].
+//
+// IT IS RECORDED WHILE THE FORM IS BUILT AND NOT RECOMPUTED FROM A CLICK,
+// because the form is not a fixed shape: a short window gives up whole blocks
+// ([controlsSheet.trim]) and an open list or review adds rows under a field, so
+// the only thing that knows which control is on row nine is the pass that put it
+// there. The frame keeps the doors it drew ([setupFlow.doors]) and a press reads
+// them back — the same memo-at-draw-time rule every other page's press obeys.
+type setupDoor struct {
+	control setupControl
+	model   int
+	kind    setupDoorKind
+}
+
+// setupDoorKind is which of the three a row is.
+type setupDoorKind int
+
+const (
+	doorNone setupDoorKind = iota
+	doorControl
+	doorModel
+)
 
 // controlsRank pairs a block with how willingly it goes.
 type controlsRank struct{ rank, id int }
@@ -977,7 +1136,15 @@ const (
 
 func (f *controlsSheet) add(lines ...string) {
 	for _, line := range lines {
-		f.rows, f.block = append(f.rows, line), append(f.block, 0)
+		f.rows, f.block, f.door = append(f.rows, line), append(f.block, 0), append(f.door, setupDoor{})
+	}
+}
+
+// open adds rows that are never given up AND are a door for the pointer: a
+// control's own row, or one model of the list.
+func (f *controlsSheet) open(door setupDoor, lines ...string) {
+	for _, line := range lines {
+		f.rows, f.block, f.door = append(f.rows, line), append(f.block, 0), append(f.door, door)
 	}
 }
 
@@ -990,15 +1157,15 @@ func (f *controlsSheet) soft(rank int, lines ...string) {
 	id := f.next
 	f.ranked = append(f.ranked, controlsRank{rank: rank, id: id})
 	for _, line := range lines {
-		f.rows, f.block = append(f.rows, line), append(f.block, id)
+		f.rows, f.block, f.door = append(f.rows, line), append(f.block, id), append(f.door, setupDoor{})
 	}
 }
 
 // trim gives the window back the rows it does not have, block by block, and
-// carries the caret with it.
-func (f *controlsSheet) trim(height int) ([]string, int) {
+// carries the caret and the doors with it.
+func (f *controlsSheet) trim(height int) ([]string, []setupDoor, int) {
 	if len(f.rows) <= height {
-		return f.rows, f.caretAt
+		return f.rows, f.door, f.caretAt
 	}
 	over := len(f.rows) - height
 	// The blocks are ordered by rank, and within one rank the LOWEST ON THE
@@ -1027,6 +1194,7 @@ func (f *controlsSheet) trim(height int) ([]string, int) {
 		}
 	}
 	out := make([]string, 0, len(f.rows))
+	doors := make([]setupDoor, 0, len(f.rows))
 	caret := f.caretAt
 	for at, line := range f.rows {
 		if gone[f.block[at]] {
@@ -1036,6 +1204,7 @@ func (f *controlsSheet) trim(height int) ([]string, int) {
 			continue
 		}
 		out = append(out, line)
+		doors = append(doors, f.door[at])
 	}
 	if len(out) > height {
 		// EVERY BLOCK HAS GONE AND IT IS STILL TOO TALL, which is a window shorter
@@ -1044,9 +1213,10 @@ func (f *controlsSheet) trim(height int) ([]string, int) {
 		// person can do without, and the legend at the foot is the one they cannot.
 		cut := len(out) - height
 		out = out[cut:]
+		doors = doors[cut:]
 		caret -= cut
 	}
-	return out, caret
+	return out, doors, caret
 }
 
 // setupControlsForm builds the form: its rows, the blocks a short window gives
@@ -1066,15 +1236,23 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 	if s.control == controlLimit {
 		f.caretAt, f.caretX = len(f.rows), limitCaret
 	}
-	f.add(limitRow)
+	f.open(setupDoor{kind: doorControl, control: controlLimit}, limitRow)
 	a.addControlWords(f, width, controlLimit, controlLimitWord, controlLimitDetail)
 	f.soft(rankSpacer, "")
 
 	// ── the chat model ──
-	f.add(a.setupFieldRow(width, controlChatModel, controlModelLabel, modelWord(a.model), a.setupModelSource()))
+	f.open(setupDoor{kind: doorControl, control: controlChatModel},
+		a.setupFieldRow(width, controlChatModel, controlModelLabel, modelWord(a.model), a.setupModelSource()))
 	a.addControlWords(f, width, controlChatModel, controlModelWord, a.setupModelDetail())
+	// A LOW ACCOUNT IS NOT DETAIL EITHER. It is why the list under this row is
+	// shorter than the catalog, so it is on the screen whether or not anybody
+	// asked.
+	f.add(a.setupLowCreditsRows(width)...)
 	if s.modelOpen {
-		f.add(a.setupModelRows(width)...)
+		rows, doors := a.setupModelRows(width)
+		for i, row := range rows {
+			f.open(doors[i], row)
+		}
 	}
 	f.soft(rankSpacer, "")
 
@@ -1086,7 +1264,7 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 	f.soft(rankSpacer, "")
 
 	// ── the optional review ──
-	f.add(a.setupReviewRow(width))
+	f.open(setupDoor{kind: doorControl, control: controlReview}, a.setupReviewRow(width))
 	if s.reviewOpen {
 		rows, rest := a.setupReviewRows(width)
 		f.add(rows...)
@@ -1095,7 +1273,7 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 	f.soft(rankSpacer, "")
 
 	// ── the way out ──
-	f.add(a.setupStartRow(width))
+	f.open(setupDoor{kind: doorControl, control: controlStart}, a.setupStartRow(width))
 	if s.refusal != "" {
 		// A REFUSAL IS NEVER GIVEN UP. It is the one row on this screen that is
 		// about something that just went wrong, and a window too short to show it
@@ -1277,31 +1455,40 @@ func (a *app) setupLimitRow(width int) (string, int) {
 // catalog with the cursor's exact id under it, and a count that says how much
 // more there is and how to reach it. A machine with no catalog at all still shows
 // the model in use, so enter confirms rather than changes.
-func (a *app) setupModelRows(width int) []string {
+//
+// It answers the rows and, row for row, what each is a door onto for a press:
+// a model's name row and the id row under the cursor's model both choose that
+// model, and the count line chooses nothing.
+func (a *app) setupModelRows(width int) ([]string, []setupDoor) {
 	pal := a.pal
 	s := &a.setup
 	models := a.setupModelChoices()
 	if len(models) == 0 {
 		if strings.TrimSpace(s.modelFind) != "" {
-			return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoMatchWord, width-4))}
+			return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoMatchWord, width-4))}, []setupDoor{{}}
 		}
-		return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoCatalogWord, width-4))}
+		return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoCatalogWord, width-4))}, []setupDoor{{}}
 	}
 	top := clampIndex(s.modelTop, max(len(models)-setupModelSlots+1, 1))
 	out := make([]string, 0, setupModelSlots+2)
+	doors := make([]setupDoor, 0, setupModelSlots+2)
 	for i := top; i < len(models) && i < top+setupModelSlots; i++ {
 		name := modelWord(models[i].ID)
+		door := setupDoor{kind: doorModel, control: controlChatModel, model: i}
 		if i == s.modelAt {
 			out = append(out, "  "+pal.accent(setupLead)+pal.bold(pal.ink(fit(name, width-6))))
 			// THE EXACT ID, UNDER THE ONE ROW IT IS ABOUT. The list reads as names
 			// and the address is still on the screen for whoever needs it.
 			out = append(out, strings.Repeat(" ", 6)+pal.dim(fit(models[i].ID, width-6)))
+			doors = append(doors, door, door)
 			continue
 		}
 		out = append(out, "    "+pal.dim(fit(name, width-6)))
+		doors = append(doors, door)
 	}
 	out = append(out, strings.Repeat(" ", 4)+pal.dim(fit(a.setupModelCountWord(len(models)), width-4)))
-	return out
+	doors = append(doors, setupDoor{})
+	return out, doors
 }
 
 // setupModelCountWord is the line under the list: where the cursor is in the
@@ -1310,10 +1497,38 @@ func (a *app) setupModelRows(width int) []string {
 func (a *app) setupModelCountWord(count int) string {
 	at := clampIndex(a.setup.modelAt, count) + 1
 	where := itoa(at) + " of " + itoa(count)
+	if a.setupFreeOnly() {
+		where += " · " + setupFreeOnlyWord
+	}
 	if find := strings.TrimSpace(a.setup.modelFind); find != "" {
 		return where + " · matching " + find
 	}
 	return where + " · type to narrow"
+}
+
+// setupFreeOnlyWord is the count line's word for a list cut to free rows, and
+// setupLowCreditsWord is the dim line under the chat model that says why. The
+// line names the account rather than the list, because the account is the fact
+// a person can act on, and it ends on where the rest went so the cut does not
+// read as a catalog that failed to load.
+const (
+	setupFreeOnlyWord   = "free only"
+	setupLowCreditsWord = "Your OpenRouter account is low on credits · the list shows free models only"
+)
+
+// setupLowCreditsRows is the line under the chat model while the account reads
+// low — wrapped at the form's width rather than cut, because every word of it
+// is the reason the list is short — and nothing, the emptiness law, when the
+// account does not read low.
+func (a *app) setupLowCreditsRows(width int) []string {
+	if !a.setupFreeOnly() {
+		return nil
+	}
+	lines := wrap(setupLowCreditsWord, max(width-4, 1))
+	for i, line := range lines {
+		lines[i] = strings.Repeat(" ", 4) + a.pal.warn(line)
+	}
+	return lines
 }
 
 // setupNoCatalogWord is what the list says where there is no catalog to choose
@@ -1455,6 +1670,9 @@ func (a *app) setupControlsKeys(width int) string {
 			parts = []string{"enter opens the list", "tab moves", a.setupBackWord()}
 		case controlReview:
 			parts = []string{"enter shows them", "tab moves", a.setupBackWord()}
+			if s.reviewOpen {
+				parts[0] = "enter goes on"
+			}
 		case controlStart:
 			parts = []string{"enter starts", "tab moves", a.setupBackWord()}
 		}

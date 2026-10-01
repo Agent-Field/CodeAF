@@ -282,7 +282,7 @@ func TestExecBinaryWithoutAKeyFailsCleanly(t *testing.T) {
 
 // A stamped smoke run is a real usage-count source unless the environment
 // says otherwise, so the closed environment above must hold: one task run
-// leaves no telemetry directory behind and the status verb reports off.
+// leaves no telemetry directory behind.
 func TestSmokeBinaryNeverSendsUsageCounts(t *testing.T) {
 	binary := buildCodeafStamped(t, "v0.0.0-smoke")
 	server := fakeOpenRouter(t)
@@ -296,14 +296,6 @@ func TestSmokeBinaryNeverSendsUsageCounts(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, "telemetry")); !os.IsNotExist(err) {
 		t.Fatalf("a telemetry directory was created by a smoke run")
-	}
-
-	stdout, stderr, code := runSmoke(t, binary, env, "", "telemetry", "status")
-	if code != 0 {
-		t.Fatalf("telemetry status exited %d\nstderr:\n%s", code, stderr)
-	}
-	if !strings.Contains(stdout, "telemetry off") {
-		t.Fatalf("status printed %q, want it to report telemetry off", stdout)
 	}
 }
 

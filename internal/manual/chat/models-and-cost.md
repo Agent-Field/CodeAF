@@ -1001,7 +1001,7 @@ What you type, and the files and command output the chat or a task reads, go to 
 provider serving each call: the model you talk to, and each task's worker, planner and
 checker on the providers you connected. Whether a provider keeps or trains on it is that
 provider's policy and your account's settings there. codeaf's own usage counts carry no
-content (`codeaf telemetry info` says what they carry).
+content (`docs/TELEMETRY.md` in the repository lists every field they carry).
 
 **Free routes may log prompts.** A provider's free pool of a model (an OpenRouter `…:free`
 id) may log or train on what it is sent. The crew uses free routes only when you turn

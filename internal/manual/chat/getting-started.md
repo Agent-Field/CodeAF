@@ -182,7 +182,23 @@ row draws the real catalog: five rows at a time, `↑`/`↓` scroll the rest pas
 it. The row under the cursor shows its exact id. The model you are already on is always on
 that list and the cursor opens on it, even with no catalog yet, so accepting confirms
 rather than changes. Choosing one goes through the same settings row `/model` writes and
-is kept for the next launch.
+is kept for the next launch, and `enter` then goes on to the next row, as it does on the
+limit — so pressing `enter` alone walks the whole form down to `Start a conversation`.
+
+**The rows take the mouse too.** A click on a row is the key that row would have taken: a
+click on the limit focuses it to type into, a click on the chat model opens its list, a
+click on one model of the list takes it, a click on the review shows it, and a click on
+`Start a conversation` leaves. The wheel scrolls the open list. A click on a sentence, a
+blank row or the example panel does nothing.
+
+**With no credit on the OpenRouter account, the list shows free models only.** When the
+account's balance has read low — $0.50 or less, the same reading that puts the low-credits
+warning under the message box — the list is cut to the `:free` ids and the catalog rows
+priced at zero, its count line says `free only`, and a warning line under the field reads
+`Your OpenRouter account is low on credits · the list shows free models only`. The model you
+are already on stays on the list whatever it costs, so accepting still confirms. The balance
+is read right after the key lands, so the cut usually arrives a moment after the screen does;
+a top-up is read on the next launch (*OpenRouter credits and free models*).
 
 **There is no crew question**, because the crew is three seats — the worker, the planner and the
 checker — and codeaf picks all three for each task from what kind of work it is, so there

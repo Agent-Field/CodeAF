@@ -127,6 +127,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it worked and then stopped", "openrouter-credits"},
 		{"why is my model a free one", "openrouter-credits"},
 		{"low on credits warning", "openrouter-credits"},
+		{"setup only shows free models", "openrouter-credits"},
+		// The anonymous usage counts, asked the two ways people ask: whether
+		// anything is collected, and how to stop it.
+		{"does codeaf collect data about me", "running-from-the-terminal"},
+		{"turn off telemetry", "running-from-the-terminal"},
+		{"can I click on the setup screen", "getting-started"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},

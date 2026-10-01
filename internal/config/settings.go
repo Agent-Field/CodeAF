@@ -3404,7 +3404,7 @@ func ModelPoolAt(profileDir string) poolcfg.Config {
 // verbs whose tests hand one in. It is where the telemetry off switch reaches
 // the pool: the environment rungs (CODEAF_TELEMETRY, DO_NOT_TRACK) are read by
 // the resolver through lookup, and the two rungs that live on disk — the
-// project file and the profile row that `codeaf telemetry off` writes — are
+// project file and the profile row the settings sheet's telemetry switch writes — are
 // read here and applied with [poolcfg.Config.Quieted]. The rows, not the
 // pin: a caller that injected an environment must get the answer for THAT
 // environment's CODEAF_TELEMETRY, not the one the harness happens to export
@@ -4616,9 +4616,10 @@ func TelemetryAtIn(cwd, profileDir string) bool {
 	return DefaultTelemetry
 }
 
-// WriteTelemetry persists the person's own answer to the telemetry row —
-// the writer `codeaf telemetry on|off` goes through, so the command and the
-// settings sheet write the same file the same way and cannot drift.
+// WriteTelemetry persists the person's own answer to the telemetry row, the
+// one writer the settings sheet's telemetry switch goes through. (`codeaf
+// telemetry on|off` wrote through it too, until the command left on
+// 2026-10-01.)
 func WriteTelemetry(profileDir string, on bool) error {
 	return writeProfileValue(profileDir, KeyTelemetry, on)
 }

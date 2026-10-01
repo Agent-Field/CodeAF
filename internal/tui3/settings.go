@@ -594,8 +594,8 @@ var settingUI = map[string]settingMeta{
 	config.KeyTelemetry: {
 		tab: tabDisplay, label: "telemetry", widget: widgetToggle,
 		about: "sends anonymous usage counts (version, OS, mode, session and error " +
-			"counts) after a notice has been printed once; never prompts, code, paths " +
-			"or names. Off sends nothing.",
+			"counts); never prompts, code, paths or names. Off sends nothing. " +
+			"docs/TELEMETRY.md in the repository lists every field.",
 	},
 	config.KeyDraftPersist: {
 		tab: tabDisplay, label: "keep drafts", widget: widgetToggle,

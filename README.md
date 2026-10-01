@@ -294,21 +294,21 @@ Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/p
 - [Guide](docs/GUIDE.md): every flag, key, slash command and exit code.
 - [docs/](docs/README.md): architecture, headless, remote, limits.
 
-<details>
-<summary>Telemetry: anonymous usage counts. <code>CODEAF_TELEMETRY=off</code> turns them off.</summary>
+## Telemetry
 
-```text
 codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode, session counts, errors, and total tokens used.
-  Never: anything about you or your work. No prompts, code, file names,
-         paths, repo names, keys, email, IP, or machine name.
-  What is collected:        codeaf telemetry info
-  Turn off:                 CODEAF_TELEMETRY=off
-```
 
-Counts and buckets only, never your work. [docs/TELEMETRY.md](docs/TELEMETRY.md)
-lists every field and every way to turn it off.
+- **Sent:** version, OS, mode (chat or task), session counts, errors, and total
+  tokens used — as counts and bands, under a random per-install id.
+- **Never:** anything about you or your work. No prompts, code, file names,
+  paths, repo names, keys, email, IP address, machine name, or model names.
+- **Turn off:** the `telemetry` switch in the chat's `/settings`,
+  `CODEAF_TELEMETRY=off`, or `DO_NOT_TRACK=1`. Any one of them stops every
+  stream, the Model Pool's rows included.
 
-</details>
+This page and [docs/TELEMETRY.md](docs/TELEMETRY.md) are the whole disclosure:
+the product itself prints no notice and has no telemetry command. The document
+lists every field, when it is sent, and every way to turn it off, and a test
+holds it to the code.
 
 Built by the [AgentField](https://github.com/Agent-Field/agentfield) team.

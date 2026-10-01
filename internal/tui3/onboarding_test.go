@@ -1,10 +1,14 @@
 package tui3
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -91,15 +95,20 @@ func TestTheModelListReachesTheWholeCatalogAndOpensOnTheModelInUse(t *testing.T)
 	if got := choices[a.setup.modelAt].ID; got != a.model {
 		t.Fatalf("the cursor opened on %q, want the model in use %q", got, a.model)
 	}
-	// And enter on it confirms rather than changes.
+	// And enter on it confirms rather than changes — and then goes on to the
+	// next row, as it does on the limit, so a person pressing enter to get
+	// through the form is not handed the same list again.
 	was := a.model
 	pressSetup(a, key("enter"))
 	if a.model != was {
 		t.Fatalf("enter on the model in use switched to %q", a.model)
 	}
+	if a.setup.modelOpen || a.setup.control != controlReview {
+		t.Fatalf("after taking a model the focus is on control %v with the list open=%v, want the review row and the list closed", a.setup.control, a.setup.modelOpen)
+	}
 	// The last row of the catalog is reachable by walking, and the count says
 	// how far there is to go.
-	pressSetup(a, key("enter"))
+	pressSetup(a, key("shift+tab"), key("enter"))
 	for i := 0; i < len(catalog); i++ {
 		if a.setupModelChoices()[a.setup.modelAt].ID == "i/india" {
 			break
@@ -826,5 +835,225 @@ func TestAFolderWithEarlierConversationsGetsTheOrdinaryGreeting(t *testing.T) {
 	drive(t, a, key("h"))
 	if a.welcome.open {
 		t.Fatal("the ordinary greeting no longer goes on the first keystroke")
+	}
+}
+
+// ENTER GETS A PERSON THROUGH THE WHOLE FORM. Each row answers enter by going on
+// to the next: the limit commits and moves, the model row opens its list and a
+// taken model moves, the review opens and then moves, and the way out starts.
+// An earlier build left the focus on the model row after a choice, so the next
+// enter opened the list again and nothing a person did with enter alone ever
+// reached `Start a conversation`.
+func TestEnterAloneWalksTheWholeControlsScreen(t *testing.T) {
+	a, dir := controlsApp(t, nil)
+	a.models = func() []Model { return []Model{{ID: "openai/gpt-4.1-mini"}, {ID: "b/bravo"}} }
+	pressSetup(a, key("enter")) // the limit, taken as it stands
+	if a.setup.control != controlChatModel {
+		t.Fatalf("after the limit the focus is on %v, want the chat model", a.setup.control)
+	}
+	pressSetup(a, key("enter")) // opens the list
+	pressSetup(a, key("enter")) // takes the model in use and goes on
+	if a.setup.control != controlReview || a.setup.modelOpen {
+		t.Fatalf("after the model the focus is on %v (list open=%v), want the review", a.setup.control, a.setup.modelOpen)
+	}
+	pressSetup(a, key("enter")) // shows the review
+	if !a.setup.reviewOpen || a.setup.control != controlReview {
+		t.Fatal("enter on the review row did not show it")
+	}
+	if screen := setupScreen(a); !strings.Contains(screen, "enter goes on") {
+		t.Fatalf("the legend on an open review must say enter goes on; got:\n%s", screen)
+	}
+	pressSetup(a, key("enter")) // goes on, leaving the review readable
+	if a.setup.control != controlStart || !a.setup.reviewOpen {
+		t.Fatalf("after the review the focus is on %v (review open=%v), want the way out with the review still showing", a.setup.control, a.setup.reviewOpen)
+	}
+	pressSetup(a, key("enter")) // starts
+	if a.setup.open {
+		t.Fatal("enter on `Start a conversation` left the setup up")
+	}
+	if !config.DailyBudgetConfigured(dir) {
+		t.Fatal("leaving the screen did not write the day's limit")
+	}
+}
+
+// setupRowOf finds the frame row a control's label is drawn on, so a click test
+// aims at the row a person sees rather than at a number the test invented.
+func setupRowOf(t *testing.T, a *app, label string) (x, y int) {
+	t.Helper()
+	frame, _, _ := a.frame()
+	for row, line := range strings.Split(plain(frame), "\n") {
+		if at := strings.Index(line, label); at >= 0 {
+			return at, row
+		}
+	}
+	t.Fatalf("no row of the screen carries %q:\n%s", label, plain(frame))
+	return 0, 0
+}
+
+// THE CONTROLS SCREEN ANSWERS THE POINTER. A press on a row is the key that row
+// would have taken: a press on the limit focuses it, a press on the model row
+// opens its list, a press on one model of the list takes it, and a press on
+// `Start a conversation` leaves. The screen used to swallow every press, on the
+// argument that it was three keystrokes; new people clicked its rows and read
+// the silence as a menu that could not be selected.
+func TestAClickOnTheControlsScreenActsLikeTheKeyOnThatRow(t *testing.T) {
+	a, dir := controlsApp(t, nil)
+	a.models = func() []Model {
+		return []Model{{ID: "openai/gpt-4.1-mini"}, {ID: "b/bravo"}, {ID: "c/charlie"}}
+	}
+	// A press on the model row opens the list.
+	x, y := setupRowOf(t, a, controlModelLabel)
+	pressSetup(a, clickAt(x+2, y))
+	if a.setup.control != controlChatModel || !a.setup.modelOpen {
+		t.Fatalf("a press on the model row left the focus on %v with the list open=%v", a.setup.control, a.setup.modelOpen)
+	}
+	// A press on one row of the list takes that model and goes on.
+	x, y = setupRowOf(t, a, modelWord("c/charlie"))
+	pressSetup(a, clickAt(x, y))
+	if a.model != "c/charlie" {
+		t.Fatalf("a press on a model row put the conversation on %q, want c/charlie", a.model)
+	}
+	if a.setup.modelOpen || a.setup.control != controlReview {
+		t.Fatalf("after the press the focus is on %v (list open=%v), want the review", a.setup.control, a.setup.modelOpen)
+	}
+	// A press on the limit only focuses it: what a press on an amount means is
+	// "I want to type here".
+	x, y = setupRowOf(t, a, controlLimitLabel)
+	pressSetup(a, clickAt(x, y))
+	if a.setup.control != controlLimit {
+		t.Fatalf("a press on the limit row left the focus on %v", a.setup.control)
+	}
+	// A press on a sentence does nothing.
+	x, y = setupRowOf(t, a, "new work waits until midnight")
+	pressSetup(a, clickAt(x, y))
+	if a.setup.control != controlLimit || a.setup.modelOpen {
+		t.Fatalf("a press on a sentence changed the focus to %v (list open=%v)", a.setup.control, a.setup.modelOpen)
+	}
+	// A press on the way out leaves, with the limit written.
+	x, y = setupRowOf(t, a, controlStartWord)
+	pressSetup(a, clickAt(x, y))
+	if a.setup.open {
+		t.Fatal("a press on `Start a conversation` left the setup up")
+	}
+	if !config.DailyBudgetConfigured(dir) {
+		t.Fatal("leaving by a press did not write the day's limit")
+	}
+}
+
+// AND THE WHEEL TURNS THE OPEN LIST, and only the list: with it closed a notch
+// changes nothing on the screen.
+func TestTheWheelWalksTheOpenModelList(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	catalog := make([]Model, 0, 8)
+	for _, id := range []string{"openai/gpt-4.1-mini", "b/bravo", "c/charlie", "d/delta", "e/echo", "f/foxtrot", "g/golf", "h/hotel"} {
+		catalog = append(catalog, Model{ID: id})
+	}
+	a.models = func() []Model { return catalog }
+	wheel := func(down bool) tea.MouseWheelMsg {
+		button := tea.MouseWheelUp
+		if down {
+			button = tea.MouseWheelDown
+		}
+		return tea.MouseWheelMsg{X: 20, Y: 10, Button: button}
+	}
+	before := setupScreen(a)
+	pressSetup(a, wheel(true))
+	if setupScreen(a) != before {
+		t.Fatal("a notch with no list open changed the screen")
+	}
+	walkToControl(t, a, controlChatModel)
+	pressSetup(a, key("enter"))
+	// A run of notches is folded by the pointer coalescer and spent at the
+	// frame boundary (coalesce.go), which the settle message stands for here.
+	pressSetup(a, wheel(true), wheel(true), wheel(true), pointerMsg{})
+	if got := a.setupModelChoices()[a.setup.modelAt].ID; got != "d/delta" {
+		t.Fatalf("three notches down put the cursor on %q, want d/delta", got)
+	}
+	pressSetup(a, wheel(false), pointerMsg{})
+	if got := a.setupModelChoices()[a.setup.modelAt].ID; got != "c/charlie" {
+		t.Fatalf("a notch up put the cursor on %q, want c/charlie", got)
+	}
+}
+
+// A LOW ACCOUNT CUTS THE LIST TO FREE ROWS. With the default provider's balance
+// known low, the model list offers the `:free` ids and the catalog rows priced
+// at zero, says `free only` on its count line, and the line under the field
+// says why. The model in use stays on the list whatever it costs, so enter
+// still confirms rather than changes. A reading that lands while the list is
+// open re-aims the cursor at the model in use.
+func TestALowAccountOffersOnlyFreeModelsOnTheSetupScreen(t *testing.T) {
+	a, dir := controlsApp(t, nil)
+	catalog := []Model{
+		{ID: "openai/gpt-4.1-mini", PriceKnown: true, PromptPrice: 0.4, CompletionPrice: 1.6},
+		{ID: "paid/alpha", PriceKnown: true, PromptPrice: 1, CompletionPrice: 2},
+		{ID: "qwen/qwen3.8-27b:free", PriceKnown: true},
+		{ID: "zero/priced", PriceKnown: true},
+		{ID: "unknown/price"},
+	}
+	a.models = func() []Model { return catalog }
+	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{Known: true, Low: true}, nil }
+	// Before any reading the whole catalog is offered.
+	if got := len(a.setupModelChoices()); got != len(catalog) {
+		t.Fatalf("with no reading the list offers %d rows, want the catalog's %d", got, len(catalog))
+	}
+	walkToControl(t, a, controlChatModel)
+	pressSetup(a, key("enter"))
+	pressSetup(a, key("down"), key("down"), key("down"))
+	// The reading lands while the list is open, by the road the read takes.
+	if err := config.WriteCreditsReading(dir, config.APIKeyAt(dir), credits.Reading{Known: true, Low: true}); err != nil {
+		t.Fatal(err)
+	}
+	pressSetup(a, creditReadMsg{reading: credits.Reading{Known: true, Low: true}})
+	if !a.creditsLow {
+		t.Fatal("the fixture's reading did not read as low")
+	}
+	choices := a.setupModelChoices()
+	ids := make([]string, 0, len(choices))
+	for _, model := range choices {
+		ids = append(ids, model.ID)
+	}
+	want := []string{"openai/gpt-4.1-mini", "qwen/qwen3.8-27b:free", "zero/priced"}
+	if strings.Join(ids, " ") != strings.Join(want, " ") {
+		t.Fatalf("a low account offers %v, want %v (the model in use, then the free rows)", ids, want)
+	}
+	if got := choices[a.setup.modelAt].ID; got != a.model {
+		t.Fatalf("after the reading the cursor is on %q, want the model in use %q", got, a.model)
+	}
+	// The sentence is read at a width with no example column beside the form,
+	// so its wrapped halves are not interleaved with the panel's border.
+	a.width = 100
+	a.touch()
+	screen := setupScreen(a)
+	for _, wanted := range []string{"free only", setupLowCreditsWord} {
+		if !strings.Contains(screen, wanted) {
+			t.Fatalf("the screen must say %q; got:\n%s", wanted, screen)
+		}
+	}
+	// And typing narrows the cut list, never the whole catalog.
+	pressSetup(a, key("a"))
+	for _, model := range a.setupModelChoices() {
+		if model.ID == "paid/alpha" {
+			t.Fatal("typing reached a paid row through the filter")
+		}
+	}
+}
+
+// THE SECOND ENTER SENDS. A starting point fills the box on the first enter and
+// stays selected; the next enter is the ordinary send of what is in the box.
+// An earlier build kept taking that enter for the starting point — which could
+// fill nothing, the box being full — so pressing enter twice did nothing at all.
+func TestEnterAfterAStartingPointSendsWhatItFilled(t *testing.T) {
+	a := firstChatApp(t)
+	agent, ok := a.agent.(*fakeAgent)
+	if !ok {
+		t.Skip("this fixture's agent cannot be asked what it was sent")
+	}
+	drive(t, a, key("down"), key("enter"))
+	if len(agent.sent) != 0 {
+		t.Fatalf("the first enter sent %v", agent.sent)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.sent) != 1 || !strings.Contains(agent.sent[0], welcomeStarters[0].fills) {
+		t.Fatalf("the second enter sent %v, want the starting point's sentence", agent.sent)
 	}
 }

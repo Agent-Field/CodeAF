@@ -119,6 +119,10 @@ type setupFlow struct {
 	// refusal is the one line the screen says under the box when enter was
 	// pressed on something it will not write. Any other key clears it.
 	refusal string
+	// doors is what the last frame of the controls screen drew for the pointer
+	// (onboarding.go's [setupDoors]): a press is answered against the rows that
+	// are on the screen, and nothing else.
+	doors setupDoors
 	// auth is the default provider's browser trip. Starting covers the short
 	// interval before its listener is handed back; flow and link cover the wait
 	// after that. id names the attempt so a late answer after esc is dropped.

@@ -422,10 +422,10 @@ func StopReasons() []string {
 
 // exampleProps is one plausible value per event prop, spelled from the
 // contract's own constants wherever the contract has one, so an example row
-// can never show a value a real row could not carry. `codeaf telemetry show`
-// prints one row per event from this table so a person sees the shape of
-// what leaves before anything has. The fingerprint is the one invented value:
-// sixteen hex characters, which is all a real one is.
+// can never show a value a real row could not carry. docs/TELEMETRY.md is held
+// to this table so a person reading the repository sees the shape of what
+// leaves. The fingerprint is the one invented value: sixteen hex characters,
+// which is all a real one is.
 var exampleProps = map[string]map[string]string{
 	"session_started": {
 		"mode":    string(ModeChat),

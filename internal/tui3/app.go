@@ -884,17 +884,6 @@ type app struct {
 	hostReplayWaiting   bool
 	hostCalls           int
 	hostDeferred        []func() tea.Cmd
-	// telemetryNotice is the usage notice still owed to the person, drawn on the
-	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
-	// is owed or once the greeting that showed it has gone.
-	telemetryNotice string
-	// telemetryNoticeShown is the door's "it was seen" record, and
-	// telemetryNoticeOnFrame is a frame's note that it drew the notice. The frame
-	// only notes; the update loop calls the door, once
-	// ([app.settleTelemetryNotice]), and telemetryNoticeSettled says it has.
-	telemetryNoticeShown   func()
-	telemetryNoticeOnFrame bool
-	telemetryNoticeSettled bool
 
 	questionReplacement *questionReplacement
 
@@ -3035,7 +3024,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		lastQuestionKey: time.Now(),
 		questionReach:   newQuestionDeliveryRule(),
 	}
-	a.telemetryNotice, a.telemetryNoticeShown = opts.TelemetryNotice, opts.TelemetryNoticeShown
 	// THE MEMOS ARE BUILT BEFORE ANYTHING ASKS THEM ANYTHING, because the frame's
 	// door onto each is a memo lookup and nothing else: a memo with no reader
 	// behind it answers "nobody has read that" forever (learned.go). They are
@@ -3507,7 +3495,6 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
 	// the frame may only note that it drew it (view.go), because the door's
 	// record is a write to disk.
-	a.settleTelemetryNotice()
 	// A JUMP TO A MESSAGE WAITING FOR ITS CONVERSATION lands here, on the first
 	// message after that conversation is in front (teamjump.go).
 	if a.traffic.jump.key != "" {
@@ -4038,6 +4025,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.tsheet.on || a.tmove.on {
 			return a, nil
 		}
+		if a.setup.open {
+			// The setup is a sheet over everything; its open model list is the
+			// one thing under the wheel (onboarding.go's [app.setupWheel]).
+			a.setupWheel(msg.Mouse().Button == tea.MouseWheelDown)
+			return a, nil
+		}
 		if a.wall.on {
 			a.wallWheel(msg.Mouse().X, msg.Mouse().Y, msg.Mouse().Button == tea.MouseWheelDown)
 			return a, nil
@@ -4350,13 +4343,21 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.pasteEdit.open {
 			return a, nil
 		}
-		if a.copy.on || a.setup.open {
+		if a.copy.on {
 			// A click in copy mode acts on nothing: the rows under the pointer are
 			// a FROZEN snapshot, and expanding a call in it would be expanding a
-			// row that is no longer where the conversation says it is. The setup
-			// screen is the same for the pointer's own reason: it is three
-			// keystrokes, and a press through it would land on a frame that is
-			// not being drawn (firstrun.go).
+			// row that is no longer where the conversation says it is.
+			return a, nil
+		}
+		if a.setup.open {
+			// THE SETUP OWNS THE PRESS WHILE IT IS UP, for the modal's reason: a
+			// press through it would land on a frame that is not being drawn.
+			// The controls screen answers a press on its own rows the way the
+			// keys would (onboarding.go's [app.setupPress]); the key step, which
+			// is one box, takes nothing from the pointer.
+			if msg.Mouse().Button == tea.MouseLeft && a.setupPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, a.endSetup(false)
+			}
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {

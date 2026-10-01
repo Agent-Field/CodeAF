@@ -13,6 +13,12 @@ OpenRouter account out of credit: a seat nobody pinned is routed to a free pool,
 task's crew line says `free routes in use (may log prompts) · credit unavailable on
 openrouter` (*Route health* in *Models and cost*).
 
+While the balance is low, the first-run setup screen's **chat model list shows free models
+only** — the `:free` ids and the catalog rows priced at zero, with `free only` on its count
+line and `Your OpenRouter account is low on credits · the list shows free models only` under
+the field — so a person who has never run codeaf is not handed three hundred paid names to
+pick the wrong one from. The model already in use stays on that list.
+
 Free ids are defaults only. A model you chose with `/model` or the setup screen,
 `--model`, `CODEAF_MODEL`, a seat you pinned with `/crew pin` or a helper row you set stays
 chosen, and the free defaults are never written into your settings. Nothing is spent
