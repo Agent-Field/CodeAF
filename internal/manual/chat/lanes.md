@@ -840,7 +840,7 @@ api.example.com does not take a host choice; coreweave is not being asked for, a
 
 Your work still goes out; only the choice is left off. The settings row says it
 too, so `pinned:` never stands as a claim about a request that did not carry it:
-`pinned: coreweave (not available on this base)`.
+`pinned: coreweave (not taken on this base)`.
 
 ## Hosts switched off on your account — OpenRouter's ignored-hosts list, and the one refused round trip it costs
 

@@ -719,7 +719,7 @@ func (p *pinFlags) Set(raw string) error {
 	seatWord, value, ok := strings.Cut(raw, "=")
 	seat, known := config.ParseCrewSeat(seatWord)
 	if !ok || !known {
-		return fmt.Errorf("--pin needs seat=model[@provider], and the seat is worker, planner or checker")
+		return fmt.Errorf("--pin takes seat=model[@provider], and the seat is worker, planner or checker")
 	}
 	pin, auto, err := config.ParseCrewPin(value)
 	if err != nil {
@@ -1197,7 +1197,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest, seats 
 			return nil, nil, nil, err
 		}
 		fmt.Fprintf(request.stderr,
-			"waiting for the resident (pid %d on %s) to pick up this task — store %s\n",
+			"waiting for the resident (pid %d on %s) to take this task — store %s\n",
 			heldBy.PID, residentHost(heldBy), window.path)
 		return nil, nil, heldBy, nil
 	}
@@ -1293,11 +1293,11 @@ func awaitResidentPickup(graph *store.Store, seq int64, holder *lease.Resident,
 			return err
 		}
 		if ok && command.Status != store.CommandPending {
-			fmt.Fprintf(stderr, "the resident (pid %d) picked up this task\n", holder.PID)
+			fmt.Fprintf(stderr, "the resident (pid %d) took this task\n", holder.PID)
 			return nil
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("the resident (pid %d on %s) holding the lock for %s has not picked up this task in %s — "+
+			return fmt.Errorf("the resident (pid %d on %s) holding the lock for %s has not taken this task in %s — "+
 				"it is not serving this errand; give this run its own store with --db in a separate directory, "+
 				"or stop that process",
 				holder.PID, residentHost(holder), path, bound.Round(time.Second))
@@ -2530,11 +2530,11 @@ func acceptanceWords(points int) string {
 func phaseHint(phase string) string {
 	switch strings.ToLower(strings.TrimSpace(phase)) {
 	case "baseline":
-		return "running the repository's own tests, this can run for minutes"
+		return "running the repository's own tests, this can take minutes"
 	case "running the repository's own checks":
-		return "the repository's own test suite, this can run for minutes"
+		return "the repository's own test suite, this can take minutes"
 	case "preparing the repository":
-		return "fetching and setting it up, this can run for minutes"
+		return "fetching and setting it up, this can take minutes"
 	}
 	return ""
 }

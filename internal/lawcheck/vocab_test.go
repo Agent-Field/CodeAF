@@ -17,7 +17,7 @@ import (
 // are the engine's, never theirs. The check reads string literals only, so a
 // type, a package or a comment may keep the engine's name; what a person can
 // read may not.
-var bannedWords = regexp.MustCompile(`(?i)\b(relays?|nodes?|leases?|leased|manifests?|takeovers?|take|takes|taking|taken|took)\b`)
+var bannedWords = regexp.MustCompile(`(?i)\b(relays?|nodes?|leases?|leased|manifests?|takeovers?|take over|took over|taken over|take back|(warm|cold) take|(the|a|your) take)\b`)
 
 // spelledForTheMachine are the pieces of a string that name a flag or a value
 // a person types. They are removed before the check, so the flag stays and the

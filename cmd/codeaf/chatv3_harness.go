@@ -333,7 +333,7 @@ func harnessToolArgs(tool, args string) (json.RawMessage, error) {
 	}
 	field, ok := harnessToolPrimary[tool]
 	if !ok {
-		return nil, fmt.Errorf("%s expects its arguments as a JSON object, and %q is not one", tool, args)
+		return nil, fmt.Errorf("%s takes its arguments as a JSON object, and %q is not one", tool, args)
 	}
 	payload, err := json.Marshal(map[string]string{field: args})
 	if err != nil {

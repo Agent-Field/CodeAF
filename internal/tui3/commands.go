@@ -163,7 +163,7 @@ var commands = []command{
 	// pick a point out of (rewindsheet.go) — and then the gesture that takes the
 	// last message back without opening anything (rewind.go). Two tiers, one row,
 	// in the order a person meets them.
-	{name: "rewind", desc: "go back to an earlier point · esc esc undoes the last", alias: []string{"undo", "back"}},
+	{name: "rewind", desc: "go back to an earlier point · esc esc takes back the last", alias: []string{"undo", "back"}},
 	// WHAT HAS ALREADY BEEN ANSWERED, and the way to take one back
 	// (permissions.go). It BELONGS beside /settings and /connect — those two are
 	// "what may this thing do" and "what may it reach", and this is "what has it
@@ -1072,7 +1072,7 @@ func helpText(file string, chords chordSpelling) string {
 		// rows at the foot of this list already use.
 		helpKeyRow(spellOutKey, "over a draft: spell it out · what it means · enter adds it to yours"),
 		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
-		"ctrl+b         copy mode · ↑↓ move · v marks · a keeps the block · y yanks",
+		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
 		"enter          mid-answer: stops the current reply and steers these words in",
 		// AND THE THIRD THING TO DO WITH A SENTENCE TYPED OVER A RUNNING ANSWER

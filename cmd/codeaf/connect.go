@@ -55,7 +55,7 @@ func runConnect(args []string) error {
 		return listConnections(config.ProfileDir())
 	}
 	if flags.NArg() != 1 {
-		return wrongCall("codeaf connect needs one provider name")
+		return wrongCall("codeaf connect takes one provider name")
 	}
 	service := strings.ToLower(strings.TrimSpace(flags.Arg(0)))
 	switch service {

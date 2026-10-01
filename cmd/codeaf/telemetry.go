@@ -41,7 +41,7 @@ func runTelemetry(args []string) error {
 	case "on", "off":
 		return runTelemetrySet(args[0], args[1:])
 	default:
-		return fmt.Errorf("telemetry needs one of: status, info, show, on, off")
+		return fmt.Errorf("telemetry takes one of: status, info, show, on, off")
 	}
 }
 

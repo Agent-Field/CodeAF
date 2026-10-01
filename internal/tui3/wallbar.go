@@ -351,7 +351,7 @@ func wallHint(v wallView, ascii bool) string {
 		}
 		switch {
 		case marked > 0 && v.tiles[h.arg].marked:
-			return keyed("Click to remove from the selection", "space")
+			return keyed("Click to take out of the selection", "space")
 		case marked > 0:
 			return keyed("Click to add to the selection", "space")
 		case h.arg == min(max(v.focus, 0), len(v.tiles)-1):
@@ -360,7 +360,7 @@ func wallHint(v wallView, ascii bool) string {
 		return "Click to focus, click again to open"
 	case wallHitSelect:
 		if h.arg >= 0 && h.arg < len(v.tiles) && v.tiles[h.arg].marked {
-			return keyed("Remove from the selection", "space")
+			return keyed("Take out of the selection", "space")
 		}
 		return keyed("Select for a team", "space")
 	case wallHitTeams:
@@ -411,7 +411,7 @@ func wallHint(v wallView, ascii bool) string {
 		case wallPopDone:
 			return keyed("Keep the name and close", "enter")
 		}
-		return keyed("Add to or remove from "+team(h.id), "space")
+		return keyed("Put in or take out of "+team(h.id), "space")
 	case wallHitAction:
 		switch wallAct(h.arg) {
 		case wallActBack:

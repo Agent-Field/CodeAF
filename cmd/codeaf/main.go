@@ -497,7 +497,7 @@ const (
 // and where taking it out of the group's lines had silently removed it. One
 // source of truth, two places it is read.
 var handWorkFooter = `  do plans and may split the job, exec skips planning, run follows a saved plan.
-  None accepts --yolo. do and run may refuse a plan over your spending limit;
+  None takes --yolo. do and run may refuse a plan over your spending limit;
   --yes-spend answers in advance. The reason is in --json's stop field:
   ` + foldedExitLadder(2, helpWidth) + `
   CODEAF_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
@@ -561,7 +561,7 @@ Housekeeping — changes state on disk or on the network
       list the providers this profile knows and which are connected
   codeaf connect <provider> [--no-browser] [--region intl|cn]
       connect one: openrouter and codex sign in in your browser; the others
-      read a key on stdin, or ask for one without echo
+      take a key on stdin, or ask for one without echo
   codeaf disconnect <provider>
       forget a service and the key or sign-in behind it
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
