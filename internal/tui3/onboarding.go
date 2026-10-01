@@ -78,13 +78,12 @@ const setupControlCount = int(controlStart) + 1
 
 // ── what the screen says ────────────────────────────────────────────────────
 
-// The heading and the line under it. The heading names the SUBJECT of the screen
-// rather than the act ("setup", "configuration"), because the subject is what a
-// person is deciding about and the act is already obvious from being here.
-const (
-	controlsTitle = "Models and spending"
-	controlsLead  = "Keep these choices or change them."
-)
+// The heading. It is ONE LINE, and it names what the rows under it are —
+// settings, the basic ones — because the keys line stands directly under it
+// and a second sentence of lead-in between the two was a sentence nobody read
+// on their way to the first row. (It was `Models and spending` over `Keep
+// these choices or change them.` until 2026-10-01.)
+const controlsTitle = "Basic settings"
 
 // The three field labels, laid out in one column so their values line up.
 const (
@@ -1021,12 +1020,12 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	// is the only row that has nothing beside it — the example column stops well
 	// above the foot — so budgeting it at the form's fifty-four cells cut
 	// `←→ examples` off the one screen the arrows exist on.
-	sheet := a.setupControlsForm(form)
+	sheet := a.setupControlsForm(form, pair)
 	// The rows the window cannot have are given up WHOLE BLOCK AT A TIME, in the
 	// order the form itself ranked them. A wrapped sentence cut off in the middle
-	// is worse than a sentence that is not there. Three rows are spoken for
-	// before the form gets any: the header, the blank under it, and the legend.
-	body, doors, caretRow := sheet.trim(max(height-3, 1))
+	// is worse than a sentence that is not there. Two rows are spoken for before
+	// the form gets any: the header and the blank under it.
+	body, doors, caretRow := sheet.trim(max(height-2, 1))
 	// THE DOORS ARE KEPT WITH THE FRAME THAT DREW THEM, so a press reads the
 	// rows that are actually on the screen: body row i is frame row top+i,
 	// where top is settled below once the panel and the legend are placed, and
@@ -1034,18 +1033,14 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	s.doors = setupDoors{rows: doors, left: lead, width: form}
 
 	// THE EXAMPLE TAKES THE ROWS THE FORM LEAVES, and only the whole of it.
-	// Three rows are spoken for around the form — the header, the blank under
-	// it, and the legend — and the panel needs its own rows plus the two blank
-	// ones under it; a panel that does not fit whole in what is left is not
-	// drawn, because a cut panel is a panel without the line at its foot that
-	// says nothing in it has run. The decision is made before the legend is
-	// written, because the legend names the arrows only when there is a panel
-	// for them to browse.
+	// Two rows are spoken for around the form — the header and the blank under
+	// it — and the panel needs its own rows plus the two blank ones under it; a
+	// panel that does not fit whole in what is left is not drawn, because half
+	// a panel is a panel whose request has lost what it leads to.
 	var block []string
 	if show > 0 {
-		block = a.setupShowcaseBlock(show, height-3-len(body)-setupShowcaseGap)
+		block = a.setupShowcaseBlock(show, height-2-len(body)-setupShowcaseGap)
 	}
-	s.exampleShown = len(block) > 0
 
 	lines := make([]string, 0, height)
 	lines = append(lines, pad+head, "")
@@ -1055,11 +1050,8 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	for i := 0; len(block) > 0 && i < setupShowcaseGap; i++ {
 		lines = append(lines, "")
 	}
-	// THE KEYBOARD GUIDANCE STANDS DIRECTLY OVER THE FORM, with nothing between
-	// them. It is measured against the whole composition rather than the form
-	// ([app.setupControlsKeys] then cuts by whole clauses, never mid-word).
-	lines = append(lines, pad+a.pal.dim(a.setupControlsKeys(pair)))
-	// The form begins here: the row a press is measured from, and the caret's.
+	// The form begins here — its heading, the keys line under it, then the
+	// rows: the row a press is measured from, and the caret's.
 	top := len(lines)
 	s.doors.top = top
 	for _, line := range body {
@@ -1070,6 +1062,14 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	}
 	if len(lines) > height {
 		lines = lines[:height]
+	}
+	// THE ACCOUNT'S WARNING RIDES THE FOOT, whole or not at all, and only on a
+	// foot the form left empty: a window the form fills to its last row keeps
+	// that row, because a form row is a thing a person acts on and the warning
+	// is read again under the message box a moment later.
+	if warning := a.setupFootWarning(); warning != "" && height > 0 && lines[height-1] == "" &&
+		ansi.StringWidth(warning)+3 <= width {
+		lines[height-1] = withCreditWarning("", 0, width, warning, a.pal)
 	}
 	caretY := caretRow + top
 	a.caret = caretRow >= 0 && caretY < height
@@ -1175,7 +1175,6 @@ const (
 	rankSpacer = iota + 1
 	rankOtherWords
 	rankReviewRest
-	rankLead
 	rankFocusedWords
 	rankDetail
 )
@@ -1266,15 +1265,19 @@ func (f *controlsSheet) trim(height int) ([]string, []setupDoor, int) {
 }
 
 // setupControlsForm builds the form: its rows, the blocks a short window gives
-// up, and where the caret sits. The legend is NOT one of its rows — it belongs to
-// the frame, at the foot of the window ([app.setupControlsFrame]).
-func (a *app) setupControlsForm(width int) *controlsSheet {
+// up, and where the caret sits. THE KEYS LINE IS ITS SECOND ROW, directly under
+// the heading, so what the keys do is read with the rows they do it to; it is
+// measured against the whole composition (legend) rather than the form's own
+// width, because it is one line of clauses rather than a sentence, and
+// [app.setupControlsKeys] cuts it by whole clauses, never mid-word. Neither row
+// is ever given up.
+func (a *app) setupControlsForm(width, legend int) *controlsSheet {
 	pal := a.pal
 	s := &a.setup
 	f := &controlsSheet{caretAt: -1}
 
 	f.add(pal.bold(pal.ink(fit(controlsTitle, width))))
-	f.soft(rankLead, pal.muted(fit(controlsLead, width)))
+	f.add(pal.dim(a.setupControlsKeys(legend)))
 	f.soft(rankSpacer, "")
 
 	// ── the day's limit ──
@@ -1290,10 +1293,6 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 	f.open(setupDoor{kind: doorControl, control: controlChatModel},
 		a.setupFieldRow(width, controlChatModel, controlModelLabel, modelWord(a.model), a.setupModelSource()))
 	a.addControlWords(f, width, controlChatModel, controlModelWord, a.setupModelDetail())
-	// A LOW ACCOUNT IS NOT DETAIL EITHER. It is why the list under this row is
-	// shorter than the catalog, so it is on the screen whether or not anybody
-	// asked.
-	f.add(a.setupLowCreditsRows(width)...)
 	if s.modelOpen {
 		rows, doors := a.setupModelRows(width)
 		for i, row := range rows {
@@ -1560,28 +1559,24 @@ func (a *app) setupModelCountWord(count int) string {
 const (
 	setupFreeOnlyWord   = "free only"
 	setupLowCreditsWord = "Your OpenRouter account is low on credits · the list shows free models only"
-	setupExpiredKeyWord = "Your OpenRouter key has expired · make a new one at openrouter.ai/settings/keys and paste it with esc"
+	setupExpiredKeyWord = "Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys"
 )
 
-// setupLowCreditsRows is the line under the chat model while the account reads
-// low — wrapped at the form's width rather than cut, because every word of it
-// is the reason the list is short — and nothing, the emptiness law, when the
-// account does not read low.
-func (a *app) setupLowCreditsRows(width int) []string {
-	word := ""
+// setupFootWarning is the account's one-line warning for this screen — the key
+// expired, or the balance low and the list cut — and "", the emptiness law,
+// when the account gives no cause. It is drawn on the frame's LAST ROW, right
+// aligned, in the warning colour: where the same warning stands on the keys
+// row under a conversation's message box ([withCreditWarning]), so a person
+// meets it in the one place it will keep appearing. Until 2026-10-01 it stood
+// under the chat-model row, wrapped, where it read as part of the form.
+func (a *app) setupFootWarning() string {
 	switch {
 	case a.setupKeyExpired():
-		word = setupExpiredKeyWord
+		return setupExpiredKeyWord
 	case a.setupFreeOnly():
-		word = setupLowCreditsWord
-	default:
-		return nil
+		return setupLowCreditsWord
 	}
-	lines := wrap(word, max(width-4, 1))
-	for i, line := range lines {
-		lines[i] = strings.Repeat(" ", 4) + a.pal.warn(line)
-	}
-	return lines
+	return ""
 }
 
 // setupNoCatalogWord is what the list says where there is no catalog to choose
@@ -1735,11 +1730,10 @@ func (a *app) setupControlsKeys(width int) string {
 		if s.control <= controlChatModel {
 			parts = append(parts, "? detail")
 		}
-		// The arrows are named only on a frame that drew the panel they browse
-		// ([app.setupControlsFrame] decides that before it writes this row).
-		if s.exampleShown {
-			parts = append(parts, "←→ examples")
-		}
+		// THE ARROWS ARE NOT NAMED HERE. The example panel's own bottom edge
+		// carries `←  3 / 5  →`, which is the one place a control for it
+		// belongs, and a clause about it on the form's keys line was a clause
+		// about a different object.
 	}
 	return clausesWithin(parts, width)
 }
@@ -1806,8 +1800,7 @@ func (a *app) setupBackWord() string {
 // something that LOOKS like a run, and the panel says outright that it was not
 // one. Neither line is decoration and neither is dropped before the leads are.
 const (
-	showcaseTitleWord  = "Example"
-	showcaseHonestWord = "An illustration. Nothing here has run."
+	showcaseTitleWord = "Example"
 )
 
 // showcaseCaret is the block that trails the request while it is being typed
@@ -1916,10 +1909,10 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 			rows = append(rows, pal.dim(mark+line))
 		}
 	}
-	rows = append(rows, "")
-	for _, line := range wrap(showcaseHonestWord, inner) {
-		rows = append(rows, pal.dim(line))
-	}
+	// THERE IS NO LINE AT THE FOOT SAYING NOTHING HERE HAS RUN. Until
+	// 2026-10-01 one stood there, dim; the label on the top edge — `Example`
+	// — says the same thing once, and the panel is now above a form that has
+	// not been answered yet, where nothing could have run.
 	return rows
 }
 

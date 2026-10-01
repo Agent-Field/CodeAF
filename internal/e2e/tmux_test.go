@@ -422,7 +422,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	//
 	// THE SETUP IS ONE OF THOSE SURFACES AND IT IS FOUR STEPS, NOT A TITLE. Only
 	// the FIRST step is headed `setting up`; the three after it wear their own
-	// headings (`Models and spending` is step three), so a list that recognised
+	// headings (`Basic settings` is step three), so a list that recognised
 	// the flow by its title alone declared a terminal dead the moment the door
 	// opened on a later step — which is exactly what a state root whose profile
 	// is complete does now. The flow's FOOT is on every step of it, and the

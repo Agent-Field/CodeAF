@@ -264,7 +264,7 @@ func TestTakingTheControlsAsTheyStandLandsTheDefaultsInTheProfile(t *testing.T) 
 	}
 	screen := setupScreen(a)
 	for _, want := range []string{
-		"Models and spending", "Keep these choices or change them.",
+		controlsTitle, "enter sets the limit",
 		"Daily limit", "Chat model", "Start a conversation",
 	} {
 		if !strings.Contains(screen, want) {

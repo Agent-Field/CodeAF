@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
@@ -491,15 +492,12 @@ func lastWords(sentence string) string {
 func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.T) {
 	a, _ := controlsApp(t, nil)
 	screen := setupScreen(a)
-	// The two sentences that keep the panel from being read as a report about
-	// this machine: the label on its top edge, and the line at its foot.
+	// The label on the panel's top edge is what keeps it from being read as a
+	// report about this machine.
 	if !strings.Contains(screen, showcaseTitleWord) {
 		t.Fatalf("the example panel must be labelled as one; got:\n%s", screen)
 	}
 	a.settleSetupDemo()
-	if words := panelWords(a); !strings.Contains(words, showcaseHonestWord) {
-		t.Fatalf("the example panel must say nothing in it has run; got:\n%s", words)
-	}
 	if want := setupExamples[exampleForControl(controlLimit)].title; !strings.Contains(screen, want) {
 		t.Fatalf("the limit's example is %q; got:\n%s", want, screen)
 	}
@@ -533,19 +531,18 @@ func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.
 	if strings.Contains(plain(short), showcaseTitleWord) {
 		t.Fatalf("the example panel was drawn on a 24-row window with no room for the whole of it:\n%s", plain(short))
 	}
-	if strings.Contains(plain(short), "examples") {
-		t.Fatalf("the legend names the arrows on a frame with no panel:\n%s", plain(short))
-	}
 }
 
-// THE PANEL STANDS ABOVE THE LEGEND AND THE FORM, AT THE COMPOSITION'S WIDTH.
-// It used to be a second column beside the form, drawn from 112 columns up, and
-// then for a day it stood under the legend, where the legend read as a caption
-// for the wrong object. Now the order is panel, two blank rows, legend, form —
-// the legend directly over the form it is about — and the panel's top edge is
-// as wide as the composition, so the request stands on one row and the
-// example's title rides on the edge instead of spending a row of the body.
-func TestTheExamplePanelStandsAboveTheLegendAndTheForm(t *testing.T) {
+// THE PANEL STANDS ABOVE THE FORM, AT THE COMPOSITION'S WIDTH, AND THE KEYS
+// LINE IS THE FORM'S SECOND ROW. The panel used to be a second column beside
+// the form, drawn from 112 columns up, and then for a day it stood under the
+// legend, where the legend read as a caption for the wrong object. Now the
+// order is panel, two blank rows, the heading, the keys line, the rows — and
+// the panel's top edge is as wide as the composition, so the request stands on
+// one row and the example's title rides on the edge instead of spending a row
+// of the body. The arrows are not on the keys line: the panel's own edge
+// carries them.
+func TestTheExamplePanelStandsAboveTheFormWithTheKeysLineUnderTheHeading(t *testing.T) {
 	a, _ := controlsApp(t, nil)
 	a.settleSetupDemo()
 	rows := strings.Split(rawSetupFrame(a), "\n")
@@ -569,11 +566,19 @@ func TestTheExamplePanelStandsAboveTheLegendAndTheForm(t *testing.T) {
 	if top != 2 {
 		t.Fatalf("the panel's top edge is on row %d, want row 2 under the header and its blank", top)
 	}
-	if legend != bottom+1+setupShowcaseGap {
-		t.Fatalf("the legend is on row %d and the panel's bottom edge on row %d; want %d blank rows between them", legend, bottom, setupShowcaseGap)
+	if title != bottom+1+setupShowcaseGap {
+		t.Fatalf("the heading is on row %d and the panel's bottom edge on row %d; want %d blank rows between them", title, bottom, setupShowcaseGap)
 	}
-	if title != legend+1 {
-		t.Fatalf("the form's title is on row %d and the legend on row %d; want the form directly under the legend", title, legend)
+	if legend != title+1 {
+		t.Fatalf("the keys line is on row %d and the heading on row %d; want the keys line directly under the heading", legend, title)
+	}
+	if strings.Contains(rows[legend], "examples") {
+		t.Fatalf("the keys line names the arrows, which the panel's own edge carries: %q", rows[legend])
+	}
+	for _, row := range rows {
+		if strings.Contains(row, "Nothing here has run") {
+			t.Fatalf("the panel still carries the foot line:\n%s", rawSetupFrame(a))
+		}
 	}
 	panel := showcasePanel(a)
 	if got := len([]rune(panel[0])); got != setupShowcaseWidth {
@@ -648,7 +653,7 @@ func TestTheExamplePanelIsFramedAndFallsBackToAscii(t *testing.T) {
 		a.settleSetupDemo()
 		box := framePiecesOf(a.pal)
 		panel := showcasePanel(a)
-		if len(panel) < 8 {
+		if len(panel) < 6 {
 			t.Fatalf("ascii=%v: no panel on the frame:\n%s", ascii, rawSetupFrame(a))
 		}
 		head, foot := panel[0], panel[len(panel)-1]
@@ -1123,14 +1128,22 @@ func TestALowAccountOffersOnlyFreeModelsOnTheSetupScreen(t *testing.T) {
 	if got := choices[a.setup.modelAt].ID; got != a.model {
 		t.Fatalf("after the reading the cursor is on %q, want the model in use %q", got, a.model)
 	}
-	// The sentence is read at a width with no example column beside the form,
-	// so its wrapped halves are not interleaved with the panel's border.
-	a.width = 100
-	a.touch()
 	screen := setupScreen(a)
 	for _, wanted := range []string{"free only", setupLowCreditsWord} {
 		if !strings.Contains(screen, wanted) {
 			t.Fatalf("the screen must say %q; got:\n%s", wanted, screen)
+		}
+	}
+	// AND THE WARNING IS ON THE FRAME'S LAST ROW, right aligned, where the keys
+	// row under a conversation's message box carries it — not under the field.
+	rows := strings.Split(rawSetupFrame(a), "\n")
+	foot := strings.TrimRight(rows[len(rows)-1], " ")
+	if !strings.HasSuffix(foot, setupLowCreditsWord) || ansi.StringWidth(foot) != a.width-1 {
+		t.Fatalf("the warning is not right-aligned on the last row: %q", foot)
+	}
+	for _, row := range rows[:len(rows)-1] {
+		if strings.Contains(row, setupLowCreditsWord) {
+			t.Fatalf("the warning is still drawn inside the form:\n%s", rawSetupFrame(a))
 		}
 	}
 	// And typing narrows the cut list, never the whole catalog.
@@ -1185,8 +1198,6 @@ func TestAnExpiredKeyIsSaidUnderTheModelRowWithoutCuttingTheList(t *testing.T) {
 	if got := len(a.setupModelChoices()); got != len(catalog) {
 		t.Fatalf("an expired key cut the list to %d rows, want the catalog's %d", got, len(catalog))
 	}
-	a.width = 100
-	a.touch()
 	screen := setupScreen(a)
 	if !strings.Contains(screen, setupExpiredKeyWord) {
 		t.Fatalf("the screen must say %q; got:\n%s", setupExpiredKeyWord, screen)

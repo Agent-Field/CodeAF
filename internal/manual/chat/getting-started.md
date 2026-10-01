@@ -19,22 +19,22 @@ default provider needs a key and no daily limit is configured, it has **two scre
 nothing else on the frame:
 
 1. **connect openrouter** — the default provider; `enter` signs in in your browser, and pasting an existing key also works
-2. **Models and spending** — one screen with two controls on it, **Daily limit** and
+2. **Basic settings** — one screen with two controls on it, **Daily limit** and
    **Chat model**, each already showing the value that is in force
 
 **With a key already found, there is no setup screen.** When a provider key is saved in
 the profile or set in the environment, such as `OPENROUTER_API_KEY`, a plain launch skips
-the connection screen and **Models and spending**. With nothing elsewhere to show, it
+the connection screen and **Basic settings**. With nothing elsewhere to show, it
 opens the chat's greeting, `What would you like to work on?`; when other conversations
 are available, it opens home. `/budget` sets a daily limit
 later. A `--no-host` launch on such a profile skips only the connection screen,
-and still opens **Models and spending** while no daily limit is set. A resumed conversation,
+and still opens **Basic settings** while no daily limit is set. A resumed conversation,
 or one on another machine, never opens first-run setup.
 
 The second screen's way out is **`Start a conversation`**. Every control on it opens on
 the value you already have, so pressing `enter` there agrees to exactly what is on the
-screen. Its heading is `Models and spending` and the line under it is
-`Keep these choices or change them.`
+screen. Its heading is `Basic settings`, one line, with the keys line directly under it
+(until 2026-10-01 it was `Models and spending` over `Keep these choices or change them.`).
 
 ## Skipping setup and reading its header
 
@@ -194,13 +194,14 @@ blank row or the example panel does nothing.
 **With no credit on the OpenRouter account, the list shows free models only.** When the
 account's balance has read low — $0.50 or less, the same reading that puts the low-credits
 warning under the message box — the list is cut to the `:free` ids and the catalog rows
-priced at zero, its count line says `free only`, and a warning line under the field reads
-`Your OpenRouter account is low on credits · the list shows free models only`. The model you
+priced at zero, its count line says `free only`, and
+`Your OpenRouter account is low on credits · the list shows free models only` stands on the
+last row of the screen, right-aligned in the warning colour — where the low-credits warning
+stands under the message box once you are in a conversation. The model you
 are already on stays on the list whatever it costs, so accepting still confirms. The balance
 is read right after the key lands, so the cut usually arrives a moment after the screen does;
 a top-up is read on the next launch (*OpenRouter credits and free models*). A key OpenRouter
-refuses as **expired** is said the same way — `Your OpenRouter key has expired · make a new
-one at openrouter.ai/settings/keys and paste it with esc` — but the list is not cut, because
+refuses as **expired** is said the same way, on the last row — `Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys` — but the list is not cut, because
 free models fail on an expired key too; `esc` goes back to the connect step to paste a new one.
 
 **There is no crew question**, because the crew is three seats — the worker, the planner and the
@@ -220,31 +221,32 @@ seat, and a screen that did not mention it would be hiding where tasks run.
 any window with the rows to hold the whole of it — the only bordered surface codeaf draws,
 so it cannot be read as more form. Its top edge is labelled `○ Example · ` followed by the
 example's own title (`Understand an unfamiliar project`, `Hand off something longer`,
-`Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`), and
-its foot reads `An illustration. Nothing here has run.` It is as wide as the screen allows,
+`Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`); its
+bottom edge carries `←  3 / 5  →`, the arrows that browse it. It is as wide as the screen allows,
 up to 92 columns, so the request in it stands on one row. It holds one request you could
 type and what it leads to, and follows the row you are on: on the review row it shows
 `/task Fix the failing tests and explain the changes.`, and on `Start a conversation` it
 shows `/senior-dev Add retries with backoff to the HTTP client, with tests.` — a command
 in a request is painted as the same chip the message box paints a recognised command with.
 That request **types itself out once** on arriving and on `←`/`→`, then settles; typing
-settles it at once. Two blank rows separate the panel from the keys line, and the form
-stands directly under the keys line. On a window too short to hold the form and the whole
-panel — 24 rows, say — the panel is not drawn and the keys line does not name the arrows;
+settles it at once. Two blank rows separate the panel from the form's heading. On a window
+too short to hold the form and the whole panel — 24 rows, say — the panel is not drawn and
 the form is unchanged. (Until 2026-10-01 the panel was a second column to the right of the
-form, drawn only from 112 columns up.)
+form, drawn only from 112 columns up, and carried `An illustration. Nothing here has run.`
+at its foot; the label on its edge now says that once.)
 
-The keys line reads `enter sets the limit · ↑↓ moves · esc back · type an amount or none ·
-? detail · ←→ examples` on the limit row; `enter` on the other rows says what it does
-there (`opens the list`, `shows them`, `goes on`, `starts`). `↑`/`↓` and `tab` both walk
-the rows.
+The keys line is the form's second row, directly under `Basic settings`. It reads `enter
+sets the limit · ↑↓ moves · esc back · type an amount or none · ? detail` on the limit
+row; `enter` on the other rows says what it does there (`opens the list`, `shows them`,
+`goes on`, `starts`). `↑`/`↓` and `tab` both walk the rows. It does not name the example's
+arrows; the panel's own edge does.
 
 The controls screen shows **once, ever**. The default OpenRouter prerequisite above is the only
 step that may return.
 
 ## What appears once — and why the default provider's OpenRouter step can return
 
-The **Models and spending screen** is shown once per profile. When the first-run screen
+The **Basic settings screen** is shown once per profile. When the first-run screen
 closes — finished or skipped — `setup_seen_at` is written into `config.json` with the time,
 and no later launch asks those preference questions again. Skipping with `esc` counts as
 shown.

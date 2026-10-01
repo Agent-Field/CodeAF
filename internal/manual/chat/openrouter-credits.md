@@ -15,8 +15,8 @@ openrouter` (*Route health* in *Models and cost*).
 
 While the balance is low, the first-run setup screen's **chat model list shows free models
 only** — the `:free` ids and the catalog rows priced at zero, with `free only` on its count
-line and `Your OpenRouter account is low on credits · the list shows free models only` under
-the field — so a person who has never run codeaf is not handed three hundred paid names to
+line and `Your OpenRouter account is low on credits · the list shows free models only` on
+the last row of the screen — so a person who has never run codeaf is not handed three hundred paid names to
 pick the wrong one from. The model already in use stays on that list.
 
 Free ids are defaults only. A model you chose with `/model` or the setup screen,
@@ -83,9 +83,8 @@ OpenRouter service serves — free or paid — and never on a model served by Co
 model or another connected service. It wins over the low-credits line, and the free
 defaults are **not** used, because they would fail on the same key. A turn refused with
 `API key expired` mid-session starts a fresh read, so the warning arrives without a
-relaunch. On the first-run setup screen the same fact stands under the chat model:
-`Your OpenRouter key has expired · make a new one at openrouter.ai/settings/keys and
-paste it with esc`, and the list is not cut to free models. The fix is a new key at
+relaunch. On the first-run setup screen the same fact stands on the last row:
+`Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys`, and the list is not cut to free models. The fix is a new key at
 https://openrouter.ai/settings/keys, pasted on the setup's connect step (`esc` goes back
 to it), in `/settings`, or in `/connect`; the old key's warning goes the moment the new
 key is saved, before it has even been read.
