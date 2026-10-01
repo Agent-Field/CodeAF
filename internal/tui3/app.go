@@ -2622,6 +2622,11 @@ type app struct {
 	pairing Pairing
 	pair    pairPanel
 
+	// approvals answers a new device's request and revokes devices, and
+	// approve remembers what its screens have said (approve.go).
+	approvals Approvals
+	approve   approveState
+
 	// draftPage is the list /drafts opens over the ring of cleared-but-kept
 	// drafts (draftring.go): closed, it costs the frame nothing.
 	draftPage draftPanel
@@ -2938,6 +2943,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		approvals:           opts.Approvals,
 		fleet:               opts.Fleet,
 		branches:            opts.Branches,
 		ctx:                 ctx,
@@ -5333,6 +5339,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pairMsg:
 		return a, a.tookPair(msg)
 
+	case cardMsg:
+		return a, msg.land(a)
+
 	case linkPingTickMsg:
 		// The next timer is armed immediately when this one finds a reconnect in
 		// progress; after a real call, its answer arms the next one instead, so
@@ -7527,6 +7536,9 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "pair":
 		return a.runPair(rest)
+
+	case "devices":
+		return a.openDevices()
 
 	case "autonomy":
 		a.noticeEvent(eventAutonomyAsked)

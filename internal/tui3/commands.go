@@ -483,6 +483,7 @@ var commands = []command{
 	{name: "pair", desc: "share your chats with another computer · or /pair <code> on the other",
 		alias: []string{"sync", "link", "laptop"}},
 	{name: "pair", args: "<code>", desc: "join another computer's chats with the code it shows"},
+	{name: "devices", desc: "your devices · r revokes one"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf and restart on it", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag, then restart"},
