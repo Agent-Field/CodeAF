@@ -217,7 +217,7 @@ desktop has been stopped — it can no longer sync your chats through the relay.
 
 You cannot stop the computer you are typing on. It says `that is this computer — stop it from another of your computers, so it is not the one cutting itself off`.
 
-**Revoking has a limit, and you must know it.** Revoking cuts a device off from the relay. The relay stops serving it. Revoking does not take back what the device already holds. That device has your whole identity. It keeps every secret it already has.
+**Revoking has a limit, and you must know it.** Revoking cuts a device off from the relay. The relay stops serving it. Revoking does not undo what the device already holds. That device has your whole identity. It keeps every secret it already has.
 
 So a computer that is lost or stolen must be treated as if your chats are exposed. Revoking it stops it from syncing. It does not make the chats on it unreadable to the person who has it.
 

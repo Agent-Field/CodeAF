@@ -47,6 +47,7 @@ var uiStringFiles = []string{
 	"internal/tui3/commands.go",
 	"internal/config/settings.go",
 	"internal/pair/lines.go",
+	"internal/remote/driver.go",
 	"internal/pair/errors.go",
 	"internal/pair/offer.go",
 	"internal/pair/join.go",
