@@ -159,7 +159,7 @@ func writeUnsealed(done []cellstore.Executed, out io.Writer) {
 	if len(done) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "unsealed  %d call(s) since %s  not in any turn yet; the next seal that holds covers them\n", len(done),
+	fmt.Fprintf(out, "unsealed  %d call(s) since %s  not in any turn yet; the next seal that holds takes them\n", len(done),
 		time.UnixMilli(done[0].Call.Started).UTC().Format("2006-01-02T15:04:05Z"))
 }
 

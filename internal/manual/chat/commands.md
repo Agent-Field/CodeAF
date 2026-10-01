@@ -470,7 +470,7 @@ whole conversation, oldest first, that you pick a point out of. It is the delibe
 in. The quick way is esc esc, which draws a cut line through the transcript on screen
 instead of opening anything — see the sessions and rewind page for both.
 
-The command row reads `go back to an earlier point · esc esc undoes the last`.
+The command row reads `go back to an earlier point · esc esc takes back the last`.
 
 On the timeline: ↑↓ move, typing searches, the first `enter` places the pick and the
 second `enter` on that same point does the rewind, `esc` clears the search and then

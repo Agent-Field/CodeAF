@@ -108,7 +108,7 @@ func TestThePrinterSaysTheFactsAStatusColumnCannot(t *testing.T) {
 	if !strings.Contains(line, "baseline") {
 		t.Fatalf("the phase was not said:\n%s", line)
 	}
-	if !strings.Contains(line, "this can run for minutes") {
+	if !strings.Contains(line, "this can take minutes") {
 		t.Fatalf("the phase did not say what to expect of it:\n%s", line)
 	}
 	// A replaceable row repeats itself until it moves; the stream must not.

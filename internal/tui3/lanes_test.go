@@ -701,7 +701,7 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 	}
 	// AND THE TAIL SAYS NOTHING ABOUT THE BASE WHILE THE BASE TAKES THE CHOICE.
 	// The emptiness law: an unremarkable fact adds no words (issue #433).
-	if sheetHas(a, "not available on this base") {
+	if sheetHas(a, "not taken on this base") {
 		t.Fatalf("the panel warned about a base that takes the choice:\n%s",
 			strings.Join(sheetLabels(a), "\n"))
 	}
@@ -732,7 +732,7 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 		t.Fatal("the answer was not filed against the base the sheet is wired to")
 	}
 	drive(t, a, key("esc"), key("down"), key("up"))
-	if !sheetHas(a, "pinned: cloudflare (not available on this base)") {
+	if !sheetHas(a, "pinned: cloudflare (not taken on this base)") {
 		t.Fatalf("the row still reads as though the pin were on the wire:\n%s",
 			strings.Join(sheetLabels(a), "\n"))
 	}
