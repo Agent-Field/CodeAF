@@ -12,17 +12,17 @@ const (
 	OfferContinue = "continue here"
 	LostRace      = "another device continued this chat first"
 	NoIdentity    = "this machine has no identity yet: codeaf identity import"
-	SyncOff       = "sync is off: set CODEAF_SYNC_URL to your relay's address"
+	SyncOff       = "sync is off: set CODEAF_SYNC_URL to your sync address"
 	Unreachable   = "other machines unreachable"
 	ClockOff      = "this computer's clock is off by more than 5 minutes"
 	// What the relay's refusals say (one sentence each, in the order the
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
-	relayFull      = "the relay has no room left%s, so new turns stay on this computer; free space there and reopen this chat"
+	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
 	Removed        = "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back"
-	SlowDown       = "the relay is asking this computer to slow down; new turns stay here and go up as soon as it allows"
-	TooManyNew     = "this network has started too many new identities today; sync begins when the relay allows more"
-	ReplacedGone   = "your identity was replaced and the relay has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
+	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
+	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
+	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	runningOn      = "running on %s"
 	deviceOff      = "%s off"

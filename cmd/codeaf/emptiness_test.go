@@ -24,7 +24,7 @@ func TestTheHeadlessFooterLeavesOutWhatIsZero(t *testing.T) {
 		Deliverable: "nothing ran", Artifacts: []string{}, stop: stopError,
 	})
 	printed := out.String()
-	for _, claim := range []string{"0s", "0 nodes", "$0.0000", "$0.00"} {
+	for _, claim := range []string{"0s", "0 parts", "$0.0000", "$0.00"} {
 		if strings.Contains(printed, claim) {
 			t.Fatalf("a run that measured nothing still printed %q:\n%s", claim, printed)
 		}
@@ -39,7 +39,7 @@ func TestTheHeadlessFooterLeavesOutWhatIsZero(t *testing.T) {
 		Deliverable: "done", Artifacts: []string{}, Seconds: 12, Nodes: 3, Spend: 0.4213,
 	})
 	printed = out.String()
-	for _, want := range []string{"12s", "3 nodes", "$0.42"} {
+	for _, want := range []string{"12s", "3 parts", "$0.42"} {
 		if !strings.Contains(printed, want) {
 			t.Fatalf("the footer dropped %q, which this run really did:\n%s", want, printed)
 		}

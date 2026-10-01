@@ -84,7 +84,7 @@ func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
 		t.Fatal("codeaf serve started with no relay set up")
 	}
 	said = err.Error()
-	for _, want := range []string{"no relay is set up", "CODEAF_RELAY", "--host"} {
+	for _, want := range []string{"no sync address is set up", "CODEAF_RELAY", "--host"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("codeaf serve with no relay said %q, which does not mention %q", said, want)
 		}
