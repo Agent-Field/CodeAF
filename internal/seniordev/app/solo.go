@@ -327,8 +327,9 @@ func (runner *pipeline) soloConverse(
 		// A MESSAGE WAITING WHEN THE MODEL STOPS IS ITS NEXT PROMPT, in place of
 		// a nudge and without counting as one: it did not stall, somebody spoke
 		// to it (steering.go).
-		if steer := runner.takeSteering(); steer != "" {
+		if steer, saved := runner.takeSteering(); steer != "" {
 			prompt = steer
+			runner.promptSaved = saved
 			continue
 		}
 		findings := runner.soloUnsubmittedFindings(state.baseSHA)
@@ -358,7 +359,14 @@ func (runner *pipeline) soloConverse(
 }
 
 func (runner *pipeline) soloTurn(ctx context.Context, goal, prompt string) (turnResult, error) {
+	// A PROMPT THAT CARRIES STEERING owes its receipt once it is saved; the
+	// receipt is this turn's alone.
+	saved := runner.promptSaved
+	runner.promptSaved = nil
 	if runner.turnForTest != nil {
+		if saved != nil {
+			saved()
+		}
 		return runner.turnForTest(ctx, goal, prompt)
 	}
 	markdown, ok := baked.GetBakedAgent("coder")
@@ -392,6 +400,7 @@ func (runner *pipeline) soloTurn(ctx context.Context, goal, prompt string) (turn
 	// Messages from the person's side are taken before each model call
 	// (steering.go), never in the middle of one.
 	configured.BetweenStepReminder = runner.takeSteering
+	configured.PromptSaved = saved
 	response, err := runner.runtime.runTurn(ctx, configured)
 	runner.runtime.addCost(response.CostUSD)
 	return response, err

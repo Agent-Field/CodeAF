@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -113,7 +114,7 @@ func TestAMessageWaitingWhenTheModelStopsIsItsNextPromptNotANudge(t *testing.T) 
 // A RUN NOBODY TALKS TO TAKES NOTHING, and a closed inbox is closed once.
 func TestARunWithNoInboxTakesNothing(t *testing.T) {
 	runner, _, _, _ := soloPipeline(t)
-	if got := runner.takeSteering(); got != "" {
+	if got, saved := runner.takeSteering(); got != "" || saved != nil {
 		t.Fatalf("a run with no inbox took %q", got)
 	}
 	listener := &fakeListener{}
@@ -121,15 +122,17 @@ func TestARunWithNoInboxTakesNothing(t *testing.T) {
 	runner.closeInbox("first")
 	runner.closeInbox("second")
 	listener.send(delegate.Message{ID: "n2", From: delegate.FromConversation, Text: "too late"})
-	if got := runner.takeSteering(); got != "" || len(listener.closed) != 1 || len(listener.heard) != 0 {
+	if got, _ := runner.takeSteering(); got != "" || len(listener.closed) != 1 || len(listener.heard) != 0 {
 		t.Fatalf("after closing: took %q, closed %v, heard %v", got, listener.closed, listener.heard)
 	}
 }
 
-// injectorStore is the three store methods the reminder injector writes to.
+// injectorStore is the three store methods the reminder injector writes to;
+// failPart makes the save of the words' part fail.
 type injectorStore struct {
-	infos []msgmodel.Info
-	parts []msgmodel.Part
+	infos    []msgmodel.Info
+	parts    []msgmodel.Part
+	failPart bool
 }
 
 func (s *injectorStore) Messages(context.Context, string) ([]msgmodel.WithParts, error) {
@@ -140,30 +143,73 @@ func (s *injectorStore) UpdateMessage(_ context.Context, info msgmodel.Info) err
 	return nil
 }
 func (s *injectorStore) UpdatePart(_ context.Context, part msgmodel.Part) error {
+	if s.failPart {
+		return errors.New("disk full")
+	}
 	s.parts = append(s.parts, part)
 	return nil
 }
 
-// THE HOOK SAVES THE WORDS AS A MESSAGE OF THEIR OWN. senior-dev's steering
-// fills turn.BetweenStepReminder; the injector it drives saves the words to the
-// session as a user message and appends it to the request, and adds nothing
-// when there are no words.
+// THE HOOK SAVES THE WORDS AS A MESSAGE OF THEIR OWN, AND ONLY THEN GIVES THE
+// RECEIPT. senior-dev's steering fills turn.BetweenStepReminder; the injector
+// it drives saves the words to the session as a user message, appends it to the
+// request, and calls the receipt after the save — never when the save fails,
+// and nothing at all when there are no words.
 func TestTheBetweenStepHookSavesTheWordsAsAMessage(t *testing.T) {
 	store := &injectorStore{}
 	words := ""
-	inject := turnReminderInjector(store, "ses_1", func() string { return words })
+	receipts := 0
+	inject := turnReminderInjector(store, "ses_1", func() (string, func()) {
+		return words, func() {
+			if len(store.parts) == 0 {
+				t.Fatal("the receipt came before the words were saved")
+			}
+			receipts++
+		}
+	})
 	user := msgmodel.User{MessageBase: msgmodel.MessageBase{ID: "msg_0", SessionID: "ses_1"}, Agent: "coder"}
 	out, err := inject(context.Background(), nil, user)
-	if err != nil || len(out) != 0 || len(store.parts) != 0 {
-		t.Fatalf("no words still added %v (saved %v, %v)", out, store.parts, err)
+	if err != nil || len(out) != 0 || len(store.parts) != 0 || receipts != 0 {
+		t.Fatalf("no words still added %v (saved %v, receipts %d, %v)", out, store.parts, receipts, err)
 	}
 	words = "While you work, a message reached you: the grader is in grade.sh"
+	store.failPart = true
+	if _, err := inject(context.Background(), nil, user); err == nil || receipts != 0 {
+		t.Fatalf("a failed save answered %v and gave %d receipt(s)", err, receipts)
+	}
+	store.failPart = false
+	store.infos = nil
 	out, err = inject(context.Background(), nil, user)
-	if err != nil || len(out) != 1 || len(store.infos) != 1 || len(store.parts) != 1 {
-		t.Fatalf("the words were not saved and appended: %v, %v, %v", out, store.parts, err)
+	if err != nil || len(out) != 1 || len(store.infos) != 1 || len(store.parts) != 1 || receipts != 1 {
+		t.Fatalf("the words were not saved, appended and receipted: %v, %v, %d, %v", out, store.parts, receipts, err)
 	}
 	if part, ok := store.parts[0].(msgmodel.TextPart); !ok || part.Text != words {
 		t.Fatalf("saved part = %#v", store.parts[0])
+	}
+}
+
+// A MESSAGE READ BUT NEVER SAVED IS NOT HEARD. Taking the inbox's messages
+// says nothing to codeaf and tells the page nothing; the receipt does both,
+// once, however often it is called.
+func TestAMessageReadButNeverSavedIsNotHeard(t *testing.T) {
+	runner, _, _, events := soloPipeline(t)
+	listener := &fakeListener{}
+	runner.inbox = listener
+	listener.send(delegate.Message{ID: "n1", From: delegate.FromPerson, Text: "the grader is in grade.sh"})
+	words, saved := runner.takeSteering()
+	if words == "" || saved == nil {
+		t.Fatalf("took %q", words)
+	}
+	if len(listener.heard) != 0 || len(soloStageEvents(t, events, "implement")) != 0 {
+		t.Fatalf("reading alone was receipted: heard %v", listener.heard)
+	}
+	if _, err := os.Stat(filepath.Join(runner.workspace, steeringFile)); err == nil {
+		t.Fatal("reading alone kept the message for compaction")
+	}
+	saved()
+	saved()
+	if !reflect.DeepEqual(listener.heard, []string{"n1"}) || len(soloStageEvents(t, events, "implement")) != 1 {
+		t.Fatalf("after the save: heard %v", listener.heard)
 	}
 }
 
@@ -178,7 +224,14 @@ func TestAListeningHostsRunHandsEveryCoderTurnTheHook(t *testing.T) {
 	var handed string
 	backend := &coderOnlyBackend{onCoder: func(call int, request turn) error {
 		if call == 1 && request.BetweenStepReminder != nil {
-			handed = request.BetweenStepReminder()
+			var saved func()
+			handed, saved = request.BetweenStepReminder()
+			if len(host.heard) != 0 {
+				t.Errorf("heard %v before the words were saved", host.heard)
+			}
+			if saved != nil {
+				saved()
+			}
 		}
 		return nil
 	}}

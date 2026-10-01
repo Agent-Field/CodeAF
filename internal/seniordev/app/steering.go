@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
@@ -37,9 +38,12 @@ import (
 // still the direction at minute ninety. The file sits in senior-dev's own
 // notes, which are never part of what it hands in.
 //
-// AND SENIOR-DEV SAYS IT HEARD. The receipt is what lets codeaf mark a note
-// delivered; the inbox closes when it hands in, because a frozen tree cannot
-// take direction, and codeaf refuses later words with that reason.
+// AND SENIOR-DEV SAYS IT HEARD, ONCE THE WORDS ARE SAVED WHERE ITS NEXT CALL
+// READS THEM. The receipt is what lets codeaf mark a note delivered and the page
+// say the model was given it, so it waits for the save: a message read from the
+// inbox and lost to a run killed before the save is not heard, and codeaf says
+// so when the run ends. The inbox closes when it hands in, because a frozen
+// tree cannot take direction, and codeaf refuses later words with that reason.
 
 // steeringFile is where the messages taken are kept, relative to the workspace.
 const steeringFile = ".senior-dev/steering.md"
@@ -49,8 +53,10 @@ const steeringFile = ".senior-dev/steering.md"
 const steeringStage = "steered"
 
 // takeSteering reads the messages waiting in the inbox and answers the words
-// the model is handed, "" when there are none or nobody can send any.
-func (runner *pipeline) takeSteering() string {
+// the model is handed and the receipt to give once those words are saved where
+// its next call reads them; "" and nil when there are none or nobody can send
+// any. The receipt is given at most once.
+func (runner *pipeline) takeSteering() (string, func()) {
 	// THE INBOX IS CLOSED FROM INSIDE THE SUBMIT TOOL, which need not run on
 	// the loop's goroutine, so reading it and closing it hold one lock.
 	runner.inboxMu.Lock()
@@ -59,17 +65,26 @@ func (runner *pipeline) takeSteering() string {
 	if inbox != nil {
 		messages = inbox.Messages()
 	}
-	if len(messages) > 0 {
-		ids := make([]string, 0, len(messages))
-		for _, message := range messages {
-			ids = append(ids, message.ID)
-		}
-		inbox.Heard(ids)
-	}
 	runner.inboxMu.Unlock()
 	if len(messages) == 0 {
-		return ""
+		return "", nil
 	}
+	var once sync.Once
+	return steeringSpoken(messages), func() {
+		once.Do(func() { runner.heardSteering(inbox, messages) })
+	}
+}
+
+// heardSteering is the receipt for messages now saved before the model: codeaf
+// is told it heard them, they are kept for compaction, and the page is told.
+func (runner *pipeline) heardSteering(inbox delegate.Listener, messages []delegate.Message) {
+	ids := make([]string, 0, len(messages))
+	for _, message := range messages {
+		ids = append(ids, message.ID)
+	}
+	runner.inboxMu.Lock()
+	inbox.Heard(ids)
+	runner.inboxMu.Unlock()
 	runner.keepSteering(messages)
 	last := messages[len(messages)-1]
 	runner.events.stage("implement", steeringStage, map[string]any{
@@ -77,7 +92,6 @@ func (runner *pipeline) takeSteering() string {
 	})
 	runner.note(fmt.Sprintf("[senior-dev] implement: handed its model %d message(s) from %s\n",
 		len(messages), messageFromWord(last.From)))
-	return steeringSpoken(messages)
 }
 
 // keepSteering appends the messages to the steering file compaction pins. A

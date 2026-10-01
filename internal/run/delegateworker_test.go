@@ -706,3 +706,57 @@ func TestDelegateWorkerSaysWhichMessagesTheProgramNeverRead(t *testing.T) {
 		t.Fatal("the worker's own report would be handed to a later worker as a message")
 	}
 }
+
+// A LATER WORKER OF THE SAME TASK STARTS ON AN EMPTY INBOX, AND A PROGRAM IS
+// NEVER HANDED ITS OWN WORDS. The task's folder outlives a run, so the inbox a
+// first run was fed is still there when a second worker launches: its lines
+// are gone before the program reads its first, and a note codeaf left in the
+// program's own name is not forwarded beside the conversation's.
+func TestDelegateWorkerStartsEveryLaunchOnAnEmptyInbox(t *testing.T) {
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	taskDir := plandb.TaskDir(storeDir, store.RootID())
+	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := delegate.Message{ID: "n-stale", From: delegate.FromPerson, Text: "the last run's steer"}
+	if err := delegate.AppendInbox(filepath.Join(taskDir, delegate.InboxName), stale); err != nil {
+		t.Fatal(err)
+	}
+	own, err := store.AddNote(store.RootID(), "fake", "fake did not read this before it stopped reading (it ended): “old”")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := store.AddNote(store.RootID(), plandb.NoteAgentChat, "the grader is in grade.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "seen")
+	t.Setenv("FAKE_SEEN", seen)
+	script := filepath.Join(t.TempDir(), "second.sh")
+	program := "#!/bin/sh\n" + strings.Join([]string{
+		`echo '{"type":"hello","protocol":2,"delegate":"fake","stages":["implement"],"accepts":["messages"]}'`,
+		`i=0; while [ $i -lt 100 ] && ! grep -q grader "$CODEAF_INBOX" 2>/dev/null; do sleep 0.1; i=$((i+1)); done`,
+		`sleep 1.5`,
+		`cp "$CODEAF_INBOX" "$FAKE_SEEN"`,
+		`echo '{"type":"inbox","open":false,"reason":"it has handed in its work"}'`,
+		passLine("read its inbox"),
+	}, "\n") + "\n"
+	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listening := delegate.Delegate{Name: "fake", Summary: "a fake program", Default: "run", Listens: true}
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), listening, run.DelegateSetup{Exe: script}, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+		t.Fatalf("the second run failed: %v", err)
+	}
+	inbox, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("the program found no inbox: %v", err)
+	}
+	if strings.Contains(string(inbox), stale.ID) || strings.Contains(string(inbox), own.ID) {
+		t.Fatalf("the inbox handed over a stale line or the program's own words:\n%s", inbox)
+	}
+	if !strings.Contains(string(inbox), `"id":"`+fresh.ID+`"`) {
+		t.Fatalf("the fresh note did not arrive:\n%s", inbox)
+	}
+}

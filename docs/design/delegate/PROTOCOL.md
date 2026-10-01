@@ -199,7 +199,12 @@ note is written on the program's task: the person's words from its page, or the
 conversation's `tasks` `say`. The program reads the lines it has not read at the
 points in its own work where a word can be taken in (senior-dev: before each call
 to its model, and in place of a nudge when its model stops), answers with a
-`heard` record, and only then does codeaf mark the note had. It writes `inbox`
+`heard` record once the words are saved where its next model call reads them —
+not when it reads them, so a message lost to a run killed in between is never
+receipted — and only then does codeaf mark the note had. The inbox file is
+emptied at every launch, because the task's folder outlives a run and a later
+worker of the same task must not be handed the last run's lines; codeaf never
+forwards a note in the program's own name. It writes `inbox`
 with `open` false when it stops reading (senior-dev at its hand-in, because a
 frozen tree takes no direction), and codeaf refuses later words with that reason.
 A program that does not listen, or whose hello did not say `accepts`, is refused

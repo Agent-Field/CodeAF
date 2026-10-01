@@ -211,6 +211,9 @@ type delegateSink struct {
 	sent      map[string]bool
 	had       map[string]bool
 	closedWhy string
+	// forwarding closes when the forwarding loop has returned, nil while it
+	// was never started.
+	forwarding chan struct{}
 }
 
 // remember writes one received record to the task's action log, stamped with
@@ -283,9 +286,13 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 		// A PROGRAM THAT SAYS IT LISTENS, STARTED WITH AN INBOX, IS FED ONE.
 		// Its record says so, which is what the conversation and the page read
 		// before they offer to send it words.
-		if h.Listening() && s.inboxPath != "" {
+		if h.Listening() && s.inboxPath != "" && s.forwarding == nil {
 			s.record.Listening = true
-			go s.forward()
+			s.forwarding = make(chan struct{})
+			go func() {
+				defer close(s.forwarding)
+				s.forward()
+			}()
 		}
 		_ = delegate.WriteProgram(s.taskDir, s.record)
 		return
@@ -352,6 +359,11 @@ func (s *delegateSink) forward() {
 			return
 		}
 		for _, note := range unreadNotes(s.worker.store, s.taskID, skip) {
+			// The program's own words — codeaf's notes in its name, such as
+			// [delegateSink.reportUnheard]'s — are never handed back to it.
+			if strings.TrimSpace(note.Agent) == s.name {
+				continue
+			}
 			if delegate.AppendInbox(s.inboxPath, delegate.Message{ID: note.ID, From: messageFrom(note), Text: note.Body}) != nil {
 				break
 			}
@@ -364,6 +376,16 @@ func (s *delegateSink) forward() {
 			return
 		case <-tick.C:
 		}
+	}
+}
+
+// endForwarding stops the forwarding loop and waits for it to return.
+func (s *delegateSink) endForwarding() {
+	if s.stop != nil {
+		s.stop()
+	}
+	if s.forwarding != nil {
+		<-s.forwarding
 	}
 }
 
@@ -646,9 +668,17 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		ctx:    launchCtx, sent: map[string]bool{}, had: notesAlreadyHad(storeDir, task.ID)}
 	childEnv := append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
 		gitidentity.InputsEnv+"="+w.setup.InputsFile)
+	// THE INBOX STARTS EMPTY ON EVERY LAUNCH. It lives in the task's folder,
+	// which outlives a run, and a program reads it from its first line: a second
+	// worker of the same task would otherwise be handed the last run's messages
+	// as new ones. An inbox that cannot be emptied is not handed over at all, and
+	// the program runs as one nobody talks to.
 	if w.program.Listens {
-		sink.inboxPath = filepath.Join(taskDir, delegate.InboxName)
-		childEnv = append(childEnv, delegate.EnvInbox+"="+sink.inboxPath)
+		path := filepath.Join(taskDir, delegate.InboxName)
+		if os.WriteFile(path, nil, 0o600) == nil {
+			sink.inboxPath = path
+			childEnv = append(childEnv, delegate.EnvInbox+"="+path)
+		}
 	}
 	brief := strings.TrimSpace(task.Description)
 	if brief == "" {
@@ -683,6 +713,10 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if sink.mismatch == "" {
 		sink.record.EndedAt = ended
 		_ = delegate.WriteProgram(taskDir, sink.record)
+		// THE FORWARDING ENDS BEFORE THE REPORT IS WRITTEN, so the report is
+		// read against every note that was ever sent and never lands in an
+		// inbox nobody reads.
+		sink.endForwarding()
 		sink.reportUnheard()
 	}
 	// The program has exited: its API goes with it, so nothing it left behind

@@ -83,6 +83,9 @@ type pipeline struct {
 	// (steering.go), nil for a run nobody talks to and once it has closed.
 	inbox   delegate.Listener
 	inboxMu sync.Mutex
+	// promptSaved is the receipt the next turn gives once its prompt, which
+	// carries steering, is saved (steering.go).
+	promptSaved func()
 }
 
 type pipelineResult struct {
