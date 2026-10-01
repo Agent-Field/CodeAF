@@ -8,7 +8,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
@@ -23,7 +22,7 @@ type liveDrive struct {
 
 	mu      sync.Mutex
 	drive   *syncsetup.Drive
-	waiting bool // sync is on and only an identity is missing
+	waiting bool // sync is on and only an identity, or the end of solo, is missing
 }
 
 // newLiveDrive starts the drive side now when it can. It answers nil when sync
@@ -44,17 +43,11 @@ func newLiveDrive(start func() (*syncsetup.Drive, error)) *liveDrive {
 func (l *liveDrive) try() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.drive != nil || (l.waiting && !identityMade()) {
+	if l.drive != nil || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
 		return
 	}
 	d, err := l.start()
-	l.drive, l.waiting = d, errors.Is(err, syncsetup.ErrNoIdentity)
-}
-
-// identityMade is whether this computer has an identity to sign with now.
-func identityMade() bool {
-	_, err := identity.Load(home.Dir())
-	return !errors.Is(err, identity.ErrNone)
+	l.drive, l.waiting = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet)
 }
 
 // current is the running drive side, or nil while there is none.

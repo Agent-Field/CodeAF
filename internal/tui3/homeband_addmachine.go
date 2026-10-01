@@ -37,6 +37,12 @@ type Fleet interface {
 	FleetSize(ctx context.Context) (int, error)
 }
 
+// Engager is a [Fleet] that holds back from the network until the person shows
+// interest in adding a machine. Opening the card is that interest.
+type Engager interface {
+	Engage()
+}
+
 const (
 	// addMachineKey is the chord that opens and closes the instructions.
 	addMachineKey = "alt+d"
@@ -118,6 +124,12 @@ func (a *app) toggleAddMachine() tea.Cmd {
 	}
 	m.open = !m.open
 	a.touch()
+	if !m.open {
+		return nil
+	}
+	if e, ok := a.fleet.(Engager); ok {
+		e.Engage()
+	}
 	return nil
 }
 
