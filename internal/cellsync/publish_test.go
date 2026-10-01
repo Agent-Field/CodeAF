@@ -130,6 +130,12 @@ func TestPublishSupersededIsErrSuperseded(t *testing.T) {
 	}
 }
 
+// Two devices act at the same instant after the lease expired. The directory
+// serialises them, so either order is legal and the outcome is whichever got
+// there first: the publish renews the expired lease nobody had taken (A keeps
+// fence 1 and B is refused), or the take wins (B holds fence 2 and A's publish
+// is stale). What must hold in both orders is that exactly one device wins and
+// the loser changes nothing.
 func TestTwoDevicesRaceAfterLeaseExpiry(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		r := newRig(t)
@@ -148,11 +154,17 @@ func TestTwoDevicesRaceAfterLeaseExpiry(t *testing.T) {
 		wg.Wait()
 
 		got := r.head(cellID)
-		if takeErr != nil || got.Lease.Device != devB || got.Lease.Fence != 2 {
-			t.Fatalf("run %d: B did not end up holding the lease: %v %+v", i, takeErr, got.Lease)
+		if (pubErr == nil) == (takeErr == nil) {
+			t.Fatalf("run %d: want exactly one winner, publish %v, take %v", i, pubErr, takeErr)
 		}
-		if pubErr == nil && got.Head != h2 || pubErr != nil && (!errors.Is(pubErr, ErrSuperseded) || got.Head != h1) {
-			t.Fatalf("run %d: publish %v left head %s", i, pubErr, got.Head)
+		if pubErr == nil {
+			if !errors.Is(takeErr, directory.ErrLeaseHeld) || got.Head != h2 || got.Lease.Device != devA || got.Lease.Fence != 1 {
+				t.Fatalf("run %d: publish won but take = %v, cell %+v head %s", i, takeErr, got.Lease, got.Head)
+			}
+			continue
+		}
+		if !errors.Is(pubErr, ErrSuperseded) || got.Head != h1 || got.Lease.Device != devB || got.Lease.Fence != 2 {
+			t.Fatalf("run %d: take won but publish = %v, cell %+v head %s", i, pubErr, got.Lease, got.Head)
 		}
 	}
 }
