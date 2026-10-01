@@ -273,7 +273,7 @@ func (e *headlessEnv) Ask(_ context.Context, question string, opts exec.AskOptio
 	note := "nobody was here to answer this and it declared no answer of its own, so the run stops here"
 	if declared := strings.TrimSpace(opts.Default); declared != "" {
 		answer.Text = declared
-		note = "nobody was here to answer this, so it took the answer it declared in advance"
+		note = "nobody was here to answer this, so it used the answer it declared in advance"
 	} else {
 		answer.Unanswered = true
 	}

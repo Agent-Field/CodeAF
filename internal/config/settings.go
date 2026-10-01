@@ -1903,8 +1903,8 @@ func (s *Settings) build() []Setting {
 			Key: KeyEffort, Category: CategoryModels, Kind: SettingChoice,
 			Label: "thinking", Choices: EffortChoices,
 			Hint: "how hard the model thinks about your turns and the work you hand out. Auto leaves reasoning to the model. " +
-				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
-				"A standing item's firings and checks never take this row; only the rung on the item's own card reaches a firing.",
+				"xhigh and max ask for a deeper pass than high, and cost the time they need. " +
+				"A standing item's firings and checks never use this row; only the rung on the item's own card reaches a firing.",
 			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },
 			write: func(raw string) error { return writeChoice(dir, KeyEffort, raw, EffortChoices) },
 		},
@@ -2097,7 +2097,7 @@ func (s *Settings) build() []Setting {
 				"What you write here changes only the tools you name. Reading files and " +
 				"codeaf's own notes are allowed unless you name them, and everything else " +
 				"you do not name follows the setting above. Answering always on an approval " +
-				"question writes one, and it takes effect straight away.",
+				"question writes one, and it applies straight away.",
 			read:  func() string { return ToolApprovalsAt(dir) },
 			write: func(raw string) error { return writeToolApprovals(dir, raw) },
 		},
@@ -2109,7 +2109,7 @@ func (s *Settings) build() []Setting {
 				"answers only for a whole single command, a deny catches its shape " +
 				"anywhere in a longer line, and dangerous commands are asked about " +
 				"whatever this says. Answering always on an approval question writes one, " +
-				"and it takes effect straight away.",
+				"and it applies straight away.",
 			read:  func() string { return BashApprovalsAt(dir) },
 			write: func(raw string) error { return writeBashApprovals(dir, raw) },
 		},
@@ -2165,7 +2165,7 @@ func (s *Settings) build() []Setting {
 			Label: "prompt profile", Env: EnvPromptProfile, Choices: PromptProfileModes,
 			Hint: "how much codeaf tells the model before you type. auto decides from the " +
 				"model's context window and is right almost always: under 32,000 tokens it " +
-				"goes lean. lean takes one section off the page, leaves seven verbs one " +
+				"goes lean. lean removes one section from the page, leaves seven verbs one " +
 				"load_capability call away, puts ask straight in the list, turns saved " +
 				"memories off and cuts the project's own instructions to 2KiB. full sends " +
 				"everything. Choose one of those two when the host reports a window its " +
@@ -2182,7 +2182,7 @@ func (s *Settings) build() []Setting {
 			Hint: "which host answers your model, for requests from this home. One model id is served by " +
 				"a dozen hosts that differ by seven times on the wait before the first " +
 				"word, so this is often a bigger change than switching model. auto lets the router " +
-				"route — and codeaf takes over choosing the host when its answers start coming " +
+				"route — and codeaf starts choosing the host when its answers start coming " +
 				"back refused or unusable, handing it back once it has been well for a while; " +
 				"a name — `cloudflare` — pins it and nothing else is asked; " +
 				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
@@ -2196,7 +2196,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyLaneGuard, Category: CategoryModels, Kind: SettingBool,
 			Label: "speed guard",
-			Hint: "when an answer takes much longer to start than that host normally " +
+			Hint: "when an answer needs much longer to start than that host normally " +
 				"does, the same question is asked of the next-best one and whichever replies " +
 				"first is the one you read. It hedges at most one extra call, under a tenth of " +
 				"spend; off under price routing.",
@@ -2216,7 +2216,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyTimestamps, Category: CategoryInterface, Kind: SettingChoice,
 			Label: "timestamps", Choices: TimestampModes,
 			Hint: "how much of the clock the conversation carries. footers puts one dim line " +
-				"under each finished turn — when it ended, how long it took, how many calls it " +
+				"under each finished turn — when it ended, how long it ran, how many calls it " +
 				"made, what it cost — and marks where the conversation was put down for ten " +
 				"minutes or a day. separators keeps only those marks. off draws neither. " +
 				"ctrl+o on a turn writes its footer's time out in full.",
@@ -2471,7 +2471,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
 			Label: "fallback models", EmptyLabel: "nearest in the catalog",
 			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
-				"it will take the request, it keeps going quiet mid-reply, or it is being " +
+				"it will accept the request, it keeps going quiet mid-reply, or it is being " +
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
 				"and the nearest same-class model in the catalog is used. The turn says which " +

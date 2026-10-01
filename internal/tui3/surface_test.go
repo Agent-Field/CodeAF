@@ -873,7 +873,7 @@ func TestHelpPrintsTheAliasesFromTheSameTable(t *testing.T) {
 		"also /exit /q",
 		"also /?",
 		"/rewind",
-		"go back to an earlier point · esc esc takes back the last",
+		"go back to an earlier point · esc esc undoes the last",
 		"also /undo /back",
 	} {
 		if !strings.Contains(text, want) {

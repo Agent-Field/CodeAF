@@ -760,7 +760,7 @@ This prints one piece of work's whole record: every turn, what it said, every to
 called with its arguments, what came back, and how it ended.
 
 ```
-codeaf why <node-id> [--db path]
+codeaf why <part-id> [--db path]
 ```
 
 Each entry is a headline with its body indented four spaces under it:
@@ -851,7 +851,7 @@ from the record alone, as before. With the flag off nothing about `do` changes.
 That directory holds a `graph.db`, and that is what to point the reader at:
 
 ```
-codeaf why <node-id> --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
+codeaf why <part-id> --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
 codeaf why self      --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
 ```
 

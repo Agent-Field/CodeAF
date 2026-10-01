@@ -3141,7 +3141,7 @@ Setting **routing** yourself is how you turn it on, and it applies everywhere:
 - **`simple`** is the shipped row described above.
 - **`off`** sends no preference and stops timing providers altogether.
 
-A change here takes effect on your **next message** — the row goes straight to the layer
+A change here applies on your **next message** — the row goes straight to the layer
 that sends requests, so nothing waits for a relaunch. The `provider` row under it re-reads what
 `auto` means in the new word on the same frame.
 

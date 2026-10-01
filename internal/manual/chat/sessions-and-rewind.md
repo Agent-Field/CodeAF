@@ -16,7 +16,7 @@ when you phrased something badly and want to say it again better.
 The first `esc` keeps its ordinary meaning — mid-turn it interrupts, at rest it does nothing
 — and also arms rewind. The arming window is **500ms**. While it is warm, the hint slot says
 exactly `esc again to rewind`. A stray `esc` after the window has lapsed changes nothing.
-The command row for `/rewind` reads `go back to an earlier point · esc esc takes back the last`.
+The command row for `/rewind` reads `go back to an earlier point · esc esc undoes the last`.
 
 Both tiers use the same `⟲` glyph, the same "drops N turns" arithmetic, the same cut, and
 do the same things afterwards. Which one to reach for: `esc esc` for "not that, let me say

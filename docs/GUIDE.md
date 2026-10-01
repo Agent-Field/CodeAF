@@ -217,7 +217,7 @@ keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/spend` | `what this machine has cost, by the day · alt+3` |
 | `/budget` | `what codeaf may spend · every limit on one tab` |
 | `/compact` | `summarize the conversation now` |
-| `/rewind` | `go back to an earlier point · esc esc takes back the last` |
+| `/rewind` | `go back to an earlier point · esc esc undoes the last` |
 | `/manual` | `asks the model what codeaf can do, from its own manual` |
 | `/help` | `this list` |
 | `/quit` | `close this conversation` |
