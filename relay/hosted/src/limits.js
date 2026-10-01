@@ -34,6 +34,16 @@ export const DEFAULTS = {
   pairWritePerMinute: 30,
   pairConcurrentPolls: 4,
   pairMaxBoxes: 2_000, // at 32 KiB each this is also the 64 MiB ceiling in all
+  // Link requests (docs/ux-pairing-contract.md 3.6), for a new device that has no identity yet. The
+  // time to live is pairTtlMs, shared with the mailbox.
+  linkCreatePerHour: 10,
+  linkPendingPerIp: 3,
+  linkReadPerMinute: 60,
+  linkMissPerMinute: 20,
+  linkConcurrentPolls: 4,
+  linkMaxGrant: 4_096,
+  linkMaxLive: 2_000,
+  linkDecidedKeepMs: 2 * 60_000, // how long a decided request can still be read
 };
 
 /** limitsOf reads the table, with any number the deployment overrides in its CAF_LIMITS variable (JSON). */

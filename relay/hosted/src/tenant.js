@@ -74,6 +74,20 @@ export class Tenant {
     return this.watchers.accept(device, this.dir.version, holds, this.clock());
   }
 
+  /** join stores the device a paired device approved, and tells the identity's other sockets it joined. */
+  join(id, record) {
+    const device = this.dir.approveDevice(id, record);
+    this.announce({ t: 'joined', device: id, name: device.name, platform: device.platform, at: this.clock() }, id);
+  }
+
+  /**
+   * announce hands an event frame (contract 5) to the watchers, to be sent to every event socket but the
+   * ones of `except`. A watcher that has no event frames to send ignores it.
+   */
+  announce(frame, except) {
+    this.watchers.announce?.(frame, except);
+  }
+
   /** assertWritable refuses a write to an identity a rotation has replaced, whichever device asks. */
   assertWritable() {
     if (this.dir.rotation()) throw new RuleError('rotated');
