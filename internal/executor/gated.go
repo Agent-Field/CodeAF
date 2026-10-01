@@ -22,6 +22,9 @@ type gated struct {
 // ForSetup implements SetupSeat: a setup turn's calls are gated too.
 func (g gated) ForSetup() Seat { return Gated(ForSetup(g.Seat), g.gate) }
 
+// Settle implements Settler: the seat beneath keeps the record.
+func (g gated) Settle(ctx context.Context) { Settle(ctx, g.Seat) }
+
 // NoteModelCall implements ModelNoter: the seat beneath keeps the record.
 func (g gated) NoteModelCall(m ModelCall) { NoteModelCall(g.Seat, m) }
 

@@ -193,6 +193,15 @@ func (r *Recorder) complete(ctx context.Context, i Intent, e Executed) {
 	r.seal(context.WithoutCancel(ctx))
 }
 
+// Settle seals the tree as it stands now, with whatever is pending. A call seals
+// before its result and the reply that follows are written to the transcript, so
+// without this the last turn of a chat is never in any seal.
+func (r *Recorder) Settle(ctx context.Context) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seal(context.WithoutCancel(ctx))
+}
+
 // seal takes everything pending into one turn. On failure the batch stays
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {

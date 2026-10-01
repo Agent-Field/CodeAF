@@ -992,3 +992,27 @@ func TestTwoHomesPublishAfterTakeSendsOnlyTheEdit(t *testing.T) {
 		t.Fatalf("B's publish sent %d bytes, as much as the %d-byte file it had just been sent", sent, size)
 	}
 }
+
+// The last turn of a chat is a tool run and a reply. The call seals when it
+// returns, before the transcript learns its output or the reply, so only a seal
+// at the end of the turn carries them: the chat B takes must open as A left it.
+func TestTwoHomesTakeCarriesTheTurnThatEndedOnAReply(t *testing.T) {
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+	a := h.openA()
+	a.mustSay("the tool call")
+	appendTo(t, transcriptOf(h.cell), `{"type":"message","role":"tool","content":"ok demo 0.002s"}`+"\n")
+	appendTo(t, transcriptOf(h.cell), `{"type":"message","role":"assistant","content":"the tests passed"}`+"\n")
+	executor.Settle(context.Background(), a.seat)
+
+	got := h.takeOnB(a)
+	log, err := os.ReadFile(transcriptOf(got.Taken.Cell))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ok demo 0.002s", "the tests passed"} {
+		if !strings.Contains(string(log), want) {
+			t.Fatalf("the chat B took lacks %q:\n%s", want, log)
+		}
+	}
+}
