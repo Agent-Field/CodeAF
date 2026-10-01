@@ -13,7 +13,7 @@
 //
 //	asked, _ := reqs.CreateRequest(ctx, directory.NewRequest{
 //		Pubkey: pub, X25519: box, NameSealed: sealed, Platform: "linux"})
-//	// show asked.Code, asked.Check and the link https://codeaf.link/p/<code>#<k>
+//	// show asked.Code, asked.Check and the link https://codeaf.agentfield.ai/p/<code>#<k>
 //	for {
 //		r, err := reqs.GetRequest(ctx, asked.Code, 25*time.Second)
 //		if errors.Is(err, directory.ErrStillPending) { continue }
