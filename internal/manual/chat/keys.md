@@ -3307,7 +3307,9 @@ Opening **latches** your choice during streaming. An opened live block shows the
 whole buffer, not the 3-line window. Completion still folds the whole turn’s work.
 
 An expanded block is capped at **200 rows**, and says how much is held back. The token
-count is an estimate at 4 bytes per token.
+count is an estimate at 4 bytes per token. Before enough text arrives to estimate one
+token, the count is absent: `thinking · ctrl+e`, or `thought for Ns · ctrl+e` after
+the block collapses. The label and disclosure stay available.
 
 **Reasoning is never written to the session file.** A resumed conversation shows the
 answers, not the thinking.

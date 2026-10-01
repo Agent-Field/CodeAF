@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -220,5 +221,114 @@ func TestDiscoverFirstRootWinsWithinScope(t *testing.T) {
 func TestDiscoverNeedsAtLeastOneBase(t *testing.T) {
 	if _, err := Discover(Options{}); err == nil {
 		t.Fatal("Discover with no directories at all did not error")
+	}
+}
+
+// TestDiscoverReadsOpenCodeAndGooseFolders pins the two folders #1277 adds to
+// the day-one list after Gemini's, in both scopes, and their rank: a name kept
+// in an earlier folder of the same scope owns it over theirs.
+func TestDiscoverReadsOpenCodeAndGooseFolders(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	writeSkill(t, filepath.Join(project, ".opencode", "skills", "open-helper"), "open-helper")
+	writeSkill(t, filepath.Join(home, ".goose", "skills", "goose-helper"), "goose-helper")
+	writeSkill(t, filepath.Join(home, ".gemini", "skills", "shared"), "shared")
+	writeSkill(t, filepath.Join(home, ".goose", "skills", "shared"), "shared")
+
+	found := discover(t, project, home)
+	open, ok := byDir(found, filepath.Join(".opencode", "skills", "open-helper"))
+	if !ok || open.Scope != ScopeProject || open.Shadowed || open.Root != ".opencode/skills" {
+		t.Fatalf("the .opencode project skill is missing or wrong: %+v", found)
+	}
+	goose, ok := byDir(found, filepath.Join(".goose", "skills", "goose-helper"))
+	if !ok || goose.Scope != ScopeUser || goose.Shadowed || goose.Root != ".goose/skills" {
+		t.Fatalf("the .goose user skill is missing or wrong: %+v", found)
+	}
+	loser, ok := byDir(found, filepath.Join(".goose", "skills", "shared"))
+	if !ok || !loser.Shadowed {
+		t.Fatalf("the .goose copy of a name .gemini holds is not shadowed: %+v", found)
+	}
+}
+
+// TestDiscoverReadsOpenCodeAndGooseHomeFolders pins where the two tools keep a
+// person's own skills: under ~/.config, not in a dot folder in the home. Both
+// are read in the user scope with their own root name, and neither is read
+// under a project, whose .config folder is not a skills location.
+func TestDiscoverReadsOpenCodeAndGooseHomeFolders(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	writeSkill(t, filepath.Join(home, ".config", "opencode", "skills", "open-global"), "open-global")
+	writeSkill(t, filepath.Join(home, ".config", "goose", "skills", "goose-global"), "goose-global")
+	writeSkill(t, filepath.Join(project, ".config", "opencode", "skills", "not-a-skill-place"), "not-a-skill-place")
+
+	found := discover(t, project, home)
+	open, ok := byDir(found, filepath.Join(".config", "opencode", "skills", "open-global"))
+	if !ok || open.Scope != ScopeUser || open.Shadowed || open.Root != ".config/opencode/skills" {
+		t.Fatalf("OpenCode's global skill is missing or wrong: %+v", found)
+	}
+	goose, ok := byDir(found, filepath.Join(".config", "goose", "skills", "goose-global"))
+	if !ok || goose.Scope != ScopeUser || goose.Shadowed || goose.Root != ".config/goose/skills" {
+		t.Fatalf("Goose's global skill is missing or wrong: %+v", found)
+	}
+	if stray, ok := byDir(found, "not-a-skill-place"); ok {
+		t.Fatalf("a project's .config folder was read as a skills folder: %+v", stray)
+	}
+}
+
+// TestHomeOnlyFoldersRankAfterTheSharedOnes pins precedence: a name kept in a
+// shared hand-kept folder of the same scope owns it over the ~/.config copy,
+// and any project skill owns it over every home one.
+func TestHomeOnlyFoldersRankAfterTheSharedOnes(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	writeSkill(t, filepath.Join(home, ".claude", "skills", "shared"), "shared")
+	writeSkill(t, filepath.Join(home, ".config", "goose", "skills", "shared"), "shared")
+	writeSkill(t, filepath.Join(project, ".goose", "skills", "mine"), "mine")
+	writeSkill(t, filepath.Join(home, ".config", "opencode", "skills", "mine"), "mine")
+
+	found := discover(t, project, home)
+	if winner, ok := byDir(found, filepath.Join(".claude", "skills", "shared")); !ok || winner.Shadowed {
+		t.Fatalf("the ~/.claude copy lost its name to a ~/.config copy: %+v", found)
+	}
+	if loser, ok := byDir(found, filepath.Join(".config", "goose", "skills", "shared")); !ok || !loser.Shadowed {
+		t.Fatalf("the ~/.config/goose copy of a name ~/.claude holds is not shadowed: %+v", found)
+	}
+	if winner, ok := byDir(found, filepath.Join(".goose", "skills", "mine")); !ok || winner.Shadowed || winner.Scope != ScopeProject {
+		t.Fatalf("the project skill lost its name to a home one: %+v", found)
+	}
+	if loser, ok := byDir(found, filepath.Join(".config", "opencode", "skills", "mine")); !ok || !loser.Shadowed {
+		t.Fatalf("the ~/.config/opencode copy of a project skill's name is not shadowed: %+v", found)
+	}
+}
+
+// TestHomeOnlyFoldersWhenOpenedInTheHomeItself pins the folded case: codeaf
+// opened in the home directory reads the ~/.config folders once, not twice.
+func TestHomeOnlyFoldersWhenOpenedInTheHomeItself(t *testing.T) {
+	home := t.TempDir()
+	writeSkill(t, filepath.Join(home, ".config", "opencode", "skills", "open-global"), "open-global")
+
+	found := discover(t, home, home)
+	count := 0
+	for _, skill := range found {
+		if strings.HasSuffix(skill.Dir, filepath.Join(".config", "opencode", "skills", "open-global")) {
+			count++
+			if skill.Shadowed {
+				t.Fatalf("the only copy of a skill is marked shadowed: %+v", skill)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("a ~/.config skill was reported %d times with codeaf opened in the home: %+v", count, found)
+	}
+}
+
+func writeSkill(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: " + name + "\ndescription: A skill for the discovery test.\n---\nBody.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

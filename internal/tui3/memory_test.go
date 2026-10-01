@@ -193,13 +193,22 @@ func TestTheThreeMemoryCommandsAreOnTheList(t *testing.T) {
 	}
 }
 
+// settleMemorySlash runs a command's returned receipt before its observable
+// assertions, just as the program loop does now that memory leaves Update.
+func settleMemorySlash(t *testing.T, a *app, line string) {
+	t.Helper()
+	if cmd := a.slash(line); cmd != nil {
+		drive(t, a, cmd())
+	}
+}
+
 // ── the happy paths ─────────────────────────────────────────────────────────
 
 func TestRememberKeepsOneThingAndSaysWhatItKept(t *testing.T) {
 	agent := &rememberingAgent{}
 	a := newTestApp(agent)
 
-	a.slash("/remember I prefer tabs over spaces in Go")
+	settleMemorySlash(t, a, "/remember I prefer tabs over spaces in Go")
 
 	if len(agent.remembered) != 1 || agent.remembered[0] != "I prefer tabs over spaces in Go" {
 		t.Fatalf("the agent was asked to remember %v", agent.remembered)
@@ -216,7 +225,7 @@ func TestMemoriesListsOnePerLineWithTheIdThatNamesIt(t *testing.T) {
 	}}
 	a := newTestApp(agent)
 
-	a.slash("/memories")
+	settleMemorySlash(t, a, "/memories")
 
 	text := lastNote(t, a)
 	lines := strings.Split(text, "\n")
@@ -235,7 +244,7 @@ func TestMemoriesWithAQueryNarrowsTheList(t *testing.T) {
 	}}
 	a := newTestApp(agent)
 
-	a.slash("/memories standup")
+	settleMemorySlash(t, a, "/memories standup")
 
 	if len(agent.listed) != 1 || agent.listed[0] != "standup" {
 		t.Fatalf("the agent was asked for %v", agent.listed)
@@ -252,7 +261,7 @@ func TestForgetDropsTheMatchAndNamesIt(t *testing.T) {
 	}}
 	a := newTestApp(agent)
 
-	a.slash("/forget standup")
+	settleMemorySlash(t, a, "/forget standup")
 
 	if text := lastNote(t, a); !strings.Contains(text, "forgot") || !strings.Contains(text, "standup time") {
 		t.Fatalf("the answer was %q", text)
@@ -271,18 +280,18 @@ func TestTheEmptyStatesEachSayWhichEmptinessItIs(t *testing.T) {
 	agent := &rememberingAgent{}
 	a := newTestApp(agent)
 
-	a.slash("/memories")
+	settleMemorySlash(t, a, "/memories")
 	if text := lastNote(t, a); text != "nothing is remembered yet" {
 		t.Fatalf("an empty store answered %q", text)
 	}
 
 	agent.kept = []session.MemoryLine{{ID: "mem_1", Title: "prefers tabs", Text: "prefers tabs over spaces in Go"}}
-	a.slash("/memories pineapples")
+	settleMemorySlash(t, a, "/memories pineapples")
 	if text := lastNote(t, a); !strings.Contains(text, "nothing remembered matches pineapples") {
 		t.Fatalf("an empty search answered %q", text)
 	}
 
-	a.slash("/forget pineapples")
+	settleMemorySlash(t, a, "/forget pineapples")
 	if text := lastNote(t, a); !strings.Contains(text, "nothing matched pineapples") {
 		t.Fatalf("a no-match forget answered %q", text)
 	}
@@ -291,11 +300,11 @@ func TestTheEmptyStatesEachSayWhichEmptinessItIs(t *testing.T) {
 func TestTheTwoArgumentCommandsAskForTheirArgument(t *testing.T) {
 	a := newTestApp(&rememberingAgent{})
 
-	a.slash("/remember")
+	settleMemorySlash(t, a, "/remember")
 	if text := lastNote(t, a); !strings.Contains(text, "what should be kept") {
 		t.Fatalf("/remember with nothing answered %q", text)
 	}
-	a.slash("/forget   ")
+	settleMemorySlash(t, a, "/forget   ")
 	if text := lastNote(t, a); !strings.Contains(text, "what should be dropped") {
 		t.Fatalf("/forget with nothing answered %q", text)
 	}
@@ -311,7 +320,7 @@ func TestWithoutABrainAllThreeSayMemoryIsOff(t *testing.T) {
 	for _, agent := range []Agent{&fakeAgent{model: "m"}, &rememberingAgent{off: true}} {
 		a := newTestApp(agent)
 		for _, line := range []string{"/memories", "/remember something", "/forget something"} {
-			a.slash(line)
+			settleMemorySlash(t, a, line)
 			if text := lastNote(t, a); !strings.Contains(text, "memory is off") || !strings.Contains(text, "/settings") {
 				t.Fatalf("%s answered %q", line, text)
 			}
@@ -321,7 +330,7 @@ func TestWithoutABrainAllThreeSayMemoryIsOff(t *testing.T) {
 
 func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	a, _ := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Type: store.MemoryPreference, Scope: store.MemoryScopeUser}})
-	a.slash("/memory")
+	settleMemorySlash(t, a, "/memory")
 	if !a.at(pageMemory) {
 		t.Fatal("bare /memory did not open the panel")
 	}
@@ -329,14 +338,14 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 		t.Fatalf("panel did not list memory:\n%s", got)
 	}
 	a.leavePlace()
-	a.slash("/memory vim")
+	settleMemorySlash(t, a, "/memory vim")
 	if a.at(pageMemory) {
 		t.Fatal("/memory <query> opened the panel")
 	}
 	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
 		t.Fatalf("print posture said %q", got)
 	}
-	a.slash("/memories vim")
+	settleMemorySlash(t, a, "/memories vim")
 	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
 		t.Fatalf("alias said %q", got)
 	}
@@ -346,7 +355,7 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	// the transcript instead was sending them to the worse half of the feature.
 	// With a query BOTH spellings still print, because a query is a question
 	// rather than a door.
-	a.slash("/memories")
+	settleMemorySlash(t, a, "/memories")
 	if !a.at(pageMemory) {
 		t.Fatal("bare /memories did not open the memory place")
 	}
@@ -521,7 +530,7 @@ func TestAFailureIsReportedAndNotSwallowed(t *testing.T) {
 	agent := &rememberingAgent{failing: errors.New("the brain is locked")}
 	a := newTestApp(agent)
 
-	a.slash("/remember I prefer tabs")
+	settleMemorySlash(t, a, "/remember I prefer tabs")
 	if text := lastNote(t, a); !strings.Contains(text, "the brain is locked") {
 		t.Fatalf("a failed write answered %q", text)
 	}

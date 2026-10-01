@@ -1403,17 +1403,26 @@ func (a *app) clampScroll() {
 }
 
 // resizeGrace is how long a resize is given to stop moving before the scroll is
-// clamped against it. It is longer than the paint clock's tick and far shorter
-// than the gap between two deliberate resizes, which is the window a DRAG lives
-// in: the sizes a person sweeps through on the way to the one they want.
+// clamped and the terminal repainted. It is longer than the paint clock's tick
+// and far shorter than the gap between two deliberate resizes, which is the
+// window a DRAG lives in: the sizes a person sweeps through on the way to the
+// one they want.
 const resizeGrace = 80 * time.Millisecond
 
-// resizeSettledMsg is the end of a resize burst.
-type resizeSettledMsg struct{}
+// resizeSettledMsg carries the size version a grace tick waited on, so a drag
+// that outlives the grace can wait again instead of repainting while it moves.
+type resizeSettledMsg struct{ version uint64 }
+
+// resizeSettlement snapshots the current size before waiting, because reading
+// the app from a timer's goroutine would race the next size on the update loop.
+func (a *app) resizeSettlement() tea.Cmd {
+	version := a.resizeVersion
+	return surfaceTick(resizeGrace, func(time.Time) tea.Msg { return resizeSettledMsg{version: version} })
+}
 
 // resized takes one new terminal size.
 //
-// THE SIZE IS TAKEN IMMEDIATELY AND THE CLAMP IS THE ONLY THING DEFERRED, and
+// THE SIZE IS TAKEN IMMEDIATELY; THE CLAMP AND COMPLETE REPAINT ARE DEFERRED, and
 // that is the whole of this coalescing — stated here because the tempting
 // version is the wrong one. Holding the WIDTH back until a drag settles would
 // mean painting a frame laid out for a width the terminal no longer has, and a
@@ -1432,9 +1441,10 @@ type resizeSettledMsg struct{}
 //
 // A SIZE WITH NO LAYOUT STANDING BEHIND IT IS CLAMPED ON THE SPOT — the startup
 // one, and the one after a rewind threw the row list away (rewind.go's
-// [app.rebuildTranscript]). There is no burst to wait out at either, and a
-// surface that opened with its scroll a tick behind would be one that opened
-// scrolled to the wrong place.
+// [app.rebuildTranscript]). A surface that opened with its scroll a tick behind
+// would be one that opened scrolled to the wrong place. A frame already drawn
+// still owes its complete repaint at settlement, even when setup or a place
+// never built the transcript cache.
 //
 // THE ROOM NEEDS NOTHING HERE. Its rows are keyed on the width they were built
 // for and rebuilt lazily by [app.roomRows] when the frame asks, so a page open
@@ -1448,6 +1458,7 @@ func (a *app) resized(width, height int) tea.Cmd {
 		return nil
 	}
 	a.width, a.height = width, height
+	a.resizeVersion++
 	// A hover names a door the last layout drew. The new width may not draw
 	// it: `more ▾` leaves the row once the places fit, and a nav word may
 	// fold. The hint reads the hover, not the row, so leaving it would keep
@@ -1456,13 +1467,17 @@ func (a *app) resized(width, height int) tea.Cmd {
 	a.touch()
 	if a.rows == nil {
 		a.clampScroll()
-		return nil
+		// Setup and places can draw without a transcript cache. Once a frame
+		// has reached the terminal, they owe the same repaint as the chat.
+		if !a.drawn {
+			return nil
+		}
 	}
 	if a.sizing {
 		return nil
 	}
 	a.sizing = true
-	return surfaceTick(resizeGrace, func(time.Time) tea.Msg { return resizeSettledMsg{} })
+	return a.resizeSettlement()
 }
 
 // follow is what every append calls: content grew, and a reader at the live

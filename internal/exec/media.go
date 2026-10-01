@@ -177,10 +177,7 @@ func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result
 			return errorf("image generation returned an unreadable image — try another image model")
 		}
 		decoded[index] = bytes
-		exts[index] = extensionForMediaType(image.MediaType)
-		if exts[index] == "" {
-			exts[index] = ".png"
-		}
+		exts[index] = provider.ImageExtension(bytes, image.MediaType)
 	}
 	paths := make([]string, 0, len(decoded))
 	for index, data := range decoded {
@@ -573,21 +570,6 @@ func mediaUsage(usage *ai.Usage) Usage {
 		recorded.Cost = *usage.Cost
 	}
 	return recorded
-}
-
-func extensionForMediaType(mediaType string) string {
-	switch strings.ToLower(strings.TrimSpace(mediaType)) {
-	case "image/png":
-		return ".png"
-	case "image/jpeg":
-		return ".jpg"
-	case "image/webp":
-		return ".webp"
-	case "image/gif":
-		return ".gif"
-	default:
-		return ""
-	}
 }
 
 func oneLine(text string, limit int) string {

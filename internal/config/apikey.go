@@ -50,7 +50,33 @@ func persistedAPIKeyFrom(values map[string]json.RawMessage) string {
 }
 
 func apiKeyFrom(values map[string]json.RawMessage) string {
-	return strings.TrimSpace(firstNonEmpty(os.Getenv(APIKeyEnv), os.Getenv("OPENAI_API_KEY"), persistedAPIKeyFrom(values)))
+	key, _ := apiKeyResolution(values)
+	return key
+}
+
+const (
+	apiKeySourceOpenRouter = "the shell's OPENROUTER_API_KEY"
+	apiKeySourceOpenAI     = "the shell's OPENAI_API_KEY"
+	apiKeySourceProfile    = "the key saved in your profile"
+)
+
+// apiKeyResolution is the one ladder shared by the key and its explanation.
+// Keeping the source beside the value prevents an auth message from naming a
+// different rung than the client actually used.
+func apiKeyResolution(values map[string]json.RawMessage) (string, string) {
+	for _, candidate := range []struct {
+		value  string
+		source string
+	}{
+		{os.Getenv(APIKeyEnv), apiKeySourceOpenRouter},
+		{os.Getenv("OPENAI_API_KEY"), apiKeySourceOpenAI},
+		{persistedAPIKeyFrom(values), apiKeySourceProfile},
+	} {
+		if key := strings.TrimSpace(candidate.value); key != "" {
+			return key, candidate.source
+		}
+	}
+	return "", ""
 }
 
 // APIKeyAt is the key a session opened on this profile would talk with, in
@@ -58,7 +84,28 @@ func apiKeyFrom(values map[string]json.RawMessage) string {
 // file. It is the reading the settings row and the first-run setup share, so
 // neither can say "no key" while Load would have found one.
 func APIKeyAt(profileDir string) string {
-	return strings.TrimSpace(firstNonEmpty(os.Getenv(APIKeyEnv), os.Getenv("OPENAI_API_KEY"), PersistedAPIKey(profileDir)))
+	values, _ := readProfileConfig(profileDir)
+	key, _ := apiKeyResolution(values)
+	return key
+}
+
+// APIKeySourceAt names the rung APIKeyAt resolved without exposing the key.
+// An empty result means no key was found.
+func APIKeySourceAt(profileDir string) string {
+	values, _ := readProfileConfig(profileDir)
+	_, source := apiKeyResolution(values)
+	return source
+}
+
+// APIKeySourceForModel explains the default provider's credential only when
+// that provider actually serves the model. Connected providers have their own
+// key ladders, so borrowing the default explanation would name another key.
+func APIKeySourceForModel(profileDir string, sources modelsource.Set, model string) string {
+	service, _ := sources.For(model)
+	if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+		return ""
+	}
+	return APIKeySourceAt(profileDir)
 }
 
 // WriteAPIKey persists a key a person handed over, through the same atomic

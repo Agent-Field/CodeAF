@@ -45,6 +45,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/router"
@@ -121,6 +122,9 @@ type RunSpec struct {
 	// ProfileDir is the person's profile directory, read by the engine's crew
 	// factory to seat a task on the model its role rides.
 	ProfileDir string
+	// Sources is the admitted provider set used by the conversation's calls.
+	// Workers need the same facts to explain a refusal from the right account.
+	Sources modelsource.Set
 	// WorkModel and PlanModel are the two seats the conversation resolved for
 	// this run: the work seat every leaf rides and the plan seat every planner
 	// rides. The engine's crew factory seats those two roles on them rather
@@ -1035,6 +1039,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		Admission:    admission,
 		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
 		ProfileDir:   a.config.ProfileDir,
+		Sources:      a.liveSources(),
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
 		CheckModel:   checkSeat,

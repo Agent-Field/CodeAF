@@ -1237,26 +1237,25 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	}
 	group := map[string]int{}
 	// THE TITLELESS ROW IS NAMED BY [homeName], the one rule home's sessions
-	// list uses too. Spelling the id check here again would be a second rule,
-	// and the two would drift the day one of them changed.
+	// list uses too. An owner known only by its id has no transcript to borrow
+	// a name from, so it uses the same unnamed word rather than inventing a title.
 	//
 	// ONLY THE NAME CHANGES. The row keeps its place, its age stays empty
 	// (lastUserAt is the zero time and the emptiness law draws nothing), and
 	// [chatProjectWord] still sees the row, so a project that is not this name
 	// does not echo the word back as a project tag beside it.
-	tasksName := func(row session.SessionRow) string { return homeName(row) }
+	tasksName := func(row session.SessionRow) string {
+		if strings.TrimSpace(row.Title) == "" && strings.TrimSpace(row.Transcript) == "" {
+			return unnamedConversationWord
+		}
+		return homeName(row)
+	}
 	for _, root := range roots {
 		id := tasksChatOf(root)
 		row, named := names[id]
 		if !named {
 			row = root.row
 			row.ID = id
-			if row.Title == "" && row.Transcript == "" {
-				row.Title = "unknown conversation"
-				if id != "" {
-					row.Title = "conversation " + id
-				}
-			}
 		}
 		if at, found := group[id]; found {
 			t.groups[at].roots = append(t.groups[at].roots, root)

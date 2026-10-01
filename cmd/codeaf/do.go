@@ -252,10 +252,11 @@ type headlessOutcome struct {
 	// callers must never parse the bounded person's account, and it is never
 	// clipped.
 	Checklist []revision.PointOutcome `json:"checklist,omitempty"`
-	// Error is the sentence a run that never reached an outcome left behind:
+	// Error is the sentence a run that could not finish left behind:
 	// the store that would not open, the working directory that could not be
 	// made, the resident that never picked the command up, a journal read that
-	// failed mid-flight. It is empty on every run that produced an answer.
+	// failed mid-flight, or a worker's reason it could not continue. It is
+	// empty on every run that produced an answer.
 	//
 	// It exists because --json's whole promise is one object on stdout, and a
 	// promise that only holds when the work succeeds is not one a script can be
@@ -3418,6 +3419,9 @@ func withoutSummaryFileList(deliverable string, artifacts []string) string {
 // most common thing anyone does with a one-shot is pipe it somewhere.
 func reportErrand(request doRequest, outcome headlessOutcome) error {
 	sayBlocked(request.stderr, outcome)
+	if !request.asJSON && request.stderr != nil && strings.TrimSpace(outcome.Error) != "" {
+		fmt.Fprintln(request.stderr, "error: "+outcome.Error)
+	}
 	if outcome.recordKept != "" && request.stderr != nil {
 		fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
 	}
@@ -3727,30 +3731,9 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, doStanding(workspace), completerFor),
+		}, doStanding(workspace), completerFor, settings.Sources),
 	})
-	errand := headlessOutcome{
-		Artifacts: []string{},
-		Nodes:     summary.Nodes,
-		Seconds:   summary.Seconds,
-		Spend:     summary.USD,
-	}
-	switch summary.Outcome {
-	case runengine.OutcomeDone:
-		errand.stop, errand.Settled, errand.Deliverable = stopDone, true, strings.TrimSpace(summary.Result)
-	case runengine.OutcomeLimit:
-		// The only limit this road sets is the spending bound, so a run the
-		// engine stopped on a limit is one that reached it, and the sentence
-		// is the bound's own: the figure, and what to pass to go past it.
-		errand.stop, errand.Settled = bound.stop, true
-		errand.BlockedOn = bound.words
-	case runengine.OutcomeCannotRun:
-		errand.stop = stopError
-		errand.Error = "the run could not be started"
-	default:
-		// ran and did not finish: a leaf failed, or the clock arrived.
-		errand.stop, errand.Settled = stopIncomplete, true
-	}
+	errand := runErrandOutcome(summary, workspace, bound)
 	// THE RUN'S OWN CLOCK, read off the context because the summary's word is
 	// the same one a failed leaf leaves and a caller raising a timeout has to be
 	// able to tell them apart. It is 124 rather than the ladder's rung for a
@@ -3774,6 +3757,43 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// still left its edits on disk, and a caller has to be able to find them.
 	errand.Artifacts = landedPaths(workspace, before.Changed())
 	return errand, nil
+}
+
+// runErrandOutcome carries the run's final accounting and its admitted directory
+// into the receipt on every ending. All calls on this road belong to its nodes,
+// including their structuring and checks; there is no separate planning pass
+// at the door, so the whole bill is work and overhead stays zero.
+func runErrandOutcome(summary runengine.Summary, workspace string, bound runSpend) headlessOutcome {
+	outcome := headlessOutcome{
+		Artifacts: []string{},
+		Nodes:     summary.Nodes,
+		Seconds:   summary.Seconds,
+		Spend:     summary.USD,
+		SpendWork: summary.USD,
+		workspace: workspace,
+		tokensIn:  summary.TokensIn,
+		tokensOut: summary.TokensOut,
+	}
+	switch summary.Outcome {
+	case runengine.OutcomeDone:
+		outcome.stop, outcome.Settled, outcome.Deliverable = stopDone, true, strings.TrimSpace(summary.Result)
+	case runengine.OutcomeLimit:
+		// The only limit this road sets is the spending bound, so a run the
+		// engine stopped on a limit is one that reached it, and the sentence
+		// is the bound's own: the figure, and what to pass to go past it.
+		outcome.stop, outcome.Settled = bound.stop, true
+		outcome.BlockedOn = bound.words
+	case runengine.OutcomeCannotRun:
+		outcome.stop = stopError
+		outcome.Error = "the run could not be started"
+	default:
+		// A run that did not finish keeps the leaf's failure or the clock's ending.
+		outcome.stop, outcome.Settled = stopIncomplete, true
+		// The run already kept the worker's reason; both receipt formats
+		// need it to explain an incomplete ending.
+		outcome.Error = plainWords(strings.TrimSpace(summary.Failure))
+	}
+	return outcome
 }
 
 // machineHold is `codeaf do`'s voice for the machine gate on the run road. The
