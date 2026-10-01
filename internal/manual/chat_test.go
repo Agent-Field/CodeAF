@@ -3664,3 +3664,37 @@ func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
 		}
 	}
 }
+
+// THE DEVICE QUESTIONS, IN THE WORDS A PERSON ASKS THEM. Each must reach the
+// page that answers it, and the section that says the answer: a page that is
+// complete but unreachable is a page the chat talks over the top of.
+func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
+	const add, cont = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer"
+	for _, probe := range []struct{ asked, page, says string }{
+		{"why can't I type in this chat", cont, "Your words stay in the box"},
+		{"my message did not send and home opened with a question", cont, "Continue this chat here?"},
+		{"continue on this machine", cont, "Continue where you left off on spark?"},
+		{"what does running on spark mean", cont, "Move here"},
+		{"what does moved from spark in 3.2s mean", cont, "Everything as you left it."},
+		{"what is the card that says set this machine up", cont, "set up"},
+		{"how do I add another computer", add, "On the new machine, install and run: codeaf pair"},
+		{"how do I add another machine", add, "alt+d how"},
+		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-code>"},
+		{"what is the check number on the new device", add, "Check number 4821 - it must match"},
+		{"what does codeaf pair --code do", add, "codeaf pair --code"},
+		{"how do I remove a computer", add, "r revoke"},
+		{"what does the dot next to a computer mean", add, "○ dumb (offline)"},
+		{"I was told this computer was removed", add, "this computer was stopped by another of your computers"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a %s section that says %q", probe.asked, probe.page, probe.says)
+		}
+	}
+}
