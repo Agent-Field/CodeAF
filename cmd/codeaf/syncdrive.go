@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -69,8 +70,23 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) *syncs
 		// A line is said by the surface the moment it happens (tui3/notices.go).
 		OnNotice: surfaceNotices.Say,
 	})
+	if sayRefusal(err) {
+		return nil
+	}
 	report(err)
 	return d
+}
+
+// sayRefusal tells the person what the relay refused when it refused this
+// device outright (removed from the fleet, replaced, over its limit) and
+// answers true, so the chat runs unsynced with the reason on screen instead
+// of opening as if nothing were wrong. Any other failure is not its business.
+func sayRefusal(err error) bool {
+	r, ok := cellsync.RefusalOf(err)
+	if ok {
+		surfaceNotices.Say(r.Say(err))
+	}
+	return ok
 }
 
 // chatTitle is the chat's title as its session record has it now: the name it

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -16,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // doorChat is a chat cell opened through the door's own seat construction, in a
@@ -102,5 +105,16 @@ func TestDriveSideDoorPublishesAndReleases(t *testing.T) {
 	}
 	if v.Cell.Lease.Expires != 0 || v.Cell.Lease.Device != s.Device.ID() {
 		t.Fatalf("lease after close = %+v, want released by this device", v.Cell.Lease)
+	}
+}
+
+// A device the relay has stopped is a refusal the person is told of, even when
+// the error arrives wrapped; a relay that is merely unreachable is not.
+func TestSayRefusalOnlyForRefusals(t *testing.T) {
+	if !sayRefusal(fmt.Errorf("put device: %w", wireauth.ErrRevoked)) {
+		t.Error("a stopped device was not told")
+	}
+	if sayRefusal(errors.New("connection refused")) || sayRefusal(nil) {
+		t.Error("a failure that is not a refusal was said")
 	}
 }
