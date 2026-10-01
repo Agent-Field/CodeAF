@@ -88,6 +88,8 @@ func (a *app) tookWatch(msg dirWatchMsg) tea.Cmd {
 	if !a.socketUp() {
 		a.machinePoll.hurry()
 	}
+	// A presence change moves no version but redraws the devices row.
+	a.touch()
 	return tea.Batch(a.awaitWatch(), a.readForFrame())
 }
 
