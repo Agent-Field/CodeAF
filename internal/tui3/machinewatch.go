@@ -88,6 +88,7 @@ func (a *app) tookWatch(msg dirWatchMsg) tea.Cmd {
 	if !a.socketUp() {
 		a.machinePoll.hurry()
 	}
+	a.announceJoined()
 	return tea.Batch(a.awaitWatch(), a.readForFrame())
 }
 
