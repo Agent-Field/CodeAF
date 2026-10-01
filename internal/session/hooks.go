@@ -505,6 +505,11 @@ type approvalGate struct{ agent *Agent }
 func (approvalGate) Name() string { return "approval" }
 
 func (g approvalGate) PreAction(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
+	// A blanket allow cannot unsay a no the person just gave this turn. The
+	// same gate covers early reads and ordinary batches, before either acts.
+	if refused, held := g.agent.declinedProposalCall(call); held {
+		return call, refused, false
+	}
 	if ep != nil && ep.userBash {
 		refused, allowed := g.agent.approveUserBash(ctx, hub, call)
 		return call, refused, allowed

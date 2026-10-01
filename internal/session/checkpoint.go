@@ -2144,6 +2144,9 @@ const (
 	// every drop above because nothing was decided about the WORK: the seam has
 	// no owner to admit a task on behalf of ([Agent.handOverRunningTurn]).
 	checkpointCeilingAbandoned = "dropped:turn-abandoned"
+	// checkpointCeilingDeclined records a handover withheld because the person
+	// already said no to work in this request, rather than because it was done.
+	checkpointCeilingDeclined = "dropped:task-declined"
 )
 
 // THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
@@ -3178,7 +3181,7 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return !a.closed
+	return !a.closed && !a.proposalDeclined
 }
 
 // ── a turn ends; the ask does not ───────────────────────────────────────────
@@ -4179,6 +4182,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// a failed reader may fall back to the original ask, but cancellation must not.
 	if ctx.Err() != nil {
 		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
+	// A decline must not become a paid handover through the automatic road.
+	// This check precedes every reading, brief and task ground it could create.
+	if a.taskWorkDeclined() {
+		return checkpointHandover{decision: checkpointCeilingDeclined, reason: declinedProposalRefusal}
 	}
 	// THE FLOOR STANDS IN FRONT OF EVERYTHING ELSE. A caller that reached here
 	// through [Agent.checkpoints] already asked, but looped.go's looping

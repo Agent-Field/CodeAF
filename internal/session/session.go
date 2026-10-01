@@ -2753,6 +2753,9 @@ type Agent struct {
 	// personSeq numbers those turns so that the same sentence typed twice is two
 	// events rather than one.
 	personSeq uint64
+	// proposalDeclined holds action tools after a person says no to a task.
+	// Only another human message clears it; a task or job wake is no new ask.
+	proposalDeclined bool
 	// personAt is when the last thing they typed was heard, which is the order
 	// their corrections are weighed in once a task can be reached through two
 	// doors of different speeds (assignment.go's [taskAssignment.lastSpokenApplied]).
