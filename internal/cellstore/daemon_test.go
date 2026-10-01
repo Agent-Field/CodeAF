@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/furrow"
 )
@@ -144,5 +145,43 @@ func TestDaemonOfAnotherEngineIsNotUsed(t *testing.T) {
 	out, err := Fallback{d, spawned}.Do(context.Background(), Target{}, snapOp{})
 	if err != nil || string(out) != "spawned" || spawned.calls != 1 {
 		t.Fatalf("got %q, %v with %d spawns", out, err, spawned.calls)
+	}
+}
+
+// A daemon that accepts the connection and never answers the health check is
+// wedged. The verb must give up on it as unavailable within the health bound,
+// so the spawned engine behind it gets the work, instead of a caller without a
+// deadline of its own (the home screen's takeover) waiting for ever.
+func TestWedgedDaemonIsUnavailableWithinTheHealthBound(t *testing.T) {
+	old := healthWait
+	healthWait = 100 * time.Millisecond
+	t.Cleanup(func() { healthWait = old })
+	sock := filepath.Join(t.TempDir(), "e.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() { // accepts, reads nothing, answers nothing
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+		}
+	}()
+	done := make(chan error, 1)
+	go func() {
+		_, err := Daemon{Socket: sock, Binary: "/x/furrow"}.Do(context.Background(), Target{}, snapOp{})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("err = %v, want ErrUnavailable", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a daemon that never answers the health check held the verb for 5 s")
 	}
 }
