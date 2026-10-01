@@ -15,12 +15,14 @@ import (
 // directory (the engine reads it beside the workspace's), so nothing of ours
 // lands in the person's folder; a cell that seals its own folder uses that
 // folder's file. Below one marker line sit the paths withheld because they
-// carry secrets. The harness owns only that block: it is rewritten whole at
-// every seal, so a path a person has cleaned of its secret goes back into the
-// next snapshot.
+// carry secrets, and below another the install folders left out because a
+// lockfile that does travel rebuilds them (docs/STAGE-1-CONTRACTS.md section 19).
+// The harness owns only those two blocks: each is rewritten whole at every seal,
+// so a path a person has cleaned of its secret goes back into the next snapshot.
 const (
 	policyName  = ".furrowpolicy"
 	withheldTag = "# codeaf: withheld from every seal because they hold secrets (managed block)"
+	rebuiltTag  = "# codeaf: left out because a lockfile rebuilds them (managed block)"
 	excludeWord = "exclude "
 )
 
@@ -30,7 +32,8 @@ var controlDirs = map[string]bool{".git": true, ".furrow": true, ".cell": true}
 // policyFile is a tree's .furrowpolicy split at the marker.
 type policyFile struct {
 	user     []string // lines above the block, kept verbatim
-	withheld []string // paths the harness withholds, sorted
+	withheld []string // paths the harness withholds because they hold secrets, sorted
+	rebuilt  []string // install folders the harness leaves out, sorted
 	outside  []string // the workspace's own lines, when the file is elsewhere
 }
 
@@ -59,43 +62,75 @@ func readPolicyAt(dir string) (policyFile, error) {
 
 func parsePolicy(text string) policyFile {
 	var p policyFile
-	managed := false
+	block := &p.user
 	for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
-		switch {
-		case line == withheldTag:
-			managed = true
-		case managed:
-			p.withheld = append(p.withheld, strings.TrimPrefix(line, excludeWord))
+		switch line {
+		case withheldTag:
+			block = &p.withheld
+		case rebuiltTag:
+			block = &p.rebuilt
 		default:
-			p.user = append(p.user, line)
+			*block = append(*block, managedLine(block == &p.user, line))
 		}
 	}
 	return p
 }
 
-// with is the file with its managed block replaced by paths.
+// managedLine is a line of a block: a user line is kept verbatim, and a managed
+// one is the path its `exclude` names.
+func managedLine(user bool, line string) string {
+	if user {
+		return line
+	}
+	return strings.TrimPrefix(line, excludeWord)
+}
+
+// with is the file with its secrets block replaced by paths.
 func (p policyFile) with(paths []string) policyFile {
-	p.withheld = append([]string(nil), paths...)
-	sort.Strings(p.withheld)
+	p.withheld = sorted(paths)
 	return p
+}
+
+// leaving is the file with its install-folder block replaced by folders.
+func (p policyFile) leaving(folders []string) policyFile {
+	p.rebuilt = sorted(folders)
+	return p
+}
+
+func sorted(paths []string) []string {
+	out := append([]string(nil), paths...)
+	sort.Strings(out)
+	return out
 }
 
 func (p policyFile) String() string {
 	lines := append([]string(nil), p.user...)
-	if len(p.withheld) > 0 {
-		lines = append(lines, withheldTag)
-		for _, path := range p.withheld {
-			lines = append(lines, excludeWord+path)
-		}
-	}
+	lines = appendBlock(lines, withheldTag, p.withheld)
+	lines = appendBlock(lines, rebuiltTag, p.rebuilt)
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		return ""
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
 
+// appendBlock adds a managed block, which is absent when it holds nothing.
+func appendBlock(lines []string, tag string, paths []string) []string {
+	if len(paths) == 0 {
+		return lines
+	}
+	lines = append(lines, tag)
+	for _, path := range paths {
+		lines = append(lines, excludeWord+path)
+	}
+	return lines
+}
+
 // isWithheld reports whether rel is one of the harness's withheld paths.
 func (p policyFile) isWithheld(rel string) bool { return inRules(p.withheld, rel) }
+
+// isRebuilt reports whether rel is inside an install folder the harness leaves
+// out.
+func (p policyFile) isRebuilt(rel string) bool { return inRules(p.rebuilt, rel) }
 
 // isLeftOut reports whether rel is a control directory or a path the person
 // excluded: nothing there is sealed, so nothing there is scanned.

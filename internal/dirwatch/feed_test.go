@@ -98,6 +98,7 @@ type fakeStream struct {
 	pings  chan struct{}
 	closed chan struct{}
 	once   sync.Once
+	vouch  bool // what Vouching answers
 }
 
 func newFakeStream() *fakeStream {
@@ -116,6 +117,7 @@ func (s *fakeStream) Next(ctx context.Context) (Frame, error) {
 }
 
 func (s *fakeStream) Ping(context.Context) error { s.pings <- struct{}{}; return nil }
+func (s *fakeStream) Vouching() bool             { return s.vouch }
 func (s *fakeStream) Close()                     { s.once.Do(func() { close(s.closed) }) }
 
 // send delivers one frame, or fails the read with err.

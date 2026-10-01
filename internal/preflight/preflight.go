@@ -49,8 +49,16 @@ type Item struct {
 	Size     string // download size hint; empty until a catalog supplies it
 }
 
-// Report is every finding, in inventory order.
-type Report struct{ Items []Item }
+// Report is every finding, in inventory order, and what the chat left behind
+// that is not on this machine.
+type Report struct {
+	Items  []Item
+	Resume Resume
+}
+
+// Idle reports that there is nothing for a setup turn to do: no tool to install
+// and nothing the chat left behind.
+func (r Report) Idle() bool { return len(r.Pending()) == 0 && !r.Resume.hasFacts() }
 
 // CanTakeOver is true when nothing is impossible and nothing blocks.
 func (r Report) CanTakeOver() bool {

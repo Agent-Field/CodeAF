@@ -85,8 +85,12 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: read head: %w", err)
 	}
-	if err := e.Guard.Screen(c, e.tree(c), e.policyDir(c), info.Changed); err != nil {
+	screened, err := e.Guard.Look(c, e.tree(c), e.policyDir(c), info.Changed, knownLocks(c))
+	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: %w", err)
+	}
+	if err := noteLeftOut(c, screened, info.Calls); err != nil {
+		return Sealed{}, fmt.Errorf("seal: record what was left out: %w", err)
 	}
 	receipt := newReceipt(info, transcriptRange(c, head))
 	raw, rid, err := receipt.encode()

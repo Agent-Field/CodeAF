@@ -186,3 +186,39 @@ func TestListReadsTheVersionHeader(t *testing.T) {
 		}
 	}
 }
+
+func TestWatchHoldingNamesHoldsInTheSignedURLAndReadsTheVouchWord(t *testing.T) {
+	seen := make(chan *http.Request, 1)
+	c := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		seen <- r
+		w.Header().Set("Codeaf-Vouch", "1")
+		conn := accept(t, w, r)
+		conn.Close(websocket.StatusNormalClosure, "")
+	})
+	s, err := c.WatchHolding(context.Background(), []directory.Hold{{Cell: "c:1", Fence: 7}, {Cell: "d", Fence: 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if got := (<-seen).URL.Query()["hold"]; len(got) != 2 || got[0] != "c:1:7" || got[1] != "d:2" {
+		t.Fatalf("holds in the query = %q", got)
+	}
+	if !s.Vouching() {
+		t.Fatal("a socket answered with the vouch word is not vouching")
+	}
+}
+
+func TestWatchWithoutTheVouchWordIsNotVouching(t *testing.T) {
+	c := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		conn := accept(t, w, r)
+		conn.Close(websocket.StatusNormalClosure, "")
+	})
+	s, err := c.WatchHolding(context.Background(), []directory.Hold{{Cell: "c", Fence: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if s.Vouching() {
+		t.Fatal("an old relay's socket is believed to vouch")
+	}
+}

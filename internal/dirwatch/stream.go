@@ -15,6 +15,10 @@ type Stream interface {
 	// Ping asks the server to answer, which is how a quiet socket is told from
 	// a dead one.
 	Ping(ctx context.Context) error
+	// Vouching says whether the server answered the upgrade with the word that
+	// it counts this socket as proof of life for the leases it names. A server
+	// that never says so is an old one, and its socket proves nothing.
+	Vouching() bool
 	Close()
 }
 

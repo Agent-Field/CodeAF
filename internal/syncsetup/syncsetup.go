@@ -193,6 +193,31 @@ func (s *Sync) Follow() dirwatch.Follower {
 	return dirwatch.Follow(s.Ledger, w.Watch)
 }
 
+// holdKey keeps the holding socket's feed apart from the home screen's, which
+// is keyed by the ledger alone: the home socket names no holds.
+func (s *Sync) holdKey() string { return s.Ledger + "#holding" }
+
+// Liveness is the process's holding socket for this identity, which lets the
+// chats it holds stop heartbeating while the relay vouches for them. It answers
+// nil when the directory client cannot name holds (a self-hosted directory), so
+// those chats heartbeat as they always did.
+func (s *Sync) Liveness() cellsync.Liveness {
+	w, ok := s.Dir.(directory.HoldWatcher)
+	if !ok {
+		return nil
+	}
+	return holdSocket{dirwatch.Hold(s.holdKey(), directory.MaxHolds, w.WatchHolding)}
+}
+
+// holdSocket adapts the holding socket to the Batcher's view of it.
+type holdSocket struct {
+	h *dirwatch.Holder[directory.Hold]
+}
+
+func (s holdSocket) Keep(cell string, fence uint64) cellsync.Keeping {
+	return s.h.Take(directory.Hold{Cell: cell, Fence: fence})
+}
+
 var (
 	_ chatlist.Source    = (*Sync)(nil)
 	_ chatlist.Versioned = (*Sync)(nil)

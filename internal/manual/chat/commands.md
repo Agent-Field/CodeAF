@@ -286,7 +286,7 @@ The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. A
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
-| `/setup` | — | — | prepare this machine: shows what this device lacks for the conversation (present, installable, impossible), and does nothing else |
+| `/setup` | — | — | prepare this machine: shows what this device lacks for the conversation (present, installable, impossible) and, for a chat that moved here, the folders it did not bring along, and does nothing else |
 | `/setup` | — | `now` | starts a setup turn in which the agent installs the installable items; asks first unless approvals are open |
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
@@ -2264,10 +2264,13 @@ watching what ran; the agent cannot write it). `/setup` compares that record wit
 machine and lists three kinds of line: what is already here, what the agent can install
 ("needs jq — agent can set it up"), and what is impossible on this machine (a GPU, a
 Mac-only toolchain, a service on another network). Impossible lines are shown and never
-attempted. When nothing is installable, `/setup` says so and does nothing.
+attempted. For a chat that moved here from another machine it also lists `not brought along:`
+the install folders a lockfile rebuilds (`node_modules`, `.venv`) with the command that brings
+each back (see "What a moved chat left behind" in home). When nothing is installable and
+nothing was left behind, `/setup` says so and does nothing.
 
-`/setup now` starts a **setup turn**: the agent installs the installable items into user
-space, with the network open for that turn only. Every call in it is recorded as external
+`/setup now` starts a **setup turn**: the agent installs the installable items, and brings back
+what a move left behind, into user space, with the network open for that turn only. Every call in it is recorded as external
 and the turn is marked as a setup turn in `codeaf cell log`. Because the network is open,
 each call asks first, exactly like any other outside action, unless approvals are open
 (`--yolo` or the allow posture). Limits: a setup turn is never replayed on another machine

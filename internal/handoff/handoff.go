@@ -139,7 +139,7 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, pl
 // staging folder never outlives a failed claim.
 func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
-	head, fence, plan, err := t.fetchAndAcquire(ctx, stage, head, how)
+	head, fence, plan, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
 	if err == nil {
 		if err = t.install(ctx, stage, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
@@ -152,14 +152,18 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 }
 
 // fetchAndAcquire is the part of a claim that touches only the staging folder
-// and the directory. It answers the plan of the record the device actually
-// acquired: another device may have published while the fetch ran, and the
-// next publish replaces the record's plan wholesale, so seeding from the
-// record read before the claim would carry the stale one (contract §22.2).
-func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
+// and the directory. The staging folder starts as a copy of the tree this
+// device already holds at from, made of hard links, so the fetch writes only
+// the paths the new head changed; with nothing at from it starts empty. It
+// answers the plan of the record the device actually acquired: another device
+// may have published while the fetch ran, and the next publish replaces the
+// record's plan wholesale, so seeding from the record read before the claim
+// would carry the stale one (contract §22.2).
+func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
 	if err := freshDir(stage.Root); err != nil {
 		return "", 0, nil, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
 	}
+	seedFrom(from, stage.Root)
 	if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
 		return "", 0, nil, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
 	}
