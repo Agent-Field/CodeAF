@@ -30,6 +30,7 @@ sha2 = "=0.10.9"
 tempfile = "=3.15.0"
 tiny_http = "=0.12.0"
 ureq = { version = "=3.1.4", default-features = false, features = ["rustls"] }
+unicode-normalization = "=0.1.25"
 url = "=2.5.2"
 xattr = "=1.3.1"
 zeroize = "=1.8.1"

@@ -376,3 +376,49 @@ fn a_materialize_that_dies_mid_write_leaves_a_whole_tree() {
     assert_eq!(fs::read(tree.join("dir/one.txt")).unwrap(), b"two\n");
     assert_eq!(fs::read(tree.join("added.txt")).unwrap(), b"added\n");
 }
+
+#[test]
+fn materialize_answers_the_paths_it_set_apart_on_a_folding_file_system() {
+    let temp = tempfile::tempdir().unwrap();
+    let (data, from, onto) = (
+        temp.path().join("data"),
+        temp.path().join("from"),
+        temp.path().join("onto"),
+    );
+    fs::create_dir_all(&from).unwrap();
+    fs::create_dir_all(&onto).unwrap();
+    fs::write(from.join("Readme.md"), b"lower\n").unwrap();
+    fs::write(from.join("README.md"), b"upper\n").unwrap();
+    let (_, head) = FurrowRepository::attach_and_seal_in(
+        &data,
+        &from,
+        None,
+        SnapshotTrigger::Manual,
+        SealOptions::default(),
+    )
+    .unwrap();
+    let head = id_hex(&head);
+
+    let answer = furrow(&data, &onto)
+        .env("FURROW_TEST_NAME_FOLDING", "case")
+        .args(["materialize", "--head", &head])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let answer: Value = serde_json::from_slice(&answer).unwrap();
+
+    assert_eq!(answer["snapshot"], head.as_str());
+    assert_eq!(answer["held"][0]["path"], "Readme.md");
+    assert_eq!(answer["held"][0]["reason"], "same name as README.md here");
+    assert_eq!(fs::read(onto.join("README.md")).unwrap(), b"upper\n");
+    assert!(!onto.join("Readme.md").exists());
+
+    // Nothing is held where every name is kept, and the answer says no more.
+    let plain = temp.path().join("plain");
+    fs::create_dir_all(&plain).unwrap();
+    let answer = run(&data, &plain, &["materialize", "--head", &head]);
+    assert!(answer.get("held").is_none());
+    assert!(plain.join("Readme.md").exists());
+}
