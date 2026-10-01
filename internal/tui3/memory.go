@@ -3,6 +3,8 @@ package tui3
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -49,6 +51,31 @@ func (a *app) brain() (memoryAgent, bool) {
 	return agent, true
 }
 
+// brainFor is [app.brain] with the two refusals every command shares said on
+// the way out: this session being somewhere else, and memory being off.
+func (a *app) brainFor() (memoryAgent, bool) {
+	if a.hosted() {
+		a.note(memoryRemoteWord)
+		return nil, false
+	}
+	agent, ok := a.brain()
+	if !ok {
+		a.note(memoryOffNote)
+	}
+	return agent, ok
+}
+
+// noteFold is the fold every memory door shares: say what the engine answered,
+// in the conversation it was asked of and in no other.
+func (a *app) noteFold(text string) func(bool) tea.Cmd {
+	return func(here bool) tea.Cmd {
+		if here {
+			a.note(text)
+		}
+		return nil
+	}
+}
+
 // memoryOffNote is the one line every one of the three prints when this build
 // is not remembering anything. It names the row that turns it on, because "no"
 // without "and here is how to change that" is the half of an answer that sends
@@ -56,27 +83,23 @@ func (a *app) brain() (memoryAgent, bool) {
 const memoryOffNote = "memory is off for this session · turn it on under /settings"
 
 // runRemember is /remember: keep one thing across conversations.
-func (a *app) runRemember(text string) {
+func (a *app) runRemember(text string) tea.Cmd {
 	a.noticeEvent(eventRemembered)
-	if a.hosted() {
-		a.note(memoryRemoteWord)
-		return
-	}
-	agent, ok := a.brain()
+	agent, ok := a.brainFor()
 	if !ok {
-		a.note(memoryOffNote)
-		return
+		return nil
 	}
 	if strings.TrimSpace(text) == "" {
 		a.note("/remember <text> · what should be kept?")
-		return
+		return nil
 	}
-	title, err := agent.Remember(text)
-	if err != nil {
-		a.note("could not remember that · " + err.Error())
-		return
-	}
-	a.note("remembered · " + title)
+	return a.offLoop(func() func(bool) tea.Cmd {
+		title, err := agent.Remember(text)
+		if err != nil {
+			return a.noteFold("could not remember that · " + err.Error())
+		}
+		return a.noteFold("remembered · " + title)
+	})
 }
 
 // runForget is /forget: drop the one thing that best matches.
@@ -85,49 +108,40 @@ func (a *app) runRemember(text string) {
 // dropped all three would be a person losing two things they never named, and
 // the recovery — the store keeps a tombstone, not the row's contents in any
 // place a surface can reach — is a database question rather than a keystroke.
-func (a *app) runForget(query string) {
-	if a.hosted() {
-		a.note(memoryRemoteWord)
-		return
-	}
-	agent, ok := a.brain()
+func (a *app) runForget(query string) tea.Cmd {
+	agent, ok := a.brainFor()
 	if !ok {
-		a.note(memoryOffNote)
-		return
+		return nil
 	}
 	if strings.TrimSpace(query) == "" {
 		a.note("/forget <query> · what should be dropped?")
-		return
+		return nil
 	}
-	title, err := agent.Forget(query)
-	if err != nil {
-		a.note("could not forget that · " + err.Error())
-		return
-	}
-	if title == "" {
-		a.note("nothing matched " + query)
-		return
-	}
-	a.note("forgot · " + title)
+	return a.offLoop(func() func(bool) tea.Cmd {
+		title, err := agent.Forget(query)
+		switch {
+		case err != nil:
+			return a.noteFold("could not forget that · " + err.Error())
+		case title == "":
+			return a.noteFold("nothing matched " + query)
+		}
+		return a.noteFold("forgot · " + title)
+	})
 }
 
 // runMemories is /memories: the whole list, or the ones matching a word.
-func (a *app) runMemories(query string) {
-	if a.hosted() {
-		a.note(memoryRemoteWord)
-		return
-	}
-	agent, ok := a.brain()
+func (a *app) runMemories(query string) tea.Cmd {
+	agent, ok := a.brainFor()
 	if !ok {
-		a.note(memoryOffNote)
-		return
+		return nil
 	}
-	lines, err := agent.Memories(query)
-	if err != nil {
-		a.note("could not read what is remembered · " + err.Error())
-		return
-	}
-	a.note(memoriesText(query, lines))
+	return a.offLoop(func() func(bool) tea.Cmd {
+		lines, err := agent.Memories(query)
+		if err != nil {
+			return a.noteFold("could not read what is remembered · " + err.Error())
+		}
+		return a.noteFold(memoriesText(query, lines))
+	})
 }
 
 // memoriesText renders the list: one memory per line, its title, what it says,
