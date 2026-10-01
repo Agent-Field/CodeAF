@@ -254,16 +254,22 @@ handed in nothing, stopped on a limit, or broke — and acts on it:
 - **handed in, but its own check did not pass or finish**: the run is done. senior-dev's
   check guesses the project's commands and environment and is often wrong about them, so
   the chat treats what it said as a lead: it runs the project's own checks on the branch
-  in a temporary worktree, and only a failure it sees there is fixed or handed back.
+  in a temporary worktree, and only a failure it sees there is handed back to senior-dev
+  — or fixed by the chat itself when it is trivial.
   The landing note tells the chat to run each check from that worktree, never from your
   checkout. If the copy was kept, it uses that copy; a folder with no git history is
   checked where the run worked;
-- **handed in nothing**: the chat finishes a small gap on its branch itself, or hands the
-  work back to senior-dev with a brief sharpened by what is missing;
+- **handed in nothing**: the chat hands the work back to senior-dev with a brief sharpened
+  by what is missing, and finishes only a trivial gap on its branch itself;
 - **stopped on a dollar or time limit**: the chat never sends it back on its own, because
   another run spends more of your money: it says what is done and what is left, and asks;
 - **broke**: the chat hands it back once if the cause looks passing (a network or model
   service failure), and otherwise tells you what broke.
+
+For the chat, handing the work back to senior-dev counts as fixing it itself, and is its
+first choice for anything beyond a line or two: on that turn senior-dev carries on from its
+own branch. It edits the branch in a worktree of its own only for a trivial gap, or once
+senior-dev can be sent back no more.
 
 If the project's checks passed but the model never called `submit`, the ending says plainly
 `the checks passed, but nothing was submitted`. There is no resume or submit command for an
