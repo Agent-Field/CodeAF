@@ -66,20 +66,38 @@ func (g Guard) Look(c cell.Cell, tree, policyDir string, changed, locks []string
 	}
 	left := g.leftOut(tree, changed, locks, policy)
 	policy = policy.leaving(left.paths())
-	found := g.scan(tree, changed, policy)
-	next := policy.with(pathsOf(found))
+	secrets, unreadable := splitUnreadable(g.scan(tree, changed, policy))
+	next := policy.with(pathsOf(secrets)).unreadableAre(pathsOf(unreadable))
 	if err := next.write(policyDir); err != nil {
 		return Screened{}, fmt.Errorf("screen for secrets: %w", err)
 	}
-	g.announce(policy, found)
-	g.vault(c, tree, found)
+	g.announce(policy, secrets)
+	g.announceUnreadable(policy, unreadable)
+	g.vault(c, tree, secrets)
+	left.Apart = next.apart()
 	return left, nil
 }
 
+// splitUnreadable parts the findings that name a secret from those that name a
+// path this machine could not read: the first go to the vault and the secrets
+// block, the second only to their own block.
+func splitUnreadable(found []keys.Finding) (secrets, unreadable []keys.Finding) {
+	for _, f := range found {
+		if f.Rule == keys.RuleUnreadable {
+			unreadable = append(unreadable, f)
+		} else {
+			secrets = append(secrets, f)
+		}
+	}
+	return secrets, unreadable
+}
+
 // scan is the findings among what a seal of changed would capture, plus the
-// paths already withheld.
+// paths already withheld or unreadable, which are looked at again so a file whose
+// permissions were fixed goes back into the next seal.
 func (g Guard) scan(tree string, changed []string, policy policyFile) []keys.Finding {
-	held := keys.Scanner{Skip: func(rel string) bool { return policy.isLeftOut(rel) || policy.isRebuilt(rel) }}.Paths(tree, policy.withheld)
+	again := append(append([]string(nil), policy.withheld...), policy.unreadable...)
+	held := keys.Scanner{Skip: func(rel string) bool { return policy.isLeftOut(rel) || policy.isRebuilt(rel) }}.Paths(tree, again)
 	sc := keys.Scanner{Skip: skipping(policy), Ledger: g.Ledger}
 	if changed == nil || len(changed) > maxChangedArgs {
 		return append(held, sc.Walk(tree)...)
@@ -88,7 +106,9 @@ func (g Guard) scan(tree string, changed []string, policy policyFile) []keys.Fin
 }
 
 func skipping(policy policyFile) func(string) bool {
-	return func(rel string) bool { return policy.isLeftOut(rel) || policy.isWithheld(rel) || policy.isRebuilt(rel) }
+	return func(rel string) bool {
+		return policy.isLeftOut(rel) || policy.isWithheld(rel) || policy.isRebuilt(rel) || policy.isUnreadable(rel) || policy.isHeld(rel)
+	}
 }
 
 func pathsOf(found []keys.Finding) []string {
@@ -109,6 +129,16 @@ func (g Guard) announce(before policyFile, found []keys.Finding) {
 	for _, f := range found {
 		if !before.isWithheld(f.Path) {
 			g.notify(noticeFor(f))
+		}
+	}
+}
+
+// announceUnreadable tells a person once about each path newly left out because
+// this machine cannot read it.
+func (g Guard) announceUnreadable(before policyFile, found []keys.Finding) {
+	for _, f := range found {
+		if !before.isUnreadable(f.Path) {
+			g.notify(f.Path + " cannot be read here, so it is left out of the saved history until its permissions allow it")
 		}
 	}
 }
