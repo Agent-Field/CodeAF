@@ -172,9 +172,8 @@ type Client struct {
 	// live on the CLIENT and not on an Agent because [Client.Agent] hands out a
 	// fresh Agent per call and the receipt belongs to the stream this
 	// connection opened, whoever is holding the Agent today. An entry is added
-	// on every FollowUp and removed when the take-back answers either way — the
-	// message came out, or its turn already started and nothing is queued to
-	// take.
+	// on every FollowUp and removed when its stream ends or a take-back answers
+	// either way. A receipt exists only while there could still be words to take.
 	followRefs followRefs
 
 	// driver is who holds the keyboard, as the engine last told this surface.
@@ -1799,9 +1798,9 @@ func (a *Agent) FollowUp(text string) (<-chan session.Event, error) {
 	if err := json.Unmarshal(payload, &ref); err != nil {
 		return nil, err
 	}
-	ch := a.c.stream(ref.Stream).events()
-	a.c.followRefs.add(ch, ref.Stream)
-	return ch, nil
+	s := a.c.stream(ref.Stream)
+	s.keepFollowRef(&a.c.followRefs, ref.Stream)
+	return s.events(), nil
 }
 
 // UnqueueFollowUp takes ONE queued follow-up back out, named by the stream the
@@ -1826,7 +1825,12 @@ func (a *Agent) UnqueueFollowUp(ch <-chan session.Event) bool {
 	if err != nil {
 		// THE PRESS FAILED ON THE ROAD, NOT IN THE QUEUE: the receipt stays, so
 		// a second press can try again on a link that came back.
-		a.c.followRefs.add(ch, id)
+		a.c.mu.Lock()
+		s := a.c.streams[id]
+		a.c.mu.Unlock()
+		if s != nil {
+			s.keepFollowRef(&a.c.followRefs, id)
+		}
 		return false
 	}
 	var answered bool
@@ -2418,6 +2422,10 @@ type stream struct {
 	wake         *sync.Cond
 	queue        []session.Event
 	closed       bool
+	// forgetFollow releases a follow-up's receipt on the closed frame, before
+	// the surface can observe the channel close. Registration uses this same
+	// lock, so an early close or a failed take-back cannot resurrect a receipt.
+	forgetFollow func()
 	out          chan session.Event
 	once         sync.Once
 	// inWelcome identifies questions already handed to this surface outside
@@ -2446,6 +2454,16 @@ func newStream() *stream {
 
 // events is the channel the surface ranges over.
 func (s *stream) events() <-chan session.Event { return s.out }
+
+func (s *stream) keepFollowRef(refs *followRefs, id uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	refs.add(s.out, id)
+	s.forgetFollow = func() { refs.take(s.out) }
+}
 
 // push queues one encoded event. A payload that will not decode is DROPPED
 // rather than fatal: one unreadable line is one lost event, which is the bargain
@@ -2533,6 +2551,10 @@ func (s *stream) delivered() uint64 {
 func (s *stream) finish() {
 	s.mu.Lock()
 	s.closed = true
+	if s.forgetFollow != nil {
+		s.forgetFollow()
+		s.forgetFollow = nil
+	}
 	s.mu.Unlock()
 	s.wake.Signal()
 }

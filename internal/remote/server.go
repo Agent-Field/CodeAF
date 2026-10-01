@@ -2035,7 +2035,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2525,7 +2525,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// surface keeps the row).
 		sess.mu.Lock()
 		queued, ok := sess.follows[args.Stream]
-		if ok && queued.generation == sess.generation {
+		if ok && queued.generation == sess.generation && queued.owner == s {
 			delete(sess.follows, args.Stream)
 		} else {
 			ok = false
@@ -3269,7 +3269,7 @@ func (s *server) stream(method, said string, events <-chan session.Event, err er
 	if method == MethodFollowUp {
 		sess := s.session
 		sess.mu.Lock()
-		sess.follows[id] = followQueued{generation: generation, ch: events}
+		sess.follows[id] = followQueued{generation: generation, ch: events, owner: s}
 		sess.mu.Unlock()
 	}
 	s.pending = &pending{id: id, generation: generation, method: method, said: said, events: events}
@@ -3325,10 +3325,12 @@ func (s *server) release() {
 
 // followQueued is one entry of [Session.follows]: the queued stream's channel,
 // and the generation it was minted in, so a stale id from before a session swap
-// is refused rather than read against the wrong conversation.
+// is refused rather than read against the wrong conversation. Its connection
+// owns the receipt even when another window has since taken the keyboard.
 type followQueued struct {
 	generation uint64
 	ch         <-chan session.Event
+	owner      *server
 }
 
 // ── the pipe ────────────────────────────────────────────────────────────────
