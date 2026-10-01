@@ -79,12 +79,16 @@ export class Tenant {
     if (this.dir.rotation()) throw new RuleError('rotated');
   }
 
-  /** rotate makes one move of the rotation state machine; a retire also wakes the object at its deadline to delete. */
+  /**
+   * rotate makes one move of the rotation state machine; a retire also wakes the object at its deadline to delete.
+   * The move and the answer share one reading of the clock, so the deadline an answer names is always its own time plus the grace.
+   */
   rotate(device, req) {
-    const next = rotateBy(this.dir.rotation(), device, req, this.clock(), this.limits);
+    const now = this.clock();
+    const next = rotateBy(this.dir.rotation(), device, req, now, this.limits);
     this.dir.setRotation(next);
     if (next?.retire_at) this.arm(next.retire_at);
-    return this.rotationView();
+    return rotationView(next, now, this.limits);
   }
 
   rotationView() {
