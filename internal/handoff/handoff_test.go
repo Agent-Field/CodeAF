@@ -348,6 +348,25 @@ func TestTakeInPlaceKeepsThePersonsFolder(t *testing.T) {
 	}
 }
 
+// TestTakeInPlaceRestoresTheTreeOnceAndOnlyWhereItStands: a staged restore of
+// a folder that is then restored in place is a second whole-tree restore that
+// is thrown away, so the take completes the store and restores into the folder
+// alone.
+func TestTakeInPlaceRestoresTheTreeOnceAndOnlyWhereItStands(t *testing.T) {
+	_, a, _ := backFromB(t)
+	tk := a.taker()
+	tk.InPlace = func(cell.Cell) bool { return true }
+	traced := tk.Fetch.(*tracedFetch)
+
+	if _, err := tk.Take(context.Background(), chatID); err != nil {
+		t.Fatal(err)
+	}
+
+	if want := []string{a.root(chatID)}; !reflect.DeepEqual(traced.restored, want) {
+		t.Fatalf("trees restored into %v, want only %v", traced.restored, want)
+	}
+}
+
 // A copy that is replaced by the staging folder is a tree the engine registered
 // under the staging path, so the engine is told it moved.
 func TestTakeTellsTheEngineWhereTheStagedTreeWent(t *testing.T) {
