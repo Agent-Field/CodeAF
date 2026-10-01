@@ -2230,6 +2230,10 @@ type app struct {
 	machineRead    machineReading
 	machinesAsking bool
 	machinePoll    machinePoll
+	// fleet counts this person's devices and addMachine is the home card that
+	// uses the count (homeband_addmachine.go).
+	fleet      Fleet
+	addMachine addMachine
 	// dirFeed is this window's hold on the directory's change feed while home is
 	// being looked at, and readOwed that a frame arrived while a read was in
 	// flight (machinewatch.go).
@@ -2930,6 +2934,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		fleet:               opts.Fleet,
 		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
@@ -5026,6 +5031,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case homeBranchMsg:
 		return a, a.tookBranch(msg)
+
+	case fleetMsg:
+		return a, a.tookFleet(msg)
+
+	case pairLinkMsg:
+		return a, a.tookLink(msg)
 
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
