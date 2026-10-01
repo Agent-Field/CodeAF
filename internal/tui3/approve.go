@@ -212,9 +212,17 @@ func (c *approveCard) rows(width int, now time.Time, pal palette) []string {
 func requestAge(r *PendingDevice, now time.Time) string {
 	left := r.ExpiresAt.Sub(now)
 	if left <= 0 {
-		return "asked " + sinceAt(r.RequestedAt, now) + " ago · run out"
+		return askedWord(r.RequestedAt, now) + " · run out"
 	}
-	return "asked " + sinceAt(r.RequestedAt, now) + " ago · " + itoa(int((left+time.Minute-1)/time.Minute)) + " min left"
+	return askedWord(r.RequestedAt, now) + " · " + itoa(int((left+time.Minute-1)/time.Minute)) + " min left"
+}
+
+// askedWord is when the device asked: "just now" inside a minute, else "5m ago".
+func askedWord(at, now time.Time) string {
+	if ago := sinceAt(at, now); ago != "now" {
+		return "asked " + ago + " ago"
+	}
+	return "asked just now"
 }
 
 func dressed(lines []string, dress func(string) string) []string {
@@ -282,6 +290,9 @@ func (a *app) openApprove(typed string) tea.Cmd {
 func (a *app) showCard(c panelCard) {
 	a.closeLists()
 	a.dismissWelcome()
+	// HOME IS THE WHOLE SCREEN and draws no panel, so a card opened from it
+	// would be state nobody can see: the person steps out to the box first.
+	a.closeHome()
 	a.pair.close()
 	a.pair.open, a.pair.card = true, c
 	a.touch()
