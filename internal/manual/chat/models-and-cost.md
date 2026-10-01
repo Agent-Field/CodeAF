@@ -213,8 +213,12 @@ slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the
 component over their own models, but they have no provider row behind them, so nothing
 unfolds under them and the foot does not offer the key.
 
-The cursor opens **on the model in use**, which is also the marked row, so enter with
-nothing typed confirms rather than changes. The model in use is marked in the accent,
+**Where the cursor opens depends on the door.** `/model` opens with the cursor on the
+list's **first row**, visibly highlighted. The doors that open to confirm — the **your
+model** row and the other slots in `/settings`, a task's model word, home's draft and
+`alt+o` — open **on the model they hold**, so enter with nothing typed confirms rather
+than changes; emptying the filter with `ctrl+u` puts the cursor back on the model in use
+too. The model in use is marked in the accent,
 in bold, and wears no band of its own — the highlighted row is the one the cursor is
 on, and nothing else.
 
@@ -3422,7 +3426,8 @@ Four things worth knowing:
   With one service, which is most doors, there are no headings and the arrow means the
   whole list.
 - **Pressing the key puts the cursor on the top row**, because the top row is the answer to
-  the question you just asked. Opening the list still lands on the model in use. It sorts
+  the question you just asked. Opening `/model` still lands on the first row, and a door that opens to confirm still
+  lands on the model it holds. It sorts
   whatever the filter kept, so `deep` then `alt+s` is the deepseek rows in that column's
   order.
 

@@ -188,8 +188,9 @@ func (a *app) fetchModels() tea.Cmd {
 }
 
 // modelsFetched takes the answer. The list an open picker shows is re-ranked
-// with the filter kept and the cursor back on the model in use; the note says
-// what changed, or why nothing did.
+// with the filter kept and the cursor back on the list's first row
+// ([picker.restock] calls [picker.cursorToFirst]); the note says what changed,
+// or why nothing did.
 //
 // A FAILURE CHANGES NO ROW. The door has already kept its catalog and the
 // picker keeps what it was showing, so the only thing a failure adds is its

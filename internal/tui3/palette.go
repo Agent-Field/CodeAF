@@ -641,6 +641,12 @@ func (p *picker) rowUnavailable(at int) bool {
 // the bottom of the list and on the frame the menu opened with (owner's
 // report, 2026-09-30). [listTop]'s item arithmetic is the other lists' law;
 // this one is the picker's, because the picker is the list that grows headings.
+//
+// THE DRAW'S OWN CALL OWNS THE FINAL PLACEMENT. The keystroke-time calls pass
+// [pickerRows], a count of list rows, as their line budget; that is only ever
+// conservative — a heading can make the window scroll a row further than it
+// needed, never hide the cursor — and [picker.rowsOwned] calls this again with
+// the frame's true line budget before anything is drawn.
 func (p *picker) follow(lines int) {
 	if lines <= 0 || len(p.list) == 0 || p.cursor < 0 || p.cursor >= len(p.list) {
 		return
