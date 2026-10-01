@@ -811,3 +811,34 @@ func touchAlive(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(root, ".lane"), 0o755)
 	_ = os.WriteFile(filepath.Join(root, ".lane", "alive"), []byte(time.Now().Format(time.RFC3339)), 0o644)
 }
+
+// The first call of a brand-new chat is the slowest to become durable (it
+// creates the chat's record and sends the whole tree), so a kill half a second
+// after it is the hardest case. This runs it ten times and states the rate, as
+// work present, work and record present, and nothing at all (the relay had no
+// record of the chat, so B could not take it).
+func TestDurabilityFirstCallKillRate(t *testing.T) {
+	const tries = 10
+	var work, both, nothing int
+	for i := 0; i < tries; i++ {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			d := newDurable(t, marks(1, 0)...)
+			s := d.begin("first", finished(1))
+			s.strike(500*time.Millisecond, sigkill)
+			d.awayFromA()
+			got, err := s.b.take(s.id)
+			if err != nil {
+				nothing++
+				return
+			}
+			results, files := callsIn(got.Root)
+			if files[1] {
+				work++
+			}
+			if files[1] && results[1] {
+				both++
+			}
+		})
+	}
+	t.Logf("DURABILITY RATE mode=first-call-of-a-new-chat-kill-500ms tries=%d workPresent=%d workAndRecordPresent=%d chatNotOnRelay=%d", tries, work, both, nothing)
+}
