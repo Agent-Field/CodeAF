@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the @ list reads recent conversations on every opening and @chat shows them all
-pr: 1724
+pr: 1725
 surface: [chat, docs]
 invalidates:
   - "The `@` list's recent conversations were read once per process, so a conversation started in another window after the first `@` was never on it. They are read again every time the list opens."
