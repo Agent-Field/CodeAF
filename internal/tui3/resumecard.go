@@ -81,5 +81,5 @@ func (a *app) setupShown(r machine.Resume, far setupDoor) questionShown {
 
 // setupFacts is the resume as the card's three lines.
 func setupFacts(r machine.Resume) chatlist.SetupFacts {
-	return chatlist.SetupFacts{Missing: r.MissingNames(), Running: r.RunningLines(), Needed: r.NeededLines()}
+	return chatlist.SetupFacts{Missing: r.MissingNames(), Running: r.RunningLines(), Needed: r.NeededLines(), Changed: r.Uncommitted}
 }

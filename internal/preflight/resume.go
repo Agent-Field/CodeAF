@@ -37,6 +37,9 @@ type Resume struct {
 	Lacks []Item `json:"lacks,omitempty"`
 	// Omitted is how many entries of each list the record itself cut.
 	Omitted map[string]int `json:"omitted,omitempty"`
+	// Uncommitted is the files in the folder here that differ from its last
+	// commit. It is shown, never offered: it raises no card by itself.
+	Uncommitted []string `json:"uncommitted,omitempty"`
 }
 
 // Empty reports whether there is nothing to say. An empty Resume raises no card,
