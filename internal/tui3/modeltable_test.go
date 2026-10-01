@@ -444,9 +444,6 @@ func TestTheMachinesAreASecondFoldUnderOpenrouter(t *testing.T) {
 	a := laneApp(t)
 	a.width = 120
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); this
-	// fold is the model in use's, so the walk goes there first.
-	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"))
 	if names := laneNames(a.pick.lanes); len(names) == 0 {
@@ -480,9 +477,6 @@ func TestTheMachinesAreDrawnAsAColumnedTable(t *testing.T) {
 	a := laneApp(t)
 	a.width = 120
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
-	// this test reads is the model in use's, so the walk goes there first.
-	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"), key("down"), key("right"))
 
 	fit := a.pick.laneFit(a.width)
@@ -521,9 +515,6 @@ func TestTheMachinesAreDrawnAlphabeticallyAndTheChooserIsNot(t *testing.T) {
 	a := laneApp(t)
 	a.width = 120
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
-	// this test reads is the model in use's, so the walk goes there first.
-	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 
 	names := laneNames(a.pick.lanes)

@@ -126,9 +126,6 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	a := laneApp(t)
 	a.width = 100
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
-	// this test is about is the model in use's, so the walk goes there first.
-	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"))
 	if a.pick.unfold != flash {
@@ -310,7 +307,6 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 	a := laneApp(t)
 	a.width = 120
 	typeLine(t, a, "/model")
-	pickerWalkTo(t, a, flash)
 
 	if note := modelNote(laneCatalog[0]); note != "1M" {
 		t.Fatalf("an unmeasured row says %q, want the window and nothing more", note)
@@ -460,7 +456,6 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	typeLine(t, a, "/model")
-	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))              // walks in, onto the auto row
 	drive(t, a, key("down"), key("right")) // openrouter, then into its machines
 	drive(t, a, key("enter"))
@@ -488,7 +483,6 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	if a.pick.pin != "Cloudflare" {
 		t.Fatalf("the picker opened with pin %q", a.pick.pin)
 	}
-	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"))         // walks in, onto the pinned lane
 	drive(t, a, key("up"), key("up")) // past openrouter, back onto auto
@@ -548,7 +542,6 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: flash}, laneCatalog)
 	a.profileDir = ""
 	typeLine(t, a, "/model")
-	pickerWalkTo(t, a, flash)
 
 	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned("", talkSlot); !pinned || name != "Cloudflare" {

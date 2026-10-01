@@ -1242,10 +1242,6 @@ func (a *app) openPickerFromChip() {
 	// THE FOLD HAS TO BE THE ONE THE CHIP NAMES, for [app.openLaneList]'s
 	// reason: a model the list does not carry leaves the cursor on row zero,
 	// and unfolding whatever sorted first would open somebody else's machines.
-	// The chip names the model in use, so the walk goes there first
-	// ([picker.cursorToCurrent]) — the /model door's own open law rests on the
-	// list's first row, and this press is not that gesture.
-	a.pick.cursorToCurrent()
 	if chosen, ok := a.pick.choice(); ok && chosen.ID == a.model {
 		a.pick.unfoldHere()
 	}

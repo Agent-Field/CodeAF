@@ -363,13 +363,11 @@ func (a *app) pinTargetProject(path string) bool {
 // It asks the chat slot's question and points at the TARGET rather than at
 // the conversation behind the screen.
 //
-// It opens on the target's own model ([picker.cursorToCurrent]): this is a
-// door that opens to confirm — enter writes the draft's model — so the cursor
-// sits on what the draft holds rather than on the list's first row.
+// It opens on the target's own model for [picker.start]'s stated reason: the
+// cursor sits on what you are on, so enter confirms rather than changes.
 func (a *app) openTargetPicker() {
 	a.noticeEvent(eventModelListOpened)
 	a.target.pick.startFor(a.modelsFor(chatModel), a.targetModel(), chatModel)
-	a.target.pick.cursorToCurrent()
 	// AND THE PROVIDERS OPEN HERE TOO. The box under this list has always named
 	// `→ providers`, and for one wave the key did nothing at all, because the
 	// list was never handed the slot, the pin and the routing row a fold needs

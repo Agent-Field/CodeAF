@@ -1630,13 +1630,28 @@ effort · `ctrl+r` fetch the newest model list (`/model` only — not the settin
 rows) · `tab` and `→` open the providers under the model the cursor is on and move the
 cursor into them, `tab` and `←` close them and put it back on the model ·
 `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list · the **mouse wheel**
-walks it too while the list is up, three rows a notch, and stops at the first and last
-rows rather than scrolling the conversation behind the list ·
+walks the list too, three rows a notch, clamped at both ends, in `/model`, settings
+slots and roles, home's draft list and the task composer's list. The page beneath
+stays put until the list closes ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
 column and **`alt+shift+s`** turns that column round · anything else types into it.
 
-Every column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
+## Where the model list cursor opens — Enter, refresh and ctrl+u
+
+Every model list opens on the model it holds, highlighted and on screen. `/model`
+opens on the model in use, so enter with nothing typed confirms; settings slots and
+roles, a task's model word, home's draft, `alt+o` and lane lists and chips follow the
+same rule. A refresh puts the cursor back on the held model with the filter kept,
+and `ctrl+u` emptying the box returns there too. If that model is absent, the cursor
+uses the first selectable row past unavailable notices. `/model <query>` and typing
+a filter start the narrowed list at its first row. The model in use is bold in the
+accent with no band of its own; the cursor supplies the band, and a pointer hovering
+another row lifts it too.
+
+## Sorting and folding the model picker — alt+s, tab and arrows
+
+Every model picker column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
 `model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
 published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
 column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
@@ -2845,13 +2860,19 @@ under the pointer".
 
 ## Scrolling
 
-The wheel moves three rows per notch, on whichever surface owns the frame. It is
-routed to copy mode, then the settings panel, then the task page, then home, then the
-rewind timeline, then the status deck, then the phone tool sheet, then an open command
-menu or the `/model` picker — each walks its own list while it is up, and a list whose
-window follows its cursor stops at its own ends rather than scrolling anything behind
-it — then the fullscreen roster, then **the task column** when the pointer is over it,
-then an open room, and otherwise the conversation.
+The wheel usually moves three rows per notch on the surface that owns the frame.
+The context chooser answers first, then the conversation switcher (one row a notch),
+copy mode, questions, the crew panel, and `/model`. Next come the task composer's
+model list, a settings slot or role's model list, and home's draft model list: each
+walks its own cursor, clamped at both ends, with the page beneath unchanged.
+
+With those lists closed, the page navigation row answers before settings, the task
+page, home and the other places. Next come the rewind timeline, the status deck,
+the phone tool sheet, conversation tabs, an open command menu, the fullscreen roster,
+**the task column** under the pointer, an open question room or task room, and
+otherwise the conversation. Each list whose window follows its cursor stops at its
+own ends. A task's decision sheet or move menu absorbs the wheel, and an open design
+wall handles it before the context chooser.
 
 On the settings panel, the task page, home, the rewind timeline and the fullscreen roster
 the wheel walks the **cursor** rather than a scroll offset of its own, because on those the
@@ -2866,6 +2887,8 @@ Reaching the bottom **re-arms sticking**, so new replies follow along again. Scr
 up drops out of it.
 
 `pgup` and `pgdown` move the height of the view minus one row, never fewer than one.
+
+## Jump to the latest replies — the latest chip and ctrl+l
 
 **The jump-to-latest chip** is one dim chip at the left edge reading `↓ latest · ctrl+l`
 — `v latest · ctrl+l` on the linear tier — and it appears only when you are parked

@@ -58,9 +58,6 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 	a.profileDir = t.TempDir()
 	a.width, a.height = 130, 40
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
-	// this test walks into is the model in use's, further down walkCatalog.
-	pickerWalkTo(t, a, flash)
 	if strings.Contains(plain(frame(a)), "openrouter") {
 		t.Fatalf("the fold is open before anybody asked:\n%s", plain(frame(a)))
 	}
@@ -88,7 +85,6 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 	// opened again ([app.pickerKey]).
 	drive(t, a, key("enter"), key("esc"))
 	typeLine(t, a, "/model")
-	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 	row, on := a.pick.laneUnder()
 	if !on || row.lane < 0 || !strings.EqualFold(a.pick.lanes[row.lane].Name, "Cloudflare") {
@@ -253,9 +249,6 @@ func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
 	a.width, a.height = 120, 24
 
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
-	// this test reads is the model in use's, so the walk goes there first.
-	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"))
 	if a.pick.unfold != flash {
 		t.Fatalf("under routing simple → left the fold at %q", a.pick.unfold)

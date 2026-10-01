@@ -321,9 +321,6 @@ func TestLeftFromAMachineClosesOneLevelOnly(t *testing.T) {
 	a := laneApp(t)
 	a.width, a.height = 130, 40
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
-	// this test walks out of is the model in use's, so the walk goes there first.
-	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"), key("down"), key("right")) // into the machines
 
 	row, on := a.pick.laneUnder()

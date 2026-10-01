@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,9 +46,8 @@ var groupedCatalog = func() []Model {
 	return out
 }()
 
-// drawnCursorLine returns the drawn menu line that wears the cursor's ground,
-// and how many of them there are: exactly one row is the cursor's, so exactly
-// one drawn line may carry the ground the cursor paints.
+// drawnCursorLines returns the menu lines wearing the cursor's ground. A
+// wide row spends one line, while a phone row may carry its band over its tail.
 func drawnCursorLines(a *app) []string {
 	var out []string
 	for _, line := range modelMenuLines(a) {
@@ -58,36 +58,171 @@ func drawnCursorLines(a *app) []string {
 	return out
 }
 
-func TestTheMenuOpensWithTheCursorOnTheFirstRowAndVisible(t *testing.T) {
-	a := pickerApp(t, &fakeAgent{model: "beta/model-3"}, groupedCatalog)
-	typeLine(t, a, "/model")
+// A large catalog puts the held model beyond the initial window at every
+// terminal width. Service headings and phone tails must share its line budget.
+func TestTheMenuOpensOnTheModelInUseAndDrawsItsCursor(t *testing.T) {
+	models := make([]Model, 400)
+	for i := range models {
+		group := "alpha"
+		if i >= 200 {
+			group = "beta"
+		}
+		models[i] = Model{ID: fmt.Sprintf("%s/model-%03d", group, i),
+			ContextLength: 200_000, Group: group, GroupHead: group + " models", GroupOrder: i / 200}
+	}
+	current := models[397].ID
+	for _, width := range []int{140, 100, 62, 50} {
+		t.Run(fmt.Sprintf("width-%d", width), func(t *testing.T) {
+			a := pickerApp(t, &fakeAgent{model: current}, models)
+			a.width, a.height = width, 30
+			a.pal = newPalette(tokens.ANSI256, false)
+			typeLine(t, a, "/model")
+			shown := frame(a)
+			visibleCursor := false
+			for _, line := range strings.Split(shown, "\n") {
+				if strings.Contains(plain(line), current) && strings.Contains(line, "\x1b[48;") {
+					visibleCursor = true
+				}
+			}
+			if !visibleCursor {
+				t.Fatalf("opening frame at %d did not highlight the model in use (%s): %s", width, current, plain(shown))
+			}
+			if chosen, _ := a.pick.choice(); chosen.ID != current {
+				t.Fatalf("menu opened on %s, want %s", chosen.ID, current)
+			}
+			// The phone band wraps with its row. Every painted line must belong
+			// to that one selectable row, even when its tail has its own line.
+			rows, owners := a.pick.rowsOwned(width, a.overlayHeight(), a.pal, -1, nil)
+			for line, row := range rows {
+				if strings.Contains(row, "\x1b[48;") && owners[line] != a.pick.cursor {
+					t.Fatalf("opening frame painted another row: owner=%d cursor=%d", owners[line], a.pick.cursor)
+				}
+			}
+			if !strings.Contains(plain(shown), "beta models") {
+				t.Fatalf("opening frame lost its service heading: %s", plain(shown))
+			}
+		})
+	}
+}
 
-	// THE CURSOR RESTS ON THE FIRST SELECTABLE ROW — the list's first model,
-	// not the group's heading above it and not the model in use.
-	if a.pick.cursor != 0 {
-		t.Fatalf("the menu opened with the cursor on row %d, want the first", a.pick.cursor)
+func TestEnterImmediatelyAfterModelKeepsTheModelInUse(t *testing.T) {
+	agent := &fakeAgent{model: "openai/gpt-4.1-mini", window: 1_000_000}
+	a := pickerApp(t, agent, pickerCatalog)
+	a.ctxWindow = agent.window
+	typeLine(t, a, "/model")
+	drive(t, a, key("enter"))
+	if a.ctxWindow != 1_000_000 || agent.window != a.ctxWindow {
+		t.Fatalf("Enter changed the context window to %d (agent %d)", a.ctxWindow, agent.window)
 	}
-	if chosen, _ := a.pick.choice(); chosen.ID != "alpha/model-1" {
-		t.Fatalf("the menu opened on %q, want the first row", chosen.ID)
+	if a.model != "openai/gpt-4.1-mini" || agent.model != a.model {
+		t.Fatalf("Enter immediately after /model switched to %s (agent %s)", a.model, agent.model)
 	}
-	// AND THE HIGHLIGHT IS ON THE SCREEN. One ground, on the first row.
-	lines := drawnCursorLines(a)
-	if len(lines) != 1 {
-		t.Fatalf("the first frame drew %d grounded rows, want exactly the cursor's:\n%s",
-			len(lines), plain(strings.Join(modelMenuLines(a), "\n")))
+}
+
+func TestARefreshReturnsEachModelDoorToTheModelItHolds(t *testing.T) {
+	for _, task := range []bool{false, true} {
+		t.Run(fmt.Sprintf("task-%t", task), func(t *testing.T) {
+			a := pickerApp(t, &fakeAgent{model: "openai/gpt-4.1-mini"}, pickerCatalog)
+			held := a.model
+			if task {
+				held = "moonshotai/kimi-k3"
+				a.tasks = map[uint64]*taskNode{42: {model: held}}
+				a.openTaskPicker(42)
+			} else {
+				typeLine(t, a, "/model")
+			}
+			typeInto(t, a, "i")
+			drive(t, a, key("down"))
+			a.modelsFetched(modelsFetchedMsg{all: true})
+			if chosen, _ := a.pick.choice(); chosen.ID != held {
+				t.Fatalf("refresh moved confirmation from %s to %s", held, chosen.ID)
+			}
+			if a.pick.filter.String() != "i" {
+				t.Fatal("refresh erased the typed filter")
+			}
+		})
 	}
-	if !strings.Contains(lines[0], "alpha/model-1") {
-		t.Fatalf("the cursor's ground is not on the first row:\n%q", plain(lines[0]))
+}
+
+func TestAMissingHeldModelFallsBackPastUnavailableRows(t *testing.T) {
+	models := []Model{
+		{Unavailable: true, Notice: "no models", Group: "alpha"},
+		{ID: "beta/first", Group: "beta", GroupOrder: 1},
+		{ID: "beta/last", Group: "beta", GroupOrder: 1},
 	}
-	// AND THE MODEL IN USE KEEPS ITS MARK — bold accent, no ground — even
-	// though the cursor is not on it.
-	marked := modelMenuRow(t, a, "beta/model-3")
-	want := a.pal.bold(a.pal.accent("beta/model-3"))
-	if !strings.Contains(marked, want) {
-		t.Fatalf("the current model's row lost its bold accent; want %q in:\n%s", want, plain(marked))
+	var p picker
+	p.start(models, "absent")
+	// A refresh must choose the first selectable row even after a person walked
+	// farther down the previous list, with the same query still in the box.
+	p.filter.setText("beta")
+	p.rank()
+	p.move(1)
+	p.restock(models)
+	if chosen, _ := p.choice(); chosen.ID != "beta/first" {
+		t.Fatalf("missing held model left the cursor on %s, want beta/first", chosen.ID)
 	}
-	if groundsAreDrawn(a) && strings.Contains(marked, "\x1b[48;") {
-		t.Fatalf("the current model's row wears a ground:\n%q", marked)
+	p.filter.setText("")
+	p.rank()
+	if chosen, ok := p.choice(); !ok || chosen.ID != "beta/first" {
+		t.Fatalf("emptying the filter selected an unavailable row: %+v", chosen)
+	}
+}
+
+// The machines' heading and the reason for an unmeasured fold both spend
+// screen lines. The cursor must remain drawn in both states at every width.
+func TestTheCursorStaysVisibleWithMachineHeadingsAndWhyLines(t *testing.T) {
+	for _, measured := range []bool{true, false} {
+		for _, width := range []int{140, 100, 62, 50} {
+			t.Run(fmt.Sprintf("width-%d-measured-%t", width, measured), func(t *testing.T) {
+				rows := threeLanes()
+				if !measured {
+					rows = nil
+				}
+				laneLab(t, rows)
+				a := laneApp(t)
+				a.width, a.height = width, 30
+				a.pal = newPalette(tokens.ANSI256, false)
+				typeLine(t, a, "/model")
+				drive(t, a, key("right"), key("down"), key("right"))
+				p := &a.pick
+				if !p.machines {
+					t.Fatal("fixture did not open the machines")
+				}
+				headingSeen, reasonSeen := false, false
+				for step := 0; step < len(p.list)+2; step++ {
+					drawn, owners := p.rowsOwned(width, a.overlayHeight(), a.pal, -1, nil)
+					shown := plain(strings.Join(drawn, "\n"))
+					headingSeen = headingSeen || strings.Contains(shown, "first") && strings.Contains(shown, "t/s")
+					reasonSeen = reasonSeen || strings.Contains(shown, "no host has been measured")
+					if !slices.Contains(owners, p.cursor) {
+						t.Fatalf("cursor absent at width %d: %s", width, shown)
+					}
+					drive(t, a, key("down"))
+				}
+				if measured && width >= 100 && !headingSeen {
+					t.Fatal("fixture never drew the machines' heading")
+				}
+				if !measured && !reasonSeen {
+					t.Fatal("fixture never drew why the machines are absent")
+				}
+			})
+		}
+	}
+}
+
+func TestAnEmptyModelSlotSkipsTheLeadingUnavailableNotice(t *testing.T) {
+	a := placeApp(t)
+	a.models = func() []Model {
+		return []Model{
+			{Unavailable: true, Notice: "no models", Group: "alpha"},
+			{ID: "beta/first", Group: "beta", GroupOrder: 1},
+		}
+	}
+	a.showPage(pageHome)
+	a.target.model, a.model = "", ""
+	a.openTargetPicker()
+	if chosen, ok := a.target.pick.choice(); !ok || chosen.ID != "beta/first" {
+		t.Fatalf("empty draft model opened on an unavailable notice, want beta/first: %+v", chosen)
 	}
 }
 

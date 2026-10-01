@@ -2411,9 +2411,6 @@ func (a *app) activate() tea.Cmd {
 			keep: roleFilter(item.role.role), role: item.role.role,
 		}
 		sel.pick.startFor(a.modelsFor(sel.keep), item.role.pin, sel.keep)
-		// A DOOR THAT OPENS TO CONFIRM OPENS ON WHAT IT HOLDS ([picker.cursorToCurrent]):
-		// enter here applies the row, so the row is where the cursor waits.
-		sel.pick.cursorToCurrent()
 		s.sel = sel
 		return nil
 	}
@@ -2460,13 +2457,11 @@ func (a *app) activate() tea.Cmd {
 		}
 
 	case widgetSelect:
-		// The picker opens ON the id the row currently holds ([picker.cursorToCurrent]):
-		// enter with nothing typed confirms rather than changes — this is a door
-		// that opens to confirm, and /model's own door opens on the list's first
-		// row instead because its list is there to be read down. A row holding
-		// its empty label ("follows the conversation") matches no id and the
-		// cursor stays at the top, which is the honest reading of "this slot has
-		// not been set".
+		// The picker opens ON the id the row currently holds, the way /model
+		// opens on the model in use: enter with nothing typed confirms rather
+		// than changes. A row holding its empty label ("follows the
+		// conversation") matches no id and the cursor stays at the top, which is
+		// the honest reading of "this slot has not been set".
 		sel := &sheetSelect{
 			key: item.row.Key, label: item.meta.label,
 			keep: filterFor(item.row.Key),
@@ -2476,7 +2471,6 @@ func (a *app) activate() tea.Cmd {
 		// handed to the picker as well because that is the door every slot comes
 		// through, and a second application of the same filter is a no-op.
 		sel.pick.startFor(a.modelsFor(sel.keep), item.row.Value(), sel.keep)
-		sel.pick.cursorToCurrent()
 		// AND THIS IS THE SAME LIST /model OPENS, machines and all. A row that
 		// has a lane row behind it (lanes.go's [laneSlotForRow]) folds, shows
 		// the speed column, takes the lane grammar in its filter and pins on
@@ -2531,9 +2525,6 @@ func (a *app) openLaneList() bool {
 		keep: filterFor(config.ModelSettingKey(talkSlot)),
 	}
 	sel.pick.startFor(a.modelsFor(sel.keep), a.model, sel.keep)
-	// A DOOR THAT OPENS TO CONFIRM OPENS ON WHAT IT HOLDS ([picker.cursorToCurrent]),
-	// so the fold below is this row's and not the list's first row's.
-	sel.pick.cursorToCurrent()
 	a.armLanes(&sel.pick, slot)
 	// THE FOLD HAS TO BE THE ONE THIS ROW IS ABOUT. [picker.start] leaves the
 	// cursor on row zero when the model in use is not in the list at all — a

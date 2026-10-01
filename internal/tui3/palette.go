@@ -268,29 +268,17 @@ func (p *picker) restock(models []Model) {
 		p.text[i] = label
 	}
 	p.score = make([]int, len(models))
-	// AND A LANDED LIST IS A FRESH LIST, so the cursor goes back to its first
-	// row whatever is typed: [picker.rank] only leaves a narrowed list's cursor
-	// alone because a keystroke that narrows the list must not yank the cursor
-	// away from the row a person was walking towards — but a list that arrived
-	// whole (a refresh landing, the picker opening) is shown from its top, the
-	// same rule [picker.start] opens with.
+	// THE CURSOR GOES BACK TO THE HELD MODEL WHATEVER IS TYPED. A landed
+	// list is not a keystroke, and the row a person was walking towards may
+	// no longer exist. Enter must still confirm what this door holds; if that
+	// model is absent, the first selectable row is the available fallback.
 	p.rank()
-	p.cursorToFirst()
+	p.cursorToCurrent()
 }
 
-// cursorToFirst rests the cursor on the FIRST selectable row of the list —
-// the list's own top, past a heading and past a service that answered with
-// nothing ([picker.move] skips those too). The menu's own cursor law since
-// the owner's report of 2026-09-30: a menu that opened with its highlight
-// nowhere on the screen read as a list with no cursor in it, and the row it
-// should rest on is the one a reader starts reading at.
-//
-// THE MODEL IN USE DOES NOT LOSE ITS MARK to this. The marked row keeps the
-// accent and the weight wherever it sits, so what enter would apply is the
-// row the highlight names and nothing silent: a picker that opened with the
-// cursor on the model in use put that row at the bottom of a window the
-// headings pushed off the frame — the highlight was not on the screen at all,
-// which is the report this law answers.
+// cursorToFirst rests the cursor on the first selectable row, skipping service
+// notices. An empty slot or a held model absent from the narrowed list has no
+// row to confirm, so this is the fallback every model door shares.
 func (p *picker) cursorToFirst() {
 	p.cursor = 0
 	for p.cursor < len(p.list) && p.rowUnavailable(p.cursor) {
@@ -302,22 +290,19 @@ func (p *picker) cursorToFirst() {
 	p.follow(pickerRows)
 }
 
-// cursorToCurrent puts the cursor on the model in use, and is the law of the
-// DOORS THAT OPEN TO CONFIRM and of the box emptied with ctrl+u: a settings
-// slot's picker, a task's model word (settings.go, app.go's
-// [app.openTaskPicker]) and home's draft each open ON the row the door
-// already holds, and /model's own box, emptied, returns there — because enter
-// on those moments must confirm, not change. /model's own door opens on the
-// list's first row instead ([picker.cursorToFirst]), where the highlight on
-// the screen is what makes the choice explicit.
+// cursorToCurrent puts the cursor on the model this door holds, visibly on the
+// screen. Opening, refreshing and emptying the filter all return here because
+// enter is a confirm key, and must not change a model nobody chose to change.
+// A missing held model falls back to the first selectable row.
 func (p *picker) cursorToCurrent() {
 	for at, row := range p.list {
-		if row.lane == laneNone && p.all[p.hits[row.hit]].ID == p.current {
+		if row.lane == laneNone && !p.rowUnavailable(at) && p.all[p.hits[row.hit]].ID == p.current {
 			p.cursor = at
-			break
+			p.follow(pickerRows)
+			return
 		}
 	}
-	p.follow(pickerRows)
+	p.cursorToFirst()
 }
 
 // pickRow is one drawn row: which hit it belongs to, and which of that model's
@@ -853,26 +838,33 @@ func (p *picker) unfoldHere() bool {
 	return true
 }
 
-// revealFold scrolls by the least that puts the open block — the model's own
-// row and every row under it, with the dim lines and headings they carry —
-// inside a window of `lines` screen lines. The window opens at the block's
-// first row, and [picker.follow] then moves by the least that keeps the
-// cursor's row on the screen: where the block is taller than the window the
-// cursor wins, because the row enter would act on is the one that may never
-// be off screen. Both counts are in lines ([picker.rowLines]) — a block
-// scrolled against its rows alone is a block one heading taller than the room
-// made for it.
+// revealFold scrolls by the least that puts the open block, including its
+// headings and reason lines, inside the window. A block already on screen
+// keeps the rows above it; a block below ends at the window's bottom. A block
+// taller than the window, or starting above it, starts at its model row.
+// [picker.follow] then keeps the confirmation cursor visible even when the
+// whole block cannot fit. Both counts spend screen lines, as the drawing does.
 func (p *picker) revealFold(lines int) {
-	from := -1
+	if lines <= 0 || p.cursor < 0 || p.cursor >= len(p.list) {
+		return
+	}
+	from, to := -1, -1
 	for at, row := range p.list {
 		if row.hit != p.list[p.cursor].hit {
 			continue
 		}
-		from = at
-		break
+		if from < 0 {
+			from = at
+		}
+		to = at
 	}
 	if from >= 0 {
-		p.top = from
+		switch {
+		case from < p.top || p.spanLines(from, to) > lines:
+			p.top = from
+		case p.spanLines(p.top, to) > lines:
+			p.top = p.endingTop(to, lines)
+		}
 	}
 	p.follow(lines)
 }
@@ -1942,8 +1934,8 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 	// THE MODEL MENU'S OWN GRAMMAR ([palette.frontUnlifted]): this is the one
 	// list whose chosen row is a persistent fact — the model in use — so its
 	// front mark keeps the accent and the weight and takes no ground; the
-	// cursor alone lifts a row. Every other list that draws through the shared
-	// renderer keeps the ladder's selected step.
+	// cursor and pointer lift the rows they reach. Other lists using the shared
+	// renderer keep the ladder's selected step.
 	pal.frontUnlifted = true
 	if n <= 0 {
 		return nil, nil
@@ -2899,17 +2891,15 @@ func (a *app) openPickerFiltered(query string) {
 // model and the shortlist a typed word can raise (internal/session's
 // taskmodel.go) has nothing to raise here.
 //
-// THE MARK OPENS ON THE NODE'S OWN MODEL, not the session's, and the cursor
-// opens with it ([picker.cursorToCurrent]): this is a door that opens to
-// confirm — enter applies to the task — so the cursor sits on what the task is
-// running rather than on the list's first row.
+// THE MARK OPENS ON THE NODE'S OWN MODEL, not the session's, for [picker.start]'s
+// stated reason: the cursor sits on what you are on, so enter confirms rather
+// than changes. In here what you are on is what the task is running.
 func (a *app) openTaskPicker(id uint64) {
 	current := ""
 	if node := a.tasks[id]; node != nil {
 		current = firstNonEmpty(node.nextModel, node.model)
 	}
 	a.pick.startFor(a.modelPickerList(), current, chatModel)
-	a.pick.cursorToCurrent()
 	a.pick.task = id
 	a.armRefresh()
 	a.touch()

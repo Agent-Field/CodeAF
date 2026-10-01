@@ -1,10 +1,13 @@
 package tui3
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -14,8 +17,8 @@ import (
 // to be. The band is the CURSOR's language on an overlay ("where ↑/↓ has got
 // to"), and a mark that outranked it made the chosen row look like a row the
 // hand was on when it was not. So the menu's front mark keeps its accent and
-// its weight and takes NO ground: the cursor alone lifts a row. These tests
-// are the behaviour, on the rows a person actually sees.
+// its weight and takes NO ground. The cursor and pointer lift the rows they
+// reach. These tests assert the rows a person actually sees.
 
 // modelMenuLines is the drawn menu, through the app's own door.
 func modelMenuLines(a *app) []string { return a.overlayRows(a.width, a.overlayHeight()) }
@@ -40,9 +43,9 @@ func groundsAreDrawn(a *app) bool { return a.pal.profile != tokens.NoColor }
 func TestTheCurrentModelKeepsBoldAccentButNoGround(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: "openai/gpt-4.1-mini"}, pickerCatalog)
 	typeLine(t, a, "/model")
-	// The cursor opens on the list's first row ([picker.cursorToFirst]), and
-	// the marked row — the model in use — sits further down with no cursor on
-	// it: the two facts on the frame are apart from the first keystroke.
+	// Move away from the held model, so its persistent mark can be read
+	// independently of the keyboard cursor's band.
+	drive(t, a, key("up"), key("up"), key("up"))
 	marked := modelMenuRow(t, a, "openai/gpt-4.1-mini")
 	// BOLD BLUE, RETAINED AND NOW EXPLICIT: the label keeps the accent and the
 	// weight it read at under the band.
@@ -56,10 +59,10 @@ func TestTheCurrentModelKeepsBoldAccentButNoGround(t *testing.T) {
 		t.Fatalf("the current model's row wears a ground:\n%q", marked)
 	}
 
-	// AND THE CURSOR'S HIGHLIGHT IS ON THE SCREEN WHERE IT OPENED: on the
+	// AND THE CURSOR'S HIGHLIGHT IS ON THE SCREEN AFTER THE WALK: on the
 	// list's first row, and on no other.
 	if a.pick.cursor != 0 {
-		t.Fatalf("the menu opened with the cursor on row %d, want the first", a.pick.cursor)
+		t.Fatalf("the walk left the cursor on row %d, want the first", a.pick.cursor)
 	}
 	var grounded []string
 	for _, line := range modelMenuLines(a) {
@@ -69,7 +72,7 @@ func TestTheCurrentModelKeepsBoldAccentButNoGround(t *testing.T) {
 	}
 	if groundsAreDrawn(a) {
 		if len(grounded) != 1 || !strings.Contains(grounded[0], "anthropic/claude-gpt-echo") {
-			t.Fatalf("the opening frame carries the cursor's ground on %d rows, want the first row alone:\n%s",
+			t.Fatalf("the frame carries the cursor's ground on %d rows, want the first row alone:\n%s",
 				len(grounded), plain(strings.Join(modelMenuLines(a), "\n")))
 		}
 	}
@@ -175,5 +178,150 @@ func TestThePickerCursorStopsAtTheEndsOfTheList(t *testing.T) {
 	drive(t, a, key("down"))
 	if a.pick.cursor != 1 {
 		t.Fatalf("one down from the top rests on %d, want the second row", a.pick.cursor)
+	}
+}
+
+// A model list owns the whole wheel gesture while it is up. The page's cursor,
+// window and transcript must stay where they were until the list closes.
+func checkModelDoorWheel(t *testing.T, a *app, p *picker, pageState func() [3]int, closeList func()) {
+	t.Helper()
+	p.move(-len(p.list))
+	before := pageState()
+	wheel := func(button tea.MouseButton) {
+		drive(t, a, tea.MouseWheelMsg{X: 4, Y: a.bodyTop() + 3, Button: button})
+	}
+	wheel(tea.MouseWheelDown)
+	if p.cursor != 3 {
+		t.Fatalf("wheel left model cursor at %d, want 3", p.cursor)
+	}
+	if got := pageState(); got != before {
+		t.Fatalf("wheel moved page beneath list: %v -> %v", before, got)
+	}
+	for i := 0; i < len(p.list); i++ {
+		wheel(tea.MouseWheelDown)
+	}
+	if p.cursor != len(p.list)-1 {
+		t.Fatalf("wheel did not clamp at the last row: %d", p.cursor)
+	}
+	for i := 0; i < len(p.list); i++ {
+		wheel(tea.MouseWheelUp)
+	}
+	if p.cursor != 0 {
+		t.Fatalf("wheel did not clamp at the first row: %d", p.cursor)
+	}
+	if got := pageState(); got != before {
+		t.Fatalf("clamped wheel moved page beneath list: %v -> %v", before, got)
+	}
+	closeList()
+	wheel(tea.MouseWheelDown)
+	afterDown := pageState()
+	wheel(tea.MouseWheelUp)
+	if afterDown == before && pageState() == before {
+		t.Fatal("closed list still prevented the page from moving")
+	}
+}
+
+func TestTheSettingsModelListOwnsTheWheel(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.models = func() []Model { return groupedCatalog }
+	a.openSettings()
+	for i := 0; i < 4; i++ {
+		drive(t, a, key("right"))
+	}
+	cursorTo(t, a, config.ModelSettingKey("talk"))
+	drive(t, a, key("enter"))
+	if a.sheet.sel == nil {
+		t.Fatal("settings row opened no list")
+	}
+	checkModelDoorWheel(t, a, &a.sheet.sel.pick,
+		func() [3]int { return [3]int{a.sheet.cursor, a.sheet.top, a.offset} },
+		func() { drive(t, a, key("esc")) })
+}
+
+func TestTheHomeDraftModelListOwnsTheWheel(t *testing.T) {
+	a := placeApp(t)
+	a.models = func() []Model { return groupedCatalog }
+	a.showPage(pageHome)
+	a.openTargetPicker()
+	checkModelDoorWheel(t, a, &a.target.pick,
+		func() [3]int { return [3]int{a.home.cursor, a.home.top, a.offset} },
+		func() { drive(t, a, key("esc")) })
+}
+
+func TestTheComposerModelListOwnsTheWheel(t *testing.T) {
+	a := layerApp(t, pageHome, 120)
+	a.models = func() []Model { return groupedCatalog }
+	a.placeKeyPress(key("alt+o"))
+	if !a.composer.pick.open {
+		t.Fatal("alt+o opened no list")
+	}
+	checkModelDoorWheel(t, a, &a.composer.pick,
+		func() [3]int { return [3]int{a.home.cursor, a.home.top, a.offset} },
+		func() { drive(t, a, key("esc"), key("esc")) })
+}
+
+// An opened block is placed by what a person can read, including its heading
+// and reason line. A fitting block must preserve the rows already above it.
+func foldScrollFixture() picker {
+	var p picker
+	p.start(groupedCatalog, "alpha/model-4")
+	p.unfold, p.machines, p.width = "alpha/model-4", true, 100
+	p.relist()
+	p.cursor = 4 // The auto row is the first confirmation inside this fold.
+	p.top = 0
+	return p
+}
+
+func TestOpeningAVisibleFoldKeepsTheRowsAboveIt(t *testing.T) {
+	p := foldScrollFixture()
+	p.revealFold(12)
+	if p.top != 0 {
+		t.Fatalf("already visible fold scrolled top 0 -> %d", p.top)
+	}
+	rows, owners := p.rowsOwned(100, 12, newPalette(tokens.ANSI256, false), -1, nil)
+	if !slices.Contains(owners, p.cursor) || !strings.Contains(plain(strings.Join(rows, "\n")), "alpha/model-1") {
+		t.Fatalf("opening fold lost the cursor or preceding context: %s", plain(strings.Join(rows, "\n")))
+	}
+}
+
+func TestOpeningAFoldBelowTheWindowPutsItsEndAtTheBottom(t *testing.T) {
+	p := foldScrollFixture()
+	p.revealFold(7)
+	rows, owners := p.rowsOwned(100, 7, newPalette(tokens.ANSI256, false), -1, nil)
+	shown := plain(strings.Join(rows, "\n"))
+	if len(rows) != 7 || !strings.Contains(shown, "alpha/model-3") || !strings.Contains(plain(rows[len(rows)-1]), "default") {
+		t.Fatalf("fold below the window did not end at its bottom with preceding context:\n%s", shown)
+	}
+	if !slices.Contains(owners, p.cursor) {
+		t.Fatal("fold placement hid the cursor")
+	}
+}
+
+func TestOpeningATallFoldStartsAtItsModelAndShowsTheCursor(t *testing.T) {
+	p := foldScrollFixture()
+	p.revealFold(4)
+	rows, owners := p.rowsOwned(100, 4, newPalette(tokens.ANSI256, false), -1, nil)
+	if p.top != 3 || !strings.Contains(plain(strings.Join(rows, "\n")), "alpha/model-4") || !slices.Contains(owners, p.cursor) {
+		t.Fatalf("tall fold lost its model or cursor: top=%d owners=%v", p.top, owners)
+	}
+}
+
+// A person reading the manual before pressing Enter must get the same safe
+// opening rule as the menu, including the lists reached through other doors.
+func TestTheModelMenuManualExplainsHeldModelsAndWheelOwnership(t *testing.T) {
+	for _, page := range []string{"commands", "models-and-cost"} {
+		text, ok := manual.Chat().Page(page)
+		if !ok {
+			t.Fatalf("missing manual page %s", page)
+		}
+		text = strings.Join(strings.Fields(text), " ")
+		if !strings.Contains(text, "Every model list opens on the model it holds") {
+			t.Errorf("%s does not explain that every model list opens on the model it holds", page)
+		}
+	}
+	text, _ := manual.Chat().Page("keys")
+	text = strings.Join(strings.Fields(text), " ")
+	if !strings.Contains(text, "home's draft list and the task composer's list") {
+		t.Error("model-list wheel help omits home's draft list and the task composer's list")
 	}
 }

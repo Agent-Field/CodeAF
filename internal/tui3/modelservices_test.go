@@ -424,24 +424,9 @@ func TestTheMovedModelIsTheOneTheNextLaunchOpensOn(t *testing.T) {
 	next.width, next.height = 100, 30
 	next.pal = newPalette(tokens.ANSI256, false)
 	next.openPicker()
-	// The next launch opens on the moved model, and the picker's MARK is on its
-	// row — the cursor now rests on the list's first row ([picker.cursorToFirst]),
-	// so the mark is what says the model came back.
-	if next.model != want {
-		t.Fatalf("next launch model = %q, want %q", next.model, want)
-	}
-	if _, ok := next.pick.choice(); !ok {
-		t.Fatal("the next launch's picker offered no row to choose")
-	}
-	marked := -1
-	for at, row := range next.pick.list {
-		if row.lane == laneNone && next.pick.all[next.pick.hits[row.hit]].ID == want && next.pick.marked(at) {
-			marked = at
-			break
-		}
-	}
-	if marked < 0 {
-		t.Fatalf("the moved model wears no mark on the next launch's picker: %v", pickerIDs(next))
+	chosen, ok := next.pick.choice()
+	if next.model != want || !ok || chosen.ID != want {
+		t.Fatalf("next launch model/picker = %q/%q (found=%t), want %q", next.model, chosen.ID, ok, want)
 	}
 }
 
@@ -1091,15 +1076,11 @@ func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
 	}
 	a.openPicker()
 	got := a.pick.rows(100, a.pick.height(100), pal, -1, func(string) string { return "" })
-	// THE ROWS ARE ALPHABETICAL, which is every table's opening order on this
-	// surface (pickersort.go) — so `gpt-5-classic` stands above the model in use,
-	// and the cursor rests on the list's first row ([picker.cursorToFirst]):
-	// the › is the highlight a reader starts reading at. The mark is still on
-	// the model in use, which is what this test is about — its bold accent
-	// strips to the same plain row it always drew, while the cursor's ground
-	// pads the first row out to the frame's full width.
-	want := "› gpt-5-classic" + strings.Repeat(" ", 100-15) + "\n" +
-		"  openai/gpt-4.1-mini                                                                             1M\n" +
+	// THE ROWS ARE ALPHABETICAL, so `gpt-5-classic` stands above the model
+	// in use. The cursor opens on the held model and supplies its band; the
+	// model's bold accent adds no band of its own when the cursor moves away.
+	want := "  gpt-5-classic\n" +
+		"› openai/gpt-4.1-mini                                                                             1M\n" +
 		"  + add a provider"
 	if rendered := plain(strings.Join(got, "\n")); rendered != want {
 		t.Fatalf("one-service picker changed:\ngot  %q\nwant %q", rendered, want)

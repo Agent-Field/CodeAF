@@ -68,10 +68,6 @@ func hoverLead(pal palette) string {
 // meaninglessness: the whole id is there, and so is the whole tail.
 func TestAPhonePickerRowWrapsItsNoteOntoASecondLine(t *testing.T) {
 	a := phonePicker(t, phoneWidth)
-	// The menu opens on the list's first row ([picker.cursorToFirst]) and that
-	// row is the one this test reads, so the walk moves off it first: the wrap
-	// is the row's shape at rest, not the cursor's.
-	drive(t, a, key("down"))
 	lines := overlayBlock(a)
 
 	at := -1
@@ -144,11 +140,10 @@ func TestThePhoneSelectionBandSpansBothLinesOfARow(t *testing.T) {
 // answer to both, or half of every row is dead to the mouse.
 func TestThePointerOverEitherLineLightsTheWholeRow(t *testing.T) {
 	a := phonePicker(t, phoneWidth)
-	// The menu opens on the list's first row ([picker.cursorToFirst]) — the row
-	// this test hovers — so the walk moves the cursor two rows down and the
-	// pointer is the only hand on the rows the test reads.
-	drive(t, a, key("down"), key("down"))
 	// The FIRST row of the block, whichever of its two lines the pointer is on.
+	// It is not the cursor's row — the picker opens on the model in use, which
+	// is the second — because a band and a hover on one row would make either
+	// answer look right.
 	for _, on := range []int{0, 1} {
 		a.hot = hoverAt{kind: hoverOverlay, index: on}
 		lines := overlayBlock(a)

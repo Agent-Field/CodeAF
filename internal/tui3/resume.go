@@ -99,8 +99,7 @@ func (r *roster) start(list []Session, current string) {
 	r.score = make([]int, len(list))
 	r.rank()
 	// The cursor opens on the conversation this surface is in, for the reason
-	// the model picker's confirm doors (a settings slot, a task's model word,
-	// home's draft) open on the model they hold: enter is a confirm key, and a
+	// the model picker opens on the model in use: enter is a confirm key, and a
 	// list that opened on somebody else's row would make it a change nobody
 	// asked for. A surface whose own session is not in the list — a memory-only
 	// conversation — opens on the newest, which is row zero.

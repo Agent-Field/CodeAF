@@ -237,13 +237,12 @@ func TestTheSortedColumnWearsTheArrowInsideItsOwnWidth(t *testing.T) {
 }
 
 // THE CURSOR LANDS ON THE TOP AFTER THE KEY, because the top is the answer —
-// while OPENING the list rests on its first row ([picker.cursorToFirst]), the
-// highlight a reader starts reading at. Those are two different moments and
-// only one of them is the sort's.
+// while OPENING the list still lands on the model in use, so enter with nothing
+// typed still confirms. Those are two different moments and only one wants row one.
 func TestTheSortKeyPutsTheCursorOnTheAnswerAndOpeningDoesNot(t *testing.T) {
 	a := sortApp(t)
-	if chosen, _ := a.pick.choice(); chosen.ID != "a/dear" {
-		t.Fatalf("the list did not open on its first row: %q", chosen.ID)
+	if chosen, _ := a.pick.choice(); chosen.ID != "c/middle" {
+		t.Fatalf("the list did not open on the model in use: %q", chosen.ID)
 	}
 	for sortWord(a.pick.sort) != "in/M ↓" {
 		drive(t, a, key(pickerSortKeyChord))
@@ -318,9 +317,6 @@ func TestTheSortKeyOrdersTheProvidersWhenTheCursorIsInThem(t *testing.T) {
 	a := laneApp(t)
 	a.width, a.height = 130, 40
 	typeLine(t, a, "/model")
-	// The menu opens on the list's first row ([picker.cursorToFirst]); the fold
-	// this test sorts is the model in use's, so the walk goes there first.
-	pickerWalkTo(t, a, flash)
 	drive(t, a, key("right"), key("down"), key("right")) // into the machines
 
 	// The fold opens in ITS first column, the provider name, ascending — which is
