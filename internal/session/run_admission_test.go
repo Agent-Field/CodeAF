@@ -7,10 +7,21 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 )
 
-func TestRunAdmissionUsesRealHostMemoryAndSharedLanes(t *testing.T) {
+// requireHostMemoryReading skips a test whose hold depends on the governor
+// seeing real memory. The reading is /proc/meminfo (hostMemoryMB), and a host
+// without it — macOS — leaves the governor unknown, and an unknown governor
+// admits everything (admissionGovernor.admits: silence is not pressure). A
+// 1 TiB floor holds nothing there, so a test that waits for the hold waits
+// forever and a test that asserts it fails on every Mac while CI stays green.
+func requireHostMemoryReading(t *testing.T) {
+	t.Helper()
 	if _, err := os.Stat("/proc/meminfo"); err != nil {
 		t.Skip("host has no proc memory reading")
 	}
+}
+
+func TestRunAdmissionUsesRealHostMemoryAndSharedLanes(t *testing.T) {
+	requireHostMemoryReading(t)
 	lanes := NewTaskLanes()
 	gate := NewRunAdmission(0, 1<<40, lanes)
 	if gate == nil || gate.MayStart() {

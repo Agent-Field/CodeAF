@@ -11,6 +11,7 @@ import (
 )
 
 func TestHeldRunReopensOnTheSameAdmissionWithoutPreparingFiles(t *testing.T) {
+	requireHostMemoryReading(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	engine := newBeltRunDouble("done")
 	registerBeltRunEngine(t, engine)

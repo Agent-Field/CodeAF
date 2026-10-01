@@ -65,11 +65,20 @@ func TestTheWarmToolEncodeAllocatesNothing(t *testing.T) {
 //
 //   - automatic: 1 — the []json.RawMessage the caller is handed. Every element
 //     of it is a slice the memo already holds. There is nothing else to pay.
-//   - breakpoints: 8 — that same slice, plus the two marked positions, which are
+//   - breakpoints: that same slice, plus the two marked positions, which are
 //     re-derived per call BY DESIGN. The tail marker rolls forward every turn, so
 //     a memo of the marked form would be a cache of the one thing that changes
 //     (memo.go says this where it explains what is deliberately not memoized).
 //     Two marshals, whatever they cost, and never 244.
+//
+// THE BREAKPOINTS FIGURE IS MEASURED IN THIS PROCESS, NOT WRITTEN DOWN. What
+// two marked marshals cost belongs to encoding/json, and it moved under us
+// once already: 8 on Go 1.26, 11 on Go 1.27, with the memo unchanged. A
+// number copied from one toolchain is a law about that toolchain, and it
+// turned a Go upgrade on the laptop into a red that CI, on the go.mod
+// toolchain, could not see. So the test prices the two marshals itself and
+// demands the slice and nothing more on top of them — which is the actual
+// promise, and a stricter one than any constant.
 //
 // The equality across sizes is the load-bearing assertion; the constants are the
 // teaching. One-per-message at 81 turns would be 244.
@@ -88,13 +97,35 @@ func TestTheWarmTranscriptEncodeCostsTheSameAtEightyTurnsAsAtEight(t *testing.T)
 		})
 	}
 
+	// markedCost is what the two marked positions of a transcript cost to
+	// marshal on this toolchain: the part of a warm breakpoints encode that is
+	// re-derived by design, priced here rather than copied from PERF.md.
+	markedCost := func(t *testing.T, turns int) float64 {
+		t.Helper()
+		messages := benchTranscript(turns)
+		placed := breakpointsFor(messages)
+		total := 0.0
+		for _, index := range []int{placed.system, placed.tail} {
+			if index < 0 {
+				continue
+			}
+			message := messages[index]
+			total += testing.AllocsPerRun(100, func() {
+				if _, err := marshalMarked(message); err != nil {
+					t.Fatalf("marked marshal: %v", err)
+				}
+			})
+		}
+		return total
+	}
+
 	for _, dialect := range []struct {
 		name string
 		d    cacheDialect
 		want float64
 	}{
 		{"automatic", cacheDialectAutomatic, 1},
-		{"breakpoints", cacheDialectBreakpoints, 8},
+		{"breakpoints", cacheDialectBreakpoints, 1 + markedCost(t, 81)},
 	} {
 		t.Run(dialect.name, func(t *testing.T) {
 			// 8 and 81 turns are the ends of the range BENCHMARKS.md records for
@@ -107,10 +138,11 @@ func TestTheWarmTranscriptEncodeCostsTheSameAtEightyTurnsAsAtEight(t *testing.T)
 					"quadratically (memo.go)", small, large)
 			}
 			if large != dialect.want {
-				t.Fatalf("a warm %s encode costs %.0f allocations, and the law is %.0f. "+
-					"If this is a deliberate change — a different marked-message shape, a "+
-					"different result slice — move the number here and in PERF.md together; "+
-					"if it is not, something on the warm path stopped being memoized.",
+				t.Fatalf("a warm %s encode costs %.0f allocations, and the law is %.0f: "+
+					"the result slice plus whatever the marked positions cost to marshal on "+
+					"this toolchain. If this is a deliberate change — a different result "+
+					"slice, a third marked position — change the law here and in PERF.md "+
+					"together; if it is not, something on the warm path stopped being memoized.",
 					dialect.name, large, dialect.want)
 			}
 		})

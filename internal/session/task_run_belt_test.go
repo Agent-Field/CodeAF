@@ -389,9 +389,7 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 }
 
 func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
-	if _, err := os.Stat("/proc/meminfo"); err != nil {
-		t.Skip("host has no proc memory reading")
-	}
+	requireHostMemoryReading(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)
@@ -449,6 +447,7 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 }
 
 func TestHeldBeltRunStopsWithoutPreparingRepository(t *testing.T) {
+	requireHostMemoryReading(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)

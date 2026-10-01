@@ -219,7 +219,12 @@ func TestDoOnTheRunEngineSignsWorkerCommitsUnlessContributingForbids(t *testing.
 func TestDoOnTheRunEngineSignsFirstCommitOnUnbornBranch(t *testing.T) {
 	beltRunEnv(t)
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
-	workspace := t.TempDir()
+	// Canonical for the same reason beltRepoWorkspace resolves its folder: the
+	// envelope names files under the engine's resolved root.
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	beltGit(t, workspace, "init")
 	beltGit(t, workspace, "checkout", "-b", "work")
 	seat := &beltSeat{
@@ -240,7 +245,7 @@ func TestDoOnTheRunEngineSignsFirstCommitOnUnbornBranch(t *testing.T) {
 		},
 	}
 	var stdout, stderr strings.Builder
-	err := doErrand(doRequest{
+	err = doErrand(doRequest{
 		task: "add hello.txt", workspace: workspace, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
