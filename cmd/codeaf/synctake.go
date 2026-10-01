@@ -4,8 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -24,12 +28,15 @@ func wireSync(o *tui3.Options) {
 	if o.Notices == nil {
 		o.Notices = surfaceNotices
 	}
-	s, err := syncOf()
+	s, err := syncOfFirst()
 	if err != nil {
 		return
 	}
 	if o.Machines == nil {
 		o.Machines = s
+	}
+	if o.Fleet == nil {
+		o.Fleet = s
 	}
 	if o.Takeover == nil {
 		o.Takeover = takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
@@ -42,6 +49,26 @@ func wireSync(o *tui3.Options) {
 	if o.Branches.Discard == nil {
 		o.Branches = tui3.BranchActions{Discard: s.Discard}
 	}
+	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.Say) })
+}
+
+// standingWithin bounds the launch-time check so a silent relay costs nothing.
+const standingWithin = 15 * time.Second
+
+// checkStanding asks the directory once at launch whether this device is still
+// let in, and says the refusal (removed from the fleet, replaced) as soon as the
+// surface is up. A conversation that is only resumed, and so has no drive side
+// yet, would otherwise open as if nothing were wrong until its first message.
+// A solo identity (made here, never shared) cannot have been stopped, so it
+// asks nothing: a fresh install sends the sync service no request on its own.
+func checkStanding(dir string, d directory.Client, say func(string)) {
+	if !syncsetup.MayTalk(dir) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), standingWithin)
+	defer cancel()
+	_, err := d.List(ctx)
+	sayRefusalTo(say, err)
 }
 
 // takeover is the surface's Taker over the take side: what a takeover reports,
@@ -51,11 +78,13 @@ type takeover struct{ c *syncsetup.Continuer }
 var _ tui3.Taker = takeover{}
 
 func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
+	began := time.Now()
 	got, err := t.c.Take(ctx, id)
+	elapsed := time.Since(began)
 	if err != nil {
 		return tui3.Taken{}, err
 	}
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume}, nil
+	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}, nil
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

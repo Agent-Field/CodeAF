@@ -15,8 +15,14 @@ func syncListSource() (chatlist.Source, error) { return syncOf() }
 
 // syncOf is the sync of this machine, or the sentence that says why there is
 // none.
-func syncOf() (*syncsetup.Sync, error) {
-	s, ok, err := syncsetup.Open(home.Dir())
+func syncOf() (*syncsetup.Sync, error) { return syncFrom(syncsetup.Open) }
+
+// syncOfFirst is syncOf for the app's own launch, where a machine with a relay
+// and no identity is the first machine and makes one.
+func syncOfFirst() (*syncsetup.Sync, error) { return syncFrom(syncsetup.OpenFirst) }
+
+func syncFrom(open func(string) (*syncsetup.Sync, bool, error)) (*syncsetup.Sync, error) {
+	s, ok, err := open(home.Dir())
 	if err != nil {
 		return nil, err
 	}

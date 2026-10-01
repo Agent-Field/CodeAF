@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 )
 
 // MaxWatchers is how many watch sockets one identity may hold at once. An
@@ -68,6 +70,8 @@ type Feed struct {
 	// holders indexes the sockets that name a hold, by what they name, so the
 	// evidence for one lease is found without scanning every socket.
 	holders map[holdKey]map[*Sub]struct{}
+	// pres is which devices hold a socket, and the event frames about it.
+	pres *presence
 }
 
 // holdKey is what a socket's hold is matched against: the device that opened
@@ -82,7 +86,7 @@ type holdKey struct {
 func NewFeed(clock func() time.Time) *Feed {
 	f := &Feed{
 		cap: MaxWatchers, subs: map[*Sub]struct{}{}, closed: make(chan struct{}),
-		clock: clock, holders: map[holdKey]map[*Sub]struct{}{},
+		clock: clock, holders: map[holdKey]map[*Sub]struct{}{}, pres: newPresence(clock),
 	}
 	f.cur.Store(&Status{Stopped: map[string]bool{}})
 	return f
@@ -107,6 +111,7 @@ func (f *Feed) Publish(st Status) {
 	if st.Version < f.cur.Load().Version {
 		return
 	}
+	f.pres.revokedSince(f.cur.Load().Stopped, st.Stopped)
 	f.cur.Store(&st)
 	for s := range f.subs {
 		s.wake()
@@ -122,17 +127,26 @@ func (f *Feed) Close() {
 	default:
 		close(f.closed)
 	}
+	f.pres.stop()
 }
 
 // Subscribe adds a watcher opened by device that names holds, or refuses with
 // ErrTooManyWatchers at the cap. Its accept time is its first sign of life.
 func (f *Feed) Subscribe(device string, holds []Hold) (*Sub, error) {
+	s, err := f.subscribe(device, holds)
+	if err == nil {
+		f.pres.opened(s)
+	}
+	return s, err
+}
+
+func (f *Feed) subscribe(device string, holds []Hold) (*Sub, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.subs) >= f.cap {
 		return nil, ErrTooManyWatchers
 	}
-	s := &Sub{f: f, poke: make(chan struct{}, 1), keys: keysOf(device, holds)}
+	s := &Sub{f: f, poke: make(chan struct{}, 1), device: device, events: make(chan dirwatch.Event, eventBuffer), keys: keysOf(device, holds)}
 	s.alive.Store(f.clock().UnixMilli())
 	f.subs[s] = struct{}{}
 	for _, k := range s.keys {
@@ -199,8 +213,11 @@ type Sub struct {
 	sent    uint64
 	started bool
 
-	keys  []holdKey
-	alive atomic.Int64 // unix ms of the last sign of life
+	device string
+	shut   atomic.Bool
+	events chan dirwatch.Event // event frames, once Events was called
+	keys   []holdKey
+	alive  atomic.Int64 // unix ms of the last sign of life
 }
 
 // Ping records a sign of life at the directory's time. It changes no version
@@ -235,6 +252,14 @@ func (s *Sub) Next(ctx context.Context) (Status, error) {
 
 // Close removes the watcher, which frees its place under the cap at once.
 func (s *Sub) Close() {
+	if !s.shut.CompareAndSwap(false, true) {
+		return
+	}
+	s.leave()
+	s.f.pres.closed(s)
+}
+
+func (s *Sub) leave() {
 	s.f.mu.Lock()
 	defer s.f.mu.Unlock()
 	delete(s.f.subs, s)

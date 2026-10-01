@@ -225,7 +225,7 @@ func openWhenReady(ctx context.Context, reach Reach) (*Tunnel, error) {
 		if err == nil {
 			return tunnel, nil
 		}
-		if !strings.Contains(err.Error(), "not connected to the relay") || time.Now().After(deadline) {
+		if !strings.Contains(err.Error(), "not connected to the service") || time.Now().After(deadline) {
 			return nil, err
 		}
 		time.Sleep(10 * time.Millisecond)

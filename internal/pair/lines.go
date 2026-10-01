@@ -1,5 +1,11 @@
 package pair
 
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
 // The sentences of a pairing that are not errors, written once so that the
 // terminal and the chat say the same thing in the same words. A person learns
 // one pairing: the code shape, the three words and the y or n are the same on
@@ -52,3 +58,62 @@ func (j Joined) Sentence() string {
 
 // PairedChatsLine is what the sharing device says when it worked.
 func PairedChatsLine(label string) string { return "paired: " + label }
+
+// ── joining by link ──────────────────────────────────────────────────────────
+
+// Invite is what the new device shows while it waits.
+type Invite struct {
+	Ref       LinkRef
+	Check     string
+	ExpiresIn time.Duration
+	// Via is the sync address the approving device must use when it is not the
+	// default one; empty otherwise.
+	Via string
+}
+
+// InviteLines is what the new device prints: the link, the typed form, the
+// check number to compare, and how long it is good for.
+func InviteLines(in Invite) string {
+	var b strings.Builder
+	b.WriteString("Approve this device from one you already use. Open this link there:\n")
+	fmt.Fprintf(&b, "  %s\n\n", in.Ref.URL())
+	b.WriteString("Or, on a computer with codeaf, run:\n")
+	fmt.Fprintf(&b, "  %s\n\n", ApproveCommand(in.Ref, in.Via))
+	fmt.Fprintf(&b, "Check number: %s (the other device shows the same number)\n", in.Check)
+	fmt.Fprintf(&b, "Waiting for approval; good for %d minutes. Press ctrl+c to cancel.", int(in.ExpiresIn/time.Minute))
+	return b.String()
+}
+
+// ApproveCommand is the typed form of an approval.
+func ApproveCommand(ref LinkRef, via string) string {
+	cmd := "codeaf pair approve " + ref.Token()
+	if via != "" {
+		cmd += " --via " + via
+	}
+	return cmd
+}
+
+// JoinedFleetLine is what the new device says when it is in.
+func JoinedFleetLine(workspaces int) string {
+	if workspaces == 1 {
+		return "Paired - 1 workspace available."
+	}
+	return fmt.Sprintf("Paired - %d workspaces available.", workspaces)
+}
+
+// WantsToJoinLine tells the approving person which device is asking.
+func WantsToJoinLine(name, platform string) string {
+	return fmt.Sprintf("%q (%s) wants to join your devices.", name, platform)
+}
+
+// CheckQuestion is what the approving person is asked: the number must match
+// the one the new device shows.
+func CheckQuestion(check string) string {
+	return "Does that device show the check number " + check + "?"
+}
+
+// ApprovedLine is what the approving device says when it let a device in.
+func ApprovedLine(name string) string { return name + " joined your devices." }
+
+// DeclinedLine is what the approving device says after a no.
+const DeclinedLine = "Request declined."

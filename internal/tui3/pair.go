@@ -163,6 +163,8 @@ type pairPanel struct {
 	// ok says the pairing worked, which the first-run screen needs to dress
 	// the last line as news or as trouble.
 	ok bool
+	// card is a screen hosted in the panel instead of a pairing (approve.go).
+	card panelCard
 }
 
 // close ends whatever is running, which is what deletes a code that is no
@@ -200,6 +202,9 @@ func (p *pairPanel) answer(yes bool) {
 
 // rows is everything the panel says, wrapped to width and dressed.
 func (p *pairPanel) rows(width int, now time.Time, pal palette) []string {
+	if p.card != nil {
+		return p.card.rows(width, now, pal)
+	}
 	var out []string
 	say := func(text string, dress func(string) string) {
 		for _, line := range wrap(text, max(width, 4)) {
@@ -259,6 +264,9 @@ func (p *pairPanel) draw(width, n int, now time.Time, pal palette) []string {
 
 // hint is the keys the panel takes right now, for the slot under the box.
 func (p *pairPanel) hint() string {
+	if p.card != nil {
+		return p.card.hint()
+	}
 	switch {
 	case p.ask != nil:
 		return pairAskKeys
@@ -274,6 +282,9 @@ func (p *pairPanel) hint() string {
 // and not started twice: the process-wide guard in internal/pair would refuse
 // the second, but the person's answer should be the panel they already had.
 func (a *app) runPair(typed string) tea.Cmd {
+	if isLinkShape(typed) {
+		return a.openApprove(typed)
+	}
 	door := a.pairing
 	if door == nil {
 		a.note(pairUnavailableWord)
@@ -353,6 +364,9 @@ func (a *app) tookPair(msg pairMsg) tea.Cmd {
 // device in. Otherwise esc, or enter once it is over, puts the panel away.
 func (a *app) pairKey(msg tea.KeyPressMsg) tea.Cmd {
 	p := &a.pair
+	if p.card != nil {
+		return a.cardKey(msg)
+	}
 	switch key := msg.String(); {
 	case p.ask != nil && key == "y":
 		p.answer(true)

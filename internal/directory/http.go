@@ -87,6 +87,18 @@ func (h *HTTP) Archive(ctx context.Context, id string) error {
 	return h.do(ctx, http.MethodPost, cellPath(id, "archive"), nil, nil)
 }
 
+func (h *HTTP) ApproveRequest(ctx context.Context, code string, a Approval) error {
+	return h.do(ctx, http.MethodPost, requestPath(code, "approve"), a, nil)
+}
+
+func (h *HTTP) DenyRequest(ctx context.Context, code string) error {
+	return h.do(ctx, http.MethodPost, requestPath(code, "deny"), nil, nil)
+}
+
+func requestPath(code, verb string) string {
+	return dirBase + "/requests/" + url.PathEscape(code) + "/" + verb
+}
+
 func (h *HTTP) Rotate(ctx context.Context, req RotationReq) (v RotationView, err error) {
 	return v, h.do(ctx, http.MethodPost, rotationPath, req, &v)
 }
@@ -108,7 +120,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, method, h.base+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, wireauth.Endpoint(h.base, path), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +135,9 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	}
 	if out == nil {
 		return resp.Header, nil
+	}
+	if resp.StatusCode == http.StatusNoContent {
+		return resp.Header, ErrStillPending // a long poll that ended with nothing new
 	}
 	return resp.Header, json.NewDecoder(resp.Body).Decode(out)
 }
@@ -141,7 +156,7 @@ func refusal(resp *http.Response) error {
 	var b errBody
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBody))
 	if json.Unmarshal(raw, &b) == nil {
-		if err := errorOf(b.Err); err != nil {
+		if err := errorOf(b.Err, resp.StatusCode); err != nil {
 			return wireauth.Wait(err, resp.Header)
 		}
 	}

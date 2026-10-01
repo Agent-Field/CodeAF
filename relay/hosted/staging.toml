@@ -1,4 +1,5 @@
 # Staging deployment, on workers.dev only: no route, no domain, no observability.
+# BASE_PATH is empty here: staging owns its whole workers.dev hostname.
 # Run from a machine logged in to the account: `wrangler r2 bucket create caf-relay-staging-frames`
 # once, then `wrangler deploy -c staging.toml`. It owns only what is named here.
 name = "caf-relay-staging"
@@ -25,9 +26,21 @@ class_name = "NewcomerGate"
 name = "MAILBOX"
 class_name = "Mailbox"
 
+[[durable_objects.bindings]]
+name = "LINK_GATE"
+class_name = "LinkGate"
+
+[[durable_objects.bindings]]
+name = "LINK_REQUEST"
+class_name = "LinkRequest"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LinkGate", "LinkRequest"]
 
 [vars]
 LEASE_POLICY = "amended"

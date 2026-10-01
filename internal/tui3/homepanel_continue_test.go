@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 )
 
 // fakeTaker is a [Taker] that records what it was asked and answers as told.
@@ -137,7 +138,7 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 	drain(t, a, a.openHome())
 	a.machines = continueRows
 	a.taker = &fakeTaker{
-		taken: Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk"},
+		taken: Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk", Elapsed: 3200 * time.Millisecond},
 		on: func(cell string) {
 			lab.session("project", cell, "Port the picker", workspace, time.Now())
 		},
@@ -148,8 +149,9 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 	if a.at(pageHome) {
 		t.Fatalf("a takeover that worked left the person on home:\n%s", homeText(a))
 	}
-	if got, want := plain(lastNote(t, a)), chatlist.KeptEdits(2, "desk"); got != want {
-		t.Errorf("the kept-edits sentence is %q, want %q", got, want)
+	want := chatlist.Moved("", 3200*time.Millisecond, false) + " " + chatlist.KeptEdits(2, "desk")
+	if got := plain(lastNote(t, a)); got != want {
+		t.Errorf("the takeover sentence is %q, want %q", got, want)
 	}
 }
 
@@ -343,5 +345,38 @@ func TestTakenSaidJoinsWhatTheTakeoverDid(t *testing.T) {
 	}
 	if got := takenSaid(Taken{}); got != "" {
 		t.Errorf("a takeover that did nothing said %q", got)
+	}
+}
+
+// TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat is the seam the
+// card depends on: it is raised when the takeover ends, not when home happens to
+// list the chat by then.
+func TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		listed bool
+	}{{"listed", true}, {"not listed", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			lab := newHomeLab(t)
+			workspace := lab.workspace("project")
+			mine := lab.session("project", "0000000000000001", "Mine", workspace, time.Now())
+			a := lab.app(mine)
+			a.width, a.height = 200, 70
+			drain(t, a, a.openHome())
+			a.machines = continueRows
+			ft := &fakeTaker{taken: Taken{Resume: machine.Resume{From: "desk", Now: workspace, Uncommitted: []string{"README.md"}}}}
+			ft.on = func(cell string) {
+				id := cell
+				if !tc.listed {
+					id = "0000000000000009" // home lists this one; the take names another
+				}
+				ft.taken.Transcript = lab.session("project", id, "Port the picker", workspace, time.Now())
+			}
+			a.taker = ft
+			drain(t, a, a.askMachines())
+			standOn(t, a, "c-off")
+			confirm(t, a)
+			askedCard(t, a)
+		})
 	}
 }
