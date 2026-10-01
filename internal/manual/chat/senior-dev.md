@@ -267,17 +267,13 @@ handed in nothing, stopped on a limit, or broke — and acts on it:
 - **broke**: the chat hands it back once if the cause looks passing (a network or model
   service failure), and otherwise tells you what broke.
 
+## How codeaf fixes senior-dev's work — hand it back, trivial gaps, retries spent
+
 For the chat, handing the work back to senior-dev counts as fixing it itself, and is its
 first choice for anything beyond a line or two: on that turn senior-dev carries on from its
 own branch. It edits the branch in a worktree of its own only for a trivial gap. Once
 senior-dev can be sent back no more, the chat tells the person what still does not work,
 where the work is, and what it would try next.
-
-If the project's checks passed but the model never called `submit`, the ending says plainly
-`the checks passed, but nothing was submitted`. There is no resume or submit command for an
-ended run. The ending names the kept tree and gives the one command to start senior-dev in
-that tree and hand it in: `codeaf senior-dev --dir <kept-tree> -- "submit the existing work"`.
-The run still ends incomplete, with exit 2, because passing checks are not a submission.
 
 **codeaf sends senior-dev back at most twice on its own** for one piece of work. A third
 hand-off it tries, or one after a limit, is refused
@@ -286,6 +282,14 @@ own: tell the person where the work stands and let them decide`), and you decide
 hand-off you ask for yourself is yours, and starts the count again. This count holds
 through wake turns and a reopened conversation until you send a message. Each hand-off still
 shows its card, with the same countdown as any other, so you can stop one.
+
+## senior-dev's checks passed but nothing was submitted — the kept tree, submit the existing work
+
+If the project's checks passed but the model never called `submit`, the ending says plainly
+`the checks passed, but nothing was submitted`. There is no resume or submit command for an
+ended run. The ending names the kept tree and gives the one command to start senior-dev in
+that tree and hand it in: `codeaf senior-dev --dir <kept-tree> -- "submit the existing work"`.
+The run still ends incomplete, with exit 2, because passing checks are not a submission.
 
 ## What does senior-dev's ending card say — badge, quiet card, ctrl+o output
 
@@ -362,8 +366,8 @@ into your checkout. The remote name must start with a letter or digit and contai
 letters, digits, `.`, `_` and `-`. Any other upstream keeps the merge advice as before.
 The chat never pushes on its own: it offers, and pushes only when you ask in a later message.
 **A branch whose work passed is
-never written again**: the next hand-off before you speak — the rest of the work, or the
-next piece — is cut on a new branch from its tip, and says `on a new branch <new> cut from
+never written again**: the next hand-off before you speak — the rest of this work — is
+cut on a new branch from its tip, and says `on a new branch <new> cut from
 <branch>, whose work passed and which it leaves as it is`; its ending says its branch is
 `on top of <branch>, whose work it holds too`. A hand-off made after you have spoken starts
 fresh, on a new branch cut from your folder as it stands: check an earlier run's branch out
@@ -568,16 +572,6 @@ touched, and `git -C '<folder>' merge <branch>` brings it in``. Merge it when yo
 or ask the chat to; a branch published under its own name is pushed instead (see "A run
 codeaf sends back").
 
-The finishing commit's model credit names only models recorded as answering a call in
-that run, including a model that answered in place of the one asked for. If no model
-answered, there is no `Assisted-by` trailer. The attribution setting still decides
-whether answered model names are shown.
-If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
-than your Git identity. The `Assisted-by` credit is added only to a finishing
-commit codeaf makes when there is something left to stage, and that holds for a run you
-stopped and for one whose codeaf closed under it. It never amends, rebases or rewrites a
-commit.
-
 The ending keeps two witnesses apart: what senior-dev's model said it did
 (`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
 and tests (`senior-dev observed: …`). Read the second for "did it work".
@@ -586,6 +580,18 @@ and tests (`senior-dev observed: …`). Read the second for "did it work".
 branch <branch> in <folder> as it stops` at once. **A run that changed nothing** says `it changed
 nothing; its branch <branch> in <folder> is kept where it began, and your checkout was not
 touched`.
+
+## Who gets credit for senior-dev's finishing commit — answered models, no history rewrite
+
+The finishing commit codeaf makes when senior-dev ends names only models recorded as
+answering a call in that run, including a model that answered in place of the one asked
+for. If no model answered, there is no `Assisted-by` trailer. The attribution setting
+still decides whether answered model names are shown.
+If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
+than your Git identity. The `Assisted-by` credit is added only to a finishing
+commit codeaf makes when there is something left to stage, and that holds for a run you
+stopped and for one whose codeaf closed under it. It never amends, rebases or rewrites a
+commit.
 
 ## Does senior-dev commit or push — no wip commits, who writes the commit message
 
