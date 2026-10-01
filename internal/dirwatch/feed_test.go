@@ -293,6 +293,9 @@ func TestARevokedOrRotatedSocketIsNotReconnected(t *testing.T) {
 		if r.sub.State().Up {
 			t.Fatalf("%v left the socket up", refusal)
 		}
+		if got := r.sub.State().Refused; got != refusal {
+			t.Fatalf("Refused = %v, want %v", got, refusal)
+		}
 		r.noDial()
 	}
 }
@@ -302,6 +305,9 @@ func TestADialRefusedAsRevokedStopsTheFeed(t *testing.T) {
 	r.dialAt()
 	<-r.feed.done
 	r.noDial()
+	if r.sub.State().Refused != ErrRevoked {
+		t.Fatal("a dial refused as revoked did not reach the followers")
+	}
 }
 
 func TestAQuietSocketIsPingedAndStaysUpWhenItAnswers(t *testing.T) {
