@@ -211,6 +211,15 @@ func (c *completion) sync(e *editor) {
 		return
 	}
 	c.narrow(at, query, false)
+	// A MULTI-WORD SEARCH THAT MATCHES NOTHING IS A SENTENCE, and the list
+	// closes rather than saying `no matches` under it: the words after a
+	// chosen `@side-chat` are the message, not a search for it, and a list
+	// that stayed up over them would be a list over every sentence that
+	// mentions somebody. One word that matches nothing still says so, exactly
+	// as it did before spaces were allowed.
+	if strings.Contains(strings.TrimSpace(query), " ") && !c.anyHits() {
+		c.open = false
+	}
 }
 
 // narrow is the half sync and [completion.openArg] share: point the list at a
@@ -275,14 +284,37 @@ func argToken(value []rune, cursor int) (int, string, bool) {
 // middle of a word (an email address, a Go doc link) is not one — the run has
 // to start with it.
 func atToken(value []rune, cursor int) (int, string, bool) {
-	start := cursor
-	for start > 0 && value[start-1] != ' ' && value[start-1] != '\n' {
-		start--
+	spaces := 0
+	for start := cursor - 1; start >= 0; start-- {
+		switch r := value[start]; {
+		case r == '\n':
+			return 0, "", false
+		case r == ' ':
+			// THE WORDS AFTER THE `@` MAY HAVE SPACES IN THEM, up to
+			// [atTokenSpaces]: `@chat:who is` finds `who is kim jong il`, and
+			// `@internal tui3` finds internal/tui3. Past that many it is a
+			// sentence, not a search.
+			spaces++
+			if spaces > atTokenSpaces {
+				return 0, "", false
+			}
+		case r == '@' && (start == 0 || value[start-1] == ' ' || value[start-1] == '\n'):
+			// The nearest `@` that BEGINS a word: one in the middle of an email
+			// address or a Go doc link never opens the list.
+			return start, string(value[start+1 : cursor]), true
+		}
 	}
-	if start >= cursor || value[start] != '@' {
-		return 0, "", false
-	}
-	return start, string(value[start+1 : cursor]), true
+	return 0, "", false
+}
+
+// atTokenSpaces is how many spaces the words after an `@` may hold before they
+// stop being a search. Three is a title's worth — `who is kim jong` — and it
+// is also what bounds the walk back from the caret through a long message.
+const atTokenSpaces = 3
+
+// anyHits reports whether the last ranking kept a single row of any section.
+func (c *completion) anyHits() bool {
+	return len(c.hits) > 0 || len(c.teamHits) > 0 || len(c.chatHits) > 0 || len(c.taskHits) > 0
 }
 
 // rank scores every path, team, conversation and task against the query, keeps
@@ -391,9 +423,33 @@ const (
 // ranks a hair below the path so that a query which is genuinely a path prefix
 // leads.
 func pathScore(path, needle string) (int, bool) {
-	if needle == "" {
+	words := strings.Fields(needle)
+	switch len(words) {
+	case 0:
 		return len(path), true
+	case 1:
+		return wordScore(path, words[0])
 	}
+	// EVERY WORD MUST MATCH, each on its own terms and in any order, and the
+	// scores add: `who is` finds `who is kim jong il` by substring twice, and
+	// `tui3 app` finds internal/tui3/app.go with the words the other way round
+	// from the path. One word that matches nothing fails the whole needle, so
+	// a sentence typed after a mention does not keep matching by the letters
+	// it happens to share with a title ([completion.sync] closes on that).
+	total := 0
+	for _, word := range words {
+		score, ok := wordScore(path, word)
+		if !ok {
+			return 0, false
+		}
+		total += score
+	}
+	return total, true
+}
+
+// wordScore is [pathScore] for one word: prefix, then substring, then the
+// letters in order.
+func wordScore(path, needle string) (int, bool) {
 	lower := strings.ToLower(path)
 	base := lower
 	if cut := strings.LastIndexByte(lower, '/'); cut >= 0 {

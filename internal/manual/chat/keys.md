@@ -1545,8 +1545,13 @@ marked `folder` on the right the way a picture row is marked `img`. Choosing one
 its path into your sentence exactly as choosing a file does. It does not choose that
 folder as a place; `/folder` is what does that.
 
-The token is found by walking back from the caret to a space, a newline, or the start
-of the message; that run must **begin** with `@`. So an `@` in the middle of a word —
+The token is found by walking back from the caret to the nearest `@` that begins a
+word, over at most three spaces, never past a newline. So the words after the `@` may
+have spaces in them — `@chat:who is` finds `who is kim jong il`, `@internal tui3` finds
+`internal/tui3/` — and every word must match, in any order. A search of several words
+that matches nothing closes the list, because that is a sentence after a mention and
+not a search; one word that matches nothing still says `no matches`. An `@` in the
+middle of a word —
 an email address, a Go doc link — never opens the list.
 
 **What it walks:** the conversation's workspace, or **your own machine's** working

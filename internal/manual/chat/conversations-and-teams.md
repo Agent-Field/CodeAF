@@ -331,7 +331,13 @@ background under the pointer and a one-line hint (`only teams · click`). A pres
 types `@team:`, `@chat:` or `@file:`, and the list keeps only that section. Typing
 filters every section that is still showing. Matching is by prefix, then substring,
 then the letters in order — `cloudfl`, `worker` and `cfwd` all find `Cloudflare worker
-deploy` — against the title, the handle and the slug, never the transcript.
+deploy` — against the title, the handle and the slug, never the transcript. The words
+may have spaces in them, up to three: `@chat:who is` finds `who is kim jong il`, and
+`deploy worker` finds it too, because every word must match, in any order. That is the
+same rule on every section — `@team:har bor`, `@file:tui3 app` — and on every box: a
+conversation's, home's and the new-chat page's. Several words that match nothing close
+the list, since that is a sentence after a mention; one word that matches nothing says
+`no conversation matches`.
 
 The bare `@` keeps eight teams and eight conversations beside the tasks and files;
 `@chat:` keeps every conversation on the list (thirty-two at most) and scrolls.

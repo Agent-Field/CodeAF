@@ -8,6 +8,7 @@ invalidates:
   - "`@chat:` and `@team:` kept the first eight rows of their section and showed no sign of more. A prefixed list keeps up to thirty-two and scrolls; the bare `@` still keeps eight per section."
   - "The manual did not say which conversations the `@` list holds. It does: every open tab except the one you are in, then the twenty most recent in this project; older ones and other projects' are reached with `/resume`."
   - "On the new-chat page (`+`), the `@` list left off the conversation the window came from, as though you were typing inside it, so `@chat:kim` beside a lit `tell me about kim jung il` said `no conversation matches`. The start page leaves no conversation off."
+  - "The words after an `@` could not hold a space: `@chat:who is` closed the list that `@chat:who` had opened. The token walks back over up to three spaces, every word must match in any order, on teams, conversations and files alike, and a multi-word search that matches nothing closes the list."
   - "Home's `@` list offered files alone, and `@chat:` typed there answered `no file matches`. Home's list has the same teams and conversations sections and the same `@team:`, `@chat:` and `@file:` prefixes as a conversation's box, and leaves no conversation off."
 ---
 
