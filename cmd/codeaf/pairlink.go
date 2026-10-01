@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -144,6 +145,9 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return d.decline(ctx, who, asking)
 	}
 	if err := who.Approve(ctx, asking); err != nil {
+		return err
+	}
+	if err := identity.EndSolo(home.Dir()); err != nil {
 		return err
 	}
 	d.term.say(pair.ApprovedLine(asking.Name))

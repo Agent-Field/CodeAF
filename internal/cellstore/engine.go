@@ -89,7 +89,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: %w", err)
 	}
-	if err := noteLeftOut(c, screened, info.Calls); err != nil {
+	if err := noteLeftOut(c, e.tree(c), screened, info.Calls); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record what was left out: %w", err)
 	}
 	receipt := newReceipt(info, transcriptRange(c, head))
