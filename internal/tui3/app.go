@@ -877,11 +877,13 @@ type (
 )
 
 type app struct {
-	hostReplayLoading bool
-	hostReplayPending []followingMsg
-	hostReplayWaiting bool
-	hostCalls         int
-	hostDeferred      []func() tea.Cmd
+	conversationRequest uint64
+	conversationOpening bool
+	hostReplayLoading   bool
+	hostReplayPending   []followingMsg
+	hostReplayWaiting   bool
+	hostCalls           int
+	hostDeferred        []func() tea.Cmd
 	// telemetryNotice is the usage notice still owed to the person, drawn on the
 	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
 	// is owed or once the greeting that showed it has gone.
@@ -3710,6 +3712,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
+		// A repeated enter keeps the pending conversation; ctrl+enter does
+		// the same only on the start page, where it is another enter spelling.
+		// Any other key cancels the transition before editing or navigating.
+		if a.conversationOpening {
+			if msg.String() == "enter" || (a.startingChat() && msg.String() == "ctrl+enter") {
+				return a, nil
+			}
+			a.cancelConversationOpening()
+		}
 		a.sawAPerson()
 		a.stirred()
 		// AND THE HAND IS STAMPED HERE, because this is the only line every
@@ -3854,6 +3865,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.PasteMsg:
+		if a.conversationOpening {
+			a.cancelConversationOpening()
+		}
 		a.stirred()
 		// Bracketed paste, whole, in one message — the parser coalesced the keys
 		// between the brackets for us, so the newlines inside it are text and not
@@ -4275,6 +4289,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.conversationOpening {
+			a.cancelConversationOpening()
+		}
 		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
@@ -8047,8 +8064,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// The bool is for a caller with a sentence to send afterwards; /new has
 		// none — it is the whole of what was asked for — and the refusal is
 		// already a note in the conversation it was typed in.
-		cmd, _ := a.renew()
-		return cmd
+		return a.renewLater(a.note, nil)
 
 	default:
 		// A DROPPED FILE IS NOT AN UNKNOWN COMMAND. A terminal that delivers a
@@ -8301,6 +8317,12 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		say("new session failed: " + err.Error())
 		return nil, false
 	}
+	return a.finishRenew(conv, whole, replacing), true
+}
+
+// finishRenew commits a prepared conversation on the update loop. Opening it
+// may happen off-loop; no draft is detached until that opening succeeds.
+func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 	// THE DOOR IS ASKED BEFORE ANYTHING IS PUT DOWN, which is [app.openSession]'s
 	// own repair: a /new that failed used to leave the surface holding a closed
 	// session with nothing to fall back on, and now a refusal costs nothing at
@@ -8314,10 +8336,18 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		// the engine swapped to, so this close would land on the conversation
 		// /new had just made ([Options.SharedAgent]).
 		if leaving != nil && !a.shared {
-			leaving.InterruptFor(session.StopByLeaving)
-			if err := leaving.Close(); err != nil {
-				a.note("close failed: " + err.Error())
-			}
+			// Retiring the unused conversation is also a wire operation. It
+			// must not move the opening wait back onto the completion frame.
+			stowed = a.offLoop(func() func(bool) tea.Cmd {
+				leaving.InterruptFor(session.StopByLeaving)
+				err := leaving.Close()
+				return func(here bool) tea.Cmd {
+					if here && err != nil {
+						a.note("close failed: " + err.Error())
+					}
+					return nil
+				}
+			})
 		}
 	} else {
 		// AND THE CONVERSATION GOES ON RUNNING, in the keeper (keeper.go). Its
@@ -8379,7 +8409,7 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// A conversation started while a team is shown is one of that team
 	// (teams.go's [app.teamJoinFront]).
 	a.teamJoinFront()
-	return cmd, true
+	return cmd
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────

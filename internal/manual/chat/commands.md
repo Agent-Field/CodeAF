@@ -420,6 +420,11 @@ The keys page has the whole rule under "Quitting codeaf".
 `/new` (or `/clear`, `/clean`, `/reset`) opens a fresh conversation on the same config,
 with a fresh agent and a fresh session file.
 
+On a current engine connection, opening runs in the background. The screen says
+`opening conversation… · esc cancels` while it prepares the conversation. Repeated
+Enter does not create another one. Esc, typing, or clicking cancels the pending
+transition; the existing conversation and unsent draft stay available.
+
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
 message box goes back. An untouched new conversation has no tab. A draft or first
@@ -1298,6 +1303,12 @@ the command list*). The box says `› type to search or start something new` and
 names the available draft controls:
 `alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
 keys still work, without hints on this row.
+
+Starting or reopening a conversation from home leaves the screen responsive while
+it opens. Your message is sent only after that conversation is ready. If opening
+fails, home keeps your draft and shows the reason. Editing or navigating while it
+opens cancels that pending transition, so a late reply cannot move you elsewhere
+or send the earlier draft.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including

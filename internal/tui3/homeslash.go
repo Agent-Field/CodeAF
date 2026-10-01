@@ -330,13 +330,12 @@ func (a *app) homeSlash(line string) tea.Cmd {
 			h.say(startDraftUnownedWord, "")
 			return nil
 		}
-		renewed, started := a.renewRefusing(func(text string) { h.say(text, "") })
-		if started {
+		return a.renewLater(func(text string) { h.say(text, "") }, func() tea.Cmd {
 			// The old conversation keeps its draft even when /new is asked on Home.
 			a.putComposer(composerState{})
 			h.say(homeFreshBehindWord, "")
-		}
-		return renewed
+			return nil
+		})
 
 	case fateNeedsChat:
 		// THE SAME DOOR `enter` TAKES, and it has to be: `/compact` typed at home

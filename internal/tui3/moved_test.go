@@ -40,7 +40,7 @@ func TestEnterOnAnEngineHeldRowOpensItAndNeverArms(t *testing.T) {
 	}
 	a.openHome()
 	a.home.point(theirs)
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 
 	if asked != where {
 		t.Fatalf("the engine was asked about %q, want the row's own project %q", asked, where)
@@ -128,7 +128,7 @@ func TestAnEngineThatCannotOpenTheRowFallsBackToAsking(t *testing.T) {
 	a.open = func(string, string) (Conversation, error) { return Conversation{}, session.ErrSessionLocked }
 	a.openHome()
 	a.home.point(theirs)
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 
 	if a.home.armed != theirs {
 		t.Fatalf("a refused open did not fall back to asking · armed=%q", a.home.armed)

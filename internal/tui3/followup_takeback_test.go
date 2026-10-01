@@ -172,6 +172,44 @@ func TestCtrlEnterStartsTheChatOnTheStartPage(t *testing.T) {
 	}
 }
 
+// Repeating the start page's send chord while its door is held must reuse the
+// first request, just as plain enter does. Channels pin the ordering without sleeps.
+func TestRepeatedCtrlEnterWaitsForTheOpeningConversation(t *testing.T) {
+	a := newStartLab(t).app()
+	openStart(t, a)
+	a.input.setText("the first message")
+	entered, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	next := &fakeAgent{model: "m"}
+	a.start = func(string) (Conversation, error) {
+		select {
+		case <-entered:
+		default:
+			close(entered)
+		}
+		<-release
+		return Conversation{Agent: next, SessionFile: "/next/transcript.jsonl"}, nil
+	}
+	_, cmd := a.Update(key("ctrl+enter"))
+	<-entered
+	request, front := a.conversationRequest, a.frontGen
+	_, _ = a.Update(key("ctrl+enter"))
+	if !a.conversationOpening || a.conversationRequest != request || a.frontGen != front {
+		t.Fatalf("repeated ctrl+enter replaced the pending request: opening=%v request=%d want=%d front=%d want=%d", a.conversationOpening, a.conversationRequest, request, a.frontGen, front)
+	}
+	close(release)
+	spend(t, a, cmd)
+	if a.file != "/next/transcript.jsonl" || len(next.sent) != 1 || next.sent[0] != "the first message" || a.at(pageHome) || a.startingChat() {
+		t.Fatalf("the original opening did not send exactly once: file=%q sent=%v", a.file, next.sent)
+	}
+}
+
 func TestASecondClickWhileTakeBackWaitsAsksNothing(t *testing.T) {
 	_, a := queuedConversation(t, "queued words")
 	first, ok := a.recallQueuedAt(0)
@@ -262,6 +300,60 @@ func TestTakenBackWordsDoNotCrossConversations(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("queued words were not remembered for history")
+	}
+}
+
+// The older guard test changes the counter directly. This one commits home's
+// asynchronous open, so it pins when that counter and the door's "here" change.
+func TestTakeBackFollowsHomesAsynchronousConversationReplacement(t *testing.T) {
+	for _, beforeCommit := range []bool{true, false} {
+		name := "after completion"
+		if beforeCommit {
+			name = "before completion"
+		}
+		t.Run(name, func(t *testing.T) {
+			agent, a := queuedConversation(t, "old conversation's queued words")
+			dir := t.TempDir()
+			a.file, a.workspace = filepath.Join(dir, "old", "transcript.jsonl"), dir
+			a.turn = 1
+			t.Cleanup(a.doorLine.close)
+			recall, took := a.recallQueuedAt(0)
+			if !took || recall == nil {
+				t.Fatal("the old conversation did not offer take-back")
+			}
+			answer := recall()
+			if len(agent.followStreams) != 0 {
+				t.Fatal("the session did not remove the queued message")
+			}
+			a.openHome()
+			next := &fakeAgent{model: "m"}
+			line := homeLine{row: session.SessionRow{ProjectDir: dir, Transcript: filepath.Join(dir, "new", "transcript.jsonl")}}
+			a.open = func(workspace, file string) (Conversation, error) {
+				return Conversation{Agent: next, Workspace: workspace, SessionFile: file}, nil
+			}
+			front := a.frontGen
+			opening := a.homeOpenDoor(line)
+			if !a.conversationOpening || a.frontGen != front {
+				t.Fatal("preparing the conversation changed the front before its completion")
+			}
+			if beforeCommit {
+				_, _ = a.Update(answer)
+				if a.input.String() != "old conversation's queued words" {
+					t.Fatalf("the same conversation lost its take-back while opening: %q", a.input.String())
+				}
+			}
+			spend(t, a, opening)
+			if a.file != line.row.Transcript || a.agent != next || a.frontGen != front+1 {
+				t.Fatalf("home did not replace the conversation through takeUp: file=%q front=%d want=%d", a.file, a.frontGen, front+1)
+			}
+			a.input.setText("new conversation draft")
+			if !beforeCommit {
+				_, _ = a.Update(answer)
+			}
+			if a.input.String() != "new conversation draft" || len(a.followRecalls) != 0 {
+				t.Fatalf("the old take-back crossed conversations or remained pending: draft=%q pending=%d", a.input.String(), len(a.followRecalls))
+			}
+		})
 	}
 }
 
