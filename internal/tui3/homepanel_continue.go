@@ -279,7 +279,7 @@ func (a *app) lostRace(row chatlist.Row) tea.Cmd {
 // chat of its own would keep showing `nothing here yet` over the rows that just
 // arrived.
 func (a *app) rebuildMachines() {
-	a.home.others = a.machineRead
+	a.home.others = a.othersNow()
 	if a.home.gridOn() || a.home.phone {
 		a.home.build()
 	}
@@ -442,4 +442,11 @@ func (a *app) tookBranch(msg homeBranchMsg) tea.Cmd {
 		a.home.say(branchFails, "")
 	}
 	return a.askMachines()
+}
+
+// othersNow is the held reading with presence as the feed says it now.
+func (a *app) othersNow() machineReading {
+	reading := a.machineRead
+	reading.away = a.resumeState().away
+	return reading
 }
