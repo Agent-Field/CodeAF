@@ -63,9 +63,9 @@ type aside struct {
 	// surface yet. It follows the sidecar so returning mid-send cannot send the
 	// same message again when the stream closes.
 	parkSending bool
-	// parkNotes are failures from sends attempted while this conversation was
-	// held. They land in this conversation when it comes forward rather than in
-	// whichever unrelated conversation happened to be on screen at the time.
+	// parkNotes are receipts from held sends and memory commands. They land in
+	// this conversation when it comes forward rather than in whichever unrelated
+	// conversation happened to be on screen at the time.
 	parkNotes []string
 	// draftCursor is optional for older sidecars assembled without a caret.
 	draftCursor *int

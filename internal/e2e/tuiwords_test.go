@@ -581,6 +581,17 @@ var tuiWords = map[string]tuiWord{
 			"chat by this — and its one string literal stands in internal/tui3/names.go beside the same " +
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
 	},
+	"tasksEnterConversationWord": {
+		screen: "enter go to that conversation",
+		why: "the sessions place's foot on a conversation, including an untouched one with no task family. " +
+			"It confirms that /history opened before the task-room driver walks Down to a row below the fold",
+	},
+	"tasksUnusedConversationSelectedWord": {
+		screen: "enter go to that conversation · type to filter",
+		source: "enter go to that conversation",
+		why: "the conversation foot without a fold clause: this fixture's unused conversation has no tasks. " +
+			"Reading the foot selects that row even when the other conversation also says new conversation",
+	},
 	"landingKeysWord": {
 		screen: "esc interrupts · ctrl+c quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",

@@ -1026,7 +1026,8 @@ nothing. Space is the separator — no pipe, no bracket, no rule. The groups, le
 - **elsewhere** — what is alive somewhere other than this conversation: `2 jobs · 1 watch`
   for background work, absent when both counts are zero. The open-conversation count and
   the standing count were in this group until 2026-09-09 and are not on the row at all
-  now: the **tab strip** above the transcript names every open conversation, and
+  now: the **tab strip** above the transcript names every open conversation that has a
+  draft or a message (an untouched new one has no tab yet), and
   `◦ 2 standing orders` is a line at the foot of the **task column** (see *The column on
   the right*).
 - **the posture** — `YOLO`, drawn only when the gate is open **and** the legend above the
@@ -4165,7 +4166,10 @@ block to expand or collapse that block. Inside the opened work, or on a task pag
 streaming thinking uses a dim three-line window under a `thinking · N tok` header; the moment the first word of the reply lands it
 collapses to one row — `thought for 6s · 148 tok · ctrl+e`. Clicking the row
 reopens it; `ctrl+e` prioritizes the whole work disclosure when one is available. The count of tokens on the row is how much working the model wrote, and the
-seconds are how long it spent.
+seconds are how long it spent. When the timing is unknown or less than one second,
+the row says `thought for this turn · 148 tok · ctrl+e` without a duration. An unknown
+token count is also absent, leaving `thought for this turn · ctrl+e`; the disclosure
+still opens the working.
 
 Some models keep thinking in between the words of their own answer, a few tokens at a
 time. That does not split the reply and does not stack up extra rows: the one thought row

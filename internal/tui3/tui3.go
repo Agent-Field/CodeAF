@@ -1412,6 +1412,9 @@ func Run(ctx context.Context, opts Options) error {
 	defer surface.doorLine.close()
 	defer forwardSignals(p, surface.leaving)()
 	_, err := p.Run()
+	// Quit ends command ownership as well as painting. Cancel before farewell
+	// so memory queues retire even when Bubble Tea discarded their receipts.
+	cancel()
 	// THE TAB IS HANDED BACK ON EVERY ROAD OUT, after the program has stopped
 	// writing and whatever stopped it (title.go's [titleFarewell]).
 	out := opts.Output

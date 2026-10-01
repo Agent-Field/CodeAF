@@ -794,6 +794,7 @@ func TestAModelFailureIsTheRoutersErrorAndItsTurnSaysSo(t *testing.T) {
 	}{
 		{&provider.APIError{Status: 429, Message: "slow down"}, 429},
 		{&provider.APIError{Status: 401, Message: "no such account"}, 502},
+		{&provider.APIError{Status: 403, Message: "not permitted"}, 502},
 		{errors.New("connection reset"), 502},
 	} {
 		refusal = row.err
@@ -804,7 +805,7 @@ func TestAModelFailureIsTheRoutersErrorAndItsTurnSaysSo(t *testing.T) {
 		}
 	}
 	turns, _ := delegate.ReadTurns(dir, 0)
-	if len(turns) != 3 || !strings.Contains(turns[0].Failed, "slow down") || turns[0].Ended.IsZero() {
+	if len(turns) != 4 || !strings.Contains(turns[0].Failed, "slow down") || turns[0].Ended.IsZero() {
 		t.Fatalf("turns = %+v, want each failure written with its sentence", turns)
 	}
 	// A run started with no road answers with that sentence and makes no call.

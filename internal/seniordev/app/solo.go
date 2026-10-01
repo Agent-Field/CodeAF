@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
 	"github.com/Agent-Field/codeaf/internal/seniordev/netpolicy"
@@ -114,10 +115,13 @@ func (candidate *frozenCandidate) describe() string {
 	if candidate == nil {
 		return "nothing frozen"
 	}
-	return fmt.Sprintf(
-		"%d bytes across %d file(s), tree %s",
-		candidate.PatchBytes, candidate.PatchFiles, shortSHA(candidate.TreeSHA),
-	)
+	description := fmt.Sprintf("across %d file(s), tree %s", candidate.PatchFiles, shortSHA(candidate.TreeSHA))
+	// The snapshot recorder supplies changed paths without patch text. Its
+	// absent byte count must not claim a measured size of zero in the ending.
+	if candidate.PatchBytes > 0 {
+		description = fmt.Sprintf("%d bytes %s", candidate.PatchBytes, description)
+	}
+	return description
 }
 
 func shortSHA(value string) string {
@@ -247,7 +251,9 @@ func (runner *pipeline) soloConverse(
 			// A turn that errored may still have submitted before it died; the
 			// freeze is what decides, not the error.
 			if state.candidate() == nil {
-				if errors.Is(context.Cause(workCtx), errSoloLanding) {
+				// A work-window deadline may race with an upstream refusal. The
+				// landing allowance cannot make the refused credential usable.
+				if !authenticationTurnError(err) && errors.Is(context.Cause(workCtx), errSoloLanding) {
 					outcome.TerminalTrigger = "landing-window"
 					return runner.soloLandingTurn(ctx, goal, state, outcome)
 				}
@@ -287,9 +293,13 @@ func (runner *pipeline) soloConverse(
 					"attempt": attempt, "transport_retries": recoveryRetries,
 					"error": err.Error(),
 				})
-				if landErr := runner.soloLandingTurn(ctx, goal, state, outcome); landErr != nil {
-					runner.note("[senior-dev] implement: landing after a turn error also failed: " +
-						landErr.Error() + "\n")
+				// A refused credential cannot pay for a landing turn either.
+				// Local finalization still runs through soloShip on every ending.
+				if !authenticationTurnError(err) {
+					if landErr := runner.soloLandingTurn(ctx, goal, state, outcome); landErr != nil {
+						runner.note("[senior-dev] implement: landing after a turn error also failed: " +
+							landErr.Error() + "\n")
+					}
 				}
 				if state.candidate() != nil {
 					return nil
@@ -386,6 +396,13 @@ type turnRetryInfo struct {
 	ProviderCode string
 }
 
+// authenticationTurnError reads the upstream refusal even when the program's
+// gateway wraps it in a 502. A second turn would spend the same refused key.
+func authenticationTurnError(err error) bool {
+	status, ok := provider.StatusOf(err)
+	return ok && (status == 401 || status == 403)
+}
+
 // transientTurnError recognizes only failures for which a fresh model turn is
 // useful. Structured provider data wins; the string table is a fallback for
 // transports that expose only Error(). Context endings and permanent account,
@@ -403,13 +420,26 @@ func transientTurnError(err error) (turnRetryInfo, bool) {
 	var failure *modelTurnError
 	if errors.As(err, &failure) {
 		text += " " + strings.ToLower(failure.responseBody)
+		// The model API reserves 401/403 for the program's local token. Its
+		// gateway can carry an upstream auth refusal under an outer 502,
+		// which another attempt with the same provider key cannot cure.
+		if authenticationTurnError(failure) {
+			return turnRetryInfo{}, false
+		}
 		if permanentProviderLimit(text) || failure.kind == msgmodel.ErrNameContextOverflow {
 			return turnRetryInfo{}, false
 		}
 		providerCode := providerErrorType(failure.responseBody)
-		info := turnRetryInfo{StatusCode: failure.statusCode, ProviderCode: providerCode}
-		if failure.statusCode != nil {
-			switch status := *failure.statusCode; {
+		statusCode := failure.statusCode
+		if statusCode == nil {
+			if status, ok := provider.StatusOf(failure); ok {
+				parsed := uint64(status)
+				statusCode = &parsed
+			}
+		}
+		info := turnRetryInfo{StatusCode: statusCode, ProviderCode: providerCode}
+		if statusCode != nil {
+			switch status := *statusCode; {
 			case status == 408:
 				info.Class = "request-timeout"
 			case status == 409:

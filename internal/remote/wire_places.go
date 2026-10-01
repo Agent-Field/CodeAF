@@ -108,6 +108,11 @@ const (
 	// that takes it back. Both carry the id and nothing else.
 	MethodMemoryForget  = "Memory.Forget"  // string (id) → nothing
 	MethodMemoryRestore = "Memory.Restore" // string (id) → nothing
+	// These three are the transcript commands, which operate on the session's
+	// memory engine rather than the store editor behind the memory place.
+	MethodMemoryRemember    = "Memory.Remember"    // string → title
+	MethodMemoryForgetQuery = "Memory.ForgetQuery" // string → title
+	MethodMemoryMemories    = "Memory.Memories"    // string → []session.MemoryLine
 	// MethodMemoryProvenance is where and when one memory was learned, asked for
 	// the ONE id whose card is open rather than for every row on the page.
 	MethodMemoryProvenance = "Memory.Provenance" // string (id) → MemoryOrigin
@@ -212,4 +217,14 @@ type EngineMemory interface {
 	ForgetMemory(id string) error
 	RestoreMemory(id string) error
 	MemoryProvenance(id string) (sessionID, sessionTitle string, writtenAt time.Time, err error)
+}
+
+// MemoryCommands is the transcript-facing memory door carried by a hosted
+// session. The place editor above remains a separate interface because it
+// operates on memory rows and cards rather than command text.
+type MemoryCommands interface {
+	Remembers() bool
+	Remember(text string) (string, error)
+	Forget(query string) (string, error)
+	Memories(query string) ([]session.MemoryLine, error)
 }

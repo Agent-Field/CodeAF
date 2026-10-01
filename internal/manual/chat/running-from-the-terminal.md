@@ -211,7 +211,7 @@ Neither draws anything or reads a key.
 
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
-`codeaf connect` lists every model service this profile knows, whether it is connected,
+`codeaf connect` lists every model provider this profile knows, whether it is connected,
 and whether its door is a browser or a key. `codeaf connect codex` signs a ChatGPT plan
 in through the browser; `codeaf connect openrouter` uses OpenRouter's existing browser
 road. Add `--no-browser` to print the address without opening it. For Codex on another
@@ -225,11 +225,12 @@ If that sign-in chose port 1457 instead, the printed command uses 1457. DeepSeek
 MiniMax take a key through the same checked connection as `/connect`; Ollama takes none.
 Z.ai, Moonshot and Qwen take a key and also need `--region intl` or `--region cn`. A key
 is read from stdin when it is piped, or asked for without echo on a terminal. A new custom
-service is created only in the chat: an unknown custom name says it is not a service this
+provider is created only in the chat: an unknown custom name says it is not a provider this
 profile knows. Once the chat has created one, `codeaf connect <its name>` can reconnect
 that instance with a key.
 
-`codeaf disconnect <service>` forgets the connection and its key or sign-in. Neither
+`codeaf disconnect <provider>` says `forget a provider and the key or sign-in behind it`
+in its help. The command forgets that provider and its key or sign-in. Neither
 command sends a prompt, calls a model or adds model spend. They do not print keys or
 tokens.
 
@@ -248,6 +249,8 @@ through the same code path the tool on the belt runs, so the two cannot drift:
   through the billed parser rungs on your profile's key. A plain text file is printed as
   it is, with no call at all. `--pages` names pages of a PDF the local rung reads; billed
   text arrives with no page boundaries, so a range on a scan is refused.
+  `codeaf doc --help` prints `codeaf doc PATH [--pages A-B]` and the flags without
+  reading a file or making a model call.
 - **`codeaf web fetch URL`** and **`codeaf web search QUERY`** are the belt's web verbs:
   one page fetched with the markup stripped and bounded the way `web_fetch` bounds it,
   or one search rendered as the numbered list `web_search` renders, on whatever provider
@@ -378,9 +381,9 @@ stderr before the command can enter this envelope path:
 | `stop` | why it ended: `done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`, `deadline`, `price`, `question` |
 | `answer` | what was produced, in prose. Empty when nothing was |
 | `files` | the paths it wrote. Never null — a run that wrote nothing carries `[]` |
-| `error` | why it could not be run at all, in the same words stderr carried. Empty on every run that started, however it ended — a limit that cut a run short and a provider that failed mid-run both say why under `incomplete` |
+| `error` | why it could not be run, including a failed model call on `do`'s default run road. The same reason appears on stderr; a limit that stopped the work is named by `stop` and `blocked_on` |
 | `spend_usd` | what it cost, whole, in dollars |
-| `tokens` | `{"in": …, "out": …}` |
+| `tokens` | `{"in": …, "out": …}` — the input and output totals across the run's model calls |
 | `seconds` | wall clock |
 | `core_done_seconds` | when the requested work was first found done, in seconds from the start; absent when the gate never said so |
 | `model` | the model the work ran on |
@@ -520,7 +523,9 @@ answer includes the check's own sentence about what could not be read.
 
 Some fields belong to one command and stay. `codeaf do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
-be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source`,
+be. On the default run road, every call belongs to a run node, including structuring and
+checks: `spend_work` equals `spend_usd`, and `spend_overhead` is zero. It also carries
+`blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source`,
 `check_model`, `check_model_source`, `class`, `crew`, `est_usd`, `effort` and `subharness`. It also carries `judged_by` when the settled root records an answered gate
 attempt and `unjudged` when that gate could not be reached. Both keys can be absent when
 no root gate row is available; neither key replaces `ok` and `stop`. `codeaf run` carries `output`, which is
@@ -1018,6 +1023,19 @@ with file access from reading a key saved in the profile. To let a command use a
 already exported provider key, set `CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL=1` in the shell
 that starts codeaf. This setting does not export a key stored only in the profile.
 
+If the default provider answers with an authentication refusal (`401` or `403`), codeaf stops
+without retrying it as a provider failure. The ending names the safe source of the key it used:
+`your key was not accepted for this model — the shell's OPENROUTER_API_KEY`,
+`the shell's OPENAI_API_KEY`, or `the key saved in your profile`. It never prints the key itself.
+`codeaf do` prints that sentence on stderr; `codeaf do --json` carries it in `error`,
+with `stop:"incomplete"` and exit 2. A directly connected provider uses its own key,
+so its refusal does not name the default provider's key source. This also applies to
+bash workers in `do` runs: they use the profile admitted by `CODEAF_PROFILE_DIR`,
+including its saved key and connected providers. A chat task keeps the provider,
+model, and credential chosen for its crew seat; its key-source explanation cannot
+reroute that call through the default provider. Delegated programs resolve the key
+explanation for the model actually served, including a fallback onto another model.
+
 **These change state without model spending**: `connect`, `disconnect`, `cache clean`,
 `rebuild`, `notebook retract|restore`, `services stop` and `devices revoke`. A browser
 connection may make authentication and model-list network requests, but sends no prompt.
@@ -1217,3 +1235,22 @@ An empty quoted argument, whitespace-only arguments, or empty piped input are
 rejected before planning or model work starts. Supply the goal as command
 arguments or pipe it through standard input; a single `-` explicitly selects
 standard input. A missing goal is not a request for the model to invent work.
+
+## A brief containing literal -- or words that look like flags
+
+For delegated programs such as `codeaf senior-dev`, the first standalone `--`
+ends flag parsing. Every argument after it belongs to the brief, including
+another literal `--`. For example, `codeaf senior-dev -- --` supplies the brief
+`--`; `codeaf senior-dev -- --max-cost 2` supplies the words `--max-cost 2`
+as the brief rather than setting a cost ceiling. Put ceilings before the first
+`--` when using this form.
+
+## Do receipt tokens and spending after an incomplete turn
+
+On `codeaf do`'s default run road, paid calls remain in `tokens.in`, `tokens.out`
+and the spend total when a later call fails in the same turn. Auxiliary summary
+calls count too. A worker settles outstanding provider receipts before reporting
+its final totals. With no receipt outstanding, it adds no receipt wait to the
+ending. Otherwise it waits at most the provider's existing receipt deadline and keeps
+the figures already received when a receipt cannot be settled. An incomplete
+receipt therefore reports the work's paid calls as well as its failure reason.

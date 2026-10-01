@@ -230,6 +230,9 @@ func soloResultStatus(outcome soloOutcome) (string, string) {
 	case "pass-unverified":
 		return "pass", "submitted; verification did not complete"
 	case "unsubmitted":
+		if soloVerificationPassed(outcome.Verification) && outcome.TerminalReason != "" {
+			return "fail", outcome.TerminalReason
+		}
 		return "fail", "the run ended without submitting"
 	default:
 		if reason == "" {

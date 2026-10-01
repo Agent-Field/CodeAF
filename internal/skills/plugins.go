@@ -47,7 +47,7 @@ const RootClaudePlugins = ".claude/plugins"
 // one identity every reader keys on (internal/store's Fact.SkillName), and
 // the agentskills.io name has no colon in its alphabet. So a plugin skill
 // keeps its bare name and settles a collision by rank instead: every skill in
-// the six hand-kept folders of a scope owns the name over a plugin's, because
+// the hand-kept folders of a scope owns the name over a plugin's, because
 // a skill somebody placed by hand is the one they meant, and between two
 // plugins the one whose key sorts first owns it. The loser stays in the result
 // marked Shadowed, like every other loser.

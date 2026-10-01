@@ -2410,8 +2410,8 @@ func (a *app) servedRiderAt(width int) string {
 	// rate is the layer's figure for a stretch that is over, and drawn beside
 	// the pulse's "nothing has come back yet" it is the same contradiction said
 	// by a second row.
-	if sighting.Rate > 0 && a.state == stateWorking && !a.awaitingReply() {
-		fields = append(fields, rowSay(tokenWord(int(sighting.Rate))+" tok/s"))
+	if rate := int(sighting.Rate); rate > 0 && a.state == stateWorking && !a.awaitingReply() {
+		fields = append(fields, rowSay(tokenWord(rate)+" tok/s"))
 	}
 	if words := rowLed(fields, roomFor(room)); words != "" {
 		return riderLead + words
@@ -2520,10 +2520,11 @@ func (a *app) liveRiderAt(width int) string {
 		// and a rate quoted beside the pulse's own silence is this program
 		// contradicting itself out loud. The emptiness law does the rest — a rate
 		// nobody has measured yet is nothing, never `0 tok/s`.
-		if !a.windowWorking() || news.Rate <= 0 {
+		rate := int(news.Rate)
+		if !a.windowWorking() || rate <= 0 {
 			return ""
 		}
-		return rowLed([]rowField{rowSay(tokenWord(int(news.Rate)) + " tok/s")}, roomFor(width))
+		return rowLed([]rowField{rowSay(tokenWord(rate) + " tok/s")}, roomFor(width))
 	}
 	return rowLed(phaseFields(news, a.now()), roomFor(width))
 }

@@ -15,11 +15,9 @@ handful of lines; what was actually said is looked up when it is asked for.
 
 The memory commands have two postures:
 
-- `/memory` — open the memory panel.
+- `/memory` or `/memories` — open the memory place.
 - `/memory <query>` or `/memories <query>` — print only matching memories into
   the conversation.
-- `/memories` — print every memory into the conversation, preserving its older
-  list posture.
 - `/remember <text>` — keep one thing.
 - `/forget <query>` — drop the one thing that best matches.
 
@@ -43,11 +41,83 @@ once into the rule above the composer — *What the memory place shows when ther
 in it* below. It used to refuse to open at all, which made the memory key on a fresh machine a key
 that did nothing.
 
+## Does memory work on the ordinary launch and over --host?
+
+Yes. Plain `codeaf` connects to this machine's engine, and `--host devbox`
+connects to devbox's engine. `/remember <text>`, `/memories` and `/forget <query>`
+use the connected conversation's memory on both roads. `/memory` and `alt+8`
+show the same store, including notes saved in earlier conversations and notes
+just added with `/remember`; the page refreshes on its three-second beat.
+`--no-host` uses this machine's store directly.
+
+The engine's memory setting decides whether it remembers. With memory off,
+the commands and the memory place say
+`memory is off for this session · turn it on under /settings`.
+Changing the memory row applies to conversations opened afterwards; an engine
+already holding conversations keeps their existing memory wiring until it is
+stopped and a new conversation is opened. Existing saved notes stay in the store.
+
+## Can I keep typing while remember, forget or a memory query waits?
+
+Yes. `/remember <text>`, `/forget <query>` and `/memories <query>` wait outside
+screen updates. You can keep typing and move to another conversation. The
+receipt stays with the conversation that issued the command and appears there
+when you return; it never appears in the other conversation. Closing the
+issuing conversation discards its screen receipt, but does not undo a save
+already received by the engine.
+
+## What happens if I remember and forget a note quickly?
+
+Memory commands from one conversation run in the order you send them. A second
+`/remember` waits for the first, and `/forget cobalt` after
+`/remember cobalt shipment fixture` waits for that save before removing its
+match. Queried `/memory` and `/memories` wait in that same order, and their
+receipts appear in that order too. You can keep typing while they wait.
+
+If a command outlasts the engine connection's wait, the next memory command
+waits up to another 45 seconds before starting. The engine may still be finishing
+the earlier operation; a timeout does not cancel or retry it. Each conversation
+has its own queue. This does not order commands sent from different conversations
+or other windows.
+
+## What happens if I close the window while memory commands wait?
+
+Closing the window cancels memory commands still waiting behind another command;
+they do not start a save, removal or query after the window closes. This also
+applies during the extra wait after a connection timeout. A command already
+received by the engine may still finish, and closing the window does not undo
+its save. Reopen `/memory` to check saved notes before trying again. The next
+window has its own queue.
+
+## Does changing to a smaller model turn memory off?
+
+With automatic profiles, a model with a context window under 32,000 tokens
+uses the lean profile and cannot use memory, even with the memory setting on.
+Changing to a model with at least that much room restores memory at the next
+request; changing back to a smaller window suspends it again. The connected
+surface follows the engine's updates without reconnecting. Saved notes stay in the store through both
+changes. An explicitly chosen prompt profile keeps its own choice.
+
+## Remember has not answered yet — should I try saving the note again?
+
+On the engine road, a save can take longer than the connection waits for its
+receipt. `/remember` then says exactly:
+
+`saving that has not answered yet · check /memory before trying again`
+
+This does not mean the save failed. The engine may still be saving your words,
+and codeaf does not retry the write automatically. Open `/memory` or use
+`/memories <query>` to check what landed before sending the same note again.
+The page refreshes on its three-second beat. A completed save normally says
+`remembered · <title>`; an actual error says `could not remember that · <reason>`.
+
 ## It said memory is off and I never turned it off
 
-Then it is not the setting, it is the file. Two different sentences use the same
-words, and the one printed on the terminal before the screen appears always says
-what the trouble was after a colon:
+A model with a context window under 32,000 tokens uses the automatic lean
+profile, which suspends memory even when the setting is on. A full profile
+restores it at the next request. It can also be trouble opening the saved store.
+The sentence printed on the terminal before the screen appears names that
+trouble after a colon:
 
 ```
 memory is off for this session: could not open ~/.codeaf/graph.db: permission denied

@@ -106,7 +106,7 @@ func (a *app) thoughtRows(e *entry, width int, hovered bool) []string {
 		// does: a window that holds three of thirty lines back has hidden
 		// something, and something hidden without a way to it is something
 		// deleted.
-		label := " thinking · " + thoughtCount(e) + " · ctrl+e"
+		label := " " + thoughtHeader("thinking", e)
 		head := a.pal.dim(fit(glyphThought+label, width))
 		if hovered {
 			head = a.pal.accent(glyphThought) + a.pal.dim(fit(label, width-1))
@@ -137,7 +137,20 @@ func (a *app) thoughtRows(e *entry, width int, hovered bool) []string {
 // something deleted. The size sits between the two so the row reads as one
 // sentence about the think and ends on the way back into it.
 func thoughtLabel(e *entry) string {
-	return "thought for " + itoa(thoughtSeconds(e)) + "s · " + thoughtCount(e) + " · ctrl+e"
+	label := "thought for this turn"
+	if seconds := thoughtSeconds(e); seconds > 0 {
+		label = "thought for " + itoa(seconds) + "s"
+	}
+	return thoughtHeader(label, e)
+}
+
+// thoughtHeader keeps the disclosure beside the label even before enough text
+// has arrived to estimate a token. Unknown counts leave no separator behind.
+func thoughtHeader(label string, e *entry) string {
+	if count := thoughtCount(e); count != "" {
+		label += " · " + count
+	}
+	return label + " · ctrl+e"
 }
 
 // thoughtCount is how much the model wrote, ESTIMATED at four bytes to the
@@ -149,7 +162,10 @@ func thoughtLabel(e *entry) string {
 // a time delivers chunks shorter than four bytes, and a counter that divided
 // each of them would report zero for the whole think.
 func thoughtCount(e *entry) string {
-	return itoa(len(e.text)/4) + " tok"
+	if n := len(e.text) / 4; n > 0 {
+		return itoa(n) + " tok"
+	}
+	return ""
 }
 
 // thoughtLiveRows is THE WINDOW: the last [thoughtLive] wrapped lines of a
@@ -191,8 +207,13 @@ func thoughtRoom(width int) int { return width - 2 - workIndentCols(width) }
 // thoughtSeconds is the time between the FIRST and the LAST reasoning delta —
 // how long the model spent thinking, not how long the turn took.
 func thoughtSeconds(e *entry) int {
+	// THE EMPTINESS LAW. A missing timestamp or a subsecond span cannot
+	// supply a whole-second duration, even when rounding would produce one.
+	if e.began.IsZero() || e.ended.IsZero() {
+		return 0
+	}
 	span := e.ended.Sub(e.began)
-	if span <= 0 {
+	if span < time.Second {
 		return 0
 	}
 	return int(span.Round(time.Second) / time.Second)

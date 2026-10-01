@@ -36,24 +36,32 @@ func finishingSeat(usd float64) *beltSeat {
 		if usd > 0 {
 			cost := usd
 			reply.Usage.Cost = &cost
+			reply.Usage.PromptTokens = 100
+			reply.Usage.CompletionTokens = 20
 		}
 		return reply
 	}
-	return &beltSeat{
-		script: []func(context.Context, []ai.Message) (*ai.Response, error){
-			func(context.Context, []ai.Message) (*ai.Response, error) {
-				return costed(beltToolReply("printf 'written by the run' > out.txt")), nil
-			},
-			func(context.Context, []ai.Message) (*ai.Response, error) {
-				return costed(beltToolReply(beltFinish(beltAnswer))), nil
-			},
+	work := &beltSeat{script: []func(context.Context, []ai.Message) (*ai.Response, error){
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return costed(beltToolReply("printf 'written by the run' > out.txt")), nil
 		},
-		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return costed(beltToolReply(beltFinish(beltAnswer))), nil
+		},
+	}, ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		// A root woken after its check still has to finish through the store;
+		// a prose claim cannot complete the supervisor's assignment.
+		return costed(beltToolReply(beltFinish(beltAnswer))), nil
+	}}
+	return &beltSeat{
+		ever: func(ctx context.Context, msgs []ai.Message) (*ai.Response, error) {
+			// Each worker gets a fresh seat. A checker must finish its own
+			// assignment before any work script can try to finish the root.
 			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
 				id := briefTaskID(doc)
 				return costed(beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'")), nil
 			}
-			return costed(beltTextReply(beltAnswer)), nil
+			return work.CompleteWithMessages(ctx, msgs)
 		},
 	}
 }
@@ -335,6 +343,11 @@ func TestDoOnTheRunEngineYesSpendRunsPastThePlanPrice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a run with --yes-spend left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
 			err, stdout.String(), stderr.String())
+	}
+	fields := doEnvelopeFields(t, stdout.String())
+	tokens, ok := fields["tokens"].(map[string]any)
+	if !ok || tokens["in"] == float64(0) || tokens["out"] == float64(0) {
+		t.Fatalf("non-zero spend carried empty token counts: %v", fields["tokens"])
 	}
 }
 
