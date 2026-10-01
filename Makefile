@@ -198,6 +198,8 @@ test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-
 # covered benchmark paths, or this Makefile. Together they take about forty
 # seconds and most pull requests never go near them.
 test-tooling:
+	bash scripts/touched-packages_test.sh
+	bash scripts/touched-verdict_test.sh
 	bash scripts/one-suite_test.sh
 	bash scripts/shard-test_test.sh
 	bash bench/canary/lib/repo_test.sh
@@ -215,8 +217,8 @@ manual-gates:
 # unrelated edits into this run over-tests. Commit the candidate, then prove
 # exactly what the pull request will send. The preflight is separate so
 # `pr-ready` refuses before spending anything on its light checks. Tests still
-# go through `make test`, the one door for the timeout, known-red ledger and
-# full heavy-package lock.
+# go through the same classifier as CI, whose first run uses `make test`
+# for the timeout and full heavy-package lock.
 test-touched-preflight:
 	@set -eu; \
 	base="$${BASE:-origin/dev}"; \
@@ -235,36 +237,18 @@ test-touched-preflight:
 		exit 2; \
 	fi
 
-# A directory under its own go.mod is another module — a bench fixture the
-# task door edits, not a package of this one — and `go test ./that/dir` from
-# here answers "does not contain package". The walk skips those.
+# The selector is shared with CI; this target adds only the local invocation.
+# Every named failure gets one focused rerun and, if needed, a base comparison.
 test-touched: test-touched-preflight
 	@set -eu; \
 	base="$${BASE:-origin/dev}"; \
-	changed="$$(git diff --name-only "$$base" HEAD -- '*.go' go.mod go.sum | sort -u)"; \
-	if printf '%s\n' "$$changed" | grep -qxE 'go\.(mod|sum)'; then \
-		pkgs="./..."; \
-	else \
-		dirs="$$(printf '%s\n' "$$changed" | while IFS= read -r file; do \
-			if test "$${file%.go}" != "$$file"; then dirname "$$file"; fi; \
-		done | sort -u)"; \
-		pkgs=""; \
-		for dir in $$dirs; do \
-			nested=0; walk="$$dir"; \
-			while test "$$walk" != "." && test "$$walk" != "/"; do \
-				if test -f "$$walk/go.mod"; then nested=1; break; fi; \
-				walk="$$(dirname "$$walk")"; \
-			done; \
-			if test "$$nested" = 1; then continue; fi; \
-			if ls "$$dir"/*.go >/dev/null 2>&1; then pkgs="$$pkgs ./$$dir"; fi; \
-		done; \
-	fi; \
+	pkgs="$$(BASE="$$base" ./scripts/touched-packages.sh)"; \
 	if test -z "$$pkgs"; then \
 		echo 'No Go file and no module file changed; nothing to run.'; \
 		exit 0; \
 	fi; \
 	echo "touched:$$pkgs"; \
-	$(MAKE) --no-print-directory test TEST_FLAGS='$(TEST_FLAGS) -count=1 -p 1' PKGS="$$pkgs"
+	printf '%s\n' "$$pkgs" | python3 ./scripts/touched-matrix.py run-local --base "$$base" --shards '$(SHARDS)' --timeout '$(TEST_TIMEOUT)'
 
 # One local spelling for the two jobs behind the pull request's required
 # `check`: first the deterministic light gate, then the exact touched-package
