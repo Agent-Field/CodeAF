@@ -267,6 +267,10 @@ type homeBand struct {
 	kinds []bandKind
 	// draw answers the band's rows, already painted, or nil for nothing.
 	draw func(a *app, ctx bandContext) []string
+	// standing says the band is the home's own and not a card's: it stands at
+	// the foot of the resting home whatever the cursor is on, and is never in a
+	// card ([standingStrip]).
+	standing bool
 }
 
 // The reading order of the column, top to bottom. A lane adding a band picks a
@@ -308,14 +312,8 @@ func registerHomeBand(band homeBand) {
 
 // homeBandsFor answers the registered bands that draw for one kind, in order.
 func homeBandsFor(kind bandKind) []homeBand {
-	if !homeBandsSorted {
-		sort.SliceStable(homeBandRegistry, func(i, j int) bool {
-			return homeBandRegistry[i].order < homeBandRegistry[j].order
-		})
-		homeBandsSorted = true
-	}
 	var out []homeBand
-	for _, band := range homeBandRegistry {
+	for _, band := range sortedHomeBands() {
 		if band.draws(kind) {
 			out = append(out, band)
 		}
@@ -323,7 +321,31 @@ func homeBandsFor(kind bandKind) []homeBand {
 	return out
 }
 
+// standingBands answers the home's own bands, in order.
+func standingBands() []homeBand {
+	var out []homeBand
+	for _, band := range sortedHomeBands() {
+		if band.standing {
+			out = append(out, band)
+		}
+	}
+	return out
+}
+
+func sortedHomeBands() []homeBand {
+	if !homeBandsSorted {
+		sort.SliceStable(homeBandRegistry, func(i, j int) bool {
+			return homeBandRegistry[i].order < homeBandRegistry[j].order
+		})
+		homeBandsSorted = true
+	}
+	return homeBandRegistry
+}
+
 func (b homeBand) draws(kind bandKind) bool {
+	if b.standing {
+		return false
+	}
 	if len(b.kinds) == 0 {
 		return kind == bandKindSession
 	}
