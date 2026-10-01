@@ -45,7 +45,7 @@ func setupGranted(ctx context.Context, call ai.ToolCall, decision approval.Decis
 		Command string `json:"command"`
 	}
 	grants, _ := ctx.Value(grantsKey{}).([]string)
-	if json.Unmarshal(args, &parsed) != nil || len(grants) == 0 {
+	if decodeToolArguments(args, &parsed) != nil || len(grants) == 0 {
 		return false
 	}
 	return grantsCover(grants, executor.SimpleCommands(parsed.Command))
