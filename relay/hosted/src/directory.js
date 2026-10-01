@@ -120,8 +120,20 @@ export class Directory {
   }
 
   // A device's record says whether it is revoked, and the device cannot change that: only revoke can.
+  // The relay alone says when the device joined and when it was last seen (contract 4): a client's values are dropped.
   putDevice(id, device) {
-    this.write('devices', id, { ...device, revoked: this.revoked(id) });
+    this.write('devices', id, this.#kept(id, { ...device, revoked: this.revoked(id) }));
+  }
+
+  /** approveDevice writes the record of a device a paired device approved, and answers what was stored. */
+  approveDevice(id, device) {
+    return this.write('devices', id, this.#kept(id, { ...device, revoked: false }));
+  }
+
+  #kept(id, doc) {
+    const before = this.read('devices', id);
+    const { created: _c, last_seen: _l, ...own } = doc;
+    return { ...own, created: before ? before.created : this.clock(), last_seen: before?.last_seen };
   }
 
   /**
