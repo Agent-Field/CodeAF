@@ -104,11 +104,22 @@ func (f *Fetcher) gather(ctx context.Context, inbox string, want []string) error
 // prime reads the plan the record holds for the cell and fetches the frames
 // it names, then runs one ImportPrimed over what they carried (contract §22.5).
 // It is an optimisation only: a record that names no frames, a frame that is
-// absent or undecodable, or a store that cannot be asked all degrade into the
-// want loop, which is the completeness proof of every take. Only a local
-// failure — the inbox, or the engine refusing verified objects — is an error.
+// absent or undecodable, a store that cannot be asked, and even an import
+// that refuses what priming delivered all degrade into the want loop, which
+// is the completeness proof of every take. Only a local failure — the inbox —
+// is an error. A refusing import is a degrade, not an error, because the loop
+// fetches objects by rid through the index and may be served from a frame
+// priming never named; the files priming wrote are removed first, so the
+// strict import of the loop never sees them.
 func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) error {
 	if f.Dir == nil {
+		return nil // no directory, no plan: exactly today's want loop
+	}
+	// A device that already holds the head wants nothing: priming it would
+	// re-download the plan for objects the store has, so the first survey —
+	// which a cold take pays as round 1 either way — decides whether to prime.
+	want, err := f.Engine.Want(ctx, c, head)
+	if err != nil || len(want) == 0 {
 		return nil
 	}
 	view, err := f.Dir.Cell(ctx, c.ID)
@@ -118,8 +129,23 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 	if err := f.fetchFrames(ctx, inbox, view.Cell.Frames); err != nil {
 		return err
 	}
-	_, err = f.Engine.ImportPrimed(ctx, c, head, inbox)
-	return err
+	if _, err := f.Engine.ImportPrimed(ctx, c, head, inbox); err != nil {
+		clearInbox(inbox)
+		return nil
+	}
+	return nil
+}
+
+// clearInbox removes what priming left in it: the loop's own import refuses
+// files no survey wanted, and a degraded priming must not poison it.
+func clearInbox(inbox string) {
+	entries, err := os.ReadDir(inbox)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		_ = os.Remove(filepath.Join(inbox, e.Name()))
+	}
 }
 
 // fetchFrames writes the objects of every frame the store holds to the inbox,
@@ -132,6 +158,9 @@ func (f *Fetcher) fetchFrames(ctx context.Context, inbox string, frames []string
 	window := make(chan struct{}, FetchWindow)
 	var wg sync.WaitGroup
 	for _, id := range frames {
+		if sink.failed() {
+			break // the inbox already refused a write; the rest is wasted work
+		}
 		select {
 		case window <- struct{}{}:
 		case <-ctx.Done():
@@ -181,6 +210,14 @@ func (s *frameSink) keep(inbox string, objects []blobstore.Object) {
 		}
 		s.written[o.RID] = true
 	}
+}
+
+// failed reports whether a write has already been refused, so the spawn
+// loop can stop asking for frames the inbox can no longer take.
+func (s *frameSink) failed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.err != nil
 }
 
 // keep writes each object to the inbox under its remote id, the name Import reads it by.

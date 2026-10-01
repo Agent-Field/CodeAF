@@ -159,7 +159,9 @@ func (d *Disk) Has(_ context.Context, rids []string) ([]bool, error) {
 }
 
 // GetFrame implements Store: the frame as it was written, read whole. The
-// frame is the truth, so this is a plain file read with no pointer to follow.
+// frame is the truth, so this is a plain file read — but the id is the hash
+// of the bytes, so a file that no longer holds what its name claims answers
+// ErrDamaged, not nonsense a take would only fail on at import.
 func (d *Disk) GetFrame(_ context.Context, frame string) ([]byte, error) {
 	if err := checkGet(frame); err != nil {
 		return nil, err
@@ -169,7 +171,10 @@ func (d *Disk) GetFrame(_ context.Context, frame string) ([]byte, error) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("blobstore: read frame: %w", err)
+		return nil, err
+	}
+	if IDOf(b) != frame {
+		return nil, fmt.Errorf("%w: frame %s is not what its name claims", ErrDamaged, frame)
 	}
 	return b, nil
 }

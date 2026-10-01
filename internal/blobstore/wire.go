@@ -20,6 +20,7 @@ var wireErrors = []struct {
 	{"bad_rid", http.StatusBadRequest, ErrBadRID},
 	{"too_many", http.StatusBadRequest, ErrTooMany},
 	{"not_found", http.StatusNotFound, ErrNotFound},
+	{"range_not_satisfiable", http.StatusRequestedRangeNotSatisfiable, errRange},
 	{"conflict", http.StatusConflict, ErrConflict},
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
