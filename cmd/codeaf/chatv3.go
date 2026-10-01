@@ -1249,7 +1249,7 @@ const skillImportBudget = 2 * time.Second
 // conversation that opens without the skills that pass had not yet recorded.
 func runWithinBudget(budget time.Duration, pass func()) bool {
 	done := make(chan struct{})
-	guard.Go("skill-import", func() {
+	guard.Go("chatv3/skill-import", func() {
 		defer close(done)
 		pass()
 	})
