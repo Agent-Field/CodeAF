@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: the first run takes the mouse and a second enter, prints no telemetry notice, and offers an empty account free models
+title: the first run takes clicks and a second enter, shows no telemetry notice, and lists free models only
 pr: 1720
 surface: [chat, docs]
 invalidates:
