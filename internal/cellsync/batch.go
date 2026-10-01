@@ -38,6 +38,9 @@ type Batcher struct {
 	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
 	OnError      func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
 	Now          func() time.Time // default time.Now; tests inject a fake clock
+	// Liveness, when set, is a watch socket that can vouch for the lease, so
+	// the heartbeat is sent only while it cannot. Nil beats every tick.
+	Liveness Liveness
 	// Sleep waits d or until ctx ends; tests inject a fake. Default is real time.
 	Sleep func(ctx context.Context, d time.Duration) error
 
@@ -45,6 +48,7 @@ type Batcher struct {
 	noted     []string   // heads of sealed turns not yet durable, oldest first
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
+	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
 	told         string    // the kind of refusal the person has heard of in this run, so each is said once
@@ -210,13 +214,84 @@ func (b *Batcher) rest(ctx context.Context, d time.Duration) error {
 
 // beats renews the lease once every HeartbeatEvery in which nothing was
 // published. A publish is proof of life and renews the lease itself, so a busy
-// chat costs the relay no heartbeat at all, and an idle one costs one per tick.
+// chat costs the relay no heartbeat at all. An idle one costs one per tick,
+// unless a watch socket is vouching for the lease (Liveness): the socket's own
+// pings are then the proof, and a beat is sent only when the count of pending
+// turns has moved, which the directory shows, and at once when the socket stops
+// vouching, so a dead socket is covered before the lease would have lapsed.
 func (b *Batcher) beats(ctx context.Context) {
-	for b.sleeper()(ctx, directory.HeartbeatEvery) == nil {
-		if !b.takePublished() {
-			b.beat(ctx)
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	ticks, handled := b.ticker(ctx)
+	var held holding
+	defer held.release()
+	for {
+		held.follow(b.Liveness, b.view)
+		select {
+		case <-ticks:
+			b.tick(ctx, &held)
+			handled <- struct{}{}
+		case <-held.changes():
+			b.socketMoved(ctx, &held)
+		case <-ctx.Done():
+			return
 		}
 	}
+}
+
+// ticker delivers one tick per HeartbeatEvery until ctx ends, and counts the
+// next interval only once the caller says the tick was handled on handled, so
+// a slow beat does not make two ticks run together.
+func (b *Batcher) ticker(ctx context.Context) (ticks <-chan struct{}, handled chan<- struct{}) {
+	out, ack := make(chan struct{}), make(chan struct{}, 1)
+	go func() {
+		for b.sleeper()(ctx, directory.HeartbeatEvery) == nil {
+			select {
+			case out <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			select {
+			case <-ack:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, ack
+}
+
+// tick is one heartbeat interval gone by. The lease needs a beat unless a
+// publish renewed it or the socket vouches and the directory already knows the
+// pending count.
+func (b *Batcher) tick(ctx context.Context, held *holding) {
+	if b.takePublished() {
+		return
+	}
+	if !held.covers(b.view, b.toldPending) {
+		b.beat(ctx)
+	}
+}
+
+// socketMoved is the socket's state changing. When it no longer vouches the
+// lease is on its stored expiry alone, so the beat goes now, not at the tick.
+func (b *Batcher) socketMoved(ctx context.Context, held *holding) {
+	if !held.covers(b.view, b.toldPending) {
+		b.beat(ctx)
+	}
+}
+
+// toldPending says whether n is what the directory last heard as pending.
+func (b *Batcher) toldPending(n uint32) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.beatSent == n
+}
+
+func (b *Batcher) tell(n uint32) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.beatSent = n
 }
 
 // takePublished says whether a publish renewed the lease since the last call,
@@ -352,6 +427,7 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	}
 	b.adopt(d)
 	b.setFlag(&b.published, true)
+	b.tell(0) // a publish always carries the newest turn, so nothing is pending
 	b.recovered()
 	turns := b.durable(head)
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})
@@ -367,6 +443,7 @@ func (b *Batcher) beat(ctx context.Context) {
 	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending})
 	switch {
 	case err == nil:
+		b.tell(pending)
 		b.recovered()
 	case errors.Is(err, directory.ErrFenceStale):
 		b.lost(ctx, d)

@@ -9,7 +9,7 @@ import http from 'node:http';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { newIdentity, newDevice, signed, deviceId } from './party.js';
 import { init } from './helpers.js';
-import { BASE, call } from './client.js';
+import { BASE, answerOf, call } from './client.js';
 
 const CAP = process.env.RELAY_WATCH_CAP ?? 'http://127.0.0.1:18796';
 const PERSIST = process.env.RELAY_PERSIST ?? 'http://127.0.0.1:18795';
@@ -18,9 +18,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const record = { V: 1, name: '', added_by: '', revoked: false, caps: { os: 'linux', arch: 'arm64', sandbox: null, container: null, gpu: null, cow: 'none' } };
 
 /** openWatch dials the watch route signed by dev and answers a socket that remembers every text frame. */
-async function openWatch(dev, base = BASE) {
-  const headers = await signed(dev, 'GET', '/v1/dir/watch');
-  const ws = new WebSocket(base.replace(/^http/, 'ws') + '/v1/dir/watch', { headers });
+async function openWatch(dev, base = BASE, query = '') {
+  const headers = await signed(dev, 'GET', `/v1/dir/watch${query}`);
+  const ws = new WebSocket(base.replace(/^http/, 'ws') + `/v1/dir/watch${query}`, { headers });
   const w = { frames: [], cursor: 0, ws, send: (text) => ws.send(text), close: () => ws.close(), wake: () => {} };
   w.closed = new Promise((done) => ws.addEventListener('close', (e) => done({ code: e.code, reason: e.reason })));
   ws.addEventListener('message', (e) => (w.frames.push(e.data), w.wake()));
@@ -63,22 +63,24 @@ async function quiet(w, ms) {
 }
 
 /** refusal dials the route by hand, asking to upgrade, and answers {status, json} of the HTTP refusal. */
-function refusal(headers, base = BASE, upgrade = true) {
+function refusal(headers, base = BASE, upgrade = true, path = '/v1/dir/watch') {
   const url = new URL(base);
   const asks = upgrade ? { connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13', 'sec-websocket-key': Buffer.from('0123456789abcdef').toString('base64') } : {};
   return new Promise((done, fail) => {
-    const req = http.request({ host: url.hostname, port: url.port, path: '/v1/dir/watch', headers: { ...headers, ...asks } });
+    const req = http.request({ host: url.hostname, port: url.port, path, headers: { ...headers, ...asks } });
     req.on('response', (res) => {
       const parts = [];
       res.on('data', (d) => parts.push(d));
-      res.on('end', () => done({ status: res.statusCode, json: JSON.parse(Buffer.concat(parts).toString() || 'null') }));
+      res.on('end', () => done({ status: res.statusCode, headers: res.headers, json: JSON.parse(Buffer.concat(parts).toString() || 'null') }));
     });
-    req.on('upgrade', (res, socket) => (socket.destroy(), done({ status: res.statusCode, json: null })));
+    req.on('upgrade', (res, socket) => (socket.destroy(), done({ status: res.statusCode, headers: res.headers, json: null })));
     req.on('error', fail);
     req.end();
   });
 }
 const refused = async (dev, base, upgrade) => refusal(await signed(dev, 'GET', '/v1/dir/watch'), base, upgrade);
+/** dialled answers the raw upgrade of a watch that names `query`, so the answer's own headers can be read. */
+const dialled = async (dev, query) => refusal(await signed(dev, 'GET', `/v1/dir/watch${query}`), BASE, true, `/v1/dir/watch${query}`);
 
 /** party makes a fresh identity with n devices, each having written its own device record. */
 async function party(n = 1) {
@@ -233,6 +235,24 @@ const cases = {
     w.close();
   },
 
+  async holdQuery() {
+    const [a] = await party();
+    const plain = await dialled(a, '');
+    assert.deepEqual([plain.status, plain.headers['codeaf-vouch']], [101, '1'], 'a relay that vouches says so on every upgrade');
+    const held = await dialled(a, '?hold=c1:1&hold=nowhere:9&hold=c1:1');
+    assert.deepEqual([held.status, held.headers['codeaf-vouch']], [101, '1'], 'holds of cells that do not exist are accepted');
+    const sixteen = Array.from({ length: 16 }, (_, i) => `hold=c${i}:1`).join('&');
+    assert.equal((await dialled(a, `?${sixteen}`)).status, 101);
+    const refusals = ['?hold=c1', '?hold=:1', '?hold=c1:', '?hold=c1:x', '?hold=c1:-1', `?hold=${'c'.repeat(65)}:1`, `?${sixteen}&hold=c16:1`];
+    for (const q of refusals) {
+      const r = await dialled(a, q);
+      assert.deepEqual([r.status, r.json], [400, { err: 'bad_request' }], q);
+    }
+    const w = await openWatch(a, BASE, '?hold=c1:1');
+    assert.match(await next(w), WIRE, 'a socket that names holds still speaks only versions');
+    w.close();
+  },
+
   async cap() {
     const [a] = await party();
     const open = [];
@@ -301,10 +321,35 @@ async function checkState(file) {
   w.close();
 }
 
+// lease: a socket that names a lease and pings, and nothing else, keeps it live past its stored expiry while the
+// object hibernates between pings; once the pings stop the lease lapses TTL later (contract 21.11). Real time, about 200 s.
+async function lease() {
+  const TTL = 90_000;
+  const [a, b] = await party(2);
+  await call(a, 'POST', '/v1/dir/cells/c1', init());
+  const w = await openWatch(a, BASE, '?hold=c1:1');
+  await next(w);
+  const began = Date.now();
+  while (Date.now() - began < TTL + 15_000) {
+    w.send('ping');
+    assert.equal(await next(w, 3000), 'pong');
+    await sleep(25_000);
+  }
+  const taken = await call(b, 'POST', '/v1/dir/cells/c1/acquire', {});
+  assert.equal(answerOf(taken), 'lease_held', 'past the stored expiry, the pinging socket still holds the lease');
+  const cell = (await call(b, 'GET', '/v1/dir/list')).json.cells.c1;
+  assert.ok(cell.lease.expires > Date.now() - 1000, 'the list shows it held');
+  await sleep(TTL + 2_000); // the pings stop; the socket stays open
+  assert.equal(answerOf(await call(b, 'POST', '/v1/dir/cells/c1/acquire', {})), 200, 'TTL after the last ping the lease is free');
+  w.close();
+}
+
 const [mode, file] = process.argv.slice(2);
 if (mode === 'idle') await idle();
+else if (mode === 'lease') await lease();
 else if (mode === 'put') await putState(file);
 else if (mode === 'check') await checkState(file);
+else if (mode in cases) (await cases[mode](), console.log('watch', mode, 'ok'));
 else for (const [name, run] of Object.entries(cases)) (await run(), console.log('watch', name, 'ok'));
 console.log('watch', mode ?? 'cases', 'ok');
 process.exit(0); // open sockets of a failed case must not hold the process

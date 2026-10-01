@@ -55,6 +55,7 @@ type sock struct {
 	conn   *websocket.Conn
 	frames chan frame
 	last   uint64
+	resp   *http.Response // the handshake answer, when the socket was dialled by a case
 }
 
 // open dials the watch route as a device and starts reading it.
