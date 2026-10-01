@@ -28,6 +28,12 @@ type Engine interface {
 	// objects the head does not want. The want loop's answers keep the strict
 	// rule: what the relay names for a want is checked.
 	ImportPrimed(ctx context.Context, c cell.Cell, head, inbox string) (int, error)
+	// Holds reports whether this device already holds objects of c that the
+	// relay holds too: its ledger for this relay is not empty. A device that
+	// does has most of the chat's history and wants only a delta (contract
+	// §22.5), so priming it with the chat's whole frame plan would download
+	// what it has.
+	Holds(c cell.Cell) bool
 	// Materialize restores head into the cell's folder.
 	Materialize(ctx context.Context, c cell.Cell, head string) error
 }

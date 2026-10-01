@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -196,6 +198,14 @@ func (e SyncEngine) runImport(ctx context.Context, c cell.Cell, head, inbox stri
 		Imported int `json:"imported"`
 	}
 	return out.Imported, e.ask(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, Primed: primed, keyArgs: hexKeys(e.Keys)}, &out)
+}
+
+// Holds implements the sync seam: the ledger file the engine keeps beside the
+// store is written by every export and import against this relay, so it has
+// content exactly when the device has exchanged objects with the relay.
+func (e SyncEngine) Holds(c cell.Cell) bool {
+	info, err := os.Stat(filepath.Join(e.Target(c).DataDir, "published."+e.Ledger))
+	return err == nil && info.Size() > 0
 }
 
 // Materialize implements the sync seam.
