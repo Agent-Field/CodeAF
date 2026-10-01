@@ -191,6 +191,21 @@ func (p Place) Work() string {
 	return p.join(placeWork)
 }
 
+// OwnsFolder reports whether workspace is the work/ folder of a session folder
+// on this machine. A chat that arrives from another machine whose project is not
+// here works in such a folder while its record still calls it borrowed: the
+// record travels between machines, so it cannot say "owned" without being wrong
+// on the machine the project is on. The folder itself is the fact that holds
+// here, and a surface that names places asks it of the folder.
+func OwnsFolder(workspace string) bool {
+	workspace = filepath.Clean(strings.TrimSpace(workspace))
+	if filepath.Base(workspace) != placeWork {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(filepath.Dir(workspace), placeMeta))
+	return err == nil
+}
+
 // Meta is one session's identity, written where a picker can read it without
 // parsing a journal. It is a citation, not a copy: every conversation fact in
 // it is recoverable from the transcript, while Build names the codeaf that

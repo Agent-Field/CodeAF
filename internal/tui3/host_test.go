@@ -397,3 +397,24 @@ func TestHostedPathIsANoOpWithoutAHost(t *testing.T) {
 		t.Fatalf("pathRoot = %q, want the workspace on a local session", a.pathRoot())
 	}
 }
+
+// A chat moved here from a machine whose project is not on this one works in
+// its own work/ folder. The keys row names it the way an owned chat is named,
+// never by the state-root path of that folder.
+func TestAMovedChatInItsOwnFolderIsNotNamedByTheStatePath(t *testing.T) {
+	a, _ := hostLab(t)
+	a.host = ""
+	session := t.TempDir()
+	work := filepath.Join(session, "work")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(session, "meta.json"), []byte(`{"id":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}, Workspace: work}, true)
+	keys := plain(a.hintRow(a.width))
+	if strings.Contains(keys, "/work") || !strings.Contains(keys, "project: "+ownedWord) {
+		t.Fatalf("the keys row names the moved chat by its state path: %q", keys)
+	}
+}

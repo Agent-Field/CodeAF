@@ -2938,7 +2938,8 @@ func newApp(ctx context.Context, opts Options) *app {
 			place = cwd
 		}
 	}
-	shown := placeShown(place, opts.Owned, host)
+	owned := opts.Owned || session.OwnsFolder(place)
+	shown := placeShown(place, owned, host)
 	a := &app{
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
@@ -2966,7 +2967,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		engineRoad:          opts.EngineRoad,
 		handedApproval:      strings.TrimSpace(opts.ApprovalMode),
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
-		owned:               opts.Owned,
+		owned:               owned,
 		landing:             opts.Landing,
 		takeOverAt:          opts.TakeOver,
 		pickSession:         opts.PickSession,
@@ -8125,7 +8126,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	if workspace := strings.TrimSpace(conv.Workspace); workspace != "" {
 		a.workspace = workspace
 	}
-	a.owned = conv.Owned
+	a.owned = conv.Owned || session.OwnsFolder(a.workspace)
 	a.anchorWorkspace = conv.AnchorWorkspace
 	if shown := strings.TrimSpace(conv.Place); shown != "" {
 		a.place = shown
