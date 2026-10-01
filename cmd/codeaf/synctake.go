@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -46,6 +47,21 @@ func wireSync(o *tui3.Options) {
 	if o.Branches.Discard == nil {
 		o.Branches = tui3.BranchActions{Discard: s.Discard}
 	}
+	guard.Go("sync/standing", func() { checkStanding(s) })
+}
+
+// standingWithin bounds the launch-time check so a silent relay costs nothing.
+const standingWithin = 15 * time.Second
+
+// checkStanding asks the directory once at launch whether this device is still
+// let in, and says the refusal (removed from the fleet, replaced) as soon as the
+// surface is up. A conversation that is only resumed, and so has no drive side
+// yet, would otherwise open as if nothing were wrong until its first message.
+func checkStanding(s *syncsetup.Sync) {
+	ctx, cancel := context.WithTimeout(context.Background(), standingWithin)
+	defer cancel()
+	_, err := s.Dir.List(ctx)
+	sayRefusal(err)
 }
 
 // takeover is the surface's Taker over the take side: what a takeover reports,
