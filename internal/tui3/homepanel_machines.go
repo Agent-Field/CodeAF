@@ -80,9 +80,9 @@ func (a *app) askChats() tea.Cmd {
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machinesAsking = false
 	a.fileMachines(msg)
-	a.considerResume(msg)
 	a.machineRead.down = msg.err != nil
 	a.machineRead.merge = a.branches.Merge != nil
+	a.considerResume()
 	a.rebuildMachines()
 	return a.readOwedByFrames(msg.err == nil)
 }
@@ -121,12 +121,20 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 
 // drawnAsRemote says a row from the directory is a row of the panel. A chat
 // held here is never drawn twice; a chat listed here is drawn again only while
-// another machine holds its lease.
+// another machine holds it, live or gone quiet.
 func drawnAsRemote(row chatlist.Row, listedHere bool) bool {
 	if row.Status == chatlist.Here {
 		return false
 	}
-	return !listedHere || row.Status == chatlist.Running
+	return !listedHere || heldElsewhere(row)
+}
+
+// heldElsewhere says the chat's last holder was another machine and has not
+// let go: its lease is live, or lapsed with nobody to release it. The local
+// copy of such a chat is a stale window, whichever of the two it is, and
+// whichever of the local list and the directory reading arrived first.
+func heldElsewhere(row chatlist.Row) bool {
+	return row.Status == chatlist.Running || (row.Status == chatlist.Off && !row.Mine)
 }
 
 // machineLine is one chat on another machine as a row of the sessions panel.
