@@ -559,6 +559,9 @@ type jobRegistry struct {
 	retentionShut bool
 	// The stage callback is a per-registry test seam; production leaves it nil.
 	retentionStage func(string)
+	// watchTickWait lets a test acknowledge a completed tick and release the
+	// next one. Production leaves it nil and waits on the watch's real ticker.
+	watchTickWait func(context.Context)
 }
 
 func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
