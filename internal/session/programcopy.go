@@ -69,6 +69,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -196,6 +197,7 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 		folder.forget()
 		return nil, fmt.Errorf("%s", refusal)
 	}
+	folder.MessageBase = branchCommit(folder.Dir, folder.Branch)
 	if err := folder.copyUntracked(); err != nil {
 		folder.forget()
 		return nil, err
@@ -1539,7 +1541,7 @@ func (f *ProgramFolder) BriefNote() string {
 	// owner chose steering over a guard that guesses (2026-09-30). What the
 	// program leaves is committed by codeaf in any case, and a commit it makes
 	// anyway stays on its branch as it made it.
-	said += " Leave your work uncommitted, and do not push, switch branches or rewrite history, even where the brief below asks you to: when the run ends, codeaf commits everything you changed onto this branch as one commit."
+	said += " Leave your work uncommitted, and do not push, switch branches, rewrite history, stash, reset, clean, or check out or restore files over your work, even where the brief below asks you to: when the run ends, codeaf commits everything you changed onto this branch as one commit."
 	if f.messageAsked() {
 		said += " Before you finish, write that commit's message to " + f.Notes + "/" + programCommitMessageFile +
 			": a subject line of at most 72 characters in the style of this repository's own `git log`, a blank line, then a body saying what changed and why."
@@ -1558,7 +1560,8 @@ const programCommitMessageMax = 8 << 10
 
 // messageAsked says the program is asked to write its commit's message: it
 // has a notes folder of its own, which the run's commits never take, and that
-// folder was not already there, so a message in it can only be this run's.
+// folder was not already there in a plain folder; a repository copy also
+// checks the message against its starting commit before using it.
 func (f *ProgramFolder) messageAsked() bool {
 	return f.Notes != "" && !f.NotesWereThere
 }
@@ -1570,20 +1573,50 @@ func (f *ProgramFolder) readCommitMessage() string {
 	if !f.messageAsked() {
 		return ""
 	}
-	file, err := os.Open(filepath.Join(f.Dir, f.Notes, programCommitMessageFile))
+	file, err := openProgramMessage(f.Dir, f.Notes)
 	if err != nil {
 		return ""
 	}
 	defer file.Close()
 	body, err := io.ReadAll(io.LimitReader(file, programCommitMessageMax+1))
-	if err != nil || len(body) > programCommitMessageMax || !utf8.Valid(body) {
+	if err != nil || len(body) > programCommitMessageMax || !utf8.Valid(body) || strings.IndexByte(string(body), 0) >= 0 {
 		return ""
 	}
+	// A message the repository already held is not this run's account. Compare
+	// the original bytes, before normalizing line endings or whitespace.
+	if f.Copied() && f.base() != "" {
+		base := f.MessageBase
+		if base == "" {
+			base = f.base()
+		}
+		if original, err := git(f.Dir, "show", base+":"+filepath.ToSlash(filepath.Join(f.Notes, programCommitMessageFile))); err == nil && original == string(body) {
+			return ""
+		}
+	}
 	message := strings.TrimSpace(strings.ReplaceAll(string(body), "\r\n", "\n"))
+	if words, _ := splitProgramCredits(message); words == "" {
+		return ""
+	}
 	if strings.TrimSpace(firstLine(message)) == "" {
 		return ""
 	}
 	return message
+}
+
+// splitProgramCredits separates codeaf's own credit lines from a program's
+// account, so credits alone are unusable and an incomplete ending can precede
+// the credits without repeating them. Other people's co-author lines stay put.
+func splitProgramCredits(message string) (string, string) {
+	var words, credits []string
+	for _, line := range strings.Split(message, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(trimmed), strings.ToLower(exec.AttributionAssistedBy)) || strings.EqualFold(trimmed, exec.AttributionTrailer) {
+			credits = append(credits, line)
+		} else {
+			words = append(words, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(words, "\n")), strings.Join(credits, "\n")
 }
 
 // copySentence is how a run left its copy, in the sentence every surface says

@@ -268,8 +268,9 @@ handed in nothing, stopped on a limit, or broke — and acts on it:
 
 For the chat, handing the work back to senior-dev counts as fixing it itself, and is its
 first choice for anything beyond a line or two: on that turn senior-dev carries on from its
-own branch. It edits the branch in a worktree of its own only for a trivial gap, or once
-senior-dev can be sent back no more.
+own branch. It edits the branch in a worktree of its own only for a trivial gap. Once
+senior-dev can be sent back no more, the chat tells the person what still does not work,
+where the work is, and what it would try next.
 
 If the project's checks passed but the model never called `submit`, the ending says plainly
 `the checks passed, but nothing was submitted`. There is no resume or submit command for an
@@ -548,8 +549,8 @@ own (see does senior-dev commit or push).
 
 When the run ends — finished or not, stopped, crashed, or codeaf gone — codeaf commits
 what it left uncommitted on that branch, excluding paths ignored at the start and known
-test caches, in one commit — with **senior-dev's own commit message** when it wrote one,
-and otherwise the task's title as the subject and senior-dev's ending as the body — and
+test caches, in one commit — with **senior-dev's usable commit message**, followed by the
+run's ending when it did not pass, or the task's title and ending as a fallback — and
 **removes the copy**, so the branch is checked out nowhere and free to merge, check out or hand back. **The branch is always kept**, even when the run changed
 nothing. Nothing is merged into your own branch. The task's page and the conversation both
 say ``its work is on the branch <branch> in <folder>, N files; your checkout was not
@@ -575,28 +576,34 @@ branch <branch> in <folder> as it stops` at once. **A run that changed nothing**
 nothing; its branch <branch> in <folder> is kept where it began, and your checkout was not
 touched`.
 
-
 ## Does senior-dev commit or push — no wip commits, who writes the commit message
 
-**senior-dev makes no commits of its own**: no `wip(write): <path>` or `wip(edit): <path>`
-per file, and nothing authored `senior-dev`. The snapshots it restores from are kept
-outside its branch. Runs before 2026-09-30 committed every file they wrote that way, and
-those commits are still on their branches.
+**senior-dev makes no commits of its own**: no per-file `wip(write): <path>` or
+`wip(edit): <path>` commits and nothing authored `senior-dev`. Its restore snapshots stay
+outside its branch. Older runs' commits stay on their branches.
 
-Its brief opens with a line from codeaf telling it to leave its work uncommitted and not
-to push, switch branches or rewrite history — even when your brief asks it to — and to
-write the commit message for its change to `.senior-dev/commit-message`: a subject of at
-most 72 characters in the style of the repository's own `git log`, a blank line, and a
-body saying what changed and why.
+In a git repository, codeaf's line at the head of the brief asks senior-dev to leave its
+work uncommitted: no push, branch switch, history rewrite, stash, reset, clean, or check out
+or restore files over its work, even when your brief asks. It asks for the commit message
+in `.senior-dev/commit-message`: a subject of at most 72 characters in the repository's
+`git log` style, a blank line, and what changed and why. A folder with no git history gets
+no commit and no request for a message.
 
-When the run ends, codeaf's one commit takes that message as it is, adding its model
-credit lines without repeating any the message already has. With no message, or an empty one, the subject is the
-task's title and the body is senior-dev's ending. The `.senior-dev/` folder itself never
-reaches the branch; it is kept in the run's record.
+When the run ends, codeaf commits what it left uncommitted once. A usable message is used
+as it is **only when the run passed**; when it did not pass, the commit carries senior-dev's
+message, a blank line, then the run's ending, then the model credit lines. Missing credit
+lines are added without repeating those already there.
 
-This is asked, not enforced: nothing blocks a git command. A commit senior-dev makes
-anyway stays on its branch as it made it, and whatever it left uncommitted still goes into
-codeaf's commit. Pushing and opening a pull request are for after the run — ask the chat.
+The title-and-ending fallback applies when the message is absent or blank, over 8 KiB,
+not UTF-8, contains a NUL byte, is nothing but codeaf's credit lines, is not a plain file
+(including a symlink or named pipe), or is byte-for-byte the copy the repository
+already tracked at the run's start. The `.senior-dev/` notes never reach the branch; they are kept
+in the run's record.
+
+This is asked, not enforced: no git command is blocked. A commit senior-dev makes anyway
+stays on its branch; codeaf commits the work still uncommitted. Pushing and opening a pull
+request happen after the run — ask the chat.
+
 ## Where is senior-dev's copy — a git worktree in codeaf's cache folder, removed when it ends
 
 In a git repository senior-dev works in a git worktree of your repository under your
@@ -1125,7 +1132,7 @@ task and page; the old page stays as the record of what it did.
 
 **senior-dev is never cut off mid-edit.** codeaf hands its hold on the copy to senior-dev's
 own process, so a codeaf that dies leaves senior-dev its 15 seconds to stop — put back
-what it submitted, commit its last edits — and nothing touches the copy until it has gone.
+what it submitted and leave its last edits for codeaf to keep — and nothing touches the copy until it has gone.
 
 **Then the next codeaf that finds the run finishes its copy**: the one that opens that
 conversation, hands work off in it, or starts a run on that repository, a shell run

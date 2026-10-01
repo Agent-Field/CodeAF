@@ -31,6 +31,7 @@ func TestTheFinishingCommitCarriesTheMessageTheProgramWrote(t *testing.T) {
 	message := "fix(chat): a demoted slash tag stays plain\n\nThe transcript subtracts the demoted ranges.\n\n" + exec.AttributionTrailer
 	writeFile(t, filepath.Join(folder.Dir, ".fake", programCommitMessageFile), "\r\n"+strings.ReplaceAll(message, "\n", "\r\n")+"\r\n")
 
+	folder.Passed = true
 	end := folder.Finish("senior-dev finished: the model claimed the fix and its tests passed")
 	if !end.Kept || end.Refused != "" {
 		t.Fatalf("finishing the run: %+v", end)
