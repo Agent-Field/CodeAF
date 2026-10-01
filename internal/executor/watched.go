@@ -173,3 +173,6 @@ func isAssignment(word string) bool {
 	name, _, found := strings.Cut(word, "=")
 	return found && name != "" && !strings.ContainsAny(name, `/'"$`)
 }
+
+// Settle implements Settler: the seat beneath keeps the record.
+func (w watched) Settle(ctx context.Context) { Settle(ctx, w.Seat) }

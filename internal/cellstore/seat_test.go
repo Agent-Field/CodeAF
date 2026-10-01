@@ -132,3 +132,58 @@ func TestSetupSeatSealsExternalCallsAsASetupTurn(t *testing.T) {
 		}
 	}
 }
+
+// A call that asked for its seal to wait leaves the tree unsealed until the
+// caller settles, and the settle takes the whole batch in one seal that ends
+// where the transcript then ends: the result line written between the call and
+// the settle is inside it.
+func TestDeferredCallsAreSealedOnceAtSettleWithTheResultLine(t *testing.T) {
+	c := newCell(t)
+	rec, fake := newRecorder(t, c, &stubExec{}, filepath.Join(t.TempDir(), "wal"))
+	seat := sealed{Stance: executor.Stance{Class: executor.HostBound}, rec: rec}
+	transcript := filepath.Join(c.Root, cell.TranscriptPath)
+	if err := os.MkdirAll(filepath.Dir(transcript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a", "b"} {
+		call := executor.Call{Tool: "bash", Args: []byte(name), Deferred: true}
+		if err := seat.Around(context.Background(), call, func() ([]byte, bool) { return nil, false }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := fake.count("turn-end"); got != 0 {
+		t.Fatalf("%d seals before the results were written", got)
+	}
+	if err := os.WriteFile(transcript, []byte("assistant call\ntool result\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seat.Settle(context.Background())
+	head, _ := Head(c)
+	if fake.count("turn-end") != 1 || len(head.Receipt.Calls) != 2 || head.Receipt.Transcript.End != int64(len("assistant call\ntool result\n")) {
+		t.Fatalf("seals %d, head %+v", fake.count("turn-end"), head)
+	}
+}
+
+// The line a turn ends on is sealed by a settle that has no call to carry, and
+// a settle with nothing new seals nothing, so an idle chat adds no turns.
+func TestSettleSealsTheClosingAnswerOnceAndOnlyWhenTheTranscriptGrew(t *testing.T) {
+	c := newCell(t)
+	rec, fake := newRecorder(t, c, &stubExec{}, filepath.Join(t.TempDir(), "wal"))
+	transcript := filepath.Join(c.Root, cell.TranscriptPath)
+	if err := os.MkdirAll(filepath.Dir(transcript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(transcript, []byte("closing answer\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		rec.Settle(context.Background())
+	}
+	if got := fake.count("turn-end"); got != 1 {
+		t.Fatalf("%d seals for one closing answer, want 1", got)
+	}
+	head, _ := Head(c)
+	if len(head.Receipt.Calls) != 0 || head.Receipt.Transcript.End != int64(len("closing answer\n")) {
+		t.Fatalf("head %+v", head)
+	}
+}
