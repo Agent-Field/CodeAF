@@ -165,6 +165,7 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 		m.card.line = approveFailure(m.err)
 	case m.approved:
 		a.pair.close()
+		a.addMachine.grew()
 		a.toastJoined(m.req.Name, m.req.Device)
 	default:
 		a.pair.close()

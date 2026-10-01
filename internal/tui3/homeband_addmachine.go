@@ -12,14 +12,16 @@ package tui3
 //
 //   - How many devices there are: [Fleet]. Asked off the frame, and no longer
 //     asked once the answer has reached two.
-//   - The link a new machine opens: [PairLinker], an OPTIONAL face of the
-//     [Pairing] door (pair.go). A door that has no link yet is a card that
-//     shows the instructions alone.
+//   - Who asks to join: the [Approvals] door (approve.go), the same one
+//     `/pair <link>` uses.
 //
-// ONE CHORD OPENS IT. The words under it name both ways in — the app and the
-// terminal — because the person at this machine does not yet know which one
-// the new machine will use. Every word is the vocabulary law's: devices, and
-// never the names of the machinery behind them.
+// THIS MACHINE MAKES NO LINK. The NEW machine makes it (`codeaf pair`), so a
+// machine that is already paired has none to hand out. The opened card is two
+// numbered steps and a paste target: the link pasted here goes to the approve
+// screen, and its toast ends the card's job.
+//
+// ONE CHORD OPENS IT. Every word is the vocabulary law's: devices, and never
+// the names of the machinery behind them.
 
 import (
 	"context"
@@ -35,13 +37,6 @@ type Fleet interface {
 	FleetSize(ctx context.Context) (int, error)
 }
 
-// PairLinker is the optional face of a [Pairing] door that can hand out the
-// link a new machine opens to ask to join. The link is short-lived, so it is
-// asked for each time the card is opened and never kept across closes.
-type PairLinker interface {
-	Link(ctx context.Context) (string, error)
-}
-
 const (
 	// addMachineKey is the chord that opens and closes the instructions.
 	addMachineKey = "alt+d"
@@ -52,13 +47,11 @@ const (
 
 	addMachineHeading = "+ Add another machine"
 	addMachinePitch   = "Add another machine - pick up your work anywhere, exactly where you left it."
-	addMachineApp     = "In the app: on the new machine choose Add this machine."
-	addMachineCLI     = "In a terminal: run codeaf pair on the new machine."
-	addMachineThen    = "Then approve it here."
+	addMachineStepRun = "1. On the new machine, install and run: codeaf pair"
+	addMachineStepPut = "2. It shows a link. Paste it here:"
+	addMachineField   = "> "
 	addMachineShow    = addMachineKey + " how"
 	addMachineHide    = addMachineKey + " hide"
-	addMachineMaking  = "making a link…"
-	addMachineCheck   = "Check number: "
 
 	bandOrderAddMachine = 20 // a one-machine fleet is told it can have two
 )
@@ -74,33 +67,19 @@ type addMachine struct {
 	size   int
 	known  bool
 	asking bool
-	// open says the instructions are showing, and link is the link made for
-	// them ("" until it arrives or when the door has none).
+	// open says the steps are showing.
 	open bool
-	link string
-	// The live link's own state (homeband_addmachine_live.go): the wait that is
-	// out, the check number beside the link, and how the wait ended.
-	run    *linkCardRun
-	check  string
-	ended  string
-	paired bool
 }
 
-// wanted says the card is on: a door that can pair, and a fleet known to be one.
+// wanted says the card is on: a door that can approve, and a fleet known to be one.
 func (a *app) addMachineWanted() bool {
 	m := a.addMachine
-	return a.pairing != nil && m.known && (m.size < fleetEnough || m.paired)
+	return a.approvals != nil && m.known && m.size < fleetEnough
 }
 
 // fleetMsg is one answer from the [Fleet].
 type fleetMsg struct {
 	size int
-	err  error
-}
-
-// pairLinkMsg is one answer from the [PairLinker].
-type pairLinkMsg struct {
-	link string
 	err  error
 }
 
@@ -131,45 +110,29 @@ func (a *app) tookFleet(msg fleetMsg) tea.Cmd {
 	return nil
 }
 
-// askLink makes the link for the open card, if the door can.
-func (a *app) askLink() tea.Cmd {
-	if live, ok := a.pairing.(LivePairLinker); ok {
-		return a.startLive(live)
-	}
-	door, ok := a.pairing.(PairLinker)
-	if !ok {
-		return nil
-	}
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), fleetAskTimeout)
-		defer cancel()
-		link, err := door.Link(ctx)
-		return pairLinkMsg{link: link, err: err}
-	}
-}
-
-// tookLink files the link; a closed card has no use for one.
-func (a *app) tookLink(msg pairLinkMsg) tea.Cmd {
-	if a.addMachine.open && msg.err == nil {
-		a.addMachine.link = msg.link
-	}
-	return nil
-}
-
 // toggleAddMachine is the chord. It does nothing where the card is not drawn.
 func (a *app) toggleAddMachine() tea.Cmd {
 	m := &a.addMachine
 	if !a.addMachineWanted() {
 		return nil
 	}
-	m.stopLive()
 	m.open = !m.open
 	a.touch()
-	if !m.open {
-		return nil
-	}
-	return a.askLink()
+	return nil
 }
+
+// pasteLink is a paste that lands on the open card: a link goes to the same
+// approve screen `/pair <link>` opens, and anything else is not the card's.
+func (a *app) pasteLink(text string) (tea.Cmd, bool) {
+	if !a.addMachine.open || !a.addMachineWanted() || !isLinkShape(text) {
+		return nil, false
+	}
+	a.addMachine.open = false
+	return a.openApprove(strings.TrimSpace(text)), true
+}
+
+// grew counts the device an approval just let in, so the card ends its job at two.
+func (m *addMachine) grew() { m.size++ }
 
 func drawAddMachineBand(a *app, ctx bandContext) []string {
 	if !a.addMachineWanted() {
@@ -212,24 +175,13 @@ func (a *app) addMachineStrip(width, room int) []placeRow {
 	return rows
 }
 
-// addMachineHow is the opened card: the link when there is one, and the two
-// ways the new machine can ask, then the one step left on this machine.
+// addMachineHow is the opened card: two steps, and the field the link goes in.
 func (a *app) addMachineHow(ctx bandContext) []string {
 	var rows []string
-	if _, live := a.pairing.(LivePairLinker); live {
-		rows = a.addMachine.liveRows(ctx.pal.ink, ctx.pal.dim, ctx.width)
-	} else if a.addMachine.link != "" {
-		rows = append(rows, ctx.pal.ink(fit(a.addMachine.link, ctx.width)))
-	} else if _, ok := a.pairing.(PairLinker); ok {
-		rows = append(rows, ctx.pal.dim(addMachineMaking))
-	}
-	if a.addMachine.ended != "" {
-		return rows
-	}
-	for _, line := range []string{addMachineApp, addMachineCLI, addMachineThen} {
+	for _, line := range []string{addMachineStepRun, addMachineStepPut} {
 		for _, wrapped := range wrap(line, ctx.width) {
 			rows = append(rows, ctx.pal.ink(fit(wrapped, ctx.width)))
 		}
 	}
-	return rows
+	return append(rows, ctx.pal.accent(fit(addMachineField, ctx.width)))
 }

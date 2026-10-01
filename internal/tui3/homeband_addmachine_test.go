@@ -5,10 +5,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -23,16 +23,9 @@ type fakeFleet struct {
 
 func (f *fakeFleet) FleetSize(context.Context) (int, error) { f.calls++; return f.size, f.err }
 
-type linkPairing struct {
-	fakePairing
-	link string
-}
-
-func (l *linkPairing) Link(context.Context) (string, error) { return l.link, nil }
-
-func addMachineRig(door Pairing, size int, known bool) *app {
+func addMachineRig(door Approvals, size int, known bool) *app {
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.pairing = door
+	a.approvals = door
 	a.addMachine = addMachine{size: size, known: known}
 	return a
 }
@@ -43,7 +36,7 @@ func addMachineFrame(a *app, width int) string {
 }
 
 func TestAddMachineCardShowsForAFleetOfOne(t *testing.T) {
-	a := addMachineRig(&fakePairing{}, 1, true)
+	a := addMachineRig(&fakeApprovals{}, 1, true)
 	got := addMachineFrame(a, 80)
 	for _, want := range []string{"Add another machine", "pick up your work anywhere, exactly where you left it.", addMachineShow} {
 		if !strings.Contains(strings.Join(strings.Fields(got), " "), want) {
@@ -54,10 +47,10 @@ func TestAddMachineCardShowsForAFleetOfOne(t *testing.T) {
 
 func TestAddMachineCardIsAbsentWhenItCannotWork(t *testing.T) {
 	cases := map[string]*app{
-		"two devices":    addMachineRig(&fakePairing{}, 2, true),
-		"unknown fleet":  addMachineRig(&fakePairing{}, 0, false),
-		"no pairing":     addMachineRig(nil, 1, true),
-		"a bigger fleet": addMachineRig(&fakePairing{}, 5, true),
+		"two devices":    addMachineRig(&fakeApprovals{}, 2, true),
+		"unknown fleet":  addMachineRig(&fakeApprovals{}, 0, false),
+		"no approvals":   addMachineRig(nil, 1, true),
+		"a bigger fleet": addMachineRig(&fakeApprovals{}, 5, true),
 	}
 	for name, a := range cases {
 		if got := addMachineFrame(a, 80); got != "" {
@@ -66,43 +59,71 @@ func TestAddMachineCardIsAbsentWhenItCannotWork(t *testing.T) {
 	}
 }
 
-func TestAddMachineOpensBothInstructionVariantsAndTheLink(t *testing.T) {
-	a := addMachineRig(&linkPairing{link: "https://codeaf.link/p/k7m2q9xd#abc"}, 1, true)
-	cmd := a.toggleAddMachine()
-	if cmd == nil {
-		t.Fatal("opening the card did not ask for a link")
+func TestAddMachineOpensTwoStepsAndAPasteField(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	if a.toggleAddMachine() != nil {
+		t.Fatal("opening the card asked for something")
 	}
-	if got := addMachineFrame(a, 80); !strings.Contains(got, addMachineMaking) {
-		t.Fatalf("no waiting word before the link arrives:\n%s", got)
-	}
-	a.tookLink(cmd().(pairLinkMsg))
 	got := addMachineFrame(a, 80)
-	for _, want := range []string{"https://codeaf.link/p/k7m2q9xd#abc", addMachineApp, addMachineCLI, addMachineThen, addMachineHide} {
+	for _, want := range []string{addMachineStepRun, addMachineStepPut, addMachineField, addMachineHide} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("opened card lacks %q:\n%s", want, got)
 		}
 	}
+	if strings.Contains(got, "codeaf.link") {
+		t.Fatalf("this machine showed a link:\n%s", got)
+	}
 	a.toggleAddMachine()
-	if got := addMachineFrame(a, 80); strings.Contains(got, addMachineCLI) || strings.Contains(got, "codeaf.link") {
-		t.Fatalf("closing kept the instructions or the link:\n%s", got)
+	if got := addMachineFrame(a, 80); strings.Contains(got, addMachineStepRun) {
+		t.Fatalf("closing kept the steps:\n%s", got)
 	}
 }
 
-func TestAddMachineWithoutALinkShowsInstructionsAlone(t *testing.T) {
-	a := addMachineRig(&fakePairing{}, 1, true)
-	if a.toggleAddMachine() != nil {
-		t.Fatal("a door with no link was asked for one")
+func TestAddMachinePasteGoesToTheApproveScreenAndApproveEndsTheCard(t *testing.T) {
+	door := &fakeApprovals{pending: spark(time.Now())}
+	a, r := approveApp(t, door)
+	a.addMachine = addMachine{size: 1, known: true}
+	a.toggleAddMachine()
+	cmd := a.paste(testLink)
+	if cmd == nil {
+		t.Fatal("a pasted link did not open the approve screen")
 	}
-	got := addMachineFrame(a, 80)
-	if !strings.Contains(got, addMachineApp) || !strings.Contains(got, addMachineCLI) || strings.Contains(got, addMachineMaking) {
-		t.Fatalf("instructions wrong:\n%s", got)
+	if a.addMachine.open {
+		t.Fatal("the card stayed open under the approve screen")
+	}
+	drive(t, a, cmd())
+	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
+	if !strings.Contains(door.did(), "pending:"+testLink) {
+		t.Fatalf("door was not asked for the link: %s", door.did())
+	}
+	r.press("a")
+	r.until("the card closed", func() bool { return !a.pair.open })
+	if !strings.Contains(door.did(), "approve:k7m2q9xd") {
+		t.Fatalf("not approved: %s", door.did())
+	}
+	if !strings.Contains(plain(frame(a)), "spark joined your fleet") {
+		t.Fatalf("no toast:\n%s", plain(frame(a)))
+	}
+	if a.addMachineWanted() {
+		t.Fatal("a fleet of two kept the card")
+	}
+}
+
+func TestAddMachinePasteThatIsNotALinkIsNotTheCards(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.toggleAddMachine()
+	if _, took := a.pasteLink("hello there"); took {
+		t.Fatal("plain text was taken as a link")
+	}
+	a.toggleAddMachine()
+	if _, took := a.pasteLink(testLink); took {
+		t.Fatal("a closed card took a link")
 	}
 }
 
 func TestAddMachineCardObeysWidthAndVocabulary(t *testing.T) {
-	a := addMachineRig(&linkPairing{link: "https://codeaf.link/p/k7m2q9xd#Qm9vYmFyYmF6cXV4"}, 1, true)
+	a := addMachineRig(&fakeApprovals{}, 1, true)
 	a.toggleAddMachine()
-	a.addMachine.link = "https://codeaf.link/p/k7m2q9xd#Qm9vYmFyYmF6cXV4"
 	for _, width := range []int{20, 32, 60} {
 		for _, line := range strings.Split(addMachineFrame(a, width), "\n") {
 			if ansi.StringWidth(line) > width {
@@ -119,7 +140,7 @@ func TestAddMachineCardObeysWidthAndVocabulary(t *testing.T) {
 }
 
 func TestFleetIsAskedUntilItIsTwo(t *testing.T) {
-	a := addMachineRig(&fakePairing{}, 0, false)
+	a := addMachineRig(&fakeApprovals{}, 0, false)
 	fleet := &fakeFleet{size: 1}
 	a.fleet = fleet
 	a.tookFleet(a.askFleet()().(fleetMsg))
@@ -134,7 +155,7 @@ func TestFleetIsAskedUntilItIsTwo(t *testing.T) {
 }
 
 func TestAFailedFleetAskKeepsWhatWasKnown(t *testing.T) {
-	a := addMachineRig(&fakePairing{}, 1, true)
+	a := addMachineRig(&fakeApprovals{}, 1, true)
 	a.fleet = &fakeFleet{err: context.DeadlineExceeded}
 	a.tookFleet(a.askFleet()().(fleetMsg))
 	if !a.addMachineWanted() {
@@ -146,7 +167,7 @@ var altD = tea.KeyPressMsg{Code: 'd', Mod: tea.ModAlt}
 
 // THE CHORD REACHES THE CARD FROM HOME'S BOX, and a bare letter never does.
 func TestAddMachineChordIsHomesAndOnlyWhereTheCardIs(t *testing.T) {
-	a := addMachineRig(&fakePairing{}, 1, true)
+	a := addMachineRig(&fakeApprovals{}, 1, true)
 	a.openHome()
 	drive(t, a, altD)
 	if !a.addMachine.open {
@@ -160,7 +181,7 @@ func TestAddMachineChordIsHomesAndOnlyWhereTheCardIs(t *testing.T) {
 	if a.addMachine.open {
 		t.Fatal("the chord did not close the card")
 	}
-	b := addMachineRig(&fakePairing{}, 2, true)
+	b := addMachineRig(&fakeApprovals{}, 2, true)
 	b.openHome()
 	drive(t, b, altD)
 	if b.addMachine.open {
@@ -171,7 +192,7 @@ func TestAddMachineChordIsHomesAndOnlyWhereTheCardIs(t *testing.T) {
 // THE CARD IS ON THE HOME SCREEN WITH NO ROW UNDER THE CURSOR: an empty home
 // has nothing to select, and it is the person with nothing yet who needs it.
 func TestAddMachineCardShowsOnAnEmptyHome(t *testing.T) {
-	a := addMachineRig(&fakePairing{}, 1, true)
+	a := addMachineRig(&fakeApprovals{}, 1, true)
 	a.openHome()
 	got := strings.Join(strings.Fields(homeText(a)), " ")
 	for _, want := range []string{"Add another machine", "exactly where you left it.", addMachineShow} {
@@ -179,79 +200,9 @@ func TestAddMachineCardShowsOnAnEmptyHome(t *testing.T) {
 			t.Fatalf("empty home lacks %q:\n%s", want, homeText(a))
 		}
 	}
-	b := addMachineRig(&fakePairing{}, 2, true)
+	b := addMachineRig(&fakeApprovals{}, 2, true)
 	b.openHome()
 	if strings.Contains(homeText(b), "Add another machine") {
 		t.Fatal("a fleet of two kept the card on home")
-	}
-}
-
-type liveDoor struct {
-	fakePairing
-	join func(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error)
-}
-
-func (l *liveDoor) PairByLink(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error) {
-	return l.join(ctx, ui)
-}
-
-// linkCardPump feeds the command's messages back through Update until the wait ends.
-func linkCardPump(t *testing.T, a *app, cmd tea.Cmd) {
-	t.Helper()
-	for cmd != nil {
-		msg, ok := cmd().(linkCardMsg)
-		if !ok {
-			return
-		}
-		cmd = a.tookLinkCard(msg)
-	}
-}
-
-func TestAddMachineCardShowsALiveLinkAndEndsOnPaired(t *testing.T) {
-	approve := make(chan struct{})
-	door := &liveDoor{join: func(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error) {
-		ui.Invited(pair.Invite{Ref: pair.LinkRef{Code: "K7M2Q9XD", Key: []byte("0123456789abcdef")}, Check: "4821"})
-		<-approve
-		return pair.LinkJoined{Fleet: pair.Fleet{Devices: 2, Workspaces: 3}}, nil
-	}}
-	a := addMachineRig(door, 1, true)
-	cmd := a.toggleAddMachine()
-	first := cmd().(linkCardMsg)
-	cmd = a.tookLinkCard(first)
-	got := addMachineFrame(a, 80)
-	for _, want := range []string{"codeaf.link/p/", "Check number: 4821"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("live card lacks %q:\n%s", want, got)
-		}
-	}
-	close(approve)
-	linkCardPump(t, a, cmd)
-	got = addMachineFrame(a, 80)
-	if !strings.Contains(got, "Paired - 3 workspaces available.") || strings.Contains(got, addMachineCLI) {
-		t.Fatalf("card did not end on Paired:\n%s", got)
-	}
-}
-
-func TestAddMachineCardShowsWhyTheWaitFailedAndClosingTakesItBack(t *testing.T) {
-	stopped := make(chan struct{})
-	door := &liveDoor{join: func(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error) {
-		<-ctx.Done()
-		close(stopped)
-		return pair.LinkJoined{}, ctx.Err()
-	}}
-	a := addMachineRig(door, 1, true)
-	a.toggleAddMachine()
-	a.toggleAddMachine()
-	<-stopped
-	if got := addMachineFrame(a, 80); strings.Contains(got, "Paired") || strings.Contains(got, addMachineMaking) {
-		t.Fatalf("closed card kept the wait:\n%s", got)
-	}
-	failing := &liveDoor{join: func(context.Context, pair.LinkUI) (pair.LinkJoined, error) {
-		return pair.LinkJoined{}, pair.ErrLinkExpired
-	}}
-	b := addMachineRig(failing, 1, true)
-	linkCardPump(t, b, b.toggleAddMachine())
-	if got := addMachineFrame(b, 80); !strings.Contains(got, pair.ErrLinkExpired.Error()[:20]) {
-		t.Fatalf("failure not shown:\n%s", got)
 	}
 }
