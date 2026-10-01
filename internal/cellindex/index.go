@@ -15,6 +15,16 @@ type Index interface {
 	Build(c cell.Cell, d session.Digest) error
 }
 
+// Refreshable is an index that can also say it is BEHIND: it holds rows, but
+// fewer than the transcript and the receipts now say. A copy of a chat this
+// machine already had is taken forward by a handoff, and the indexes it kept
+// from the older copy are then present and wrong. Behind is asked only with the
+// digest already read, never on an ordinary open.
+type Refreshable interface {
+	Index
+	Behind(c cell.Cell, d session.Digest) bool
+}
+
 // Indexes is the registry, in build order.
 var Indexes = []Index{metaIndex{}, usageIndex{}, taskIndex{}, memoryIndex{}, artifactIndex{}}
 
@@ -40,21 +50,53 @@ func Rebuild(c cell.Cell, workspace string) ([]string, error) {
 	if len(missing) == 0 {
 		return nil, nil
 	}
-	d, err := session.ReadDigest(session.Place{Dir: c.Root}.Transcript())
+	d, err := digestOf(c, workspace)
 	if err != nil {
 		return nil, err
 	}
-	if workspace != "" {
-		d.Workspace = workspace
+	return build(c, d, missing)
+}
+
+// Refresh is [Rebuild] for a chat a handoff has just moved forward: it reads
+// the transcript once and builds every index that is missing or behind it. A
+// behind index brings in only the rows it lacks, so the ledgers never double.
+func Refresh(c cell.Cell, workspace string) ([]string, error) {
+	d, err := digestOf(c, workspace)
+	if err != nil {
+		return nil, err
 	}
+	var due []Index
+	for _, ix := range Indexes {
+		if !ix.Present(c) || behind(ix, c, d) {
+			due = append(due, ix)
+		}
+	}
+	return build(c, d, due)
+}
+
+func behind(ix Index, c cell.Cell, d session.Digest) bool {
+	r, ok := ix.(Refreshable)
+	return ok && r.Behind(c, d)
+}
+
+// build runs the due indexes over the digest.
+func build(c cell.Cell, d session.Digest, due []Index) ([]string, error) {
 	var built []string
-	for _, ix := range missing {
+	for _, ix := range due {
 		if err := ix.Build(c, d); err != nil {
 			return built, err
 		}
 		built = append(built, ix.Name())
 	}
 	return built, nil
+}
+
+func digestOf(c cell.Cell, workspace string) (session.Digest, error) {
+	d, err := session.ReadDigest(session.Place{Dir: c.Root}.Transcript())
+	if err == nil && workspace != "" {
+		d.Workspace = workspace
+	}
+	return d, err
 }
 
 func missingOf(c cell.Cell) []Index {

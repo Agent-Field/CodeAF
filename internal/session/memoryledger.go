@@ -42,30 +42,43 @@ var CellMemories = &MemoryLedger{}
 
 // MemoryLedger implements [store.MemoryLedger] over session folders.
 type MemoryLedger struct {
-	mu   sync.Mutex
-	dirs map[string]string
+	mu    sync.Mutex
+	dirs  map[string]string
+	wrote map[string]func()
 }
 
-// Bind says where the conversation named id keeps its folder.
-func (l *MemoryLedger) Bind(id, dir string) {
+// Bind says where the conversation named id keeps its folder, and who to tell
+// each time a row is written there (nil for nobody).
+func (l *MemoryLedger) Bind(id, dir string, wrote func()) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.dirs == nil {
-		l.dirs = map[string]string{}
+		l.dirs, l.wrote = map[string]string{}, map[string]func(){}
 	}
-	l.dirs[id] = dir
+	l.dirs[id], l.wrote[id] = dir, wrote
 }
 
 // Record appends the event to its conversation's ledger. An event of no bound
 // conversation is not this ledger's to keep.
 func (l *MemoryLedger) Record(e store.MemoryEvent) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	dir, ok := l.dirs[e.Session]
+	dir, wrote, ok := l.bound(e.Session)
 	if !ok {
 		return nil
 	}
-	return appendMemoryRow(memoryLedgerPath(dir), memoryRow{memoryLedgerVersion, e})
+	if err := appendMemoryRow(memoryLedgerPath(dir), memoryRow{memoryLedgerVersion, e}); err != nil {
+		return err
+	}
+	if wrote != nil {
+		wrote()
+	}
+	return nil
+}
+
+func (l *MemoryLedger) bound(id string) (dir string, wrote func(), ok bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	dir, ok = l.dirs[id]
+	return dir, l.wrote[id], ok
 }
 
 func memoryLedgerPath(dir string) string { return truthPath(dir, placeMemories) }
@@ -150,8 +163,8 @@ func writeMemoryLedger(path string, events []store.MemoryEvent) error {
 
 // bindMemoryLedger points the process ledger at this conversation's folder. A
 // session with no folder (the zero Place) has none to seal into.
-func bindMemoryLedger(p Place) {
+func bindMemoryLedger(p Place, wrote func()) {
 	if p.Dir != "" {
-		CellMemories.Bind(p.ID(), p.Dir)
+		CellMemories.Bind(p.ID(), p.Dir, wrote)
 	}
 }

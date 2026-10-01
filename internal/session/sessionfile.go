@@ -1125,10 +1125,12 @@ func (p journalPart) placeholderBecause(reason string) ai.ContentPart {
 // lock orders the writes, this one keeps a write from being interleaved by
 // anything that reaches the file another way.
 type sessionFile struct {
-	mu     sync.Mutex
-	file   *os.File
-	locked bool
-	closed bool
+	// onWrite hears each line that reached the file, once the lock is released.
+	onWrite func()
+	mu      sync.Mutex
+	file    *os.File
+	locked  bool
+	closed  bool
 	// title is the name replayed from the file at open, so a resumed session
 	// keeps the one it was given instead of paying to be named again.
 	title      string
@@ -3182,16 +3184,23 @@ func (s *sessionFile) writeLine(entry any) bool {
 	// the model exactly as they wrote it. The broader shape scrub belongs to the
 	// records people share — the call log and the debug record — not here.
 	payload = trace.ScrubRegistered(payload)
+	if !s.appendLine(payload) {
+		return false
+	}
+	if s.onWrite != nil {
+		s.onWrite()
+	}
+	return true
+}
+
+func (s *sessionFile) appendLine(payload []byte) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return false
 	}
-	payload = append(payload, '\n')
-	if _, err := s.file.Write(payload); err != nil {
-		return false
-	}
-	return true
+	_, err := s.file.Write(append(payload, '\n'))
+	return err == nil
 }
 
 // Close flushes the file, releases the claim, and closes the descriptor.
