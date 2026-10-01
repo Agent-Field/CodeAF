@@ -156,8 +156,11 @@ func TestHandlerNamespacesByIdentity(t *testing.T) {
 	}
 }
 
-// TestHandlerGetFrameRange: a frame fetch answers the whole frame at 200, and
-// the one bytes=a-b range the caller names at 206 with a Content-Range.
+// TestHandlerGetFrameRange: a frame fetch answers the whole frame at 200,
+// its one range at 206 with a Content-Range, an open-ended and an over-long
+// range clamped to the frame's end, and every other Range header — several
+// ranges, a malformed one, a start past the end — with 416, the same answer
+// the Worker gives (contract §22.3).
 func TestHandlerGetFrameRange(t *testing.T) {
 	g := newRig(t)
 	c := g.client("alice")
@@ -188,8 +191,18 @@ func TestHandlerGetFrameRange(t *testing.T) {
 	if code != http.StatusPartialContent || string(got) != string(f[10:16]) || cr != fmt.Sprintf("bytes 10-15/%d", len(f)) {
 		t.Fatalf("ranged GetFrame = %d, %q, %d bytes; want 206, %q, 6", code, cr, len(got), fmt.Sprintf("bytes 10-15/%d", len(f)))
 	}
-	if code, _, _ = fetch("bytes=0-5,10-15"); code != http.StatusBadRequest {
-		t.Errorf("multi-range GetFrame = %d, want 400", code)
+	code, cr, got = fetch("bytes=10-")
+	if code != http.StatusPartialContent || string(got) != string(f[10:]) || cr != fmt.Sprintf("bytes 10-%d/%d", len(f)-1, len(f)) {
+		t.Fatalf("open-ended GetFrame = %d, %q, %d bytes; want 206 to the end", code, cr, len(got))
+	}
+	code, cr, got = fetch(fmt.Sprintf("bytes=10-%d", len(f)+9))
+	if code != http.StatusPartialContent || string(got) != string(f[10:]) || cr != fmt.Sprintf("bytes 10-%d/%d", len(f)-1, len(f)) {
+		t.Fatalf("over-long GetFrame = %d, %q, %d bytes; want 206 clamped to the end", code, cr, len(got))
+	}
+	for _, rng := range []string{"bytes=0-5,10-15", "bytes=abc", "0-5", fmt.Sprintf("bytes=%d-", len(f))} {
+		if code, _, _ = fetch(rng); code != http.StatusRequestedRangeNotSatisfiable {
+			t.Errorf("Range %q answered %d, want 416", rng, code)
+		}
 	}
 }
 

@@ -212,20 +212,32 @@ func (t *tenant) getFrame(ctx context.Context, r *http.Request, _ []byte) (reply
 	if err != nil {
 		return reply{}, err
 	}
-	t.bytesOut.Add(int64(len(b)))
-	return rangedFrame(r.Header.Get("Range"), b)
+	resp, err := rangedFrame(r.Header.Get("Range"), b)
+	if err != nil {
+		return reply{}, err
+	}
+	// Stats count the bytes the answer serves, the same number the Worker
+	// counts: a ranged get is a smaller answer, not a smaller object.
+	t.bytesOut.Add(int64(len(resp.body)))
+	return resp, nil
 }
 
-// rangedFrame answers the whole frame at 200, or its single requested range at
-// 206 with a Content-Range. A header that is not exactly one range inside the
-// frame is a malformed request.
+// errRange is a Range header no single answer can serve: malformed, several
+// ranges, or a start past the frame's end. The Worker answers the same
+// header with range_not_satisfiable, and both relays must agree (§22.3).
+var errRange = errors.New("blobstore: range not satisfiable")
+
+// rangedFrame answers the whole frame at 200, or its single requested range
+// at 206 with a Content-Range. An open-ended range serves to the frame's end,
+// and an end past the end is clamped to it, the two forms a resumable fetch
+// uses; a header that is not exactly one such range is errRange.
 func rangedFrame(rng string, frame []byte) (reply, error) {
 	if rng == "" {
 		return reply{ctype: "application/octet-stream", body: frame}, nil
 	}
 	start, end, ok := parseByteRange(rng, uint64(len(frame)))
 	if !ok {
-		return reply{}, errBadRequest
+		return reply{}, errRange
 	}
 	return reply{
 		ctype:  "application/octet-stream",
@@ -235,9 +247,11 @@ func rangedFrame(rng string, frame []byte) (reply, error) {
 	}, nil
 }
 
-// parseByteRange reads the one range form a frame fetch may use, "bytes=a-b"
-// with both ends present and inside the frame. Anything else, several ranges
-// included, is not a request the verb answers, and says so with ok = false.
+// parseByteRange reads the one range form a frame fetch may use: "bytes=a-b"
+// with a and b digits and a no larger than b, or "bytes=a-" to the frame's
+// end. The end may name a byte past the frame and is clamped; anything else —
+// several ranges, no prefix, a start past the end of the frame — is not a
+// request the verb can serve, and says so with ok = false.
 func parseByteRange(header string, size uint64) (start, end uint64, ok bool) {
 	const form = "bytes="
 	if !strings.HasPrefix(header, form) || strings.Contains(header, ",") {
@@ -250,9 +264,16 @@ func parseByteRange(header string, size uint64) (start, end uint64, ok bool) {
 	}
 	var a, b error
 	start, a = strconv.ParseUint(spec[:dash], 10, 63)
-	end, b = strconv.ParseUint(spec[dash+1:], 10, 63)
-	if a != nil || b != nil || start > end || end >= size {
+	if spec[dash+1:] == "" {
+		end = size - 1 // open-ended: to the frame's end
+	} else {
+		end, b = strconv.ParseUint(spec[dash+1:], 10, 63)
+	}
+	if a != nil || b != nil || start > end || start >= size {
 		return 0, 0, false
+	}
+	if end >= size {
+		end = size - 1 // clamped: a resumable fetch may guess the frame's end
 	}
 	return start, end, true
 }
@@ -331,7 +352,7 @@ func (t *tenant) statsReply(context.Context, *http.Request, []byte) (reply, erro
 // errBadRequest is a body the wire could not parse; it has no §2.1 name.
 var errBadRequest = errors.New("blobstore: malformed request")
 
-// writeErr answers a failure. The two refusals the handler makes itself get
+// writeErr answers a failure. The three refusals the handler makes itself get
 // their statuses here; every store error goes through the code table, and an
 // error the table does not know is the server's fault, not the caller's.
 func writeErr(w http.ResponseWriter, err error) {
@@ -340,6 +361,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		send(w, http.StatusRequestEntityTooLarge, "bad_frame", 0)
 	case errors.Is(err, errBadRequest):
 		send(w, http.StatusBadRequest, "bad_request", 0)
+	case errors.Is(err, errRange):
+		send(w, http.StatusRequestedRangeNotSatisfiable, "range_not_satisfiable", 0)
 	default:
 		code, status, ok := codeOf(err)
 		if !ok {

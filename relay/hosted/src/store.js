@@ -92,20 +92,25 @@ export class R2Store {
 
   /**
    * getFrame answers one frame as R2 holds it: the body is R2's own ReadableStream, so a frame is
-   * piped to the client and never held whole in the isolate's memory. Absent is null.
+   * piped to the client and never held whole in the isolate's memory. Absent is null. A range
+   * asked is pre-checked against the frame's own end, so an unsatisfiable range is refused by
+   * the index rather than classified from the wording of an R2 error, and R2 is only ever
+   * asked ranges that begin inside the frame.
    */
   async getFrame(id, range) {
-    let o;
-    try {
-      o = await this.bucket.get(this.prefix + id, range && { range });
-    } catch (e) {
-      // R2 answers a range that begins past the object with an error, not an empty get, so with a
-      // range asked that error is the range itself and nothing else it can be.
-      if (range && /not satisfiable/.test(e.message)) throw new Unsatisfiable();
-      throw e;
-    }
+    if (range && this.frameEnd(id) <= range.offset) throw new Unsatisfiable();
+    const o = await this.bucket.get(this.prefix + id, range && { range });
     if (!o) return null;
     return { body: o.body, size: o.size };
+  }
+
+  /**
+   * frameEnd answers the last byte offset the index holds in a frame, or 0 for a frame the index
+   * does not know: a frame's objects are laid end to end, so the largest end is the frame's own
+   * end, and a range that begins at or past it cannot be served.
+   */
+  frameEnd(id) {
+    return this.sql.exec('SELECT MAX(off + len) AS end FROM objs WHERE frame = ?', id).one()?.end ?? 0;
   }
 
   /**
