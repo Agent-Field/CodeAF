@@ -70,7 +70,7 @@ func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
 		t.Fatal("--at opened a connection with no relay set up")
 	}
 	said := err.Error()
-	for _, want := range []string{"no relay is set up", "CODEAF_RELAY", "--host over ssh", "otter-lamp-42"} {
+	for _, want := range []string{"no service address is set up", "CODEAF_RELAY", "--host over ssh", "otter-lamp-42"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("--at with no relay said %q, which does not mention %q", said, want)
 		}

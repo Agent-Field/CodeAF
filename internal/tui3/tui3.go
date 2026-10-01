@@ -449,6 +449,10 @@ type Options struct {
 	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
 	// sentence while the first-run screen leaves its code field out.
 	Pairing Pairing
+	// Approvals answers a new device's request to join and revokes devices
+	// (approve.go, devices.go). Nil is a connection that cannot, and the
+	// screens are then absent.
+	Approvals Approvals
 	// Fleet counts this person's paired devices, which keeps the home card that
 	// offers another machine on screen until there are two
 	// (homeband_addmachine.go). Nil is a connection that cannot count, and the

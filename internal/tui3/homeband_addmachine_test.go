@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -182,5 +183,75 @@ func TestAddMachineCardShowsOnAnEmptyHome(t *testing.T) {
 	b.openHome()
 	if strings.Contains(homeText(b), "Add another machine") {
 		t.Fatal("a fleet of two kept the card on home")
+	}
+}
+
+type liveDoor struct {
+	fakePairing
+	join func(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error)
+}
+
+func (l *liveDoor) PairByLink(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error) {
+	return l.join(ctx, ui)
+}
+
+// linkCardPump feeds the command's messages back through Update until the wait ends.
+func linkCardPump(t *testing.T, a *app, cmd tea.Cmd) {
+	t.Helper()
+	for cmd != nil {
+		msg, ok := cmd().(linkCardMsg)
+		if !ok {
+			return
+		}
+		cmd = a.tookLinkCard(msg)
+	}
+}
+
+func TestAddMachineCardShowsALiveLinkAndEndsOnPaired(t *testing.T) {
+	approve := make(chan struct{})
+	door := &liveDoor{join: func(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error) {
+		ui.Invited(pair.Invite{Ref: pair.LinkRef{Code: "K7M2Q9XD", Key: []byte("0123456789abcdef")}, Check: "4821"})
+		<-approve
+		return pair.LinkJoined{Fleet: pair.Fleet{Devices: 2, Workspaces: 3}}, nil
+	}}
+	a := addMachineRig(door, 1, true)
+	cmd := a.toggleAddMachine()
+	first := cmd().(linkCardMsg)
+	cmd = a.tookLinkCard(first)
+	got := addMachineFrame(a, 80)
+	for _, want := range []string{"codeaf.link/p/", "Check number: 4821"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("live card lacks %q:\n%s", want, got)
+		}
+	}
+	close(approve)
+	linkCardPump(t, a, cmd)
+	got = addMachineFrame(a, 80)
+	if !strings.Contains(got, "Paired - 3 workspaces available.") || strings.Contains(got, addMachineCLI) {
+		t.Fatalf("card did not end on Paired:\n%s", got)
+	}
+}
+
+func TestAddMachineCardShowsWhyTheWaitFailedAndClosingTakesItBack(t *testing.T) {
+	stopped := make(chan struct{})
+	door := &liveDoor{join: func(ctx context.Context, ui pair.LinkUI) (pair.LinkJoined, error) {
+		<-ctx.Done()
+		close(stopped)
+		return pair.LinkJoined{}, ctx.Err()
+	}}
+	a := addMachineRig(door, 1, true)
+	a.toggleAddMachine()
+	a.toggleAddMachine()
+	<-stopped
+	if got := addMachineFrame(a, 80); strings.Contains(got, "Paired") || strings.Contains(got, addMachineMaking) {
+		t.Fatalf("closed card kept the wait:\n%s", got)
+	}
+	failing := &liveDoor{join: func(context.Context, pair.LinkUI) (pair.LinkJoined, error) {
+		return pair.LinkJoined{}, pair.ErrLinkExpired
+	}}
+	b := addMachineRig(failing, 1, true)
+	linkCardPump(t, b, b.toggleAddMachine())
+	if got := addMachineFrame(b, 80); !strings.Contains(got, pair.ErrLinkExpired.Error()[:20]) {
+		t.Fatalf("failure not shown:\n%s", got)
 	}
 }

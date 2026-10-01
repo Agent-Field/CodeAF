@@ -37,11 +37,6 @@ var uiStringFiles = []string{
 	"internal/tui3/wallbar.go",
 	"internal/tui3/commands.go",
 	"internal/config/settings.go",
-}
-
-// deferredUIStringFiles still carry the old words and are owned by another
-// lane until it lands (t-ux-vocab2); the list only ever shrinks.
-var deferredUIStringFiles = []string{
 	"internal/pair/lines.go",
 	"internal/pair/errors.go",
 	"internal/pair/offer.go",
@@ -54,16 +49,6 @@ func TestVocabularyLawUIStrings(t *testing.T) {
 	for _, file := range uiStringFiles {
 		for _, found := range bannedInStrings(t, filepath.Join(root, file)) {
 			t.Errorf("%s: %s", file, found)
-		}
-	}
-}
-
-// The deferred list must name real files, so it cannot rot into a hiding place.
-func TestVocabularyLawDeferredFilesExist(t *testing.T) {
-	root := moduleRoot(t)
-	for _, file := range deferredUIStringFiles {
-		if _, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, file), nil, parser.PackageClauseOnly); err != nil {
-			t.Errorf("deferred file %s: %v (remove it from the list once it is clean or gone)", file, err)
 		}
 	}
 }
@@ -97,6 +82,9 @@ func uiLiterals(tree *ast.File) []*ast.BasicLit {
 		case *ast.ImportSpec:
 			return false
 		case *ast.CallExpr:
+			if isOldSpelling(n) {
+				return false
+			}
 			if isFlagDeclaration(n) {
 				out = append(out, flagHelp(n)...)
 				return false
@@ -109,6 +97,13 @@ func uiLiterals(tree *ast.File) []*ast.BasicLit {
 		return true
 	})
 	return dropTags(out, tree)
+}
+
+// isOldSpelling reports renamedFlag(flags, "old", "now"): both are words a
+// person types, never sentences, and the old one is hidden from --help.
+func isOldSpelling(call *ast.CallExpr) bool {
+	name, ok := call.Fun.(*ast.Ident)
+	return ok && name.Name == "renamedFlag"
 }
 
 // isFlagDeclaration reports flags.String("name", "", "help"): the name is a
