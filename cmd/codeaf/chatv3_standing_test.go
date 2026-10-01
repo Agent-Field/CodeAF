@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
@@ -190,3 +191,129 @@ func TestTheRepairRewritesADefinitionThatNamesADeadPath(t *testing.T) {
 type quietHost struct{}
 
 func (quietHost) Run(context.Context, string, ...string) error { return nil }
+
+// ── the accounts a firing inherits ──────────────────────────────────────────
+
+// standingAccountsFixture points the state root and the profile at fresh temp
+// directories and silences every key variable, so nothing below touches this
+// machine's own accounts and no probe can buy a model call.
+func standingAccountsFixture(t *testing.T) string {
+	t.Helper()
+	t.Setenv(home.EnvVar, t.TempDir())
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv("OPENAI_API_KEY", "")
+	return profile
+}
+
+// standingServicesItem is the smallest item whose probe reaches a belt tool:
+// asking which accounts are connected. It is exactly the shape the existing
+// 15-minute sync fires with, minus the cadence.
+func standingServicesItem(t *testing.T) standing.Item {
+	t.Helper()
+	return standing.Item{
+		Schema:    1,
+		ID:        "test-services",
+		Words:     "which accounts do I have",
+		Workspace: t.TempDir(),
+		When: standing.When{
+			Kind:  standing.WhenProbe,
+			Probe: standing.Probe{Tool: "services"},
+		},
+		Does:  standing.Action{Kind: standing.ActionSay, Say: "the accounts"},
+		Rails: standing.Rails{PerRunUSD: 0.05, MaxPerDay: 3},
+	}
+}
+
+// A FIRING'S BELT REACHES THE VERY MANAGER ITS CALLER HOLDS. The live process
+// resolved one manager at the door and every conversation's belt reaches it; a
+// firing ticked by that same window must too, or the two halves would keep
+// separate caches and a token either refreshed would be a token the other still
+// believed had not moved. The posture must hand back the caller's object, never
+// a second one built over the same store.
+func TestStandingPostureUsesTheCallersAccountsManager(t *testing.T) {
+	profile := standingAccountsFixture(t)
+	conns := v3Connect(profile)
+	if conns == nil {
+		t.Fatal("a fresh profile must still resolve an accounts manager")
+	}
+	settings, err := config.LoadKeyless()
+	if err != nil {
+		t.Fatal(err)
+	}
+	posture, models, err := v3StandingPosture(settings, conns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer models.Close()
+	if posture.Connect != conns {
+		t.Fatal("the firing posture built or borrowed a second accounts manager instead of the caller's")
+	}
+}
+
+// AND THROUGH THE FIRING'S OWN PROBE PATH THE ACCOUNTS TOOLS ARE ACTUALLY
+// THERE. The ticker's Runner is what a pass calls after its judgment says yes,
+// so a `services` probe that answers the accounts list is the whole behavior
+// this fix restores: before it, v3StandingPosture left Connect empty, the hub
+// was nil, and the same probe came back "Unknown tool: services".
+func TestStandingFiringReachesTheConnectedAccountsTools(t *testing.T) {
+	profile := standingAccountsFixture(t)
+	store, err := standing.Open(home.Join("v3", "standing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticker, release, err := v3StandingTicker(store, v3Connect(profile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+
+	out, err := ticker.Runner.Probe(context.Background(), standingServicesItem(t))
+	if err != nil {
+		t.Fatalf("the firing's probe failed: %v", err)
+	}
+	if strings.Contains(out, "Unknown tool") {
+		t.Fatalf("a firing with a connected manager carried no accounts tool: %q", out)
+	}
+	if strings.TrimSpace(out) == "" {
+		t.Fatal("the services probe answered nothing")
+	}
+}
+
+// AND A FIRING WITH NO MANAGER GETS NO MANAGER INVENTED FOR IT. Nil is the same
+// absence the belt reads everywhere: no services tool, no use_service, and a
+// probe that names one answered "Unknown tool" rather than a fabricated account
+// list. This is the disconnected-profile half of the regression.
+func TestStandingFiringInventsNoAccountsManagerWhenThereIsNone(t *testing.T) {
+	standingAccountsFixture(t)
+	settings, err := config.LoadKeyless()
+	if err != nil {
+		t.Fatal(err)
+	}
+	posture, models, err := v3StandingPosture(settings, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer models.Close()
+	if posture.Connect != nil {
+		t.Fatal("a firing with no accounts manager was handed one anyway")
+	}
+	store, err := standing.Open(home.Join("v3", "standing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticker, release, err := v3StandingTicker(store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+
+	out, err := ticker.Runner.Probe(context.Background(), standingServicesItem(t))
+	if err != nil {
+		t.Fatalf("the firing's probe failed: %v", err)
+	}
+	if !strings.Contains(out, "Unknown tool: services") {
+		t.Fatalf("a firing with no accounts manager still reached accounts tools: %q", out)
+	}
+}

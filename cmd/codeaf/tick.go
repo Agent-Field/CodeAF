@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
@@ -32,7 +33,13 @@ func runTick(args []string) error {
 	if err != nil {
 		return err
 	}
-	ticker, release, err := v3StandingTicker(store)
+	// THE PASS RESOLVES THE PROFILE'S OWN ACCOUNTS MANAGER, because this door is
+	// a whole process of its own: there is no window whose manager it could
+	// borrow, and a firing the timer starts must reach the same accounts a
+	// conversation would. A live window passes its existing manager instead
+	// (chatv3_standing.go's [v3StandingTicker]), so the two paths never hold two
+	// caches over one store.
+	ticker, release, err := v3StandingTicker(store, v3Connect(config.ProfileDir()))
 	if err != nil {
 		return err
 	}
