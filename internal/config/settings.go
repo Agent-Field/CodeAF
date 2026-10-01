@@ -1063,10 +1063,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_FURROW",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
-	// this binary reports as is a constant in internal/provider that nothing
-	// reads from the environment any more. A footer that still listed them
-	// would be promising an override that does nothing, which is worse than
-	// saying nothing at all.
+	// this binary reports as is decided in internal/provider from the binary's
+	// own release stamp, and nothing reads it from the environment any more. A
+	// footer that still listed them would be promising an override that does
+	// nothing, which is worse than saying nothing at all.
 	"CODEAF_PROFILE_DIR",
 	// The model API codeaf serves one program's run, and the token for it
 	// (internal/delegate's ChildEnv). codeaf sets them on the child it starts

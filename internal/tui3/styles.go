@@ -1110,6 +1110,16 @@ type palette struct {
 	// draws (placeprose.go's THE FIVE-LEVEL SCALE). The overlays the
 	// conversation opens keep their own marks.
 	placeRows bool
+	// frontUnlifted is THE MODEL MENU'S FRONT MARK: the chosen row keeps its
+	// accent and its weight but takes NO ground. On the /model list the band is
+	// the cursor's language — where ↑/↓ has got to — and a marked row wearing
+	// the selected step read as a highlighted row the hand was never on (the
+	// owner's TODO on the menu): the row in use is a persistent fact, and a
+	// persistent fact is said in ink and weight, not in a band that belongs to
+	// the gesture. The model picker's own draw sets it on the palette copy it
+	// hands its rows ([picker.rowsOwned]); every other list keeps the ladder's
+	// selected step for its front mark.
+	frontUnlifted bool
 }
 
 // glyph is THE ONE DOOR EVERY ICON ON THIS SURFACE COMES THROUGH: a slot of the

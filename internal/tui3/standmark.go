@@ -163,10 +163,14 @@ func (a *app) standMarkHead() string {
 // answer they are parked with the mark on them, exactly as the chord's were
 // (park.go).
 func (a *app) standingSay(text string) tea.Cmd {
-	return a.standingSayShown(text, text)
+	return a.standingSayShown(text, text, nil, nil)
 }
 
-func (a *app) standingSayShown(text, shown string) tea.Cmd {
+// standingSayShown is [app.standingSay] for a sentence whose transcript line
+// differs from its words: shownPlain is the demoted tags as offsets into shown,
+// and textPlain the same tags as offsets into text. Both are needed because a
+// parked message keeps only its words, so it is textPlain that waits with it.
+func (a *app) standingSayShown(text, shown string, shownPlain, textPlain []segment) tea.Cmd {
 	a.noticeEvent(eventStandingOpened)
 	if !a.standingHere() {
 		// The same absence the chord answers with, said in the same words: there
@@ -175,9 +179,9 @@ func (a *app) standingSayShown(text, shown string) tea.Cmd {
 		return nil
 	}
 	if a.parking() {
-		return a.park(text, true)
+		return a.park(text, true, textPlain)
 	}
-	return a.submitStandingShown(text, shown)
+	return a.submitStandingShown(text, shown, shownPlain)
 }
 
 // submitStanding sends one marked message. It is [app.submit] with the other
@@ -185,12 +189,12 @@ func (a *app) standingSayShown(text, shown string) tea.Cmd {
 // the call talks to a lock and possibly a provider, and the Update loop is not a
 // place to wait.
 func (a *app) submitStanding(text string) tea.Cmd {
-	return a.submitStandingShown(text, text)
+	return a.submitStandingShown(text, text, nil)
 }
 
-func (a *app) submitStandingShown(text, shown string) tea.Cmd {
+func (a *app) submitStandingShown(text, shown string, plain []segment) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submittingShown(text, shown, standingStart(agent, ctx, text))
+	return a.submittingShown(text, shown, plain, standingStart(agent, ctx, text))
 }
 
 // standingStart is the marked-message call shared by the front and keeper.

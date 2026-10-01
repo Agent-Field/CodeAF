@@ -200,6 +200,7 @@ func (a *app) startFollow() tea.Cmd {
 		// turn late, and where it goes is the same fact about it either way.
 		a.entries = append(a.entries, entry{
 			kind: entryUser, text: next.text, turn: a.turn, context: a.turnContext(),
+			plainTags: restingDoorWords([]rune(next.text)),
 		})
 	}
 	a.state = stateWorking

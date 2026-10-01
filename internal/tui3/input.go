@@ -1515,11 +1515,17 @@ func (a *app) enterLine() tea.Cmd {
 	}
 	var tagDoor sendDoor
 	var tagWords string
+	var tagPlain []segment
 	tagShown := line
+	// A DEMOTION MUST SURVIVE THE RESET. [editor.reset] nils demotedTags, and
+	// the transcript is painted long after that, so the ranges are snapshotted
+	// here and threaded to the entry (app.go's [app.submittingShown]).
+	plain := a.input.plainTags()
 	if !strings.HasPrefix(line, "/") && len(tags) == 1 {
 		tag := tags[0]
 		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
 		tagWords = removeSlashTag(a.input.value, tag)
+		tagPlain = plainWithoutTag(a.input.value, tag, plain)
 	}
 	a.input.reset()
 	a.endRecall()
@@ -1557,7 +1563,7 @@ func (a *app) enterLine() tea.Cmd {
 		if tagWords == "" {
 			return a.openStanding()
 		}
-		return a.standingSayShown(tagWords, tagShown)
+		return a.standingSayShown(tagWords, tagShown, plain, tagPlain)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}
@@ -1568,7 +1574,7 @@ func (a *app) enterLine() tea.Cmd {
 	// the tray's own hint says to type the request, and enter on nothing is the
 	// no-op it always was.
 	if a.harnChip != "" {
-		return a.runPickedHarness(line)
+		return a.runPickedHarness(line, plain)
 	}
 	// EVERY "@task" IN THE SENTENCE GROWS ITS FOOTNOTE HERE, and here is after
 	// the line has been remembered: what ↑ brings back is what the person typed,
@@ -1584,14 +1590,15 @@ func (a *app) enterLine() tea.Cmd {
 	// still happens at once, because those are things said to THIS SURFACE rather
 	// than to the model.
 	if a.parking() {
-		return a.park(line, false)
+		// A tag the person made plain waits plain with the words (park.go).
+		return a.park(line, false, plain)
 	}
 	shownLine := line
 	line = a.expandPastes(line)
 	if held {
-		return a.submitImagesShown(line, shownLine)
+		return a.submitImagesShown(line, shownLine, plain)
 	}
-	return a.submitShown(line, shownLine)
+	return a.submitShown(line, shownLine, plain)
 }
 
 // completePath is tab: the file list over a command's path argument, opened if

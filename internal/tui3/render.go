@@ -1207,10 +1207,15 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// The original-file link is independent of the terminal's ability to paint pixels.
 		pictureDoors := a.pathLinks
 		marked, pictureMasks := a.maskPictureMarkers(requestDisplayText(e), e, pictureDoors)
-		body := wrap(marked, userBodyCols(width))
+		body, bodyAt := wrapWithOffsets(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
-			body = nil
+			body, bodyAt = nil, nil
 		}
+		// AND A WORD THE PERSON DEMOTED STAYS PLAIN (slashchip.go). The ranges
+		// are offsets into the displayed text, which [wrapWithOffsets] expanded
+		// tabs in; they are rebased once here and each row's own offset does the
+		// rest.
+		plain := tabExpandedSegments(e.plainTags, marked)
 		// AND A NODE'S INSTRUCTION SHOWS ITS OPENING AND NOT ALL OF ITSELF
 		// (brieffold.go). The cut is made on the WRAPPED lines, so it lands where
 		// a reader's eye would land rather than at some count of bytes; the door
@@ -1224,23 +1229,16 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			// AND A RECOGNIZED SLASH COMMAND KEEPS ITS CHIP AFTER IT IS SENT
-			// (slashchip.go). The box is where a person learns that this surface
-			// knows the word, and a message that dropped the mark on its way into
-			// the transcript would take the fact back the moment it mattered — a
-			// conversation scrolled back through is the only record of what was
-			// asked for. Every row of a wrapped message opens at a boundary: the
-			// wrap breaks on spaces, and a word too long to break on one is not a
-			// command either.
-			// Sent tag ranges are stored on the unwrapped message. Wrapped rows
-			// cannot reuse those offsets, so a line away from the head may chip a
-			// send door only when this entry records that one acted.
-			spans := transcriptCommandSpans([]rune(line), e.actedTags)
-			if len(e.actedTags) > 0 && i > 0 {
-				// Wrapping changes offsets; routed messages are ordinarily one line,
-				// while the scanner still safely recognizes their door on this row.
-				spans = commandSpans([]rune(line), true)
+			// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE, so every
+			// recognized command in a sent message keeps it — the same widening
+			// rule as the draft (slashchip.go's [commandSpans]). Every row of a
+			// wrapped message opens at a boundary: the wrap breaks on spaces,
+			// and a word too long to break on one is not a command either.
+			at := 0
+			if i < len(bodyAt) {
+				at = bodyAt[i]
 			}
+			spans := transcriptCommandSpans([]rune(line), plain, at)
 			out = append(out, lead+paintCommandSpans(line, spans, a.pal, words))
 		}
 		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest
@@ -4250,6 +4248,10 @@ func initialOf(segment string) string {
 	}
 }
 
+// tabStop is the expansion shared by wrapping and command-chip coordinates,
+// so changing the displayed spaces moves demotions by the same amount.
+const tabStop = "    "
+
 // wrap breaks a block of plain text to width, keeping its own newlines. The
 // text is unstyled at this point: styling after wrapping is what keeps every
 // width measurement honest.
@@ -4257,7 +4259,7 @@ func wrap(text string, width int) []string {
 	if width < 4 {
 		width = 4
 	}
-	text = strings.ReplaceAll(text, "\t", "    ")
+	text = strings.ReplaceAll(text, "\t", tabStop)
 	var out []string
 	for _, para := range strings.Split(text, "\n") {
 		if para == "" {
@@ -4267,6 +4269,93 @@ func wrap(text string, width int) []string {
 		out = append(out, strings.Split(ansi.Wrap(para, width, ""), "\n")...)
 	}
 	return out
+}
+
+// wrapWithOffsets is [wrap] for a block whose command chips must be subtracted
+// against ranges that live in the text BEFORE it was broken into rows. It
+// returns the same rows [wrap] would, and beside them the rune offset in the
+// wrapped text at which each row's first rune was taken.
+//
+// TABS ARE EXPANDED FIRST, exactly as [wrap] does, so the offsets are in that
+// expanded text's coordinates. The alignment then walks each paragraph's source
+// and skips only the whitespace the wrapper dropped at a break — the one place
+// [ansi.Wrap] removes characters — which keeps every later row honest where a
+// whole-entry subtraction would not.
+func wrapWithOffsets(text string, width int) ([]string, []int) {
+	if width < 4 {
+		width = 4
+	}
+	text = strings.ReplaceAll(text, "\t", tabStop)
+	var rows []string
+	var at []int
+	start := 0
+	for _, para := range strings.Split(text, "\n") {
+		if para == "" {
+			rows = append(rows, "")
+			at = append(at, start)
+			start++
+			continue
+		}
+		paraRunes := []rune(para)
+		p := 0
+		for _, row := range strings.Split(ansi.Wrap(para, width, ""), "\n") {
+			r := []rune(row)
+			if p > len(paraRunes) {
+				p = len(paraRunes)
+			}
+			if !runesHavePrefix(paraRunes[p:], r) {
+				for p < len(paraRunes) && unicode.IsSpace(paraRunes[p]) {
+					p++
+				}
+			}
+			rows = append(rows, row)
+			at = append(at, start+p)
+			p += len(r)
+		}
+		start += len(paraRunes) + 1
+	}
+	return rows, at
+}
+
+// runesHavePrefix reports whether value begins with prefix.
+func runesHavePrefix(value, prefix []rune) bool {
+	if len(prefix) > len(value) {
+		return false
+	}
+	for i := range prefix {
+		if value[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// tabExpandedSegments moves ranges from a text's own rune coordinates into the
+// coordinates [wrapWithOffsets] consumes, where every tab has already become
+// four spaces. It is a no-op on the overwhelmingly common text with no tab.
+func tabExpandedSegments(segs []segment, text string) []segment {
+	if len(segs) == 0 || !strings.Contains(text, "\t") {
+		return segs
+	}
+	runes := []rune(text)
+	out := make([]segment, len(segs))
+	added := len(tabStop) - 1
+	for i, s := range segs {
+		out[i] = segment{from: s.from + added*tabsBefore(runes, s.from), to: s.to + added*tabsBefore(runes, s.to)}
+	}
+	return out
+}
+
+// tabsBefore counts the tabs in runes before offset at.
+func tabsBefore(runes []rune, at int) int {
+	at = min(max(at, 0), len(runes))
+	n := 0
+	for i := 0; i < at; i++ {
+		if runes[i] == '\t' {
+			n++
+		}
+	}
+	return n
 }
 
 // wrapSheet is [wrap] for a column sheet such as /help. Each source line keeps
