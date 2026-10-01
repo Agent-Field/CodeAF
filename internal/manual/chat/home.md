@@ -439,7 +439,7 @@ the chat's `trees` folder.
 
 ## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
 
-A chat that was taken over while another machine still held unsent turns leaves those turns
+A chat that was moved to another machine while another machine still held unsent turns leaves those turns
 as a branch. Press enter on its row to be asked **What should happen to these turns?** and
 answer `discard` (or `merge`, where it is offered), then enter; the cursor starts on `leave
 them`. **Discard archives** the branch: it leaves this list and is not deleted. **Merge is
