@@ -10,4 +10,5 @@ invalidates:
 A chip is a recognition mark: it says codeaf knows the word, not that enter will
 run it. Enter still runs only a leading command, and still acts on a send-door tag
 away from the head. A tag backspaced to plain words stays plain in the sent
-transcript as it already did in the box.
+transcript as it already did in the box, and that includes a message typed while an
+answer was still coming, which waits its turn with the tag still plain.

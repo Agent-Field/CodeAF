@@ -218,10 +218,14 @@ func (a *app) enterStanding() tea.Cmd {
 // answer they are parked with the mark on them, exactly as the chord's are
 // (park.go).
 func (a *app) standingSay(text string) tea.Cmd {
-	return a.standingSayShown(text, text, nil)
+	return a.standingSayShown(text, text, nil, nil)
 }
 
-func (a *app) standingSayShown(text, shown string, plain []segment) tea.Cmd {
+// standingSayShown is [app.standingSay] for a sentence whose transcript line
+// differs from its words: shownPlain is the demoted tags as offsets into shown,
+// and textPlain the same tags as offsets into text. Both are needed because a
+// parked message keeps only its words, so it is textPlain that waits with it.
+func (a *app) standingSayShown(text, shown string, shownPlain, textPlain []segment) tea.Cmd {
 	a.noticeEvent(eventStandingOpened)
 	if !a.standingHere() {
 		// The same absence the chord answers with, said in the same words: there
@@ -230,9 +234,9 @@ func (a *app) standingSayShown(text, shown string, plain []segment) tea.Cmd {
 		return nil
 	}
 	if a.parking() {
-		return a.park(text, true)
+		return a.park(text, true, textPlain)
 	}
-	return a.submitStandingShown(text, shown, plain)
+	return a.submitStandingShown(text, shown, shownPlain)
 }
 
 // submitStanding sends one marked message. It is [app.submit] with the other

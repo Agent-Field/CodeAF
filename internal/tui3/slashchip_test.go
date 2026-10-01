@@ -470,3 +470,101 @@ func TestARowChosenOverAnAlreadyTypedArgumentKeepsTheArgument(t *testing.T) {
 		t.Fatalf("it ran something (%d)", agent.packs)
 	}
 }
+
+// lastUserEntry is the newest line the person said, wherever the turn's other
+// entries landed around it.
+func lastUserEntry(t *testing.T, a *app) *entry {
+	t.Helper()
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if a.entries[i].kind == entryUser {
+			return &a.entries[i]
+		}
+	}
+	t.Fatal("no user entry in the transcript")
+	return nil
+}
+
+// A DEMOTION WAITS WITH THE WORDS. Enter over a running answer parks the
+// message, and the box's reset has already happened by the time it goes, so the
+// demoted range has to travel on the parked message or the transcript chips the
+// word the person made plain.
+func TestADemotedTagStaysPlainWhenTheMessageWaitsForTheAnswer(t *testing.T) {
+	a, agent := tagTestApp()
+	a.state = stateWorking
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"), key("enter"))
+	if len(a.parks) != 1 || len(a.parks[0].plain) != 1 {
+		t.Fatalf("the demotion did not travel with the parked message: %+v", a.parks)
+	}
+	a.state = stateIdle
+	drive(t, a, runCmd(a.sendParked())...)
+	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
+		t.Fatalf("parked demoted send: sent=%q marked=%q", agent.sent, agent.marked)
+	}
+	e := lastUserEntry(t, a)
+	if got := chipRuns(a.renderEntry(0, e, a.width)...); len(got) != 0 {
+		t.Fatalf("a parked demoted tag chipped %q in the transcript, want none", got)
+	}
+}
+
+// And a parked message pulled back into the box keeps the tag plain there too:
+// the words come back exactly as they were parked.
+func TestARecalledParkedMessageKeepsItsTagPlain(t *testing.T) {
+	a, _ := tagTestApp()
+	a.state = stateWorking
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"), key("enter"))
+	if !a.recallParked() {
+		t.Fatal("nothing was recalled")
+	}
+	if a.input.String() != "say /standing" || len(boxRuns(a)) != 0 {
+		t.Fatalf("the recalled demotion came back chipped: %q runs=%q", a.input.String(), boxRuns(a))
+	}
+}
+
+// The /standing tag's own road parks the words WITHOUT the tag, so a second,
+// demoted tag in the same line has to be carried into those shorter words.
+func TestADemotedTagBesideALiveStandingTagStaysPlainWhenParked(t *testing.T) {
+	a, agent := tagTestApp()
+	a.state = stateWorking
+	typeInto(t, a, "keep this /task")
+	drive(t, a, key("backspace"))
+	typeInto(t, a, " /standing")
+	drive(t, a, key("enter"))
+	if len(a.parks) != 1 || a.parks[0].text != "keep this /task" || !a.parks[0].standing {
+		t.Fatalf("the tagged line did not park as its marked words: %+v", a.parks)
+	}
+	a.state = stateIdle
+	drive(t, a, runCmd(a.sendParked())...)
+	if len(agent.marked) != 1 || agent.marked[0] != "keep this /task" {
+		t.Fatalf("parked standing tag routed %q", agent.marked)
+	}
+	e := lastUserEntry(t, a)
+	if got := chipRuns(a.renderEntry(0, e, a.width)...); len(got) != 0 {
+		t.Fatalf("the demoted /task chipped %q once the parked words went, want none", got)
+	}
+}
+
+func TestPlainWithoutTagFollowsTheWordsTheTagLeaves(t *testing.T) {
+	for _, c := range []struct{ line, want string }{
+		{"  say /task then /standing more", "say /task then more"},
+		{"/standing  say /task", "say /task"},
+		{"say /task /standing", "say /task"},
+		{"say /standing then /task", "say then /task"},
+	} {
+		value := []rune(c.line)
+		trimmed := []rune(strings.TrimSpace(c.line))
+		at := len([]rune(strings.SplitN(string(trimmed), "/task", 2)[0]))
+		plain := []segment{{from: at, to: at + len("/task")}}
+		from := len([]rune(strings.SplitN(c.line, "/standing", 2)[0]))
+		tag := segment{from: from, to: from + len("/standing")}
+		if got := removeSlashTag(value, tag); got != c.want {
+			t.Fatalf("%q: removeSlashTag gave %q, want %q", c.line, got, c.want)
+		}
+		got := plainWithoutTag(value, tag, plain)
+		words := []rune(c.want)
+		if len(got) != 1 || string(words[got[0].from:got[0].to]) != "/task" {
+			t.Fatalf("%q: rebased %v onto %q, want the range of /task", c.line, got, c.want)
+		}
+	}
+}

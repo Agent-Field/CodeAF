@@ -1499,6 +1499,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	}
 	var tagDoor sendDoor
 	var tagWords string
+	var tagPlain []segment
 	tagShown := line
 	// A DEMOTION MUST SURVIVE THE RESET. [editor.reset] nils demotedTags, and
 	// the transcript is painted long after that, so the ranges are snapshotted
@@ -1508,6 +1509,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		tag := tags[0]
 		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
 		tagWords = removeSlashTag(a.input.value, tag)
+		tagPlain = plainWithoutTag(a.input.value, tag, plain)
 	}
 	a.input.reset()
 	a.endRecall()
@@ -1545,7 +1547,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		if tagWords == "" {
 			return a.openStanding()
 		}
-		return a.standingSayShown(tagWords, tagShown, plain)
+		return a.standingSayShown(tagWords, tagShown, plain, tagPlain)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}
@@ -1576,8 +1578,9 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		// running answer is parked like any other, and it goes through the marked
 		// door when its turn comes: a mark dropped on the way into the queue would
 		// be the sentence quietly becoming ordinary work, which is the one ending
-		// this gesture exists to rule out (park.go).
-		return a.park(line, marked)
+		// this gesture exists to rule out (park.go). A tag the person made plain
+		// waits plain with it, for the same reason.
+		return a.park(line, marked, plain)
 	}
 	shownLine := line
 	line = a.expandPastes(line)

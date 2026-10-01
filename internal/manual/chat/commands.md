@@ -146,8 +146,10 @@ backspace removes its chip but deletes no letter. The word is now plain prose an
 sends it to the conversation normally. A second backspace edits the word as usual.
 
 Editing the demoted word makes codeaf recognize its current spelling afresh. Edits before
-it merely move the annotation with the text. Emptying or sending the draft forgets all
-demotions.
+it merely move the annotation with the text. The word stays plain in the sent message
+too, including one typed while an answer was still coming that waited its turn, and a
+waiting message pulled back into the box keeps it plain there. Emptying the draft forgets
+all demotions.
 
 ## Slash command did nothing
 
