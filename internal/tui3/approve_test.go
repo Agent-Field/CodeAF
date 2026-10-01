@@ -229,3 +229,13 @@ func (f stillFeed) State() dirwatch.State {
 func (stillFeed) Changes() <-chan struct{} { return nil }
 func (stillFeed) Probe()                   {}
 func (stillFeed) Close()                   {}
+
+func TestRequestAgeNeverSaysNowAgo(t *testing.T) {
+	now := time.Now()
+	for ago, want := range map[time.Duration]string{0: "asked just now · 10 min left", 5 * time.Minute: "asked 5m ago · 5 min left"} {
+		r := &PendingDevice{RequestedAt: now.Add(-ago), ExpiresAt: now.Add(10*time.Minute - ago)}
+		if got := requestAge(r, now); got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	}
+}
