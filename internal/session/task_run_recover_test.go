@@ -11,7 +11,7 @@ import (
 )
 
 func TestHeldRunReopensOnTheSameAdmissionWithoutPreparingFiles(t *testing.T) {
-	requireHostMemoryReading(t)
+	littleMemoryHost(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	engine := newBeltRunDouble("done")
 	registerBeltRunEngine(t, engine)
@@ -61,7 +61,10 @@ func TestHeldRunReopensOnTheSameAdmissionWithoutPreparingFiles(t *testing.T) {
 	second.beltMu.Lock()
 	resumed := second.beltRun
 	second.beltMu.Unlock()
-	if resumed == nil || resumed.row != id || resumed.brief != "held original brief" || resumed.ground != repo {
+	// The run records its ground under the canonical repository root
+	// (repositoryRoot resolves symlinks), and on macOS t.TempDir() is spelled
+	// through the /var -> /private/var link, so the comparison resolves too.
+	if resumed == nil || resumed.row != id || resumed.brief != "held original brief" || resumed.ground != canonicalPath(repo) {
 		t.Fatalf("reopened run = %+v", resumed)
 	}
 	assertHeldJoined(second)

@@ -447,7 +447,7 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 }
 
 func TestHeldBeltRunStopsWithoutPreparingRepository(t *testing.T) {
-	requireHostMemoryReading(t)
+	littleMemoryHost(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)
