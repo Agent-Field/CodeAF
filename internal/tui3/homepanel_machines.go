@@ -100,8 +100,11 @@ func (m machineReading) into(in *homeGridInput, own []homeLine) homePanelRows {
 	return rows
 }
 
-// lines are the rows to draw: none for a chat this machine already lists, and
-// none of the kind that only this machine can hold.
+// lines are the rows to draw: none of the kind that only this machine can hold,
+// and none for a chat this machine already lists unless another machine holds it
+// live. That one is drawn WITH its door (`running on studio`, enter takes it),
+// because the local row of a chat taken elsewhere is a stale window, and the way
+// back to it is the same take the cold path runs.
 func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 	local := map[string]bool{}
 	for _, line := range own {
@@ -109,11 +112,21 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 	}
 	var out []homeLine
 	for _, row := range m.rows {
-		if row.Status != chatlist.Here && !local[row.Cell] {
+		if drawnAsRemote(row, local[row.Cell]) {
 			out = append(out, machineLine(row, m.at, in.now, m.merge))
 		}
 	}
 	return out
+}
+
+// drawnAsRemote says a row from the directory is a row of the panel. A chat
+// held here is never drawn twice; a chat listed here is drawn again only while
+// another machine holds its lease.
+func drawnAsRemote(row chatlist.Row, listedHere bool) bool {
+	if row.Status == chatlist.Here {
+		return false
+	}
+	return !listedHere || row.Status == chatlist.Running
 }
 
 // machineLine is one chat on another machine as a row of the sessions panel.
