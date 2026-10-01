@@ -26,7 +26,7 @@ func wireSync(o *tui3.Options) {
 	if o.Notices == nil {
 		o.Notices = surfaceNotices
 	}
-	s, err := syncOf()
+	s, err := syncOfFirst()
 	if err != nil {
 		return
 	}
