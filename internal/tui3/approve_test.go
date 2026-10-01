@@ -188,7 +188,10 @@ func TestDeviceListShowsPresenceAndRevokesWithOneKey(t *testing.T) {
 	if door.did() != "" {
 		t.Fatalf("r on this device revoked it: %s", door.did())
 	}
-	r.press("down", "r")
+	if !strings.Contains(plain(frame(a)), devicesOwnRow) {
+		t.Fatalf("r on this device said nothing:\n%s", plain(frame(a)))
+	}
+	r.press("down", "down", "r")
 	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "spark was revoked") })
 	if door.did() != "revoke:dev_B" {
 		t.Fatalf("door: %s", door.did())
@@ -237,5 +240,42 @@ func TestRequestAgeNeverSaysNowAgo(t *testing.T) {
 		if got := requestAge(r, now); got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
+	}
+}
+
+func TestDeviceOrderIsStable(t *testing.T) {
+	rows := []DeviceRow{
+		{ID: "9", Name: "a-away"},
+		{ID: "8", Name: "zed", Online: true},
+		{ID: "7", Name: "spark", Online: true},
+		{ID: "6", Name: "spark", Online: true},
+		{ID: "5", Name: "zzz", Self: true},
+	}
+	var got []string
+	for _, d := range orderDevices(rows) {
+		got = append(got, d.ID)
+	}
+	if want := "5 6 7 8 9"; strings.Join(got, " ") != want {
+		t.Fatalf("order %v, want %s", got, want)
+	}
+}
+
+func TestSameNameDevicesAreToldApart(t *testing.T) {
+	door := &fakeApprovals{devices: []DeviceRow{
+		{ID: "dev_aaa1", Name: "spark", Platform: "linux", Self: true},
+		{ID: "dev_bbb2", Name: "spark", Platform: "linux"},
+		{ID: "dev_ccc3", Name: "dumb", Platform: "linux"},
+	}}
+	a, r := approveApp(t, door)
+	r.slash("/devices")
+	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
+	got := plain(frame(a))
+	for _, want := range []string{"spark #aaa1", "spark #bbb2", "dumb  Linux"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("list lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "dumb #") {
+		t.Fatalf("a unique name got a tail:\n%s", got)
 	}
 }
