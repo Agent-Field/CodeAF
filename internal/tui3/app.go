@@ -5051,6 +5051,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pairLinkMsg:
 		return a, a.tookLink(msg)
 
+	case cardMsg:
+		return a, a.tookCard(msg)
+
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
