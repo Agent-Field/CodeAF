@@ -18,14 +18,16 @@ use std::path::{Path, PathBuf};
 /// still writes one small frame, so an incremental save stays small.
 pub const DEFAULT_MAX_FRAME: usize = 8 << 20;
 
-/// Children before parents: a receiver that sees a parent already has, or is
-/// about to receive, everything the parent names. The snapshot goes last.
+/// Parents before children: a taker can open an object only once it knows its
+/// parent, because the sealer needs the object's kind and id, and the walk
+/// from the head learns those top-down. Sending the snapshot and the trees
+/// first lets a taker start importing while later frames still download.
 const SEND_ORDER: [ObjectKind; 5] = [
-    ObjectKind::Chunk,
-    ObjectKind::Blob,
-    ObjectKind::Xattrs,
-    ObjectKind::Tree,
     ObjectKind::Snapshot,
+    ObjectKind::Tree,
+    ObjectKind::Xattrs,
+    ObjectKind::Blob,
+    ObjectKind::Chunk,
 ];
 
 pub struct ExportJob<'a> {

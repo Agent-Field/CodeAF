@@ -21,9 +21,10 @@ import (
 // nothing about where it is, and neither does a released one — the status is a
 // dim clause only where it tells a person something they could not see.
 //
-// THE NAME IS WHOLE. The status is the row's `note`, which the cell gives up
-// entire before it cuts a title, so a narrow frame draws the chat's name and its
-// age and loses the sentence, never half of either.
+// THE NOTE OUTRANKS THE TITLE'S TAIL. The status is the row's `note` and is the
+// point of the row, so a narrow frame cuts the chat's title with an ellipsis
+// before it gives the sentence up ([homeCell.giveWay]); only below a title of
+// [homeCellTitleFloor] cells does the sentence go whole.
 
 // machineReading is the last listing the other machines gave, and whether the
 // last ask failed. A failed ask keeps the rows: the list stays on screen, dim,
@@ -40,6 +41,10 @@ type machineReading struct {
 	// merge says a branch row can be merged from here, which decides the
 	// sentence it says (chatlist.BranchLine).
 	merge bool
+	// away says the device a row names is not online now; nil says none is
+	// known to be away. It is set when home is rebuilt, so presence is as new as
+	// the feed.
+	away func(chatlist.Row) bool
 }
 
 // homeMachinesMsg is one listing, coming BACK from the source.
@@ -112,6 +117,9 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 	}
 	var out []homeLine
 	for _, row := range m.rows {
+		if m.away != nil && m.away(row) {
+			row = row.Quiet()
+		}
 		if drawnAsRemote(row, local[row.Cell]) {
 			out = append(out, machineLine(row, m.at, in.now, m.merge))
 		}
@@ -158,7 +166,7 @@ func machineLine(row chatlist.Row, readAt, now time.Time, merge bool) homeLine {
 	}
 	return homeLine{kind: homeMachineRow, since: at, remote: &row, cell: &homeCell{
 		kind: cellRow, panel: panelSessions, title: row.Title,
-		note: note, noteShort: short, right: sinceAt(at, now),
+		note: note, noteShort: short, keepNote: true, right: sinceAt(at, now),
 		key: "machine:" + row.Cell,
 	}}
 }

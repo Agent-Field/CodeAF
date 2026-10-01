@@ -24,6 +24,22 @@ type Store interface {
 	// object that is absent; ErrNotFound only when rids[0] itself is. The
 	// caller asks again for the rest. len(rids) <= MaxGetMany.
 	GetMany(ctx context.Context, rids []string) ([]Object, error)
+	// GetFrame answers one whole frame by its id. ErrNotFound when absent;
+	// ErrBadRID when the id is not a frame id, so a hostile one cannot name a path.
+	GetFrame(ctx context.Context, frame string) ([]byte, error)
+	// Locate answers, per rid, where the held object lies: which frame, at
+	// which offset, of which length. A rid the store does not hold is absent
+	// from the map, not an error, so one call answers a whole plan. The
+	// offsets count from the start of the frame, the way a pointer does.
+	// len(rids) <= MaxHas.
+	Locate(ctx context.Context, rids []string) (map[string]Location, error)
+}
+
+// Location is where one stored object lies inside the frame that holds it.
+type Location struct {
+	Frame FrameID `json:"frame"`
+	Off   uint64  `json:"off"`
+	Len   uint32  `json:"len"`
 }
 
 // FrameID is the lowercase hex SHA-256 of a whole frame.
@@ -41,6 +57,10 @@ const (
 	MaxHeader = 1 << 20
 	// TargetFrame is the size at which writers flush a frame.
 	TargetFrame = 1 << 20
+	// BulkFrame is the size a writer closes a frame at (contract §22.6): one
+	// frame covers this many bytes of one save, so a bulk save costs a few
+	// large frames and an incremental save still writes one small one.
+	BulkFrame = 8 << 20
 )
 
 var (

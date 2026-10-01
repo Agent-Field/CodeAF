@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 )
 
 // otherMachines is one chat in each state a person can find on another machine.
@@ -108,8 +109,8 @@ func TestUnreachableKeepsLastListing(t *testing.T) {
 	}
 }
 
-// The rows at 80 and 40 columns are pinned as drawn: at 40 a status sentence
-// that does not fit gives way whole and the name stays whole.
+// The rows at 80 and 40 columns are pinned as drawn: at 40 the name is cut
+// with an ellipsis before the status sentence is dropped.
 func TestHomeMachineRowsGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
@@ -119,9 +120,9 @@ func TestHomeMachineRowsGolden(t *testing.T) {
 			"   Notes on the migration                                                     1d",
 		},
 		40: {
-			"  Nightly index rebuild               2m",
+			"  Nightly index...  running on studio 2m",
 			"  Port the picker  studio off         3h",
-			"  Fix the flaky test                  5h",
+			"  Fix the flaky ...  2 turns · laptop 5h",
 			"  Notes on the migration              1d",
 		},
 	}
@@ -214,5 +215,42 @@ func TestAChatThisMachineLetLapseStaysLocal(t *testing.T) {
 		if line.remote != nil {
 			t.Fatalf("drew a remote row over this machine's own chat:\n%s", homeText(a))
 		}
+	}
+}
+
+// A chat whose device went offline still holds a lease, but nobody is running
+// it: the row says the device is off, not that the chat runs there now.
+func TestARowOnAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
+	a := machinesHome(t, chatlist.Static{
+		{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", DeviceID: "dev_studio", Status: chatlist.Running, DurableAgo: time.Minute},
+	}, 200)
+	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_studio"}}}
+	a.dirFeed = feed
+	a.rebuildMachines()
+	if got := linesWith(a, "running on studio"); len(got) != 1 {
+		t.Fatalf("an online device's chat should say running:\n%s", homeText(a))
+	}
+	feed.state.Online = nil
+	a.rebuildMachines()
+	if got := linesWith(a, "running on"); len(got) != 0 {
+		t.Fatalf("an offline device's chat still says running: %q", got)
+	}
+	if got := linesWith(a, "studio off"); len(got) != 1 {
+		t.Fatalf("an offline device's chat does not say it is off:\n%s", homeText(a))
+	}
+}
+
+// A presence change redraws the rows without waiting for a new listing.
+func TestAPresenceSignalRedrawsTheRow(t *testing.T) {
+	a := machinesHome(t, chatlist.Static{
+		{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", DeviceID: "dev_studio", Status: chatlist.Running, DurableAgo: time.Minute},
+	}, 200)
+	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_studio"}}}
+	a.dirFeed = feed
+	a.rebuildMachines()
+	feed.state.Online = nil
+	a.tookWatch(dirWatchMsg{from: feed})
+	if got := linesWith(a, "studio off"); len(got) != 1 {
+		t.Fatalf("a presence signal left the row stale:\n%s", homeText(a))
 	}
 }

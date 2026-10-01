@@ -381,6 +381,63 @@ fn primed_import_deletes_the_extras_and_reports_them() {
     );
 }
 
+fn inbox_count(inbox: &std::path::Path) -> usize {
+    fs::read_dir(inbox).unwrap().count()
+}
+
+/// A streaming take sees an inbox that is still filling. Leaf frames whose
+/// parents have not arrived cannot be opened, so they stay; once the parents
+/// land a second call stores everything reachable; a final primed call then
+/// deletes only a true extra.
+#[test]
+fn partial_import_waits_for_parents_then_takes_everything() {
+    let src = source();
+    let objects = exported(&src);
+    let kinds = kinds(&src.data, src.head);
+    let leaves = of_kinds(&objects, &kinds, &[ObjectKind::Blob, ObjectKind::Chunk]);
+    let structure = of_kinds(&objects, &kinds, &STRUCTURE);
+    let dst = receiver();
+
+    put_inbox(&dst.inbox, &leaves);
+    assert_eq!(import_partial(&dst.data, src.head, &dst.inbox).unwrap(), 0);
+    assert_eq!(inbox_count(&dst.inbox), leaves.len(), "nothing was deleted");
+
+    put_inbox(&dst.inbox, &structure);
+    let stray = [7u8; 32];
+    fs::write(dst.inbox.join(id_hex(&stray)), b"extra").unwrap();
+    assert_eq!(
+        import_partial(&dst.data, src.head, &dst.inbox).unwrap(),
+        objects.len()
+    );
+    assert!(want_of(&dst.data, src.head).is_empty());
+    assert_eq!(inbox_count(&dst.inbox), 1, "only the extra is left");
+
+    let taken = import_primed(&dst.data, src.head, &dst.inbox).unwrap();
+    assert_eq!((taken.imported, taken.extras_deleted), (0, 1));
+    assert_eq!(inbox_count(&dst.inbox), 0);
+}
+
+/// A partial call never refuses: an unwanted file is not an error and stays,
+/// where the strict import of the same inbox is refused.
+#[test]
+fn partial_import_keeps_unwanted_files_without_error() {
+    let src = source();
+    let objects = exported(&src);
+    let kinds = kinds(&src.data, src.head);
+    let snapshot = of_kinds(&objects, &kinds, &[ObjectKind::Snapshot]);
+    let chunk = of_kinds(&objects, &kinds, &[ObjectKind::Chunk]).remove(0);
+    let dst = receiver();
+    put_inbox(&dst.inbox, &snapshot);
+    put_inbox(&dst.inbox, std::slice::from_ref(&chunk));
+
+    assert_eq!(
+        import_partial(&dst.data, src.head, &dst.inbox).unwrap(),
+        snapshot.len()
+    );
+    assert!(dst.inbox.join(id_hex(&chunk.0)).exists());
+    assert!(import_all(&dst.data, src.head, &dst.inbox).is_err());
+}
+
 #[test]
 fn unwanted_file_refused() {
     let src = source();

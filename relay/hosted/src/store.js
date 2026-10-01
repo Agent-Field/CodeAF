@@ -13,6 +13,8 @@ import { Serial } from './serial.js';
 
 export class Conflict extends Error {}
 export class Damaged extends Error {}
+/** Unsatisfiable is a ranged get whose offset begins past the frame: the caller turns it into a refusal. */
+export class Unsatisfiable extends Error {}
 
 export const TARGET_FRAME = 1 << 20; // the size writers close a frame at, and a batch get's answer stops at
 
@@ -86,6 +88,42 @@ export class R2Store {
     const reads = await Promise.all([...spans].map(([frame, span]) => this.#read(frame, span)));
     const bytes = new Map(reads.flat());
     return found.map(({ rid }) => ({ rid, bytes: bytes.get(rid) }));
+  }
+
+  /**
+   * getFrame answers one frame as R2 holds it: the body is R2's own ReadableStream, so a frame is
+   * piped to the client and never held whole in the isolate's memory. Absent is null. A range
+   * asked is pre-checked against the frame's own end, so an unsatisfiable range is refused by
+   * the index rather than classified from the wording of an R2 error, and R2 is only ever
+   * asked ranges that begin inside the frame.
+   */
+  async getFrame(id, range) {
+    if (range && this.frameEnd(id) <= range.offset) throw new Unsatisfiable();
+    const o = await this.bucket.get(this.prefix + id, range && { range });
+    if (!o) return null;
+    return { body: o.body, size: o.size };
+  }
+
+  /**
+   * frameEnd answers the last byte offset the index holds in a frame, or 0 for a frame the index
+   * does not know: a frame's objects are laid end to end, so the largest end is the frame's own
+   * end, and a range that begins at or past it cannot be served.
+   */
+  frameEnd(id) {
+    return this.sql.exec('SELECT MAX(off + len) AS end FROM objs WHERE frame = ?', id).one()?.end ?? 0;
+  }
+
+  /**
+   * locate answers, for each rid the index holds, where its bytes live: the frame, offset and length
+   * the index recorded at put time. It is an index read only, with no freshness rule.
+   */
+  locate(rids) {
+    const at = {};
+    for (const rid of rids) {
+      const row = this.#locate(rid);
+      if (row) at[rid] = row;
+    }
+    return at;
   }
 
   // #prefix locates rids in order until a frame's worth of bytes is in hand or a rid is absent.

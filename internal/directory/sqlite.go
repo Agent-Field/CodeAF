@@ -323,6 +323,7 @@ func (c *sqliteClient) List(ctx context.Context) (l Listing, err error) {
 		for id, cell := range l.Cells {
 			l.Cells[id] = c.s.feed.Lifted(id, cell)
 		}
+		l = withoutFrames(l)
 		return nil
 	})
 	return l, err
