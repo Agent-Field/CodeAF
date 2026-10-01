@@ -166,3 +166,21 @@ func TestAddMachineChordIsHomesAndOnlyWhereTheCardIs(t *testing.T) {
 		t.Fatal("the chord opened a card that is not drawn")
 	}
 }
+
+// THE CARD IS ON THE HOME SCREEN WITH NO ROW UNDER THE CURSOR: an empty home
+// has nothing to select, and it is the person with nothing yet who needs it.
+func TestAddMachineCardShowsOnAnEmptyHome(t *testing.T) {
+	a := addMachineRig(&fakePairing{}, 1, true)
+	a.openHome()
+	got := strings.Join(strings.Fields(homeText(a)), " ")
+	for _, want := range []string{"Add another machine", "exactly where you left it.", addMachineShow} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("empty home lacks %q:\n%s", want, homeText(a))
+		}
+	}
+	b := addMachineRig(&fakePairing{}, 2, true)
+	b.openHome()
+	if strings.Contains(homeText(b), "Add another machine") {
+		t.Fatal("a fleet of two kept the card on home")
+	}
+}
