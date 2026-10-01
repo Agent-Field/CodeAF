@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
@@ -94,7 +95,8 @@ func applyModes(dest string, modes map[string]fs.FileMode) error {
 // fork kept them in a repository the seal did not capture. The branch name is
 // then freed if the project still holds it at that same commit, because the
 // cutter makes its branch new, and a branch at any other commit is left alone
-// and reported by the cutter rather than moved.
+// and reported by the cutter rather than moved. A branch the project held and
+// the cut did not make again in the project is put back after it.
 func (k Carry) cutAgain(project, dest, name, from string, rec record) error {
 	if isRepository(dest) {
 		return nil
@@ -106,8 +108,30 @@ func (k Carry) cutAgain(project, dest, name, from string, rec record) error {
 		return err
 	}
 	branch := branchFor(rec, name)
+	kept := holdsBranch(project, branch, rec.Head)
 	_, _ = git(project, "update-ref", "-d", "refs/heads/"+branch, rec.Head)
-	return k.Cutter.Cut(project, dest, Spec{Branch: branch, At: rec.Head, Linked: rec.Linked})
+	cutErr := k.Cutter.Cut(project, dest, Spec{Branch: branch, At: rec.Head, Linked: rec.Linked})
+	return errors.Join(cutErr, keepBranch(project, branch, rec.Head, kept))
+}
+
+// holdsBranch says whether the project has the branch at exactly the commit.
+func holdsBranch(project, branch, commit string) bool {
+	out, err := git(project, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil && strings.TrimSpace(out) == commit
+}
+
+// keepBranch gives the project back a branch it held before the copy was cut.
+// A copy that is a fork makes its branch in a repository of its own, so freeing
+// the name for the cutter would otherwise leave the project with the commit and
+// no ref: a kept task's record unreferenced, for the next garbage collection to
+// drop. A branch the cutter made in the project already stands at the commit
+// and is left as it is.
+func keepBranch(project, branch, commit string, held bool) error {
+	if !held || holdsBranch(project, branch, commit) {
+		return nil
+	}
+	_, err := git(project, "update-ref", "refs/heads/"+branch, commit)
+	return err
 }
 
 // branchFor is the branch a restored copy is cut on: the one it was on, or for a
