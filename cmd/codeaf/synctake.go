@@ -32,6 +32,9 @@ func wireSync(o *tui3.Options) {
 	if o.Machines == nil {
 		o.Machines = s
 	}
+	if o.Fleet == nil {
+		o.Fleet = s
+	}
 	if o.Takeover == nil {
 		o.Takeover = takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
 			DeviceName: deviceName(),
