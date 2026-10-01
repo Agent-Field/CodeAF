@@ -99,7 +99,7 @@ When you have two or more devices, home shows one row of them:
 ● This Mac  ● spark  ○ dumb (offline)
 ```
 
-A filled dot `●` is a device that is online now, and always your own. A hollow dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. The row changes by itself within a second or two when a device comes or goes. If home cannot tell who is online, the row is not drawn, because a row that guessed would be wrong.
+A filled green dot `●` is a device that is online now, and always your own. A hollow dim dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. The row changes by itself within a second or two when a device comes or goes. If home cannot tell who is online, the row is not drawn, because a row that guessed would be wrong.
 
 Under the row, `alt+m bring work here` brings the newest chat of an online device to this one. With more than one choice it asks `Which device?` and the last choice is `leave it there`. If there is nothing to bring it says `no other device that is online has a chat to bring here`. The page *Continuing a chat on another device* tells what happens next.
 
@@ -122,7 +122,7 @@ To remove a device, move to its row and press `r`. It is removed at once and the
 dumb was revoked - it can no longer reach your chats.
 ```
 
-Your own computer has no `r`: it cannot remove itself. A computer that is already revoked does nothing when you press `r`. A removed computer can only come back as a new request that you approve. Removing a computer does not take back what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
+The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `spark #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself - choose another row.` A computer that is already revoked does nothing when you press `r`. A removed computer can only come back as a new request that you approve. Removing a computer does not take back what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
 **I was told this device was removed.** Another of your devices removed this one. The chat says:
 

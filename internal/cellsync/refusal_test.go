@@ -55,11 +55,13 @@ func TestFreedEndsAHaltAndSyncResumes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- b.Run(ctx) }()
-	sl.settle(1)
+	// A turn is already noted, so the loop's first flush is refused at once and it
+	// halts. Waiting for that halt, not for a count of sleepers, is what is
+	// deterministic: the heartbeat's own sleep may or may not be registered yet.
+	sl.settleOn(MaxHalt)
 
 	h := r.seal(map[string]string{"a": "2"})
 	note(b, h)
-	sl.settleOn(MaxHalt) // the flush was refused and the loop halts, not backs off
 	r.store.set(nil, nil)
 	b.Freed()
 	eventually(t, "the newest head to be sent", func() bool { return headIfAny(r) == h })
