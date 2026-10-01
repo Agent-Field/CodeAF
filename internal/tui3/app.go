@@ -1584,10 +1584,11 @@ type app struct {
 	width, height int
 	offset        int
 	stick         bool
-	// sizing says a resize is still settling, so the scroll clamp that a new
-	// size asks for is already on its way and a second one would be a second
-	// relayout for nothing (see [app.resized]).
-	sizing bool
+	// sizing says a resize is still settling, so its scroll clamp and complete
+	// repaint are already on their way. The version lets a grace tick notice
+	// that the drag has moved again without arming a clock for every size.
+	sizing        bool
+	resizeVersion uint64
 
 	pal palette
 	// mdBase is the painter this surface's environment built at construction
@@ -3622,11 +3623,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.groundReply(msg)
 
 	case resizeSettledMsg:
-		// The drag stopped moving, so the scroll is clamped once, against the
-		// size it stopped at (see [app.resized]).
+		if !a.sizing {
+			return a, nil
+		}
+		if msg.version != 0 && msg.version != a.resizeVersion {
+			return a, a.resizeSettlement()
+		}
+		// The renderer's old cell positions no longer describe the terminal
+		// after a resize. One complete repaint at settlement discards those
+		// positions without clearing at every intermediate size of a drag.
 		a.sizing = false
 		a.clampScroll()
-		return a, nil
+		return a, tea.ClearScreen
 
 	case doorMsg:
 		// ONE DOOR ANSWERED (offloop.go). The call was made on a command, off

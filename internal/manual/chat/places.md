@@ -735,6 +735,18 @@ repetition — the upper one is the places, the lower one is settings' own pages
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
 
+## Resizing the terminal — old text left on screen after widening or narrowing
+
+Home, Sessions, the conversation and first-run setup fit the terminal's new size
+as it changes. After the resize settles, codeaf repaints the screen once so text
+from the previous size does not remain in blank areas or beside a reply. Dragging
+through several sizes shares that repaint; typing keeps working during the drag
+and your draft stays in the message box.
+
+Moving from Home to Sessions or back to a conversation after a resize leaves only
+the place you opened. Skipping a resized setup screen with `esc` leaves the
+conversation's greeting and notes, without leftover setup explanations.
+
 ## Why the tab bar looks squashed on a narrow terminal: the places at 60 columns, and what does more on the top line do
 
 **The top line gives things up in a fixed order as the window narrows**, and the air between
