@@ -19,7 +19,11 @@ import (
 
 // Fetch brings a head and everything it needs onto this device.
 type Fetch interface {
+	// Fetch completes head in the store and restores it into c's tree.
 	Fetch(ctx context.Context, c cell.Cell, head string) error // *cellsync.Fetcher
+	// Complete is Fetch without the restore: the store holds everything head
+	// needs and no tree is touched.
+	Complete(ctx context.Context, c cell.Cell, head string) error
 }
 
 // Local is what the taking device knows about a copy of the cell it already
@@ -145,16 +149,23 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 	return head, fence, nil
 }
 
-// fetchAndAcquire is the part of a claim that touches only the staging folder
-// and the directory. The staging folder starts as a copy of the tree this
-// device already holds at from, made of hard links, so the fetch writes only
-// the paths the new head changed; with nothing at from it starts empty.
+// fetchAndAcquire is the part of a claim that touches only the store, the
+// staging folder and the directory. A chat in a copy is fetched into the
+// staging folder, which starts as a copy of the tree this device already holds
+// at from, so the fetch writes only the paths the new head changed; with
+// nothing at from it starts empty. A chat in the person's own folder is only
+// completed in the store: it is restored where it stands once the lease is
+// ours, so a staged restore would be a second whole-tree restore that is made
+// and thrown away.
 func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, error) {
-	if err := freshDir(stage.Root); err != nil {
-		return "", 0, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
+	inPlace := t.InPlace != nil && t.InPlace(cell.Cell{ID: stage.ID, Root: from})
+	if !inPlace {
+		if err := freshDir(stage.Root); err != nil {
+			return "", 0, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
+		}
+		seedFrom(from, stage.Root)
 	}
-	seedFrom(from, stage.Root)
-	if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
+	if err := t.bring(ctx, stage, inPlace, head); err != nil {
 		return "", 0, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
 	}
 	got, err := t.Dir.Acquire(ctx, stage.ID, how)
@@ -163,11 +174,20 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
-		if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
+		if err := t.bring(ctx, stage, inPlace, head); err != nil {
 			return "", 0, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: fetch %s: %w", short(head), err))
 		}
 	}
 	return head, got.Cell.Lease.Fence, nil
+}
+
+// bring puts head where the claim restores it from: in the store alone for a
+// folder the person owns, else also in the staging folder.
+func (t Taker) bring(ctx context.Context, stage cell.Cell, inPlace bool, head string) error {
+	if inPlace {
+		return t.Fetch.Complete(ctx, stage, head)
+	}
+	return t.Fetch.Fetch(ctx, stage, head)
 }
 
 // stagingOf is the folder a takeover materializes into: beside the root, so
