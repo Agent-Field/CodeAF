@@ -231,7 +231,7 @@ func (a *Agent) rewindPointsLocked() []RewindPoint {
 			if !skipped {
 				point := RewindPoint{Index: index, Turn: turn, Entry: entry}
 				if turn {
-					point.Said = said
+					point.Said = a.presentation.personWords(message)
 				}
 				points = append(points, point)
 			}

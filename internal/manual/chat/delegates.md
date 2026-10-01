@@ -215,7 +215,8 @@ uncommitted in your folder. Untracked files it changed go on its branch; the res
 (senior-dev's page says how to bring the branch in).
 The task's page and the conversation say ``its work is on the branch <branch> in <folder>,
 N files; your checkout was not touched, and `git -C '<folder>' merge <branch>` brings it
-in``. Ask the chat to merge it, or run that yourself, when you are ready.
+in``. Ask the chat to merge it, or run that yourself, when you are ready; a branch published
+under its own name is pushed instead (see senior-dev's "A run codeaf sends back").
 
 If the program's own shell left its copy on another branch, codeaf commits nothing there
 and keeps what was loose as a patch in the run's record folder. Its own notes

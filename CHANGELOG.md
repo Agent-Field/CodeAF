@@ -18,6 +18,38 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.5.1 — 2026-10-01
+
+### Fixed
+
+- **the first launch of the day no longer waits on the model list before it draws** — [#1724](https://github.com/Agent-Field/codeaf/pull/1724) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A model catalog older than 24 hours was fetched again before a lazily loaded catalog answered anything, so the first launch of each day (and any launch after a day away) drew nothing until GET /models came back or hit its fifteen-second ceiling: about ten seconds on an ordinary connection, close to a minute where DNS was failing. A lazy catalog now answers from the day-old cache at once and fetches the new list in the background; the new list is what the next launch reads. Only a machine with no cache at all still waits for the first fetch.
+  - Restarting the machine was taken to be the fix for the v0.5.0 slow start on 2026-10-01. It was not: the restart coincided with a catalog fetched minutes earlier, and the stall would have come back the next day.
+
+  Opening a conversation asks the catalog several questions through the door that
+  waits — the agent's tool belt needs to know which media models exist — and every
+  one of them waited on the same fetch. `internal/catalog`'s LoadLazy already
+  served the old cache when that fetch failed; it now serves it before the fetch
+  rather than after it. Eager `Load` (`codeaf models`) and `/model`'s ctrl+r refresh
+  are unchanged.
+
+  </details>
+
+
+### Internal
+
+- **the unreleased entries are rolled up into CHANGELOG.md as v0.5.0** — [#1683](https://github.com/Agent-Field/codeaf/pull/1683) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - docs/changes/unreleased/ held 143 entries for the work after v0.4.1. They are now the `## v0.5.0` section of CHANGELOG.md, and the folder starts the next version.
+
+  </details>
+
+
 ## v0.5.0 — 2026-09-30
 
 ### Added

@@ -915,10 +915,11 @@ What steps up, in the lines you will see it in:
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
 
-- **A tinted background on your words is always a slash command that acts** — a command
-  at the start or a live `/standing`, `/orders`, or `/task` tag later in the draft. Help
-  rows chip their leading command too. Nothing else borrows the mark, so it never
-  highlights a slash word the send path will ignore.
+- **A tinted background on your words is always a slash command codeaf recognises** — any
+  recognized command wherever it stands, a leading one or `/compact` mid-sentence. It says
+  the word is known to codeaf, not that enter will run it: enter acts only on a leading
+  command, and on a live `/standing`, `/orders`, or `/task` tag later in the draft. Help
+  rows chip their leading command too. Nothing else borrows the mark.
 - **A key chord is brighter ink and never a background.** `ctrl+b`, `esc`, `↑↓` step up a
   tier; they do not get a chip.
 - **Nothing here is ever drawn in the accent.** The accent marks the one live or chosen
@@ -3462,8 +3463,8 @@ The thinking window's gradient collapses to flat dim, because a gradient is an a
 held still.
 
 What the linear tier **keeps**: the colours (a screen reader ignores them, and a sighted
-reader loses nothing), the **chosen row's background** — the model in use, the
-conversation you are in, the room you are standing in — and the **copy span's**. Those
+reader loses nothing), the **chosen row's background** — the conversation you are in,
+the room you are standing in — and the **copy span's**. Those
 are facts about the session rather than about a pointer, and they are true whoever is
 reading. What is dropped is the quieter background the pointer and the cursor share.
 
@@ -4094,12 +4095,15 @@ with its name in bold, the way a row on home does.
 
 The step above that is for the thing you have actually **chosen**, and it stays drawn
 when nobody is touching the list: the roster row and the strip chip of the room you are
-standing in, the model in use in `/model`, the conversation you are in on home and in
-`/resume`, the tab you are on in `/settings`. Both can be
+standing in, the conversation you are in on home and in `/resume`, the tab you are on
+in `/settings`. Both can be
 on screen at once — that is what two steps are for — and the roster is where you will
 see it: the room you walked into on the louder ground, the row `↑↓` has reached on the
 quieter one. Where a cursor lands on the chosen row itself, the louder ground wins, so a
 row never gets quieter for being arrived at, and the `›` still says where enter is aimed.
+
+In `/model`, the model in use keeps bold accent ink with no band of its own; the cursor
+or a pointer hovering a row supplies its band.
 
 Nothing else lights: empty space, a paragraph, a dim telemetry line, the hint beside a
 picked harness, the body of the task record card, and the phone's tool detail sheet,

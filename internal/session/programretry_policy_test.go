@@ -17,7 +17,11 @@ func TestRetriesSpentTellThePersonWhatStillDoesNotWork(t *testing.T) {
 		if strings.Contains(words, "only for a trivial gap, or once") {
 			t.Errorf("%s invites branch edits after retries are spent", name)
 		}
-		if !strings.Contains(words, "can be sent back no more") || !strings.Contains(words, "tells the person what still does not work") {
+		report := "tells the person what still does not work"
+		if name == "prompt" {
+			report = "Once it can be sent back no more, tell the person what still does not work, where the work is, and what you would try next."
+		}
+		if !strings.Contains(words, "can be sent back no more") || !strings.Contains(words, report) {
 			t.Errorf("%s omits the report after retries are spent", name)
 		}
 	}
