@@ -53,7 +53,10 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 }
 
 func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) *syncsetup.Drive {
-	s, ok, err := syncsetup.OpenFirst(home.Dir())
+	if syncsetup.Quiet(home.Dir()) {
+		return nil // a fleet of one has nothing to sync with yet
+	}
+	s, ok, err := syncsetup.Open(home.Dir())
 	if err != nil || !ok {
 		report(err)
 		return nil

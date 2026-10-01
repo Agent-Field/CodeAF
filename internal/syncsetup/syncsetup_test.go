@@ -241,3 +241,46 @@ func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
 		t.Fatalf("OpenFirst with no relay touched the home: %v", err)
 	}
 }
+
+func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
+	defer srv.Close()
+	t.Setenv(URLVar, srv.URL)
+	home := t.TempDir()
+	s, ok, err := OpenFirst(home)
+	if !ok || err != nil {
+		t.Fatalf("OpenFirst = %v, %v", ok, err)
+	}
+	if !Quiet(home) {
+		t.Fatal("a machine that just made its identity must be quiet")
+	}
+	ctx := context.Background()
+	if n, err := s.FleetSize(ctx); n != 0 || err != nil {
+		t.Fatalf("FleetSize = %d, %v; want 0, nil", n, err)
+	}
+	if _, err := s.Dir.Cell(ctx, "x"); err == nil || !strings.Contains(err.Error(), ErrQuiet.Error()) {
+		t.Fatalf("a direct call = %v; want the quiet refusal", err)
+	}
+	if hits != 0 {
+		t.Fatalf("a quiet machine sent %d requests", hits)
+	}
+	s.Engage()
+	if Quiet(home) {
+		t.Fatal("Engage left the machine quiet")
+	}
+	if _, err := s.FleetSize(ctx); hits == 0 {
+		t.Fatalf("an engaged machine sent nothing (err %v)", err)
+	}
+}
+
+func TestExistingIdentityIsNotQuiet(t *testing.T) {
+	t.Setenv(URLVar, "http://relay.example:8787")
+	home := t.TempDir()
+	if _, err := identity.Ensure(home); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := OpenFirst(home); err != nil || Quiet(home) {
+		t.Fatalf("OpenFirst on an existing identity: err %v, quiet %v", err, Quiet(home))
+	}
+}
