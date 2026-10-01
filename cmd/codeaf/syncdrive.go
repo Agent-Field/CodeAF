@@ -59,13 +59,13 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 // reported; it is returned so a caller can tell a computer that has no identity
 // yet (which /pair will change) from one that cannot sync at all.
 func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*syncsetup.Drive, error) {
-	if syncsetup.Quiet(home.Dir()) {
-		return nil, nil // a fleet of one has nothing to sync with yet
-	}
 	s, ok, err := syncsetup.Open(home.Dir())
 	if err != nil || !ok {
 		report(err)
 		return nil, err
+	}
+	if syncsetup.Quiet(home.Dir()) {
+		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
 	}
 	if line, first := s.FirstRun(); first {
 		surfaceNotices.Say(line)
