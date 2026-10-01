@@ -134,7 +134,7 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model strin
 	// a verb whose answer is silence.
 	registerSubharnessRunners(registry, leafBuild{
 		settings: settings, client: client, workspace: space, web: web,
-		model: model, models: models, window: window,
+		model: model, models: models, window: window, windowRead: true,
 	})
 
 	// The look every bundle's guards are checked through. One per conversation,

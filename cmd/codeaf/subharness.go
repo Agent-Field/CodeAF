@@ -58,6 +58,9 @@ type leafBuild struct {
 	// catalog, whose rows are spelled `gpt-5.5`, so asking it about the qualified
 	// id answered zero for every leaf the conversation ran (#1383).
 	window int
+	// windowRead preserves an explicit unknown window from an interactive launch.
+	// Zero must not turn a nonblocking read into a network wait.
+	windowRead bool
 	// fanIn is what actually landed into this leaf, measured once at claim time.
 	// Zero is the honest value for a leaf nothing fed, and it is what every
 	// budget below reduces to for such a leaf — so a node that gathers nothing
@@ -283,7 +286,7 @@ func buildLinear(build leafBuild) exec.Executor {
 // contextLength is this leaf's window: the one the builder was handed, and the
 // catalog's answer about the model when it was handed none.
 func (b leafBuild) contextLength() int {
-	if b.window > 0 {
+	if b.windowRead || b.window > 0 {
 		return b.window
 	}
 	return b.models.ContextLength(b.model)
