@@ -3679,6 +3679,7 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"what is the card that says set this machine up", cont, "set up"},
 		{"how do I add another computer", add, "On the new machine, install and run: codeaf pair"},
 		{"how do I add another machine", add, "alt+d how"},
+		{"can I paste the link here on home", add, "paste it anywhere on home"},
 		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-code>"},
 		{"what is the check number on the new device", add, "Check number 4821 - it must match"},
 		{"what does codeaf pair --code do", add, "codeaf pair --code"},
