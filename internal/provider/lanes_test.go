@@ -388,8 +388,8 @@ func TestTheSheetFetcherCarriesTheBearerAndHandsBackTheBody(t *testing.T) {
 	// And the read is attributed like every other read of the router this
 	// binary makes (attribution.go) — a sheet fetched under no app is spend
 	// nobody can account for.
-	if referer != AppURL {
-		t.Errorf("HTTP-Referer was %q, want %q", referer, AppURL)
+	if want := RunningApp().URL; referer != want {
+		t.Errorf("HTTP-Referer was %q, want %q", referer, want)
 	}
 	if accept != "application/json" {
 		t.Errorf("Accept was %q, want application/json", accept)

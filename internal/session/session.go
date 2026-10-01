@@ -1223,7 +1223,7 @@ type Config struct {
 	// be forwarded to the provider client — a referer, a title, a category
 	// list — were three fields every new construction site had to remember to
 	// copy, and the ones that forgot spent their tokens under no app at all.
-	// The values are constants the provider stamps for itself
+	// The provider stamps them for itself from the binary's own release stamp
 	// (provider.ApplyAttribution), so nothing above it carries them.
 
 	// System is the rendered system prompt. Empty renders the package's
