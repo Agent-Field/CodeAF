@@ -8,12 +8,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 )
 
-// HostedRelayURL is the central relay every computer syncs through when nobody
-// has said otherwise. It is the one source of truth for that address: nothing
-// else in the program spells it. Empty means there is no default relay, so sync
-// stays off until a relay is named, exactly as it was before a hosted one
-// existed. Making the hosted relay the default is this one line.
-const HostedRelayURL = ""
+// HostedRelayURL is the central sync service (the fabric) every computer syncs
+// through when nobody has said otherwise. It is the one source of truth for that
+// address: nothing else in the program spells it. Empty means there is no default,
+// so sync stays off until an address is named. The address has a path, which every
+// client keeps (see wireauth.Endpoint).
+const HostedRelayURL = "https://codeaf.agentfield.ai/fabric"
 
 // hostedRelay is what the resolver reads, so a test can stand in a hosted relay
 // without the constant changing. Nothing but tests assigns it.

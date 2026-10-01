@@ -16,7 +16,7 @@ import (
 // other seam stays nil, and a nil seam is an absent verb, never a broken one.
 func TestWireSyncOffAddsOnlyTheDesk(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
-	t.Setenv(syncsetup.URLVar, "")
+	t.Setenv(syncsetup.URLVar, "off")
 	var o tui3.Options
 	wireSync(&o)
 	if o.Machines != nil || o.Takeover != nil || o.Branches.Discard != nil || o.Branches.Merge != nil {

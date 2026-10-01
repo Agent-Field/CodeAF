@@ -53,7 +53,7 @@ func toolCallOn(t *testing.T, seat executor.Seat, workspace string) error {
 // is not gated, and a turn is sealed by the zero device under fence 0.
 func TestDriveSideOffIsStageZero(t *testing.T) {
 	cfg, c := doorChat(t)
-	t.Setenv(syncsetup.URLVar, "")
+	t.Setenv(syncsetup.URLVar, "off")
 	seated := v3Seated(cfg)
 	if len(syncDrives.drive) != 0 {
 		t.Fatal("a drive side was made with sync off")
