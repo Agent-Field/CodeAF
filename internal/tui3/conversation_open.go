@@ -154,6 +154,13 @@ func (a *app) homeStartLater(text, place string) tea.Cmd {
 		if strings.TrimSpace(text) == "" {
 			return tea.Batch(started, pins)
 		}
+		// A SHELL LINE GOES THROUGH THE SHELL'S OWN DOOR, exactly as the
+		// synchronous road sends it ([app.homeStartWithProjectNow]). Sent as a
+		// message it would reach the model as words rather than run in the
+		// project the person chose.
+		if _, bash := session.BashCommand(text); bash {
+			return tea.Batch(started, pins, a.submitBash(text))
+		}
 		return tea.Batch(started, pins, a.submit(text))
 	})
 }
