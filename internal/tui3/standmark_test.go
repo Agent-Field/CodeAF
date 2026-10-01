@@ -32,12 +32,13 @@ func typeDraft(t *testing.T, a *app, line string) {
 
 // THE INVARIANT: A MARKED SEND IS NEVER ORDINARY WORK.
 //
-// The chord's whole reason to exist is that recognition fails silently, so the
-// one thing it may never do is fall back to the road it was pressed to avoid.
+// The typed door's whole reason to exist is that recognition fails silently,
+// so the one thing it may never do is fall back to the road it was said to
+// avoid. The chord this file used to drive was retired on 2026-09-30, when the
+// queue took ctrl+enter over (followup.go); the door is the command now.
 func TestTheMarkedSendNeverGoesThroughTheOrdinaryDoor(t *testing.T) {
 	a, agent, _ := standMarkLab(t)
-	typeDraft(t, a, "always run the tests before you say you are done")
-	drive(t, a, key(standMarkKey))
+	typeLine(t, a, "/standing always run the tests before you say you are done")
 
 	if len(agent.marked) != 1 || agent.marked[0] != "always run the tests before you say you are done" {
 		t.Fatalf("the marked door took %v, want the sentence", agent.marked)
@@ -66,60 +67,44 @@ func TestAPlainEnterIsStillAnOrdinarySend(t *testing.T) {
 }
 
 // A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — and it says so rather
-// than quietly sending the sentence as work.
+// than quietly sending the sentence as work. This is the typed door's own
+// refusal (margin_test.go's TestStandingWithWordsSaysSoWhereNothingCanHoldOne
+// drives the same door); what stands here is the shape law.
 func TestTheMarkedSendRefusesWhereNothingCanHoldOne(t *testing.T) {
 	agent := &fakeAgent{model: "m"}
 	a := newTestApp(agent)
 	a.width = 120
 	typeDraft(t, a, "always run the tests")
-	drive(t, a, key(standMarkKey))
-
-	if len(agent.sent) != 0 || len(agent.marked) != 0 {
-		t.Fatalf("a surface with no ambient side sent it anyway: %v", agent.sent)
-	}
-	if !strings.Contains(plain(frame(a)), standMarkNowhere) {
-		t.Fatalf("the refusal was never said:\n%s", plain(frame(a)))
+	if a.standSayOffered() {
+		t.Error("a surface with no ambient side offered the standing door")
 	}
 }
 
-// AND A BOX HOLDING SOMETHING ELSE IS REFUSED RATHER THAN SENT. A picture and a
-// picked shape of work are both deliberate arrangements the gesture is not
-// about, and falling back to an ordinary send there is the silent failure again.
+// AND THE DOOR'S HINT IS ABSENT WHERE THE DOOR WOULD REFUSE. The typed form
+// works everywhere the surface does, so the conditions that remain are the
+// ones the command itself refuses — and the two lists are the same list read
+// from both ends.
 func TestTheMarkedSendRefusesABoxThatIsHoldingSomethingElse(t *testing.T) {
-	a, agent, _ := standMarkLab(t)
+	a, _, _ := standMarkLab(t)
 	a.harnChip = "review"
 	typeDraft(t, a, "always run the tests")
-	drive(t, a, key(standMarkKey))
-
-	if len(agent.sent) != 0 || len(agent.marked) != 0 {
-		t.Fatalf("a picked shape of work was sent as a standing order: %v", agent.sent)
+	if a.standSayOffered() {
+		t.Error("a picked shape of work was offered the standing door")
 	}
 	if a.input.String() != "always run the tests" {
-		t.Fatalf("a refused mark spent the draft: %q", a.input.String())
-	}
-	if !strings.Contains(plain(frame(a)), standMarkWordsOnly) {
-		t.Fatalf("the refusal was never said:\n%s", plain(frame(a)))
+		t.Fatalf("the hint machinery spent the draft: %q", a.input.String())
 	}
 }
 
-// A SLASH COMMAND IS SAID TO THIS SURFACE, so the chord is the ordinary enter
-// there: there is no sentence to keep true and nothing to refuse.
-func TestTheMarkedSendOnACommandIsJustTheCommand(t *testing.T) {
-	a, agent, _ := standMarkLab(t)
-	typeDraft(t, a, "/standing")
-	drive(t, a, key(standMarkKey))
-	if len(agent.marked) != 0 || len(agent.sent) != 0 {
-		t.Fatalf("a command was sent to the model: marked=%v sent=%v", agent.marked, agent.sent)
-	}
-}
-
-// THE MARK WAITS WITH THE WORDS. A sentence typed over a running answer is
-// parked, and what goes when the answer ends is still marked.
+// THE MARK WAITS WITH THE WORDS. A standing sentence typed over a running
+// answer is parked, and what goes when the answer ends is still marked. The
+// door is the command now, and it parks the WORDS with the mark on them.
 func TestAMarkedSendParkedOverAnAnswerIsStillMarkedWhenItGoes(t *testing.T) {
 	a, agent, _ := standMarkLab(t)
 	a.state = stateWorking
-	typeDraft(t, a, "never commit straight to main here")
-	drive(t, a, key(standMarkKey))
+	// THE WORDS ARRIVE THROUGH THE SLASH, the way enterLine delivers a command
+	// — and the parking half of [app.standingSay] is what holds them here.
+	drive(t, a, a.slash("/standing never commit straight to main here"))
 	if len(a.parks) != 1 || !a.parks[0].standing {
 		t.Fatalf("the mark did not travel with the parked message: %+v", a.parks)
 	}
@@ -133,7 +118,7 @@ func TestAMarkedSendParkedOverAnAnswerIsStillMarkedWhenItGoes(t *testing.T) {
 // ── the self-teaching hint ──────────────────────────────────────────────────
 
 // THE HINT APPEARS ON WHAT LOOKS LIKE A CONDITION AND VANISHES ON WHAT DOES NOT.
-func TestTheHintNamesTheChordOnlyWhileTheDraftLooksStanding(t *testing.T) {
+func TestTheHintNamesTheDoorOnlyWhileTheDraftLooksStanding(t *testing.T) {
 	conditions := []string{
 		"always run the tests before you say you are done",
 		"never commit straight to main here",
@@ -170,11 +155,11 @@ func TestTheHintNamesTheChordOnlyWhileTheDraftLooksStanding(t *testing.T) {
 // AND IT REACHES THE SLOT, AND LEAVES IT AGAIN.
 func TestTheHintReachesTheSlotAndVanishesWithTheDraft(t *testing.T) {
 	a, _, _ := standMarkLab(t)
-	if strings.Contains(plain(frame(a)), standMarkHint) {
-		t.Fatal("an empty box was offered the chord")
+	if strings.Contains(plain(frame(a)), standSayHint) {
+		t.Fatal("an empty box was offered the door")
 	}
 	typeDraft(t, a, "always run the tests")
-	if !strings.Contains(plain(frame(a)), standMarkHint) {
+	if !strings.Contains(plain(frame(a)), standSayHint) {
 		t.Fatalf("the hint never appeared:\n%s", plain(frame(a)))
 	}
 	// AND THE BOX DID NOT MOVE. The hint rides the legend, which is on the frame
@@ -184,7 +169,7 @@ func TestTheHintReachesTheSlotAndVanishesWithTheDraft(t *testing.T) {
 	for range "always run the tests" {
 		drive(t, a, key("backspace"))
 	}
-	if strings.Contains(plain(frame(a)), standMarkHint) {
+	if strings.Contains(plain(frame(a)), standSayHint) {
 		t.Fatalf("the hint outlived the draft:\n%s", plain(frame(a)))
 	}
 	if a.inputHeight() != height {
@@ -192,24 +177,25 @@ func TestTheHintReachesTheSlotAndVanishesWithTheDraft(t *testing.T) {
 	}
 }
 
-// AND IT IS NEVER OFFERED WHERE THE CHORD WOULD REFUSE — the two lists are the
-// same list read from both ends.
-func TestTheHintIsAbsentWhereTheChordWouldRefuse(t *testing.T) {
+// AND IT IS NEVER OFFERED WHERE THE DOOR WOULD REFUSE — the two lists are the
+// same list read from both ends, and the door itself is exercised by the two
+// refusal tests above.
+func TestTheHintIsAbsentWhereTheDoorWouldRefuse(t *testing.T) {
 	bare := newTestApp(&fakeAgent{model: "m"})
 	bare.width = 120
 	typeDraft(t, bare, "always run the tests")
-	if bare.standMarkOffered() {
-		t.Error("a surface with no ambient side offered the chord")
+	if bare.standSayOffered() {
+		t.Error("a surface with no ambient side offered the door")
 	}
 
 	a, _, _ := standMarkLab(t)
 	typeDraft(t, a, "always run the tests")
-	if !a.standMarkOffered() {
-		t.Fatal("the ordinary case did not offer the chord")
+	if !a.standSayOffered() {
+		t.Fatal("the ordinary case did not offer the door")
 	}
 	a.harnChip = "review"
-	if a.standMarkOffered() {
-		t.Error("a picked shape of work still offered the chord")
+	if a.standSayOffered() {
+		t.Error("a picked shape of work still offered the door")
 	}
 }
 

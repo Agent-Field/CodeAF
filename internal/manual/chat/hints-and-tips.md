@@ -148,9 +148,10 @@ build if the two disagree), so a tip you saw is on it word for word.
   it. It is the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
-- `ctrl+enter makes your message a rule instead of a request` — retired when a standing
+- `/standing makes your message a rule instead of a request` — retired when a standing
   order is made or the standing page opened. It teaches the same door as the `/standing`
-  row above and retires with it, so the two say a rule in the same words.
+  row above and retires with it, so the two say a rule in the same words. (It named the
+  `ctrl+enter` chord until 2026-09-30, when queueing took that chord over.)
 - `/manual answers any question about codeaf` — retired when
   `/manual` is typed, bare or with a question.
 - `ctrl+shift+t reopens the last conversation tab` — retired the first time the chord is
@@ -182,9 +183,16 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Steering a running answer**
 
-- `using enter steers conversations · use ctrl+q to queue messages` — after the first
-  exchange. Retired the first time you queue a message. It was two rows until 2026-09-22
-  — one for the steer and one for the queue — and the owner folded them into one.
+- `using enter steers conversations · use ctrl+enter to queue messages` — after the first
+  exchange, after the terminal replies that it can distinguish keys. Retired the first
+  time you queue a message. It was two rows until 2026-09-22
+  — one for the steer and one for the queue — and the owner folded them into one; the
+  queue half named `ctrl+q` until 2026-09-30, when the chord moved onto `ctrl+enter`. On a
+  terminal that has not replied the tip is absent, even if it can send a decoded
+  ctrl+enter through modifyOtherKeys. The chord queues only non-empty words mid-turn
+  from this conversation's composer; at rest, on the start page or over a `/command` it
+  is plain enter. A terminal that cannot send it delivers plain enter or a newline on
+  some keyboards. The steer half is taught by the running foot on every terminal.
 
 **Moving around**
 

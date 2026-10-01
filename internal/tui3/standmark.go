@@ -20,52 +20,31 @@ import (
 // holding. There is no error, no card and nothing on the screen that reads any
 // differently from a rule that WAS made.
 //
-// So there is a second road, and it is deterministic. A modifier-send on the
-// draft marks the sentence, and a marked sentence reaches the model with an
-// instruction saying so — it is shaped into a proposal or it is refused in one
-// line, and it is never done as one-off work (internal/session's
-// standing_mark.go). The card that comes back is the ordinary ratification card;
-// nothing about the yes changes.
+// So there is a second road, and it is deterministic. A sentence handed over
+// with `/standing <words>` reaches the model with an instruction saying so — it
+// is shaped into a proposal or it is refused in one line, and it is never done
+// as one-off work (internal/session's standing_mark.go). The card that comes
+// back is the ordinary ratification card; nothing about the yes changes.
 //
-// AND THE BOX TEACHES THE GESTURE, because a chord nobody knows about is a
-// capability nobody has. While the draft looks standing-shaped, the hint slot
-// under the box says the chord ([app.standMarkOffered]).
+// THIS ROAD USED TO HAVE A CHORD TOO. `ctrl+enter` marked the draft from
+// 2026-09-15 until 2026-09-30, when the queue took the chord over
+// (followup.go): queueing is a gesture a person makes many times in a session
+// and the mark is one they make a few times in a life, and the chord's other
+// claimant — a terminal that cannot tell ctrl+enter from a plain enter — could
+// not send the mark at all. The typed form above works on every terminal and
+// every reach, and the box still teaches it: while the draft looks
+// standing-shaped, the hint slot says the command ([app.standSayOffered]).
 
-// standMarkKey is the chord, and it is named ONCE: the hint under the box, the
-// key router and the manual's own sentence are all this constant or a quotation
-// of it.
-//
-// WHY THIS ONE AND NOT alt+enter. In a conversation alt+enter is already
-// spoken for — it and ctrl+j are the two spellings of "open a line" in the draft
-// (input.go), which is the gesture a paste and a paragraph both need — so
-// binding it here would take a key people use to write the very sentences this
-// gesture is about. ctrl+enter is the only free modifier-send left, it is
-// unmistakably a SEND rather than a letter, and it is already this build's chord
-// for "a send that means something other than the ordinary one": home's box
-// binds it to `ask here` (home.go). One hand shape, one kind of meaning, one
-// name per surface.
-//
-// Its limit is the same one home's carries and the manual states: a terminal
-// that cannot tell ctrl+enter from a plain enter never sends it. Saying the
-// sentence in words is the road that works everywhere, and it is the road the
-// recognition half was built for.
-const standMarkKey = "ctrl+enter"
-
-// The two sentences this gesture says, and both are quoted in
-// internal/manual/chat/standing-orders.md exactly as they are spelled here.
+// The sentences this gesture says. The hint is quoted in
+// internal/manual/chat/standing-orders.md exactly as it is spelled here.
 var (
-	// standMarkHint is the hint slot's line while the draft looks standing-
-	// shaped. It is the chord and what the chord promises, in the slot's own
-	// grammar — a key, then what it does (render.go's [app.hintWord]).
-	standMarkHint = standMarkKey + " keeps this true"
-	// standMarkWordsOnly is the refusal when the box is holding something the
-	// gesture is not about. Nothing is sent and the draft is untouched, which
-	// is the point of refusing rather than falling back to an ordinary send:
-	// silently doing the sentence as work is the failure this whole file exists
-	// to end.
-	standMarkWordsOnly = standMarkKey + " keeps a sentence true — take the pictures or the shape of work off first"
-	// standMarkNowhere is the same refusal where this build has no ambient side
-	// at all, said as the absence it is.
+	// standSayHint is the hint slot's line while the draft looks standing-
+	// shaped. It names the typed door, which works on every terminal — the
+	// chord this slot used to teach is queueing's now (followup.go), and a hint
+	// may only name a key that works (render.go's [app.hintWord]).
+	standSayHint = "/standing keeps this true"
+	// standMarkNowhere is the refusal where this build has no ambient side at
+	// all, said as the absence it is.
 	standMarkNowhere = "nothing here can hold a standing order"
 )
 
@@ -134,13 +113,12 @@ func standMarkAt(head, shape string) bool {
 	}
 }
 
-// standMarkOffered reports whether the hint slot should name the chord — which
-// is exactly whether the chord would DO anything if it were pressed right now.
+// standSayOffered reports whether the hint slot should name the typed door.
 //
-// A HINT MAY ONLY NAME A KEY THAT WORKS (render.go's [app.hintWord] states the
-// whole law). So every condition [app.enterStanding] refuses on is a condition
-// this answers no to, and the two lists are the same list read from both ends.
-func (a *app) standMarkOffered() bool {
+// A FULL TRAY KEEPS THIS COURTESY QUIET. The typed command still sends marked
+// words and leaves pictures or a picked harness on the tray; an absent hint is
+// not a refusal. With no ambient side the command really does refuse.
+func (a *app) standSayOffered() bool {
 	if a.input.empty() || !a.standingHere() {
 		return false
 	}
@@ -166,56 +144,21 @@ func (a *app) standMarkHead() string {
 	return string(value)
 }
 
-// enterStanding is the chord: enter, with the sentence MARKED.
-//
-// It is [app.enter]'s own road with one bit set on it, rather than a second
-// send of its own, because everything a message does to this surface — the
-// transcript line, the turn number, the recall history, the draft file — is the
-// same whichever way it was sent. What differs is the door at the end of it
-// (input.go's [app.enterLine]).
-//
-// THE THREE REFUSALS DO NOT FALL BACK TO AN ORDINARY SEND. A gesture whose
-// failure mode is "the thing you were trying to avoid" is not a gesture, so a
-// draft this cannot mark stays in the box with one line saying why.
-func (a *app) enterStanding() tea.Cmd {
-	line := strings.TrimSpace(a.input.String())
-	if line == "" {
-		// The emptiness law: there is no sentence to keep true, and a note about
-		// a key somebody pressed over an empty box would be noise.
-		return nil
-	}
-	if !a.standingHere() {
-		a.note(standMarkNowhere)
-		return nil
-	}
-	if strings.HasPrefix(line, "/") {
-		// A COMMAND IS SAID TO THIS SURFACE AND NOT TO THE MODEL, so there is no
-		// sentence here to keep true and nothing to refuse: /standing marked
-		// standing is /standing (input.go's own reading of a slash).
-		return a.enterLine(false)
-	}
-	if a.harnChip != "" || len(a.chips) > 0 {
-		a.note(standMarkWordsOnly)
-		return nil
-	}
-	return a.enterLine(true)
-}
-
 // standingSay is `/standing <words>`: the words go through the SAME deliberate
-// door the chord opens (app.go's slash), and the margin's `+ /standing` row is
-// what puts the command in the box for somebody who has never typed it
+// door the chord used to open (app.go's slash), and the margin's `+ /standing`
+// row is what puts the command in the box for somebody who has never typed it
 // (margin.go).
 //
-// IT IS THE CHORD'S ROAD AND NOT THE ORDINARY SEND, which is the whole of why
-// the argument form exists: a sentence handed over this way is shaped into a
-// card or refused in one line, and it is never carried out as one-off work
+// THE COMMAND IS THE EXPLICIT MARKED ROAD, which is the whole of why the
+// argument form exists: a sentence handed over this way is shaped into a card
+// or refused in one line, and it is never carried out as one-off work
 // (internal/session's standing_mark.go). Falling back to [app.submit] here would
 // be the failure the marked door was built to end, arriving through a door that
 // promises the opposite.
 //
 // AND IT WAITS ITS TURN LIKE ANY OTHER SENTENCE. A command is said to this
 // surface at once, but these words are said to the MODEL: typed over a running
-// answer they are parked with the mark on them, exactly as the chord's are
+// answer they are parked with the mark on them, exactly as the chord's were
 // (park.go).
 func (a *app) standingSay(text string) tea.Cmd {
 	return a.standingSayShown(text, text, nil, nil)

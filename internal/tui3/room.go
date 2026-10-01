@@ -2067,6 +2067,12 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
+	// THE ROOM HAS NO FOLLOW-UP QUEUE. After its overlays and question have
+	// had their own keys, the chord takes the room's enter road, including an
+	// empty-box retry or the controls of an adaptive run.
+	if msg.String() == "ctrl+enter" {
+		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
+	}
 	// THE LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK ARE NOT TAKEN HERE.
 	// A landed `your call` is a question, and the question block above the box
 	// answers it on every page with the one key grammar — which is read before

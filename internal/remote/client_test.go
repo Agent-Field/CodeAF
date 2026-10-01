@@ -571,6 +571,29 @@ func TestEventsThatArriveBeforeTheResultAreNotLost(t *testing.T) {
 	}
 }
 
+// THE TAKE-BACK NAMES THE STREAM IT QUEUED. The receipt the client keeps from
+// each FollowUp is what the far end matches the queued message by
+// ([Agent.UnqueueFollowUp]); a take of a stream this client never queued, or a
+// second take of the same one, is false — and a far end that does not know the
+// method reads as false too, which is what lets the door ride an older wire.
+func TestUnqueueFollowUpNamesTheStreamItQueued(t *testing.T) {
+	client, e := newEngine(t)
+	e.answers[MethodUnqueueFollowUp] = true
+	ch, err := client.Agent().FollowUp("after you")
+	if err != nil {
+		t.Fatalf("FollowUp: %v", err)
+	}
+	if !client.Agent().UnqueueFollowUp(ch) {
+		t.Fatal("the take-back answered false on a stream this client queued")
+	}
+	if client.Agent().UnqueueFollowUp(make(chan session.Event)) {
+		t.Fatal("an unknown stream was taken back")
+	}
+	if client.Agent().UnqueueFollowUp(ch) {
+		t.Fatal("the same receipt was spent twice")
+	}
+}
+
 func TestAGetterDuringALiveStreamDoesNotDeadlock(t *testing.T) {
 	// The surface reads events on the update loop and asks getters on the same
 	// loop. If the reader goroutine ever blocked handing an event over, a getter

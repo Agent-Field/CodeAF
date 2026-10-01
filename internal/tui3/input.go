@@ -787,7 +787,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// And enter belongs to the LINE under that list, not to the list. A person
 	// who typed a path out in full would otherwise have it swapped for whatever
 	// the ranking put first, by the key they pressed to run the command.
-	if a.comp.open && a.comp.arg && msg.String() == "enter" {
+	if a.comp.open && a.comp.arg && (msg.String() == "enter" || msg.String() == "ctrl+enter" && !a.queueSendOffered()) {
 		a.comp.close()
 		return a.enter()
 	}
@@ -871,27 +871,26 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.interrupt()
 		return cmd
 
-	case "enter":
+	case "enter", "ctrl+enter":
+		// THE QUEUE BELONGS TO THIS CONVERSATION'S RUNNING TURN. Everywhere
+		// else the chord takes enter's ordinary road, commands included. A
+		// decoded chord is honoured even without a keyboard-enhancement reply:
+		// modifyOtherKeys can deliver it too. Plain terminals send enter on
+		// many keyboards and ctrl+j on some, and those keep their own meanings.
+		if msg.String() == "ctrl+enter" && a.queueSendOffered() {
+			return a.followUp()
+		}
 		if a.steerAvailable() {
 			return a.steerIn()
 		}
 		return a.enter()
 
-	case standMarkKey:
-		// KEEP THIS TRUE (standmark.go). It is read directly beside enter because
-		// it is enter — the same road with the sentence marked as something that
-		// should stand, so the model shapes it into a card instead of doing it
-		// once. It sits ABOVE the newline pair below because those two are the
-		// other spellings of a different gesture entirely, and a chord that fell
-		// through to them would open a line where somebody meant to send.
-		return a.enterStanding()
-
 	case steerKeySuper, steerKeyMeta:
 		// AND ALSO THIS, WITHOUT STOPPING ANYTHING (steer.go). It is read directly
-		// beside the mark above and the stop below because all three are the same
+		// beside the queue above and the stop below because all three are the same
 		// hand shape — a modifier on the send — and each is a narrower claim than
-		// plain enter: keep this true, put this into the answer, stop the answer
-		// and say this instead.
+		// plain enter: hold it for after, put this into the answer, stop the
+		// answer and say this instead.
 		//
 		// TWO NAMES, ONE KEYSTROKE. cmd+enter arrives as `super+enter` off a
 		// kitty-protocol terminal and as `meta+enter` off one speaking
@@ -912,9 +911,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	case bargeKey:
 		// STOP THIS AND SAY THIS INSTEAD (bargein.go). It is read directly beside
 		// the two chords above because it is the third reading of one hand shape —
-		// a modifier on the send — and it sits UNDER the standing mark for the
-		// same reason that one sits under enter: each of the three is a narrower
-		// claim than the one before it, and the narrowest is read last.
+		// a modifier on the send — and it sits UNDER the queue for the same reason
+		// that one sits under enter: each of the three is a narrower claim than
+		// the one before it, and the narrowest is read last.
 		//
 		// It is above the newline pair below for standmark.go's reason exactly:
 		// those two are the other spellings of a different gesture, and a chord
@@ -931,10 +930,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.editTags(at, at, 1)
 		return a.edited()
 
-	case "ctrl+q":
-		// The other way to say something to a working session: after the work,
-		// not into it (followup.go). Enter stays steering.
-		return a.followUp()
+	// `ctrl+q` IS DELIBERATELY UNBOUND HERE (2026-09-30): queueing moved onto
+	// ctrl+enter, and a control key with no meaning left does nothing rather
+	// than acquiring a new one — the key sheet and the manual say so.
 
 	case "alt+o":
 		return a.openVisiblePicture()
@@ -1043,10 +1041,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "up":
-		// ↑ has four meanings and they are read in the order a person's hand
+		// ↑ has three meanings and they are read in the order a person's hand
 		// means them: inside a multi-line draft it moves the caret; at the top
-		// of the draft it walks history; with nothing typed and calls on screen
-		// it selects one; and past all of those it scrolls.
+		// of the draft it walks history, after taking back a parked message;
+		// with nothing typed and calls on screen it selects one; and past all
+		// of those it scrolls.
 		if !a.input.onFirstLine() {
 			a.input.up()
 			a.touch()
@@ -1059,6 +1058,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// parked, which is one message on screen twice and two turns spent on it.
 		// Read here, the block is taken back and the sentence is yours again
 		// (park.go).
+		//
+		// AND THE SESSION'S QUEUE IS NOT READ AT ALL. A queued follow-up is in
+		// the session's hands, not the surface's: the one gesture that takes one
+		// back out is a CLICK on its row (followup.go's [app.followPress]), and
+		// ↑ naming it would take down a message the person only meant to scroll
+		// past.
 		if a.input.empty() && !a.recalling() && a.recallParked() {
 			return a.edited()
 		}
@@ -1412,16 +1417,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // enter is the submit key, and it has one first meaning: send the draft.
-func (a *app) enter() tea.Cmd { return a.enterLine(false) }
+func (a *app) enter() tea.Cmd { return a.enterLine() }
 
-// enterLine is that key's whole road, with the one thing the CHORD changes left
-// as an argument: whether the person marked this sentence as something to keep
-// true (standmark.go). Everything above the send is identical either way — the
-// recall history, the draft file, the slash, the mentions — and it is one
-// function so it stays that way.
-func (a *app) enterLine(marked bool) tea.Cmd {
+// enterLine is the send key's whole road. The chord that used to add a marked
+// reading to it — ctrl+enter, "keep this true" — is queueing's now
+// (followup.go), and the marked door is the typed command alone
+// (standmark.go's [app.standingSay]); everything a message does to this surface
+// — the transcript line, the turn number, the recall history, the draft file —
+// is the same whichever way the sentence was handed over.
+func (a *app) enterLine() tea.Cmd {
 	if a.startingChat() {
-		return a.startChatEnter(marked)
+		return a.startChatEnter()
 	}
 	// A WATCHER'S SEND KEY IS THE TAKE-BACK, and nothing below it runs
 	// (watching.go). The router already turns enter into this, so reaching here
@@ -1577,21 +1583,12 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// still happens at once, because those are things said to THIS SURFACE rather
 	// than to the model.
 	if a.parking() {
-		// AND THE MARK WAITS WITH THE WORDS. A marked sentence typed over a
-		// running answer is parked like any other, and it goes through the marked
-		// door when its turn comes: a mark dropped on the way into the queue would
-		// be the sentence quietly becoming ordinary work, which is the one ending
-		// this gesture exists to rule out (park.go). A tag the person made plain
-		// waits plain with it, for the same reason.
-		return a.park(line, marked, plain)
+		return a.park(line, false, plain)
 	}
 	shownLine := line
 	line = a.expandPastes(line)
 	if held {
 		return a.submitImagesShown(line, shownLine, plain)
-	}
-	if marked {
-		return a.submitStandingShown(line, shownLine, plain)
 	}
 	return a.submitShown(line, shownLine, plain)
 }

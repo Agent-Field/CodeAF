@@ -3,58 +3,69 @@ package tui3
 import (
 	"strings"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// THE FOLLOW-UP: ctrl+q, "and after that, do this".
+// THE FOLLOW-UP: ctrl+enter, "and after that, do this".
 //
-// There are two ways to say something to a working session and they mean
-// different things, so they are two keys:
+// Plain enter steers into the running turn when eligible, and otherwise parks
+// the message here on the surface (steer.go, park.go). ctrl+enter hands a
+// follow-up to the session to run after the current turn. It queues only from
+// this conversation's own box, with non-empty words that are not a /command;
+// everywhere else it is plain enter, including on the new-chat start page.
 //
-//	enter    PARK. The message is held HERE, on the surface, between the answer
-//	         and the box, and it starts a turn of its own when the answer it was
-//	         typed over is finished (park.go).
-//	ctrl+q   FOLLOW-UP. The message is handed to the SESSION the moment it is
-//	         typed, and it starts a turn of its own when the work is done.
+// A decoded ctrl+enter is honoured wherever the terminal sends it, including
+// modifyOtherKeys terminals that never answer the keyboard-enhancement query.
+// THE HINT AND TIP REQUIRE THE TERMINAL'S REPLY before advertising the chord.
+// A terminal that cannot distinguish it sends enter on many keyboards and
+// ctrl+j on some; those remain the ordinary send and newline respectively.
 //
-// THIS HEADER ONCE SAID SOMETHING ELSE, AND IT WAS WRONG BY THE TIME ANYBODY
-// READ IT. `enter` used to STEER: the message went straight to the session and
-// reached the model at the running turn's next step boundary. park.go ended
-// that — a steer typed at a turn whose last request had already gone out landed
-// with nothing left to answer it, and the sentence was drawn into the middle of
-// the reply besides — and nothing in this file had to change when it did, which
-// is exactly why the description of the pair went on describing the old one.
-//
-// So the two keys no longer differ in WHEN the message is heard. Both wait for
-// the turn to end. They differ in WHO IS HOLDING IT WHILE IT WAITS, and
-// everything a person can do about it follows from that: a parked message is
-// still theirs — it can be edited, taken back with ↑, or sent at once by
-// stopping the turn it was typed over (`ctrl+shift+enter` as one gesture,
-// bargein.go) — while a follow-up is in the session with no take-backs, and is
-// DROPPED when the turn it was queued behind is interrupted, because a drain
-// never restarts a turn the person stopped ([app.dropFollows]).
+// A parked message is still the person's: it can be edited, taken back with ↑,
+// or sent at once by stopping the turn (ctrl+shift+enter, bargein.go). A locally
+// queued follow-up comes back only after the session says it was removed, and
+// it merges into this conversation's composer rather than replacing a new
+// draft. A message whose turn already started cannot be taken back. An
+// interrupt drops queued messages because a drain never restarts stopped work.
 //
 // Both queues drain at the stream's close and the SESSION'S goes first (app.go's
 // streamClosedMsg): a follow-up was handed over before the parked message was
 // typed in the ordinary case, and a surface that let the newer sentence jump it
 // would be reordering the person's own words.
 //
-// The message is NOT drawn when it is queued. It is drawn when its turn starts,
-// where it actually lands in the conversation — a user line painted above the
-// rest of a turn it comes after would put the transcript in an order that never
-// happened. Until then the count sits above the box, dim, so a person can see
-// that something of theirs is waiting.
+// THE QUEUE IS DRAWN MESSAGE BY MESSAGE, and the drawing is the difference
+// between waiting and sent: each row sits above the box in the queued glyph and
+// dim ink, a register nothing in the transcript wears, and the rows only leave
+// when their turn starts — where the message lands as an ordinary sent line. A
+// count alone ("after yield · 2", the row this block replaced) made a person
+// guess which of their sentences were still queued and which were being read.
 
 // queued is one follow-up: what was typed, and the stream the turn it starts
 // will speak on. The channel exists from the moment the message is queued —
 // session hands it back immediately — so there is nothing to wait for later.
+//
+// THE DRAFT TRAVELS WITH IT so a take-back can put the box back exactly as it
+// was. The pasted documents are the half that has to: queueing unfolds them
+// into the words the model reads and spends the chips ([app.composed]), so
+// without them a click would restore the tokens as dead text and the next send
+// would carry `[paste 1 · 4 lines]` to the model.
 type queued struct {
 	covered func() bool
 	text    string
+	pastes  []pasteChip
+	demoted []segment
 	ch      <-chan session.Event
+	// recallable says this surface queued it and holds its take-back receipt.
+	// Streams admitted from another window or a fallen-through steer do not.
+	recallable bool
+	// taking holds the pending answer, so the row cannot be clicked or started
+	// while the session is deciding whether it ran.
+	taking *followRecall
 	// woken says nobody typed this one: it is a turn THE SESSION STARTED ON ITS
 	// OWN (see the wake lane below). It rides the same queue because the queue
 	// is about streams waiting for the one being pumped, and that is exactly
@@ -66,22 +77,49 @@ type queued struct {
 // followMsg carries the session's answer back into the program loop. FollowUp
 // takes the agent's lock, and the Update loop is not a place to wait.
 type followMsg struct {
-	call *hostCall
-	text string
-	ch   <-chan session.Event
-	err  error
+	call    *hostCall
+	text    string
+	pastes  []pasteChip
+	demoted []segment
+	ch      <-chan session.Event
+	err     error
 }
 
-// followUp is ctrl+q. An empty draft does nothing at all: there is no message
+// followUp is the queue key (input.go's `ctrl+enter` case). An empty draft does
+// nothing at all: there is no message
 // to queue, and a key that queued a blank one would be a key that spends a turn.
+//
+// THE QUEUE CARRIES WORDS ALONE, so a tray holding anything else is refused
+// rather than split. [Agent.FollowUp] takes text: queueing over a picture or a
+// picked harness would send the words later and leave the rest on the tray to
+// ride out with whatever was typed next — one message quietly becoming two.
+// Nothing is queued and the draft is untouched, the refusal the standing chord
+// this key replaced made on the same ground.
 func (a *app) followUp() tea.Cmd {
 	line := strings.TrimSpace(a.input.String())
 	if line == "" {
 		return nil
 	}
+	if !a.trayEmptyForQueue() {
+		a.note(queueWordsOnly)
+		return nil
+	}
 	a.noticeEvent(eventQueued)
-	// The model reads the paste and the queue's row keeps the tag (pastechip.go).
-	spoken, line := a.composed(line)
+	// The model reads the paste and the queue's row keeps the tag (pastechip.go);
+	// the chips are kept BESIDE the tag so a take-back can put the draft back
+	// whole ([app.recallQueuedAt]).
+	pastes := append([]pasteChip(nil), a.pastes...)
+	demoted := append([]segment(nil), a.input.demotedTags...)
+	// The queued words have always been trimmed. Plain-tag positions belong
+	// to those same words, so removing the leading whitespace shifts them by
+	// its rune count rather than silently making the slash words live again.
+	raw := a.input.String()
+	trimmed := len([]rune(raw)) - len([]rune(strings.TrimLeftFunc(raw, unicode.IsSpace)))
+	for i := range demoted {
+		demoted[i].from -= trimmed
+		demoted[i].to -= trimmed
+	}
+	spoken, _ := a.composed(line)
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
@@ -91,21 +129,21 @@ func (a *app) followUp() tea.Cmd {
 	a.dropDraft()
 	a.stick = true
 	a.touch()
-	return a.sendFollow(spoken, line)
+	return a.sendFollowFrom(a.agent, spoken, line, pastes, demoted)
 }
 
-func (a *app) sendFollow(spoken, line string) tea.Cmd {
-	return a.sendFollowFrom(a.agent, spoken, line)
+func (a *app) sendFollow(spoken, line string, pastes []pasteChip) tea.Cmd {
+	return a.sendFollowFrom(a.agent, spoken, line, pastes, nil)
 }
 
-func (a *app) sendFollowFrom(agent Agent, spoken, line string) tea.Cmd {
-	if a.deferHosted(func() tea.Cmd { return a.sendFollowFrom(agent, spoken, line) }) {
+func (a *app) sendFollowFrom(agent Agent, spoken, line string, pastes []pasteChip, demoted []segment) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.sendFollowFrom(agent, spoken, line, pastes, demoted) }) {
 		return nil
 	}
 	call := a.hostCallStarted()
 	return func() tea.Msg {
 		ch, err := agent.FollowUp(spoken)
-		return followMsg{text: line, ch: ch, err: err, call: call}
+		return followMsg{text: line, pastes: pastes, demoted: demoted, ch: ch, err: err, call: call}
 	}
 }
 
@@ -124,7 +162,7 @@ func (a *app) queueFollow(msg followMsg) (cmd tea.Cmd) {
 	if msg.ch == nil {
 		return nil
 	}
-	a.follows = append(a.follows, queued{text: msg.text, ch: msg.ch, covered: a.hostStreamCovered(msg.ch)})
+	a.follows = append(a.follows, queued{text: msg.text, pastes: msg.pastes, demoted: msg.demoted, recallable: true, ch: msg.ch, covered: a.hostStreamCovered(msg.ch)})
 	a.touch()
 	if a.stream != nil {
 		return nil
@@ -141,10 +179,10 @@ func (a *app) startFollow() tea.Cmd {
 	if a.hostReplayLoading || a.hostReplayWaiting || a.stream != nil || len(a.follows) == 0 {
 		return nil
 	}
-	for len(a.follows) > 0 && a.follows[0].covered != nil && a.follows[0].covered() {
+	for len(a.follows) > 0 && a.follows[0].taking == nil && a.follows[0].covered != nil && a.follows[0].covered() {
 		a.follows = a.follows[1:]
 	}
-	if len(a.follows) == 0 {
+	if len(a.follows) == 0 || a.follows[0].taking != nil {
 		return nil
 	}
 	next := a.follows[0]
@@ -162,9 +200,19 @@ func (a *app) startFollow() tea.Cmd {
 		// The context the turn runs in rides with it, for [app.submitting]'s reason
 		// (turncontext.go): a follow-up is the person's own sentence arriving one
 		// turn late, and where it goes is the same fact about it either way.
+		value := []rune(next.text)
+		plain := restingDoorWords(value)
+		// A DEMOTION TRAVELS WITH THE QUEUED WORDS. The fallback knows only
+		// resting door words, so the queue's own annotations must join it. Match
+		// against this text's command spans to drop stale ranges and duplicates.
+		for _, s := range commandSpans(value, true) {
+			if containsSegment(next.demoted, s) && !containsSegment(plain, s) {
+				plain = append(plain, s)
+			}
+		}
 		a.entries = append(a.entries, entry{
 			kind: entryUser, text: next.text, turn: a.turn, context: a.turnContext(),
-			plainTags: restingDoorWords([]rune(next.text)),
+			plainTags: plain,
 		})
 	}
 	a.state = stateWorking
@@ -217,23 +265,315 @@ func (a *app) followWaiting() int {
 	return n
 }
 
-// followHeight is the one row the count takes, or none.
+// followHeight is the block's height: one row per row a queued message wraps
+// over, or none.
 func (a *app) followHeight() int {
-	if a.followWaiting() == 0 {
-		return 0
-	}
-	return 1
+	width, _ := a.size()
+	return len(a.followRows(width))
 }
 
-// followRow is the count above the box: what is waiting, and for what. "after
-// yield" rather than "queued" because it says the thing a person needs to
-// predict — this goes when the current work stops, not now.
-func (a *app) followRow(width int) string {
-	n := a.followWaiting()
-	if n == 0 {
-		return ""
+// queueWordsOnly is the refusal when the tray holds something the queue cannot
+// carry ([app.followUp]).
+const queueWordsOnly = "ctrl+enter queues words alone — take the pictures or the shape of work off first"
+
+// trayEmptyForQueue reports whether the tray holds nothing the queue would have
+// to leave behind: no picture and no picked harness.
+func (a *app) trayEmptyForQueue() bool {
+	return len(a.chips) == 0 && a.harnChip == ""
+}
+
+// queueFootWord is what the running foot calls the queue key: the short
+// key-then-noun form every clause on that row keeps, not the queued block's
+// sentence — the foot names the key, the block says what happened.
+const queueFootWord = "ctrl+enter queue"
+
+// queueSendOffered is the key's predicate: words for this conversation's
+// running turn, from its own composer. Commands and live send-door tags take
+// enter's ordinary road, so queueing cannot discard a tag's meaning. The tray
+// refusal remains [app.followUp]'s answer, rather than a send that quietly
+// splits one message in two.
+func (a *app) queueSendOffered() bool {
+	line := strings.TrimSpace(a.input.String())
+	return a.runSendOffered() && !a.startingChat() && a.composerOwner == mainRecipient &&
+		line != "" && !strings.HasPrefix(line, "/") && len(a.liveTags()) == 0
+}
+
+// queueFootOffered advertises the chord only after the terminal says it can
+// distinguish keys, and only when the queue can carry the whole draft. The key
+// itself accepts a decoded chord without that reply, because modifyOtherKeys
+// can send it too.
+func (a *app) queueFootOffered() bool {
+	return a.keysDisambiguated && a.queueSendOffered() && a.trayEmptyForQueue()
+}
+
+// followRows draws the queued block: the messages the SESSION is holding, each
+// led by the return arrow, and nothing else.
+//
+// THE REGISTER IS THE POINT. A sent message is the person's accent hue with
+// their own glyph, and a parked one is the same hue held between the answer and
+// the box; these rows are dim and led by the return key's arrow
+// (tokens.GFollowUp — the key, held with ctrl, that put them there), so a
+// person scanning the foot can see at a glance which of their sentences the
+// session is holding and which of them are already being worked. They leave
+// the block when their turn starts — where the words land in the transcript as
+// the ordinary sent line they become.
+//
+// THERE IS NO LINE UNDER THE BLOCK, by the owner's call (2026-09-30). It said
+// `queued for after this turn · click takes one back · ctrl+enter queues the
+// draft`; the arrow says the first, the hover says the second, and the running
+// foot says the third, so the sentence was three things already on the frame.
+func (a *app) followRows(width int) []string {
+	if a.followWaiting() == 0 || width < 5 {
+		return nil
 	}
-	return a.pal.dim(fit("  after yield · "+itoa(n), width))
+	out := make([]string, 0, a.followWaiting())
+	// A ROW LIGHTS ONLY WHERE A PRESS WOULD TAKE IT. With no line under the
+	// block to say so, the hover is the whole of the take-back's advertisement,
+	// and an agent that cannot unqueue must not be shown offering to.
+	for i, q := range a.follows {
+		if q.woken {
+			continue
+		}
+		// THE WHOLE MESSAGE LIGHTS, NOT THE ROW THE POINTER IS ON — park.go's
+		// rule, because a sentence that wrapped over three rows with one of them
+		// banded would read as three things.
+		hot := a.queuedTakesBackAt(i) && a.hoveringQueued(i)
+		for j, line := range followLines(q.text, width) {
+			lead := "   "
+			if j == 0 {
+				lead = "  " + a.pal.dim(a.icon(tokens.GFollowUp)) + " "
+			}
+			text := lead + a.pal.dim(line)
+			if hot {
+				text = a.hoverRow(text, width)
+			}
+			out = append(out, text)
+		}
+	}
+	return out
+}
+
+// followLines is the one width calculation for drawing and hit testing. The
+// first lead uses four cells and continuations use three, so every text line
+// leaves room for the longer lead. Narrow frames do not borrow wrap's four-cell
+// minimum, which would make the complete queued row wider than the frame.
+func followLines(text string, width int) []string {
+	if width < 5 {
+		return nil
+	}
+	text = strings.ReplaceAll(text, "\t", "    ")
+	lines := strings.Split(ansi.Wrap(text, width-4, ""), "\n")
+	for i := range lines {
+		lines[i] = ansi.Truncate(lines[i], width-4, "")
+	}
+	return lines
+}
+
+// followMark is the pointer's answer for one row of the block: which queued
+// message that row belongs to, so a click can take that one back.
+func (a *app) followMark(row, width int) chromeRow {
+	at := 0
+	for i, q := range a.follows {
+		if q.woken {
+			continue
+		}
+		height := len(followLines(q.text, width))
+		if row >= at && row < at+height {
+			return chromeRow{kind: chromeQueued, index: i}
+		}
+		at += height
+	}
+	return chromeRow{}
+}
+
+// followPress is a click on the queued block: that message comes out of the
+// session's queue and back into the box whole, draft and all.
+//
+// THE POINTER IS THE ONLY WAY TO THIS QUEUE. ↑ belongs to the parked block and
+// to history and never reaches a queued row (input.go), so the click is the one
+// gesture that takes an individual message back.
+//
+// THE CLICK IS ANSWERED AT ONCE and the words arrive with the fold
+// (offloop.go): the press is claimed here — the pointer named a message — and
+// what the session said about it lands on the next pass. A false from the
+// agent leaves the row exactly where it was, which is the answer the row was
+// promised (recallQueuedAt).
+func (a *app) followPress(y int) (tea.Cmd, bool) {
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != chromeQueued {
+		return nil, false
+	}
+	if cmd, asked := a.recallQueuedAt(mark.index); asked {
+		return cmd, true
+	}
+	return nil, false
+}
+
+// followUnqueuer is the agent's half of the take-back (session's
+// [session.Agent.UnqueueFollowUp]). It is asserted rather than added to [Agent]
+// for the reason [wakeAgent] is: a surface driven by a scripted agent must stay
+// representable, and an agent that cannot unqueue is one whose queued rows this
+// surface does not offer to take.
+type followUnqueuer interface {
+	UnqueueFollowUp(ch <-chan session.Event) bool
+}
+
+// queuedTakesBack reports whether any row holds this window's own receipt and
+// is not already waiting for an answer. Hover and press ask the same per-row
+// predicate, so a row without a working gesture never lights.
+func (a *app) queuedTakesBack() bool {
+	for i := range a.follows {
+		if a.queuedTakesBackAt(i) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *app) queuedTakesBackAt(i int) bool {
+	if _, ok := a.agent.(followUnqueuer); !ok || i < 0 || i >= len(a.follows) {
+		return false
+	}
+	q := a.follows[i]
+	return q.recallable && !q.woken && q.taking == nil
+}
+
+// followRecall keeps one click's snapshot and answer until earlier clicks have
+// folded. The door line asks in order; Bubble Tea may deliver the answers in a
+// different order, and restoring both sentences must still keep click order.
+type followRecall struct {
+	one      queued
+	front    int
+	answered bool
+	out      bool
+}
+
+// recallQueuedAt marks the row before asking the session off the loop. The mark
+// prevents another click and prevents startFollow from drawing a user line for
+// a message the session may already have removed. Only the answer settles it.
+func (a *app) recallQueuedAt(i int) (tea.Cmd, bool) {
+	if !a.queuedTakesBackAt(i) {
+		return nil, false
+	}
+	one := a.follows[i]
+	pending := &followRecall{one: one, front: a.frontGen}
+	a.follows[i].taking = pending
+	a.followRecalls = append(a.followRecalls, pending)
+	a.touch()
+	unqueuer := a.agent.(followUnqueuer)
+	cmd := a.offLoop(func() func(here bool) tea.Cmd {
+		out := unqueuer.UnqueueFollowUp(one.ch)
+		return func(here bool) tea.Cmd {
+			pending.answered, pending.out = true, out
+			if here {
+				if out {
+					a.removeQueuedByStream(one.ch)
+				} else {
+					// FALSE KEEPS THE TURN. Release the mark so a parent that
+					// closed while the answer was crossing can adopt this turn.
+					for i := range a.follows {
+						if a.follows[i].taking == pending {
+							a.follows[i].taking = nil
+						}
+					}
+				}
+				a.touch()
+			}
+			cmd := a.foldFollowRecalls()
+			if here {
+				cmd = tea.Batch(cmd, a.startFollow(), a.sendParked())
+			}
+			return cmd
+		}
+	})
+	return cmd, true
+}
+
+// foldFollowRecalls restores successful answers in click order, always to this
+// conversation's main composer even when a task room has the keyboard. If the
+// conversation was replaced, no words go into its replacement: they remain
+// reachable through ↑ history, where queueing already remembered them.
+func (a *app) foldFollowRecalls() tea.Cmd {
+	changed := false
+	for len(a.followRecalls) > 0 && a.followRecalls[0].answered {
+		one := a.followRecalls[0]
+		a.followRecalls[0] = nil
+		a.followRecalls = a.followRecalls[1:]
+		if !one.out || one.front != a.frontGen {
+			continue
+		}
+		a.atMainComposer(func(state *composerState) { mergeQueuedDraft(state, one.one) })
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	a.stick = true
+	a.touch()
+	if a.composerOwner == mainRecipient {
+		return a.edited()
+	}
+	return a.armDraftKeep()
+}
+
+// mergeQueuedDraft appends the taken-back sentence without spending anything
+// the composer already held. Its paste tokens are renamed together, so a new
+// number cannot collide with another old token, and plain-tag ranges follow
+// the same replacements before being shifted past the existing draft.
+func mergeQueuedDraft(state *composerState, one queued) {
+	text := one.text
+	demoted := append([]segment(nil), one.demoted...)
+	pastes := append([]pasteChip(nil), one.pastes...)
+	if len(state.box.value) > 0 || len(state.pastes) > 0 {
+		n := 0
+		for _, held := range state.pastes {
+			n = max(n, held.n)
+		}
+		pairs := make([]string, 0, len(pastes)*2)
+		for i := range pastes {
+			n++
+			lines := pasteLineCount(pastes[i].text)
+			pairs = append(pairs, pasteToken(pastes[i].n, lines), pasteToken(n, lines))
+			pastes[i].n = n
+		}
+		if len(pairs) > 0 {
+			rewrite := strings.NewReplacer(pairs...)
+			runes := []rune(text)
+			for i, span := range demoted {
+				demoted[i] = segment{
+					from: len([]rune(rewrite.Replace(string(runes[:span.from])))),
+					to:   len([]rune(rewrite.Replace(string(runes[:span.to])))),
+				}
+			}
+			text = rewrite.Replace(text)
+		}
+	}
+	value := state.box.String()
+	if len(state.box.value) > 0 {
+		value += "\n"
+	}
+	offset := len([]rune(value))
+	plain := append([]segment(nil), state.box.demotedTags...)
+	for _, span := range demoted {
+		plain = append(plain, segment{from: span.from + offset, to: span.to + offset})
+	}
+	state.box.setText(value + text)
+	state.box.demotedTags = plain
+	state.pastes = append(state.pastes, pastes...)
+}
+
+// removeQueuedByStream takes the queued message whose stream is ch off the
+// surface's queue, and reports whether it was there. It is the fold's half of
+// the take-back: the session answered by the stream, so the surface answers by
+// the stream too, and the message that goes is the one the person named.
+func (a *app) removeQueuedByStream(ch <-chan session.Event) bool {
+	for i, q := range a.follows {
+		if q.ch == ch && !q.woken {
+			a.follows = append(a.follows[:i], a.follows[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // ── THE WAKE LANE ───────────────────────────────────────────────────────────

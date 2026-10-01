@@ -1,5 +1,22 @@
 # Commands
 
+## ctrl+enter over a slash command — commands run at once
+
+`ctrl+enter` over a `/command` takes plain enter's command action, even while a turn
+is running. With no turn running or on the new-chat start page it also acts as plain
+enter. A live `/standing`, `/orders` or `/task` tag inside a sentence also keeps
+plain enter's door. It queues only non-empty words mid-turn from this conversation's
+own composer, with no live send-door tag.
+The decoded chord works wherever the terminal sends it; the queue hint and tip are
+advertised only after the terminal's key-support reply. A terminal that cannot send
+it delivers plain enter or, on some keyboards, a newline.
+
+Only messages queued from this window can be clicked back out of the queue. Their
+words return to this conversation's composer. If a draft is already there, the
+returned message is appended on a new line, keeping the draft and tray and renumbering
+its paste chips. `/standing <words>` sends marked words even with pictures or a picked
+shape on the tray, leaving those on the tray; the standing hint's absence is separate.
+
 ## Bash mode — run a shell command with ! and keep its output in context
 
 Start a message with `!` to run a non-interactive shell command yourself:
@@ -328,7 +345,7 @@ aligned, each row with its alias tail. The first line is the product's own name,
 `codeaf` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
-`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t` (a new chat), `ctrl+w` (close this tab),
+`ctrl+c`, `ctrl+o`, `ctrl+enter`, `ctrl+e`, `ctrl+t` (a new chat), `ctrl+w` (close this tab),
 `alt+t` (the task roster), `ctrl+l`, `alt+backspace` (the word kill), `ctrl+,`, `@path`,
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         quits everything · mid-turn it interrupts instead, like esc`.
@@ -1469,7 +1486,7 @@ The tag form works in the middle or at the end too: `always run the tests /stand
 `always /orders run the tests` hand the remaining sentence through the same door. Press
 backspace immediately after the tag to make it plain words instead.
 
-They go through the same deliberate door `ctrl+enter` opens: codeaf is told to shape the
+They go through the deliberate marked door: codeaf is told to shape the
 sentence into a standing order's card — when it wakes, what it does, how far it reaches —
 and it never carries the sentence out as one-off work as well. Nothing stands until you
 answer the card. A sentence that cannot stand at all gets one short line saying so and

@@ -3905,7 +3905,7 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// over the roster takes it first, on [app.effortTaskHere]'s precedence.
 		a.cycleTaskEffort()
 		return nil, true
-	case "enter":
+	case "enter", "ctrl+enter":
 		if cmd, ok := a.jobEnter(); ok {
 			return cmd, true
 		}

@@ -45,9 +45,10 @@ import (
 // of the turn that one starts. A drain that started three turns at once, or
 // spliced three sentences into one message, would be a decision nobody made.
 //
-// ctrl+q is still its own key and still means something else: a follow-up is
-// handed to the SESSION the moment it is typed (followup.go), with no take-backs
-// and no editing. A parked message is still yours until it goes.
+// ctrl+enter is still its own key and still means something else: a follow-up
+// is handed to the SESSION the moment it is typed (followup.go) — and, since
+// 2026-09-30, one that can be taken back out of the session's queue before its
+// turn starts. A parked message is still yours until it goes.
 
 // parked is one message typed while a turn was open: the words, and the
 // pictures that were in the tray with them.
@@ -118,7 +119,10 @@ func (a *app) park(text string, standing bool, plain []segment) tea.Cmd {
 // jumped a queue the person filled first would be this surface reordering their
 // sentences. Whichever starts, the rest stay parked and go at the next close.
 func (a *app) sendParked() tea.Cmd {
-	if a.stream != nil || a.parkSending || len(a.parks) == 0 {
+	// A pending take-back can leave the surface between pumps while the
+	// session's next turn is already running. Its queue settles first; parked
+	// words must not open a second turn in that gap.
+	if a.stream != nil || len(a.follows) > 0 || a.parkSending || len(a.parks) == 0 {
 		return nil
 	}
 	next := a.parks[0]

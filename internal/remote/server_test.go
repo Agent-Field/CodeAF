@@ -183,6 +183,22 @@ func (f *fakeAgent) FollowUp(text string) (<-chan session.Event, error) {
 	return f.open(), nil
 }
 
+// UnqueueFollowUp is the take-back's far half (internal/tui3's followup.go): it
+// takes the named stream off the fake's own queue and closes it, exactly as
+// [session.Agent.UnqueueFollowUp] does, and says whether the message came out.
+func (f *fakeAgent) UnqueueFollowUp(ch <-chan session.Event) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, held := range f.streams {
+		if (<-chan session.Event)(held) == ch {
+			f.streams = append(f.streams[:i], f.streams[i+1:]...)
+			close(held)
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fakeAgent) Steer(text string) (<-chan session.Event, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1190,6 +1206,98 @@ func TestServeInterleavesTwoStreamsWithoutTearing(t *testing.T) {
 }
 
 // ── the session doors ───────────────────────────────────────────────────────
+
+// The receipt must exist before dispatch writes the StreamRef. An off-lane
+// take-back can arrive as soon as the surface reads that result, before release
+// gets a chance to start the stream pump. Release must not restore a receipt
+// that the take-back already consumed.
+func TestFollowUpReceiptPrecedesResultAndReleaseCannotRestoreIt(t *testing.T) {
+	agent := &fakeAgent{model: "a/b", title: "the queue"}
+	sess := NewSession(engineOn(agent), false)
+	defer sess.Close()
+	s := &server{session: sess}
+	events, err := agent.FollowUp("and the changelog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.stream(MethodFollowUp, "and the changelog", events, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ref StreamRef
+	if err := json.Unmarshal(result, &ref); err != nil {
+		t.Fatal(err)
+	}
+	sess.mu.Lock()
+	queued, exists := sess.follows[ref.Stream]
+	if exists {
+		delete(sess.follows, ref.Stream)
+	}
+	sess.mu.Unlock()
+	if !exists || queued.ch != events {
+		t.Fatal("follow-up result was ready before its take-back receipt")
+	}
+	if !agent.UnqueueFollowUp(queued.ch) {
+		t.Fatal("registered receipt did not take back the queued message")
+	}
+	s.release()
+	sess.mu.Lock()
+	_, resurrected := sess.follows[ref.Stream]
+	sess.mu.Unlock()
+	if resurrected {
+		t.Fatal("release restored a follow-up already taken back")
+	}
+}
+
+// THE TAKE-BACK CROSSES THE WIRE, BY THE STREAM THE SURFACE WAS HANDED. The
+// queued message comes off the far agent's queue, its stream ends with no
+// events — "this never ran" — a second take of the same stream is false, and
+// a stream that was never a queued follow-up is false too ([Agent.UnqueueFollowUp]).
+func TestUnqueueFollowUpTakesTheQueuedMessageBackOutOverTheWire(t *testing.T) {
+	agent := &fakeAgent{model: "a/b", title: "the queue"}
+	l := dialAgent(t, engineOn(agent))
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatalf("handshake: %s", frame.Error)
+	}
+	ref := decode[StreamRef](t, l.ok(1, MethodFollowUp, SubmitArgs{Text: "and the changelog"}).Payload)
+	if ref.Stream == 0 {
+		t.Fatal("FollowUp answered with no stream")
+	}
+	// The fake's first stream is the FollowUp's; it is read before the take-back
+	// because the take-back takes it off the fake's books.
+	queued := agent.stream(0)
+	if queued == nil {
+		t.Fatal("FollowUp opened no stream on the fake")
+	}
+
+	if answered := decode[bool](t, l.ok(2, MethodUnqueueFollowUp, UnqueueArgs{Stream: ref.Stream}).Payload); !answered {
+		t.Fatal("the take-back answered false for a stream that was queued")
+	}
+	// THE QUEUE LOST THE MESSAGE AND THE STREAM ENDS WITH NO EVENTS.
+	select {
+	case ev, ok := <-queued:
+		if ok {
+			t.Fatalf("the unqueued follow-up streamed %v, want a closed channel", ev.Kind)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the unqueued stream was never closed")
+	}
+	if answered := decode[bool](t, l.ok(3, MethodUnqueueFollowUp, UnqueueArgs{Stream: ref.Stream}).Payload); answered {
+		t.Error("the same stream was taken back twice")
+	}
+	if answered := decode[bool](t, l.ok(4, MethodUnqueueFollowUp, UnqueueArgs{Stream: 777}).Payload); answered {
+		t.Error("a stream that was never a queued follow-up was taken out")
+	}
+
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	if len(agent.follows) != 1 || agent.follows[0] != "and the changelog" {
+		t.Errorf("FollowUp carried %q", agent.follows)
+	}
+	if len(agent.streams) != 0 {
+		t.Errorf("%d streams are still queued on the fake", len(agent.streams))
+	}
+}
 
 func TestServeSwapsSessions(t *testing.T) {
 	first := &fakeAgent{model: "openai/gpt-5", title: "the old one"}

@@ -47,7 +47,7 @@ func TestUserBashComposerBypassesSetupAndKeepsShellSyntax(t *testing.T) {
 	if a.menu.open || a.comp.open || len(a.liveTags()) != 0 {
 		t.Fatal("shell syntax opened a picker or became a command tag")
 	}
-	result := runSubmit(t, a.enterLine(true))
+	result := runSubmit(t, a.enterLine())
 	if result.err != nil || a.setup.open {
 		t.Fatalf("shell hit setup: %v", result.err)
 	}

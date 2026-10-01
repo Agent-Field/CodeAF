@@ -42,9 +42,9 @@ You can also ask for one in as many words — "make that a standing order", "rem
 that for this project", "set that as a rule" — and the card still comes. Nothing is
 ever created without one.
 
-Two gestures say the same thing outright, for when you want to be sure it is read as a
-rule rather than as work: **`ctrl+enter`** instead of `enter`, and **`/standing <words>`**
-typed as a command. Both go through the same door, and both still end in a card.
+One gesture says the same thing outright, for when you want to be sure it is read as a
+rule rather than as work: **`/standing <words>`** typed as a command. It goes through
+the marked door and still ends in a card.
 
 Bare `/standing` (or `/orders`) shows what already stands over the conversation you are in,
 and under that, everything else standing on this computer under the heading `in other
@@ -125,58 +125,56 @@ inference from your files, and no order codeaf made up on your behalf.
 
 ## Make it standing on purpose — force it to be standing, make this permanent
 
-Type the sentence and press **`ctrl+enter`** instead of `enter`. That send means "keep
-this true", and codeaf is *told* rather than left to work it out: it shapes your sentence
-into a standing order's card — when it wakes, what it does, how far it reaches — and it
-does **not** carry the sentence out as one-off work as well.
+Type the sentence with the command in front of it: **`/standing <words>`**. That send
+means "keep this true", and codeaf is *told* rather than left to work it out: it shapes
+your sentence into a standing order's card — when it wakes, what it does, how far it
+reaches — and it does **not** carry the sentence out as one-off work as well.
 
 The card that comes back is the ordinary ratification card, so nothing stands until you
-answer it. `ctrl+enter` decides how the sentence is *read*, never whether something is
+answer it. The command decides how the sentence is *read*, never whether something is
 created.
 
 If the sentence cannot stand at all — "what time is it?", a one-off command with no
 condition in it — codeaf says so in one short line, tells you what would make it stand,
 and does nothing else. It never quietly does it instead.
 
-Two things it refuses rather than sending:
+On a build with no ambient side at all it refuses in one line:
+`nothing here can hold a standing order`, and sends nothing.
 
-- A box holding pictures or a picked shape of work:
-  `ctrl+enter keeps a sentence true — take the pictures or the shape of work off first`.
-  Your draft stays in the box.
-- A build with no ambient side at all: `nothing here can hold a standing order`.
-
-A slash command is unaffected — `ctrl+enter` on `/standing` is just `/standing`.
-
-There is a typed form of the same door: `/standing <words>` — see *Make a rule in one
-line* below.
-
-**One limit, and it is the terminal's.** `ctrl+enter` reaches codeaf only on a terminal
-that can tell it apart from a plain `enter` (the kitty protocol, win32-input). `alt+enter`
-cannot be borrowed for it here — in a conversation that chord opens a new line in the
-message. If `ctrl+enter` does nothing on your terminal, say it in words instead: "always
-run the tests before you say you are done" is recognised on its own.
+**It used to have a chord.** `ctrl+enter` marked the draft from 2026-09-15 until
+2026-09-30, when queueing took the chord over (see the keys page, *The queued
+messages*). The command is the explicit road now, and it works on every terminal — no
+chord required. The queue chord is plain enter at rest, on the new-chat start page
+or over a `/command`; a live `/standing`, `/orders` or `/task` tag also keeps plain
+enter's door. It queues only non-empty words mid-turn from the conversation's own
+composer with no live send-door tag. It works wherever the terminal sends it, while its hint and tip require
+the terminal's key-support reply. Unsupported terminals deliver enter or a newline
+on some keyboards.
 
 ## It didn't notice — it did the rule once instead of keeping it
 
-This is the failure the chord above exists for. Say "run the tests whenever I push" and
+This is the failure the typed door above exists for. Say "run the tests whenever I push" and
 codeaf may read it as work to do now: the tests run, you see something happen, and
 **nothing was set up**. There is no error, because nothing failed — it answered a
 different request.
 
 Two things help:
 
-- **Say it again with `ctrl+enter`.** That send cannot be read as work.
+- **Say it again with `/standing`.** `/standing run the tests whenever I push` cannot be
+  read as work.
 - **Watch the hint under the box.** When your draft looks like a condition, the line at
-  the right end of the rule under the message box reads `ctrl+enter keeps this true`. It
+  the right end of the rule under the message box reads `/standing keeps this true`. It
   appears on drafts beginning with or containing `always`, `never`, `every`, `whenever`,
   `each time`, `from now on`, `remind me`, `keep an eye`, and on `make sure` beside a
   `never` or an `always`. It vanishes the moment the draft stops matching or is emptied,
   and it never moves the box — it rides a line that is on the screen either way.
 
-That word list is a courtesy for teaching you the chord, **not** the rule for what can
+That word list is a courtesy for teaching you the command, **not** the rule for what can
 stand. Plenty of standing sentences never trip it, and they are still recognised when you
-just say them. The hint is also absent wherever the chord would refuse — a tray with
-pictures on it, a picked shape of work, a build with no ambient side.
+just say them. The hint is absent with pictures on the tray or a picked shape of work,
+but **that is not a refusal**: `/standing <words>` still sends the marked words and
+leaves those pictures and the selected shape on the tray. Only a build with no ambient
+side refuses with `nothing here can hold a standing order`.
 
 To check afterwards whether anything actually stands, open `/standing`, or read the
 `◦ N standing orders` count at the foot of the task column.
@@ -276,7 +274,7 @@ the words are shaped into a standing order's card, and nothing stands until you 
 Both rows are the **pointer's**: the roster's keyboard cursor walks task rows and skips
 these. From the keyboard, type the command — that is what the row was teaching.
 
-## /standing <words> — make a rule in one line, without the chord
+## /standing <words> — make a rule in one line, the marked door itself
 
 `/standing` with words after it is the command's second form: **the words are a new
 standing order.**
@@ -285,7 +283,7 @@ standing order.**
 /standing always run the tests before you say you are done
 ```
 
-They go through the same deliberate door `ctrl+enter` opens, with the same guarantee:
+They go through the deliberate marked door, with the same guarantee:
 
 - **It is never read as work to do once.** codeaf is *told* to shape your sentence into a
   standing order's card — when it wakes, what it does, how far it reaches — and it does not
@@ -402,7 +400,7 @@ screenful of whatever your terminal is tall. `/home` shows the same orders filed
 the project each one belongs to.
 
 **With words after it the command means something else entirely**: `/standing <words>`
-makes a new order out of those words, through the same door `ctrl+enter` opens — see *Make
+makes a new order out of those words, through the marked door — see *Make
 a rule in one line*. Nothing on this page is ever named at the command line; the way to act
 on one of these is the keys below.
 

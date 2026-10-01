@@ -174,7 +174,7 @@ const (
 	eventSpendOpened = "spend-opened"
 	// eventSteered is enter over a running answer steering it (steer.go).
 	eventSteered = "steered"
-	// eventQueued is ctrl+q holding a message for after the turn (followup.go).
+	// eventQueued is ctrl+enter holding a message for after the turn (followup.go).
 	eventQueued = "queued"
 	// eventChatStarted is the new-chat page raised by ctrl+t or the tab strip's
 	// plus (chatstart.go).
@@ -426,15 +426,15 @@ var notices = []notice{
 	},
 	{
 		// THE THIRD ROW ABOUT A STANDING ORDER, and it says the same thing as
-		// the one above in the same words since 2026-09-22. It read `sends your
-		// message as something to keep true` — which is exactly the spelling
-		// `/standing`'s row had just been taken off, for teaching that a rule
-		// and a memory were one thing (see `remember-one-thing`). The two rows
-		// retire on the SAME event, so they are one lesson told twice, and
-		// telling it twice in two vocabularies is the way to teach neither.
+		// the one above in the same words since 2026-09-22. It named the
+		// ctrl+enter chord until that chord became the queue's (followup.go,
+		// 2026-09-30); the explicit door that remains is the command, so the
+		// row teaches that now. The two rows retire on the SAME event, so they
+		// are one lesson told twice, and telling it twice in two vocabularies
+		// is the way to teach neither.
 		id: "standing-by-chord", slot: slotHint,
 		armed:  ready,
-		text:   "ctrl+enter makes your message a rule instead of a request",
+		text:   "/standing makes your message a rule instead of a request",
 		retire: eventStandingOpened,
 	},
 	{
@@ -515,10 +515,18 @@ var notices = []notice{
 		// 2026-09-22: `steer-with-enter` and `queue-with-ctrl-q` were a row
 		// each and the owner folded them together. It is a NEW id and not
 		// either of theirs, because a person who retired one of the pair has
-		// not been told the other half ([notice.id]).
+		// not been told the other half ([notice.id]). The queue half moved onto
+		// ctrl+enter on 2026-09-30 (followup.go); the words follow the key.
+		//
+		// THE TERMINAL'S REPLY GATES THE TIP, NOT A DECODED KEY. A terminal
+		// speaking modifyOtherKeys can deliver ctrl+enter without that reply,
+		// and the router honours it. Plain terminals deliver enter on many
+		// keyboards or ctrl+j on some, keeping the ordinary send or newline.
+		// The steer half is taught by the running foot on every terminal;
+		// this tip advertises the pair only after the terminal answered.
 		id: "steer-and-queue", slot: slotHint,
-		armed:  spoken,
-		text:   "using enter steers conversations · use ctrl+q to queue messages",
+		armed:  func(a *app) bool { return spoken(a) && a.keysDisambiguated },
+		text:   "using enter steers conversations · use ctrl+enter to queue messages",
 		retire: eventQueued,
 	},
 	// ── moving around ───────────────────────────────────────────────────────

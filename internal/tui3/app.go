@@ -1995,10 +1995,13 @@ type app struct {
 	// a person that this surface lies to them, so [app.bargeOffered] reads this
 	// before anything else it asks.
 	keysDisambiguated bool
-	// follows are the messages typed with ctrl+q while a turn ran, each holding
+	// follows are the messages typed with ctrl+enter while a turn ran, each holding
 	// the stream the turn it starts will speak on — and the woken turns waiting
 	// on the same door, which are streams with no message at all (followup.go).
 	follows []queued
+	// followRecalls holds take-backs in click order, so answers folded in a
+	// different order cannot reorder the words restored to the main composer.
+	followRecalls []*followRecall
 	// parks are the messages typed with plain enter while an answer was still
 	// coming: held HERE rather than handed to the session, so they can still be
 	// edited, taken back, or steered into the running turn (park.go). Each one
@@ -3709,10 +3712,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
-		// A repeated enter does not create a second conversation. Any other
-		// key cancels the pending transition before editing or navigating.
+		// A repeated enter keeps the pending conversation; ctrl+enter does
+		// the same only on the start page, where it is another enter spelling.
+		// Any other key cancels the transition before editing or navigating.
 		if a.conversationOpening {
-			if msg.String() == "enter" {
+			if msg.String() == "enter" || (a.startingChat() && msg.String() == "ctrl+enter") {
 				return a, nil
 			}
 			a.cancelConversationOpening()
@@ -4651,6 +4655,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.parkPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND A MESSAGE THE SESSION IS HOLDING IS PRESSABLE the same way:
+			// the press takes that message out of the session's queue before the
+			// turn that would have run it begins (followup.go), and the row's
+			// hover is the only thing that says so. It is read beside the parked
+			// block for the same reason every chrome target is.
+			if cmd, took := a.followPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE DIM LINE UNDER THAT BLOCK CARRIES ONE DOOR OF ITS OWN:
 			// `→ steers it in` puts the waiting message into the answer that is
 			// still running (steer.go). It is read directly after the block for the
@@ -4902,7 +4914,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (followup.go). Nil when nothing is queued.
 		//
 		// AND A PARKED MESSAGE GOES HERE TOO, one per finished turn and after the
-		// follow-up queue is offered the same moment (park.go): a ctrl+q message
+		// follow-up queue is offered the same moment (park.go): a queued message
 		// was handed to the session before this one was parked, and a surface that
 		// let the newer sentence jump the older one would be reordering what the
 		// person said. [app.sendParked] stands down when the follow-up above it
@@ -9196,7 +9208,13 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.touch()
 		return nil, true
 
-	case "enter":
+	case "enter", "ctrl+enter":
+		// Commands take the list's ordinary enter road. Words that can queue
+		// still reach the chord below, even with an inline tag list showing.
+		// The harness and skill pickers above keep their original key message.
+		if msg.String() == "ctrl+enter" && a.queueSendOffered() {
+			return nil, false
+		}
 		if a.menu.open {
 			// A COMPLETE LIVE TAG OWNS ENTER, even while the spelling list is
 			// still visible under it. Choosing the row merely rewrote the word in

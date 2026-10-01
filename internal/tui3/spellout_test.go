@@ -105,13 +105,13 @@ func TestTheStandingHintKeepsTheSlotWhenBothWouldOffer(t *testing.T) {
 	band := &standBand{}
 	band.wire(a)
 	typeDraft(t, a, "always build the docs first")
-	if !a.standMarkOffered() {
+	if !a.standSayOffered() {
 		t.Fatal("the standing hint did not offer on a standing-shaped draft")
 	}
 	if a.spellOffered() {
 		t.Fatal("both hints offered at once")
 	}
-	if got := a.hintWord(); got != standMarkHint {
+	if got := a.hintWord(); got != standSayHint {
 		t.Fatalf("the slot said %q, wanted the standing hint", got)
 	}
 }

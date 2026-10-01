@@ -271,6 +271,13 @@ const (
 	// because the press pulls the whole message back into the box — and the dim
 	// line under the block belongs to no message and lights not at all.
 	hoverParked
+	// hoverQueued is one MESSAGE the session is holding for after this turn;
+	// index is its place in the queue (followup.go). It is the parked hover's
+	// twin read off the session's queue: every row that message wrapped over
+	// lights, because the press takes the whole message back out of the queue.
+	// It lights only where the agent can give a message back (followup.go's
+	// [app.followRows]); there is no line under the block to light.
+	hoverQueued
 	// hoverChip is one thing on the tray above the box; index is the picture it
 	// names, or [trayHarnessChip] for the picked harness's own cell (attach.go,
 	// harnesspick.go). A press takes that one thing off, so that one thing lights.
@@ -609,6 +616,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// line under the block carries no mark and answers to nothing, which is
 			// what [app.parkedMark] already says (park.go).
 			return hoverAt{kind: hoverParked, index: mark.index}
+		case chromeQueued:
+			// One queued message, whichever of its rows the pointer is on — the
+			// same whole-message light the parked block wears, for the same reason
+			// (followup.go's [app.followRows]).
+			if a.queuedTakesBackAt(mark.index) {
+				return hoverAt{kind: hoverQueued, index: mark.index}
+			}
+			return hoverAt{}
 		case chromeDraft:
 			if n := a.pastePointerAt(x, mark.index); n > 0 {
 				return hoverAt{kind: hoverPaste, index: n}
@@ -828,6 +843,12 @@ func (a *app) hoveringTabClose(at int) bool {
 // hoveringParked reports whether the pointer is on this waiting message.
 func (a *app) hoveringParked(at int) bool {
 	return a.hot.kind == hoverParked && a.hot.index == at
+}
+
+// hoveringQueued reports whether the pointer is on this queued message — the
+// session's half of the pair (followup.go).
+func (a *app) hoveringQueued(at int) bool {
+	return a.hot.kind == hoverQueued && a.hot.index == at
 }
 
 // hoveringChip reports whether the pointer is on this thing on the tray —

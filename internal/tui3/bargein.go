@@ -149,9 +149,10 @@ func (a *app) bargeIn() tea.Cmd {
 	}
 	waiting := len(a.parks)
 	// The mark is deliberately not passed. ctrl+enter is the gesture that means
-	// "keep this true" and this one means "instead of that" — a chord that did
-	// both would be one keystroke making two decisions (standmark.go).
-	cmd := a.enterLine(false)
+	// "queue it for after this turn" and this one means "instead of that" — a
+	// chord that did both would be one keystroke making two decisions
+	// (followup.go).
+	cmd := a.enterLine()
 	if len(a.parks) == waiting {
 		// The road did something other than park: a command ran, a door took the
 		// words, a refusal was noted, or there was nothing to say. The turn is

@@ -148,7 +148,7 @@ func (a *app) watchBar(width int) []string {
 // box would.
 func (a *app) watchKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch msg.String() {
-	case "enter", standMarkKey:
+	case "enter", "ctrl+enter":
 		a.watchSpaces = 0
 		return a.takeKeyboard(), true
 	case "alt+enter", "ctrl+j":

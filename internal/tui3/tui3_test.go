@@ -165,11 +165,15 @@ type fakeAgent struct {
 	// levels is the reasoning strength held per model id, the session's own map
 	// as far as the surface can see it (internal/session's agent.go).
 	levels map[string]string
-	// marked is every sentence that went through the MARKED door — the chord
-	// that means "keep this true" (standmark.go). It is kept beside `sent`
+	// marked is every sentence that went through the MARKED door — the typed
+	// command that means "keep this true" (standmark.go). It is kept beside `sent`
 	// rather than folded into it because which door a message took is the whole
 	// question those tests ask.
 	marked []string
+	// queue is the session side of the follow-up queue (followup.go), held in
+	// step with the surface's: a take-back the surface drew without this queue
+	// losing the message would be a removal the session never made.
+	queue []chan session.Event
 	// imageText and images are every message that went through the picture
 	// door. They live on the common fake for the keeper tests, where the point is
 	// that a held send reaches this agent rather than the conversation in front.
@@ -951,10 +955,9 @@ func key(s string) tea.KeyPressMsg {
 		// are not single runes, so without a case here they fell through to the
 		// zero key and every test that "pressed pgdown" pressed nothing at all.
 		return tea.KeyPressMsg{Code: tea.KeyPgDown}
-	case standMarkKey:
-		// The marked send (standmark.go). It is spelled out here because the
-		// fall-through below only builds single-rune chords, and a chord that
-		// silently became the zero key would be a test pressing nothing.
+	case "ctrl+enter":
+		// The queue send (followup.go), spelled out for the same reason as the
+		// chord below it — the fall-through only builds single-rune chords.
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}
 	case "shift+enter":
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}

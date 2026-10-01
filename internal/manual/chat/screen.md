@@ -708,7 +708,7 @@ answer to being scrolled away: it offers the way back rather than taking it. Pre
 and from then on new output keeps you at the edge again.
 
 Three things do deliberately put you back at the bottom, because in each you asked for
-it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
+it: sending a message, queueing one with `ctrl+enter`, and leaving copy mode.
 
 ## The line above the message box (the legend) — the model, the machine in brackets after it, and why the conversation's name is not on it
 
@@ -806,28 +806,43 @@ whenever nothing is happening. Home's tip is the row above the rule instead. It 
 keys that work right now when a state has
 keys of its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running,
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while a turn is
-running and you have typed words on a terminal that can deliver the secondary key,
-`enter waits · ctrl+shift+enter stops and sends · esc interrupt` while an otherwise empty
-box has a picture on its tray on that terminal,
-`enter steers it in · ctrl+shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
-when that turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
-while a list is open. A waiting message changes the final clause to
-`esc stops and drops`; with neither words nor a picture the send clauses are absent.
+`enter steers it in · ctrl+enter queue · esc interrupt` while a turn is running and you
+have typed words on a terminal that can send `ctrl+enter`,
+`enter waits · esc interrupt` while an otherwise empty box has a picture on its tray,
+`enter steers it in · ctrl+enter queue · ctrl+g backgrounds · esc interrupt` when that
+turn also has a foreground command that can be kept, or `↑↓ · enter · esc` while a list
+is open. A waiting message changes the final clause to `esc stops and drops`; with
+neither words nor a picture the send clause is absent.
+
+**`ctrl+enter queue` needs non-empty words for this conversation's running turn**,
+a draft that is not a `/command`, and a tray without pictures or a picked harness.
+The clause and tip are advertised only after the terminal replies that it can
+distinguish keys. A decoded chord still works without that reply, including from
+modifyOtherKeys terminals. With no turn running, on the new-chat start page, or
+over a `/command`, ctrl+enter is plain enter; an empty box takes enter's action too.
+On terminals that cannot send the chord it arrives as plain enter on many keyboards,
+or a newline on some. The running foot there reads `enter steers it in · esc interrupt`.
+
+Only queued messages from this window light under the pointer and take a click.
+A successful take-back goes to this conversation's own composer, even from a task
+room. It restores an empty box exactly; with an existing draft it appends on a new
+line, keeping the draft and tray and renumbering the returned paste chips.
+
+**`ctrl+shift+enter` is not on this row.** It still stops the answer and sends, on a
+terminal that can send it, and the keys sheet (`?`) lists it; the row carried
+`ctrl+shift+enter stops and sends` in this slot until 2026-09-30, when the queue key
+took it.
 
 **A question that cannot remember its answer loses the `a always` clause**, on this line and
 on the offer above it: a stuck turn is asked about with a scope codeaf cannot save, so the
 key would do nothing and neither line names it. The slot reads `y allow · n deny` there.
 
-It only ever names a key that **works right now**, and that includes the terminal: the
-`ctrl+shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
-plain `enter`, because a hint for a key that could never arrive would be the surface lying
-to you — there the send half keeps only `enter steers it in`. `cmd+enter` still waits on
-terminals that can deliver it, but is not part of this one-line slot. See the keys page,
+It only ever names a key that **works right now**. `cmd+enter` still waits on terminals
+that can deliver it, but is not part of this one-line slot either. See the keys page,
 "Interrupt and say something new in one key" and "Send a message into the running
 answer".
 
-The running-turn clauses always have this order: send, `ctrl+shift+enter`, background, stop.
+The running-turn clauses always have this order: send, queue, background, stop.
 When the row is tight, codeaf removes whole clauses from the right until the line fits;
 at least the first fitting clause remains, and a running turn never loses the row merely
 because every clause would not fit. The row is the keys' own: nothing on the frame competes
@@ -865,7 +880,7 @@ meaning until the walk ends. The name and the model are not drawn in a room; the
 own title and model are on the status row, which a room renames.
 
 **Two lines in that slot are about the draft you are typing**, rather than about a state
-the surface is in. `ctrl+enter keeps this true` appears while your sentence looks like a
+the surface is in. `/standing keeps this true` appears while your sentence looks like a
 rule (see the standing orders page), and `ctrl+r spell it out` while it looks like
 something to build and still has room to grow (see the keys page). They share the one
 slot and the standing line wins whenever both would show. While the spelling-out call is
@@ -1847,7 +1862,8 @@ exactly one it is not counted at all.
 
 `→ steers it in` is there only while the message can go into the running answer: a turn
 still running, and a message of words alone. A waiting message that carries pictures, or
-one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. Pressing
+one bound for the standing-order door (`/standing`), cannot be sent in and the clause is
+absent for it. Pressing
 `space` `space` opens Home and leaves the block with this conversation. `esc` or
 `ctrl+c` stops the answer
 and removes the waiting block at once; `→ steers it in` is absent while a stopped turn

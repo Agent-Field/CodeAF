@@ -310,6 +310,13 @@ var vocabulary = []GlyphBinding{
 		ID: GReplyIn, Name: "ReplyIn", Meaning: "the answer to a question put back to the asker, drawn under it",
 		Plain: GlyphReplyIn, UsualTint: TextTertiary, Geometry: true,
 	},
+	{
+		// The reply arrow for a message that comes after what is running. It is
+		// geometry like the rest of the prompt family, so no tier swaps it, and
+		// it shares [GReplyIn]'s byte by position (glyphvocab_test.go).
+		ID: GFollowUp, Name: "FollowUp", Meaning: "a message queued for after the current turn",
+		Plain: GlyphFollowUp, UsualTint: TextTertiary, Geometry: true,
+	},
 	// A composer's own mark that is NOT geometry: the unsent draft (a message
 	// cleared before sending). Both sides are "being written", the outline
 	// pencil on the floor and the compose icon where a patched font supplies

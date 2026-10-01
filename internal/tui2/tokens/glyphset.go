@@ -197,6 +197,10 @@ const (
 	GPinned
 	// GPromptShell is shell punctuation in the composer, unchanged by font tier.
 	GPromptShell
+	// GFollowUp is one message queued for after the current turn
+	// (internal/tui3's followup.go), and deliberately not [GQueued], which is a
+	// waiting task.
+	GFollowUp
 	glyphIDCount
 )
 

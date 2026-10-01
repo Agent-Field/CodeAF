@@ -203,7 +203,7 @@ func (a *app) spellOffered() bool {
 	if _, ok := a.spellDoor(); !ok {
 		return false
 	}
-	if a.standMarkOffered() {
+	if a.standSayOffered() {
 		return false
 	}
 	return looksMaking(a.input.value)

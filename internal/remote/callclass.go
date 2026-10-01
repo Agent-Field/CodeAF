@@ -168,7 +168,7 @@ func classify(method string) callClass {
 		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
 		MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
-		MethodTake, MethodAnswerLaneOffer, MethodInterrupt,
+		MethodTake, MethodAnswerLaneOffer, MethodInterrupt, MethodUnqueueFollowUp,
 		MethodPlanNote, MethodPlanPause, MethodPlanResume, MethodPlanCancel, MethodPlanAmend, MethodPlanPriority,
 		MethodTyping:
 		return classAct

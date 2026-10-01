@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -106,6 +108,32 @@ func TestEveryNoticeEventIsFiredSomewhere(t *testing.T) {
 		if n.retire != "" && names[n.retire] == "" {
 			t.Errorf("notice %q retires on %q, which is not a declared constant", n.id, n.retire)
 		}
+	}
+}
+
+// THE STEER-AND-QUEUE TIP IS ARMED ONLY WHERE THE CHORD CAN BE SENT. ctrl+enter
+// queues nothing on a terminal that cannot tell it from a plain enter
+// (followup.go, input.go), so a tip naming it there would teach a key that does
+// not work — the one thing this table must never do.
+func TestTheSteerAndQueueTipIsArmedOnlyWhereTheChordExists(t *testing.T) {
+	_, a := wired(nil)
+	a.turn = 1
+	var tip *notice
+	for i := range notices {
+		if notices[i].id == "steer-and-queue" {
+			tip = &notices[i]
+			break
+		}
+	}
+	if tip == nil {
+		t.Fatal("the steer-and-queue tip is not in the table")
+	}
+	if tip.armed(a) {
+		t.Fatal("the tip was armed on a terminal that cannot send the chord")
+	}
+	enhanced(t, a)
+	if !tip.armed(a) {
+		t.Fatal("the tip was not armed on a terminal that can send the chord")
 	}
 }
 
@@ -716,7 +744,8 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventQueued: func(t *testing.T, a *app) {
 			a.state = stateWorking
 			a.input.setText("and then this")
-			drive(t, a, key("ctrl+q"))
+			drive(t, a, tea.KeyboardEnhancementsMsg{Flags: 1})
+			drive(t, a, key("ctrl+enter"))
 		},
 		eventChatStarted:      func(t *testing.T, a *app) { drive(t, a, key("ctrl+t")) },
 		eventPlaceJumped:      func(t *testing.T, a *app) { drive(t, a, key("alt+3")) },
