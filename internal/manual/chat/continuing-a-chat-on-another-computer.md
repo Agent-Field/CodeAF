@@ -13,7 +13,7 @@ running on spark; last durable turn 4s ago
 2 leave it there
 ```
 
-Your words stay in the box. Nothing was sent, and no branch nobody asked for was made. Press `1`, then enter, to continue the chat on this device. `leave it there` is already chosen, so leaning on enter changes nothing.
+Your words stay in the box. Nothing was sent, and no branch nobody asked for was made. This card came up because you sent a message, not because you chose to continue, so `leave it there` is already chosen and leaning on enter changes nothing. Press `1`, then enter, to continue the chat on this device.
 
 This only happens in a window that has already read your other devices. A window that has not, sends as usual. Slash commands such as `/help` always work.
 
@@ -23,7 +23,7 @@ If you continue it, the other device's window stops taking new turns and says `<
 
 Home lists chats from your other devices. A chat that a device is working on now says `running on <device>`. One that a device let go of, or that went off because its lid closed, says `<device> off`.
 
-Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. Either way, press `1` and then enter to confirm. The card says how fresh the copy is, so you know how many turns may still be on the other device.
+Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
 
 ## How do I continue on this machine — Continue where you left off, alt+c and alt+x
 
@@ -34,7 +34,7 @@ Continue where you left off on spark?
 alt+c continue · alt+x not now
 ```
 
-- `alt+c` opens the same card as above, so you are still asked, with the reason. Nothing is moved by this line alone.
+- `alt+c` opens the same card as above, with the reason and the cursor on `continue here`, so enter finishes it. Nothing is moved by this line alone.
 - `alt+x` dismisses it for that device until you open codeaf again.
 
 The line follows the devices row: it stands while the device is offline or has let go of the chat, even if that became true after you opened codeaf, and goes away if the device comes back. A device that is online and still working on the chat is never offered.
