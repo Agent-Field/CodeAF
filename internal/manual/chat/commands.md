@@ -104,12 +104,16 @@ It happens in two places: **live in the message box as you type**, and in your m
 after it is sent, where it stays for as long as the conversation is scrolled back
 through.
 
+A sentence you send into a running answer keeps its chips. A message waiting for
+the answer shows them while it waits.
+
 A chip marks any command codeaf recognises, wherever it stands — at the start, in
 the middle, or at the end. `/compact`, `/clear`, `/model` and the rest wear it
 exactly as a leading command does. It does not mean enter will run that word:
 enter acts only on a leading command, and on a send-door tag away from the head
 (the next section). A typo is plain: `/tsak` stays ordinary text. A path is never
 chipped, for the reasons in "Why a file path does not pop up the command list".
+A command glued to punctuation — `/model,` or `(/model)` — is plain, like a typo.
 
 The chip never adds a cell. A leading command runs in its usual form. A live send-door
 tag is removed from the words handed through its door, while your transcript keeps the

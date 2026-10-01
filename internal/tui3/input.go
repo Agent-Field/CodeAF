@@ -1558,7 +1558,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// the tray's own hint says to type the request, and enter on nothing is the
 	// no-op it always was.
 	if a.harnChip != "" {
-		return a.runPickedHarness(line)
+		return a.runPickedHarness(line, plain)
 	}
 	// EVERY "@task" IN THE SENTENCE GROWS ITS FOOTNOTE HERE, and here is after
 	// the line has been remembered: what ↑ brings back is what the person typed,

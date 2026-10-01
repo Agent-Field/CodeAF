@@ -155,6 +155,22 @@ func containsSegment(list []segment, want segment) bool {
 	return false
 }
 
+// restingDoorWords finds the door words that stay plain on a road that never
+// acts on a send-door tag. A door word away from the head is one no door acted
+// on: a live tag would have taken its own door before this road, or the road
+// has no tag doors. It is drawn plain, as every mid-sentence door word was
+// drawn before every recognised command wore a chip. Ordinary commands keep
+// their chip.
+func restingDoorWords(value []rune) []segment {
+	var plain []segment
+	for _, s := range commandSpans(value, true) {
+		if s.from > 0 && commandDoor(string(value[s.from+1:s.to])) != sendDoorNone {
+			plain = append(plain, s)
+		}
+	}
+	return plain
+}
+
 // liveTags returns the actionable send-door words away from the head command.
 func (a *app) liveTags() []segment { return a.input.liveTags() }
 

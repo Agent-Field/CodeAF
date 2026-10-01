@@ -58,7 +58,7 @@ func (a *app) startQuestionReplacement() tea.Cmd {
 	a.resolveUnfinished()
 	a.settleTurn()
 	a.turn++
-	a.said(entry{kind: entryUser, text: next.words, turn: a.turn, began: a.now()})
+	a.said(entry{kind: entryUser, text: next.words, turn: a.turn, began: a.now(), plainTags: restingDoorWords([]rune(next.words))})
 	a.withdrawQuestion(next.q.question, "you gave an updated request")
 	return a.takeStream(next.events)
 }
@@ -91,7 +91,8 @@ func (a *app) discussionEvent(update *session.QuestionDiscussion) tea.Cmd {
 	}
 	d.seq = update.Seq
 	if update.Words != "" {
-		d.feed.said(entry{kind: entryUser, text: "clarify: " + update.Words, turn: a.turn, began: a.now()})
+		shown := "clarify: " + update.Words
+		d.feed.said(entry{kind: entryUser, text: shown, turn: a.turn, began: a.now(), plainTags: restingDoorWords([]rune(shown))})
 	}
 	if update.Event != nil {
 		ev := *update.Event

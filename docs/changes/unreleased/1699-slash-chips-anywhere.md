@@ -12,3 +12,5 @@ run it. Enter still runs only a leading command, and still acts on a send-door t
 away from the head. A tag backspaced to plain words stays plain in the sent
 transcript as it already did in the box, and that includes a message typed while an
 answer was still coming, which waits its turn with the tag still plain.
+The waiting block, a sentence steered into a running answer and a reopened
+conversation keep recognised commands chipped and demoted send-door words plain.

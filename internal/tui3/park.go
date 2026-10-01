@@ -298,12 +298,18 @@ func (a *app) parkedRows(width int) []string {
 		// over three rows with one of them banded would read as three things
 		// (hover.go: the set that lights is the set the press acts on).
 		hot := a.hoveringParked(at)
-		for i, line := range wrap(userLine(p.text, p.chips, a.pal), width-2) {
+		shown := userLine(p.text, p.chips, a.pal)
+		body, bodyAt := wrapWithOffsets(shown, width-2)
+		// Attachment markers follow the words, so their suffix cannot move a
+		// demotion. Tabs are rebased against the same text the block wraps.
+		plain := tabExpandedSegments(p.plain, shown)
+		for i, line := range body {
 			lead := "  "
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			text := lead + a.pal.accent(line)
+			spans := transcriptCommandSpans([]rune(line), plain, bodyAt[i])
+			text := lead + paintCommandSpans(line, spans, a.pal, a.pal.accent)
 			if hot {
 				text = a.hoverRow(text, width)
 			}

@@ -4247,6 +4247,10 @@ func initialOf(segment string) string {
 	}
 }
 
+// tabStop is the expansion shared by wrapping and command-chip coordinates,
+// so changing the displayed spaces moves demotions by the same amount.
+const tabStop = "    "
+
 // wrap breaks a block of plain text to width, keeping its own newlines. The
 // text is unstyled at this point: styling after wrapping is what keeps every
 // width measurement honest.
@@ -4254,7 +4258,7 @@ func wrap(text string, width int) []string {
 	if width < 4 {
 		width = 4
 	}
-	text = strings.ReplaceAll(text, "\t", "    ")
+	text = strings.ReplaceAll(text, "\t", tabStop)
 	var out []string
 	for _, para := range strings.Split(text, "\n") {
 		if para == "" {
@@ -4280,7 +4284,7 @@ func wrapWithOffsets(text string, width int) ([]string, []int) {
 	if width < 4 {
 		width = 4
 	}
-	text = strings.ReplaceAll(text, "\t", "    ")
+	text = strings.ReplaceAll(text, "\t", tabStop)
 	var rows []string
 	var at []int
 	start := 0
@@ -4334,8 +4338,9 @@ func tabExpandedSegments(segs []segment, text string) []segment {
 	}
 	runes := []rune(text)
 	out := make([]segment, len(segs))
+	added := len(tabStop) - 1
 	for i, s := range segs {
-		out[i] = segment{from: s.from + 3*tabsBefore(runes, s.from), to: s.to + 3*tabsBefore(runes, s.to)}
+		out[i] = segment{from: s.from + added*tabsBefore(runes, s.from), to: s.to + added*tabsBefore(runes, s.to)}
 	}
 	return out
 }
