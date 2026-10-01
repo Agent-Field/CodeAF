@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +214,9 @@ func TestJoinByLinkKeepsOwnChats(t *testing.T) {
 	if _, err := identity.Ensure(r.new); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(r.new, "vault.enc"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	_, err := JoinByLink(context.Background(), goneRequests{}, r.joining(false), &invites{got: make(chan Invite, 1)})
 	if !errors.Is(err, ErrDifferentChats) {
 		t.Fatalf("joining over own chats ended with %v", err)
@@ -265,5 +270,53 @@ func TestDeviceNameSealing(t *testing.T) {
 	long, _ := SealDeviceName(key, strings.Repeat("é", 60))
 	if raw, _ := b64u.DecodeString(long); len(raw) > 24+16+maxNameBytes {
 		t.Fatalf("a long name sealed to %d bytes", len(raw))
+	}
+}
+
+// A computer that has only been started (it made its own identity and holds
+// nothing else) joins without being told to replace, and ends on the old identity.
+func TestJoinByLinkAdoptsAnUnusedIdentity(t *testing.T) {
+	r := newLinkRig(t)
+	if _, err := identity.Ensure(r.new); err != nil {
+		t.Fatal(err)
+	}
+	ui, done := r.start(t, context.Background())
+	in := waitInvite(t, ui)
+	ref, _ := ReadLink(in.Ref.Token())
+	asking, err := r.approver.Look(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.approver.Approve(context.Background(), asking); err != nil {
+		t.Fatal(err)
+	}
+	if res := waitResult(t, done); res.err != nil {
+		t.Fatal(res.err)
+	}
+	old, _ := identity.Load(r.old)
+	if got, _ := identity.Load(r.new); got.ID() != old.ID() {
+		t.Fatalf("the unused computer holds %v, want the old identity %v", got.ID(), old.ID())
+	}
+}
+
+// Anything a person made here (a vault, a chat store) makes the computer used,
+// so it keeps its identity and nothing is asked of the relay.
+func TestJoinByLinkKeepsAUsedIdentity(t *testing.T) {
+	for _, name := range []string{"vault.enc", "graph.db", "v3", "something-new"} {
+		r := newLinkRig(t)
+		own, err := identity.Ensure(r.new)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(r.new, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err = JoinByLink(context.Background(), goneRequests{}, r.joining(false), &invites{got: make(chan Invite, 1)})
+		if !errors.Is(err, ErrDifferentChats) {
+			t.Fatalf("%s: joining over a used computer ended with %v", name, err)
+		}
+		if got, _ := identity.Load(r.new); got.ID() != own.ID() {
+			t.Fatalf("%s: the used computer's identity changed", name)
+		}
 	}
 }

@@ -51,7 +51,7 @@ const retryPause = 2 * time.Second
 // JoinByLink asks to join, waits to be approved, and installs what it is sent.
 // It ends with ErrLinkExpired when nobody answers within the request's life.
 func JoinByLink(ctx context.Context, reqs directory.Requests, j LinkJoining, ui LinkUI) (LinkJoined, error) {
-	if err := j.free(); err != nil {
+	if _, err := j.free(); err != nil {
 		return LinkJoined{}, err
 	}
 	me, err := newAsker()
@@ -71,11 +71,21 @@ func JoinByLink(ctx context.Context, reqs directory.Requests, j LinkJoining, ui 
 }
 
 // free refuses a join that would overwrite chats, before any approval is spent.
-func (j LinkJoining) free() error {
-	if _, err := identity.Load(j.Home); err == nil && !j.Replace {
-		return ErrDifferentChats
+// A computer that has only been started holds nothing to lose, so it joins
+// without being told to replace; one that is used keeps its chats unless told.
+func (j LinkJoining) free() (LinkJoining, error) {
+	if j.Replace {
+		return j, nil
 	}
-	return nil
+	if _, err := identity.Load(j.Home); err != nil {
+		return j, nil
+	}
+	fresh, err := identity.Pristine(j.Home)
+	if err != nil || !fresh {
+		return j, ErrDifferentChats
+	}
+	j.Replace = true
+	return j, nil
 }
 
 // asker is the new device's keys while it waits: its own device secret, the box
@@ -173,6 +183,10 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	dev, err := a.seed.Join(g.Cert)
 	if err != nil {
 		return LinkJoined{}, ErrBadGrant
+	}
+	j, err = j.free() // the wait was long; the computer may have been used since
+	if err != nil {
+		return LinkJoined{}, err
 	}
 	joined, err := adopt(j.Joining, g.Grant)
 	if err != nil {
