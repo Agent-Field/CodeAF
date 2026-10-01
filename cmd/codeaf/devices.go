@@ -374,7 +374,7 @@ func (c chatsKind) explain(err error) error {
 	case errors.Is(err, wireauth.ErrSkew):
 		return errors.New(chatlist.ClockOff)
 	case errors.Is(err, directory.ErrUnreachable):
-		return fmt.Errorf("the relay at %s cannot be reached from here — check this computer's network", c.relay)
+		return fmt.Errorf("the sync service at %s cannot be reached from here — check this computer's network", c.relay)
 	case errors.Is(err, directory.ErrNotFound):
 		return errors.New("that device is not in your list any more — `codeaf devices` shows the ones there are")
 	}

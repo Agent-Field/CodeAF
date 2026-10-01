@@ -2,7 +2,7 @@
 
 ## A computer was stolen and I want it shut for good — codeaf identity rotate gives the computers you keep a replacement identity
 
-Stopping a computer with `codeaf devices revoke <name>` cuts it off from the relay. It does not take back what it holds. That computer has your whole identity. It can read everything it already has, and it can make itself a new device.
+Stopping a computer with `codeaf devices revoke <name>` cuts it off from the relay. It does not undo what it holds. That computer has your whole identity. It can read everything it already has, and it can make itself a new device.
 
 `codeaf identity rotate` is the real fix. It makes a replacement identity and moves your chats and your saved keys to it. The old identity is shut. The lost computer holds the old one, so it can read nothing of what you do from then on.
 
