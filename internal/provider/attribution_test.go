@@ -129,6 +129,9 @@ func TestTheRunningBinaryReportsAsItsOwnStamp(t *testing.T) {
 // id. The model id is how this test reaches that branch without the network.
 // It must name the same app the package's own transport does.
 func TestTheSDKClientReportsAsTheSameApp(t *testing.T) {
+	// The SDK has an opt-out of its own, read from the environment on every
+	// request; a machine that set it would turn this test into a test of that.
+	t.Setenv("AGENTFIELD_OPENROUTER_ATTRIBUTION", "")
 	seen := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		select {

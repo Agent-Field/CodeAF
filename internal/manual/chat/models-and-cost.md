@@ -1016,16 +1016,18 @@ puts the next task back on paid routes.
 
 ## Why does my OpenRouter activity say AgentField AI or codeaf dev — which app a request names
 
-Every request codeaf makes of OpenRouter names the app it comes from, and OpenRouter's
-activity page, app pages and rankings group usage by that app. Which app it is depends
-only on the build you are running — no setting and no environment variable moves it:
+Every model call codeaf sends through OpenRouter — the chat, tasks, transcription and
+images — names the app it comes from, and OpenRouter's activity page, app pages and
+rankings group usage by that app. Which app it is depends only on the version the codeaf
+running the conversation was built as (with `--host`, the other machine's codeaf). No
+setting and no environment variable moves it:
 
 - a **stable release** or a **release candidate** (`codeaf version` prints a `v…` tag)
   is **AgentField AI**, `https://agentfield.ai`;
 - a **staging build** (`staging-…`) is **codeaf staging**,
   `https://staging.codeaf.agentfield.ai`;
-- a **dev build** (`dev-…`), and anything built from source, is **codeaf dev**,
-  `https://dev.codeaf.agentfield.ai`.
+- a **dev build** (`dev-…`), and what `make build` makes from a checkout, is
+  **codeaf dev**, `https://dev.codeaf.agentfield.ai`.
 
 All three are filed under OpenRouter's `cli-agent` and `programming-app` categories. The
 app is the only thing these headers say: no prompt, no file and nothing about your account
