@@ -1513,13 +1513,19 @@ func (a *app) setupLimitRow(width int) (string, int) {
 }
 
 // setupModelRows is the list standing under the chat-model row: five rows of the
-// catalog with the cursor's exact id under it, and a count that says how much
+// catalog, EACH ITS EXACT ID AND NOTHING ELSE, and a count that says how much
 // more there is and how to reach it. A machine with no catalog at all still shows
 // the model in use, so enter confirms rather than changes.
 //
+// IT IS A FLAT LIST OF IDS. Until 2026-10-01 each row was the catalog's friendly
+// name (`Qwen3.8 27b:free`) with the exact id drawn under the cursor's row only,
+// which read as a heading with a subheading and made the one row a person could
+// act on two rows tall. The id is the name a person pastes, types after /model
+// and sees in the catalog; the friendly name is still what the filter searches
+// ([app.setupModelChoices]) and what the field above shows.
+//
 // It answers the rows and, row for row, what each is a door onto for a press:
-// a model's name row and the id row under the cursor's model both choose that
-// model, and the count line chooses nothing.
+// a model's row chooses that model, and the count line chooses nothing.
 func (a *app) setupModelRows(width int) ([]string, []setupDoor) {
 	pal := a.pal
 	s := &a.setup
@@ -1534,17 +1540,13 @@ func (a *app) setupModelRows(width int) ([]string, []setupDoor) {
 	out := make([]string, 0, setupModelSlots+2)
 	doors := make([]setupDoor, 0, setupModelSlots+2)
 	for i := top; i < len(models) && i < top+setupModelSlots; i++ {
-		name := modelWord(models[i].ID)
 		door := setupDoor{kind: doorModel, control: controlChatModel, model: i}
 		if i == s.modelAt {
-			out = append(out, "  "+pal.accent(setupLead)+pal.bold(pal.ink(fit(name, width-6))))
-			// THE EXACT ID, UNDER THE ONE ROW IT IS ABOUT. The list reads as names
-			// and the address is still on the screen for whoever needs it.
-			out = append(out, strings.Repeat(" ", 6)+pal.dim(fit(models[i].ID, width-6)))
-			doors = append(doors, door, door)
+			out = append(out, "  "+pal.accent(setupLead)+pal.bold(pal.ink(fit(models[i].ID, width-6))))
+			doors = append(doors, door)
 			continue
 		}
-		out = append(out, "    "+pal.dim(fit(name, width-6)))
+		out = append(out, "    "+pal.dim(fit(models[i].ID, width-6)))
 		doors = append(doors, door)
 	}
 	out = append(out, strings.Repeat(" ", 4)+pal.dim(fit(a.setupModelCountWord(len(models)), width-4)))

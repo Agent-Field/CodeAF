@@ -1017,7 +1017,7 @@ func TestAClickOnTheControlsScreenActsLikeTheKeyOnThatRow(t *testing.T) {
 		t.Fatalf("a press on the model row left the focus on %v with the list open=%v", a.setup.control, a.setup.modelOpen)
 	}
 	// A press on one row of the list takes that model and goes on.
-	x, y = setupRowOf(t, a, modelWord("c/charlie"))
+	x, y = setupRowOf(t, a, "c/charlie")
 	pressSetup(a, clickAt(x, y))
 	if a.model != "c/charlie" {
 		t.Fatalf("a press on a model row put the conversation on %q, want c/charlie", a.model)
@@ -1275,5 +1275,26 @@ func TestRowNamesAreAccentWhenFocusedDimWhenAnsweredAndInkUntilThen(t *testing.T
 	pressSetup(a, key("down"))
 	if frame, _, _ = a.frame(); !strings.Contains(frame, pal.dim(model)) {
 		t.Fatalf("the answered row is not dim again once left:\n%s", plain(frame))
+	}
+}
+
+// THE LIST IS FLAT: one row per model, the exact id on it, and no name row over
+// it. The cursor's row is not two rows tall.
+func TestTheModelListIsAFlatListOfExactIds(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.models = func() []Model { return []Model{{ID: "openai/gpt-4.1-mini"}, {ID: "qwen/qwen3.8-27b:free"}} }
+	walkToControl(t, a, controlChatModel)
+	pressSetup(a, key("enter"))
+	rows, _ := a.setupModelRows(setupFormWidth)
+	if len(rows) != 3 {
+		t.Fatalf("two models drew %d rows, want one each and the count line:\n%s", len(rows), plain(strings.Join(rows, "\n")))
+	}
+	for i, id := range []string{"openai/gpt-4.1-mini", "qwen/qwen3.8-27b:free"} {
+		if row := plain(rows[i]); !strings.Contains(row, id) || strings.Contains(row, modelWord(id)+" ") {
+			t.Fatalf("row %d is %q, want the exact id %q alone", i, row, id)
+		}
+	}
+	if screen := setupScreen(a); strings.Contains(screen, "Qwen3.8 27b:free") && !strings.Contains(screen, "Chat model Qwen3.8 27b:free") {
+		t.Fatalf("a friendly name is still drawn in the list:\n%s", screen)
 	}
 }

@@ -179,7 +179,8 @@ conversation.*, and `?` adds the exact catalog id, that it also handles this
 conversation's tool use, and that tasks get their own crew, picked per task. Opening the
 row draws the real catalog: five rows at a time, `↑`/`↓` scroll the rest past, and
 **typing narrows it**, so two hundred models are reachable from a form with five rows on
-it. The row under the cursor shows its exact id. The model you are already on is always on
+it. Each row is the model's exact catalog id — `qwen/qwen3.8-27b:free` — one flat list, no
+friendly names (typing still finds a model by its friendly name). The model you are already on is always on
 that list and the cursor opens on it, even with no catalog yet, so accepting confirms
 rather than changes. Choosing one goes through the same settings row `/model` writes and
 is kept for the next launch, and `enter` then goes on to the next row, as it does on the
