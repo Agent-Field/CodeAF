@@ -41,7 +41,7 @@ func realRotation(grace time.Duration, say func(string)) (rotation, func() error
 		return nil, nil, err
 	}
 	if !ok {
-		return nil, nil, errors.New("a rotation needs a relay: " + chatlist.SyncOff)
+		return nil, nil, errors.New("a rotation needs sync: " + chatlist.SyncOff)
 	}
 	env := s.Rotation(cellstore.EngineFor(""), heldChat, deviceName(), say)
 	env.Grace = grace
@@ -141,9 +141,9 @@ func planText(p rotate.Plan) string {
 	if p.Missing > 0 {
 		fmt.Fprintf(&b, ", %d of them not on this computer (%s to fetch first)", p.Missing, megabytes(p.DownBytes))
 	}
-	fmt.Fprintf(&b, ".\nabout %s goes up to the relay; allow about %s.\n", megabytes(p.UpBytes), minutes(p.Wait))
+	fmt.Fprintf(&b, ".\nabout %s goes up to sync; allow about %s.\n", megabytes(p.UpBytes), minutes(p.Wait))
 	b.WriteString("your other computers stop syncing until you pair them again.\n")
-	b.WriteString("the old identity stays readable on the relay for a while, then the relay deletes it.\n")
+	b.WriteString("the old identity stays readable in sync for a while, then sync deletes it.\n")
 	b.WriteString("once it has switched this cannot be undone.\n")
 	return b.String()
 }
@@ -163,7 +163,7 @@ func rotationCard(d identityDoor, res rotate.Result) error {
 	names := vaultNames(d.home)
 	fmt.Fprintf(d.out, "rotated. your chats now belong to %s (was %s).\n", res.NewID, res.OldID)
 	fmt.Fprintln(d.out, "other computers: run /pair here, then `codeaf pair <code>` there, for each one.")
-	fmt.Fprintf(d.out, "the old copy on the relay is read-only and is deleted on %s.\n", d.now().Add(res.RetireAfter).Format("2006-01-02"))
+	fmt.Fprintf(d.out, "the old copy in sync is read-only and is deleted on %s.\n", d.now().Add(res.RetireAfter).Format("2006-01-02"))
 	fmt.Fprintln(d.out, "a computer you lost still holds everything it had: your chats up to now and every secret in your vault.")
 	if len(names) > 0 {
 		fmt.Fprintf(d.out, "change these at their providers: %s\n", strings.Join(names, ", "))
