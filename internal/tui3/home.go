@@ -1294,7 +1294,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },
 		why:        a.homeWhyEmpty(),
-		others:     a.machineRead,
+		others:     a.othersNow(),
 		world:      world,
 		known:      known,
 		far:        a.hosted(),
