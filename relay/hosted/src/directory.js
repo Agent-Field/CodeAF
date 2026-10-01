@@ -136,6 +136,12 @@ export class Directory {
     return { ...own, created: before ? before.created : this.clock(), last_seen: before?.last_seen };
   }
 
+  /** seen stamps when the device last held a watch socket (hello or close). Only the relay writes it; it moves no version (contract 4). */
+  seen(id, at) {
+    const record = this.read('devices', id);
+    if (record) this.sql.exec('INSERT OR REPLACE INTO dir VALUES (?,?,?)', 'devices', id, JSON.stringify({ ...record, last_seen: at }));
+  }
+
   /**
    * revoke stops the device `id` on behalf of `caller`. A device cannot stop itself, which is nearly
    * always a slip and a stopped device cannot say so, and revoking twice changes nothing.
@@ -145,6 +151,7 @@ export class Directory {
     if (!record) throw refuse('not_found');
     if (id === caller) throw refuse('self_revoke');
     this.write('devices', id, { ...record, revoked: true });
+    this.watchers.announce({ t: 'revoked', device: id, at: this.clock() }, id);
     this.watchers.closeDevice(id, CLOSE_REVOKED, 'revoked');
   }
 

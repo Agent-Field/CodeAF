@@ -70,8 +70,10 @@ export class Tenant {
   }
 
   /** watch opens a socket for `device` that is told the directory's version now and on every visible change, and that vouches for the leases it names in `holds`. */
-  watch(device, holds) {
-    return this.watchers.accept(device, this.dir.version, holds, this.clock());
+  watch(device, holds, events = false) {
+    const now = this.clock();
+    this.dir.seen(device, now);
+    return this.watchers.accept(device, this.dir.version, holds, now, events);
   }
 
   /** join stores the device a paired device approved, and tells the identity's other sockets it joined. */

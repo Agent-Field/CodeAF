@@ -90,3 +90,19 @@ func plainDecimal(s string) bool {
 	}
 	return true
 }
+
+// EventsQuery is the watch query parameter that opts a socket in to event
+// frames (presence, joined, revoked). A socket without it hears versions only.
+const EventsQuery = "events=1"
+
+// watchQuery is the query of a watch URL: the holds, then the events flag.
+func watchQuery(holds []Hold, events bool) string {
+	q := HoldQuery(holds)
+	switch {
+	case !events:
+		return q
+	case q == "":
+		return EventsQuery
+	}
+	return q + "&" + EventsQuery
+}
