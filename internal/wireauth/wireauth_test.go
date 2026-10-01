@@ -24,3 +24,19 @@ func TestNarrowNamesOnlyWhatAPersonCanAct(t *testing.T) {
 		}
 	}
 }
+
+// Endpoint puts a route after a base with or without its own path, and with or
+// without a trailing slash, and leaves the route's escaping and query alone.
+func TestEndpointJoinsARouteToABaseWithAPath(t *testing.T) {
+	for _, tc := range []struct{ base, route, want string }{
+		{"http://h:1", "/v1/dir/list", "http://h:1/v1/dir/list"},
+		{"http://h:1/", "/v1/dir/list", "http://h:1/v1/dir/list"},
+		{"https://h/fabric", "/v1/dir/list", "https://h/fabric/v1/dir/list"},
+		{"https://h/fabric/", "/v1/dir/list", "https://h/fabric/v1/dir/list"},
+		{"https://h/fabric", "/v1/dir/cells/a%2Fb?x=1", "https://h/fabric/v1/dir/cells/a%2Fb?x=1"},
+	} {
+		if got := Endpoint(tc.base, tc.route); got != tc.want {
+			t.Errorf("Endpoint(%q, %q) = %q, want %q", tc.base, tc.route, got, tc.want)
+		}
+	}
+}

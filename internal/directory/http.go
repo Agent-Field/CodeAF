@@ -120,7 +120,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, method, h.base+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, wireauth.Endpoint(h.base, path), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
