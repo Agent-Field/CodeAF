@@ -1,6 +1,9 @@
 package cellstore
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/keys"
@@ -80,18 +83,19 @@ func knownLocks(c cell.Cell) []string {
 // which folders those are and what rebuilds each. It is what makes the record
 // and the exclusion one fact: a folder is never left out without the next
 // machine being able to read that it was.
-func noteLeftOut(c cell.Cell, s Screened, calls []Executed) error {
+func noteLeftOut(c cell.Cell, tree string, s Screened, calls []Executed) error {
 	return inventory.Record(c.Root, func(inv *inventory.Inventory) {
 		inv.Lockfiles = s.Locks
-		inv.SetWithheld(ownedBySeal, withheldEntries(inv.Withheld, s.Folders, calls))
+		inv.SetWithheld(ownedBySeal, withheldEntries(inv.Withheld, s.Folders, calls, modifiedAt(tree)))
 	})
 }
 
 // withheldEntries is one record entry per folder left out. A folder keeps the
 // command that made it until a later call is seen to change it; one that turns
 // up in this seal is credited to the newest successful command of the batch,
-// since a command line does not say what it wrote.
-func withheldEntries(before []inventory.Withheld, folders []Left, calls []Executed) []inventory.Withheld {
+// since a command line does not say what it wrote, unless the folder is older
+// than that command: then it was there before and nobody is named.
+func withheldEntries(before []inventory.Withheld, folders []Left, calls []Executed, modified modTime) []inventory.Withheld {
 	known := map[string]inventory.Withheld{}
 	for _, w := range before {
 		known[w.Path] = w
@@ -100,7 +104,7 @@ func withheldEntries(before []inventory.Withheld, folders []Left, calls []Execut
 	for _, f := range folders {
 		prev, seen := known[f.Path]
 		w := inventory.Withheld{Path: f.Path, Lock: f.Lock, MadeBy: prev.MadeBy, Cwd: prev.Cwd}
-		if call, ok := newestMaker(f.Path, calls, !seen); ok {
+		if call, ok := newestMaker(f.Path, calls, !seen, modified); ok {
 			w.MadeBy, w.Cwd = inventory.Cleaned(call.Command), inventory.Cwd(call.Dir)
 		}
 		out = append(out, w)
@@ -111,10 +115,10 @@ func withheldEntries(before []inventory.Withheld, folders []Left, calls []Execut
 // newestMaker is the latest successful command that could have written the
 // folder: one whose known changes reach into it, or, when the folder is new to
 // the record, one that says nothing about what it changed but could have.
-func newestMaker(folder string, calls []Executed, fresh bool) (Executed, bool) {
+func newestMaker(folder string, calls []Executed, fresh bool, modified modTime) (Executed, bool) {
 	for i := len(calls) - 1; i >= 0; i-- {
 		call := calls[i]
-		if call.Command != "" && call.Call.Exit == 0 && wrote(call, folder, fresh) {
+		if call.Command != "" && call.Call.Exit == 0 && wrote(call, folder, fresh && !predates(folder, call, modified)) {
 			return call, true
 		}
 	}
@@ -131,4 +135,29 @@ func wrote(call Executed, folder string, fresh bool) bool {
 		}
 	}
 	return false
+}
+
+// modTime says when a folder of the tree was last modified, in Unix
+// milliseconds; false when it cannot be read.
+type modTime func(folder string) (int64, bool)
+
+// modifiedAt reads folder modification times under the tree.
+func modifiedAt(tree string) modTime {
+	return func(folder string) (int64, bool) {
+		info, err := os.Stat(filepath.Join(tree, folder))
+		if err != nil {
+			return 0, false
+		}
+		return info.ModTime().UnixMilli(), true
+	}
+}
+
+// predates reports whether the folder was last touched before the call began.
+// A command that says nothing about what it changed is credited with a folder
+// new to the record, but a folder whose newest change is older than the call
+// cannot be its work: it was in the tree before the chat reached it. A folder
+// whose time cannot be read is not excused, so the old credit stands.
+func predates(folder string, call Executed, modified modTime) bool {
+	at, ok := modified(folder)
+	return ok && at < call.Call.Started
 }
