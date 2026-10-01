@@ -96,9 +96,20 @@ type followMsg struct {
 // followUp is the queue key (input.go's `ctrl+enter` case). An empty draft does
 // nothing at all: there is no message
 // to queue, and a key that queued a blank one would be a key that spends a turn.
+//
+// THE QUEUE CARRIES WORDS ALONE, so a tray holding anything else is refused
+// rather than split. [Agent.FollowUp] takes text: queueing over a picture or a
+// picked harness would send the words later and leave the rest on the tray to
+// ride out with whatever was typed next — one message quietly becoming two.
+// Nothing is queued and the draft is untouched, the refusal the standing chord
+// this key replaced made on the same ground.
 func (a *app) followUp() tea.Cmd {
 	line := strings.TrimSpace(a.input.String())
 	if line == "" {
+		return nil
+	}
+	if !a.trayEmptyForQueue() {
+		a.note(queueWordsOnly)
 		return nil
 	}
 	a.noticeEvent(eventQueued)
@@ -248,6 +259,16 @@ func (a *app) followHeight() int {
 	return len(a.followRows(width))
 }
 
+// queueWordsOnly is the refusal when the tray holds something the queue cannot
+// carry ([app.followUp]).
+const queueWordsOnly = "ctrl+enter queues words alone — take the pictures or the shape of work off first"
+
+// trayEmptyForQueue reports whether the tray holds nothing the queue would have
+// to leave behind: no picture and no picked harness.
+func (a *app) trayEmptyForQueue() bool {
+	return len(a.chips) == 0 && a.harnChip == ""
+}
+
 // queueFootWord is what the running foot calls the queue key: the short
 // key-then-noun form every clause on that row keeps, not the queued block's
 // sentence — the foot names the key, the block says what happened.
@@ -256,11 +277,13 @@ const queueFootWord = "ctrl+enter queue"
 // queueFootOffered reports whether the running foot may name the queue key. It
 // asks what [app.followUp] and the key's own case in [app.key] ask: the
 // terminal can tell ctrl+enter from a plain enter, and there are words in the
-// box to queue — a picture alone is not something the queue carries. The rest
+// box to queue, and nothing on the tray the queue would refuse to carry
+// ([app.trayEmptyForQueue]) — a hint for a key that would only refuse is the
+// lie every hint here is written not to tell. The rest
 // (a turn running, the box the conversation's own) is [app.runSendOffered],
 // which the caller has already asked.
 func (a *app) queueFootOffered() bool {
-	return a.keysDisambiguated && strings.TrimSpace(a.input.String()) != ""
+	return a.keysDisambiguated && strings.TrimSpace(a.input.String()) != "" && a.trayEmptyForQueue()
 }
 
 // followRows draws the queued block: the messages the SESSION is holding, each
@@ -390,10 +413,9 @@ func (a *app) queuedTakesBack() bool {
 // the press; the row stays and the message runs. What comes back is the draft
 // EXACTLY as it was queued: the words, and the pasted documents that were
 // unfolded into them, put back on the tray so the tokens are chips again and
-// the next send carries the paste rather than its tag (pastechip.go). Pictures
-// are the one part that does not, and could not: a queued message's pictures
-// were spent at the moment it was queued and there is nothing left to put back.
-// The transcript line the turn will draw is still ahead of this message, so it
+// the next send carries the paste rather than its tag (pastechip.go). There are
+// no pictures to put back: the queue never takes a message with pictures on the
+// tray ([app.followUp]). The transcript line the turn will draw is still ahead of this message, so it
 // was never drawn and nothing is unwound.
 func (a *app) recallQueuedAt(i int) (tea.Cmd, bool) {
 	if i < 0 || i >= len(a.follows) {

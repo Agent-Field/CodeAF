@@ -667,6 +667,33 @@ func TestCtrlEnterOnAPlainTerminalDoesNothing(t *testing.T) {
 	}
 }
 
+// THE QUEUE CARRIES WORDS ALONE (followup.go). With a picture on the tray,
+// ctrl+enter queues nothing and says so in one line, the draft and the tray
+// stay exactly as they were, and the foot does not offer a key that would only
+// refuse — otherwise the words would run later and the picture would ride out
+// with whatever was typed next.
+func TestCtrlEnterOverAPictureRefusesAndKeepsTheDraft(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "and look at this")
+	a.chips = []chip{{path: "/tmp/shot.png"}}
+	if strings.Contains(a.typingHint(), queueFootWord) {
+		t.Fatalf("the foot offered the queue over a picture: %q", a.typingHint())
+	}
+	drive(t, a, key("ctrl+enter"))
+	if len(agent.asked) != 0 || a.followWaiting() != 0 {
+		t.Fatalf("a message with a picture was queued: %q", agent.asked)
+	}
+	if a.input.String() != "and look at this" || len(a.chips) != 1 {
+		t.Fatalf("the refusal changed the draft: box=%q chips=%d", a.input.String(), len(a.chips))
+	}
+	if !strings.Contains(plain(frame(a)), "queues words alone") {
+		t.Fatalf("the refusal was not said:\n%s", plain(frame(a)))
+	}
+}
+
 // CTRL+Q IS DELIBERATELY UNBOUND (2026-09-30): queueing moved onto ctrl+enter,
 // and a control key with no meaning left does nothing rather than acquiring a
 // new one (input.go). Over a draft it must not queue, must not send, and must

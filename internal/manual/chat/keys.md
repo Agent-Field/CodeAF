@@ -31,7 +31,8 @@ is called `super+enter`** — see "What cmd+enter is called on your keyboard" be
 the moment it is typed, to run after the turn that is running; with no turn running,
 it starts at once, which reads as sending it. It needs a terminal that can tell it
 apart from a plain `enter` (the same support `ctrl+shift+enter` needs); where the
-terminal cannot, the key arrives as a plain enter and queues nothing. Queued messages
+terminal cannot, the key arrives as a plain enter and queues nothing. It queues words
+alone: with a picture on the tray it refuses in one line and changes nothing. Queued messages
 sit above the box behind a reply arrow `↳`, dim, and you can take one back out of the
 queue before its turn starts — see "Typing while an answer is still coming" below.
 
@@ -136,8 +137,12 @@ of that message — and a click on it pulls **that** one back into the box whole
 not this gesture: it belongs to the parked block and to history, and a queued message
 is named with the pointer alone. Taking one back removes it from the session's queue:
 the stream it would have run on ends with no events, so it simply never executes.
-Pictures that were attached do not come back — they were spent when the message was
-queued.
+
+**The queue carries words alone.** With a picture (or a picked harness) on the tray,
+`ctrl+enter` queues nothing and says `ctrl+enter queues words alone — take the pictures
+or the shape of work off first`; the draft and the tray stay as they were, and the
+`ctrl+enter queue` clause is not offered under the box. Send a message with pictures
+with `enter`, or take them off the tray and queue the words.
 
 **Two honest limits.** If the turn ended between your look and your press, the
 message has already started its turn — the row stays and the words run, because
