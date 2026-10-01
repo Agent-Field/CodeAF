@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a run that carries on a branch counts only its own files, and a published branch is pushed, not merged
+title: a carried-on run counts only its own files, and a published branch is pushed, not merged
 pr: 1705
 surface: [engine, chat, docs]
 invalidates:
