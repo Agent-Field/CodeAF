@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/inventory"
 )
@@ -176,7 +177,7 @@ func TestPersonExcludeIsNotRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := noteLeftOut(c, got, nil); err != nil {
+	if err := noteLeftOut(c, c.Root, got, nil); err != nil {
 		t.Fatal(err)
 	}
 	inv, _ := inventory.Open(c.Root)
@@ -189,7 +190,7 @@ func TestFailedInstallStillLeftOut(t *testing.T) {
 	c := newCell(t)
 	folders := []Left{{Path: "node_modules", Lock: "package-lock.json"}}
 	failed := Executed{Call: Call{Exit: 1}, Command: "npm ci"}
-	if err := noteLeftOut(c, Screened{Folders: folders}, []Executed{failed}); err != nil {
+	if err := noteLeftOut(c, c.Root, Screened{Folders: folders}, []Executed{failed}); err != nil {
 		t.Fatal(err)
 	}
 	inv, _ := inventory.Open(c.Root)
@@ -204,7 +205,7 @@ func TestMadeByNamesTheCommandThatWroteTheFolder(t *testing.T) {
 	left := []Left{{Path: "web/node_modules", Lock: "web/package-lock.json"}}
 	install := Executed{Call: Call{Tool: "bash"}, Command: "cd web && API_KEY=sk-abcdefghijklmnopqrstuvwx npm ci"}
 	read := Executed{Call: Call{Tool: "read"}}
-	if err := noteLeftOut(c, Screened{Folders: left}, []Executed{install, read}); err != nil {
+	if err := noteLeftOut(c, c.Root, Screened{Folders: left}, []Executed{install, read}); err != nil {
 		t.Fatal(err)
 	}
 	inv, _ := inventory.Open(c.Root)
@@ -213,7 +214,7 @@ func TestMadeByNamesTheCommandThatWroteTheFolder(t *testing.T) {
 		t.Fatalf("made_by %q: the newest command that could have written it, cleaned of secrets", got.MadeBy)
 	}
 	// A later seal that names no maker keeps the first one.
-	if err := noteLeftOut(c, Screened{Folders: left}, []Executed{read}); err != nil {
+	if err := noteLeftOut(c, c.Root, Screened{Folders: left}, []Executed{read}); err != nil {
 		t.Fatal(err)
 	}
 	inv2, _ := inventory.Open(c.Root)
@@ -324,4 +325,46 @@ func TestRestoredFolderStaysOut(t *testing.T) {
 			t.Fatalf("policy %+v: the rebuilt folder was taken back into the seal", policy)
 		}
 	})
+}
+
+// folderAged makes a folder in the tree and dates its last change.
+func folderAged(t *testing.T, tree, folder string, at time.Time) {
+	t.Helper()
+	dir := filepath.Join(tree, folder)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(dir, at, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func madeByAfterOneCall(t *testing.T, folderAt time.Time, call Executed) inventory.Withheld {
+	t.Helper()
+	c := newCell(t)
+	folderAged(t, c.Root, "node_modules", folderAt)
+	left := []Left{{Path: "node_modules", Lock: "package-lock.json"}}
+	if err := noteLeftOut(c, c.Root, Screened{Folders: left}, []Executed{call}); err != nil {
+		t.Fatal(err)
+	}
+	inv, _ := inventory.Open(c.Root)
+	return inv.Snapshot().Withheld[0]
+}
+
+func TestFolderThatPredatesTheChatNamesNoMaker(t *testing.T) {
+	started := time.Now()
+	first := Executed{Call: Call{Tool: "bash", Started: started.UnixMilli()}, Command: "echo edited >> README.md"}
+	got := madeByAfterOneCall(t, started.Add(-time.Hour), first)
+	if got.MadeBy != "" || got.Cwd != "" {
+		t.Fatalf("record %+v: the folder was there before the first command, so no command made it", got)
+	}
+}
+
+func TestFolderCreatedDuringTheChatNamesItsCommand(t *testing.T) {
+	started := time.Now().Add(-time.Minute)
+	install := Executed{Call: Call{Tool: "bash", Started: started.UnixMilli()}, Command: "npm ci"}
+	got := madeByAfterOneCall(t, started.Add(time.Second), install)
+	if got.MadeBy != "npm ci" {
+		t.Fatalf("made_by %q, want the command that ran while the folder came to be", got.MadeBy)
+	}
 }
