@@ -43,6 +43,12 @@ const skillTurnMax = 4
 // it does in a task's brief).
 const skillTurnResolveLimit = store.SkillShelfLimit
 
+// turnSkillsLead introduces the block [turnSkills] splices onto the copy the
+// model reads. It lives beside the producer AND the remover
+// ([stripTurnSkillsBlock]) so the two cannot drift into disagreeing about where
+// the block begins.
+const turnSkillsLead = "\n\nSkills suited to this message:\n"
+
 // attachTurnSkillsLocked composes the block for one message the person is
 // sending and splices it onto what the model reads, under a.mu, at the one
 // door every person-typed message passes through (agent.go submitUser). It is
@@ -131,7 +137,37 @@ func (a *Agent) turnSkills(text string) (string, []string) {
 	if block == "" {
 		return "", nil
 	}
-	return "\n\nSkills suited to this message:\n" + block, carried
+	return turnSkillsLead + block, carried
+}
+
+// stripTurnSkillsBlock removes the model-only skills context that
+// [attachTurnSkillsLocked] spliced onto a person's message, so every display
+// door draws the words they typed and not the list chosen for the model
+// (agent.go shapeEntries, the one place a message becomes a DisplayEntry).
+//
+// THE STRIP IS EXACT AND TRAILING, and that is the whole safety of it. It removes
+// only a whole block the producer itself would have appended: the lead is
+// present, the conflict line closes the message, the entry lines between begin
+// with "- " and the lead is not the message. A person who pastes the marker, or
+// the conflict sentence, into a message of their own keeps every word, because a
+// fragment that is not a whole trailing render is not the block.
+func stripTurnSkillsBlock(text string) string {
+	at := strings.LastIndex(text, turnSkillsLead)
+	if at <= 0 {
+		return text
+	}
+	rest := text[at+len(turnSkillsLead):]
+	if !strings.HasSuffix(rest, plan.SkillsBlockConflictLine) {
+		return text
+	}
+	body := strings.TrimSuffix(rest, plan.SkillsBlockConflictLine)
+	// A RenderSkillsBlock body is one or more "- " lines, the last one closed by
+	// a newline before the conflict line. A body that does not begin with an
+	// entry line, or does not close with that newline, was written by a person.
+	if !strings.HasPrefix(body, "- ") || !strings.HasSuffix(body, "\n") {
+		return text
+	}
+	return text[:at]
 }
 
 // fillSkillRoom takes at most room names off the retrieved half. It is the one

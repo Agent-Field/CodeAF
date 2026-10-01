@@ -4827,6 +4827,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
 		displayText := messageContentText(msg)
+		// THE MODEL'S SKILLS CONTEXT IS NOT CONVERSATION. It rides the copy in
+		// a.messages the provider reads, and a transcript that drew it would show
+		// a list nobody asked for at the top of every reopened conversation and
+		// after every message (#1504's display half; skillturn.go's
+		// stripTurnSkillsBlock). The journal and store never held it.
+		if role == "user" {
+			displayText = stripTurnSkillsBlock(displayText)
+		}
 		interrupted, explicitlyHuman := false, false
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			interrupted = mark.Interrupted
