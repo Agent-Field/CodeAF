@@ -41,7 +41,10 @@ func TestResumeBriefAfterTakeover(t *testing.T) {
 
 	a := startWithEnv(t, append([]string{config_key(t)}, append(sync, "CODEAF_TASK_BELT=node")...), "resume_a", homeA, ws, 160, 45, "chat", "--model", model, "--one-model", "--no-host")
 	a.skipSetup(t)
-	a.lit(fmt.Sprintf("Do exactly this with bash and nothing else. 1) run `npm ci --offline --cache %s`. 2) start the server in the background with `nohup node server.js %d >server.log 2>&1 &`. 3) wait 2 seconds. Then answer with the sum of 19273 and 28114, as digits only.", cache, port))
+	a.lit(fmt.Sprintf("Do exactly this with bash and nothing else, one bash call at a time, and wait for each call to finish before you make the next. 1) run `npm ci --offline --cache %s`. 2) start the server in the background with `nohup node server.js %d >server.log 2>&1 &`. 3) wait 2 seconds. Then answer with the sum of 19273 and 28114, as digits only.", cache, port))
+	// The prompt asks for one call at a time because a model that sends the install
+	// and the server start as two parallel calls starts the server before the install
+	// has put its packages in place, and the server dies on its first require.
 	a.keys("Enter")
 	// The reply is a sum that is on screen nowhere until the model says it. A word
 	// quoted in the prompt would be found while the call is still running, and so

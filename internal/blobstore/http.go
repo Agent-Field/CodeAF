@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -25,13 +24,13 @@ type HTTP struct {
 	deadline func(bodyBytes int) time.Duration
 }
 
-// NewHTTP returns a client for the store wire at base (no trailing path).
+// NewHTTP returns a client for the store wire at base, which may carry a path prefix.
 // A nil hc means http.DefaultClient.
 func NewHTTP(base string, sign wireauth.Sign, hc *http.Client) *HTTP {
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-	return &HTTP{base: strings.TrimRight(base, "/"), sign: sign, hc: hc, deadline: Deadline}
+	return &HTTP{base: base, sign: sign, hc: hc, deadline: Deadline}
 }
 
 // PutFrame implements Store.
@@ -158,7 +157,7 @@ func (c *HTTP) doJSON(ctx context.Context, method, path string, body []byte, int
 func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte, error) {
 	ctx, limit := startBudget(ctx, c.deadline, len(body))
 	defer limit.done()
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, wireauth.Endpoint(c.base, path), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}

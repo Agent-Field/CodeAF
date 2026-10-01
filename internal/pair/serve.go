@@ -75,7 +75,7 @@ func (h *Host) say(line string) {
 // again cannot fix.
 func (h *Host) Run(ctx context.Context) error {
 	if strings.TrimSpace(h.Service) == "" {
-		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to a relay's address")
+		return errors.New("no sync address is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync address")
 	}
 	wait := time.Second
 	announced := false
@@ -88,17 +88,17 @@ func (h *Host) Run(ctx context.Context) error {
 			// already connected under this machine's name, which in practice
 			// means a second `codeaf serve` on this same machine. Trying again
 			// forever would be two processes fighting over one name.
-			return fmt.Errorf("this machine is already connected to the relay as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
+			return fmt.Errorf("this machine is already connected to sync as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
 		case errors.Is(err, relay.ErrUnreachable):
 			if !announced {
 				return Unreachable(h.Service)
 			}
-			h.say("lost the relay — trying again")
+			h.say("lost sync — trying again")
 		default:
 			if !announced {
 				return err
 			}
-			h.say("the relay refused this machine: " + err.Error())
+			h.say("sync refused this machine: " + err.Error())
 		}
 
 		if err == nil {

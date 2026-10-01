@@ -38,11 +38,17 @@ var wireErrors = []wireError{
 	{errUpgradeRequired, "upgrade_required", http.StatusUpgradeRequired},
 	{errBadRequest, "bad_request", http.StatusBadRequest},
 	{errTooLarge, "too_large", http.StatusRequestEntityTooLarge},
+	// The link-pairing rows (docs/ux-pairing-contract.md). "gone" is 404 here
+	// and 410 for a deleted identity, so a row is matched by code and status.
+	{ErrRequestGone, "gone", http.StatusNotFound},
+	{ErrAlreadyDecided, "already_decided", http.StatusConflict},
+	{ErrTooBig, "too_big", http.StatusRequestEntityTooLarge},
+	{ErrFull, "full", http.StatusServiceUnavailable},
 }
 
 // Codes that have no sentinel a Client returns: the wire's own refusals.
 var (
-	errBadRequest = errors.New("directory: bad request")
+	errBadRequest = ErrBadRequest
 	errTooLarge   = errors.New("directory: request too large")
 	// errUpgradeRequired answers a watch request that is not a WebSocket upgrade.
 	errUpgradeRequired = errors.New("directory: upgrade required")
@@ -60,10 +66,11 @@ func classify(err error) wireError {
 	return wireError{errInternal, "internal", http.StatusInternalServerError}
 }
 
-// errorOf turns a code back into its sentinel, or nil when the code is unknown.
-func errorOf(code string) error {
+// errorOf turns a code and the status that carried it back into its sentinel,
+// or nil when the pair is unknown.
+func errorOf(code string, status int) error {
 	for _, w := range wireErrors {
-		if w.code == code {
+		if w.code == code && w.status == status {
 			return w.err
 		}
 	}

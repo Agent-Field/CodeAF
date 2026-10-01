@@ -10,6 +10,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // Watcher is a Client that can open the relay's watch socket.
@@ -39,21 +40,27 @@ const vouchHeader = "Codeaf-Vouch"
 const watchLimit = 1 << 10
 
 // Watch opens the signed watch socket of a screen: it names no holds, so it
-// vouches for nothing. The upgrade request is signed like any other directory
+// vouches for nothing, and it asks for events (EventsQuery), so its Stream
+// also carries who is online and who joined. The upgrade request is signed like any other directory
 // request, with an empty body.
 func (h *HTTP) Watch(ctx context.Context) (dirwatch.Stream, error) {
-	return h.WatchHolding(ctx, nil)
+	return h.dial(ctx, nil, true)
 }
 
 // WatchHolding opens the watch socket of a process that holds leases, naming
 // them in the query. The query is part of the signed uri, so only this device
 // can name a hold.
 func (h *HTTP) WatchHolding(ctx context.Context, holds []Hold) (dirwatch.Stream, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.base+dirBase+"/watch", nil)
+	return h.dial(ctx, holds, false)
+}
+
+// dial opens the socket naming holds, and asking for events when events is set.
+func (h *HTTP) dial(ctx context.Context, holds []Hold, events bool) (dirwatch.Stream, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wireauth.Endpoint(h.base, dirBase+"/watch"), nil)
 	if err != nil {
 		return nil, err
 	}
-	req.URL.RawQuery = HoldQuery(holds)
+	req.URL.RawQuery = watchQuery(holds, events)
 	h.sign(req, nil)
 	// The library applies the client's Timeout to the dial alone and clears it
 	// for the socket, so the shared client is safe to hand over.
@@ -129,17 +136,25 @@ func closeSentinel(err error) error {
 	return err
 }
 
-// decodeFrame reads `pong` or `{"v":N}`; fields it does not know are ignored
-// so the server may add some.
+// decodeFrame reads `pong`, `{"v":N}` or an event frame `{"t":...}`; fields it
+// does not know are ignored so the server may add some, and an event of a kind
+// it does not know is passed on for the feed to ignore.
 func decodeFrame(data []byte) (dirwatch.Frame, error) {
 	if string(data) == "pong" {
 		return dirwatch.Frame{Pong: true}, nil
 	}
 	var f struct {
 		V *uint64 `json:"v"`
+		dirwatch.Event
 	}
-	if err := json.Unmarshal(data, &f); err != nil || f.V == nil {
+	if err := json.Unmarshal(data, &f); err != nil {
 		return dirwatch.Frame{}, fmt.Errorf("directory: undecodable watch frame %q", data)
 	}
-	return dirwatch.Frame{Version: *f.V}, nil
+	switch {
+	case f.V != nil:
+		return dirwatch.Frame{Version: *f.V}, nil
+	case f.T != "":
+		return dirwatch.Frame{Event: &f.Event}, nil
+	}
+	return dirwatch.Frame{}, fmt.Errorf("directory: undecodable watch frame %q", data)
 }

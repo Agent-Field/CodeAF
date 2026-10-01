@@ -2230,6 +2230,14 @@ type app struct {
 	machineRead    machineReading
 	machinesAsking bool
 	machinePoll    machinePoll
+	// fleet counts this person's devices and addMachine is the home card that
+	// uses the count (homeband_addmachine.go).
+	fleet      Fleet
+	addMachine addMachine
+	// resume is the one-time "continue where you left off" offer (homeband_resume.go).
+	leftOff resumeOffer
+	// roster is the devices row's devices (homeband_devices.go).
+	devRow deviceRoster
 	// dirFeed is this window's hold on the directory's change feed while home is
 	// being looked at, and readOwed that a frame arrived while a read was in
 	// flight (machinewatch.go).
@@ -2614,6 +2622,11 @@ type app struct {
 	pairing Pairing
 	pair    pairPanel
 
+	// approvals answers a new device's request and revokes devices, and
+	// approve remembers what its screens have said (approve.go).
+	approvals Approvals
+	approve   approveState
+
 	// draftPage is the list /drafts opens over the ring of cleared-but-kept
 	// drafts (draftring.go): closed, it costs the frame nothing.
 	draftPage draftPanel
@@ -2930,6 +2943,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		approvals:           opts.Approvals,
+		fleet:               opts.Fleet,
 		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
@@ -5027,6 +5042,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeBranchMsg:
 		return a, a.tookBranch(msg)
 
+	case fleetMsg:
+		return a, a.tookFleet(msg)
+
+	case rosterMsg:
+		return a, a.tookRoster(msg)
+
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
@@ -5314,6 +5335,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pairMsg:
 		return a, a.tookPair(msg)
+
+	case cardMsg:
+		return a, msg.land(a)
 
 	case linkPingTickMsg:
 		// The next timer is armed immediately when this one finds a reconnect in
@@ -7510,6 +7534,9 @@ func (a *app) slash(line string) tea.Cmd {
 	case "pair":
 		return a.runPair(rest)
 
+	case "devices":
+		return a.openDevices()
+
 	case "autonomy":
 		a.noticeEvent(eventAutonomyAsked)
 		if rest != "" {
@@ -8899,6 +8926,10 @@ func (a *app) paste(text string) tea.Cmd {
 	// declining a paste and losing one.
 	if a.copy.on {
 		return nil
+	}
+	// A LINK PASTED ON THE OPEN ADD-MACHINE CARD is the card's, not the draft's.
+	if cmd, took := a.pasteLink(text); took {
+		return cmd
 	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
 	// same terms every other input does (welcome.go): everything puts the box
