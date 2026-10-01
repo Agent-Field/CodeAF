@@ -22,7 +22,7 @@ var bannedWords = regexp.MustCompile(`(?i)\b(relays?|nodes?|leases?|leased|manif
 // spelledForTheMachine are the pieces of a string that name a flag or a value
 // a person types. They are removed before the check, so the flag stays and the
 // sentence around it is still judged.
-var spelledForTheMachine = strings.NewReplacer("--relay", "", "CODEAF_TASK_BELT=node", "")
+var spelledForTheMachine = strings.NewReplacer("CODEAF_TASK_BELT=node", "")
 
 // uiStringFiles are the tables of text a person reads (module-relative).
 var uiStringFiles = []string{
@@ -51,6 +51,42 @@ func TestVocabularyLawUIStrings(t *testing.T) {
 			t.Errorf("%s: %s", file, found)
 		}
 	}
+}
+
+// manualPages are manual pages whose fenced blocks quote what the program
+// prints (module-relative). The prose around a block may explain the engine;
+// the block is what a person sees on the screen.
+var manualPages = []string{
+	"internal/manual/chat/reaching-this-machine-without-ssh.md",
+}
+
+func TestVocabularyLawManualQuotes(t *testing.T) {
+	root := moduleRoot(t)
+	for _, page := range manualPages {
+		body, err := os.ReadFile(filepath.Join(root, page))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, found := range bannedInFences(string(body)) {
+			t.Errorf("%s: %s", page, found)
+		}
+	}
+}
+
+// bannedInFences returns each fenced-block line that holds a banned word.
+func bannedInFences(body string) []string {
+	var found []string
+	inside := false
+	for i, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "```") {
+			inside = !inside
+			continue
+		}
+		if word := bannedWords.FindString(spelledForTheMachine.Replace(line)); inside && word != "" {
+			found = append(found, "line "+strconv.Itoa(i+1)+": "+strconv.Quote(word)+" in "+strconv.Quote(line))
+		}
+	}
+	return found
 }
 
 func bannedInStrings(t *testing.T, path string) []string {
@@ -154,7 +190,7 @@ func dropTags(lits []*ast.BasicLit, tree *ast.File) []*ast.BasicLit {
 
 // The checker itself is judged on a sample, so a green run means it looks.
 func TestVocabularyLawSeesBannedWords(t *testing.T) {
-	src := "package p\nvar a = \"set it to your relay's address\"\nvar b = \"a task node\"\nvar c = \"set --relay or CODEAF_TASK_BELT=node\"\nvar d = \"Move here\"\nfunc f() { flags.String(\"relay\", \"\", \"the sync address\") }\n"
+	src := "package p\nvar a = \"set it to your relay's address\"\nvar b = \"a task node\"\nvar c = \"set --via or CODEAF_TASK_BELT=node\"\nvar d = \"Move here\"\nfunc f() { flags.String(\"relay\", \"\", \"the sync address\") }\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "p.go")
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
@@ -162,5 +198,12 @@ func TestVocabularyLawSeesBannedWords(t *testing.T) {
 	}
 	if got := bannedInStrings(t, path); len(got) != 2 {
 		t.Fatalf("want 2 findings (relay, node), got %v", got)
+	}
+}
+
+func TestVocabularyLawSeesBannedWordsInFences(t *testing.T) {
+	body := "the relay explains\n```\nno relay is set up\nMove here\n```\n"
+	if got := bannedInFences(body); len(got) != 1 {
+		t.Fatalf("want 1 finding, got %v", got)
 	}
 }

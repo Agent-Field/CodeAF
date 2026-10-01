@@ -253,12 +253,13 @@ func askPairingCode(name string) (string, error) {
 func runServe(args []string) error {
 	flags := commandFlags("serve")
 	workspace := flags.String("workspace", "", "directory a connection works in when it does not name one; empty is the directory this command was run in")
-	relayAddress := flags.String("relay", "", "the sync address to be reachable through; empty reads "+pair.RelayEnv)
+	relayAddress := flags.String("via", "", "the sync address to be reachable through; empty reads "+pair.RelayEnv)
+	renamedFlag(flags, "relay", "via")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("usage: codeaf serve [--workspace path] [--relay https://…]")
+		return errors.New("usage: codeaf serve [--workspace path] [--via https://…]")
 	}
 
 	service := strings.TrimSpace(*relayAddress)

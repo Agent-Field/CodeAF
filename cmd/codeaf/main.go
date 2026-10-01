@@ -576,7 +576,7 @@ Housekeeping — changes state on disk or on the network
       show a code that shares your chats with another computer
   codeaf pair <code> [--via url] [--replace]
       type the code another computer shows: this one gets its chats
-  codeaf serve [--workspace path] [--relay url]
+  codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices
       list the devices with your chats and the ones that can use this machine

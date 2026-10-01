@@ -50,7 +50,7 @@ Run it on the machine that owns the work — the one with the files, the API key
 things you have set up:
 
 ```
-codeaf serve [--workspace path] [--relay https://…]
+codeaf serve [--workspace path] [--via https://…]
 ```
 
 It prints, exactly:
@@ -65,19 +65,19 @@ digits, the same every time, on any relay. You cannot pick a nicer one, and nobo
 can register under yours while your machine is connected.
 
 `--workspace` is the directory a connection works in when it does not name one; empty
-means the directory you ran the command in. `--relay` beats the `CODEAF_RELAY`
+means the directory you ran the command in. `--via` beats the `CODEAF_RELAY`
 environment variable.
 
 Running it twice on one machine is refused, because there is only one of it:
 
 ```
-this machine is already connected to the relay as otter-lamp-42 — there is only one of it, so close the other `codeaf serve`
+this machine is already connected to the service as otter-lamp-42 — there is only one of it, so close the other `codeaf serve`
 ```
 
 With no relay set up at all it says:
 
 ```
-no relay is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to a relay's address, or let people in over ssh with `codeaf chat --host` from their side
+no service address is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your service address, or let people in over ssh with `codeaf chat --host` from their side
 ```
 
 Ctrl+c ends it, and the machine gives its name back on the way out:
@@ -360,7 +360,7 @@ no service address is set up on this machine, so --at has nowhere to look for ot
 **The relay is set up and not answering:**
 
 ```
-the service at https://relay.example.com cannot be reached from here — check this machine's network, or reach that machine with --host over ssh
+the service at https://service.example.com cannot be reached from here — check this machine's network, or reach that machine with --host over ssh
 ```
 
 **The relay is fine and that machine is not connected to it:**

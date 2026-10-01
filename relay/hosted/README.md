@@ -140,11 +140,30 @@ canonical names, so the stricter side is the safe one.
 | `LINK_REQUEST` | Durable Object `LinkRequest` | one pending request, one per code |
 | `LEASE_POLICY` | var | `amended` (default: 90 s, a publish renews; stage 1H decision 8.7) or `stage1` (the frozen 30 s law) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
+| `BASE_PATH` | var, optional | a path prefix every route is served beneath (`/fabric` in production); empty, the default, serves from the root. A request outside the prefix is `404 not_found` |
 | `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
 
 `wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
 SQLite-backed. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
 requests a day.
+
+## Base path
+
+The hosted deployment shares its hostname with other things, so it is mounted at
+`https://codeaf.agentfield.ai/fabric`. `BASE_PATH = "/fabric"` makes the Worker serve every route
+(store, directory, the `/v1/dir/watch` upgrade, pairing, link requests, rotation) beneath that prefix.
+`src/base.js` holds the whole mechanism: the Worker strips the prefix once, before dispatch, and a
+request outside it is the usual 404.
+
+The request signature covers the path the client sent (`internal/reqsign` signs `RequestURI()`), so a
+client signs `/fabric/v1/...` and the identity object checks the signature against the prefix put back
+(`signedUri`), not against the stripped path. A client that signed the bare path is `401`. Every Go
+client joins its routes to the relay address in one helper, `wireauth.Endpoint`, so an address with a
+path (`https://host/fabric`, with or without the last slash) works for all of them.
+
+The Go relay (`internal/relayserve`) stays at the root of its host: it has no base path. A self-hoster
+who wants one puts their own proxy in front, and the proxy must pass the path on unchanged (the client
+signed it), or serve the relay on a host of its own.
 
 ## Deploy
 
@@ -164,6 +183,44 @@ only. Setting it back would make a takeover wait 30 s where the client expects 9
 deployment never does. The conformance suite waits out the 90 s in real time (about 92 s in all,
 its cases run in parallel); there is no short-TTL knob on either relay. The deployment keeps no
 request log and enables no observability.
+
+### Production runbook (not run by anyone until the owner says go)
+
+Run from `relay/hosted`, logged in to the Cloudflare account that holds the `agentfield.ai` zone
+(`npx wrangler whoami` names it). `production.toml` owns the Worker `caf-fabric`, the bucket
+`caf-fabric-frames`, its own Durable Object namespaces and the one route
+`codeaf.agentfield.ai/fabric*`; it changes nothing else on the hostname, whose proxied DNS record
+already exists.
+
+```sh
+npm ci && npm test
+npx wrangler r2 bucket create caf-fabric-frames
+npx wrangler deploy -c production.toml --dry-run          # check the bindings and the route first
+npx wrangler deploy -c production.toml
+```
+
+Smoke, from any machine (the first two need no key; every answer carries `Codeaf-Now`):
+
+```sh
+curl -si https://codeaf.agentfield.ai/fabric/v1/pair/limits        # 200, ttl_ms 600000
+curl -si https://codeaf.agentfield.ai/fabric/v1/store/stats        # 401, the route exists and wants a signature
+curl -si https://codeaf.agentfield.ai/v1/pair/limits               # not served by this Worker: outside /fabric
+curl -si https://codeaf.agentfield.ai/fabricx/v1/pair/limits       # not served by this Worker either
+```
+
+Then the conformance suite, which makes real identities, from the repository root:
+
+```sh
+go test -count=1 -tags relayurl ./internal/relayconf/ -relay-url=https://codeaf.agentfield.ai/fabric
+```
+
+The suites need a short pairing time and a lifted per-address identity cap, which production
+deliberately lacks, so `ExpiryDeletes` skips and a long run may meet `too_many_identities`; run the
+whole suite against staging for that, and only the cases that need neither against production.
+
+Roll back by deleting the route (`npx wrangler deploy` of an earlier commit, or removing the route in
+the dashboard); the hostname then answers as it did before. Never delete the R2 bucket or the
+namespaces: they hold people's synced data.
 
 `staging.toml` already carries what the conformance suites need (a 4 s pairing TTL, `TRUST_PROXY`, a lifted
 per-IP identity cap); production sets none of them. The pairing wire words are those of
