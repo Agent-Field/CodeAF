@@ -3,6 +3,7 @@ package dirwatch
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 )
@@ -18,6 +19,20 @@ type State struct {
 	// word that it vouches for the leases the socket names. It is false
 	// whenever Up is.
 	Vouching bool
+	// Online lists, sorted, the other devices that hold a watch socket now.
+	// It is meaningful only while Up: the relay says who is online when a
+	// socket opens, so it is empty while the socket is down. Only a socket
+	// dialled with events hears it.
+	Online []string
+	// Joined holds the newest MaxJoined device-joined events, oldest first.
+	// A surface shows each Seq above the newest it has shown, once.
+	Joined []Joined
+}
+
+// equal says whether two states are the same to a surface.
+func (s State) equal(o State) bool {
+	return s.Version == o.Version && s.Up == o.Up && s.Vouching == o.Vouching &&
+		slices.Equal(s.Online, o.Online) && slices.Equal(s.Joined, o.Joined)
 }
 
 // Follower is one surface's view of the feed.
@@ -46,6 +61,7 @@ type Feed struct {
 
 	mu     sync.Mutex
 	state  State
+	events view      // what the events told; State.Online and State.Joined are its two parts
 	heard  time.Time // when the open socket last showed a sign of life
 	subs   map[*sub]struct{}
 	cancel context.CancelFunc
@@ -106,7 +122,7 @@ func (f *Feed) set(edit func(*State)) {
 	defer f.mu.Unlock()
 	before := f.state
 	edit(&f.state)
-	if f.state == before {
+	if f.state.equal(before) {
 		return
 	}
 	for s := range f.subs {
@@ -197,7 +213,11 @@ func pump(ctx context.Context, s Stream) <-chan reply {
 func (f *Feed) serve(ctx context.Context, s Stream) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	defer f.set(func(st *State) { st.Up, st.Vouching = false, false })
+	defer f.set(func(st *State) {
+		st.Up, st.Vouching = false, false
+		f.events = f.events.forgotten()
+		st.Online = f.events.online
+	})
 	f.drainKick()
 	in := pump(ctx, s)
 	k := newKeeper(f.clock)
@@ -257,9 +277,7 @@ func (f *Feed) hear(fr Frame, vouching bool) {
 	f.mu.Unlock()
 	f.set(func(st *State) {
 		st.Up, st.Vouching = true, vouching
-		if !fr.Pong {
-			st.Version = fr.Version
-		}
+		fr.apply(st, &f.events)
 	})
 }
 

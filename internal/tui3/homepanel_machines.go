@@ -57,6 +57,11 @@ const machinesAskTimeout = 5 * time.Second
 // repository's status is asked (homeband_repo.go): a keystroke may not wait on
 // a network. One ask is in flight at a time.
 func (a *app) askMachines() tea.Cmd {
+	return tea.Batch(a.askChats(), a.askFleet(), a.askRoster())
+}
+
+// askChats is the listing half of [app.askMachines].
+func (a *app) askChats() tea.Cmd {
 	if a.machines == nil || a.machinesAsking {
 		return nil
 	}
@@ -75,6 +80,7 @@ func (a *app) askMachines() tea.Cmd {
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machinesAsking = false
 	a.fileMachines(msg)
+	a.considerResume(msg)
 	a.machineRead.down = msg.err != nil
 	a.machineRead.merge = a.branches.Merge != nil
 	a.rebuildMachines()
@@ -94,8 +100,11 @@ func (m machineReading) into(in *homeGridInput, own []homeLine) homePanelRows {
 	return rows
 }
 
-// lines are the rows to draw: none for a chat this machine already lists, and
-// none of the kind that only this machine can hold.
+// lines are the rows to draw: none of the kind that only this machine can hold,
+// and none for a chat this machine already lists unless another machine holds it
+// live. That one is drawn WITH its door (`running on studio`, enter takes it),
+// because the local row of a chat taken elsewhere is a stale window, and the way
+// back to it is the same take the cold path runs.
 func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 	local := map[string]bool{}
 	for _, line := range own {
@@ -103,11 +112,21 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 	}
 	var out []homeLine
 	for _, row := range m.rows {
-		if row.Status != chatlist.Here && !local[row.Cell] {
+		if drawnAsRemote(row, local[row.Cell]) {
 			out = append(out, machineLine(row, m.at, in.now, m.merge))
 		}
 	}
 	return out
+}
+
+// drawnAsRemote says a row from the directory is a row of the panel. A chat
+// held here is never drawn twice; a chat listed here is drawn again only while
+// another machine holds its lease.
+func drawnAsRemote(row chatlist.Row, listedHere bool) bool {
+	if row.Status == chatlist.Here {
+		return false
+	}
+	return !listedHere || row.Status == chatlist.Running
 }
 
 // machineLine is one chat on another machine as a row of the sessions panel.

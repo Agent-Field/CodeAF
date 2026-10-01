@@ -2,12 +2,15 @@ package directory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 )
 
 // The close codes a watcher reads. Any other code means reconnect with backoff.
@@ -47,8 +50,11 @@ func (h *handler) watch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn.SetReadLimit(watchRead)
-	serveWatch(r.Context(), conn, sub, c.device)
+	serveWatch(r.Context(), conn, sub, c.device, wantsEvents(r))
 }
+
+// wantsEvents is whether the socket opted in to event frames (EventsQuery).
+func wantsEvents(r *http.Request) bool { return r.URL.Query().Get("events") == "1" }
 
 // VouchHeader on the 101 answer says this relay counts a watch socket that
 // names a hold as proof its holder is alive (contract 21.11.1). A client that
@@ -87,19 +93,52 @@ func isUpgrade(r *http.Request) bool {
 // serveWatch runs one socket until it or the directory ends. The reader answers
 // "ping" with "pong" and ignores every other frame, so its error is what ends
 // the socket when the peer goes.
-func serveWatch(ctx context.Context, conn *websocket.Conn, sub *Sub, device string) {
+func serveWatch(ctx context.Context, conn *websocket.Conn, sub *Sub, device string, events bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
 		defer cancel()
 		answerPings(ctx, conn, sub)
 	}()
-	conn.Close(tell(ctx, conn, sub, device))
+	// The version is the first frame; an event socket then hears who is online.
+	first := func() {}
+	if events {
+		first = func() {
+			events := sub.Events()
+			go sendEvents(ctx, cancel, conn, events)
+		}
+	}
+	conn.Close(tell(ctx, conn, sub, device, first))
+}
+
+// sendEvents writes each event frame of an event socket until it ends. A write
+// that fails ends the socket, like a failed version write.
+func sendEvents(ctx context.Context, end context.CancelFunc, conn *websocket.Conn, events <-chan dirwatch.Event) {
+	for {
+		select {
+		case e := <-events:
+			if err := sendEvent(ctx, conn, e); err != nil {
+				end()
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func sendEvent(ctx context.Context, conn *websocket.Conn, e dirwatch.Event) error {
+	b, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	return sendText(ctx, conn, string(b))
 }
 
 // tell sends each version the watcher has not heard, then closes the socket
 // with the code that explains a stop, so a device always hears the bump first.
-func tell(ctx context.Context, conn *websocket.Conn, sub *Sub, device string) (websocket.StatusCode, string) {
+// first runs once, after the first version is written.
+func tell(ctx context.Context, conn *websocket.Conn, sub *Sub, device string, first func()) (websocket.StatusCode, string) {
 	for {
 		st, err := sub.Next(ctx)
 		if err != nil {
@@ -108,6 +147,8 @@ func tell(ctx context.Context, conn *websocket.Conn, sub *Sub, device string) (w
 		if err := sendVersion(ctx, conn, st.Version); err != nil {
 			return websocket.StatusInternalError, "write failed"
 		}
+		first()
+		first = func() {}
 		if code, why := stopAfter(st, device); code != 0 {
 			return code, why
 		}

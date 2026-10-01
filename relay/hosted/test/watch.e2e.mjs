@@ -105,6 +105,44 @@ async function bumped(w, last) {
 
 // Cases, each on a fresh identity and against the one relay at BASE (the cap one excepted).
 const cases = {
+  /** The event frames (contract 5): opt-in, presence with a 15 s offline debounce, revoked; a plain socket hears none of it. */
+  async events() {
+    const [a, b, c] = await party(3);
+    const [ida, idb, idc] = [await deviceId(a), await deviceId(b), await deviceId(c)];
+    const event = async (x) => {
+      const { at, ...rest } = JSON.parse(await next(x));
+      assert.equal(typeof at, 'number');
+      return rest;
+    };
+    const plain = await openWatch(a);
+    const wa = await openWatch(a, BASE, '?events=1');
+    assert.match(await next(plain), WIRE);
+    assert.match(await next(wa), WIRE);
+    let wb = await openWatch(b, BASE, '?events=1');
+    assert.match(await next(wb), WIRE);
+    assert.deepEqual(await event(wb), { t: 'presence', device: ida, online: true }, 'a new event socket hears who is online');
+    assert.deepEqual(await event(wa), { t: 'presence', device: idb, online: true });
+    wb.close();
+    await sleep(1000);
+    wb = await openWatch(b, BASE, '?events=1');
+    assert.match(await next(wb), WIRE);
+    assert.deepEqual(await event(wb), { t: 'presence', device: ida, online: true });
+    const gone = Date.now();
+    wb.close();
+    await sleep(12_000);
+    assert.equal(wa.cursor, wa.frames.length, 'a reconnect inside the gap, and a gap not yet over, say nothing');
+    assert.deepEqual(await event(wa), { t: 'presence', device: idb, online: false });
+    assert.ok(Date.now() - gone >= 14_000, 'offline waits out the 15 s debounce');
+    const wc = await openWatch(c, BASE, '?events=1');
+    assert.match(await next(wc), WIRE);
+    await next(wc);
+    assert.deepEqual(await event(wa), { t: 'presence', device: idc, online: true });
+    assert.equal((await call(a, 'POST', `/v1/dir/devices/${idc}/revoke`, {})).status, 204);
+    assert.match(await next(wa), WIRE);
+    assert.deepEqual(await event(wa), { t: 'revoked', device: idc });
+    assert.deepEqual((await wc.closed).code, 4401);
+    assert.deepEqual(plain.frames.filter((f) => !WIRE.test(f)), [], 'a socket that did not ask for events never hears one');
+  },
   async firstFrame() {
     const [a] = await party();
     const w = await openWatch(a);

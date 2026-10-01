@@ -70,8 +70,24 @@ export class Tenant {
   }
 
   /** watch opens a socket for `device` that is told the directory's version now and on every visible change, and that vouches for the leases it names in `holds`. */
-  watch(device, holds) {
-    return this.watchers.accept(device, this.dir.version, holds, this.clock());
+  watch(device, holds, events = false) {
+    const now = this.clock();
+    this.dir.seen(device, now);
+    return this.watchers.accept(device, this.dir.version, holds, now, events);
+  }
+
+  /** join stores the device a paired device approved, and tells the identity's other sockets it joined. */
+  join(id, record) {
+    const device = this.dir.approveDevice(id, record);
+    this.announce({ t: 'joined', device: id, name: device.name, platform: device.platform, at: this.clock() }, id);
+  }
+
+  /**
+   * announce hands an event frame (contract 5) to the watchers, to be sent to every event socket but the
+   * ones of `except`. A watcher that has no event frames to send ignores it.
+   */
+  announce(frame, except) {
+    this.watchers.announce?.(frame, except);
   }
 
   /** assertWritable refuses a write to an identity a rotation has replaced, whichever device asks. */
@@ -79,12 +95,16 @@ export class Tenant {
     if (this.dir.rotation()) throw new RuleError('rotated');
   }
 
-  /** rotate makes one move of the rotation state machine; a retire also wakes the object at its deadline to delete. */
+  /**
+   * rotate makes one move of the rotation state machine; a retire also wakes the object at its deadline to delete.
+   * The move and the answer share one reading of the clock, so the deadline an answer names is always its own time plus the grace.
+   */
   rotate(device, req) {
-    const next = rotateBy(this.dir.rotation(), device, req, this.clock(), this.limits);
+    const now = this.clock();
+    const next = rotateBy(this.dir.rotation(), device, req, now, this.limits);
     this.dir.setRotation(next);
     if (next?.retire_at) this.arm(next.retire_at);
-    return this.rotationView();
+    return rotationView(next, now, this.limits);
   }
 
   rotationView() {
