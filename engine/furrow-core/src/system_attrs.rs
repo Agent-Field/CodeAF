@@ -25,7 +25,10 @@ const MANAGED_PREFIXES: [&[u8]; 2] = [b"com.apple.metadata:", b"com.apple.diskim
 /// True for an attribute that belongs to the system and so is not content.
 pub fn is_system_managed(name: &OsStr) -> bool {
     let name = name.as_bytes();
-    MANAGED_NAMES.contains(&name) || MANAGED_PREFIXES.iter().any(|prefix| name.starts_with(prefix))
+    MANAGED_NAMES.contains(&name)
+        || MANAGED_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
 }
 
 #[cfg(test)]
