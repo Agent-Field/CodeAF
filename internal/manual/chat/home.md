@@ -389,7 +389,7 @@ what is there. Anything you had changed and never saved is kept first, as a bran
 sentence above; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
 
-## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
+## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile, a file I cannot read, two files with the same name in different case
 
 A chat that moves brings its conversation and every file it worked on, except an install
 folder that a lockfile rebuilds: `node_modules` (with a `package-lock.json`,
@@ -419,6 +419,18 @@ that asks for nothing, and `/setup` lists what is missing later. codeaf never re
 command by itself, and database rows or container data do not travel. A secret in a recorded
 command is shown as `…`. Limits: there is no way to force a folder to travel, and what was
 running is known only from the moment of the move.
+
+One odd file never stops a chat from saving or moving. A file that this machine cannot read
+(mode `0000`, or owned by another user) is kept out of the saved history: the chat says
+`<file> cannot be read here, so it is left out of the saved history until its permissions
+allow it`, the card lists it under `not brought along:` with the same reason, and everything
+else saves as usual. Once the file can be read, the next save carries it. Two files whose
+names differ only in letter case (`Readme.md` and `README.md`), or only in how an accent is
+spelled, cannot both live on a Mac's default disk. The move brings one, the name that sorts
+first (`README.md` before `Readme.md`), keeps the other out and lists it on the card as
+`<file>: not brought along; same name as <other> here`. Taking the chat back leaves both
+files on the machine that had them. A folder marked read-only moves like any other and
+arrives read-only.
 
 ## Tasks that had not landed when a chat moved — working copy, uncommitted task edits, unmerged task branch, worktree
 
