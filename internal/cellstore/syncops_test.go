@@ -108,6 +108,8 @@ func TestSyncEngineDaemonArgsCarryKeys(t *testing.T) {
 			map[string]any{"head": "h", "cell_key": testCellKey, "dedup": testDedup}},
 		{importOp{Head: "h", Inbox: "/i", Ledger: "L", keyArgs: hexKeys(testKeys())},
 			map[string]any{"head": "h", "inbox": "/i", "ledger": "L", "cell_key": testCellKey, "dedup": testDedup}},
+		{importOp{Head: "h", Inbox: "/i", Ledger: "L", Partial: true, keyArgs: hexKeys(testKeys())},
+			map[string]any{"head": "h", "inbox": "/i", "ledger": "L", "partial": true, "cell_key": testCellKey, "dedup": testDedup}},
 		{materializeOp{Head: "h"}, map[string]any{"head": "h"}},
 	}
 	for _, tc := range cases {
@@ -222,4 +224,16 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func TestImportOpPartialArgIsPartialOnly(t *testing.T) {
+	op := importOp{Head: "h", Inbox: "/i", Ledger: "L", Partial: true}
+	if got := op.Args(); got[len(got)-1] != "--partial" {
+		t.Fatalf("args = %v, want trailing --partial", got)
+	}
+	for _, arg := range (importOp{Head: "h", Inbox: "/i", Ledger: "L"}).Args() {
+		if arg == "--partial" {
+			t.Fatal("a strict import must not carry --partial")
+		}
+	}
 }

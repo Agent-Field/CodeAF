@@ -40,6 +40,17 @@ pub struct Import<'a> {
     pub ledger: &'a Ledger,
 }
 
+/// How an import treats the inbox files its walk did not take.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Leftovers {
+    /// An unwanted file is an error.
+    Refuse,
+    /// An unwanted file is deleted.
+    Delete,
+    /// Every file stays: the inbox may still be filling.
+    Keep,
+}
+
 /// What one import call took: the objects it stored and, in primed mode, the
 /// unwanted inbox files it deleted.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -55,13 +66,22 @@ impl Import<'_> {
     /// arrived, so passes repeat until one takes nothing. A file that no pass
     /// wanted is an error.
     pub fn run(&self) -> anyhow::Result<usize> {
-        Ok(self.take(false)?.imported)
+        Ok(self.take(Leftovers::Refuse)?.imported)
     }
 
     /// The same import with the rule a priming take needs: an inbox file no
     /// pass wanted is deleted rather than an error, and the count comes back.
     pub fn run_primed(&self) -> anyhow::Result<Taken> {
-        self.take(true)
+        self.take(Leftovers::Delete)
+    }
+
+    /// The take for an inbox that is still filling while the frames download:
+    /// it stores whatever the walk wants from what has arrived and returns the
+    /// count. It never deletes or refuses a leftover file, because a file may
+    /// belong to an object whose parent has not arrived yet, and an incomplete
+    /// wanted set is the normal state, not an error.
+    pub fn run_partial(&self) -> anyhow::Result<usize> {
+        Ok(self.take(Leftovers::Keep)?.imported)
     }
 
     /// One call, one batch: the catalog commits once and the active pack
@@ -71,7 +91,7 @@ impl Import<'_> {
     /// no partial object and still leaves every file its next attempt wants;
     /// pack bytes the rollback outruns are the store's rebuild-from-pack
     /// rule's to tolerate, as the comment on `ObjectStore::batched` says.
-    fn take(&self, primed: bool) -> anyhow::Result<Taken> {
+    fn take(&self, leftovers: Leftovers) -> anyhow::Result<Taken> {
         let mut taken = Taken::default();
         let mut stored = Vec::new();
         let files = self.inbox_files()?;
@@ -91,7 +111,9 @@ impl Import<'_> {
         for path in stored {
             fs::remove_file(&path).with_context(|| format!("delete {}", path.display()))?;
         }
-        taken.extras_deleted = self.settle_leftovers(primed)?;
+        if leftovers != Leftovers::Keep {
+            taken.extras_deleted = self.settle_leftovers(leftovers == Leftovers::Delete)?;
+        }
         Ok(taken)
     }
 

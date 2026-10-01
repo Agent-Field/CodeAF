@@ -4,7 +4,7 @@
 use clap::Subcommand;
 use furrow::exchange::export::DEFAULT_MAX_FRAME;
 use furrow::exchange::keys::keys_from_env;
-use furrow::exchange::ops;
+use furrow::exchange::ops::{self, ImportMode};
 use furrow::repository::data_root;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -54,6 +54,10 @@ pub enum Exchange {
         /// head wants.
         #[arg(long)]
         primed: bool,
+        /// Streaming mode: store what the walk wants from what has arrived and
+        /// leave every other file in place, for an inbox still filling.
+        #[arg(long, conflicts_with = "primed")]
+        partial: bool,
     },
     /// Tell the engine that the folder it restored into `--from` was moved to
     /// the --repo path, so the tree keeps its history there.
@@ -106,7 +110,15 @@ fn execute(verb: Exchange, repo: &Path) -> anyhow::Result<Value> {
             inbox,
             ledger,
             primed,
-        } => ops::import(&data_dir, &keys_from_env()?, &head, &ledger, &inbox, primed),
+            partial,
+        } => ops::import(
+            &data_dir,
+            &keys_from_env()?,
+            &head,
+            &ledger,
+            &inbox,
+            ImportMode::from_flags(primed, partial)?,
+        ),
         Exchange::Rebind { from } => ops::rebind(&data_dir, &from, repo),
         Exchange::Materialize { head, cell_dir } => {
             ops::restore_head(&data_dir, repo, cell_dir, &head)
