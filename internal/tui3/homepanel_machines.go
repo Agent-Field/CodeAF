@@ -80,6 +80,7 @@ func (a *app) askChats() tea.Cmd {
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machinesAsking = false
 	a.fileMachines(msg)
+	a.considerResume(msg)
 	a.machineRead.down = msg.err != nil
 	a.machineRead.merge = a.branches.Merge != nil
 	a.rebuildMachines()

@@ -574,6 +574,9 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if msg.String() == addMachineKey && a.addMachineWanted() {
 		return a.toggleAddMachine(), true
 	}
+	if cmd, took := a.resumeKeyHandler(msg.String()); took {
+		return cmd, true
+	}
 	a.settleExchangeFocus()
 	ex := a.paneExchange()
 	if ex == nil || !ex.focused {
