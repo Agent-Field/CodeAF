@@ -2,6 +2,35 @@
 // which chat and where its last durable turn is. Every write is a
 // compare-and-swap decided by the pure rules in rules.go; the fake and every
 // real implementation share those rules and one conformance suite.
+//
+// # Link pairing: the client API
+//
+// A new device joins an identity by asking, and an already-paired device
+// answers. The wire is docs/ux-pairing-contract.md; this is how Go calls it.
+//
+// The new device has no identity yet, so it uses Requests (open, unsigned).
+// Over HTTP that is NewLinkHTTP(base, hc); in process it is Links.From(peer).
+//
+//	asked, _ := reqs.CreateRequest(ctx, directory.NewRequest{
+//		Pubkey: pub, X25519: box, NameSealed: sealed, Platform: "linux"})
+//	// show asked.Code, asked.Check and the link https://codeaf.link/p/<code>#<k>
+//	for {
+//		r, err := reqs.GetRequest(ctx, asked.Code, 25*time.Second)
+//		if errors.Is(err, directory.ErrStillPending) { continue }
+//		// r.State is RequestApproved (r.Grant holds the sealed grant) or RequestDenied
+//	}
+//
+// An already-paired device is a Client (signed). It reads the request with
+// GetRequest on the same open Requests, compares Request.Check with the one
+// the new device shows, and then answers once:
+//
+//	err := client.ApproveRequest(ctx, code, directory.Approval{Device: d, Cert: cert, Grant: grant})
+//	err = client.DenyRequest(ctx, code)
+//
+// The first decision wins. A repeat of the same decision succeeds; the other
+// decision is ErrAlreadyDecided. ErrRequestGone covers an unknown, expired or
+// deleted code. Rate limits answer ErrRateLimited (wireauth.After says when to
+// retry); the numbers are LinkLimits, read with LinkHTTP.Limits.
 package directory
 
 // IdentityRec is the per-identity root record.
@@ -31,6 +60,19 @@ type Device struct {
 	AddedBy string `json:"added_by"` // identity id that signed the device cert
 	Revoked bool   `json:"revoked"`  // set only by Revoke; a fresh pairing makes a new device id
 	Caps    Caps   `json:"caps"`
+
+	// Added by link pairing. Old records decode with zero values, and a client
+	// value for Created or LastSeen is ignored: the directory sets both.
+	Platform string `json:"platform,omitempty"`  // darwin|linux|windows|ios|android|other
+	Created  int64  `json:"created,omitempty"`   // directory ms when the device joined
+	LastSeen int64  `json:"last_seen,omitempty"` // directory ms of the last watch socket close or hello
+}
+
+// visibleAt hides LastSeen: a device coming and going is not a change a person
+// sees in the list, so it moves no directory version.
+func (d Device) visibleAt(int64) any {
+	d.LastSeen = 0
+	return d
 }
 
 // Lease says who may write a cell. Only the directory clock sets Expires.
