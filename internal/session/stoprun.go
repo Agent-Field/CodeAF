@@ -274,6 +274,9 @@ func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (Steer
 		if terminalStoreStatus(task.Status) {
 			return SteerReceipt{}, true, fmt.Errorf("%s has finished, not running", taskStopName(id, task.Title))
 		}
+		if err := a.programHearsNothing(run.store, key); err != nil {
+			return SteerReceipt{}, true, err
+		}
 		var err error
 		if origin == fromPerson {
 			_, err = run.store.AddPersonNote(key, text)

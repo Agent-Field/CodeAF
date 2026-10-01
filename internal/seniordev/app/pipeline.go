@@ -18,6 +18,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/runbudget"
@@ -77,6 +78,13 @@ type pipeline struct {
 	// on the last verdict (rememberVerifiedTree in workspace_git.go).
 	lastVerify        *projectVerificationResult
 	lastVerifyTreeSHA string
+	// inbox is where the person's side sends the run messages while it works
+	// (steering.go), nil for a run nobody talks to and once it has closed.
+	inbox   delegate.Listener
+	inboxMu sync.Mutex
+	// promptSaved is the receipt the next turn gives once its prompt, which
+	// carries steering, is saved (steering.go).
+	promptSaved func()
 }
 
 type pipelineResult struct {
