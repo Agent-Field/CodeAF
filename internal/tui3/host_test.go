@@ -397,3 +397,44 @@ func TestHostedPathIsANoOpWithoutAHost(t *testing.T) {
 		t.Fatalf("pathRoot = %q, want the workspace on a local session", a.pathRoot())
 	}
 }
+
+// movedFolder is a chat's own folder with the record a moved chat has.
+func movedFolder(t *testing.T, meta string) string {
+	t.Helper()
+	dir := t.TempDir()
+	work := filepath.Join(dir, "work")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "meta.json"), []byte(meta), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return work
+}
+
+func movedKeys(t *testing.T, work string) string {
+	t.Helper()
+	a, _ := hostLab(t)
+	a.host = ""
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}, Workspace: work}, true)
+	return plain(a.hintRow(a.width))
+}
+
+// A chat moved here from a machine whose project is not on this one works in
+// its own work/ folder. The keys row names the project it was left in, marked
+// as a copy, never the state-root path of that folder and never the product.
+func TestAMovedChatIsNamedByTheProjectItWasLeftIn(t *testing.T) {
+	work := movedFolder(t, `{"id":"x","title":"fix it","origin":"/srv/other/proj-a"}`)
+	keys := movedKeys(t, work)
+	if !strings.Contains(keys, "project: proj-a (copy here)") || strings.Contains(keys, "/work") {
+		t.Fatalf("the keys row = %q", keys)
+	}
+}
+
+// With no origin recorded the chat's own title stands in, never the product.
+func TestAMovedChatWithNoOriginIsNamedByItsTitle(t *testing.T) {
+	keys := movedKeys(t, movedFolder(t, `{"id":"x","title":"fix it"}`))
+	if !strings.Contains(keys, "project: fix it (copy here)") || strings.Contains(keys, ownedWord) {
+		t.Fatalf("the keys row = %q", keys)
+	}
+}

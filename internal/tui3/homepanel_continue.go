@@ -24,7 +24,9 @@ import (
 // NOTHING IS DECIDED BY ONE KEYSTROKE. Continuing takes the chat from a machine
 // that may still hold work, and discarding sets turns aside, so both raise the
 // card home already has for a question about a row (homeconfirm.go), with the
-// cursor on the answer that loses nothing. The takeover sentence is the card's
+// cursor on the answer that loses nothing, except where the person just chose to
+// continue (enter on the row, the left-off chord, the device chord): there it
+// starts on `continue here`. The takeover sentence is the card's
 // reason, quoted whole from [chatlist.TakeoverLine].
 //
 // A VERB THAT CANNOT WORK IS ABSENT. With no [Taker] injected a chat that went
@@ -164,18 +166,36 @@ func (a *app) sayOffer(_ chatlist.Row, offer chatlist.Offer) tea.Cmd {
 
 // ── continue here ───────────────────────────────────────────────────────────
 
-// offerContinue raises the takeover screen.
+// The two places the takeover card's cursor can start.
+const (
+	continueYesAt  = 0
+	continueStayAt = 1
+)
+
+// offerContinue raises the takeover screen for a person who chose to continue
+// (enter on the row, the left-off chord, the device chord): the cursor starts
+// on `continue here`, so enter completes the move they just asked for.
 func (a *app) offerContinue(row chatlist.Row, _ chatlist.Offer) tea.Cmd {
+	return a.raiseContinue(row, continueYesAt)
+}
+
+// askContinue raises the same screen when nobody chose yet (a message sent into
+// a chat another machine holds): the cursor starts on `leave it there`.
+func (a *app) askContinue(row chatlist.Row) tea.Cmd {
+	return a.raiseContinue(row, continueStayAt)
+}
+
+func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 	if a.taker == nil {
 		return a.sayOffer(row, chatlist.Offer{Line: chatlist.StatusLine(row)})
 	}
-	a.raiseMachineAsk(row, a.continueShown(row))
+	a.raiseMachineAsk(row, a.continueShown(row, at))
 	return nil
 }
 
 // continueShown is the takeover question: `continue here` as the yes, and the
-// takeover sentence as the reason. The cursor starts on `leave it there`.
-func (a *app) continueShown(row chatlist.Row) questionShown {
+// takeover sentence as the reason. The cursor starts on option `at`.
+func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 	return questionShown{
 		question: session.Question{
 			Kind:    homeContinueKind,
@@ -192,7 +212,7 @@ func (a *app) continueShown(row chatlist.Row) questionShown {
 			Stakes: session.StakesReversible,
 			Asked:  a.now(),
 		},
-		pick: 1,
+		pick: at,
 		local: func(answer session.Answer) tea.Cmd {
 			if answer.FirstKey() != "1" {
 				return nil

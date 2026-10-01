@@ -36,6 +36,9 @@ impl Walk {
     /// from the store is reported once and never queued again, so a later call
     /// lists only objects that `expand` has since made reachable.
     pub fn explore(&mut self, store: &ObjectStore, missing_limit: usize) -> anyhow::Result<Survey> {
+        // One maintenance section for the whole exploration: every object read
+        // inside it reuses the lock and the open pack instead of taking them again.
+        let _section = store.acquire_maintenance_shared()?;
         let mut found = Survey::default();
         while found.missing.len() < missing_limit {
             let Some((kind, id)) = self.queue.pop_front() else {

@@ -34,7 +34,7 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
 	typed := screen.waitFor(t, `codeaf pair approve (\S+)`)[1]
-	link := screen.waitFor(t, `https://codeaf\.link/p/\S+#\S+`)[0]
+	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
 	check := screen.waitFor(t, `Check number: (\d{4})`)[1]
 	if !strings.Contains(link, typed[:8]) {
 		t.Fatalf("the link %s and the typed form %s name different requests", link, typed)
@@ -63,7 +63,7 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 func TestPairLinkShapeApproves(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
-	link := screen.waitFor(t, `https://codeaf\.link/p/\S+#\S+`)[0]
+	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
 	if _, err := rig.approveWith(t, []string{link}, "y\n"); err != nil {
 		t.Fatal(err)
 	}
