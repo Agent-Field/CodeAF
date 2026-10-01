@@ -124,9 +124,14 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 		return err
 	}
 	defer os.RemoveAll(inbox)
-	// A device that already holds the head wants nothing: priming it would
-	// re-download the plan for objects the store has, so the first survey —
-	// which a cold take pays as round 1 either way — decides whether to prime.
+	// A device that already exchanged objects with this relay holds most of the
+	// chat: the plan names its whole upload history, so priming it would
+	// download what it has to learn about a one-file change. The want loop
+	// fetches a warm take's delta by rid.
+	if f.Engine.Holds(c) {
+		return nil
+	}
+	// A device that already holds the head wants nothing, and needs no frames.
 	want, err := f.Engine.Want(ctx, c, head)
 	if err != nil || len(want) == 0 {
 		return nil

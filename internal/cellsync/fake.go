@@ -283,6 +283,13 @@ func (f *FakeEngine) Published(_ context.Context, c cell.Cell, frames []string) 
 	return nil
 }
 
+// Holds implements Engine: the fake's ledger is its published set.
+func (f *FakeEngine) Holds(c cell.Cell) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.cell(c).published) > 0
+}
+
 // Want implements Engine: breadth first from head, an absent object is wanted
 // and its children are not yet known.
 func (f *FakeEngine) Want(_ context.Context, c cell.Cell, head string) ([]string, error) {
