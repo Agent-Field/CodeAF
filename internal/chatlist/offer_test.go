@@ -121,3 +121,11 @@ func TestMovedSaysTheMeasuredTime(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// A chat whose holder is offline stopped; its sentence does not say it runs.
+func TestTakeoverLineOfAQuietRowDoesNotSayRunning(t *testing.T) {
+	r := Row{Status: Running, Device: "build-box", DurableAgo: 15 * time.Second}.Quiet()
+	if got, want := TakeoverLine(r), "last durable turn 15s ago"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
