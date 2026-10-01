@@ -14,7 +14,9 @@ import (
 
 // Proves the headers the chat stack puts on the wire — from a Config that says
 // nothing at all about attribution, because there is nothing it can say. The
-// values are constants and a caller has no way to supply, vary or omit them.
+// app is this binary's own (RunningApp, decided by its release stamp) and a
+// caller has no way to supply, vary or omit it. Which stamp names which app is
+// attribution_test.go's job; this one proves the wire carries it.
 func TestAttributionOnTheWire(t *testing.T) {
 	seen := http.Header{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,13 +47,14 @@ func TestAttributionOnTheWire(t *testing.T) {
 	t.Logf("HTTP-Referer: %q", seen.Get("HTTP-Referer"))
 	t.Logf("X-OpenRouter-Title: %q", seen.Get("X-OpenRouter-Title"))
 	t.Logf("X-OpenRouter-Categories: %q", seen.Get("X-OpenRouter-Categories"))
-	if seen.Get("HTTP-Referer") != "https://agentfield.ai" {
+	app := RunningApp()
+	if seen.Get("HTTP-Referer") != app.URL {
 		t.Fatalf("referer missing: %v", seen)
 	}
-	if seen.Get("X-OpenRouter-Title") != "AgentField AI" {
+	if seen.Get("X-OpenRouter-Title") != app.Name {
 		t.Fatalf("title missing: %v", seen)
 	}
-	if seen.Get("X-OpenRouter-Categories") != "cli-agent,programming-app" {
+	if seen.Get("X-OpenRouter-Categories") != app.Categories {
 		t.Fatalf("categories missing: %v", seen)
 	}
 }
@@ -63,14 +66,15 @@ func TestAttributionOnTheWire(t *testing.T) {
 // request carrying all four headers is therefore proof that the request was
 // made by this package rather than delegated.
 
-// attributed is what every codeaf-owned request must carry.
+// attributed is what every codeaf-owned request must carry: this binary's app.
 func assertAttributed(t *testing.T, header http.Header, where string) {
 	t.Helper()
+	app := RunningApp()
 	for name, want := range map[string]string{
-		"HTTP-Referer":            "https://agentfield.ai",
-		"X-OpenRouter-Title":      "AgentField AI",
-		"X-Title":                 "AgentField AI",
-		"X-OpenRouter-Categories": "cli-agent,programming-app",
+		"HTTP-Referer":            app.URL,
+		"X-OpenRouter-Title":      app.Name,
+		"X-Title":                 app.Name,
+		"X-OpenRouter-Categories": app.Categories,
 	} {
 		if got := header.Get(name); got != want {
 			t.Fatalf("%s: %s = %q, want %q", where, name, got, want)
@@ -80,7 +84,7 @@ func assertAttributed(t *testing.T, header http.Header, where string) {
 
 // attributedConfig is an OpenRouter-shaped adapter configured exactly as the
 // chat stack configures one — which is to say with no attribution in it, since
-// the app is a constant of this package rather than a setting.
+// the app is this binary's own rather than a setting.
 func attributedConfig(handler http.Handler) Config {
 	return Config{
 		APIKey:     "test-key",

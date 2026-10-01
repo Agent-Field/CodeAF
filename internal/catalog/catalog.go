@@ -256,6 +256,12 @@ type Options struct {
 	// replace: asking for fresher facts must never leave a surface with fewer
 	// facts than it had.
 	Refresh bool
+
+	// serveStale answers a cache past [TTL] as it stands instead of fetching
+	// in front of it. Only [LoadLazy] sets it, because only a lazy catalog has
+	// somewhere to put the refresh: its own warming goroutine, behind the
+	// answer. See [LoadLazy] for why a day-old catalog must not hold a frame.
+	serveStale bool
 }
 
 // Catalog is immutable once resolved and therefore safe to share among the
@@ -391,6 +397,21 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 // frame behind a dead terminal. Nothing a catalog answers can be asked before
 // the surface is up, so the goroutine warms the value while the caller carries
 // on, and only a question that genuinely arrives first ever blocks.
+//
+// A CACHE PAST ITS TTL IS ANSWERED AT ONCE AND REFRESHED BEHIND THE ANSWER.
+// The questions that do arrive first are not rare: opening a conversation asks
+// several (the agent's own tool belt cannot be built without knowing which
+// media models exist), and they all wait on this one value. So a catalog that
+// fetched in front of a day-old cache made the first launch of every day pay a
+// GET /models before anything was drawn — about ten seconds on an ordinary
+// connection, most of a minute on one whose DNS was failing (v0.5.0,
+// 2026-10-01). Yesterday's rows are the truest answer anyone has in that
+// moment, exactly as [load] already serves them when the fetch fails, and they
+// carry their own date ([Catalog.FetchedAt]). The fetch still happens, on this
+// catalog's own warming goroutine, and its rows reach the disk for the next
+// reader; this catalog keeps answering what it answered first, because a
+// listing that changed under somebody mid-conversation would be a second
+// source of truth. Only a machine with no cache at all still waits, once.
 func LoadLazy(ctx context.Context, options Options) *Catalog {
 	warmCtx, cancel := context.WithCancel(ctx)
 	resolved := &Catalog{
@@ -398,8 +419,10 @@ func LoadLazy(ctx context.Context, options Options) *Catalog {
 		cancel:   cancel,
 		warmDone: make(chan struct{}),
 	}
+	answer := options
+	answer.serveStale = true
 	resolve := sync.OnceValue(func() *rows {
-		loaded, _ := loadOrFallback(warmCtx, options)
+		loaded, _ := loadOrFallback(warmCtx, answer)
 		resolved.warm.Store(loaded)
 		// The wait door ([Catalog.Warmed]) reads the close, not the value, and
 		// the two land together so a caller that arrived between them would
@@ -410,9 +433,40 @@ func LoadLazy(ctx context.Context, options Options) *Catalog {
 	resolved.resolve = resolve
 	guard.Go("catalog/warm", func() {
 		defer close(resolved.warmDone)
-		resolve()
+		if !stale(resolve(), options) {
+			return
+		}
+		// The refresh the answer did not wait for. Its rows go to the cache
+		// file and nowhere else; a failure leaves the old cache where it was,
+		// and a Close cancels it before a late response can write anything
+		// ([load] reads the context after the fetch).
+		refresh := options
+		refresh.Refresh = true
+		_, _ = loadOrFallback(warmCtx, refresh)
 	})
 	return resolved
+}
+
+// stale reports whether resolved rows came from a cache past [TTL], which is
+// the one case [LoadLazy] refreshes behind its answer. Rows that never left a
+// provider (the compiled fallbacks, an empty listing) carry no date and are
+// not stale: they are what a fetch that just failed left behind, and a second
+// fetch straight after it would only fail again.
+//
+// IT ASKS THE ROWS AND NOTHING ELSE. A dated row older than the TTL can only
+// have come from a cache, and an empty [Options.Dir] is not "no cache": the
+// cache path falls back to the home directory ([cachePath]), which is exactly
+// how the engine host's own catalog is built — so a check on Dir here would
+// skip the refresh on the one catalog every conversation asks.
+func stale(resolved *rows, options Options) bool {
+	if resolved == nil || resolved.fetchedAt.IsZero() {
+		return false
+	}
+	now := time.Now
+	if options.Now != nil {
+		now = options.Now
+	}
+	return !now().Before(resolved.fetchedAt.Add(TTL))
 }
 
 // Close cancels and joins a lazy catalog warm. It is safe to call more than
@@ -437,7 +491,7 @@ func load(ctx context.Context, options Options) (*rows, error) {
 	source := strings.TrimSpace(options.Source)
 	path := cachePath(options.Dir, source, base)
 	cached, cachedOK := readCache(path, source, base)
-	if cachedOK && !options.Refresh && now().Before(cached.FetchedAt.Add(TTL)) {
+	if cachedOK && !options.Refresh && (options.serveStale || now().Before(cached.FetchedAt.Add(TTL))) {
 		return newRowsAt(cached.Models, cached.FetchedAt), nil
 	}
 
