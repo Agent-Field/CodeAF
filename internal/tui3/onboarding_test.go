@@ -1206,3 +1206,74 @@ func TestAnExpiredKeyIsSaidUnderTheModelRowWithoutCuttingTheList(t *testing.T) {
 		t.Fatalf("an expired key was spelled as a low account:\n%s", screen)
 	}
 }
+
+// THE EXAMPLES GO ROUND: `→` on the last one is the first, `←` on the first is
+// the last, and the count on the edge says where you are.
+func TestTheExamplesWrapAroundInBothDirections(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.setup.example = len(setupExamples) - 1
+	pressSetup(a, key("right"))
+	if a.setup.example != 0 {
+		t.Fatalf("→ on the last example landed on %d, want the first", a.setup.example)
+	}
+	pressSetup(a, key("left"))
+	if a.setup.example != len(setupExamples)-1 {
+		t.Fatalf("← on the first example landed on %d, want the last", a.setup.example)
+	}
+	a.settleSetupDemo()
+	count := strings.Join(strings.Fields(setupShowcaseCount(len(setupExamples)-1, len(setupExamples))), " ")
+	if !strings.Contains(setupScreen(a), count) {
+		t.Fatalf("the edge does not say where the walk is:\n%s", setupScreen(a))
+	}
+}
+
+// A ROW'S NAME IS PAINTED BY ONE RULE ON EVERY ROW: the accent while the focus
+// is on it, dim once enter has answered it, and the body ink until then.
+func TestRowNamesAreAccentWhenFocusedDimWhenAnsweredAndInkUntilThen(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.models = func() []Model { return []Model{{ID: "openai/gpt-4.1-mini"}, {ID: "b/bravo"}} }
+	pal := a.pal
+	limit := padTo(controlLimitLabel, controlLabelWidth)
+	model := padTo(controlModelLabel, controlLabelWidth)
+	frame, _, _ := a.frame()
+	if !strings.Contains(frame, pal.accent(limit)) {
+		t.Fatalf("the focused limit's name is not the accent:\n%s", plain(frame))
+	}
+	if !strings.Contains(frame, pal.ink(model)) {
+		t.Fatalf("the untouched model row's name is not the body ink:\n%s", plain(frame))
+	}
+	pressSetup(a, key("enter")) // the limit, answered; the focus moves on
+	frame, _, _ = a.frame()
+	if !strings.Contains(frame, pal.dim(limit)) {
+		t.Fatalf("the answered limit's name is not dim:\n%s", plain(frame))
+	}
+	if !strings.Contains(frame, pal.accent(model)) {
+		t.Fatalf("the focused model row's name is not the accent:\n%s", plain(frame))
+	}
+	// Opening the list and leaving it with esc answers nothing.
+	pressSetup(a, key("enter"), key("esc"))
+	if frame, _, _ = a.frame(); !strings.Contains(frame, pal.accent(model)) {
+		t.Fatalf("esc out of the list changed the focused row's paint:\n%s", plain(frame))
+	}
+	pressSetup(a, key("enter"), key("enter")) // open, take the model in use; the focus moves on
+	frame, _, _ = a.frame()
+	if !strings.Contains(frame, pal.dim(model)) {
+		t.Fatalf("the answered model row's name is not dim:\n%s", plain(frame))
+	}
+	if !strings.Contains(frame, pal.accent(fit(controlReviewDefaults, setupFormWidth-2))) {
+		t.Fatalf("the focused review row's name is not the accent:\n%s", plain(frame))
+	}
+	if !strings.Contains(frame, pal.ink(controlStartWord)) {
+		t.Fatalf("the untouched way out is not the body ink:\n%s", plain(frame))
+	}
+	// Walking back onto an answered row paints it the accent again; leaving
+	// it, dim again.
+	pressSetup(a, key("up"))
+	if frame, _, _ = a.frame(); !strings.Contains(frame, pal.accent(model)) {
+		t.Fatalf("the answered row under the focus is not the accent:\n%s", plain(frame))
+	}
+	pressSetup(a, key("down"))
+	if frame, _, _ = a.frame(); !strings.Contains(frame, pal.dim(model)) {
+		t.Fatalf("the answered row is not dim again once left:\n%s", plain(frame))
+	}
+}

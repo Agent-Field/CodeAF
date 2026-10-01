@@ -98,8 +98,12 @@ type setupFlow struct {
 	//     right-hand column is showing, and seeded says the screen has already
 	//     been read from the profile once — so coming back from the step behind
 	//     it does not throw away what was typed.
-	control    setupControl
-	detail     bool
+	control setupControl
+	detail  bool
+	// answered marks the rows enter has acted on — the limit committed, a
+	// model taken, the review shown — which is what paints a row's name dim
+	// once it is done (onboarding.go's [app.setupLabelInk]).
+	answered   [setupControlCount]bool
 	limitText  string
 	limitTyped bool
 	modelOpen  bool

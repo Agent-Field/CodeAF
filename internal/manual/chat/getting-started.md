@@ -229,11 +229,17 @@ type and what it leads to, and follows the row you are on: on the review row it 
 shows `/senior-dev Add retries with backoff to the HTTP client, with tests.` — a command
 in a request is painted as the same chip the message box paints a recognised command with.
 That request **types itself out once** on arriving and on `←`/`→`, then settles; typing
-settles it at once. Two blank rows separate the panel from the form's heading. On a window
+settles it at once. `←`/`→` go round: `→` on the last example is the first again. Two blank rows separate the panel from the form's heading. On a window
 too short to hold the form and the whole panel — 24 rows, say — the panel is not drawn and
 the form is unchanged. (Until 2026-10-01 the panel was a second column to the right of the
 form, drawn only from 112 columns up, and carried `An illustration. Nothing here has run.`
 at its foot; the label on its edge now says that once.)
+
+**A row's name says where you are.** Each name — `Daily limit`, `Chat model`, the review
+row, `Start a conversation` — is in the body colour until you have answered it, blue while
+you are on it, and grey once `enter` has acted on it: the limit set, a model taken from the
+list, the review shown. Walking back onto an answered row makes it blue again while you are
+there. Opening the list and leaving it with `esc` answers nothing.
 
 The keys line is the form's second row, directly under `Basic settings`. It reads `enter
 sets the limit · ↑↓ moves · esc back · type an amount or none · ? detail` on the limit

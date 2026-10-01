@@ -228,7 +228,10 @@ func (a *app) setupControlsKey(name, text string) bool {
 		if name == "left" {
 			delta = -1
 		}
-		s.example = moveCursor(s.example, delta, len(setupExamples))
+		// THE EXAMPLES GO ROUND. `→` on the last one is the first again, so a
+		// person browsing them never hits a wall they cannot see the reason
+		// for; the count on the panel's edge says where they are.
+		s.example = wrapCursor(s.example, delta, len(setupExamples))
 		// One of the two deliberate acts the demonstration plays for.
 		a.restartSetupDemo()
 		return true
@@ -288,6 +291,15 @@ func (a *app) setupControlsKey(name, text string) bool {
 		s.limitTyped = true
 	}
 	return true
+}
+
+// wrapCursor walks a ring of count rows by delta, coming round at both ends —
+// the examples' walk, where [moveCursor]'s clamp is a list's.
+func wrapCursor(cursor, delta, count int) int {
+	if count <= 0 {
+		return 0
+	}
+	return ((cursor+delta)%count + count) % count
 }
 
 // dropLast takes one rune off the end of what has been typed.
@@ -390,6 +402,7 @@ func (a *app) setupControlsEnter() bool {
 		if !a.commitSetupLimit() {
 			return false
 		}
+		s.answered[controlLimit] = true
 		s.focusControl(a, 1)
 		return false
 
@@ -406,6 +419,7 @@ func (a *app) setupControlsEnter() bool {
 			// pressing enter to get through the form never got past this row.
 			// A refusal keeps the focus here so it can be read.
 			if s.refusal == "" {
+				s.answered[controlChatModel] = true
 				s.focusControl(a, 1)
 			}
 			return false
@@ -432,6 +446,7 @@ func (a *app) setupControlsEnter() bool {
 			return false
 		}
 		s.reviewOpen = true
+		s.answered[controlReview] = true
 		return false
 	}
 	// `Start a conversation` — everything the screen holds is written down, and
@@ -1386,22 +1401,28 @@ func (a *app) setupControlLead(control setupControl) string {
 	return "  "
 }
 
+// setupLabelInk is the one rule for how a row's name is painted, on every row
+// of the form: the ACCENT while the focus is on it, DIM once enter has answered
+// it, and the body INK until then. A name is never decoration — it is what tells
+// a person what the figure beside it means — so the three states are the three
+// facts about it a person needs at a glance: this one, done, still to do.
+func (a *app) setupLabelInk(control setupControl) func(string) string {
+	s := &a.setup
+	switch {
+	case s.control == control:
+		return a.pal.accent
+	case s.answered[control]:
+		return a.pal.dim
+	}
+	return a.pal.ink
+}
+
 // setupFieldRow is one label-and-value row of the form: the label in its column,
 // the value in bold, and — where a row has one — a dim word for where the value
 // came from.
 func (a *app) setupFieldRow(width int, control setupControl, label, value, source string) string {
 	pal := a.pal
-	name := padTo(label, controlLabelWidth)
-	if a.setup.control == control {
-		name = pal.ink(name)
-	} else {
-		// A LABEL IS NEVER DECORATION. `Daily limit` is what tells a person what
-		// the figure beside it means, and a form whose three labels were all at
-		// telemetry weight was a form nobody could scan. Dim on this screen is
-		// kept for where a value came from and for the keyboard legend — the
-		// metadata around the decision, not the decision.
-		name = pal.muted(name)
-	}
+	name := a.setupLabelInk(control)(padTo(label, controlLabelWidth))
 	if value == "" {
 		// THE EMPTINESS LAW. A value nobody has resolved yet draws as nothing at
 		// all rather than as a placeholder claiming one.
@@ -1486,12 +1507,7 @@ func (a *app) setupLimitRow(width int) (string, int) {
 	}
 	room := max(width-2-controlLabelWidth, 1)
 	shown = fit(shown, room)
-	name := padTo(controlLimitLabel, controlLabelWidth)
-	if s.control == controlLimit {
-		name = pal.ink(name)
-	} else {
-		name = pal.dim(name)
-	}
+	name := a.setupLabelInk(controlLimit)(padTo(controlLimitLabel, controlLabelWidth))
 	at := ansi.StringWidth(setupLead) + controlLabelWidth + ansi.StringWidth(shown)
 	return a.setupControlLead(controlLimit) + name + pal.bold(pal.ink(shown)), at
 }
@@ -1592,7 +1608,6 @@ const setupNoMatchWord = "nothing matches · backspace widens it"
 // and not on a guess: a profile that has written any of the three down is NOT
 // told they are defaults.
 func (a *app) setupReviewRow(width int) string {
-	pal := a.pal
 	long, short := controlReviewDefaults, controlReviewDefaultsShort
 	if a.setupOtherSettingsWritten() {
 		long, short = controlReviewYours, controlReviewYoursShort
@@ -1601,10 +1616,7 @@ func (a *app) setupReviewRow(width int) string {
 	if ansi.StringWidth(long) > width-2 {
 		word = short
 	}
-	if a.setup.control == controlReview {
-		return a.setupControlLead(controlReview) + pal.ink(fit(word, width-2))
-	}
-	return a.setupControlLead(controlReview) + pal.dim(fit(word, width-2))
+	return a.setupControlLead(controlReview) + a.setupLabelInk(controlReview)(fit(word, width-2))
 }
 
 // setupOtherSettingsWritten reports whether this profile has chosen any of the
@@ -1671,11 +1683,9 @@ func (a *app) setupReviewRows(width int) ([]string, []string) {
 // obvious one.
 func (a *app) setupStartRow(width int) string {
 	pal := a.pal
-	word := controlStartWord
+	word := a.setupLabelInk(controlStart)(controlStartWord)
 	if a.setup.control == controlStart {
-		word = pal.bold(pal.ink(word))
-	} else {
-		word = pal.dim(word)
+		word = pal.bold(word)
 	}
 	row := a.setupControlLead(controlStart) + word
 	const cap = "enter"
