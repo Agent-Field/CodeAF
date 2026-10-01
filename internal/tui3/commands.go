@@ -122,6 +122,7 @@ var commands = []command{
 	// (landcmd.go), so the list is the second way of finding it and not the
 	// first.
 	{name: "land", desc: "put the changes for another folder into it · says what changed first"},
+	{name: "land", args: "now", desc: "…put the waiting changes into their folder"},
 	{name: "land", args: "<folder>", desc: "…that folder, when more than one is waiting"},
 	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
 	// frequency law this table is ordered by. /resume is "which conversation,
@@ -277,6 +278,7 @@ var commands = []command{
 	{name: "crew", args: "unpin <seat|all>", desc: "…put a seat back on auto"},
 	{name: "crew", args: "models <rule>", desc: "…which models a seat may be picked from · all, open, ≤in/out, ids"},
 	{name: "crew", args: "cap <dollars|off>", desc: "…the most tasks' crews may spend in a day"},
+	{name: "crew", args: "cap task <dollars>", desc: "…the most one task may spend"},
 	// AND HOW HARD THE ONE YOU TALK TO THINKS, under the two rows about WHICH
 	// models it thinks with, because that is the order the two questions arrive
 	// in: a person picks the model and then decides how much of it to spend.
@@ -374,6 +376,7 @@ var commands = []command{
 	// be the most expensive pun on the surface.
 	{name: "cache", desc: "the shared build cache — how big, and where"},
 	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
+	{name: "cache", args: "clean now", desc: "…delete the cache now"},
 	// THE THREE DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
 	// that is where a person goes with the question they answer. The keys behind
 	// the first two are the least discoverable on the surface — nothing on the
@@ -1092,10 +1095,10 @@ func helpText(file string, chords chordSpelling) string {
 		// answer to the question that test asks). The card is named by what it is
 		// instead.
 		helpKeyRow(closeTabChord, "close this tab · select the last open chat · keep your draft"),
-		// THE TEAM'S TWO CHORDS (teamrail.go). They do something only in a team
-		// with a manager, and the rows say so rather than leaving a person to
-		// find out by pressing them anywhere else.
-		helpKeyRow(chords.say(trafficKey), "with a team's manager in front: show or hide its Traffic"),
+		// THE COLUMN CHORD AND THE MANAGER CHORD (teamrail.go). The first works in
+		// every chat; the second needs a team with a manager, and the rows say so
+		// rather than leaving a person to find out by pressing them elsewhere.
+		helpKeyRow(chords.say(trafficKey), "show or hide the right column · Tasks or Traffic"),
 		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
 		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back"),

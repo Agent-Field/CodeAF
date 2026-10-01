@@ -1210,6 +1210,14 @@ type Config struct {
 	APIKey    string
 	BaseURL   string
 	Sources   modelsource.Set
+	// AuthKeySource explains a refused worker account without supplying routing
+	// settings to a worker whose completer already owns its endpoint and key.
+	// Nil keeps ordinary sessions on their own profile and source ladder.
+	AuthKeySource func(model string) string
+	// workerWireModel is the slug of the raw transport supplied to a belt
+	// worker. Account-aware completers leave it empty and resolve the qualified
+	// model themselves; the auth explanation never supplies this value.
+	workerWireModel string
 
 	// There is no app-attribution field here any more. The three that used to
 	// be forwarded to the provider client — a referer, a title, a category

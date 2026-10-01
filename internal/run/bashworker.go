@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -62,6 +63,9 @@ type BashWorker struct {
 	// nothing stands, and no section is rendered.
 	standing  string
 	completer session.Completer
+	// The door explains a refused account without changing the request road
+	// already owned by the injected completer.
+	authKeySource func(model string) string
 }
 
 // NewBashWorker builds the seat the run's factory hands each claimed task to.
@@ -112,29 +116,27 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		Workspace:        w.workspace,
 		Model:            w.model,
 		WaitForBeltSteps: true,
+		AuthKeySource:    w.authKeySource,
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err
 	}
-	defer func() { _ = agent.Close(); agent.SettleWrites() }()
-	runCtx, stop := context.WithCancel(ctx)
+	var receipts workerReceipts
+	defer func() {
+		used := settledWorkerUsage(agent, &receipts)
+		rep.USD, rep.TokensIn, rep.TokensOut = used.CostUSD, used.Input, used.Output
+		w.recordSpend(task.ID, used.CostUSD, used.Input, used.Output)
+	}()
+	runCtx, stop := context.WithCancel(provider.WithReceiptPending(ctx, receipts.owe))
 	defer stop()
 	rec := stepRecorder{store: w.store, storeDir: storeDir, taskID: task.ID, children: childrenOf(w.store, task.ID)}
 	var (
 		steps      int
 		stepNumber int
-		usd        float64
-		inTok      int
-		outTok     int
 	)
 	if len(past) > 0 {
 		stepNumber = past[len(past)-1].Step
 	}
-	// THE SPEND ROW IS WRITTEN ONCE, WHATEVER THE ENDING. A turn that spent money
-	// spent it whether it finished, hit the cap or errored, so the write is
-	// deferred rather than kept to the good path: a person reading the ledger sees
-	// what the task cost even when the task did not finish.
-	defer func() { w.recordSpend(task.ID, usd, inTok, outTok) }()
 
 	// THE BRIEF IS SAID ONCE, on the first round. Every round after it goes out
 	// on the harness's own note, because a round only begins again when the last
@@ -395,10 +397,6 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 					ending = end
 					stop()
 				}
-			case session.EventTurnDone:
-				usd += event.Usage.CostUSD
-				inTok += event.Usage.Input
-				outTok += event.Usage.Output
 			case session.EventError:
 				if turnErr == nil {
 					turnErr = event.Err
@@ -422,23 +420,23 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		switch {
 		case ending.kind == endingDone:
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {
-				return Report{Steps: steps, USD: usd}, err
+				return Report{Steps: steps}, err
 			}
-			return Report{Result: ending.result, Steps: steps, USD: usd}, nil
+			return Report{Result: ending.result, Steps: steps}, nil
 		case ending.kind == endingWait:
 			reason := "waiting"
 			if ending.reason != "" {
 				reason = ending.reason
 			}
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
-				return Report{Steps: steps, USD: usd}, err
+				return Report{Steps: steps}, err
 			}
-			return Report{Steps: steps, USD: usd, Waiting: true}, nil
+			return Report{Steps: steps, Waiting: true}, nil
 		case capped:
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "stopped at the step cap"}); err != nil {
-				return Report{Steps: steps, USD: usd}, err
+				return Report{Steps: steps}, err
 			}
-			return Report{Steps: steps, USD: usd}, fmt.Errorf("stopped at its step cap after %d steps", capSteps)
+			return Report{Steps: steps}, fmt.Errorf("stopped at its step cap after %d steps", capSteps)
 		case stalled:
 			// THE LAW'S OWN ENDING, in the plain words a person reads on the
 			// task's page: no machinery, no counts of things they have no
@@ -448,19 +446,19 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 			// what a person opening the record counts.
 			reason := fmt.Sprintf("the same command came back with the same answer %d times in a row: the work was not moving", sameStepNote+sameStepEnd)
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
-				return Report{Steps: steps, USD: usd}, err
+				return Report{Steps: steps}, err
 			}
-			return Report{Steps: steps, USD: usd}, errors.New(reason)
+			return Report{Steps: steps}, errors.New(reason)
 		case ctx.Err() != nil:
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "the run's wall stopped it"}); err != nil {
-				return Report{Steps: steps, USD: usd}, err
+				return Report{Steps: steps}, err
 			}
-			return Report{Steps: steps, USD: usd}, fmt.Errorf("the run's wall stopped the worker: %w", ctx.Err())
+			return Report{Steps: steps}, fmt.Errorf("the run's wall stopped the worker: %w", ctx.Err())
 		case turnErr != nil:
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "the turn errored: " + turnErr.Error()}); err != nil {
-				return Report{Steps: steps, USD: usd}, err
+				return Report{Steps: steps}, err
 			}
-			return Report{Steps: steps, USD: usd}, turnErr
+			return Report{Steps: steps}, turnErr
 		}
 
 		// A TURN THAT ENDED CLEANLY ENDED ON A REPLY WITH NO TOOL CALL. That
@@ -477,9 +475,9 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		if noAction >= noActionLimit {
 			reason := fmt.Sprintf("%d replies in a row carried no action", noAction)
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
-				return Report{Steps: steps, USD: usd}, err
+				return Report{Steps: steps}, err
 			}
-			return Report{Steps: steps, USD: usd}, errors.New(reason)
+			return Report{Steps: steps}, errors.New(reason)
 		}
 
 		// THE NEXT ROUND OPENS ON THE HARNESS'S OWN SENTENCES, and never on the

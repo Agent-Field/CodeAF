@@ -2,6 +2,8 @@ package remote
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
+
+var fallbackClientID atomic.Uint64
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
 //
@@ -277,6 +281,9 @@ func newClient(host string, hello Hello) *Client {
 	if strings.TrimSpace(hello.Surface) == "" {
 		hello.Surface = MachineName()
 	}
+	if strings.TrimSpace(hello.ClientID) == "" {
+		hello.ClientID = newClientID()
+	}
 	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
 		host:    strings.TrimSpace(host),
@@ -290,6 +297,20 @@ func newClient(host string, hello Hello) *Client {
 		driverWake: make(chan struct{}),
 		following:  make(chan Following, followingRoom),
 	}
+}
+
+// newClientID gives one surface a stable identity to carry through every
+// redial. It is not an authorization token; it only lets the engine tell a
+// returning window from another window using the same machine label.
+func newClientID() string {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err == nil {
+		return hex.EncodeToString(raw)
+	}
+	// A failed system random source must not make the connection unusable. The
+	// clock and process-local sequence still distinguish the clients this
+	// process creates, which is enough for the in-memory room's live identity.
+	return fmt.Sprintf("%x-%x", time.Now().UnixNano(), fallbackClientID.Add(1))
 }
 
 // attach says hello on one pipe and reads the welcome back. It is the handshake
@@ -1351,6 +1372,36 @@ func (c *Client) MemoryProvenance(id string) (string, string, time.Time, error) 
 		return "", "", time.Time{}, err
 	}
 	return out.Session, out.Title, out.At, nil
+}
+
+func (c *Client) Remember(text string) (string, error) {
+	payload, err := c.call(nil, MethodMemoryRemember, text)
+	if err != nil {
+		return "", err
+	}
+	var title string
+	err = json.Unmarshal(payload, &title)
+	return title, err
+}
+
+func (c *Client) ForgetQuery(query string) (string, error) {
+	payload, err := c.call(nil, MethodMemoryForgetQuery, query)
+	if err != nil {
+		return "", err
+	}
+	var title string
+	err = json.Unmarshal(payload, &title)
+	return title, err
+}
+
+func (c *Client) Memories(query string) ([]session.MemoryLine, error) {
+	payload, err := c.call(nil, MethodMemoryMemories, query)
+	if err != nil {
+		return nil, err
+	}
+	var lines []session.MemoryLine
+	err = json.Unmarshal(payload, &lines)
+	return lines, err
 }
 
 func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {

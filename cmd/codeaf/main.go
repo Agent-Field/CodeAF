@@ -541,7 +541,7 @@ Housekeeping — changes state on disk or on the network
       connect one: openrouter and codex sign in in your browser; the others
       take a key on stdin, or ask for one without echo
   codeaf disconnect <provider>
-      forget a service and the key or sign-in behind it
+      forget a provider and the key or sign-in behind it
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
       check or install a release; this build's own channel is the default
   codeaf cache
