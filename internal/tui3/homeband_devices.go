@@ -108,6 +108,15 @@ func (a *app) devicesWanted() bool {
 	return known && len(a.devRow.devices) > 1
 }
 
+// paintPresence tells a device that is here from one that is away by colour as
+// well as by the dot: online is green, away is dim.
+func paintPresence(pal palette, mark string, online bool) string {
+	if online {
+		return pal.add(mark)
+	}
+	return pal.dim(mark)
+}
+
 func drawDevicesBand(a *app, ctx bandContext) []string {
 	if !a.devicesWanted() {
 		return nil
@@ -115,9 +124,9 @@ func drawDevicesBand(a *app, ctx bandContext) []string {
 	online, _ := a.presence()
 	marks := make([]string, 0, len(a.devRow.devices))
 	for _, d := range a.devRow.devices {
-		marks = append(marks, d.Mark(online[d.ID]))
+		marks = append(marks, paintPresence(ctx.pal, d.Mark(online[d.ID]), online[d.ID] || d.Self))
 	}
-	rows := []string{ctx.pal.ink(fit(strings.Join(marks, deviceGap), ctx.width))}
+	rows := []string{fit(strings.Join(marks, deviceGap), ctx.width)}
 	if len(a.devicePicks()) == 0 {
 		return rows
 	}

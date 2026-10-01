@@ -161,3 +161,58 @@ func TestFreshHomeListsRowsFromOtherMachines(t *testing.T) {
 		})
 	}
 }
+
+// TestAChatHeldElsewhereIsDrawnAsSuchWhicheverReadingComesFirst is the two
+// orders of one fact: this machine lists the chat (it replicated) and the
+// directory says another machine last held it, live or gone quiet. The row is
+// the other machine's, with its note and its door, whether the machines reading
+// lands before the local list does or after it.
+func TestAChatHeldElsewhereIsDrawnAsSuchWhicheverReadingComesFirst(t *testing.T) {
+	for _, status := range []chatlist.Status{chatlist.Running, chatlist.Off} {
+		for _, readingFirst := range []bool{true, false} {
+			name := fmt.Sprintf("%s/reading first=%v", status, readingFirst)
+			t.Run(name, func(t *testing.T) {
+				lab := newHomeLab(t)
+				workspace := lab.workspace("project")
+				id := "0000000000000001"
+				src := chatlist.Static{{Cell: id, Title: "Port the picker", Device: "studio", DeviceID: "dev_studio",
+					Status: status, DurableAgo: time.Minute}}
+				var a *app
+				if readingFirst {
+					a = lab.app("")
+					a.width, a.height = 200, 70
+					a.machines = src
+					drain(t, a, a.askMachines())
+					lab.session("project", id, "Port the picker", workspace, time.Now())
+					drain(t, a, a.openHome())
+				} else {
+					a = lab.app(lab.session("project", id, "Port the picker", workspace, time.Now()))
+					a.width, a.height = 200, 70
+					drain(t, a, a.openHome())
+					a.machines = src
+					drain(t, a, a.askMachines())
+				}
+				if got := linesWith(a, "studio"); len(got) == 0 {
+					t.Fatalf("the chat is drawn as a plain local row:\n%s", homeText(a))
+				}
+			})
+		}
+	}
+}
+
+// A chat this machine itself let lapse is its own to pick up: no other
+// machine's row stands over it.
+func TestAChatThisMachineLetLapseStaysLocal(t *testing.T) {
+	lab := newHomeLab(t)
+	workspace := lab.workspace("project")
+	a := lab.app(lab.session("project", "0000000000000001", "Mine", workspace, time.Now()))
+	a.width, a.height = 200, 70
+	drain(t, a, a.openHome())
+	a.machines = chatlist.Static{{Cell: "0000000000000001", Title: "Mine", Device: "here", Status: chatlist.Off, Mine: true}}
+	drain(t, a, a.askMachines())
+	for _, line := range a.home.lines {
+		if line.remote != nil {
+			t.Fatalf("drew a remote row over this machine's own chat:\n%s", homeText(a))
+		}
+	}
+}
