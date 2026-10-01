@@ -1231,7 +1231,34 @@ func importForeignSkillsBeforeFirstMessage(shelf *store.Store, workspace string)
 	if err != nil {
 		return
 	}
-	resident.ReconcileImportedSkills(shelf, workspace, homeDir)
+	runWithinBudget(skillImportBudget, func() {
+		resident.ReconcileImportedSkills(shelf, workspace, homeDir)
+	})
+}
+
+// skillImportBudget is how long a launch waits for the skill import pass. The
+// pass reads a few small files and takes milliseconds; the one thing that makes
+// it slow is a skill folder linked into a place the operating system guards
+// with a permission prompt (macOS Documents, reached over ssh), where open(2)
+// blocks and nothing can cancel it. Waiting forever there left the window blank.
+const skillImportBudget = 2 * time.Second
+
+// runWithinBudget runs pass and waits for it at most budget, reporting whether
+// it finished. A pass that outlives the budget is left to finish on its own: it
+// is idempotent and ignores every failure, so the only cost of giving up is a
+// conversation that opens without the skills that pass had not yet recorded.
+func runWithinBudget(budget time.Duration, pass func()) bool {
+	done := make(chan struct{})
+	guard.Go("skill-import", func() {
+		defer close(done)
+		pass()
+	})
+	select {
+	case <-done:
+		return true
+	case <-time.After(budget):
+		return false
+	}
 }
 
 // v3SkillShelf is the store the skill shelf lives in for one process: the
