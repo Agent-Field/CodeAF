@@ -315,10 +315,9 @@ func TestANamelessCallIsNeverAnnounced(t *testing.T) {
 	}
 }
 
-// A stream that stops without saying [DONE] ends the same way it always has —
-// at EOF, with the response built from what arrived — and the announcements
-// follow the same rule they do everywhere else: the whole calls, never the one
-// the stream stopped in the middle of.
+// A stream that stops without saying [DONE] is truncated. It must not return a
+// response, while announcements still follow the same rule: whole calls, never
+// the one the stream stopped in the middle of.
 func TestAStreamThatStopsShortAnnouncesOnlyWholeCalls(t *testing.T) {
 	client := streamClientForTest(t, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")
@@ -330,8 +329,13 @@ func TestAStreamThatStopsShortAnnouncesOnlyWholeCalls(t *testing.T) {
 	ctx := WithStreamObserver(context.Background(), func(event StreamEvent) {
 		observed = append(observed, event)
 	})
-	if _, err := client.CompleteWithMessages(ctx, userMessages("read it")); err != nil {
-		t.Fatal(err)
+	response, err := client.CompleteWithMessages(ctx, userMessages("read it"))
+	cut, ok := CutFrom(err)
+	if !ok || cut.Reason != CutTruncated {
+		t.Fatalf("err = %v, want a truncated stream cut", err)
+	}
+	if response != nil {
+		t.Fatalf("truncated stream returned a response: %+v", response)
 	}
 	ready := readyCalls(t, observed)
 	if len(ready) != 1 || ready[0].ID != "call_1" {

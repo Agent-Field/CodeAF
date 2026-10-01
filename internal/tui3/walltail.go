@@ -498,6 +498,12 @@ func (a *app) wallTiles(now time.Time) []wallTile {
 		if tab.start || tab.work {
 			continue
 		}
+		// THE WALL IS THE OPEN SET, not the strip's remembered history. A tab
+		// without the front or a keeper entry belongs to another window now, or
+		// was merely visited; drawing it here would let this wall act on it.
+		if !tab.here && a.behind[tab.key] == nil {
+			continue
+		}
 		if len(terms) > 0 {
 			if _, ok := fuzzy.ScoreFields([]string{tab.word, tab.full}, terms); !ok {
 				continue

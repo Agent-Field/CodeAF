@@ -1026,7 +1026,8 @@ nothing. Space is the separator — no pipe, no bracket, no rule. The groups, le
 - **elsewhere** — what is alive somewhere other than this conversation: `2 jobs · 1 watch`
   for background work, absent when both counts are zero. The open-conversation count and
   the standing count were in this group until 2026-09-09 and are not on the row at all
-  now: the **tab strip** above the transcript names every open conversation, and
+  now: the **tab strip** above the transcript names every open conversation that has a
+  draft or a message (an untouched new one has no tab yet), and
   `◦ 2 standing orders` is a line at the foot of the **task column** (see *The column on
   the right*).
 - **the posture** — `YOLO`, drawn only when the gate is open **and** the legend above the

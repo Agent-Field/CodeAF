@@ -53,10 +53,8 @@ work, goes to codeaf's own worker, never to senior-dev.
 A senior-dev run is a task of the conversation that started it. Its compact side-list
 row wears `[senior-dev]` after its title (`[sd]` when narrow) and shows its time while
 the page is closed. Hover over the row for its current step and spend; both are also in
-the task page header. A card in the conversation lands when it ends. That card
-stands outside the chat's `worked` fold as soon as the run lands, including while its
-task page is open; the chat's own work in the wake reply still folds. Click the row or the
-card, or follow a task link to it, and its task opens **inside the conversation's own
+the task page header. Click the row or its ending card, or follow a task link to it,
+and its task opens **inside the conversation's own
 tab**: the tab strip stays on top, with the conversation's tab selected and the `home` tab beside
 it. senior-dev gets no tab of its own.
 
@@ -69,6 +67,8 @@ called with and what came back — and click it again to fold it. **Every change
 files wears git's `+N,-M`** at the right of its line — the lines it added in green and the
 lines it removed in red — so you can see how much each step moved the work; senior-dev's
 own spec, pinned check and checklist wear none.
+
+## senior-dev's task header, brief dropdown, raw calls and stop keys
 
 The one line over it is the task's title with its `[senior-dev]` badge, a `▸ brief`
 dropdown, and the step, the spend of the run's ceiling, the number of model calls and how
@@ -91,6 +91,16 @@ and a line `gave its model your message: …` appears once it has. Once it has h
 box says `senior-dev reads no more messages (it has handed in its work, and what it handed
 in is frozen)` and `enter` keeps your words in the box (see steering senior-dev while it
 works).
+
+## When does senior-dev's ending card appear — during a reply, worked fold, task page open
+
+A senior-dev run's ending card stands outside the conversation's `worked` fold.
+If it ends while a chat reply is still running, its task page and side list update
+at once, and the card appears **right after that reply ends**, including a reply
+you interrupt or one that fails. Otherwise the card appears when the run lands,
+including while its task page is open; return to the conversation to read it.
+The chat's own work in the wake reply still folds. Click the card to open its
+details, or follow its task link to the task page inside the conversation's tab.
 
 ## Reading senior-dev's whole brief — ▸ brief, what senior-dev was told, scroll the brief
 
@@ -159,6 +169,10 @@ A task handed to senior-dev wears its name as a badge wherever a task is named:
   room for the whole badge and the number.
 - **The card you answer** asks `wants to start a [senior-dev] task: <title>`, and the
   card's top line wears the badge beside the task's name.
+- **The ending card** wears the badge after the title too, shortening to `[sd]`
+  when narrow and cutting the title before the badge. A batch of adjacent
+  endings keeps that badge on senior-dev's row when expanded; ordinary tasks
+  in the same batch wear none.
 - **The task's own page** wears it beside the title — a page onto another
   conversation's task too, with that task's own badge and never the one a task of the
   same number in this conversation wears.
@@ -286,6 +300,12 @@ handed in nothing, stopped on a limit, or broke — and acts on it:
 - **broke**: the chat hands it back once if the cause looks passing (a network or model
   service failure), and otherwise tells you what broke.
 
+If the project's checks passed but the model never called `submit`, the ending says plainly
+`the checks passed, but nothing was submitted`. There is no resume or submit command for an
+ended run. The ending names the kept tree and gives the one command to start senior-dev in
+that tree and hand it in: `codeaf senior-dev --dir <kept-tree> -- "submit the existing work"`.
+The run still ends incomplete, with exit 2, because passing checks are not a submission.
+
 **codeaf sends senior-dev back at most twice on its own** for one piece of work. A third
 hand-off it tries, or one after a limit, is refused
 (`senior-dev has been sent back to this work 2 times already, the most codeaf does on its
@@ -294,18 +314,36 @@ hand-off you ask for yourself is yours, and starts the count again. This count h
 through wake turns and a reopened conversation until you send a message. Each hand-off still
 shows its card, with the same countdown as any other, so you can stop one.
 
-**The card stays quiet.** senior-dev's landed card says `done` when the run finished,
+## What does senior-dev's ending card say — badge, quiet card, ctrl+o output
+
+senior-dev's landed card wears `[senior-dev]` after its title (`[sd]` when narrow)
+and stays one row until opened. It says `done` when the run finished,
 `stopped` when you stopped it, and `ended` when it ended without finishing (never a red
-cross), and `senior-dev's ending went to the chat`; the chat's own reply is where you read
-what came of the work. `ctrl+o` on the card still shows senior-dev's own words.
+cross). Open it by clicking it or pressing `ctrl+o` on the selected card to read
+`senior-dev's ending went to the chat` and senior-dev's own words. The chat's own
+reply is where you read what came of the work. The card stays outside `worked`;
+if the run ends during a chat reply, the card appears right after that reply ends.
+
+Two or more adjacent endings share one folded batch row. Expand that batch to
+see each task's title, with the badge on senior-dev's row. Opening senior-dev's
+card inside the batch still shows `senior-dev's ending went to the chat` and its
+raw ending. Closing and reopening the batch keeps that output; other cards'
+output stays folded until you open them.
+
+## What ceiling does /senior-dev start with — typed start note, dollar and time limits
 
 **It has no step cap.** Every run has finite dollar and wall-clock ceilings: by default,
 **up to $10.00 and 3h**. `/budget conversation` can lower the dollar ceiling to
 what remains. At a shell, `--max-cost` and `--max-hours` set either ceiling explicitly.
-The proposal card, typed command's start note and shell run's first line say which ceiling
-applies. These ceilings are enforced outside senior-dev whatever it does.
+The proposal card and shell run's first line say which ceiling applies. Typing
+`/senior-dev <brief>` shows `senior-dev task <number> started · <title> · up to
+$<dollars> and <time>` in the conversation before the run ends. That start note
+stays outside `worked` and uses the same ceiling words as the shell's first line.
+These ceilings are enforced outside senior-dev whatever it does.
 `/budget conversation 1.5` in an open chat binds $1.50 to that conversation before
 its receipt appears, so the next approval card and run use $1.50 or what remains.
+
+## How senior-dev reaches models, writes files and keeps its record
 
 **It reaches a model only through codeaf.** Its engine receives a short-lived token for
 codeaf's loopback model API, but its model-written shell commands inherit neither that
@@ -1116,3 +1154,12 @@ API told it for each call, not a catalog estimate, and a call nobody priced adds
 no task, so its record — that log, its conversation with codeaf, its actions, its stages
 and when it started and ended — is kept in a folder of its own under
 `~/.codeaf/v3/carried/senior-dev/`, one per run.
+
+## My key was refused — does senior-dev make another landing call?
+
+An upstream authentication refusal (`401` or `403`) ends model work immediately.
+There is no retry or model landing turn using the same refused credential. The
+local finalization still runs: senior-dev accounts for the tree it leaves and
+reports the reason it stopped. The local model gateway reports an upstream
+account refusal as `502`; its message retains the upstream authentication status
+so the program can distinguish it from a temporary provider failure.

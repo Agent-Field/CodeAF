@@ -830,7 +830,7 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	}
 
 	// "port" is in one live title and one row of another conversation's work, so
-	// both sections survive it and everything else goes.
+	// both conversations survive it with all their tasks.
 	drive(t, a, key("p"), key("o"), key("r"), key("t"))
 	text := taskSheetText(a)
 	for _, want := range []string{
@@ -844,9 +844,9 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 			t.Fatalf("the filtered page is missing %q:\n%s", want, text)
 		}
 	}
-	for _, gone := range []string{"Write the tree", "Mix the audio"} {
-		if strings.Contains(text, gone) {
-			t.Fatalf("%q survived the filter:\n%s", gone, text)
+	for _, sibling := range []string{"Write the tree", "Mix the audio"} {
+		if !strings.Contains(text, sibling) {
+			t.Fatalf("matching conversation lost %q:\n%s", sibling, text)
 		}
 	}
 

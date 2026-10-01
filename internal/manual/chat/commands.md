@@ -247,7 +247,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
-| `/memories` | — | — | prints every memory into the conversation |
+| `/memories` | — | — | opens the memory place |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
 
@@ -292,6 +292,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
+| `/cache` | — | `clean now` | deletes the shared build cache now |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
 | `/update` | `/upgrade` | — | installs the newest stable release and restarts this conversation on it |
 | `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag, then restarts this conversation on it |
@@ -395,7 +396,8 @@ with a fresh agent and a fresh session file.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
-message box goes back. The **tab strip** above the transcript then shows both.
+message box goes back. An untouched new conversation has no tab. A draft or first
+sent message gives it a name, and the **tab strip** above the transcript then shows both.
 
 **The one exception is a conversation nobody has used yet**: no transcript, no turn ever
 run, nothing out and nothing waiting. That one is closed and replaced, because closing it
@@ -798,8 +800,8 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 ## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
-the engine's posture words: `ask` (it asks you), `guardian` (a small model answers the
-plainly safe ones first), `allow` (it runs things without asking) or `deny` (it refuses).
+the person's words: `asks` (it asks you), `guardian` (a small model answers the plainly
+safe ones first), `YOLO` (it runs things without asking) or `refuses` (it refuses).
 It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
 setting decided it. `/status --json` carries the same fact under the `approvals` key, and
 the phone's status sheet has the same row.
@@ -993,8 +995,11 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-Models from connected providers sit under their provider's name as a dim heading, default
-provider first; a custom provider's heading is the name you gave it.
+With only the default provider in the list, models have no provider heading. The
+default provider stays in the list even without its key: adding a direct provider
+such as Ollama therefore draws headings, including the default provider's. Models
+sit under their provider's name as a dim heading, default provider first; a custom
+provider's heading is the name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is

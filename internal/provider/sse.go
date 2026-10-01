@@ -32,6 +32,9 @@ import (
 type sseDecoder struct {
 	reader  *bufio.Reader
 	message []byte
+	// done records the protocol's explicit [DONE] marker, which shares the
+	// decoder's io.EOF return with an underlying connection close.
+	done bool
 	// alive, when set, is called once per SSE comment line — the ": OPENROUTER
 	// PROCESSING" keepalives a router sends while an upstream assembles its
 	// answer. Comments never become chunks (parseSSEMessage drops them), so
@@ -128,6 +131,7 @@ func (d *sseDecoder) next() ([]byte, error) {
 				d.message = d.message[:0]
 				switch {
 				case done:
+					d.done = true
 					return nil, io.EOF
 				case delivered:
 					return payload, nil
@@ -212,9 +216,9 @@ type streamChunk struct {
 // refusal produces, or nil when the field carried nothing to report.
 //
 // The status is the router's own `code` when it sent one that is an HTTP status,
-// and 502 otherwise: a stream that broke after its headers landed is an upstream
-// failing mid-answer, which is what a bad gateway means, and inventing a 200
-// here would make the refusal look like a success to every classifier above.
+// then the status in the legacy `API error (N)` message, and 502 otherwise. A
+// text-only auth refusal must keep 401/403 or every retry classifier will see a
+// gateway failure instead.
 func streamRefusal(raw json.RawMessage) error {
 	if len(raw) == 0 {
 		return nil
@@ -230,6 +234,9 @@ func streamRefusal(raw json.RawMessage) error {
 		return nil
 	}
 	status := decoded.Code
+	if status < 400 || status > 599 {
+		status, _ = statusFromText(decoded.Message)
+	}
 	if status < 400 || status > 599 {
 		status = http.StatusBadGateway
 	}

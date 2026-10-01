@@ -234,11 +234,11 @@ jobs:
             gh issue create --title "$title" --label bug --body "$body"
           fi
 
-  # THE BINARY'S WEIGHT, REPORTED AND NOT ENFORCED — YET. SIZE-BUDGET was set on
-  # linux/arm64 with the toolchain of the day, and this runner is linux/amd64,
-  # so the two numbers are not comparable and a hard compare here would be red
-  # for a reason nobody caused. It prints both so the drift is visible; making
-  # it block means first agreeing which architecture the budget is measured on.
+  # THE BINARY'S WEIGHT, REPORTED AND NOT ENFORCED — YET. SIZE-BUDGET is set on
+  # darwin/amd64, the heaviest shipped platform (PERF.md, the size ratchet), and
+  # this runner is linux/amd64, about a megabyte lighter, so a pass here does not
+  # prove the cap holds where it is measured. It prints both so the drift is
+  # visible; making it block means weighing darwin/amd64 here as well.
   size:
     name: size (informational)
     runs-on: ubuntu-latest
@@ -258,5 +258,5 @@ jobs:
           make build
           actual="$(stat -c%s bin/codeaf)"
           budget="$(cat SIZE-BUDGET)"
-          printf 'bin/codeaf on linux/amd64: %s bytes. SIZE-BUDGET (set on linux/arm64): %s.\n' \
+          printf 'bin/codeaf on linux/amd64: %s bytes. SIZE-BUDGET (set on darwin/amd64): %s.\n' \
             "$actual" "$budget"

@@ -54,6 +54,27 @@ func TestMediaClientUsesVerifiedImageAndSpeechWireShapes(t *testing.T) {
 	}
 }
 
+func TestSpeechCallIsWrittenToTheCallLogWithItsCost(t *testing.T) {
+	read := loggingTo(t)
+	client := handlerClient(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-OpenRouter-Cost", "0.03")
+		_, _ = io.WriteString(writer, "mp3 bytes")
+	}))
+	media, err := NewMediaClient(Config{
+		APIKey: "media-key", BaseURL: "https://openrouter.example/api/v1", HTTPClient: client,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := media.Speak(context.Background(), SpeechRequest{Model: "voice/model", Input: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	done := ended(read())
+	if len(done) != 1 || done[0].Tag != "media" || done[0].Model != "voice/model" || done[0].Cost != 0.03 {
+		t.Fatalf("speech call log = %+v, want one media row with its cost", done)
+	}
+}
+
 // The image endpoint validates input_references as an array of OBJECTS, and it
 // says so by refusing the whole render: a bare data URL comes back as
 // `{"expected":"object","code":"invalid_type","path":["input_references",0]}`

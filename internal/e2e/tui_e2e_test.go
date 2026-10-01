@@ -2005,33 +2005,44 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	r.keys("Enter")
 	// THE DOOR THIS SUBTEST IS ABOUT. No window is holding the node any more, so
 	// the foot offers the record rather than the room. The sessions place now
-	// starts on this window's new conversation, above the earlier task's family;
-	// walk onto the task row before reading its door.
+	// can put this window's new conversation below the earlier task's family;
+	// walk onto each row before reading it.
 	//
 	// THE FOOT IS THE WHOLE SYNCHRONISATION AND THE GROUP HEADING WAS NEVER PART
 	// OF IT. This wait used to sit behind `finished today`, which is the roster's
 	// heading for work that ENDED today — and a node the checker could not judge
 	// ends under `your call` instead, so the heading was a claim about how the
 	// model's work landed standing in front of a test about paging a record.
-	r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
-	if !walkTo(r, say(t, "tasksEnterInsideWord"), "Down") {
-		t.Fatalf("could not select the finished task's record row:\n%s", r.capture())
-	}
-	roster := r.capture()
-	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
-
 	// AND THE CONVERSATION THIS WINDOW IS IN IS ITSELF THE TITLELESS ROW (#915).
 	// This terminal was launched on a fresh transcript nothing has been said in,
 	// so the one session it stands in is the launch's own untitled conversation —
 	// and the page this door opened is the one that used to draw it as its raw
 	// sixteen-hex id. The word is what the row must answer to now, and it is the
 	// same word home's own column spells for a chat nothing has named, so the
-	// wait holds both the name and the one spelling of it.
+	// walk holds both the name and the one spelling of it.
 	//
-	// The new conversation is still a visible, titleless row while the earlier
-	// task is selected; reading it does not disturb the task's own door.
-	untitledAt := r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
+	// A YOUR CALL LANDING PUTS THIS ROW BELOW THE FOLD at fourteen rows. Down
+	// reaches it the way a person does; waiting on the first frame instead made
+	// the driver fail on a reachable row. The task and the titleless row need
+	// not fit on the same frame.
+	r.waitFor(30*time.Second, say(t, "tasksEnterConversationWord"))
+	if !walkTo(r, say(t, "tasksUnusedConversationSelectedWord"), "Down") {
+		t.Fatalf("could not reach this window's titleless conversation:\n%s", r.capture())
+	}
+	untitledAt := r.capture()
+	if !strings.Contains(untitledAt, say(t, "tasksUntitledWord")) {
+		t.Fatalf("the selected titleless conversation lost its word:\n%s", untitledAt)
+	}
 	t.Logf("the conversation this window stands in is on the page by its word:\n%s", untitledAt)
+
+	// Home returns to the top of the list, so the record's door is reached
+	// independently of where the titleless conversation stood.
+	r.keys("Home")
+	if !walkTo(r, say(t, "tasksEnterInsideWord"), "Down") {
+		t.Fatalf("could not select the finished task's record row:\n%s", r.capture())
+	}
+	roster := r.capture()
+	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
 
 	// AND THE RECORD IS ALREADY BESIDE THE LIST. This terminal is [tuiPlain] wide,
 	// which is over the pane's floor, so the row under the cursor has its record

@@ -2,6 +2,8 @@ package remote
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
+
+var fallbackClientID atomic.Uint64
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
 //
@@ -266,6 +270,9 @@ func newClient(host string, hello Hello) *Client {
 	if strings.TrimSpace(hello.Surface) == "" {
 		hello.Surface = MachineName()
 	}
+	if strings.TrimSpace(hello.ClientID) == "" {
+		hello.ClientID = newClientID()
+	}
 	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
 		host:    strings.TrimSpace(host),
@@ -279,6 +286,20 @@ func newClient(host string, hello Hello) *Client {
 		driverWake: make(chan struct{}),
 		following:  make(chan Following, followingRoom),
 	}
+}
+
+// newClientID gives one surface a stable identity to carry through every
+// redial. It is not an authorization token; it only lets the engine tell a
+// returning window from another window using the same machine label.
+func newClientID() string {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err == nil {
+		return hex.EncodeToString(raw)
+	}
+	// A failed system random source must not make the connection unusable. The
+	// clock and process-local sequence still distinguish the clients this
+	// process creates, which is enough for the in-memory room's live identity.
+	return fmt.Sprintf("%x-%x", time.Now().UnixNano(), fallbackClientID.Add(1))
 }
 
 // attach says hello on one pipe and reads the welcome back. It is the handshake
@@ -1337,6 +1358,36 @@ func (c *Client) MemoryProvenance(id string) (string, string, time.Time, error) 
 	return out.Session, out.Title, out.At, nil
 }
 
+func (c *Client) Remember(text string) (string, error) {
+	payload, err := c.call(nil, MethodMemoryRemember, text)
+	if err != nil {
+		return "", err
+	}
+	var title string
+	err = json.Unmarshal(payload, &title)
+	return title, err
+}
+
+func (c *Client) ForgetQuery(query string) (string, error) {
+	payload, err := c.call(nil, MethodMemoryForgetQuery, query)
+	if err != nil {
+		return "", err
+	}
+	var title string
+	err = json.Unmarshal(payload, &title)
+	return title, err
+}
+
+func (c *Client) Memories(query string) ([]session.MemoryLine, error) {
+	payload, err := c.call(nil, MethodMemoryMemories, query)
+	if err != nil {
+		return nil, err
+	}
+	var lines []session.MemoryLine
+	err = json.Unmarshal(payload, &lines)
+	return lines, err
+}
+
 func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
 	payload, err := c.call(nil, MethodStandingItems, workspace)
 	if err != nil {
@@ -1577,7 +1628,7 @@ func (a *Agent) Cancel(id string) (string, error) {
 // brief is written beside the work (internal/session's task_shape.go), so there
 // is nothing on the far side worth a longer wait.
 func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo})
+	payload, err := a.callTaskStart(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1608,7 +1659,7 @@ func (a *Agent) Delegates() session.DelegateReport {
 // and returns the same receipt StartTask does. It is an ordinary call with the
 // ordinary deadline: the engine admits the run at once.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
+	payload, err := a.callTaskStart(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1623,7 +1674,7 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 // (`/task --best`, `/task --cheap`); the engine's router reads it for this task
 // and nothing after it.
 func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, effort string) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
+	payload, err := a.callTaskStart(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1632,6 +1683,15 @@ func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, ef
 		return 0, "", "", err
 	}
 	return started.ID, started.Title, started.Note, nil
+}
+
+// A start whose answer never arrived may already have created work on the engine.
+func (a *Agent) callTaskStart(ctx context.Context, method string, args any) (json.RawMessage, error) {
+	payload, answered, err := a.c.callAnswered(ctx, method, args, callDeadline)
+	if err != nil && !answered {
+		return nil, unanswered{said: err}
+	}
+	return payload, err
 }
 
 // RedoStronger runs a task again on the engine machine with a stronger crew

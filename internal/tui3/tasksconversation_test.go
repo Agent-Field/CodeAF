@@ -420,7 +420,7 @@ func TestTheCursorKeepsAConversationAcrossARebuild(t *testing.T) {
 // work it was cut from, and out from under the conversation that asked for it,
 // is a hit with the only thing that explains it taken away — and a hit left
 // behind a fold nobody opened is a query that appears to have found nothing.
-func TestAQueryKeepsTheAncestorsOfWhatItFoundAndOpensThePath(t *testing.T) {
+func TestAQueryKeepsTheWholeConversationAndOpensItsTree(t *testing.T) {
 	a := tasksChatApp(t)
 	a.taskSheet.query.setText("token table")
 	a.taskSheetTyped()
@@ -428,13 +428,13 @@ func TestAQueryKeepsTheAncestorsOfWhatItFoundAndOpensThePath(t *testing.T) {
 	r := a.tasksFiltered()
 	width, _ := a.size()
 	page := tasksPage(r, width)
-	for _, want := range []string{"Shipping the Gate", "port the parser", "port the lexer", "port the token table"} {
+	for _, want := range []string{"Shipping the Gate", "rotate the certificate", "port the parser", "port the lexer", "port the token table"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the query lost %q from\n%s", want, page)
 		}
 	}
-	// AND NOTHING ELSE CAME WITH THEM.
-	for _, gone := range []string{"rotate the certificate", "Thor Clips", "render the fight clip"} {
+	// Other conversations stay out, even when they reuse the same task numbers.
+	for _, gone := range []string{"Thor Clips", "render the fight clip"} {
 		if strings.Contains(page, gone) {
 			t.Fatalf("the query kept %q, which matches nothing:\n%s", gone, page)
 		}

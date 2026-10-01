@@ -736,10 +736,10 @@ func laneSecondsWord(seconds float64) string {
 
 // laneRateWord is a throughput, whole tokens per second: `58 t/s`.
 func laneRateWord(rate float64) string {
-	if rate <= 0 {
-		return ""
+	if bare := laneRateBare(rate); bare != "" {
+		return bare + " " + laneRateUnit
 	}
-	return strconv.Itoa(int(math.Round(rate))) + " t/s"
+	return ""
 }
 
 // laneSpeedWord is what a model row gains when its lanes are known:
@@ -826,10 +826,11 @@ const laneRateUnit = "t/s"
 // laneRateBare is a throughput with no unit on it, "58", for a row whose column
 // head carries the unit instead.
 func laneRateBare(rate float64) string {
-	if rate <= 0 {
+	n := int(math.Round(rate))
+	if n <= 0 {
 		return ""
 	}
-	return strconv.Itoa(int(math.Round(rate)))
+	return strconv.Itoa(n)
 }
 
 // laneExactly is one lane's view by its whole name, false when nothing is

@@ -44,6 +44,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"io"
 	"math"
 	"net"
@@ -121,6 +122,9 @@ type Config struct {
 	// reading, which is a run's worker, and an attended one for a shell run a
 	// person is watching. Empty is unattended.
 	Role lanes.Role
+	// AuthKeySource answers the safe credential source for the served model.
+	// It is added to 401/403 failures, never the key itself. Nil says nothing.
+	AuthKeySource func(model string) string
 	// Node names the work the calls belong to in the model-call log — the
 	// program's name — so `codeaf logs --node <name>` reads one program's calls.
 	// Their tag is `task`, the word every call made inside a piece of work
@@ -1039,8 +1043,8 @@ var (
 //
 // AN ACCOUNT REFUSED UPSTREAM IS NOT THE PROGRAM'S TOKEN BEING WRONG. A 401 or
 // 403 from the model's service is codeaf's own account being refused, and on
-// this API those two statuses mean the run's token; the program is told 502,
-// a gateway whose far side said no, with the far side's sentence.
+// this API those two statuses mean the run's token. The gateway stays 502;
+// the upstream status in its sentence still makes the program stop retrying.
 func (s *Server) failure(err error, request context.Context, model string) (int, string) {
 	switch {
 	case s.ctx.Err() != nil:
@@ -1056,12 +1060,43 @@ func (s *Server) failure(err error, request context.Context, model string) (int,
 	}
 	if refusal, ok := provider.RefusalFrom(err); ok {
 		status := refusal.Status
-		if status == http.StatusUnauthorized || status == http.StatusForbidden || status < 400 || status > 599 {
+		if status < 400 || status > 599 {
 			status = http.StatusBadGateway
 		}
-		return status, firstLine(refusal.Error())
+		return modelFailureStatus(status), authSourceSentence(refusal.Error(), status, s.authKeySource(model))
+	}
+	if status, ok := provider.StatusOf(err); ok {
+		return modelFailureStatus(status), authSourceSentence(err.Error(), status, s.authKeySource(model))
 	}
 	return http.StatusBadGateway, firstLine(err.Error())
+}
+
+// authKeySource asks about the model actually served, because a fallback may
+// have moved a program's request onto a different provider.
+func (s *Server) authKeySource(model string) string {
+	if s.config.AuthKeySource == nil {
+		return ""
+	}
+	return s.config.AuthKeySource(model)
+}
+
+// modelFailureStatus reserves authentication responses for the program's own
+// token, preserving the distinction from a refused upstream account.
+func modelFailureStatus(status int) int {
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return http.StatusBadGateway
+	}
+	return status
+}
+
+func authSourceSentence(message string, status int, source string) string {
+	// A refusal may echo the key it refused; the sentence is scrubbed before it
+	// is written anywhere a person or a log reads it.
+	message = firstLine(redact.Secrets(message))
+	if (status == http.StatusUnauthorized || status == http.StatusForbidden) && strings.TrimSpace(source) != "" {
+		message += " · the key used was " + strings.TrimSpace(source)
+	}
+	return message
 }
 
 // ceilingSentence is the refusal for a call that would cross the ceiling.

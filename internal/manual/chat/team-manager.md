@@ -66,6 +66,10 @@ Once there is a manager the place reads **`◆ Manager`**, and on the conversati
 comes first, titled `◆ Manager · <its title>`. Point at the tab to see the team and the title in
 the hint line. `alt+m` goes to the manager from any conversation in the team.
 
+An untitled manager is addressable immediately: codeaf gives it a deterministic `@manager-...`
+fallback when it joins the team, so another manager can use `team_send` before its first turn.
+Once its title is made, the ordinary title-based handle choice may replace that fallback.
+
 ## The manager's screen
 
 While the manager is in front, the message box says `to ◆ manager`, and keeps saying it on the
@@ -313,7 +317,8 @@ without that card. When allowed:
 
 - the new team is made under the manager's team, with its share of the pool: the parent's daily
   cap times `sub-team share` (`/settings`, **Teams**; 50% by default), written on the new team.
-  A parent with no cap gives none, and the new team spends from whatever pool is above it;
+  A parent with no effective cap gives no derived child cap, and the new team follows the
+  ordinary cap rules: its own profile-default pool unless an explicit ancestor cap applies;
 - the members named move into it, and its manager is the new conversation, which opens behind
   the one you are in like any start, is a member of the parent team, and is handed the brief
   marked as the manager's together with the words `you were started to manage the team

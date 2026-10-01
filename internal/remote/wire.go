@@ -881,6 +881,10 @@ type Hello struct {
 	// text one machine sends for another machine's screen.
 	Surface string `json:"surface,omitempty"`
 
+	// ClientID is this window's stable identity across its redials. Surface is
+	// only a machine label, so it cannot distinguish two windows on one machine.
+	ClientID string `json:"clientID,omitempty"`
+
 	// Back says this surface has been in this conversation before and is coming
 	// back from a link that dropped, rather than arriving for the first time.
 	//
@@ -1189,6 +1193,11 @@ type Welcome struct {
 	// these doors sends no field, and a surface that believed it could attach
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
+
+	// Memory says the conversation's engine has its memory row enabled. It is
+	// carried once so a surface can distinguish an empty store from memory off
+	// without asking from its paint loop.
+	Memory bool `json:"memory,omitempty"`
 
 	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],
 	// [MethodTeamsUpdate], [MethodTeamsTraffic]) from its own profile, which

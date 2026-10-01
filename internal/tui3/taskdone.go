@@ -489,17 +489,27 @@ func (a *app) doneHead(card *taskDone, width int, sel bool) string {
 	// THE TAIL GOES FIRST WHEN THE TERMINAL IS NARROW, which is the tool line's
 	// own rule for the same reason (toolview.go): the name is the substance, and
 	// an outcome hung off a title nobody can read is a fact about nothing.
-	room := width - 4
-	if space := room - ansi.StringWidth(tail); space >= doneTitleFloor {
-		room = space
-	} else {
-		tail = ""
-	}
-	line := lead + a.pal.ink(fit(card.title, room))
+	room, tail := doneTitleRoom(card, width-4, tail)
+	line := lead + a.pal.programTitled(card.title, card.program, room, a.pal.ink)
 	if tail != "" {
 		line += a.pal.dim(tail)
 	}
 	return line
+}
+
+// doneTitleRoom lets telemetry give way before a title loses its minimum
+// readable name and program badge, on both a lone card and a batch's row.
+func doneTitleRoom(card *taskDone, room int, tail string) (int, string) {
+	floor := doneTitleFloor
+	if card.program != "" {
+		// The badge is part of the identity, so the telemetry gives way before
+		// it can leave too little room for even the badge's short spelling.
+		floor = min(ansi.StringWidth(card.title), railTitleFloor) + programCells(programBadge(card.program).short)
+	}
+	if space := room - ansi.StringWidth(tail); space >= floor {
+		return space, tail
+	}
+	return room, ""
 }
 
 // doneTitleFloor is the fewest cells a name may be cut to before the outcome
@@ -1175,7 +1185,7 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 			continue
 		}
 		out = append(out, row{text: a.rollupRow(card, width, a.selected(i)), entry: i, hit: hitDone})
-		if card.status.Tier == session.TaskTierYourCall {
+		if card.status.Tier == session.TaskTierYourCall || card.open && card.program != "" {
 			if line := a.doneUnder(card, width-2); line != "" {
 				out = append(out, row{text: "  " + line, entry: i, hit: hitDone})
 			}
@@ -1291,13 +1301,8 @@ func (a *app) rollupRow(card *taskDone, width int, sel bool) string {
 	if files := doneFilesWord(len(card.changed), card.added, card.removed); files != "" {
 		tail += " · " + files
 	}
-	room := width - used
-	if space := room - ansi.StringWidth(tail); space >= doneTitleFloor {
-		room = space
-	} else {
-		tail = ""
-	}
-	return lead + a.pal.ink(fit(card.title, room)) + a.pal.dim(tail)
+	room, tail := doneTitleRoom(card, width-used, tail)
+	return lead + a.pal.programTitled(card.title, card.program, room, a.pal.ink) + a.pal.dim(tail)
 }
 
 // doneProgramEnded is the head's word for a program's run that did not finish:

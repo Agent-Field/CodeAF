@@ -85,6 +85,12 @@ the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. 
 service reads the model list belonging to that account, and a new connection moves this
 conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
 
+While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
+the conversation stays on its previous model and `enter` on Codex tries again.
+The Codex row in `/settings` uses the same cancellation: the first `esc` cancels
+the pending sign-in while keeping Settings open; later `esc` presses use the
+page's ordinary back-out behavior.
+
 A Codex model's context window is the one that account's model list gives it — `272k` on
 every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
 compaction fires from that figure. When the list cannot be reached at sign-in, the four
@@ -315,7 +321,9 @@ stay still too. Close the list and open it again to see the latest.
 The `via` beside the model above the message box is a different fact: that one is who is
 answering the turn that is in flight, and it is allowed to move. It carries no rate: how
 fast the stream is producing stands at the right of the status line beside the state word
-while the turn writes, as `38 tok/s`.
+while the turn writes, as `38 tok/s`. An unknown rate or one below 1 token per second
+draws nothing; the line never says `0 tok/s`. The work pulse and model rows keep
+their rounded `t/s` rates, with a rate that rounds to zero absent there too.
 
 ## Why does the model picker keep jumping
 
@@ -1829,7 +1837,7 @@ These are the sentences and what each one means.
 | what you read | what happened | what codeaf does |
 | --- | --- | --- |
 | `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
-| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
+| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops without retrying; for the default provider, names the key source, never the key itself |
 | `this conversation got too long for the model` | the transcript is past the model's window | reduces the request and retries within a bounded recovery episode |
 | `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
 | `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
@@ -1868,12 +1876,14 @@ different machine serving the same model. Before this, three attempts in a row c
 three deliveries of the same request to the same endpoint — a measured run lost an evening
 to exactly that.
 
-**And a refusal that names no endpoint is not retried at all.** If the router refused on
-its own account, it read the request codeaf built and said no to it — every endpoint alive
-would say the same thing, so asking again at 2s, 4s and 8s only spends the time to be told
-three times. The turn ends immediately with the refusal instead. That is the whole rule:
-**named an endpoint → try another one; named nobody → stop**. It is not a list of status
-codes, so it works the same on a `400`, a `403` or anything else a router invents.
+**And an authentication refusal is not retried at all.** A `401` or `403` means the key or
+its permission was refused, so it stops. For a model served by the default provider,
+it names whether the key came from the shell's
+`OPENROUTER_API_KEY`, the shell's `OPENAI_API_KEY`, or the key saved in your profile.
+It is never treated as a provider `5xx`. A refusal that names no endpoint is also not retried:
+if the router refused on its own account, it read the request codeaf built and said no to it —
+every endpoint alive would say the same thing about the same bytes. The turn ends immediately.
+Other routed refusals are not decided by status alone.
 
 **Where to read it afterwards.** Every failed request now writes a line into the session
 file — the model, the endpoint, the status, the endpoint's name, its own words, which
@@ -3689,6 +3699,16 @@ same ceiling. If a model's list does not say how much it thinks, the first time 
 comes back empty with the whole ceiling spent, codeaf remembers that model thinks
 regardless and leaves room from then on; it never remembers it on a guess.
 
+## Do generated images and videos keep their costs in the call log?
+
+Yes. Each media request writes a start and an end record. Image costs supplied
+only in the response headers still appear on the end record, alongside any
+reported token counts. A price explicitly supplied in JSON keeps its value.
+A completed video
+poll records the job's reported cost; downloading its finished file writes its
+own pair without counting that same job cost twice. Unreported costs remain
+absent.
+
 ## Where are the logs of what codeaf sent the model — the model-call log, and reading it with `codeaf logs`
 
 Every call codeaf makes to a model writes a line to one file, always, with nothing to
@@ -3895,10 +3915,16 @@ what it cost. `--json` carries the same money in `spend`, with the two halves be
 `spend_work` is what this run's own nodes cost, `spend_overhead` what it cost to decide
 what those nodes should be. They always add up to `spend`.
 
-**The amount is every model call the run made**, not the workers' calls alone: compiling
-the request, the plan model's reading of what the request states, the planning passes, each
-worker's own calls, and the delivery gate at the end. It is summed out of the run's own
-usage ledger once the work has stopped moving, rather than guessed at from a day's total.
+On the default run road, the door makes no separate planning calls: structuring and
+checks belong to the run's nodes. Its whole bill is `spend_work`, with zero
+`spend_overhead`. `tokens.in` and `tokens.out` are the input and output totals from all
+those calls, including calls in a run that stopped short.
+
+**The amount is every model call the run made.** The default run road settles the
+workers' reports after they stop, including structuring and checks. With
+`CODEAF_TASK_BELT=off`, the other road also includes request compilation, planning
+and the delivery gate, read from the run's own usage ledger. Neither guesses at the
+bill from a day's total.
 
 **So it equals the call log's end rows to the cent.** Add up the `$` on the rows in `codeaf
 logs` that came back — the end rows, never the `⋯ in flight` starts, which have no cost

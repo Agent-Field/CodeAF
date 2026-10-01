@@ -86,7 +86,7 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	if body == nil {
 		return nil, fmt.Errorf("%s %s: %w", program.Name, command.Name, errNoBody)
 	}
-	if err := fs.Parse(rest); err != nil {
+	if err := fs.Parse(interspersedFlags(fs, rest)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			commandHelp(program, command, fs, out)
 			return nil, ErrHelp
@@ -120,6 +120,51 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 		ExplicitFlags: explicitFlags,
 		body:          body,
 	}, nil
+}
+
+// interspersedFlags moves declared flags and flag-shaped words ahead of the
+// brief before flag.Parse sees them. The standard flag package stops at the
+// first positional word; doing that here made a documented trailing ceiling
+// become part of the brief, and made an unknown trailing flag look like valid
+// prose. A brief that starts with a dash uses `--`, the same end marker the
+// standard parser uses.
+func interspersedFlags(flags *flag.FlagSet, args []string) []string {
+	var named, positional []string
+	endOfFlags := false
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		if endOfFlags {
+			positional = append(positional, argument)
+			continue
+		}
+		if argument == "--" {
+			endOfFlags = true
+			continue
+		}
+		if !strings.HasPrefix(argument, "-") || argument == "-" {
+			positional = append(positional, argument)
+			continue
+		}
+		named = append(named, argument)
+		name := strings.TrimLeft(argument, "-")
+		if before, _, found := strings.Cut(name, "="); found {
+			name = before
+		}
+		declared := flags.Lookup(name)
+		if declared != nil && !isBoolFlag(declared) && !strings.Contains(argument, "=") && index+1 < len(args) {
+			index++
+			named = append(named, args[index])
+		}
+	}
+	if endOfFlags {
+		named = append(named, "--")
+	}
+	return append(named, positional...)
+}
+
+func isBoolFlag(value *flag.Flag) bool {
+	boolFlag, ok := value.Value.(interface{ IsBoolFlag() bool })
+	return ok && boolFlag.IsBoolFlag()
 }
 
 // ChildArgs is the line a host starts a program's process with, after

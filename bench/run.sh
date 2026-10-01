@@ -8,6 +8,10 @@
 # the cost column: only codeaf self-reports usage.
 set -uo pipefail
 
+BENCH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=canary/lib/repo.sh
+source "$BENCH_ROOT/canary/lib/repo.sh"
+
 # ── parameters ──────────────────────────────────────────────────────────────
 REPO="${REPO:-https://github.com/MALIBA-AI/bambara-text-normalization}"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash-0731}"
@@ -64,7 +68,7 @@ PI_BIN="${PI_BIN:-pi}"
 OPENCODE_BIN="${OPENCODE_BIN:-opencode}"
 
 RESULTS="${RESULTS:-$(pwd)/bench-results/$(date +%Y%m%d-%H%M%S)}"
-TEMPLATE="${TEMPLATE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/graphs/issue.json}"
+TEMPLATE="${TEMPLATE:-$BENCH_ROOT/graphs/issue.json}"
 
 # ── prerequisites ───────────────────────────────────────────────────────────
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
@@ -115,20 +119,13 @@ issue_prompt() {
 Work in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.'
 }
 
-# fresh_clone gives each cell a clone of its own at the same starting commit.
-# Reusing one checkout across cells leaks the previous harness's diff into the
-# next one's starting state, which silently flatters whoever runs second.
+# fresh_clone gives each cell a tree of its own at the same starting commit.
+# The shared fetch-only path keeps every upstream branch, including a gold-fix
+# branch for the issue under test, out of the refs the harness can inspect.
 fresh_clone() {
   local dir="$1"
-  rm -rf "$dir"
-  if [ -n "$BASE_COMMIT" ]; then
-    # A pinned start needs history; --depth 1 would not contain it.
-    git clone --quiet "$REPO" "$dir" || return 1
-    (cd "$dir" && git checkout --quiet "$BASE_COMMIT") || return 1
-  else
-    git clone --depth 1 --quiet "$REPO" "$dir" || return 1
-  fi
-  (cd "$dir" && git rev-parse HEAD)
+  fetch_only_tree "$dir" "$REPO" "${BASE_COMMIT:-HEAD}" || return 1
+  git -C "$dir" rev-parse HEAD
 }
 
 # setup_python builds the venv once per cell. The suite is the judge, so it is

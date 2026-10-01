@@ -529,9 +529,9 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 	if row.session.Archived {
 		word = "reopen"
 	}
-	verbs = append(verbs, switcherVerb{key: 'x', word: word})
+	verbs = append(verbs, switcherVerb{key: 'x', word: word}, switcherVerb{key: 'c', word: "copy name"})
 	if strings.TrimSpace(row.session.Workspace) != "" || strings.TrimSpace(row.session.ProjectDir) != "" {
-		verbs = append(verbs, switcherVerb{key: 'n', word: "new in project"}, switcherVerb{key: 'o', word: "open folder"}, switcherVerb{key: 'p', word: "copy project"})
+		verbs = append(verbs, switcherVerb{key: 'n', word: "new in project"}, switcherVerb{key: 'o', word: "open folder"})
 	}
 	return verbs
 }

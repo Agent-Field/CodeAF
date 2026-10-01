@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -217,6 +218,92 @@ func doTurnResponse(t *testing.T, client *http.Client, endpoint string, body map
 		t.Fatal(err)
 	}
 	return response.StatusCode, string(translated)
+}
+
+// A clean upstream EOF is not a terminal Responses event. The translated SSE
+// must preserve that distinction so the provider can reject a cut answer.
+func TestResponsesEOFWithoutTerminalDoesNotBecomeDone(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+	if err := Save(dir, validTokens(now)); err != nil {
+		t.Fatal(err)
+	}
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintln(writer, `data: {"type":"response.created","response":{"id":"cut-1","model":"gpt-5.5"}}`)
+		fmt.Fprintln(writer)
+		fmt.Fprintln(writer, `data: {"type":"response.output_text.delta","delta":"partial answer"}`)
+		fmt.Fprintln(writer)
+	}))
+	defer backend.Close()
+	client := ClientWithOptions(dir, Options{Backend: backend.URL, HTTPClient: backend.Client(), Now: func() time.Time { return now }})
+	_, body := doTurnResponse(t, client, backend.URL+"/chat/completions", map[string]any{
+		"model": "gpt-5.5", "stream": true,
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	})
+	if !strings.Contains(body, `"content":"partial answer"`) || strings.Contains(body, "[DONE]") || strings.Contains(body, `"finish_reason":"stop"`) || strings.Contains(body, `"finish_reason":"length"`) {
+		t.Fatalf("unterminated translated stream = %q", body)
+	}
+}
+
+// The real provider reader must see an unfinished translated stream as a cut,
+// while a terminal Responses event still closes the same road normally.
+func TestProviderDetectsCutResponsesStreamThroughCodexTransport(t *testing.T) {
+	for _, test := range []struct {
+		name, terminal, finish, wantError string
+		wantCut, wantFailure              bool
+	}{
+		{name: "missing terminal", wantCut: true},
+		{name: "completed", terminal: `{"type":"response.completed","response":{"id":"r-1","model":"gpt-5.5"}}`, finish: "stop"},
+		{name: "max output tokens", terminal: `{"type":"response.incomplete","response":{"id":"r-1","model":"gpt-5.5","incomplete_details":{"reason":"max_output_tokens"}}}`, finish: "length"},
+		{name: "other incomplete", terminal: `{"type":"response.incomplete","response":{"incomplete_details":{"reason":"content_filter"}}}`, wantFailure: true, wantError: "content_filter"},
+		{name: "failed", terminal: `{"type":"response.failed","response":{"error":{"message":"backend failed"}}}`, wantFailure: true, wantError: "backend failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			now := time.Now()
+			dir := t.TempDir()
+			if err := Save(dir, validTokens(now)); err != nil {
+				t.Fatal(err)
+			}
+			backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprintln(writer, `data: {"type":"response.created","response":{"id":"r-1","model":"gpt-5.5"}}`)
+				fmt.Fprintln(writer)
+				fmt.Fprintln(writer, `data: {"type":"response.output_text.delta","delta":"partial answer"}`)
+				fmt.Fprintln(writer)
+				if test.terminal != "" {
+					fmt.Fprintf(writer, "data: %s\n\n", test.terminal)
+				}
+			}))
+			defer backend.Close()
+			transport := ClientWithOptions(dir, Options{Backend: backend.URL, HTTPClient: backend.Client(), Now: func() time.Time { return now }})
+			client, err := provider.NewClient(provider.Config{
+				APIKey: "k", BaseURL: backend.URL, Model: "gpt-5.5", Direct: true, HTTPClient: transport,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := client.CompleteWithMessages(context.Background(), []ai.Message{{
+				Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "hello"}},
+			}})
+			if test.wantCut {
+				cut, ok := provider.CutFrom(err)
+				if !ok || cut.Reason != provider.CutTruncated || response != nil {
+					t.Fatalf("response = %+v, err = %v; want a truncated cut", response, err)
+				}
+				return
+			}
+			if test.wantFailure {
+				if _, cut := provider.CutFrom(err); err == nil || cut || response != nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("response = %+v, err = %v; want the mapped upstream failure", response, err)
+				}
+				return
+			}
+			if err != nil || response == nil || len(response.Choices) != 1 || response.Choices[0].FinishReason != test.finish {
+				t.Fatalf("response = %+v, err = %v; want finish %q", response, err, test.finish)
+			}
+		})
+	}
 }
 
 func TestFailedResponseEventsAreClassifiableOnStreamingAndWholeResponseRoads(t *testing.T) {

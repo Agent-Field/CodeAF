@@ -215,6 +215,7 @@ func (a *app) teamsManagerStart(id string) tea.Cmd {
 		a.touch()
 		return nil
 	}
+	a.tp.focus = false
 	return a.teamsStartManager(a.teamWhere(t), func(tab chatTab) {
 		if err := a.teamMakeManager(id, tab); err != nil {
 			a.note("the manager is set for this window, but " + err.Error())
@@ -277,6 +278,7 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 func (a *app) teamsStartManager(where string, made func(chatTab)) tea.Cmd {
 	take := func() {
 		made(chatTab{key: a.convKey(a.file), file: a.file, where: a.workspace})
+		a.tp.focus = false
 		a.tp.top = teamsTopCache{}
 		a.touch()
 	}

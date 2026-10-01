@@ -2318,8 +2318,8 @@ the answers are on the `needs you` row itself.
 **`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
 opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — a question's own answer keys and words, `x close`, `n new in project`,
-`o open folder`, `p copy project`, `p pause it` or `r resume it` on a standing item. `esc` or
+and the box is asleep — a question's own answer keys and words, `x close`, `c copy name`, `n new in project`,
+`o open folder`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
 never leave home's field, and on a panel's fold line (`N more`) `enter`
 opens the panel and shows the rest; on `N fewer` it folds them again.
@@ -3296,7 +3296,9 @@ Opening **latches** your choice during streaming. An opened live block shows the
 whole buffer, not the 3-line window. Completion still folds the whole turn’s work.
 
 An expanded block is capped at **200 rows**, and says how much is held back. The token
-count is an estimate at 4 bytes per token.
+count is an estimate at 4 bytes per token. Before enough text arrives to estimate one
+token, the count is absent: `thinking · ctrl+e`, or `thought for Ns · ctrl+e` after
+the block collapses. The label and disclosure stay available.
 
 **Reasoning is never written to the session file.** A resumed conversation shows the
 answers, not the thinking.
