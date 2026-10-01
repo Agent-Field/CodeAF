@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -9,10 +10,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // surfaceNotices is the one desk the sync side puts its sentences on for the
@@ -49,7 +52,8 @@ func wireSync(o *tui3.Options) {
 	if o.Branches.Discard == nil {
 		o.Branches = tui3.BranchActions{Discard: s.Discard}
 	}
-	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.Say) })
+	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.SayOnce) })
+	guard.Go("sync/standing-live", func() { watchStanding(s.Home, s.Follow, surfaceNotices.SayOnce) })
 }
 
 // standingWithin bounds the launch-time check so a silent relay costs nothing.
@@ -69,6 +73,48 @@ func checkStanding(dir string, d directory.Client, say func(string)) {
 	defer cancel()
 	_, err := d.List(ctx)
 	sayRefusalTo(say, err)
+}
+
+// watchStanding keeps listening, for as long as the app runs, for the relay
+// ending this device's socket as removed or replaced, and says it the moment it
+// happens, in the open chat and on home alike, without waiting for a restart or
+// the next refused request. The same quiet law as checkStanding: a home that
+// cannot talk to anyone holds no socket. The feed stops reconnecting after a
+// refusal, so the listener ends there too.
+func watchStanding(dir string, follow func() dirwatch.Follower, say func(string)) {
+	if !syncsetup.MayTalk(dir) {
+		return
+	}
+	f := follow()
+	if f == nil {
+		return
+	}
+	defer f.Close()
+	for refused(f) == nil {
+		if _, open := <-f.Changes(); !open {
+			return
+		}
+	}
+	sayRefusalTo(say, standingRefusal(refused(f)))
+}
+
+// refused is the final refusal the feed ended with, nil while it is not ended.
+func refused(f dirwatch.Follower) error { return f.State().Refused }
+
+// standingRefusals maps the feed's final refusals to the wire's, so the one
+// table of sentences (cellsync.refusals) is the only place they are written.
+var standingRefusals = []struct{ feed, wire error }{
+	{dirwatch.ErrRevoked, wireauth.ErrRevoked},
+	{dirwatch.ErrRotated, wireauth.ErrRotated},
+}
+
+func standingRefusal(err error) error {
+	for _, r := range standingRefusals {
+		if errors.Is(err, r.feed) {
+			return r.wire
+		}
+	}
+	return err
 }
 
 // takeover is the surface's Taker over the take side: what a takeover reports,
