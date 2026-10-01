@@ -104,16 +104,28 @@ func New(cfg Config) *Service {
 	if cfg.Store == "" {
 		return svc
 	}
+	links := directory.NewLinks(now, directory.DefaultLinkLimits)
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
+	svc.ns.links = links
 	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
 	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)
+	mux.Handle(directory.LinkPath+"/", logged(cfg.Logf, directory.LinkHandler(links, peerOf(cfg))))
 	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, auth, svc.ns.blobs)))
 	svc.stop = make(chan struct{})
 	svc.swept.Add(1)
 	go svc.sweepLoop(sweepInterval(cfg.SweepEvery), cfg.Logf)
 	return svc
+}
+
+// peerOf names the network of a link-pairing request: the proxy's word when
+// the relay sits behind one, the socket otherwise.
+func peerOf(cfg Config) directory.PeerFunc {
+	if cfg.TrustProxy {
+		return pairbox.ForwardedPeer
+	}
+	return pairbox.SocketPeer
 }
 
 func sweepInterval(d time.Duration) time.Duration {

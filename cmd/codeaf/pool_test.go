@@ -184,7 +184,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 	body := out.String()
 	for _, want := range []string{
 		"mode on · default",
-		"relay https://codeaf.agentfield.ai/pool · default",
+		"pool server https://codeaf.agentfield.ai/pool · default",
 		"index https://codeaf.agentfield.ai/pool/index.json · default",
 		"mirror https://raw.githubusercontent.com/Agent-Field/CodeAF/model-pool/pool/index.json · default",
 		"submit https://codeaf.agentfield.ai/pool/v1/rows · default",
@@ -1799,7 +1799,7 @@ func TestPoolStatusSaysTheRelayAnswered(t *testing.T) {
 	if err := runPoolWith([]string{"status", "--key", base64.StdEncoding.EncodeToString(pub)}, &out, t.TempDir(), poolClock(t), lookup); err != nil {
 		t.Fatalf("a reachable relay failed status: %v", err)
 	}
-	if !strings.Contains(out.String(), "relay: reachable · index version 7") {
+	if !strings.Contains(out.String(), "pool server: reachable · index version 7") {
 		t.Fatalf("status did not say the relay answered:\n%s", out.String())
 	}
 }
@@ -1950,7 +1950,7 @@ func TestPoolStatusSaysUnreachableAndStillExitsZero(t *testing.T) {
 		t.Fatalf("an unreachable relay failed status: %v", err)
 	}
 	body := out.String()
-	if !strings.Contains(body, "relay: unreachable (") {
+	if !strings.Contains(body, "pool server: unreachable (") {
 		t.Fatalf("status did not say the relay was unreachable:\n%s", body)
 	}
 	if !strings.Contains(body, "mirror: unreachable (") {
@@ -1977,7 +1977,7 @@ func TestPoolStatusFallsToTheMirrorWhenTheRelayIsDown(t *testing.T) {
 		t.Fatalf("a mirror that answered still failed status: %v", err)
 	}
 	body := out.String()
-	if !strings.Contains(body, "relay: unreachable (") || !strings.Contains(body, "mirror: reachable · index version 7") {
+	if !strings.Contains(body, "pool server: unreachable (") || !strings.Contains(body, "mirror: reachable · index version 7") {
 		t.Fatalf("status did not fall to the mirror:\n%s", body)
 	}
 }
@@ -2046,7 +2046,7 @@ func TestPoolStatusSaysWhyAStoredKeyDoesNotDecode(t *testing.T) {
 	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
 		t.Fatalf("a broken stored key failed status: %v", err)
 	}
-	if !strings.Contains(out.String(), "relay: unreachable (models.pool.public_key does not decode") {
+	if !strings.Contains(out.String(), "pool server: unreachable (models.pool.public_key does not decode") {
 		t.Fatalf("status did not name the broken row:\n%s", out.String())
 	}
 
@@ -2073,7 +2073,7 @@ func TestPoolStatusDoesNotReadWhenOff(t *testing.T) {
 	if err := runPoolWith([]string{"status"}, &out, t.TempDir(), poolClock(t), lookup); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "relay: not read (model_pool off)") {
+	if !strings.Contains(out.String(), "pool server: not read (model_pool off)") {
 		t.Fatalf("an off pool did not say it asked nothing:\n%s", out.String())
 	}
 }

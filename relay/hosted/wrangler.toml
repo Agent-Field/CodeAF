@@ -25,9 +25,21 @@ class_name = "NewcomerGate"
 name = "MAILBOX"
 class_name = "Mailbox"
 
+[[durable_objects.bindings]]
+name = "LINK_GATE"
+class_name = "LinkGate"
+
+[[durable_objects.bindings]]
+name = "LINK_REQUEST"
+class_name = "LinkRequest"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LinkGate", "LinkRequest"]
 
 [vars]
 # The lease law: "amended" is contract 8.7 of the stage 1H decision (90 s, a publish renews) and is

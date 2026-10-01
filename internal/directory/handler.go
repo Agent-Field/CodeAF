@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -28,6 +29,7 @@ type call struct {
 
 func (c call) ctx() context.Context { return c.r.Context() }
 func (c call) id() string           { return c.r.PathValue("id") }
+func (c call) code() string         { return c.r.PathValue("code") }
 
 // route answers one call. A nil result is an empty 204.
 type route func(call) (any, error)
@@ -94,6 +96,9 @@ func denial(err error) error {
 
 func refuse(w http.ResponseWriter, err error) {
 	we := classify(err)
+	if after := wireauth.After(err); after > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int((after+time.Second-1)/time.Second)))
+	}
 	send(w, we.status, errBody{Err: we.code})
 }
 
@@ -123,19 +128,22 @@ func send(w http.ResponseWriter, status int, v any) {
 
 // routes is the §4.4 table, one entry per method and path.
 var routes = map[string]route{
-	"GET " + dirBase + "/list":                  func(c call) (any, error) { return pair(c.cl.List(c.ctx())) },
-	"GET " + dirBase + "/cells/{id}":            func(c call) (any, error) { return pair(c.cl.Cell(c.ctx(), c.id())) },
-	"PUT " + dirBase + "/devices/{id}":          withBody(putDevice),
-	"POST " + dirBase + "/devices/{id}/revoke":  func(c call) (any, error) { return nothing(c.cl.Revoke(c.ctx(), c.id())) },
-	"POST " + dirBase + "/vault":                withBody(setVault),
-	"POST " + dirBase + "/cells/{id}":           withBody(create),
-	"POST " + dirBase + "/cells/{id}/acquire":   optionalBody(acquire),
-	"POST " + dirBase + "/cells/{id}/heartbeat": withBody(heartbeat),
-	"POST " + dirBase + "/cells/{id}/publish":   withBody(publish),
-	"POST " + dirBase + "/cells/{id}/release":   withBody(release),
-	"POST " + dirBase + "/cells/{id}/archive":   func(c call) (any, error) { return nothing(c.cl.Archive(c.ctx(), c.id())) },
-	"GET " + rotationPath:                       func(c call) (any, error) { return pair(c.cl.Rotation(c.ctx())) },
-	"POST " + rotationPath:                      withBody(rotate),
+	"GET " + dirBase + "/list":                     func(c call) (any, error) { return pair(c.cl.List(c.ctx())) },
+	"GET " + dirBase + "/presence":                 func(c call) (any, error) { return pair(c.cl.Presence(c.ctx())) },
+	"GET " + dirBase + "/cells/{id}":               func(c call) (any, error) { return pair(c.cl.Cell(c.ctx(), c.id())) },
+	"PUT " + dirBase + "/devices/{id}":             withBody(putDevice),
+	"POST " + dirBase + "/devices/{id}/revoke":     func(c call) (any, error) { return nothing(c.cl.Revoke(c.ctx(), c.id())) },
+	"POST " + dirBase + "/vault":                   withBody(setVault),
+	"POST " + dirBase + "/cells/{id}":              withBody(create),
+	"POST " + dirBase + "/cells/{id}/acquire":      optionalBody(acquire),
+	"POST " + dirBase + "/cells/{id}/heartbeat":    withBody(heartbeat),
+	"POST " + dirBase + "/cells/{id}/publish":      withBody(publish),
+	"POST " + dirBase + "/cells/{id}/release":      withBody(release),
+	"POST " + dirBase + "/cells/{id}/archive":      func(c call) (any, error) { return nothing(c.cl.Archive(c.ctx(), c.id())) },
+	"POST " + dirBase + "/requests/{code}/approve": withBody(approveRequest),
+	"POST " + dirBase + "/requests/{code}/deny":    func(c call) (any, error) { return nothing(c.cl.DenyRequest(c.ctx(), c.code())) },
+	"GET " + rotationPath:                          func(c call) (any, error) { return pair(c.cl.Rotation(c.ctx())) },
+	"POST " + rotationPath:                         withBody(rotate),
 }
 
 // pair and nothing adapt a Client's return shapes to a route's.
@@ -185,6 +193,9 @@ type fenceBody struct {
 	Fence uint64 `json:"fence"`
 }
 
+func approveRequest(c call, a Approval) (any, error) {
+	return nothing(c.cl.ApproveRequest(c.ctx(), c.code(), a))
+}
 func rotate(c call, req RotationReq) (any, error) { return pair(c.cl.Rotate(c.ctx(), req)) }
 func setVault(c call, s vaultSwap) (any, error)   { return nothing(c.cl.SetVault(c.ctx(), s.Old, s.New)) }
 func create(c call, in CellInit) (any, error)     { return pair(c.cl.Create(c.ctx(), c.id(), in)) }
