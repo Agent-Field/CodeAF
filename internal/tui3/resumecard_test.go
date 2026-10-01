@@ -143,3 +143,45 @@ func TestALongListEndsWithHowManyMore(t *testing.T) {
 		t.Fatal("a line was said about nothing")
 	}
 }
+
+func TestTheLastTestRunIsSaidOnlyWhenOneWasRecorded(t *testing.T) {
+	if got := testsLine(machine.Resume{}); got != "" {
+		t.Fatalf("a chat with no run said %q", got)
+	}
+	cases := map[string]inventory.TestRun{
+		"last tests: passed":   {Passed: true},
+		"last tests: failed 3": {Failed: 3},
+		"last tests: failed":   {},
+	}
+	for want, run := range cases {
+		run := run
+		reasons := chatlist.SetupReasons(setupFacts(machine.Resume{Tests: &run}))
+		if len(reasons) != 1 || reasons[0] != want {
+			t.Errorf("run %+v said %v, want %q", run, reasons, want)
+		}
+	}
+}
+
+func TestAnArrivalWithOnlyFactsRaisesABriefThatRunsNothing(t *testing.T) {
+	a, agent := movedApp(t)
+	a.offerSetup(machine.Resume{From: "spark", Uncommitted: []string{"README.md"}, Tests: &inventory.TestRun{Passed: true}})
+	q := askedCard(t, a).question
+	if q.Head != "Moved from spark. Here is where it stands." || !strings.Contains(q.Reason, "README.md") || !strings.Contains(q.Reason, "passed") {
+		t.Fatalf("brief %q / %q", q.Head, q.Reason)
+	}
+	if len(q.Options) != 1 || q.Options[0].Label != "got it" || agent.runs != 0 {
+		t.Fatalf("options %+v, runs %d", q.Options, agent.runs)
+	}
+}
+
+func TestATakenChatHomeDoesNotListStillOpens(t *testing.T) {
+	a, _ := movedApp(t)
+	msg := homeTakenMsg{row: chatlist.Row{Cell: "c1"}, taken: Taken{Transcript: "/x/c1/.cell/transcript.jsonl", Resume: machine.Resume{Now: "/x/c1/work"}}}
+	line, ok := a.takenLine(msg)
+	if !ok || line.row.Transcript != msg.taken.Transcript || homeWhere(line) != "/x/c1/work" {
+		t.Fatalf("line %+v ok %v", line.row, ok)
+	}
+	if _, ok := a.takenLine(homeTakenMsg{row: msg.row}); ok {
+		t.Fatal("a takeover that named no journal still produced a line")
+	}
+}

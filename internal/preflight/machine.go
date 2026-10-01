@@ -96,6 +96,7 @@ func Arrive(root, workspace, from string) (Resume, error) {
 	inv := m.store.Snapshot()
 	r := Compare(from, inv, m.here(), Check(inv, LocalFor(inv, m.path)))
 	r.Now = workspace
+	r.Uncommitted = Uncommitted(workspace)
 	return r, m.stash(r)
 }
 

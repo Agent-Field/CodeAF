@@ -37,11 +37,22 @@ type Resume struct {
 	Lacks []Item `json:"lacks,omitempty"`
 	// Omitted is how many entries of each list the record itself cut.
 	Omitted map[string]int `json:"omitted,omitempty"`
+	// Uncommitted is the files in the folder here that differ from its last
+	// commit. It is shown, never offered: it raises no card by itself.
+	Uncommitted []string `json:"uncommitted,omitempty"`
+	// Tests is the last test run the record holds, nil when the chat ran none.
+	// Like Uncommitted it is shown, never offered.
+	Tests *inventory.TestRun `json:"tests,omitempty"`
 }
 
 // Empty reports whether there is nothing to say. An empty Resume raises no card,
 // sends no message and writes nothing anywhere (the emptiness law).
 func (r Resume) Empty() bool { return !r.hasFacts() && len(r.Lacks) == 0 }
+
+// Worth reports whether the arrival has anything to show: what needs setting up,
+// or what is only shown (uncommitted files, the last test run). Empty stays the
+// test for what can be offered.
+func (r Resume) Worth() bool { return !r.Empty() || len(r.Uncommitted) > 0 || r.Tests != nil }
 
 // hasFacts is whether the chat left anything behind, apart from tools this
 // machine lacks, which the setup brief already names.
@@ -92,7 +103,7 @@ func (LocalHere) Answers(port int) bool {
 // (taking a chat back onto the machine that kept its own) is not missing, and a
 // recorded port that answers is not stopped.
 func Compare(from string, inv inventory.Inventory, here Here, report Report) Resume {
-	r := Resume{From: from, Was: inv.Workspace, Detached: inv.Detached, Omitted: inv.Omitted}
+	r := Resume{From: from, Was: inv.Workspace, Detached: inv.Detached, Omitted: inv.Omitted, Tests: inv.Tests}
 	r.Missing = missingFrom(inv.Withheld, here)
 	r.Stopped = stoppedFrom(inv.Running, here)
 	r.Lacks = report.needs()

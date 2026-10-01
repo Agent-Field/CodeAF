@@ -253,12 +253,13 @@ func askPairingCode(name string) (string, error) {
 func runServe(args []string) error {
 	flags := commandFlags("serve")
 	workspace := flags.String("workspace", "", "directory a connection works in when it does not name one; empty is the directory this command was run in")
-	relayAddress := flags.String("relay", "", "the relay to be reachable through; empty reads "+pair.RelayEnv)
+	relayAddress := flags.String("via", "", "the sync address to be reachable through; empty reads "+pair.RelayEnv)
+	renamedFlag(flags, "relay", "via")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("usage: codeaf serve [--workspace path] [--relay https://…]")
+		return errors.New("usage: codeaf serve [--workspace path] [--via https://…]")
 	}
 
 	service := strings.TrimSpace(*relayAddress)
@@ -268,7 +269,7 @@ func runServe(args []string) error {
 	if service == "" {
 		// THE HONEST STATE, AND THE ONE MOST PEOPLE WILL MEET. The relay is a
 		// service and this build does not assume one exists.
-		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to a relay's address, or let people in over ssh with `codeaf chat --host` from their side")
+		return errors.New("no sync address is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to your sync address, or let people in over ssh with `codeaf chat --host` from their side")
 	}
 
 	here := strings.TrimSpace(*workspace)

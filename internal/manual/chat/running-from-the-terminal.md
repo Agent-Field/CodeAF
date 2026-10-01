@@ -214,7 +214,7 @@ while `CODEAF_CELLS` is on. Its verbs are described under "The cell verbs" below
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-**`codeaf pair`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--relay <url>` names the relay to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
+**`codeaf pair`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The cell verbs — list a cell's turns and rewind it, and why they only work with CODEAF_CELLS on
 

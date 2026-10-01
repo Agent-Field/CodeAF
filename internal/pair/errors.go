@@ -23,7 +23,7 @@ import (
 // The facts, so a caller can tell them apart before phrasing them.
 var (
 	// ErrNoRelay is this machine having no relay address at all.
-	ErrNoRelay = errors.New("pair: no relay is configured")
+	ErrNoRelay = errors.New("pair: no sync address is configured")
 	// ErrNotPaired is this device never having been let in to that machine.
 	ErrNotPaired = errors.New("pair: this device is not paired with that machine")
 	// ErrWrongCode is the pairing code not matching.
@@ -37,17 +37,17 @@ var (
 
 // NoRelay is the first sentence: nothing is configured.
 func NoRelay(name string) error {
-	return fmt.Errorf("no relay is set up on this machine, so --at has nowhere to look for %s — set %s to a relay's address, or reach that machine with --host over ssh", name, RelayEnv)
+	return fmt.Errorf("no service address is set up on this machine, so --at has nowhere to look for %s — set %s to a service address, or reach that machine with --host over ssh", name, RelayEnv)
 }
 
 // Unreachable is the second: something is configured and it is not answering.
 func Unreachable(service string) error {
-	return fmt.Errorf("the relay at %s cannot be reached from here — check this machine's network, or reach that machine with --host over ssh", service)
+	return fmt.Errorf("the service at %s cannot be reached from here — check this machine's network, or reach that machine with --host over ssh", service)
 }
 
 // NotConnected is the third: the relay is fine and that machine is not there.
 func NotConnected(name string) error {
-	return fmt.Errorf("%s is not connected to the relay right now — run `codeaf serve` on that machine", name)
+	return fmt.Errorf("%s is not connected to the service right now — run `codeaf serve` on that machine", name)
 }
 
 // NotPaired is the fourth: this device has never been let in.
@@ -80,7 +80,7 @@ func NoAnswer(name string) error {
 
 // Busy is the relay turning connections away.
 func Busy() error {
-	return errors.New("the relay is turning connections away right now — try again in a minute")
+	return errors.New("the service is turning connections away right now — try again in a minute")
 }
 
 // Stopped is what a machine says to a device it no longer lets in. It travels
@@ -132,13 +132,13 @@ var (
 	// ErrBadGrant is what arrived as a grant and could not be used.
 	ErrBadGrant = errors.New("what the other device sent could not be read; nothing was changed")
 	// ErrSyncOff is a person who has turned the relay off.
-	ErrSyncOff = errors.New("sync is off (CODEAF_SYNC_URL=off); pairing needs a relay")
+	ErrSyncOff = errors.New("sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address")
 	// ErrNoSync is a person with no relay set at all.
-	ErrNoSync = errors.New("no relay is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a relay's address, or pass --relay <address>")
+	ErrNoSync = errors.New("no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>")
 	// ErrRelayBusy is a relay at one of its global caps.
-	ErrRelayBusy = errors.New("the relay is full right now; try again in a few minutes")
+	ErrRelayBusy = errors.New("sync is full right now; try again in a few minutes")
 	// ErrRelayTooOld is a relay that does not know pairing yet.
-	ErrRelayTooOld = errors.New("that relay is too old for pairing")
+	ErrRelayTooOld = errors.New("that sync service is too old for pairing")
 	// ErrDifferentChats is a computer that already has chats of its own.
 	ErrDifferentChats = errors.New("this computer already has chats of its own, so they stay local and nothing was changed; to replace them with the other device's, run this again with --replace")
 	// ErrAlreadyPaired is a computer that already holds the chats being offered.
@@ -162,3 +162,24 @@ func CannotReachHost(host string) error { return fmt.Errorf("%w %s", ErrCannotRe
 func TooManyFor(wait time.Duration) error {
 	return fmt.Errorf("%w; wait %d min", ErrTooManyPairings, int((wait+time.Minute-1)/time.Minute))
 }
+
+// ── joining by link ──────────────────────────────────────────────────────────
+
+var (
+	// ErrLinkShape is typed text that is neither a pairing link nor a code.
+	ErrLinkShape = errors.New("that is not a pairing link or code; it looks like codeaf.link/p/k7m2q9xd#... or k7m2q9xd.<key>")
+	// ErrLinkExpired is a request nobody answered in time.
+	ErrLinkExpired = errors.New("the link ran out before anyone approved it; run `codeaf pair` again for a new one")
+	// ErrLinkDeclined is a person on another device saying no.
+	ErrLinkDeclined = errors.New("the request was declined on your other device; run `codeaf pair` to ask again")
+	// ErrLinkGone is a link that is not waiting any more, for any reason.
+	ErrLinkGone = errors.New("that link is not waiting any more; run `codeaf pair` on the new device for a fresh one")
+	// ErrLinkDecided is a request that was already answered the other way.
+	ErrLinkDecided = errors.New("that request was already answered")
+	// ErrCheckMismatch is a request whose check number does not fit its key.
+	ErrCheckMismatch = errors.New("the check number does not fit that device, so nothing was approved")
+	// ErrPairedNotRead is a pairing that worked and a list of devices that did not load.
+	ErrPairedNotRead = errors.New("paired, but your devices could not be read yet; open codeaf again in a moment")
+	// ErrNotJoined is an approver that has no device of its own to answer with.
+	ErrNotJoined = errors.New("this computer is not paired with any device yet, so it cannot approve one; run `codeaf pair` first")
+)

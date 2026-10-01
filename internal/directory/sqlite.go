@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS version  (id INTEGER PRIMARY KEY CHECK (id = 1), n IN
 // Memory the rules run inside one write transaction, which is what makes two
 // connections to the same file agree on a single winner.
 type SQLite struct {
+	pairing
 	db    *sql.DB
 	clock func() time.Time
 
@@ -55,6 +56,7 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 		db.Close()
 		return nil, err
 	}
+	wireFeed(s.feed, &s.pairing, s.seen)
 	return s, nil
 }
 
@@ -150,9 +152,12 @@ func (s *SQLite) Close() error {
 }
 
 // For returns the Client that device would hold.
-func (s *SQLite) For(device string) Client { return &sqliteClient{s: s, device: device} }
+func (s *SQLite) For(device string) Client {
+	return &sqliteClient{pairing: &s.pairing, s: s, device: device}
+}
 
 type sqliteClient struct {
+	*pairing
 	s      *SQLite
 	device string
 }
@@ -388,13 +393,35 @@ func (c *sqliteClient) Rotation(ctx context.Context) (v RotationView, err error)
 // only way to stop a device is Revoke and a device cannot clear its own stop.
 func (c *sqliteClient) PutDevice(ctx context.Context, id string, d Device) error {
 	return c.txw(ctx, func(tx *sql.Tx) error {
-		var old Device
-		if err := get(tx, "devices", id, &old); err != nil && !errors.Is(err, ErrNotFound) {
-			return err
-		}
-		d.Revoked = old.Revoked
-		return put(tx, c.s.feed, "devices", id, d, c.s.now())
+		_, err := c.s.store(tx, id, d)
+		return err
 	})
+}
+
+// store writes a device record as the directory keeps it and answers it.
+func (s *SQLite) store(tx *sql.Tx, id string, d Device) (Device, error) {
+	var old Device
+	err := get(tx, "devices", id, &old)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return d, err
+	}
+	now := s.now()
+	d = Stamped(old, err == nil, d, now)
+	return d, put(tx, s.feed, "devices", id, d, now)
+}
+
+func (c *sqliteClient) ApproveRequest(ctx context.Context, code string, a Approval) error {
+	return c.approve(code, a, func(r Request) (d Device, err error) {
+		err = c.txw(ctx, func(tx *sql.Tx) (err error) {
+			d, err = c.s.store(tx, r.Device, a.Device)
+			return err
+		})
+		return d, err
+	})
+}
+
+func (c *sqliteClient) DenyRequest(ctx context.Context, code string) error {
+	return c.deny(code, func() error { return c.txw(ctx, func(*sql.Tx) error { return nil }) })
 }
 
 func (c *sqliteClient) Revoke(ctx context.Context, id string) error {

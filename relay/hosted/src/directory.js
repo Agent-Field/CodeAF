@@ -120,8 +120,26 @@ export class Directory {
   }
 
   // A device's record says whether it is revoked, and the device cannot change that: only revoke can.
+  // The relay alone says when the device joined and when it was last seen (contract 4): a client's values are dropped.
   putDevice(id, device) {
-    this.write('devices', id, { ...device, revoked: this.revoked(id) });
+    this.write('devices', id, this.#kept(id, { ...device, revoked: this.revoked(id) }));
+  }
+
+  /** approveDevice writes the record of a device a paired device approved, and answers what was stored. */
+  approveDevice(id, device) {
+    return this.write('devices', id, this.#kept(id, { ...device, revoked: false }));
+  }
+
+  #kept(id, doc) {
+    const before = this.read('devices', id);
+    const { created: _c, last_seen: _l, ...own } = doc;
+    return { ...own, created: before ? before.created : this.clock(), last_seen: before?.last_seen };
+  }
+
+  /** seen stamps when the device last held a watch socket (hello or close). Only the relay writes it; it moves no version (contract 4). */
+  seen(id, at) {
+    const record = this.read('devices', id);
+    if (record) this.sql.exec('INSERT OR REPLACE INTO dir VALUES (?,?,?)', 'devices', id, JSON.stringify({ ...record, last_seen: at }));
   }
 
   /**
@@ -133,6 +151,7 @@ export class Directory {
     if (!record) throw refuse('not_found');
     if (id === caller) throw refuse('self_revoke');
     this.write('devices', id, { ...record, revoked: true });
+    this.watchers.announce({ t: 'revoked', device: id, at: this.clock() }, id);
     this.watchers.closeDevice(id, CLOSE_REVOKED, 'revoked');
   }
 
