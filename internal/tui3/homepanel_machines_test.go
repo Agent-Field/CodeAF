@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 )
 
 // otherMachines is one chat in each state a person can find on another machine.
@@ -214,5 +215,42 @@ func TestAChatThisMachineLetLapseStaysLocal(t *testing.T) {
 		if line.remote != nil {
 			t.Fatalf("drew a remote row over this machine's own chat:\n%s", homeText(a))
 		}
+	}
+}
+
+// A chat whose device went offline still holds a lease, but nobody is running
+// it: the row says the device is off, not that the chat runs there now.
+func TestARowOnAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
+	a := machinesHome(t, chatlist.Static{
+		{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", DeviceID: "dev_studio", Status: chatlist.Running, DurableAgo: time.Minute},
+	}, 200)
+	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_studio"}}}
+	a.dirFeed = feed
+	a.rebuildMachines()
+	if got := linesWith(a, "running on studio"); len(got) != 1 {
+		t.Fatalf("an online device's chat should say running:\n%s", homeText(a))
+	}
+	feed.state.Online = nil
+	a.rebuildMachines()
+	if got := linesWith(a, "running on"); len(got) != 0 {
+		t.Fatalf("an offline device's chat still says running: %q", got)
+	}
+	if got := linesWith(a, "studio off"); len(got) != 1 {
+		t.Fatalf("an offline device's chat does not say it is off:\n%s", homeText(a))
+	}
+}
+
+// A presence change redraws the rows without waiting for a new listing.
+func TestAPresenceSignalRedrawsTheRow(t *testing.T) {
+	a := machinesHome(t, chatlist.Static{
+		{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", DeviceID: "dev_studio", Status: chatlist.Running, DurableAgo: time.Minute},
+	}, 200)
+	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_studio"}}}
+	a.dirFeed = feed
+	a.rebuildMachines()
+	feed.state.Online = nil
+	a.tookWatch(dirWatchMsg{from: feed})
+	if got := linesWith(a, "studio off"); len(got) != 1 {
+		t.Fatalf("a presence signal left the row stale:\n%s", homeText(a))
 	}
 }
