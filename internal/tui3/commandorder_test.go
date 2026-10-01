@@ -1,6 +1,25 @@
 package tui3
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestCommandCatalogueIncludesTheCompleteArgumentForms(t *testing.T) {
+	wants := []string{"/crew cap task <dollars>", "/land now", "/cache clean now"}
+	for _, want := range wants {
+		found := false
+		for _, command := range commands {
+			if strings.TrimSpace(command.typed()) == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("command catalogue does not offer %s", want)
+		}
+	}
+}
 
 // THE WORDS FORM LEADS THE PAIR, AND THE FINISHED WORD STILL GETS ITS PAGE.
 // /standing has two rows on purpose: the one that makes an order (the act the

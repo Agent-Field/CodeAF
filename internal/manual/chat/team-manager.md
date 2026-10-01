@@ -66,6 +66,10 @@ Once there is a manager the place reads **`◆ Manager`**, and on the conversati
 comes first, titled `◆ Manager · <its title>`. Point at the tab to see the team and the title in
 the hint line. `alt+m` goes to the manager from any conversation in the team.
 
+An untitled manager is addressable immediately: codeaf gives it a deterministic `@manager-...`
+fallback when it joins the team, so another manager can use `team_send` before its first turn.
+Once its title is made, the ordinary title-based handle choice may replace that fallback.
+
 ## The manager's screen
 
 While the manager is in front, the message box says `to ◆ manager`, and keeps saying it on the

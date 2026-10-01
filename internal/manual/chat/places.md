@@ -796,8 +796,9 @@ an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
 On a narrow window the line wraps onto a second or third dim line under the first; it is
 never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
 the same heading; nothing above it moves.
-- **spend** and **memory** over `--host` each say one dim line where their rows
-  would be — see *The places over --host* below for the exact words and why these places still say them when their remote stores are unavailable.
+- **spend** over `--host` says one dim line where its rows would be when its remote
+  store is unavailable. Memory follows the connected engine's store and setting; see
+  *The places over --host* below for the exact words.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
@@ -862,7 +863,7 @@ own remote stores when the engine supports them:
 | **memory** | the far machine's memories; fixing and forgetting a line write there too |
 
 **No place silently substitutes this laptop's rows for the far machine's.** Settings names
-the split as it opens. Spend and memory never substitute local rows when their remote stores are unavailable. A screen full of the wrong machine's work is a confident lie, and one honest
+the split as it opens. Spend never substitutes local rows when its remote store is unavailable; memory reads and writes the far store when its door is present. A screen full of the wrong machine's work is a confident lie, and one honest
 sentence is better than eight rows and a total in dollars that belong to somebody else's
 afternoon.
 
@@ -912,6 +913,15 @@ that reads a real disk and names the wrong machine is worse than a page that say
 model calls, and memory reads and writes its memory store. `e` and `f` on a memory line therefore change the other machine's memory, not this
 computer's. If the engine is an older build without one of these doors, the place keeps its
 honest dim sentence instead of falling through to this computer's files.
+
+## Does memory work when I connect to another machine
+
+Yes. `/memory` and `alt+8` show the connected machine's saved notes, and edits
+and forgetting write back to that same store. `/remember <text>` saves a note,
+`/memories` lists them and `/forget <query>` drops the best match. Plain `codeaf`
+uses this machine's engine through these same doors. With memory off for the
+conversation, the commands and page say
+`memory is off for this session · turn it on under /settings`.
 
 ## Can I put away a conversation on the other machine from home
 

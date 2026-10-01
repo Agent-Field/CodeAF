@@ -2217,6 +2217,11 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 
 	switch msg.String() {
 	case "esc":
+		// A settings-started browser flow is this page's outstanding layer;
+		// closing the sheet first would leave its callback listener alive.
+		if a.cancelBrowserSignIns() {
+			return nil, true
+		}
 		// esc backs out one layer at a time: the search first, then whatever the
 		// tab on show has standing open — a confirmation, an expanded service —
 		// and the panel after all of it. A key that closed the whole sheet from

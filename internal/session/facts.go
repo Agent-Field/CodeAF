@@ -29,6 +29,10 @@ package session
 // these five here — a frame or a keystroke reads it, so waiting on the wire for
 // it is a terminal that has stopped repainting.
 type Facts struct {
+	// Memory is whether this request profile can use its saved notes. A missing
+	// field identifies an older engine that only states it in the welcome;
+	// an explicit false must travel when a full profile becomes lean.
+	Memory *bool `json:"memory,omitempty"`
 	// NeedsPerson names an outstanding human decision, including hidden chats.
 	NeedsPerson bool `json:"needsPerson,omitempty"`
 	// Model is the model the next request will use ([Agent.Model]).
@@ -149,6 +153,10 @@ func FactsOf(source FactSource) Facts {
 		Spent:         source.Usage(),
 		ContextTokens: source.ContextTokens(),
 		Reasoning:     source.ReasoningLevels(),
+	}
+	if door, ok := source.(interface{ Remembers() bool }); ok {
+		memory := door.Remembers()
+		facts.Memory = &memory
 	}
 	// AND THE FOLDERS, ASSERTED RATHER THAN REQUIRED. A capability that cannot
 	// work is absent rather than broken, and a source that does not keep places —
