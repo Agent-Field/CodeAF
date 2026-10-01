@@ -139,3 +139,33 @@ func TestAChildListensOnlyWithADeclarationAndAnInbox(t *testing.T) {
 		}
 	}
 }
+
+// Store-sized words must survive their largest JSON expansion, and a writer
+// must refuse anything its reader would discard before touching the file.
+func TestInboxKeepsEveryStoreSizedMessageAndRejectsOversizedLines(t *testing.T) {
+	for _, text := range []string{strings.Repeat(`"`, 32<<10), strings.Repeat("<>&", (32<<10)/3), strings.Repeat("\x00", 32<<10)} {
+		path := filepath.Join(t.TempDir(), InboxName)
+		if err := AppendInbox(path, Message{ID: "n-valid", From: FromPerson, Text: text}); err != nil {
+			t.Fatal(err)
+		}
+		in := &inbox{path: path}
+		got := in.Messages()
+		if len(got) != 1 || got[0].Text != text {
+			t.Errorf("accepted %d-byte message disappeared: read %d messages", len(text), len(got))
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(text, "<") && bytes.Contains(raw, []byte(`\u003c`)) {
+			t.Error("HTML characters were needlessly escaped")
+		}
+	}
+	path := filepath.Join(t.TempDir(), InboxName)
+	if err := AppendInbox(path, Message{ID: "n-big", Text: strings.Repeat("x", 2<<20)}); err == nil {
+		t.Error("oversized line was accepted")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("refused line touched the inbox")
+	}
+}

@@ -204,9 +204,14 @@ not when it reads them, so a message lost to a run killed in between is never
 receipted — and only then does codeaf mark the note had. The inbox file is
 emptied at every launch, because the task's folder outlives a run and a later
 worker of the same task must not be handed the last run's lines; codeaf never
-forwards a note in the program's own name. It writes `inbox`
+forwards a note in the program's own name. Lines are encoded without HTML escaping and
+bounded to 1 MiB on both write and read, enough for any accepted 32 KiB note's JSON expansion.
+Each launch removes the previous program record before the child starts, leaving no record
+until hello; if removal fails, it replaces the record with only the name and ceiling.
+`started_at` appears at hello, so no start means no hello yet. It writes `inbox`
 with `open` false when it stops reading (senior-dev at its hand-in, because a
 frozen tree takes no direction), and codeaf refuses later words with that reason.
+If the process exits with its inbox still open, codeaf closes it with `it has stopped working`.
 A program that does not listen, or whose hello did not say `accepts`, is refused
 every message in so many words and is never handed one nothing reads.
 

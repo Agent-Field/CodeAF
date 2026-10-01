@@ -4,8 +4,10 @@ package delegate
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -51,8 +53,13 @@ const (
 	FromWorker       = "worker"
 )
 
-// inboxLineMax bounds one message line; a longer one is skipped whole.
-const inboxLineMax = 64 << 10
+// inboxLineMax leaves room for a store's 32 KiB note to expand sixfold during
+// JSON encoding, so every accepted note fits the reader's line bound.
+const inboxLineMax = 1 << 20
+
+// ErrInboxMessage distinguishes words the inbox cannot carry from an I/O
+// failure, so one bad message does not block every later message.
+var ErrInboxMessage = errors.New("the inbox cannot carry this message")
 
 // Message is one line of the inbox.
 type Message struct {
@@ -65,17 +72,23 @@ type Message struct {
 func AppendInbox(path string, message Message) error {
 	message.Text = strings.TrimSpace(message.Text)
 	if message.ID == "" || message.Text == "" {
-		return errors.New("a message needs an id and words")
+		return fmt.Errorf("%w: a message needs an id and words", ErrInboxMessage)
 	}
-	line, err := json.Marshal(message)
-	if err != nil {
-		return err
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(message); err != nil {
+		return fmt.Errorf("%w: %v", ErrInboxMessage, err)
+	}
+	line := encoded.Bytes()
+	if len(line) > inboxLineMax {
+		return fmt.Errorf("%w: encoded line exceeds %d bytes", ErrInboxMessage, inboxLineMax)
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	if _, err := file.Write(append(line, '\n')); err != nil {
+	if _, err := file.Write(line); err != nil {
 		_ = file.Close()
 		return err
 	}
