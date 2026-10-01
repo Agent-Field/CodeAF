@@ -108,3 +108,16 @@ func RevokeOf(target Device, caller, targetID string) (Device, error) {
 	target.Revoked = true
 	return target, nil
 }
+
+// Stamped is d as the directory stores it, given the record already stored
+// under its id (had says whether there was one) and the directory time. The
+// relay-owned fields are never taken from the client: Revoked and LastSeen stay
+// as stored, and Created is the time of the first write.
+func Stamped(old Device, had bool, d Device, now int64) Device {
+	d.Revoked, d.LastSeen, d.Created = old.Revoked, old.LastSeen, old.Created
+	if !had {
+		d.Created = now
+	}
+	d.Platform = platformOf(d.Platform)
+	return d
+}

@@ -195,3 +195,22 @@ func TestAdoptRefusesOverAnUnmigratedVaultKey(t *testing.T) {
 		t.Fatal("vault key was not adopted as the cell key")
 	}
 }
+
+func TestPristine(t *testing.T) {
+	home := t.TempDir()
+	if ok, err := Pristine(home); !ok || err != nil {
+		t.Fatalf("an empty home is pristine, got %v %v", ok, err)
+	}
+	if _, err := Ensure(home); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := Pristine(home); !ok {
+		t.Fatal("a home with only its keys is pristine")
+	}
+	if err := os.WriteFile(filepath.Join(home, "vault.enc"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := Pristine(home); ok {
+		t.Fatal("a home with a vault is used")
+	}
+}

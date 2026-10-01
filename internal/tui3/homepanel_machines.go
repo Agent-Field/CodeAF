@@ -57,6 +57,11 @@ const machinesAskTimeout = 5 * time.Second
 // repository's status is asked (homeband_repo.go): a keystroke may not wait on
 // a network. One ask is in flight at a time.
 func (a *app) askMachines() tea.Cmd {
+	return tea.Batch(a.askChats(), a.askFleet(), a.askRoster())
+}
+
+// askChats is the listing half of [app.askMachines].
+func (a *app) askChats() tea.Cmd {
 	if a.machines == nil || a.machinesAsking {
 		return nil
 	}
@@ -75,6 +80,7 @@ func (a *app) askMachines() tea.Cmd {
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machinesAsking = false
 	a.fileMachines(msg)
+	a.considerResume(msg)
 	a.machineRead.down = msg.err != nil
 	a.machineRead.merge = a.branches.Merge != nil
 	a.rebuildMachines()

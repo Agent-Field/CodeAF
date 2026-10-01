@@ -10,19 +10,23 @@ import (
 // from here so a respelling happens once.
 const (
 	OfferContinue = "continue here"
-	LostRace      = "another device continued this chat first"
-	NoIdentity    = "this machine has no identity yet: codeaf identity import"
-	SyncOff       = "sync is off: set CODEAF_SYNC_URL to your relay's address"
-	Unreachable   = "other machines unreachable"
-	ClockOff      = "this computer's clock is off by more than 5 minutes"
+	// MoveHere is the verb for a chat another device is running right now, and
+	// ContinueVerb for one it let go of; the devices row offers them by name.
+	MoveHere     = "Move here"
+	ContinueVerb = "Continue here"
+	LostRace     = "another device continued this chat first"
+	NoIdentity   = "this machine has no identity yet: codeaf identity import"
+	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync address"
+	Unreachable  = "other machines unreachable"
+	ClockOff     = "this computer's clock is off by more than 5 minutes"
 	// What the relay's refusals say (one sentence each, in the order the
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
-	relayFull      = "the relay has no room left%s, so new turns stay on this computer; free space there and reopen this chat"
+	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
 	Removed        = "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back"
-	SlowDown       = "the relay is asking this computer to slow down; new turns stay here and go up as soon as it allows"
-	TooManyNew     = "this network has started too many new identities today; sync begins when the relay allows more"
-	ReplacedGone   = "your identity was replaced and the relay has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
+	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
+	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
+	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	runningOn      = "running on %s"
 	deviceOff      = "%s off"
@@ -40,6 +44,13 @@ const (
 	notBrought     = "not brought along: %s"
 	wasRunning     = "was running there: %s"
 	alsoNeeded     = "also needed: %s"
+	uncommitted    = "not committed yet: %s"
+	lastTests      = "last tests: %s"
+	testsPassed    = "passed"
+	testsFailed    = "failed"
+	movedFrom      = "Moved from %s in %s. Everything as you left it."
+	movedAnon      = "Moved here in %s. Everything as you left it."
+	movedRestart   = " What was running there can start again here."
 	moreNames      = "%s and %d more"
 	// OfferSetUp and OfferNotNow are the two answers of the card a takeover raises,
 	// and SetupLater is what the second one says, so a person who answered it
@@ -56,7 +67,11 @@ const namesShown = 3
 // SetupFacts are the three lists a takeover can have something to say about, as
 // lines a person reads: folders the copy did not bring, commands that were
 // running there, and what this machine also needs.
-type SetupFacts struct{ Missing, Running, Needed []string }
+type SetupFacts struct {
+	Missing, Running, Needed, Changed []string
+	// Tests is the last test run's line, from [TestsLine], "" when none was recorded.
+	Tests string
+}
 
 // SetupHead is the question of the card a takeover raises. A device whose name
 // is unknown is left out with the word before it, so the sentence still reads.
@@ -76,13 +91,28 @@ func SetupReasons(f SetupFacts) []string {
 		label string
 		names []string
 	}{
-		{notBrought, f.Missing}, {wasRunning, f.Running}, {alsoNeeded, f.Needed},
+		{notBrought, f.Missing}, {wasRunning, f.Running}, {alsoNeeded, f.Needed}, {uncommitted, f.Changed},
 	} {
 		if len(line.names) > 0 {
 			out = append(out, fmt.Sprintf(line.label, nameList(line.names)))
 		}
 	}
+	if f.Tests != "" {
+		out = append(out, f.Tests)
+	}
 	return out
+}
+
+// TestsLine is the line for the last recorded test run: it passed, or it failed
+// and, when the run said how many, how many.
+func TestsLine(passed bool, failed int) string {
+	switch {
+	case passed:
+		return fmt.Sprintf(lastTests, testsPassed)
+	case failed > 0:
+		return fmt.Sprintf(lastTests, fmt.Sprintf("%s %d", testsFailed, failed))
+	}
+	return fmt.Sprintf(lastTests, testsFailed)
 }
 
 // nameList spells the first few names and counts the rest.
@@ -192,4 +222,19 @@ func turns(n uint32) string {
 		return "1 turn"
 	}
 	return fmt.Sprintf("%d turns", n)
+}
+
+// Moved is the line every takeover says, with the time it measured. It says
+// where the chat came from when that is known, and that what was running there
+// can start again only when something was.
+func Moved(from string, elapsed time.Duration, hadRunning bool) string {
+	took := elapsed.Round(100 * time.Millisecond).String()
+	line := fmt.Sprintf(movedAnon, took)
+	if from != "" {
+		line = fmt.Sprintf(movedFrom, from, took)
+	}
+	if hadRunning {
+		line += movedRestart
+	}
+	return line
 }

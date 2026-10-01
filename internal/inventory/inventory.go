@@ -89,10 +89,12 @@ type Inventory struct {
 	// does not carry (docs/STAGE-1-CONTRACTS.md section 19). The harness writes
 	// them from what it sees and nothing else does (L13); Omitted counts, per
 	// list, the entries a bound cut.
-	Running     []Running                 `json:"running,omitempty"`
-	Withheld    []Withheld                `json:"withheld,omitempty"`
-	Detached    []Detached                `json:"detached,omitempty"`
-	Omitted     map[string]int            `json:"omitted,omitempty"`
+	Running  []Running      `json:"running,omitempty"`
+	Withheld []Withheld     `json:"withheld,omitempty"`
+	Detached []Detached     `json:"detached,omitempty"`
+	Omitted  map[string]int `json:"omitted,omitempty"`
+	// Tests is the last test run a call finished, nil when none was.
+	Tests       *TestRun                  `json:"tests,omitempty"`
 	Hints       map[string]string         `json:"hints,omitempty"`
 	Annotations map[string]map[string]any `json:"annotations,omitempty"`
 }

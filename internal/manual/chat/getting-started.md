@@ -40,7 +40,7 @@ The first screen has one field for you if your chats are on another computer:
 
 ```
 have a code from another device?
-use your own relay: codeaf pair <code> --relay <url>
+use your own relay: codeaf pair <code> --via <url>
 ```
 
 On the computer that has your chats, type `/pair` to show a code like `42-715-302`. Type that code in the field. Compare the three words on both screens. The other computer asks `y / n`. On `y`, this computer has your chats. Read *Pairing your chats with a second computer* for the rest.

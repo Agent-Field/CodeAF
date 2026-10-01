@@ -26,6 +26,18 @@ type Client interface {
 	Release(ctx context.Context, id string, fence uint64) error                 // ErrFenceStale
 	Archive(ctx context.Context, id string) error                               // idempotent
 
+	// Presence says which devices hold a watch socket now, and when the
+	// others were last seen. Live changes arrive on the watch socket instead.
+	Presence(ctx context.Context) (PresenceView, error)
+
+	// ApproveRequest lets a device that asked to join (see Requests) into this
+	// identity: it writes the device's record, keeps the grant for it and
+	// tells the other devices. The first decision wins; repeating it is a
+	// success. ErrRequestGone, ErrAlreadyDecided, ErrBadRequest, ErrTooBig.
+	ApproveRequest(ctx context.Context, code string, a Approval) error
+	// DenyRequest turns a request down. ErrRequestGone, ErrAlreadyDecided.
+	DenyRequest(ctx context.Context, code string) error
+
 	// Rotate makes one move of the identity's replacement (freeze, thaw,
 	// retire); Rotation reads where it stands. A replaced identity answers every
 	// write with ErrRotated and every read as before.

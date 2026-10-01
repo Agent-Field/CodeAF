@@ -2187,7 +2187,7 @@ func (s *Settings) build() []Setting {
 				"a name — `cloudflare` — pins it and nothing else is asked; " +
 				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
 				"a slow answer be rescued elsewhere; openrouter asks for no host at all and " +
-				"lets the router balance on price, with no takeover. enter on this row opens them with what " +
+				"lets the router balance on price, with no host switching. enter on this row opens them with what " +
 				"has been measured of each, and so does → on a model row in the picker — " +
 				"under /model and under `your model` in the settings panel alike.",
 			read:  func() string { return LaneRowWord(dir, LaneSlotTalk) },
@@ -2254,9 +2254,9 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskAudit, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
-			Hint: "when on, every task node's work is checked by an independent read-only " +
+			Hint: "when on, every task part's work is checked by an independent read-only " +
 				"auditor — it runs the repo's own verification and reads the diff — before " +
-				"anything may merge into your branch. Off trusts the node's own report and " +
+				"anything may merge into your branch. Off trusts the part's own report and " +
 				"merges unaudited. On is the default: the audit is what 'done' means, and it " +
 				"roughly doubles a small task's model cost.",
 			read:  func() string { return TaskAuditAt(dir) },

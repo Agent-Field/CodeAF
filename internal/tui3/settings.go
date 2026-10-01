@@ -385,7 +385,7 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyTierWorkerModel: {
 		tab: tabProviders, label: "worker", widget: widgetSelect,
-		about: "does the work · every task, its parts, every run node — most of the bill. Empty is auto: routed per task",
+		about: "does the work · every task, its parts, every run step — most of the bill. Empty is auto: routed per task",
 	},
 	config.KeyTierHighModel: {
 		tab: tabProviders, label: "checker", widget: widgetSelect,
@@ -679,7 +679,7 @@ var settingUI = map[string]settingMeta{
 	config.KeyModelPoolPublicKey: {
 		tab: tabProviders, label: "pool key", widget: widgetText,
 		about: "the public key a Model Pool index must be signed with. Blank " +
-			"trusts the key built into codeaf; set it to read a relay of your own.",
+			"trusts the key built into codeaf; set it to read an index server of your own.",
 	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
