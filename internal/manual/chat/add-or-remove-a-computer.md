@@ -122,7 +122,7 @@ To remove a device, move to its row and press `r`. It is removed at once and the
 dumb was revoked - it can no longer reach your chats.
 ```
 
-Your own computer has no `r`: it cannot remove itself. A computer that is already revoked does nothing when you press `r`. A removed computer can only come back as a new request that you approve. Removing a computer does not take back what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
+The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `spark #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself - choose another row.` A computer that is already revoked does nothing when you press `r`. A removed computer can only come back as a new request that you approve. Removing a computer does not take back what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
 **I was told this device was removed.** Another of your devices removed this one. The chat says:
 
