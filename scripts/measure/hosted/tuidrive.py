@@ -156,7 +156,7 @@ def local_titles(text):
 
 def chat_open(text):
     """A chat is open when the tab strip under the header names it with a close mark."""
-    return "×" in "\n".join(text.splitlines()[:4])
+    return "×" in "\n".join(text.splitlines()[:4]) and not on_home(text)
 
 
 def take(hint):
@@ -182,6 +182,8 @@ def take(hint):
     t["confirm_ms"] = now_ms()
     key("Enter")
     t["taken_ms"], pane = wait_for(lambda x: "Continue this chat here?" not in x and (chat_open(x) or bool(local_titles(x) - before)), 3600, 0.02)
+    t["listed_ms"] = t["taken_ms"]   # the take is over: the chat is open, or listed on home
+    t["auto_opened"] = chat_open(pane)
     if not chat_open(pane):
         new = sorted(local_titles(pane) - before)
         if not new:
