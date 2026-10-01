@@ -891,8 +891,8 @@ func (f sheetFetcher) Fetch(ctx context.Context, url, bearer string) (io.ReadClo
 		request.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	// And this read is attributed like every other read this binary makes of
-	// the router — the values are the package's own constants and no caller
-	// carries them (attribution.go).
+	// the router — the app is this binary's own and no caller carries it
+	// (attribution.go).
 	ApplyAttribution(request.Header)
 	client := f.http
 	if client == nil {

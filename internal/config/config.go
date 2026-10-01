@@ -47,14 +47,15 @@ const (
 	DefaultBaseURL = catalog.DefaultBaseURL
 
 	// DefaultSiteURL, DefaultSiteName and DefaultSiteCategories are the
-	// OpenRouter app-attribution values this binary reports under
-	// (HTTP-Referer, X-OpenRouter-Title, X-OpenRouter-Categories). They are
-	// INTERPOLATED FROM internal/provider AND NOT RE-SPELLED, because the
-	// package that writes the headers is the one place the values may live;
-	// two copies of an app's identity is how one product's usage ends up on
-	// two dashboard pages. Nothing resolves them from settings or the
-	// environment — the app a request names is a fact about the product, not
-	// an operator's preference.
+	// OpenRouter app-attribution values a RELEASE binary reports under
+	// (HTTP-Referer, X-OpenRouter-Title, X-OpenRouter-Categories); a staging,
+	// dev or source build reports as its own app, which
+	// provider.RunningApp names. They are INTERPOLATED FROM internal/provider
+	// AND NOT RE-SPELLED, because the package that writes the headers is the
+	// one place the values may live; two copies of an app's identity is how one
+	// product's usage ends up on two dashboard pages. Nothing resolves them from
+	// settings or the environment — the app a request names is a fact about the
+	// build, not an operator's preference.
 	DefaultSiteURL        = provider.AppURL
 	DefaultSiteName       = provider.AppName
 	DefaultSiteCategories = provider.AppCategories
