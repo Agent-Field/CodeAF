@@ -17,6 +17,7 @@ const heldCell = "0000000000000001"
 type flipping struct {
 	mu     sync.Mutex
 	status chatlist.Status
+	mine   bool // this machine was the last holder
 }
 
 func (f *flipping) set(s chatlist.Status) { f.mu.Lock(); f.status = s; f.mu.Unlock() }
@@ -24,7 +25,7 @@ func (f *flipping) set(s chatlist.Status) { f.mu.Lock(); f.status = s; f.mu.Unlo
 func (f *flipping) Rows(context.Context) ([]chatlist.Row, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return []chatlist.Row{{Cell: heldCell, Title: "Mine", Device: "studio", Status: f.status, DurableAgo: time.Minute}}, nil
+	return []chatlist.Row{{Cell: heldCell, Title: "Mine", Device: "studio", Status: f.status, Mine: f.mine, DurableAgo: time.Minute}}, nil
 }
 
 // heldLab opens home with a chat this machine lists and the directory says
@@ -68,7 +69,7 @@ func TestListedHereAndHeldElsewhereDrawsTheDoor(t *testing.T) {
 
 func TestListedHereAndReleasedDrawsNoSecondRow(t *testing.T) {
 	for _, s := range []chatlist.Status{chatlist.Here, chatlist.Idle, chatlist.Off} {
-		a, _ := heldLab(t, &flipping{status: s}, &fakeTaker{})
+		a, _ := heldLab(t, &flipping{status: s, mine: true}, &fakeTaker{})
 		if _, remote := rowsOf(a, heldCell); remote != 0 {
 			t.Errorf("status %s: a chat listed here is drawn again as another machine's", s)
 		}

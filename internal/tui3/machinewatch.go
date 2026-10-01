@@ -90,6 +90,7 @@ func (a *app) tookWatch(msg dirWatchMsg) tea.Cmd {
 	}
 	// A presence change moves no version but redraws the devices row.
 	a.touch()
+	a.considerResume()
 	a.announceJoined()
 	return tea.Batch(a.awaitWatch(), a.readForFrame())
 }

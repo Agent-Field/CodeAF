@@ -27,7 +27,7 @@ Press enter on either row to continue it here. The verb on the card depends on t
 
 ## How do I continue on this machine — Continue where you left off, alt+c and alt+x
 
-If you open codeaf and a chat on another device was running or went off in the last 24 hours, and that device is offline now (its lid is closed), home offers it first of all:
+If you open codeaf and a chat on another device was running or went off in the last 24 hours, and that device is offline now (its lid is closed) or has let go of the chat, home offers it first of all:
 
 ```
 Continue where you left off on spark?
@@ -35,9 +35,9 @@ alt+c continue · alt+x not now
 ```
 
 - `alt+c` opens the same card as above, so you are still asked, with the reason. Nothing is moved by this line alone.
-- `alt+x` dismisses it for this opening.
+- `alt+x` dismisses it for that device until you open codeaf again.
 
-It is offered once each time you open codeaf. A device that goes offline while you watch is not offered, because you saw it happen. A device that is online is never offered: a chat on it is busy, or yours to open yourself.
+The line follows the devices row: it stands while the device is offline or has let go of the chat, even if that became true after you opened codeaf, and goes away if the device comes back. A device that is online and still working on the chat is never offered.
 
 To bring work from a device that is online, use the devices row: `alt+m bring work here`. The page *Adding a device to your devices, approving it, and removing it* shows the row and the dots.
 
