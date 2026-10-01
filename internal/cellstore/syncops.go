@@ -99,6 +99,10 @@ type importOp struct {
 	// deleted, not an error. A take primes its inbox with whole frames, whose
 	// frame-mates the head may not want; the want loop's answers stay strict.
 	Primed bool `json:"primed,omitempty"`
+	// Partial is the take of an inbox still filling: the engine stores what the
+	// walk wants from what has arrived and leaves every other file in place.
+	// It excludes Primed.
+	Partial bool `json:"partial,omitempty"`
 	keyArgs
 }
 
@@ -108,6 +112,9 @@ func (o importOp) Args() []string {
 	args := []string{"--json", "import", "--head", o.Head, "--inbox", o.Inbox, "--ledger", o.Ledger}
 	if o.Primed {
 		args = append(args, "--primed")
+	}
+	if o.Partial {
+		args = append(args, "--partial")
 	}
 	return args
 }
@@ -193,11 +200,22 @@ func (e SyncEngine) ImportPrimed(ctx context.Context, c cell.Cell, head, inbox s
 	return e.runImport(ctx, c, head, inbox, true)
 }
 
+// ImportPartial stores what the head wants from an inbox that is still filling
+// and leaves every other file, so a take can import while frames download.
+func (e SyncEngine) ImportPartial(ctx context.Context, c cell.Cell, head, inbox string) (int, error) {
+	return e.importWith(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, Partial: true})
+}
+
 func (e SyncEngine) runImport(ctx context.Context, c cell.Cell, head, inbox string, primed bool) (int, error) {
+	return e.importWith(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, Primed: primed})
+}
+
+func (e SyncEngine) importWith(ctx context.Context, c cell.Cell, op importOp) (int, error) {
+	op.keyArgs = hexKeys(e.Keys)
 	var out struct {
 		Imported int `json:"imported"`
 	}
-	return out.Imported, e.ask(ctx, c, importOp{Head: head, Inbox: inbox, Ledger: e.Ledger, Primed: primed, keyArgs: hexKeys(e.Keys)}, &out)
+	return out.Imported, e.ask(ctx, c, op, &out)
 }
 
 // Holds implements the sync seam: the ledger file the engine keeps beside the
