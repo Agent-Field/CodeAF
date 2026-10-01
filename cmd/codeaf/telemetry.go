@@ -390,6 +390,10 @@ func runTelemetrySet(word string, args []string) error {
 		return err
 	}
 	if value {
+		// `telemetry on` is an explicit opt-in at the command line. Recording
+		// the notice as shown here keeps the uploader from waiting forever for a
+		// separate chat frame after the person has already made that choice.
+		telemetry.MarkNoticeShown()
 		fmt.Fprintln(usageOut, "telemetry on — anonymous usage counts are sent (see `codeaf telemetry info`)")
 		return nil
 	}
