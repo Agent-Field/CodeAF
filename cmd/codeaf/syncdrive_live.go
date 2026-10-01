@@ -48,7 +48,7 @@ func (l *liveDrive) try() {
 		return
 	}
 	d, err := l.start()
-	l.drive, l.waiting = d, errors.Is(err, syncsetup.ErrNoIdentity)
+	l.drive, l.waiting = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet)
 }
 
 // identityMade is whether this computer has an identity to sign with now.

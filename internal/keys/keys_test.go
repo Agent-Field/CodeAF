@@ -68,8 +68,8 @@ func TestAtomicWriteLeavesNoTemp(t *testing.T) {
 		}
 	}
 	entries, _ := os.ReadDir(home)
-	if len(entries) != 3 {
-		t.Fatalf("want vault.enc, identity.json and device.json only, got %v", entries)
+	if len(entries) != 4 {
+		t.Fatalf("want vault.enc, identity.json, device.json and the solo mark only, got %v", entries)
 	}
 }
 
