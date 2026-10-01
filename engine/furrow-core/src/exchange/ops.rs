@@ -59,7 +59,7 @@ pub fn import(
     head: &str,
     ledger: &str,
     inbox: &Path,
-    primed: bool,
+    mode: ImportMode,
 ) -> anyhow::Result<Value> {
     let sealer = CellSealer::new(keys);
     let store = open_store(data_dir)?;
@@ -71,12 +71,35 @@ pub fn import(
         inbox,
         ledger: &ledger,
     };
-    if primed {
-        let taken = import.run_primed()?;
-        return Ok(json!({"imported": taken.imported, "extras_deleted": taken.extras_deleted}));
+    match mode {
+        ImportMode::Primed => {
+            let taken = import.run_primed()?;
+            Ok(json!({"imported": taken.imported, "extras_deleted": taken.extras_deleted}))
+        }
+        ImportMode::Partial => Ok(json!({"imported": import.run_partial()?})),
+        ImportMode::Strict => Ok(json!({"imported": import.run()?})),
     }
-    let imported = import.run()?;
-    Ok(json!({"imported": imported}))
+}
+
+/// How `import` treats inbox files the head does not (yet) want.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ImportMode {
+    Strict,
+    Primed,
+    Partial,
+}
+
+impl ImportMode {
+    /// The mode the two flags name. Priming deletes leftovers and streaming
+    /// keeps them, so asking for both has no meaning and is refused.
+    pub fn from_flags(primed: bool, partial: bool) -> anyhow::Result<Self> {
+        match (primed, partial) {
+            (true, true) => anyhow::bail!("primed and partial cannot be combined"),
+            (true, false) => Ok(Self::Primed),
+            (false, true) => Ok(Self::Partial),
+            (false, false) => Ok(Self::Strict),
+        }
+    }
 }
 
 pub fn restore_head(

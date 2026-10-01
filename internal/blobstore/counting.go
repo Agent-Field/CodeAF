@@ -52,6 +52,20 @@ func (c Counting) Has(ctx context.Context, rids []string) ([]bool, error) {
 	return c.Inner.Has(ctx, rids)
 }
 
+// GetFrame counts one get and the frame's bytes.
+func (c Counting) GetFrame(ctx context.Context, frame string) ([]byte, error) {
+	c.C.Gets.Add(1)
+	b, err := c.Inner.GetFrame(ctx, frame)
+	c.C.BytesDown.Add(int64(len(b)))
+	return b, err
+}
+
+// Locate counts one request, however many rids it asks about.
+func (c Counting) Locate(ctx context.Context, rids []string) (map[string]Location, error) {
+	c.C.Has.Add(1)
+	return c.Inner.Locate(ctx, rids)
+}
+
 // objectsIn reads the object count from a frame's header. A frame that does
 // not decode is counted as carrying none: the store will refuse it anyway.
 func objectsIn(frame []byte) int64 {

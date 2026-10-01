@@ -283,6 +283,13 @@ func (f *FakeEngine) Published(_ context.Context, c cell.Cell, frames []string) 
 	return nil
 }
 
+// Holds implements Engine: the fake's ledger is its published set.
+func (f *FakeEngine) Holds(c cell.Cell) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.cell(c).published) > 0
+}
+
 // Want implements Engine: breadth first from head, an absent object is wanted
 // and its children are not yet known.
 func (f *FakeEngine) Want(_ context.Context, c cell.Cell, head string) ([]string, error) {
@@ -329,9 +336,89 @@ func (f *FakeEngine) Import(_ context.Context, c cell.Cell, head, inbox string) 
 	if err != nil {
 		return 0, err
 	}
+	return f.store(fc, inbox, files)
+}
+
+// ImportPrimed implements Engine. A primed inbox holds whole frames, many
+// layers of the graph at once, so the import runs passes like the real one:
+// each pass wants the frontier the store can now see and stores what the inbox
+// holds of it. What no pass wanted — frame-mates the head orphaned — is
+// deleted, never an error.
+func (f *FakeEngine) ImportPrimed(_ context.Context, c cell.Cell, head, inbox string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	total, err := f.passes(f.cell(c), head, inbox)
+	if err != nil {
+		return total, err
+	}
+	entries, err := os.ReadDir(inbox)
+	if err != nil {
+		return total, err
+	}
+	for _, e := range entries {
+		if err := os.Remove(filepath.Join(inbox, e.Name())); err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+// ImportPartial implements Engine: the passes of ImportPrimed and nothing
+// else. Files no pass wanted stay, because the frames that name their parents
+// may not have landed yet.
+func (f *FakeEngine) ImportPartial(_ context.Context, c cell.Cell, head, inbox string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.passes(f.cell(c), head, inbox)
+}
+
+// passes stores, pass by pass, every inbox file the graph can now see, and
+// answers how many it stored.
+func (f *FakeEngine) passes(fc *fakeCell, head, inbox string) (int, error) {
+	total := 0
+	for {
+		wanted, err := fc.want(head)
+		if err != nil {
+			return 0, err
+		}
+		if len(wanted) == 0 {
+			return total, nil
+		}
+		isWanted := map[string]bool{}
+		for _, rid := range wanted {
+			isWanted[rid] = true
+		}
+		took := map[string][]byte{}
+		entries, err := os.ReadDir(inbox)
+		if err != nil {
+			return 0, err
+		}
+		for _, e := range entries {
+			if !isWanted[e.Name()] {
+				continue
+			}
+			raw, err := readVerified(inbox, e.Name(), isWanted)
+			if err != nil {
+				return total, err
+			}
+			took[e.Name()] = raw
+		}
+		if len(took) == 0 {
+			return total, nil // a wanted rid the inbox lacks is the want loop's next fetch
+		}
+		n, err := f.store(fc, inbox, took)
+		if err != nil {
+			return total, err
+		}
+		total += n
+	}
+}
+
+// store moves verified files into the cell's graph: what the store handed
+// over is in the store, so it is never sent back.
+func (f *FakeEngine) store(fc *fakeCell, inbox string, files map[string][]byte) (int, error) {
 	for rid, raw := range files {
 		fc.objects[rid] = raw
-		// What the store handed over is in the store, so it is never sent back.
 		fc.published[rid] = true
 		if err := os.Remove(filepath.Join(inbox, rid)); err != nil {
 			return 0, err
@@ -362,6 +449,8 @@ func readInbox(inbox string, wanted []string) (map[string][]byte, error) {
 	return files, nil
 }
 
+// readVerified loads one inbox file, which must be wanted and must hash to
+// its own name.
 func readVerified(inbox, rid string, wanted map[string]bool) ([]byte, error) {
 	if !wanted[rid] {
 		return nil, fmt.Errorf("fake engine: object %s was not wanted", rid)

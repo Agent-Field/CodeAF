@@ -113,6 +113,16 @@ func (r *Resuming) GetMany(ctx context.Context, rids []string) ([]Object, error)
 }
 
 // Has implements Store.
+// GetFrame passes through: resuming only concerns puts.
+func (r *Resuming) GetFrame(ctx context.Context, frame string) ([]byte, error) {
+	return r.Inner.GetFrame(ctx, frame)
+}
+
+// Locate passes through: resuming only concerns puts.
+func (r *Resuming) Locate(ctx context.Context, rids []string) (map[string]Location, error) {
+	return r.Inner.Locate(ctx, rids)
+}
+
 func (r *Resuming) Has(ctx context.Context, rids []string) ([]bool, error) {
 	return r.Inner.Has(ctx, rids)
 }

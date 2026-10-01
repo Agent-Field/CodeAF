@@ -87,11 +87,11 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
 	}
 	c := cell.Cell{ID: id, Root: t.RootFor(id)}
-	kept, err := t.keepLocal(ctx, c, view.Cell.Head)
+	kept, err := t.keepLocal(ctx, c, view.Cell.Head, view.Cell.Frames)
 	if err != nil {
 		return Taken{}, err
 	}
-	head, fence, err := t.claim(ctx, c, view.Cell.Head, displacing(view))
+	head, fence, plan, err := t.claim(ctx, c, view.Cell.Head, displacing(view))
 	if err != nil {
 		return Taken{}, err
 	}
@@ -99,7 +99,10 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 	if err != nil {
 		return Taken{}, err
 	}
-	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head}, Kept: kept}, nil
+	// The plan is the acquired record's: the record read before the claim can
+	// trail a publish that landed during the fetch, and the next publish
+	// replaces the plan wholesale (contract §22.2).
+	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head, Frames: plan}, Kept: kept}, nil
 }
 
 // displacing is the acquire the person's choice covers: they saw the chat's
@@ -109,9 +112,12 @@ func displacing(v directory.CellView) directory.AcquireOpts {
 	return directory.AcquireOpts{Force: v.Cell.Lease.Expires > v.Now}
 }
 
-// keepLocal seals unsealed work in an existing root into a branch of the chat.
-// It answers the branch id, or "" when the root is absent or clean.
-func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (string, error) {
+// keepLocal seals unsealed local work onto a branch before any fetch. It
+// answers the branch id, or "" when the root is absent or clean. The
+// branch's Driving starts from the parent record's plan: the branch head's
+// closure is the parent's plus the orphan turns, whose frames the branch's
+// own upload adds.
+func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, plan []string) (string, error) {
 	if !exists(c.Root) {
 		return "", nil
 	}
@@ -123,7 +129,7 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (s
 	if err != nil {
 		return "", fmt.Errorf("handoff: seal local edits of %s: %w", c.ID, err)
 	}
-	from := &cellsync.Driving{Cell: c, Head: parentHead}
+	from := &cellsync.Driving{Cell: c, Head: parentHead, Frames: plan}
 	kept, err := t.Branch(ctx, from, head, turns)
 	if err != nil {
 		return "", fmt.Errorf("handoff: keep local edits of %s: %w", c.ID, err)
@@ -135,18 +141,18 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string) (s
 // if the head moved while the fetch ran, and only then puts the staging folder
 // in place of c's root. It answers the head that is on disk and the fence. The
 // staging folder never outlives a failed claim.
-func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, error) {
+func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
-	head, fence, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
+	head, fence, plan, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
 	if err == nil {
 		if err = t.install(ctx, stage, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
 		}
 	}
 	if err != nil {
-		return "", 0, errors.Join(err, os.RemoveAll(stage.Root))
+		return "", 0, nil, errors.Join(err, os.RemoveAll(stage.Root))
 	}
-	return head, fence, nil
+	return head, fence, plan, nil
 }
 
 // fetchAndAcquire is the part of a claim that touches only the store, the
@@ -156,29 +162,32 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 // nothing at from it starts empty. A chat in the person's own folder is only
 // completed in the store: it is restored where it stands once the lease is
 // ours, so a staged restore would be a second whole-tree restore that is made
-// and thrown away.
-func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, error) {
+// and thrown away. It answers the plan of the record the device actually
+// acquired: another device may have published while the fetch ran, and the
+// next publish replaces the record's plan wholesale, so seeding from the
+// record read before the claim would carry the stale one (contract §22.2).
+func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
 	inPlace := t.InPlace != nil && t.InPlace(cell.Cell{ID: stage.ID, Root: from})
 	if !inPlace {
 		if err := freshDir(stage.Root); err != nil {
-			return "", 0, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
+			return "", 0, nil, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
 		}
 		seedFrom(from, stage.Root)
 	}
 	if err := t.bring(ctx, stage, inPlace, head); err != nil {
-		return "", 0, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
+		return "", 0, nil, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
 	}
 	got, err := t.Dir.Acquire(ctx, stage.ID, how)
 	if err != nil {
-		return "", 0, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
+		return "", 0, nil, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
 		if err := t.bring(ctx, stage, inPlace, head); err != nil {
-			return "", 0, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: fetch %s: %w", short(head), err))
+			return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: fetch %s: %w", short(head), err))
 		}
 	}
-	return head, got.Cell.Lease.Fence, nil
+	return head, got.Cell.Lease.Fence, got.Cell.Frames, nil
 }
 
 // bring puts head where the claim restores it from: in the store alone for a
