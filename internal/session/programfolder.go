@@ -189,10 +189,6 @@ type ProgramFolder struct {
 	// NoAttribution is true when the run had no answered model call, so its
 	// finishing commit does not credit a model that did no work in this run.
 	NoAttribution bool `json:"noAttribution,omitempty"`
-	// MessageBase is this run's starting commit, whose unchanged tracked
-	// message cannot describe new work. Start belongs to the whole line when
-	// a run carries on, so it cannot answer which notes this run inherited.
-	MessageBase string `json:"messageBase,omitempty"`
 	// message is the commit message the program wrote for the commit that
 	// ends its run, read from its notes just before they are moved
 	// ([ProgramFolder.readCommitMessage]); never written to the record.

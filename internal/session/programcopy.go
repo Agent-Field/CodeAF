@@ -197,7 +197,6 @@ func prepareProgramCopy(order ProgramFolderOrder, folder *ProgramFolder) (*Progr
 		folder.forget()
 		return nil, fmt.Errorf("%s", refusal)
 	}
-	folder.MessageBase = branchCommit(folder.Dir, folder.Branch)
 	if err := folder.copyUntracked(); err != nil {
 		folder.forget()
 		return nil, err
@@ -1655,11 +1654,7 @@ func (f *ProgramFolder) readCommitMessage() string {
 	}
 	// A message the repository already held is not this run's account. Compare
 	// the original bytes, before normalizing line endings or whitespace.
-	if f.Copied() && f.base() != "" {
-		base := f.MessageBase
-		if base == "" {
-			base = f.base()
-		}
+	if base := f.ownBase(); f.Copied() && base != "" {
 		if original, err := git(f.Dir, "show", base+":"+filepath.ToSlash(filepath.Join(f.Notes, programCommitMessageFile))); err == nil && original == string(body) {
 			return ""
 		}
