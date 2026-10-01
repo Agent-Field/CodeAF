@@ -602,6 +602,12 @@ const (
 	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
 	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
 
+	// The three memory commands (internal/tui3's memory.go, and memory.go here),
+	// each taking the text or query the person typed.
+	MethodRemember = "Remember" // string → string (the title it landed under)
+	MethodForget   = "Forget"   // string → string (the title dropped, "" when nothing matched)
+	MethodMemories = "Memories" // string → []session.MemoryLine
+
 	// This machine's preflight for the conversation (internal/session's
 	// setup.go), read where the tools run: the engine's device, which over a
 	// connection is the host and not the viewer. The setup turn it plans is
@@ -1280,6 +1286,13 @@ type Welcome struct {
 	// false keeps the picker's own sentence for a conversation that cannot
 	// carry attached skills rather than a list whose every choice goes nowhere.
 	Skills bool `json:"skills,omitempty"`
+
+	// Memory says this engine's conversation HAS A BRAIN and answers
+	// [MethodRemember], [MethodForget] and [MethodMemories] (memory.go). It is
+	// carried for [Welcome.Folders]'s reason: a *remote.Agent always has the
+	// methods, so the surface's assertion says nothing about the far machine.
+	// ABSENCE IS false, which keeps the surface's "memory is off" sentence.
+	Memory bool `json:"memory,omitempty"`
 
 	// Setup says this engine's conversation answers [MethodSetupPlan] and
 	// [MethodSubmitSetup] (setup.go), for [Welcome.Folders]'s reason: a
