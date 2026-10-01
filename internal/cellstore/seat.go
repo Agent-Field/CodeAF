@@ -87,6 +87,10 @@ func (s sealed) trigger() Trigger {
 	return AgentRun
 }
 
+// Settle seals the tree as the turn left it: the transcript's tail is written
+// after the last call sealed.
+func (s sealed) Settle(ctx context.Context) { s.rec.Settle(ctx) }
+
 // NoteModelCall implements executor.ModelNoter.
 func (s sealed) NoteModelCall(m executor.ModelCall) { s.rec.NoteModelCall(m) }
 
