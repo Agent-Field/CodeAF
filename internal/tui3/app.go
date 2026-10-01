@@ -967,6 +967,7 @@ type app struct {
 	creditRecordPending atomic.Bool
 	creditTrigger       *credits.Trigger
 	creditsLow          bool
+	creditsExpired      bool
 	implicitTalk        bool
 	creditSwitching     bool
 	chatCreditWarning   string
@@ -3034,6 +3035,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		a.creditTrigger = credits.NewTrigger(time.Now)
 		a.creditWake = newDoorbell(creditWakeMsg{})
 		a.creditsLow = config.CreditsLowAt(a.profileDir)
+		a.creditsExpired = config.CreditsExpiredAt(a.profileDir)
 		if a.paymentRefusals != nil {
 			a.creditHookStop = a.paymentRefusals(func() { a.creditRecordPending.Store(true); a.creditWake.ring() })
 		}

@@ -702,7 +702,15 @@ func (a *app) setupModelChoices() []Model {
 // at seed time because the balance is read AFTER the key lands, on its own
 // goroutine, and usually answers while this screen is already up.
 func (a *app) setupFreeOnly() bool {
-	return a.readCredits != nil && a.creditsLow
+	return a.readCredits != nil && a.creditsLow && !a.creditsExpired
+}
+
+// setupKeyExpired reports whether the default provider refused the key as
+// expired at the last read. The list is NOT cut for it — the free rows fail on
+// the same key — but the line under the field says what is wrong and where the
+// fix is.
+func (a *app) setupKeyExpired() bool {
+	return a.readCredits != nil && a.creditsExpired
 }
 
 // setupModelSlots is how many models the list SHOWS AT ONCE, and it is a height
@@ -1514,6 +1522,7 @@ func (a *app) setupModelCountWord(count int) string {
 const (
 	setupFreeOnlyWord   = "free only"
 	setupLowCreditsWord = "Your OpenRouter account is low on credits · the list shows free models only"
+	setupExpiredKeyWord = "Your OpenRouter key has expired · make a new one at openrouter.ai/settings/keys and paste it with esc"
 )
 
 // setupLowCreditsRows is the line under the chat model while the account reads
@@ -1521,10 +1530,16 @@ const (
 // is the reason the list is short — and nothing, the emptiness law, when the
 // account does not read low.
 func (a *app) setupLowCreditsRows(width int) []string {
-	if !a.setupFreeOnly() {
+	word := ""
+	switch {
+	case a.setupKeyExpired():
+		word = setupExpiredKeyWord
+	case a.setupFreeOnly():
+		word = setupLowCreditsWord
+	default:
 		return nil
 	}
-	lines := wrap(setupLowCreditsWord, max(width-4, 1))
+	lines := wrap(word, max(width-4, 1))
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", 4) + a.pal.warn(line)
 	}

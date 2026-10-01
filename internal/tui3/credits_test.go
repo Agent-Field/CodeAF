@@ -365,3 +365,49 @@ func TestAHealthyReadMovesAnUntouchedImplicitConversationBackToTheDefault(t *tes
 		})
 	}
 }
+
+// seedExpiredKey is seedLowCredits for a key the service refused as expired.
+func seedExpiredKey(t *testing.T, a *app) {
+	t.Helper()
+	if err := config.WriteAPIKey(a.profileDir, "credit-test-key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteCreditsReading(a.profileDir, "credit-test-key", credits.Reading{Known: true, Expired: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// AN EXPIRED KEY WARNS ON EVERY OPENROUTER MODEL, the free default included,
+// because the key fails them all — and says nothing on a model another service
+// serves. It wins over the low-credits line, and a new key clears it before
+// that key is read.
+func TestAnExpiredKeyWarnsOnEveryOpenRouterModel(t *testing.T) {
+	a := placeApp(t)
+	a.width = 200
+	a.readCredits = func(context.Context) (credits.Reading, error) {
+		return credits.Reading{Known: true, Expired: true}, nil
+	}
+	seedExpiredKey(t, a)
+	a.refreshCreditWarnings()
+	if !a.creditsExpired || a.creditsLow {
+		t.Fatalf("the expired record read as expired=%v low=%v", a.creditsExpired, a.creditsLow)
+	}
+	if !strings.Contains(plain(a.hintRow(200)), expiredKeyWarning) || !strings.Contains(placeFrameText(a), expiredKeyWarning) {
+		t.Fatal("conversation and home boxes did not show the expired-key warning")
+	}
+	a.switchModel(config.FreeChatModel, 0)
+	if !strings.Contains(plain(a.hintRow(200)), expiredKeyWarning) {
+		t.Fatal("the free model hid the expired-key warning, though the key fails it too")
+	}
+	if strings.Contains(plain(a.hintRow(200)), lowCreditsWarning) {
+		t.Fatal("the low-credits line was drawn beside the expired-key one")
+	}
+	// A new key is a different fact, not yet read: nothing is said about it.
+	if err := config.WriteAPIKey(a.profileDir, "another-key"); err != nil {
+		t.Fatal(err)
+	}
+	a.refreshCreditWarnings()
+	if a.creditsExpired || a.chatCreditWarning != "" {
+		t.Fatalf("the old key's expiry was pinned on the new key (expired=%v, warning %q)", a.creditsExpired, a.chatCreditWarning)
+	}
+}

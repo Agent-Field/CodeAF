@@ -1057,3 +1057,37 @@ func TestEnterAfterAStartingPointSendsWhatItFilled(t *testing.T) {
 		t.Fatalf("the second enter sent %v, want the starting point's sentence", agent.sent)
 	}
 }
+
+// AN EXPIRED KEY DOES NOT CUT THE LIST — the free rows fail on the same key —
+// but the line under the field says what is wrong and where the fix is.
+func TestAnExpiredKeyIsSaidUnderTheModelRowWithoutCuttingTheList(t *testing.T) {
+	a, dir := controlsApp(t, nil)
+	catalog := []Model{
+		{ID: "openai/gpt-4.1-mini", PriceKnown: true, PromptPrice: 0.4, CompletionPrice: 1.6},
+		{ID: "paid/alpha", PriceKnown: true, PromptPrice: 1, CompletionPrice: 2},
+		{ID: "qwen/qwen3.8-27b:free", PriceKnown: true},
+	}
+	a.models = func() []Model { return catalog }
+	a.readCredits = func(context.Context) (credits.Reading, error) {
+		return credits.Reading{Known: true, Expired: true}, nil
+	}
+	if err := config.WriteCreditsReading(dir, config.APIKeyAt(dir), credits.Reading{Known: true, Expired: true}); err != nil {
+		t.Fatal(err)
+	}
+	pressSetup(a, creditReadMsg{reading: credits.Reading{Known: true, Expired: true}})
+	if !a.creditsExpired || a.setupFreeOnly() {
+		t.Fatalf("expired=%v freeOnly=%v, want expired and the whole list", a.creditsExpired, a.setupFreeOnly())
+	}
+	if got := len(a.setupModelChoices()); got != len(catalog) {
+		t.Fatalf("an expired key cut the list to %d rows, want the catalog's %d", got, len(catalog))
+	}
+	a.width = 100
+	a.touch()
+	screen := setupScreen(a)
+	if !strings.Contains(screen, setupExpiredKeyWord) {
+		t.Fatalf("the screen must say %q; got:\n%s", setupExpiredKeyWord, screen)
+	}
+	if strings.Contains(screen, "free only") || strings.Contains(screen, setupLowCreditsWord) {
+		t.Fatalf("an expired key was spelled as a low account:\n%s", screen)
+	}
+}

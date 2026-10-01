@@ -17,6 +17,12 @@ import (
 
 const lowCreditsWarning = "Your OpenRouter account is low on credits — some models may not be available"
 
+// expiredKeyWarning is the same row's line when the service has refused the key
+// as expired. It names the fix, because unlike a low balance there is nothing
+// to wait for: every OpenRouter model, the free ones included, fails on this
+// key until a new one is pasted.
+const expiredKeyWarning = "Your OpenRouter key has expired — make a new one at openrouter.ai/settings/keys"
+
 type creditWakeMsg struct{}
 type creditReadMsg struct {
 	reading credits.Reading
@@ -128,8 +134,12 @@ func (a *app) tookCredits(msg creditReadMsg) tea.Cmd {
 		// the ninth row of the whole catalog would be on the ninth row of a
 		// much shorter list — or past its end. The filter pass puts the cursor
 		// back on the model in use, which is where it opened.
-		if a.setup.open && a.setup.modelOpen {
-			a.filterSetupModels(a.setup.modelFind)
+		if a.setup.open {
+			if a.setup.modelOpen {
+				a.filterSetupModels(a.setup.modelFind)
+			}
+			// And the screen is redrawn either way: the line under the chat
+			// model says what the reading found, list open or not.
 			a.touch()
 		}
 	}
@@ -141,6 +151,7 @@ func (a *app) tookCredits(msg creditReadMsg) tea.Cmd {
 func (a *app) refreshCreditWarnings() {
 	if a.readCredits != nil {
 		a.creditsLow = config.CreditsLowAt(a.profileDir)
+		a.creditsExpired = config.CreditsExpiredAt(a.profileDir)
 	}
 	// AN UNTOUCHED CONVERSATION FOLLOWS THE DEFAULT, BOTH WAYS. One that has sent
 	// nothing, on the build's own default, with no model chosen anywhere, is not
@@ -159,7 +170,22 @@ func (a *app) refreshCreditWarnings() {
 		a.creditSwitching = false
 	}
 	a.chatCreditWarning, a.homeCreditWarning = "", ""
-	if a.readCredits == nil || !a.creditsLow {
+	if a.readCredits == nil {
+		return
+	}
+	if a.creditsExpired {
+		// AN EXPIRED KEY WARNS ON EVERY MODEL THE DEFAULT SERVICE SERVES, free
+		// or paid, because the key fails them all; a model another service
+		// serves is untouched and says nothing.
+		if !a.modelIsDirect(a.model) {
+			a.chatCreditWarning = expiredKeyWarning
+		}
+		if !a.modelIsDirect(a.targetModel()) {
+			a.homeCreditWarning = expiredKeyWarning
+		}
+		return
+	}
+	if !a.creditsLow {
 		return
 	}
 	var models []Model
@@ -183,7 +209,7 @@ func (a *app) creditRefusalEnded(err error) bool {
 	if err == nil || a.readCredits == nil || a.modelIsDirect(a.model) {
 		return false
 	}
-	if refusal, ok := provider.RefusalFrom(err); ok && refusal.AccountCannotPay() {
+	if refusal, ok := provider.RefusalFrom(err); ok && (refusal.AccountCannotPay() || refusal.KeyExpired()) {
 		return true
 	}
 	prefix := config.ConnectionOutcomeWord(modelsource.DefaultSource("").Name, modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay})

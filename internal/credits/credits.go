@@ -18,11 +18,23 @@ import (
 // roughly $0.04 of input and $0.30 of output at its published limits, rounded up.
 const LowCreditsUSD = 0.50
 
-// Reading says only whether the balance is known and below the one threshold.
-type Reading struct{ Known, Low bool }
+// Reading says whether the balance is known and below the one threshold — or,
+// when the service refused the key as expired, that the key itself is the
+// answer. An expired reading is Known and never Low: there is no balance to be
+// low, and the free defaults would fail on the same key.
+type Reading struct{ Known, Low, Expired bool }
+
+// expiredWord is the one word the service's 401 carries when the key has run
+// out rather than never been valid: OpenRouter answers `API key expired.` in the
+// body and `error_description="API key expired"` in WWW-Authenticate. Any other
+// 401 stays a failed read, because a key that was never accepted is already
+// answered by the turn's own auth failure.
+const expiredWord = "expired"
 
 // Read asks for the account balance and the key's own cap. An absent number is
 // unknown; a failed request is an error and must not change a previous reading.
+// A 401 that says the key has expired is not a failed request: it is a reading,
+// and the one fact the account can still tell us.
 func Read(ctx context.Context, client *http.Client, baseURL, key string) (Reading, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -61,6 +73,9 @@ func Read(ctx context.Context, client *http.Client, baseURL, key string) (Readin
 			return Reading{}, err
 		}
 	}
+	if keyExpired(keyStatus, keyBody) {
+		return Reading{Known: true, Expired: true}, nil
+	}
 	var capValue *float64
 	switch keyStatus {
 	case http.StatusOK:
@@ -80,6 +95,9 @@ func Read(ctx context.Context, client *http.Client, baseURL, key string) (Readin
 	creditsBody, creditsStatus, err := get("/credits")
 	if err != nil {
 		return Reading{}, err
+	}
+	if keyExpired(creditsStatus, creditsBody) {
+		return Reading{Known: true, Expired: true}, nil
 	}
 	var account *float64
 	switch creditsStatus {
@@ -115,6 +133,16 @@ func Read(ctx context.Context, client *http.Client, baseURL, key string) (Readin
 		return Reading{}, fmt.Errorf("invalid credit balance")
 	}
 	return Reading{Known: true, Low: remaining <= LowCreditsUSD}, nil
+}
+
+// keyExpired reports whether an answer is the service refusing the key as
+// expired: a 401 whose body says so.
+func keyExpired(status int, body []byte) bool {
+	switch status {
+	case http.StatusUnauthorized:
+		return strings.Contains(strings.ToLower(string(body)), expiredWord)
+	}
+	return false
 }
 
 // Reason names the event that asked for a balance. A launch or changed key is

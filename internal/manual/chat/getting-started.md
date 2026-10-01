@@ -198,7 +198,10 @@ priced at zero, its count line says `free only`, and a warning line under the fi
 `Your OpenRouter account is low on credits · the list shows free models only`. The model you
 are already on stays on the list whatever it costs, so accepting still confirms. The balance
 is read right after the key lands, so the cut usually arrives a moment after the screen does;
-a top-up is read on the next launch (*OpenRouter credits and free models*).
+a top-up is read on the next launch (*OpenRouter credits and free models*). A key OpenRouter
+refuses as **expired** is said the same way — `Your OpenRouter key has expired · make a new
+one at openrouter.ai/settings/keys and paste it with esc` — but the list is not cut, because
+free models fail on an expired key too; `esc` goes back to the connect step to paste a new one.
 
 **There is no crew question**, because the crew is three seats — the worker, the planner and the
 checker — and codeaf picks all three for each task from what kind of work it is, so there

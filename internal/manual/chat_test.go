@@ -128,6 +128,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my model a free one", "openrouter-credits"},
 		{"low on credits warning", "openrouter-credits"},
 		{"setup only shows free models", "openrouter-credits"},
+		{"my openrouter key has expired", "openrouter-credits"},
+		{"api key expired warning", "openrouter-credits"},
 		// The anonymous usage counts, asked the two ways people ask: whether
 		// anything is collected, and how to stop it.
 		{"does codeaf collect data about me", "running-from-the-terminal"},
