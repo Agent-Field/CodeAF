@@ -80,7 +80,7 @@ type addMachine struct {
 	link string
 	// The live link's own state (homeband_addmachine_live.go): the wait that is
 	// out, the check number beside the link, and how the wait ended.
-	run    *cardRun
+	run    *linkCardRun
 	check  string
 	ended  string
 	paired bool
