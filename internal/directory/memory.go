@@ -34,7 +34,7 @@ func NewMemory(clock func() time.Time) *Memory {
 		devices:  map[string]Device{},
 		cells:    map[string]Cell{},
 		grace:    DefaultGraceBounds,
-		feed:     NewFeed(),
+		feed:     NewFeed(clock),
 	}
 }
 
@@ -56,7 +56,7 @@ func (m *Memory) Close() error {
 // The caller holds the lock.
 func set[T any](m *Memory, table map[string]T, id string, next T) {
 	old, had := table[id]
-	m.count(!had || differs(old, next, m.now()))
+	m.count(!had || m.feed.differs(id, old, next, m.now()))
 	table[id] = next
 }
 
@@ -154,7 +154,7 @@ func (c *memoryClient) List(context.Context) (l Listing, err error) {
 			Devices: maps.Clone(c.m.devices), Cells: map[string]Cell{},
 		}
 		for id, cell := range c.m.cells {
-			l.Cells[id] = copyCell(cell)
+			l.Cells[id] = copyCell(c.m.feed.Lifted(id, cell))
 		}
 		return nil
 	})
@@ -167,7 +167,7 @@ func (c *memoryClient) Cell(_ context.Context, id string) (v CellView, err error
 		if !ok {
 			return ErrNotFound
 		}
-		v = CellView{Now: c.m.now(), Cell: copyCell(cell)}
+		v = CellView{Now: c.m.now(), Cell: copyCell(c.m.feed.Lifted(id, cell))}
 		return nil
 	})
 	return v, err
@@ -245,7 +245,9 @@ func (c *memoryClient) Create(_ context.Context, id string, in CellInit) (v Cell
 }
 
 func (c *memoryClient) Acquire(_ context.Context, id string, o AcquireOpts) (CellView, error) {
-	return c.changed(id, func(cell Cell, now int64) (Cell, error) { return Acquire(cell, c.device, now, o.Force) })
+	return c.changed(id, func(cell Cell, now int64) (Cell, error) {
+		return Acquire(c.m.feed.Lifted(id, cell), c.device, now, o.Force)
+	})
 }
 
 func (c *memoryClient) Heartbeat(_ context.Context, id string, b Beat) (CellView, error) {

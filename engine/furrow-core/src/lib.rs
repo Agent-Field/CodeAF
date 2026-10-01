@@ -5,6 +5,7 @@ pub mod chunker;
 pub mod claims;
 pub mod content_class;
 pub mod coord;
+pub mod durability;
 pub mod estimate;
 pub mod exchange;
 pub mod fault;

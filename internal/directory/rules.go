@@ -6,6 +6,18 @@ package directory
 
 const ttlMs = int64(LeaseTTL / 1e6)
 
+// Lifted is c with its lease kept live until vouchedUntil, the time a watch
+// socket's sign of life lasts (0 for none). A released lease (expires 0) stays
+// released, and a stored expiry already later is left alone. It is the one
+// place evidence enters a rule: every reader of a lease asks Lifted first and
+// then applies the pure rules to the answer.
+func Lifted(c Cell, vouchedUntil int64) Cell {
+	if c.Lease.Expires != 0 && vouchedUntil > c.Lease.Expires {
+		c.Lease.Expires = vouchedUntil
+	}
+	return c
+}
+
 // Acquire takes the lease for device unless another device still holds it. The
 // same device may re-take its own live lease; the fence still goes up. A forced
 // acquire is a person's choice to displace a live holder: it skips the refusal,

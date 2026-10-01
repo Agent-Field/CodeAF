@@ -34,9 +34,10 @@ const (
 	// machinesCap is the longest wait, one ask a minute.
 	machinesCap = time.Minute
 	// machinesBackstop is the wait between asks while the change socket is
-	// healthy. It is the same minute as the cap: a list nobody is editing is
-	// read once a minute whether or not a socket is listening.
-	machinesBackstop = machinesCap
+	// healthy: five minutes. The socket says when something changed and its
+	// ping proves it alive, so the ask is only there for a frame that was lost.
+	// Down, the list keeps the ladder above, which ends at a minute.
+	machinesBackstop = 5 * time.Minute
 )
 
 // pace is the ladder of waits. Its zero value is ready to use and starts fast.

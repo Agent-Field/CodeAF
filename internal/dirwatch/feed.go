@@ -14,6 +14,10 @@ type State struct {
 	// Up is true while the socket is open and has spoken: a socket that
 	// upgraded and says nothing is not believed.
 	Up bool
+	// Vouching is true while the open socket was answered with the server's
+	// word that it vouches for the leases the socket names. It is false
+	// whenever Up is.
+	Vouching bool
 }
 
 // Follower is one surface's view of the feed.
@@ -37,9 +41,12 @@ type Feed struct {
 	clock Clock
 	retry backoff
 	kick  chan struct{}
+	// redial asks the serving loop to end the socket it has and dial again.
+	redial chan struct{}
 
 	mu     sync.Mutex
 	state  State
+	heard  time.Time // when the open socket last showed a sign of life
 	subs   map[*sub]struct{}
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -49,9 +56,10 @@ type Feed struct {
 func newFeed(dial Dialer, clock Clock, jitter func() float64) *Feed {
 	return &Feed{
 		dial: dial, clock: clock,
-		retry: backoff{rand: jitter},
-		kick:  make(chan struct{}, 1),
-		subs:  map[*sub]struct{}{},
+		retry:  backoff{rand: jitter},
+		kick:   make(chan struct{}, 1),
+		redial: make(chan struct{}, 1),
+		subs:   map[*sub]struct{}{},
 	}
 }
 
@@ -122,6 +130,9 @@ func (f *Feed) run(ctx context.Context) {
 
 // session is one connection from dial to its end, and why it ended.
 func (f *Feed) session(ctx context.Context) error {
+	// A redial asked for before this dial is answered by it, because the dial
+	// reads what it names after this point; one asked for later still ends it.
+	drain(f.redial)
 	s, err := f.dial(ctx)
 	if err != nil {
 		return err
@@ -186,18 +197,19 @@ func pump(ctx context.Context, s Stream) <-chan reply {
 func (f *Feed) serve(ctx context.Context, s Stream) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	defer f.set(func(st *State) { st.Up = false })
+	defer f.set(func(st *State) { st.Up, st.Vouching = false, false })
 	f.drainKick()
 	in := pump(ctx, s)
 	k := newKeeper(f.clock)
 	defer k.stop()
+	vouching := s.Vouching()
 	for {
 		select {
 		case r := <-in:
 			if r.err != nil {
 				return r.err
 			}
-			f.hear(r.frame)
+			f.hear(r.frame, vouching)
 			k.heard()
 		case <-k.C():
 			if k.dead() {
@@ -210,13 +222,19 @@ func (f *Feed) serve(ctx context.Context, s Stream) error {
 			if err := f.ping(ctx, s, k); err != nil && !k.outstanding {
 				return err
 			}
+		case <-f.redial:
+			return errRedial
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 }
 
-var errDead = errors.New("dirwatch: the socket stopped answering")
+var (
+	errDead = errors.New("dirwatch: the socket stopped answering")
+	// errRedial ends a healthy socket because what it was dialled with changed.
+	errRedial = errors.New("dirwatch: the socket is dialled again")
+)
 
 // ping sends one ping unless one is already waiting for its answer.
 func (f *Feed) ping(ctx context.Context, s Stream, k *keeper) error {
@@ -232,20 +250,43 @@ func (f *Feed) ping(ctx context.Context, s Stream, k *keeper) error {
 
 // hear files a frame. A socket that speaks is up, and a socket that has spoken
 // is one worth reconnecting to at the first pace again.
-func (f *Feed) hear(fr Frame) {
+func (f *Feed) hear(fr Frame, vouching bool) {
 	f.retry.reset()
+	f.mu.Lock()
+	f.heard = f.clock.Now()
+	f.mu.Unlock()
 	f.set(func(st *State) {
-		st.Up = true
+		st.Up, st.Vouching = true, vouching
 		if !fr.Pong {
 			st.Version = fr.Version
 		}
 	})
 }
 
-// drainKick forgets a probe asked for while there was no socket to probe.
-func (f *Feed) drainKick() {
+// lastHeard is when the open socket last showed a sign of life.
+func (f *Feed) lastHeard() time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.heard
+}
+
+// redialNow asks the serving loop to end the socket and dial again; one waiting
+// request is enough. The wait before the dial is the ladder's, so a burst of
+// changes does not become a burst of dials.
+func (f *Feed) redialNow() {
 	select {
-	case <-f.kick:
+	case f.redial <- struct{}{}:
+	default:
+	}
+}
+
+// drainKick forgets a probe asked for while there was no socket to probe.
+func (f *Feed) drainKick() { drain(f.kick) }
+
+// drain empties a one-slot request channel.
+func drain(c chan struct{}) {
+	select {
+	case <-c:
 	default:
 	}
 }
