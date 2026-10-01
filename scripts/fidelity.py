@@ -35,7 +35,7 @@ import tuidrive as td  # noqa: E402
 A_ROOT = os.path.expanduser("~/caf-vfid-rig-fid/a")
 B_ROOT = "/Users/santoshkumarradha/codeaf-bench-vfid"
 B_HOST = "dumb"
-CTL = "/tmp/vc-fid-ssh"
+CTL = "/tmp/vf-fid-ssh"
 BIN = os.environ.get("CONT_BIN", "/home/santosh/caf-vfid-bins")
 # FID_REUSE keeps both homes and their pairing (the relay limits pairings per network); each run then gets a new folder.
 REUSE = bool(os.environ.get("FID_REUSE"))
@@ -88,14 +88,15 @@ class Fid:
 
     # ---- rig ----
 
-    def reset(self):
-        sh(f"mkdir -p {A_ROOT}/bin" + ("" if REUSE else f" && bash {KIT}/rig.sh {A_ROOT}"))
+    def reset(self, fixture=True):
+        sh(f"mkdir -p {A_ROOT}/bin" + ("" if REUSE else f" && chmod -R u+rwx {A_ROOT}/work 2>/dev/null; bash {KIT}/rig.sh {A_ROOT}"))
         sh(f"cp {BIN}/codeaf {BIN}/codeaf-vd {HELP}/tuidrive.py {HELP}/treehash.py {A_ROOT}/bin/ && cp /home/santosh/caf-vdemo-rig/bin/s1probe {A_ROOT}/bin/")
         subprocess.run(["scp", "-q", "-o", f"ControlPath={CTL}", f"{KIT}/rig.sh", f"{KIT}/fidelity-manifest.py", f"{B_HOST}:/tmp/"], check=True)
         subprocess.run(["scp", "-q", "-o", f"ControlPath={CTL}", f"{HELP}/tuidrive.py", f"{HELP}/treehash.py", f"{B_HOST}:/tmp/"], check=True)
         bsh((f"bash /tmp/rig.sh {B_ROOT}; " if not REUSE else "") + f"mkdir -p {B_ROOT}/bin {B_ROOT}/work/b; cp /tmp/fidelity-manifest.py /tmp/tuidrive.py /tmp/treehash.py {B_ROOT}/bin/")
         bsh(f"cd {B_ROOT}/work/b && (test -d .git || (git init -q && echo b > README.md && git add . && git -c user.name=v -c user.email=v@x commit -qm init))")
-        sh(f"{ODD} bash {KIT}/fidelity-fixture.sh {WS_A} > {self.dir}/fixture.log 2>&1")
+        if fixture:
+            sh(f"{ODD} bash {KIT}/fidelity-fixture.sh {WS_A} > {self.dir}/fixture.log 2>&1")
 
     def pair(self):
         sh("tmux -L vfp kill-server", check=False)
@@ -278,6 +279,10 @@ class Fid:
         """One tiny folder per awkward thing, each moved alone, so a failure names its cause and one cannot hide another.
         Each must seal, move, arrive as EXPECT says, and be named in B's record; the screen of A must say what it left out."""
         subprocess.run(["ssh", "-MNf", "-o", f"ControlPath={CTL}", "-o", "ControlPersist=3h", "-o", "BatchMode=yes", B_HOST], check=False)
+        stop_a(); stop_b()
+        self.reset(fixture=False)
+        if not REUSE:
+            self.pair()
         out = {}
         for name, setup in self.PROBES.items():
             stop_a(); stop_b()
