@@ -35,3 +35,6 @@ func (g gated) Around(ctx context.Context, call Call, run func() ([]byte, bool))
 	}
 	return g.Seat.Around(ctx, call, run)
 }
+
+// Settle implements Settler: the seat beneath keeps the record.
+func (g gated) Settle(ctx context.Context) { Settle(ctx, g.Seat) }

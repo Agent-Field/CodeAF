@@ -80,7 +80,7 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 		return executor.ExecResult{}, fmt.Errorf("log call intent: %w", err)
 	}
 	res, err := r.inner.Exec(ctx, req, onOutput)
-	r.complete(ctx, intent, executed(intent, res, err, r.now().UnixMilli()))
+	r.complete(ctx, intent, executed(intent, res, err, r.now().UnixMilli()), true)
 	return res, err
 }
 
@@ -100,7 +100,7 @@ func (r *Recorder) Around(ctx context.Context, call executor.Call, effect execut
 	done.Changed = call.Changed
 	done.Command = commandOf(call.Args)
 	done.Trigger = trigger
-	r.complete(ctx, intent, done)
+	r.complete(ctx, intent, done, !call.Deferred)
 	return nil
 }
 
@@ -180,17 +180,51 @@ func argsHash(req executor.ExecRequest) string {
 	return hashHex(raw)
 }
 
-// complete logs the call's completion and seals. It runs on the call's way
-// out whatever the call did, and seals under a context the caller cannot
-// cancel: a cancelled call may still have changed files.
-func (r *Recorder) complete(ctx context.Context, i Intent, e Executed) {
+// complete logs the call's completion and, unless the caller deferred it,
+// seals. It runs on the call's way out whatever the call did, and seals under a
+// context the caller cannot cancel: a cancelled call may still have changed
+// files. A deferred call is already durable in the WAL, so a death before the
+// Settle loses nothing the next start does not carry.
+func (r *Recorder) complete(ctx context.Context, i Intent, e Executed, seal bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err := r.wal.Finish(i, e); err != nil {
 		r.report(err)
 	}
 	r.pending = append(r.pending, e)
+	if seal {
+		r.seal(context.WithoutCancel(ctx))
+	}
+}
+
+// Settle implements executor.Settler. It seals what deferred calls left pending,
+// and, with nothing pending, the transcript lines written since the last seal
+// (the closing answer of a turn), so that a process killed after either loses
+// neither. A seal with no call in it looks at the state directory only: nothing
+// but the transcript changed.
+func (r *Recorder) Settle(ctx context.Context) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.pending) == 0 && len(r.models) == 0 && !r.transcriptGrew() {
+		return
+	}
 	r.seal(context.WithoutCancel(ctx))
+}
+
+// transcriptGrew reports whether the transcript is longer than the last seal saw.
+func (r *Recorder) transcriptGrew() bool {
+	head, err := Head(r.cell)
+	if err != nil {
+		return true
+	}
+	return transcriptRange(r.cell, head).End != lastEnd(head)
+}
+
+func lastEnd(head *Sealed) int64 {
+	if head == nil {
+		return 0
+	}
+	return head.Receipt.Transcript.End
 }
 
 // seal takes everything pending into one turn. On failure the batch stays
@@ -252,8 +286,11 @@ func serviceRecs(list []executor.Service) []ServiceRec {
 }
 
 // changedOf is the paths a batch of calls changed, or nil when any one of them
-// could have changed anything: a promise of "only these" needs every call's word.
+// could have changed anything (an empty batch changed nothing but the transcript): a promise of "only these" needs every call's word.
 func changedOf(batch []Executed) []string {
+	if len(batch) == 0 {
+		return []string{}
+	}
 	var all []string
 	for _, e := range batch {
 		if e.Changed == nil {
