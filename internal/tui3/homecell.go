@@ -589,7 +589,7 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	if cell.noteShort != "" && homeCellWidth(title, pad, note, tag, right) > width {
 		note = cell.noteShort
 	}
-	for _, fact := range []*string{&note, &tag} {
+	for _, fact := range cell.giveWay(&note, &tag, title, pad, right, width) {
 		if homeCellWidth(title, pad, note, tag, right) <= width {
 			break
 		}
@@ -646,6 +646,18 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		return line
 	}
 	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(tail))) + factInk(tail)
+}
+
+// giveWay is the facts in the order a narrow row sheds them. A cell that
+// KEEPS ITS NOTE (a chat on another machine: `running on studio` is the point
+// of the row) sheds the tag alone and lets the title be cut, for as long as the
+// note still fits beside a title of [homeCellTitleFloor] cells; below that the
+// note goes as it always did.
+func (c *homeCell) giveWay(note, tag *string, title string, pad int, right string, width int) []*string {
+	if c.keepNote && homeCellWidth(fit(title, homeCellTitleFloor), pad, *note, "", right) <= width {
+		return []*string{tag}
+	}
+	return []*string{note, tag}
 }
 
 // homeCellPathTitle preserves the start of a project path: an absolute root

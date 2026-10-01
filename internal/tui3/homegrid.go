@@ -465,6 +465,9 @@ type homeCell struct {
 	// noteShort is the note's narrower spelling, taken before the note gives
 	// way whole ([homeCellBody]); "" for a note with only one.
 	noteShort string
+	// keepNote says the note outranks the title's tail: the title is cut with an
+	// ellipsis before the note is dropped ([homeCell.giveWay]).
+	keepNote bool
 	// bold is this window's own conversation.
 	bold bool
 	// underline marks a hovered project name without lighting its facts.

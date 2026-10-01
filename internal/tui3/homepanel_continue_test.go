@@ -279,7 +279,7 @@ func TestBranchRowGolden(t *testing.T) {
 			"   Trim logs  4 turns from mac: merge / discard           6h",
 		},
 		40: {
-			"  Fix the flaky test                  5h",
+			"  Fix the flaky ...  2 turns · laptop 5h",
 			"  Trim logs  4 turns · mac            6h",
 		},
 	}
