@@ -6,6 +6,7 @@
 import { stripBase } from './base.js';
 import { checkDeclared } from './body.js';
 import { serveLink } from './link/front.js';
+import { isPagePath, servePage } from './page.js';
 import { servePair } from './pair/front.js';
 import { matchRoute } from './routes.js';
 import { identityOf } from './verify.js';
@@ -28,6 +29,7 @@ async function forward(request, env) {
 
 /** dispatch serves a request under the deployment's base path; anything outside that prefix is a 404. */
 function dispatch(outer, env) {
+  if (isPagePath(outer)) return servePage(outer); // a link opened in a browser lives on the bare host, outside the base path
   const request = stripBase(outer, env);
   if (!request) throw notFound();
   const { pathname } = new URL(request.url);

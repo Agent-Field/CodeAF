@@ -325,11 +325,11 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 ## Continue a chat here that another machine left — "studio off", takeover, "continue here", the chat is running on another computer
 
 Press enter on a row that says `<device> off` or `running on <device>` and home asks **Continue this chat here?**
-with the answer under the cursor on `leave it there`, so leaning on enter loses nothing.
+with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
 The card says how fresh the copy is: `last durable turn <N>s ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
 `running on <device>` row the card starts with that: `running on <device>; last durable turn
-<N>s ago`. Press `1`, then enter, to continue: the chat is fetched, this machine takes it
+<N>s ago`. Press enter to continue: the chat is fetched, this machine takes it
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent

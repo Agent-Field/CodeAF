@@ -274,9 +274,10 @@ func (b *Batcher) tick(ctx context.Context, held *holding) {
 }
 
 // socketMoved is the socket's state changing. When it no longer vouches the
-// lease is on its stored expiry alone, so the beat goes now, not at the tick.
+// lease is on its stored expiry alone, so the beat goes now, not at the tick. A
+// socket that was not vouching before has not stopped, so it beats nothing here.
 func (b *Batcher) socketMoved(ctx context.Context, held *holding) {
-	if !held.covers(b.view, b.toldPending) {
+	if held.lapsed() {
 		b.beat(ctx)
 	}
 }
