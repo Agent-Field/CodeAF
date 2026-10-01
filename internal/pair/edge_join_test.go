@@ -420,8 +420,13 @@ func joinHostileOfferer(t *testing.T, r *chatRig, home string, reply []byte) (Jo
 	t.Cleanup(func() { _ = r.box.Delete(context.Background(), made.Nameplate, key) })
 	go func() {
 		link := &boxLink{ctx: ctx, box: r.box, plate: made.Nameplate, mine: pairbox.SideA, theirs: pairbox.SideB, key: key}
-		if joiner, err := answer(link, chatScheme(made.Nameplate), digits); err == nil {
-			_ = joiner.reply(reply)
+		joiner, err := answer(link, chatScheme(made.Nameplate), digits)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "DBG answer failed:", err)
+			return
+		}
+		if err := joiner.reply(reply); err != nil {
+			fmt.Fprintln(os.Stderr, "DBG reply failed:", err)
 		}
 	}()
 	typed := made.Nameplate + "-" + digits[:3] + "-" + digits[3:]
