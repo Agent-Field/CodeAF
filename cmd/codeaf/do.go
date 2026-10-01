@@ -3520,7 +3520,7 @@ func errandFooter(outcome headlessOutcome) string {
 		parts = append(parts, elapsed.String())
 	}
 	if outcome.Nodes > 0 {
-		parts = append(parts, plural(outcome.Nodes, "node"))
+		parts = append(parts, plural(outcome.Nodes, "part"))
 	}
 	if spent := config.SpentFigure(outcome.Spend); spent != "" {
 		parts = append(parts, spent)

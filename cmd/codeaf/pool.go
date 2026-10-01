@@ -81,9 +81,9 @@ var errPoolKeyDoesNotDecode = errors.New("the stored public key does not decode"
 // from there — the remedy belongs to whichever word is in force.
 func poolKeyReason(cfg poolcfg.Config) string {
 	if cfg.Source.PublicKey == "env" {
-		return "CODEAF_MODEL_POOL_PUBLIC_KEY does not decode (set it to the base64 Ed25519 public key of your relay, or clear it)"
+		return "CODEAF_MODEL_POOL_PUBLIC_KEY does not decode (set it to the base64 Ed25519 public key of your model-pool server, or clear it)"
 	}
-	return "models.pool.public_key does not decode (set it to the base64 Ed25519 public key of your relay, or clear it)"
+	return "models.pool.public_key does not decode (set it to the base64 Ed25519 public key of your model-pool server, or clear it)"
 }
 
 // poolKeys is --key's value: a base64 ed25519 public key, repeatable, each
@@ -195,7 +195,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 	}
 	for _, line := range []string{
 		fmt.Sprintf("mode %s · %s", cfg.Mode, cfg.Source.Mode),
-		fmt.Sprintf("relay %s · %s", cfg.RelayURL, cfg.Source.RelayURL),
+		fmt.Sprintf("pool server %s · %s", cfg.RelayURL, cfg.Source.RelayURL),
 		fmt.Sprintf("index %s · %s", cfg.IndexURL, cfg.Source.IndexURL),
 		fmt.Sprintf("mirror %s · %s", orNowhere(cfg.MirrorURL), cfg.Source.MirrorURL),
 		fmt.Sprintf("submit %s · %s", orNowhere(cfg.SubmitURL), cfg.Source.SubmitURL),
@@ -474,22 +474,22 @@ func probeAddress(url, poolDir string, keys []ed25519.PublicKey, now func() time
 // asks nothing and says that instead.
 func relayStatusLine(cfg poolcfg.Config, relay, mirror probeSummary, cached *index.Index) string {
 	if !cfg.CanRead() {
-		return "relay: not read (model_pool off)"
+		return "pool server: not read (model_pool off)"
 	}
 	if relay.Reachable {
 		if relay.fromCache {
-			return fmt.Sprintf("relay: reachable · index unchanged, version %d", relay.Version)
+			return fmt.Sprintf("pool server: reachable · index unchanged, version %d", relay.Version)
 		}
-		return fmt.Sprintf("relay: reachable · index version %d", relay.Version)
+		return fmt.Sprintf("pool server: reachable · index version %d", relay.Version)
 	}
 	if mirror.Reachable {
-		return fmt.Sprintf("relay: unreachable (%s) · mirror: reachable · index version %d", relay.Reason, mirror.Version)
+		return fmt.Sprintf("pool server: unreachable (%s) · mirror: reachable · index version %d", relay.Reason, mirror.Version)
 	}
 	where := "built-in seed"
 	if cached != nil {
 		where = "cache"
 	}
-	return fmt.Sprintf("relay: unreachable (%s) · mirror: unreachable (%s) · reading %s", relay.Reason, mirror.Reason, where)
+	return fmt.Sprintf("pool server: unreachable (%s) · mirror: unreachable (%s) · reading %s", relay.Reason, mirror.Reason, where)
 }
 
 // oneLine is a reason said on one line: any newline becomes a space, because

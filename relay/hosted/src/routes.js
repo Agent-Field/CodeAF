@@ -3,6 +3,8 @@
 // is refused with, and the handler. Handlers get {tenant, device, body} and the path's captures,
 // and answer a Response or throw a refusal; the Durable Object does everything around them.
 import { MAX_FRAME } from './frame.js';
+import { approve, deny } from './link/decide.js';
+import { onlineDevices, presenceOf } from './presence.js';
 import { parseHolds } from './vouch.js';
 import { Wire, badRequest, json, empty, notFound } from './wire.js';
 
@@ -41,9 +43,17 @@ const withVersion = (res, version) => (res.headers.set('Codeaf-Dir-Version', Str
 // The watch is an upgrade and nothing else: a plain GET is told so (contract 21.2).
 function watching(c) {
   if (c.request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new Wire('upgrade_required', 426);
-  const holds = parseHolds(new URL(c.request.url).searchParams.getAll('hold'), c.tenant.limits.maxHolds);
-  return c.tenant.watch(c.device, holds);
+  const { searchParams } = new URL(c.request.url);
+  const holds = parseHolds(searchParams.getAll('hold'), c.tenant.limits.maxHolds);
+  return c.tenant.watch(c.device, holds, searchParams.get('events') === '1');
 }
+
+// The directory's version rides on a presence answer as on a list.
+const presence = (c) => {
+  const { tenant } = c;
+  const answer = presenceOf(tenant.dir.list().devices, onlineDevices(tenant.watchers.ctx), tenant.clock());
+  return withVersion(json(answer), tenant.dir.version);
+};
 
 const octets = (bytes) => new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });
 
@@ -53,6 +63,7 @@ const STORE = { over: 'bad_frame' };
 const DIR = { over: 'too_large' };
 // `write` marks a route a replaced identity refuses: every verb that changes a record or a frame, and
 // the watch, which a replaced identity could only ever hear a thaw on (contract 21.2).
+const LINK = { over: 'too_big', limit: 16 << 10, write: true }; // an approve body: a device record, a cert and a grant of at most 4 KiB
 const STORE_WRITE = { ...STORE, write: true };
 const DIR_WRITE = { ...DIR, write: true };
 
@@ -74,6 +85,9 @@ const ROUTES = [
     return empty();
   }],
   ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.revoke(id, c.device), empty())],
+  ['GET', /^\/v1\/dir\/presence$/, DIR, presence],
+  ['POST', /^\/v1\/dir\/requests\/([^/]+)\/approve$/, LINK, async (c, args) => (await approve(c, args), empty())],
+  ['POST', /^\/v1\/dir\/requests\/([^/]+)\/deny$/, LINK, async (c, args) => (await deny(c, args), empty())],
   ['POST', /^\/v1\/dir\/vault$/, DIR_WRITE, (c) => {
     const { old, new: next } = object(c.body);
     c.tenant.dir.setVault(old, next);

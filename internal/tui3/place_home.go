@@ -569,6 +569,11 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.placeTargetKey(msg); took {
 		return cmd, true
 	}
+	// AND THE ADD-MACHINE CARD'S CHORD, which is the router's to swallow unless
+	// it is claimed here, and is claimed only where the card is drawn.
+	if msg.String() == addMachineKey && a.addMachineWanted() {
+		return a.toggleAddMachine(), true
+	}
 	a.settleExchangeFocus()
 	ex := a.paneExchange()
 	if ex == nil || !ex.focused {

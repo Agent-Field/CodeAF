@@ -22,10 +22,12 @@ type Stream interface {
 	Close()
 }
 
-// Frame is what arrived: the directory's version, or only a pong.
+// Frame is what arrived: the directory's version, an event, or only a pong.
 type Frame struct {
 	Version uint64
 	Pong    bool
+	// Event is set for an event frame (it has no version); nil otherwise.
+	Event *Event
 }
 
 // Dialer opens one socket.

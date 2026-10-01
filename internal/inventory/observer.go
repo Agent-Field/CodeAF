@@ -75,6 +75,9 @@ func (o *Observer) Observe(req executor.ExecRequest, res executor.ExecResult) {
 			putService(inv, serviceOf(req, tool, s))
 		}
 		inv.EnvVarNames = union(inv.EnvVarNames, envNames(req.Env))
+		if run, ok := testRunOf(Cleaned(scriptOf(req.Argv)), res.Exit, res.Stdout); ok {
+			inv.Tests = &run
+		}
 		if res.Exit == 0 {
 			inv.SetDetached(applyDetached(inv.Detached, Cleaned(strings.Join(req.Argv, " ")), Cwd(req.Dir)))
 		}
