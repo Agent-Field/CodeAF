@@ -108,15 +108,24 @@ const (
 
 // The detail behind `?`, on the field with the focus.
 //
-// THE LIMIT'S DETAIL REFUSES TO OVERPROMISE. It is a ceiling on what codeaf
-// RECORDS spending, calls already in flight can carry the day a little past it,
-// and the provider account has controls of its own that this number knows nothing
-// about. A screen that said "you will never be billed more than this" would be
-// the product making a promise it cannot keep with somebody else's money.
+// THE LIMIT'S DETAIL EXPLAINS THE TWO CEILINGS AND HOW THEY MEET. The day's
+// limit is the one this row sets; a conversation can carry a smaller one of its
+// own (`/budget conversation`), both hold at once, and whichever is reached
+// first stops the work — the day's holds everything until midnight, a
+// conversation's holds that conversation. It still refuses to overpromise: the
+// turn in flight finishes, and the provider account has controls of its own
+// that this number knows nothing about, so a screen that said "you will never
+// be billed more than this" would be making a promise with somebody else's
+// money.
 const (
-	controlLimitDetail = "It counts spending " + product + " records here. Calls already " +
-		"running can carry it a little past. Your provider account has its own controls. " +
-		"Task crews also have a daily cap of their own, set in /crew."
+	controlLimitDetail = "The day's ceiling for everything " + product + " does: /budget 50 " +
+		"changes it later and /budget none removes it. A conversation can carry a " +
+		"smaller ceiling of its own: /budget conversation 20 sets one for the " +
+		"conversation you are in and keeps it as the default for new ones. Both hold " +
+		"at once, and whichever is reached first stops the work — the day's holds " +
+		"everything until midnight or you raise it, a conversation's holds just that " +
+		"conversation. The turn already running always finishes, and your provider " +
+		"account has controls of its own."
 	controlModelDetail = "It also handles this conversation's tool use. Changing it here is " +
 		"the same choice /model makes, and it is kept for the next launch." +
 		" Tasks get their own crew, picked per task · /crew shows it."

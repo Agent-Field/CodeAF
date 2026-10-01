@@ -151,14 +151,16 @@ Its one line reads:
 
 Type a number to change it — the `$` is drawn for you rather than typed — or type
 **`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
-`?` on the row adds the part that matters when the bill arrives: *it counts spending
-codeaf records here. Calls already running can carry it a little past. Your provider
-account has its own controls. Task crews also have a daily cap of their own, set in /crew.*
-The two are different limits: this one covers everything codeaf spends, and `/crew`'s
-**crew daily cap** covers only what task crews spend. It is a backstop against a runaway, not a promise about
-your whole bill. Something that is not a dollar amount is refused in the settings row's
-own words — `that's not a dollar amount — a number, or none for no limit` — and the
-screen stays.
+`?` on the row explains the two ceilings and how they meet: *The day's ceiling for
+everything codeaf does: /budget 50 changes it later and /budget none removes it. A
+conversation can carry a smaller ceiling of its own: /budget conversation 20 sets one for
+the conversation you are in and keeps it as the default for new ones. Both hold at once,
+and whichever is reached first stops the work — the day's holds everything until midnight
+or you raise it, a conversation's holds just that conversation. The turn already running
+always finishes, and your provider account has controls of its own.* Each `/budget` in it is
+painted as a command chip. (Until 2026-10-01 the detail said only that the figure counts
+recorded spending, that running calls can carry it a little past, and that task crews have
+a cap of their own in `/crew`.)
 
 `$500` is **the amount codeaf has always shipped** and this screen did not change it.
 

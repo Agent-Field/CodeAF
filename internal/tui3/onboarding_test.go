@@ -291,15 +291,15 @@ func TestTheDetailIsBehindAQuestionMarkAndGoesWithTheFocus(t *testing.T) {
 	// what was drawn next to it.
 	a.width, a.height = 80, 24
 	first := setupScreen(a)
-	if strings.Contains(first, "Calls already running") {
+	if strings.Contains(first, "whichever is reached first") {
 		t.Fatalf("the limit's caveat is on the screen before anybody asked:\n%s", first)
 	}
 	pressSetup(a, key("?"))
-	if !strings.Contains(setupScreen(a), "Calls already running") {
+	if !strings.Contains(setupScreen(a), "whichever is reached first") {
 		t.Fatalf("? did not open the limit's detail:\n%s", setupScreen(a))
 	}
 	pressSetup(a, key("tab"))
-	if strings.Contains(setupScreen(a), "Calls already running") {
+	if strings.Contains(setupScreen(a), "whichever is reached first") {
 		t.Fatalf("the detail followed the focus off its own field:\n%s", setupScreen(a))
 	}
 }
