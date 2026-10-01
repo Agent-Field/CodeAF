@@ -9,11 +9,13 @@ package tui3
 // it can only come back as a new request that this fleet approves again.
 //
 // THIS DEVICE CANNOT REVOKE ITSELF HERE. Its row has no `r`, so a stray key
-// never locks a person out of their own fleet.
+// never locks a person out of their own fleet; the key says so. Rows sort this
+// device, online, away, then by name and id; same-name rows carry a short id.
 
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -27,6 +29,8 @@ const (
 	devicesNone    = "no other device is in your fleet yet - /pair adds one"
 	devicesRevoked = "%s was revoked - it can no longer reach your chats."
 	devicesSelf    = "this device"
+	devicesOwnRow  = "this device cannot remove itself - choose another row."
+	idTail         = 4
 )
 
 // deviceCard is the list's state. Online comes from the feed when the card opens.
@@ -57,7 +61,7 @@ func (m devicesMsg) land(a *app) tea.Cmd {
 		m.card.line = m.err.Error()
 		return nil
 	}
-	m.card.rowsOf, m.card.loaded = m.rows, true
+	m.card.rowsOf, m.card.loaded = orderDevices(m.rows), true
 	return nil
 }
 
@@ -72,6 +76,44 @@ func (m revokedMsg) land(a *app) tea.Cmd {
 	m.card.mark(m.row.ID)
 	m.card.line = fmt.Sprintf(devicesRevoked, m.row.Name)
 	return nil
+}
+
+// orderDevices puts this device first, then online ones, then the rest, each
+// group by name then id, so the list is the same every time it opens.
+func orderDevices(rows []DeviceRow) []DeviceRow {
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].before(rows[j]) })
+	return rows
+}
+
+// rank is the group a row sorts in: this device 0, online 1, away 2.
+func (d DeviceRow) rank() int {
+	switch {
+	case d.Self:
+		return 0
+	case d.Online:
+		return 1
+	}
+	return 2
+}
+
+func (d DeviceRow) before(o DeviceRow) bool {
+	if a, b := d.rank(), o.rank(); a != b {
+		return a < b
+	}
+	if d.Name != o.Name {
+		return d.Name < o.Name
+	}
+	return d.ID < o.ID
+}
+
+// shownName is the name, with a short id tail when another row has the same name.
+func (c *deviceCard) shownName(d DeviceRow) string {
+	for _, o := range c.rowsOf {
+		if o.ID != d.ID && o.Name == d.Name {
+			return d.Name + " #" + d.ID[max(len(d.ID)-idTail, 0):]
+		}
+	}
+	return d.Name
 }
 
 func (c *deviceCard) mark(id string) {
@@ -112,7 +154,7 @@ func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 // row is one device: its dot, name, system and, when it is off, when it was
 // last seen. The cursor row is ink; the others are dim.
 func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palette) string {
-	text := fmt.Sprintf("%s %s  %s", d.dot(pal), d.Name, platformOf(d.Platform).word)
+	text := fmt.Sprintf("%s %s  %s", d.dot(pal), c.shownName(d), platformOf(d.Platform).word)
 	for _, tail := range d.tails(now) {
 		text += "  " + tail
 	}
@@ -161,6 +203,9 @@ var cursorMoves = map[string]int{"up": -1, "k": -1, "down": 1, "j": 1}
 // revoked row and an empty list do nothing.
 func (a *app) revoke(c *deviceCard) tea.Cmd {
 	row, ok := c.pick()
+	if ok && row.Self {
+		c.line = devicesOwnRow
+	}
 	if !ok || row.Self || row.Revoked {
 		return nil
 	}
