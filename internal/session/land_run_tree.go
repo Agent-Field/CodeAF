@@ -59,23 +59,9 @@ func LandRunTree(dir, base, title, model string) (branch string, changed []strin
 	}
 	headMoved := false
 	if base != "" {
-		out, err := git(dir, "diff", "--name-only", "-z", base, "HEAD")
+		changed, headMoved, err = runCommittedPaths(dir, base)
 		if err != nil {
 			return "", nil, "", err
-		}
-		changed = append(changed, gitNULPaths(out)...)
-		head := runTreeHead(dir)
-		if head == "" {
-			return "", nil, "", errors.New("read the run's branch head after landing")
-		}
-		headMoved = head != base
-		if headMoved && len(changed) == 0 {
-			// The net path list measures this tree since base, not the
-			// rewrite's private range; include an outside merged branch too.
-			changed, err = runTouchedPaths(dir, base, head)
-			if err != nil {
-				return "", nil, "", err
-			}
 		}
 	} else {
 		changed = saved
@@ -87,6 +73,29 @@ func LandRunTree(dir, base, title, model string) (branch string, changed []strin
 		return "", nil, "", errors.New("the run's working copy stands on no branch, so there is nothing to land")
 	}
 	return branch, changed, "", nil
+}
+
+// runCommittedPaths reads a run's work from its original base, because a
+// worker's own commits no longer appear in the working copy's status. A stop
+// and a landing owe the same account of those files, including commits whose
+// edits later cancelled themselves out.
+func runCommittedPaths(dir, base string) (changed []string, headMoved bool, err error) {
+	out, err := git(dir, "diff", "--name-only", "-z", base, "HEAD")
+	if err != nil {
+		return nil, false, err
+	}
+	changed = gitNULPaths(out)
+	head := runTreeHead(dir)
+	if head == "" {
+		return nil, false, errors.New("read the run's branch head")
+	}
+	headMoved = head != base
+	if headMoved && len(changed) == 0 {
+		// The net path list measures this tree since base, not the
+		// rewrite's private range; include an outside merged branch too.
+		changed, err = runTouchedPaths(dir, base, head)
+	}
+	return changed, headMoved, err
 }
 
 // runTouchedPaths names files in non-merge commits when committed work later

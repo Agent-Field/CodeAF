@@ -249,6 +249,8 @@ through the same code path the tool on the belt runs, so the two cannot drift:
   through the billed parser rungs on your profile's key. A plain text file is printed as
   it is, with no call at all. `--pages` names pages of a PDF the local rung reads; billed
   text arrives with no page boundaries, so a range on a scan is refused.
+  `codeaf doc --help` prints `codeaf doc PATH [--pages A-B]` and the flags without
+  reading a file or making a model call.
 - **`codeaf web fetch URL`** and **`codeaf web search QUERY`** are the belt's web verbs:
   one page fetched with the markup stripped and bounded the way `web_fetch` bounds it,
   or one search rendered as the numbered list `web_search` renders, on whatever provider

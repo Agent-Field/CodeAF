@@ -1031,10 +1031,27 @@ esc itself changes **nothing** — it closes the list and gives your half-typed 
 frame back as they were. What enter already did is already done; esc does not undo it. The
 filter is forgotten when the picker closes.
 
-The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
+## Where the /model cursor opens — Enter confirms the model in use
 
-The placeholder in the empty filter box reads:
+Every model list opens on the model it holds: `/model` opens on the model in use,
+highlighted and on screen on the first frame, so enter with nothing typed confirms it.
+A settings slot or role, a task's model word, home's draft, the task composer's `alt+o`
+and a lane list or chip likewise open on their held model. A refresh puts the cursor
+back on that model, keeping the typed filter; `ctrl+u` emptying the box returns there
+too. If the held model is absent, the cursor rests on the first selectable row, skipping
+unavailable notices. `/model <query>` and typing a filter start the narrowed list at
+its first row.
+
+The model in use is bold in the accent with no band of its own. The cursor supplies
+the highlighted band, and hovering another row lifts that row too. Arrows, page keys
+and the wheel stop at the list's ends with the cursor visibly on screen, counting the
+headings and extra lines. The wheel walks the open model list, three rows a notch,
+in `/model`, settings slots and roles, home's draft and the task composer; the page
+beneath stays put until the list closes.
+
+## Model picker filter box and key hints
+
+The model picker's empty filter box reads:
 
 ```
 filter by name · ctrl+r refresh
@@ -1058,7 +1075,9 @@ back` — the foot names whichever key actually works at that moment. What is le
 the box is the name of the box and the one key that is about the LIST rather than about the
 row under the cursor.
 
-Choosing a model sets it on the agent, teaches the surface its context window and tells
+## Choosing a model and saving it for the next launch
+
+Choosing a model in `/model` sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
 notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
 opens on it. Over `--host` the switch takes for the session and is not written down: the
@@ -1810,20 +1829,20 @@ tab's `hints` row does not hide it, and a conversation over `--host` says it abo
 profile on the machine running the work. Nothing is rewritten: to act on it, move the
 value to the key a settings row names (`settings` lists every one), or delete the key.
 
-## The nine settings tabs
+## The ten settings tabs
 
 The tabs, in order:
 
 ```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
 ```
 
 ## The settings tab strip on a narrow terminal
 
-The nine tabs need about 96 columns. On anything narrower the strip **scrolls** rather
+On a terminal too narrow for all ten tabs, the strip **scrolls** rather
 than being cut: the tab you are standing on is always drawn and always inked, its
 neighbours are drawn while they fit, and each end that had to give a tab up wears a `…`
-saying there is more that way. `←` and `→` still walk the nine one at a time, and the
+saying there is more that way. `←` and `→` still walk the tabs one at a time, and the
 strip follows.
 
 It anchors left while you are near `Session` and right while you are near `Connections`,
@@ -2032,7 +2051,7 @@ Connections tab — the foot drops `tab next place`, because the layer has taken
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
-one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
+one call codeaf makes outside a turn — `title`, `guardian`, `checker`,
 `planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
@@ -2053,7 +2072,8 @@ above` or `follows small work above` instead.
   and del does nothing on any other row of the sheet.
 - Typing filters these rows too: they answer to their own names and to the line that says
   what they do — neither of which is in any settings key. Searching for `image` finds
-  `vision`, whose description mentions it.
+  `vision`, whose description mentions it. Searching for `checker` finds the seat that
+  checks finished work; its row and model picker both use that word.
 
 Every pin is written into the "pinned roles" registry row and nowhere else, so the list and
 that text box are one setting seen two ways. What each role does and how the tiers work is
@@ -2163,7 +2183,7 @@ Every command in the terminal answers `--help` (and `-h`) with its own usage: th
 that names its shape and its flags, then its flags one to a row, then
 
 ```
-run `codeaf --help` for every command and the environment table.
+run `codeaf --help` for every command, `codeaf help env` for the variables.
 ```
 
 It goes to **standard output** and the command leaves with **0**. Asking a program what
@@ -2213,8 +2233,8 @@ questions about codeaf out of it rather than out of what it remembers about othe
 
 ## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 
-`codeaf --help` prints every command, what each is for, and the environment table under
-them. **Any single command answers for itself the same way:**
+`codeaf --help` prints every command and what each is for, then points to
+`codeaf help env` for every variable and its default. **Any single command answers for itself the same way:**
 
 ```
 codeaf do --help
