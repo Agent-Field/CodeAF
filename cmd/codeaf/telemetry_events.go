@@ -132,13 +132,19 @@ func (c *countingAgent) FollowUp(text string) (<-chan session.Event, error) {
 // from the far end leaves the message queued, and a second press has to be
 // able to name it again.
 func (c *countingAgent) UnqueueFollowUp(ch <-chan session.Event) bool {
+	return c.Agent.UnqueueFollowUp(c.followSource(ch))
+}
+
+// followSource is the stream a copy stands for, or ch itself when this tee did
+// not hand it out. It is its own function so the lock is held for the lookup
+// alone and never across the round trip to the far end.
+func (c *countingAgent) followSource(ch <-chan session.Event) <-chan session.Event {
 	c.followMu.Lock()
-	src, ok := c.follows[ch]
-	c.followMu.Unlock()
-	if !ok {
-		src = ch
+	defer c.followMu.Unlock()
+	if src, ok := c.follows[ch]; ok {
+		return src
 	}
-	return c.Agent.UnqueueFollowUp(src)
+	return ch
 }
 
 // forgetFollow drops a copy's receipt once its stream has closed — the turn
@@ -146,8 +152,8 @@ func (c *countingAgent) UnqueueFollowUp(ch <-chan session.Event) bool {
 // name.
 func (c *countingAgent) forgetFollow(out <-chan session.Event) {
 	c.followMu.Lock()
+	defer c.followMu.Unlock()
 	delete(c.follows, out)
-	c.followMu.Unlock()
 }
 
 // countedEvents returns src with the count taken on the way through: one
