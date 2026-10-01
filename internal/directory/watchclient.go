@@ -10,6 +10,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // Watcher is a Client that can open the relay's watch socket.
@@ -55,7 +56,7 @@ func (h *HTTP) WatchHolding(ctx context.Context, holds []Hold) (dirwatch.Stream,
 
 // dial opens the socket naming holds, and asking for events when events is set.
 func (h *HTTP) dial(ctx context.Context, holds []Hold, events bool) (dirwatch.Stream, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.base+dirBase+"/watch", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wireauth.Endpoint(h.base, dirBase+"/watch"), nil)
 	if err != nil {
 		return nil, err
 	}
