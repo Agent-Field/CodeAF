@@ -20,7 +20,7 @@ A chunk the relay already holds costs nothing again, so a computer that sends it
 
 The hosted relay lets one network address make **20 new identities in a day**. Computers of an identity that exists are never counted. After 20 the relay answers `429` with the code `too_many_identities` and a `Retry-After`. A relay you run yourself has no such limit.
 
-Pairing has limits on both kinds of relay: 10 new codes in an hour for one network, and a relay holds at most 2,000 waiting pairings. The messages are on the pairing page, for example `too many pairings from this network; wait 7 min` and `the relay is full right now; try again in a few minutes`.
+Pairing has limits on both kinds of relay: 10 new codes in an hour for one network, and a relay holds at most 2,000 waiting pairings. The messages are on the pairing page, for example `too many pairings from this network; wait 7 min` and `sync is full right now; try again in a few minutes`.
 
 ## What do I see when the relay says no
 

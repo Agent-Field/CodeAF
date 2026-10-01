@@ -53,17 +53,14 @@ func runPair(args []string) error {
 
 func (d pairDoor) run(ctx context.Context, args []string) error {
 	flags := commandFlags("pair")
-	relay := flags.String("relay", "", "the sync address to pair through; empty is the one this computer syncs through")
-	via := flags.String("via", "", "the same as --relay")
+	via := flags.String("via", "", "the sync address to pair through; empty is the one this computer syncs through")
+	renamedFlag(flags, "relay", "via")
 	code := flags.Bool("code", false, "show a six-digit code to share this computer's chats, instead of asking to join")
 	replace := flags.Bool("replace", false, "when typing a code, give up this computer's own chats for the ones being shared")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
-	if *relay == "" {
-		*relay = *via
-	}
-	return d.dispatch(ctx, flags.Args(), *relay, *replace, *code)
+	return d.dispatch(ctx, flags.Args(), *via, *replace, *code)
 }
 
 // dispatch picks the door by what was typed: nothing asks to join, `approve`
