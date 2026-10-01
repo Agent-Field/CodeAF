@@ -1487,6 +1487,11 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		a.openSetup(false)
 		return nil
 	}
+	if !strings.HasPrefix(line, "/") && (line != "" || held) {
+		if door, shown := a.heldElsewhereDoor(); shown {
+			return door
+		}
+	}
 	// A TAG IS READ BEFORE THE DRAFT IS CLEARED. More than one cannot choose a
 	// winner safely: falling back to an ordinary send is precisely the failure
 	// these alternate doors exist to prevent, so the words stay in the box.
