@@ -520,7 +520,7 @@ func (a *Agent) firstExchangeLocked() (string, string) {
 			if question != "" && !shellOpening {
 				return question, ""
 			}
-			question = strings.TrimSpace(messageContentText(message))
+			question = strings.TrimSpace(a.presentation.personWords(message))
 		case "assistant":
 			// Human shell turns journal as user/call/result. Their durable call
 			// mark, not a leading ! in ordinary model input, identifies them.
