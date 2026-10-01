@@ -442,10 +442,10 @@ func (a *app) queuedTakesBackAt(i int) bool {
 // folded. The door line asks in order; Bubble Tea may deliver the answers in a
 // different order, and restoring both sentences must still keep click order.
 type followRecall struct {
-	one     queued
-	front   int
-	settled bool
-	out     bool
+	one      queued
+	front    int
+	answered bool
+	out      bool
 }
 
 // recallQueuedAt marks the row before asking the session off the loop. The mark
@@ -464,7 +464,7 @@ func (a *app) recallQueuedAt(i int) (tea.Cmd, bool) {
 	cmd := a.offLoop(func() func(here bool) tea.Cmd {
 		out := unqueuer.UnqueueFollowUp(one.ch)
 		return func(here bool) tea.Cmd {
-			pending.settled, pending.out = true, out
+			pending.answered, pending.out = true, out
 			if here {
 				if out {
 					a.removeQueuedByStream(one.ch)
@@ -495,7 +495,7 @@ func (a *app) recallQueuedAt(i int) (tea.Cmd, bool) {
 // reachable through ↑ history, where queueing already remembered them.
 func (a *app) foldFollowRecalls() tea.Cmd {
 	changed := false
-	for len(a.followRecalls) > 0 && a.followRecalls[0].settled {
+	for len(a.followRecalls) > 0 && a.followRecalls[0].answered {
 		one := a.followRecalls[0]
 		a.followRecalls[0] = nil
 		a.followRecalls = a.followRecalls[1:]
