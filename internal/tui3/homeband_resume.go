@@ -47,7 +47,7 @@ const (
 
 func init() {
 	registerHomeBand(homeBand{name: "resume", order: bandOrderResume,
-		kinds: []bandKind{bandKindSession, bandKindProject}, draw: drawResumeBand})
+		standing: true, draw: drawResumeBand})
 }
 
 // resumeOffer is the card's whole state. decided says the opening's one look
