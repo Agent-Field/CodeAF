@@ -9,9 +9,11 @@ use anyhow::Context;
 use fs2::FileExt;
 use serde::{de::DeserializeOwned, Serialize};
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::ffi::OsStringExt;
+use std::os::unix::fs::FileExt as UnixFileExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -81,6 +83,11 @@ struct MaintenanceState {
     depth: Cell<u32>,
     exclusive: Cell<bool>,
     file: RefCell<Option<File>>,
+    /// The pack files opened during the current section, so a walk over many
+    /// objects opens each pack once instead of once per object. A section
+    /// holds the maintenance lock, so no pack is removed while a handle is
+    /// kept, and the handles are dropped when the section ends.
+    packs: RefCell<HashMap<String, Rc<File>>>,
 }
 
 pub(crate) struct MaintenanceGuard {
@@ -97,6 +104,7 @@ impl Drop for MaintenanceGuard {
                 let _ = FileExt::unlock(&file);
             }
             self.state.exclusive.set(false);
+            self.state.packs.borrow_mut().clear();
         }
     }
 }
@@ -126,6 +134,7 @@ impl ObjectStore {
             depth: Cell::new(1),
             exclusive: Cell::new(false),
             file: RefCell::new(Some(lock)),
+            packs: RefCell::new(HashMap::new()),
         });
         let mut store = Self {
             root,
@@ -270,15 +279,33 @@ impl ObjectStore {
             .object(id)?
             .with_context(|| format!("missing object {}", hex::encode(id)))?;
         anyhow::ensure!(location.kind == expected, "object kind mismatch");
-        let mut pack = File::open(self.root.join("packs").join(location.pack))?;
-        pack.seek(SeekFrom::Start(location.offset))?;
+        let pack = self.pack_for_reading(&location.pack)?;
         let mut bytes = vec![0_u8; location.len as usize];
-        pack.read_exact(&mut bytes)?;
+        pack.read_exact_at(&mut bytes, location.offset)?;
         anyhow::ensure!(
             object_id(expected, &bytes) == *id,
             "object integrity check failed"
         );
         Ok(bytes)
+    }
+
+    /// The pack file to read from. Inside a maintenance section the handle is
+    /// kept for the rest of the section; outside one it is opened for this
+    /// read alone, because nothing then stops the pack from being removed.
+    fn pack_for_reading(&self, name: &str) -> std::io::Result<Rc<File>> {
+        let open = || File::open(self.root.join("packs").join(name)).map(Rc::new);
+        if self.maintenance.depth.get() == 0 {
+            return open();
+        }
+        if let Some(pack) = self.maintenance.packs.borrow().get(name) {
+            return Ok(Rc::clone(pack));
+        }
+        let pack = open()?;
+        self.maintenance
+            .packs
+            .borrow_mut()
+            .insert(name.to_owned(), Rc::clone(&pack));
+        Ok(pack)
     }
 
     pub fn read_struct<T: DeserializeOwned>(

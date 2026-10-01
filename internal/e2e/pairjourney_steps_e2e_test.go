@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -182,7 +183,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		list, ok := waitPlain(a, 8*time.Second, "r revoke")
 		j.require(ok, "no device list on A")
 		t.Logf("devices before revoke:\n%s", list)
-		a.keys("Down")
+		a.keys(downToOtherDevice(list)...)
 		a.keys("r")
 		time.Sleep(3 * time.Second)
 		after := plain(a)
@@ -212,4 +213,20 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		j.check(ok, "a machine that never ran pair --code shows no 'Add another machine' card")
 		j.see(fresh)
 	})
+}
+
+// downToOtherDevice is the Down presses from the first device row to the first
+// row that does not say "this device".
+func downToOtherDevice(list string) []string {
+	n := 0
+	for _, line := range strings.Split(list, "\n") {
+		switch {
+		case !strings.ContainsAny(line, "●○"):
+		case strings.Contains(line, "this device"):
+			n++
+		default:
+			return slices.Repeat([]string{"Down"}, n)
+		}
+	}
+	return []string{"Down"}
 }
