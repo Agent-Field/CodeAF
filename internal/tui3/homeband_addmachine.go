@@ -23,6 +23,7 @@ package tui3
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -57,6 +58,7 @@ const (
 	addMachineShow    = addMachineKey + " how"
 	addMachineHide    = addMachineKey + " hide"
 	addMachineMaking  = "making a link…"
+	addMachineCheck   = "Check number: "
 
 	bandOrderAddMachine = 20 // a one-machine fleet is told it can have two
 )
@@ -76,11 +78,18 @@ type addMachine struct {
 	// them ("" until it arrives or when the door has none).
 	open bool
 	link string
+	// The live link's own state (homeband_addmachine_live.go): the wait that is
+	// out, the check number beside the link, and how the wait ended.
+	run    *linkCardRun
+	check  string
+	ended  string
+	paired bool
 }
 
 // wanted says the card is on: a door that can pair, and a fleet known to be one.
 func (a *app) addMachineWanted() bool {
-	return a.pairing != nil && a.addMachine.known && a.addMachine.size < fleetEnough
+	m := a.addMachine
+	return a.pairing != nil && m.known && (m.size < fleetEnough || m.paired)
 }
 
 // fleetMsg is one answer from the [Fleet].
@@ -124,6 +133,9 @@ func (a *app) tookFleet(msg fleetMsg) tea.Cmd {
 
 // askLink makes the link for the open card, if the door can.
 func (a *app) askLink() tea.Cmd {
+	if live, ok := a.pairing.(LivePairLinker); ok {
+		return a.startLive(live)
+	}
 	door, ok := a.pairing.(PairLinker)
 	if !ok {
 		return nil
@@ -150,7 +162,8 @@ func (a *app) toggleAddMachine() tea.Cmd {
 	if !a.addMachineWanted() {
 		return nil
 	}
-	m.open, m.link = !m.open, ""
+	m.stopLive()
+	m.open = !m.open
 	a.touch()
 	if !m.open {
 		return nil
@@ -178,14 +191,40 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 	return append(rows, bandClauses(ctx.width, 0, keys, a.chords.say(key))...)
 }
 
+// addMachineStrip is the card standing at the foot of the resting home, drawn
+// whatever the cursor is on and whether or not home has any row at all: the
+// pitch is for the person with one machine, and an empty home is theirs most
+// of all. It is a blank row and the card, indented as the panels are, and it
+// is absent where it would take more than half of the room.
+func (a *app) addMachineStrip(width, room int) []placeRow {
+	inner := width - homeGridMargin
+	if inner < 1 || !a.addMachineWanted() {
+		return nil
+	}
+	card := drawAddMachineBand(a, bandContext{width: inner, pal: a.pal, now: a.now()})
+	if len(card)+1 > room/2 {
+		return nil
+	}
+	rows := []placeRow{{hit: homeMark{line: -1, pane: -1}}}
+	for _, text := range card {
+		rows = append(rows, placeRow{text: strings.Repeat(" ", homeGridMargin) + text, hit: homeMark{line: -1, pane: -1}})
+	}
+	return rows
+}
+
 // addMachineHow is the opened card: the link when there is one, and the two
 // ways the new machine can ask, then the one step left on this machine.
 func (a *app) addMachineHow(ctx bandContext) []string {
 	var rows []string
-	if a.addMachine.link != "" {
+	if _, live := a.pairing.(LivePairLinker); live {
+		rows = a.addMachine.liveRows(ctx.pal.ink, ctx.pal.dim, ctx.width)
+	} else if a.addMachine.link != "" {
 		rows = append(rows, ctx.pal.ink(fit(a.addMachine.link, ctx.width)))
 	} else if _, ok := a.pairing.(PairLinker); ok {
 		rows = append(rows, ctx.pal.dim(addMachineMaking))
+	}
+	if a.addMachine.ended != "" {
+		return rows
 	}
 	for _, line := range []string{addMachineApp, addMachineCLI, addMachineThen} {
 		for _, wrapped := range wrap(line, ctx.width) {
