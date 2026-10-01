@@ -196,14 +196,14 @@ front of the queue, the line does not offer `→ steers it in`.
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
+enter steers it in · esc interrupt
 ```
 
-That is the terminal-capable form when no command can be kept. A running foreground
-command that can be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`;
-a `!` command cannot be kept. A terminal that cannot deliver `ctrl+shift+enter`
-leaves that clause out. `cmd+enter` still waits, and `ctrl+enter` still queues, but the
-one-line slot advertises neither.
+That is the form when no command can be kept. A running foreground command that can be
+kept adds `ctrl+g backgrounds` immediately before `esc interrupt`; a `!` command cannot
+be kept. `cmd+enter` still waits, `ctrl+enter` still queues and `ctrl+shift+enter` still
+stops and sends, but the one-line slot advertises none of them — they are on the keys
+sheet (`?`).
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -334,8 +334,8 @@ of ending work is `x` and a card that asks first. The chord is ignored there.
 **Terminals that cannot send it.** `ctrl+shift+enter` reaches a program only where the terminal
 can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
 modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
-and your message **steers** instead. On those terminals codeaf never advertises the
-chord. Use `esc` to stop the whole turn, then send the next message normally.
+and your message **steers** instead. Use `esc` to stop the whole turn, then send the next
+message normally.
 
 **The line that teaches it.** While a turn is running and you have typed something, the
 right end of the row under the message box reads exactly:
@@ -344,14 +344,12 @@ right end of the row under the message box reads exactly:
 enter steers it in · esc interrupt
 ```
 
-On a terminal that can spell the secondary chords, the line reads
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt`. A foreground
+That is the line on every terminal: the row does not name `ctrl+shift+enter`, even where
+the chord works (it did until 2026-09-30); the keys sheet (`?`) lists it. A foreground
 command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
 
 **A picture on the tray is a message even when the box has no words.** It cannot steer, so
-that form reads `enter waits · esc interrupt`, or
-`enter waits · ctrl+shift+enter stops and sends · esc interrupt` on a terminal that can
-spell the secondary chord. With neither words nor a picture, the line is simply
+that form reads `enter waits · esc interrupt`. With neither words nor a picture, the line is simply
 `esc interrupt`, unless a command can be kept, when it is
 `ctrl+g backgrounds · esc interrupt`.
 
@@ -419,9 +417,8 @@ is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
 message box ends with `esc interrupt` — for example
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while you have
-typed something and this terminal can deliver `ctrl+shift+enter`. A foreground command that
-can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
+`enter steers it in · esc interrupt` while you have typed something. A foreground
+command that can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
 `esc interrupts · ctrl+c quits · ? for help`.

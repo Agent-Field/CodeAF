@@ -583,7 +583,7 @@ func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing
 	a, _ := steerableTurn(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")
 
-	want := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
+	want := "enter " + steerSendWord + " · esc interrupt"
 	if got := a.hintWord(); got != want {
 		t.Fatalf("the hint slot reads %q, want %q", got, want)
 	}
@@ -604,7 +604,7 @@ func TestAPictureOnTheTrayKeepsThePlainEnterHint(t *testing.T) {
 	a, _ := steerableTurn(t, "reading the tree. ")
 	a.chips = []chip{{path: "/tmp/shot.png"}}
 
-	want := enterWaitHint + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
+	want := enterWaitHint + " · esc interrupt"
 	if got := a.hintWord(); got != want {
 		t.Fatalf("the tray-only hint reads %q, want %q", got, want)
 	}
@@ -632,8 +632,7 @@ func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
 	}
 
 	want := []string{
-		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · ctrl+g backgrounds",
-		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord,
+		"enter " + steerSendWord + " · ctrl+g backgrounds",
 		steerShortHint,
 		"",
 	}
@@ -644,15 +643,16 @@ func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
 		}
 	}
 
-	// The narrowest frame that carries a hint slot at all keeps the leftmost
-	// clause rather than dropping the running-turn slot.
+	// The narrowest frame that carries a hint slot at all keeps the running-turn
+	// slot. Since the foot stopped naming the chords (2026-09-30) the whole line
+	// is short enough to stand at that floor, so it is drawn whole there.
 	a.width = hudTight
 	body := plain(frame(a))
 	if !strings.Contains(body, steerShortHint) {
 		t.Fatalf("the narrow frame lost the whole hint slot:\n%s", body)
 	}
-	if strings.Contains(body, whole) || strings.Contains(body, "esc interrupt") {
-		t.Fatalf("the narrow ladder did not drop from the right:\n%s", body)
+	if len(whole) <= hudTight-2 && !strings.Contains(body, whole) {
+		t.Fatalf("a hint that fits the floor was cut:\n%s", body)
 	}
 }
 

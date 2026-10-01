@@ -6,7 +6,7 @@ surface: [chat, engine]
 invalidates:
   - "Queueing a message for after the current turn was `ctrl+q`. It is `ctrl+enter`, on a terminal that can tell that chord from a plain enter, and `ctrl+q` is deliberately unbound."
   - "A queued follow-up had no take-backs. It does now: a click on its row takes that one message back out of the session's queue before its turn starts — pasted documents and all — and its stream ends with no events. `↑` does not reach the queue; it stays the parked block's and history's key."
-  - "The queue key is not advertised on the keys row under the box. The foot keeps `enter steers it in · ctrl+shift+enter stops and sends`; `ctrl+enter` is named on the key sheet and on the queued block's own dim line."
+  - "The keys row under the box named `ctrl+shift+enter stops and sends` while a turn ran. It names neither chord now — the running foot reads `enter steers it in · esc interrupt` — though both still work: `ctrl+shift+enter` stops and sends and `ctrl+enter` queues, and the key sheet lists them; the queued block's own dim line names `ctrl+enter`."
   - "The queued queue drew only a count, `after yield · N`. It draws one row per message under the queued glyph, dim, above the box, with a dim line that says what is waiting and how to take one back."
   - "`ctrl+enter` marked a draft as a standing order. The chord is queueing's now; the explicit marked door is `/standing <words>`, which works on every terminal, and the hint under the box says the command."
   - "The manual said plain terminals could queue with `ctrl+q`. Queueing needs the same terminal support `ctrl+shift+enter` does; on a terminal that cannot send the chords the follow-up queue is not available."

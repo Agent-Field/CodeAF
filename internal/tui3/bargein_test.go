@@ -206,9 +206,11 @@ func TestTheChordIsAbsentOnATerminalThatCannotSpellIt(t *testing.T) {
 
 // ── discoverability ─────────────────────────────────────────────────────────
 
-// H2: the stop-and-send chord joins the one composed running-turn line only in
-// the state where the chord and the sentence it would send are both present.
-func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T) {
+// THE FOOT DOES NOT NAME THE CHORD (the owner's call, 2026-09-30). The chord
+// still works wherever the terminal can send it — the tests above drive it —
+// but the running-turn line teaches plain enter alone, and the key sheet is
+// where ctrl+shift+enter is written down.
+func TestTheRunningFootDoesNotNameTheChord(t *testing.T) {
 	a, _ := bargeable(t, "reading the tree. ")
 
 	// A running turn with an EMPTY box: nothing to send, so the slot keeps the
@@ -218,26 +220,18 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 	}
 
 	typeInto(t, a, "no, the other file")
-	got := a.hintWord()
-	if !strings.Contains(got, "enter") || !strings.Contains(got, bargeKey) {
-		t.Fatalf("hint = %q, want both meanings named", got)
+	if !a.bargeOffered() {
+		t.Fatal("the chord is not live on a terminal that can send it")
 	}
-	// AND THE LINE IS THE WHOLE OF THAT STATE'S KEYS: the chord that stops shares
-	// the slot with the plain steer and the final interrupt clause, on a session
-	// and a terminal that have both (steer.go's [app.runHint]). What this asserts
-	// is that the slot is
-	// composed rather than authored — a second copy of the sentence here would be
-	// the test agreeing with itself.
+	got := a.hintWord()
+	if !strings.Contains(got, "enter") || strings.Contains(got, bargeKey) {
+		t.Fatalf("hint = %q, want plain enter and no chord", got)
+	}
 	if got != a.runHint() {
 		t.Fatalf("hint = %q, want %q", got, a.runHint())
 	}
-	if !strings.Contains(got, hintSegment+bargeKey+" "+bargeSendWord+hintSegment) {
-		t.Fatalf("hint = %q, want the chord between the send and stop clauses", got)
-	}
-	// A session with no splice behind it reads exactly as this line always did,
-	// and steer_test.go's own case asserts that.
 
-	// And at rest there is nothing to stop, so the line is gone again.
+	// And at rest there is nothing to stop either.
 	drive(t, a, key(bargeKey))
 	a.state = stateIdle
 	if strings.Contains(a.hintWord(), bargeKey) {
@@ -253,8 +247,8 @@ func TestTheChordSendsWhileCtrlCDrops(t *testing.T) {
 	}
 	a, _ := bargeable(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")
-	if hint := a.typingHint(); !strings.HasSuffix(hint, bargeKey+" "+bargeSendWord) {
-		t.Fatalf("the live hint no longer names the chord and what it does: %q", hint)
+	if hint := a.typingHint(); strings.Contains(hint, bargeKey) {
+		t.Fatalf("the live hint names the chord the foot was cleared of: %q", hint)
 	}
 }
 

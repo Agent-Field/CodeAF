@@ -422,16 +422,13 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // typingHint is the send half of the running-turn hint while there is something
 // in the box or on the tray.
 //
-// It teaches plain enter first, then the stop-and-send chord only when the
-// terminal says it can distinguish it. `cmd+enter waits` remains on the keys
-// page, but this live slot spends its cells on the actions that move now.
+// It teaches plain enter and nothing else. THE CHORDS ARE NOT NAMED HERE, by the
+// owner's call (2026-09-30): `ctrl+shift+enter` still stops and sends
+// (bargein.go) and `ctrl+enter` still queues (followup.go), and both live on the
+// key sheet — the queue key on the queued block's own dim line as well — but
+// this live slot spends its cells on the one send every terminal has.
 //
-// THE QUEUE KEY IS NOT NAMED HERE, by the owner's call (2026-09-30): the queued
-// block above the box says `ctrl+enter queues the draft` once something is
-// queued, and the key sheet carries it, so the foot does not grow a third
-// clause for it (followup.go's [queuedHint]).
-//
-//	enter steers it in · ctrl+shift+enter stops and sends
+//	enter steers it in
 var steerShortHint = "enter " + steerSendWord
 
 // enterWaitHint is the plain-enter half of the running-turn hint. The tray and
@@ -446,10 +443,7 @@ func (a *app) typingHint() string {
 	if a.steerOffered() {
 		first = steerShortHint
 	}
-	if !a.bargeOffered() {
-		return first
-	}
-	return first + hintSegment + bargeKey + " " + bargeSendWord
+	return first
 }
 
 // runSendOffered is [app.bargeOffered] without the terminal's chord gate. It is
@@ -463,7 +457,7 @@ func (a *app) runSendOffered() bool {
 }
 
 // runHint is the one line while a turn runs. Its order follows the hand across
-// the box: send, stop-and-send, background, stop. Every conditional clause asks
+// the box: send, background, stop. Every conditional clause asks
 // the same predicate as its key, so a word in this line is a working gesture on
 // the frame that drew it.
 func (a *app) runHint() string {

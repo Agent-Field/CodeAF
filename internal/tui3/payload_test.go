@@ -293,9 +293,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 	runPrefixes := []hintGrammarCase{
 		{},
 		{hint: enterWaitHint, want: []string{"enter"}},
-		{hint: enterWaitHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
 		{hint: steerShortHint, want: []string{"enter"}},
-		{hint: steerShortHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
 	}
 	for _, prefix := range runPrefixes {
 		for _, background := range []bool{false, true} {
