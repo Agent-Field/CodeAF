@@ -218,3 +218,109 @@ func TestAnotherIdentityIsNotServed(t *testing.T) {
 		t.Fatal("a device cert from another identity was accepted")
 	}
 }
+
+func TestOpenFirstMakesTheFirstIdentity(t *testing.T) {
+	t.Setenv(URLVar, "http://relay.example:8787")
+	home := t.TempDir()
+	s, ok, err := OpenFirst(home)
+	if s == nil || !ok || err != nil {
+		t.Fatalf("OpenFirst = %v, %v, %v; want a sync", s, ok, err)
+	}
+	if _, err := identity.Load(home); err != nil {
+		t.Fatalf("OpenFirst left no identity: %v", err)
+	}
+}
+
+func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
+	t.Setenv(URLVar, "")
+	home := filepath.Join(t.TempDir(), "home")
+	if _, ok, err := OpenFirst(home); ok || err != nil {
+		t.Fatalf("OpenFirst = ok %v, err %v; want nothing", ok, err)
+	}
+	if _, err := os.Stat(home); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("OpenFirst with no relay touched the home: %v", err)
+	}
+}
+
+func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
+	defer srv.Close()
+	t.Setenv(URLVar, srv.URL)
+	home := t.TempDir()
+	s, ok, err := OpenFirst(home)
+	if !ok || err != nil {
+		t.Fatalf("OpenFirst = %v, %v", ok, err)
+	}
+	if !Quiet(home) {
+		t.Fatal("a machine that just made its identity must be quiet")
+	}
+	ctx := context.Background()
+	if n, err := s.FleetSize(ctx); n != 0 || err != nil {
+		t.Fatalf("FleetSize = %d, %v; want 0, nil", n, err)
+	}
+	if _, err := s.Dir.Cell(ctx, "x"); err == nil || !strings.Contains(err.Error(), ErrQuiet.Error()) {
+		t.Fatalf("a direct call = %v; want the quiet refusal", err)
+	}
+	if hits != 0 {
+		t.Fatalf("a quiet machine sent %d requests", hits)
+	}
+	s.Engage()
+	if Quiet(home) {
+		t.Fatal("Engage left the machine quiet")
+	}
+	if _, err := s.FleetSize(ctx); hits == 0 {
+		t.Fatalf("an engaged machine sent nothing (err %v)", err)
+	}
+}
+
+func TestExistingIdentityIsNotQuiet(t *testing.T) {
+	t.Setenv(URLVar, "http://relay.example:8787")
+	home := t.TempDir()
+	if _, err := identity.Ensure(home); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := OpenFirst(home); err != nil || Quiet(home) {
+		t.Fatalf("OpenFirst on an existing identity: err %v, quiet %v", err, Quiet(home))
+	}
+}
+
+// The wire, the reads and the watch socket all answer to MayTalk alone.
+func TestWireAndReadsFollowMayTalk(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(home string)
+		talk  bool
+	}{
+		{"solo", func(h string) { _, _ = identity.EnsureSolo(h) }, false},
+		{"paired", func(h string) { _, _ = identity.Ensure(h) }, true},
+		{"engaged", func(h string) { _, _ = identity.EnsureSolo(h); _ = identity.EndSolo(h) }, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hits := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hits++; http.Error(w, "x", 500) }))
+			defer srv.Close()
+			t.Setenv(URLVar, srv.URL)
+			home := t.TempDir()
+			tc.setup(home)
+			if MayTalk(home) != tc.talk || Quiet(home) == tc.talk {
+				t.Fatalf("MayTalk = %v, want %v", MayTalk(home), tc.talk)
+			}
+			s, ok, err := Open(home)
+			if !ok || err != nil {
+				t.Fatalf("Open = %v, %v", ok, err)
+			}
+			_, _ = s.FleetSize(context.Background())
+			_, _ = s.Dir.(directory.Watcher).Watch(context.Background())
+			if talked := hits > 0; talked != tc.talk {
+				t.Fatalf("requests = %d, want talk %v", hits, tc.talk)
+			}
+		})
+	}
+	// no identity: nothing to open at all
+	t.Setenv(URLVar, "http://relay.example:8787")
+	if _, _, err := Open(t.TempDir()); !errors.Is(err, ErrNoIdentity) || MayTalk(t.TempDir()) {
+		t.Fatalf("no identity: err %v", err)
+	}
+}

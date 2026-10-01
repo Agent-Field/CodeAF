@@ -281,12 +281,29 @@ type tracedFetch struct {
 	d     *device
 	inner Fetch
 	heads []string
+	// restored is the root of every fetch that restored a tree.
+	restored []string
 }
 
 func (f *tracedFetch) Fetch(ctx context.Context, c cell.Cell, head string) error {
 	f.d.w.trace.add("fetch")
 	f.heads = append(f.heads, head)
+	f.restored = append(f.restored, c.Root)
 	err := f.inner.Fetch(ctx, c, head)
+	if err == nil && f.d.onFetc != nil {
+		hook := f.d.onFetc
+		f.d.onFetc = nil // once
+		hook()
+	}
+	return err
+}
+
+// Complete is a fetch that restores nothing, so it is traced as one: the
+// tests that move the world after the first fetch do not care which kind it was.
+func (f *tracedFetch) Complete(ctx context.Context, c cell.Cell, head string) error {
+	f.d.w.trace.add("fetch")
+	f.heads = append(f.heads, head)
+	err := f.inner.Complete(ctx, c, head)
 	if err == nil && f.d.onFetc != nil {
 		hook := f.d.onFetc
 		f.d.onFetc = nil // once

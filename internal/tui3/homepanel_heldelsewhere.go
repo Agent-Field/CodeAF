@@ -42,5 +42,5 @@ func (a *app) heldElsewhereDoor() (tea.Cmd, bool) {
 	}
 	cmd := a.openHome()
 	a.home.pointAt(func(l homeLine) bool { return l.kind == homeMachineRow && l.remote != nil && l.remote.Cell == row.Cell })
-	return tea.Batch(cmd, a.offerContinue(row, chatlist.Offer{})), true
+	return tea.Batch(cmd, a.askContinue(row)), true
 }

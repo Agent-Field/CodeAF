@@ -93,6 +93,9 @@ func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
 	if !ok || ask.question.Kind != homeContinueKind || ask.question.Subject.Name != "Port" {
 		t.Fatalf("no takeover card for spark's chat: %+v", ask.question)
 	}
+	if ask.pick != continueYesAt {
+		t.Fatalf("Move here left the cursor on %d, not on `continue here`", ask.pick)
+	}
 	if got := chatlist.VerbFor(a.machineRead.rows[0]); got != "Move here" {
 		t.Fatalf("a running chat offers %q", got)
 	}

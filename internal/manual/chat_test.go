@@ -3677,6 +3677,7 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"what does running on spark mean", cont, "Move here"},
 		{"what does moved from spark in 3.2s mean", cont, "Everything as you left it."},
 		{"what is the card that says set this machine up", cont, "set up"},
+		{"what does the hollow dot next to a device mean", add, "(offline)"},
 		{"how do I add another computer", add, "On the new machine, install and run: codeaf pair"},
 		{"how do I add another machine", add, "alt+d how"},
 		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-code>"},
