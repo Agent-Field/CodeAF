@@ -5,7 +5,7 @@
 use super::export::{published, ExportJob};
 use super::fetch::{want, Import};
 use super::ledger::Ledger;
-use super::materialize::materialize;
+use super::materialize::materialize_holding;
 use super::open_store;
 use crate::model::{id_hex, parse_id};
 use crate::sealer::{CellSealer, Keys};
@@ -108,8 +108,12 @@ pub fn restore_head(
     cell_dir: Option<PathBuf>,
     head: &str,
 ) -> anyhow::Result<Value> {
-    let head = materialize(data_dir, tree, cell_dir, parse_id(head)?)?;
-    Ok(json!({"snapshot": id_hex(&head)}))
+    let (head, held) = materialize_holding(data_dir, tree, cell_dir, parse_id(head)?)?;
+    let mut answer = json!({"snapshot": id_hex(&head)});
+    if !held.is_empty() {
+        answer["held"] = serde_json::to_value(&held)?;
+    }
+    Ok(answer)
 }
 
 /// Registers the tree now at `to` as the workspace that was at `from`: the

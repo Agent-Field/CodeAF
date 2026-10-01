@@ -486,6 +486,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tiny_http",
+ "unicode-normalization",
  "ureq",
  "url",
  "xattr",
