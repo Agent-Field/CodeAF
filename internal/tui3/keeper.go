@@ -830,7 +830,7 @@ func (a *app) drawBehindParked(p parked, shown string) {
 	if len(p.chips) > 0 {
 		line = userLine(shown, p.chips, a.pal)
 	}
-	a.said(entry{kind: entryUser, text: line, turn: a.turn, began: a.now(), context: a.turnContext(), pictures: pictures, picturesHere: len(pictures) > 0})
+	a.said(entry{kind: entryUser, text: line, turn: a.turn, plainTags: p.plain, began: a.now(), context: a.turnContext(), pictures: pictures, picturesHere: len(pictures) > 0})
 	for _, picture := range pictures {
 		a.learnPicture(picture, true)
 	}

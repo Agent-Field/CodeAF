@@ -593,7 +593,7 @@ type harnessRunner interface {
 // with one — and dropping it silently would lose a file somebody went and
 // found. It waits in the tray for the next ordinary message, which is the same
 // thing a refused submit does with one (attach.go).
-func (a *app) runPickedHarness(text string) tea.Cmd {
+func (a *app) runPickedHarness(text string, plain []segment) tea.Cmd {
 	name := a.harnChip
 	a.harnChip = ""
 	runner, ok := a.agent.(harnessRunner)
@@ -606,7 +606,7 @@ func (a *app) runPickedHarness(text string) tea.Cmd {
 		return nil
 	}
 	ctx := a.ctx
-	return a.submitting(text, func() (<-chan session.Event, error) {
+	return a.submittingShown(text, text, plain, func() (<-chan session.Event, error) {
 		// No model is named here. A word chosen in the box travels on the turn's
 		// own text for the offer lane to read; the picker chose a harness, not a
 		// model, and inventing one would be the surface answering a question

@@ -47,7 +47,7 @@ const (
 func (a *app) runManualCommand(rest string) tea.Cmd {
 	asked := strings.TrimSpace(rest)
 	if asked == "" {
-		return a.submitShown(manualTourAsk, "/manual")
+		return a.submitShown(manualTourAsk, "/manual", nil)
 	}
-	return a.submitShown(manualQuestionLead+asked, "/manual "+asked)
+	return a.submitShown(manualQuestionLead+asked, "/manual "+asked, nil)
 }

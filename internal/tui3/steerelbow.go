@@ -524,14 +524,19 @@ func (a *app) elbowWords(elbow steerElbow, width int) []string {
 	cols := ansi.StringWidth(mark)
 	lead := strings.Repeat(" ", cols)
 	ink := a.elbowInk(elbow)
-	body := wrap(elbow.words, width-cols)
+	body, bodyAt := wrapWithOffsets(elbow.words, width-cols)
+	// The tag doors have already acted before a sentence can steer. Resting
+	// door words stay plain, while every other command keeps the box's chip.
+	plain := tabExpandedSegments(restingDoorWords([]rune(elbow.words)), elbow.words)
 	out := make([]string, 0, len(body)+1)
 	for i, line := range body {
+		spans := transcriptCommandSpans([]rune(line), plain, bodyAt[i])
+		painted := paintCommandSpans(line, spans, a.pal, ink)
 		if i == 0 {
-			out = append(out, a.pal.dim(mark)+ink(line))
+			out = append(out, a.pal.dim(mark)+painted)
 			continue
 		}
-		out = append(out, lead+ink(line))
+		out = append(out, lead+painted)
 	}
 	return out
 }

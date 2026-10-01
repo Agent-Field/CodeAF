@@ -686,7 +686,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			// does live: it is what groups a cluster and what ctrl+o folds.
 			turn++
 			turns++
-			blocks = append(blocks, entry{
+			user := entry{
 				kind: entryUser, text: line, turn: turn,
 				// AND THE FIRST OF THEM IS THE INSTRUCTION THIS PAGE WAS GIVEN,
 				// marked here because here is where it is knowable: it is the
@@ -694,7 +694,12 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 				// after it on such a page is a correction to work already running.
 				brief:    shape.brief && turns == 1,
 				pictures: pictures, picturesHere: !a.hosted(),
-			})
+			}
+			// The renderer reshapes an instruction before wrapping it, so the
+			// resting doors must name ranges in that displayed text. Picture
+			// markers are a suffix and their masks preserve rune coordinates.
+			user.plainTags = restingDoorWords([]rune(requestDisplayText(&user)))
+			blocks = append(blocks, user)
 
 		case "assistant":
 			var confirmation *responseConfirmation
@@ -775,7 +780,9 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			if shape.brief && len(blocks) == 0 && canonicalTaskRequest(text) {
 				turn++
 				turns++
-				blocks = append(blocks, entry{kind: entryUser, text: text, turn: turn, brief: true})
+				brief := entry{kind: entryUser, text: text, turn: turn, brief: true}
+				brief.plainTags = restingDoorWords([]rune(requestDisplayText(&brief)))
+				blocks = append(blocks, brief)
 				continue
 			}
 			if text == "" {

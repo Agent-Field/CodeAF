@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
@@ -107,22 +108,40 @@ func TestAPathInTheBoxIsNeverChipped(t *testing.T) {
 	}
 }
 
-func TestOnlyASendDoorInsideASentenceIsChipped(t *testing.T) {
+// TestAllRecognisedCommandsAreChippedInsideASentence is the acceptance
+// sentence: a known command is chipped wherever it stands in the draft, and
+// keeps that mark in the transcript. The mark is a recognition mark, not a
+// promise enter will act — only the send doors still act (see the non-door
+// test below).
+func TestAllRecognisedCommandsAreChippedInsideASentence(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
+	// /senior-dev is a PROGRAM'S ROW, not a literal one: the engine's build
+	// carries it as a delegate command (delegate.go) and the launch installs it
+	// on the live table, which is how the shipped binary knows the word. Install
+	// it the same way so this test reads the real path.
+	t.Cleanup(func() { installDelegateCommands(nil) })
+	installDelegateCommands([]session.DelegateRow{{Name: "senior-dev", Description: "a program"}})
 
-	typeInto(t, a, "later I will run /compact on this")
-	sameRuns(t, boxRuns(a), nil, "an inert command mid-sentence")
-
-	a.input.reset()
-	typeInto(t, a, "keep this true /standing")
-	sameRuns(t, boxRuns(a), []string{"/standing"}, "a send-door tag")
+	typeInto(t, a, "try running /senior-dev on this")
+	sameRuns(t, boxRuns(a), []string{"/senior-dev"}, "a program named mid-sentence")
 
 	// AND IT KEEPS THE CHIP AFTER IT IS SENT. The transcript is the only record
 	// of what was asked for, and a mark that survived only until enter would be
 	// taken back at the moment it is worth having.
+	a.entries = []entry{{kind: entryUser, text: "try running /senior-dev on this"}}
+	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
+		[]string{"/senior-dev"}, "the sent message keeps the chip")
+
+	// A SEND-DOOR TAG IS UNCHANGED away from the head.
+	a.entries = []entry{{kind: entryUser, text: "keep this true /standing"}}
+	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
+		[]string{"/standing"}, "a send-door tag in the sent message")
+
+	// AND SO IS A NON-DOOR COMMAND: it chips, and an unknown word beside it does
+	// not — this is the recognition rule, not a second send rule.
 	a.entries = []entry{{kind: entryUser, text: "later I will run /compact on this, not /nope"}}
 	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
-		nil, "plain slash prose in the sent message")
+		[]string{"/compact"}, "a non-door command in the sent message")
 }
 
 func tagTestApp() (*app, *fakeAgent) {
@@ -170,8 +189,12 @@ func TestBackspaceDemotesATagThenEditsAndSendsItAsProse(t *testing.T) {
 	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
 		t.Fatalf("demoted send: sent=%q marked=%q", agent.sent, agent.marked)
 	}
+	// A DEMOTED WORD STAYS PLAIN IN THE TRANSCRIPT, exactly as it does in the
+	// box: the word no longer routes — marked is empty and it travels as prose
+	// — and the demotion now carries through the reset to the entry
+	// (input.go's [app.enterLine] snapshots it), so no chip is painted for it.
 	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 0 {
-		t.Fatalf("demoted transcript chipped %q", got)
+		t.Fatalf("demoted transcript chipped %q, want none", got)
 	}
 
 	a, _ = tagTestApp()
@@ -205,14 +228,58 @@ func TestAnEditBeforeADemotedTagMovesItsPlainRange(t *testing.T) {
 	if len(agent.sent) != 1 || agent.sent[0] != "xsay /standing" || len(agent.marked) != 0 {
 		t.Fatalf("shifted demotion sent=%q marked=%q", agent.sent, agent.marked)
 	}
+	// The edited word is still a demoted one, so the shifted range leaves the
+	// transcript plain too — the plainness carried through the edit.
+	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 0 {
+		t.Fatalf("shifted demotion chipped %q, want none", got)
+	}
+}
+
+// TestADemotedTagStaysPlainWhenTheSentLineWraps is the coordinate half of the
+// demotion promise. The demoted ranges are offsets into the pre-wrap text,
+// while the transcript paints one wrapped row at a time and restarts each
+// row's offsets at zero; a subtraction that ignored the row offset would
+// either miss the tag or chip an unrelated word. Here the tag lands on a second
+// row at the suite's sixty columns, so a whole-entry subtraction would be
+// compared against a row-local span.
+func TestADemotedTagStaysPlainWhenTheSentLineWraps(t *testing.T) {
+	a, agent := tagTestApp()
+	line := "the quick brown fox jumps over the lazy dog and keeps going /standing"
+	typeInto(t, a, line)
+	drive(t, a, key("backspace"))
+	if got := boxRuns(a); len(got) != 0 {
+		t.Fatalf("the demotion did not clear the box chip: %q", got)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.sent) != 1 || agent.sent[0] != line || len(agent.marked) != 0 {
+		t.Fatalf("demoted wrapped send: sent=%q marked=%q", agent.sent, agent.marked)
+	}
+	rows := a.renderEntry(0, &a.entries[0], a.width)
+	if len(rows) < 2 {
+		t.Fatalf("the line did not wrap at this width: %#v", rows)
+	}
+	if got := chipRuns(rows...); len(got) != 0 {
+		t.Fatalf("a demoted tag in a wrapped transcript chipped %q, want none", got)
+	}
 }
 
 func TestNonDoorCommandsStayInertAndLeadingCommandsAreUnchanged(t *testing.T) {
 	a, agent := tagTestApp()
 	typeInto(t, a, "please /compact later")
+	// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE: /compact wears one
+	// mid-sentence now, and enter still does not run it.
+	if got := boxRuns(a); len(got) != 1 || got[0] != "/compact" {
+		t.Fatalf("a non-door command mid-sentence chipped %q, want [/compact]", got)
+	}
 	drive(t, a, key("enter"))
 	if len(agent.sent) != 1 || agent.sent[0] != "please /compact later" {
 		t.Fatalf("inert command sent %q", agent.sent)
+	}
+	if len(agent.marked) != 0 {
+		t.Fatalf("a non-door command routed %q", agent.marked)
+	}
+	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 1 || got[0] != "/compact" {
+		t.Fatalf("the sent non-door command chipped %q, want [/compact]", got)
 	}
 
 	a, agent = tagTestApp()
@@ -357,11 +424,12 @@ func TestChoosingARowMidSentenceWritesTheWordAndRunsNothing(t *testing.T) {
 	if a.menu.open {
 		t.Fatal("the list reopened on top of its own answer")
 	}
-	// The caret is after the word it just wrote, and the word wears its chip.
+	// The caret is after the word it just wrote, and the word wears its chip —
+	// a recognition mark, not a send promise.
 	if a.input.cursor != len([]rune("before you answer, /compact")) {
 		t.Fatalf("the caret parked at %d", a.input.cursor)
 	}
-	sameRuns(t, boxRuns(a), nil, "the inert word the list wrote")
+	sameRuns(t, boxRuns(a), []string{"/compact"}, "the inert word the list wrote")
 
 	// And enter now SENDS the sentence: only a leading slash is a command, so a
 	// mention travels to the model as the words a person typed.
@@ -400,5 +468,103 @@ func TestARowChosenOverAnAlreadyTypedArgumentKeepsTheArgument(t *testing.T) {
 	}
 	if agent.packs != 0 {
 		t.Fatalf("it ran something (%d)", agent.packs)
+	}
+}
+
+// lastUserEntry is the newest line the person said, wherever the turn's other
+// entries landed around it.
+func lastUserEntry(t *testing.T, a *app) *entry {
+	t.Helper()
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if a.entries[i].kind == entryUser {
+			return &a.entries[i]
+		}
+	}
+	t.Fatal("no user entry in the transcript")
+	return nil
+}
+
+// A DEMOTION WAITS WITH THE WORDS. Enter over a running answer parks the
+// message, and the box's reset has already happened by the time it goes, so the
+// demoted range has to travel on the parked message or the transcript chips the
+// word the person made plain.
+func TestADemotedTagStaysPlainWhenTheMessageWaitsForTheAnswer(t *testing.T) {
+	a, agent := tagTestApp()
+	a.state = stateWorking
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"), key("enter"))
+	if len(a.parks) != 1 || len(a.parks[0].plain) != 1 {
+		t.Fatalf("the demotion did not travel with the parked message: %+v", a.parks)
+	}
+	a.state = stateIdle
+	drive(t, a, runCmd(a.sendParked())...)
+	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
+		t.Fatalf("parked demoted send: sent=%q marked=%q", agent.sent, agent.marked)
+	}
+	e := lastUserEntry(t, a)
+	if got := chipRuns(a.renderEntry(0, e, a.width)...); len(got) != 0 {
+		t.Fatalf("a parked demoted tag chipped %q in the transcript, want none", got)
+	}
+}
+
+// And a parked message pulled back into the box keeps the tag plain there too:
+// the words come back exactly as they were parked.
+func TestARecalledParkedMessageKeepsItsTagPlain(t *testing.T) {
+	a, _ := tagTestApp()
+	a.state = stateWorking
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"), key("enter"))
+	if !a.recallParked() {
+		t.Fatal("nothing was recalled")
+	}
+	if a.input.String() != "say /standing" || len(boxRuns(a)) != 0 {
+		t.Fatalf("the recalled demotion came back chipped: %q runs=%q", a.input.String(), boxRuns(a))
+	}
+}
+
+// The /standing tag's own road parks the words WITHOUT the tag, so a second,
+// demoted tag in the same line has to be carried into those shorter words.
+func TestADemotedTagBesideALiveStandingTagStaysPlainWhenParked(t *testing.T) {
+	a, agent := tagTestApp()
+	a.state = stateWorking
+	typeInto(t, a, "keep this /task")
+	drive(t, a, key("backspace"))
+	typeInto(t, a, " /standing")
+	drive(t, a, key("enter"))
+	if len(a.parks) != 1 || a.parks[0].text != "keep this /task" || !a.parks[0].standing {
+		t.Fatalf("the tagged line did not park as its marked words: %+v", a.parks)
+	}
+	a.state = stateIdle
+	drive(t, a, runCmd(a.sendParked())...)
+	if len(agent.marked) != 1 || agent.marked[0] != "keep this /task" {
+		t.Fatalf("parked standing tag routed %q", agent.marked)
+	}
+	e := lastUserEntry(t, a)
+	if got := chipRuns(a.renderEntry(0, e, a.width)...); len(got) != 0 {
+		t.Fatalf("the demoted /task chipped %q once the parked words went, want none", got)
+	}
+}
+
+func TestPlainWithoutTagFollowsTheWordsTheTagLeaves(t *testing.T) {
+	for _, c := range []struct{ line, want string }{
+		{"  say /task then /standing more", "say /task then more"},
+		{"/standing  say /task", "say /task"},
+		{"say /task /standing", "say /task"},
+		{"say /standing then /task", "say then /task"},
+	} {
+		value := []rune(c.line)
+		trimmed := []rune(strings.TrimSpace(c.line))
+		at := len([]rune(strings.SplitN(string(trimmed), "/task", 2)[0]))
+		plain := []segment{{from: at, to: at + len("/task")}}
+		from := len([]rune(strings.SplitN(c.line, "/standing", 2)[0]))
+		tag := segment{from: from, to: from + len("/standing")}
+		if got := removeSlashTag(value, tag); got != c.want {
+			t.Fatalf("%q: removeSlashTag gave %q, want %q", c.line, got, c.want)
+		}
+		got := plainWithoutTag(value, tag, plain)
+		words := []rune(c.want)
+		if len(got) != 1 || string(words[got[0].from:got[0].to]) != "/task" {
+			t.Fatalf("%q: rebased %v onto %q, want the range of /task", c.line, got, c.want)
+		}
 	}
 }
