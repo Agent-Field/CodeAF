@@ -326,10 +326,10 @@ func TestLinesNameTheirGrant(t *testing.T) {
 	if !strings.Contains(strings.Join(chats, "\n"), "your chats") || !strings.Contains(chats[1], chat.Shown()) {
 		t.Errorf("the chat lines do not name their grant and code: %q", chats)
 	}
-	if strings.Contains(strings.Join(chats, "\n"), "--relay") {
+	if strings.Contains(strings.Join(chats, "\n"), "--via") {
 		t.Errorf("the default relay was named: %q", chats)
 	}
-	if !strings.Contains(relayed[1], chat.Shown()+" --relay https://relay.example"+"   "+valid) {
+	if !strings.Contains(relayed[1], chat.Shown()+" --via https://relay.example"+"   "+valid) {
 		t.Errorf("the command does not end with the relay: %q", relayed[1])
 	}
 }
