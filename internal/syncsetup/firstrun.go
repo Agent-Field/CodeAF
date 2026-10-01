@@ -8,7 +8,7 @@ import (
 // FirstRunLine is the one sentence a person is told, once, when their chats
 // start to sync through the hosted relay without them having chosen it. It asks
 // for nothing: there is no sign-in and no consent wall, only the two ways out.
-const FirstRunLine = "Your chats sync end-to-end encrypted through codeaf's hosted relay, which only ever sees ciphertext; turn that off with CODEAF_SYNC_URL=off, or use your own relay with CODEAF_SYNC_URL=<url>."
+const FirstRunLine = "Your chats sync end-to-end encrypted through codeaf's fabric (codeaf.agentfield.ai/fabric), a sync service that only ever sees ciphertext; turn that off with CODEAF_SYNC_URL=off, or use your own with CODEAF_SYNC_URL=<url>."
 
 // toldFile marks that the line has been said on this computer.
 const toldFile = "sync-told"

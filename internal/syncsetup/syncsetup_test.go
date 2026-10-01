@@ -66,6 +66,7 @@ func machine(t *testing.T, url string) string {
 }
 
 func TestOpenOffWithoutURL(t *testing.T) {
+	hosted(t, "") // a build with no default relay, which is the state this test is about
 	t.Setenv(URLVar, "")
 	home := filepath.Join(t.TempDir(), "home")
 	s, ok, err := Open(home)
