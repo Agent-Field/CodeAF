@@ -9,9 +9,10 @@ package session
 // watch never reached a screen that was not in that process: a folder with a
 // file nobody could read made every seal fail, and the person saw nothing.
 // The turn's event stream is the road every other one-line notice takes to the
-// screen, so the sentences are handed to it at the boundary where the last
-// seal of the turn has just been made. A turn with nobody listening leaves
-// them in the watch for a surface that asks it directly.
+// screen, so the sentences are handed to it at the boundary where the last seal
+// of the turn has just been made, marked as told to the person so the screen
+// does not fold them away with the work's dim facts. A turn with nobody
+// listening leaves them in the watch for a surface that asks it directly.
 func (a *Agent) noticeSealed() {
 	if a == nil || a.config.InTask || a.config.Errand || a.config.Seals == nil {
 		return
@@ -23,6 +24,6 @@ func (a *Agent) noticeSealed() {
 		return
 	}
 	for said := a.config.Seals.Take(); said != ""; said = a.config.Seals.Take() {
-		hub.send(Event{Kind: EventNotice, Text: said})
+		hub.send(Event{Kind: EventNotice, Text: said, Told: true})
 	}
 }

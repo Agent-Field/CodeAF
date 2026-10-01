@@ -35,6 +35,9 @@ func TestCompletedTurnCarriesWhatTheSealWatchHasToSay(t *testing.T) {
 	var told []string
 	for _, event := range events {
 		if event.Kind == EventNotice {
+			if !event.Told {
+				t.Fatalf("a seal sentence is addressed to the person: %+v", event)
+			}
 			told = append(told, event.Text)
 		}
 	}
