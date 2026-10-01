@@ -12,6 +12,7 @@ package executor
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"io"
 	"os/exec"
 	"time"
@@ -167,3 +168,30 @@ type Executor interface {
 type Observer interface {
 	Observe(req ExecRequest, res ExecResult)
 }
+
+// Job is one command that outlives the call that started it: a background job a
+// session registered, still running until it is not.
+type Job struct {
+	// ID names the job for the life of the session; Ended names it again.
+	ID int
+	// Command is the command line as the session started it.
+	Command string
+	// Dir is the folder it runs in, relative to the workspace root; "" is the root.
+	Dir string
+	// PGID is the process group it leads.
+	PGID int
+}
+
+// Lifecycle is what an [Observer] may also implement to hear of a job as it
+// starts and as it ends, however it ends. It exists because a job is started
+// through Command, which an observer never sees: what runs after the call
+// returned is known only to the site that owns the process, so that site says so.
+type Lifecycle interface {
+	Started(job Job)
+	Ended(id int)
+}
+
+// GroupPorts is the TCP ports the process group pgid is listening on, empty
+// where the platform cannot say. It is what tells a running server from a
+// process that merely exists.
+func GroupPorts(pgid int) []int { return listenPorts(processgroup.Members(pgid)) }

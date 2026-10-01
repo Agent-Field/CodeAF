@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
@@ -42,6 +43,10 @@ type Continued struct {
 	// TaskCopies is the names of the tasks whose working copies came along and
 	// are back at work here, empty when none did.
 	TaskCopies []string
+	// Resume is what the chat left behind on the machine it came from that this
+	// one lacks: folders a seal leaves out, commands that were running, tools it
+	// needs. It is empty when there is nothing to say.
+	Resume preflight.Resume
 }
 
 // Continuer is the take side of one machine: `continue here`.
@@ -98,11 +103,19 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
 		return Continued{}, err
 	}
-	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: c.restoreCopies(taken.Cell)}
+	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: c.restoreCopies(taken.Cell), Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
 	return out, nil
+}
+
+// arrive is the look at this machine that a takeover ends with, taken before
+// anything here seals over the record the chat arrived with. The record is not a
+// gate: a look that could not be kept still offers what it found.
+func (c *Continuer) arrive(at cell.Cell, from string) preflight.Resume {
+	resume, _ := preflight.Arrive(at.Root, workspaceOf(at.Root), from)
+	return resume
 }
 
 // restoreCopies puts the task working copies the chat carried back to work in

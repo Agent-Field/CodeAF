@@ -192,6 +192,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.jobs.seat = config.seat()
+	agent.jobs.lifecycle = lifecycleOf(config.Machine)
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -1002,6 +1003,7 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // steering rules and the rail are laws about a turn starting, and two functions
 // applying them separately is two chances for one of them to stop.
 func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event, error) {
+	a.owedResumeNews(user)
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -1191,6 +1193,9 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 type userMessage struct {
 	// setup marks the harness's own setup turn (setup.go); only SubmitSetup sets it.
 	setup bool
+	// grants are the commands the person consented to by starting the setup turn:
+	// exactly the ones the offer listed. Only SubmitSetup sets them.
+	grants []string
 	// bash is set only by the person's SubmitBash door; model output cannot enter it.
 	bash    string
 	message ai.Message

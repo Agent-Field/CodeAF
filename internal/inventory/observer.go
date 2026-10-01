@@ -21,6 +21,11 @@ type Observer struct {
 	store  *Store
 	probes Probes
 	probe  Prober
+	live   *Live
+	procs  Probe
+	// workspace is the folder this observer's calls run in, stamped into the record
+	// at each refresh so a machine that takes the chat over can say it moved.
+	workspace string
 
 	mu     sync.Mutex
 	hashes map[fileKey]string // binary hash by path and mtime
@@ -41,7 +46,7 @@ func NewObserver(store *Store, probes Probes, probe Prober) *Observer {
 	if probe == nil {
 		probe = execProbe
 	}
-	o := &Observer{store: store, probes: probes, probe: probe,
+	o := &Observer{store: store, probes: probes, probe: probe, live: NewLive(nil), procs: hostProbe{},
 		hashes: map[fileKey]string{}, probed: map[string]string{}}
 	for _, t := range store.Snapshot().Tools {
 		o.probed[t.BinaryHash] = t.VersionString
@@ -49,12 +54,19 @@ func NewObserver(store *Store, probes Probes, probe Prober) *Observer {
 	return o
 }
 
-var _ executor.Observer = (*Observer)(nil)
+var (
+	_ executor.Observer  = (*Observer)(nil)
+	_ executor.Lifecycle = (*Observer)(nil)
+)
 
-// Observe records the tool the call ran, the services it left alive and the
-// names of the variables it was given.
+// Observe records the tool the call ran, the services it left alive, the names
+// of the variables it was given, and whether the command started something that
+// outlives it. A command that failed started nothing.
 func (o *Observer) Observe(req executor.ExecRequest, res executor.ExecResult) {
 	tool, ok := o.tool(req)
+	for _, s := range res.Services {
+		o.live.Left(s, req.Dir)
+	}
 	_ = o.store.Update(func(inv *Inventory) {
 		if ok {
 			putTool(inv, tool)
@@ -63,6 +75,32 @@ func (o *Observer) Observe(req executor.ExecRequest, res executor.ExecResult) {
 			putService(inv, serviceOf(req, tool, s))
 		}
 		inv.EnvVarNames = union(inv.EnvVarNames, envNames(req.Env))
+		if res.Exit == 0 {
+			inv.SetDetached(applyDetached(inv.Detached, Cleaned(strings.Join(req.Argv, " ")), Cwd(req.Dir)))
+		}
+	})
+}
+
+// Started implements executor.Lifecycle: a job began, and the next seal will
+// say it is running.
+func (o *Observer) Started(job executor.Job) { o.live.Started(job) }
+
+// Ended implements executor.Lifecycle.
+func (o *Observer) Ended(id int) { o.live.Ended(id) }
+
+// At names the workspace the observer's calls run in.
+func (o *Observer) At(workspace string) { o.workspace = workspace }
+
+// Refresh makes the record's running list what is alive now. It is called just
+// before each seal and replaces the list whole, never merging into it: a process
+// that stopped must leave the record, or the next machine is told to expect it.
+func (o *Observer) Refresh() {
+	alive := o.live.Alive(o.procs)
+	_ = o.store.Update(func(inv *Inventory) {
+		inv.SetRunning(alive)
+		if o.workspace != "" {
+			inv.Workspace = o.workspace
+		}
 	})
 }
 
