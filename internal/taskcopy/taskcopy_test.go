@@ -416,3 +416,37 @@ func TestComposeRecordsCopyInstallFolders(t *testing.T) {
 		t.Fatalf("record %+v after the task finished", got)
 	}
 }
+
+// forkCutter is a Cutter that makes the copy a repository of its own, the way a
+// task's fork is: the new branch lives in the copy and the project never hears
+// of it.
+type forkCutter struct{}
+
+func (forkCutter) Cut(project, dest string, spec Spec) error {
+	if err := exec.Command("git", "clone", "-q", "--no-checkout", project, dest).Run(); err != nil {
+		return err
+	}
+	return exec.Command("git", "-C", dest, "checkout", "-q", "-b", spec.Branch, spec.At).Run()
+}
+
+// A kept task branch is the project's record of finished work, and the project
+// arrived with it. Cutting the copy again on a fork must not leave the project
+// without the ref, or the commit it names is only an unreferenced object that
+// the next garbage collection may drop.
+func TestKeptBranchStaysInTheProjectWhenTheCopyIsCutAsAFork(t *testing.T) {
+	a := newMachine(t)
+	tree := a.task("1")
+	write(t, filepath.Join(tree, "done.txt"), "work\n")
+	run(t, tree, "git", "add", ".")
+	run(t, tree, "git", "commit", "-q", "-m", "task")
+	want := run(t, tree, "git", "rev-parse", "HEAD")
+	a.seal()
+	b := newMachineNoRepo(t)
+	a.moveTo(b)
+	if _, err := (Carry{Cutter: forkCutter{}}).Restore(b.cell, b.project); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, b.project, "git", "rev-parse", "--verify", "refs/heads/task/1"); got != want {
+		t.Errorf("project's task/1 = %q, want the kept commit %q", got, want)
+	}
+}
