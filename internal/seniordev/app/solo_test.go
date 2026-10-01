@@ -491,7 +491,7 @@ func TestSoloPromptCarriesTheMechanicsSeniorDevReads(t *testing.T) {
 	// reads or refuses over, and the one way the run ends. A silent edit that
 	// drops one of them breaks a code path no build catches -- submit refuses
 	// without the checklist, and readPinnedCommand has no other writer.
-	prompt := buildSoloPrompt("Add expandShorthand to lib/shorthand.js", "", ".senior-dev/checklist.md")
+	prompt := buildSoloPrompt("Add expandShorthand to lib/shorthand.js", "", ".senior-dev/checklist.md", true)
 	for _, mechanic := range []string{
 		"Add expandShorthand to lib/shorthand.js", // the request, verbatim and first
 		".senior-dev/spec.md",                     // the spec is a file, not a memory
@@ -930,6 +930,35 @@ func TestTransientTurnErrorUsesStructuredProviderStatusAndExcludesQuota(t *testi
 	}
 }
 
+func TestTransientTurnErrorRejectsTextOnlyAuthenticationStatuses(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprintf("status-%d", status), func(t *testing.T) {
+			failure := &modelTurnError{
+				kind: "APIError", message: fmt.Sprintf("API error (%d): key rejected", status),
+				retryable: true,
+			}
+			if info, transient := transientTurnError(failure); transient || info.Class != "" {
+				t.Fatalf("text-only auth classification = %#v,%v; want terminal", info, transient)
+			}
+		})
+	}
+}
+
+// An upstream authentication refusal is a gateway response, because the
+// program's loopback token is still valid. Its own 401/403 remains terminal.
+func TestGatewayAuthenticationFailureDoesNotRetryTheProgramToken(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		outer := uint64(502)
+		failure := &modelTurnError{
+			statusCode: &outer, retryable: true,
+			responseBody: fmt.Sprintf(`{"error":{"code":502,"message":"API error (%d): account refused"}}`, status),
+		}
+		if info, retry := transientTurnError(failure); retry {
+			t.Errorf("upstream %d through the gateway was retried: %+v", status, info)
+		}
+	}
+}
+
 func TestSubmitRefusalsAreCountableEvents(t *testing.T) {
 	// A refusal that travels only as tool-call error text cannot be counted
 	// without opening a log. Every refusal is an event with a reason class.
@@ -974,5 +1003,24 @@ func TestSubmitRefusalsAreCountableEvents(t *testing.T) {
 	want := []string{"empty-tree", "no-checklist", "already-submitted"}
 	if strings.Join(classes, ",") != strings.Join(want, ",") {
 		t.Fatalf("refusal classes = %v, want %v", classes, want)
+	}
+}
+
+// THE DEPENDENCIES SECTION FOLLOWS THE NETWORK. A run that may reach the
+// network is told to install what the project's tests need into the project's
+// own environment and never to fake a missing tool; a run with egress off is
+// told nothing about installing, because it cannot.
+func TestTheDependenciesSectionIsThereOnlyWhenTheNetworkIs(t *testing.T) {
+	online := buildSoloPrompt("Fix it.", "", ".senior-dev/checklist.md", true)
+	for _, want := range []string{"## Dependencies", "python3 -m venv .venv", "never write a stand-in for a missing tool", "--break-system-packages"} {
+		if !strings.Contains(online, want) {
+			t.Fatalf("the online prompt lacks %q", want)
+		}
+	}
+	offline := buildSoloPrompt("Fix it.", "", ".senior-dev/checklist.md", false)
+	for _, gone := range []string{"## Dependencies", "install", "venv"} {
+		if strings.Contains(offline, gone) {
+			t.Fatalf("the offline prompt still says %q", gone)
+		}
 	}
 }

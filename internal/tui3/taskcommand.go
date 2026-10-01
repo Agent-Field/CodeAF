@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -78,6 +79,9 @@ func foldTaskStarted(started taskStartedMsg) func(bool) tea.Cmd {
 type taskStartedMsg struct {
 	kind, id, title string
 	err             error
+	// program names the typed program door, so its receipt identifies the work
+	// even before the independently delivered task notice or plan row arrives.
+	program string
 	// note is the engine's line about WHERE THE WORK STANDS — the ground
 	// ladder's redirect, said when the work goes somewhere other than where it
 	// was asked to go (internal/session's taskstands.go). Empty is every
@@ -95,6 +99,18 @@ type taskStartedMsg struct {
 	// somewhere else by then; the words belong to the conversation they were said
 	// in and to no other ([app.adoptTypedBrief] enforces it).
 	conv string
+}
+
+const taskStartLateNote = "the engine has not confirmed the start — the task may already be running"
+
+func taskStartFailureNote(err error) string {
+	if errors.Is(err, session.ErrSendUnanswered) {
+		return taskStartLateNote
+	}
+	if err == nil {
+		return "could not start the task"
+	}
+	return "could not start the task · " + err.Error()
 }
 
 func (a *app) runTaskCommand(arg string) tea.Cmd {

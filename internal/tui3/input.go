@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // prompt is the input line's mark. Two cells, and the only furniture below the
@@ -847,6 +848,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch msg.String() {
 	case "esc":
+		if a.cancelBrowserSignIns() {
+			return nil
+		}
 		// esc during a recall is the recall's: it puts the person's own draft
 		// back. A modal-ish state that could not be left by the dismiss key
 		// would be a trap, and the turn is still interruptible the moment the
@@ -1464,6 +1468,9 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	if windowsDroppedLineShape(line) && a.inputDroppedLine(line) {
 		return a.edited()
 	}
+	if _, bash := session.BashCommand(a.pastesUnfolded(line)); bash {
+		return a.enterBash(line)
+	}
 	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
 	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a
 	// person who pressed esc to read an existing conversation can still type
@@ -1495,11 +1502,17 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	}
 	var tagDoor sendDoor
 	var tagWords string
+	var tagPlain []segment
 	tagShown := line
+	// A DEMOTION MUST SURVIVE THE RESET. [editor.reset] nils demotedTags, and
+	// the transcript is painted long after that, so the ranges are snapshotted
+	// here and threaded to the entry (app.go's [app.submittingShown]).
+	plain := a.input.plainTags()
 	if !strings.HasPrefix(line, "/") && len(tags) == 1 {
 		tag := tags[0]
 		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
 		tagWords = removeSlashTag(a.input.value, tag)
+		tagPlain = plainWithoutTag(a.input.value, tag, plain)
 	}
 	a.input.reset()
 	a.endRecall()
@@ -1537,7 +1550,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		if tagWords == "" {
 			return a.openStanding()
 		}
-		return a.standingSayShown(tagWords, tagShown)
+		return a.standingSayShown(tagWords, tagShown, plain, tagPlain)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}
@@ -1548,7 +1561,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// the tray's own hint says to type the request, and enter on nothing is the
 	// no-op it always was.
 	if a.harnChip != "" {
-		return a.runPickedHarness(line)
+		return a.runPickedHarness(line, plain)
 	}
 	// EVERY "@task" IN THE SENTENCE GROWS ITS FOOTNOTE HERE, and here is after
 	// the line has been remembered: what ↑ brings back is what the person typed,
@@ -1568,18 +1581,19 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		// running answer is parked like any other, and it goes through the marked
 		// door when its turn comes: a mark dropped on the way into the queue would
 		// be the sentence quietly becoming ordinary work, which is the one ending
-		// this gesture exists to rule out (park.go).
-		return a.park(line, marked)
+		// this gesture exists to rule out (park.go). A tag the person made plain
+		// waits plain with it, for the same reason.
+		return a.park(line, marked, plain)
 	}
 	shownLine := line
 	line = a.expandPastes(line)
 	if held {
-		return a.submitImagesShown(line, shownLine)
+		return a.submitImagesShown(line, shownLine, plain)
 	}
 	if marked {
-		return a.submitStandingShown(line, shownLine)
+		return a.submitStandingShown(line, shownLine, plain)
 	}
-	return a.submitShown(line, shownLine)
+	return a.submitShown(line, shownLine, plain)
 }
 
 // completePath is tab: the file list over a command's path argument, opened if
@@ -1854,12 +1868,16 @@ func draftBlockTacked(e *editor, pal palette, width, maxRows int, hint, lead, ta
 // [app.draftInk]) — a dim box is how the walk says these words were never
 // sent.
 func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment, ink func(string) string) ([]string, int, int) {
-	return draftBlockFull(e, pal, width, maxRows, hint, lead, "", demoted, ink)
+	return draftBlockFull(e, pal, width, maxRows, hint, lead, "", demoted, ink, lead == "")
 }
 
 // draftBlockFull is the whole of it, and the only one of these four that takes
 // every knob. The three above are the shapes that are actually asked for.
-func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack string, demoted []segment, ink func(string) string) ([]string, int, int) {
+func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack string, demoted []segment, ink func(string) string, shell ...bool) ([]string, int, int) {
+	mark := pal.dim(prompt)
+	if len(shell) > 0 && shell[0] && len(e.value) > 0 && e.value[0] == '!' {
+		mark = pal.warn(pal.glyph(tokens.GPromptShell) + " ")
+	}
 	chip := ""
 	if tack != "" {
 		chip = pal.chip(tack) + " "
@@ -1881,7 +1899,7 @@ func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack
 		// out and keeps the way out itself, which is the same ladder the foot of
 		// every place is fitted by; on a hint with nothing to drop it is exactly
 		// [fit], so the boxes whose placeholder is a plain phrase lose nothing.
-		return []string{lead + pal.dim(prompt) + chip + pal.dim(hintFit(hint, room))}, head, 0
+		return []string{lead + mark + chip + pal.dim(hintFit(hint, room))}, head, 0
 	}
 
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the
@@ -1915,7 +1933,7 @@ func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack
 		row0 := under
 		switch {
 		case i == 0 && opening:
-			row0 = lead + pal.dim(prompt) + chip
+			row0 = lead + mark + chip
 		case i == top:
 			// The block is scrolled: say so where the prompt would be, in the
 			// same two cells, so the rows do not shift under the caret.

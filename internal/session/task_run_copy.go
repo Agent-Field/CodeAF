@@ -62,8 +62,16 @@ type TaskCopyRecord struct {
 	Rung GroundRung `json:"rung,omitempty"`
 	Seal string     `json:"seal,omitempty"`
 	// Continues says a program's run carries on on the branch an earlier run
-	// of it left ([ProgramFolder.Continues]), which its receipt says.
-	Continues bool `json:"continues,omitempty"`
+	// of it left ([ProgramFolder.Continues]), and From is the branch its own
+	// was cut from when that was an earlier run's ([ProgramFolder.From]); its
+	// receipt says both.
+	Continues bool   `json:"continues,omitempty"`
+	From      string `json:"from,omitempty"`
+	// Snapshot is the commit a program's branch begins with that carries the
+	// person's uncommitted changes into its copy ([ProgramFolder.Snapshot]).
+	Snapshot string `json:"snapshot,omitempty"`
+	// Untracked files are local inputs, never part of the program's branch.
+	Untracked []string `json:"untracked,omitempty"`
 }
 
 // runCopyOf writes a live run's copy down. It is taken from the tree the run is
@@ -85,6 +93,9 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		Rung:      tree.rung,
 		Seal:      tree.seal,
 		Continues: tree.continues,
+		From:      tree.from,
+		Snapshot:  tree.snapshot,
+		Untracked: append([]string(nil), tree.untracked...),
 	}
 }
 

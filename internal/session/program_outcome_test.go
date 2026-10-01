@@ -60,11 +60,38 @@ func TestTheOutcomeNoteSaysWhatToDoNowAndKeepsBothBounds(t *testing.T) {
 	if limit := note(programLimit, 0); !strings.Contains(limit, "ask whether to spend more") || strings.Contains(limit, "hand the work back") {
 		t.Fatalf("a limit's note does not say to ask the person first:\n%s", limit)
 	}
-	if unverified := note(programUnverified, 0); !strings.Contains(unverified, "Run the project's checks on its branch yourself") {
-		t.Fatalf("an unverified ending is not told to check the branch:\n%s", unverified)
+	// A PROGRAM'S OWN CHECK IS A LEAD, NOT A VERDICT: a change it handed in
+	// whose check did not pass is looked into before anything is fixed.
+	if unverified := note(programUnverified, 0); !strings.Contains(unverified, "run the project's own checks on its branch yourself, and act only on what yours show") ||
+		!strings.Contains(unverified, "a lead, not a verdict") || strings.Contains(unverified, "hand the work back") {
+		t.Fatalf("an ending whose own check did not pass is not told to check the branch first:\n%s", unverified)
 	}
 	if passed := note(programPassed, 0); !strings.Contains(passed, "offer to merge") {
 		t.Fatalf("a pass is not told to offer the merge:\n%s", passed)
+	}
+	for _, verdict := range []programVerdict{programPassed, programUnverified, programFailed, programCrashed} {
+		for _, want := range []string{"worktree add -q --detach \"$tmp\" <branch>", "cd \"$tmp\" && <check command>", "worktree remove --force \"$tmp\"", "Do not run checks in the person's checkout", "copy was kept", "no git history"} {
+			if got := note(verdict, 0); !strings.Contains(got, want) {
+				t.Errorf("%s landing lacks %q:\n%s", verdict, want, got)
+			}
+		}
+	}
+}
+
+// A passed program's branch was merged into the person's main by the wake
+// turn, even though nobody had asked to bring it over. The instruction must
+// govern every ending, before the verdict-specific next steps.
+func TestAProgramOutcomeLeavesBringingItsBranchOverToThePerson(t *testing.T) {
+	for _, want := range []string{
+		"For every outcome",
+		"merge, rebase, cherry-pick",
+		"the person's call",
+		"offer it and stop",
+		"only when the person asks in a later message",
+	} {
+		if !strings.Contains(programOutcomePrompt, want) {
+			t.Errorf("program outcome prompt does not teach %q", want)
+		}
 	}
 }
 
@@ -210,14 +237,14 @@ func TestProgramCommitCreditsOnlyItsAnsweredModels(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(repo, "repair.txt"), []byte("done\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(folder.Dir, "repair.txt"), []byte("done\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			if err := SetProgramAnswerAttribution(folder, true); err != nil {
 				t.Fatal(err)
 			}
 			folder.Finish("finished")
-			message := gitOut(t, repo, "log", "-1", "--format=%B")
+			message := gitOut(t, repo, "log", "-1", "--format=%B", folder.Branch)
 			if tc.want == "" {
 				if strings.Contains(message, "Assisted-by:") {
 					t.Fatalf("no answered call still signed the commit: %s", message)
@@ -240,14 +267,14 @@ func TestUnreadableProgramCallLogNeverCreditsTheConfiguredSeat(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(folder.Keep, delegate.ConversationFile), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, "repair.txt"), []byte("done\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(folder.Dir, "repair.txt"), []byte("done\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := SetProgramAnswerAttribution(folder, true); err == nil {
 		t.Fatal("unreadable call log was accepted")
 	}
 	folder.Finish("finished")
-	if message := gitOut(t, repo, "log", "-1", "--format=%B"); strings.Contains(message, "Assisted-by:") {
+	if message := gitOut(t, repo, "log", "-1", "--format=%B", folder.Branch); strings.Contains(message, "Assisted-by:") {
 		t.Fatalf("unreadable call log credited the configured seat: %s", message)
 	}
 }
@@ -279,7 +306,7 @@ func TestAProgramsLandingWakesATurnWithThePlaybook(t *testing.T) {
 		t.Fatal("the program's outcome turn was not handed the playbook")
 	}
 	last := messageText(request[len(request)-1])
-	if !strings.Contains(last, "task 7 · unverified · run 1") || !strings.Contains(last, "Run the project's checks on its branch yourself") {
+	if !strings.Contains(last, "task 7 · unverified · run 1") || !strings.Contains(last, "run the project's own checks on its branch yourself") {
 		t.Fatalf("the outcome note = %q, want the verdict and what to do now", last)
 	}
 	if got := completer.model(0); got != agent.model {
@@ -399,42 +426,66 @@ func TestSeniorDevTimeLimitLineNamesTheFolderWithoutABranch(t *testing.T) {
 	}
 }
 
-// A SECOND RUN IN A FOLDER THE FIRST LEFT ON ITS BRANCH CARRIES ON THERE. It
-// names the person's own branch, keeps every run's work on one branch, and a
-// run that adds nothing never deletes what the first one committed.
+// A RUN SENT BACK CARRIES ON ON THE FIRST RUN'S BRANCH. A second run of the
+// same line — codeaf handing the work back after an ending, before the person
+// has spoken — is handed the branch the first run's row wrote down, so it
+// starts from that work in a copy of its own rather than from the person's
+// checkout, its receipt says so, and a second run that adds nothing never
+// counts the first run's work as nothing. A different program's line is not
+// carried, and neither is a first run.
 func TestASecondRunCarriesOnOnTheFirstRunsBranch(t *testing.T) {
+	double := newBeltRunDouble("done")
+	double.work = func(workspace string) { writeFile(t, filepath.Join(workspace, "parser.go"), "package p\n") }
+	registerBeltRunEngine(t, double)
 	repo := newTestRepo(t)
-	home := strings.TrimSpace(gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD"))
-	fake := testPrograms("fake")[0]
-	first, err := PrepareProgramFolder(ProgramFolderOrder{Program: fake, Dir: repo, Title: "Build the parser", Holder: "task 1", Keep: t.TempDir()})
+	home := currentBranch(repo)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	id, _, _, err := agent.StartDelegate(context.Background(), "fake", "build the parser")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, "parser.go"), []byte("package p\n"), 0o644); err != nil {
-		t.Fatal(err)
+	<-double.entered
+	endBeltRun(t, agent, double)
+	if agent.programCarryOf(nil, "fake") != nil {
+		t.Fatal("a line's first run carries a branch")
 	}
-	if end := first.Finish("did not finish"); !end.Kept {
-		t.Fatalf("the first run's work was not kept: %s", end.Sentence())
+	prior := &programOutcome{row: id, program: "fake", verdict: programFailed}
+	if agent.programCarryOf(prior, "another") != nil {
+		t.Fatal("another program's line carries this one's branch")
+	}
+	carry := agent.programCarryOf(prior, "fake")
+	first := agent.runRowCopy(id)
+	if carry == nil || carry.Branch != first.Branch || canonicalPath(carry.Root) != canonicalPath(repo) || carry.Home != home || carry.Fresh {
+		t.Fatalf("the carried branch = %+v, want the first run's %+v", carry, first)
+	}
+	// A RUN WHOSE WORK PASSED IS TAKEN UP ON A NEW BRANCH, never written again.
+	if passed := agent.programCarryOf(&programOutcome{row: id, program: "fake", verdict: programPassed}, "fake"); passed == nil || !passed.Fresh || passed.Branch != first.Branch {
+		t.Fatalf("the run after a pass carries %+v, want a new branch cut from %s", passed, first.Branch)
 	}
 
-	second, err := PrepareProgramFolder(ProgramFolderOrder{Program: fake, Dir: repo, Title: "Finish the parser", Holder: "task 2", Keep: t.TempDir()})
+	fake := testPrograms("fake")[0]
+	second, err := PrepareProgramFolder(ProgramFolderOrder{Program: fake, Dir: repo, Title: "Finish the parser", Holder: "task 2", Keep: t.TempDir(), Carry: carry})
 	if err != nil {
 		t.Fatalf("the second run was refused: %v", err)
 	}
-	if second.Branch != first.Branch || second.Home != home || second.Start != first.Start || !second.Continues {
+	if second.Branch != first.Branch || second.Home != home || second.Start != first.HomeSha || !second.Continues {
 		t.Fatalf("the second run = branch %q home %q continues %v, want the first run's branch %q and the person's %q",
 			second.Branch, second.Home, second.Continues, first.Branch, home)
 	}
-	if receipt := delegateReceipt(repo, fake, runCopyOf(second.tree())); !strings.Contains(receipt, "carrying on on its branch "+first.Branch) ||
-		!strings.Contains(receipt, "your branch "+home+" does not move") {
+	if _, err := os.Stat(filepath.Join(second.Dir, "parser.go")); err != nil {
+		t.Fatalf("the first run's work is not in the second run's copy: %v", err)
+	}
+	if receipt := delegateReceipt(repo, fake, runCopyOf(second.tree())); !strings.Contains(receipt, "carrying on on its branch "+first.Branch) {
 		t.Fatalf("the second run's receipt = %q", receipt)
 	}
 	end := second.Finish("finished")
-	if end.Dropped || !end.Kept || strings.TrimSpace(gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")) != first.Branch {
+	if !end.Kept || currentBranch(repo) != home {
 		t.Fatalf("a second run that added nothing threw the first run's work away: %s", end.Sentence())
-	}
-	if said := end.Sentence(); !strings.Contains(said, "your branch "+home+" is as it was") {
-		t.Fatalf("the ending does not name the person's own branch: %s", said)
 	}
 	if files := gitOut(t, repo, "ls-tree", "--name-only", first.Branch); !strings.Contains(files, "parser.go") {
 		t.Fatalf("the first run's work is gone from its branch:\n%s", files)

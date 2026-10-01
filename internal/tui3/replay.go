@@ -686,7 +686,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			// does live: it is what groups a cluster and what ctrl+o folds.
 			turn++
 			turns++
-			blocks = append(blocks, entry{
+			user := entry{
 				kind: entryUser, text: line, turn: turn,
 				// AND THE FIRST OF THEM IS THE INSTRUCTION THIS PAGE WAS GIVEN,
 				// marked here because here is where it is knowable: it is the
@@ -694,7 +694,12 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 				// after it on such a page is a correction to work already running.
 				brief:    shape.brief && turns == 1,
 				pictures: pictures, picturesHere: !a.hosted(),
-			})
+			}
+			// The renderer reshapes an instruction before wrapping it, so the
+			// resting doors must name ranges in that displayed text. Picture
+			// markers are a suffix and their masks preserve rune coordinates.
+			user.plainTags = restingDoorWords([]rune(requestDisplayText(&user)))
+			blocks = append(blocks, user)
 
 		case "assistant":
 			var confirmation *responseConfirmation
@@ -731,6 +736,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			}
 			blocks = append(blocks, entry{
 				kind: entryTool, tool: e.Tool, text: e.Hint, turn: turn, status: status,
+				open: session.IsUserBashCall(e.CallID),
 				// THE CALL'S OWN IDENTITY IS KEPT because it is what a live end has
 				// to land on: a page drawn out of the record and then kept listening
 				// pairs the end that arrives a second later with the row already
@@ -774,10 +780,23 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			if shape.brief && len(blocks) == 0 && canonicalTaskRequest(text) {
 				turn++
 				turns++
-				blocks = append(blocks, entry{kind: entryUser, text: text, turn: turn, brief: true})
+				brief := entry{kind: entryUser, text: text, turn: turn, brief: true}
+				brief.plainTags = restingDoorWords([]rune(requestDisplayText(&brief)))
+				blocks = append(blocks, brief)
 				continue
 			}
 			if text == "" {
+				continue
+			}
+			// AN INTERRUPTED OPERATIONAL PARTIAL IS STILL THE MODEL'S WORK.
+			// The journal gives it an aside audience so it cannot stand as an
+			// answer, but a generic note at the end of a stopped turn is left
+			// outside the fold as news from the surface. Keep the partial as cut
+			// assistant work so the stopped chip can disclose its exact words.
+			if e.Interrupted {
+				blocks = append(blocks, entry{
+					kind: entryAssistant, text: text, turn: turn, settled: true, cut: true,
+				})
 				continue
 			}
 			// A LINE THE TEAM SENT IS A CARD, headed by who said it to whom

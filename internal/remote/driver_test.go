@@ -144,6 +144,7 @@ func TestAWindowWithoutTheKeyboardIsRefusedInWordsAndNotInSilence(t *testing.T) 
 		payload any
 	}{
 		{MethodSubmit, SubmitArgs{Text: "go"}},
+		{MethodSubmitBash, SubmitArgs{Text: "!pwd"}},
 		{MethodFollowUp, SubmitArgs{Text: "and also"}},
 		{MethodSteer, SubmitArgs{Text: "use the other file"}},
 		{MethodSubmitImage, SubmitImageArgs{Text: "look"}},
@@ -420,6 +421,7 @@ func TestAWatchingSurfaceIsRefusedEveryDoorThatChangesAnything(t *testing.T) {
 	}{
 		{MethodSetModel, "someone/else"},
 		{MethodSubmit, "go"},
+		{MethodSubmitBash, SubmitArgs{Text: "!pwd"}},
 		{MethodInterrupt, nil},
 		{MethodSessionNew, nil},
 		{MethodTaskStop, TaskStopArgs{ID: "7"}},

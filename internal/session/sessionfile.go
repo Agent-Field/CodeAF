@@ -229,6 +229,9 @@ type sessionEntry struct {
 	// lines and reconstructs the transcript verbatim rather than from counts.
 	Stubbed int `json:"stubbed,omitempty"`
 	Folded  int `json:"folded,omitempty"`
+	// Summarized is how many messages a summary note replaced
+	// (compact_summary.go). The note itself is in the window like any line.
+	Summarized int `json:"summarized,omitempty"`
 
 	// Window is HOW MANY MESSAGE LINES THE PASS RE-JOURNALED BEHIND THIS MARKER
 	// — the length of the rebuilt window [sessionFile.appendCompaction] writes
@@ -2833,6 +2836,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		TokensBefore: tokensBefore,
 		Stubbed:      pass.stubbed,
 		Folded:       pass.folded,
+		Summarized:   pass.summarized,
 		// The length is written BEFORE the window it describes, which is the only
 		// order that survives a crash halfway through: a reader that finds fewer
 		// lines than the number promised has a truncated file and can say so,
@@ -2841,22 +2845,30 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		Timestamp: stamp(),
 	})
 	for index, message := range window {
+		// Marks belong to the original message, before projecting a fresh
+		// journal copy. The live window still carries the model's context.
+		note := s.isNote(message)
+		steer := s.steerMark(message)
+		presentation := s.presentation.of(message)
 		// A KEPT LINE IS RE-JOURNALED AS WHAT IT WAS. The window is written again
 		// on the far side of the marker (above), and a note re-written without its
 		// mark would come back from the next resume as the person's words — this
 		// pass is the one place a message is journaled twice.
-		if s.isNote(message) {
+		if note {
 			s.appendNote(message, noteMarks{
 				tags:       s.taskReplyTags(message),
 				deliveries: s.noteDeliveriesOf(message),
 			})
 			continue
 		}
+		if message.Role == "user" && presentation != nil && presentation.SkillsBlock != "" {
+			message = textMessage("user", s.presentation.personWords(message))
+		}
 		// AND SO IS A SPLICED ONE, for the same reason: a steer re-written without
 		// its mark would come back from the next resume as a question of its own,
 		// and the turn it was typed into would lose the correction that shaped it.
-		if mark := s.steerMark(message); mark != nil {
-			s.appendSteer(message, *mark)
+		if steer != nil {
+			s.appendSteer(message, *steer)
 			continue
 		}
 		var reasoning provider.MessageReasoning

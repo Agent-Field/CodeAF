@@ -3116,6 +3116,9 @@ func (h *homeView) buildFor() {
 func (a *app) homeSubmit() tea.Cmd {
 	h := &a.home
 	typed := strings.TrimSpace(h.box.String())
+	if _, bash := session.BashCommand(typed); bash {
+		return a.homeStart(typed)
+	}
 	if h.runLabel(typed) != "" {
 		return a.homeSlash(typed)
 	}
@@ -3151,6 +3154,9 @@ func (a *app) homeEnter() tea.Cmd {
 	// pressed enter inside two frames meant the drop (dropkeys.go). The net
 	// under the row below catches whatever this did not.
 	a.spendDrop()
+	if _, bash := session.BashCommand(h.box.String()); bash {
+		return a.homeSubmit()
+	}
 	if project := h.pastedProject(); project != "" {
 		h.projectPaste.path = ""
 		h.build()
@@ -3577,6 +3583,14 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 // opens. The shared legacy connection still swaps in place and keeps its
 // existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	// THE SHELL REFUSAL COMES BEFORE THE ROAD IS CHOSEN, so a line home will not
+	// run is refused the same way whichever road would have opened it.
+	if _, bash := session.BashCommand(text); bash {
+		if refusal := bashRefusal(text, len(a.home.chips) > 0, false); refusal != "" {
+			a.home.say(refusal, "")
+			return nil
+		}
+	}
 	if a.shared {
 		return a.homeStartWithProjectNow(text, place)
 	}
@@ -3643,6 +3657,9 @@ func (a *app) homeStartWithProjectNow(text, place string) tea.Cmd {
 	}
 	if strings.TrimSpace(text) == "" {
 		return started
+	}
+	if _, bash := session.BashCommand(text); bash {
+		return tea.Batch(started, a.submitBash(text))
 	}
 	return tea.Batch(started, a.submit(text))
 }

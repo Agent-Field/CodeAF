@@ -468,14 +468,17 @@ exact sentence each one says.
 
 The second half of the list, with the exact sentence each one says.
 
-`/cache`, `/permissions`, `/crew`, `/memory <query>`, `/memories`, `/remember`,
-`/forget`, `/subharness` and `/harness` describe stores or settings belonging to the
-machine that runs the session, but this build has no wire door for them. They do not read
-or change this machine's copy. The cache, permissions, crew and harness commands name the
-connected machine and say `change it on that machine`; the memory commands say `memory
-shows what this machine has learned, and this session is on another`. In particular,
-`/cache clean now` deletes nothing here, `/crew pin` writes nothing here, and
-`/subharness` does not claim the far registry is empty.
+`/cache`, `/permissions`, `/crew`, `/subharness` and `/harness` describe stores or settings
+belonging to the machine that runs the session, but this build has no wire door for them.
+They do not read or change this machine's copy. The cache, permissions, crew and harness
+commands name the connected machine and say `change it on that machine`; in particular,
+`/cache clean now` deletes nothing here, `/crew pin` writes nothing here, and `/subharness`
+does not claim the far registry is empty.
+
+The memory commands are different: this build carries the connected engine's memory state
+and memory doors. `/memory <query>` and `/memories` read that machine's store, while
+`/remember` and `/forget` write it. When memory is really off there, they say exactly:
+`memory is off for this session · turn it on under /settings`.
 
 ## Did cache clean delete the laptop cache or the remote machine's cache?
 
@@ -490,11 +493,12 @@ answer names the connected machine and says to change it there.
 name the connected machine, and say to change the crew there:
 `devbox owns the crew · change it on that machine`.
 
-## Why does remember over host not say whether memory is off?
+## How does remember over host know whether memory is on?
 
-The surface has not asked the connected machine whether memory is enabled. `/remember`,
-`/forget`, `/memories`, and `/memory <query>` therefore say only that this session is on
-another machine; they neither claim memory is off there nor read this machine's memories.
+The connection's welcome carries the connected engine's memory setting, and the memory
+commands use that engine's store. `/remember` and `/forget` write there; `/memories` and
+`/memory <query>` read there. With memory off, the commands and memory place say:
+`memory is off for this session · turn it on under /settings`.
 
 ## Does subharness know whether the remote machine has saved programs?
 
@@ -856,7 +860,8 @@ While that is happening the status line says, quietly:
 reconnecting to devbox — trying for up to 5 minutes
 ```
 
-Every call still gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
+Ordinary calls give up after 10 seconds. A remote `/compact` waits up to five minutes
+for a summary to finish; the chat stays responsive while it waits.
 
 If it cannot get back at all, you see the sentence you always saw:
 

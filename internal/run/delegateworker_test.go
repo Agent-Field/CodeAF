@@ -196,6 +196,8 @@ func TestDelegateWorkerServesItsChildTheModelAPIAndMetersEveryCall(t *testing.T)
 	}
 	if record, ok := delegate.ReadProgram(taskDir); !ok || record.Name != "fake" || strings.Join(record.Stages, ",") != "implement,verify" || record.CeilingUSD != 2.5 {
 		t.Fatalf("program record = %+v %v, want the hello's name and stages and the run's ceiling", record, ok)
+	} else if strings.Join(record.Models, ",") != "deepseek/deepseek-v4-flash-0731" || record.Effort != "high" {
+		t.Fatalf("program record = %+v, want the models and effort the program's stage named", record)
 	}
 	if models := calling.seen(); len(models) != 2 || models[0] != "deepseek/deepseek-v4-flash-0731" {
 		t.Fatalf("the funnel was asked for %q", models)
@@ -343,6 +345,20 @@ func TestDelegateWorkerReportsAFailedEndingAsAnError(t *testing.T) {
 	// program's own word and is not money.
 	if report.USD != 0 || report.Steps != 2 {
 		t.Fatalf("report = %+v, want the steps kept and nothing banked on the program's word", report)
+	}
+}
+
+// A CHANGE THE PROGRAM HANDED IN IS FINISHED, WHATEVER ITS OWN CHECK SAID.
+// senior-dev ends `fail` when its guess at the project's build and tests exits
+// non-zero; a run that read that as unfinished work woke the conversation to
+// fix work that was never broken. The run lands the change, and the check's
+// word rides on as the verdict. A `fail` that handed in nothing is still one.
+func TestDelegateWorkerFinishesAChangeHandedInWhateverItsOwnCheckSaid(t *testing.T) {
+	store := runOpenStore(t)
+	m, setup := fakeDelegate(t, `echo '{"type":"terminal","status":"fail","message":"submitted a change that the build or tests do not pass","data":{"status":"fail","submitted":true}}'`)
+	report, err := run.NewDelegateWorker(store, t.TempDir(), m, setup, 0, 0).Run(runContext(t), *store.Task(store.RootID()))
+	if err != nil || report.Verdict != "fail" {
+		t.Fatalf("a handed-in change = %+v, %v; want it finished, with its check's word kept", report, err)
 	}
 }
 

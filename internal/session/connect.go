@@ -590,6 +590,15 @@ func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
 	grownDefinitions = append(append(grownDefinitions, a.definitions...), definitions...)
 	a.tools = grownTools
 	a.definitions = grownDefinitions
+	for _, tool := range arriving {
+		known := false
+		for _, kept := range a.profileArmed {
+			known = known || kept.Name == tool.Name
+		}
+		if !known {
+			a.profileArmed = append(a.profileArmed, tool)
+		}
+	}
 	return names, nil
 }
 

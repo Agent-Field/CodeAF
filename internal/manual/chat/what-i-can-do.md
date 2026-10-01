@@ -3,6 +3,19 @@
 This page is the honest inventory: what codeaf can reach, what it refuses, and
 what is simply not there in this build.
 
+## Why are replies short — developer-friendly answers, summaries and more detail
+
+codeaf is prompted to keep routine coding reports short: the outcome first, followed
+by up to three brief bullets covering the changed behavior, checks and their results,
+and any remaining issue. Empty categories are omitted. A command you need to run or
+an exact edit comes first in instructions. Failed or unrun checks must still be stated.
+
+Ask for a longer answer, an explanation, a walkthrough, or a particular format.
+Your requested length and format override the short defaults, including the coding
+report bullet limit.
+Requested code and other deliverables stay complete. This is guidance to the model,
+not a hard word limit; the wording and length can vary with the model and the task.
+
 ## Is this only for programming — is codeaf only for code, or for any kind of work?
 
 Not only programming. Nothing else on this page is about code in particular:
@@ -346,10 +359,10 @@ With the mouse, move over that running row and press its right-hand
 still opens the row. The offer is not drawn on a phone-width frame.
 
 The background gesture is absent when there is nothing to send away — no command
-running, a command that is already a background job, a call that is not `bash`, or
-a session over `--host`, where the local surface has no handoff door. With no command
-to keep, `ctrl+g` returns to its other job of hiding or restoring the task column. See
-the keys page.
+running, a command that is already a background job, a `!` command you ran, a call
+that is not `bash`, or a session over `--host`, where the local surface has no
+handoff door. With no command to keep, `ctrl+g` returns to its other job of
+hiding or restoring the task column. See the keys page.
 
 Starting a command with `background: true` makes it a job from the first instant.
 For an ordinary foreground command whose length you did not know in advance, use

@@ -99,21 +99,37 @@ func TestAProgramRunIsRefusedAFolderInsideOrAroundAHeldOne(t *testing.T) {
 	})
 }
 
+// repositoryInAPlainFolder makes a folder with no git history holding one
+// repository, the way a folder of projects is, and answers both.
+func repositoryInAPlainFolder(t *testing.T) (string, string) {
+	t.Helper()
+	projects := t.TempDir()
+	repo := filepath.Join(projects, "project")
+	mustGit(t, projects, "init", "-q", repo)
+	mustGit(t, repo, "checkout", "-q", "-b", "work")
+	writeFile(t, filepath.Join(repo, "shared.txt"), "the original line\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first")
+	return projects, repo
+}
+
 // holdOf is the hold a refusal names for a run holdFolder readied on dir.
 func holdOf(dir, title string) programHold {
 	return programHold{dir: canonicalPath(dir), holder: "fake, task 4 (" + title + ")"}
 }
 
 // THE CHAT'S OWN FILE TOOLS DO NOT WRITE IN A FOLDER A PROGRAM'S RUN HOLDS.
-// senior-dev works in the person's folder itself, and once it has submitted it
-// puts back whatever changed there and removes whatever was added; a file the
-// chat wrote meanwhile was deleted with no copy kept, while the chat had told
-// the person it was written. Every hand that puts a file at a path it names is
-// refused, through the real tool door, naming the file, the folder and the
-// run; reading stays open, a path outside the folder is written, and the same
-// write goes through once the run has ended.
+// In a folder with no git history senior-dev works in the folder itself, and
+// once it has submitted it puts back whatever changed there and removes
+// whatever was added; a file the chat wrote meanwhile was deleted with no copy
+// kept, while the chat had told the person it was written. Every hand that
+// puts a file at a path it names is refused, through the real tool door,
+// naming the file, the folder and the run; reading stays open, a path outside
+// the folder is written, and the same write goes through once the run has
+// ended.
 func TestTheChatsFileToolsAreRefusedAFolderAProgramHolds(t *testing.T) {
-	repo := newTestRepo(t)
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "shared.txt"), "the original line\n")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Workspace = repo
 		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
@@ -244,7 +260,9 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 // which only reads its ground, is not refused, and a folder nobody holds is
 // untouched by any of it.
 func TestAnOrdinaryTaskIsRefusedAFolderAProgramHolds(t *testing.T) {
-	repo := newTestRepo(t)
+	// A PROGRAM IN A REPOSITORY HOLDS ONLY ITS COPY (programcopy.go), so the
+	// hold a repository meets is a plain folder's run around it.
+	projects, repo := repositoryInAPlainFolder(t)
 	registerBeltRunEngine(t, newBeltRunDouble("done"))
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
 		config.Workspace = repo
@@ -255,12 +273,12 @@ func TestAnOrdinaryTaskIsRefusedAFolderAProgramHolds(t *testing.T) {
 	if stand := agent.resolveTaskGround(spec); stand.refusal != "" || standHeldRefusal(stand, repo) != "" {
 		t.Fatalf("a folder nobody holds was refused: %+v", stand)
 	}
-	holdFolder(t, repo, "Fix the parser")
-	want := repo + " is busy: fake, task 4 (Fix the parser), is working in it, and nothing else of codeaf's works there until that run has ended; wait for it, or stop it, then ask again"
+	holdFolder(t, projects, "Tidy the projects")
+	want := repo + " is busy: fake, task 4 (Tidy the projects), is working in " + canonicalPath(projects) + ", which holds it, and nothing else of codeaf's works there until that run has ended; wait for it, or stop it, then ask again"
 	if stand := agent.resolveTaskGround(spec); stand.refusal != canonicalPath(repo)+strings.TrimPrefix(want, repo) {
 		t.Fatalf("the proposal's refusal = %q, want %q", stand.refusal, want)
 	}
-	if _, _, _, err := agent.StartTask(context.Background(), "fix the parser", false); err == nil || !strings.Contains(err.Error(), " is busy: fake, task 4 (Fix the parser), is working in it, and nothing else of codeaf's works there") {
+	if _, _, _, err := agent.StartTask(context.Background(), "fix the parser", false); err == nil || !strings.Contains(err.Error(), " is busy: fake, task 4 (Tidy the projects), is working in "+canonicalPath(projects)+", which holds it, and nothing else of codeaf's works there") {
 		t.Fatalf("a typed /task = %v, want it refused", err)
 	}
 	if _, _, refusal := agent.admitQuick(quickAsk{line: "tidy the readme"}); refusal.said != want {
@@ -280,9 +298,8 @@ func TestAnOrdinaryTaskIsRefusedAFolderAProgramHolds(t *testing.T) {
 	if refusal := standHeldRefusal(taskStand{dir: repo, mode: TaskModeReference}, repo); refusal != "" {
 		t.Fatalf("a reference, which only reads, was refused: %q", refusal)
 	}
-	around := filepath.Dir(repo)
-	if refusal := programHoldRefusal(around); !strings.Contains(refusal, "is working in "+canonicalPath(repo)+", which is inside it") {
-		t.Fatalf("a task on a folder around the held one = %q", refusal)
+	if refusal := programHoldRefusal(projects); !strings.Contains(refusal, "is working in it") {
+		t.Fatalf("a task on the held folder itself = %q", refusal)
 	}
 }
 
@@ -293,20 +310,20 @@ func TestAnOrdinaryTaskIsRefusedAFolderAProgramHolds(t *testing.T) {
 // the copy left whole; each goes through once the run has ended.
 func TestATaskThatWasRunningLandsBesideAHeldFolder(t *testing.T) {
 	t.Run("a branch", func(t *testing.T) {
-		repo := newTestRepo(t)
+		projects, repo := repositoryInAPlainFolder(t)
 		tree, err := prepareTaskTree(Place{Dir: t.TempDir()}, repo, "b1b1b1b1b1b1b1b1", 1, "update the changelog")
 		if err != nil {
 			t.Fatal(err)
 		}
 		writeFile(t, filepath.Join(tree.dir, "CHANGELOG.md"), "a line\n")
-		held := holdFolder(t, repo, "Fix the parser")
-		programTip := strings.TrimSpace(gitOut(t, repo, "rev-parse", held.Branch))
+		holdFolder(t, projects, "Fix the parser")
+		personTip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
 		merge, said, _, _ := tree.comeHome("update the changelog", []string{"CHANGELOG.md"}, gitSignature{})
-		if merge != mergeKept || !strings.Contains(said, "its branch "+tree.branch+" was kept: fake, task 4 (Fix the parser), is working in it — bring it in when that run has ended") {
+		if merge != mergeKept || !strings.Contains(said, "its branch "+tree.branch+" was kept: fake, task 4 (Fix the parser), is working in "+canonicalPath(projects)+", which holds it — bring it in when that run has ended") {
 			t.Fatalf("the landing = %q %q, want its branch kept beside the held folder", merge, said)
 		}
-		if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", held.Branch)); tip != programTip {
-			t.Fatalf("the task merged into the program's branch: %s, want %s", tip, programTip)
+		if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work")); tip != personTip {
+			t.Fatalf("the task merged into the held folder's repository: %s, want %s", tip, personTip)
 		}
 		if files := gitOut(t, repo, "ls-tree", "--name-only", tree.branch); !strings.Contains(files, "CHANGELOG.md") {
 			t.Fatalf("the kept branch does not hold the work:\n%s", files)
@@ -330,11 +347,11 @@ func TestATaskThatWasRunningLandsBesideAHeldFolder(t *testing.T) {
 		}
 	})
 	t.Run("a /land", func(t *testing.T) {
-		repo := newTestRepo(t)
+		projects, repo := repositoryInAPlainFolder(t)
 		agent, _, _ := standingLab(t, repo)
 		writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "the changed line\n")
-		held := holdFolder(t, repo, "Fix the parser")
-		if _, err := agent.Land(repo); err == nil || !strings.Contains(err.Error(), " is busy: fake, task 4 (Fix the parser), is working in it") {
+		held := holdFolder(t, projects, "Fix the parser")
+		if _, err := agent.Land(repo); err == nil || !strings.Contains(err.Error(), " is busy: fake, task 4 (Fix the parser), is working in "+canonicalPath(projects)+", which holds it") {
 			t.Fatalf("a /land into the held folder = %v", err)
 		}
 		if waiting := agent.UnlandedChanges(); len(waiting) != 1 {

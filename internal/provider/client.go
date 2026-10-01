@@ -177,6 +177,9 @@ type Client struct {
 	// carry (withdrawn.go). It is beside `encodes` for the same reason: a fact
 	// about one router and one account, over the span of one conversation.
 	withdrawn withdrawnMemo
+	// toolless is which models this client has said it sends no tools to
+	// (toolless.go).
+	toolless toollessMemo
 	// encodes is what this client already knows its transcript and its tool
 	// block serialize to (memo.go). It changes nothing about the bytes and is
 	// carried per client because a transcript belongs to a conversation.
@@ -272,7 +275,8 @@ func (c *Client) SetAPIKey(key string) error {
 	key = strings.TrimSpace(key)
 	var base *ai.Client
 	if key != "" {
-		siteName := AppName
+		app := RunningApp()
+		siteName := app.Name
 		if c.config.Direct {
 			siteName = DirectUserAgent
 		}
@@ -281,7 +285,7 @@ func (c *Client) SetAPIKey(key string) error {
 			BaseURL:  c.config.BaseURL,
 			Model:    c.config.Model,
 			Timeout:  c.config.Timeout,
-			SiteURL:  AppURL,
+			SiteURL:  app.URL,
 			SiteName: siteName,
 		})
 		if err != nil {
@@ -416,7 +420,8 @@ type callKnobs struct {
 	relaxed relaxSet
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
-	reasoning []MessageReasoning
+	reasoning     []MessageReasoning
+	contextBudget ContextBudget
 	// noProvider takes the `provider` object OFF this one encode entirely, and
 	// it is set by exactly one caller: the single widened retry that asks
 	// whether a base's 400 was about the field at all (endpoints.go's
@@ -490,17 +495,18 @@ func (k callKnobs) carriesTheDemand() bool {
 
 func knobsFrom(ctx context.Context) callKnobs {
 	knobs := callKnobs{
-		cacheKey:   CacheKeyFrom(ctx),
-		effort:     effortFrom(ctx),
-		role:       RoleFrom(ctx),
-		intent:     routingIntentFrom(ctx),
-		lambda:     valueOfTimeFrom(ctx),
-		horizon:    callHorizonFrom(ctx),
-		hedgeLane:  hedgeLaneFrom(ctx),
-		reasoning:  MessageReasoningFrom(ctx),
-		refused:    &refusedHere{},
-		retryAvoid: RetryAvoidFrom(ctx),
-		trace:      newCallTrace(),
+		cacheKey:      CacheKeyFrom(ctx),
+		effort:        effortFrom(ctx),
+		role:          RoleFrom(ctx),
+		intent:        routingIntentFrom(ctx),
+		lambda:        valueOfTimeFrom(ctx),
+		horizon:       callHorizonFrom(ctx),
+		hedgeLane:     hedgeLaneFrom(ctx),
+		reasoning:     MessageReasoningFrom(ctx),
+		contextBudget: contextBudgetFrom(ctx),
+		refused:       &refusedHere{},
+		retryAvoid:    RetryAvoidFrom(ctx),
+		trace:         newCallTrace(),
 	}
 	// The choice this call was already made on, if it was. See
 	// [Client.withLaneChoice]: it is carried rather than recomputed because it
@@ -595,6 +601,9 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 		return nil, withdrawnRefusal(model)
 	}
 	noteModelTried(ctx, model)
+	// A MODEL THE CATALOG SAYS TAKES NO TOOLS IS SENT NONE (toolless.go), before
+	// any body is encoded, so the size check measures what really goes out.
+	knobs = c.leaveOffTools(ctx, model, knobs, len(request.Tools) > 0)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
 	// AN ANSWER MEANS IT IS CARRIED AGAIN. A memo nothing clears takes a model
 	// away for the life of the process on the strength of one bad minute.
@@ -628,6 +637,41 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 		// on a budget nobody above could see (endpoints.go's deleted
 		// recoverFromPacing). The layer that owns the turn owns the model.
 		return nil, err
+	}
+	// Simple routing has no hard parameter filter. The router can send a tool
+	// request to a tool-less endpoint with a smaller window than local sizing
+	// used. Re-send once before the conversation pays for a summary; a second
+	// overflow goes to its usual recovery owner without another loop. ONLY A
+	// ROUTER CAN ANSWER A RESEND FROM ANOTHER ENDPOINT: a direct base is the one
+	// endpoint, and resending it the same request would pay a refusal twice.
+	if response != nil && endpointRefusalStatus(response.StatusCode) && knobs.contextBudget.Window > 0 && !c.config.Direct && c.baseServesLanes() {
+		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		if readErr == nil {
+			prefs := refusedWirePreferences(response)
+			choice, chosen := laneChoiceFromContext(ctx)
+			if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow && failure.FromUpstream() &&
+				failure.ContextLimit > 0 && failure.ContextLimit < c.servingWindow(c.modelFor(request), prefs, knobs.contextBudget.Window, len(request.Tools) > 0) {
+				if prefs != nil && len(prefs.Only) == 1 || chosen && choice.Pinned && len(choice.Only) == 1 {
+					c.rememberContextLimit(c.modelFor(request), failure)
+					response.Body = rewound(peek, response.Body)
+					return response, nil
+				}
+				c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+					attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+					err: apiError(response.StatusCode, peek), responseBody: peek})
+				response.Body.Close()
+				retried, retryErr := c.sendRepaired(ctx, request, knobs, stream)
+				c.rememberContextLimit(c.modelFor(request), failure)
+				if retryErr != nil {
+					return nil, retryErr
+				}
+				response = retried
+			} else {
+				response.Body = rewound(peek, response.Body)
+			}
+		} else {
+			response.Body = rewound(peek, response.Body)
+		}
 	}
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
@@ -766,7 +810,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, encodeFailure(err)
 	}
 	began := logNow()
 	response, err := c.send(ctx, request, knobs, body, stream)
@@ -842,7 +886,7 @@ func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnob
 	refused.Body.Close()
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, encodeFailure(err)
 	}
 	return c.send(ctx, request, knobs, body, stream)
 }
@@ -954,7 +998,17 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 // be served this way says so on the wire — a gateway that takes `stream: true`
 // and answers one whole JSON completion — and [Client.unstreamable] remembers it
 // from what actually happened, so the fallback is a memo rather than a guess.
-func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (response *ai.Response, err error) {
+	// Every failed completion can teach the next encode, including the retry
+	// after an empty thinking-only answer.
+	defer func() {
+		if failure, ok := RefusalFrom(err); ok {
+			request, requestErr := c.newRequest(messages, options)
+			if requestErr == nil {
+				c.rememberContextLimit(c.modelFor(request), failure)
+			}
+		}
+	}()
 	ctx = WithPlanOverflowGuard(ctx)
 	observer := streamObserverFrom(ctx)
 	response, relearned, err := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
@@ -2081,6 +2135,21 @@ func (c *Client) completeWithMessagesStreaming(
 			}
 		}
 	}
+	if !decoder.done && finishReason == "" {
+		cut := &StreamCut{Reason: CutTruncated}
+		c.stampCut(ctx, cut, served, began, stall.tokens())
+		cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
+		c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
+		c.releaseEndpoint(ctx, c.modelFor(request))
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: true,
+			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
+		})
+		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
+		return nil, false, cut
+	}
 	response.Choices = []ai.Choice{{Index: 0, FinishReason: finishReason, Message: ai.Message{
 		Role:      "assistant",
 		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
@@ -2544,6 +2613,12 @@ type APIError struct {
 	// envelope's own `code`, with the sentence kept only as a hint for a body
 	// that carries neither ([overflowRefusal]).
 	Overflow bool
+	// Context facts are optional evidence, parsed once at the refusal boundary.
+	ContextLimit  int
+	InputTokens   int
+	OutputTokens  int
+	Local         bool
+	BudgetChanged bool
 	// Code is the error envelope's `code`, as text. The router types that field
 	// as a number, as a string, and sometimes omits it, so it is normalised here
 	// once rather than decoded at each reader.
@@ -2776,6 +2851,7 @@ func apiError(status int, payload []byte) error {
 	// built and is therefore true of every APIError this build makes, including
 	// the ones a stream raises in-band.
 	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
+	readContextLimit(failure)
 	return failure
 }
 

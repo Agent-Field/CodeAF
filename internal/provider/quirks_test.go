@@ -200,6 +200,13 @@ func quirksAt(t *testing.T, models ...string) string {
 		quirks.settle()
 		quirks.mutex.Lock()
 		defer quirks.mutex.Unlock()
+		for key, limit := range quirks.contextLimits {
+			for _, model := range models {
+				if limit.Model == normalizeModel(model) {
+					delete(quirks.contextLimits, key)
+				}
+			}
+		}
 		for _, model := range models {
 			delete(quirks.mandatory, normalizeModel(model))
 			delete(quirks.disableIgnored, normalizeModel(model))

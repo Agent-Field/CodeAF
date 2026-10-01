@@ -135,6 +135,7 @@ const (
 	GShell
 	GSearch
 	GWrite
+	GCompacted
 	GActionRead
 	GActionCreate
 	GActionTest
@@ -194,6 +195,8 @@ const (
 	// GPinned marks a crew seat a person pinned, which the router does not move
 	// (internal/tui3's crew.go).
 	GPinned
+	// GPromptShell is shell punctuation in the composer, unchanged by font tier.
+	GPromptShell
 	glyphIDCount
 )
 

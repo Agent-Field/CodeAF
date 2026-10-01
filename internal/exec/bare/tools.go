@@ -396,6 +396,18 @@ func readTool(cwd string, caps Caps) Tool {
 
 const maxTimeoutMs = 2147483647
 
+type bashOutputKey struct{}
+
+// RunBash runs the ordinary non-interactive shell and mirrors its raw output to
+// a caller-owned writer as it arrives. The runner retains its normal bounds,
+// cancellation, process isolation and spill handling.
+func RunBash(ctx context.Context, cwd string, args json.RawMessage, caps Caps, output io.Writer) (string, bool, error) {
+	if output != nil {
+		ctx = context.WithValue(ctx, bashOutputKey{}, output)
+	}
+	return newBashTool(cwd, caps).Execute(ctx, args)
+}
+
 func newBashTool(cwd string, caps Caps) Tool {
 	caps = caps.resolve()
 	return Tool{
@@ -491,6 +503,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// with goroutines raced: cmd.Wait closes the pipes before the
 			// goroutines drain the last chunk.
 			acc := newOutputAccumulator(caps)
+			acc.observer, _ = ctx.Value(bashOutputKey{}).(io.Writer)
 			cmd.Stdout = acc
 			cmd.Stderr = acc
 
@@ -1014,8 +1027,9 @@ type outputAccumulator struct {
 	// already been answered, nobody will ask for another snapshot, and the one
 	// place the rest of the output belongs is the adopter's own log. Two files
 	// for one command would be two answers to "where is the rest of it".
-	mirror io.Writer
-	mu     sync.Mutex
+	observer io.Writer
+	mirror   io.Writer
+	mu       sync.Mutex
 }
 
 // Write implements io.Writer so both cmd.Stdout and cmd.Stderr can be set
@@ -1025,6 +1039,9 @@ func (a *outputAccumulator) Write(data []byte) (int, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.append(data)
+	if a.observer != nil {
+		_, _ = a.observer.Write(data)
+	}
 	return len(data), nil
 }
 

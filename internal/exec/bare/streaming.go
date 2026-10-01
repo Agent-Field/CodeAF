@@ -104,13 +104,15 @@ func StreamingShell(command string) (string, []string) {
 // StreamingEnv is the environment such a command runs in: the person's own,
 // plus the one variable that stops Python holding its output back.
 //
-// IT ALSO CARRIES THE TMUX FLOOR. A command the model runs must not reach the
-// tmux server hosting codeaf, so the environment is passed through
-// internal/exec's [exec.JobShellEnv], which strips TMUX and TMUX_PANE and points
-// TMUX_TMPDIR at a directory codeaf owns (see tools.go there for why both halves
-// are the floor). This is the bare path's one seam for a model's shell — the
-// foreground bash tool and the session's job registry both reach it through
-// here — so the strip lives here rather than at each caller.
+// IT ALSO CARRIES THE TMUX FLOOR AND STRIPS PROVIDER KEYS. A command the model
+// runs must not reach the tmux server hosting codeaf, and must not read back a
+// provider credential codeaf itself holds, so the environment is passed
+// through internal/exec's [exec.JobShellEnv], which strips TMUX, TMUX_PANE and
+// every provider key codeaf knows about, and points TMUX_TMPDIR at a directory
+// codeaf owns (see tools.go for why both tmux halves are the floor, and for the
+// opt-in a task can use to keep a key). This is the bare path's one seam for a
+// model's shell — the foreground bash tool and the session's job registry both
+// reach it through here — so the strip lives here rather than at each caller.
 //
 // THE PERSON'S OWN SETTING WINS. Somebody who exported PYTHONUNBUFFERED
 // themselves — to any value, including an empty one — meant it, and a harness

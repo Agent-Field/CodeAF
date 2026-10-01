@@ -156,3 +156,30 @@ func TestDirtyReadsTheStoredFlag(t *testing.T) {
 		t.Fatal("a clean build answered Dirty() true")
 	}
 }
+
+// Every shape the release workflow cuts is named by its channel, and nothing
+// else is: a commit, a pseudo-version and each near miss of a tag are "other".
+func TestChannelNamesEachShapeTheReleaseWorkflowCuts(t *testing.T) {
+	for tag, want := range map[string]string{
+		"v0.5.0":                             "stable",
+		"v10.20.30":                          "stable",
+		"v0.5.1-rc.1":                        "rc",
+		"v0.4.2-rc.12":                       "rc",
+		"dev-20261001-0123456789ab":          "dev",
+		"staging-20261001-0123456789ab":      "staging",
+		"":                                   "other",
+		"4ad77ed45":                          "other",
+		"(devel)":                            "other",
+		"v0.0.0-20261001120000-4ad77ed45c01": "other",
+		"v0.5":                               "other",
+		"v05.0.0":                            "other",
+		"v0.5.0-rc.0":                        "other",
+		"v0.5.0-dirty":                       "other",
+		"dev-20261001-0123456789AB":          "other",
+		"staging-2026101-0123456789ab":       "other",
+	} {
+		if got := Channel(tag); got != want {
+			t.Errorf("Channel(%q) = %q, want %q", tag, got, want)
+		}
+	}
+}

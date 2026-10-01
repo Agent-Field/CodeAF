@@ -192,13 +192,15 @@ build-check:
 test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws
 
 # The shell runners are executable infrastructure that Go's package walk cannot
-# discover, so their acceptance scripts are named here. They are touched-only,
-# like the Go packages: `pr-ready` runs them when the change touches scripts/ or
-# this Makefile, because together they take about forty seconds and most pull
-# requests never go near them.
+# discover, so their acceptance scripts are named here. The benchmark clone
+# regression is kept beside the helper it drives. They are touched-only, like
+# the Go packages: `pr-ready` runs them when the change touches scripts/, the
+# covered benchmark paths, or this Makefile. Together they take about forty
+# seconds and most pull requests never go near them.
 test-tooling:
 	bash scripts/one-suite_test.sh
 	bash scripts/shard-test_test.sh
+	bash bench/canary/lib/repo_test.sh
 
 manual-gates:
 	go test ./internal/manual/
@@ -271,7 +273,8 @@ test-touched: test-touched-preflight
 # work, with `make check` as the full-tree laptop/Spark spelling.
 pr-ready: test-touched-preflight
 	$(MAKE) --no-print-directory test-quick
-	@if ! git diff --quiet "$${BASE:-origin/dev}" HEAD -- scripts Makefile; then \
+	@if ! git diff --quiet "$${BASE:-origin/dev}" HEAD -- \
+		scripts Makefile bench/run.sh bench/canary/lib bench/oneroad/lib/corpus.sh; then \
 		$(MAKE) --no-print-directory test-tooling; \
 	fi
 	$(MAKE) --no-print-directory test-touched
@@ -396,9 +399,11 @@ size: build
 		printf 'dependency, stop embedding what can be fetched — or raise the number\n'; \
 		printf 'in %s IN THIS COMMIT, so the extra weight is a decision somebody\n' '$(BUDGET)'; \
 		printf 'signed for rather than a drift nobody saw. PERF.md states the policy.\n\n'; \
-		printf 'The budget was set on linux/arm64 with the toolchain of the day. A\n'; \
-		printf 'different platform or a new Go release moves this number on its own;\n'; \
-		printf 'that too is a reason to reset it deliberately, never to ignore red.\n\n'; \
+		printf 'The budget is set on darwin/amd64, the heaviest shipped platform, with\n'; \
+		printf 'its own furrow staged and the Go release go.mod pins. Every other\n'; \
+		printf 'platform weighs less, so red here is red there. A new Go release moves\n'; \
+		printf 'this number on its own; that too is a reason to reset it deliberately,\n'; \
+		printf 'never to ignore red.\n\n'; \
 		exit 1; \
 	fi; \
 	printf '%s: %s bytes, under the %s budget of %s.\n' '$(BINARY)' "$$actual" '$(BUDGET)' "$$budget"

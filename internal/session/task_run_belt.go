@@ -44,6 +44,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/router"
@@ -120,6 +122,9 @@ type RunSpec struct {
 	// ProfileDir is the person's profile directory, read by the engine's crew
 	// factory to seat a task on the model its role rides.
 	ProfileDir string
+	// Sources is the admitted provider set used by the conversation's calls.
+	// Workers need the same facts to explain a refusal from the right account.
+	Sources modelsource.Set
 	// WorkModel and PlanModel are the two seats the conversation resolved for
 	// this run: the work seat every leaf rides and the plan seat every planner
 	// rides. The engine's crew factory seats those two roles on them rather
@@ -183,9 +188,18 @@ type RunSpec struct {
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
 	// ProgramBranch and ProgramIgnoredFile fence the child's eager commits to
-	// its own branch and the ignore rules recorded before it started.
+	// its own branch and the ignore rules recorded before it started, and
+	// ProgramInputsFile to the untracked files it changed of those copied in
+	// ([ProgramFolder.InputsFile]).
 	ProgramBranch      string
 	ProgramIgnoredFile string
+	ProgramInputsFile  string
+	// ProgramBriefNote is the line a program working in a copy is told where
+	// the copy is by, ahead of its brief ([ProgramFolder.BriefNote]).
+	ProgramBriefNote string
+	// ProgramFolderHold is the file the run's hold on the program's folder is taken
+	// on, handed to the program's process ([ProgramFolder.Hold]).
+	ProgramFolderHold *os.File
 	// Crew is the conversation's crew as a delegated run's program is handed it
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
@@ -371,6 +385,12 @@ type beltRun struct {
 	// delegate and folder belong to the program's one run.
 	delegate *delegate.Delegate
 	folder   *ProgramFolder
+	// thinking, carry and crewEffort are what the hand-off asked of a
+	// program's run beyond its brief ([programWish]) and the crew word it
+	// carried ([crewWish]); zero for every other run.
+	thinking   effort.Rung
+	carry      *programCarry
+	crewEffort crewroute.Effort
 	// crew is routed for an ordinary task. A program keeps its requested
 	// models and run ceiling instead of receiving a task router's seats.
 	crew          *taskCrew
@@ -600,9 +620,9 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	}
 	tree, ground := folder.tree(), canonicalPath(stand.dir)
 	if folder != nil {
-		// A PROGRAM'S GROUND IS THE FOLDER IT WORKS IN, which is the
-		// repository's root when it was handed a folder inside one.
-		ground = canonicalPath(folder.Dir)
+		// A PROGRAM'S GROUND IS THE FOLDER ITS WORK IS ABOUT: the person's
+		// repository's root, whose copy it works in, or the plain folder itself.
+		ground = canonicalPath(folder.Ground())
 	} else {
 		tree, err = beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
 		if err != nil {
@@ -625,6 +645,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 		cut: cut, born: born, over: make(chan struct{}),
 		delegate: via, folder: folder, asked: asked, crew: crew,
 	}
+	run.wishedFrom(ctx)
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
 	// the branch it names exists only in this variable until it is: the road that
@@ -692,6 +713,7 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 		cut:         cut, born: born, over: make(chan struct{}),
 		delegate: via, asked: asked, crew: crew,
 	}
+	run.wishedFrom(ctx)
 	a.installBeltRun(g, run)
 	// A HELD RUN IS QUEUED, not working: there is no worker and deliberately no
 	// copy yet. Its plan id is present from the first publish, which gives stop
@@ -719,11 +741,22 @@ func (a *Agent) prepareBeltRunStart(ctx context.Context, id uint64, title, brief
 			return nil, nil, err
 		}
 	}
-	folder, err := a.readyRunFolder(id, title, sessionDir, stand, via)
+	folder, err := a.readyRunFolder(id, title, sessionDir, stand, via, programWishOf(ctx).carry)
 	if err != nil {
 		return nil, nil, err
 	}
 	return crew, folder, nil
+}
+
+// wishedFrom keeps what the hand-off that started a program's run asked of it
+// beyond its brief ([programWish]) and the crew word it carried ([crewWish]),
+// so a held run that is readied later still has them.
+func (run *beltRun) wishedFrom(ctx context.Context) {
+	if run.delegate == nil {
+		return
+	}
+	wish := programWishOf(ctx)
+	run.thinking, run.carry, run.crewEffort = wish.thinking, wish.carry, crewWishOf(ctx).effort
 }
 
 // seniorDevConversationTimeLimit reports whether the person's remaining wall
@@ -857,15 +890,16 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 // thing a run does, so a folder that refuses refuses before a store is seeded
 // or a row is published. sessionDir is the folder the run's store is in.
 //
-//   - A PROGRAM THAT EDITS FILES WORKS IN THE FOLDER ITSELF (programfolder.go),
-//     readied here: refused over changes that are not committed or another
-//     program's run in or around it, and otherwise held for the run.
+//   - A PROGRAM THAT EDITS FILES IS READIED HERE (programfolder.go): in a
+//     repository a copy of its own, cut on a branch of its own and held for
+//     the run; in a plain folder the folder itself, held, and refused while
+//     another program's run holds it or a folder in or around it.
 //   - AN ORDINARY RUN IS REFUSED A FOLDER A PROGRAM'S RUN HOLDS
 //     (programhold.go), before a copy is cut from it.
 //
 // A program that only answers reads the folder where it is and changes
 // nothing, so it is neither readied nor refused, and nil is its folder.
-func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskStand, via *delegate.Delegate) (*ProgramFolder, error) {
+func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskStand, via *delegate.Delegate, carry *programCarry) (*ProgramFolder, error) {
 	if via == nil {
 		if refusal := standHeldRefusal(stand, a.config.Workspace); refusal != "" {
 			return nil, errors.New(refusal)
@@ -878,7 +912,7 @@ func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskSt
 	return PrepareProgramFolder(ProgramFolderOrder{
 		Program: *via, Dir: stand.dir, Title: title, Holder: taskStopName(id, title),
 		Keep: plandb.TaskDir(sessionDir, strconv.FormatUint(id, 10)), Instead: "say which folder the work is in, as ground",
-		Place: a.config.Place, SignModel: a.signsGitWork().namedModel(),
+		Place: a.config.Place, SignModel: a.signsGitWork().namedModel(), Carry: carry,
 	})
 }
 
@@ -890,11 +924,11 @@ func programJoinRefusal(via *delegate.Delegate, live *beltRun) error {
 		return nil
 	}
 	where := "in a copy of " + live.ground
-	if live.folder != nil {
+	if live.folder != nil && !live.folder.Copied() {
 		where = "in " + live.ground
 	}
 	return errors.New("work is already underway " + where +
-		"; " + aloneName(via, live.delegate) + " runs alone, so propose it again when that work has ended")
+		"; " + aloneName(via, live.delegate) + " runs alone in a conversation, so propose it again when that work has ended")
 }
 
 // aloneName is the program a refused join is about: the one asked for, or the
@@ -1005,6 +1039,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		Admission:    admission,
 		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
 		ProfileDir:   a.config.ProfileDir,
+		Sources:      a.liveSources(),
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
 		CheckModel:   checkSeat,
@@ -1022,6 +1057,9 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 			return run.folder.Branch
 		}(),
 		ProgramIgnoredFile: run.folder.IgnoredFile(),
+		ProgramInputsFile:  run.folder.InputsFile(),
+		ProgramBriefNote:   run.folder.BriefNote(),
+		ProgramFolderHold:  run.folder.Hold(),
 		Crew:               programCrew,
 		// THE ORDERS ARE RESOLVED HERE AND NOT PER WORKER, for the same reason
 		// the frontier resolves them once per pass: every worker of one run
@@ -1045,21 +1083,28 @@ func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
 		return delegate.Crew{}
 	}
 	source := roles.Source(a.config.RolesSource)
-	seat := func(tier roles.Tier) string {
+	seat := func(tier roles.Tier) (string, string) {
 		value, _ := roles.TierModel(source, tier)
-		model, _ := roles.SplitEffort(strings.TrimSpace(value))
-		return strings.TrimSpace(model)
+		model, rung := roles.SplitEffort(strings.TrimSpace(value))
+		return strings.TrimSpace(model), rung
 	}
+	brain, _ := seat(roles.TierMastermind)
+	hands, handsEffort := seat(roles.TierWorker)
+	light, _ := seat(roles.TierLow)
 	crew := delegate.Crew{
-		Brain: seat(roles.TierMastermind), Hands: seat(roles.TierWorker), Light: seat(roles.TierLow),
-		Asked: append([]string(nil), run.asked...),
+		Brain: brain, Hands: hands, Light: light,
+		Asked:  append([]string(nil), run.asked...),
+		Effort: programEffort(run.thinking, handsEffort),
 	}
 	// The routed crew has no permanent worker row. A program keeps a single
 	// worker recommendation from the profile when nobody pinned that row; its
 	// explicit model list still takes precedence inside the program. This does
 	// not route the program by its brief or put it under an ordinary task cap.
 	if crew.Hands == "" && a.config.RouteCrew != nil {
-		if decision, err := a.config.RouteCrew(config.CrewAsk{ChatModel: a.Model()}); err == nil {
+		// THE PERSON'S ONE-TASK WORD MOVES A PROGRAM'S WORKER TOO: `/task --best`,
+		// or "do this one properly" set on the hand-off, buys the strongest
+		// worker the allowed models make, as it does for codeaf's own worker.
+		if decision, err := a.config.RouteCrew(config.CrewAsk{ChatModel: a.Model(), Effort: run.crewEffort}); err == nil {
 			crew.Hands = decision.Seat(crewroute.Worker).Send
 		}
 	}
@@ -1698,13 +1743,13 @@ func (a *Agent) waitForBeltAdmission(ctx context.Context, run *beltRun) bool {
 // admission check has passed before this function calls either folder or copy
 // preparation, which is the lock-ownership seam for held tasks.
 func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
-	folder, err := a.readyRunFolder(run.row, run.title, filepath.Dir(run.store.Path()), run.stand, run.delegate)
+	folder, err := a.readyRunFolder(run.row, run.title, filepath.Dir(run.store.Path()), run.stand, run.delegate, run.carry)
 	if err != nil {
 		return err
 	}
 	tree, ground := taskTree{}, canonicalPath(run.stand.dir)
 	if folder != nil {
-		ground = canonicalPath(folder.Dir)
+		ground = canonicalPath(folder.Ground())
 		tree = folder.tree()
 	} else {
 		tree, err = beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), run.row, run.title, run.stand)

@@ -335,6 +335,13 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	var merge, branch string
 	var changed []string
 	if run.folder != nil {
+		// THE STOPPED RUN'S COMMIT CREDITS WHO ANSWERED, as an ended one's does
+		// ([Agent.landDelegateRun]), and never the conversation's own model.
+		if err := SetProgramAnswerAttribution(run.folder, a.signsGitWork().named); err != nil {
+			if g := a.graph(); g != nil {
+				g.planNote("the program's answered models could not be read: " + err.Error())
+			}
+		}
 		end := run.folder.Finish(report)
 		report += " · " + end.Sentence()
 		merge, changed = mergeInPlace, end.Changed
@@ -342,7 +349,19 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 			merge, branch = mergeKept, run.folder.Branch
 		}
 	} else {
-		merge, changed = keptWork(run.tree, run.title, nil, a.signsGitWork())
+		// THE WORKER'S OWN COMMITS ARE WORK TOO. The index may be clean when
+		// the stop arrives, so read the branch against its original base before
+		// keeping the pending edits and giving its working copy back.
+		if run.tree.checkBase != "" {
+			var err error
+			changed, _, err = runCommittedPaths(run.workspace, run.tree.checkBase)
+			if err != nil {
+				if g := a.graph(); g != nil {
+					g.planNote("the stopped run's committed work could not be read: " + err.Error())
+				}
+			}
+		}
+		merge, changed = keptWork(run.tree, run.title, changed, a.signsGitWork())
 		if merge != mergeInPlace {
 			report += " · " + beltStoppedWhere(run.tree.branch, run.ground, changed)
 		}

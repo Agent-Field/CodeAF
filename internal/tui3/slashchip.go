@@ -1,6 +1,9 @@
 package tui3
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // THE COMMAND CHIP: a slash command does not look like a word.
 //
@@ -30,19 +33,24 @@ import "strings"
 // A chip on a word this surface would answer with "unknown command: /tsak" would
 // be the surface promising something it is about to refuse.
 //
-// ── THE CHIP IS A PROMISE ──
+// ── THE CHIP IS A RECOGNITION MARK ──
 //
-// A CHIP MARKS A WORD THAT WILL ACT: a command at the head of the draft, or a
-// send-door tag anywhere else. Other commands inside prose stay prose. A person
-// may make a live tag plain by pressing backspace immediately after it, and its
-// chip leaves on that first press without deleting a letter.
+// A CHIP MARKS A WORD THIS SURFACE KNOWS: any recognized command, wherever it
+// stands in the draft or the sent message. It no longer says "enter will act on
+// this" — send still runs only a leading command, and still treats a send-door
+// tag anywhere else as actionable (see [app.slashTagHint] and the door-only
+// [editor.liveTags]). What it says is "this is a specifier, not prose", which
+// is true of a command mentioned mid-sentence and is the promise a person
+// reads when they are learning what this surface answers to. A person may make
+// a live tag plain by pressing backspace immediately after it, and its chip
+// leaves on that first press without deleting a letter.
 //
 // THE TWO TAG DOORS BOTH END WHERE A PERSON CAN SEE THEM. /standing raises its
 // ratification card, and /task starts its work in the open — a started row and a
 // task on the roster, one worker that can be stopped (issue #936 took the wait in
 // front of it away, not the row). Pasted text cannot turn a tinted word into
-// silent work, because the chip says what enter will do before enter is pressed,
-// which is why it may honestly promise that enter will act on a tag.
+// silent work, because a tag's promise is carried by [commandDoor] and the hint
+// line, never by the tint alone.
 
 type sendDoor uint8
 
@@ -127,17 +135,15 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 }
 
 func commandSpans(value []rune, boundary bool) []segment {
-	all := recognizedCommandSpans(value, boundary)
-	out := all[:0]
-	for _, s := range all {
-		word := string(value[s.from+1 : s.to])
-		// A leading recognized word runs through the command dispatcher. Away
-		// from the head, only a row that names a send door is a promise.
-		if s.from == 0 && boundary || commandDoor(word) != sendDoorNone {
-			out = append(out, s)
-		}
+	if strings.HasPrefix(strings.TrimSpace(string(value)), "!") {
+		return nil
 	}
-	return out
+	// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE: [recognizedCommandSpans]
+	// already returns only known commands, so the mark travels with the word
+	// anywhere it stands. The promise law lives on [commandDoor] (liveTags, the
+	// hint line): send still runs only a leading command, and still acts on a
+	// send-door tag away from the head.
+	return recognizedCommandSpans(value, boundary)
 }
 
 func containsSegment(list []segment, want segment) bool {
@@ -149,8 +155,48 @@ func containsSegment(list []segment, want segment) bool {
 	return false
 }
 
+// restingDoorWords finds the door words that stay plain on a road that never
+// acts on a send-door tag. A door word away from the head is one no door acted
+// on: a live tag would have taken its own door before this road, or the road
+// has no tag doors. It is drawn plain, as every mid-sentence door word was
+// drawn before every recognised command wore a chip. Ordinary commands keep
+// their chip.
+func restingDoorWords(value []rune) []segment {
+	var plain []segment
+	for _, s := range commandSpans(value, true) {
+		if s.from > 0 && commandDoor(string(value[s.from+1:s.to])) != sendDoorNone {
+			plain = append(plain, s)
+		}
+	}
+	return plain
+}
+
 // liveTags returns the actionable send-door words away from the head command.
 func (a *app) liveTags() []segment { return a.input.liveTags() }
+
+// plainTags returns the demoted ranges as rune offsets into the trimmed line a
+// send will display. The editor's ranges are offsets into its raw value, and
+// the displayed line drops the leading whitespace ([strings.TrimSpace] in
+// [app.enterLine]); every range is shifted by that many runes. A range that
+// starts inside the trimmed whitespace is dropped, because it cannot name a
+// word the displayed line still holds.
+func (e *editor) plainTags() []segment {
+	if len(e.demotedTags) == 0 {
+		return nil
+	}
+	lead := 0
+	for lead < len(e.value) && unicode.IsSpace(e.value[lead]) {
+		lead++
+	}
+	out := make([]segment, 0, len(e.demotedTags))
+	for _, s := range e.demotedTags {
+		if s.from < lead {
+			continue
+		}
+		out = append(out, segment{from: s.from - lead, to: s.to - lead})
+	}
+	return out
+}
 
 func (b *editor) liveTags() []segment {
 	value := b.value
@@ -227,6 +273,76 @@ func removeSlashTag(value []rune, s segment) string {
 	return strings.TrimSpace(left + " " + right)
 }
 
+// shiftSegments moves every range left by n, dropping any that would start
+// before zero. It is how a demotion's offsets follow text a trim shortened at
+// the front.
+func shiftSegments(segs []segment, n int) []segment {
+	if n == 0 || len(segs) == 0 {
+		return segs
+	}
+	out := make([]segment, 0, len(segs))
+	for _, s := range segs {
+		if s.from-n < 0 {
+			continue
+		}
+		out = append(out, segment{from: s.from - n, to: s.to - n})
+	}
+	return out
+}
+
+// plainWithoutTag carries demoted tags from the line a person sent into the
+// words [removeSlashTag] leaves once the live tag is taken out. value and tag
+// are the editor's, and plain is [editor.plainTags]'s offsets into the trimmed
+// line.
+//
+// EVERY RANGE IS CHECKED AGAINST THE WORDS IT LANDS ON, and one that does not
+// spell the same command there is dropped. The arithmetic mirrors
+// removeSlashTag's trims, and a stray kind of space it did not foresee should
+// cost a chip, never paint one on the wrong word.
+func plainWithoutTag(value []rune, tag segment, plain []segment) []segment {
+	if len(plain) == 0 {
+		return nil
+	}
+	isCut := func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' }
+	lead := 0
+	for lead < len(value) && unicode.IsSpace(value[lead]) {
+		lead++
+	}
+	leftEnd := tag.from
+	for leftEnd > 0 && isCut(value[leftEnd-1]) {
+		leftEnd--
+	}
+	rightStart := tag.to
+	for rightStart < len(value) && isCut(value[rightStart]) {
+		rightStart++
+	}
+	words := []rune(removeSlashTag(value, tag))
+	out := make([]segment, 0, len(plain))
+	for _, p := range plain {
+		from, to := p.from+lead, p.to+lead
+		var at int
+		switch {
+		case to <= tag.from && leftEnd > lead:
+			at = from - lead
+		case from >= tag.to && leftEnd <= lead:
+			at = from - rightStart
+			for skip := rightStart; skip < len(value) && unicode.IsSpace(value[skip]); skip++ {
+				at--
+			}
+		case from >= tag.to:
+			at = from - rightStart + (leftEnd - lead) + 1
+		default:
+			continue
+		}
+		moved := segment{from: at, to: at + (to - from)}
+		if moved.from < 0 || moved.to > len(words) || string(words[moved.from:moved.to]) != string(value[from:to]) {
+			continue
+		}
+		out = append(out, moved)
+	}
+	return out
+}
+
 // paintCommands paints one line of a person's own words: the ink the caller
 // asked for over the prose, and the chip over every command in it.
 //
@@ -265,16 +381,27 @@ func paintCommandSpans(line string, spans []segment, pal palette, ink func(strin
 	return b.String()
 }
 
-// transcriptCommandSpans keeps the chip's promise after a send: a leading
-// command did act, and only the tag ranges recorded on that entry did act.
-func transcriptCommandSpans(value []rune, acted []segment) []segment {
-	var out []segment
-	for _, s := range commandSpans(value, true) {
-		if s.from == 0 || containsSegment(acted, s) {
-			out = append(out, s)
-		}
+// transcriptCommandSpans is every recognized command in one wrapped row of a
+// sent message: every recognised command is highlighted as a recognition mark
+// — the same widening rule as the draft. A word the person demoted with
+// backspace stays plain, exactly as it does in the box: the demoted ranges
+// live in the PRE-WRAP text's coordinates, so a row's own spans are rebased by
+// the row's starting offset before the subtraction. Comparing without that
+// rebase would mis-chip across wrapped rows, because a span's offset restarts
+// at zero on every row.
+func transcriptCommandSpans(value []rune, plain []segment, offset int) []segment {
+	spans := commandSpans(value, true)
+	if len(plain) == 0 {
+		return spans
 	}
-	return out
+	kept := spans[:0]
+	for _, s := range spans {
+		if containsSegment(plain, segment{from: s.from + offset, to: s.to + offset}) {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	return kept
 }
 
 func paintDraftCommands(line string, pal palette, ink func(string) string, offset int, boundary bool, demoted []segment) string {

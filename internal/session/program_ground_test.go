@@ -89,8 +89,8 @@ func TestAProgramsReceiptNamesItsFolder(t *testing.T) {
 	tree := testPrograms("fake")[0]
 	repo := newTestRepo(t)
 	plain := t.TempDir()
-	record := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", Home: "work"}
-	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in "+repo+" itself, on a new branch task/pong-abc123; your branch work does not move, and when it ends task/pong-abc123 stays checked out there with its work. Until it ends, codeaf's own tools write nothing in "+repo+"."; got != want {
+	record := &TaskCopyRecord{Dir: t.TempDir(), Root: repo, Branch: "task/pong-abc123", Home: "work"}
+	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in a private copy of "+repo+", on a new branch task/pong-abc123 cut from your branch work as last committed; your checkout is not touched, and when it ends task/pong-abc123 holds its work, checked out nowhere."; got != want {
 		t.Fatalf("the receipt for a repository = %q, want %q", got, want)
 	}
 	if got, want := delegateReceipt(plain, tree, &TaskCopyRecord{Dir: plain}), "It is fake's: it works alone in "+plain+" itself, which has no git history, so its changes are there as it makes them. Until it ends, codeaf's own tools write nothing in "+plain+"."; got != want {
@@ -103,12 +103,13 @@ func TestAProgramsReceiptNamesItsFolder(t *testing.T) {
 }
 
 // THE CARD NAMES THE PROJECT. A program's card said `where:` and the path its
-// copy would have under codeaf's state; it says the folder itself, and that it
-// gets a branch of its own there when the folder is a repository.
+// copy would have under codeaf's state; it says the person's folder, and that
+// the program works in a copy of its own on a branch of its own when the
+// folder is a repository.
 func TestAProgramsCardNamesTheProject(t *testing.T) {
 	repo, plain := newTestRepo(t), t.TempDir()
 	config := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
-	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: repo}); got != repo+", on a branch of its own" {
+	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: repo}); got != repo+", in a copy of its own on a branch of its own" {
 		t.Fatalf("a repository's card says where: %q", got)
 	}
 	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: plain}); got != plain {

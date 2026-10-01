@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -1206,10 +1207,15 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// The original-file link is independent of the terminal's ability to paint pixels.
 		pictureDoors := a.pathLinks
 		marked, pictureMasks := a.maskPictureMarkers(requestDisplayText(e), e, pictureDoors)
-		body := wrap(marked, userBodyCols(width))
+		body, bodyAt := wrapWithOffsets(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
-			body = nil
+			body, bodyAt = nil, nil
 		}
+		// AND A WORD THE PERSON DEMOTED STAYS PLAIN (slashchip.go). The ranges
+		// are offsets into the displayed text, which [wrapWithOffsets] expanded
+		// tabs in; they are rebased once here and each row's own offset does the
+		// rest.
+		plain := tabExpandedSegments(e.plainTags, marked)
 		// AND A NODE'S INSTRUCTION SHOWS ITS OPENING AND NOT ALL OF ITSELF
 		// (brieffold.go). The cut is made on the WRAPPED lines, so it lands where
 		// a reader's eye would land rather than at some count of bytes; the door
@@ -1223,23 +1229,16 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			// AND A RECOGNIZED SLASH COMMAND KEEPS ITS CHIP AFTER IT IS SENT
-			// (slashchip.go). The box is where a person learns that this surface
-			// knows the word, and a message that dropped the mark on its way into
-			// the transcript would take the fact back the moment it mattered — a
-			// conversation scrolled back through is the only record of what was
-			// asked for. Every row of a wrapped message opens at a boundary: the
-			// wrap breaks on spaces, and a word too long to break on one is not a
-			// command either.
-			// Sent tag ranges are stored on the unwrapped message. Wrapped rows
-			// cannot reuse those offsets, so a line away from the head may chip a
-			// send door only when this entry records that one acted.
-			spans := transcriptCommandSpans([]rune(line), e.actedTags)
-			if len(e.actedTags) > 0 && i > 0 {
-				// Wrapping changes offsets; routed messages are ordinarily one line,
-				// while the scanner still safely recognizes their door on this row.
-				spans = commandSpans([]rune(line), true)
+			// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE, so every
+			// recognized command in a sent message keeps it — the same widening
+			// rule as the draft (slashchip.go's [commandSpans]). Every row of a
+			// wrapped message opens at a boundary: the wrap breaks on spaces,
+			// and a word too long to break on one is not a command either.
+			at := 0
+			if i < len(bodyAt) {
+				at = bodyAt[i]
 			}
+			spans := transcriptCommandSpans([]rune(line), plain, at)
 			out = append(out, lead+paintCommandSpans(line, spans, a.pal, words))
 		}
 		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest
@@ -1861,17 +1860,39 @@ func (a *app) silentFor() time.Duration {
 	return time.Since(a.lastDelta)
 }
 
-// divider is the compaction mark: a rule with the fact in it, because a
+var compactASCIIPunctuation = strings.NewReplacer(" · ", " - ", " → ", " to ", " — ", " - ", "…", "...")
+
+// compactASCII spells a compaction line's MARKS in ASCII and leaves its WORDS
+// alone. The linear tier is a screen reader's, and a reason or a summary's first
+// line in the person's own language is read out as written; only punctuation
+// and symbols a plain terminal cannot draw become ASCII, or `?` when there is
+// no spelling for them.
+func compactASCII(hint string) string {
+	return strings.Map(func(r rune) rune {
+		if r <= unicode.MaxASCII || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) || unicode.IsMark(r) {
+			return r
+		}
+		return '?'
+	}, compactASCIIPunctuation.Replace(hint))
+}
+
+// divider is the compaction mark: one dim line with the fact in it, because a
 // conversation that silently lost its middle is a conversation the person
 // cannot reason about.
+//
+// IT IS A LINE AND NOT A RULE. It was a full-width rule with the fact centred
+// in it, the loudest shape on the page for the surface's own housekeeping, and
+// the design language is dim telemetry with no borders. It now wears the
+// note lane's lead, so it reads as what it is — something codeaf did, said
+// once, quietly — and the mark tells it apart from the notes around it.
 func (a *app) divider(hint string, width int) string {
-	label := " ⚭ " + hint + " "
-	rest := width - ansi.StringWidth(label) - 2
-	if rest < 0 {
-		return a.pal.dim(ansi.Truncate("──"+label, width, glyphMore))
+	lead, more := "· ", glyphMore
+	if a.linear || a.pal.ascii {
+		lead = "- "
+		more = ">"
+		hint = compactASCII(hint)
 	}
-	left := rest / 2
-	return a.pal.dim(strings.Repeat("─", left+2) + label + strings.Repeat("─", rest-left))
+	return a.pal.dim(ansi.Truncate(lead+a.icon(tokens.GCompacted)+" "+hint, width, more))
 }
 
 // compactRow draws one compaction pass, in the two shapes it has.
@@ -1889,9 +1910,10 @@ func (a *app) divider(hint string, width int) string {
 // violet is not available to it — that hue means a person is being asked
 // something, and nobody is being asked anything here.)
 //
-// SETTLED, it is the rule it always was, with what it cost in time:
+// SETTLED, it is the one dim line [app.divider] draws, with what it cost in
+// time, and it stays standing when the turn's work folds (workfold.go):
 //
-//	───── ⚭ compacted from ~84k tokens · took 6s ─────
+//	· ⚭ compacted · summarized 4 messages · ~31k → ~13k tokens · took 6s
 //
 // The duration is dropped under a second, by the same law the tool clock uses
 // ([countUpWord]'s floor): "took 0s" is a column read for nothing.
@@ -2386,8 +2408,8 @@ func (a *app) servedRiderAt(width int) string {
 	// rate is the layer's figure for a stretch that is over, and drawn beside
 	// the pulse's "nothing has come back yet" it is the same contradiction said
 	// by a second row.
-	if sighting.Rate > 0 && a.state == stateWorking && !a.awaitingReply() {
-		fields = append(fields, rowSay(tokenWord(int(sighting.Rate))+" tok/s"))
+	if rate := int(sighting.Rate); rate > 0 && a.state == stateWorking && !a.awaitingReply() {
+		fields = append(fields, rowSay(tokenWord(rate)+" tok/s"))
 	}
 	if words := rowLed(fields, roomFor(room)); words != "" {
 		return riderLead + words
@@ -2496,10 +2518,11 @@ func (a *app) liveRiderAt(width int) string {
 		// and a rate quoted beside the pulse's own silence is this program
 		// contradicting itself out loud. The emptiness law does the rest — a rate
 		// nobody has measured yet is nothing, never `0 tok/s`.
-		if !a.windowWorking() || news.Rate <= 0 {
+		rate := int(news.Rate)
+		if !a.windowWorking() || rate <= 0 {
 			return ""
 		}
-		return rowLed([]rowField{rowSay(tokenWord(int(news.Rate)) + " tok/s")}, roomFor(width))
+		return rowLed([]rowField{rowSay(tokenWord(rate) + " tok/s")}, roomFor(width))
 	}
 	return rowLed(phaseFields(news, a.now()), roomFor(width))
 }
@@ -3742,7 +3765,14 @@ func (a *app) legendLeftSpanFrom(pieces *seamPieces, room int, tier seamTier) (s
 			// left says only whose numbers ride its right — the conversation's,
 			// never the node's (room.go's law about the telemetry). At phone
 			// width the right is the keys and the left stays empty.
+			//
+			// A PROGRAM'S ROOM SAYS WHAT ITS RUN WAS LAUNCHED ON INSTEAD: the
+			// models the program works on, which no other line of its page
+			// names ([app.programModelsWord]).
 			if a.seamCarriesTelemetry() {
+				if word := a.programModelsWord(room); word != "" {
+					return word, hudSpan{}, hudSpan{}, hudSpan{}, true
+				}
 				return roomTotalsWord, hudSpan{}, hudSpan{}, hudSpan{}, true
 			}
 			return "", hudSpan{}, hudSpan{}, hudSpan{}, true
@@ -4218,6 +4248,10 @@ func initialOf(segment string) string {
 	}
 }
 
+// tabStop is the expansion shared by wrapping and command-chip coordinates,
+// so changing the displayed spaces moves demotions by the same amount.
+const tabStop = "    "
+
 // wrap breaks a block of plain text to width, keeping its own newlines. The
 // text is unstyled at this point: styling after wrapping is what keeps every
 // width measurement honest.
@@ -4225,7 +4259,7 @@ func wrap(text string, width int) []string {
 	if width < 4 {
 		width = 4
 	}
-	text = strings.ReplaceAll(text, "\t", "    ")
+	text = strings.ReplaceAll(text, "\t", tabStop)
 	var out []string
 	for _, para := range strings.Split(text, "\n") {
 		if para == "" {
@@ -4235,6 +4269,93 @@ func wrap(text string, width int) []string {
 		out = append(out, strings.Split(ansi.Wrap(para, width, ""), "\n")...)
 	}
 	return out
+}
+
+// wrapWithOffsets is [wrap] for a block whose command chips must be subtracted
+// against ranges that live in the text BEFORE it was broken into rows. It
+// returns the same rows [wrap] would, and beside them the rune offset in the
+// wrapped text at which each row's first rune was taken.
+//
+// TABS ARE EXPANDED FIRST, exactly as [wrap] does, so the offsets are in that
+// expanded text's coordinates. The alignment then walks each paragraph's source
+// and skips only the whitespace the wrapper dropped at a break — the one place
+// [ansi.Wrap] removes characters — which keeps every later row honest where a
+// whole-entry subtraction would not.
+func wrapWithOffsets(text string, width int) ([]string, []int) {
+	if width < 4 {
+		width = 4
+	}
+	text = strings.ReplaceAll(text, "\t", tabStop)
+	var rows []string
+	var at []int
+	start := 0
+	for _, para := range strings.Split(text, "\n") {
+		if para == "" {
+			rows = append(rows, "")
+			at = append(at, start)
+			start++
+			continue
+		}
+		paraRunes := []rune(para)
+		p := 0
+		for _, row := range strings.Split(ansi.Wrap(para, width, ""), "\n") {
+			r := []rune(row)
+			if p > len(paraRunes) {
+				p = len(paraRunes)
+			}
+			if !runesHavePrefix(paraRunes[p:], r) {
+				for p < len(paraRunes) && unicode.IsSpace(paraRunes[p]) {
+					p++
+				}
+			}
+			rows = append(rows, row)
+			at = append(at, start+p)
+			p += len(r)
+		}
+		start += len(paraRunes) + 1
+	}
+	return rows, at
+}
+
+// runesHavePrefix reports whether value begins with prefix.
+func runesHavePrefix(value, prefix []rune) bool {
+	if len(prefix) > len(value) {
+		return false
+	}
+	for i := range prefix {
+		if value[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// tabExpandedSegments moves ranges from a text's own rune coordinates into the
+// coordinates [wrapWithOffsets] consumes, where every tab has already become
+// four spaces. It is a no-op on the overwhelmingly common text with no tab.
+func tabExpandedSegments(segs []segment, text string) []segment {
+	if len(segs) == 0 || !strings.Contains(text, "\t") {
+		return segs
+	}
+	runes := []rune(text)
+	out := make([]segment, len(segs))
+	added := len(tabStop) - 1
+	for i, s := range segs {
+		out[i] = segment{from: s.from + added*tabsBefore(runes, s.from), to: s.to + added*tabsBefore(runes, s.to)}
+	}
+	return out
+}
+
+// tabsBefore counts the tabs in runes before offset at.
+func tabsBefore(runes []rune, at int) int {
+	at = min(max(at, 0), len(runes))
+	n := 0
+	for i := 0; i < at; i++ {
+		if runes[i] == '\t' {
+			n++
+		}
+	}
+	return n
 }
 
 // wrapSheet is [wrap] for a column sheet such as /help. Each source line keeps

@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -115,13 +116,17 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
-	// WHICH OF THE TWO FIXED PREFIXES THIS SESSION SENDS, SETTLED ONCE AND
-	// BEFORE ANYTHING IS BUILT FROM IT (promptprofile.go). It is derived rather
-	// than configured — the model's window and the crew's worker seat are the
-	// two facts — and it is settled HERE, above the render, because the page,
-	// the belt, the shelf and the memory reflex are all built from this one
-	// config and a profile resolved twice is a profile that can answer twice.
+	// Settle the launch preference before building either the page or belt.
+	// Explicit pins remain fixed; automatic profiles follow the selected
+	// window at later request boundaries (promptprofile_live.go).
 	config.profile = settlePromptProfile(config)
+	_, pinned := promptProfileWord(env.Get(promptProfileEnv))
+	_, chosen := promptProfileWord(config.PromptProfile)
+	config.liveProfile = &livePromptProfile{auto: !pinned && !chosen}
+	if !config.liveProfile.auto {
+		config.liveProfile.launch = chosenPromptProfile(config)
+	}
+	config.liveProfile.current.Store(config.profile)
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -145,10 +150,8 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	agent.presentation = &presentationIndex{}
 	agent.cacheKey = sessionCacheKey(agent.id)
-	// WHAT IS ALREADY KNOWN ABOUT THIS MODEL'S REAL WINDOW, before the first
-	// check. The memo survives processes (internal/provider's ServedWindow), so
-	// a model that refused an over-long prompt last week is capped from this
-	// session's first turn rather than from its first refusal (loop.go).
+	// Start with no session-local endpoint limit; the provider applies its
+	// durable evidence when it encodes a request.
 	agent.noteModelWindow(agent.model)
 	// AND WHO THIS SESSION IS WORKING FOR, before anything else is built
 	// (principal.go). It is written once here and never again, which is what
@@ -162,13 +165,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// store has to exist before the tools are assembled (memory.go). The
 	// background lifetime is minted with it, because a pass started by the first
 	// turn has to have somewhere to be cancelled from.
-	// THE PREDICATE IS [Config.hasStore] AND NOT THE FIELD, because the field is
-	// two things: the conversation's own record, which every shape writes and
-	// reads, and the writable memory this brain is, which a lean prefix does not
-	// have (promptprofile.go). The belt and the page are built from that same
-	// predicate a moment later, which is what stops them disagreeing about
-	// whether `remember` exists.
-	if config.hasStore() {
+	// Automatic lean sessions keep a dormant brain so a later switch back to
+	// full can enable memory without changing a pointer background readers
+	// hold. remembers gates every memory entry point by the live profile.
+	if config.Memory != nil && (config.hasStore() || config.liveProfile.auto || config.profile.chat()) {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
@@ -620,14 +620,14 @@ func (a *Agent) Usage() Usage {
 // every tool result, the arguments of every call, all the bytes a surface
 // counting words cannot see. When the transcript has grown since (a 300KB file
 // read that has not been sent yet), the content estimate is larger and wins. See
-// [Agent.estimateTokensLocked] for why it is the max of the two.
+// [Agent.meterTokensLocked] for why it is the max of the two.
 //
 // Zero is a session that has neither sent nor recorded anything, which is the
 // only case where "nothing" is true.
 func (a *Agent) ContextTokens() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.estimateTokensLocked()
+	return a.meterTokensLocked()
 }
 
 // Model returns the model the next request will use.
@@ -1014,8 +1014,14 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	// message that arrives mid-turn is journaled like any other, and what the
 	// journal keeps is what the person said — the block rides the message the
 	// model reads and nothing else.
-	a.attachTurnSkillsLocked(&user)
+	if user.bash == "" {
+		a.attachTurnSkillsLocked(&user)
+	}
 	if a.running {
+		if user.bash != "" {
+			a.mu.Unlock()
+			return nil, errors.New(BashBusyWord)
+		}
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
 		// between an assistant's tool_calls and their results is a shape every
@@ -1033,9 +1039,11 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	// The spend rail is checked here, before anything is recorded: a refused
 	// turn must do NO work, so the person's text is not journaled either — the
 	// message is theirs to send again once the rail moves (rail.go).
-	if err := a.railBlockLocked(); err != nil {
-		a.mu.Unlock()
-		return refusedStream(err), nil
+	if user.bash == "" {
+		if err := a.railBlockLocked(); err != nil {
+			a.mu.Unlock()
+			return refusedStream(err), nil
+		}
 	}
 	events := a.startTurnLocked(ctx, user, nil)
 	a.mu.Unlock()
@@ -1174,6 +1182,8 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// bash is set only by the person's SubmitBash door; model output cannot enter it.
+	bash    string
 	message ai.Message
 	refs    []journalPart
 	// replyTags names finished tasks whose reports this message carries. It is
@@ -1805,10 +1815,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		a.recordUserLocked(user)
 		// AND THE SESSION STARTS NAMING ITSELF NOW, on the person's own words,
 		// beside the answer rather than behind it (title.go). The message is in
-		// the transcript on the line above, which is the only thing the namer
-		// needs; it is started under this lock so that two Submits racing to be
-		// the first cannot buy two names.
-		a.startTitleLocked()
+		// the transcript on the line above; a shell opening additionally waits
+		// for an ordinary reply to explain its output. Naming is started under
+		// this lock so two Submits racing to be first cannot buy two names.
+		if user.bash == "" {
+			a.startTitleLocked()
+		}
 	}
 	// AND THE RECALL STARTS HERE TOO, beside the title and for a stronger version
 	// of the title's own reason (memory.go's [Agent.startRecallLocked]). The name
@@ -1820,7 +1832,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	//
 	// IT IS STARTED UNDER THIS LOCK for the title's reason as well: two Submits
 	// racing to be the first must not each buy a route.
-	a.startRecallLocked(turnCtx, user.text())
+	if user.bash == "" {
+		a.startRecallLocked(turnCtx, user.text())
+	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
 	// decision the leftover handlers and this turn's opening share.
@@ -2169,17 +2183,18 @@ func (a *Agent) Compact(ctx context.Context) error {
 //
 // It was one extra instruction for the summarizer — `/compact keep the API
 // decisions and the failing test`, a person saying which part of a lossy summary
-// had to survive. There is no summarizer any more (loop.go): a pass stubs tool
-// results and folds assistant work, and neither of those is a judgement anybody
-// can steer. The kept content is the same whatever is typed after /compact —
-// every user message, the recent tail, and the state card — so there is nothing
-// for a focus to protect that is not already protected.
+// had to survive. The summarizer was deleted on 2026-08-18 and came back on
+// 2026-09-28 only as a pass's last rung (compact_summary.go), and the surface
+// passes no focus to it: `/compact` takes no argument.
 //
 // The door stays open with its signature unchanged because the surface calls it
 // (internal/tui3), and a person who types the old form gets the pass they asked
 // for rather than an error about a machine that used to exist.
 func (a *Agent) CompactWithFocus(ctx context.Context, _ string) error {
-	_, err := a.compact(ctx, nil)
+	_, skipped, err := a.compactWithPolicyResult(ctx, nil, a.requestedCompactPolicy())
+	if err == nil && skipped != "" {
+		return &SummarySkipped{Why: skipped}
+	}
 	return err
 }
 
@@ -4340,7 +4355,8 @@ func foldsInto(prev, next Event) bool {
 	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
-	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning
+	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning ||
+		prev.Kind == EventToolOutput && prev.CallID == next.CallID
 }
 
 // close ends every subscriber's channel. It runs after the turn's last event,
@@ -4793,6 +4809,11 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			continue
 		}
 		role := msg.Role
+		// A SUMMARY IS THE SESSION'S RECORD OF WHAT WENT, not something anybody
+		// typed, and it is drawn as the divider a "note" is (compact_summary.go).
+		if role == "user" && strings.HasPrefix(messageContentText(msg), summaryNotePrefix) {
+			role = "note"
+		}
 		if role == "user" && journal.isNote(msg) {
 			// A LINE THE SESSION WROTE IS NOT THE PERSON'S. It is user-role in the
 			// transcript because that is the only role the model can be told
@@ -4806,6 +4827,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
 		displayText := messageContentText(msg)
+		// personWords removes only this message's recorded skills injection.
+		if role == "user" {
+			displayText = presentation.personWords(msg)
+		}
 		interrupted, explicitlyHuman := false, false
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			interrupted = mark.Interrupted
@@ -4865,7 +4890,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
 				Args:     argsText(*call),
-				Output:   capOutput(result),
+				Output:   displayToolOutput(call.ID, result),
 				Answered: answered,
 				// And the call's own duration, off the journal's `took` line —
 				// the same figure EventToolFinished carried while the window was

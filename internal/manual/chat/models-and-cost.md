@@ -85,6 +85,12 @@ the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. 
 service reads the model list belonging to that account, and a new connection moves this
 conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
 
+While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
+the conversation stays on its previous model and `enter` on Codex tries again.
+The Codex row in `/settings` uses the same cancellation: the first `esc` cancels
+the pending sign-in while keeping Settings open; later `esc` presses use the
+page's ordinary back-out behavior.
+
 A Codex model's context window is the one that account's model list gives it — `272k` on
 every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
 compaction fires from that figure. When the list cannot be reached at sign-in, the four
@@ -213,15 +219,35 @@ slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the
 component over their own models, but they have no provider row behind them, so nothing
 unfolds under them and the foot does not offer the key.
 
-The cursor opens **on the model in use**, which is also the marked row, so enter with
-nothing typed confirms rather than changes.
+When a connected provider has an empty cached list, codeaf fetches its model list once
+at launch. `ctrl+r` in `/model` asks for a fresh list; the settings rows use the list
+already known.
+
+## Where the model picker cursor opens — Enter confirms, refresh and ctrl+u return
+
+Every model list opens on the model it holds. `/model` opens on the model in use,
+highlighted and on screen on the first frame, so enter with nothing typed confirms.
+The settings slots and roles, a task's model word, home's draft, the task composer's
+`alt+o` and a lane list or chip follow the same rule. A refresh returns the cursor to
+the held model with the typed filter kept; `ctrl+u` emptying the box returns there too.
+If that model is absent, the first selectable row is used, skipping unavailable
+notices. `/model <query>` and typing a filter start the narrowed list at its first row.
+
+The model in use is bold in the accent with no band of its own. The band belongs to
+the cursor, and a pointer hovering another row lifts that row too. Every model list
+owns the mouse wheel while it is up: `/model`, settings slots and roles, home's draft
+and the task composer walk three rows a notch, clamped at both ends, while the page
+beneath stays put. The cursor's row stays on screen with headings and extra lines
+included in the window's size.
 
 **Enter does not close the list.** It switches, the mark moves to the row you chose, and
 the list stays where it is — so two models can be compared on their prices, chosen between,
 and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
 what enter did is already done.
 
-**The box searches the model's name and nothing else.** Filtering splits what you type on
+## Searching the model picker by name
+
+**The model picker's box searches the model's name and nothing else.** Filtering splits what you type on
 whitespace; every word must match, each scored by the fuzzy alignment every picker on this
 surface shares — a word that starts an id, or lands right after a `/` or a hyphen, outranks
 the same letters sitting loose inside it. So `ds v4` finds `deepseek/deepseek-v4-flash` and
@@ -315,7 +341,9 @@ stay still too. Close the list and open it again to see the latest.
 The `via` beside the model above the message box is a different fact: that one is who is
 answering the turn that is in flight, and it is allowed to move. It carries no rate: how
 fast the stream is producing stands at the right of the status line beside the state word
-while the turn writes, as `38 tok/s`.
+while the turn writes, as `38 tok/s`. An unknown rate or one below 1 token per second
+draws nothing; the line never says `0 tok/s`. The work pulse and model rows keep
+their rounded `t/s` rates, with a rate that rounds to zero absent there too.
 
 ## Why does the model picker keep jumping
 
@@ -885,7 +913,7 @@ role**, grouped under the row answering it, saying which model comes out:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `auditor` | checker | whether finished-looking work is actually finished |
+| `checker` | checker | whether finished-looking work is actually finished (a saved pin still names this role `auditor`) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
 | `careful` | checker | a part of a task that needs judgement |
@@ -985,6 +1013,26 @@ payment, or the provider reports its credit at zero. A seat tries at most three 
 in one task; your allowed models (`/crew models`) still limit which ones; and the task's
 crew line then says `free routes in use (may log prompts)`. A paid call answering again
 puts the next task back on paid routes.
+
+## Why does my OpenRouter activity say AgentField AI or codeaf dev — which app a request names
+
+Every model call codeaf sends through OpenRouter — the chat, tasks, transcription and
+images — names the app it comes from, and OpenRouter's activity page, app pages and
+rankings group usage by that app. Which app it is depends only on the version the codeaf
+running the conversation was built as (with `--host`, the other machine's codeaf). No
+setting and no environment variable moves it:
+
+- a **stable release** or a **release candidate** (`codeaf version` prints a `v…` tag)
+  is **AgentField AI**, `https://agentfield.ai`;
+- a **staging build** (`staging-…`) is **codeaf staging**,
+  `https://staging.codeaf.agentfield.ai`;
+- a **dev build** (`dev-…`), and what `make build` makes from a checkout, is
+  **codeaf dev**, `https://dev.codeaf.agentfield.ai`.
+
+All three are filed under OpenRouter's `cli-agent` and `programming-app` categories. The
+app is the only thing these headers say: no prompt, no file and nothing about your account
+travels in them. A service you connected directly rather than through OpenRouter is not
+sent the app, only codeaf's name as its user agent.
 
 ## Which model are you using, and what does a task cost — the chat model and the crew
 
@@ -1463,6 +1511,10 @@ answer: it cannot think harder than its own ceiling.
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
+- On a small context window the budget shrinks to the room the conversation leaves beside
+  an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
+  the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the
+  size of its own thinking.
 
 These rungs are not the same notation as a thinking level written onto a pin
 (`moonshotai/kimi-k3:high`), which still takes only `low`, `medium` and `high`.
@@ -1825,8 +1877,8 @@ These are the sentences and what each one means.
 | what you read | what happened | what codeaf does |
 | --- | --- | --- |
 | `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
-| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
-| `this conversation got too long for the model` | the transcript is past the model's window | shortens the conversation once and asks the same question again |
+| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops without retrying; for the default provider, names the key source, never the key itself |
+| `this conversation got too long for the model` | the transcript is past the model's window | reduces the request and retries within a bounded recovery episode |
 | `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
 | `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
 | `nothing came back from the model — asking again` | a reply arrived with no words and no tool call | asks again on the same budget as any other failure |
@@ -1864,12 +1916,14 @@ different machine serving the same model. Before this, three attempts in a row c
 three deliveries of the same request to the same endpoint — a measured run lost an evening
 to exactly that.
 
-**And a refusal that names no endpoint is not retried at all.** If the router refused on
-its own account, it read the request codeaf built and said no to it — every endpoint alive
-would say the same thing, so asking again at 2s, 4s and 8s only spends the time to be told
-three times. The turn ends immediately with the refusal instead. That is the whole rule:
-**named an endpoint → try another one; named nobody → stop**. It is not a list of status
-codes, so it works the same on a `400`, a `403` or anything else a router invents.
+**And an authentication refusal is not retried at all.** A `401` or `403` means the key or
+its permission was refused, so it stops. For a model served by the default provider,
+it names whether the key came from the shell's
+`OPENROUTER_API_KEY`, the shell's `OPENAI_API_KEY`, or the key saved in your profile.
+It is never treated as a provider `5xx`. A refusal that names no endpoint is also not retried:
+if the router refused on its own account, it read the request codeaf built and said no to it —
+every endpoint alive would say the same thing about the same bytes. The turn ends immediately.
+Other routed refusals are not decided by status alone.
 
 **Where to read it afterwards.** Every failed request now writes a line into the session
 file — the model, the endpoint, the status, the endpoint's name, its own words, which
@@ -2656,42 +2710,42 @@ An unknown window has no threshold at all.
 
 ## The most tokens one request can carry — the model's own window, and the ceiling an endpoint puts on it
 
-**The threshold follows the model's own window.** On a model claiming 1,310,720 tokens,
-compaction fires at **1,114,112** — not at some smaller figure of codeaf's choosing. On the
-default 128,000-token window it fires at 108,800. The line is always
-`window − max(15% of window, 16384)`, and `window` is what the model card says.
+The model catalog is the starting window. Before sending a conversation request, codeaf
+checks the encoded messages, tool schemas and replayed reasoning, the output allowance
+including thinking, and a safety margin. It uses the smallest known context window among
+endpoints the request can reach. A strict provider pin excludes other endpoints; an
+advisory order does not. A request that carries tools is measured against endpoints
+known to take tools; after a pinned endpoint refuses it, that endpoint's learned
+limit also sizes later tool requests. A limit learned from a refusal counts for
+30 minutes even when the endpoint is absent from the sheet. With default routing
+the router can still send a tool request to an endpoint that takes no tools. If
+that endpoint refuses it as too long, codeaf sends
+the same request once more before shortening anything; its window does not size later
+tool requests unless that endpoint is pinned.
 
-There used to be a flat ceiling of 256,000 over every model alike, and it made a
-million-token model fold exactly like a small one — nineteen passes in one two-and-a-half
-hour run, each at around a hundred thousand tokens, each one throwing the provider's prompt
-cache away. That ceiling is gone.
+An endpoint's explicit total limit is remembered by base URL, model and provider in
+`model-quirks.json` for 30 minutes, then learned again if it still holds. A rejected
+prompt's length is **not** a total context limit. Old model-wide `served_window` guesses
+are no longer used to size requests.
 
-**What can still lower it is an endpoint refusing.** If a provider answers that a request
-would not fit, codeaf writes down how big that request was and never trusts that model past
-that size again — in this conversation from the next check onward, and on this machine for
-good, because the note is kept in `model-quirks.json` beside your other settings. That is
-the one thing allowed to contradict a model card, and it is the only thing: a published
-window is a claim, and a refusal is a measurement.
+## How much room is left for the answer — the output cap, max_tokens and the safety margin
 
-It exists because a claim can be very wrong. A session on
-`~deepseek/deepseek-v4-flash-latest` — a row claiming 1.3M tokens — grew to 386,309 tokens
-without compaction firing once, and what came back at that size was the model's own template
-turned inside out rather than an answer. That now costs one turn on that model on this
-machine, instead of costing every model with real room every turn for ever.
+When no output cap was requested, the total output allowance is the smaller of the answer
+room setting and a quarter of the effective window. It is sent as the request's
+`max_tokens` only when it does work — a thinking budget, a window too small for an ordinary
+answer, or an endpoint that stated its window when it refused — and an ordinary request
+leaves the output cap to the endpoint, since an unasked cap can rule out an endpoint whose
+own cap is lower. It may shrink to fit, while normally
+keeping at least 512 output tokens (an eighth of a very small window). A thinking budget
+shrinks to fit beside room for an answer, and is dropped below 1,024 tokens, so thinking
+alone never makes a request too long. The safety margin is 5% of the window, bounded between
+512 and 8,192 tokens. These are estimates, not a provider tokenizer.
 
-What the status line reports is still the model's own window, because that line is
-describing the model.
-
-**A request that would not fit is never sent.** Immediately before each request goes out,
-a transcript already past the trusted window is compacted first — and unlike the ordinary
-pass, this one runs **even when automatic compaction is switched off**. Fitting is not a
-preference. Nothing is truncated and nothing of yours is dropped; it is the same pass
-`/compact` runs, and every message you typed survives it.
-
-**Accuracy note.** codeaf also carries a shared context-budget package with a 60%-fill rule,
-a 160k working set and a 250% reuse law. **That package is not used by this chat.** Its
-consumer is the sub-harness leaf sizing elsewhere in codeaf. The chat's own law is the one
-above — do not describe this conversation as filling to 60%.
+If the request still cannot fit, it is shortened before sending. If protected content
+cannot fit either, codeaf stops locally with `context needs shortening before sending`,
+naming the input, the short answer it kept room for and the safety margin, and suggests
+compaction or a larger-context model. This guard stays on with `--no-compact`.
+The status line still shows the catalog window; an endpoint may have a smaller limit.
 
 ## A task or a worker on another model gets that model's window
 
@@ -2711,10 +2765,11 @@ smallest window this surface routes to and the safe direction for a guess to be 
 
 ## What happens before the conversation is compacted
 
-codeaf does not jump straight to summarizing. There are rungs before it.
+codeaf uses mechanical reductions first; a summary is written only when they are not
+enough (see *What a compaction pass keeps*).
 
-**During one long turn, tool output has its own working-set bound.** Once the live request
-estimate crosses **64,000 tokens** — or half the trusted context window when that is smaller
+**During one long turn, tool output has its own working-set bound.** Once tool observations from the turn
+cross **64,000 tokens** — or half the trusted context window when that is smaller
 — codeaf replaces already-seen tool results from that turn with the same readable pointer
 lines described below. It works in whole tool batches, oldest first, while leaving the
 latest **20,000 tokens** verbatim (capped at a quarter of a smaller window). The result from
@@ -2795,15 +2850,7 @@ are appended at the *end* of the conversation and never written into the system 
 because a system message that changed would make every message behind it new again, while a
 note at the end costs only the note.
 
-**Rung 2 — page images.** Instead of summarizing the part being dropped, it can be
-photographed: rendered verbatim to monospaced page images that the model reads back. No model
-call, nothing paraphrased. This rung is chosen only when you gave `/compact` no focus, there
-is a workspace, there is page budget, and the model in use can read images. Pages are 120
-columns by 64 lines, greyscale, deterministic, and footed
-`<title> | context page 1 of 4`. The ceiling is **8 pages**; anything past it is folded to a
-marker after the pages.
-
-**Rung 3 — the fold.** If the transcript is still too big after stubbing, the oldest
+**The fold.** If the transcript is still too big after stubbing, the oldest
 **assistant** work is replaced by one marker line. It is not a summary: nothing is described
 and nothing is decided.
 
@@ -2816,66 +2863,79 @@ nothing else can reconstruct, so the fold walks past them and takes only the ass
 
 ## What a compaction pass keeps
 
-**A compaction asks no model, costs nothing, and takes no time you can feel.** There is no
-summarizer behind it — there was one, and it was deleted. It paid a model to write prose
-about the text it was about to throw away, at the worst possible moment, and the loss was
-unrecoverable because the transcript the prose came from went with it.
+Compaction first asks no model: tool results can become pointers to their full bytes, and
+older assistant work can become a marker naming the saved journal. Only when that cannot
+reach the line the pass needs does the conversation's own model write a summary of the
+oldest part, your older messages included, marked `[context compacted]`. The system prompt
+and your three most recent messages, with everything after them, stay word for word
+when no cut can reach the line. If a cut can reach it, codeaf chooses the one that
+keeps the most. Recovery from a refused request can keep fewer to reclaim the
+missing room; your latest message always stays word for word.
 
-What replaces it is two mechanical passes over messages this session already has: tool
-results become pointers to their own bytes, and then the oldest assistant work becomes one
-marker line naming where the whole of it can still be read.
+Routine cleanup keeps the latest 20,000 tokens, capped at a quarter of the window, and
+protects the running turn. `/compact` and necessary request-size recovery can also fold
+older completed batches within the running turn. They keep a 4,096-token tail, capped at
+an eighth of the window, and always keep the newest assistant/tool batch whole. A batch
+that alone exceeds the allowance stays whole; pending tool calls are not discarded.
 
-What the model is handed instead of a summary is the **state card** — what `track` and
-`commit` recorded — which rides in the system prompt on every turn and is kept up to date
-after each one. So what the conversation is about is never paraphrased, because it was never
-written as prose in the first place.
+Manual compaction does not wait for the automatic threshold. It folds eligible history
+outside that smaller tail. Necessary recovery takes enough older work to buy headroom,
+then checks the newly assembled request again. Those two free steps paraphrase nothing;
+a summary paraphrases the older part, while the originals stay in the session journal.
+Removed reasoning leaves together with the assistant message it belongs to.
 
-A pass can decline: `session: nothing to compact` (everything already fits in the tail), or
-`session: a compaction pass is already running`.
+`nothing to compact — your messages and recent work are kept` means no eligible material
+could be reduced. It does not mean the whole request fits. A genuinely concurrent pass
+may return `session: a compaction pass is already running`.
 
 ## What happens when the conversation gets too long — when compaction happens by itself
 
-When the conversation gets too long to fit, nothing is lost and nothing stops: the oldest
-part of it is stubbed and folded down to a marker and the recent tail is kept, which is what
-compaction is.
+Routine compaction starts after a step crosses the automatic threshold. Necessary
+compaction also runs when the assembled provider request cannot fit, regardless of
+`--no-compact`. It considers the input, tool definitions, replayed reasoning, output
+allowance and safety margin together.
 
-**Nothing is lost is meant literally, and you can go and look.** The session file keeps
-every original line, and scrolling up above the boundary is given those rather than the
-shortened copy — with one dim line, `· above here the model keeps a shortened record — you
-can still read it all`, where the two meet. What shrank is the model's copy, not yours (the
-screen page has the whole of that line's meaning, and the limit: a session compacted by an
-older codeaf is still drawn from the shortened copy). The fold marker the model sees names
-that journal as a real path — `[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, lines 12..40]`
-— so codeaf can open the lines that left the window itself. *Where did the folded messages
-go* on the compacting page is the whole of that.
+A provider can still reveal an unknown or changed limit. codeaf recognizes that overflow,
+reads a reported total limit when available, and retries only after reducing the request,
+learning a changed limit or correcting its input estimate. There are at most **two recovery
+attempts per failed generation**. A successful response resets the allowance, so a later
+overflow in the same long turn can recover too. Completed tool actions are not rerun.
 
-Four ways a pass starts:
+A pass that reduces history shows `compacting ~84k tokens`, then a `compacted` line
+reporting the work folded and the size reduction. Automatic attempts that find nothing
+to reduce leave no seam; `/compact` still reports its no-op. Your scrollback and the journal keep the original record. The
+model's fold marker names the journal so `read` or `grep` can recover the omitted work.
 
-- **Automatically**, after any step where the estimate is over the threshold. A failed pass is
-  not a failed turn.
-- **Just before a request that would not fit**, when the transcript is already past the
-  256,000-token ceiling. This one runs **even when automatic compaction is switched off** —
-  the switch governs headroom, and fitting is not headroom.
-- **On a context-overflow error from the provider**, once per turn. This one runs **even when
-  automatic compaction is switched off** — the switch governs the automatic pass, not the
-  recovery from a request the provider has already refused. Overflow errors are never retried.
-- **On demand**, when you ask for it.
-
-While a pass runs you see `compacting ~84k tokens` (`~842` under a thousand). On success:
-`compacted from ~84k tokens, kept last ~20k`, or with page images
-`compacted from ~84k tokens to 4 page images, kept last ~20k`. On failure:
-`compaction failed · context unchanged`. A failed pass always settles its row.
+Recovery from a refused request can also end with a summary of the oldest part of the
+conversation, written by the conversation's own model. If your most recent message and the
+newest working batch still cannot fit, shortening stops and the request is refused locally. A new conversation or a larger-context model is needed.
+An unfamiliar endpoint can still reject a first request: estimates and published limits
+cannot guarantee that every provider's initial response succeeds.
 
 ## /compact — compacting now
 
-`/compact` compacts the conversation on demand. It notes `compacting…` immediately and runs
-the pass off the loop, so the surface stays alive.
+`/compact` runs a reduction immediately, even below the automatic threshold. It notes
+`compacting…` and works off the input loop. Older completed work becomes pointers to the
+full journal first, which makes no model call. If enough older conversation remains,
+the conversation's own model summarizes it, your older messages included — in the same
+pass, so one `/compact` goes as far as it can.
 
-**Success is silent.** There is no "done" message — a compaction that worked simply leaves the
-conversation shorter. A failure comes back as `compact failed: ` followed by the error.
+Your three most recent messages and everything after them stay word for word when
+no cut can reach the line. If a cut can reach it, codeaf chooses the one that keeps
+the most. Recovery from a refused request can keep fewer to reclaim the missing
+room; your latest message and system prompt always stay.
+Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
+`⚭ compacted` without a size when it did not; those figures are estimates. A no-op says
+`nothing to compact — ` and why. A pass still running after five minutes says
+`still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands`. Other
+failures say `compact failed: ` followed by the reason.
 
-**It costs nothing and asks no model**, so there is no reason not to run it, and no `compaction`
-role in settings to point at a model for it.
+There is no separate compaction model or summarization setting. The smaller retained tail and the
+explicit reduction distinguish this command from routine automatic cleanup.
+
+`/compact` ends with a summary written by the conversation's own model whenever at least
+about 1,000 tokens of older conversation are left to summarize; its cost counts toward the
+session's spending like any other call.
 
 ## Turning automatic compaction off
 
@@ -2885,7 +2945,7 @@ text reads `never compact automatically`.
 What it turns off is exactly the automatic threshold check. Still working:
 
 - `/compact`, when you ask for it, and
-- the recovery pass when the provider itself refuses a request as too long.
+- the request-size guard and recovery when the provider refuses a request as too long.
 
 With a `--host` remote launch the flag is **refused rather than ignored**, because it cannot
 travel to the other machine.
@@ -2937,7 +2997,7 @@ conversation's own ceiling on **Session**. They are all on **Spending** now, and
 The settings panel's tab bar reads, in order:
 
 ```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
@@ -2956,7 +3016,7 @@ the same registry row, so what you set through one is what the others show:
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
 | the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits`, the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
-| a refused turn | the message names `/budget` |
+| a refused turn | the message names the limit that stopped it — `/budget conversation` or `/budget day` |
 | the first-run setup | its `Models and spending` screen, whose **Daily limit** row writes this same row. It asks about the day's limit only — `per plan` and `per conversation` keep their defaults there and are changed here |
 
 `ctrl+,` opens the panel itself, and `←`/`→` walk to **Spending** from wherever it opened.
@@ -3002,7 +3062,7 @@ one it was:
   it first` as the two answers. Answered once, the decision stands for that job. Set the
   row to `none` and it never asks.
 - **`per conversation` — it stops.** `conversation limit reached · $2.05 spent of $2 ·
-  /budget changes it`. The section on that below has the whole of it.
+  /budget conversation changes it`. The section on that below has the whole of it.
 - **`per day` — the day's work waits.** When the day's calls reach the daily limit, new
   work waits for midnight or for you to raise it. `/budget 800` raises it where you stand.
 - **A task's own cap.** A task started from the composer layer (`alt+enter`) carries the
@@ -3076,7 +3136,7 @@ When `per conversation` is set and this conversation has spent it, the next turn
 refused before it starts, with exactly this line:
 
 ```
-conversation limit reached · $2.05 spent of $2 · /budget changes it
+conversation limit reached · $2.05 spent of $2 · /budget conversation changes it
 ```
 
 The figures are yours; whole dollars are written without cents.
@@ -3086,8 +3146,8 @@ Four things are true of that refusal, and each is deliberate:
 - **The turn in flight always finishes.** The limit stops the *next* turn. A turn with
   tool calls out is never cut in half.
 - **The refused message is still yours.** Nothing was journaled, no request was sent, no
-  tool ran — your text stays in the box, and sending it again once you raise the limit
-  runs it for the first time.
+  tool ran. The box is cleared when you press enter, but `↑` brings the text back, and
+  sending it again once you raise the limit runs it for the first time.
 - **It reads the recorded bill, not an estimate.** The figure is the provider's own cost
   numbers, folded in per answer.
 - **It counts what this conversation spent before you resumed it.** The total is rebuilt
@@ -3110,7 +3170,7 @@ colour.
 
 **A task started after this conversation's dollar limit is already spent still gets
 one paid call before it ends.** `/task` is not a turn, so the refusal that stops the
-next turn — `conversation limit reached · … · /budget changes it` — is not asked in
+next turn — `conversation limit reached · … · /budget conversation changes it` — is not asked in
 front of it. The run is handed the smallest figure above nothing rather than zero,
 because zero would mean no limit at all. Its first worker makes one model call, that
 call puts the run over the figure, and the run ends there: its row says
@@ -3410,7 +3470,8 @@ Four things worth knowing:
   With one service, which is most doors, there are no headings and the arrow means the
   whole list.
 - **Pressing the key puts the cursor on the top row**, because the top row is the answer to
-  the question you just asked. Opening the list still lands on the model in use. It sorts
+  the question you just asked. Opening `/model` and every other model door lands visibly on the model it holds,
+  so enter with nothing typed confirms. A refresh returns there too. The sort key sorts
   whatever the filter kept, so `deep` then `alt+s` is the deepseek rows in that column's
   order.
 
@@ -3679,6 +3740,16 @@ same ceiling. If a model's list does not say how much it thinks, the first time 
 comes back empty with the whole ceiling spent, codeaf remembers that model thinks
 regardless and leaves room from then on; it never remembers it on a guess.
 
+## Do generated images and videos keep their costs in the call log?
+
+Yes. Each media request writes a start and an end record. Image costs supplied
+only in the response headers still appear on the end record, alongside any
+reported token counts. A price explicitly supplied in JSON keeps its value.
+A completed video
+poll records the job's reported cost; downloading its finished file writes its
+own pair without counting that same job cost twice. Unreported costs remain
+absent.
+
 ## Where are the logs of what codeaf sent the model — the model-call log, and reading it with `codeaf logs`
 
 Every call codeaf makes to a model writes a line to one file, always, with nothing to
@@ -3885,10 +3956,16 @@ what it cost. `--json` carries the same money in `spend`, with the two halves be
 `spend_work` is what this run's own nodes cost, `spend_overhead` what it cost to decide
 what those nodes should be. They always add up to `spend`.
 
-**The amount is every model call the run made**, not the workers' calls alone: compiling
-the request, the plan model's reading of what the request states, the planning passes, each
-worker's own calls, and the delivery gate at the end. It is summed out of the run's own
-usage ledger once the work has stopped moving, rather than guessed at from a day's total.
+On the default run road, the door makes no separate planning calls: structuring and
+checks belong to the run's nodes. Its whole bill is `spend_work`, with zero
+`spend_overhead`. `tokens.in` and `tokens.out` are the input and output totals from all
+those calls, including calls in a run that stopped short.
+
+**The amount is every model call the run made.** The default run road settles the
+workers' reports after they stop, including structuring and checks. With
+`CODEAF_TASK_BELT=off`, the other road also includes request compilation, planning
+and the delivery gate, read from the run's own usage ledger. Neither guesses at the
+bill from a day's total.
 
 **So it equals the call log's end rows to the cent.** Add up the `$` on the rows in `codeaf
 logs` that came back — the end rows, never the `⋯ in flight` starts, which have no cost
@@ -4032,9 +4109,19 @@ words:
   reports.
 - **`full`** sends everything whatever the model reports.
 
-**A change lands the next time codeaf starts.** The profile is settled once when
-a conversation opens, because it decides the page and the tool list every
-request in that conversation is sent with.
+**Changes to this setting land the next time codeaf starts.** The launch preference
+stays fixed. With `auto`, selecting a model below 32,000 tokens changes the prompt
+and default tool list together before the next request; selecting a larger model
+restores the full profile. An answer already in flight keeps its original shape.
+Explicit `lean` and `full` choices override that automatic switching.
+
+Capabilities you explicitly loaded and connected service tools remain available
+across a switch. Consequently, a conversation with many loaded tools can still be
+too large for the smaller model. A profile change does not summarize history.
+
+The lean profile is still too large for some 4k–8k models. Automatic selection is
+not a promise that every model can fit the prefix or use tools; the final request
+guard still checks the assembled request.
 
 **`CODEAF_PROMPT_PROFILE` still pins it for one launch, over the row.** Put
 `CODEAF_PROMPT_PROFILE=lean` or `CODEAF_PROMPT_PROFILE=full` in front of the
@@ -4059,3 +4146,69 @@ check, and completed spending resets at the local date boundary. Calls already
 in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately.
+
+## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
+
+**Both limits apply; neither overrides the other.** New chat turns stop when
+either limit is reached. The daily limit counts all of today's spending on this
+machine — every conversation and every task, not only this conversation. The
+conversation limit counts that conversation's recorded spending, including
+earlier days.
+
+- With `/budget 10` and `/budget conversation 2`, a conversation that reaches
+  $2 cannot start another turn, even if today's total is still below $10.
+- With `/budget 10` and `/budget conversation 20`, the conversation cannot start
+  another turn once today's total reaches $10, even if this conversation is
+  below $20.
+
+Raise the limit named in the error above the recorded spend, then send your
+message again: `/budget day 30` for the daily limit, or `/budget conversation 30`
+for the conversation limit. Bare `/budget 30` is the daily form and never changes
+the conversation limit. The refused text is not left in the box — `↑` walks back
+through what you sent, `/budget` lines included, to bring it back. When both
+limits are reached the error names the daily one first; raising it shows the
+conversation one, so raise both. Changing or removing one does not bypass the
+other. These amounts set total limits, not additional credit, and do not reset
+recorded spending.
+
+A chat turn already in flight may finish above either limit; the limit blocks
+the next turn rather than interrupting the current one.
+
+## A model that can't use tools — what retry "removed tools" meant, "can't use tools, so it answers without them", "sent without tools"
+
+Some models take no tool calls at all. When the model catalog says so (the model's
+published parameters do not include tools), codeaf leaves every tool off the request from
+the start and says so once per model, the first time:
+
+```
+microsoft/phi-4 can't use tools, so it answers without them — it cannot read, search or change files
+```
+
+The conversation still works as a chat: the model answers from what it knows and from what
+you paste in. It cannot open files, run commands or look anything up, and it will say so
+if you ask it to. It is also given a **short chat page** as its instructions instead of
+codeaf's working page — about 2,000 characters rather than 20,000 or more, because the
+working page is almost all about tools — and memory is off, as on a small window. Your
+project's instruction files (AGENTS.md, CLAUDE.md) are not sent to it. The request-size
+check counts only what is really sent. Pick a model that takes tools (`/model`) when you
+need it to work in your files: the next message goes out with the working page and every
+tool back, including any group you had loaded. A lean or full setting you chose still
+applies to every model that can use tools.
+
+A model the catalog does not know is still sent its tools and its working page. If no
+provider serving it accepts them, the retry line says so — it used to read
+`Retry 1/1: removed tools`, which did not say why. If that retry is answered, codeaf sends
+the model no tools for the next 30 minutes, so the refusal is not paid on every message,
+and the one-time line above follows; a retry that also failed teaches nothing:
+
+```
+Retry 1/1: sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer
+```
+
+## Switching back to a model without tools after a file read — earlier calls and results
+
+When you switch to a model that cannot use tools after another model used one,
+the earlier call and its result are carried as readable conversation text. The
+model can discuss that result, but it cannot make a new tool call itself.
+Switching back to a tool-capable model restores the original tool-call history
+on its request.

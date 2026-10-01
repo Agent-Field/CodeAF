@@ -199,7 +199,7 @@ func (a *app) teamsRailAll(d *teamsDraw, width, y int) string {
 		return teamsPad(name, width)
 	}
 	btn, _ := d.button(word, teamsTarget{act: teamsActRootManager, x0: left, y: y,
-		hint: "Start a manager over every team: you talk to it, it talks to theirs" + hintSegment + "m"}, pal.muted)
+		hint: "Start a manager over every team: you talk to it, it talks to theirs" + hintSegment + "M"}, pal.muted)
 	return name + btn
 }
 
@@ -414,17 +414,41 @@ func (a *app) teamsSpendWords(t team) string {
 		}
 		return teamsMoney(teamstore.RoundMoney(s.USD)) + " today"
 	}
-	words := teamsMoney(teamstore.RoundMoney(s.USD)) + " of " + teamsMoney(e.CapUSDDay) + " today"
+	cap := a.teamsRaisedCap(owner, e.CapUSDDay)
+	words := teamsMoney(teamstore.RoundMoney(s.USD)) + " of " + teamsMoney(cap) + " today"
 	if owner != t.ID {
 		if o, ok := a.teamByID(owner); ok {
 			name := o.Name
 			if o.Root {
 				name = teamstore.RootName
 			}
-			words += " " + a.teamsDot() + " " + name + "'s cap"
+			words += " " + a.teamsDot() + " " + possessiveTeamName(name) + " cap"
 		}
 	}
 	return words
+}
+
+// teamsRaisedCap is today's ceiling after a person accepted a raise. The
+// decision is deliberately not a team setting, so the header must read the
+// same packet the cap gate uses rather than the stored recurring ceiling.
+func (a *app) teamsRaisedCap(owner string, cap float64) float64 {
+	day := teamstore.Today()
+	for _, p := range a.tp.packets {
+		if p.Kind != teamstore.PacketCap || p.State != teamstore.PacketDecided || p.Decision != teamstore.OptionRaiseCap || p.Cap == nil {
+			continue
+		}
+		if p.Cap.Team == owner && p.Cap.Day == day && p.Cap.RaiseTo > cap {
+			cap = p.Cap.RaiseTo
+		}
+	}
+	return cap
+}
+
+func possessiveTeamName(name string) string {
+	if strings.HasSuffix(name, "s") {
+		return name + "'"
+	}
+	return name + "'s"
 }
 
 // teamsClosedWords is a closed team's dates: when it was made and closed.
@@ -826,7 +850,7 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 	case !ok && a.tp.sel == teamsAllRow:
 		out = append(out, "", " "+pal.dim(fit("a manager over every team: you talk to it, and it talks to each team's own", width-2)))
 		s, _ := d.button(teamManagerSlotWord, teamsTarget{act: teamsActRootManager, x0: 1, y: y + len(out) + 1,
-			hint: "Start the manager of every team" + hintSegment + "m"}, pal.ink)
+			hint: "Start the manager of every team" + hintSegment + "M"}, pal.ink)
 		out = append(out, "", " "+s)
 	case !ok:
 	case t.Closed():
@@ -849,7 +873,7 @@ func (a *app) teamsNoManagerRows(d *teamsDraw, t team, width, y int) []string {
 	}
 	pal := a.pal
 	s, w := d.button(teamManagerSlotWord, teamsTarget{act: teamsActManager, id: t.ID, x0: 1, y: y + 1,
-		hint: "Start " + t.Name + "'s manager: a conversation that runs the team for you" + hintSegment + "m"}, pal.ink)
+		hint: "Start " + t.Name + "'s manager: a conversation that runs the team for you" + hintSegment + "M"}, pal.ink)
 	lead := 1 + w + 2
 	said := wrap(teamsNoManagerWord, max(width-lead, 8))
 	out := []string{""}

@@ -706,7 +706,9 @@ func translateResponse(response *http.Response, wantsStream bool) (*http.Respons
 				_, writeErr := fmt.Fprintf(writer, "data: %s\n\n", encoded)
 				return writeErr
 			})
-			if err == nil && state.failure == nil {
+			// Only a mapped terminal event proves the Responses answer finished.
+			// A clean upstream EOF without one must reach the provider as a cut.
+			if err == nil && state.terminal && state.failure == nil {
 				_, err = io.WriteString(writer, "data: [DONE]\n\n")
 			}
 			_ = writer.CloseWithError(err)

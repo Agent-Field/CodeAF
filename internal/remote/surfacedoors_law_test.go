@@ -77,10 +77,6 @@ type absentDoor struct {
 // the ruling it asks for first: a family at a time, not a door at a time.
 var doorsThatHaveNotCrossed = map[string]absentDoor{
 	// ── SAYS SOMETHING THAT IS NOT TRUE. Land these first.
-	"memoryAgent": {
-		says:  "memory is off for this session · turn it on under /settings",
-		loses: "/remember, /forget, /memories, /memory <query> and the memory place — memory is not off, it is unreachable",
-	},
 	"folderLander": {
 		says:  "nothing is waiting · what this conversation writes in the folder it is standing in is already there",
 		loses: "/land; and the `changes for … · /land` row above the box goes quiet too",
@@ -127,7 +123,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 21
+const surfaceDoorLedger = 20
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {
@@ -277,7 +273,7 @@ func TestEveryStreamOpenerIsOrdered(t *testing.T) {
 	// AND NO CLASS AT ALL RUNS ON THE GOROUTINE THAT READS THE SOCKET. The road
 	// type has no third value, so this is a statement about the two it has
 	// rather than a check somebody could forget to extend.
-	for _, class := range []callClass{classOrdered, classGetter, classAct} {
+	for _, class := range []callClass{classOrdered, classGetter, classAct, classWork} {
 		if class.road() != inOrder && class.road() != onItsOwn {
 			t.Errorf("a class found a road that is not one of the two")
 		}

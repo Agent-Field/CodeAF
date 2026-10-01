@@ -42,29 +42,35 @@ conversations view on that team instead, and the hint says so.
 
 ## Making a manager
 
-The **teams page** (`/teams`, `alt+2`) offers `+ Manager` on every team that has none, and
-`All teams` offers one manager over every team. Choosing a team there puts its manager's
-conversation in the page's pane, where you talk to it beside the tree of your teams.
+The **teams page** (`/teams`, `alt+2`) offers `+ Manager` on a team that has none, and
+`All teams` offers one manager over every team. Choose a team to talk to its manager
+beside the tree of teams.
 
-A team has no manager until you make one, and until then nothing about managers costs anything.
-While a team is shown, the first place on the tab strip is the manager's, pinned at the left
-like a pinned browser tab so it never scrolls away:
+Managers cost nothing until you make one. A team's manager is pinned at the left of
+its tab strip and never scrolls away:
 
 - **`+ Manager`**, a quiet button, while the team has none. A press starts a new conversation
-  in the team's folder and makes it the manager. Point at it and the hint line says so. On a
-  window under 100 columns the button leaves the strip; the team switcher still offers it.
+  in the team's folder and makes it the manager. Its hint says so. Under 100 columns the
+  button leaves the strip; the team switcher still offers it.
 - **`◆ Make this harbor's manager`** in the team switcher (the `● harbor ▾` chip) makes the
-  conversation in front the manager, and in a tile's Teams list on the conversations view makes
-  that one the manager. When the team already has one, the row says which one it replaces:
+  conversation in front the manager. A tile's Teams list on the conversations view makes
+  that tile the manager. With an existing manager, the row names which one it replaces:
   `◆ Make this harbor's manager (replaces Shipping the parser)`. On the manager itself the row
   reads **`◇ Make an ordinary member`**, which turns it back into an ordinary conversation with
   all its history. When the chip reads `teams ▾` with All shown, choose a team and reopen the
   chip: All has no manager or Remove row. After you make a manager, the menu stays open and
   that row changes to `◇ Make an ordinary member`.
 
-Once there is a manager the place reads **`◆ Manager`**, and on the conversations view its tile
-comes first, titled `◆ Manager · <its title>`. Point at the tab to see the team and the title in
-the hint line. `alt+m` goes to the manager from any conversation in the team.
+The manager's place reads **`◆ Manager`**. Its conversations tile comes first, titled
+`◆ Manager · <its title>`. The tab's hint names its team and title. `alt+m` goes to the
+manager from any conversation in the team.
+
+An untitled manager is addressable immediately: codeaf derives its fallback handle from
+the team's name, for example `@second` for Second. The manager over `All teams` uses
+`@lead`; a team name that cannot supply a valid handle also falls back to `@lead`.
+If the handle is already taken in that team, a number is added. Another manager can use
+`team_send` before its first turn. Once its title is made, the ordinary title-based
+handle choice may replace that fallback.
 
 ## The manager's screen
 
@@ -313,7 +319,8 @@ without that card. When allowed:
 
 - the new team is made under the manager's team, with its share of the pool: the parent's daily
   cap times `sub-team share` (`/settings`, **Teams**; 50% by default), written on the new team.
-  A parent with no cap gives none, and the new team spends from whatever pool is above it;
+  A parent with no effective cap gives no derived child cap, and the new team follows the
+  ordinary cap rules: its own profile-default pool unless an explicit ancestor cap applies;
 - the members named move into it, and its manager is the new conversation, which opens behind
   the one you are in like any start, is a member of the parent team, and is handed the brief
   marked as the manager's together with the words `you were started to manage the team

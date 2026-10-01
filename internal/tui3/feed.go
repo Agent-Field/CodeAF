@@ -318,6 +318,12 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.updateDelivery = userUpdateStream{}
 		f.retry(ev)
 
+	case session.EventError:
+		if ev.Discard {
+			f.updateDelivery = userUpdateStream{}
+			f.discardAttempt()
+		}
+
 	case session.EventSteerConsumed:
 		if ev.Steer != nil {
 			// Consumption begins a new provider response even when the turn
@@ -348,6 +354,18 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.confirmUserUpdate()
 		f.beginTool(ev)
 
+	case session.EventToolOutput:
+		for i := range f.entries {
+			e := &f.entries[i]
+			if e.kind == entryTool && e.callID == ev.CallID {
+				e.detail.Output += ev.Text
+				e.open = true
+				f.follow()
+				f.touch()
+				break
+			}
+		}
+
 	case session.EventToolFinished:
 		f.finishTool(ev)
 
@@ -369,7 +387,7 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// spinning over a turn that moved on is the defect the pair exists to
 		// close.
 		f.closeLive()
-		f.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+		f.settleCompaction(firstNonEmpty(ev.Hint, "compacted"), ev.Summarized > 0)
 	}
 }
 
@@ -692,6 +710,7 @@ func (f *feed) beginTool(ev session.Event) {
 	f.closeLive()
 	f.entries = append(f.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
+		open:   session.IsUserBashCall(ev.CallID),
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
 		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
 		// row records it and this one did not, which left the rows drawn for a
@@ -917,13 +936,13 @@ func (f *feed) finishTool(ev session.Event) {
 // an older session predates the start event entirely. Those get a row born
 // finished — the divider they always drew, with no duration claimed, because a
 // pass this surface did not see the start of has no honest elapsed time.
-func (f *feed) settleCompaction(text string) {
+func (f *feed) settleCompaction(text string, summarized bool) {
 	for i := len(f.entries) - 1; i >= 0; i-- {
 		e := &f.entries[i]
 		if e.kind != entryCompact || !e.ended.IsZero() {
 			continue
 		}
-		e.text, e.ended = text, f.now()
+		e.text, e.ended, e.summarized = text, f.now(), summarized
 		e.stale = true
 		// AND THE PAGE IS TOLD, HERE. Ingest is the whole of what an event does
 		// (see [feed.ingest]), so a settle that left the repaint to its caller was
@@ -934,7 +953,7 @@ func (f *feed) settleCompaction(text string) {
 	}
 	now := f.now()
 	f.entries = append(f.entries, entry{
-		kind: entryCompact, text: text, turn: f.turn, began: now, ended: now,
+		kind: entryCompact, text: text, turn: f.turn, began: now, ended: now, summarized: summarized,
 	})
 	f.follow()
 	f.touch()
@@ -1427,7 +1446,22 @@ func (f *feed) moveNote(old, text string, facts []string) {
 // because a room that had three of the four would be a room drawing an attempt
 // that never ran — which is exactly what a room did, by having none of them.
 func (f *feed) retry(ev session.Event) {
-	// A retry ends the attempt, including any text closed by interleaved
+	f.discardAttempt()
+	// AND THE ATTEMPT THAT NEVER HAPPENED LEAVES A ROW WHERE THE PERSON IS
+	// READING. It used to leave the event's sentence and nothing else, which was
+	// nearly right and missed the two things the sentence cannot say: that this
+	// is one of several, and — when the ladder runs out — that it stopped. Both
+	// come off [failure], composed in the one place every surface composes them
+	// (failurerow.go).
+	f.lastAsk = retryFailure(ev, f.countAsk())
+	f.note(failureRow(f.lastAsk))
+}
+
+// discardAttempt removes the visible work of a cut response. It is shared by
+// a retry and a final error because both discard the same unjournaled text,
+// while only a retry adds a new attempt to the surface's count.
+func (f *feed) discardAttempt() {
+	// Discarding ends the attempt, including any text closed by interleaved
 	// reasoning. A later confirmation must not adopt those discarded words.
 	end := len(f.entries) - 1
 	var owner *responseConfirmation
@@ -1462,7 +1496,7 @@ func (f *feed) retry(ev session.Event) {
 	}
 	// The same unfinished owner labels reasoning that was displaced by a
 	// queued line. The engine discarded it too; keeping it would make live
-	// history differ from a task reopened after the retry.
+	// history differ from a task reopened after the cut.
 	if owner != nil && !owner.done {
 		for i := range f.entries {
 			e := &f.entries[i]
@@ -1484,14 +1518,6 @@ func (f *feed) retry(ev session.Event) {
 	if f.hooks.retrying != nil {
 		f.hooks.retrying()
 	}
-	// AND THE ATTEMPT THAT NEVER HAPPENED LEAVES A ROW WHERE THE PERSON IS
-	// READING. It used to leave the event's sentence and nothing else, which was
-	// nearly right and missed the two things the sentence cannot say: that this
-	// is one of several, and — when the ladder runs out — that it stopped. Both
-	// come off [failure], composed in the one place every surface composes them
-	// (failurerow.go).
-	f.lastAsk = retryFailure(ev, f.countAsk())
-	f.note(failureRow(f.lastAsk))
 }
 
 // failureNote is what a surface writes when a turn ENDS on an error, and it is

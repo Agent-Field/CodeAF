@@ -173,6 +173,22 @@ func (s *v3ModelShelf) contextWindow(model string) int {
 	return v3ContextWindow(s.modelsForService(service), bare)
 }
 
+// wireModel is the id a model is sent to its service under: the service's
+// written prefix and any thinking level taken off. A shelf that knows no
+// services answers the model as named.
+func (s *v3ModelShelf) wireModel(model string) string {
+	model, _ = roles.SplitEffort(strings.TrimSpace(model))
+	if s == nil {
+		return model
+	}
+	sources := s.sourcesNow()
+	if sources.Empty() {
+		return model
+	}
+	_, bare := sources.For(model)
+	return bare
+}
+
 // sourcesNow is the service set the shelf was last aligned with.
 func (s *v3ModelShelf) sourcesNow() modelsource.Set {
 	s.mu.RLock()

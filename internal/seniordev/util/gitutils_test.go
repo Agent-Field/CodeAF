@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
 
 func gitTestRun(t *testing.T, dir string, args ...string) string {
@@ -86,6 +88,49 @@ func TestEagerCommit(t *testing.T) {
 	}
 }
 
+// A COMMIT OF ONE NAMED INPUT MUST NOT WRITE ANOTHER INPUT'S BLOB. Git reads
+// brackets in a path argument as a pattern unless the pathspec is literal.
+func TestAnEagerCommitOfABracketedNameTakesNoOtherInput(t *testing.T) {
+	dir := initGitRepo(t)
+	gitTestRun(t, dir, "commit", "-q", "--allow-empty", "-m", "base")
+	gitTestRun(t, dir, "switch", "-q", "-c", "task/run")
+	inputs := gitidentity.Inputs{}
+	for _, name := range []string{"notes[1].md", "notes1.md"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("person's "+name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fingerprint, ok := gitidentity.Fingerprint(path)
+		if !ok {
+			t.Fatalf("could not fingerprint %s", path)
+		}
+		inputs[name] = fingerprint
+	}
+	list := filepath.Join(t.TempDir(), "inputs-at-start")
+	if err := gitidentity.WriteInputs(list, inputs); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(gitidentity.InputsEnv, list)
+	t.Setenv("SENIOR_DEV_EXPECTED_BRANCH", "task/run")
+	changed := filepath.Join(dir, "notes[1].md")
+	if err := os.WriteFile(changed, []byte("run's notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	previous := skipEagerCommit.Load()
+	skipEagerCommit.Store(false)
+	defer skipEagerCommit.Store(previous)
+	EagerCommit(context.Background(), EagerCommitOptions{Cwd: dir, FilePath: changed, Label: "write"})
+	if got := gitTestRun(t, dir, "ls-tree", "-r", "--name-only", "-z", "HEAD"); got != "notes[1].md\x00" {
+		t.Fatalf("eager commit tree = %q, want only notes[1].md", got)
+	}
+	blob := strings.TrimSpace(gitTestRun(t, dir, "hash-object", "--", "notes1.md"))
+	command := exec.Command("git", "cat-file", "-e", blob)
+	command.Dir = dir
+	if err := command.Run(); err == nil {
+		t.Fatal("the input left alone was written into git's object store")
+	}
+}
+
 // A write made after HEAD leaves the run's branch remains uncommitted, on a
 // person's branch or on a detached HEAD, and never advances either ref.
 func TestEagerCommitSkipsAHeadMovedOffTheRunBranch(t *testing.T) {
@@ -126,7 +171,9 @@ func TestEagerCommitSkipsAHeadMovedOffTheRunBranch(t *testing.T) {
 }
 
 // An eager file write cannot admit an initially ignored secret after the run
-// removes its ignore rule, nor a Python cache created by the run's test suite.
+// removes its ignore rule, nor a Python cache created by the run's test suite,
+// nor an untracked input codeaf copied in that the write left as it was; an
+// input the write changed is the run's work and is committed.
 func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 	dir := initGitRepo(t)
 	gitTestRun(t, dir, "switch", "-q", "-c", "task/run")
@@ -139,11 +186,26 @@ func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	ignored := filepath.Join(t.TempDir(), "ignored-at-start")
+	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte("local input\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(ignored, []byte(".env\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "parser.py"), []byte("half\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inputs := gitidentity.Inputs{}
+	for _, name := range []string{"credentials.json", "parser.py"} {
+		inputs[name], _ = gitidentity.Fingerprint(filepath.Join(dir, name))
+	}
+	list := filepath.Join(t.TempDir(), "inputs-at-start")
+	if err := gitidentity.WriteInputs(list, inputs); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SENIOR_DEV_EXPECTED_BRANCH", "task/run")
 	t.Setenv("SENIOR_DEV_IGNORED_AT_START", ignored)
+	t.Setenv(gitidentity.InputsEnv, list)
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -158,16 +220,23 @@ func TestEagerCommitSkipsInitialIgnoresAndGeneratedRunPaths(t *testing.T) {
 	previous := skipEagerCommit.Load()
 	skipEagerCommit.Store(false)
 	defer skipEagerCommit.Store(previous)
-	for _, file := range []string{filepath.Join(dir, ".env"), cache} {
+	for _, file := range []string{filepath.Join(dir, ".env"), filepath.Join(dir, "credentials.json"), cache} {
 		EagerCommit(context.Background(), EagerCommitOptions{Cwd: dir, FilePath: file, Label: "write"})
 	}
 	if after := strings.TrimSpace(gitTestRun(t, dir, "rev-parse", "HEAD")); after != before {
 		t.Fatalf("eager commit moved the task branch from %s to %s", before, after)
 	}
-	for _, file := range []string{".env", "__pycache__/module.pyc"} {
+	for _, file := range []string{".env", "credentials.json", "__pycache__/module.pyc"} {
 		if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
 			t.Fatalf("%s was removed: %v", file, err)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "parser.py"), []byte("finished\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	EagerCommit(context.Background(), EagerCommitOptions{Cwd: dir, FilePath: filepath.Join(dir, "parser.py"), Label: "write"})
+	if got := gitTestRun(t, dir, "show", "HEAD:parser.py"); strings.TrimSpace(got) != "finished" {
+		t.Fatalf("the input the write finished was not committed: %q", got)
 	}
 }
 

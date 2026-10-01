@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
+	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/runbudget"
 	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
@@ -229,6 +230,9 @@ func soloResultStatus(outcome soloOutcome) (string, string) {
 	case "pass-unverified":
 		return "pass", "submitted; verification did not complete"
 	case "unsubmitted":
+		if soloVerificationPassed(outcome.Verification) && outcome.TerminalReason != "" {
+			return "fail", outcome.TerminalReason
+		}
 		return "fail", "the run ended without submitting"
 	default:
 		if reason == "" {
@@ -284,9 +288,32 @@ func (runner *pipeline) prepareWorkspace(ctx context.Context) error {
 	}
 	runner.events.stage("bootstrap", "ready", map[string]any{
 		"workspace": absolute, "recorder": runner.recorder.Kind(),
+		"models": coderModels(runner.args.High), "effort": runner.args.Variant,
 	})
 	return nil
 }
+
+// coderModels is the pool the coder routes on as codeaf names models — without
+// the service in front — for the `bootstrap` record, which codeaf reads to
+// show what the run was launched on (delegate.StageRecord.Models). It is the
+// pool after the crew's leniency and the defaults, which is the pool the run
+// actually works with and not the one it was asked for.
+//
+// IT IS HELD TO [coderModelsShown], so the list and the recorder beside it fit
+// the record's cap together (stage_data.go's [stageRecordData]).
+func coderModels(pool string) []string {
+	models := splitPool(pool)
+	if len(models) > coderModelsShown {
+		models = models[:coderModelsShown]
+	}
+	for i, model := range models {
+		models[i] = strings.TrimPrefix(model, orclient.Service+"/")
+	}
+	return models
+}
+
+// coderModelsShown is the most models the `bootstrap` record names.
+const coderModelsShown = 12
 
 func (runner *pipeline) note(message string) {
 	_, _ = io.WriteString(runner.notes, message)

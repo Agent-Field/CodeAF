@@ -19,6 +19,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -53,6 +54,25 @@ type ProgramRecord struct {
 	// they existed, which a reader draws as no time rather than a wrong one.
 	StartedAt time.Time `json:"started_at,omitzero"`
 	EndedAt   time.Time `json:"ended_at,omitzero"`
+	// Models and Effort are the models the program said it works on and how
+	// hard it asks them to think ([StageRecord.Models]), so the task's page can
+	// name what a run was launched on instead of leaving a person to remember
+	// the flags. Both are empty until the program says, and stay empty for a
+	// program that never does.
+	Models []string `json:"models,omitempty"`
+	Effort string   `json:"effort,omitempty"`
+}
+
+// Heard keeps the models a stage record names ([StageRecord.Models]) and
+// reports whether it changed the record, so a sink writes the record again
+// only when there is something new in it.
+func (r *ProgramRecord) Heard(stage StageRecord) bool {
+	models, effort, ok := stage.Models()
+	if !ok || (slices.Equal(models, r.Models) && effort == r.Effort) {
+		return false
+	}
+	r.Models, r.Effort = models, effort
+	return true
 }
 
 // WriteProgram writes the record, whole, making the folder when it is not

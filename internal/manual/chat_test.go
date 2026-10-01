@@ -293,6 +293,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// crew or what a task costs.
 		{"how do I change the model the task worker uses?", "models-and-cost"},
 		{"is my code sent anywhere that logs it?", "models-and-cost"},
+		{"why does my openrouter activity say codeaf dev instead of agentfield ai", "models-and-cost"},
 		{"which model are you using and what does a task cost?", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
@@ -1010,6 +1011,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did the folded messages go", "compacting-over-and-over"},
 		{"how do I get the compacted text back", "compacting-over-and-over"},
 		{"what happened to the earlier messages", "compacting-over-and-over"},
+		// Summaries came back as compaction's last rung on 2026-09-28.
+		{"does codeaf summarize my conversation", "compacting-over-and-over"},
+		{"when does compaction write a summary", "compacting-over-and-over"},
+		// A tool-less model is told once rather than retried every turn (2026-09-28).
+		{"why does it say the model can't use tools", "models-and-cost"},
+		{"what does retry removed tools mean", "models-and-cost"},
+		{"what does the summary keep", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
@@ -1040,6 +1048,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will senior-dev stop and ask me questions while it works", "senior-dev"},
 		{"where did senior-dev's commits go", "senior-dev"},
 		{"how much does a senior-dev run cost", "senior-dev"},
+		{"which model is my senior-dev run using", "senior-dev"},
+		{"how do I read the whole brief senior-dev was given", "senior-dev"},
+		{"scroll senior-dev's brief", "senior-dev"},
+		{"senior-dev finished my new file but it is not on the branch", "senior-dev"},
+		{"will senior-dev commit my credentials.json", "senior-dev"},
+		{"what models was senior-dev launched with", "senior-dev"},
 		{"does a senior-dev run have its own dollar limit", "senior-dev"},
 		{"what flags does codeaf senior-dev take", "senior-dev"},
 		{"why is there no /senior-dev on windows", "senior-dev"},
@@ -1537,6 +1551,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the money on the status line include what my tasks are spending", "models-and-cost"},
 		{"is a task's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
+		// #1671: a daily limit and a conversation limit both apply, and the
+		// person who raised the wrong one says the command does not work.
+		{"my budget command doesn't work", "models-and-cost"},
+		{"why is my conversation blocked", "models-and-cost"},
+		{"I raised the budget but my conversation is still blocked", "models-and-cost"},
+		{"conversation limit vs daily limit", "models-and-cost"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
 		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},
@@ -2501,6 +2521,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does this rule apply to all my projects", "standing-orders"},
 		{"not in this project", "standing-orders"},
 		{"why does it say 3 standing orders here", "standing-orders"},
+		{"when does a standing order go off on home", "home"},
 		// The wave that gave a rule with no trigger a shape of its own. These are
 		// the words somebody uses for one before they have heard the word
 		// "standing" at all — a style rule, a convention, a preference — plus the
@@ -3053,6 +3074,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
 		}
 	}
+}
+
+// #1469: home lists waiting standing orders without their due time. A person
+// asking when one goes off there must reach the correction and the standing
+// place door, not the old promise of a time at the row's right edge.
+func TestHomeStandingOrderQuestionPointsToTheDueTimeDoor(t *testing.T) {
+	const asked = "when does a standing order go off on home"
+	const says = "Home does not show when a waiting order will next go off"
+	for _, section := range Chat().Search(asked, DefaultResults) {
+		if section.Page == "home" && strings.Contains(section.Body, says) {
+			return
+		}
+	}
+	t.Fatalf("%q does not reach the home section that directs the reader to the due time", asked)
 }
 
 // People should be told when a provider skips the key box and when its list

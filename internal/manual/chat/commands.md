@@ -1,5 +1,48 @@
 # Commands
 
+## Bash mode — run a shell command with ! and keep its output in context
+
+Start a message with `!` to run a non-interactive shell command yourself:
+`!ls -lth`, `!pwd`, or `!git status`. Enter runs it in this conversation's workspace;
+from Home it opens a conversation in the selected project first. With `--host`,
+the command runs on the connected machine. No model is asked to run it or explain
+its result, and no provider key is needed for the command itself.
+
+Typing the leading `!` changes the composer prompt to an amber `$`; deleting it
+restores the ordinary prompt. Combined stdout/stderr appears as plain text while
+the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
+control sequences are removed for safe display. The command and output remain in
+history after reopening. The model waits for your next message before responding.
+A failed command keeps its output and exit status too. Shell paths, `@` names and
+slash words remain literal, not mentions or send tags.
+
+Commands receive no interactive input or terminal. Use non-interactive flags;
+editors, prompts and terminal apps are not supported. Each command starts a fresh
+shell in the workspace: `cd` and `export` apply only within that command. Large
+output is truncated with a notice. The foreground shell timeout applies, and
+Escape stops the command. These commands cannot be sent to background jobs. Enter
+supplies consent for ordinary commands; explicit policy denies still apply. The short
+table of dangerous commands (disk wipes, `mkfs`, reboot/shutdown and the fork bomb)
+still asks first. Shell commands run with your permissions, including network access.
+File-tool workspace guards cannot restrict shell writes; bash mode is not a sandbox.
+
+An empty `!`, attached files, or a busy conversation leaves your draft in place
+and explains what to change. Wait for the turn to finish or stop it first.
+Task pages accept task messages; run `!` commands from the parent conversation.
+
+## Conversation titles after shell commands
+
+A conversation containing only `!` commands keeps a literal command preview as
+its working name. Home and conversation lists preserve its casing and punctuation;
+long commands are clipped to fit. Shell turns do not ask a model for a title.
+After a shell opening, automatic naming waits for the first ordinary message with
+an answer and uses both, skipping recorded human shell turns. The command preview
+stays until the title arrives. This gives a question such as "what did that print?"
+the context of its answer; the answer may quote shell output. An interrupted question
+does not stop naming: if part of its answer had arrived, your next message names the chat
+from that exchange, and if none had, the next answered question does. Conversations that
+begin with an ordinary message still start naming immediately.
+
 ## Typing a slash to see the command list
 
 Type `/` in the home or conversation message box to see every available command in
@@ -53,19 +96,24 @@ handling; typing `/` there does not open this composer list.
 
 A command codeaf recognizes is not drawn as ordinary text. `/task`, `/compact`, `/clear`
 and the rest get a **chip**: a tinted background behind exactly the letters of the
-command — the same tint the *chosen* row of a list wears, the one that marks the model in
-use or the conversation you are in — with the accent ink on top.
+command — the same tint the *chosen* row in `/resume` wears, marking the
+conversation you are in — with the accent ink on top.
 No brackets, no border, and nothing added to the line.
 
 It happens in two places: **live in the message box as you type**, and in your message
 after it is sent, where it stays for as long as the conversation is scrolled back
 through.
 
-Only a command this surface will act on gets one. At the start of the box that is every
-recognized command. In the middle or at the end it is one of the two send-door tags,
-`/standing` or `/task`, including `/orders`. Other commands there are plain words. A typo
-is plain too: `/tsak` stays ordinary text. A path is never chipped, for the reasons in
-"Why a file path does not pop up the command list".
+A sentence you send into a running answer keeps its chips. A message waiting for
+the answer shows them while it waits.
+
+A chip marks any command codeaf recognises, wherever it stands — at the start, in
+the middle, or at the end. `/compact`, `/clear`, `/model` and the rest wear it
+exactly as a leading command does. It does not mean enter will run that word:
+enter acts only on a leading command, and on a send-door tag away from the head
+(the next section). A typo is plain: `/tsak` stays ordinary text. A path is never
+chipped, for the reasons in "Why a file path does not pop up the command list".
+A command glued to punctuation — `/model,` or `(/model)` — is plain, like a typo.
 
 The chip never adds a cell. A leading command runs in its usual form. A live send-door
 tag is removed from the words handed through its door, while your transcript keeps the
@@ -86,12 +134,14 @@ tags** anywhere else in a draft:
 
 Both roads end at something you can see: standing raises its ratification card, and task
 starts one worker in the open — its started row, and its row on the roster, where it can be
-stopped. A pasted tag does not silently do work, because the chip says what enter will do. With no other words, each tag behaves like that command's existing
+stopped. A pasted tag does not silently do work: a live send-door tag is named on
+the hint line under the box, and it only ever opens the door you can see. With no other words, each tag behaves like that command's existing
 bare form. With two live tags codeaf sends nothing, leaves the draft in the box, and says
 `one tag per send — backspace one to make it plain words`.
 
 Other commands remain ordinary prose away from the start. `later I will run /compact on
-this` is sent literally, and `/compact` is plain rather than chipped.
+this` is sent literally, and codeaf still chips `/compact` there — the mark says the word
+is recognised, not that enter will run it.
 
 ## Backspace after a slash tag makes it plain words
 
@@ -100,16 +150,18 @@ backspace removes its chip but deletes no letter. The word is now plain prose an
 sends it to the conversation normally. A second backspace edits the word as usual.
 
 Editing the demoted word makes codeaf recognize its current spelling afresh. Edits before
-it merely move the annotation with the text. Emptying or sending the draft forgets all
-demotions.
+it merely move the annotation with the text. The word stays plain in the sent message
+too, including one typed while an answer was still coming that waited its turn, and a
+waiting message pulled back into the box keeps it plain there. Emptying the draft forgets
+all demotions.
 
 ## Slash command did nothing
 
 A command in the middle of a sentence acts only when it is `/standing`, `/orders`, or
-`/task`, and a chip is the promise that it will act. `/clear`, `/model`, `/compact` and
-the other commands are plain prose there. Put one of those commands at the start if you
-want to run it. If a send-door word is plain, it was demoted with backspace; edit it or
-type it again to make it live.
+`/task`. Every other command there is still highlighted — `/compact`, `/clear` and
+`/model` wear the same chip as any recognized word — but enter sends it as ordinary
+words. Put one of those commands at the start if you want to run it. If a send-door word
+is plain, it was demoted with backspace; edit it or type it again to make it live.
 
 The command list follows that rule when you choose a row from it:
 
@@ -162,7 +214,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/drafts` | — | — | lists cleared drafts, newest first; enter restores one to the box and `d` lets one go; an empty ring says `no cleared draft is waiting` |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
-| `/compact` | — | — | summarizes the conversation now |
+| `/compact` | — | — | shortens the conversation now |
 
 ## Home, project and file context commands — what does /workspace path do
 
@@ -204,7 +256,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
-| `/memories` | — | — | prints every memory into the conversation |
+| `/memories` | — | — | opens the memory place |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
 
@@ -218,7 +270,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
 | `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
 | `/crew` | — | `cap task <dollars>` | the most one task may spend — $5 unless set; `-yes-spend` does not lift it |
-| `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
+| `/task` | — | — | opens the full-screen sessions place — the same place as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
 | `/task` | — | `--best <brief>` | starts the task on the strongest crew the allowed models make, this task only |
@@ -249,6 +301,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
+| `/cache` | — | `clean now` | deletes the shared build cache now |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
 | `/update` | `/upgrade` | — | installs the newest stable release and restarts this conversation on it |
 | `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag, then restarts this conversation on it |
@@ -357,7 +410,8 @@ transition; the existing conversation and unsent draft stay available.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
-message box goes back. The **tab strip** above the transcript then shows both.
+message box goes back. An untouched new conversation has no tab. A draft or first
+sent message gives it a name, and the **tab strip** above the transcript then shows both.
 
 **The one exception is a conversation nobody has used yet**: no transcript, no turn ever
 run, nothing out and nothing waiting. That one is closed and replaced, because closing it
@@ -401,29 +455,36 @@ new session failed: <error>
 A close that fails says so and the surface continues. A launcher that cannot build the
 replacement says so, and nothing is replaced.
 
-## /compact — summarize the conversation now
+## /compact — shorten the conversation now
 
-`/compact` notes `compacting…` immediately and runs the compaction off the loop.
+`/compact` notes `compacting…` immediately and reduces older completed work, even below
+the automatic threshold. It first turns old tool results into pointers and folds older
+assistant work, which costs nothing. If enough older conversation remains, the conversation's
+own model writes a **summary** in the same pass, replacing older messages.
+Your three most recent messages and
+everything after them stay word for word unless a cut that keeps fewer is what reaches the
+line: codeaf chooses the cut that keeps the most and still gets under it — three, two, your
+latest with the reply before it, or your latest alone. When no cut can reach the line,
+`/compact` keeps all of your last three messages that exist, since summarizing more
+would not reach it either. With only two since the last summary, it keeps both; if
+there is too little before them, it writes no summary and says why. Only recovery
+from a refused request then keeps fewer. The
+latest message and the system prompt always stay word for word. The full record
+stays in the session journal, and the summary names that file.
 
-**There is no success message.** A compaction that worked is silent — the note that it
-started is all you get.
-
-A failure comes back as:
-
-```
-compact failed: <error>
-```
-
+Success reports `⚭ compacted · about N to M tokens` when the measured count fell, or
+`⚭ compacted` without a size when it did not; the figures are estimates, and the line
+stays in the conversation as the answer to your command. When nothing
+changed it says `nothing to compact — ` and why: for example `only ~400 tokens since the
+last summary — too little to summarize`, `there is nothing before your last 3 messages to
+summarize`, or `the model could not write a summary: ` and the reason. The status line's
+count drops as soon as the pass lands.
+Other failures say `compact failed: ` followed by the reason. The pass runs off the input
+loop, so the surface stays responsive, and a message you send while it runs is not held
+behind it; if that message is too long to send before the pass lands, it waits for the pass
+and then goes. A summary on a slow model can take a minute; the chat waits up to five. If the
+engine is still working after that, it says `still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands`.
 `/compact` has no argument form and no alias.
-
-**A compaction costs nothing and asks no model.** It is two mechanical passes over
-the messages this session already has: tool results the model has already used
-become pointers to their own bytes, and if that is not enough the oldest assistant
-work is replaced by one marker line naming how much went and where it can be read.
-Your own words are never folded. There is **no summariser** and there is **no
-`compaction` role in settings** — there was one, and it was a priced row wired to
-nothing. What the model is handed instead of a summary is the state card, which is
-maintained a little at a time by the reader that runs after each turn.
 
 ## /rewind — go back to an earlier point in the conversation
 
@@ -753,8 +814,8 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 ## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
-the engine's posture words: `ask` (it asks you), `guardian` (a small model answers the
-plainly safe ones first), `allow` (it runs things without asking) or `deny` (it refuses).
+the person's words: `asks` (it asks you), `guardian` (a small model answers the plainly
+safe ones first), `YOLO` (it runs things without asking) or `refuses` (it refuses).
 It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
 setting decided it. `/status --json` carries the same fact under the `approvals` key, and
 the phone's status sheet has the same row.
@@ -870,8 +931,18 @@ the same row the Spending tab writes through.
 | `/budget` | opens the Spending tab on `per day` |
 | `/budget 50` | sets the day's limit to $50 |
 | `/budget none` | removes the day's limit — the row then reads `no limit` |
+| `/budget conversation 20` | sets the open conversation’s limit to $20 immediately and saves the default |
+| `/budget conversation none` | removes the open conversation’s limit |
 | `/budget plan 20` | sets one row by name |
 | `/budget plan` | a row named with no figure opens the tab on that row |
+
+If a turn says `conversation limit reached`, use `/budget conversation 20`
+(or another amount above the recorded spend), then send the message again — `↑`
+brings it back, since the box is cleared on enter. `/budget 20`
+changes only the daily limit and cannot release a conversation's separate cap.
+The refusal names `/budget conversation`; a daily refusal names `/budget day`.
+With no amount, either command opens settings on the corresponding row. A failed
+live update says `saved for the next conversation · this one still has its previous limit`.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
@@ -938,8 +1009,11 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-Models from connected providers sit under their provider's name as a dim heading, default
-provider first; a custom provider's heading is the name you gave it.
+With only the default provider in the list, models have no provider heading. The
+default provider stays in the list even without its key: adding a direct provider
+such as Ollama therefore draws headings, including the default provider's. Models
+sit under their provider's name as a dim heading, default provider first; a custom
+provider's heading is the name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -971,10 +1045,27 @@ esc itself changes **nothing** — it closes the list and gives your half-typed 
 frame back as they were. What enter already did is already done; esc does not undo it. The
 filter is forgotten when the picker closes.
 
-The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
+## Where the /model cursor opens — Enter confirms the model in use
 
-The placeholder in the empty filter box reads:
+Every model list opens on the model it holds: `/model` opens on the model in use,
+highlighted and on screen on the first frame, so enter with nothing typed confirms it.
+A settings slot or role, a task's model word, home's draft, the task composer's `alt+o`
+and a lane list or chip likewise open on their held model. A refresh puts the cursor
+back on that model, keeping the typed filter; `ctrl+u` emptying the box returns there
+too. If the held model is absent, the cursor rests on the first selectable row, skipping
+unavailable notices. `/model <query>` and typing a filter start the narrowed list at
+its first row.
+
+The model in use is bold in the accent with no band of its own. The cursor supplies
+the highlighted band, and hovering another row lifts that row too. Arrows, page keys
+and the wheel stop at the list's ends with the cursor visibly on screen, counting the
+headings and extra lines. The wheel walks the open model list, three rows a notch,
+in `/model`, settings slots and roles, home's draft and the task composer; the page
+beneath stays put until the list closes.
+
+## Model picker filter box and key hints
+
+The model picker's empty filter box reads:
 
 ```
 filter by name · ctrl+r refresh
@@ -998,7 +1089,9 @@ back` — the foot names whichever key actually works at that moment. What is le
 the box is the name of the box and the one key that is about the LIST rather than about the
 row under the cursor.
 
-Choosing a model sets it on the agent, teaches the surface its context window and tells
+## Choosing a model and saving it for the next launch
+
+Choosing a model in `/model` sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
 notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
 opens on it. Over `--host` the switch takes for the session and is not written down: the
@@ -1065,7 +1158,9 @@ Limits:
 ## Refreshing the model list — a new model came out but it is not in /model; the model list is out of date
 
 The list `/model` shows is fetched from the router at most once a day, so a model a
-provider shipped this morning may not be in it yet. With the picker open, press
+provider shipped this morning may not be in it yet. When the saved list is more than a day
+old, codeaf starts with it anyway — starting never waits on that fetch — and fetches the
+newer list in the background, so it is there the next time codeaf starts. With the picker open, press
 **`ctrl+r`** to fetch the newest list now from the router and every connected provider
 that lists models. Each provider's group fills as its answer arrives; one provider's
 failure does not stop the others. The placeholder names it — `ctrl+r refresh` —
@@ -1107,9 +1202,10 @@ esc leaves the conversation exactly as it was.
 Ten rows show, each a name, a description and an age. The name climbs a ladder: the title
 the session gave itself, else the first seven words you said in it, else the transcript's
 file name — then title-cased, with small words left lowercase and nothing ever
-lowercased, so `OpenAI` keeps its shape. The description is the last thing that happened,
-capped at 80 columns. The age (`2h ago`, or a date past a month) is reserved first and
-never cut. **Ids and file names appear nowhere.**
+lowercased, so `OpenAI` keeps its shape. A name that is still a `!` command is the
+exception: it is shown as typed, clipped only to fit, never title-cased or cut to seven
+words. The description is the last thing that happened, capped at 80 columns. The age
+(`2h ago`, or a date past a month) is reserved first and never cut. **Ids and file names appear nowhere.**
 
 The cursor opens on the conversation you are already in. enter on another row closes this
 agent, interrupting a running turn first, opens the chosen transcript, clears everything
@@ -1419,7 +1515,7 @@ The row is called by the first words you typed for a second or two, and then by 
 name a small model gives it.
 
 When a `/task` runs on the run engine (*The worker harness* page), the row it writes to the
-tasks place carries the step its worker is on **right now** — the running glyph `◐`, the shell
+sessions place carries the step its worker is on **right now** — the running glyph `◐`, the shell
 lead `$` and the command — with the task's `N steps · $0.11` under it. The line is there only
 while a step is in flight, and goes the moment the command ends.
 
@@ -1427,10 +1523,10 @@ while a step is in flight, and goes the moment the command ends.
 strips the tag and takes the remaining words through this same road. Backspace
 immediately after the tag makes it plain prose.
 
-**A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
-open, holding every task this project has ever run. It does *not* print a usage line, and
+**A bare `/task` opens the full-screen sessions place** — the same place `/history` and `ctrl+.`
+open, holding this machine's conversation and task record. It does *not* print a usage line, and
 it starts nothing. On a project that has never run one it opens the page anyway, headed
-`tasks` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
+`sessions` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
 row at the foot of the task column types `/task ` into your box, which is why the word on
 its own has an answer worth giving.
 
@@ -1508,43 +1604,30 @@ and nothing to walk between — the arrows keep their ordinary meaning — and w
 forming there is no head that counts, only the block described under *Why is there a line
 next to my task*. A typed `/task` never joins the block: it has no wait in front of it.
 
-## /history — the task history command: past tasks, every task this project has run
+## /history — task history in the sessions place, including past tasks
 
-`/history`, or `ctrl+.`, opens a full-screen page holding the project's whole task record:
-this conversation's work **and every earlier conversation's**. It is the one place that
-answers "what did we do about this last week" — the roster's column beside the conversation
-is built from this session's own work, and carries only a short dulled note of the rest.
+`/history` opens the full-screen `[sessions]` place, the same destination as `ctrl+.`,
+`alt+4` and a bare `/task`. It lists this machine's conversations and their nested
+tasks across projects and earlier sessions. The column beside a conversation holds
+that conversation's tasks; the sessions place holds the broader record. There is no
+`/tasks` command. `/task <brief>` and `/task solo <brief>` start work; `/history`
+only opens the record.
 
-**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
-mean *give codeaf work*; this page starts none, so it does not share their word. Typing
-`/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
-bar, and **`alt+4`** and `tab` reach it without a command at all. The word is a place, not a
-command.
+The place groups conversation trees under `running` and `completed`, with each
+task's state on its row. A conversation with a live or unanswered task stays under
+`running`; its tree moves to `completed` when the work settles. The lists start
+newest first and their age heading reverses the order. Rows can be folded.
 
-Two sections. `running` is the tree of everything still going, drawn whole, with each task's
-current call, clock, tokens and spend under its name — and a row a run writes there carries
-the step its worker is on right now: the running glyph `◐`, the shell lead `$` and the command,
-with the task's `N steps · $0.11` beneath it. `earlier` is a flat list, newest first, of
-everything the project has finished — one line each, the same rows the `@` list offers.
+**Type to filter.** Printable keys, including spaces, narrow the list. The box
+at the foot says `› type to filter this list`; `backspace`, `ctrl+w` and `ctrl+u`
+edit the filter. `esc` clears a filter first, then closes the place. `↑`/`↓`
+move through rows. `enter` opens a task this conversation holds in its room;
+otherwise it opens that task's record card. `→` opens the row's available
+actions. Another window's running task can be opened or located when its row
+offers that action.
 
-**Type to filter.** Any printable key, spaces included, narrows both sections at once
-against the titles, the ids and the outcomes; the bottom of the page shows what was typed
-as `filter · port`, and a section with no match disappears entirely. `backspace`, `ctrl+w`
-and `ctrl+u` edit it. `esc` clears the filter first and closes the page on the second press.
-
-`esc` closes it. `↑`/`↓` move, `enter` opens the row: a task this session is holding opens
-its room, and a task another conversation ran goes into your message box as
-`@its-name` — that conversation is closed, so there is no room to open, and the mention is
-what carries its outcome and its transcript to the model when you send.
-
-Its `running` section also carries **a row for each task every other codeaf window open on
-this directory has out right now**, marked `another window` on the right. Those rows take
-no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
-a mention to point at. They are how you find out that the directory is busy somewhere else.
-
-On a project that has never run a task the page opens on its heading and one line,
-`work you send off with /task lands here, and its record stays`. The tasks pages describe the
-page in full.
+On a machine with no task record, the place still opens under `sessions` with
+`work you send off with /task lands here, and its record stays`.
 
 ## /crew — the crew panel, and the three seats a task runs on
 
@@ -1653,7 +1736,7 @@ this split when it opens; configure the remote profile on that machine.
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
-pages here — the others are `/history` (the task page, ctrl+.) and `/home` — and **only one
+pages here — the others are `/history` (the sessions place, ctrl+.) and `/home` — and **only one
 of the three is ever up at a time**: opening any one closes the other two.
 
 Moving in it:
@@ -1768,20 +1851,20 @@ tab's `hints` row does not hide it, and a conversation over `--host` says it abo
 profile on the machine running the work. Nothing is rewritten: to act on it, move the
 value to the key a settings row names (`settings` lists every one), or delete the key.
 
-## The nine settings tabs
+## The ten settings tabs
 
 The tabs, in order:
 
 ```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
 ```
 
 ## The settings tab strip on a narrow terminal
 
-The nine tabs need about 96 columns. On anything narrower the strip **scrolls** rather
+On a terminal too narrow for all ten tabs, the strip **scrolls** rather
 than being cut: the tab you are standing on is always drawn and always inked, its
 neighbours are drawn while they fit, and each end that had to give a tab up wears a `…`
-saying there is more that way. `←` and `→` still walk the nine one at a time, and the
+saying there is more that way. `←` and `→` still walk the tabs one at a time, and the
 strip follows.
 
 It anchors left while you are near `Session` and right while you are near `Connections`,
@@ -1990,7 +2073,7 @@ Connections tab — the foot drops `tab next place`, because the layer has taken
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
-one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
+one call codeaf makes outside a turn — `title`, `guardian`, `checker`,
 `planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
@@ -2011,7 +2094,8 @@ above` or `follows small work above` instead.
   and del does nothing on any other row of the sheet.
 - Typing filters these rows too: they answer to their own names and to the line that says
   what they do — neither of which is in any settings key. Searching for `image` finds
-  `vision`, whose description mentions it.
+  `vision`, whose description mentions it. Searching for `checker` finds the seat that
+  checks finished work; its row and model picker both use that word.
 
 Every pin is written into the "pinned roles" registry row and nowhere else, so the list and
 that text box are one setting seen two ways. What each role does and how the tiers work is
@@ -2121,7 +2205,7 @@ Every command in the terminal answers `--help` (and `-h`) with its own usage: th
 that names its shape and its flags, then its flags one to a row, then
 
 ```
-run `codeaf --help` for every command and the environment table.
+run `codeaf --help` for every command, `codeaf help env` for the variables.
 ```
 
 It goes to **standard output** and the command leaves with **0**. Asking a program what
@@ -2171,8 +2255,8 @@ questions about codeaf out of it rather than out of what it remembers about othe
 
 ## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 
-`codeaf --help` prints every command, what each is for, and the environment table under
-them. **Any single command answers for itself the same way:**
+`codeaf --help` prints every command and what each is for, then points to
+`codeaf help env` for every variable and its default. **Any single command answers for itself the same way:**
 
 ```
 codeaf do --help

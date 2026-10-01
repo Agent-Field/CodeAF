@@ -256,13 +256,27 @@ went to the filter at the top of the list, and on spend the words went nowhere a
 is gone (2026-09-17).
 
 **Typing still filters where a list is worth filtering.** On **sessions** every printable key
-narrows the list, and the letters draw on the control row at the top of it beside the `⌕`
-mark. On **memory** the head row echoes the filter in place of
+narrows the conversation list by conversation name, project name or path, or nested task
+name. Matching conversations keep their complete task trees. The letters draw on the
+control row at the top beside the `⌕` mark. On **memory** the head row echoes the filter in place of
 `type to filter`. Spend and standing take no text.
 
 **Two spaces still open home from every place.** On a place with a filter they are typed
 into the empty filter and taken back out; on spend and standing, which have nothing to type
 into, the two bare spaces are counted, and any other key between them disarms the door.
+
+## A new conversation in Sessions — no title, counted chat below the screen
+
+Sessions calls a conversation with no readable name `new conversation`. Work whose
+owning conversation is known only by an id uses that same word; the task keeps its
+own landing state and record door.
+
+The headline counts the conversations in the selected window, including the unused
+conversation this window is in. A short terminal shows only part of the list. Work
+that landed `your call` keeps its conversation under `running`, while an idle
+conversation with no work stands under `completed`; the extra section can put the
+unused row below the visible screen. Use `↑` and `↓` to reach it. The count does not
+promise that every row fits on the screen at once.
 
 ## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
 
@@ -427,7 +441,7 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `n new in project`, `o open folder`, `p copy project`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `c copy name`, `n new in project`, `o open folder`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -555,7 +569,7 @@ window or not; the decisions waiting on you, as cards you answer with one press;
 team manager's own conversation, which you talk to right there. `/teams`, `alt+2` and a
 click on the word open it. The **Teams page** of this manual has the whole of it.
 
-## tasks — the tasks page, and how to get to it without a command
+## sessions — the sessions page for tasks and history, and how to get to it without a command
 
 The full-screen conversation tree groups every chat and its tasks into **running** and
 **completed**. A conversation stays under running while it is answering or has running,
@@ -721,6 +735,18 @@ repetition — the upper one is the places, the lower one is settings' own pages
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
 
+## Resizing the terminal — old text left on screen after widening or narrowing
+
+Home, Sessions, the conversation and first-run setup fit the terminal's new size
+as it changes. After the resize settles, codeaf repaints the screen once so text
+from the previous size does not remain in blank areas or beside a reply. Dragging
+through several sizes shares that repaint; typing keeps working during the drag
+and your draft stays in the message box.
+
+Moving from Home to Sessions or back to a conversation after a resize leaves only
+the place you opened. Skipping a resized setup screen with `esc` leaves the
+conversation's greeting and notes, without leftover setup explanations.
+
 ## Why the tab bar looks squashed on a narrow terminal: the places at 60 columns, and what does more on the top line do
 
 **The top line gives things up in a fixed order as the window narrows**, and the air between
@@ -782,8 +808,9 @@ an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
 On a narrow window the line wraps onto a second or third dim line under the first; it is
 never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
 the same heading; nothing above it moves.
-- **spend** and **memory** over `--host` each say one dim line where their rows
-  would be — see *The places over --host* below for the exact words and why these places still say them when their remote stores are unavailable.
+- **spend** over `--host` says one dim line where its rows would be when its remote
+  store is unavailable. Memory follows the connected engine's store and setting; see
+  *The places over --host* below for the exact words.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
@@ -848,7 +875,7 @@ own remote stores when the engine supports them:
 | **memory** | the far machine's memories; fixing and forgetting a line write there too |
 
 **No place silently substitutes this laptop's rows for the far machine's.** Settings names
-the split as it opens. Spend and memory never substitute local rows when their remote stores are unavailable. A screen full of the wrong machine's work is a confident lie, and one honest
+the split as it opens. Spend never substitutes local rows when its remote store is unavailable; memory reads and writes the far store when its door is present. A screen full of the wrong machine's work is a confident lie, and one honest
 sentence is better than eight rows and a total in dollars that belong to somebody else's
 afternoon.
 
@@ -899,12 +926,21 @@ model calls, and memory reads and writes its memory store. `e` and `f` on a memo
 computer's. If the engine is an older build without one of these doors, the place keeps its
 honest dim sentence instead of falling through to this computer's files.
 
+## Does memory work when I connect to another machine
+
+Yes. `/memory` and `alt+8` show the connected machine's saved notes, and edits
+and forgetting write back to that same store. `/remember <text>` saves a note,
+`/memories` lists them and `/forget <query>` drops the best match. Plain `codeaf`
+uses this machine's engine through these same doors. With memory off for the
+conversation, the commands and page say
+`memory is off for this session · turn it on under /settings`.
+
 ## Can I put away a conversation on the other machine from home
 
 Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
-`enter` on a far conversation opens it in this window. `o open folder`, `p copy project`, and
-starting a new conversation in that folder are absent on far rows because those paths do not
-name folders on the computer holding your file manager and clipboard.
+`enter` on a far conversation opens it in this window. `c copy name` copies its current
+name to this computer’s clipboard. `o open folder` and starting a new conversation in that
+folder are absent on far rows because those paths do not name local folders.
 
 ## Do the tab numbers follow the machine too
 

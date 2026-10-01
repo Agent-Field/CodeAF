@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -56,6 +58,10 @@ const markdownThrottle = 1500 * time.Millisecond
 // is how often the lock is worth taking in wall time, and that answer does not
 // change because the frames arrived over a wire (link.go's [app.dueEvery]).
 const usageEvery = 10
+
+// compactStillRunning is what /compact says when the engine is still working
+// after the surface's wait ran out: the pass lands on its own.
+const compactStillRunning = "still compacting — it is taking longer than usual and finishes on its own; the token count in the status line drops when it lands"
 
 // quietBeforeEllipsis is how long the stream has to be silent before the
 // ellipsis appears under a reply that is already streaming. Text arriving in
@@ -259,10 +265,13 @@ type entry struct {
 	kind entryKind
 	text string
 	turn int
-	// actedTags are send-door words kept in the displayed sentence after they
-	// were stripped from the payload. Mid-sentence slash prose has no ranges,
-	// so a demoted tag stays plain in the transcript as promised.
-	actedTags []segment
+	// plainTags are the slash words the person demoted with backspace before
+	// sending, as rune ranges into the displayed message text (entry.text). A
+	// demoted word stays plain in the transcript exactly as it did in the box:
+	// [transcriptCommandSpans] subtracts these ranges before painting a chip,
+	// and an edit before the word carries the range along with it. They are
+	// empty on every message with no demotion.
+	plainTags []segment
 	// replyTags are the finished tasks this assistant block answers. They are
 	// empty for every ordinary person-prompted reply.
 	replyTags []session.TaskReplyTag
@@ -301,6 +310,10 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+	// summarized says an [entryCompact] pass replaced some of the conversation
+	// with a summary ([session.Event.Summarized]). Only such a pass stands
+	// outside the turn's fold (workfold.go); a free one folds with the work.
+	summarized bool
 
 	// carried marks the note naming the skills a turn carried (session's
 	// turnSkillsNotice). It is not addressed to the person, so it does not hold
@@ -680,7 +693,11 @@ type (
 		lump bool
 	}
 	streamClosedMsg struct{ gen int }
-	compactedMsg    struct{ err error }
+	compactedMsg    struct {
+		err           error
+		before, after int
+		agent         Agent
+	}
 	// frameMsg is the paint clock: it promotes whatever streamed since the
 	// last one into a frame, and steps the animations.
 	frameMsg struct{}
@@ -1572,10 +1589,11 @@ type app struct {
 	width, height int
 	offset        int
 	stick         bool
-	// sizing says a resize is still settling, so the scroll clamp that a new
-	// size asks for is already on its way and a second one would be a second
-	// relayout for nothing (see [app.resized]).
-	sizing bool
+	// sizing says a resize is still settling, so its scroll clamp and complete
+	// repaint are already on their way. The version lets a grace tick notice
+	// that the drag has moved again without arming a clock for every size.
+	sizing        bool
+	resizeVersion uint64
 
 	pal palette
 	// mdBase is the painter this surface's environment built at construction
@@ -1870,11 +1888,19 @@ type app struct {
 	// (skillpick.go). It holds no attachment state of its own: the names live
 	// in the session, and the tray chip reads them there.
 	skillPick skillPick
+	// skillEmptyClose asks the picker to clear a bare command when its catalog
+	// answers empty; a typed picker must stay open so a path can become its next
+	// choice.
+	skillEmptyClose bool
 	// skillShelfSeen is the session's shelf as its last reading answered, nil
 	// until one has (skillpick.go's [app.readSkillShelf]). It outlives the
 	// list, so a list opened again draws the last answer while the next read
 	// is on its way.
 	skillShelfSeen *skillShelfReading
+	// skillDiskRead distinguishes an empty disk scan from the scan that has not
+	// answered yet; the picker must not close before the asynchronous catalog is
+	// known to be empty.
+	skillDiskRead bool
 	// skillDiskSeen is the last foreign folder scan. It outlives the picker
 	// so reopening can draw those rows while a fresh scan is in flight.
 	skillDiskSeen []skills.Skill
@@ -3602,11 +3628,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.groundReply(msg)
 
 	case resizeSettledMsg:
-		// The drag stopped moving, so the scroll is clamped once, against the
-		// size it stopped at (see [app.resized]).
+		if !a.sizing {
+			return a, nil
+		}
+		if msg.version != 0 && msg.version != a.resizeVersion {
+			return a, a.resizeSettlement()
+		}
+		// The renderer's old cell positions no longer describe the terminal
+		// after a resize. One complete repaint at settlement discards those
+		// positions without clearing at every intermediate size of a drag.
 		a.sizing = false
 		a.clampScroll()
-		return a, nil
+		return a, tea.ClearScreen
 
 	case doorMsg:
 		// ONE DOOR ANSWERED (offloop.go). The call was made on a command, off
@@ -4046,6 +4079,40 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.crewWheel(placeWheelDelta(msg.Mouse().Button))
 			return a, nil
 		}
+		// THE MODEL PICKER OWNS THE WHEEL WHILE IT IS UP, over the whole frame,
+		// like every modal above: the conversation under it is not live, and a
+		// notch that fell through used to scroll a transcript the person cannot
+		// see move (the owner's TODO on the /model menu). While the list is up
+		// every key belongs to it, and the wheel is a key here for the same
+		// reason; its window follows its cursor, so the wheel walks that — and
+		// [picker.move] clamps at both ends, so the wheel cannot run past the
+		// list either.
+		if a.pick.open {
+			a.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// THE COMPOSER'S MODEL LIST OWNS THE SAME GESTURE: its page is still
+		// drawn beneath the layer, but a notch must walk the choice in front.
+		if a.composerShowing() && a.composer.pick.open {
+			a.composer.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// A SETTINGS ROW'S MODEL LIST ANSWERS BEFORE THE PAGE, including
+		// its nav: the row being chosen must move, not the slot under it.
+		if a.at(pageSettings) && a.sheet.sel != nil && a.sheet.sel.pick.open {
+			a.sheet.sel.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// AND HOME'S DRAFT LIST ANSWERS BEFORE HOME, for the same reason:
+		// its window follows this cursor while the draft's page stays put.
+		if a.targetPickShowing() {
+			a.target.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
 		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on every page in the same
 		// cells, so a wheel answered by the place under it would scroll a list
@@ -4428,6 +4495,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
+			}
+			if a.draftPage.open {
+				return a, a.draftPagePress(msg.Mouse().Y)
 			}
 			// AND THE HARNESS PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
 			// ELSE, because it is not modal: it hangs under a draft somebody is
@@ -5169,10 +5239,66 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case steerFellMsg:
 		return a, a.steerFell(msg)
 
+	case memoryReplyMsg:
+		a.adoptMemoryReply(msg)
+		return a, nil
+
 	case compactedMsg:
-		if msg.err != nil {
-			a.toldNote("compact failed: " + msg.err.Error())
+		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
+		// page over that conversation still leaves its reply behind the page.
+		if msg.agent != nil && msg.agent != a.agent {
+			return a, nil
+		}
+		if why, skipped := session.SummarySkippedWhy(msg.err); skipped {
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+				why = compactASCII(why)
+			}
+			line := lead + " compacted"
+			if msg.before > msg.after && msg.after > 0 {
+				line += fmt.Sprintf("%sabout %d to %d tokens", separator, msg.before, msg.after)
+			}
+			a.toldNote(line + separator + "summary skipped: " + why)
+			a.measureContext()
+			a.noticeEvent(eventCompacted)
+		} else if msg.err != nil {
+			if why, nothing := session.NothingToCompactWhy(msg.err); nothing {
+				// THE NO-OP SAYS WHY when the engine knows: too little older
+				// conversation to summarize, or the summary that would have
+				// shortened it did not land. An engine that says nothing more
+				// (a peer built before the reason existed) gets the old line.
+				if why == "" {
+					why = "your messages and recent work are kept"
+				}
+				a.toldNote("nothing to compact — " + why)
+			} else if errors.Is(msg.err, remote.ErrLate) {
+				// A PASS THAT OUTLIVED THE WAIT IS STILL RUNNING. The engine
+				// holds it, not this window, and it lands with the status
+				// line's count dropping; "failed" was the sentence for a pass
+				// that then succeeded (internal/remote's [Agent.Compact]).
+				a.toldNote(compactStillRunning)
+			} else {
+				a.toldNote("compact failed: " + msg.err.Error())
+			}
 		} else {
+			// THE SAME MARK AS A PASS THE ENGINE RAN ON ITS OWN ([app.divider]),
+			// so a person reading back can tell a compaction from any other note
+			// whichever door started it.
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+			}
+			if msg.before > msg.after && msg.after > 0 {
+				a.toldNote(fmt.Sprintf("%s compacted%sabout %d to %d tokens", lead, separator, msg.before, msg.after))
+			} else {
+				a.toldNote(lead + " compacted")
+			}
+			// THE METER FOLLOWS THE PASS, as it does for one inside a turn
+			// ([app.applyEvent]'s EventCompacted). Without this the status line
+			// kept the last request's weight — 585.1k over a conversation /compact
+			// had just taken to 15k — until the next message was sent.
+			a.measureContext()
 			a.noticeEvent(eventCompacted)
 		}
 		return a, nil
@@ -5206,14 +5332,23 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.err != nil {
-			a.note("could not start the task · " + msg.err.Error())
+			a.note(taskStartFailureNote(msg.err))
 		} else {
 			// WHAT LANDED, AND WHAT IT IS CALLED (payload.go). The id is how a
 			// person names this node to any other command on the surface and the
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
 			started := msg.kind + " task " + msg.id + " started · " + msg.title
-			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
+			if msg.program != "" {
+				// A TYPED PROGRAM HAS NO PROPOSAL CARD. Its start receipt is the
+				// person's only account of the effective ceiling, so the work fold
+				// must keep it. The engine supplies the shell's own ceiling words.
+				started = msg.program + " task " + msg.id + " started · " + msg.title
+				if msg.note != "" {
+					started += " · " + msg.note
+				}
+				a.feed.toldNote(started, msg.program, msg.id, msg.title)
+			} else if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
 				a.feed.noteWritten(started, false, []string{msg.id, msg.title})
 			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
@@ -5221,7 +5356,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// somewhere other than where it was asked to go. Its own dim line
 			// under the started one, in the same slot [app.noteFacts] already
 			// carries facts in; empty is every ordinary start and says nothing.
-			if msg.note != "" {
+			if msg.note != "" && msg.program == "" {
 				a.feed.note(msg.note)
 			}
 			a.noticeEvent(eventTaskStarted)
@@ -6073,13 +6208,15 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
 		//
-		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
-		// paths, so this used to hand the bookkeeping over on a pass that found
-		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
-		// the reader was nowhere near, the seam was marked drawn without being
-		// drawn, and the conversation between the two went quiet. The surface
-		// then said there was nothing above it. Nothing had moved, so there is
-		// nothing to carry over ([session.Event.Unchanged]).
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. A local engine no longer
+		// sends this event for a pass that found nothing, but a remote engine
+		// built before that change sends it on both paths. This used to hand the
+		// bookkeeping over on a pass that found nothing to stub and nothing to
+		// fold: replayFrom was dropped to a floor the reader was nowhere near,
+		// the seam was marked drawn without being drawn, and the conversation
+		// between the two went quiet. The surface then said there was nothing
+		// above it. Nothing had moved, so there is nothing to carry over
+		// ([session.Event.Unchanged]).
 		if !ev.Unchanged {
 			a.rebase()
 		}
@@ -6683,9 +6820,9 @@ func (a *app) submit(text string) tea.Cmd {
 	return a.submitting(text, submitStart(agent, ctx, text))
 }
 
-func (a *app) submitShown(text, shown string) tea.Cmd {
+func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submittingShown(text, shown, submitStart(agent, ctx, text))
+	return a.submittingShown(text, shown, plain, submitStart(agent, ctx, text))
 }
 
 // submitStart is the one plain-message engine call used by both front and held
@@ -6704,14 +6841,17 @@ func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan s
 // The second door is a picked harness, which is a turn in every respect except
 // which function starts it (harnesspick.go's [app.runPickedHarness]).
 func (a *app) submitting(text string, start func() (<-chan session.Event, error)) tea.Cmd {
-	return a.submittingShown(text, text, start)
+	return a.submittingShown(text, text, nil, start)
 }
 
 // submittingShown separates the words a door receives from the honest line
 // the transcript keeps. Slash tags are stripped from the payload but remain in
 // the person's message as the chipped token that explains which door acted.
-func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
-	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, start) }) {
+//
+// plain carries the words the person demoted with backspace, as ranges into
+// shown, so the transcript leaves them plain (entry.plainTags).
+func (a *app) submittingShown(text, shown string, plain []segment, start func() (<-chan session.Event, error)) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, plain, start) }) {
 		return nil
 	}
 	call := a.hostCallStarted()
@@ -6741,18 +6881,10 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	// conversation. It is asked rather than assumed so that the day the engine
 	// routes a conversation's turn into a named thread, the line that says so is
 	// already being drawn — one mechanism, keyed off what the session exposes.
-	var acted []segment
-	if shown != text {
-		for _, s := range commandSpans([]rune(shown), true) {
-			if s.from > 0 {
-				acted = append(acted, s)
-			}
-		}
-	}
 	if a.openingPrompt == "" {
 		a.openingPrompt = shown
 	}
-	a.said(entry{kind: entryUser, text: shown, turn: a.turn, actedTags: acted, began: a.now(), context: a.turnContext()})
+	a.said(entry{kind: entryUser, text: shown, turn: a.turn, plainTags: plain, began: a.now(), context: a.turnContext()})
 	// AND OVER A CONNECTION THE LINE IS MARKED UNTIL THE ENGINE HAS IT. The
 	// sentence is already on the page — the line above put it there, in the place
 	// it will keep — and what a connection adds is a gap between that and the far
@@ -7737,6 +7869,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// the command and its query into the box rather than opening the list
 		// from nowhere. A path typed on home must survive the new conversation
 		// that home opens before this command reaches the picker.
+		a.skillEmptyClose = rest == ""
 		a.input.reset()
 		a.input.insert("/skill " + rest)
 		cmd := a.edited()
@@ -7759,8 +7892,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "memory", "memories":
 		// Bare is the inspect-and-change panel; a query is the transcript form,
-		// for somebody who wants matching rows to remain scrollable. The plural
-		// alias keeps its older print posture even when it has no query.
+		// for somebody who wants matching rows to remain scrollable.
 		// AND /memories NOW OPENS THE PLACE TOO. The plural used to keep an older
 		// print posture — a bare /memories wrote the whole list into the
 		// transcript — which was the right answer while memory was a twelve-row
@@ -7777,16 +7909,13 @@ func (a *app) slash(line string) tea.Cmd {
 		if rest == "" && (name != "memories" || a.memoryReady()) {
 			return a.showPage(pageMemory)
 		}
-		a.runMemories(rest)
-		return nil
+		return a.runMemories(rest)
 
 	case "remember":
-		a.runRemember(rest)
-		return nil
+		return a.runRemember(rest)
 
 	case "forget":
-		a.runForget(rest)
-		return nil
+		return a.runForget(rest)
 
 	case "crew":
 		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
@@ -7900,7 +8029,11 @@ func (a *app) slash(line string) tea.Cmd {
 	case "compact":
 		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
-		return func() tea.Msg { return compactedMsg{err: agent.Compact(ctx)} }
+		return func() tea.Msg {
+			before := agent.ContextTokens()
+			err := agent.Compact(ctx)
+			return compactedMsg{err: err, before: before, after: agent.ContextTokens(), agent: agent}
+		}
 
 	case "rewind":
 		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE
@@ -9110,6 +9243,10 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // no draft can put the caret in both at once (slashchip.go's [slashToken],
 // files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
+	if _, bash := session.BashCommand(a.input.String()); bash {
+		a.closeLists()
+		return nil
+	}
 	wasOpen := a.menu.open
 	a.menu.sync(&a.input)
 	if a.menu.open && !wasOpen {

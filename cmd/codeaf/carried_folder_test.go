@@ -5,9 +5,10 @@ package main
 // A SHELL RUN WORKS IN ITS FOLDER THE WAY A CONVERSATION'S RUN DOES
 // (internal/session's programfolder.go): a plain folder is worked in as it is
 // with the program told so on its line — where it used to end at once with
-// "workspace is not a git repository" — a repository gets a branch of its own
-// that is left checked out with the work committed on it, and a checkout with
-// changes that are not committed is refused before anything is spent.
+// "workspace is not a git repository" — and a repository gets a copy of its
+// own on a branch of its own, which starts from the person's changes that are
+// not committed and is kept with the work committed on it, checked out nowhere,
+// while the person's checkout never moves.
 
 import (
 	"bytes"
@@ -148,9 +149,10 @@ func TestAShellRunInAPlainFolderIsToldSoAndDoesNotFail(t *testing.T) {
 	}
 }
 
-// A SHELL RUN IN A REPOSITORY WORKS ON A BRANCH OF ITS OWN, and the person's
-// branch never moves: the program's work is committed on its branch, which is
-// left checked out, and the last lines say how to go back.
+// A SHELL RUN IN A REPOSITORY WORKS IN A COPY OF ITS OWN ON A BRANCH OF ITS
+// OWN, and the person's checkout never moves: the program's work is committed
+// on its branch, the copy is removed, and the last lines say how to bring it
+// in.
 func TestAShellRunInARepositoryWorksOnABranchOfItsOwn(t *testing.T) {
 	_, printed, _ := hostWithFolderChild(t)
 	repo := shellRepo(t)
@@ -160,11 +162,14 @@ func TestAShellRunInARepositoryWorksOnABranchOfItsOwn(t *testing.T) {
 		t.Fatalf("the shell run left with %d (%v):\n%s", code, err, printed)
 	}
 	out := printed.String()
-	branch := shellGit(t, repo, "branch", "--show-current")
-	if !strings.HasPrefix(branch, "task/make-a-file-") {
-		t.Fatalf("the checkout is on %q, want the run's own branch left checked out", branch)
+	branch := shellGit(t, repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/task/")
+	if !strings.HasPrefix(branch, "task/make-a-file-") || shellGit(t, repo, "branch", "--show-current") != "main" {
+		t.Fatalf("the run's branch is %q and the checkout on %q, want its own branch and the person's checkout left alone", branch, shellGit(t, repo, "branch", "--show-current"))
 	}
-	if !strings.Contains(out, fakeFolder+" · working in "+repo+", on its own branch "+branch) || !strings.Contains(out, "  folder · git") {
+	if worktrees := shellGit(t, repo, "worktree", "list", "--porcelain"); strings.Count(worktrees, "worktree ") != 1 {
+		t.Fatalf("the run's copy was not removed:\n%s", worktrees)
+	}
+	if !strings.Contains(out, fakeFolder+" · working in "+repo+", in a copy of its own on its own branch "+branch) || !strings.Contains(out, "  folder · git") {
 		t.Fatalf("the run did not say it works on its own branch with git:\n%s", out)
 	}
 	if tip := shellGit(t, repo, "rev-parse", "main"); tip != base {
@@ -179,45 +184,56 @@ func TestAShellRunInARepositoryWorksOnABranchOfItsOwn(t *testing.T) {
 	if status := shellGit(t, repo, "status", "--porcelain"); status != "" {
 		t.Fatalf("the run left changes that are not committed:\n%s", status)
 	}
-	if !strings.Contains(out, "  its work is on the branch "+branch+" in "+repo+", 1 file, and that branch is checked out there; your branch main is as it was") {
+	if !strings.Contains(out, "  its work is on the branch "+branch+" in "+repo+", 1 file; your checkout was not touched, and `git -C ") {
 		t.Fatalf("the last lines do not say where the work is:\n%s", out)
 	}
 }
 
-// A SHELL RUN ON A CHECKOUT WITH CHANGES THAT ARE NOT COMMITTED IS REFUSED
-// before anything is started or spent, with the paths named.
-func TestAShellRunIsRefusedACheckoutWithChangesThatAreNotCommitted(t *testing.T) {
-	calling, printed, said := hostWithFolderChild(t)
+// A SHELL RUN BESIDE CHANGES THAT ARE NOT COMMITTED STARTS FROM THEM, and
+// leaves them where they are: they are the first commit on its branch, its
+// work comes after them, and the person's checkout is not touched.
+func TestAShellRunStartsBesideChangesThatAreNotCommitted(t *testing.T) {
+	_, printed, _ := hostWithFolderChild(t)
 	repo := shellRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, "draft.md"), []byte("mine\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	shellGit(t, repo, "add", "draft.md")
+	if err := os.WriteFile(filepath.Join(repo, "credentials.json"), []byte("local input\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	err := runCarried(fakeFolderProgram(), []string{"--dir", repo, "make a file"})
-	if code := exitCodeOf(err); code != int(exitCannotRun) {
-		t.Fatalf("left with %d, want the rung for a run that could not start", code)
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("the shell run left with %d (%v):\n%s", code, err, printed)
 	}
-	if want := "error: " + repo + " has changes that are not committed (draft.md); commit or stash them, then ask again"; !strings.Contains(said.String(), want) {
-		t.Fatalf("the refusal = %q, want %q", said.String(), want)
+	branch := shellGit(t, repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/task/")
+	if files := shellGit(t, repo, "ls-tree", "--name-only", branch); files != "draft.md\nmade.txt" {
+		t.Fatalf("the run's branch holds %q, want the person's draft and its work", files)
 	}
-	if len(calling.seen()) != 0 || printed.String() != "" {
-		t.Fatalf("a refused run did something: %d calls, printed %q", len(calling.seen()), printed.String())
+	if first := shellGit(t, repo, "log", "--format=%s", "--reverse", "main.."+branch); !strings.HasPrefix(first, "Your uncommitted changes when ") {
+		t.Fatalf("the branch does not open on the person's changes:\n%s", first)
 	}
-	if branch := shellGit(t, repo, "branch", "--show-current"); branch != "main" {
-		t.Fatalf("a refused checkout was switched to %q", branch)
+	if status := shellGit(t, repo, "status", "--porcelain"); status != "A  draft.md\n?? credentials.json" || shellGit(t, repo, "branch", "--show-current") != "main" {
+		t.Fatalf("the person's checkout was touched: %q", status)
+	}
+	if !strings.Contains(printed.String(), "any it changes are committed as its work, and the rest stay off its branch") {
+		t.Fatalf("the shell receipt did not distinguish the untracked input:\n%s", printed)
 	}
 }
 
 // A SHELL RUN'S CHILD IS TOLD WHAT CODEAF DECIDED ABOUT ITS FOLDER: the
-// program's own flags for a folder without git, and the repository's root in
-// place of the person's --dir when that named a folder inside it.
+// program's own flags for a folder without git, its copy in place of the
+// person's --dir in a repository, and — ahead of the brief — where that copy
+// is.
 func TestAShellRunsChildLineCarriesItsFolder(t *testing.T) {
 	program := fakeFolderProgram()
 	inv, err := delegate.Parse(program, []string{"--dir", "/r/repo/sub", "fix", "it"}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child := carriedInFolder(carriedChildLine(inv), inv, &session.ProgramFolder{Dir: "/r/repo", Branch: "task/fix-it-abc123"})
-	if got, want := strings.Join(child, " "), fakeFolder+" --json --dir /r/repo fix it"; got != want {
+	copied := &session.ProgramFolder{Dir: "/tmp/copy", Repo: "/r/repo", Branch: "task/fix-it-abc123"}
+	child := carriedInFolder(carriedChildLine(inv), inv, copied)
+	if got, want := strings.Join(child, " "), fakeFolder+" --json --dir /tmp/copy "+copied.BriefNote()+"\n\n fix it"; got != want {
 		t.Fatalf("the child line = %q, want %q", got, want)
 	}
 	plain, err := delegate.Parse(program, []string{"--dir", "/r/plain", "fix", "it"}, &bytes.Buffer{})
@@ -254,16 +270,16 @@ func newestRecordOf(t *testing.T, name string) string {
 // wait is up to seventy seconds, a second ctrl-c during it leaves at once,
 // and the folder used to be finished only after it: the repository was left
 // on the program's branch with its work uncommitted and nothing said. By the
-// time the model API starts closing, the work is committed and the run's
-// record says when its program ended.
+// time the model API starts closing, the work is committed on its branch and
+// the copy is gone, so the branch is released before the wait.
 func TestAShellRunFinishesItsFolderBeforeWaitingForPrices(t *testing.T) {
 	_, printed, _ := hostWithFolderChild(t)
 	repo := shellRepo(t)
 	var atClose struct{ status, files string }
 	previous := carriedAPIClose
 	carriedAPIClose = func(api *modelapi.Server) error {
-		atClose.status = shellGit(t, repo, "status", "--porcelain")
-		atClose.files = shellGit(t, repo, "ls-tree", "--name-only", "HEAD")
+		atClose.status = shellGit(t, repo, "worktree", "list", "--porcelain")
+		atClose.files = shellGit(t, repo, "ls-tree", "--name-only", shellGit(t, repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/task/"))
 		return previous(api)
 	}
 	t.Cleanup(func() { carriedAPIClose = previous })
@@ -271,7 +287,7 @@ func TestAShellRunFinishesItsFolderBeforeWaitingForPrices(t *testing.T) {
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("the shell run left with %d (%v):\n%s", code, err, printed)
 	}
-	if atClose.status != "" || atClose.files != "made.txt" {
-		t.Fatalf("when the API began to close the folder held %q uncommitted and %q committed, want its work committed", atClose.status, atClose.files)
+	if strings.Count(atClose.status, "worktree ") != 1 || atClose.files != "made.txt" {
+		t.Fatalf("when the API began to close, the worktrees were %q and the branch held %q, want the copy gone and the work committed", atClose.status, atClose.files)
 	}
 }

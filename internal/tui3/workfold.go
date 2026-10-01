@@ -1,13 +1,15 @@
 package tui3
 
 import (
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // workfold is render-time structure. Nothing here is journaled: replaying the
@@ -271,7 +273,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// machine the router refuses — and a chip that hid it left them with a
 		// pin that disappeared and no sentence anywhere saying why.
 		blocked, stopped := false, false
-		var asks []int
+		var asks, compactions []int
 		for i := lo; i < hi; i++ {
 			if es[i].kind == entryAssistant && strings.TrimSpace(es[i].text) != "" {
 				answer = i
@@ -289,6 +291,16 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if es[i].kind == entryTool && ((es[i].status != toolOK && es[i].status != toolFailed && !es[i].cut) || es[i].decision != "") {
 				asks = append(asks, i)
 			}
+			// A FINISHED SUMMARY STANDS LIKE AN ASK. A pass that summarized
+			// rewrote the person's own words in the model's copy of the
+			// conversation, and it is rare, so its line stays when the turn's
+			// work folds. A pass that only stubbed and folded is machinery like
+			// any other step and folds with it (#1627's intent): on a small
+			// window those run almost every step, and a standing line for each
+			// drew five marks between five chips on one turn (review of #1658).
+			if es[i].kind == entryCompact && !es[i].ended.IsZero() && es[i].summarized {
+				compactions = append(compactions, i)
+			}
 			if es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel")) {
 				asks = append(asks, i)
 			}
@@ -298,7 +310,9 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			// with it, and the fold would be quietly claiming that the
 			// conversation above it is the same unbroken conversation. The whole
 			// group keeps its rows instead (replay.go's [entrySeam]).
-			if es[i].kind == entrySeam {
+			// The output of a command the person ran is its answer, so it
+			// stays visible even though it has the journal shape of a tool.
+			if es[i].kind == entrySeam || session.IsUserBashCall(es[i].callID) {
 				asks = append(asks, i)
 			}
 			// Team exchanges are operational work. Their replies remain available
@@ -316,6 +330,13 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				}
 			}
 		}
+		// A SUMMARY STANDS WHEREVER IT RAN. Before the answer it splits the
+		// fold; after it — the end-of-turn check, the ordinary case — it would
+		// otherwise be taken into the turn's disclosure as bookkeeping
+		// ([housekeepingFold]), and a person reading back would find no sign
+		// that their words were summarized.
+		asks = append(asks, compactions...)
+		sort.Ints(asks)
 		// AN ASK STANDS, AND THE WORK BEFORE IT STILL FOLDS. A task proposal, a
 		// sign-in or a standing card is a thing the work could not decide alone,
 		// so no chip may cover it. It used to keep the WHOLE turn open instead:

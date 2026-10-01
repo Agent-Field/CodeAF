@@ -1,5 +1,12 @@
 # Work that runs on its own — tasks, and finding out what one actually did
 
+## The engine is slow to answer when starting a task
+
+If the task start takes longer than the connection's wait, the chat says
+`the engine has not confirmed the start — the task may already be running`. This is an
+uncertain receipt, not a refusal. The task can appear in the task rail when the
+engine reports it. Check the running work before starting the same brief again.
+
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
@@ -446,6 +453,13 @@ The same guidance reaches briefs the conversation model writes with `propose_tas
 part of that tool rather than as a second call: it already has the whole conversation, so
 nothing needs to be re-read for it.
 
+## Why does a task's first name stop at a whole word?
+
+Before its naming model answers, a person's task uses up to eight words from
+the opening line within an 80-byte limit. It stops at a whole word and removes
+trailing glue such as `and` or `of`. A single word longer than the limit is
+shortened without breaking its characters. The full brief stays with the task.
+
 ## Why my task is called something I did not type — who names a task, why a row is named after a folder path or the first few words I typed, and can I rename it
 
 The name on the roster is written by a model, not cut out of your sentence.
@@ -553,8 +567,9 @@ block in the conversation shows:
   left out entirely when it would only repeat the name;
 - the facts about the work: which other window is already in these files, `where:` it will
   run, and `from your folder as it stands — unsaved edits included` (not on a program's
-  card: senior-dev works in the folder itself, and its `where:` names the folder and says
-  `on a branch of its own` in a repository);
+  card: its `where:` names the folder and says `in a copy of its own on a branch of its
+  own` in a repository, which senior-dev starts from your folder as it stands, uncommitted
+  changes included);
 - a dim meta line reading `model <full id> · ctrl+e for the brief`. The model id leads
   because it is the one fact nothing else on screen will say again; on a narrow frame the
   hint is dropped and the model kept.
@@ -2044,7 +2059,7 @@ tree of who started whom; the task's own page (its kin line) and the task page h
 family.
 
 **A run's rows are on this column too.** Under the conversation that started a run, the
-column draws that run's tree out of the tasks place's reading: one line per task (the
+column draws that run's tree out of the sessions place's reading: one line per task (the
 connector, the state mark and the fitted title) with `waits: <that task>` at the end of a
 line held behind named work, and the run's own row ending in the dot row (*what are the
 dots next to a task?* has the cells). While a task's worker is on a step, its row spends one
@@ -2368,8 +2383,8 @@ work, shapes the brief and starts it. The column's other section, `standing`, en
 
 ## What a bare /task does — /task with nothing after it opens the task page
 
-**`/task` typed on its own opens the full-screen task page** — the same page `/history` and
-`ctrl+.` open, holding every task this project has ever run. It used to print a one-line
+**`/task` typed on its own opens the full-screen sessions place** — the same place `/history` and
+`ctrl+.` open, holding this machine's conversations and their tasks. It used to print a one-line
 usage instead. It does not any more.
 
 The reason is the `+ /task` row at the foot of the task column: that row puts `/task ` in
@@ -2417,11 +2432,11 @@ conversation's work into another one's without the column ever saying it had. Ev
 they offered is on the other side of the door, whole: every row, the filter, the cards, and
 `m` for the mention.
 
-**Where old work is listed now:** the task page (`ctrl+.`, `/history`, or that line), and
+**Where old work is listed now:** the sessions place (`ctrl+.`, `/history`, or that line), and
 home (`/home`, or space twice on an empty box). The chat can also read the whole project
 record for you with its `tasks` tool; just ask.
 
-**Running work in another codeaf window** is on no surface but the task page. An ordinary
+**Running work in another codeaf window** is on no surface but the sessions place. An ordinary
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
@@ -2554,7 +2569,7 @@ server still has the jobs section to put a cursor on, so `alt+t` takes it.
 
 **The walk stops at this conversation's last job, after its last task.** `↓` walks the band,
 the groups and then the jobs section under them, and clamps there rather than carrying on
-into the project's record. Old work is walked on the task page (`ctrl+.`), where `enter`
+into the project's record. Old work is walked on the sessions place (`ctrl+.`), where `enter`
 goes inside its card.
 
 The cursor follows the task, not the row, when a task moves from one group to another. If
@@ -2965,12 +2980,20 @@ wisp · /Users/ada/code/wisp
 - Inside a task this is absent, like the rest of it: a task sees the pieces it handed out
   itself and nothing wider.
 
+## Filter Sessions by conversation name, project or task name
+
+Type in Sessions to find conversations by their name, project name or path, or any
+nested task name. A match keeps the complete conversation and all its tasks, rather
+than hiding unmatched siblings or children. Conversations without tasks can match
+their name or project too. Clear the query to restore your previous folds.
+
 ## Searching the task page: type to filter, find an old task by name, where the words I type appear, my cursor jumped to another task while I was reading
 
-**Just type.** On the task page every printable key — letters, the space, and digits
-everywhere they are not an answer — builds a filter, and every section narrows against it as
-you go. The two exceptions are `1` and `2` over a row the record pane beside the list is
-drawing answers for, which answer it: see *Answer a task from the list*.
+**Just type.** On Sessions every printable key — letters, the space, and digits
+everywhere they are not an answer — builds a filter. It selects whole conversations
+by conversation name, project name or path, or any nested task name. A match keeps
+the conversation’s complete task tree, including its other tasks, visible. The two exceptions
+are `1` and `2` over a row the record pane beside the list is drawing answers for, which answer it: see *Answer a task from the list*.
 
 ```
 ⌕ parser                                            state               age ↓
@@ -2981,16 +3004,16 @@ reading ink with the dim `type to filter` standing in the box until you type. It
 an echo on a note line UNDER the rows your keystrokes had just changed; it is at the top of
 the list now, where the typing goes.
 
-- It matches a task's **title**, its **id** (typed exactly: `7` finds task 7 and nothing
-  else), its **name** as the `@` list spells it, and its **outcome**. Letters in order are
+- Task matching includes its visible **label**, full **title**, exact **id**,
+  **name** as the `@` list spells it, and **outcome**. The result is the task’s whole
+  conversation. Letters in order are
   enough — `prsr` finds `Port the parser`.
 - **Every section is filtered at once**, another window's rows included — those match on
-  their **title only**, never on an id, because ids restart with every conversation and `7`
+  their **label or title**, never on an id, because ids restart with every conversation and `7`
   typed here is a number you read in *this* window. A section with no match is not drawn at
   all, heading and all, so a filter that only matches old work leaves the `earlier` list
   alone on the page.
-- It also matches the **conversation or project** a row came out of, because that is drawn
-  on the row and anything on screen is something you can search for.
+- A **conversation or project** match also finds conversations with no tasks.
 - `backspace` deletes a character, `ctrl+w` a word, `ctrl+u` all of it.
 - **`esc` clears the filter first and closes the page on the second press** — the same
   layering the settings panel's search has. `ctrl+.` closes the page from anywhere.
@@ -3160,7 +3183,7 @@ originating conversation and available evidence. Press `esc` to return to the li
 
 ## Going inside an old task — see what a past task did, read a finished task's report, where is the story my task wrote
 
-`enter` on any row of the task page (`ctrl+.`, `/history`) that this conversation did not
+`enter` on any task row of the sessions place (`ctrl+.`, `/history`) that this conversation did not
 run **goes inside that task**. A click does the same on the first press. The task column carries no rows of old
 work — its `ctrl+. earlier` line is the door onto this page — so the page is where every
 old task is opened.
@@ -3247,7 +3270,7 @@ one more dim line:
 ctrl+. earlier
 ```
 
-Click it, or press `ctrl+.`, and the full-screen task page opens. The column is left exactly
+Click it, or press `ctrl+.`, and the full-screen sessions place opens. The column is left exactly
 as it was: the page is somewhere you go and come back from, not a state the column enters.
 
 **There is exactly one such line, never two.** It is drawn when the record holds tasks
@@ -5419,8 +5442,10 @@ filter`. That is where your letters land — there is no message to send from th
 every printable key goes to the filter. `backspace` takes one back, `ctrl+u` clears the box,
 `ctrl+w` takes a word.
 
-The query is matched against the task's name, the main chat's title, the state word and the
-file paths the work touched. Every section narrows at once, and a section the query empties
+The query selects whole conversations by conversation name, project name or path, or any
+nested task name. A match keeps all tasks in that conversation, with their nesting intact.
+Conversations with no tasks can match their own name or project. Every section narrows at
+once, and a section the query empties
 is not drawn at all. A query that matches nothing keeps the page's own heading and count and
 says `nothing matches` under the list — there **is** work here, and your words are hiding it.
 

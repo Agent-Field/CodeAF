@@ -170,9 +170,10 @@ enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
 ```
 
 That is the terminal-capable form when no command can be kept. A running foreground
-command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
-cannot deliver `ctrl+shift+enter` leaves that clause out. `cmd+enter` still waits, but the
-one-line slot no longer advertises it.
+command that can be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`;
+a `!` command cannot be kept. A terminal that cannot deliver `ctrl+shift+enter`
+leaves that clause out. `cmd+enter` still waits, but the one-line slot no longer
+advertises it.
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -408,6 +409,14 @@ two-tap people make mid-turn, press it again harder because the first did not se
 land, stops the answer and then quits. Nothing you typed is lost when it does: the box
 and anything waiting for an answer are written to disk on the way out. See "Quitting
 codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
+
+## Reopen a conversation after stopping an answer — where did the answer I stopped go
+
+When you stop an answer with `esc` or `ctrl+c`, its unfinished words fold behind
+`▸ stopped by you`. Reopening the conversation keeps that chip. Press `ctrl+e`
+to open it and read the words that arrived before you stopped. They stay
+unfinished work, not a completed answer. After reopening, the chip may leave out
+how long the answer ran, because that time is not saved.
 
 ## Esc is not stopping it — how long does a stop take, why the turn is still finishing, how long stopping takes, and what happens if it will not stop or will not let go
 
@@ -1620,16 +1629,33 @@ Providers tab (the same list and the same keys, drawn in the panel's place):
 effort · `ctrl+r` fetch the newest model list (`/model` only — not the settings panel's
 rows) · `tab` and `→` open the providers under the model the cursor is on and move the
 cursor into them, `tab` and `←` close them and put it back on the model ·
-`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
+`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list · the **mouse wheel**
+walks the list too, three rows a notch, clamped at both ends, in `/model`, settings
+slots and roles, home's draft list and the task composer's list. The page beneath
+stays put until the list closes ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
 column and **`alt+shift+s`** turns that column round · anything else types into it.
 
-Every column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
+## Where the model list cursor opens — Enter, refresh and ctrl+u
+
+Every model list opens on the model it holds, highlighted and on screen. `/model`
+opens on the model in use, so enter with nothing typed confirms; settings slots and
+roles, a task's model word, home's draft, `alt+o` and lane lists and chips follow the
+same rule. A refresh puts the cursor back on the held model with the filter kept,
+and `ctrl+u` emptying the box returns there too. If that model is absent, the cursor
+uses the first selectable row past unavailable notices. `/model <query>` and typing
+a filter start the narrowed list at its first row. The model in use is bold in the
+accent with no band of its own; the cursor supplies the band, and a pointer hovering
+another row lifts it too.
+
+## Sorting and folding the model picker — alt+s, tab and arrows
+
+Every model picker column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
 `model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
 published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
 column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
-sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the tasks place gives:
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the sessions place gives:
 `s` is one of the commonest letters a filter starts with, and the list a person was
 narrowing would re-sort instead.
 
@@ -1748,10 +1774,10 @@ and `space` activates too — except while a search is on, when it goes into the
 a phrase like `shell command` can be written · `backspace`, `ctrl+u`, `ctrl+w` edit the
 search · anything else types into it.
 
-**Task page** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
+**Sessions place** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
 column, `ctrl+. earlier`): `esc` closes it (or clears the filter first, if one is being typed),
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
-over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
+over the `running` and `completed` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
 · **`1` and `2` answer the row under the cursor, but only while the pane beside the list is
 drawing those two answers for it** — a frame at least 110 columns wide, over a task of this
@@ -1780,7 +1806,7 @@ the pane there is nothing for a first click to show, so one click opens as it al
 click on one of the pane's own answers presses that answer and opens nothing. The wheel
 walks the cursor. The tasks pages describe what is on it.
 
-**Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
+**Inside an old task's card** (`enter` on a completed task's row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
 `space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
 message box** and closes the page. Its foot reads
@@ -2237,7 +2263,7 @@ tasks, on standing orders and on memory alike: a foot that offered `enter` or `t
 filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
-taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
+taken, and `ctrl+.` is the sessions place (`/history`) from a conversation — while a place is
 standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
 takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already clears messages waiting from the turn, and a third
@@ -2309,8 +2335,8 @@ the answers are on the `needs you` row itself.
 **`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
 opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — a question's own answer keys and words, `x close`, `n new in project`,
-`o open folder`, `p copy project`, `p pause it` or `r resume it` on a standing item. `esc` or
+and the box is asleep — a question's own answer keys and words, `x close`, `c copy name`, `n new in project`,
+`o open folder`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
 never leave home's field, and on a panel's fold line (`N more`) `enter`
 opens the panel and shows the rest; on `N fewer` it folds them again.
@@ -2545,10 +2571,12 @@ deliberately **not** taken here — it falls through to the message box's
 back-navigation.
 
 **Inside a program's room** — a task handed to senior-dev — `ctrl+y` turns the page
-between the actions it took and its raw calls to its model, `ctrl+o` folds its brief, and
-the box sends nothing. While it works the keys row under the box reads
+between the actions it took and its raw calls to its model, `ctrl+o` opens its whole brief
+as the page (scroll it like the page) and closes it again, and the box sends nothing.
+While it works the keys row under the box reads
 `/stop · x with empty input · esc main · ctrl+y calls`, ending `ctrl+y actions` while the
-calls are showing; once it has ended the row is the `ctrl+y` clause alone.
+calls are showing and `ctrl+o close brief` while the brief is; once it has ended the row
+is that last clause alone.
 
 **`up` and `down` in a room mean what they mean in the message box**, in the same order:
 inside a multi-line message they move the caret; on the first line — or over an empty box
@@ -2621,7 +2649,7 @@ A program's task page — senior-dev's — opens on the actions it took, each un
 of its process. **`ctrl+y` turns it to the raw calls** it made to its model: what it sent,
 what the model answered, which model it was, and the call in flight. `ctrl+y` again turns
 it back. It works in the program's room, whichever door opened it — its row, its card, or
-the tasks place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
+the sessions place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
 over the calls. Every page opens on the actions.
 
 It is a chord, so it never costs a character: the room's box keeps what you typed. It is
@@ -2832,11 +2860,19 @@ under the pointer".
 
 ## Scrolling
 
-The wheel moves three rows per notch, on whichever surface owns the frame. It is
-routed to copy mode, then the settings panel, then the task page, then home, then the
-rewind timeline, then the status deck, then the phone tool sheet, then the fullscreen
-roster, then **the task column** when the pointer is over it, then an open room, and
-otherwise the conversation.
+The wheel usually moves three rows per notch on the surface that owns the frame.
+The context chooser answers first, then the conversation switcher (one row a notch),
+copy mode, questions, the crew panel, and `/model`. Next come the task composer's
+model list, a settings slot or role's model list, and home's draft model list: each
+walks its own cursor, clamped at both ends, with the page beneath unchanged.
+
+With those lists closed, the page navigation row answers before settings, the task
+page, home and the other places. Next come the rewind timeline, the status deck,
+the phone tool sheet, conversation tabs, an open command menu, the fullscreen roster,
+**the task column** under the pointer, an open question room or task room, and
+otherwise the conversation. Each list whose window follows its cursor stops at its
+own ends. A task's decision sheet or move menu absorbs the wheel, and an open design
+wall handles it before the context chooser.
 
 On the settings panel, the task page, home, the rewind timeline and the fullscreen roster
 the wheel walks the **cursor** rather than a scroll offset of its own, because on those the
@@ -2851,6 +2887,8 @@ Reaching the bottom **re-arms sticking**, so new replies follow along again. Scr
 up drops out of it.
 
 `pgup` and `pgdown` move the height of the view minus one row, never fewer than one.
+
+## Jump to the latest replies — the latest chip and ctrl+l
 
 **The jump-to-latest chip** is one dim chip at the left edge reading `↓ latest · ctrl+l`
 — `v latest · ctrl+l` on the linear tier — and it appears only when you are parked
@@ -3285,7 +3323,9 @@ Opening **latches** your choice during streaming. An opened live block shows the
 whole buffer, not the 3-line window. Completion still folds the whole turn’s work.
 
 An expanded block is capped at **200 rows**, and says how much is held back. The token
-count is an estimate at 4 bytes per token.
+count is an estimate at 4 bytes per token. Before enough text arrives to estimate one
+token, the count is absent: `thinking · ctrl+e`, or `thought for Ns · ctrl+e` after
+the block collapses. The label and disclosure stay available.
 
 **Reasoning is never written to the session file.** A resumed conversation shows the
 answers, not the thinking.

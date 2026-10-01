@@ -105,9 +105,9 @@ var tuiWords = map[string]tuiWord{
 		screen: "filter · ↑↓ · enter connect · esc close",
 		why:    "the local connection catalog opened as its searchable panel",
 	},
-	"connectModelsGroup": {
-		screen: "models",
-		why:    "the connection panel includes model services rather than only account rows",
+	"connectProvidersGroup": {
+		screen: "providers",
+		why:    "the connection panel includes model providers before the connected account rows",
 	},
 	"connectUnavailableWord": {
 		screen: "connections are unavailable here",
@@ -154,10 +154,9 @@ var tuiWords = map[string]tuiWord{
 	"skillsCarriedWord": {
 		screen: "skills · ",
 		pkg:    "internal/tui3",
-		why: "the dim note under a message naming the skills its turn carried, kept above the turn's " +
-			"`▸ worked` chip — the only screen evidence that a skill from another tool's folder reached " +
-			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
-			"engine's own `skills carried: ` sentence instead",
+		why: "the dim note naming the skills a turn carried inside its opened `▸ worked` chip, " +
+			"which proves a skill from another tool's folder reached the turn by itself or by /skill " +
+			"([testForeignSkills]); the headless --once door prints the engine's own `skills carried: ` sentence instead",
 	},
 	"skillNoShelfWord": {
 		screen: "this conversation has no skill shelf",
@@ -515,6 +514,10 @@ var tuiWords = map[string]tuiWord{
 		pkg:    "internal/session",
 		why:    "the receipt proving the not-right answer reached the engine's settle door",
 	},
+	"doneRollupWord": {
+		screen: " tasks done",
+		why:    "the folded completion batch counts both seeded tasks after the nested landing is accepted",
+	},
 	"taskIncompleteWord": {
 		screen: " · incomplete",
 		source: "incomplete",
@@ -577,6 +580,17 @@ var tuiWords = map[string]tuiWord{
 			"word is [unnamedConversationWord] — one constant behind every surface that calls a nameless " +
 			"chat by this — and its one string literal stands in internal/tui3/names.go beside the same " +
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
+	},
+	"tasksEnterConversationWord": {
+		screen: "enter go to that conversation",
+		why: "the sessions place's foot on a conversation, including an untouched one with no task family. " +
+			"It confirms that /history opened before the task-room driver walks Down to a row below the fold",
+	},
+	"tasksUnusedConversationSelectedWord": {
+		screen: "enter go to that conversation · type to filter",
+		source: "enter go to that conversation",
+		why: "the conversation foot without a fold clause: this fixture's unused conversation has no tasks. " +
+			"Reading the foot selects that row even when the other conversation also says new conversation",
 	},
 	"landingKeysWord": {
 		screen: "esc interrupts · ctrl+c quits",

@@ -360,7 +360,9 @@ import (
 // fail as silence on an older engine: a version-17 engine reads `effort` as a
 // field it does not know and starts the task on the crew it would have had,
 // and the person is never told their word did nothing. NEVER TO SILENCE.
-const Version = 19
+// Version 20 adds the explicit human shell door and streamed shell output.
+// Older peers must refuse rather than treat a shell command as model input.
+const Version = 20
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -443,6 +445,7 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
+	MethodSubmitBash      = "SubmitBash"      // SubmitArgs → StreamRef, then shell output events
 	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
 	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
 	MethodSubmitFiles     = "SubmitFiles"     // SubmitFilesArgs → StreamRef, then "event" frames
@@ -878,6 +881,10 @@ type Hello struct {
 	// text one machine sends for another machine's screen.
 	Surface string `json:"surface,omitempty"`
 
+	// ClientID is this window's stable identity across its redials. Surface is
+	// only a machine label, so it cannot distinguish two windows on one machine.
+	ClientID string `json:"clientID,omitempty"`
+
 	// Back says this surface has been in this conversation before and is coming
 	// back from a link that dropped, rather than arriving for the first time.
 	//
@@ -1186,6 +1193,11 @@ type Welcome struct {
 	// these doors sends no field, and a surface that believed it could attach
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
+
+	// Memory says the conversation's engine has its memory row enabled. It is
+	// carried once so a surface can distinguish an empty store from memory off
+	// without asking from its paint loop.
+	Memory bool `json:"memory,omitempty"`
 
 	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],
 	// [MethodTeamsUpdate], [MethodTeamsTraffic]) from its own profile, which

@@ -209,7 +209,7 @@ func (a *app) homeRowVerbs() []verb {
 func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 	var verbs []verb
 	for _, v := range switcherVerbsFor(row) {
-		if a.hosted() && row.kind == switcherConversation && v.answer == "" && (v.key == 'o' || v.key == 'p' || v.key == 'n') {
+		if a.hosted() && row.kind == switcherConversation && v.answer == "" && (v.key == 'o' || v.key == 'n') {
 			continue
 		}
 		// A VERB THAT CANNOT WORK IS ABSENT, NOT BROKEN. Two of the doors want a
@@ -253,8 +253,8 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 		do = func() tea.Cmd { return a.homeStartInProject(homeWhere(line)) }
 	case v.key == 'o':
 		do = func() tea.Cmd { return a.homeOpenFolder(row.session) }
-	case v.key == 'p' && row.kind == switcherConversation:
-		do = func() tea.Cmd { return a.homeCopyPath(row.session) }
+	case v.key == 'c' && row.kind == switcherConversation:
+		do = func() tea.Cmd { return a.homeCopyName(row.session) }
 	case v.key == 'p':
 		do = func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }
 	case v.key == 'r':
@@ -302,8 +302,7 @@ func (a *app) writeHomeArchived(row session.SessionRow, closed bool) error {
 	return session.SetArchived(row.Dir, closed)
 }
 
-// homeOpenFolder is `o open folder`, and homeCopyPath is `p copy project` — the
-// same two doors ctrl+o and ctrl+y are.
+// homeOpenFolder is the same door for `o open folder` and ctrl+o.
 func (a *app) homeOpenFolder(row session.SessionRow) tea.Cmd {
 	return a.homeOpenPath(row.Workspace)
 }
@@ -318,6 +317,28 @@ func (a *app) homeOpenPath(path string) tea.Cmd {
 	}
 	a.home.say("opened "+path, path)
 	return nil
+}
+
+// homeCopyName resolves the title again when pressed: an open menu must not
+// freeze a conversation's name while its agent keeps updating it. The tab keeper
+// supplies live names; Home's latest snapshot supplies saved and remote names.
+func (a *app) homeCopyName(row session.SessionRow) tea.Cmd {
+	for _, current := range a.home.world.Sessions() {
+		if current.Transcript == row.Transcript {
+			row = current
+			break
+		}
+	}
+	name := homeName(row)
+	if row.Transcript != "" {
+		key := a.convKey(row.Transcript)
+		tab := a.tabAs(chatTab{key: key, file: row.Transcript, word: name, full: name}, a.behind[key], a.frontTabKey())
+		if tab.full != "" {
+			name = tab.full
+		}
+	}
+	a.home.say("copied "+name, "")
+	return tea.Raw(osc52(name, a.tmux))
 }
 
 func (a *app) homeCopyPath(row session.SessionRow) tea.Cmd {

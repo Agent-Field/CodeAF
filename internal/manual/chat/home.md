@@ -945,8 +945,10 @@ its tasks keep running, it keeps its lock — and the new one is built on **its 
 workspace, with that project's approval rules, its crew, its spend ceiling and its saved
 shapes of work. Nothing is carried across, because nothing crosses.
 
-The **tab strip** above the transcript then shows both, and `tab` over an empty message
-box goes back.
+The **tab strip** above the transcript shows conversations that have a name. An
+untouched conversation has no tab; a draft or first sent message names it and adds
+its tab. Opening a saved, named conversation shows its tab straight away. `tab`
+over an empty message box goes back.
 
 One refusal is still possible and it leaves home standing: the folder is gone —
 `that folder is gone · <path>`, and nothing is opened. Home already knew — the row reads
@@ -1018,7 +1020,7 @@ age would be.
 `enter`, `ctrl+t new chat here` and `ctrl+o open folder` all want that directory, so each of
 them refuses rather than pretending. The row's verb strip drops `n new in project` and
 `o open folder` for the same reason: a strip only ever names letters that work.
-`ctrl+y copy path` and `p copy project` still do, because a path is a string.
+`ctrl+y copy path` and `c copy name` still work: neither needs the folder to exist.
 
 **On enter.** Nothing is opened, home stays up, the conversation you were in is untouched,
 and `that folder is gone · <path>` appears on home's message line at the foot of the screen.
@@ -1100,8 +1102,9 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
   this one. Press it again and you are back. It is `cd -`.
 - **`/new`** adds a conversation in this project — unless the one on screen is fresh and
   empty, in which case it takes its place.
-- **the tab strip** above the transcript draws one tab per open conversation, and marks the
-  ones stopped on a question.
+- **the tab strip** above the transcript draws one tab per open conversation that has a
+  draft or a message — an untouched new conversation gets its tab when you type in it — and
+  marks the ones stopped on a question.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves codeaf
   only when that was the last one.
 - **`ctrl+c`** closes all of them, on the press that lands and with nothing asked
@@ -1590,7 +1593,7 @@ reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spell
 map's own line names while it is live.
 
 Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
-tasks place, `/history`).
+sessions place, `/history`).
 
 ## What landed while I was away — since you left, and the look stamp
 
@@ -1733,7 +1736,7 @@ The cursor stays on the row it was on rather than on the line number — the ord
 changes when work starts or finishes, and a cursor that stayed put would move you onto
 something else between two glances.
 
-## What is the ◦ row on home — the little circle, and where the things keeping an eye on your project are
+## What is the ◦ row on home — the little circle, and when does a standing order go off?
 
 **A standing thing — a reminder, a watch, a rule, an overnight job — is on home's panels
 three ways:**
@@ -1743,8 +1746,9 @@ three ways:**
 - **while it is firing**, it is a row of `standing` like any other order — it is not a
   task and has no row on `sessions`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
   it, and `alt+e` raises how hard it thinks;
-- **while it is simply waiting for its time**, it is a row of `standing`, soonest first, with
-  when it goes off at the right — `in 20h`, `mon 8:30`.
+- **while it is simply waiting for its time**, it is a row of `standing`, soonest first.
+  Home does not show when a waiting order will next go off. Press `enter` on the row, or
+  open the standing place with `alt+7` or `/standing`, to read when it is due.
 
 `enter` on a question row opens the conversation that asked for it; on a `sessions` row it
 opens the conversation; on a `standing` row it opens the standing place.
@@ -1992,18 +1996,27 @@ drawn only when it has something to say:
 7. **what is scheduled** and **news since you last looked**;
 8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
-9. one dim line naming the strip: `→ verbs: close, new in project, open folder,
-   copy project`.
+9. one dim line naming the strip: `→ verbs: close, copy name, new in project,
+   open folder`.
 
 It never moves while the list lifts under your typing, and it goes empty on the
 `start a new conversation` row, because that chat does not exist yet. A frame too short for
 all of it drops bands from the bottom and never touches the name. Nothing that is zero is
 drawn.
 
+## Copy a conversation name from Home
+
+Select a conversation and press `→` to show its options. The four ordinary actions are
+`x close`, `c copy name`, `n new in project`, and `o open folder`, in that order.
+`c` copies the full current conversation name, even when the screen shortens it. It
+also works on remote conversations and when the project folder is missing. Without
+an existing local folder, the folder actions are absent. `ctrl+y` still copies the
+project path. Task rows keep their separate `p copy project` action.
+
 ## What do the keys on a home card do — open, new chat, folder, and copy path
 
 **The card beside a search does not list letters.** Its last dim line names the strip and
-the words instead — `→ verbs: close, new in project, open folder, copy project` — because
+the words instead — `→ verbs: close, copy name, new in project, open folder` — because
 a letter is a verb only while the strip naming it is on screen.
 
 **The chords work on any conversation row, card or no card**, and each acts on the row you
@@ -2043,8 +2056,8 @@ In the middle column the options leave the list in place. In the narrow layout t
 pushes the rows under it down. The options are shown only while their shortcuts are active.
 
 **The verbs are the row's own:** a question's first two option words on its own answer keys; a
-conversation's `x close` and, where it has a folder, `n new in project`,
-`o open folder`, `p copy project`; a standing item's `p pause it` or `r resume it`; a task this
+conversation's `x close`, `c copy name`, then, where it has a folder, `n new in project`
+and `o open folder`; a standing item's `p pause it` or `r resume it`; a task this
 window runs, `s stop`.
 
 **`→` opens the strip on every row of the field, at every width** — the arrows never
@@ -2147,8 +2160,8 @@ time, news text, task file count or cost, and answer chip remain visible. A sing
 wider than the card is still clipped. The card's place line clips from the left so the
 path's basename remains visible.
 
-**The verbs line breaks the same way** — `→ verbs: close, new in project, open
-folder,` / `         copy project` — keeping the comma on the row it ends and hanging the
+**The verbs line breaks the same way** — `→ verbs: close, copy name, new in project,` /
+`         open folder` — keeping the comma on the row it ends and hanging the
 second row under the first word.
 
 A **panel row** on a narrow column gives way in its own order: the project tag goes first,

@@ -137,14 +137,15 @@ func runTests(m *testing.M) int {
 // reason [Agent] is an interface — the surface is driven without a provider, a
 // key, or a file.
 type fakeAgent struct {
-	turns  [][]session.Event
-	turn   int
-	live   chan session.Event
-	model  string
-	window int
-	usage  session.Usage
-	sent   []string
-	stops  int
+	turns    [][]session.Event
+	turn     int
+	live     chan session.Event
+	model    string
+	window   int
+	usage    session.Usage
+	sent     []string
+	bashSent []string
+	stops    int
 	// stopDoor is the door the last stop named (internal/session's stopcause.go).
 	stopDoor session.StopDoor
 	closes   int
@@ -1202,17 +1203,20 @@ func TestCompactionDrawsADivider(t *testing.T) {
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "keep going")
 
-	// The compaction mark is machinery, so a turn that settles on an answer
-	// tucks it away with the rest of the work (workfold.go). Nobody wants to be
-	// told the context was squeezed while they are reading the reply; they want
-	// it when they go looking for why, which is what ctrl+e is for.
+	// A PASS THAT ONLY STUBBED AND FOLDED IS MACHINERY, so a turn that settles
+	// on an answer tucks it away with the rest of the work (workfold.go), and
+	// ctrl+e brings it back — one quiet line, not a rule across the page. Only
+	// a pass that wrote a summary stands ([TestACompactionMidTurnStaysVisibleWhenTheWorkFolds]).
 	if folded := plain(frame(a)); strings.Contains(folded, "compacted from") {
-		t.Fatalf("a settled turn still shows the compaction mark:\n%s", folded)
+		t.Fatalf("a settled turn still shows a free pass's mark:\n%s", folded)
 	}
 	drive(t, a, key("ctrl+e"))
 	got := plain(frame(a))
-	if !strings.Contains(got, "⚭ compacted from ~84k tokens") || !strings.Contains(got, "──") {
-		t.Fatalf("the compaction divider is missing:\n%s", got)
+	if !strings.Contains(got, "· ⚭ compacted from ~84k tokens") {
+		t.Fatalf("the opened work does not carry the compaction line:\n%s", got)
+	}
+	if row := findRow(t, a, "compacted from ~84k tokens"); strings.Contains(row, "──") {
+		t.Fatalf("the compaction mark is still a rule: %q", row)
 	}
 }
 

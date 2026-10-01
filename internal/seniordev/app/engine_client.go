@@ -451,6 +451,14 @@ func (client *seniorDevLLM) streamAttempt(
 		observation.finish("resolve", err)
 		return nil, err
 	}
+	if call != nil && call.Summary {
+		// A HISTORY SUMMARY THINKS AS THE MODEL THINKS. The run's effort is
+		// asked for the coder's turns, where depth is the work; a summary
+		// recurs through a long run and is a rewrite of what is already
+		// written, so it sends no `reasoning` at all rather than paying the
+		// coder's depth again on every compaction.
+		model.Params.OpenRouterOptions = model.Params.OpenRouterOptions.Without("reasoning")
+	}
 	systems := []string{}
 	if system != "" {
 		systems = append(systems, system)
