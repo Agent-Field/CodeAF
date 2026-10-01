@@ -28,3 +28,12 @@ func TestCompareCarriesTheRecordedTestRun(t *testing.T) {
 		t.Fatal("a run was invented")
 	}
 }
+
+func TestWorthCountsWhatIsOnlyShown(t *testing.T) {
+	if (Resume{}).Worth() || !(Resume{Uncommitted: []string{"a"}}).Worth() || !(Resume{Tests: &inventory.TestRun{}}).Worth() {
+		t.Fatal("Worth must be false for nothing and true for uncommitted files or a test run")
+	}
+	if (Resume{Uncommitted: []string{"a"}}).Empty() == false {
+		t.Fatal("shown facts must not make a resume offerable")
+	}
+}

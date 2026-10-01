@@ -62,7 +62,7 @@ func pairGrant(route pair.Mailbox) (pair.Grant, error) {
 	if err != nil {
 		return pair.Grant{}, err
 	}
-	if err := identity.MarkPaired(home.Dir()); err != nil {
+	if err := identity.EndSolo(home.Dir()); err != nil { // offering the identity is starting a fleet
 		return pair.Grant{}, err
 	}
 	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(home.Dir())}, nil
