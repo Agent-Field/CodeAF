@@ -188,8 +188,7 @@ limit — so pressing `enter` alone walks the whole form down to `Start a conver
 
 **The rows take the mouse too.** A click on a row is the key that row would have taken: a
 click on the limit focuses it to type into, a click on the chat model opens its list, a
-click on one model of the list takes it, a click on the review shows it, and a click on
-`Start a conversation` leaves. The wheel scrolls the open list. A click on a sentence, a
+click on one model of the list takes it, and a click on `Start a conversation` leaves. The wheel scrolls the open list. A click on a sentence, a
 blank row or the example panel does nothing.
 
 **With no credit on the OpenRouter account, the list shows free models only.** When the
@@ -225,10 +224,12 @@ example's own title (`Understand an unfamiliar project`, `Hand off something lon
 `Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`); its
 bottom edge carries `←  3 / 5  →`, the arrows that browse it. It is as wide as the screen allows,
 up to 92 columns, so the request in it stands on one row. It holds one request you could
-type and what it leads to, and follows the row you are on: on the review row it shows
-`/task Fix the failing tests and explain the changes.`, and on `Start a conversation` it
-shows `/senior-dev Add retries with backoff to the HTTP client, with tests.` — a command
-in a request is painted as the same chip the message box paints a recognised command with.
+type and what it leads to, and follows the row you are on: beside the limit it shows
+`What has this cost me so far today?`, and on `Start a conversation` it shows
+`/senior-dev Add retries with backoff to the HTTP client, with tests.` — a command in a
+request is painted as the same chip the message box paints a recognised command with. The
+other three (`Understand an unfamiliar project`, `Hand off something longer` with
+`/task Fix the failing tests and explain the changes.`, `Compare the options`) are a `→` away.
 That request **types itself out once** on arriving and on `←`/`→`, then settles; typing
 settles it at once. `←`/`→` go round: `→` on the last example is the first again. Two blank rows separate the panel from the form's heading. On a window
 too short to hold the form and the whole panel — 24 rows, say — the panel is not drawn and
@@ -236,10 +237,10 @@ the form is unchanged. (Until 2026-10-01 the panel was a second column to the ri
 form, drawn only from 112 columns up, and carried `An illustration. Nothing here has run.`
 at its foot; the label on its edge now says that once.)
 
-**A row's name says where you are.** Each name — `Daily limit`, `Chat model`, the review
-row, `Start a conversation` — is in the body colour until you have answered it, blue while
+**A row's name says where you are.** Each name — `Daily limit`, `Chat model`,
+`Start a conversation` — is in the body colour until you have answered it, blue while
 you are on it, and grey once `enter` has acted on it: the limit set, a model taken from the
-list, the review shown. Walking back onto an answered row makes it blue again while you are
+list. Walking back onto an answered row makes it blue again while you are
 there. Opening the list and leaving it with `esc` answers nothing.
 
 The keys line is the form's second row, directly under `Basic settings`. It reads `enter
@@ -306,17 +307,12 @@ question there, because none can be answered usefully before you have seen codea
 anything. They are taught where they happen: the countdown is on the task card, and the
 first permission question explains the actual tool that asked for something.
 
-Under the two fields is one row that shows them: **`Other settings use defaults ·
-review`** on a fresh profile, and **`Review other settings`** on a profile that has
-already written any of them down — it never claims your own settings are defaults.
-`enter` on that row opens three read-only rows straight off the settings registry:
-
-```
-  memory              on
-  ask before running  prompt
-  task countdown      15s
-  /settings changes these and every other one.
-```
+Under `Start a conversation` one dim line reads **`Everything else is in /settings`**, with
+`/settings` painted as a command chip; that is the whole of what the screen says about the
+settings it does not ask about. (Until 2026-10-01 a row `Other settings use defaults ·
+review` stood between the chat model and the way out and opened three read-only rows —
+memory, ask before running, task countdown; a row that showed settings and let nobody change
+them was removed.)
 
 Per-plan approval, the per-conversation ceiling, individual crew seats, reasoning,
 routing, extra provider keys, concurrency and appearance are all deliberately absent from

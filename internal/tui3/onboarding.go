@@ -68,7 +68,6 @@ type setupControl int
 const (
 	controlLimit setupControl = iota
 	controlChatModel
-	controlReview
 	controlStart
 )
 
@@ -123,29 +122,22 @@ const (
 		" Tasks get their own crew, picked per task · /crew shows it."
 )
 
-// The two spellings of the row under the fields. A fresh profile is told these
-// are defaults, because they are; a profile that has written any of them down is
-// NOT told that, because it would be false — and the review then shows the actual
-// values either way.
-// AND EACH HAS A SHORT SPELLING FOR A NARROW WINDOW. `Other settings use
-// defaults · r…` is a row that has stopped saying anything; a shorter true
-// sentence is always better than a longer one with its end cut off.
-const (
-	controlReviewDefaults      = "Other settings use defaults · review"
-	controlReviewDefaultsShort = "Other settings · review"
-	controlReviewYours         = "Review other settings"
-	controlReviewYoursShort    = "Other settings"
-)
-
 // controlStartWord is the way out, and it is named for what happens next rather
 // than for the form being finished. "Done" and "Save" describe the screen;
 // this describes the person's day.
 const controlStartWord = "Start a conversation"
 
-// controlReviewRest is the line under the optional review: where these three
-// live afterwards. It is the one door this screen offers onto everything it
-// deliberately does not ask about.
-const controlReviewRest = "/settings changes these and every other one."
+// The note under the way out: where everything this screen does not ask about
+// lives. It is one dim sentence with the command in it painted as the
+// composer's chip, so the one word a person can act on is the one word that
+// stands out. IT REPLACED A ROW. Until 2026-10-01 `Other settings use defaults
+// · review` stood between the chat model and the way out and opened three
+// read-only rows; a row that shows settings and lets nobody change them was a
+// door painted on a wall, and people pressed on it.
+const (
+	controlSettingsNoteLead    = "Everything else is in "
+	controlSettingsNoteCommand = "/settings"
+)
 
 // controlPinnedLead prefixes a value an environment variable owns, and
 // controlFromLead a value one merely SEEDED. The two are different facts and the
@@ -188,10 +180,6 @@ func (a *app) setupControlsKey(name, text string) bool {
 		}
 		if s.detail {
 			s.detail = false
-			return true
-		}
-		if s.reviewOpen {
-			s.reviewOpen = false
 			return true
 		}
 		return false
@@ -436,18 +424,6 @@ func (a *app) setupControlsEnter() bool {
 		s.modelOpen = true
 		a.filterSetupModels("")
 		return false
-
-	case controlReview:
-		// Enter shows the review, and enter on a review already showing goes
-		// on to the way out rather than folding it away: the rows stay readable
-		// and the form keeps moving under repeated enters.
-		if s.reviewOpen {
-			s.focusControl(a, 1)
-			return false
-		}
-		s.reviewOpen = true
-		s.answered[controlReview] = true
-		return false
 	}
 	// `Start a conversation` — everything the screen holds is written down, and
 	// a row that refused keeps the screen up with its refusal on it.
@@ -476,7 +452,7 @@ type setupDoors struct {
 // three keystrokes. It is a form now, with rows that look like rows and a list
 // that looks like a list, and the first thing a person who sees a list does is
 // click on it. So a press on a control is a tab to it, and a press on a row that
-// enter would act on — the model field, the review, the way out, or one model of
+// enter would act on — the model field, the way out, or one model of
 // the open list — is that enter. The limit row is only focused, because what a
 // press on an amount means is "I want to type here". A press anywhere else on
 // the screen — a sentence, a blank, the example — does nothing, which is what a
@@ -761,7 +737,7 @@ func (a *app) startSetupControls() {
 	s.control = controlLimit
 	s.limitText, s.limitTyped = "", false
 	s.closeChoosers()
-	s.reviewOpen, s.detail = false, false
+	s.detail = false
 	s.example = exampleForControl(controlLimit)
 	// ARRIVING ON THE SCREEN IS THE FIRST OF THE TWO DELIBERATE ACTS, so the
 	// panel plays once here. Coming BACK from the step behind this one does not
@@ -874,12 +850,6 @@ func exampleForControl(control setupControl) int {
 		// to start a conversation is shown that a whole change can be handed
 		// off, which is the one capability nothing above has hinted at.
 		return 4
-	case controlReview:
-		// THE HAND-OFF EXAMPLE stood beside the crew row, which is gone: a task's
-		// crew is picked per task now and asks nothing here. The review row is
-		// the door to every setting this screen does not ask about, the crew's
-		// among them, so the hand-off stands beside it.
-		return 1
 	}
 	return 0
 }
@@ -1188,8 +1158,11 @@ type controlsRank struct{ rank, id int }
 // screen because somebody pressed `?` for it.
 const (
 	rankSpacer = iota + 1
+	// rankNote is the sentence under the way out, which a short window gives
+	// up right after the blank rows: it points somewhere else, and a person on
+	// a short window has the rest of the form to read first.
+	rankNote
 	rankOtherWords
-	rankReviewRest
 	rankFocusedWords
 	rankDetail
 )
@@ -1323,15 +1296,6 @@ func (a *app) setupControlsForm(width, legend int) *controlsSheet {
 	}
 	f.soft(rankSpacer, "")
 
-	// ── the optional review ──
-	f.open(setupDoor{kind: doorControl, control: controlReview}, a.setupReviewRow(width))
-	if s.reviewOpen {
-		rows, rest := a.setupReviewRows(width)
-		f.add(rows...)
-		f.soft(rankReviewRest, rest...)
-	}
-	f.soft(rankSpacer, "")
-
 	// ── the way out ──
 	f.open(setupDoor{kind: doorControl, control: controlStart}, a.setupStartRow(width))
 	if s.refusal != "" {
@@ -1343,7 +1307,17 @@ func (a *app) setupControlsForm(width, legend int) *controlsSheet {
 		}
 	}
 	f.soft(rankSpacer, "")
+	f.soft(rankNote, a.setupSettingsNote(width))
 	return f
+}
+
+// setupSettingsNote is the dim sentence under the way out, with the command in
+// it wearing the chip the message box paints a recognised command with — the
+// same paint, so the word reads as something to type rather than as prose.
+func (a *app) setupSettingsNote(width int) string {
+	pal := a.pal
+	lead := fit(controlSettingsNoteLead, max(width-2-len(controlSettingsNoteCommand), 1))
+	return "  " + pal.dim(lead) + pal.chip(controlSettingsNoteCommand)
 }
 
 // addControlWords adds a field's one-line explanation, and — only where `?` asked
@@ -1606,78 +1580,6 @@ const setupNoCatalogWord = "no model list on this machine yet · /model finds on
 // setupNoMatchWord is a filter that matched nothing.
 const setupNoMatchWord = "nothing matches · backspace widens it"
 
-// setupReviewRow is the row under the fields. Its wording depends on the profile
-// and not on a guess: a profile that has written any of the three down is NOT
-// told they are defaults.
-func (a *app) setupReviewRow(width int) string {
-	long, short := controlReviewDefaults, controlReviewDefaultsShort
-	if a.setupOtherSettingsWritten() {
-		long, short = controlReviewYours, controlReviewYoursShort
-	}
-	word := long
-	if ansi.StringWidth(long) > width-2 {
-		word = short
-	}
-	return a.setupControlLead(controlReview) + a.setupLabelInk(controlReview)(fit(word, width-2))
-}
-
-// setupOtherSettingsWritten reports whether this profile has chosen any of the
-// three the review shows. It reads the registry's own record of what is written
-// down ([config.Settings.PersistedKeys]) rather than comparing values to
-// defaults, because a person who deliberately set a row to its default has still
-// chosen it.
-func (a *app) setupOtherSettingsWritten() bool {
-	written := a.registry().PersistedKeys()
-	for _, key := range setupReviewKeys {
-		for _, have := range written {
-			if have == key {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// setupReviewKeys are the three the optional review shows, in the order it shows
-// them. They are the three the design deliberately does NOT make into questions:
-// memory is on and useful before anybody has an opinion, permissions cannot be
-// configured before a person has seen a tool ask for something, and the countdown
-// belongs beside the actual countdown.
-var setupReviewKeys = []string{
-	config.KeyMemoryEnabled,
-	config.KeyToolApprovalMode,
-	config.KeyTaskAutoApprove,
-}
-
-// setupReviewRows is the review itself: three rows read straight off the
-// registry, so what it shows is what /settings shows and never a claim that a
-// configured profile is on defaults. It answers the rows and the closing line
-// separately, because the line is the one part a short window may give up.
-func (a *app) setupReviewRows(width int) ([]string, []string) {
-	pal := a.pal
-	out := make([]string, 0, len(setupReviewKeys))
-	// The label column is measured against the labels themselves rather than
-	// borrowed from the fields above: `ask before running` is eighteen cells and
-	// ran straight into its own value at the field column's seventeen, which is
-	// how `ask before runningprompt` reached a screen.
-	names := 0
-	for _, key := range setupReviewKeys {
-		if row, ok := a.registry().Row(key); ok {
-			names = max(names, ansi.StringWidth(row.Label)+2)
-		}
-	}
-	for _, key := range setupReviewKeys {
-		row, ok := a.registry().Row(key)
-		if !ok {
-			continue
-		}
-		out = append(out, strings.Repeat(" ", 4)+pal.dim(padTo(row.Label, names))+
-			pal.ink(fit(row.Reading(), max(width-4-names, 1))))
-	}
-	rest := []string{strings.Repeat(" ", 4) + pal.dim(fit(controlReviewRest, width-4))}
-	return out, rest
-}
-
 // setupStartRow is the primary action, with the key that takes it on the right.
 // It is a row of the same form rather than a bright panel: the accent on this
 // screen belongs to whatever the person is standing on, and an action that
@@ -1731,11 +1633,6 @@ func (a *app) setupControlsKeys(width int) string {
 			parts = []string{"enter sets the limit", setupMovesWord, a.setupBackWord(), "type an amount or none"}
 		case controlChatModel:
 			parts = []string{"enter opens the list", setupMovesWord, a.setupBackWord()}
-		case controlReview:
-			parts = []string{"enter shows them", setupMovesWord, a.setupBackWord()}
-			if s.reviewOpen {
-				parts[0] = "enter goes on"
-			}
 		case controlStart:
 			parts = []string{"enter starts", setupMovesWord, a.setupBackWord()}
 		}

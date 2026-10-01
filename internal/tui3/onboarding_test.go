@@ -107,8 +107,8 @@ func TestTheModelListReachesTheWholeCatalogAndOpensOnTheModelInUse(t *testing.T)
 	if a.model != was {
 		t.Fatalf("enter on the model in use switched to %q", a.model)
 	}
-	if a.setup.modelOpen || a.setup.control != controlReview {
-		t.Fatalf("after taking a model the focus is on control %v with the list open=%v, want the review row and the list closed", a.setup.control, a.setup.modelOpen)
+	if a.setup.modelOpen || a.setup.control != controlStart {
+		t.Fatalf("after taking a model the focus is on control %v with the list open=%v, want the way out and the list closed", a.setup.control, a.setup.modelOpen)
 	}
 	// The last row of the catalog is reachable by walking, and the count says
 	// how far there is to go.
@@ -322,39 +322,6 @@ func TestATaskModelOverrideIsSaid(t *testing.T) {
 	}
 }
 
-// THE REVIEW ROW NEVER CALLS SOMEBODY'S OWN SETTINGS DEFAULTS, and what it opens
-// is read off the registry rather than written here twice.
-func TestTheReviewRowTellsDefaultsFromChoices(t *testing.T) {
-	a, _ := controlsApp(t, nil)
-	if screen := setupScreen(a); !strings.Contains(screen, controlReviewDefaults) {
-		t.Fatalf("a fresh profile must be told these are defaults; got:\n%s", screen)
-	}
-	b, dir := controlsApp(t, func(dir string) {
-		seedRow(t, dir, config.KeyMemoryEnabled, "off")
-	})
-	screen := setupScreen(b)
-	if strings.Contains(screen, controlReviewDefaults) {
-		t.Fatalf("a configured profile was told its settings are defaults:\n%s", screen)
-	}
-	if !strings.Contains(screen, controlReviewYours) {
-		t.Fatalf("a configured profile must be offered the review; got:\n%s", screen)
-	}
-	walkToControl(t, b, controlReview)
-	pressSetup(b, key("enter"))
-	// The value it shows is the registry's own reading of the row, which is what
-	// /settings shows for the same profile.
-	row, ok := b.registry().Row(config.KeyMemoryEnabled)
-	if !ok {
-		t.Fatal("the registry lost the memory row")
-	}
-	if got := row.Reading(); got != config.MemoryAt(dir) {
-		t.Fatalf("the row reads %q and the profile says %q", got, config.MemoryAt(dir))
-	}
-	if !strings.Contains(setupScreen(b), row.Reading()) {
-		t.Fatalf("the review must show the actual value %q; got:\n%s", row.Reading(), setupScreen(b))
-	}
-}
-
 // THE SCREEN IS USABLE AT EVERY WIDTH THE DESIGN NAMES, and "usable" is three
 // concrete things: the values are legible, the way out is on the frame, and the
 // keyboard line is there and is not cut in the middle of a word.
@@ -510,14 +477,14 @@ func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.
 	if again := setupScreen(a); again != screen {
 		t.Fatal("the example moved between two frames with no keypress")
 	}
-	walkToControl(t, a, controlReview)
-	if want := setupExamples[exampleForControl(controlReview)].title; !strings.Contains(setupScreen(a), want) {
-		t.Fatalf("the review row's example is %q; got:\n%s", want, setupScreen(a))
+	walkToControl(t, a, controlStart)
+	if want := setupExamples[exampleForControl(controlStart)].title; !strings.Contains(setupScreen(a), want) {
+		t.Fatalf("the way out's example is %q; got:\n%s", want, setupScreen(a))
 	}
 	// ←/→ browse without touching anything.
 	limit := a.setup.limitText
 	pressSetup(a, key("right"))
-	if a.setup.example == exampleForControl(controlReview) {
+	if a.setup.example == exampleForControl(controlStart) {
 		t.Fatal("→ did not move the example")
 	}
 	if a.setup.limitText != limit {
@@ -949,7 +916,7 @@ func TestAFolderWithEarlierConversationsGetsTheOrdinaryGreeting(t *testing.T) {
 
 // ENTER GETS A PERSON THROUGH THE WHOLE FORM. Each row answers enter by going on
 // to the next: the limit commits and moves, the model row opens its list and a
-// taken model moves, the review opens and then moves, and the way out starts.
+// taken model moves, and the way out starts.
 // An earlier build left the focus on the model row after a choice, so the next
 // enter opened the list again and nothing a person did with enter alone ever
 // reached `Start a conversation`.
@@ -962,19 +929,8 @@ func TestEnterAloneWalksTheWholeControlsScreen(t *testing.T) {
 	}
 	pressSetup(a, key("enter")) // opens the list
 	pressSetup(a, key("enter")) // takes the model in use and goes on
-	if a.setup.control != controlReview || a.setup.modelOpen {
-		t.Fatalf("after the model the focus is on %v (list open=%v), want the review", a.setup.control, a.setup.modelOpen)
-	}
-	pressSetup(a, key("enter")) // shows the review
-	if !a.setup.reviewOpen || a.setup.control != controlReview {
-		t.Fatal("enter on the review row did not show it")
-	}
-	if screen := setupScreen(a); !strings.Contains(screen, "enter goes on") {
-		t.Fatalf("the legend on an open review must say enter goes on; got:\n%s", screen)
-	}
-	pressSetup(a, key("enter")) // goes on, leaving the review readable
-	if a.setup.control != controlStart || !a.setup.reviewOpen {
-		t.Fatalf("after the review the focus is on %v (review open=%v), want the way out with the review still showing", a.setup.control, a.setup.reviewOpen)
+	if a.setup.control != controlStart || a.setup.modelOpen {
+		t.Fatalf("after the model the focus is on %v (list open=%v), want the way out", a.setup.control, a.setup.modelOpen)
 	}
 	pressSetup(a, key("enter")) // starts
 	if a.setup.open {
@@ -1022,8 +978,8 @@ func TestAClickOnTheControlsScreenActsLikeTheKeyOnThatRow(t *testing.T) {
 	if a.model != "c/charlie" {
 		t.Fatalf("a press on a model row put the conversation on %q, want c/charlie", a.model)
 	}
-	if a.setup.modelOpen || a.setup.control != controlReview {
-		t.Fatalf("after the press the focus is on %v (list open=%v), want the review", a.setup.control, a.setup.modelOpen)
+	if a.setup.modelOpen || a.setup.control != controlStart {
+		t.Fatalf("after the press the focus is on %v (list open=%v), want the way out", a.setup.control, a.setup.modelOpen)
 	}
 	// A press on the limit only focuses it: what a press on an amount means is
 	// "I want to type here".
@@ -1239,8 +1195,8 @@ func TestRowNamesAreAccentWhenFocusedDimWhenAnsweredAndInkUntilThen(t *testing.T
 	if !strings.Contains(frame, pal.accent(limit)) {
 		t.Fatalf("the focused limit's name is not the accent:\n%s", plain(frame))
 	}
-	if !strings.Contains(frame, pal.ink(model)) {
-		t.Fatalf("the untouched model row's name is not the body ink:\n%s", plain(frame))
+	if !strings.Contains(frame, pal.ink(model)) || !strings.Contains(frame, pal.ink(controlStartWord)) {
+		t.Fatalf("an untouched row's name is not the body ink:\n%s", plain(frame))
 	}
 	pressSetup(a, key("enter")) // the limit, answered; the focus moves on
 	frame, _, _ = a.frame()
@@ -1260,11 +1216,8 @@ func TestRowNamesAreAccentWhenFocusedDimWhenAnsweredAndInkUntilThen(t *testing.T
 	if !strings.Contains(frame, pal.dim(model)) {
 		t.Fatalf("the answered model row's name is not dim:\n%s", plain(frame))
 	}
-	if !strings.Contains(frame, pal.accent(fit(controlReviewDefaults, setupFormWidth-2))) {
-		t.Fatalf("the focused review row's name is not the accent:\n%s", plain(frame))
-	}
-	if !strings.Contains(frame, pal.ink(controlStartWord)) {
-		t.Fatalf("the untouched way out is not the body ink:\n%s", plain(frame))
+	if !strings.Contains(frame, pal.accent(controlStartWord)) {
+		t.Fatalf("the focused way out is not the accent:\n%s", plain(frame))
 	}
 	// Walking back onto an answered row paints it the accent again; leaving
 	// it, dim again.
@@ -1296,5 +1249,31 @@ func TestTheModelListIsAFlatListOfExactIds(t *testing.T) {
 	}
 	if screen := setupScreen(a); strings.Contains(screen, "Qwen3.8 27b:free") && !strings.Contains(screen, "Chat model Qwen3.8 27b:free") {
 		t.Fatalf("a friendly name is still drawn in the list:\n%s", screen)
+	}
+}
+
+// THE NOTE UNDER THE WAY OUT POINTS AT /settings, with the command painted as
+// the composer's chip, and nothing on the form claims to show the other
+// settings: the review row that did is gone, because a row that shows
+// settings and lets nobody change them is a door painted on a wall.
+func TestTheNoteUnderTheWayOutPointsAtSettingsWithItsChip(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	frame, _, _ := a.frame()
+	screen := plain(frame)
+	note := controlSettingsNoteLead + controlSettingsNoteCommand
+	start, at := strings.Index(screen, controlStartWord), strings.Index(screen, note)
+	if start < 0 || at < 0 || at < start {
+		t.Fatalf("the note %q must stand under %q; got:\n%s", note, controlStartWord, screen)
+	}
+	if !strings.Contains(frame, a.pal.chip(controlSettingsNoteCommand)) {
+		t.Fatalf("the note does not paint %s as a command chip:\n%s", controlSettingsNoteCommand, screen)
+	}
+	for _, gone := range []string{"Other settings", "review"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("the form still carries %q:\n%s", gone, screen)
+		}
+	}
+	if setupControlCount != 3 {
+		t.Fatalf("the form walks %d rows, want three: the limit, the chat model, the way out", setupControlCount)
 	}
 }

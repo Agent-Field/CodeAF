@@ -93,9 +93,8 @@ type setupFlow struct {
 	//     viewport and a filter over the WHOLE catalog rather than a truncation
 	//     of it, because a form with five rows must still reach two hundred
 	//     models.
-	//   - reviewOpen is the optional reading of the settings this screen
-	//     deliberately does not ask about, example is which illustration the
-	//     right-hand column is showing, and seeded says the screen has already
+	//   - example is which illustration the panel is showing, and seeded says
+	//     the screen has already
 	//     been read from the profile once — so coming back from the step behind
 	//     it does not throw away what was typed.
 	control setupControl
@@ -110,7 +109,6 @@ type setupFlow struct {
 	modelAt    int
 	modelTop   int
 	modelFind  string
-	reviewOpen bool
 	example    int
 	seeded     bool
 	// The example panel's one-shot demonstration (onboarding.go): demoAt is
