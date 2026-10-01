@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -51,11 +52,13 @@ type takeover struct{ c *syncsetup.Continuer }
 var _ tui3.Taker = takeover{}
 
 func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
+	began := time.Now()
 	got, err := t.c.Take(ctx, id)
+	elapsed := time.Since(began)
 	if err != nil {
 		return tui3.Taken{}, err
 	}
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume}, nil
+	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Elapsed: elapsed}, nil
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

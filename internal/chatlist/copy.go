@@ -40,6 +40,10 @@ const (
 	notBrought     = "not brought along: %s"
 	wasRunning     = "was running there: %s"
 	alsoNeeded     = "also needed: %s"
+	uncommitted    = "not committed yet: %s"
+	movedFrom      = "Moved from %s in %s. Everything as you left it."
+	movedAnon      = "Moved here in %s. Everything as you left it."
+	movedRestart   = " What was running there can start again here."
 	moreNames      = "%s and %d more"
 	// OfferSetUp and OfferNotNow are the two answers of the card a takeover raises,
 	// and SetupLater is what the second one says, so a person who answered it
@@ -56,7 +60,7 @@ const namesShown = 3
 // SetupFacts are the three lists a takeover can have something to say about, as
 // lines a person reads: folders the copy did not bring, commands that were
 // running there, and what this machine also needs.
-type SetupFacts struct{ Missing, Running, Needed []string }
+type SetupFacts struct{ Missing, Running, Needed, Changed []string }
 
 // SetupHead is the question of the card a takeover raises. A device whose name
 // is unknown is left out with the word before it, so the sentence still reads.
@@ -76,7 +80,7 @@ func SetupReasons(f SetupFacts) []string {
 		label string
 		names []string
 	}{
-		{notBrought, f.Missing}, {wasRunning, f.Running}, {alsoNeeded, f.Needed},
+		{notBrought, f.Missing}, {wasRunning, f.Running}, {alsoNeeded, f.Needed}, {uncommitted, f.Changed},
 	} {
 		if len(line.names) > 0 {
 			out = append(out, fmt.Sprintf(line.label, nameList(line.names)))
@@ -192,4 +196,19 @@ func turns(n uint32) string {
 		return "1 turn"
 	}
 	return fmt.Sprintf("%d turns", n)
+}
+
+// Moved is the line every takeover says, with the time it measured. It says
+// where the chat came from when that is known, and that what was running there
+// can start again only when something was.
+func Moved(from string, elapsed time.Duration, hadRunning bool) string {
+	took := elapsed.Round(100 * time.Millisecond).String()
+	line := fmt.Sprintf(movedAnon, took)
+	if from != "" {
+		line = fmt.Sprintf(movedFrom, from, took)
+	}
+	if hadRunning {
+		line += movedRestart
+	}
+	return line
 }
