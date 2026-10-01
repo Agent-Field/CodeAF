@@ -23,8 +23,15 @@ import (
 // ErrQuiet is what the wire says while this machine has not asked for sync.
 var ErrQuiet = errors.New("sync is waiting until another machine is added")
 
-// Quiet says this machine's identity is solo: nothing has asked for sync yet.
-func Quiet(home string) bool { return identity.Solo(home) }
+// MayTalk is the one question every path asks before it reaches the sync
+// service: the machine has an identity, and that identity is not solo.
+func MayTalk(home string) bool {
+	_, err := identity.Load(home)
+	return err == nil && !identity.Solo(home)
+}
+
+// Quiet says this machine may not talk to the sync service yet.
+func Quiet(home string) bool { return !MayTalk(home) }
 
 // quietWire is the one gate: nothing leaves the machine while it is quiet.
 type quietWire struct {
