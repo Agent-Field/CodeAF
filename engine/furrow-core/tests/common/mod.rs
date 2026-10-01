@@ -315,6 +315,20 @@ pub fn import_primed(data: &Path, head: ObjectId, inbox: &Path) -> anyhow::Resul
     .run_primed()
 }
 
+pub fn import_partial(data: &Path, head: ObjectId, inbox: &Path) -> anyhow::Result<usize> {
+    let store = open_store(data)?;
+    let sealer = CellSealer::new(&keys());
+    let ledger = Ledger::named(data, LEDGER)?;
+    furrow::exchange::fetch::Import {
+        store: &store,
+        sealer: &sealer,
+        head,
+        inbox,
+        ledger: &ledger,
+    }
+    .run_partial()
+}
+
 pub fn want_of(data: &Path, head: ObjectId) -> Vec<ObjectId> {
     let store = open_store(data).unwrap();
     furrow::exchange::fetch::want(&store, &sealer(), head).unwrap()

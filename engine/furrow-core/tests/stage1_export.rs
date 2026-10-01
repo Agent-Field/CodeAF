@@ -90,29 +90,65 @@ fn export_frames_decode() {
 }
 
 #[test]
-fn export_order_is_chunks_blobs_xattrs_trees_snapshot_last() {
+fn export_order_is_snapshot_trees_xattrs_blobs_chunks() {
     let src = source();
     let report = export(&src, LEDGER, &src._temp.path().join("outbox"), SMALL_FRAME);
+    let ranks = send_ranks(&src, &report);
+    assert!(ranks.windows(2).all(|pair| pair[0] <= pair[1]), "{ranks:?}");
+    assert_eq!(ranks.iter().filter(|rank| **rank == 0).count(), 1);
+    assert_eq!(ranks[0], 0, "the snapshot is the first object");
+}
+
+/// A taker can open an object only after its parent, so the first frame must
+/// carry the snapshot and the trees before any blob.
+#[test]
+fn the_first_frame_holds_the_snapshot_and_trees_before_any_blob() {
+    let src = source();
+    let report = export(&src, LEDGER, &src._temp.path().join("outbox"), SMALL_FRAME);
+    let kinds = kinds_by_rid(&src);
+    let first = objects_of(&frame_paths(&report)[..1]);
+    let in_first: Vec<ObjectKind> = first.iter().map(|(rid, _)| kinds[rid]).collect();
+    assert_eq!(in_first[0], ObjectKind::Snapshot);
+    let all = objects_of(&frame_paths(&report));
+    let trees = all
+        .iter()
+        .filter(|(rid, _)| kinds[rid] == ObjectKind::Tree)
+        .count();
+    assert_eq!(
+        in_first.iter().filter(|k| **k == ObjectKind::Tree).count(),
+        trees,
+        "every tree is in the first frame"
+    );
+    let last_tree = in_first
+        .iter()
+        .rposition(|k| *k == ObjectKind::Tree)
+        .unwrap();
+    let first_blob = in_first.iter().position(|k| *k == ObjectKind::Blob);
+    assert!(first_blob.is_none_or(|blob| last_tree < blob));
+}
+
+fn kinds_by_rid(src: &Source) -> std::collections::HashMap<furrow::model::ObjectId, ObjectKind> {
     let store = open_store(&src.data).unwrap();
-    let kind_of: std::collections::HashMap<_, _> = survey(&store, src.head, 1)
+    survey(&store, src.head, 1)
         .unwrap()
         .present
         .into_iter()
         .map(|(kind, id)| (sealer().remote_id(kind, &id), kind))
-        .collect();
-    let ranks: Vec<usize> = objects_of(&frame_paths(&report))
+        .collect()
+}
+
+fn send_ranks(src: &Source, report: &furrow::exchange::export::ExportReport) -> Vec<usize> {
+    let kinds = kinds_by_rid(src);
+    objects_of(&frame_paths(report))
         .iter()
-        .map(|(rid, _)| match kind_of[rid] {
-            ObjectKind::Chunk => 0,
-            ObjectKind::Blob => 1,
+        .map(|(rid, _)| match kinds[rid] {
+            ObjectKind::Snapshot => 0,
+            ObjectKind::Tree => 1,
             ObjectKind::Xattrs => 2,
-            ObjectKind::Tree => 3,
-            ObjectKind::Snapshot => 4,
+            ObjectKind::Blob => 3,
+            ObjectKind::Chunk => 4,
         })
-        .collect();
-    assert!(ranks.windows(2).all(|pair| pair[0] <= pair[1]), "{ranks:?}");
-    assert_eq!(ranks.iter().filter(|rank| **rank == 4).count(), 1);
-    assert_eq!(*ranks.last().unwrap(), 4, "the snapshot is the last object");
+        .collect()
 }
 
 #[test]

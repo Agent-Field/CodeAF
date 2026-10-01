@@ -45,6 +45,33 @@ test('the fence turns away the old holder after a takeover, and the head turns a
 });
 
 
+test('create stores the frame plan, and every publish replaces it wholesale', () => {
+  const { dir } = open();
+  const frames = ['f'.repeat(64), 'a'.repeat(64)];
+  dir.create('c1', { ...init(), frames }, 'dev_a');
+  assert.deepEqual(dir.cell('c1').cell.frames, frames);
+  const newer = ['b'.repeat(64)];
+  const after = dir.publish('c1', 'dev_a', { fence: 1, old_head: 'h0', head: 'h1', size: 1, class: 'work', pending: 0, frames: newer }).cell;
+  assert.deepEqual(after.frames, newer);
+  assert.deepEqual(dir.cell('c1').cell.frames, newer);
+});
+
+test('a publish that says nothing of frames clears the plan instead of keeping a stale one', () => {
+  const { dir } = open();
+  dir.create('c1', { ...init(), frames: ['f'.repeat(64)] }, 'dev_a');
+  dir.publish('c1', 'dev_a', { fence: 1, old_head: 'h0', head: 'h1', size: 1, class: 'work', pending: 0 });
+  assert.equal(dir.cell('c1').cell.frames, undefined);
+});
+
+test('the cell answer carries the plan and the list answer omits it', () => {
+  const { dir } = open();
+  dir.create('c1', { ...init(), frames: ['f'.repeat(64)] }, 'dev_a');
+  assert.deepEqual(dir.cell('c1').cell.frames, ['f'.repeat(64)]);
+  const list = dir.list();
+  assert.equal(list.cells.c1.frames, undefined);
+  assert.equal(list.cells.c1.head, 'h0');
+});
+
 test('a refused rule leaves the stored cell exactly as it was', () => {
   const { dir } = open();
   const before = dir.create('c1', init(), 'dev_a');

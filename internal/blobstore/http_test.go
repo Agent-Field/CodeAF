@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -152,6 +153,56 @@ func TestHandlerNamespacesByIdentity(t *testing.T) {
 	}
 	if code := statusOf(t, g, "bob", http.MethodGet, "/v1/store/objects/"+o.RID, nil); code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 (never 401)", code)
+	}
+}
+
+// TestHandlerGetFrameRange: a frame fetch answers the whole frame at 200,
+// its one range at 206 with a Content-Range, an open-ended and an over-long
+// range clamped to the frame's end, and every other Range header — several
+// ranges, a malformed one, a start past the end — with 416, the same answer
+// the Worker gives (contract §22.3).
+func TestHandlerGetFrameRange(t *testing.T) {
+	g := newRig(t)
+	c := g.client("alice")
+	_, f := frame(t, "onetwo")
+	id, err := c.PutFrame(context.Background(), f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetch := func(rng string) (int, string, []byte) {
+		req, _ := http.NewRequest(http.MethodGet, g.srv.URL+"/v1/store/frames/"+id, nil)
+		if rng != "" {
+			req.Header.Set("Range", rng)
+		}
+		fakeSign("alice")(req, nil)
+		resp, err := g.srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, resp.Header.Get("Content-Range"), b
+	}
+	code, _, got := fetch("")
+	if code != http.StatusOK || string(got) != string(f) {
+		t.Fatalf("plain GetFrame = %d, %d bytes; want 200, %d", code, len(got), len(f))
+	}
+	code, cr, got := fetch("bytes=10-15")
+	if code != http.StatusPartialContent || string(got) != string(f[10:16]) || cr != fmt.Sprintf("bytes 10-15/%d", len(f)) {
+		t.Fatalf("ranged GetFrame = %d, %q, %d bytes; want 206, %q, 6", code, cr, len(got), fmt.Sprintf("bytes 10-15/%d", len(f)))
+	}
+	code, cr, got = fetch("bytes=10-")
+	if code != http.StatusPartialContent || string(got) != string(f[10:]) || cr != fmt.Sprintf("bytes 10-%d/%d", len(f)-1, len(f)) {
+		t.Fatalf("open-ended GetFrame = %d, %q, %d bytes; want 206 to the end", code, cr, len(got))
+	}
+	code, cr, got = fetch(fmt.Sprintf("bytes=10-%d", len(f)+9))
+	if code != http.StatusPartialContent || string(got) != string(f[10:]) || cr != fmt.Sprintf("bytes 10-%d/%d", len(f)-1, len(f)) {
+		t.Fatalf("over-long GetFrame = %d, %q, %d bytes; want 206 clamped to the end", code, cr, len(got))
+	}
+	for _, rng := range []string{"bytes=0-5,10-15", "bytes=abc", "0-5", fmt.Sprintf("bytes=%d-", len(f))} {
+		if code, _, _ = fetch(rng); code != http.StatusRequestedRangeNotSatisfiable {
+			t.Errorf("Range %q answered %d, want 416", rng, code)
+		}
 	}
 }
 

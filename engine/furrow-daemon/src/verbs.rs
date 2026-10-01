@@ -4,7 +4,7 @@
 use crate::handle::Handle;
 use anyhow::Context;
 use furrow::exchange::keys::parse_secret;
-use furrow::exchange::ops;
+use furrow::exchange::ops::{self, ImportMode};
 use furrow::model::id_hex;
 use furrow::sealer::Keys;
 use serde::Deserialize;
@@ -265,6 +265,9 @@ struct ImportArgs {
     /// Priming mode: unwanted inbox files are deleted, not an error.
     #[serde(default)]
     primed: bool,
+    /// Streaming mode: leftovers stay, an incomplete take is not an error.
+    #[serde(default)]
+    partial: bool,
     #[serde(flatten)]
     keys: KeyArgs,
 }
@@ -282,7 +285,7 @@ impl Verb for Import {
             &a.head,
             &a.ledger,
             &a.inbox,
-            a.primed,
+            ImportMode::from_flags(a.primed, a.partial)?,
         )
     }
 }

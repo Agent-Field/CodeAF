@@ -43,8 +43,11 @@ export function makeRules({ ttlMs, renewOnPublish }) {
     if (p.old_head !== c.head) throw refuse('head_moved');
     const title = p.title === '' || p.title === undefined ? c.title : p.title;
     const expires = renewOnPublish ? now + ttlMs : c.lease.expires;
-    const next = { ...c, head: p.head, size: p.size, class: p.class, durable_at: now, lease: { ...c.lease, expires, pending: p.pending } };
-    return title === undefined ? next : { ...next, title };
+    // The frame plan describes the head it was set with, so every publish replaces it
+    // wholesale: a publish that says nothing is a true statement, a stale one is not kept.
+    const { frames, ...kept } = c;
+    const next = { ...kept, head: p.head, size: p.size, class: p.class, durable_at: now, lease: { ...c.lease, expires, pending: p.pending } };
+    return omitEmpty(next, { title, frames: p.frames });
   };
 
   const releaseOf = (c, device, fence) => {
@@ -55,13 +58,13 @@ export function makeRules({ ttlMs, renewOnPublish }) {
   const created = (init, device, now) => {
     const c = { V: 1, head: init.head, durable_at: now, class: init.class, size: init.size, keys: init.keys,
       lease: { device, fence: 1, expires: now + ttlMs, pending: 0 } };
-    return omitEmpty(c, { parent_cell: init.parent_cell, title: init.title, orphan_turns: init.orphan_turns });
+    return omitEmpty(c, { parent_cell: init.parent_cell, title: init.title, orphan_turns: init.orphan_turns, frames: init.frames });
   };
 
   return { acquire, heartbeat, publishTo, releaseOf, created };
 }
 
 const omitEmpty = (c, optional) =>
-  Object.assign(c, Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined && v !== '' && v !== 0)));
+  Object.assign(c, Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined && v !== '' && v !== 0 && !(Array.isArray(v) && !v.length))));
 
 export const { acquire, heartbeat, publishTo, releaseOf, created } = makeRules(AMENDED);

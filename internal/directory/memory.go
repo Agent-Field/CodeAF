@@ -162,6 +162,7 @@ func (c *memoryClient) List(context.Context) (l Listing, err error) {
 		for id, cell := range c.m.cells {
 			l.Cells[id] = copyCell(c.m.feed.Lifted(id, cell))
 		}
+		l = withoutFrames(l)
 		return nil
 	})
 	return l, err

@@ -82,7 +82,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 	brancher := cellsync.Brancher{Dir: s.Dir, Publisher: pub, NewID: newCellID}
 	return handoff.Taker{
 		Dir:     s.Dir,
-		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Inbox: sync.Inbox},
+		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox},
 		Local:   engineLocal{c.eng},
 		Branch:  c.branch(brancher),
 		RootFor: c.opt.RootFor,
