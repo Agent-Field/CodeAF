@@ -3,13 +3,13 @@ package taskcopy
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/mirror"
 )
 
 // Cutter makes a task copy the way a task makes one. Restore asks it instead of
@@ -170,7 +170,7 @@ func overlay(files, dest string, rec record) error {
 		if err != nil {
 			return err
 		}
-		return copyFile(path, filepath.Join(dest, rel), info, rec.modeOf(filepath.ToSlash(rel), info))
+		return mirror.Copy(path, filepath.Join(dest, rel), info, rec.modeOf(filepath.ToSlash(rel), info))
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -188,36 +188,4 @@ func removeAll(dest string, rels []string) error {
 		}
 	}
 	return nil
-}
-
-// copyFile writes to with the bytes and modified time of from, whose stat is
-// info, and exactly the permission bits in mode. The mode is set after the write
-// because a mode given to the create is cut down by the umask of the machine,
-// and a copy that comes back with other bits than it left with is not the same
-// copy. Keeping the time is what lets [copyIfChanged] recognise a file it
-// already carried.
-func copyFile(from, to string, info fs.FileInfo, mode fs.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
-		return err
-	}
-	src, err := os.Open(from)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	dst, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(dst, src); err != nil {
-		_ = dst.Close()
-		return err
-	}
-	if err := dst.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(to, mode); err != nil {
-		return err
-	}
-	return os.Chtimes(to, info.ModTime(), info.ModTime())
 }

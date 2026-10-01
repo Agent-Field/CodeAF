@@ -66,6 +66,10 @@ func takeATask(t *testing.T) takenTask {
 	}
 
 	headOnA := strings.TrimSpace(gitOut(t, tree.dir, "rev-parse", "HEAD"))
+	// A kept the task's branch in the project, as a finished task's does: its
+	// commits are fetched from the copy and the branch names them.
+	mustGit(t, repo, "fetch", "-q", tree.dir, "HEAD")
+	mustGit(t, repo, "update-ref", "refs/heads/"+tree.branch, headOnA)
 	// B shares nothing with A, so A's copy is gone from the disk B sees. Leaving
 	// it would keep its registration live and hide the very case a takeover is.
 	if err := os.RemoveAll(tree.dir); err != nil {
@@ -141,6 +145,22 @@ func TestATaskCopyMadeByTheRealRoadArrivesOnItsBranchAtItsCommit(t *testing.T) {
 			}
 			if got := strings.TrimSpace(gitOut(t, taken.bDir, "rev-parse", "HEAD")); got != taken.headOnA {
 				t.Errorf("B's copy is at %s, want the commit A's copy was at, %s", got, taken.headOnA)
+			}
+		})
+	}
+}
+
+// A kept task branch is the project's record of finished work. It arrives with
+// the project and cutting the copy again, on either road, must not take it away
+// and leave its commit an unreferenced object.
+func TestAKeptTaskBranchStaysInTheProjectOnB(t *testing.T) {
+	for _, road := range copyRoads {
+		t.Run(road.name, func(t *testing.T) {
+			road.prep(t)
+			taken := takeATask(t)
+			got := strings.TrimSpace(gitOut(t, taken.bProject, "rev-parse", "--verify", "refs/heads/"+taken.a.branch))
+			if got != taken.headOnA {
+				t.Errorf("the project on B has %s at %s, want the kept commit %s", taken.a.branch, got, taken.headOnA)
 			}
 		})
 	}

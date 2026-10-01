@@ -54,15 +54,17 @@ type Running struct {
 	Since   int64  `json:"since,omitempty"`
 }
 
-// Withheld is a folder the seal left out because a lockfile that does travel
-// rebuilds it. Lock is that lockfile. MadeBy and Cwd say which command made the
-// folder, and are empty when the folder was there before the chat or came from
-// another terminal.
+// Withheld is a path the seal left out. A folder a lockfile that does travel
+// rebuilds names that Lock, and MadeBy and Cwd say which command made it (empty
+// when the folder was there before the chat or came from another terminal). A
+// file of the chat's own evidence has no lockfile and nothing rebuilds it: Why
+// says in words what kept it back, and it stayed on the machine that made it.
 type Withheld struct {
 	Path   string `json:"path"`
-	Lock   string `json:"lock"`
+	Lock   string `json:"lock,omitempty"`
 	MadeBy string `json:"made_by,omitempty"`
 	Cwd    string `json:"cwd,omitempty"`
+	Why    string `json:"why,omitempty"`
 }
 
 // Detached is a container or service a command started outside its own process
@@ -82,7 +84,12 @@ type Inventory struct {
 	// Workspace is the folder the seal was taken in, so a machine that receives
 	// the chat can say the folder changed. It is display only: nothing is ever
 	// resolved against it (L1).
-	Workspace   string   `json:"workspace,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	// ChatDir is the chat's own folder when the seal carried files out of it
+	// (job logs, saved tool output, task journals). The transcript names those
+	// files by the absolute path they had there, so a machine that receives the
+	// chat can say where they are now. Display only, like Workspace.
+	ChatDir     string   `json:"chat_dir,omitempty"`
 	Lockfiles   []string `json:"lockfiles,omitempty"`
 	EnvVarNames []string `json:"env_var_names,omitempty"`
 	// Running, Withheld and Detached are what the chat left behind that a seal

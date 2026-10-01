@@ -74,6 +74,9 @@ func (r Resume) missing() []entry {
 // missingBrief names what rebuilds the folder and how it was made, or how it
 // usually is when nobody saw it made.
 func missingBrief(w inventory.Withheld) string {
+	if w.Lock == "" {
+		return w.Path + ": " + w.Why
+	}
 	how := "usually `" + rebuild.Hint(w.Lock) + "`"
 	if w.MadeBy != "" {
 		how = "it was made with `" + w.MadeBy + "`" + inDir(w.Cwd)
@@ -82,6 +85,9 @@ func missingBrief(w inventory.Withheld) string {
 }
 
 func missingNews(w inventory.Withheld) string {
+	if w.Lock == "" {
+		return w.Path + " (" + w.Why + ")"
+	}
 	return w.Path + " (" + rebuildCommand(w) + ")"
 }
 
@@ -162,6 +168,15 @@ func (r Resume) movedClause() string {
 	return fmt.Sprintf("The folder was %s; here it is %s.", r.Was, r.Now)
 }
 
+// chatClause is the one sentence about the chat's own files: the messages name
+// them under the folder they had there, and they were carried to this one.
+func (r Resume) chatClause() string {
+	if !r.chatMoved() {
+		return ""
+	}
+	return fmt.Sprintf("Job logs, saved tool output and task journals that earlier messages name under %s were carried: they are under %s here.", r.ChatWas, r.ChatNow)
+}
+
 func (r Resume) namesOldFolder() bool {
 	for _, g := range r.groups() {
 		for _, e := range g.entries {
@@ -180,8 +195,10 @@ func (r Resume) Brief() string {
 		return ""
 	}
 	lines := []string{fmt.Sprintf(briefHead, r.fromClause())}
-	if moved := r.movedClause(); moved != "" {
-		lines = append(lines, moved)
+	for _, clause := range []string{r.movedClause(), r.chatClause()} {
+		if clause != "" {
+			lines = append(lines, clause)
+		}
 	}
 	groups, hidden := fit(r.groups(), func(e entry) string { return e.brief }, lengthOf(lines), len(lines))
 	for _, g := range groups {
@@ -200,12 +217,14 @@ func (r Resume) Brief() string {
 // step is told when the person did not say yes, or was never asked. It is empty
 // for a resume with nothing to say.
 func (r Resume) News() string {
-	if r.Empty() {
+	if r.Empty() && !r.chatMoved() {
 		return ""
 	}
 	parts := []string{fmt.Sprintf(newsHead, r.fromClause())}
-	if moved := r.movedClause(); moved != "" {
-		parts = append(parts, moved)
+	for _, clause := range []string{r.movedClause(), r.chatClause()} {
+		if clause != "" {
+			parts = append(parts, clause)
+		}
 	}
 	groups, hidden := fit(r.groups(), func(e entry) string { return e.news }, lengthOf(parts)+len(newsRule), 1)
 	for i, g := range groups {

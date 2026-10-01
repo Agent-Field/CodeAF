@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/chatfiles"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/rebuild"
@@ -66,8 +67,11 @@ func (g Guard) inSeal(tree, lock string, policy policyFile) bool {
 }
 
 // ownedBySeal is the record entries the seal's own step writes: the task-copy
-// step writes those of the copies, and neither erases the other's.
-func ownedBySeal(path string) bool { return !taskcopy.OwnsWithheld(path) }
+// step writes those of the copies and the chat-files step those of the chat's
+// logs and journals, and none erases another's.
+func ownedBySeal(path string) bool {
+	return !taskcopy.OwnsWithheld(path) && !chatfiles.OwnsWithheld(path)
+}
 
 // knownLocks is the lockfiles the record already names, so a seal that looks at
 // only the changed paths does not forget the rest.
