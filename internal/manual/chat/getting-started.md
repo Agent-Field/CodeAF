@@ -145,7 +145,9 @@ force — `$500` on a profile that has never chosen one, or your own figure if y
 Its one line reads:
 
 > When all codeaf spends today reaches this amount, new work waits until midnight or you
-> raise it.
+> raise it. /budget changes it later.
+
+`/budget` in the line is painted as a command chip, the way the message box paints one.
 
 Type a number to change it — the `$` is drawn for you rather than typed — or type
 **`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
@@ -175,7 +177,7 @@ when they start to matter.
 
 **Chat model** is the model you talk to, shown by name — `DeepSeek V4 Flash` rather than
 `deepseek/deepseek-v4-flash`. Its line reads *The model you talk to in this
-conversation.*, and `?` adds the exact catalog id, that it also handles this
+conversation. /model changes it later.* (`/model` worn as a command chip), and `?` adds the exact catalog id, that it also handles this
 conversation's tool use, and that tasks get their own crew, picked per task. Opening the
 row draws the real catalog: five rows at a time, `↑`/`↓` scroll the rest past, and
 **typing narrows it**, so two hundred models are reachable from a form with five rows on

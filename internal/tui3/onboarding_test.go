@@ -1277,3 +1277,27 @@ func TestTheNoteUnderTheWayOutPointsAtSettingsWithItsChip(t *testing.T) {
 		t.Fatalf("the form walks %d rows, want three: the limit, the chat model, the way out", setupControlCount)
 	}
 }
+
+// THE TWO EXPLANATIONS NAME THE COMMAND THAT CHANGES THE ROW LATER, each worn
+// as the composer's chip, and the way out carries no loose `enter` at its right:
+// the keys line already says `enter starts` there.
+func TestExplanationsNameTheirCommandsAndTheWayOutHasNoLooseEnter(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	frame, _, _ := a.frame()
+	screen := plain(frame)
+	for _, want := range []string{"/budget changes it later", "/model changes it later"} {
+		if !strings.Contains(strings.Join(strings.Fields(screen), " "), want) {
+			t.Fatalf("the form does not say %q:\n%s", want, screen)
+		}
+	}
+	for _, cmd := range []string{"/budget", "/model"} {
+		if !strings.Contains(frame, a.pal.chip(cmd)) {
+			t.Fatalf("%s is not painted as a command chip:\n%s", cmd, screen)
+		}
+	}
+	for _, row := range strings.Split(screen, "\n") {
+		if strings.Contains(row, controlStartWord) && strings.Contains(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(row), controlStartWord)), "enter") {
+			t.Fatalf("the way out still carries a loose enter: %q", row)
+		}
+	}
+}

@@ -102,8 +102,8 @@ const controlLabelWidth = 19
 // behind `?` on that control.
 const (
 	controlLimitWord = "When all " + product + " spends today reaches this amount, " +
-		"new work waits until midnight or you raise it."
-	controlModelWord = "The model you talk to in this conversation."
+		"new work waits until midnight or you raise it. /budget changes it later."
+	controlModelWord = "The model you talk to in this conversation. /model changes it later."
 )
 
 // The detail behind `?`, on the field with the focus.
@@ -1325,10 +1325,13 @@ func (a *app) setupSettingsNote(width int) string {
 func (a *app) addControlWords(f *controlsSheet, width int, control setupControl, word, detail string) {
 	pal := a.pal
 	indent := strings.Repeat(" ", 4)
+	// A COMMAND IN THE SENTENCE WEARS ITS CHIP — `/budget`, `/model` — the
+	// paint the message box gives a recognised command, so the one word a
+	// person can act on later is the one word that stands out in a dim line.
 	paint := func(text string, ink func(string) string) []string {
 		lines := wrap(text, width-4)
 		for i, line := range lines {
-			lines[i] = indent + ink(line)
+			lines[i] = indent + paintCommandSpans(line, recognizedCommandSpans([]rune(line), true), pal, ink)
 		}
 		return lines
 	}
@@ -1580,23 +1583,19 @@ const setupNoCatalogWord = "no model list on this machine yet · /model finds on
 // setupNoMatchWord is a filter that matched nothing.
 const setupNoMatchWord = "nothing matches · backspace widens it"
 
-// setupStartRow is the primary action, with the key that takes it on the right.
-// It is a row of the same form rather than a bright panel: the accent on this
-// screen belongs to whatever the person is standing on, and an action that
-// glowed whether or not it had the focus would be two things competing to be the
-// obvious one.
+// setupStartRow is the primary action. It is a row of the same form rather than
+// a bright panel: the accent on this screen belongs to whatever the person is
+// standing on, and an action that glowed whether or not it had the focus would
+// be two things competing to be the obvious one. The key that takes it is NOT
+// written at its right any more: the keys line under the heading already says
+// `enter starts` when the focus is here, and a second `enter` on the row was
+// the same fact twice.
 func (a *app) setupStartRow(width int) string {
-	pal := a.pal
 	word := a.setupLabelInk(controlStart)(controlStartWord)
 	if a.setup.control == controlStart {
-		word = pal.bold(word)
+		word = a.pal.bold(word)
 	}
-	row := a.setupControlLead(controlStart) + word
-	const cap = "enter"
-	if width > ansi.StringWidth(controlStartWord)+len(cap)+6 {
-		row = padTo(row, width-len(cap)) + pal.dim(cap)
-	}
-	return row
+	return a.setupControlLead(controlStart) + word
 }
 
 // setupControlsKeys is the legend at the foot: what the keys do RIGHT HERE, in
