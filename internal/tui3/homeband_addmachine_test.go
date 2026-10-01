@@ -206,3 +206,18 @@ func TestAddMachineCardShowsOnAnEmptyHome(t *testing.T) {
 		t.Fatal("a fleet of two kept the card on home")
 	}
 }
+
+// A LINK PASTED ON HOME'S OPEN CARD SHOWS THE APPROVE SCREEN: home draws no
+// panel, so the card must take the frame from it (the e2e journey, step 3a).
+func TestAddMachinePasteOnHomeShowsTheApproveScreen(t *testing.T) {
+	door := &fakeApprovals{pending: spark(time.Now())}
+	a, r := approveApp(t, door)
+	a.addMachine = addMachine{size: 1, known: true}
+	a.openHome()
+	drive(t, a, altD)
+	drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
+	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
+	if got := plain(frame(a)); !strings.Contains(got, "wants to join your fleet") {
+		t.Fatalf("no approve screen on the frame:\n%s", got)
+	}
+}
