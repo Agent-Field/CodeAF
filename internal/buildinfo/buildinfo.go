@@ -4,6 +4,7 @@ package buildinfo
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -193,3 +194,50 @@ func StaleNotice() string {
 // the build's honesty — telemetry's opt-out ladder — ask here rather than
 // parsing a display string.
 func Dirty() bool { return current.Dirty }
+
+// ── RELEASE CHANNEL ─────────────────────────────────────────────────────────
+//
+// The release workflow stamps every binary it publishes with the tag it cut,
+// and the tag's shape is the channel: vX.Y.Z is stable, vX.Y.Z-rc.N a release
+// candidate, dev-YYYYMMDD-<12 hex> and staging-YYYYMMDD-<12 hex> the two
+// channel builds. A build `make build` made from a checkout carries a commit
+// rather than a tag, and so does a test binary, so they are neither.
+//
+// THE GRAMMAR LIVES HERE, ONCE. internal/update orders and parses these tags
+// with the same patterns it reads from this file, and internal/provider decides
+// which OpenRouter app a binary reports as from [Channel]. It sits in this
+// package rather than in update because the provider cannot import update (the
+// update package already reaches the provider through config), and a second
+// spelling of the grammar is how two packages come to disagree about which
+// channel one binary is on.
+
+var (
+	// StableTag matches a stable release tag, with its three components as
+	// submatches.
+	StableTag = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+	// CandidateTag matches a release-candidate tag, with its three components
+	// and its counter as submatches.
+	CandidateTag = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$`)
+	// DevTag matches a build published on the dev channel.
+	DevTag = regexp.MustCompile(`^dev-[0-9]{8}-[0-9a-f]{12}$`)
+	// StagingTag matches a build published on the staging channel.
+	StagingTag = regexp.MustCompile(`^staging-[0-9]{8}-[0-9a-f]{12}$`)
+)
+
+// Channel names the release channel a tag was cut on: "stable", "rc", "dev",
+// "staging", or "other" for anything the release workflow does not cut — a
+// commit, a module pseudo-version, an empty string.
+func Channel(tag string) string {
+	switch {
+	case StableTag.MatchString(tag):
+		return "stable"
+	case CandidateTag.MatchString(tag):
+		return "rc"
+	case DevTag.MatchString(tag):
+		return "dev"
+	case StagingTag.MatchString(tag):
+		return "staging"
+	default:
+		return "other"
+	}
+}

@@ -293,6 +293,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// crew or what a task costs.
 		{"how do I change the model the task worker uses?", "models-and-cost"},
 		{"is my code sent anywhere that logs it?", "models-and-cost"},
+		{"why does my openrouter activity say codeaf dev instead of agentfield ai", "models-and-cost"},
 		{"which model are you using and what does a task cost?", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},

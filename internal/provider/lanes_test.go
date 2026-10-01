@@ -361,10 +361,11 @@ func TestTheRequestTheChooserSeesIsTheRequestBeingSent(t *testing.T) {
 // the router stopped serving the sheet to strangers.
 
 func TestTheSheetFetcherCarriesTheBearerAndHandsBackTheBody(t *testing.T) {
-	var authorization, referer, accept string
+	var authorization, accept string
+	var seen http.Header
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authorization = r.Header.Get("Authorization")
-		referer = r.Header.Get("HTTP-Referer")
+		seen = r.Header.Clone()
 		accept = r.Header.Get("Accept")
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
@@ -388,9 +389,7 @@ func TestTheSheetFetcherCarriesTheBearerAndHandsBackTheBody(t *testing.T) {
 	// And the read is attributed like every other read of the router this
 	// binary makes (attribution.go) — a sheet fetched under no app is spend
 	// nobody can account for.
-	if referer != AppURL {
-		t.Errorf("HTTP-Referer was %q, want %q", referer, AppURL)
-	}
+	assertAttributed(t, seen, "sheet fetch")
 	if accept != "application/json" {
 		t.Errorf("Accept was %q, want application/json", accept)
 	}
