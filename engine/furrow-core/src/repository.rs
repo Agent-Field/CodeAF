@@ -22,6 +22,7 @@ use crate::sorted_dir::SortedDirectory;
 use crate::sqlite_adapter;
 use crate::store::ObjectStore;
 use crate::sync;
+use crate::system_attrs;
 use crate::tree;
 use anyhow::{bail, Context};
 use directories::ProjectDirs;
@@ -1635,7 +1636,7 @@ impl FurrowRepository {
         fs::set_permissions(destination, fs::Permissions::from_mode(entry.mode))?;
         if let Some(xattrs_id) = entry.xattrs {
             let xattrs: Xattrs = self.store.read_struct(&xattrs_id, ObjectKind::Xattrs)?;
-            for xattr in xattrs.entries {
+            for xattr in restorable_xattrs(xattrs.entries) {
                 match xattr::set(destination, OsStr::from_bytes(&xattr.name), &xattr.value) {
                     Ok(()) => {}
                     Err(error)
@@ -3499,7 +3500,7 @@ impl FurrowRepository {
         let mut entries = Vec::new();
         match xattr::list(path) {
             Ok(names) => {
-                for name in names {
+                for name in names.filter(|name| !system_attrs::is_system_managed(name)) {
                     if let Some(value) = xattr::get(path, &name)
                         .with_context(|| format!("read xattr {:?} on {}", name, path.display()))?
                     {
@@ -3696,6 +3697,7 @@ impl FurrowRepository {
         root: &ObjectId,
         plan: &RewindPlan,
     ) -> anyhow::Result<BTreeMap<Vec<u8>, FlatEntry>> {
+        let _section = self.store.acquire_maintenance_shared()?;
         let mut entries = BTreeMap::new();
         for change in &plan.changes {
             if change.action == "remove" {
@@ -3714,6 +3716,7 @@ impl FurrowRepository {
         root: &ObjectId,
         plan: &RewindPlan,
     ) -> anyhow::Result<BTreeMap<Vec<u8>, FlatEntry>> {
+        let _section = self.store.acquire_maintenance_shared()?;
         let mut entries = BTreeMap::new();
         for change in &plan.changes {
             if let Some(entry) = self.lookup_tree_path(root, &change.raw_path)? {
@@ -3807,7 +3810,7 @@ impl FurrowRepository {
             return Ok(true);
         };
         let expected: Xattrs = self.store.read_struct(&expected, ObjectKind::Xattrs)?;
-        for entry in expected.entries {
+        for entry in restorable_xattrs(expected.entries) {
             let name = OsStr::from_bytes(&entry.name);
             let actual = match xattr::get(path, name) {
                 Ok(actual) => actual,
@@ -4064,7 +4067,7 @@ impl FurrowRepository {
         fs::set_permissions(temp.path(), fs::Permissions::from_mode(entry.mode))?;
         if let Some(xattrs_id) = entry.xattrs {
             let xattrs: Xattrs = self.store.read_struct(&xattrs_id, ObjectKind::Xattrs)?;
-            for xattr in xattrs.entries {
+            for xattr in restorable_xattrs(xattrs.entries) {
                 match xattr::set(temp.path(), OsStr::from_bytes(&xattr.name), &xattr.value) {
                     Ok(()) => {}
                     Err(error)
@@ -4454,6 +4457,14 @@ pub(crate) fn derive_materialization(
             .collect(),
         missing_paths,
     })
+}
+
+/// The attributes of an entry that a restore sets: a head sealed before the
+/// system's own attributes were left out may still carry them.
+fn restorable_xattrs(entries: Vec<XattrEntry>) -> impl Iterator<Item = XattrEntry> {
+    entries
+        .into_iter()
+        .filter(|entry| !system_attrs::is_system_managed(OsStr::from_bytes(&entry.name)))
 }
 
 fn cached_matches(cached: &CachedFile, metadata: &fs::Metadata) -> bool {

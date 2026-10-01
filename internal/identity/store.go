@@ -49,6 +49,21 @@ func Ensure(home string) (Identity, error) {
 	return id, err
 }
 
+// EnsureSolo is Ensure for a computer that needs an identity for itself (a
+// vault key, a first launch) and has not been asked to share it: an identity
+// it makes is solo (solo.go). One that already exists is left as it is.
+func EnsureSolo(home string) (Identity, error) {
+	if _, err := Load(home); errors.Is(err, ErrNone) {
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			return Identity{}, err
+		}
+		if err := markSolo(home); err != nil {
+			return Identity{}, err
+		}
+	}
+	return Ensure(home)
+}
+
 // ensureRoot returns the root identity, creating it on first use. A machine
 // that already has a vault.key keeps it as the cell key, so its vault still
 // opens. Two processes racing to create agree on whichever wrote first.
