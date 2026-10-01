@@ -655,6 +655,11 @@ conversation and the run's page say where the work is and what to do with it:
 stopped · its work so far is kept on <branch> and did not go into <folder> · merge that branch to bring it in, or delete it to drop it
 ```
 
+**Work the worker already committed counts too.** The stopped row lists files
+changed since the run began, together with any pending edits committed as it
+stops. A clean working copy does not mean the run changed nothing: its existing
+commits stay on the named branch.
+
 A run stopped before it changed anything says `stopped · it had changed nothing` and
 names no branch. The next `/task` after a stop starts a fresh run; it never picks the
 stopped work back up, and the stopped run stays readable from the side list.

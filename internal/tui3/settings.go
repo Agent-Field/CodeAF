@@ -1885,7 +1885,7 @@ func (s *sheet) roleItems(terms []fuzzy.Term) []sheetItem {
 			}
 			items = append(items, sheetItem{
 				role:   row,
-				meta:   settingMeta{tab: tabProviders, label: string(role), about: s.roleAbout(row)},
+				meta:   settingMeta{tab: tabProviders, label: roleDisplayWord(role), about: s.roleAbout(row)},
 				hitAt:  hitAt,
 				hitLen: hitLen,
 			})
@@ -1912,7 +1912,7 @@ func (s *sheet) roleMatch(row *roleRow, terms []fuzzy.Term) (int, bool, int, int
 		s.matchFields = make([]string, 5)
 	}
 	fields := s.matchFields[:3]
-	fields[0] = string(row.role)
+	fields[0] = roleDisplayWord(row.role)
 	fields[1] = roles.Describe(row.role)
 	fields[2] = row.model
 	return s.matchHits(fields, terms)
@@ -2067,6 +2067,15 @@ func roleFilter(role roles.Role) modelFilter {
 	return chatModel
 }
 
+// roleDisplayWord keeps the checking seat in /crew's words on the row, in
+// search and in the picker. Its stored role identifier must keep its bytes.
+func roleDisplayWord(role roles.Role) string {
+	if role == roles.RoleAuditor {
+		return string(crewroute.Checker)
+	}
+	return string(role)
+}
+
 // roleRowLines is one role: its name, the tier it answers under, and the model
 // that answers it. It is [sheet.rowLines]'s shape and the row every list
 // draws — the same two-line law at [tierPhone], the same band, the same
@@ -2087,7 +2096,7 @@ func (s *sheet) roleRowLines(row *roleRow, hit []int, selected, hovered bool, wi
 		}
 		value += "pinned"
 	}
-	return overlayLinesHit(string(row.role), value, hit, selected, false, hovered, width, pal)
+	return overlayLinesHit(roleDisplayWord(row.role), value, hit, selected, false, hovered, width, pal)
 }
 
 // applyRolePin writes one role's pin back into the row that holds them all.
@@ -2412,7 +2421,7 @@ func (a *app) activate() tea.Cmd {
 		// on the resolved model: the picker's mark means "this is what this row
 		// holds", and a role following its tier holds nothing.
 		sel := &sheetSelect{
-			key: config.KeyModelRoles, label: string(item.role.role),
+			key: config.KeyModelRoles, label: roleDisplayWord(item.role.role),
 			keep: roleFilter(item.role.role), role: item.role.role,
 		}
 		sel.pick.startFor(a.modelsFor(sel.keep), item.role.pin, sel.keep)

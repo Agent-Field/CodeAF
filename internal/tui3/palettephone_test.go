@@ -251,7 +251,11 @@ func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 
 // EVERY OTHER TIER DRAWS EXACTLY WHAT IT ALWAYS DREW. The wide, standard and
 // narrow frames are asserted against [overlayRow] itself — the one-line law,
-// unchanged — byte for byte, escape sequences included.
+// unchanged — byte for byte, escape sequences included. The palette carries
+// the picker's own front-mark grammar ([palette.frontUnlifted]): the drawn
+// row and the expected one are painted with it, so the law this test holds is
+// that the list draws through the shared row function, not that the menu's
+// chosen row wears the band it no longer does.
 func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 	for _, width := range []int{120, 80, 60} {
 		a := phonePicker(t, width)
@@ -266,10 +270,12 @@ func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 				width, len(lines), len(phoneCatalog), head)
 		}
 		lines = lines[head:]
+		pal := a.pal
+		pal.frontUnlifted = true
 		for i, line := range lines {
 			model := a.pick.all[a.pick.hits[i]]
 			label, note := a.pick.rowText(model, a.reasoningFor(model.ID), width)
-			want := overlayRow(label, note, i == a.pick.cursor, model.ID == a.pick.current, false, width, a.pal)
+			want := overlayRow(label, note, i == a.pick.cursor, model.ID == a.pick.current, false, width, pal)
 			if line != want {
 				t.Fatalf("at %d columns row %d changed:\n got %q\nwant %q", width, i, line, want)
 			}
