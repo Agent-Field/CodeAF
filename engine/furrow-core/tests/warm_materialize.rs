@@ -165,3 +165,29 @@ fn deletes_renames_and_mode_only_changes_reach_a_linked_copy_and_spare_the_origi
         "a mode change made a new file"
     );
 }
+
+/// The system stamps files with attributes of its own (a provenance mark on
+/// every file a process creates, quarantine on downloads). A tree sealed on
+/// another machine lacks them, so counting them as content made every file of
+/// a stamped tree differ from the head and rewrote the whole tree.
+#[cfg(target_os = "macos")]
+#[test]
+fn files_the_system_stamped_are_not_rewritten_by_a_take() {
+    let (_src, dst, second) =
+        warm(|tree| fs::write(tree.join("src/main.rs"), b"fn main() { 1 }\n").unwrap());
+    let files = all_files(&dst.tree);
+    for file in &files {
+        xattr::set(file, "com.apple.quarantine", b"0083;00000000;test;").unwrap();
+    }
+    let before: Vec<u64> = files.iter().map(inode).collect();
+
+    materialize(&dst.data, &dst.tree, Some(dst.cell.clone()), second).unwrap();
+
+    let rewritten: Vec<_> = files
+        .iter()
+        .zip(before.iter().zip(files.iter().map(inode)))
+        .filter(|(_, (b, a))| *b != a)
+        .map(|(f, _)| f.file_name().unwrap().to_owned())
+        .collect();
+    assert_eq!(rewritten, ["main.rs"]);
+}
