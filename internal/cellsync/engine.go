@@ -28,6 +28,11 @@ type Engine interface {
 	// objects the head does not want. The want loop's answers keep the strict
 	// rule: what the relay names for a want is checked.
 	ImportPrimed(ctx context.Context, c cell.Cell, head, inbox string) (int, error)
+	// ImportPartial is ImportPrimed that deletes nothing and refuses nothing
+	// (contract §22.12): it stores what the inbox holds of what the head can
+	// reach so far, and leaves every other file, which may be waiting for a
+	// frame that has not landed. A take calls it while frames still download.
+	ImportPartial(ctx context.Context, c cell.Cell, head, inbox string) (int, error)
 	// Holds reports whether this device already holds objects of c that the
 	// relay holds too: its ledger for this relay is not empty. A device that
 	// does has most of the chat's history and wants only a delta (contract
