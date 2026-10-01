@@ -244,3 +244,17 @@ func TestACallRecordsItsCommandForTheSealThatFollowsAndNotForTheReceipt(t *testi
 		t.Fatalf("the receipt carries the command line: %s", enc)
 	}
 }
+
+// A call seals before the transcript learns its result and the reply, so a turn
+// that ends on a reply needs one more seal, or the last turn is in none.
+func TestSettleSealsTheTailTheLastCallSealedBefore(t *testing.T) {
+	c := newCell(t)
+	r, fake := newRecorder(t, c, &stubExec{}, filepath.Join(t.TempDir(), "wal"))
+	if _, err := r.Exec(context.Background(), req(executor.NetPolicy{}, "a"), nil); err != nil {
+		t.Fatal(err)
+	}
+	r.Settle(context.Background())
+	if got := fake.count("turn-end"); got != 2 {
+		t.Fatalf("%d seals after one call and the end of the turn, want 2", got)
+	}
+}
