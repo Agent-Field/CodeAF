@@ -62,7 +62,7 @@ func TestFreedEndsAHaltAndSyncResumes(t *testing.T) {
 	sl.settleOn(MaxHalt) // the flush was refused and the loop halts, not backs off
 	r.store.set(nil, nil)
 	b.Freed()
-	sl.settleOn(b.Interval)
+	eventually(t, "the newest head to be sent", func() bool { return headIfAny(r) == h })
 	if got := r.head(cellID).Head; got != h || b.Pending() != 0 {
 		t.Fatalf("after Freed: head %s, %d pending; want the newest head sent", got, b.Pending())
 	}
