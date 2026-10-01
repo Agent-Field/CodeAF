@@ -196,14 +196,14 @@ front of the queue, the line does not offer `→ steers it in`.
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · esc interrupt
+enter steers it in · ctrl+enter queue · esc interrupt
 ```
 
 That is the form when no command can be kept. A running foreground command that can be
 kept adds `ctrl+g backgrounds` immediately before `esc interrupt`; a `!` command cannot
-be kept. `cmd+enter` still waits, `ctrl+enter` still queues and `ctrl+shift+enter` still
-stops and sends, but the one-line slot advertises none of them — they are on the keys
-sheet (`?`).
+be kept. The `ctrl+enter queue` clause appears only on a terminal that can send that
+chord. `cmd+enter` still waits and `ctrl+shift+enter` still stops and sends, but the
+one-line slot advertises neither — they are on the keys sheet (`?`).
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -344,9 +344,11 @@ right end of the row under the message box reads exactly:
 enter steers it in · esc interrupt
 ```
 
-That is the line on every terminal: the row does not name `ctrl+shift+enter`, even where
-the chord works (it did until 2026-09-30); the keys sheet (`?`) lists it. A foreground
-command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
+On a terminal that can send `ctrl+enter` it reads
+`enter steers it in · ctrl+enter queue · esc interrupt`. The row does not name
+`ctrl+shift+enter`, even where the chord works (it did until 2026-09-30, in the slot the
+queue key now has); the keys sheet (`?`) lists it. A foreground command that can be kept
+inserts `ctrl+g backgrounds` before the final stop clause.
 
 **A picture on the tray is a message even when the box has no words.** It cannot steer, so
 that form reads `enter waits · esc interrupt`. With neither words nor a picture, the line is simply
@@ -417,8 +419,8 @@ is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
 message box ends with `esc interrupt` — for example
-`enter steers it in · esc interrupt` while you have typed something. A foreground
-command that can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
+`enter steers it in · ctrl+enter queue · esc interrupt` while you have typed something
+on a terminal that can send `ctrl+enter`. A foreground command that can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
 `esc interrupts · ctrl+c quits · ? for help`.

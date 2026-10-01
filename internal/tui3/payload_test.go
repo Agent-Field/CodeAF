@@ -288,12 +288,15 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"↑ or click to edit", []string{"↑"}},
 	}
 	// H6: every sentence the running-turn composer can produce lifts the key at
-	// the head of every clause and leaves the verbs as prose. The five possible
-	// send prefixes combine independently with the background and stop clauses.
+	// the head of every clause and leaves the verbs as prose. The send prefixes,
+	// with and without the queue clause, combine independently with the
+	// background and stop clauses.
 	runPrefixes := []hintGrammarCase{
 		{},
 		{hint: enterWaitHint, want: []string{"enter"}},
+		{hint: enterWaitHint + " · " + queueFootWord, want: []string{"enter", "ctrl+enter"}},
 		{hint: steerShortHint, want: []string{"enter"}},
+		{hint: steerShortHint + " · " + queueFootWord, want: []string{"enter", "ctrl+enter"}},
 	}
 	for _, prefix := range runPrefixes {
 		for _, background := range []bool{false, true} {

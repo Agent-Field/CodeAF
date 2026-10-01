@@ -273,6 +273,21 @@ var queuedHint = []string{"queued for after this turn", "click takes one back", 
 // queueQueueWord is the piece that names the chord, spelled once.
 const queueQueueWord = "ctrl+enter queues the draft"
 
+// queueFootWord is what the running foot calls the queue key: the short
+// key-then-noun form every clause on that row keeps, not the queued block's
+// sentence — the foot names the key, the block says what happened.
+const queueFootWord = "ctrl+enter queue"
+
+// queueFootOffered reports whether the running foot may name the queue key. It
+// asks what [app.followUp] and the key's own case in [app.key] ask: the
+// terminal can tell ctrl+enter from a plain enter, and there are words in the
+// box to queue — a picture alone is not something the queue carries. The rest
+// (a turn running, the box the conversation's own) is [app.runSendOffered],
+// which the caller has already asked.
+func (a *app) queueFootOffered() bool {
+	return a.keysDisambiguated && strings.TrimSpace(a.input.String()) != ""
+}
+
 // queuedWord is the dim line's sentence, trimmed to what fits. The count is
 // only spelled when there is more than one message waiting — one message
 // counted is a number that says nothing the rows above it do not.

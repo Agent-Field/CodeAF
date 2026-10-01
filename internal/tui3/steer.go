@@ -422,13 +422,13 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // typingHint is the send half of the running-turn hint while there is something
 // in the box or on the tray.
 //
-// It teaches plain enter and nothing else. THE CHORDS ARE NOT NAMED HERE, by the
-// owner's call (2026-09-30): `ctrl+shift+enter` still stops and sends
-// (bargein.go) and `ctrl+enter` still queues (followup.go), and both live on the
-// key sheet — the queue key on the queued block's own dim line as well — but
-// this live slot spends its cells on the one send every terminal has.
+// It teaches plain enter first, then the queue key where the terminal can send
+// it and there are words to queue. THE STOP-AND-SEND CHORD IS NOT NAMED HERE,
+// by the owner's call (2026-09-30): `ctrl+shift+enter` still stops and sends
+// (bargein.go) and the key sheet lists it, but the slot it held on this line
+// went to the queue key, which is pressed far more often.
 //
-//	enter steers it in
+//	enter steers it in · ctrl+enter queue
 var steerShortHint = "enter " + steerSendWord
 
 // enterWaitHint is the plain-enter half of the running-turn hint. The tray and
@@ -442,6 +442,9 @@ func (a *app) typingHint() string {
 	first := enterWaitHint
 	if a.steerOffered() {
 		first = steerShortHint
+	}
+	if a.queueFootOffered() {
+		return first + hintSegment + queueFootWord
 	}
 	return first
 }
@@ -457,7 +460,7 @@ func (a *app) runSendOffered() bool {
 }
 
 // runHint is the one line while a turn runs. Its order follows the hand across
-// the box: send, background, stop. Every conditional clause asks
+// the box: send, queue, background, stop. Every conditional clause asks
 // the same predicate as its key, so a word in this line is a working gesture on
 // the frame that drew it.
 func (a *app) runHint() string {
