@@ -304,7 +304,9 @@ four files to answer one question about them is one quick task with four items, 
 the fourth read is worth more to somebody who has seen the first three. And **one quick
 task is a few files and a few minutes** — see *How big one quick task should be* below.
 
-You can overrule it either way in words, and the model follows.
+You can overrule it either way in words, and the model follows. After you decline
+a task proposal, reading stays in the conversation until a new message from you;
+codeaf does not start a quick worker for it.
 
 ## How big one quick task should be — a quick task that ran out of rounds, one that read twenty files and cost a dollar, why a big package became several
 
@@ -1434,6 +1436,27 @@ moving hand is not answered by a keystroke aimed at your sentence.
 
 You can also click an answer: each answer's row is pressable along its whole width.
 
+## After I say no, can codeaf fix it itself — declined task and senior-dev proposals
+
+Pressing `2` on a task proposal means the work was not started. This includes a
+proposal handed to senior-dev. The chat can still read files or the manual and
+ask or offer in words, but it cannot write files, generate files, run shell
+commands, or start replacement work while answering that same request. Reading
+stays in the conversation; it does not start a new quick task after a decline.
+
+An attempted action is refused with this exact sentence:
+
+> the person declined a task proposal, so no work was started; do not change files or start replacement work until a new message from the person; explain that and ask or offer in words
+
+All shell commands are held after a decline, including commands that look like
+checks: a shell command's text cannot establish that it will leave files alone.
+Work already running before your answer is not cancelled or undone.
+
+A **new message from you** may ask for the fix directly, and the chat can then
+work normally. A task or background job ending by itself is not a new message
+from you and does not lift the refusal. An approved correction or the countdown
+starting a task is a yes, and does not impose this refusal.
+
 ## Choosing a different model or opening the task proposal's brief
 
 **Honest limit:** there is no longer any way to pick the model from the proposal. When a
@@ -1501,7 +1524,9 @@ typed does not restart it.
 **`1` start it** admits the work exactly as briefed.
 
 **`2` no** declines. Nothing is spawned, no row appears on the roster, and no room exists.
-This is a normal answer, not an error.
+This is a normal answer, not an error. The chat does not then do that work itself or
+hand it out again while answering the same request. A new message from you can ask
+for a direct fix, and normal work is allowed again.
 
 **Anything you type is a correction**, and a correction is a yes to the corrected version.
 Your words travel verbatim and are appended to the brief; this is the last moment the brief
