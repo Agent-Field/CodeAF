@@ -39,15 +39,41 @@ const (
 	resumeNotNowAt = 1
 )
 
-// offerSetup raises the card for a resume, when there is one and this
-// conversation has a machine of its own to set up. A capability that cannot work
-// is absent, so a conversation with no setup door is offered nothing.
+// offerSetup raises the card for a resume. One with something to set up asks
+// whether to bring it back, when this conversation has a machine of its own to
+// set up (a capability that cannot work is absent). One with only where the chat
+// stands, uncommitted files and the last test run, raises the same card as a
+// plain brief that runs nothing.
 func (a *app) offerSetup(r machine.Resume) {
-	far, ok := a.agent.(setupDoor)
-	if !ok || r.Empty() {
+	if !r.Worth() {
 		return
 	}
-	a.raiseQuestion(a.setupShown(r, far))
+	far, ok := a.agent.(setupDoor)
+	switch {
+	case !r.Empty() && ok:
+		a.raiseQuestion(a.setupShown(r, far))
+	case r.Empty():
+		a.raiseQuestion(a.arrivedShown(r))
+	}
+}
+
+// arrivedShown is the hero card of an arrival with nothing to set up: the
+// facts, and one answer that closes it.
+func (a *app) arrivedShown(r machine.Resume) questionShown {
+	return questionShown{
+		question: session.Question{
+			Kind:    resumeKind,
+			Ask:     session.AskConfirmation,
+			Form:    session.FormCard,
+			Asker:   session.Asker{Kind: session.AskerSurface},
+			Head:    chatlist.ArrivedHead(r.From),
+			Reason:  strings.Join(chatlist.SetupReasons(setupFacts(r)), " · "),
+			Options: []session.AnswerOption{{Key: resumeSetUpKey, Label: chatlist.OfferGotIt, Safe: true}},
+			Stakes:  session.StakesReversible,
+			Asked:   a.now(),
+		},
+		local: func(session.Answer) tea.Cmd { return nil },
+	}
 }
 
 // setupShown is the card and the closure that acts on it. It blocks nothing: the
