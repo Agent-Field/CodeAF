@@ -124,7 +124,7 @@ func TestJoinByLinkApproved(t *testing.T) {
 	ui, done := r.start(t, context.Background())
 	in := waitInvite(t, ui)
 
-	if !strings.HasPrefix(in.Ref.URL(), "https://codeaf.link/p/"+in.Ref.Code+"#") || len(in.Check) != 4 {
+	if !strings.HasPrefix(in.Ref.URL(), "https://codeaf.agentfield.ai/p/"+in.Ref.Code+"#") || len(in.Check) != 4 {
 		t.Fatalf("the invite looks wrong: %+v", in)
 	}
 	ref, err := ReadLink(in.Ref.Token())
@@ -237,7 +237,7 @@ func TestLookRefusesAMismatchedCheck(t *testing.T) {
 func TestLinkShapes(t *testing.T) {
 	key := b64u.EncodeToString(make([]byte, 16))
 	for _, text := range []string{
-		"https://codeaf.link/p/k7m2q9xd#" + key, "codeaf://pair?code=K7M2Q9XD#" + key, "k7m2q9xd." + key, "k7m2q9xd#" + key, "K7M2Q9XD", "k7m2q9xd",
+		"https://codeaf.agentfield.ai/p/k7m2q9xd#" + key, "codeaf://pair?code=K7M2Q9XD#" + key, "k7m2q9xd." + key, "k7m2q9xd#" + key, "K7M2Q9XD", "k7m2q9xd",
 	} {
 		ref, err := ReadLink(text)
 		if err != nil || ref.Code != "k7m2q9xd" {
@@ -247,7 +247,7 @@ func TestLinkShapes(t *testing.T) {
 			t.Errorf("%q is not link text", text)
 		}
 	}
-	for _, text := range []string{"42-715-302", "715 302", "42715302", "715302", "", "k7m2q9x", "https://example.com/p/k7m2q9xd#" + key, "k7m2q9xd.short"} {
+	for _, text := range []string{"42-715-302", "715 302", "42715302", "715302", "", "k7m2q9x", "https://example.com/p/k7m2q9xd#" + key, "https://codeaf.link/p/k7m2q9xd#" + key, "k7m2q9xd.short"} {
 		if IsLinkText(text) {
 			t.Errorf("%q was taken for link text", text)
 		}

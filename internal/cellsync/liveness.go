@@ -27,6 +27,7 @@ type holding struct {
 	keeping Keeping
 	cell    string
 	fence   uint64
+	vouched bool // the socket was healthy when last looked at
 }
 
 // follow makes the socket name the lease the Batcher holds now: the cell and
@@ -46,17 +47,27 @@ func (h *holding) follow(l Liveness, view func() (Driving, uint32, bool)) {
 		return
 	}
 	h.release()
-	h.keeping, h.cell, h.fence = l.Keep(cell, fence), cell, fence
+	h.keeping, h.cell, h.fence, h.vouched = l.Keep(cell, fence), cell, fence, false
 }
 
 // covers says whether the lease needs no heartbeat now: the socket is healthy
 // and the directory already knows how many turns are pending.
 func (h *holding) covers(view func() (Driving, uint32, bool), told func(uint32) bool) bool {
-	if h.keeping == nil || !h.keeping.Healthy() {
+	h.vouched = h.keeping != nil && h.keeping.Healthy()
+	if !h.vouched {
 		return false
 	}
 	_, pending, _ := view()
 	return told(pending)
+}
+
+// lapsed says whether the socket vouched when last looked at and no longer
+// does. Only that is news to the lease: a socket that was never vouching and
+// redials has changed nothing, and the tick already beats for it.
+func (h *holding) lapsed() bool {
+	was := h.vouched
+	h.vouched = h.keeping != nil && h.keeping.Healthy()
+	return was && !h.vouched
 }
 
 // changes is the channel the socket signals on, or nil, which never fires.
