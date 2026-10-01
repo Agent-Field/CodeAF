@@ -3697,6 +3697,7 @@ impl FurrowRepository {
         root: &ObjectId,
         plan: &RewindPlan,
     ) -> anyhow::Result<BTreeMap<Vec<u8>, FlatEntry>> {
+        let _section = self.store.acquire_maintenance_shared()?;
         let mut entries = BTreeMap::new();
         for change in &plan.changes {
             if change.action == "remove" {
@@ -3715,6 +3716,7 @@ impl FurrowRepository {
         root: &ObjectId,
         plan: &RewindPlan,
     ) -> anyhow::Result<BTreeMap<Vec<u8>, FlatEntry>> {
+        let _section = self.store.acquire_maintenance_shared()?;
         let mut entries = BTreeMap::new();
         for change in &plan.changes {
             if let Some(entry) = self.lookup_tree_path(root, &change.raw_path)? {
