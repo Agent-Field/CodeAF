@@ -106,15 +106,14 @@ now. `docs/rules/changelog.md` says why it cannot be generated from the diff.
 
 Read on demand, not up front: [docs/rules/branching.md](docs/rules/branching.md)
 for the model and why promotion is a fast-forward,
-[docs/rules/ci.md](docs/rules/ci.md) for what runs where and the known-red ledger
-in `.github/known-red.txt`, [docs/rules/changelog.md](docs/rules/changelog.md)
+[docs/rules/ci.md](docs/rules/ci.md) for what runs where and how a red is
+attributed, [docs/rules/changelog.md](docs/rules/changelog.md)
 for what an entry carries, [docs/rules/promotion.md](docs/rules/promotion.md)
 for the promote-and-release runbook.
 
-Server enforcement depends on the repository's visibility or plan — the org is
-on the free plan, and a private repository gets no branch rules there. Until the
-org moves to GitHub Team or the repository is public, every line above is
-convention. `.github/rulesets/` holds the rules ready to apply.
+The repository is public now, so the free plan's former private-repository
+restriction no longer prevents branch rules. `.github/rulesets/` holds the
+intended rules; inspect live enforcement before assuming they were applied.
 
 ## Build and ship — the owner's standing orders
 
@@ -305,18 +304,27 @@ packages after an abrupt end, and sorts completed tests slowest-first; a cut run
 still writes that report and still exits non-zero. The quick target checks build,
 vet, formatting, the packed manual, well-formed change entries, the manual gates,
 and laws; it does not replace acceptance. `make test-touched` derives the same
-package set as the pull-request gate and runs it through the known-red ledger with `-count=1`;
-`make pr-ready` combines that proof with the light gate. Pass `BASE=<commit>`
+package set as CI through `scripts/touched-packages.sh` and runs the same
+failure classifier with `-count=1`; `make pr-ready` combines that proof with the
+light gate and touched-only tooling acceptance when scripts/, the Makefile or
+covered benchmark paths changed. Pass `BASE=<commit>`
 when the comparison should not be `origin/dev`. The target refuses uncommitted
 Go or module files: commit the candidate first so the local diff is exactly the
 diff CI will test, without absorbing another session's edits.
 
-**The tests that fail on a clean tree are listed in `.github/known-red.txt` and
-nowhere else.** `make test` skips them by name, and so does CI, through the same
-target — so `make check` passes on a clean tree and a red in either place means
-the change caused it. The ledger only shrinks (`internal/ci` ratchets its count):
-fix a test, delete its line, lower `knownRedEntries` in the same commit. Never
-add a line. Confirm any other red with a stash-and-rerun before chasing it.
+**`touched packages` checks a failing test again before it blames your change.**
+A failing test is run once more on your branch; if it passes, it is reported as
+flaky. If it fails again, it is run at the base commit; if it fails there too,
+it is reported as already failing on `dev`. Both stay green and are recorded on
+one standing issue, because a flaky test is still a bug, just not yours. Only a
+test that fails on your branch and passes on the base turns the job red, and so
+do build failures, timeouts, crashes and more than five failures in one leg,
+which are never re-run. The touched packages run as separate legs (`tui3`,
+`session`, `codeaf`, `rest`) on separate runners, from a build cache refreshed
+daily from `dev`. [docs/rules/ci.md](docs/rules/ci.md) has the details.
+
+There is no known-red ledger any more. It was emptied and deleted in #1012, and a
+test that fails on a clean tree is a bug to fix, not a line to add back.
 
 There is no longer a "flakes under load" list here. The three that were on it —
 `TestOnlyADesignsOwnThreadCarriesTheReviseVerb`,
