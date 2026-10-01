@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	machine "github.com/Agent-Field/codeaf/internal/preflight"
@@ -117,15 +119,43 @@ func TestTakeoverScreenConfirmCallsTake(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, continueRows, 200)
 	standOn(t, a, "c-off")
-	// enter on the card alone takes the answer that loses nothing.
+	// the person chose to continue, so enter on the card alone completes it.
 	drive(t, a, key("enter"))
-	if len(taker.cells) != 0 {
-		t.Fatalf("leaning on enter took the chat: %v", taker.cells)
-	}
-	standOn(t, a, "c-off")
-	confirm(t, a)
 	if fmt.Sprint(taker.cells) != "[c-off]" {
 		t.Fatalf("Take was asked for %v", taker.cells)
+	}
+}
+
+func TestTakeoverScreenEscLeavesIt(t *testing.T) {
+	taker := &fakeTaker{}
+	a := continueHome(t, taker, continueRows, 200)
+	standOn(t, a, "c-off")
+	drive(t, a, key("esc"))
+	if len(taker.cells) != 0 {
+		t.Fatalf("esc took the chat: %v", taker.cells)
+	}
+}
+
+func TestTakeoverCardCursorByEntryPoint(t *testing.T) {
+	// An explicit continue starts on `continue here`; a card nobody asked for
+	// starts on `leave it there`.
+	entries := map[string]struct {
+		raise func(*app, chatlist.Row) tea.Cmd
+		at    int
+	}{
+		"enter on the row": {func(a *app, r chatlist.Row) tea.Cmd { return a.homeMachineEnter(machineEntry(r)) }, continueYesAt},
+		"offer":            {func(a *app, r chatlist.Row) tea.Cmd { return a.offerContinue(r, chatlist.Offer{}) }, continueYesAt},
+		"asked":            {func(a *app, r chatlist.Row) tea.Cmd { return a.askContinue(r) }, continueStayAt},
+	}
+	for name, e := range entries {
+		t.Run(name, func(t *testing.T) {
+			a := continueHome(t, &fakeTaker{}, continueRows, 200)
+			e.raise(a, continueRows[0])
+			ask, ok := a.homeAsking()
+			if !ok || ask.pick != e.at {
+				t.Fatalf("cursor at %d, want %d (asking=%v)", ask.pick, e.at, ok)
+			}
+		})
 	}
 }
 
@@ -310,8 +340,8 @@ func TestTakeoverScreenGolden(t *testing.T) {
 			"╭─ ? Continue this chat here? ────────────────────────────────────────────────╮",
 			"│ last durable turn 10800s ago; up to 3 turns may still be on studio          │",
 			"│                                                                             │",
-			"│   1  continue here                                                          │",
-			"│ ▸ 2  leave it there                                            safe answer  │",
+			"│ ▸ 1  continue here                                                          │",
+			"│   2  leave it there                                            safe answer  │",
 			"│                                                                             │",
 			"╰─ esc leave it there ────────────────────────────────────────────────────────╯",
 		},
@@ -320,8 +350,8 @@ func TestTakeoverScreenGolden(t *testing.T) {
 			"│ last durable turn 10800s ago; up to │",
 			"│ 3 turns may still be on studio      │",
 			"│                                     │",
-			"│   1  continue here                  │",
-			"│ ▸ 2  leave it there    safe answer  │",
+			"│ ▸ 1  continue here                  │",
+			"│   2  leave it there    safe answer  │",
 			"│                                     │",
 			"╰─ esc leave it there ────────────────╯",
 		},
