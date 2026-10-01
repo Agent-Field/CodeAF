@@ -191,6 +191,37 @@ func (p Place) Work() string {
 	return p.join(placeWork)
 }
 
+// OwnsFolder reports whether workspace is the work/ folder of a session folder
+// on this machine. A chat that arrives from another machine whose project is not
+// here works in such a folder while its record still calls it borrowed: the
+// record travels between machines, so it cannot say "owned" without being wrong
+// on the machine the project is on. The folder itself is the fact that holds
+// here, and a surface that names places asks it of the folder.
+func OwnsFolder(workspace string) bool {
+	workspace = filepath.Clean(strings.TrimSpace(workspace))
+	if filepath.Base(workspace) != placeWork {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(filepath.Dir(workspace), placeMeta))
+	return err == nil
+}
+
+// OriginOf is the project folder the chat working in workspace was left in on
+// another machine, and "" when the folder is not a chat's own or none is known.
+func OriginOf(workspace string) string {
+	if !OwnsFolder(workspace) {
+		return ""
+	}
+	m, _ := LoadMeta(filepath.Dir(filepath.Clean(strings.TrimSpace(workspace))))
+	return m.Origin
+}
+
+// TitleOf is the name of the chat whose own folder workspace is.
+func TitleOf(workspace string) string {
+	m, _ := LoadMeta(filepath.Dir(filepath.Clean(strings.TrimSpace(workspace))))
+	return strings.TrimSpace(m.Title)
+}
+
 // Meta is one session's identity, written where a picker can read it without
 // parsing a journal. It is a citation, not a copy: every conversation fact in
 // it is recoverable from the transcript, while Build names the codeaf that
@@ -209,6 +240,10 @@ type Meta struct {
 	// bucket directory above the session folder is derived from it and is
 	// NOT an identity; this field is.
 	Workspace string `json:"workspace"`
+	// Origin is the project folder a chat that moved here was left in on the
+	// machine it came from, when that folder is not on this one. It is this
+	// machine's own note, never sealed, so it cannot follow the chat back.
+	Origin string `json:"origin,omitempty"`
 	// LaunchDir is where the person actually stood when the session opened —
 	// the repo subdirectory, or the temp dir whose presence marks the session
 	// as sweepable litter.
