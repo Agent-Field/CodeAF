@@ -43,8 +43,9 @@ const withVersion = (res, version) => (res.headers.set('Codeaf-Dir-Version', Str
 // The watch is an upgrade and nothing else: a plain GET is told so (contract 21.2).
 function watching(c) {
   if (c.request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new Wire('upgrade_required', 426);
-  const holds = parseHolds(new URL(c.request.url).searchParams.getAll('hold'), c.tenant.limits.maxHolds);
-  return c.tenant.watch(c.device, holds);
+  const { searchParams } = new URL(c.request.url);
+  const holds = parseHolds(searchParams.getAll('hold'), c.tenant.limits.maxHolds);
+  return c.tenant.watch(c.device, holds, searchParams.get('events') === '1');
 }
 
 // The directory's version rides on a presence answer as on a list.

@@ -32,7 +32,7 @@ export class IdentityDO extends DurableObject {
     super(ctx, env);
     this.limits = limitsOf(env);
     this.policy = policyOf(env.LEASE_POLICY);
-    this.watchers = new Watchers(ctx, this.limits.maxWatchers, this.policy.ttlMs);
+    this.watchers = new Watchers(ctx, this.limits.maxWatchers, this.policy.ttlMs, (at) => this.ctx.waitUntil(this.#arm(at)));
     this.identityRate = new RateLimit(this.limits.requestsPerMinute);
     this.deviceRate = new RateLimit(this.limits.requestsPerMinutePerDevice);
   }
@@ -46,9 +46,21 @@ export class IdentityDO extends DurableObject {
     console.warn('watch: message');
   }
 
-  /** webSocketClose completes the close handshake the client started; nothing else is kept per socket. */
-  webSocketClose(ws, code) {
+  /** webSocketClose completes the close handshake the client started, and notes when a device's last socket went. */
+  async webSocketClose(ws, code) {
     finishClose(ws, code);
+    await this.#noteLeft(ws);
+  }
+
+  webSocketError(ws) {
+    return this.#noteLeft(ws);
+  }
+
+  /** #noteLeft records last_seen of a device that holds no socket now; the offline frame follows 15 s later, by alarm. */
+  async #noteLeft(ws) {
+    const device = this.watchers.left(ws);
+    const identity = device && (await this.ctx.storage.get('identity'));
+    if (identity && !(await this.#isGone())) this.#tenantOf(identity).dir.seen(device, Date.now());
   }
 
   async #serve(request) {
@@ -101,6 +113,7 @@ export class IdentityDO extends DurableObject {
    * may have stood in front of it.
    */
   async alarm() {
+    this.watchers.expire();
     const identity = await this.ctx.storage.get('identity');
     if (!identity) return;
     if (await this.#isGone()) return this.#erase(identity);
