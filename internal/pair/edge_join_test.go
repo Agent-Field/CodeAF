@@ -407,7 +407,7 @@ func TestGrantBounds(t *testing.T) {
 // joining device with whatever it likes inside a perfectly good encrypted reply.
 func joinHostileOfferer(t *testing.T, r *chatRig, home string, reply []byte) (Joined, error) {
 	t.Helper()
-	ctx := bounded(t, 20*time.Second)
+	ctx, stop := context.WithTimeout(context.Background(), 20*time.Second)
 	const digits = "482913"
 	key, err := pairbox.NewKey()
 	if err != nil {
@@ -418,15 +418,19 @@ func joinHostileOfferer(t *testing.T, r *chatRig, home string, reply []byte) (Jo
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = r.box.Delete(context.Background(), made.Nameplate, key) })
+	// The offerer is stopped AND waited for when the test ends. It may still be
+	// holding one of the network's few open-poll slots (it waits for a word the
+	// joining side never sends once the grant is refused); left to wind down on
+	// its own it keeps that slot into the next case, whose offerer is then
+	// refused with "too many pairings" and never answers, so the joiner sits
+	// out its whole 20 seconds.
+	finished := make(chan struct{})
+	t.Cleanup(func() { stop(); <-finished })
 	go func() {
+		defer close(finished)
 		link := &boxLink{ctx: ctx, box: r.box, plate: made.Nameplate, mine: pairbox.SideA, theirs: pairbox.SideB, key: key}
-		joiner, err := answer(link, chatScheme(made.Nameplate), digits)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "DBG answer failed:", err)
-			return
-		}
-		if err := joiner.reply(reply); err != nil {
-			fmt.Fprintln(os.Stderr, "DBG reply failed:", err)
+		if joiner, err := answer(link, chatScheme(made.Nameplate), digits); err == nil {
+			_ = joiner.reply(reply)
 		}
 	}()
 	typed := made.Nameplate + "-" + digits[:3] + "-" + digits[3:]
