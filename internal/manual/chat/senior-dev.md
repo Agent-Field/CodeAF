@@ -328,6 +328,11 @@ history it keeps its checkpoints outside the folder instead and commits nothing 
 reads that itself, and never ends for want of git (see the section on folders that are
 not a git repository).
 
+Its ending names the submitted change, for example `across 3 file(s), tree <id>`.
+In a plain folder it counts changed files but does not produce patch text, so no byte
+size is shown. A measured patch in a git repository still says, for example,
+`128 bytes across 3 file(s), tree <id>`.
+
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
