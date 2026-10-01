@@ -3,6 +3,7 @@ package tui3
 import (
 	tea "charm.land/bubbletea/v2"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,7 @@ func TestAddMachinePasteGoesToTheApproveScreenAndApproveEndsTheCard(t *testing.T
 	door := &fakeApprovals{pending: spark(time.Now())}
 	a, r := approveApp(t, door)
 	a.addMachine = addMachine{size: 1, known: true}
+	a.openHome()
 	a.toggleAddMachine()
 	cmd := a.paste(testLink)
 	if cmd == nil {
@@ -115,9 +117,66 @@ func TestAddMachinePasteThatIsNotALinkIsNotTheCards(t *testing.T) {
 	if _, took := a.pasteLink("hello there"); took {
 		t.Fatal("plain text was taken as a link")
 	}
-	a.toggleAddMachine()
+}
+
+// THE CARD NEED NOT BE OPEN, OR EVEN DRAWN: a link anywhere on home is the
+// approve screen's, and a link off home is not.
+func TestPairLinkOnBareHomeShowsTheApproveScreen(t *testing.T) {
+	for name, setup := range map[string]func(*app){
+		"card closed":   func(a *app) { a.addMachine = addMachine{size: 1, known: true} },
+		"fleet unknown": func(a *app) {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			door := &fakeApprovals{pending: spark(time.Now())}
+			a, r := approveApp(t, door)
+			setup(a)
+			a.openHome()
+			drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
+			r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
+			if got := plain(frame(a)); !strings.Contains(got, "wants to join your fleet") {
+				t.Fatalf("no approve screen on the frame:\n%s", got)
+			}
+		})
+	}
+}
+
+func TestPairLinkTypedAndEnteredOnHomeShowsTheApproveScreen(t *testing.T) {
+	door := &fakeApprovals{pending: spark(time.Now())}
+	a, r := approveApp(t, door)
+	a.openHome()
+	typeText(t, a, testLink)
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
+	if a.home.box.String() != "" {
+		t.Fatalf("the link stayed in the box: %q", a.home.box.String())
+	}
+}
+
+func TestPairLinkThatRanOutSaysSoAndIsNotSilent(t *testing.T) {
+	door := &fakeApprovals{err: errors.New("expired")}
+	a, r := approveApp(t, door)
+	a.openHome()
+	drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
+	r.until("the failure", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.line != "" })
+	if got := plain(frame(a)); !strings.Contains(got, "that request has run out") {
+		t.Fatalf("no plain message:\n%s", got)
+	}
+}
+
+func TestOrdinaryTextOnHomeIsNotTakenForALink(t *testing.T) {
+	for _, text := range []string{"database", "fix the login bug", "https://example.com/p/k7m2q9xd#Qm9v"} {
+		a, _ := approveApp(t, &fakeApprovals{})
+		a.openHome()
+		if _, took := a.pasteLink(text); took {
+			t.Errorf("%q was taken for a pair link", text)
+		}
+	}
+}
+
+func TestPairLinkOffHomeIsNotTheHomesToTake(t *testing.T) {
+	a, _ := approveApp(t, &fakeApprovals{})
 	if _, took := a.pasteLink(testLink); took {
-		t.Fatal("a closed card took a link")
+		t.Fatal("a link pasted off home was taken")
 	}
 }
 
