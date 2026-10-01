@@ -104,3 +104,37 @@ func TestDriveSideDoorPublishesAndReleases(t *testing.T) {
 		t.Fatalf("lease after close = %+v, want released by this device", v.Cell.Lease)
 	}
 }
+
+// A chat that opened before this computer had an identity starts to sync the
+// moment /pair makes one, with no restart: the next call's seal is published and
+// closing the chat gives the lease back, exactly as for a chat that was paired
+// from the start.
+func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
+	cfg, c := doorChat(t)
+	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
+	t.Cleanup(srv.Close)
+	t.Setenv(syncsetup.URLVar, srv.URL)
+	t.Setenv(syncsetup.IntervalVar, "50")
+
+	seated := v3Seated(cfg)
+	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.Ensure(home.Dir()); err != nil { // what /pair does in the running chat
+		t.Fatal(err)
+	}
+	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	syncDrives.closeAll()
+
+	s, ok, err := syncsetup.Open(home.Dir())
+	if err != nil || !ok {
+		t.Fatalf("Open = %v, %v", ok, err)
+	}
+	head, _ := cellstore.Head(c)
+	v, err := s.Dir.Cell(context.Background(), c.ID)
+	if err != nil || v.Cell.Head != head.Turn.ID {
+		t.Fatalf("directory head %q (%v), want the chat's %q", v.Cell.Head, err, head.Turn.ID)
+	}
+}
