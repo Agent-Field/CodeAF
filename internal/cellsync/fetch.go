@@ -17,6 +17,11 @@ import (
 // (contract §22.6).
 const FetchWindow = 8
 
+// ImportEvery is how many frames land between two partial imports (contract
+// §22.12): each import walks what is stored so far, so asking after every
+// frame would pay the walk many times for little new work.
+const ImportEvery = 4
+
 // Fetcher brings a head and everything it needs from the store onto this device.
 type Fetcher struct {
 	Engine Engine
@@ -140,7 +145,10 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 	if err != nil || len(view.Cell.Frames) == 0 {
 		return nil
 	}
-	if err := f.fetchFrames(ctx, inbox, view.Cell.Frames); err != nil {
+	lap := startOverlap(ctx, f.Engine, c, head, inbox)
+	err = f.fetchFrames(ctx, inbox, view.Cell.Frames, lap.landed)
+	lap.finish()
+	if err != nil {
 		return err
 	}
 	if _, err := f.Engine.ImportPrimed(ctx, c, head, inbox); err != nil {
@@ -167,7 +175,7 @@ func clearInbox(inbox string) {
 // one that fails Decode, is skipped: the want loop asks for what it carried.
 // Downloads race each other but writes go through sink: two frames can carry
 // the same object, and one rid is written once, by one goroutine.
-func (f *Fetcher) fetchFrames(ctx context.Context, inbox string, frames []string) error {
+func (f *Fetcher) fetchFrames(ctx context.Context, inbox string, frames []string, landed func()) error {
 	sink := &frameSink{written: map[string]bool{}}
 	window := make(chan struct{}, FetchWindow)
 	var wg sync.WaitGroup
@@ -194,6 +202,7 @@ func (f *Fetcher) fetchFrames(ctx context.Context, inbox string, frames []string
 				return
 			}
 			sink.keep(inbox, objects)
+			landed()
 		}()
 	}
 	wg.Wait()
@@ -218,12 +227,23 @@ func (s *frameSink) keep(inbox string, objects []blobstore.Object) {
 		if s.written[o.RID] {
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(inbox, o.RID), o.Bytes, 0o600); err != nil {
+		if err := writeWhole(inbox, o); err != nil {
 			s.err = err
 			return
 		}
 		s.written[o.RID] = true
 	}
+}
+
+// writeWhole puts an object in the inbox under its rid only once every byte is
+// there: a partial import may list the inbox while frames still land, and it
+// skips dot names, so the file is written under one and renamed.
+func writeWhole(inbox string, o blobstore.Object) error {
+	tmp := filepath.Join(inbox, "."+o.RID)
+	if err := os.WriteFile(tmp, o.Bytes, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(inbox, o.RID))
 }
 
 // failed reports whether a write has already been refused, so the spawn

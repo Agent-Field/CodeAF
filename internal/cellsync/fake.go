@@ -347,7 +347,34 @@ func (f *FakeEngine) Import(_ context.Context, c cell.Cell, head, inbox string) 
 func (f *FakeEngine) ImportPrimed(_ context.Context, c cell.Cell, head, inbox string) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	fc := f.cell(c)
+	total, err := f.passes(f.cell(c), head, inbox)
+	if err != nil {
+		return total, err
+	}
+	entries, err := os.ReadDir(inbox)
+	if err != nil {
+		return total, err
+	}
+	for _, e := range entries {
+		if err := os.Remove(filepath.Join(inbox, e.Name())); err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+// ImportPartial implements Engine: the passes of ImportPrimed and nothing
+// else. Files no pass wanted stay, because the frames that name their parents
+// may not have landed yet.
+func (f *FakeEngine) ImportPartial(_ context.Context, c cell.Cell, head, inbox string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.passes(f.cell(c), head, inbox)
+}
+
+// passes stores, pass by pass, every inbox file the graph can now see, and
+// answers how many it stored.
+func (f *FakeEngine) passes(fc *fakeCell, head, inbox string) (int, error) {
 	total := 0
 	for {
 		wanted, err := fc.want(head)
@@ -355,7 +382,7 @@ func (f *FakeEngine) ImportPrimed(_ context.Context, c cell.Cell, head, inbox st
 			return 0, err
 		}
 		if len(wanted) == 0 {
-			break
+			return total, nil
 		}
 		isWanted := map[string]bool{}
 		for _, rid := range wanted {
@@ -377,7 +404,7 @@ func (f *FakeEngine) ImportPrimed(_ context.Context, c cell.Cell, head, inbox st
 			took[e.Name()] = raw
 		}
 		if len(took) == 0 {
-			break // a wanted rid the inbox lacks is the want loop's next fetch
+			return total, nil // a wanted rid the inbox lacks is the want loop's next fetch
 		}
 		n, err := f.store(fc, inbox, took)
 		if err != nil {
@@ -385,16 +412,6 @@ func (f *FakeEngine) ImportPrimed(_ context.Context, c cell.Cell, head, inbox st
 		}
 		total += n
 	}
-	entries, err := os.ReadDir(inbox)
-	if err != nil {
-		return total, err
-	}
-	for _, e := range entries {
-		if err := os.Remove(filepath.Join(inbox, e.Name())); err != nil {
-			return total, err
-		}
-	}
-	return total, nil
 }
 
 // store moves verified files into the cell's graph: what the store handed
