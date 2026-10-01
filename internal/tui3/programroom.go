@@ -23,10 +23,9 @@ package tui3
 // is the line the stored page pins under its title, and `x` stops the run
 // through the store's own door, as the stored page's `x` does.
 //
-// THE BOX SENDS NOTHING. A program reads no message — nothing a person types
-// reaches senior-dev once it is running — so the placeholder says so, and
-// enter over a sentence says it again on the page and keeps the sentence in the
-// box, where the refusal's door (the conversation) can still take it.
+// THE BOX SENDS ONLY WHILE THE PROGRAM LISTENS. Otherwise the placeholder
+// says why, and enter repeats that fact while keeping the sentence in the box,
+// where the refusal's door (the conversation) can still take it.
 
 import (
 	"strconv"
@@ -123,6 +122,7 @@ func (a *app) programRoomSteer(line string) tea.Cmd {
 		return nil
 	}
 	words := a.pastesUnfolded(line)
+	keep := a.steerComposerNow()
 	id, gen := room.program.page.Row.ID, room.gen
 	name := convProgramName(room.program.page)
 	a.pastes = nil
@@ -136,6 +136,13 @@ func (a *app) programRoomSteer(line string) tea.Cmd {
 				return nil
 			}
 			if err != nil {
+				// A REFUSAL KEEPS THE PERSON'S WORDS AND THEIR PASTES. A newer
+				// draft stays theirs too, so only an untouched box is restored.
+				if len(a.input.value) == 0 {
+					state := a.liveComposer()
+					state.box, state.pastes = keep.box, keep.pastes
+					a.putComposer(state)
+				}
 				a.roomNote(err.Error())
 				return nil
 			}
@@ -447,6 +454,15 @@ func (a *app) programRoomRefusal() refusal {
 		named := name != "" && name != convProgramFallback
 		if named {
 			out.what = name + programRoomNoMessages
+		}
+		// A DECLARED LISTENER STILL STARTING HAS NOT REFUSED THE CAPABILITY.
+		// The page names the same wait as the conversation's note door.
+		if program := p.page.Program; program != nil && program.Listens && !program.Started && !program.Listening && program.InboxClosed == "" && !a.room.done && !planEnded(p.page.Row) {
+			if !named {
+				name = "this task's program"
+			}
+			out.what = name + " " + session.ProgramNotListeningYet
+			out.shortWhat = session.ProgramNotListeningYet
 		}
 		// A PROGRAM THAT HAS STOPPED LISTENING SAYS WHY — senior-dev once it
 		// has handed in — rather than that it never listened.

@@ -95,6 +95,12 @@ type PlanProgram struct {
 	// send words only while it listens.
 	Listening   bool
 	InboxClosed string
+	// Listens is the declaration's capability, so a queued or starting page
+	// can distinguish a future listener from a program that reads no messages.
+	Listens bool
+	// Started says the record carries a process start, so a hello without
+	// message support is not mistaken for a program still starting.
+	Started bool
 	// Actions is what the program did: the newest [planProgramActions] lines of
 	// its action log, in the order they arrived, each as the program's own
 	// vocabulary reads it (delegate.Delegate.Reader) — the step of its process
@@ -219,7 +225,7 @@ func (a *Agent) programHearsNothing(store *plandb.Store, taskID string) error {
 		return nil
 	case record.InboxClosed != "":
 		return fmt.Errorf(programStoppedListeningWord, name, record.InboxClosed, id)
-	case planProgramOf(a.config.Delegates, record.Name).Listens:
+	case record.StartedAt.IsZero() && planProgramOf(a.config.Delegates, record.Name).Listens:
 		return fmt.Errorf(programNotListeningYetWord, name)
 	}
 	return fmt.Errorf(programHearsNothingWord, name, id)
@@ -230,8 +236,12 @@ func (a *Agent) programHearsNothing(store *plandb.Store, taskID string) error {
 const (
 	programHearsNothingWord     = "nothing was noted: %s reads no messages, and nothing reaches it until it ends. If its work is going the wrong way, stop it with `tasks id %s stop` and hand off the right ask"
 	programStoppedListeningWord = "nothing was noted: %s reads no more messages (%s). If what it handed in is wrong, stop it with `tasks id %s stop` and hand off the right ask"
-	programNotListeningYetWord  = "nothing was noted: %s has not started reading messages yet. Say it again in a moment, once its page shows it at work"
+	programNotListeningYetWord  = "nothing was noted: %s " + ProgramNotListeningYet + ". Say it again in a moment, once its page shows it at work"
 )
+
+// ProgramNotListeningYet is the starting fact shared by the note refusal and
+// the task page, so both doors describe the same absent inbox in the same words.
+const ProgramNotListeningYet = "has not started reading messages yet"
 
 // planProgramPage reads one task's program and conversation for its page, or
 // nil for a task that is not a program's: no record in its folder, no name the
@@ -251,7 +261,8 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 		return nil
 	}
 	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort,
-		Listening: record.Listening, InboxClosed: record.InboxClosed}
+		Listening: record.Listening, InboxClosed: record.InboxClosed, Listens: planProgramOf(programs, record.Name).Listens,
+		Started: !record.StartedAt.IsZero()}
 	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)

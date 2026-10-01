@@ -8,9 +8,11 @@ package session
 // own API, exactly as the run does; no model is called and no program runs.
 
 import (
+	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -470,5 +472,111 @@ func TestANoteForAListeningProgramIsTakenAndTheOtherCasesSayWhy(t *testing.T) {
 				t.Fatalf("note = %v (notes %#v), want the refusal %q", err, page.Notes, tc.want)
 			}
 		})
+	}
+}
+
+// A hello without accepts is a known nonlistener; only a declaration that
+// listens and has not said hello can still be starting. Both note doors agree.
+func TestProgramHelloDistinguishesStartingFromUnsupportedMessages(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		record  delegate.ProgramRecord
+		listens bool
+		want    string
+	}{
+		{"starting", delegate.ProgramRecord{Name: "senior-dev"}, true, "has not started reading messages yet"},
+		{"older hello", delegate.ProgramRecord{Name: "senior-dev", StartedAt: time.Unix(1, 0)}, true, "reads no messages"},
+		{"hello without inbox", delegate.ProgramRecord{Name: "senior-dev", StartedAt: time.Unix(1, 0), Stages: []string{"implement"}}, true, "reads no messages"},
+		{"never listens", delegate.ProgramRecord{Name: "senior-dev"}, false, "reads no messages"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, planStoreFilename)
+			seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
+			if err := delegate.WriteProgram(plandb.TaskDir(dir, "alpha"), tc.record); err != nil {
+				t.Fatal(err)
+			}
+			a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+			a.config.Delegates = []delegate.Delegate{{Name: "senior-dev", Listens: tc.listens}}
+			armPlanStore(t, a, path, "chat-a")
+			for _, note := range []func(string, string) error{a.PlanNote, a.PlanNoteFromChat} {
+				if err := note("t-alpha", "direction"); err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Errorf("false refusal: %v; want %q", err, tc.want)
+				}
+			}
+			page, _ := a.PlanTaskPage("t-alpha")
+			raw, err := json.Marshal(page.Program)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wired map[string]any
+			if err := json.Unmarshal(raw, &wired); err != nil {
+				t.Fatal(err)
+			}
+			if wired["Started"] != !tc.record.StartedAt.IsZero() {
+				t.Errorf("page lost hello state on JSON wire: %s", raw)
+			}
+			if len(page.Notes) != 0 {
+				t.Fatal("refused words were written")
+			}
+		})
+	}
+}
+
+func TestProgramPageCarriesItsDeclarationBeforeHello(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
+	programs := []delegate.Delegate{{Name: "senior-dev", Listens: true}}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.config.Delegates = programs
+	armPlanStore(t, agent, path, "chat-a")
+	agent.beltMu.Lock()
+	agent.beltRun = &beltRun{root: "alpha", delegate: &programs[0]}
+	agent.beltMu.Unlock()
+	t.Cleanup(func() {
+		agent.beltMu.Lock()
+		agent.beltRun = nil
+		agent.beltMu.Unlock()
+	})
+	before := planProgramPage(dir, "alpha", "senior-dev", planRunCopies{}, programs)
+	taskDir := plandb.TaskDir(dir, "alpha")
+	if err := delegate.WriteProgram(taskDir, delegate.ProgramRecord{Name: "senior-dev", CeilingUSD: 2.5,
+		StartedAt: time.Unix(1, 0), Listening: true, InboxClosed: "the previous run handed in"}); err != nil {
+		t.Fatal(err)
+	}
+	// A normal relaunch removes its predecessor's record; the live run's
+	// carried name still identifies the listener until this launch says hello.
+	if err := os.Remove(filepath.Join(taskDir, delegate.ProgramFile)); err != nil {
+		t.Fatal(err)
+	}
+	after := planProgramPage(dir, "alpha", "senior-dev", planRunCopies{}, programs)
+	if before == nil || after == nil || !after.Listens || after.Listening || !reflect.DeepEqual(before, after) {
+		t.Fatalf("relaunch lost its declaration or kept stale telemetry: before %+v, after %+v", before, after)
+	}
+	for _, note := range []func(string, string) error{agent.PlanNote, agent.PlanNoteFromChat} {
+		if err := note("t-alpha", "direction"); err == nil || !strings.Contains(err.Error(), "senior-dev "+ProgramNotListeningYet) || strings.Contains(err.Error(), "previous run") {
+			t.Errorf("relaunch has the wrong refusal before hello: %v", err)
+		}
+	}
+	page, _ := agent.PlanTaskPage("t-alpha")
+	if len(page.Notes) != 0 {
+		t.Fatal("refused words were written")
+	}
+	raw, err := json.Marshal(after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wired PlanProgram
+	if err := json.Unmarshal(raw, &wired); err != nil || !wired.Listens {
+		t.Fatalf("declaration lost on JSON wire: %+v, %v", wired, err)
+	}
+	// If removal failed and the launch replaced the record instead, the page
+	// reads its ceiling directly, as it reads every other record's ceiling.
+	if err := delegate.WriteProgram(taskDir, delegate.ProgramRecord{Name: "senior-dev", CeilingUSD: 2.5}); err != nil {
+		t.Fatal(err)
+	}
+	if fallback := planProgramPage(dir, "alpha", "senior-dev", planRunCopies{}, programs); fallback.CeilingUSD != 2.5 {
+		t.Errorf("replacement record's ceiling was hidden: %+v", fallback)
 	}
 }

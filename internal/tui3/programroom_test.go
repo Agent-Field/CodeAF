@@ -7,6 +7,8 @@ package tui3
 // the room, the rail and the landed card all read for one run.
 
 import (
+	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -669,5 +671,85 @@ func TestAProgramRoomsSeamNamesTheModelsItsRunWasLaunchedOn(t *testing.T) {
 		if cells(got) > width || (width >= cells("high") && !strings.HasSuffix(got, "high")) {
 			t.Fatalf("at %d cells the seam loses its effort or overflows: %q", width, got)
 		}
+	}
+}
+
+type refusingProgramAgent struct{ *programRoomAgent }
+
+func (*refusingProgramAgent) PlanNote(string, string) error {
+	return errors.New("nothing was noted: senior-dev reads no more messages (it has handed in its work)")
+}
+
+func TestProgramRefusalRestoresTheDraftAndReferencedPastes(t *testing.T) {
+	for _, typedAgain := range []bool{false, true} {
+		t.Run(strconv.FormatBool(typedAgain), func(t *testing.T) {
+			a, agent := programRoomApp(t, 120, 28)
+			agent.planFake.pages["7"].Program.Listening = true
+			a.agent = &refusingProgramAgent{agent}
+			openProgramRoomNow(t, a)
+			a.input.setText("please preserve these words ")
+			a.paste("alpha\nbeta\ngamma\ndelta")
+			line, words := a.input.String(), a.pastesUnfolded(a.input.String())
+			cursor := a.input.cursor
+			cmd := a.programRoomSteer(line)
+			if typedAgain {
+				a.input.setText("a newer draft")
+			}
+			drain(t, a, cmd)
+			if typedAgain {
+				if a.input.String() != "a newer draft" {
+					t.Fatal("refusal overwrote a newer draft")
+				}
+			} else {
+				if a.input.String() != line || a.input.cursor != cursor || a.pastesUnfolded(a.input.String()) != words || len(a.pastes) != 1 {
+					t.Fatalf("refusal lost the draft or paste: %q, %d pastes", a.input.String(), len(a.pastes))
+				}
+			}
+			if !strings.Contains(roomText(a), "nothing was noted") {
+				t.Fatal("refusal was not shown")
+			}
+		})
+	}
+}
+
+func TestProgramRoomStartingRefusalKeepsThePersonsWords(t *testing.T) {
+	for _, state := range []string{"queued", "running"} {
+		t.Run(state, func(t *testing.T) {
+			a, agent := programRoomApp(t, 120, 28)
+			page := agent.planFake.pages["7"]
+			page.Program.Listens = true
+			agent.planFake.pages["7"] = page
+			openProgramRoomNow(t, a)
+			// The held node is what owns the room's ending, so queued remains live.
+			a.programOf().page.Row.Status = state
+			want := "senior-dev has not started reading messages yet" + refusalGap + refusalMainDoor
+			if frame, _, _ := a.frame(); !strings.Contains(plain(frame), want) {
+				t.Errorf("starting box does not say %q", want)
+			}
+			a.input.setText("please wait for this direction")
+			drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+			if a.input.String() != "please wait for this direction" || len(agent.noted) != 0 || !strings.Contains(roomText(a), want) {
+				t.Fatalf("starting refusal lost words or lied: %q; %s", a.input.String(), roomText(a))
+			}
+		})
+	}
+}
+
+func TestProgramRoomHelloWithoutMessagesRefusesAsANonlistener(t *testing.T) {
+	a, agent := programRoomApp(t, 120, 28)
+	// The page crosses the same JSON wire as a remote page, including a hello
+	// that named no stages and offered no message support.
+	if err := json.Unmarshal([]byte(`{"Name":"senior-dev","Stages":null,"Listens":true,"Started":true}`), agent.planFake.pages["7"].Program); err != nil {
+		t.Fatal(err)
+	}
+	openProgramRoomNow(t, a)
+	want := "senior-dev" + programRoomNoMessages + refusalGap + refusalMainDoor
+	if frame, _, _ := a.frame(); !strings.Contains(plain(frame), want) {
+		t.Errorf("box after hello does not say %q", want)
+	}
+	a.input.setText("please preserve this direction")
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if a.input.String() != "please preserve this direction" || len(agent.noted) != 0 || !strings.Contains(roomText(a), want) {
+		t.Fatalf("nonlistener refusal lost words or misstated hello: %q; %s", a.input.String(), roomText(a))
 	}
 }

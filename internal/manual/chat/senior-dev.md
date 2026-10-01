@@ -239,9 +239,9 @@ asks for something the brief does not, it follows the brief and says what it did
 message when it hands in. If it had stopped without handing in, your words are its next
 prompt instead of a nudge, and they do not count as one.
 
-**It keeps them.** Every message it took is kept in `.senior-dev/steering.md` and pinned
-beside the brief each time its older history is summarized, so a direction given early
-still stands late in a long run.
+**It keeps them.** Every message it took is kept in `.senior-dev/steering.md`. The pin
+beside the brief keeps the newest 8 KB of those messages each time its older history is
+summarized; the file keeps them all.
 
 **The page shows when it has them**: `gave its model your message: …` (or `the chat's
 message`). Until then the note is not counted as delivered.
@@ -249,7 +249,9 @@ message`). Until then the note is not counted as delivered.
 **After it hands in, it reads no more messages.** What it handed in is frozen, so words
 cannot change it: the box and the chat's `say` are refused with `senior-dev reads no more
 messages (it has handed in its work, and what it handed in is frozen)`. To change finished
-work, stop it and hand off the right ask. A message sent during the call in which it hands
+work, stop it and hand off the right ask. A run that stops, crashes, or reaches its ceiling
+without handing in reads no more messages either: `it has stopped working`.
+A message sent during the call in which it hands
 in has no next call to reach, so when the run ends its page says `senior-dev did not read
 this before it stopped reading (…)` with the words. In the first moments of a run, before it
 has begun, the refusal is `senior-dev has not started reading messages yet`; say it again

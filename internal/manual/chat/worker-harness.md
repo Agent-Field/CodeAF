@@ -323,13 +323,14 @@ stops the run. `ctrl+o` opens the whole brief as the page, which scrolls like th
 program's raw calls and back. `x` over an empty box, `/stop`, or `Stop` at the end of the
 line over the page asks `Stop this task?` and ends the whole run.
 
-**The box sends to a program that listens.** senior-dev listens until it hands in: the box
-says `Tell senior-dev something… (esc: main)` and `enter` sends the sentence, which it reads
-before its next model call. A program that does not listen, or no longer does, is not sent
-anything: the box says `<program> reads no messages — say it to main`, or `<program> reads
-no more messages (…)` with its reason, and `enter` over a sentence says the same line and
-leaves your words in the box. Once the run has ended its foot and its box say `this task has
-finished — say it to main`.
+**The box sends to a program that listens.** senior-dev listens until it hands in or stops
+working: the box says `Tell senior-dev something… (esc: main)` and `enter` sends the sentence,
+which it reads before its next model call. A program that does not listen, or no longer does,
+is not sent anything: before a listening program starts, the box says `<program> has not
+started reading messages yet — say it to main`; otherwise it says `<program> reads no
+messages — say it to main`, or `<program> reads no more messages (…)` with its reason, and
+`enter` over a sentence says the same line and leaves your words in the box. Once the run has
+ended its foot and its box say `this task has finished — say it to main`.
 
 In the sessions place, `enter` on the program's row opens the same page as a page of that
 place, with no box at all.
