@@ -85,8 +85,12 @@ turns it back; the key row says `ctrl+y calls` or `ctrl+y actions`.
 
 `esc`, a press on the conversation's tab, or a press on the `home` tab leaves it, and the run goes
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
-Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
-it to main`, and `enter` says the same line and keeps your words in the box.
+While it works, the box says `Tell senior-dev something… (esc: main)`, and `enter` sends
+your words to it: the page says `sent · senior-dev reads it before its next model call`,
+and a line `gave its model your message: …` appears once it has. Once it has handed in, the
+box says `senior-dev reads no more messages (it has handed in its work, and what it handed
+in is frozen)` and `enter` keeps your words in the box (see steering senior-dev while it
+works).
 
 ## When does senior-dev's ending card appear — during a reply, worked fold, task page open
 
@@ -221,10 +225,43 @@ brief that tells senior-dev to make a checkout of its own somewhere else does no
 its file tools refuse to write outside its folder, and what a shell command changes out
 there is not part of the task.
 
+## Steering senior-dev while it works — tell it something, redirect it, it is going the wrong way, send it a message
+
+**You can tell a running senior-dev something, and so can the chat.** Type in the box on
+its page, or ask the chat to tell it (the chat uses `tasks` `say` on its task). The words
+go on the task as a note, codeaf copies them to senior-dev, and senior-dev hands them to its
+model **before its next model call**, never in the middle of one. If it is inside a long
+command, the words wait for that command to finish.
+
+**Its model reads them as direction from the people it works for**: where to look, what to
+stop chasing, what you now know. Its brief is still what the work must achieve; if a message
+asks for something the brief does not, it follows the brief and says what it did about the
+message when it hands in. If it had stopped without handing in, your words are its next
+prompt instead of a nudge, and they do not count as one.
+
+**It keeps them.** Every message it took is kept in `.senior-dev/steering.md`. The pin
+beside the brief keeps the newest 8 KB of those messages each time its older history is
+summarized; the file keeps them all.
+
+**The page shows when it has them**: `gave its model your message: …` (or `the chat's
+message`). Until then the note is not counted as delivered.
+
+**After it hands in, it reads no more messages.** What it handed in is frozen, so words
+cannot change it: the box and the chat's `say` are refused with `senior-dev reads no more
+messages (it has handed in its work, and what it handed in is frozen)`. To change finished
+work, stop it and hand off the right ask. A run that stops, crashes, or reaches its ceiling
+without handing in reads no more messages either: `it has stopped working`.
+A message sent during the call in which it hands
+in has no next call to reach, so when the run ends its page says `senior-dev did not read
+this before it stopped reading (…)` with the words. In the first moments of a run, before it
+has begun, the refusal is `senior-dev has not started reading messages yet`; say it again
+shortly.
+
 ## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 
 **It cannot ask you anything.** Nobody is at its keyboard, so the `question` tool is
-absent from the model's tools. Put everything it would stop and ask into the brief.
+absent from the model's tools. Put everything it would stop and ask into the brief. You
+can still tell it something while it works, but it never waits for an answer.
 
 **It cannot wait on another task.** A task handed to senior-dev starts the moment it is
 approved, so a proposal whose `depends_on` names work that has not finished is refused
@@ -239,8 +276,8 @@ and a task cannot wait on one.`
 **A run is never resumed, but codeaf may send the work back.** A run that ended is not
 started again: `senior-dev's run is never carried on: its work is left where it ended, and
 a new hand-off starts a new run`. Its card offers no retry, and the `@` list offers no
-steer on a running one, because it reads no messages. What codeaf does instead is the next
-section.
+retry on an ended one; a running one can still be told something (see steering senior-dev
+while it works). What codeaf does instead of a retry is the next section.
 
 ## What codeaf does when senior-dev ends — its ending, checked, sent back, retry, at most twice, ask before spending more
 

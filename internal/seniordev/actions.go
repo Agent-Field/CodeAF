@@ -80,6 +80,26 @@ func nudged(attempt int) delegate.Shown {
 	}
 }
 
+// steered is senior-dev handing its model words from the person's side
+// (app/steering.go): who they came from, and the last of them.
+func steered(facts stageFacts) delegate.Shown {
+	who := "a message"
+	switch facts.text("from") {
+	case delegate.FromPerson:
+		who = "your message"
+	case delegate.FromConversation:
+		who = "the chat's message"
+	}
+	if count := facts.whole("messages"); count > 1 {
+		who = fmt.Sprintf("%d messages", count)
+	}
+	shown := delegate.Shown{Step: stepWords[app.StepImplement], Steer: true, Text: "gave its model " + who}
+	if text := facts.text("detail"); text != "" {
+		shown.Text += ": " + text
+	}
+	return shown
+}
+
 // presentAction is one line of the log in senior-dev's words, for every line
 // that needs nothing before it to be read.
 func presentAction(action delegate.Action) (delegate.Shown, bool) {
@@ -246,6 +266,8 @@ func presentStage(stage, status string, facts stageFacts) (delegate.Shown, bool)
 		return delegate.Shown{Text: text}, true
 	case "implement/unsubmitted":
 		return delegate.Shown{Text: "stopped without handing in its work"}, true
+	case "implement/steered":
+		return steered(facts), true
 
 	case "compaction-capacity/pinned":
 		text := "learned how much its model can hold"

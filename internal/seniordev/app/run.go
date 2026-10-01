@@ -195,7 +195,13 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 		Backend: model, Config: loadedConfig, Events: events, Notes: notes,
 	})
 	defer runner.runtime.Close()
+	// A HOST THAT CAN HAND THE RUN MESSAGES IS LISTENED TO (steering.go); any
+	// other host is a run nobody talks to, exactly as before.
+	if listener, ok := host.(delegate.Listener); ok {
+		runner.inbox = listener
+	}
 	result, runErr := runner.run(ctx, options.Goal)
+	runner.closeInbox("it has finished working")
 	result, runErr = classifyRunError(ctx, runner, result, runErr)
 	if runErr != nil {
 		_, _ = fmt.Fprintf(notes, "[senior-dev] the run failed: %v\n", runErr)

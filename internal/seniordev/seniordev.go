@@ -95,7 +95,10 @@ var Program = delegate.Delegate{
 	// Where it keeps its records in the folder it works in: the brief, the
 	// checklist, the pinned command, its session database and its model
 	// conversation (app's seniorDevDataDirectory, which git never sees).
-	Notes:     ".senior-dev",
+	Notes: ".senior-dev",
+	// IT LISTENS: the person's words from its page and the conversation's
+	// `say` reach its model between steps until it hands in (app/steering.go).
+	Listens:   true,
 	CrewFlags: crewFlags,
 	// What a person reads for its stages, one plain word per phase: getting
 	// ready, doing the work (every inner stage of a model turn included),

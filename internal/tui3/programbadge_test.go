@@ -616,17 +616,17 @@ func TestAProgramsPlanRowOnTheRailWearsTheBadge(t *testing.T) {
 	}
 }
 
-// A PROGRAM'S RUNNING WORK OFFERS NO STEER in the `@` block the model reads,
-// because the program reads no messages; it names the stop instead. An ordinary
-// running task keeps its steer.
-func TestAProgramsMentionBlockOffersTheStopAndNoSteer(t *testing.T) {
+// A PROGRAM'S RUNNING WORK OFFERS `say` WITH ITS CONDITION in the `@` block
+// the model reads — the program takes words only while it listens, and the
+// answer says whether it did — and names the stop beside it. An ordinary
+// running task keeps its plain steer.
+func TestAProgramsMentionBlockOffersSayWhileItListensAndTheStop(t *testing.T) {
 	entry := session.TaskIndexEntry{ID: "7", Label: programTitle, Title: programTitle, Status: "running", Program: "senior-dev"}
 	block := taskPointerBlock(entry)
-	if strings.Contains(block, "Steer:") || strings.Contains(block, " say ") {
-		t.Fatalf("a program's block offers a steer it would refuse:\n%s", block)
-	}
-	if !strings.Contains(block, "senior-dev reads no messages; stop it with tasks id 7 stop") {
-		t.Fatalf("a program's block does not name its one door:\n%s", block)
+	for _, want := range []string{`tasks id 7 say "…"`, "senior-dev takes it only while it listens", "stop it with tasks id 7 stop"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("a program's block does not say %q:\n%s", want, block)
+		}
 	}
 	ordinary := entry
 	ordinary.Program = ""

@@ -23,6 +23,7 @@ package session
 // beat ([Agent.PlanTasks]), and never on a frame.
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -88,6 +89,18 @@ type PlanProgram struct {
 	// are empty until the program says.
 	Models []string
 	Effort string
+	// Listening says the program reads the messages its page's box and the
+	// conversation's `say` send it (delegate's inbox.go), and InboxClosed is why
+	// it stopped — senior-dev once it has handed in. The page's box offers to
+	// send words only while it listens.
+	Listening   bool
+	InboxClosed string
+	// Listens is the declaration's capability, so a queued or starting page
+	// can distinguish a future listener from a program that reads no messages.
+	Listens bool
+	// Started says the record carries a process start, so a hello without
+	// message support is not mistaken for a program still starting.
+	Started bool
 	// Actions is what the program did: the newest [planProgramActions] lines of
 	// its action log, in the order they arrived, each as the program's own
 	// vocabulary reads it (delegate.Delegate.Reader) — the step of its process
@@ -184,6 +197,52 @@ func (a *Agent) planRootIsProgram(store *plandb.Store, rootID string) bool {
 	return ok
 }
 
+// programHearsNothing refuses a note for a task a program is working when the
+// program cannot hear it, and is nil for every other task.
+//
+// A NOTE NOBODY READS IS NOT A NOTE DELIVERED. A program runs as a process of
+// its own, and a note reaches it only through its inbox (delegate's inbox.go),
+// which a program has only when its declaration says it listens and its hello
+// said so. The note door used to write a note for every program anyway and
+// answer "its worker is handed it as soon as the step it is on ends", so the
+// conversation believed it had steered senior-dev and the words sat unread. Now
+// a listening program's task takes the note — its worker copies it into the
+// inbox, and the program's receipt marks it had — and every other case is
+// refused with what is true: a program that never listens, one still starting,
+// or one that has stopped reading (senior-dev once it has handed in).
+func (a *Agent) programHearsNothing(store *plandb.Store, taskID string) error {
+	id := planTaskID(taskID)
+	record, ok := planProgramRecord(filepath.Dir(store.Path()), id, a.planCarriedPrograms()[id])
+	if !ok {
+		return nil
+	}
+	name := strings.TrimSpace(record.Name)
+	if name == "" {
+		name = "its program"
+	}
+	switch {
+	case record.Listening && record.InboxClosed == "":
+		return nil
+	case record.InboxClosed != "":
+		return fmt.Errorf(programStoppedListeningWord, name, record.InboxClosed, id)
+	case record.StartedAt.IsZero() && planProgramOf(a.config.Delegates, record.Name).Listens:
+		return fmt.Errorf(programNotListeningYetWord, name)
+	}
+	return fmt.Errorf(programHearsNothingWord, name, id)
+}
+
+// The refusals, in the words the task page and the `@` block use for the same
+// facts ("reads no messages").
+const (
+	programHearsNothingWord     = "nothing was noted: %s reads no messages, and nothing reaches it until it ends. If its work is going the wrong way, stop it with `tasks id %s stop` and hand off the right ask"
+	programStoppedListeningWord = "nothing was noted: %s reads no more messages (%s). If what it handed in is wrong, stop it with `tasks id %s stop` and hand off the right ask"
+	programNotListeningYetWord  = "nothing was noted: %s " + ProgramNotListeningYet + ". Say it again in a moment, once its page shows it at work"
+)
+
+// ProgramNotListeningYet is the starting fact shared by the note refusal and
+// the task page, so both doors describe the same absent inbox in the same words.
+const ProgramNotListeningYet = "has not started reading messages yet"
+
 // planProgramPage reads one task's program and conversation for its page, or
 // nil for a task that is not a program's: no record in its folder, no name the
 // live run carries for it, and no conversation log.
@@ -201,7 +260,9 @@ func planProgramPage(dir, id, carried string, copies planRunCopies, programs []d
 	if !known && len(all) == 0 && len(logged) == 0 {
 		return nil
 	}
-	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort}
+	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD, Models: record.Models, Effort: record.Effort,
+		Listening: record.Listening, InboxClosed: record.InboxClosed, Listens: planProgramOf(programs, record.Name).Listens,
+		Started: !record.StartedAt.IsZero()}
 	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)

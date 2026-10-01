@@ -260,11 +260,22 @@ func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
 	api, _ := ModelAPIFromEnv()
 	emitter := NewEmitter(stdout)
 	host := &childHost{inv: inv, emitter: emitter, api: api, ending: StatusFail}
+	// A PROGRAM THAT LISTENS, STARTED WITH AN INBOX, IS HANDED A HOST THAT IS
+	// ALSO A LISTENER (inbox.go). Either missing, the body gets the plain host,
+	// so a type assertion is the whole of how a program learns whether anybody
+	// can talk to it.
+	var body Host = host
+	if inv.Program.Listens {
+		if in := inboxFromEnv(); in != nil {
+			host.inbox = in
+			body = &listeningHost{childHost: host}
+		}
+	}
 	var err error
 	if !api.Ready() {
 		err = errors.New("this run has no model API: codeaf starts " + inv.Program.Name + " with one, and a shell run hosts its own")
 	} else {
-		err = inv.body(ctx, host, inv.Args)
+		err = inv.body(ctx, body, inv.Args)
 	}
 	if !emitter.Ended() {
 		switch {
@@ -343,13 +354,20 @@ type childHost struct {
 	emitter *Emitter
 	api     ModelAPI
 	ending  string
+	// inbox is where codeaf's messages arrive, nil for a program nobody
+	// talks to (inbox.go).
+	inbox *inbox
 }
 
 func (h *childHost) Workspace() string  { return h.inv.Workspace }
 func (h *childHost) Ceilings() Ceilings { return h.inv.Ceilings }
 func (h *childHost) Models() ModelAPI   { return h.api }
 func (h *childHost) Hello(stages []string) {
-	_ = h.emitter.Hello(h.inv.Program.Name, stages)
+	var accepts []string
+	if h.inbox != nil {
+		accepts = []string{AcceptMessages}
+	}
+	_ = h.emitter.HelloAccepting(h.inv.Program.Name, stages, accepts)
 }
 func (h *childHost) Stage(stage StageRecord) { _ = h.emitter.Stage(stage) }
 func (h *childHost) Step(step StepRecord)    { _ = h.emitter.Step(step) }
@@ -362,6 +380,24 @@ func (h *childHost) Terminal(end Ending) {
 	}
 	h.ending = end.Status
 	_ = h.emitter.Terminal(end)
+}
+
+// listeningHost is the Host of a child started with an inbox: the plain host,
+// and a [Listener] over its inbox.
+type listeningHost struct {
+	*childHost
+}
+
+func (h *listeningHost) Messages() []Message { return h.inbox.Messages() }
+func (h *listeningHost) Heard(ids []string) {
+	if len(ids) > 0 {
+		_ = h.emitter.Heard(ids)
+	}
+}
+func (h *listeningHost) CloseInbox(reason string) {
+	if h.inbox.close() {
+		_ = h.emitter.InboxClosed(reason)
+	}
 }
 
 // firstLineOf is an error's first line, because an ending's message is one

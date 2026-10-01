@@ -61,6 +61,12 @@ type ProgramRecord struct {
 	// program that never does.
 	Models []string `json:"models,omitempty"`
 	Effort string   `json:"effort,omitempty"`
+	// Listening says the program reads the messages codeaf sends it (inbox.go):
+	// its hello said so. InboxClosed is why it stopped reading them — senior-dev
+	// once it has handed in — and empty while it still reads. A page and the
+	// conversation read both before offering, or refusing, to send it words.
+	Listening   bool   `json:"listening,omitempty"`
+	InboxClosed string `json:"inbox_closed,omitempty"`
 }
 
 // Heard keeps the models a stage record names ([StageRecord.Models]) and

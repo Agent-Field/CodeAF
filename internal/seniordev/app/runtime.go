@@ -55,7 +55,12 @@ type turn struct {
 	LoadInstructions    func(context.Context) []string
 	Tools               []steploop.ToolDefinition
 	Execute             func(context.Context, steploop.ToolCall) (steploop.ToolResult, error)
-	BetweenStepReminder func() string
+	// BetweenStepReminder answers words to save before the next model call and
+	// the receipt to give once they are saved (steering.go).
+	BetweenStepReminder func() (string, func())
+	// PromptSaved is called once the turn's prompt is saved, for a prompt that
+	// carries words somebody is owed a receipt for.
+	PromptSaved         func()
 	AfterAssistant      func(context.Context, string)
 	CompactionDecisions compaction.DecisionSink
 	ModelRequests       modelRequestSink
@@ -298,6 +303,9 @@ func (runtime *runtimeAdapter) runTurn(ctx context.Context, request turn) (turnR
 	}
 	request.PromptPersisted = true
 	request.PromptMessageID = messageID
+	if request.PromptSaved != nil {
+		request.PromptSaved()
+	}
 	if request.ManageScratch {
 		releaseScratch := tool.AcquireShellScratch(request.SessionID)
 		defer releaseScratch()

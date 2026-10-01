@@ -76,7 +76,27 @@ func NewEmitter(w io.Writer) *Emitter { return &Emitter{w: w} }
 
 // Hello writes the first record.
 func (e *Emitter) Hello(name string, stages []string) error {
-	return e.write(map[string]any{"type": RecordHello, "protocol": ProtocolVersion, "delegate": name, "stages": stages})
+	return e.HelloAccepting(name, stages, nil)
+}
+
+// HelloAccepting writes the first record naming what the program takes from
+// codeaf while it runs ([Hello.Accepts]).
+func (e *Emitter) HelloAccepting(name string, stages, accepts []string) error {
+	record := map[string]any{"type": RecordHello, "protocol": ProtocolVersion, "delegate": name, "stages": stages}
+	if len(accepts) > 0 {
+		record["accepts"] = accepts
+	}
+	return e.write(record)
+}
+
+// Heard writes the receipt for messages the program put before its model.
+func (e *Emitter) Heard(ids []string) error {
+	return e.write(map[string]any{"type": RecordHeard, "ids": ids})
+}
+
+// InboxClosed writes that the program reads no more messages, and why.
+func (e *Emitter) InboxClosed(reason string) error {
+	return e.write(map[string]any{"type": RecordInbox, "open": false, "reason": reason})
 }
 
 // Stage writes a phase change, with its data when it is an object the reader
