@@ -280,3 +280,30 @@ func TestMentionRecentsAreKeyedLikeTabs(t *testing.T) {
 		t.Fatalf("the list is %q", got)
 	}
 }
+
+// TestTheStartPageLeavesNoConversationOffTheList: `+` opens no file, so the
+// window still carries the conversation it came from as the one in front. The
+// sentence typed on the page opens a NEW conversation, so that one is on the
+// list — it was left off as though the person were typing inside it, and
+// `@chat:kim` beside a lit `tell me about kim jung il` said nothing matched.
+func TestTheStartPageLeavesNoConversationOffTheList(t *testing.T) {
+	lab := newStartLab(t)
+	a := lab.app()
+	a.title = "tell me about kim jung il"
+	a.comp.recentsHeld = true
+	openStart(t, a)
+	if !a.startingChat() {
+		t.Fatal("+ did not open the start page")
+	}
+	typeInto(t, a, "@chat:kim")
+	if !a.comp.open {
+		t.Fatal("@chat:kim did not open the list on the start page")
+	}
+	if len(a.comp.chatHits) != 1 || a.comp.chatHits[0].title != "tell me about kim jung il" {
+		t.Fatalf("the start page's list holds %+v, and the conversation it came from is open", a.comp.chatHits)
+	}
+	drive(t, a, key("enter"))
+	if got := a.input.String(); got != "@tell-me-about-kim-jung-il" {
+		t.Fatalf("choosing it typed %q", got)
+	}
+}

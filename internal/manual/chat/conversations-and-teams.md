@@ -318,7 +318,9 @@ conversation in no team is on that list.
 
 **Which conversations are on the list, and which are not.** Every tab open in this
 window except the one you are typing in: pointing at the conversation you are in is
-not a reference, so it is left off. Then the twenty most recent conversations in this
+not a reference, so it is left off. On the new-chat page (`+` on the strip, or `ctrl+t`)
+nothing is left off, because the sentence typed there opens a new conversation — the
+one you came from is on the list. Then the twenty most recent conversations in this
 project, by when you last spoke in them, read from the disk again each time the list
 opens, so a conversation started in another window a minute ago is on it. Over
 `--host` those are the far machine's. A conversation older than those twenty, or in

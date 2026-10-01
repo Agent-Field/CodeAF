@@ -261,7 +261,18 @@ func (a *app) mentionTeams() []mentionTeam {
 // mentionChats is the open conversations in this window, then recent ones that
 // are not already open. The conversation in front is left off: pointing at the
 // chat you are typing in is not a reference.
+//
+// ON THE START PAGE NOTHING IS LEFT OFF. `+` stands the conversation's unit down
+// and points the box at a composer of its own, but it opens no file: the
+// window still carries the conversation it came from as the one in front
+// (chatstart.go's [app.openChatStart]). The sentence being typed there opens a
+// NEW conversation, so that one is a reference like any other — and leaving it
+// off was the owner typing `@chat:kim` on the page with `tell me about kim jung
+// il` lit on the strip beside it, and reading `no conversation matches`.
 func (a *app) mentionChats() []mentionChat {
+	if a.startingChat() {
+		return a.mentionChatsExcept("")
+	}
 	return a.mentionChatsExcept(a.frontTabKey())
 }
 
