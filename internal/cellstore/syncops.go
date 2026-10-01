@@ -227,11 +227,31 @@ func (e SyncEngine) Holds(c cell.Cell) bool {
 }
 
 // Materialize implements the sync seam.
+//
+// The engine answers with the names it could not write because this machine's
+// file system keeps one of two names that differ only in case or accents; each
+// is held out of later seals and recorded, so the person is told it was not
+// brought along.
 func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) error {
-	if err := e.ask(ctx, c, materializeOp{Head: head}, nil); err != nil {
+	var out struct {
+		Held []heldName `json:"held"`
+	}
+	if err := e.ask(ctx, c, materializeOp{Head: head}, &out); err != nil {
 		return err
 	}
-	return noteAdopted(c, head)
+	if err := noteAdopted(c, head); err != nil {
+		return err
+	}
+	return noteHeld(c, e.holdDir(c), out.Held)
+}
+
+// holdDir is where the cell's policy file lives: the composed .cell/ directory
+// when there is one, else the cell's own folder (the rule of Engine.policyDir).
+func (e SyncEngine) holdDir(c cell.Cell) string {
+	if dir := e.Target(c).CellDir; dir != "" {
+		return dir
+	}
+	return c.Root
 }
 
 // targetFor is the cell's target as op needs it: only a composing verb is

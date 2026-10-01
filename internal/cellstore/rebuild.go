@@ -14,11 +14,23 @@ import (
 // Left is an install folder a seal leaves out and the lockfile that rebuilds it.
 type Left struct{ Path, Lock string }
 
+// The reasons a single path is set apart, told to a person in the resume. One
+// place, so the seal, the take and the tests say the same words.
+const (
+	reasonUnreadable = "cannot be read on this machine"
+	reasonHeld       = "its name differs only in letter case or accents from another file, and this machine's file system keeps one"
+)
+
+// Apart is a path set apart from the seal one by one, with why.
+type Apart struct{ Path, Reason string }
+
 // Screened is what a screening found besides secrets: the install folders left
-// out of the seal, and the lockfiles seen in the tree.
+// out of the seal, the lockfiles seen in the tree, and the single paths set
+// apart because this machine cannot read them or cannot keep their names.
 type Screened struct {
 	Folders []Left
 	Locks   []string
+	Apart   []Apart
 }
 
 func (s Screened) paths() []string {
@@ -86,8 +98,28 @@ func knownLocks(c cell.Cell) []string {
 func noteLeftOut(c cell.Cell, tree string, s Screened, calls []Executed) error {
 	return inventory.Record(c.Root, func(inv *inventory.Inventory) {
 		inv.Lockfiles = s.Locks
-		inv.SetWithheld(ownedBySeal, withheldEntries(inv.Withheld, s.Folders, calls, modifiedAt(tree)))
+		entries := withheldEntries(inv.Withheld, s.Folders, calls, modifiedAt(tree))
+		inv.SetWithheld(ownedBySeal, append(entries, apartEntries(inv.Withheld, s.Apart)...))
 	})
+}
+
+// apartEntries is one record entry per path set apart, with no lockfile: nothing
+// rebuilds it. A path already recorded keeps the reason it was given, since the
+// take that held a name wrote a more specific one than the seal can.
+func apartEntries(before []inventory.Withheld, apart []Apart) []inventory.Withheld {
+	known := map[string]string{}
+	for _, w := range before {
+		known[w.Path] = w.Reason
+	}
+	out := make([]inventory.Withheld, 0, len(apart))
+	for _, a := range apart {
+		reason := a.Reason
+		if prev := known[a.Path]; prev != "" {
+			reason = prev
+		}
+		out = append(out, inventory.Withheld{Path: a.Path, Reason: reason})
+	}
+	return out
 }
 
 // withheldEntries is one record entry per folder left out. A folder keeps the
