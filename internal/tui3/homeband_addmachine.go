@@ -133,11 +133,10 @@ func (a *app) toggleAddMachine() tea.Cmd {
 	return nil
 }
 
-// pasteLink is a paste that lands on home: a pair link goes to the same
-// approve screen `/pair <link>` opens, whether or not the card is open, and
-// anything else is not the card's.
+// pasteLink is a paste that lands on the open card: a link goes to the same
+// approve screen `/pair <link>` opens, and anything else is not the card's.
 func (a *app) pasteLink(text string) (tea.Cmd, bool) {
-	if !a.at(pageHome) || a.approvals == nil || !isPairLink(text) {
+	if !a.addMachine.open || !a.addMachineWanted() || !isLinkShape(text) {
 		return nil, false
 	}
 	a.addMachine.open = false
