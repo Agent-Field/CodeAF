@@ -139,7 +139,7 @@ func programNextStep(o programOutcome) string {
 	left := programAutoRetries - o.auto
 	switch o.verdict {
 	case programPassed:
-		return "Its change passed the project's own checks. Check the result against what was asked, then tell the person in one short summary where the work is and offer to merge it."
+		return "Its change passed the project's own checks. Check the result against what was asked, then tell the person in one short summary where the work is and offer to merge it, or, when the ending says its branch tracks a remote branch, to push it there as the ending says."
 	case programUnverified:
 		return "It handed in a change, but its own check of the project did not pass or did not finish. That check guesses the project's commands and environment and is often wrong about them, so what it says is a lead, not a verdict: run the project's own checks on its branch yourself, and act only on what yours show."
 	case programLimit:

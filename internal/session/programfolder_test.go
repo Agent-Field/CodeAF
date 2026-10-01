@@ -10,6 +10,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -370,9 +371,9 @@ func TestTheNextRunOnARepositoryFinishesTheCopyTheOneThatWentAwayLeft(t *testing
 }
 
 // A RUN SENT BACK CARRIES ON ON THE EARLIER RUN'S BRANCH, in a copy of its
-// own, and counts what the line did from where the line began. When the person
-// has since checked that branch out themselves, a copy cannot have it too, so
-// the run carries on on a new branch cut from its tip.
+// own, keeps the line's work on it, and counts only its own files. When the
+// person has since checked that branch out themselves, a copy cannot have it
+// too, so the run carries on on a new branch cut from its tip.
 func TestARunSentBackCarriesOnOnTheEarlierRunsBranch(t *testing.T) {
 	repo := newTestRepo(t)
 	first := prepareIn(t, testPrograms("fake")[0], repo, "The first run")
@@ -389,8 +390,9 @@ func TestARunSentBackCarriesOnOnTheEarlierRunsBranch(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(again.Dir, "done.txt")); err != nil {
 		t.Fatalf("the earlier run's work is not in the copy: %v", err)
 	}
-	if end := again.Finish(""); !end.Kept || len(end.Changed) != 1 {
-		t.Fatalf("a sent-back run that added nothing ended %+v, want the line's work still counted", end)
+	if end := again.Finish(""); !end.Kept || end.Added || len(end.Changed) != 0 ||
+		!strings.Contains(end.Sentence(), "it added nothing to the branch "+first.Branch+" in "+repo+", which still holds the earlier runs' work") {
+		t.Fatalf("a sent-back run that added nothing ended %+v, saying %q; want the line's work still kept and none of it counted as this run's", end, end.Sentence())
 	}
 
 	mustGit(t, repo, "checkout", "-q", first.Branch)
@@ -401,6 +403,82 @@ func TestARunSentBackCarriesOnOnTheEarlierRunsBranch(t *testing.T) {
 	defer taken.Finish("")
 	if taken.Branch == first.Branch || strings.TrimSpace(gitOut(t, taken.Dir, "rev-parse", "HEAD")) != branchCommit(repo, first.Branch) {
 		t.Fatalf("a run carrying on a branch the person has checked out is on %q at %s, want a new branch at its tip", taken.Branch, gitOut(t, taken.Dir, "rev-parse", "HEAD"))
+	}
+}
+
+// A RUN THAT CARRIES ON A BRANCH COUNTS ITS OWN FILES FROM THAT BRANCH'S TIP.
+// Between two runs of a line its branch was rebased onto the person's newer
+// history for a pull request, and published; a run that then changed 13 files
+// ended saying 117 — every file the rebase brought along counted from where the
+// line began — and told the person to stash and merge the pull request's branch
+// into their own checkout. It counts from where the branch stood when it began,
+// still offers the stash while the branch begins with the person's changes —
+// under the new name the rebase gave that commit — and a branch that tracks a
+// remote one is pushed there, not merged.
+func TestARunCarryingOnARebasedBranchCountsOnlyItsOwnFiles(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own edit\n")
+	first := prepareIn(t, testPrograms("fake")[0], repo, "The first run")
+	if first.Snapshot == "" {
+		t.Fatal("the first run did not carry the person's uncommitted edit in")
+	}
+	commitIn(t, first.Dir, "done.txt")
+	first.Finish("done")
+	carry := &programCarry{Branch: first.Branch, Root: repo, Home: first.Home, Start: first.Start, Snapshot: first.Snapshot}
+
+	// The person's own branch moves on, and the line's branch is rebased onto
+	// it the way a pull request is brought up to date.
+	commitIn(t, repo, "upstream-a.txt", "upstream-b.txt", "upstream-c.txt")
+	rebase := filepath.Join(t.TempDir(), "rebase")
+	mustGit(t, repo, "worktree", "add", "-q", rebase, first.Branch)
+	mustGit(t, rebase, "-c", "user.name=p", "-c", "user.email=p@p", "rebase", "-q", "work")
+	mustGit(t, repo, "worktree", "remove", rebase)
+	rebased := branchCommit(repo, first.Branch)
+
+	again, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The first run, again", Holder: "task 8", Keep: t.TempDir(), Carry: carry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.Continues || again.ResumedAt != rebased {
+		t.Fatalf("the sent-back run continues %v from %s, want the rebased tip %s", again.Continues, shortSha(again.ResumedAt), shortSha(rebased))
+	}
+	commitIn(t, again.Dir, "fix.txt")
+	end := again.Finish("done")
+	said := end.Sentence()
+	if !end.Kept || !end.Added || !slices.Equal(end.Changed, []string{"fix.txt"}) {
+		t.Fatalf("the sent-back run ended %+v, want only fix.txt counted as its own", end)
+	}
+	// The rebase wrote the commit carrying the person's edit again under a new
+	// name; the branch still begins with that edit, which the person still
+	// has uncommitted, so a merge without the stash first would be refused.
+	stash := "its branch begins with your uncommitted changes as they were when the first run of this work started, so put yours aside with `git -C " +
+		shellQuoted(repo) + " stash`, and `git -C " + shellQuoted(repo) + " merge " + first.Branch + "` brings in both"
+	if !strings.Contains(said, "1 file past "+shortSha(rebased)+", where the last run left it") || !strings.Contains(said, stash) {
+		t.Fatalf("the sent-back run said %q, want its one file counted past the rebased tip and %q", said, stash)
+	}
+	if _, err := git(repo, "merge-base", "--is-ancestor", first.Snapshot, rebased); err == nil {
+		t.Fatal("the rebase left the snapshot commit itself on the branch, so this test no longer asks about a rewritten one")
+	}
+
+	// Published for a pull request, the branch is pushed, never merged.
+	remote := t.TempDir()
+	mustGit(t, remote, "init", "-q", "--bare")
+	mustGit(t, repo, "remote", "add", "origin", remote)
+	mustGit(t, repo, "push", "-q", "-u", "origin", first.Branch)
+	published := branchCommit(repo, first.Branch)
+	once, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The first run, once more", Holder: "task 9", Keep: t.TempDir(), Carry: carry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitIn(t, once.Dir, "review.txt", "review-test.txt")
+	end = once.Finish("done")
+	said = end.Sentence()
+	if !slices.Equal(end.Changed, []string{"review-test.txt", "review.txt"}) || !strings.Contains(said, "2 files past "+shortSha(published)) {
+		t.Fatalf("the published branch's run ended %+v, saying %q; want its own two files", end, said)
+	}
+	push := first.Branch + " tracks origin/" + first.Branch + ", so `git -C " + shellQuoted(repo) + " push origin " + first.Branch + "` sends this work there"
+	if !strings.Contains(said, push) || strings.Contains(said, "merge") || strings.Contains(said, "stash") {
+		t.Fatalf("the published branch's run said %q, want %q and neither a merge nor a stash", said, push)
 	}
 }
 
@@ -487,5 +565,173 @@ func TestTheReceiptOfAFolderUnderARepositoryAtHomeNamesIt(t *testing.T) {
 		", which holds your home folder, so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
 	if got := delegateReceipt(project, testPrograms("fake")[0], &TaskCopyRecord{Dir: project}); !strings.HasPrefix(got, want) || strings.Contains(got, "no git history") {
 		t.Fatalf("the receipt = %q, want %q", got, want)
+	}
+}
+
+// carriedFolderForTest takes up the first run's work through the same door as
+// a hand-off, so ending tests describe a real carried branch and copy.
+func carriedFolderForTest(t *testing.T, first *ProgramFolder) *ProgramFolder {
+	t.Helper()
+	carry := &programCarry{Branch: first.Branch, Root: first.Repo, Home: first.Home, Start: first.Start, Snapshot: first.Snapshot, Untracked: first.Untracked}
+	folder, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: first.Repo, Title: "Finish the work", Holder: "task 8", Keep: t.TempDir(), Carry: carry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return folder
+}
+
+// PUSH ADVICE PUBLISHES ONLY THE RUN'S OWN LIVE COUNTERPART. Tracking a shared
+// branch must not turn an ending into advice to overwrite it, and a deleted
+// counterpart must not be recreated by following that advice.
+func TestAPushEndingNamesOnlyItsOwnLiveRemoteBranch(t *testing.T) {
+	for _, upstream := range []string{"same", "dev", "main", "work", "local", "gone", "none"} {
+		t.Run(upstream, func(t *testing.T) {
+			repo := newTestRepo(t)
+			first := prepareIn(t, testPrograms("fake")[0], repo, "The first run")
+			commitIn(t, first.Dir, "earlier.txt")
+			first.Finish("done")
+			switch upstream {
+			case "local":
+				mustGit(t, repo, "branch", "-u", "work", first.Branch)
+			case "none":
+			default:
+				remote := t.TempDir()
+				mustGit(t, remote, "init", "-q", "--bare")
+				mustGit(t, repo, "remote", "add", "origin", remote)
+				ref := upstream
+				if upstream == "same" || upstream == "gone" {
+					ref = first.Branch
+				}
+				mustGit(t, repo, "push", "-q", "origin", first.Branch+":"+ref)
+				mustGit(t, repo, "branch", "-u", "origin/"+ref, first.Branch)
+				if upstream == "gone" {
+					mustGit(t, remote, "update-ref", "-d", "refs/heads/"+ref)
+					mustGit(t, repo, "fetch", "-q", "--prune", "origin")
+				}
+			}
+			again := carriedFolderForTest(t, first)
+			commitIn(t, again.Dir, "fix.txt")
+			end := again.Finish("done")
+			said := end.Sentence()
+			if upstream == "same" {
+				want := "`git -C " + shellQuoted(repo) + " push origin " + first.Branch + "` sends this work there"
+				if end.UpstreamRef != first.Branch || !strings.Contains(said, want) || strings.Contains(said, " merge ") || strings.Contains(said, " stash") {
+					t.Fatalf("own live counterpart lacks its push advice: %s", said)
+				}
+			} else if end.Upstream != "" || end.UpstreamRemote != "" || end.UpstreamRef != "" || strings.Contains(said, " push ") ||
+				!strings.Contains(said, "`git -C "+shellQuoted(repo)+" merge "+first.Branch+"` brings it in") {
+				t.Fatalf("%s upstream must keep merge advice and empty upstream fields: %s", upstream, said)
+			}
+		})
+	}
+}
+
+// A REMOTE NAME IS A COMMAND ARGUMENT, never shell syntax or a git option.
+// Even a live counterpart must fall back to merge advice when its configured
+// remote's spelling cannot be safely offered as one plain word.
+func TestAPushEndingUsesOnlyAPlainRemoteName(t *testing.T) {
+	for _, remote := range []string{"origin;echo${IFS}injected", "--force", "_origin", ".origin", "origín", "Origin-2._x", "9cache"} {
+		t.Run(remote, func(t *testing.T) {
+			repo := newTestRepo(t)
+			first := prepareIn(t, testPrograms("fake")[0], repo, "The first run")
+			commitIn(t, first.Dir, "earlier.txt")
+			first.Finish("done")
+			bare := t.TempDir()
+			mustGit(t, bare, "init", "-q", "--bare")
+			mustGit(t, repo, "push", "-q", bare, first.Branch)
+			mustGit(t, repo, "config", "remote."+remote+".url", bare)
+			mustGit(t, repo, "config", "remote."+remote+".fetch", "+refs/heads/*:refs/remotes/published/*")
+			mustGit(t, repo, "config", "branch."+first.Branch+".remote", remote)
+			mustGit(t, repo, "config", "branch."+first.Branch+".merge", "refs/heads/"+first.Branch)
+			mustGit(t, repo, "update-ref", "refs/remotes/published/"+first.Branch, branchCommit(repo, first.Branch))
+			again := carriedFolderForTest(t, first)
+			commitIn(t, again.Dir, "fix.txt")
+			end := again.Finish("done")
+			said := end.Sentence()
+			if remote == "Origin-2._x" || remote == "9cache" {
+				if !strings.Contains(said, " push "+remote+" "+first.Branch+"`") {
+					t.Fatalf("plain remote lost push advice: %s", said)
+				}
+			} else if end.Upstream != "" || end.UpstreamRemote != "" || end.UpstreamRef != "" || strings.Contains(said, " push ") || !strings.Contains(said, " merge ") {
+				t.Fatalf("unsafe remote %q entered push advice: %s", remote, said)
+			}
+		})
+	}
+}
+
+// PUBLISHING IS THE PERSON'S CALL. A passed ending's push advice must reach
+// the chat as an offer, with an explicit rule to wait for a later request.
+func TestAPassedPushEndingIsOfferedAndWaitsForThePerson(t *testing.T) {
+	repo := newTestRepo(t)
+	folder := prepareIn(t, testPrograms("fake")[0], repo, "Publish the fix")
+	remote := t.TempDir()
+	mustGit(t, remote, "init", "-q", "--bare")
+	mustGit(t, repo, "remote", "add", "origin", remote)
+	mustGit(t, repo, "push", "-q", "-u", "origin", folder.Branch)
+	commitIn(t, folder.Dir, "fix.txt")
+	end := folder.Finish("done")
+	if !strings.Contains(end.Sentence(), " push origin "+folder.Branch) {
+		t.Fatal("the fixture's ending carries no push advice")
+	}
+	note := programOutcomeNote(programOutcome{row: 8, program: "fake", verdict: programPassed}, end.Sentence(), 0)
+	step := programNextStep(programOutcome{verdict: programPassed})
+	for _, want := range []string{"offer to merge it", "when the ending says", "tracks a remote branch", "to push it there"} {
+		if !strings.Contains(step, want) || !strings.Contains(note, want) {
+			t.Errorf("passed push ending does not teach the push offer %q", want)
+		}
+	}
+	for _, want := range []string{"Never push", "or anything", "on this wake turn", "offer that push and stop", "push only when the person asks in a later message"} {
+		if !strings.Contains(programOutcomePrompt, want) {
+			t.Errorf("wake prompt lacks the person's push rule %q", want)
+		}
+	}
+}
+
+// MOVING AN UNCHANGED COPY DOES NOT HIDE THE LINE'S WORK. The ending still
+// names the branch and repository that hold the earlier runs' changes.
+func TestACarriedRunThatMovesItsUnchangedCopyStillNamesTheWork(t *testing.T) {
+	repo := newTestRepo(t)
+	first := prepareIn(t, testPrograms("fake")[0], repo, "The first run")
+	commitIn(t, first.Dir, "earlier.txt")
+	first.Finish("done")
+	again := carriedFolderForTest(t, first)
+	mustGit(t, again.Dir, "checkout", "-q", "--detach", "HEAD")
+	end := again.Finish("done")
+	want := "; " + first.Branch + " in " + repo + " still holds the earlier runs' work as the last run left it"
+	if !end.Moved || !end.Kept || end.Added || len(end.Changed) != 0 || !strings.Contains(end.Sentence(), want) {
+		t.Fatalf("moved unchanged copy lost the earlier work's location: %s", end.Sentence())
+	}
+}
+
+// AN EMPTY COMMIT ADDS NO FILES. A carried run describes the work already
+// held by the branch without rendering a zero, while a run that does not
+// carry on keeps Added and Kept equal as before.
+func TestACarriedEmptyCommitSaysItAddedNothing(t *testing.T) {
+	t.Run("carried", func(t *testing.T) {
+		repo := newTestRepo(t)
+		first := prepareIn(t, testPrograms("fake")[0], repo, "The first run")
+		commitIn(t, first.Dir, "earlier.txt")
+		first.Finish("done")
+		again := carriedFolderForTest(t, first)
+		mustGit(t, again.Dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "No tree change")
+		end := again.Finish("done")
+		want := "it added nothing to the branch " + first.Branch + " in " + repo + ", which still holds the earlier runs' work as the last run left it"
+		if !end.Kept || end.Added || len(end.Changed) != 0 || !strings.Contains(end.Sentence(), want) || strings.Contains(end.Sentence(), "0 files") {
+			t.Fatalf("carried empty commit should say it added nothing: %s", end.Sentence())
+		}
+	})
+	for _, change := range []string{"nothing", "empty commit", "file"} {
+		t.Run(change, func(t *testing.T) {
+			folder := prepareIn(t, testPrograms("fake")[0], newTestRepo(t), "A fresh run")
+			switch change {
+			case "empty commit":
+				mustGit(t, folder.Dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "No tree change")
+			case "file":
+				commitIn(t, folder.Dir, "fix.txt")
+			}
+			if end := folder.Finish("done"); end.Folder.Continues || end.Added != end.Kept {
+				t.Fatalf("fresh run must keep Added equal to Kept: %+v", end)
+			}
+		})
 	}
 }
