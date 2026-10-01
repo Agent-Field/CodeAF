@@ -226,6 +226,182 @@ func TestTeamsInteractionPanelScrollsIndependentlyAndKeepsItsHeader(t *testing.T
 	}
 }
 
+func TestTeamsInteractionPagingDoesNotRepeatTheShortLastPage(t *testing.T) {
+	a, harbor, _ := teamsHostedLab(t)
+	a.width, a.height = 160, 46
+	teamsOverviewTraffic(t, a, harbor, 25)
+	for page, span := range []string{"1 to 10 of 25", "11 to 20 of 25", "21 to 25 of 25"} {
+		text := teamsFrameText(a)
+		if !strings.Contains(text, span) {
+			t.Fatalf("page %d: %s", page+1, text)
+		}
+		if page == 2 && (strings.Contains(text, "Exchange 10") || !strings.Contains(text, "Last page")) {
+			t.Fatal("last page repeated earlier interactions")
+		}
+		a.teamsDo(teamsTarget{act: teamsActInteractionDown, id: harbor})
+	}
+	if a.tp.interactionOffsets[harbor] != 20 {
+		t.Fatal("last-page control moved beyond the final page")
+	}
+	drive(t, a, key("pgup"))
+	if text := teamsFrameText(a); !strings.Contains(text, "11 to 20 of 25") {
+		t.Fatal("PgUp did not return to the previous complete page")
+	}
+}
+
+func TestTeamsClosedCategoryIsBelowAllAndItsLongListCanBeWalked(t *testing.T) {
+	a, harbor, orbit := teamsHostedLab(t)
+	a.width, a.height = 120, 24
+	last := ""
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.Close(orbit, a.now(), ""); err != nil {
+			return err
+		}
+		for i := 0; i < 30; i++ {
+			last = teamstore.NewID()
+			f.Teams = append(f.Teams, teamstore.Team{ID: last, Name: fmt.Sprintf("Closed example %02d", i)})
+			if err := f.Close(last, a.now().Add(-time.Duration(i+1)*time.Hour), ""); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = teamsFrameText(a)
+	for _, hit := range a.tp.targets {
+		if hit.act == teamsActClosedFold && hit.y != placeHeadRows+1 {
+			t.Fatalf("Closed category is on row %d, want immediately below All", hit.y)
+		}
+	}
+	a.teamsDo(teamsTarget{act: teamsActClosedFold})
+	a.tp.cur = teamsRef{act: teamsActSelect, id: last}
+	if text := teamsFrameText(a); !strings.Contains(text, "Closed example 29") {
+		t.Fatal("long Closed category hid its last keyboard stop")
+	}
+	a.tp.cur = teamsRef{act: teamsActSelect, id: harbor}
+	if text := teamsFrameText(a); !strings.Contains(text, "harbor") {
+		t.Fatal("expanded Closed category made active teams unreachable")
+	}
+}
+
+func TestTeamsManyMembersAndTheirInteractionPanelRemainReachable(t *testing.T) {
+	a, harbor, _ := teamsHostedLab(t)
+	a.width, a.height = 160, 28
+	last := ""
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		for i := 0; i < 30; i++ {
+			last = fmt.Sprintf("/tmp/overview-member-%02d.jsonl", i)
+			if err := f.AddMember(harbor, teamstore.Member{Key: last, File: last, Word: fmt.Sprintf("Additional conversation %02d", i), Handle: fmt.Sprintf("extra%d", i)}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	crew := a.teamsCrew(mustTeam(t, a, harbor))
+	for _, member := range crew {
+		a.tp.previews[member.key] = teamsPreview{text: "Saved member update"}
+	}
+	lastRow := crew[(len(crew)-1)/3*3].key
+	a.tp.cur = teamsRef{act: teamsActMember, id: harbor, arg: crew[0].key}
+	for i := 0; i < len(crew) && a.tp.cur.arg != lastRow; i++ {
+		_ = teamsFrameText(a)
+		drive(t, a, key("down"))
+	}
+	if a.tp.cur.arg != lastRow {
+		t.Fatalf("Down could not reach the last grid row: %+v", a.tp.cur)
+	}
+	for i := 0; i < 3 && a.tp.cur.arg != last; i++ {
+		_ = teamsFrameText(a)
+		drive(t, a, key("right"))
+	}
+	if a.tp.cur.arg != last {
+		t.Fatalf("Right could not reach the last member: %+v", a.tp.cur)
+	}
+	if text := teamsFrameText(a); !strings.Contains(text, "@extra29") {
+		t.Fatal("last member is unreachable")
+	}
+	for i := 0; i < 10 && a.tp.cur.act != teamsActInteractionDown; i++ {
+		_ = teamsFrameText(a)
+		drive(t, a, key("down"))
+	}
+	if a.tp.cur.act != teamsActInteractionDown {
+		t.Fatal("Down could not reach the interaction panel")
+	}
+	if text := teamsFrameText(a); !strings.Contains(text, "Recent interactions") {
+		t.Fatal("large member grid made the interaction panel unreachable")
+	}
+}
+
+func TestTeamsComposerNamesTheSelectedMembershipAndFollowsRenaming(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	other, err := a.teamMake("second", a.tabList())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := ""
+	for _, tab := range a.tabList() {
+		if tab.key != a.frontTabKey() {
+			manager = tab.key
+			break
+		}
+	}
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(other, manager) }); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := mustTeam(t, a, other).Member(a.frontTabKey())
+	a.wall.activeID = other
+	if got := a.trafficHint(); got != "to @"+m.Handle+" of second" {
+		t.Fatalf("shared manager/member composer names another team: %q", got)
+	}
+	if err := a.teamRename(other, "renamed second"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.trafficHint(); got != "to @"+m.Handle+" of renamed second" {
+		t.Fatalf("composer kept the old team name: %q", got)
+	}
+	a.wall.activeID = harbor
+	if got := a.trafficHint(); got != "to "+a.teamManagerMark()+" manager of harbor" {
+		t.Fatalf("manager composer does not name its team: %q", got)
+	}
+}
+
+func TestTeamsDragNeverDropsOnHiddenRailRowsInTheHeadOrFooter(t *testing.T) {
+	a, harbor, _ := teamsHostedLab(t)
+	a.width, a.height = 120, 24
+	middle := ""
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		for i := 0; i < 40; i++ {
+			id := teamstore.NewID()
+			f.Teams = append(f.Teams, teamstore.Team{ID: id, Name: fmt.Sprintf("Long rail %02d", i)})
+			if i == 20 {
+				middle = id
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.tp.cur = teamsRef{act: teamsActSelect, id: middle}
+	_ = teamsFrameText(a)
+	a.tdrag = teamDrag{press: true, on: true, member: true, id: harbor, key: a.frontTabKey()}
+	checked := 0
+	for _, hit := range a.tp.targets {
+		if !hit.hidden || hit.act != teamsActSelect || hit.y < 0 || hit.y >= a.height {
+			continue
+		}
+		checked++
+		if id, ok, _ := a.teamDropAt(hit.x0+1, hit.y); ok || id != "" {
+			t.Fatalf("hidden row at y=%d can receive a drag: %q", hit.y, id)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("fixture did not place a hidden keyboard stop in the head or footer")
+	}
+}
+
 func TestTeamsInteractionRowsShowKeyboardAndPointerFocus(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
 	a.width, a.height = 160, 46

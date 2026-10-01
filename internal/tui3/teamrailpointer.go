@@ -99,16 +99,13 @@ func (a *app) trafficHint() string {
 	if a.teamsOff() || !a.wall.loaded || len(a.wall.teams) == 0 {
 		return ""
 	}
-	if _, ok := a.teamFrontManaged(); ok {
-		return "to " + a.teamManagerMark() + " manager"
-	}
 	front := a.frontTabKey()
-	for _, t := range a.wall.teams {
-		if t.Manager == "" {
-			continue
+	if t, ok := a.teamOfFront(); ok && t.Manager != "" {
+		if t.Manager == front {
+			return "to " + a.teamManagerMark() + " manager of " + t.Name
 		}
 		if m, ok := t.Member(front); ok && m.Handle != "" {
-			return "to @" + m.Handle
+			return "to @" + m.Handle + " of " + t.Name
 		}
 	}
 	return ""

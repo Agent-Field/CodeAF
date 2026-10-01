@@ -249,7 +249,7 @@ func TestTeamsOverviewDoesNotEditTheManagersDraft(t *testing.T) {
 	a, _, _ := teamsHostedLab(t)
 	a.input.insert("draft")
 	text := teamsFrameText(a)
-	for _, want := range []string{"All teams", "harbor", "Settings", "Members", "Recent interactions"} {
+	for _, want := range []string{"All teams", "harbor", "Settings", "Recent interactions"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, text)
 		}
@@ -340,7 +340,7 @@ func TestTeamsCloseWithNothingRunningIsOneClickAndUndo(t *testing.T) {
 		t.Fatal("orbit did not close")
 	}
 	text := teamsFrameText(a)
-	if !strings.Contains(text, "Undo") || !strings.Contains(text, "Closed · 1") {
+	if !strings.Contains(text, "Undo") || !strings.Contains(text, "Closed teams · 1") {
 		t.Fatalf("the close offers no Undo or no Closed fold:\n%s", text)
 	}
 	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActUndo, "")))...)
@@ -878,14 +878,9 @@ func TestTeamsOverviewRetainsDecisionControls(t *testing.T) {
 	}
 }
 
-// THE MEMBERS CARD COUNTS WHAT THE HEADER COUNTS: `◆ Manager  1 member` on the
-// header is `◆ Manager · 1 member` on the card, never `2 members`.
-func TestTeamsMembersCardCountsLikeTheHeader(t *testing.T) {
+// The keyboard member list keeps the manager separate from its member count.
+func TestTeamsKeyboardMembersListKeepsManagerSeparate(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
-	head := teamsFrameText(a)
-	if !strings.Contains(head, "Members") {
-		t.Fatalf("the header's count:\n%s", head)
-	}
 	drive(t, a, runCmd(a.teamCrewOpen(harbor))...)
 	if text := teamsFrameText(a); !strings.Contains(text, "harbor · "+teamManagerGlyph+" Manager · 1 member") {
 		t.Fatalf("the card's title does not count like the header:\n%s", text)

@@ -180,7 +180,8 @@ gained or lost a member is told on its next wake, from the Traffic it already re
 **Closing a team.** `D` closes the team that is shown: at once, with Undo, when nothing in it
 is running, and with a card offering **Wrap up first**, **Close now** and **Cancel** when
 something is. A closed team leaves the Teams row and the switcher and waits under
-`▸ Closed · N` on the teams page, where it can be reopened, and deleted once you are sure.
+`Closed teams · N ▸` below `All teams` on the teams page, where it can be reopened,
+and deleted once you are sure.
 Closing or deleting a team never deletes a conversation.
 
 ## Organize: teams suggested for your conversations

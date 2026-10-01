@@ -15,13 +15,17 @@ import (
 func writeTeams(root string, projects map[string]*demoProject, ids map[string]string, now time.Time) error {
 	quiet, cap := false, 5.0
 	var members []teamstore.Member
-	for i, talk := range demoConversations {
+	for _, talk := range demoConversations {
 		if talk.archived {
 			continue
 		}
 		p := projects[talk.project]
 		file := filepath.Join(p.bucket, ids[talk.title], "transcript.jsonl")
-		members = append(members, teamstore.Member{Key: file, File: file, Where: p.dir, Word: talk.title, Handle: fmt.Sprintf("member%d", i+1)})
+		handle := teamstore.DeriveHandle(talk.title)
+		if len(members) == 0 {
+			handle = "coordinator"
+		}
+		members = append(members, teamstore.Member{Key: file, File: file, Where: p.dir, Word: talk.title, Handle: handle, HandleBy: teamstore.HandleByTyped})
 		if len(members) == 6 {
 			break
 		}
@@ -32,7 +36,13 @@ func writeTeams(root string, projects map[string]*demoProject, ids map[string]st
 	secondary := teamstore.Team{ID: teamstore.NewID(), Name: "Release notes", Members: []teamstore.Member{members[1], members[3]},
 		Manager: members[3].Key, Made: now.Add(-24 * time.Hour), Settings: teamstore.Settings{Wake: &quiet}}
 	secondary.SetHue(teamstore.HueSpec{Hue: 80})
-	if err := teamstore.Save(root, []teamstore.Team{primary, secondary}); err != nil {
+	previous := teamstore.Team{ID: teamstore.NewID(), Name: "Previous layout pass", Members: members[:1],
+		Manager: members[0].Key, Made: now.Add(-96 * time.Hour), Settings: teamstore.Settings{Wake: &quiet}}
+	file := teamstore.File{Teams: []teamstore.Team{primary, secondary, previous}}
+	if err := file.Close(previous.ID, now.Add(-72*time.Hour), ""); err != nil {
+		return err
+	}
+	if err := teamstore.Save(root, file.Teams); err != nil {
 		return err
 	}
 	for i := 0; i < 24; i++ {

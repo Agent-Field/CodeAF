@@ -124,7 +124,7 @@ func TestTeamsFirstFrameIsDrawnBeforeAnyReadAndTheReadMovesNothing(t *testing.T)
 	cmd := a.showPage(pageTeams)
 	before := strings.Split(teamsFrameText(a), "\n")
 	text := strings.Join(before, "\n")
-	for _, want := range []string{"All teams", "harbor", "orbit", "Settings", "Members"} {
+	for _, want := range []string{"All teams", "harbor", "orbit", "Settings"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the first frame, drawn before any read, lacks %q:\n%s", want, text)
 		}

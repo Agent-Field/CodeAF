@@ -29,14 +29,13 @@ The left column is the **rail**:
 
 ```
  All teams     + Manager │
+ Closed teams · 2 ▸      │
  ● harbor ◆          ? 1 │
    ● orbit           ⠿   │
  ● docs                  │
                          │
  + New team in harbor    │
  ✦ Organize              │
-                         │
- ▸ Closed · 2            │
 ```
 
 - **`All teams`** is the top row. With no manager over every team it offers `+ Manager`,
@@ -54,7 +53,8 @@ The left column is the **rail**:
   A team already at its depth limit dims it and says why. **`✦ Organize`** suggests teams for
   your conversations and offers to close the quiet ones (see *Organize closes quiet teams*
   below).
-- **`▸ Closed · N`**, folded at the foot, holds the teams you closed. A press opens the fold
+- **`Closed teams · N ▸`**, immediately below `All teams` with the same category styling,
+  holds the teams you closed. A press opens the fold
   and lists them; a press on one shows what it left behind.
 
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
@@ -64,10 +64,12 @@ front or its draft. Clicking a member opens Chats with that team's view selected
 ## The pane: the team you chose
 
 The header shows the team's name, today's spending and its cap when available. `Settings`
-opens the team's settings and spending controls. `Members` (or `p`) opens the member list
+opens the team's settings and spending controls. Member cards provide the conversation
+links directly; there is no separate `Members` button. `p` opens the keyboard member list
 for dragging a conversation onto another team.
 
-Every member has the same size card. The manager comes first and its card says `Manager`.
+Every member has the same size card. The manager comes first and its card says `Manager`;
+ordinary member cards have a plain border with no role title.
 Cards show a team alias, the conversation's title, activity, and two lines from its most
 recent saved assistant update. The latest update may still describe earlier work while a
 new turn is running. Clicking an alias, title or preview opens the conversation in Chats
@@ -87,8 +89,10 @@ exchange, with the most recently active exchange first. A reply count counts mes
 not work-status events. Click the disclosure at the start of a row to expand the full
 message and its replies inline; click it again to collapse them.
 
-The wheel over the panel scrolls only its contents. Its up/down controls and `pgup` /
-`pgdown` also scroll it. The rest of the overview stays in place. At smaller heights,
+The wheel over the panel scrolls only its contents. One down control, `Next page`, advances
+by a full viewport: with ten rows, 1–10, 11–20, then 21 onward. A short final page does not
+repeat the previous page's rows; the control says `Last page` and stays there. `pgup` /
+`pgdown` move back or forward by a page. The rest of the overview stays in place. At smaller heights,
 walk into the panel with the arrow keys to bring it into view.
 
 Clicking a participant opens that participant's conversation at the exchange. Clicking
@@ -123,7 +127,7 @@ new manager. Starting a manager opens its fresh conversation in Chats immediatel
 ## What does +4 idle mean on a team
 
 The earlier overview grouped idle members into `+4 idle`. Every member now has its own
-card, including idle members. `Members` or `p` still opens the full list; aliases lead to
+card, including idle members. `p` still opens the keyboard member list; aliases lead to
 Chats without a separate `Open` or `Resume` button.
 
 ## Moving a team inside another team, and adding a chat to a team
@@ -202,7 +206,7 @@ Teams owns its keyboard. Typing here does not edit a manager's draft.
 | `↑` `↓` | walk the rail or overview |
 | `←` `→` | move along a row or between the rail and overview |
 | `enter`, `space` | activate the selected control |
-| `pgup`, `pgdown` | scroll the interaction table |
+| `pgup`, `pgdown` | previous or next interaction page |
 | `tab`, `shift+tab` | next or previous place |
 | `alt+1` … `alt+8`, `alt+.` | jump to a place, show the map |
 | `s` | team settings |
@@ -267,14 +271,14 @@ away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
 Closing a team closes the teams under it. Other conversations that are also in another open team
 are not stopped by the close. The conversation you are looking at keeps its tab, so a close never
 moves you. A closed team spends nothing, is not on the conversations view or the strip, and
-waits under `▸ Closed · N`.
+waits under `Closed teams · N ▸`.
 
 Over `--host`, against an engine that does not offer the wrap-up, the card says
 `Wrap up first is not offered over this connection` and offers `Close now` and `Cancel`.
 
 ## Closed teams: reopening, reports and deleting
 
-Open `▸ Closed · N` on the rail and choose a team. On this machine, the pane shows when it was
+Open `Closed teams · N ▸` below `All teams` on the rail and choose a team. On this machine, the pane shows when it was
 opened and closed, its `closing report` when it closed on one (`done`, `left`, `files`, and
 `spent`), and its members, each still a door to its conversation. Two buttons:
 

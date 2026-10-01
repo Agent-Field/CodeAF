@@ -260,9 +260,17 @@ func (a *app) teamsWalk(dx, dy int) bool {
 		return true
 	}
 	here := a.tp.targets[at]
-	order := make([]int, len(a.tp.targets))
-	for i := range order {
-		order[i] = i
+	order := make([]int, 0, len(a.tp.targets))
+	// Cards expose every interior row to the pointer but only one keyboard
+	// stop. Choosing a duplicate row would resolve back to its first row and
+	// could trap vertical navigation among neighboring cards.
+	seen := make(map[teamsRef]bool, len(a.tp.targets))
+	for i, t := range a.tp.targets {
+		if seen[t.ref()] {
+			continue
+		}
+		seen[t.ref()] = true
+		order = append(order, i)
 	}
 	sort.SliceStable(order, func(i, j int) bool {
 		ti, tj := a.tp.targets[order[i]], a.tp.targets[order[j]]
@@ -327,11 +335,11 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	switch key {
 	case "pgdown", "pgup":
-		delta := 3
+		delta := 1
 		if key == "pgup" {
-			delta = -3
+			delta = -1
 		}
-		a.teamsInteractionsScroll(delta)
+		a.teamsInteractionsPage(delta)
 		a.tp.cur = teamsRef{act: teamsActInteractionDown, id: a.tp.sel}
 		return nil, true
 	case "up", "k":

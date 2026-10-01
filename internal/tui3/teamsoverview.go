@@ -127,13 +127,6 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	} else {
 		d.targets = d.targets[:len(d.targets)-1]
 	}
-	x = ansi.StringWidth(left) + 1
-	button, _ = d.button("Members", teamsTarget{act: teamsActCrew, id: t.ID, x0: x, y: y, hint: "All members; drag a member to add it to another team" + hintSegment + "p"}, a.pal.muted)
-	if x+ansi.StringWidth(button) <= width {
-		left += " " + button
-	} else {
-		d.targets = d.targets[:len(d.targets)-1]
-	}
 	if !t.Root {
 		x = ansi.StringWidth(left) + 1
 		button, _ = d.button("Close"+a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, x0: x, y: y, hint: "Close this team" + hintSegment + "c"}, a.pal.muted)
@@ -167,7 +160,7 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 		for column := 0; column < columns && first+column < len(crew); column++ {
 			r := crew[first+column]
 			x := column * (w + 2)
-			role := "Member"
+			role := ""
 			if r.manager {
 				role = a.teamManagerMark() + " Manager"
 			}
@@ -228,6 +221,20 @@ func (a *app) teamsInteractionsScroll(delta int) {
 	}
 	a.tp.interactionOffsets[a.tp.sel] = min(max(a.tp.interactionOffsets[a.tp.sel]+delta, 0), a.tp.tableOver)
 	a.touch()
+}
+
+// The single paging control advances by one full viewport and retains a short
+// final page, rather than sliding the final rows back over the previous page.
+func (a *app) teamsInteractionsPage(delta int) {
+	if a.tp.tablePageSize <= 0 {
+		return
+	}
+	off := a.tp.interactionOffsets[a.tp.sel]
+	next := (off/a.tp.tablePageSize + 1) * a.tp.tablePageSize
+	if delta < 0 {
+		next = max((off-1)/a.tp.tablePageSize, 0) * a.tp.tablePageSize
+	}
+	a.teamsInteractionsScroll(next - off)
 }
 
 func teamsInteractionMember(t team, who string) string {
@@ -364,7 +371,8 @@ func (a *app) teamsInteractionTable(d *teamsDraw, t team, width, y int) []string
 		available -= min(len(a.teamsRailRows()), max(min(available/3, 5), 1)) + 1
 	}
 	height = min(height, max(available-4, 1))
-	a.tp.tableOver = max(len(rows)-height, 0)
+	a.tp.tablePageSize = height
+	a.tp.tableOver = max((len(rows)-1)/height, 0) * height
 	if a.tp.interactionOffsets == nil {
 		a.tp.interactionOffsets = map[string]int{}
 	}
@@ -404,9 +412,11 @@ func (a *app) teamsInteractionTable(d *teamsDraw, t team, width, y int) []string
 		}
 		lines = append(lines, wallCardLine{s: text})
 	}
-	up, upW := d.button(a.icon(tokens.GCollapsed), teamsTarget{act: teamsActInteractionUp, id: t.ID, x0: 2, y: y + height + 2, hint: "Scroll interactions up", pane: true}, a.pal.dim)
-	down, _ := d.button(a.icon(tokens.GExpanded), teamsTarget{act: teamsActInteractionDown, id: t.ID, x0: 2 + upW, y: y + height + 2, hint: "Scroll interactions down", pane: true}, a.pal.dim)
-	footer := up + down
+	word, hint := "Next page", "Show the next page of interactions"
+	if off >= a.tp.tableOver {
+		word, hint = "Last page", "Last page of interactions; wheel up or PgUp returns to earlier rows"
+	}
+	footer, _ := d.button(a.icon(tokens.GExpanded)+" "+word, teamsTarget{act: teamsActInteractionDown, id: t.ID, x0: 2, y: y + height + 2, hint: hint, pane: true}, a.pal.dim)
 	if len(rows) > height {
 		footer += "  " + strconv.Itoa(off+1) + " to " + strconv.Itoa(min(off+height, len(rows))) + " of " + strconv.Itoa(len(rows))
 	}

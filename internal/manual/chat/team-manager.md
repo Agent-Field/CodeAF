@@ -74,9 +74,13 @@ handle choice may replace that fallback.
 
 ## The manager's screen
 
-While the manager is in front, the message box says `to ◆ manager`, and keeps saying it on the
+While the manager is in front, the message box says `to ◆ manager of harbor`, using the
+selected team's name, and keeps saying it on the
 rule above the box once you start typing: everything you type goes to the manager and nowhere
-else. With a member in front the box says `to @web` the same way.
+else. With a member in front the box says `to @web of harbor` the same way. A shared
+conversation uses the selected team's own alias and name; renaming the team updates this
+label immediately. The manager can have a title-derived or explicitly chosen alias just
+like other members; `@member1` is not a required manager name.
 
 On the right is the conversation's column, the same one every chat has. Its header is two
 words, `Tasks 14 · Traffic 8` with `alt+l` at its right: the word in front is in bold ink and

@@ -109,10 +109,13 @@ func (a *app) teamDragMotion(x, y int, held bool) bool {
 // teams row or the empty rail under the tree (the top level), each with
 // whether it takes this drag and why not.
 func (a *app) teamDropAt(x, y int) (string, bool, string) {
+	if x < 0 || x >= a.width || y < placeHeadRows || y >= a.height-placeFootRowsFor(pageTeams, a.height) {
+		return "", false, ""
+	}
 	d := a.tdrag
 	lastTree := -1
 	for _, t := range a.tp.targets {
-		if t.pane || t.act != teamsActSelect {
+		if t.hidden || t.pane || t.act != teamsActSelect {
 			continue
 		}
 		if tt, ok := a.teamByID(t.id); ok && tt.Closed() {
@@ -121,7 +124,7 @@ func (a *app) teamDropAt(x, y int) (string, bool, string) {
 		lastTree = max(lastTree, t.y)
 	}
 	for _, t := range a.tp.targets {
-		if t.pane || y != t.y || x < t.x0 || x >= t.x1 {
+		if t.hidden || t.pane || y != t.y || x < t.x0 || x >= t.x1 {
 			continue
 		}
 		switch {

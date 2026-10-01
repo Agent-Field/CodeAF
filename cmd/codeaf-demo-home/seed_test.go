@@ -113,8 +113,11 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	// The Teams fixture must resolve every conversation and interaction door,
 	// while keeping historical notes from waking an agent during a review.
 	teams, err := teamstore.Load(filepath.Join(dir, ".codeaf"))
-	if err != nil || len(teams.Teams) != 2 {
-		t.Fatalf("read the two demo teams: %+v, %v", teams, err)
+	if err != nil || len(teams.Teams) != 3 {
+		t.Fatalf("read the three demo teams: %+v, %v", teams, err)
+	}
+	if len(teams.ClosedTeams()) != 1 {
+		t.Fatal("demo must include one closed team so its category can be reviewed")
 	}
 	memberships := map[string]int{}
 	for _, team := range teams.Teams {
@@ -122,7 +125,9 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 			t.Fatalf("team has no manager or can wake historical work: %+v", team)
 		}
 		for _, member := range team.Members {
-			memberships[member.Key]++
+			if !team.Closed() {
+				memberships[member.Key]++
+			}
 			if _, err := os.Stat(member.File); err != nil {
 				t.Fatalf("team member has no conversation: %v", err)
 			}

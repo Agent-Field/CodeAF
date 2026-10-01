@@ -102,19 +102,6 @@ func teamsPad(s string, width int) string {
 func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 	pal := a.pal
 	rows := a.teamsRailRows()
-	// THE CLOSED FOLD STANDS AT THE FOOT, where a person looks for what is put
-	// away; everything above it is the tree and its two doors.
-	split := len(rows)
-	for i, r := range rows {
-		if r.kind == railRowClosed {
-			split = i - 1
-			break
-		}
-	}
-	headRows, tailRows := rows[:split], rows[split:]
-	if len(headRows)+len(tailRows) > height {
-		tailRows = tailRows[:max(0, min(len(tailRows), height-len(headRows)))]
-	}
 	out := make([]string, 0, height)
 	topSaid := false
 	paint := func(r teamsRailRow, y int) string {
@@ -143,16 +130,16 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 			return d.row(" "+a.teamsSpark()+" Organize", width, teamsTarget{act: teamsActOrganize, y: y,
 				hint: "Suggest teams for your conversations, and close quiet ones" + hintSegment + "o"}, false)
 		case railRowClosed:
-			fold := bandFoldGlyph
+			fold := a.icon(tokens.GCollapsed)
 			if a.tp.closedOpen {
-				fold = a.linearMark("▾", "v")
+				fold = a.icon(tokens.GExpanded)
 			}
-			word := " " + fold + " Closed " + a.teamsDot() + " " + itoa(len(a.teamsClosed()))
+			word := " " + pal.bold(pal.ink("Closed teams")) + pal.dim(" "+a.teamsDot()+" "+itoa(len(a.teamsClosed()))) + " " + pal.ink(fold)
 			hint := "Show the closed teams"
 			if a.tp.closedOpen {
 				hint = "Fold the closed teams away"
 			}
-			return d.row(pal.muted(word), width, teamsTarget{act: teamsActClosedFold, y: y, hint: hint + hintSegment + "enter"}, false)
+			return d.row(word, width, teamsTarget{act: teamsActClosedFold, y: y, hint: hint + hintSegment + "enter"}, false)
 		case railRowClosedTeam:
 			t, _ := a.teamByID(r.id)
 			return d.row("   "+pal.dim(t.Name), width, teamsTarget{act: teamsActSelect, id: t.ID, y: y,
@@ -160,16 +147,44 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 		}
 		return strings.Repeat(" ", width)
 	}
-	for _, r := range headRows {
+	for _, r := range rows {
 		out = append(out, paint(r, len(out)))
 	}
-	for len(out)+len(tailRows) < height {
+	for len(out) < height {
 		out = append(out, strings.Repeat(" ", width))
 	}
-	for _, r := range tailRows {
-		out = append(out, paint(r, len(out)))
-	}
 	return out[:min(len(out), height)]
+}
+
+// The rail keeps every keyboard stop while showing a bounded window around
+// the cursor. Expanding a long Closed category must not hide its later teams.
+func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
+	mark := len(d.targets)
+	all := a.teamsRail(d, width, len(a.teamsRailRows()))
+	limit := min(len(all), max(height, 1))
+	focusY := 0
+	for _, target := range d.targets[mark:] {
+		if target.ref() == a.tp.cur || target.act == teamsActSelect && target.id == a.tp.sel && focusY == 0 {
+			focusY = target.y
+		}
+		if target.ref() == a.tp.cur {
+			break
+		}
+	}
+	off := min(a.tp.railOffset, max(len(all)-limit, 0))
+	if focusY < off {
+		off = focusY
+	}
+	if focusY >= off+limit {
+		off = focusY - limit + 1
+	}
+	a.tp.railOffset = off
+	for i := mark; i < len(d.targets); i++ {
+		d.targets[i].line = d.targets[i].y
+		d.targets[i].y -= off
+		d.targets[i].hidden = d.targets[i].y < 0 || d.targets[i].y >= limit
+	}
+	return all[off : off+limit]
 }
 
 // teamsDot is the middle dot in this terminal's glyphs.
@@ -187,13 +202,21 @@ func (a *app) teamsSpark() string {
 func (a *app) teamsRailAll(d *teamsDraw, width, y int) string {
 	pal := a.pal
 	if root, ok := a.teamsRoot(); ok {
-		return a.teamsRailTeam(d, root, 0, width, y)
+		word := " " + pal.bold(pal.ink(teamstore.RootName))
+		if root.Manager != "" {
+			word += " " + pal.dim(a.teamManagerMark())
+		}
+		if n := a.teamsNeeds(root); n > 0 {
+			word += " " + pal.ask("? "+itoa(n))
+		}
+		return d.row(word, width, teamsTarget{act: teamsActSelect, id: root.ID, y: y,
+			hint: "Every team, and what waits on you from any of them" + hintSegment + "enter"}, a.tp.sel == root.ID)
 	}
 	word := teamManagerSlotWord
 	bw := ansi.StringWidth(word) + 2
 	left := width - bw
 	selected := a.tp.sel == teamsAllRow
-	name := d.row(" "+pal.ink(teamstore.RootName), left, teamsTarget{act: teamsActSelect, id: teamsAllRow, y: y,
+	name := d.row(" "+pal.bold(pal.ink(teamstore.RootName)), left, teamsTarget{act: teamsActSelect, id: teamsAllRow, y: y,
 		hint: "Every team, and what waits on you from any of them" + hintSegment + "enter"}, selected)
 	if left < 12 {
 		return teamsPad(name, width)
@@ -884,39 +907,13 @@ func (a *app) teamsBody(width, room int) []placeRow {
 		paneW := width - railW
 		var rail []string
 		if railW > 0 {
-			rail = a.teamsRail(d, railW-1, room)
-			for i := range d.targets {
-				d.targets[i].line = d.targets[i].y
-			}
+			rail = a.teamsRailWindow(d, railW-1, room)
 		} else {
 			// A narrow rail has its own window so a long team list cannot take
 			// all the space needed by the selected team's overview.
-			all := a.teamsRail(d, width, len(a.teamsRailRows()))
-			limit := min(len(all), max(min(room/3, 5), 1))
-			focusY := 0
-			for _, target := range d.targets {
-				if target.ref() == a.tp.cur || target.act == teamsActSelect && target.id == a.tp.sel && focusY == 0 {
-					focusY = target.y
-				}
-				if target.ref() == a.tp.cur {
-					break
-				}
-			}
-			off := min(a.tp.railOffset, max(len(all)-limit, 0))
-			if focusY < off {
-				off = focusY
-			}
-			if focusY >= off+limit {
-				off = focusY - limit + 1
-			}
-			a.tp.railOffset = off
-			lines = append(lines, all[off:off+limit]...)
+			limit := max(min(room/3, 5), 1)
+			lines = append(lines, a.teamsRailWindow(d, width, limit)...)
 			lines = append(lines, "")
-			for i := range d.targets {
-				d.targets[i].line = d.targets[i].y
-				d.targets[i].y -= off
-				d.targets[i].hidden = d.targets[i].y < 0 || d.targets[i].y >= limit
-			}
 		}
 		top := len(lines)
 		mark := len(d.targets)

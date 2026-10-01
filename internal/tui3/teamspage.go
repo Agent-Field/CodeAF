@@ -48,6 +48,7 @@ type teamsPage struct {
 	interactionOffsets map[string]int
 	table              teamsTableRect
 	tableOver          int
+	tablePageSize      int
 
 	// sel is the team the pane is about: a team id, [teamsAllRow], or "" for
 	// none (no teams at all).
@@ -226,20 +227,20 @@ func (a *app) teamsClosed() []team {
 // teamsRailRows is the rail, top to bottom. Memory only.
 func (a *app) teamsRailRows() []teamsRailRow {
 	rows := []teamsRailRow{{kind: railRowAll}}
-	rows = append(rows, a.teamsOpenTree()...)
-	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowNew})
-	if _, split := a.teamsRailNewWords(); split {
-		rows = append(rows, teamsRailRow{kind: railRowNewIn})
-	}
-	rows = append(rows, teamsRailRow{kind: railRowOrganize})
 	if closed := a.teamsClosed(); len(closed) > 0 {
-		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
+		rows = append(rows, teamsRailRow{kind: railRowClosed})
 		if a.tp.closedOpen {
 			for _, t := range closed {
 				rows = append(rows, teamsRailRow{kind: railRowClosedTeam, id: t.ID})
 			}
 		}
 	}
+	rows = append(rows, a.teamsOpenTree()...)
+	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowNew})
+	if _, split := a.teamsRailNewWords(); split {
+		rows = append(rows, teamsRailRow{kind: railRowNewIn})
+	}
+	rows = append(rows, teamsRailRow{kind: railRowOrganize})
 	return rows
 }
 

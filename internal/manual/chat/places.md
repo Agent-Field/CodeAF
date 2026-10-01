@@ -562,7 +562,7 @@ The second place on the bar, right after home. On the left is a **rail**: your t
 tree (a sub-team indented under its parent), each with its colour, and a mark only when
 something is happening in it: a dim `⠿` while one of its members is working, and an amber
 `? 2` while two things wait on you. Under the tree are `+ New team` and `✦ Organize`, and
-at the foot a folded `▸ Closed · N` holds the teams you closed. On the right is the team
+immediately below `All teams`, `Closed teams · N ▸` holds the teams you closed. On the right is the team
 you chose: its name, spending and settings; equal-sized member cards with manager and
 member updates; decisions and permissions waiting on you; and a scrollable interaction
 table whose exchanges expand inline. Clicking a member or exchange opens Chats with that

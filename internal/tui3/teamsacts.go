@@ -32,10 +32,10 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		a.closeRoom()
 		return a.trafficJumpFromTeam(t.id, t.arg, t.opt)
 	case teamsActInteractionUp:
-		a.teamsInteractionsScroll(-3)
+		a.teamsInteractionsPage(-1)
 		return nil
 	case teamsActInteractionDown:
-		a.teamsInteractionsScroll(3)
+		a.teamsInteractionsPage(1)
 		return nil
 	case teamsActSelect:
 		return a.teamsSelect(t.id)
