@@ -389,7 +389,7 @@ what is there. Anything you had changed and never saved is kept first, as a bran
 sentence above; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
 
-## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile, a file I cannot read, two files with the same name in different case
+## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
 
 A chat that moves brings its conversation and every file it worked on, except an install
 folder that a lockfile rebuilds: `node_modules` (with a `package-lock.json`,
@@ -419,6 +419,8 @@ that asks for nothing, and `/setup` lists what is missing later. codeaf never re
 command by itself, and database rows or container data do not travel. A secret in a recorded
 command is shown as `…`. Limits: there is no way to force a folder to travel, and what was
 running is known only from the moment of the move.
+
+## A file that cannot be read, two files with the same name in different case — odd files and a moved chat, not brought along, read-only folder
 
 One odd file never stops a chat from saving or moving. A file that this machine cannot read
 (mode `0000`, or owned by another user) is kept out of the saved history: the chat says
