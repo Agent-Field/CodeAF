@@ -114,3 +114,24 @@ func TestSealWatchForwardsTurnEnd(t *testing.T) {
 		t.Fatalf("heard %d turn ends, want 2", heard)
 	}
 }
+
+func TestSealWatchNoteIsSaidAndDoesNotFailTheState(t *testing.T) {
+	var w SealWatch
+	w.Note("zero.txt cannot be read here, so it is left out of the saved history until its permissions allow it")
+	if w.Failing() {
+		t.Fatal("a note is not a failed seal")
+	}
+	if got := w.Take(); !strings.Contains(got, "zero.txt") {
+		t.Fatalf("note not handed to the surface: %q", got)
+	}
+}
+
+func TestWithNoticesSendsTheGuardsLineToTheSurface(t *testing.T) {
+	var said []string
+	e := Engine{}
+	WithNotices(func(line string) { said = append(said, line) })(&e)
+	e.Guard.notify("one line")
+	if len(said) != 1 || said[0] != "one line" {
+		t.Fatalf("guard notice went elsewhere: %q", said)
+	}
+}
