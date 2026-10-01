@@ -53,6 +53,7 @@ func TestRateManualExplainsAbsentAndRoundedThroughput(t *testing.T) {
 // 2026-09-30 pass found repeated after their first copy had been fixed.
 func TestNoSectionRepeatsAStaleDisplayClaim(t *testing.T) {
 	stale := []string{
+		"| `auditor` | checker |",
 		"draws one tab per open conversation, and",
 		"names every open conversation, and",
 	}
