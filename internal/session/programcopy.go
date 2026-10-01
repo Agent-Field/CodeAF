@@ -1041,7 +1041,12 @@ func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 	if tip := branchCommit(f.Repo, f.Branch); tip != "" {
 		end.Changed = changedBetween(f.Repo, f.ownBase(), tip)
 		end.Kept = tip != f.base()
-		end.Added = tip != f.ownBase()
+		end.Added = end.Kept
+		if f.Continues {
+			// AN EMPTY COMMIT ADDS NO FILES. The ending must say that this
+			// run added nothing rather than count a zero past the last run.
+			end.Added = len(end.Changed) > 0
+		}
 		end.Committed = tip != before
 		end.Upstream, end.UpstreamRemote, end.UpstreamRef = branchUpstream(f.Repo, f.Branch)
 		if f.Continues && f.Snapshot != "" {
@@ -1073,21 +1078,32 @@ func branchHoldsChange(repo, commit, tip string) bool {
 	return err == nil && strings.HasPrefix(strings.TrimSpace(out), "-")
 }
 
-// branchUpstream is the remote branch branch tracks in repo, as
-// `<remote>/<branch>`, with the remote and the branch's name there; all empty
-// when it tracks none, or tracks another branch of repo itself.
+// branchUpstream is the live remote branch of branch's own name in repo, as
+// `<remote>/<branch>`, with its two halves; all empty for any other upstream.
+//
+// PUSH ADVICE PUBLISHES ONLY THE RUN'S OWN BRANCH TO ITS OWN LIVE COUNTERPART.
+// Tracking dev, main or another branch must never advise publishing onto it,
+// and a counterpart the remote deleted must never be recreated by the ending.
+// A remote's name also enters a shell command, so only a plain word beginning
+// with a letter or digit may reach the advice, never shell syntax or an option.
 func branchUpstream(repo, branch string) (upstream, remote, ref string) {
-	out, err := git(repo, "for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/"+branch)
+	out, err := git(repo, "for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)", "refs/heads/"+branch)
 	if err != nil {
 		return "", "", ""
 	}
-	remote, ref, _ = strings.Cut(strings.TrimSpace(out), "\x00")
+	remote, rest, _ := strings.Cut(strings.TrimSpace(out), "\x00")
+	ref, tracking, _ := strings.Cut(rest, "\x00")
 	ref = strings.TrimPrefix(ref, "refs/heads/")
-	if remote == "" || remote == "." || ref == "" {
+	if !programPushRemote.MatchString(remote) || ref != branch || tracking == "" {
+		return "", "", ""
+	}
+	if _, err := git(repo, "rev-parse", "--verify", "--quiet", tracking); err != nil {
 		return "", "", ""
 	}
 	return remote + "/" + ref, remote, ref
 }
+
+var programPushRemote = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // settleCopyWork puts what the program left in its copy somewhere that
 // outlives the copy — its branch, a patch, a branch on the commits it made on
@@ -1639,8 +1655,8 @@ func (e ProgramFolderEnd) copySentence() string {
 // reads pathspec patterns, so a name with pattern characters, or a leading
 // colon git would read as magic, needs literal magic.
 //
-// A BRANCH THAT TRACKS A REMOTE ONE IS PUSHED, NOT MERGED. A run that carries
-// on a branch somebody has published since — for its pull request — adds to
+// A BRANCH THAT TRACKS ITS OWN LIVE REMOTE COUNTERPART IS PUSHED. A run that
+// carries on a branch somebody has published since — for its pull request — adds to
 // work that is on its way in through that request; merging it into the
 // person's own checkout would bring an unreviewed branch into theirs by hand,
 // and the stash in front of it would put aside changes that have nothing to
@@ -1649,11 +1665,7 @@ func (e ProgramFolderEnd) mergeWords() string {
 	f := e.Folder
 	repo := shellQuoted(f.Repo)
 	if e.Upstream != "" {
-		push := f.Branch
-		if e.UpstreamRef != f.Branch {
-			push += ":" + e.UpstreamRef
-		}
-		return f.Branch + " tracks " + e.Upstream + ", so `git -C " + repo + " push " + e.UpstreamRemote + " " + push + "` sends this work there"
+		return f.Branch + " tracks " + e.Upstream + ", so `git -C " + repo + " push " + e.UpstreamRemote + " " + f.Branch + "` sends this work there"
 	}
 	merge := "`git -C " + repo + " merge " + f.Branch + "`"
 	var why, aside []string
@@ -1724,6 +1736,8 @@ func (e ProgramFolderEnd) movedCopyWords(merge string) string {
 	}
 	if e.Kept && (e.Added || !f.Continues) {
 		said += "; " + f.Branch + " in " + f.Repo + " holds " + fileCount(len(e.Changed)) + e.fromWords() + ", and " + merge
+	} else if e.Kept && f.Continues && !e.Added {
+		said += "; " + f.Branch + " in " + f.Repo + " still holds the earlier runs' work as the last run left it"
 	}
 	return said
 }

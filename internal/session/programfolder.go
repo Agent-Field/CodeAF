@@ -434,14 +434,14 @@ type ProgramFolderEnd struct {
 	Changed []string
 	// Kept says the program's branch holds its work: for a run that carries on
 	// an earlier run's branch, the line's work, so a run that adds nothing
-	// still lands on the branch that holds it. Added says this run itself moved
-	// the branch past where it found it, which for every other run is Kept.
+	// still lands on the branch that holds it. Added says this run changed the
+	// branch's tree from where it found it, which for every other run is Kept.
 	Kept  bool
 	Added bool
 	// Upstream is the remote branch the program's branch tracks, as
-	// `<remote>/<branch>` — set when a run carries on a branch somebody has
-	// published since, for its pull request — and UpstreamRemote and
-	// UpstreamRef its two halves. Such a branch is brought in by pushing it,
+	// `<remote>/<branch>` — set only for a live remote branch of its own name
+	// on a plainly named remote — and UpstreamRemote and UpstreamRef its two
+	// halves. Such a branch is brought in by pushing it,
 	// not by merging it into the person's checkout ([ProgramFolderEnd.mergeWords]).
 	Upstream       string
 	UpstreamRemote string

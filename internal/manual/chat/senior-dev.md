@@ -250,7 +250,8 @@ check of the project, handed in a change its own check did not pass or did not f
 handed in nothing, stopped on a limit, or broke — and acts on it:
 
 - **passed**: the chat looks at what changed against what was asked, then tells you where
-  the work is and offers to merge its branch;
+  the work is and offers to merge its branch, or to push it when the ending says it tracks
+  a remote branch;
 - **handed in, but its own check did not pass or finish**: the run is done. senior-dev's
   check guesses the project's commands and environment and is often wrong about them, so
   the chat treats what it said as a lead: it runs the project's own checks on the branch
@@ -334,18 +335,20 @@ rather than carry something that fails every time.
 
 ## A run codeaf sends back — carries on on the last run's branch, a pull request's branch, a new branch after a pass
 
-**A run codeaf sends back carries on on the last run's branch.** When the chat hands the
-work back after an ending, before you have said anything, the new run is cut in a copy of
-its own on the branch the last run left, and its receipt says `carrying on on its branch
+**A run codeaf sends back carries on on the last run's branch.** Before you speak, a
+hand-off starts a new run in its own copy on that branch, and its receipt says `carrying on on its branch
 <branch>, where the last run left it`. **Its ending counts only its own files**, from where
-the branch stood when it began — not the earlier runs' work, and not what the branch was given
-between runs, such as a rebase for its pull request: `its work is on the branch <branch> in
+the branch stood when it began, excluding earlier work and files a rebase brought in:
+`its work is on the branch <branch> in
 <folder>, N files past <commit>, where the last run left it`. A run that adds nothing says
 `it added nothing to the branch <branch> in <folder>, which still holds the earlier runs'
-work as the last run left it`. **A branch that tracks a remote one — a pull request's
-branch — is pushed, not merged**: the ending says ``<branch> tracks origin/<branch>, so
+work as the last run left it`. **A branch that tracks a live remote branch of its own
+name — a pull request's branch — gets push advice**: the ending says ``<branch> tracks origin/<branch>, so
 `git -C '<folder>' push origin <branch>` sends this work there``, with no stash and no merge
-into your checkout. **A branch whose work passed is
+into your checkout. The remote name must start with a letter or digit and contain only
+letters, digits, `.`, `_` and `-`. Any other upstream keeps the merge advice as before.
+The chat never pushes on its own: it offers, and pushes only when you ask in a later message.
+**A branch whose work passed is
 never written again**: the next hand-off before you speak — the rest of the work, or the
 next piece — is cut on a new branch from its tip, and says `on a new branch <new> cut from
 <branch>, whose work passed and which it leaves as it is`; its ending says its branch is
@@ -551,7 +554,8 @@ merge, check out or hand back. **The branch is always kept**, even when the run 
 nothing. Nothing is merged into your own branch. The task's page and the conversation both
 say ``its work is on the branch <branch> in <folder>, N files; your checkout was not
 touched, and `git -C '<folder>' merge <branch>` brings it in``. Merge it when you are ready,
-or ask the chat to.
+or ask the chat to; a branch published under its own name is pushed instead (see "A run
+codeaf sends back").
 
 The finishing commit's model credit names only models recorded as answering a call in
 that run, including a model that answered in place of the one asked for. If no model
