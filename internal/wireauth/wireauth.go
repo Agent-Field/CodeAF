@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -96,4 +97,15 @@ func After(err error) time.Duration {
 		return w.after
 	}
 	return 0
+}
+
+// Endpoint is the address of a route on the relay at base. The base may carry a
+// path of its own, as the hosted relay does (https://host/fabric), and may or
+// may not end in a slash; the route always starts with one. Every client builds
+// its addresses here, so a base path works for the store, the directory, the
+// watch, pairing and rotation alike. The route is joined as text, not re-parsed,
+// because it is already escaped and may carry a query, and the request signature
+// covers exactly the bytes sent.
+func Endpoint(base, route string) string {
+	return strings.TrimRight(base, "/") + route
 }
