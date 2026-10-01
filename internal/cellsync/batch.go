@@ -12,7 +12,9 @@ import (
 )
 
 const (
-	// DefaultInterval is how often a flush publishes when the caller sets none.
+	// DefaultInterval is the first wait after a failed upload when the caller
+	// sets none; each further failure doubles it up to MaxBackoff. A successful
+	// upload is followed by no wait at all.
 	DefaultInterval = 5 * time.Second
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
@@ -53,7 +55,7 @@ type Batcher struct {
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
 	told         string    // the kind of refusal the person has heard of in this run, so each is said once
 
-	work  wakeup // tells the flush loop a turn was noted, so a closed window can open at once
+	work  wakeup // tells the flush loop a turn was noted, so an upload can start at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
 	freed wakeup // ends a halt: something the relay refused for has changed
 
@@ -104,8 +106,8 @@ func (b *Batcher) Note(t cellstore.Turn) {
 }
 
 // Idle says the agent has stopped and is waiting for the person, so the turns
-// sealed since the last upload go up at once instead of at the end of the
-// window: nothing more is coming to share the request with, and this is the
+// sealed since the last upload go up at once, even where an upload would
+// otherwise wait (it does not cut a failure backoff short): nothing more is coming to share the request with, and this is the
 // moment the person is likeliest to pick the chat up on another machine. It
 // never waits, so it is safe to call from the turn's own goroutine.
 func (b *Batcher) Idle() { b.idle.fire() }
@@ -150,10 +152,12 @@ func (b *Batcher) Pending() uint32 {
 }
 
 // Run uploads noted turns and heartbeats each directory.HeartbeatEvery until
-// ctx ends. An upload opens a window of one Interval; turns sealed while it is
-// open wait for it to close and then go up together, so a busy agent costs two
-// publishes a window at most and a lone tool call is durable at once. Sealing
-// is never held back: only the upload waits.
+// ctx ends. Uploading is single-flight and latest-wins: every sealed turn asks
+// for an upload at once, one upload is in flight at a time, and when it ends the
+// newest head goes up if anything was sealed meanwhile. Coalescing comes from the
+// upload's own duration, so a turn is durable within one upload of being sealed
+// and a burst of N costs at most N uploads, usually two or three. Sealing is
+// never held back: only the upload waits.
 func (b *Batcher) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { b.beats(ctx) })
@@ -162,11 +166,10 @@ func (b *Batcher) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// flushes is the whole state machine: wait until a turn is noted, upload it,
-// which opens a window, and rest until the window closes. A turn noted while
-// the window is open is still noted when it closes, so it goes straight up and
-// opens the next window; a turn noted in a quiet period goes up at once. There
-// is no separate rule for the first turn of a burst.
+// flushes is the whole state machine: wait until a turn is noted, upload the
+// newest, and rest only if the upload failed. A turn noted during an upload is
+// still noted when it ends, so it goes straight up; a turn noted in a quiet
+// period goes up at once. There is no separate rule for the first turn of a burst.
 func (b *Batcher) flushes(ctx context.Context) {
 	for {
 		if b.awaitWork(ctx) != nil {
@@ -192,8 +195,8 @@ func (b *Batcher) awaitWork(ctx context.Context) error {
 	return nil
 }
 
-// rest waits out the window d, which is zero when the flush sent nothing. After
-// a failure it waits the whole backoff whatever Idle says, and forgets an Idle
+// rest waits out d, which is zero after a success. After a failure it waits the
+// whole backoff whatever Idle says, and forgets an Idle
 // that arrived meanwhile: when the relay is failing, a client that retried after
 // every finished turn would be thousands of clients hammering it at once. The
 // flush that ends the backoff sends what Idle wanted sent.
@@ -367,29 +370,24 @@ func (b *Batcher) release(ctx context.Context) error {
 	return err
 }
 
-// flush publishes the newest noted turn and says how long the window it opened
-// lasts: the interval, or a doubled backoff after a failure. A flush that had
-// nothing to send opens no window.
+// flush publishes the newest noted turn and says how long to rest before the
+// next try: nothing after a success, a doubled backoff after a failure.
 func (b *Batcher) flush(ctx context.Context) time.Duration {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
-	_, sending := b.newest()
-	err := b.drain(ctx)
-	window := b.after(err)
-	if sending == 0 && err == nil {
-		return 0
-	}
-	return window
+	return b.after(b.drain(ctx))
 }
 
-// after turns a flush's outcome into the next wait. A failure that is not a
-// refusal is the zero Refusal, which backs off and says nothing.
+// after turns a flush's outcome into the next wait. A success needs none: the
+// upload itself was the window, and whatever was sealed while it ran goes up
+// next, newest head only. A failure that is not a refusal is the zero Refusal,
+// which backs off and says nothing.
 func (b *Batcher) after(err error) time.Duration {
 	interval := b.interval()
 	b.failing = err != nil
 	if err == nil {
 		b.backoff = interval
-		return b.backoff
+		return 0
 	}
 	r, _ := b.surface(err)
 	b.backoff = r.next(b.backoff, interval, err)

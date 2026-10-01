@@ -80,6 +80,9 @@ func (s sealed) Around(ctx context.Context, call executor.Call, run func() ([]by
 	return s.rec.Around(ctx, call, effect, s.trigger(), run)
 }
 
+// Settle implements executor.Settler.
+func (s sealed) Settle(ctx context.Context) { s.rec.Settle(ctx) }
+
 func (s sealed) trigger() Trigger {
 	if s.Setup {
 		return Setup
