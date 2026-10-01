@@ -412,8 +412,9 @@ func TestARunSentBackCarriesOnOnTheEarlierRunsBranch(t *testing.T) {
 // ended saying 117 — every file the rebase brought along counted from where the
 // line began — and told the person to stash and merge the pull request's branch
 // into their own checkout. It counts from where the branch stood when it began,
-// says nothing about uncommitted changes the branch no longer begins with, and
-// a branch that tracks a remote one is pushed there, not merged.
+// still offers the stash while the branch begins with the person's changes —
+// under the new name the rebase gave that commit — and a branch that tracks a
+// remote one is pushed there, not merged.
 func TestARunCarryingOnARebasedBranchCountsOnlyItsOwnFiles(t *testing.T) {
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own edit\n")
@@ -447,9 +448,16 @@ func TestARunCarryingOnARebasedBranchCountsOnlyItsOwnFiles(t *testing.T) {
 	if !end.Kept || !end.Added || !slices.Equal(end.Changed, []string{"fix.txt"}) {
 		t.Fatalf("the sent-back run ended %+v, want only fix.txt counted as its own", end)
 	}
-	if !strings.Contains(said, "1 file past "+shortSha(rebased)+", where the last run left it") ||
-		!strings.Contains(said, "merge "+first.Branch) || strings.Contains(said, "stash") {
-		t.Fatalf("the sent-back run said %q, want its one file counted past the rebased tip and a merge with no stash", said)
+	// The rebase wrote the commit carrying the person's edit again under a new
+	// name; the branch still begins with that edit, which the person still
+	// has uncommitted, so a merge without the stash first would be refused.
+	stash := "its branch begins with your uncommitted changes as they were when the first run of this work started, so put yours aside with `git -C " +
+		shellQuoted(repo) + " stash`, and `git -C " + shellQuoted(repo) + " merge " + first.Branch + "` brings in both"
+	if !strings.Contains(said, "1 file past "+shortSha(rebased)+", where the last run left it") || !strings.Contains(said, stash) {
+		t.Fatalf("the sent-back run said %q, want its one file counted past the rebased tip and %q", said, stash)
+	}
+	if _, err := git(repo, "merge-base", "--is-ancestor", first.Snapshot, rebased); err == nil {
+		t.Fatal("the rebase left the snapshot commit itself on the branch, so this test no longer asks about a rewritten one")
 	}
 
 	// Published for a pull request, the branch is pushed, never merged.

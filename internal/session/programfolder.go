@@ -446,10 +446,11 @@ type ProgramFolderEnd struct {
 	Upstream       string
 	UpstreamRemote string
 	UpstreamRef    string
-	// SnapshotHeld says a branch a run carries on still holds the commit the
-	// line's first run carried the person's uncommitted changes in on
-	// ([ProgramFolder.Snapshot]), which a rebase since can have left behind. A
-	// run that cut its own branch begins with that commit, and is not asked.
+	// SnapshotHeld says a branch a run carries on still holds the change the
+	// line's first run carried the person's uncommitted changes in with
+	// ([ProgramFolder.Snapshot]) — that commit, or the one a rebase since wrote
+	// in its place ([branchHoldsChange]). A run that cut its own branch begins
+	// with that commit, and is not asked.
 	SnapshotHeld bool
 	// Dropped says the program's branch was deleted because it holds
 	// nothing: for a run in a copy, one readied and never started

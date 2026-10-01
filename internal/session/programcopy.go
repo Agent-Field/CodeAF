@@ -1045,8 +1045,7 @@ func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 		end.Committed = tip != before
 		end.Upstream, end.UpstreamRemote, end.UpstreamRef = branchUpstream(f.Repo, f.Branch)
 		if f.Continues && f.Snapshot != "" {
-			_, err := git(f.Repo, "merge-base", "--is-ancestor", f.Snapshot, tip)
-			end.SnapshotHeld = err == nil
+			end.SnapshotHeld = branchHoldsChange(f.Repo, f.Snapshot, tip)
 		}
 	}
 	if stays != "" {
@@ -1055,6 +1054,23 @@ func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 	}
 	end.CopyLeft = f.removeCopy()
 	return end
+}
+
+// branchHoldsChange says the history at tip holds the change commit makes: the
+// commit itself, or one with the same patch.
+//
+// THE CHANGE IS ASKED ABOUT, NOT THE COMMIT. A rebase writes every commit it
+// moves again under a new name, the one that carries the person's uncommitted
+// changes among them, and a branch asked only whether it holds that name said
+// no — and its ending dropped the stash in front of a merge git then refused
+// over those very changes. `git cherry` marks a commit whose patch the branch
+// already has with a leading `-`.
+func branchHoldsChange(repo, commit, tip string) bool {
+	if _, err := git(repo, "merge-base", "--is-ancestor", commit, tip); err == nil {
+		return true
+	}
+	out, err := git(repo, "cherry", tip, commit, commit+"^")
+	return err == nil && strings.HasPrefix(strings.TrimSpace(out), "-")
 }
 
 // branchUpstream is the remote branch branch tracks in repo, as
