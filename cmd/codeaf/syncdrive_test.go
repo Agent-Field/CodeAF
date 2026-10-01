@@ -138,3 +138,76 @@ func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
 		t.Fatalf("directory head %q (%v), want the chat's %q", v.Cell.Head, err, head.Turn.ID)
 	}
 }
+
+// A chat open while its computer is solo uploads its next turns the moment the
+// computer is approved, with no reopen.
+func TestDriveSideStartsWhenTheSoloMarkerEnds(t *testing.T) {
+	cfg, c := doorChat(t)
+	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
+	t.Cleanup(srv.Close)
+	t.Setenv(syncsetup.URLVar, srv.URL)
+	t.Setenv(syncsetup.IntervalVar, "50")
+	if _, err := identity.EnsureSolo(home.Dir()); err != nil {
+		t.Fatal(err)
+	}
+
+	seated := v3Seated(cfg)
+	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	if d := syncDrives.drive[c.ID]; d == nil || d.started() != nil {
+		t.Fatal("a solo computer must hold a waiting drive side, not a running one")
+	}
+	if err := identity.EndSolo(home.Dir()); err != nil { // what an approval does
+		t.Fatal(err)
+	}
+	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	syncDrives.closeAll()
+
+	s, ok, err := syncsetup.Open(home.Dir())
+	if err != nil || !ok {
+		t.Fatalf("Open = %v, %v", ok, err)
+	}
+	head, _ := cellstore.Head(c)
+	v, err := s.Dir.Cell(context.Background(), c.ID)
+	if err != nil || v.Cell.Head != head.Turn.ID {
+		t.Fatalf("directory head %q (%v), want the chat's %q", v.Cell.Head, err, head.Turn.ID)
+	}
+}
+
+// One predicate, four states, the drive paths: startDrive and liveDrive agree
+// with syncsetup.MayTalk.
+func TestDrivePathsFollowMayTalk(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(dir string)
+		talk  bool
+	}{
+		{"no identity", func(string) {}, false},
+		{"solo", func(d string) { _, _ = identity.EnsureSolo(d) }, false},
+		{"paired", func(d string) { _, _ = identity.Ensure(d) }, true},
+		{"engaged", func(d string) { _, _ = identity.EnsureSolo(d); _ = identity.EndSolo(d) }, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, c := doorChat(t)
+			srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
+			t.Cleanup(srv.Close)
+			t.Setenv(syncsetup.URLVar, srv.URL)
+			tc.setup(home.Dir())
+			if got := syncsetup.MayTalk(home.Dir()); got != tc.talk {
+				t.Fatalf("MayTalk = %v, want %v", got, tc.talk)
+			}
+			d, err := startDrive(c, cellstore.EngineFor(""), func(error) {})
+			if (d != nil) != tc.talk {
+				t.Fatalf("startDrive drive=%v err=%v, want drive %v", d != nil, err, tc.talk)
+			}
+			if d != nil {
+				_ = d.Close(context.Background())
+			}
+			_ = cfg
+		})
+	}
+}
