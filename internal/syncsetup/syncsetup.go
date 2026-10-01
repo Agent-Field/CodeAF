@@ -75,6 +75,22 @@ func Open(home string) (*Sync, bool, error) {
 	return open(home)
 }
 
+// OpenFirst is Open for the first launch of the app: a machine whose relay is
+// on and that has no identity yet is the first machine, so it makes the
+// identity (a fleet of one) instead of failing. The headless verbs keep Open,
+// which tells a machine without an identity so.
+func OpenFirst(home string) (*Sync, bool, error) {
+	if rotate.Pending(home) {
+		return nil, false, ErrRotating
+	}
+	if Resolve(home).On() {
+		if _, err := identity.Ensure(home); err != nil {
+			return nil, false, err
+		}
+	}
+	return open(home)
+}
+
 func open(home string) (*Sync, bool, error) {
 	relay := Resolve(home)
 	if !relay.On() {
