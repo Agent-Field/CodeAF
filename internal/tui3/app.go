@@ -2234,6 +2234,8 @@ type app struct {
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
 	addMachine addMachine
+	// roster is the devices row's devices (homeband_devices.go).
+	devRow deviceRoster
 	// dirFeed is this window's hold on the directory's change feed while home is
 	// being looked at, and readOwed that a frame arrived while a read was in
 	// flight (machinewatch.go).
@@ -5034,6 +5036,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case fleetMsg:
 		return a, a.tookFleet(msg)
+
+	case rosterMsg:
+		return a, a.tookRoster(msg)
 
 	case pairLinkMsg:
 		return a, a.tookLink(msg)
