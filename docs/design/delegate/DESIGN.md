@@ -277,7 +277,7 @@ read and folded. Without one the row reads `stopped` with the last stage seen.
 
 *As built on 2026-09-21 and deleted on 2026-09-24: since then senior-dev works in
 the person's folder on a branch of its own, its `wip(edit)` commits stay on that
-branch, what it left uncommitted is committed there when it ends, and the branch
+branch (until 2026-09-30, when it stopped making them), what it left uncommitted is committed there when it ends, and the branch
 is left checked out rather than merged. `refs/senior-dev/*` are written into the
 person's repository and overwritten by the next run.*
 
