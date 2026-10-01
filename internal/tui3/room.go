@@ -1608,10 +1608,15 @@ func (a *app) steer() tea.Cmd {
 		a.roomNote(roomGuestReadingWord)
 		return nil
 	}
-	// A PROGRAM READS NO MESSAGE (programroom.go). Nothing is sent and nothing is
-	// taken out of the box: the page says so, names where the words can go, and
-	// leaves the sentence where the person can carry it there.
+	// A PROGRAM THAT LISTENS TAKES THE LINE THROUGH ITS INBOX (programroom.go):
+	// the same note door a run's task takes it through, which its worker copies
+	// to the program. One that does not listen — or no longer does, having
+	// handed in — reads no message: nothing is sent and nothing is taken out of
+	// the box, and the page says so and names where the words can go.
 	if room.program != nil {
+		if room.program.listens() && !room.done {
+			return a.programRoomSteer(line)
+		}
 		a.roomNote(a.programRoomRefusal().line())
 		return nil
 	}
@@ -4279,9 +4284,13 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// listening" is the question it exists to answer.
 		lane = orchSteerLane + roomSteerBack
 	}
-	if a.room.program != nil {
-		// A PROGRAM READS NO MESSAGE, so the box does not offer to steer it: it
-		// says the fact and the place the words can go, the same line enter over a
+	if p := a.room.program; p != nil && p.listens() {
+		// A PROGRAM THAT LISTENS IS OFFERED THE LINE, by name, and the box says
+		// when it reads it: before its next call to its model (programroom.go).
+		lane = programSteerLane(convProgramName(p.page)) + roomSteerBack
+	} else if a.room.program != nil {
+		// A PROGRAM THAT READS NO MESSAGE is not offered one: the box says the
+		// fact and the place the words can go, the same line enter over a
 		// sentence says (programroom.go).
 		lane = a.programRoomRefusal().fit(room)
 	} else if a.room.plan != nil {
