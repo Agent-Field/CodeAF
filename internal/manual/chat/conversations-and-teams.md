@@ -313,13 +313,26 @@ so. An `@word` that is no member's handle is left as plain text.
 
 In the message box, `@` opens the same list files use. Teams are a section of it,
 each row a coloured dot and the team's name. Conversations are the next section:
-the ones open in this window first, then recent ones. A conversation in no team is
-on that list.
+the ones open in this window first, in the tab strip's order, then recent ones. A
+conversation in no team is on that list.
+
+**Which conversations are on the list, and which are not.** Every tab open in this
+window except the one you are typing in: pointing at the conversation you are in is
+not a reference, so it is left off. Then the twenty most recent conversations in this
+project, by when you last spoke in them, read from the disk again each time the list
+opens, so a conversation started in another window a minute ago is on it. Over
+`--host` those are the far machine's. A conversation older than those twenty, or in
+another project, is not on the list: `/resume` is the way to it.
 
 The first row is the words **team**, **chat** and **file**. Each is a button with a
 background under the pointer and a one-line hint (`only teams · click`). A press
 types `@team:`, `@chat:` or `@file:`, and the list keeps only that section. Typing
-filters every section that is still showing.
+filters every section that is still showing. Matching is by prefix, then substring,
+then the letters in order — `cloudfl`, `worker` and `cfwd` all find `Cloudflare worker
+deploy` — against the title, the handle and the slug, never the transcript.
+
+The bare `@` keeps eight teams and eight conversations beside the tasks and files;
+`@chat:` keeps every conversation on the list (thirty-two at most) and scrolls.
 
 Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
 inserts `@handle`, or a short slug of its title when it has none, and the row's

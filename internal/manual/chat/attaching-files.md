@@ -561,6 +561,11 @@ filters every section at once. `@file:` keeps only files, `@team:` only teams,
 `@chat:` only conversations. The three words are buttons: a press types that prefix,
 the word under the pointer takes a background, and the hint names the key, `click`.
 
+The conversations on it are the tabs open in this window, except the one you are
+typing in, and then the twenty most recent in this project, read again each time
+the list opens. One older than that, or in another project, is not on it. The bare
+`@` shows eight of them; `@chat:` shows them all and scrolls.
+
 Choosing a file still puts `@` and the path in the sentence, and nothing is read
 until the model asks. Choosing a team puts `●harbor` in the team's colour. Choosing
 a conversation puts `@handle`, or a short slug of the title when it has no handle,

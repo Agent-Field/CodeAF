@@ -120,8 +120,9 @@ type completion struct {
 	older int
 
 	// teams and chats are the catalogs this list ranks, copied from memory on
-	// the update loop (mention.go). recents is the recent-conversation snapshot
-	// loaded once, off the loop, because that list can touch the disk.
+	// the update loop (mention.go). recents is the recent-conversation snapshot,
+	// read off the loop because that list can touch the disk, and read again
+	// each time the list opens so a conversation started since is on it.
 	teams   []mentionTeam
 	chats   []mentionChat
 	recents []mentionChat
@@ -131,7 +132,9 @@ type completion struct {
 	// scope is which section a prefix narrowed to: "team", "chat", "file", or
 	// "" for every section at once.
 	scope string
-	// recentsHeld says a read of the recent list is already in flight.
+	// recentsHeld says a read of the recent list is in flight. It is set when
+	// the read is started and cleared when its rows land, and a test that
+	// hands the list its own recents sets it to keep the door shut.
 	recentsHeld bool
 
 	// lines is what the overlay DRAWS, section rules included, and sel is the

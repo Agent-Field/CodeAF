@@ -1535,6 +1535,11 @@ the list keeps only that section. Press the same word again and the prefix comes
 Typing still filters every section that is showing. A command's path argument
 (`/image `, `/export `, `/attach `) stays a file list and has no prefix row.
 
+The conversations section is the tabs open in this window, except the one you are
+typing in, then the twenty most recent conversations in this project, read again on
+each opening of the list. The bare `@` keeps eight; `@chat:` keeps them all and
+scrolls.
+
 **Folders are on the list too**, spelled with a trailing slash — `internal/tui3/` — and
 marked `folder` on the right the way a picture row is marked `img`. Choosing one puts
 its path into your sentence exactly as choosing a file does. It does not choose that

@@ -17,9 +17,12 @@ import (
 //
 // THE CATALOG IS MEMORY. Teams are the ones this window already loaded
 // ([app.wall.teams]). Conversations are the ones open in this window, then the
-// recent list the door already handed the surface. Nothing here opens a file
-// on a frame. The recent list is read once, inside a command, because that
-// read can touch the disk.
+// recent list the door hands the surface. Nothing here opens a file on a
+// frame. The recent list is read inside a command, because that read can
+// touch the disk, and it is read again EVERY TIME THE LIST OPENS: a snapshot
+// taken once per process left a conversation started in another window, or
+// named after this window's first "@", off the list for as long as the window
+// lived, while its name sat in plain sight on a tab strip.
 //
 // A PREFIX NARROWS THE LIST TO ONE SECTION. "@team:", "@chat:" and "@file:"
 // are the three, and the same three words sit on the list's first row, each
@@ -36,9 +39,16 @@ const (
 	scopeTeam = "team"
 	scopeChat = "chat"
 	scopeFile = "file"
-	// mentionRows is how many teams, and how many conversations, one list draws.
-	// It is the file list's own screenful.
-	mentionRows = 8
+	// mentionRows is how many teams, and how many conversations, the MIXED list
+	// keeps — the bare "@", where every section shares one screenful and the
+	// files and tasks under them still have to be reachable. It is the file
+	// list's own screenful.
+	mentionRows = completeRows
+	// mentionRowsScoped is the cap once a prefix has narrowed the list to one
+	// section. The person asked for conversations and nothing else, so the
+	// list holds as many as the file list does and scrolls, instead of showing
+	// eight of thirty open tabs and no sign of the rest.
+	mentionRowsScoped = completeRows * 4
 	// mentionRecentCap is how many recent conversations the snapshot keeps.
 	mentionRecentCap = 24
 )
@@ -93,7 +103,7 @@ func (c *completion) rankMentions(needle string) {
 		for _, team := range c.teams {
 			if _, ok := pathScore(team.name+" "+team.slug, needle); ok {
 				c.teamHits = append(c.teamHits, team)
-				if len(c.teamHits) >= mentionRows {
+				if len(c.teamHits) >= mentionCap(c.scope) {
 					break
 				}
 			}
@@ -104,12 +114,21 @@ func (c *completion) rankMentions(needle string) {
 			hay := chat.title + " " + chat.handle + " " + chat.slug
 			if _, ok := pathScore(hay, needle); ok {
 				c.chatHits = append(c.chatHits, chat)
-				if len(c.chatHits) >= mentionRows {
+				if len(c.chatHits) >= mentionCap(c.scope) {
 					break
 				}
 			}
 		}
 	}
+}
+
+// mentionCap is how many rows one section keeps: a screenful on the mixed
+// list, the file list's own cap once a prefix has made it the only section.
+func mentionCap(scope string) int {
+	if scope == "" {
+		return mentionRows
+	}
+	return mentionRowsScoped
 }
 
 // layoutMentions appends the team section and the conversation section.
@@ -302,8 +321,15 @@ func (a *app) mentionHandle(key string) string {
 // mentionRecentsMsg is the recent list, read off the loop.
 type mentionRecentsMsg struct{ rows []Session }
 
-// loadMentionRecents reads the door's recent list once. The door's function
-// may open a directory, so it runs inside the command and not on the loop.
+// loadMentionRecents reads the door's recent list. The door's function may
+// open a directory, so it runs inside the command and not on the loop.
+//
+// IT RUNS ON EVERY OPENING OF THE LIST, not once per process. The read is the
+// door's own bounded walk — twenty transcripts at most, on the keystroke that
+// asks (cmd/codeaf's v3RecentSessions) — and the keystroke is "@", not every
+// letter after it: [app.syncLists] asks only when the list was closed and is
+// now open. One read is held at a time; a second "@" while the first is still
+// walking waits for that answer rather than starting another walk.
 func (a *app) loadMentionRecents() tea.Cmd {
 	if a.comp.recentsHeld || a.recentSessions == nil {
 		return nil
@@ -320,15 +346,22 @@ func (a *app) loadMentionRecents() tea.Cmd {
 }
 
 func (a *app) mentionRecentsLoaded(rows []Session) {
-	a.comp.recentsHeld = true
+	// The read has landed, so the next opening of the list may ask again.
+	a.comp.recentsHeld = false
 	a.comp.recents = a.comp.recents[:0]
 	seen := map[string]bool{}
 	for _, row := range rows {
 		file := strings.TrimSpace(row.File)
-		if file == "" || seen[file] {
+		// THE KEY IS THE CANONICAL FILE, the same spelling every tab carries
+		// (chattabs.go's [chatTab.key]). Keyed on the row's own spelling, a
+		// home reached through a symlink listed the conversation in front,
+		// and every open tab a second time, as recent rows: `/tmp` is
+		// `/private/tmp` on a Mac, and the walk spells what it was given.
+		key := a.convKey(file)
+		if key == "" || seen[key] {
 			continue
 		}
-		seen[file] = true
+		seen[key] = true
 		title := strings.TrimSpace(row.Title)
 		if title == "" {
 			title = strings.TrimSpace(row.Opening)
@@ -337,8 +370,8 @@ func (a *app) mentionRecentsLoaded(rows []Session) {
 			continue
 		}
 		a.comp.recents = append(a.comp.recents, mentionChat{
-			key: file, file: file, title: title,
-			handle: a.mentionHandle(file), slug: mentionSlug(title),
+			key: key, file: file, title: title,
+			handle: a.mentionHandle(key), slug: mentionSlug(title),
 			note: title,
 		})
 	}
