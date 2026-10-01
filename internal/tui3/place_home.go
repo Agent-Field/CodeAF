@@ -374,7 +374,7 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 	_, stacked := a.homeStacked()
 	var strip []placeRow
 	if !a.home.searching() && !a.home.phone && !stacked {
-		strip = a.addMachineStrip(width, room)
+		strip = a.standingStrip(width, room)
 	}
 	room -= len(strip)
 	if cols := homeGridCols(width); !a.home.searching() && !a.home.phone &&
