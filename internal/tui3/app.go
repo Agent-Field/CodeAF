@@ -2234,6 +2234,8 @@ type app struct {
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
 	addMachine addMachine
+	// resume is the one-time "continue where you left off" offer (homeband_resume.go).
+	leftOff resumeOffer
 	// dirFeed is this window's hold on the directory's change feed while home is
 	// being looked at, and readOwed that a frame arrived while a read was in
 	// flight (machinewatch.go).
