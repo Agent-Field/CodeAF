@@ -219,15 +219,35 @@ slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the
 component over their own models, but they have no provider row behind them, so nothing
 unfolds under them and the foot does not offer the key.
 
-The cursor opens **on the model in use**, which is also the marked row, so enter with
-nothing typed confirms rather than changes.
+When a connected provider has an empty cached list, codeaf fetches its model list once
+at launch. `ctrl+r` in `/model` asks for a fresh list; the settings rows use the list
+already known.
+
+## Where the model picker cursor opens — Enter confirms, refresh and ctrl+u return
+
+Every model list opens on the model it holds. `/model` opens on the model in use,
+highlighted and on screen on the first frame, so enter with nothing typed confirms.
+The settings slots and roles, a task's model word, home's draft, the task composer's
+`alt+o` and a lane list or chip follow the same rule. A refresh returns the cursor to
+the held model with the typed filter kept; `ctrl+u` emptying the box returns there too.
+If that model is absent, the first selectable row is used, skipping unavailable
+notices. `/model <query>` and typing a filter start the narrowed list at its first row.
+
+The model in use is bold in the accent with no band of its own. The band belongs to
+the cursor, and a pointer hovering another row lifts that row too. Every model list
+owns the mouse wheel while it is up: `/model`, settings slots and roles, home's draft
+and the task composer walk three rows a notch, clamped at both ends, while the page
+beneath stays put. The cursor's row stays on screen with headings and extra lines
+included in the window's size.
 
 **Enter does not close the list.** It switches, the mark moves to the row you chose, and
 the list stays where it is — so two models can be compared on their prices, chosen between,
 and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
 what enter did is already done.
 
-**The box searches the model's name and nothing else.** Filtering splits what you type on
+## Searching the model picker by name
+
+**The model picker's box searches the model's name and nothing else.** Filtering splits what you type on
 whitespace; every word must match, each scored by the fuzzy alignment every picker on this
 surface shares — a word that starts an id, or lands right after a `/` or a hyphen, outranks
 the same letters sitting loose inside it. So `ds v4` finds `deepseek/deepseek-v4-flash` and
@@ -3430,7 +3450,8 @@ Four things worth knowing:
   With one service, which is most doors, there are no headings and the arrow means the
   whole list.
 - **Pressing the key puts the cursor on the top row**, because the top row is the answer to
-  the question you just asked. Opening the list still lands on the model in use. It sorts
+  the question you just asked. Opening `/model` and every other model door lands visibly on the model it holds,
+  so enter with nothing typed confirms. A refresh returns there too. The sort key sorts
   whatever the filter kept, so `deep` then `alt+s` is the deepseek rows in that column's
   order.
 

@@ -1031,10 +1031,27 @@ esc itself changes **nothing** — it closes the list and gives your half-typed 
 frame back as they were. What enter already did is already done; esc does not undo it. The
 filter is forgotten when the picker closes.
 
-The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
+## Where the /model cursor opens — Enter confirms the model in use
 
-The placeholder in the empty filter box reads:
+Every model list opens on the model it holds: `/model` opens on the model in use,
+highlighted and on screen on the first frame, so enter with nothing typed confirms it.
+A settings slot or role, a task's model word, home's draft, the task composer's `alt+o`
+and a lane list or chip likewise open on their held model. A refresh puts the cursor
+back on that model, keeping the typed filter; `ctrl+u` emptying the box returns there
+too. If the held model is absent, the cursor rests on the first selectable row, skipping
+unavailable notices. `/model <query>` and typing a filter start the narrowed list at
+its first row.
+
+The model in use is bold in the accent with no band of its own. The cursor supplies
+the highlighted band, and hovering another row lifts that row too. Arrows, page keys
+and the wheel stop at the list's ends with the cursor visibly on screen, counting the
+headings and extra lines. The wheel walks the open model list, three rows a notch,
+in `/model`, settings slots and roles, home's draft and the task composer; the page
+beneath stays put until the list closes.
+
+## Model picker filter box and key hints
+
+The model picker's empty filter box reads:
 
 ```
 filter by name · ctrl+r refresh
@@ -1058,7 +1075,9 @@ back` — the foot names whichever key actually works at that moment. What is le
 the box is the name of the box and the one key that is about the LIST rather than about the
 row under the cursor.
 
-Choosing a model sets it on the agent, teaches the surface its context window and tells
+## Choosing a model and saving it for the next launch
+
+Choosing a model in `/model` sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
 notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
 opens on it. Over `--host` the switch takes for the session and is not written down: the
