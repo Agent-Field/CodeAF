@@ -73,7 +73,7 @@ func (c *simClock) advance(d time.Duration) {
 
 // settle waits until the drive side's loops are asleep again, that is, until
 // the work the last advance woke has finished. The heartbeat loop always sleeps
-// on the clock; the flush loop sleeps on it inside a window and otherwise waits
+// on the clock; the flush loop sleeps on it only in a failure backoff and otherwise waits
 // for a noted turn, which is when nothing is noted.
 func (c *simClock) settle() {
 	for !c.settled() {
@@ -174,8 +174,10 @@ func runScript(t *testing.T, idle func(*Drive)) cost {
 }
 
 // TestScriptedSessionCosts pins what a busy chat costs the relay: forty tool
-// calls over about three minutes make one publish per five-second window that
-// had news, plus one when the agent stops, and each publish is one frame in one
+// calls over about three minutes make at most one publish per call (calls are
+// seconds apart and an upload takes milliseconds here, so nearly each goes up on
+// its own; a call that lands during an upload shares the next one), and each
+// publish is one frame in one
 // put however many objects its calls sealed. Over the engine's daemon, as a
 // chat runs, the frame packing once fell to one frame per object (329 puts for
 // 28 publishes on this script); the last line of this test is that regression.
@@ -185,8 +187,8 @@ func TestScriptedSessionCosts(t *testing.T) {
 	if got.Frames != got.Publishes || got.Puts != got.Frames {
 		t.Fatalf("%d publishes made %d frames in %d puts; want one frame and one put each", got.Publishes, got.Frames, got.Puts)
 	}
-	const windows = int64(4*(10*callGap+turnGap)/DefaultInterval) + 4 // a window each, plus one idle upload per turn
-	if got.Publishes == 0 || got.Publishes > windows {
-		t.Fatalf("%d publishes, want between 1 and %d", got.Publishes, windows)
+	const calls = 4*10 + 4 // a publish per call at most, plus one idle upload per turn
+	if got.Publishes == 0 || got.Publishes > calls {
+		t.Fatalf("%d publishes, want between 1 and %d", got.Publishes, calls)
 	}
 }

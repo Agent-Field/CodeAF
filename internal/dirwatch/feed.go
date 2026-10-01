@@ -27,12 +27,16 @@ type State struct {
 	// Joined holds the newest MaxJoined device-joined events, oldest first.
 	// A surface shows each Seq above the newest it has shown, once.
 	Joined []Joined
+	// Refused is the final refusal the relay ended the socket with (ErrRevoked
+	// or ErrRotated), nil otherwise. The feed does not dial again once it is
+	// set, so a surface that wants to tell the person has this one place to ask.
+	Refused error
 }
 
 // equal says whether two states are the same to a surface.
 func (s State) equal(o State) bool {
 	return s.Version == o.Version && s.Up == o.Up && s.Vouching == o.Vouching &&
-		slices.Equal(s.Online, o.Online) && slices.Equal(s.Joined, o.Joined)
+		slices.Equal(s.Online, o.Online) && slices.Equal(s.Joined, o.Joined) && s.Refused == o.Refused
 }
 
 // Follower is one surface's view of the feed.
@@ -137,10 +141,22 @@ func (f *Feed) set(edit func(*State)) {
 func (f *Feed) run(ctx context.Context) {
 	defer close(f.done)
 	for ctx.Err() == nil {
-		wait, again := f.retryIn(f.session(ctx))
-		if !again || !f.sleep(ctx, wait) {
+		err := f.session(ctx)
+		wait, again := f.retryIn(err)
+		if !again {
+			f.refuse(err)
 			return
 		}
+		if !f.sleep(ctx, wait) {
+			return
+		}
+	}
+}
+
+// refuse records the refusal that ended the feed for good, so followers hear it.
+func (f *Feed) refuse(err error) {
+	if errors.Is(err, ErrRevoked) || errors.Is(err, ErrRotated) {
+		f.set(func(st *State) { st.Refused = err })
 	}
 }
 

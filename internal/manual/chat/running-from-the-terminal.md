@@ -837,7 +837,9 @@ is refused in words. Only the run engine keeps this record, so `--continue` is r
 `CODEAF_TASK_BELT` selects the older engine.
 
 With `CODEAF_CELLS=1`, `codeaf do` runs inside a cell, the same kind of folder a chat is, and
-every tool call the run's workers make is sealed as a turn: `codeaf cell log` lists the turns,
+the tool calls the run's workers make are sealed as turns, one turn for each set of calls the
+model asked for together, taken after the calls' results are written down, and the end of
+a worker's turn is sealed after its answer: `codeaf cell log` lists the turns,
 and the kept record holds a `cell` file naming the cell. `codeaf do --continue <id>` then goes
 on in that same cell from its last sealed turn: its files stand as that turn left them, and the
 new run is told how many turns were sealed. A call that began and never finished (the run was
