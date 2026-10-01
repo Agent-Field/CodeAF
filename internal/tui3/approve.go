@@ -317,6 +317,7 @@ func (a *app) cardKey(msg tea.KeyPressMsg) tea.Cmd {
 	cmd, closeAfter := a.pair.card.key(a, msg.String())
 	if closeAfter {
 		a.pair.close()
+		a.letGoOffHome()
 	}
 	a.touch()
 	return cmd
