@@ -63,6 +63,9 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*sync
 		report(err)
 		return nil, err
 	}
+	if syncsetup.Quiet(home.Dir()) {
+		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
+	}
 	if line, first := s.FirstRun(); first {
 		surfaceNotices.Say(line)
 	}

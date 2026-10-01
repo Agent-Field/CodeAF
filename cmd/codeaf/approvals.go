@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -83,7 +84,9 @@ func (d *approvalsDoor) recall(p tui3.PendingDevice) (pair.Asking, error) {
 }
 
 func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error {
-	return d.answer(p, func(who pair.Approver, as pair.Asking) error { return who.Approve(ctx, as) })
+	return d.answer(p, func(who pair.Approver, as pair.Asking) error {
+		return errors.Join(who.Approve(ctx, as), identity.EndSolo(d.dir))
+	})
 }
 
 func (d *approvalsDoor) Deny(ctx context.Context, p tui3.PendingDevice) error {
