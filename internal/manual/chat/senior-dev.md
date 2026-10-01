@@ -332,13 +332,20 @@ not a git repository).
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
 
-## A run codeaf sends back — carries on on the last run's branch, a new branch after a pass
+## A run codeaf sends back — carries on on the last run's branch, a pull request's branch, a new branch after a pass
 
 **A run codeaf sends back carries on on the last run's branch.** When the chat hands the
 work back after an ending, before you have said anything, the new run is cut in a copy of
 its own on the branch the last run left, and its receipt says `carrying on on its branch
-<branch>, where the last run left it`. What earlier runs committed is counted as the line's
-work, so a run that adds nothing never reads it as nothing. **A branch whose work passed is
+<branch>, where the last run left it`. **Its ending counts only its own files**, from where
+the branch stood when it began — not the earlier runs' work, and not what the branch was given
+between runs, such as a rebase for its pull request: `its work is on the branch <branch> in
+<folder>, N files past <commit>, where the last run left it`. A run that adds nothing says
+`it added nothing to the branch <branch> in <folder>, which still holds the earlier runs'
+work as the last run left it`. **A branch that tracks a remote one — a pull request's
+branch — is pushed, not merged**: the ending says ``<branch> tracks origin/<branch>, so
+`git -C '<folder>' push origin <branch>` sends this work there``, with no stash and no merge
+into your checkout. **A branch whose work passed is
 never written again**: the next hand-off before you speak — the rest of the work, or the
 next piece — is cut on a new branch from its tip, and says `on a new branch <new> cut from
 <branch>, whose work passed and which it leaves as it is`; its ending says its branch is

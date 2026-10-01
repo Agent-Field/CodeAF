@@ -241,23 +241,40 @@ func (f *ProgramFolder) takeCarry(carry *programCarry) {
 		f.Home, f.Start, f.From = carry.Home, tip, carry.Branch
 	default:
 		f.Untracked = slices.Clone(carry.Untracked)
-		// THE LINE'S START, NOT THIS RUN'S. "Changed nothing" and the files the
-		// ending counts are measured from where the first run of the line began,
-		// so a sent-back run can never read the earlier runs' work as none.
+		// THE LINE'S START DECIDES WHETHER THE BRANCH HOLDS WORK, so a sent-back
+		// run can never read the earlier runs' work as none. THE BRANCH'S TIP
+		// DECIDES WHICH FILES ARE THIS RUN'S ([ProgramFolder.ownBase]): a branch
+		// rebased onto newer history between the runs — for its pull request —
+		// once had a run that changed 13 files end saying 117, every file the
+		// rebase brought with it counted as the run's own.
 		f.Branch, f.Home, f.Start, f.Snapshot, f.Continues = carry.Branch, carry.Home, carry.Start, carry.Snapshot, true
+		f.ResumedAt = tip
 	}
 }
 
-// base is the commit the program's own work is counted from: the one carrying
+// base is the commit the program's branch is counted from: the one carrying
 // the person's uncommitted changes when its branch begins with one, and the
 // one it was cut from otherwise. What the person had not committed is never
 // counted as the program's work, and a run that added nothing to it changed
-// nothing.
+// nothing. For a run that carries on an earlier run's branch it is where the
+// line began, so the branch is never read as holding nothing.
 func (f *ProgramFolder) base() string {
 	if f.Snapshot != "" {
 		return f.Snapshot
 	}
 	return f.Start
+}
+
+// ownBase is the commit this run's own work is counted from: where the branch
+// it carries on stood when it began ([ProgramFolder.ResumedAt]), and its base
+// for every other run. The files an ending names are counted from here, so
+// the earlier runs' work, and what the branch was given between the runs, are
+// never said to be this one's.
+func (f *ProgramFolder) ownBase() string {
+	if f.Continues && f.ResumedAt != "" {
+		return f.ResumedAt
+	}
+	return f.base()
 }
 
 // snapshotLeftBehind carries what the person's checkout has not committed
@@ -1022,9 +1039,15 @@ func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 		stays = f.settleCopyWork(&end, result, gone)
 	}
 	if tip := branchCommit(f.Repo, f.Branch); tip != "" {
-		end.Changed = changedBetween(f.Repo, f.base(), tip)
+		end.Changed = changedBetween(f.Repo, f.ownBase(), tip)
 		end.Kept = tip != f.base()
+		end.Added = tip != f.ownBase()
 		end.Committed = tip != before
+		end.Upstream, end.UpstreamRemote, end.UpstreamRef = branchUpstream(f.Repo, f.Branch)
+		if f.Continues && f.Snapshot != "" {
+			_, err := git(f.Repo, "merge-base", "--is-ancestor", f.Snapshot, tip)
+			end.SnapshotHeld = err == nil
+		}
 	}
 	if stays != "" {
 		end.CopyKept, end.CopyLeft = stays, f.Dir
@@ -1032,6 +1055,22 @@ func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 	}
 	end.CopyLeft = f.removeCopy()
 	return end
+}
+
+// branchUpstream is the remote branch branch tracks in repo, as
+// `<remote>/<branch>`, with the remote and the branch's name there; all empty
+// when it tracks none, or tracks another branch of repo itself.
+func branchUpstream(repo, branch string) (upstream, remote, ref string) {
+	out, err := git(repo, "for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/"+branch)
+	if err != nil {
+		return "", "", ""
+	}
+	remote, ref, _ = strings.Cut(strings.TrimSpace(out), "\x00")
+	ref = strings.TrimPrefix(ref, "refs/heads/")
+	if remote == "" || remote == "." || ref == "" {
+		return "", "", ""
+	}
+	return remote + "/" + ref, remote, ref
 }
 
 // settleCopyWork puts what the program left in its copy somewhere that
@@ -1546,6 +1585,12 @@ func (e ProgramFolderEnd) copySentence() string {
 		said = "it never started, so its copy is removed and its empty branch " + f.Branch + " deleted; your checkout was not touched"
 	case e.Moved:
 		said = e.movedCopyWords(merge)
+	case e.Kept && f.Continues && !e.Added:
+		// A RUN THAT ADDED NOTHING TO THE BRANCH IT CARRIED ON says so, and
+		// that the branch still holds the earlier runs' work: it is neither
+		// "changed nothing" about the line nor a count of files it never wrote.
+		said = "it added nothing to the branch " + f.Branch + " in " + f.Repo + ", which still holds the earlier runs' work as the last run left it" +
+			"; your checkout was not touched"
 	case e.Kept && e.Gone && e.Committed:
 		said = "its work so far is on the branch " + f.Branch + " in " + f.Repo + ", " + fileCount(len(e.Changed)) + e.fromWords() +
 			", committed when codeaf found its run had gone; " + merge
@@ -1577,13 +1622,31 @@ func (e ProgramFolderEnd) copySentence() string {
 // ONLY THE INPUTS IT NAMES: shell quotes keep each path one word, but git still
 // reads pathspec patterns, so a name with pattern characters, or a leading
 // colon git would read as magic, needs literal magic.
+//
+// A BRANCH THAT TRACKS A REMOTE ONE IS PUSHED, NOT MERGED. A run that carries
+// on a branch somebody has published since — for its pull request — adds to
+// work that is on its way in through that request; merging it into the
+// person's own checkout would bring an unreviewed branch into theirs by hand,
+// and the stash in front of it would put aside changes that have nothing to
+// do with it.
 func (e ProgramFolderEnd) mergeWords() string {
 	f := e.Folder
 	repo := shellQuoted(f.Repo)
+	if e.Upstream != "" {
+		push := f.Branch
+		if e.UpstreamRef != f.Branch {
+			push += ":" + e.UpstreamRef
+		}
+		return f.Branch + " tracks " + e.Upstream + ", so `git -C " + repo + " push " + e.UpstreamRemote + " " + push + "` sends this work there"
+	}
 	merge := "`git -C " + repo + " merge " + f.Branch + "`"
 	var why, aside []string
-	if f.Snapshot != "" {
+	switch {
+	case f.Snapshot != "" && !f.Continues:
 		why = append(why, "its branch begins with your uncommitted changes as they were when it started")
+		aside = append(aside, "`git -C "+repo+" stash`")
+	case f.Snapshot != "" && e.SnapshotHeld:
+		why = append(why, "its branch begins with your uncommitted changes as they were when the first run of this work started")
 		aside = append(aside, "`git -C "+repo+" stash`")
 	}
 	if changed := e.changedInputs(); len(changed) > 0 {
@@ -1616,12 +1679,18 @@ func (e ProgramFolderEnd) changedInputs() []string {
 }
 
 // fromWords says a branch cut from an earlier run's holds that run's work too,
-// which a merge of it brings in with this one's ([ProgramFolder.From]).
+// which a merge of it brings in with this one's ([ProgramFolder.From]), and
+// that the files a run carrying on a branch counts are the ones past where the
+// last run left it ([ProgramFolder.ResumedAt]).
 func (e ProgramFolderEnd) fromWords() string {
-	if e.Folder.From == "" {
-		return ""
+	f := e.Folder
+	switch {
+	case f.Continues && f.ResumedAt != "":
+		return " past " + shortSha(f.ResumedAt) + ", where the last run left it"
+	case f.From != "":
+		return ", on top of " + f.From + ", whose work it holds too"
 	}
-	return ", on top of " + e.Folder.From + ", whose work it holds too"
+	return ""
 }
 
 // movedCopyWords is where the work is when the program left its copy off its
@@ -1637,8 +1706,8 @@ func (e ProgramFolderEnd) movedCopyWords(merge string) string {
 	if e.Saved != "" {
 		said += "; what it committed there is kept on the branch " + e.Saved
 	}
-	if e.Kept {
-		said += "; " + f.Branch + " in " + f.Repo + " holds " + fileCount(len(e.Changed)) + ", and " + merge
+	if e.Kept && (e.Added || !f.Continues) {
+		said += "; " + f.Branch + " in " + f.Repo + " holds " + fileCount(len(e.Changed)) + e.fromWords() + ", and " + merge
 	}
 	return said
 }

@@ -203,6 +203,13 @@ type ProgramFolder struct {
 	// ([programCarry.Fresh]). Start is then that branch's tip, so the files the
 	// ending counts are this run's own.
 	From string `json:"from,omitempty"`
+	// ResumedAt is the commit the branch a run carries on stood at when this
+	// run began ([ProgramFolder.Continues]): the earlier runs' work, and
+	// whatever the branch was given between the runs — a rebase onto newer
+	// history for its pull request among them. The files the ending counts are
+	// measured from it, so they are this run's own ([ProgramFolder.ownBase]).
+	// Empty for every other run, and in a record an older build wrote.
+	ResumedAt string `json:"resumedAt,omitempty"`
 	// IgnoredAtStart keeps paths git ignored before the run changed its rules,
 	// together with the person's untracked inputs copied into the worktree.
 	IgnoredAtStart []string `json:"ignoredAtStart,omitempty"`
@@ -422,11 +429,28 @@ func porcelainZPaths(out string) []string {
 // [ProgramFolder.Finish] found it and made it.
 type ProgramFolderEnd struct {
 	Folder ProgramFolder
-	// Changed is every path the program's branch changed from where it
-	// started.
+	// Changed is every path the program's branch changed from where this run
+	// started ([ProgramFolder.ownBase]).
 	Changed []string
-	// Kept says the program's branch holds its work.
-	Kept bool
+	// Kept says the program's branch holds its work: for a run that carries on
+	// an earlier run's branch, the line's work, so a run that adds nothing
+	// still lands on the branch that holds it. Added says this run itself moved
+	// the branch past where it found it, which for every other run is Kept.
+	Kept  bool
+	Added bool
+	// Upstream is the remote branch the program's branch tracks, as
+	// `<remote>/<branch>` — set when a run carries on a branch somebody has
+	// published since, for its pull request — and UpstreamRemote and
+	// UpstreamRef its two halves. Such a branch is brought in by pushing it,
+	// not by merging it into the person's checkout ([ProgramFolderEnd.mergeWords]).
+	Upstream       string
+	UpstreamRemote string
+	UpstreamRef    string
+	// SnapshotHeld says a branch a run carries on still holds the commit the
+	// line's first run carried the person's uncommitted changes in on
+	// ([ProgramFolder.Snapshot]), which a rebase since can have left behind. A
+	// run that cut its own branch begins with that commit, and is not asked.
+	SnapshotHeld bool
 	// Dropped says the program's branch was deleted because it holds
 	// nothing: for a run in a copy, one readied and never started
 	// ([ProgramFolder.abandon]); for a run in the person's checkout itself,
