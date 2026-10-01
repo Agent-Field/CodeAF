@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: ctrl+enter queues a follow-up, and queued messages can be taken back
-pr: 1689
+pr: 1714
 surface: [chat, engine]
 invalidates:
   - "Queueing a message for after the current turn was `ctrl+q`. It is `ctrl+enter`, on a terminal that can tell that chord from a plain enter, and `ctrl+q` is deliberately unbound."
