@@ -584,6 +584,9 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.resumeKeyHandler(msg.String()); took {
 		return cmd, true
 	}
+	if msg.String() == deviceKey && a.devicesWanted() {
+		return a.bringWork(), true
+	}
 	a.settleExchangeFocus()
 	ex := a.paneExchange()
 	if ex == nil || !ex.focused {
