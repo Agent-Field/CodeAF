@@ -21,7 +21,7 @@ Press `alt+d` to open the steps, and `alt+d` again to close them:
 ```
 
 1. On the new device, install codeaf and run `codeaf pair`. It makes a link and waits.
-2. On this device, paste that link into the card, or paste it anywhere on home, or type it as your message there and press enter. The approve screen opens (see "Approve a new device" below). Text that is not a pair link stays in the box as before.
+2. On this device, paste that link into the card. The approve screen opens (see "Approve a new device" below).
 
 The card goes away once you have two devices. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 

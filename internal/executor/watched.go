@@ -32,9 +32,6 @@ type watched struct {
 // ForSetup implements SetupSeat: the setup form of the seat is watched too.
 func (w watched) ForSetup() Seat { return Watching(ForSetup(w.Seat), w.obs) }
 
-// Settle implements Settler: the seat beneath keeps the record.
-func (w watched) Settle(ctx context.Context) { Settle(ctx, w.Seat) }
-
 // NoteModelCall implements ModelNoter: the seat beneath keeps the record.
 func (w watched) NoteModelCall(m ModelCall) { NoteModelCall(w.Seat, m) }
 
@@ -176,3 +173,6 @@ func isAssignment(word string) bool {
 	name, _, found := strings.Cut(word, "=")
 	return found && name != "" && !strings.ContainsAny(name, `/'"$`)
 }
+
+// Settle implements Settler: the seat beneath keeps the record.
+func (w watched) Settle(ctx context.Context) { Settle(ctx, w.Seat) }

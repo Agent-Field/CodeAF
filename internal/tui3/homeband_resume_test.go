@@ -114,6 +114,9 @@ func TestResumeOffersOnceAndLeadsToTheTakeoverCard(t *testing.T) {
 	if !ok || ask.question.Kind != homeContinueKind {
 		t.Fatal("the takeover card was not raised")
 	}
+	if ask.pick != continueYesAt {
+		t.Fatalf("alt+c left the cursor on %d, not on `continue here`", ask.pick)
+	}
 	if leftOffFrame(a) != "" {
 		t.Fatal("the offer stayed after it was taken up")
 	}

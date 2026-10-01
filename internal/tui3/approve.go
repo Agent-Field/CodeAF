@@ -31,8 +31,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/Agent-Field/codeaf/internal/pair"
 )
 
 // PendingDevice is a request to join as the person sees it. Code is what the
@@ -89,18 +87,6 @@ const (
 // code with an optional key, or the codeaf.link URL. The six-digit code of the
 // older pairing never matches.
 var linkShape = regexp.MustCompile(`(?i)^(https?://)?(codeaf\.link/p/)?[0-9a-hjkmnp-tv-z]{8}([.#].+)?$|^(https?://)?codeaf\.link/p/.+$`)
-
-// isPairLink is the one recogniser for a link pasted or typed where no pairing
-// was asked for: it carries the key, or it is the codeaf.link URL. A bare
-// eight-letter code is left alone, because a word can have that shape.
-func isPairLink(typed string) bool {
-	text := strings.TrimSpace(typed)
-	if !isLinkShape(text) {
-		return false
-	}
-	ref, err := pair.ReadLink(text)
-	return (err == nil && len(ref.Key) > 0) || strings.Contains(strings.ToLower(text), "codeaf.link/p/")
-}
 
 func isLinkShape(typed string) bool { return linkShape.MatchString(strings.TrimSpace(typed)) }
 
