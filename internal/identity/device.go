@@ -98,10 +98,7 @@ func newDevice(id Identity) (Dev, error) {
 	if err != nil {
 		return Dev{}, err
 	}
-	pub := ed25519.NewKeyFromSeed(seed[:]).Public().(ed25519.PublicKey)
-	cert := Cert{V: version, Device: hex.EncodeToString(pub), Made: time.Now().UnixMilli()}
-	cert.Sig = hex.EncodeToString(id.Sign(cert.body()))
-	return Dev{Cert: cert, seed: seed}, nil
+	return Seed{seed: seed}.Join(IssueCert(id, Seed{seed: seed}.Public(), time.Now()))
 }
 
 func (d Dev) document() deviceDocument {
