@@ -53,6 +53,10 @@ func TestEveryWordOfTheNeedleMustMatch(t *testing.T) {
 		{"harbor harbor", "har bor", true},
 		{"the parser parser the-parser", "parser about", false},
 		{"anything", "   ", true},
+		// Only the word still being typed may match by its letters in order.
+		{"side chat side-chat", "sd chat", false},
+		{"side chat side-chat", "side cht", true},
+		{"side chat side-chat", "is a chat", false},
 	} {
 		if _, ok := pathScore(tc.hay, strings.ToLower(tc.needle)); ok != tc.ok {
 			t.Errorf("pathScore(%q, %q) = %v, want %v", tc.hay, tc.needle, ok, tc.ok)
@@ -80,6 +84,30 @@ func TestTheListClosesOverASentenceAfterAMention(t *testing.T) {
 	typeInto(t, a, "@chat:zzz")
 	if !a.comp.open {
 		t.Fatal("one word that matches nothing closed the list instead of saying so")
+	}
+
+	// AND A TITLE THAT SHARES THE LETTERS. `is`, `a` and `chat` are all in
+	// `side chat` in order, which is what reopened the list and let enter put
+	// the mention back over the sentence.
+	a = mentionApp(t)
+	typeInto(t, a, "@chat:side")
+	drive(t, a, key("enter"))
+	typeInto(t, a, " is a chat")
+	if a.comp.open {
+		t.Fatalf("the list is up over %q", a.input.String())
+	}
+	drive(t, a, key("enter"))
+	if got := a.input.String(); got == "@side-chat" {
+		t.Fatal("enter put the mention back in place of the sentence")
+	}
+	sent := false
+	for _, e := range a.entries {
+		if e.kind == entryUser && strings.Contains(e.text, "@side-chat is a chat") {
+			sent = true
+		}
+	}
+	if !sent {
+		t.Fatalf("enter did not send the whole line; box=%q", a.input.String())
 	}
 }
 
@@ -199,6 +227,16 @@ func TestTheAtListIsTheSameOnEveryBox(t *testing.T) {
 			drive(t, a, key("enter"))
 			if got := b.box(a); got != "@who-is-kim-jong-il" {
 				t.Fatalf("choosing the conversation typed %q", got)
+			}
+			// THE SENTENCE AFTER THE MENTION IS NOT A SEARCH, even when every
+			// one of its words shares letters with the title: the list stays
+			// closed and the words stay in the box.
+			typeInto(t, a, " so it is")
+			if c.open {
+				t.Fatalf("the list reopened over %q", b.box(a))
+			}
+			if got := b.box(a); got != "@who-is-kim-jong-il so it is" {
+				t.Fatalf("the sentence after the mention became %q", got)
 			}
 
 			a = b.make(t)

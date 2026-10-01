@@ -206,7 +206,13 @@ func (c *completion) sync(e *editor) {
 	// takes the "@" out. Matching it here closed a list on the first "@" of
 	// a draft, because that token sits at rune 0 with an empty query and the
 	// zero at is 0 too.
-	if c.done != "" && at == c.at && query == c.done {
+	// AND THE SENTENCE AFTER IT IS NOT A SEARCH EITHER. The token may hold
+	// spaces now, so `@side-chat is a chat` walks back to the same `@` and
+	// would be ranked — and `is`, `a` and `chat` all match `side chat` by
+	// their letters, which reopened the list over the words and let enter put
+	// the mention back in their place. What this list inserted, followed by a
+	// space, is the person writing on.
+	if c.done != "" && at == c.at && (query == c.done || strings.HasPrefix(query, c.done+" ")) {
 		c.open = false
 		return
 	}
@@ -428,17 +434,21 @@ func pathScore(path, needle string) (int, bool) {
 	case 0:
 		return len(path), true
 	case 1:
-		return wordScore(path, words[0])
+		return wordScore(path, words[0], true)
 	}
 	// EVERY WORD MUST MATCH, each on its own terms and in any order, and the
 	// scores add: `who is` finds `who is kim jong il` by substring twice, and
 	// `tui3 app` finds internal/tui3/app.go with the words the other way round
-	// from the path. One word that matches nothing fails the whole needle, so
-	// a sentence typed after a mention does not keep matching by the letters
-	// it happens to share with a title ([completion.sync] closes on that).
+	// from the path. One word that matches nothing fails the whole needle.
+	//
+	// ONLY THE LAST WORD MAY MATCH BY ITS LETTERS IN ORDER — it is the one still
+	// being typed. Every word before it is finished, and a finished word
+	// matches whole, as a prefix or a substring: a needle whose every word may
+	// scatter its letters through a title matches nearly any title, which is
+	// how `is a chat` matched `side chat` and kept the list up over a sentence.
 	total := 0
-	for _, word := range words {
-		score, ok := wordScore(path, word)
+	for i, word := range words {
+		score, ok := wordScore(path, word, i == len(words)-1)
 		if !ok {
 			return 0, false
 		}
@@ -447,9 +457,9 @@ func pathScore(path, needle string) (int, bool) {
 	return total, true
 }
 
-// wordScore is [pathScore] for one word: prefix, then substring, then the
-// letters in order.
-func wordScore(path, needle string) (int, bool) {
+// wordScore is [pathScore] for one word: prefix, then substring, then — when
+// loose — the letters in order.
+func wordScore(path, needle string, loose bool) (int, bool) {
 	lower := strings.ToLower(path)
 	base := lower
 	if cut := strings.LastIndexByte(lower, '/'); cut >= 0 {
@@ -463,6 +473,9 @@ func wordScore(path, needle string) (int, bool) {
 	}
 	if at := strings.Index(lower, needle); at >= 0 {
 		return tierSubstring + at<<8 + len(path), true
+	}
+	if !loose {
+		return 0, false
 	}
 	if span, ok := subsequence(lower, needle); ok {
 		return tierSubsequence + span<<8 + len(path), true
