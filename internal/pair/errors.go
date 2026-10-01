@@ -167,7 +167,7 @@ func TooManyFor(wait time.Duration) error {
 
 var (
 	// ErrLinkShape is typed text that is neither a pairing link nor a code.
-	ErrLinkShape = errors.New("that is not a pairing link or code; it looks like codeaf.link/p/k7m2q9xd#... or k7m2q9xd.<key>")
+	ErrLinkShape = errors.New("that is not a codeaf pairing link or code; it looks like https://codeaf.agentfield.ai/p/k7m2q9xd#... or k7m2q9xd.<key>")
 	// ErrLinkExpired is a request nobody answered in time.
 	ErrLinkExpired = errors.New("the link ran out before anyone approved it; run `codeaf pair` again for a new one")
 	// ErrLinkDeclined is a person on another device saying no.

@@ -23,6 +23,7 @@ import "sync"
 type Notices struct {
 	mu    sync.Mutex
 	lines []string
+	said  map[string]bool // sentences SayOnce has put on the desk
 	bell  *doorbell
 }
 
@@ -40,6 +41,25 @@ func (n *Notices) Say(line string) {
 	bell := n.bell
 	n.mu.Unlock()
 	bell.ring()
+}
+
+// SayOnce is Say for a sentence that is true for the rest of the run, such as
+// "this computer was removed": however many roads find out, the person reads it
+// once.
+func (n *Notices) SayOnce(line string) {
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	again := n.said[line]
+	if n.said == nil {
+		n.said = map[string]bool{}
+	}
+	n.said[line] = true
+	n.mu.Unlock()
+	if !again {
+		n.Say(line)
+	}
 }
 
 // attach makes bell the way the desk reaches a loop, and rings it at once when

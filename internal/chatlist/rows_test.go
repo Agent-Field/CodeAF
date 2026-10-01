@@ -124,3 +124,18 @@ func TestStaticIsASource(t *testing.T) {
 		t.Fatalf("got %v %v", rows, err)
 	}
 }
+
+// A CHAT HELD BY A REVOKED DEVICE IS NOT RUNNING OR LAPSED THERE: that device
+// cannot release it and nobody can continue it, so it reads as released.
+func TestAChatHeldByARevokedDeviceReadsAsReleased(t *testing.T) {
+	l := listing(map[string]directory.Cell{
+		"live": cell(other, 1_010_000, nil),
+		"dead": cell(other, 900_000, nil),
+	})
+	l.Devices[other] = directory.Device{Name: "studio", Revoked: true}
+	for _, r := range Rows(l, self, plain) {
+		if r.Status != Idle {
+			t.Errorf("%s: status %s, want %s", r.Cell, r.Status, Idle)
+		}
+	}
+}

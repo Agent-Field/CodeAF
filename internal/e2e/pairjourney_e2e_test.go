@@ -187,7 +187,7 @@ func (r *rig) paste(text string) {
 	time.Sleep(300 * time.Millisecond)
 }
 
-var linkShape = regexp.MustCompile(`https://codeaf\.link/p/\S+`)
+var linkShape = regexp.MustCompile(`https://codeaf\.agentfield\.ai/p/\S+`)
 
 func TestPairJourney(t *testing.T) {
 	key := requireTmuxAndKey(t)

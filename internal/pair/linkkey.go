@@ -20,7 +20,10 @@ import (
 
 // LinkOrigin is where a short link points. The page there hands a visitor to the
 // installed app, or shows what to run.
-const LinkOrigin = "https://codeaf.link"
+const LinkOrigin = "https://codeaf.agentfield.ai"
+
+// linkHost is the one host a pairing link may name; any other host is not a codeaf link.
+const linkHost = "codeaf.agentfield.ai"
 
 // linkKeySize is the secret in the link's fragment, which no server ever sees.
 const linkKeySize = 16
@@ -97,12 +100,12 @@ func splitLink(text string) (code, key string) {
 	return text, ""
 }
 
-// fromURL reads https://codeaf.link/p/<code>#<key> and codeaf://pair?code=<code>#<key>.
+// fromURL reads https://codeaf.agentfield.ai/p/<code>#<key> and codeaf://pair?code=<code>#<key>.
 func fromURL(u *url.URL) (code, key string) {
 	if u.Scheme == "codeaf" {
 		return u.Query().Get("code"), u.Fragment
 	}
-	if rest, ok := strings.CutPrefix(u.Path, "/p/"); ok && u.Host == "codeaf.link" {
+	if rest, ok := strings.CutPrefix(u.Path, "/p/"); ok && u.Host == linkHost {
 		return strings.Trim(rest, "/"), u.Fragment
 	}
 	return "", ""

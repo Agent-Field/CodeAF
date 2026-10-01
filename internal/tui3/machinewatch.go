@@ -131,3 +131,17 @@ func (a *app) probeWatch() {
 		a.dirFeed.Probe()
 	}
 }
+
+// devicesCardOpen says /devices is on screen, which wants the feed on any page.
+func (a *app) devicesCardOpen() bool {
+	_, open := a.pair.card.(*deviceCard)
+	return a.pair.open && open
+}
+
+// letGoOffHome leaves the feed once the card that joined it away from home has
+// closed; home keeps its own hold on it.
+func (a *app) letGoOffHome() {
+	if !a.at(pageHome) {
+		a.tendWatch(false)
+	}
+}
