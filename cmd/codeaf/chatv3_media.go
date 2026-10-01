@@ -98,8 +98,9 @@ func v3ServesMedia(models *catalog.Catalog) bool {
 	if models == nil {
 		return false
 	}
+	available := models.SnapshotNow()
 	for _, modality := range []string{"image", "speech", "music", "video"} {
-		if len(models.ModelsWithOutput(modality)) > 0 {
+		if len(available.ModelsWithOutput(modality)) > 0 {
 			return true
 		}
 	}
@@ -153,13 +154,10 @@ var v3MediaVerb = map[string]string{
 // so the model does not have a verb it would only be refused on (CLAUDE.md's
 // absent-not-broken law).
 //
-// IT MAY WAIT, and that is the one thing it does differently from every other
-// closure this door hands the session. The catalog questions on the message
-// path — the vision gate, the fallback chain — are answered from rows already
-// in memory because somebody is watching a turn. This one is asked when a tool
-// is about to spend ten seconds generating a picture, and on a cold cache the
-// honest choice is a fifteen-second fetch that resolves a capable model over an
-// instant answer of "nothing can draw here".
+// THE RESOLVER ALSO RUNS WHILE THE INITIAL TOOL BELT IS BUILT. It therefore
+// reads a nonblocking snapshot: current rows, cached capabilities, or the
+// default service's curated fallback. Later calls take a fresh snapshot, so
+// model discovery can improve the answer without holding the first frame.
 //
 // profileDir and source are the two rungs the catalog cannot answer, and they
 // are read at CALL time rather than closed over as values: a person who picks a
@@ -171,6 +169,7 @@ func v3MediaModel(models *catalog.Catalog, profileDir string, source roles.Sourc
 		if models == nil || v3MediaVerb[modality] == "" {
 			return ""
 		}
+		available := models.SnapshotNow()
 		// able is one rung: a name, checked, and either taken or passed over
 		// out loud. The log line names the rung because the three rungs fail
 		// for different reasons — a slot is a person's own stale choice, a pin
@@ -179,7 +178,7 @@ func v3MediaModel(models *catalog.Catalog, profileDir string, source roles.Sourc
 			if id = strings.TrimSpace(id); id == "" {
 				return ""
 			}
-			if !v3MediaCapable(models, modality, id) {
+			if !v3MediaCapable(available, modality, id) {
 				log.Printf("media: the %s %s names %s, which cannot %s — passing over it",
 					modality, rung, id, v3MediaVerb[modality])
 				return ""
@@ -205,7 +204,7 @@ func v3MediaModel(models *catalog.Catalog, profileDir string, source roles.Sourc
 				}
 			}
 		}
-		if id := able("catalog", config.CandidateMediaModel(models, modality)); id != "" {
+		if id := able("catalog", config.CandidateMediaModel(available, modality)); id != "" {
 			return id
 		}
 		return able("fallback", config.FallbackMediaModel(modality))

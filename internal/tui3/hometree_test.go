@@ -213,7 +213,7 @@ func TestTheConversationRowOpensTheChatAndItsWorkStaysOnTheCard(t *testing.T) {
 
 	// And enter on the row opens the CONVERSATION — no record, no task page.
 	a.home.point(other)
-	a.homeEnter()
+	spend(t, a, a.homeEnter())
 	if a.at(pageHome) {
 		t.Fatalf("enter on the conversation left home up saying %q", a.home.msg)
 	}

@@ -83,6 +83,14 @@ func TestV3CatalogForCodexUsesTheAccountListingTransport(t *testing.T) {
 	}
 	settings := config.Config{ProfileDir: dir, Sources: config.ResolveSources(dir, "", config.DefaultBaseURL)}
 	models, bare, servesMedia := v3CatalogForModel(context.Background(), settings, "codex/gpt-5.5", &catalog.Catalog{})
+	// This transport test explicitly joins discovery; capability checks on
+	// the launch path no longer wait for it on the test's behalf.
+	t.Cleanup(models.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if !models.Warmed(ctx) {
+		t.Fatal("account catalog did not finish discovery")
+	}
 	rows := models.ModelsNow()
 	if requests != 1 || bare != "gpt-5.5" || servesMedia || len(rows) != 1 || rows[0].ID != "gpt-5.5" {
 		t.Fatalf("requests=%d bare=%q media=%t rows=%+v", requests, bare, servesMedia, rows)

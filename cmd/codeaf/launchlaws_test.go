@@ -3,7 +3,10 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/packed"
 )
@@ -35,20 +38,9 @@ func deadCatalogEndpoint(t *testing.T) {
 	t.Setenv("CODEAF_BASE_URL", server.URL)
 }
 
-// v3SubharnessBlockingReads is what wiring one conversation's subharness
-// registry is allowed to ask the catalog through the waiting door, and the
-// whole of it is ONE call that does not belong to this surface: [buildLinear]
-// in subharness.go, which asks ContextLength to size a leaf. That file is
-// shared with `codeaf exec`, `codeaf run` and `codeaf subharness` — headless
-// doors where waiting for a catalog is correct — and it is the KNOWN RESIDUAL
-// on this path, recorded here rather than asserted away.
-//
-// Everything chatv3_subharness.go asks for itself is zero, and that is the law
-// the perf wave landed: the context window it configures the runner with comes
-// from [v3Window], which reads [catalog.Catalog.ModelsNow] and takes "not yet"
-// for an answer. Asking it the blocking way held the first frame of every
-// conversation behind a fetch for a number no frame reads.
-const v3SubharnessBlockingReads = 1
+// v3SubharnessBlockingReads is zero: an unknown launch window stays unknown
+// until discovery finishes. The shared leaf constructor must preserve it.
+const v3SubharnessBlockingReads = 0
 
 // TestTheSubharnessWiringAsksTheCatalogNothingThatWaits pins that.
 func TestTheSubharnessWiringAsksTheCatalogNothingThatWaits(t *testing.T) {
@@ -61,33 +53,15 @@ func TestTheSubharnessWiringAsksTheCatalogNothingThatWaits(t *testing.T) {
 
 	if asked != v3SubharnessBlockingReads {
 		t.Fatalf("wiring a conversation's subharnesses asked the catalog %d blocking questions, and the law is %d.\n"+
-			"The one that is allowed is subharness.go's buildLinear, shared with the headless doors.\n"+
+			"An interactive launch must not wait for the catalog.\n"+
 			"If you added a question: ask it through catalog.ModelsNow() instead, which answers nil while the\n"+
-			"catalog is still warming — that is the honest answer and it costs no frame. If you REMOVED the\n"+
-			"residual, lower the constant here and in PERF.md in the same commit.", asked, v3SubharnessBlockingReads)
+			"catalog is still warming — that is the honest answer and it costs no frame.", asked, v3SubharnessBlockingReads)
 	}
 }
 
-// v3LaunchBlockingReads is the whole launch's bill, and it is a RATCHET rather
-// than a law: the number is what the path costs today, it is too high, and the
-// only direction it may move without a conversation is down.
-//
-// The eleven are two families:
-//
-//   - ONE from subharness.go's [buildLinear], described above.
-//   - TEN from [v3RunHarness] (chatv3.go's harness seam), which builds the
-//     harness tool bridge EAGERLY at launch. This fixture's catalog is empty,
-//     so the count covers the capability questions that leave all five media
-//     hands off the belt. It does not cover the additional catalog reads paid
-//     when a listing advertises those models and the media family is armed.
-//     Nothing drawn in the first frame depends on any of it — the answers are
-//     wanted the first time somebody asks for a picture, minutes later — so
-//     this is a known lower bound on the debt rather than the whole family.
-//
-// A change that lowers this is a change that made the launch faster; lower the
-// constant with it. A change that raises it has put a fetch in front of the
-// first frame, which is the thing this file exists to stop.
-const v3LaunchBlockingReads = 11
+// v3LaunchBlockingReads is zero. Media tool bridges are built on the first
+// harness run, and subharness wiring preserves a nonblocking window reading.
+const v3LaunchBlockingReads = 0
 
 // TestTheLaunchesBlockingCatalogReadsDoNotGrow is the ratchet.
 func TestTheLaunchesBlockingCatalogReadsDoNotGrow(t *testing.T) {
@@ -151,4 +125,52 @@ func TestNothingOnTheWayToTheFirstFrameUnpacksACorpus(t *testing.T) {
 				"corpus at launch should be asking it later, behind the sync.Once it already has.", unpacked)
 		}
 	})
+}
+
+// Holding the response open catches a launch that waits even if an immediately
+// failed endpoint would make its blocking read look fast.
+func TestAColdCatalogCannotHoldLaunch(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		http.Error(w, "no catalog", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	releaseOnce := sync.OnceFunc(func() { close(release) })
+	defer releaseOnce()
+	t.Setenv("CODEAF_BASE_URL", server.URL)
+	proc := v3TestProcess(t)
+	workspace := t.TempDir()
+	done := make(chan error, 1)
+	go func() {
+		launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: workspace})
+		if err == nil {
+			cfg, open := v3Shape(launch.Config, v3LanesHere())
+			agent, _, _, openErr := openV3Agent(cfg, launch.Project, open)
+			err = openErr
+			if agent != nil {
+				_ = agent.Close()
+			}
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		buf := make([]byte, 1<<20)
+		n := runtime.Stack(buf, true)
+		releaseOnce()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+		}
+		t.Fatalf("launch waited for a catalog response that no first frame needs\n%s", buf[:n])
+	}
 }

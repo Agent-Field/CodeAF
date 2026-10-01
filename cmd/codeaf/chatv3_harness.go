@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -130,7 +131,10 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 	// check the picture it just made needs somewhere to send it, and this is the
 	// completer the run already holds.
 	seams.Seer = client
-	tools := v3HarnessToolBridges(workspace, seams)
+	// Media discovery belongs to the first run, not to the first frame.
+	tools := sync.OnceValue(func() v3HarnessToolBridge {
+		return v3HarnessToolBridges(workspace, seams)
+	})
 	return func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 		h, err := store.Load(name, 0)
 		if err != nil {
@@ -151,8 +155,8 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 		// is told about it; nothing here shapes it (internal/session's harness.go).
 		trace, runErr := subharness.RunWatched(ctx, h, subharness.ModelExec(client, subharness.ModelExecOpts{
 			Harness:  h,
-			RunTool:  tools.Run,
-			Toolbelt: tools.Belt,
+			RunTool:  tools().Run,
+			Toolbelt: tools().Belt,
 			// No Ask: a gate auto-approves here and the trail says so.
 			Store: store,
 			// What the turn asked this run to think with, empty when it asked

@@ -335,7 +335,7 @@ func TestTheRowOpensTheMomentTheOtherWindowLetsGo(t *testing.T) {
 	}
 
 	release()
-	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+	spend(t, a, a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen}))
 
 	if opened != 1 {
 		t.Fatalf("the freed row was opened %d times, want once", opened)
@@ -514,7 +514,7 @@ func TestAConversationThatCameFreeWhileAwayIsSaidWhenHomeComesBack(t *testing.T)
 	}
 	a.closeHome()
 	release()
-	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+	spend(t, a, a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen}))
 
 	if opened != 0 {
 		t.Fatal("a conversation was opened under somebody who had walked away")
@@ -748,7 +748,7 @@ func TestTheHolderLetsGoOntoTheConversationItWasKeeping(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	a.home.point(free)
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 	if a.file != free || len(a.behind) != 1 {
 		t.Fatalf("the lab did not end up with one conversation in front and one kept · %q %d", a.file, len(a.behind))
 	}
@@ -780,7 +780,7 @@ func TestAKeptConversationIsLetGoOfOnItsStir(t *testing.T) {
 	a.stirLane()
 	a.openHome()
 	a.home.point(free)
-	a.homeKey(key("enter"))
+	spend(t, a, a.homeKey(key("enter")))
 	key := a.convKey(mine)
 	held := a.behind[key]
 	if held == nil {
@@ -1038,7 +1038,7 @@ func TestAClaimThatSucceedsLeavesNoQuestionBehind(t *testing.T) {
 	}
 
 	release()
-	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+	spend(t, a, a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen}))
 
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); !os.IsNotExist(err) {
 		t.Fatal("the window opened the conversation and left its own question in the folder")

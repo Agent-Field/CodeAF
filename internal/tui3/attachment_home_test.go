@@ -77,7 +77,7 @@ func TestStartingFromHomeKeepsThePreviousConversationsDraft(t *testing.T) {
 				a.openHome()
 				a.home.chips = []chip{{path: "new.txt", file: true}}
 				if target == "project row" {
-					a.homeStartInProject("/tmp/another-project")
+					spend(t, a, a.homeStartInProject("/tmp/another-project"))
 				} else {
 					if target == "other project" {
 						a.target.where = "/tmp/another-project"

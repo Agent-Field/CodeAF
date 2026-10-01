@@ -98,7 +98,9 @@ func TestUserBashHomeRunsInTheSelectedProject(t *testing.T) {
 	}
 	line := "!printf '%s' /task @literal"
 	typeHome(a, line)
-	runCmd(a.homeEnter())
+	// The opening is answered off the update loop (#1662), so its result is
+	// delivered back through the program the way the event loop delivers it.
+	spend(t, a, a.homeEnter())
 	if opened != theirs || len(next.bashSent) != 1 || len(next.sent) != 1 || next.sent[0] != line {
 		t.Fatalf("home shell went to %q with %q", opened, next.sent)
 	}

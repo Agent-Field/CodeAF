@@ -295,7 +295,7 @@ func TestHomeProjectClickSelectsNextMessageDestination(t *testing.T) {
 				return Conversation{Agent: next, SessionFile: where + "/next/transcript.jsonl", Workspace: where}, nil
 			}
 			typeHome(a, "explain the lexer")
-			runCmd(a.homeEnter())
+			spend(t, a, a.homeEnter())
 			if opened != beta || len(next.sent) != 1 || next.sent[0] != "explain the lexer" {
 				t.Fatalf("message missed the clicked project: opened=%q sent=%q", opened, next.sent)
 			}
