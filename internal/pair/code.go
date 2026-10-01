@@ -215,7 +215,7 @@ func codeLines(what, how string) string {
 func ChatLines(code *Code, relay string) string {
 	command := "codeaf pair " + code.Shown()
 	if relay != "" {
-		command += " --relay " + relay
+		command += " --via " + relay
 	}
 	return codeLines("this shares your chats with the device you pair", "on it run  "+command)
 }

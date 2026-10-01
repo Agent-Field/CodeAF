@@ -66,12 +66,16 @@ func pairGrant(route pair.Mailbox) (pair.Grant, error) {
 }
 
 // pairJoining is this computer as the device that types the code.
-func pairJoining(replace bool) pair.Joining {
-	dir := home.Dir()
-	return pair.Joining{
-		Home:        dir,
-		Label:       pair.ThisMachineLabel(),
-		Replace:     replace,
-		SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(dir, url) },
+func pairJoining(replace bool) pair.Joining { return pairJoiningAt(home.Dir())(replace) }
+
+// pairJoiningAt is the same for the codeaf home at dir.
+func pairJoiningAt(dir string) func(replace bool) pair.Joining {
+	return func(replace bool) pair.Joining {
+		return pair.Joining{
+			Home:        dir,
+			Label:       pair.ThisMachineLabel(),
+			Replace:     replace,
+			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(dir, url) },
+		}
 	}
 }

@@ -275,6 +275,7 @@ const (
 	bandOrderGone        = 5   // the folder this project lived in is not there any more
 	bandOrderState       = 10  // what it is doing right now, and what it is stopped on
 	bandOrderAnswer      = 15  // the question it is stopped on, answerable from here
+	bandOrderDevices     = 25  // which of this person's devices are online
 	bandOrderNews        = 30  // what happened since you last looked
 	bandOrderWork        = 40  // the tasks it ran, with what they came to
 	bandOrderDeliverable = 50  // the files it produced

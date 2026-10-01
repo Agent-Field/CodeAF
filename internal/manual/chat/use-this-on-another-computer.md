@@ -29,7 +29,7 @@ The code is good for 10 minutes. It works once.
 `/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair` with nothing after it shows a code in a terminal. `codeaf pair <code>` uses one.
 
 ```
-usage: codeaf pair [<code>] [--relay url] [--replace]
+usage: codeaf pair [<code>] [--via url] [--replace]
 ```
 
 Press ctrl+c in the terminal to take a shown code back. In the chat, Esc stops it.
@@ -245,7 +245,7 @@ to a relay, so your other computers can open them. Which relay is one setting,
   paired with another one uses the relay that pairing saved instead. A build with no
   hosted relay has no default, and nothing is copied until you name a relay.
 - **`CODEAF_SYNC_URL=off`** turns the copying off. Nothing leaves the computer, and `codeaf pair`
-  says `sync is off (CODEAF_SYNC_URL=off); pairing needs a relay`.
+  says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
 - **`CODEAF_SYNC_URL=https://relay.example.com`** is your own relay. You run it with
   `codeaf relay --listen :8787 --store <directory>` (see "Running the relay yourself" on the page
   *Reaching a machine with a pairing code*). The hosted relay and your own speak the same way, so
@@ -266,20 +266,20 @@ What the relay does see is short: the number at the start of the code, the time,
 Pairing goes through the relay this computer syncs through: codeaf's hosted relay when this build has one and you have not chosen another, else the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved. A build with no hosted relay has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
 
 ```
-no relay is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a relay's address, or pass --relay <address>
+no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>
 ```
 
 To use your own relay, name it on the computer that uses the code:
 
 ```
-codeaf pair 42-715-302 --relay https://relay.example.com
+codeaf pair 42-715-302 --via https://relay.example.com
 ```
 
 When the computer that has your chats uses a relay you named, the code it shows carries that relay. Then the other computer does not have to guess:
 
 ```
   this shares your chats with the device you pair
-  on it run  codeaf pair 42-715-302 --relay https://relay.example.com   (valid 10 minutes)
+  on it run  codeaf pair 42-715-302 --via https://relay.example.com   (valid 10 minutes)
 ```
 
 After the pairing, the other computer saves that relay and syncs through it; when it is the hosted relay there is nothing to save, because every computer reaches it without being told. The way to run a relay yourself is on the page *Reaching a machine with a pairing code*, under "Running the relay yourself".
@@ -287,7 +287,7 @@ After the pairing, the other computer saves that relay and syncs through it; whe
 `CODEAF_SYNC_URL=off` turns sync off. Then pairing is not available. Both commands say so before they send anything:
 
 ```
-sync is off (CODEAF_SYNC_URL=off); pairing needs a relay
+sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address
 ```
 
 Other things the relay can say:
@@ -301,13 +301,13 @@ cannot reach relay.example.com
 The relay is full. Try again in a few minutes:
 
 ```
-the relay is full right now; try again in a few minutes
+sync is full right now; try again in a few minutes
 ```
 
 The relay is an old one that does not know pairing:
 
 ```
-that relay is too old for pairing
+that sync service is too old for pairing
 ```
 
 ## I lost my laptop — what to do
