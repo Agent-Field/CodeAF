@@ -5048,12 +5048,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case rosterMsg:
 		return a, a.tookRoster(msg)
 
-	case pairLinkMsg:
-		return a, a.tookLink(msg)
-
-	case linkCardMsg:
-		return a, a.tookLinkCard(msg)
-
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
@@ -8932,6 +8926,10 @@ func (a *app) paste(text string) tea.Cmd {
 	// declining a paste and losing one.
 	if a.copy.on {
 		return nil
+	}
+	// A LINK PASTED ON THE OPEN ADD-MACHINE CARD is the card's, not the draft's.
+	if cmd, took := a.pasteLink(text); took {
+		return cmd
 	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
 	// same terms every other input does (welcome.go): everything puts the box
