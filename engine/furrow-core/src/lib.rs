@@ -31,6 +31,7 @@ pub mod sorted_dir;
 pub mod sqlite_adapter;
 pub mod store;
 pub mod sync;
+pub mod system_attrs;
 pub mod tree;
 pub mod ui;
 pub mod universe;
