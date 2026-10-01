@@ -41,6 +41,9 @@ const (
 	wasRunning     = "was running there: %s"
 	alsoNeeded     = "also needed: %s"
 	uncommitted    = "not committed yet: %s"
+	lastTests      = "last tests: %s"
+	testsPassed    = "passed"
+	testsFailed    = "failed"
 	movedFrom      = "Moved from %s in %s. Everything as you left it."
 	movedAnon      = "Moved here in %s. Everything as you left it."
 	movedRestart   = " What was running there can start again here."
@@ -60,7 +63,11 @@ const namesShown = 3
 // SetupFacts are the three lists a takeover can have something to say about, as
 // lines a person reads: folders the copy did not bring, commands that were
 // running there, and what this machine also needs.
-type SetupFacts struct{ Missing, Running, Needed, Changed []string }
+type SetupFacts struct {
+	Missing, Running, Needed, Changed []string
+	// Tests is the last test run's line, from [TestsLine], "" when none was recorded.
+	Tests string
+}
 
 // SetupHead is the question of the card a takeover raises. A device whose name
 // is unknown is left out with the word before it, so the sentence still reads.
@@ -86,7 +93,22 @@ func SetupReasons(f SetupFacts) []string {
 			out = append(out, fmt.Sprintf(line.label, nameList(line.names)))
 		}
 	}
+	if f.Tests != "" {
+		out = append(out, f.Tests)
+	}
 	return out
+}
+
+// TestsLine is the line for the last recorded test run: it passed, or it failed
+// and, when the run said how many, how many.
+func TestsLine(passed bool, failed int) string {
+	switch {
+	case passed:
+		return fmt.Sprintf(lastTests, testsPassed)
+	case failed > 0:
+		return fmt.Sprintf(lastTests, fmt.Sprintf("%s %d", testsFailed, failed))
+	}
+	return fmt.Sprintf(lastTests, testsFailed)
 }
 
 // nameList spells the first few names and counts the rest.

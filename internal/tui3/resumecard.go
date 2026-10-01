@@ -81,5 +81,14 @@ func (a *app) setupShown(r machine.Resume, far setupDoor) questionShown {
 
 // setupFacts is the resume as the card's three lines.
 func setupFacts(r machine.Resume) chatlist.SetupFacts {
-	return chatlist.SetupFacts{Missing: r.MissingNames(), Running: r.RunningLines(), Needed: r.NeededLines(), Changed: r.Uncommitted}
+	return chatlist.SetupFacts{Missing: r.MissingNames(), Running: r.RunningLines(), Needed: r.NeededLines(), Changed: r.Uncommitted, Tests: testsLine(r)}
+}
+
+// testsLine is the last recorded test run as the card's line, "" when the chat
+// ran none: a line that is not backed by a run is not shown.
+func testsLine(r machine.Resume) string {
+	if r.Tests == nil {
+		return ""
+	}
+	return chatlist.TestsLine(r.Tests.Passed, r.Tests.Failed)
 }
