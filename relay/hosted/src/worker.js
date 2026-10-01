@@ -3,6 +3,7 @@
 // Durable Object of the identity named in the request's unsigned header, and the body is not
 // read here. That routing before reading is what keeps one identity's slow put from ever
 // delaying another identity's Has, and what lets an identity's object count its own puts.
+import { stripBase } from './base.js';
 import { checkDeclared } from './body.js';
 import { serveLink } from './link/front.js';
 import { servePair } from './pair/front.js';
@@ -25,7 +26,10 @@ async function forward(request, env) {
   return env.IDENTITY.get(env.IDENTITY.idFromName(identity)).fetch(request);
 }
 
-function dispatch(request, env) {
+/** dispatch serves a request under the deployment's base path; anything outside that prefix is a 404. */
+function dispatch(outer, env) {
+  const request = stripBase(outer, env);
+  if (!request) throw notFound();
   const { pathname } = new URL(request.url);
   if (pathname.startsWith('/v1/link/')) return serveLink(request, env);
   if (pathname.startsWith('/v1/pair')) return servePair(request, env);
