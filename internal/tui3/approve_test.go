@@ -56,7 +56,7 @@ func spark(now time.Time) PendingDevice {
 		RequestedAt: now.Add(-2 * time.Minute), ExpiresAt: now.Add(8 * time.Minute)}
 }
 
-const testLink = "https://codeaf.link/p/k7m2q9xd#Qm9v"
+const testLink = "https://codeaf.agentfield.ai/p/k7m2q9xd#Qm9v"
 
 func approveApp(t *testing.T, door Approvals) (*app, *pairRig) {
 	a := newTestApp(&fakeAgent{model: "test/model"})
@@ -68,8 +68,8 @@ func approveApp(t *testing.T, door Approvals) (*app, *pairRig) {
 
 func TestLinkShapeRoutesAndSixDigitsDoNot(t *testing.T) {
 	for typed, want := range map[string]bool{
-		testLink: true, "k7m2q9xd": true, "k7m2q9xd.Qm9v": true, "codeaf.link/p/k7m2q9xd#Qm9v": true,
-		"42-715-302": false, "715 302": false, "": false, "hello": false,
+		testLink: true, "k7m2q9xd": true, "k7m2q9xd.Qm9v": true, "codeaf.agentfield.ai/p/k7m2q9xd#Qm9v": true,
+		"https://example.com/p/k7m2q9xd#Qm9v": false, "42-715-302": false, "715 302": false, "": false, "hello": false,
 	} {
 		if got := isLinkShape(typed); got != want {
 			t.Errorf("isLinkShape(%q) = %t, want %t", typed, got, want)

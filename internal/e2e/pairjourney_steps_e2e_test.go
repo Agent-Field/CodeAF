@@ -37,7 +37,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 
 	j.step("2 B: codeaf pair prints link and waits", true, func() {
 		b = startCommand(t, env, "b", homeB, wsB, "pair")
-		screen, ok := waitPlain(b, 15*time.Second, "codeaf.link/p/", "Check number")
+		screen, ok := waitPlain(b, 15*time.Second, "codeaf.agentfield.ai/p/", "Check number")
 		j.require(ok, "B never printed a link and a check number")
 		link = linkShape.FindString(screen)
 		j.check(link != "", "no link on B's screen")

@@ -563,7 +563,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// its answer, which is a tool result and not the room's reply, was typed
 	// into the transcript in the chat model's voice — the very thing
 	// [provider.WithoutStream] exists to prevent.
-	toolCtx := ctx
+	//
+	// It also asks the seat to defer each call's seal ([procexec.Deferring]): the
+	// batch's results are written below, and a seal taken inside the call would
+	// carry the call without its result.
+	toolCtx := procexec.Deferring(ctx)
 
 	turnObserver := func(event provider.StreamEvent) {
 		switch event.Kind {
@@ -1412,6 +1416,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				Content:    []ai.ContentPart{{Type: "text", Text: results[index].text}},
 			})
 		}
+		// THE SEAL OF THE BATCH IS TAKEN HERE, AFTER THE RESULT LINES AND EACH
+		// CALL'S `took` LINE ARE WRITTEN, so a machine that picks the chat up from
+		// this seal finds every finished call's result beside its work and does
+		// not run the call again. The calls only recorded themselves (the WAL
+		// holds each), so a death before this line loses nothing the next start
+		// does not carry.
+		procexec.Settle(ctx, procexec.For(ctx))
 
 		// `post-feedback` (hooks.go): the step boundary, where the turn's ledger
 		// reads what the batch changed and the detector says whether the turn is
@@ -1768,6 +1779,10 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// transcript to find it (placemeta.go's [Agent.stampSpend]).
 	a.stampSpend()
 	a.noticeNewerBuild()
+	// THE TURN'S LAST LINES ARE SEALED BEFORE THE SYNC SIDE IS TOLD: the closing
+	// answer and the usage line were written above, and an upload asked for
+	// first would send a seal that ends before them.
+	procexec.Settle(context.Background(), a.config.seat())
 	a.tellTurnEnded()
 	return turn
 }
@@ -3543,7 +3558,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // call did not run it, and says so as the tool's own error.
 func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.RawMessage) (text string, isError bool, err error) {
 	ctx, spawns := procexec.WithSpawns(ctx)
-	call := procexec.Call{Tool: tool.Name, Args: args, Changed: a.changedBy(tool.Name, args), Spawns: spawns}
+	call := procexec.Call{Tool: tool.Name, Args: args, Changed: a.changedBy(tool.Name, args), Spawns: spawns, Deferred: procexec.Deferred(ctx)}
 	logErr := procexec.For(ctx).Around(ctx, call, func() ([]byte, bool) {
 		text, isError, err = tool.Execute(ctx, args)
 		return []byte(text), isError || err != nil

@@ -29,7 +29,7 @@ What the new device prints while it waits:
 
 ```
 Approve this device from one you already use. Open this link there:
-  https://codeaf.link/p/k7m2q9xd#Qm9v…
+  https://codeaf.agentfield.ai/p/k7m2q9xd#Qm9v…
 
 Or, on a computer with codeaf, run:
   codeaf pair approve k7m2q9xd.Qm9v…
@@ -130,4 +130,4 @@ The list is in a fixed order: this device first, then devices that are online, t
 this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back
 ```
 
-Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
+It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.

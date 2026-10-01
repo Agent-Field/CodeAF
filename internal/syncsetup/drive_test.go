@@ -477,3 +477,28 @@ func TestARefusalReachesTheChatAsItsSentence(t *testing.T) {
 	d := &Drive{opt: DriveOptions{OnNotice: func(l string) { t.Errorf("said %q for an unreachable relay", l) }}}
 	d.refusal(blobstore.ErrUnreachable)
 }
+
+// A chat whose process died after sealing and before uploading is opened again:
+// what it sealed reaches the relay at once, with no new seal to carry it. The
+// first run's seals go through a seat with no drive, which is what a run that
+// was killed before its last upload left behind.
+func TestDriveSideUploadsTurnsASealedRunNeverSent(t *testing.T) {
+	r := newDriveRig(t)
+	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil, func(cellstore.Engine) cellstore.Store { return r.engine })
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := executor.Call{Tool: "bash", Args: []byte(`{"command":"echo"}`)}
+	for _, name := range []string{"one.txt", "two.txt"} {
+		if err := seat.Around(context.Background(), call, func() ([]byte, bool) {
+			return nil, os.WriteFile(filepath.Join(r.work, name), []byte(name), 0o600) != nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r.directoryHead(r.cell.ID) != "" {
+		t.Fatal("the relay already holds the chat; nothing was left unsent")
+	}
+	r.startChat(&noticeLog{})
+	waitFor(t, "the reopened chat to upload what the dead run sealed", func() bool { return r.directoryHead(r.cell.ID) == r.head() })
+}
