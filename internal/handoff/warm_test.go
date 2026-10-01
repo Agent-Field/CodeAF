@@ -255,7 +255,7 @@ func TestCrashAfterSeedingLeavesTheHeldTreeWhole(t *testing.T) {
 	stage := cell.Cell{ID: chatID, Root: stagingOf(a.root(chatID))}
 
 	// The claim runs as far as the staging folder and stops: no install.
-	if _, _, err := a.taker().fetchAndAcquire(context.Background(), stage, a.root(chatID), head, directory.AcquireOpts{}); err != nil {
+	if _, _, _, err := a.taker().fetchAndAcquire(context.Background(), stage, a.root(chatID), head, directory.AcquireOpts{}); err != nil {
 		t.Fatal(err)
 	}
 
