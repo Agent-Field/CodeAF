@@ -1,6 +1,9 @@
 package tui3
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // THE COMMAND CHIP: a slash command does not look like a word.
 //
@@ -135,19 +138,12 @@ func commandSpans(value []rune, boundary bool) []segment {
 	if strings.HasPrefix(strings.TrimSpace(string(value)), "!") {
 		return nil
 	}
-	all := recognizedCommandSpans(value, boundary)
-	out := all[:0]
-	for _, s := range all {
-		word := string(value[s.from+1 : s.to])
-		// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE, so it travels with
-		// the recognized word anywhere it stands. The promise law lives on
-		// [commandDoor] now (liveTags, the hint line): send still runs only a
-		// leading command, and still acts on a send-door tag away from the head.
-		if s.from == 0 && boundary || knownCommand(word) {
-			out = append(out, s)
-		}
-	}
-	return out
+	// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE: [recognizedCommandSpans]
+	// already returns only known commands, so the mark travels with the word
+	// anywhere it stands. The promise law lives on [commandDoor] (liveTags, the
+	// hint line): send still runs only a leading command, and still acts on a
+	// send-door tag away from the head.
+	return recognizedCommandSpans(value, boundary)
 }
 
 func containsSegment(list []segment, want segment) bool {
@@ -161,6 +157,30 @@ func containsSegment(list []segment, want segment) bool {
 
 // liveTags returns the actionable send-door words away from the head command.
 func (a *app) liveTags() []segment { return a.input.liveTags() }
+
+// plainTags returns the demoted ranges as rune offsets into the trimmed line a
+// send will display. The editor's ranges are offsets into its raw value, and
+// the displayed line drops the leading whitespace ([strings.TrimSpace] in
+// [app.enterLine]); every range is shifted by that many runes. A range that
+// starts inside the trimmed whitespace is dropped, because it cannot name a
+// word the displayed line still holds.
+func (e *editor) plainTags() []segment {
+	if len(e.demotedTags) == 0 {
+		return nil
+	}
+	lead := 0
+	for lead < len(e.value) && unicode.IsSpace(e.value[lead]) {
+		lead++
+	}
+	out := make([]segment, 0, len(e.demotedTags))
+	for _, s := range e.demotedTags {
+		if s.from < lead {
+			continue
+		}
+		out = append(out, segment{from: s.from - lead, to: s.to - lead})
+	}
+	return out
+}
 
 func (b *editor) liveTags() []segment {
 	value := b.value
@@ -275,13 +295,27 @@ func paintCommandSpans(line string, spans []segment, pal palette, ink func(strin
 	return b.String()
 }
 
-// transcriptCommandSpans is every recognized command in a sent message line:
-// every recognised command is highlighted as a recognition mark — same widening
-// rule as the draft. The acted-tag ranges on the entry no longer narrow the
-// chip; they narrow what the message is understood to have RUN, which is the
-// door-only record [app.submittingShown] keeps.
-func transcriptCommandSpans(value []rune, acted []segment) []segment {
-	return commandSpans(value, true)
+// transcriptCommandSpans is every recognized command in one wrapped row of a
+// sent message: every recognised command is highlighted as a recognition mark
+// — the same widening rule as the draft. A word the person demoted with
+// backspace stays plain, exactly as it does in the box: the demoted ranges
+// live in the PRE-WRAP text's coordinates, so a row's own spans are rebased by
+// the row's starting offset before the subtraction. Comparing without that
+// rebase would mis-chip across wrapped rows, because a span's offset restarts
+// at zero on every row.
+func transcriptCommandSpans(value []rune, plain []segment, offset int) []segment {
+	spans := commandSpans(value, true)
+	if len(plain) == 0 {
+		return spans
+	}
+	kept := spans[:0]
+	for _, s := range spans {
+		if containsSegment(plain, segment{from: s.from + offset, to: s.to + offset}) {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	return kept
 }
 
 func paintDraftCommands(line string, pal palette, ink func(string) string, offset int, boundary bool, demoted []segment) string {

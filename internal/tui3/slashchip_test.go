@@ -189,12 +189,12 @@ func TestBackspaceDemotesATagThenEditsAndSendsItAsProse(t *testing.T) {
 	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
 		t.Fatalf("demoted send: sent=%q marked=%q", agent.sent, agent.marked)
 	}
-	// THE DEMOTION IS ABOUT ACTION, NOT RECOGNITION. The word no longer routes —
-	// marked is empty and it travels as prose — but it is still a command this
-	// surface knows, so the transcript keeps its recognition chip, the same
-	// widening rule the draft follows.
-	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 1 || got[0] != "/standing" {
-		t.Fatalf("demoted transcript chipped %q, want [/standing]", got)
+	// A DEMOTED WORD STAYS PLAIN IN THE TRANSCRIPT, exactly as it does in the
+	// box: the word no longer routes — marked is empty and it travels as prose
+	// — and the demotion now carries through the reset to the entry
+	// (input.go's [app.enterLine] snapshots it), so no chip is painted for it.
+	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 0 {
+		t.Fatalf("demoted transcript chipped %q, want none", got)
 	}
 
 	a, _ = tagTestApp()
@@ -227,6 +227,39 @@ func TestAnEditBeforeADemotedTagMovesItsPlainRange(t *testing.T) {
 	drive(t, a, key("x"), key("enter"))
 	if len(agent.sent) != 1 || agent.sent[0] != "xsay /standing" || len(agent.marked) != 0 {
 		t.Fatalf("shifted demotion sent=%q marked=%q", agent.sent, agent.marked)
+	}
+	// The edited word is still a demoted one, so the shifted range leaves the
+	// transcript plain too — the plainness carried through the edit.
+	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 0 {
+		t.Fatalf("shifted demotion chipped %q, want none", got)
+	}
+}
+
+// TestADemotedTagStaysPlainWhenTheSentLineWraps is the coordinate half of the
+// demotion promise. The demoted ranges are offsets into the pre-wrap text,
+// while the transcript paints one wrapped row at a time and restarts each
+// row's offsets at zero; a subtraction that ignored the row offset would
+// either miss the tag or chip an unrelated word. Here the tag lands on a second
+// row at the suite's sixty columns, so a whole-entry subtraction would be
+// compared against a row-local span.
+func TestADemotedTagStaysPlainWhenTheSentLineWraps(t *testing.T) {
+	a, agent := tagTestApp()
+	line := "the quick brown fox jumps over the lazy dog and keeps going /standing"
+	typeInto(t, a, line)
+	drive(t, a, key("backspace"))
+	if got := boxRuns(a); len(got) != 0 {
+		t.Fatalf("the demotion did not clear the box chip: %q", got)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.sent) != 1 || agent.sent[0] != line || len(agent.marked) != 0 {
+		t.Fatalf("demoted wrapped send: sent=%q marked=%q", agent.sent, agent.marked)
+	}
+	rows := a.renderEntry(0, &a.entries[0], a.width)
+	if len(rows) < 2 {
+		t.Fatalf("the line did not wrap at this width: %#v", rows)
+	}
+	if got := chipRuns(rows...); len(got) != 0 {
+		t.Fatalf("a demoted tag in a wrapped transcript chipped %q, want none", got)
 	}
 }
 

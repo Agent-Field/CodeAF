@@ -915,10 +915,11 @@ What steps up, in the lines you will see it in:
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
 
-- **A tinted background on your words is always a slash command that acts** — a command
-  at the start or a live `/standing`, `/orders`, or `/task` tag later in the draft. Help
-  rows chip their leading command too. Nothing else borrows the mark, so it never
-  highlights a slash word the send path will ignore.
+- **A tinted background on your words is always a slash command codeaf recognises** — any
+  recognized command wherever it stands, a leading one or `/compact` mid-sentence. It says
+  the word is known to codeaf, not that enter will run it: enter acts only on a leading
+  command, and on a live `/standing`, `/orders`, or `/task` tag later in the draft. Help
+  rows chip their leading command too. Nothing else borrows the mark.
 - **A key chord is brighter ink and never a background.** `ctrl+b`, `esc`, `↑↓` step up a
   tier; they do not get a chip.
 - **Nothing here is ever drawn in the accent.** The accent marks the one live or chosen

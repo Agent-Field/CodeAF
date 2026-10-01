@@ -127,16 +127,16 @@ func (a *app) sendParked() tea.Cmd {
 		// were plainly still composing with.
 		held := a.chips
 		a.chips = next.chips
-		cmd := a.submitImagesShown(spoken, shown)
+		cmd := a.submitImagesShown(spoken, shown, nil)
 		a.chips = held
 		return cmd
 	}
 	// A MARKED MESSAGE GOES THROUGH THE MARKED DOOR, however long it waited
 	// (standmark.go).
 	if next.standing {
-		return a.submitStandingShown(spoken, shown)
+		return a.submitStandingShown(spoken, shown, nil)
 	}
-	return a.submitShown(spoken, shown)
+	return a.submitShown(spoken, shown, nil)
 }
 
 // parkedStart turns one waiting message into the same engine call a front send

@@ -218,10 +218,10 @@ func (a *app) enterStanding() tea.Cmd {
 // answer they are parked with the mark on them, exactly as the chord's are
 // (park.go).
 func (a *app) standingSay(text string) tea.Cmd {
-	return a.standingSayShown(text, text)
+	return a.standingSayShown(text, text, nil)
 }
 
-func (a *app) standingSayShown(text, shown string) tea.Cmd {
+func (a *app) standingSayShown(text, shown string, plain []segment) tea.Cmd {
 	a.noticeEvent(eventStandingOpened)
 	if !a.standingHere() {
 		// The same absence the chord answers with, said in the same words: there
@@ -232,7 +232,7 @@ func (a *app) standingSayShown(text, shown string) tea.Cmd {
 	if a.parking() {
 		return a.park(text, true)
 	}
-	return a.submitStandingShown(text, shown)
+	return a.submitStandingShown(text, shown, plain)
 }
 
 // submitStanding sends one marked message. It is [app.submit] with the other
@@ -240,12 +240,12 @@ func (a *app) standingSayShown(text, shown string) tea.Cmd {
 // the call talks to a lock and possibly a provider, and the Update loop is not a
 // place to wait.
 func (a *app) submitStanding(text string) tea.Cmd {
-	return a.submitStandingShown(text, text)
+	return a.submitStandingShown(text, text, nil)
 }
 
-func (a *app) submitStandingShown(text, shown string) tea.Cmd {
+func (a *app) submitStandingShown(text, shown string, plain []segment) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submittingShown(text, shown, standingStart(agent, ctx, text))
+	return a.submittingShown(text, shown, plain, standingStart(agent, ctx, text))
 }
 
 // standingStart is the marked-message call shared by the front and keeper.

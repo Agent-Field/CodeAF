@@ -1500,6 +1500,10 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	var tagDoor sendDoor
 	var tagWords string
 	tagShown := line
+	// A DEMOTION MUST SURVIVE THE RESET. [editor.reset] nils demotedTags, and
+	// the transcript is painted long after that, so the ranges are snapshotted
+	// here and threaded to the entry (app.go's [app.submittingShown]).
+	plain := a.input.plainTags()
 	if !strings.HasPrefix(line, "/") && len(tags) == 1 {
 		tag := tags[0]
 		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
@@ -1541,7 +1545,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		if tagWords == "" {
 			return a.openStanding()
 		}
-		return a.standingSayShown(tagWords, tagShown)
+		return a.standingSayShown(tagWords, tagShown, plain)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}
@@ -1578,12 +1582,12 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	shownLine := line
 	line = a.expandPastes(line)
 	if held {
-		return a.submitImagesShown(line, shownLine)
+		return a.submitImagesShown(line, shownLine, plain)
 	}
 	if marked {
-		return a.submitStandingShown(line, shownLine)
+		return a.submitStandingShown(line, shownLine, plain)
 	}
-	return a.submitShown(line, shownLine)
+	return a.submitShown(line, shownLine, plain)
 }
 
 // completePath is tab: the file list over a command's path argument, opened if
