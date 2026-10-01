@@ -371,6 +371,12 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 	// before it is drawn: the column count, the width and the room all decide
 	// which rows exist — a whisper wraps at its column's width — so any of them
 	// moving is a rebuild, and the lines are made again only when one moved.
+	_, stacked := a.homeStacked()
+	var strip []placeRow
+	if !a.home.searching() && !a.home.phone && !stacked {
+		strip = a.standingStrip(width, room)
+	}
+	room -= len(strip)
 	if cols := homeGridCols(width); !a.home.searching() && !a.home.phone &&
 		(room != a.home.room || cols != a.home.cols || width != a.home.gridWidth) {
 		a.home.room, a.home.cols, a.home.gridWidth = room, cols, width
@@ -378,9 +384,10 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 	}
 	// AN ERRAND HOLDING THE KEYBOARD STACKS OVER THE GRID, which has no pane
 	// column to draw it in ([app.homeStacked]); [app.homeBody] draws that shape.
-	if _, stacked := a.homeStacked(); a.home.gridOn() && !stacked {
-		return a.homeGridRows(width, room, a.pal)
+	if a.home.gridOn() && !stacked {
+		return append(a.homeGridRows(width, room, a.pal), strip...)
 	}
+	room += len(strip)
 	left, right := homeColumns(width)
 	// THE HEIGHT REACHES THE READING HERE AND NOWHERE ELSE. It is the same law
 	// the width is settled under one layer up (home.go's [app.homeFrame]: the
@@ -568,6 +575,17 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// chord at all — there is no `alt` on a phone to press.
 	if cmd, took := a.placeTargetKey(msg); took {
 		return cmd, true
+	}
+	// AND THE ADD-MACHINE CARD'S CHORD, which is the router's to swallow unless
+	// it is claimed here, and is claimed only where the card is drawn.
+	if msg.String() == addMachineKey && a.addMachineWanted() {
+		return a.toggleAddMachine(), true
+	}
+	if cmd, took := a.resumeKeyHandler(msg.String()); took {
+		return cmd, true
+	}
+	if msg.String() == deviceKey && a.devicesWanted() {
+		return a.bringWork(), true
 	}
 	a.settleExchangeFocus()
 	ex := a.paneExchange()

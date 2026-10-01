@@ -42,7 +42,7 @@ type Mailbox struct {
 	URL string
 	// Host is named in the sentence for a relay that does not answer.
 	Host string
-	// Shown is the address the other device is told to pass as --relay, and is
+	// Shown is the address the other device is told to pass as --via, and is
 	// empty for the default relay, which needs no telling.
 	Shown string
 }

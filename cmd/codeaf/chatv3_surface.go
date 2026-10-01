@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -57,6 +58,7 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	}
 	wireSync(&options)
 	options.Pairing = chatPairDoor{}
+	options.Approvals = newApprovalsDoor(home.Dir())
 	options.UpdateRunning = revision
 	options.UpdateCurl = curl
 	options.UpdateArgs = surfaceArguments()

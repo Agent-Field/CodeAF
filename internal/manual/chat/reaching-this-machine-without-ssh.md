@@ -38,7 +38,7 @@ firewalls and NAT stop mattering.
 on, `--at` prints:
 
 ```
-no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a relay's address, or reach that machine with --host over ssh
+no service address is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a service address, or reach that machine with --host over ssh
 ```
 
 `--host` works today and is not going anywhere. If you can already reach the machine that
@@ -50,7 +50,7 @@ Run it on the machine that owns the work — the one with the files, the API key
 things you have set up:
 
 ```
-codeaf serve [--workspace path] [--relay https://…]
+codeaf serve [--workspace path] [--via https://…]
 ```
 
 It prints, exactly:
@@ -65,19 +65,19 @@ digits, the same every time, on any relay. You cannot pick a nicer one, and nobo
 can register under yours while your machine is connected.
 
 `--workspace` is the directory a connection works in when it does not name one; empty
-means the directory you ran the command in. `--relay` beats the `CODEAF_RELAY`
+means the directory you ran the command in. `--via` beats the `CODEAF_RELAY`
 environment variable.
 
 Running it twice on one machine is refused, because there is only one of it:
 
 ```
-this machine is already connected to the relay as otter-lamp-42 — there is only one of it, so close the other `codeaf serve`
+this machine is already connected to the service as otter-lamp-42 — there is only one of it, so close the other `codeaf serve`
 ```
 
 With no relay set up at all it says:
 
 ```
-no relay is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to a relay's address, or let people in over ssh with `codeaf chat --host` from their side
+no service address is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your service address, or let people in over ssh with `codeaf chat --host` from their side
 ```
 
 Ctrl+c ends it, and the machine gives its name back on the way out:
@@ -354,19 +354,19 @@ There are four different reasons, and each says which one it is, in one sentence
 **No relay is set up on this machine:**
 
 ```
-no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a relay's address, or reach that machine with --host over ssh
+no service address is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a service address, or reach that machine with --host over ssh
 ```
 
 **The relay is set up and not answering:**
 
 ```
-the relay at https://relay.example.com cannot be reached from here — check this machine's network, or reach that machine with --host over ssh
+the service at https://service.example.com cannot be reached from here — check this machine's network, or reach that machine with --host over ssh
 ```
 
 **The relay is fine and that machine is not connected to it:**
 
 ```
-otter-lamp-42 is not connected to the relay right now — run `codeaf serve` on that machine
+otter-lamp-42 is not connected to the service right now — run `codeaf serve` on that machine
 ```
 
 **This device has never been let in:**
@@ -378,7 +378,7 @@ this device is not paired with otter-lamp-42 — run `codeaf serve` on that mach
 Two more you may meet. A machine that does not answer the handshake at all:
 `otter-lamp-42 did not answer this device's handshake, so nothing was sent — if that machine was rebuilt it has a new key and this device has to pair with it again`.
 And a relay that is turning connections away:
-`the relay is turning connections away right now — try again in a minute` — it allows
+`the service is turning connections away right now — try again in a minute` — it allows
 30 connections a minute from one address.
 
 **A pairing that says the code was wrong when you are sure it was right** has one other

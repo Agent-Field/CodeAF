@@ -9,7 +9,7 @@ A relay is the small service your computers sync through. There are two kinds. B
 
 Either way the relay sees only ciphertext and the short list on "What can the relay see".
 
-**In this build no relay address is built in, and the hosted relay in this repository is code you deploy to your own account; no public address is named here.** The chat does not pick a relay for you. With no address it says `no relay is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a relay's address, or pass --relay <address>`. Give it one of the two below.
+**In this build no relay address is built in, and the hosted relay in this repository is code you deploy to your own account; no public address is named here.** The chat does not pick a relay for you. With no address it says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. Give it one of the two below.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
 
@@ -20,7 +20,7 @@ CODEAF_SYNC_URL=https://relay.example.com codeaf
 ```
 
 - **A web address** like `https://relay.example.com` or `http://host:8787`. Plain `http` is for trying it out inside an ssh tunnel. An address that is not a web address stops with `CODEAF_SYNC_URL is not a web address like http://host:8787`.
-- **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs a relay`.
+- **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
 - **Unset:** a computer that was paired uses the relay the pairing saved. A computer that never paired has none.
 
 Your own computers must all name the same relay and hold the same identity, or they see different chats.

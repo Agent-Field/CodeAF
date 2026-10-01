@@ -11,6 +11,7 @@ import (
 // under one lock per write and stamps every time from its own clock. Many
 // devices share one Memory, each through the Client that For returns.
 type Memory struct {
+	pairing
 	clock func() time.Time
 
 	mu       sync.Mutex
@@ -28,7 +29,7 @@ type Memory struct {
 
 // NewMemory returns an empty directory that reads time from clock.
 func NewMemory(clock func() time.Time) *Memory {
-	return &Memory{
+	m := &Memory{
 		clock:    clock,
 		identity: IdentityRec{V: 1},
 		devices:  map[string]Device{},
@@ -36,6 +37,8 @@ func NewMemory(clock func() time.Time) *Memory {
 		grace:    DefaultGraceBounds,
 		feed:     NewFeed(clock),
 	}
+	wireFeed(m.feed, &m.pairing, m.seen)
+	return m
 }
 
 var _ Watchable = (*Memory)(nil)
@@ -85,9 +88,12 @@ func (m *Memory) SetGraceBounds(b GraceBounds) {
 
 // For returns the Client that device would hold: every write it makes is made
 // as that device.
-func (m *Memory) For(device string) Client { return &memoryClient{m: m, device: device} }
+func (m *Memory) For(device string) Client {
+	return &memoryClient{pairing: &m.pairing, m: m, device: device}
+}
 
 type memoryClient struct {
+	*pairing
 	m      *Memory
 	device string
 }
@@ -198,10 +204,32 @@ func (c *memoryClient) Rotation(context.Context) (v RotationView, err error) {
 // only way to stop a device is Revoke and a device cannot clear its own stop.
 func (c *memoryClient) PutDevice(_ context.Context, id string, d Device) error {
 	return c.writing(func() error {
-		d.Revoked = c.m.devices[id].Revoked
-		set(c.m, c.m.devices, id, d)
+		c.m.store(id, d)
 		return nil
 	})
+}
+
+// store writes a device record as the directory keeps it and answers it. The
+// caller holds the lock.
+func (m *Memory) store(id string, d Device) Device {
+	old, had := m.devices[id]
+	d = Stamped(old, had, d, m.now())
+	set(m, m.devices, id, d)
+	return d
+}
+
+func (c *memoryClient) ApproveRequest(_ context.Context, code string, a Approval) error {
+	return c.approve(code, a, func(r Request) (d Device, err error) {
+		err = c.writing(func() error {
+			d = c.m.store(r.Device, a.Device)
+			return nil
+		})
+		return d, err
+	})
+}
+
+func (c *memoryClient) DenyRequest(_ context.Context, code string) error {
+	return c.deny(code, func() error { return c.writing(func() error { return nil }) })
 }
 
 func (c *memoryClient) Revoke(_ context.Context, id string) error {
