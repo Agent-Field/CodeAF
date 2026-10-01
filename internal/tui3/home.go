@@ -130,7 +130,7 @@ func homeTick(gen int) tea.Cmd {
 func (a *app) homeBeat(gen int) tea.Cmd {
 	if !a.at(pageHome) {
 		// Home is not showing, so nobody needs the change socket (machinewatch.go).
-		a.tendWatch(false)
+		a.tendWatch(a.devicesCardOpen())
 		return nil
 	}
 	if gen != a.homeGen {
@@ -3137,6 +3137,11 @@ func (h *homeView) buildFor() {
 func (a *app) homeSubmit() tea.Cmd {
 	h := &a.home
 	typed := strings.TrimSpace(h.box.String())
+	if a.approvals != nil && isPairLink(typed) {
+		h.box.reset()
+		h.build()
+		return a.openApprove(typed)
+	}
 	if _, bash := session.BashCommand(typed); bash {
 		return a.homeStart(typed)
 	}
