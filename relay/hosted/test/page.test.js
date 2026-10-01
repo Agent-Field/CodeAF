@@ -1,5 +1,6 @@
 // The pairing link's page: fixed headers, no network in the body, and no lookup of the code.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { isPagePath, servePage } from '../src/page.js';
 
@@ -54,4 +55,14 @@ test('only a GET of one code is a page', async () => {
   await assert.rejects(fetchPage('/p/'), { code: 'not_found' });
   await assert.rejects(fetchPage('/p/a/b'), { code: 'not_found' });
   assert.ok(isPagePath(get('/p/x')) && !isPagePath(get('/v1/dir/list')));
+});
+
+test('the deep link is the one the app reads (shared vector with internal/pair)', async () => {
+  const { DEEP_LINK } = await import('../src/page.js');
+  const vector = JSON.parse(readFileSync(new URL('../../../internal/pair/testdata/pagelink.json', import.meta.url)));
+  const deepLink = new Function(`${DEEP_LINK}; return deepLink;`)();
+  assert.equal(deepLink(vector.code, vector.key), vector.url);
+  assert.equal(deepLink(vector.code, ''), `codeaf://pair?code=${vector.code}`);
+  const html = await (await fetchPage('/p/' + vector.code)).text();
+  assert.ok(html.includes(DEEP_LINK) && html.includes('deepLink(code,key)'));
 });

@@ -10,11 +10,15 @@ const STYLE = 'body{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:15
   'button{font:inherit;padding:.5rem 1rem}@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}';
 
 // The link is code.key as `codeaf pair approve` takes it; the code is the last path part, the key the fragment.
-const SCRIPT = `const code=location.pathname.split('/').pop();
+// The app reads the key from the URL fragment only (internal/pair fromURL); a query key would arrive as no key.
+export const DEEP_LINK = `const deepLink=(code,key)=>'codeaf://pair?code='+encodeURIComponent(code)+(key?'#'+key:'');`;
+
+const SCRIPT = `${DEEP_LINK}
+const code=location.pathname.split('/').pop();
 const key=location.hash.slice(1);
 const token=key?code+'.'+key:code;
 document.getElementById('cmd').textContent='codeaf pair approve '+token;
-document.getElementById('open').onclick=()=>{location.href='codeaf://pair?code='+encodeURIComponent(code)+(key?'&key='+encodeURIComponent(key):'');};`;
+document.getElementById('open').onclick=()=>{location.href=deepLink(code,key);};`;
 
 const BODY = `<h1>Add this device</h1>
 <p>Open this on your computer: run</p>
