@@ -162,3 +162,24 @@ func CannotReachHost(host string) error { return fmt.Errorf("%w %s", ErrCannotRe
 func TooManyFor(wait time.Duration) error {
 	return fmt.Errorf("%w; wait %d min", ErrTooManyPairings, int((wait+time.Minute-1)/time.Minute))
 }
+
+// ── joining by link ──────────────────────────────────────────────────────────
+
+var (
+	// ErrLinkShape is typed text that is neither a pairing link nor a code.
+	ErrLinkShape = errors.New("that is not a pairing link or code; it looks like codeaf.link/p/k7m2q9xd#... or k7m2q9xd.<key>")
+	// ErrLinkExpired is a request nobody answered in time.
+	ErrLinkExpired = errors.New("the link ran out before anyone approved it; run `codeaf pair` again for a new one")
+	// ErrLinkDeclined is a person on another device saying no.
+	ErrLinkDeclined = errors.New("the request was declined on your other device; run `codeaf pair` to ask again")
+	// ErrLinkGone is a link that is not waiting any more, for any reason.
+	ErrLinkGone = errors.New("that link is not waiting any more; run `codeaf pair` on the new device for a fresh one")
+	// ErrLinkDecided is a request that was already answered the other way.
+	ErrLinkDecided = errors.New("that request was already answered")
+	// ErrCheckMismatch is a request whose check number does not fit its key.
+	ErrCheckMismatch = errors.New("the check number does not fit that device, so nothing was approved")
+	// ErrPairedNotRead is a pairing that worked and a list of devices that did not load.
+	ErrPairedNotRead = errors.New("paired, but your devices could not be read yet; open codeaf again in a moment")
+	// ErrNotJoined is an approver that has no device of its own to answer with.
+	ErrNotJoined = errors.New("this computer is not paired with any device yet, so it cannot approve one; run `codeaf pair` first")
+)

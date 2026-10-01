@@ -102,8 +102,9 @@ type pairRig struct {
 
 func newPairRig(t *testing.T) *pairRig {
 	t.Helper()
-	srv := httptest.NewServer(relayserve.New(relayserve.Config{}).Handler)
-	t.Cleanup(srv.Close)
+	svc := relayserve.New(relayserve.Config{Store: t.TempDir()})
+	srv := httptest.NewServer(svc.Handler)
+	t.Cleanup(func() { srv.Close(); svc.Close() })
 	rig := &pairRig{url: srv.URL, homeA: t.TempDir(), homeB: t.TempDir()}
 	if _, err := identity.Ensure(rig.homeA); err != nil {
 		t.Fatal(err)
@@ -125,6 +126,12 @@ func (r *pairRig) door(home string, in io.Reader, out io.Writer) pairDoor {
 		return pair.Joining{Home: home, Label: "laptop", Replace: replace,
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(home, url) }}
 	}
+	d.linking = func(route pair.Mailbox, replace bool) pair.LinkJoining {
+		j := linkJoining(home)(route, replace)
+		j.Label = "laptop"
+		return j
+	}
+	d.approver = linkApprover(home)
 	return d
 }
 
@@ -144,7 +151,7 @@ func (r *pairRig) show(t *testing.T) *showing {
 	ctx, stop := context.WithCancel(context.Background())
 	s.stop = stop
 	t.Cleanup(func() { stop(); _ = typed.Close() })
-	go func() { s.done <- r.door(r.homeA, in, s.out).run(ctx, nil) }()
+	go func() { s.done <- r.door(r.homeA, in, s.out).run(ctx, []string{"--code"}) }()
 	return s
 }
 

@@ -2234,6 +2234,10 @@ type app struct {
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
 	addMachine addMachine
+	// resume is the one-time "continue where you left off" offer (homeband_resume.go).
+	leftOff resumeOffer
+	// roster is the devices row's devices (homeband_devices.go).
+	devRow deviceRoster
 	// dirFeed is this window's hold on the directory's change feed while home is
 	// being looked at, and readOwed that a frame arrived while a read was in
 	// flight (machinewatch.go).
@@ -2618,6 +2622,11 @@ type app struct {
 	pairing Pairing
 	pair    pairPanel
 
+	// approvals answers a new device's request and revokes devices, and
+	// approve remembers what its screens have said (approve.go).
+	approvals Approvals
+	approve   approveState
+
 	// draftPage is the list /drafts opens over the ring of cleared-but-kept
 	// drafts (draftring.go): closed, it costs the frame nothing.
 	draftPage draftPanel
@@ -2934,6 +2943,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		approvals:           opts.Approvals,
 		fleet:               opts.Fleet,
 		branches:            opts.Branches,
 		ctx:                 ctx,
@@ -5035,8 +5045,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fleetMsg:
 		return a, a.tookFleet(msg)
 
+	case rosterMsg:
+		return a, a.tookRoster(msg)
+
 	case pairLinkMsg:
 		return a, a.tookLink(msg)
+
+	case linkCardMsg:
+		return a, a.tookLinkCard(msg)
 
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
@@ -5325,6 +5341,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pairMsg:
 		return a, a.tookPair(msg)
+
+	case cardMsg:
+		return a, msg.land(a)
 
 	case linkPingTickMsg:
 		// The next timer is armed immediately when this one finds a reconnect in
@@ -7520,6 +7539,9 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "pair":
 		return a.runPair(rest)
+
+	case "devices":
+		return a.openDevices()
 
 	case "autonomy":
 		a.noticeEvent(eventAutonomyAsked)
