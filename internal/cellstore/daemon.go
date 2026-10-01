@@ -8,6 +8,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 )
 
 // wireVersion is the daemon protocol's V; every message carries it (L11).
@@ -55,11 +56,13 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		return nil, unavailable(err)
 	}
 	defer conn.Close()
+	// The watch on ctx starts before the health check, so a cancelled take
+	// frees a check that is waiting on a daemon that never answers.
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
 	if err := d.verify(conn); err != nil {
 		return nil, unavailable(err)
 	}
-	stop := context.AfterFunc(ctx, func() { conn.Close() })
-	defer stop()
 	response, err := exchange(conn, newRequest(t, op))
 	if err != nil {
 		return nil, unavailable(err)
@@ -78,7 +81,9 @@ func (d Daemon) verify(conn net.Conn) error {
 	if d.Binary == "" {
 		return nil
 	}
+	_ = conn.SetDeadline(time.Now().Add(healthWait))
 	response, err := exchange(conn, wireRequest{V: wireVersion, ID: nextID.Add(1), Verb: "health"})
+	_ = conn.SetDeadline(time.Time{}) // the verb itself may take as long as it needs
 	if err != nil {
 		return err
 	}
@@ -89,6 +94,12 @@ func (d Daemon) verify(conn net.Conn) error {
 	}
 	return nil
 }
+
+// healthWait is how long a daemon has to answer the health check. The check is
+// one line each way on a local socket, so a daemon that takes longer is wedged;
+// it is then treated as no daemon and the verb falls back to a spawned engine,
+// where without this bound a caller with no deadline of its own waited for ever.
+var healthWait = 5 * time.Second
 
 // Stop asks the daemon to finish what it is doing and exit. A daemon that is
 // not running is already stopped.

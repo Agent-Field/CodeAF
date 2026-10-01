@@ -26,14 +26,16 @@ var syncDrives = &driveBook{}
 // of taking a second lease.
 type driveBook struct {
 	mu    sync.Mutex
-	drive map[string]*syncsetup.Drive
+	drive map[string]*liveDrive
 }
 
 // driveOf is the drive side of c, made on first use. It answers nil, and the
 // chat runs exactly as it did before sync existed, when sync is off, or when it
 // cannot start: a relay setting must never stop a conversation from opening.
-// A nil book answers nil, which is how a door that never syncs asks.
-func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(error)) *syncsetup.Drive {
+// A computer with no identity yet gets a drive side that starts by itself the
+// moment one is made (see liveDrive). A nil book answers nil, which is how a
+// door that never syncs asks.
+func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(error)) *liveDrive {
 	if b == nil {
 		return nil
 	}
@@ -42,21 +44,24 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	if d := b.drive[c.ID]; d != nil {
 		return d
 	}
-	d := startDrive(c, engine, report)
+	d := newLiveDrive(func() (*syncsetup.Drive, error) { return startDrive(c, engine, report) })
 	if d != nil {
 		if b.drive == nil {
-			b.drive = map[string]*syncsetup.Drive{}
+			b.drive = map[string]*liveDrive{}
 		}
 		b.drive[c.ID] = d
 	}
 	return d
 }
 
-func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) *syncsetup.Drive {
+// startDrive opens the drive side of c. The error it answers is already
+// reported; it is returned so a caller can tell a computer that has no identity
+// yet (which /pair will change) from one that cannot sync at all.
+func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*syncsetup.Drive, error) {
 	s, ok, err := syncsetup.Open(home.Dir())
 	if err != nil || !ok {
 		report(err)
-		return nil
+		return nil, err
 	}
 	if line, first := s.FirstRun(); first {
 		surfaceNotices.Say(line)
@@ -70,7 +75,7 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) *syncs
 		OnNotice: surfaceNotices.Say,
 	})
 	report(err)
-	return d
+	return d, err
 }
 
 // chatTitle is the chat's title as its session record has it now: the name it
@@ -95,7 +100,7 @@ func (b *driveBook) closeAll() {
 }
 
 // take hands over every drive side and forgets them.
-func (b *driveBook) take() map[string]*syncsetup.Drive {
+func (b *driveBook) take() map[string]*liveDrive {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	drives := b.drive
@@ -105,7 +110,7 @@ func (b *driveBook) take() map[string]*syncsetup.Drive {
 
 // driveGate is what a tool call meets before it runs: the superseded line once
 // another machine has taken the chat, and nothing while this one drives it.
-func driveGate(d *syncsetup.Drive) func() error {
+func driveGate(d *liveDrive) func() error {
 	if d == nil {
 		return nil
 	}
@@ -114,7 +119,7 @@ func driveGate(d *syncsetup.Drive) func() error {
 
 // driveStore is how the seat's seals reach the drive side; nil seals on the
 // engine itself.
-func driveStore(d *syncsetup.Drive) func(cellstore.Engine) cellstore.Store {
+func driveStore(d *liveDrive) func(cellstore.Engine) cellstore.Store {
 	if d == nil {
 		return nil
 	}
