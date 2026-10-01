@@ -313,6 +313,14 @@ Go or module files: commit the candidate first so the local diff is exactly the
 diff CI will test, without absorbing another session's edits.
 
 **`touched packages` checks a failing test again before it blames your change.**
+A classifier reads the plain output of the same `make test` run everyone else
+gets; initial suites, head retries and base probes all avoid `-json`. Go 1.26
+replaces `os.Stderr` under that flag, and re-executed helper binaries inherit
+`-test.v=test2json` framing. Those changes can manufacture head/base failures
+and hide a real regression. Ordinary `-v` on focused probes reveals absent or
+skipped tests; package lines and shard summaries establish ownership. Unclear
+ownership stays red, including panics whose owning test cannot be proved from
+plain text.
 A failing test is run once more on your branch; if it passes, it is reported as
 flaky. If it fails again, it is run at the base commit; if it fails there too,
 it is reported as already failing on `dev`. Both stay green and are recorded on

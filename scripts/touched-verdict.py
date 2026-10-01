@@ -26,77 +26,97 @@ def capture(command, cwd=None):
                                stderr=subprocess.STDOUT, text=True, errors="replace")
     lines = []
     for line in process.stdout:
-        # Keep Go's human output in the job log and its events for attribution.
-        # Event metadata without Output is bookkeeping, not a readable message.
-        try:
-            event = json.loads(line)
-        except ValueError:
-            event = None
-        if isinstance(event, dict) and "Action" in event:
-            sys.stdout.write(event.get("Output", ""))
-        else:
-            sys.stdout.write(line)
+        sys.stdout.write(line)
         sys.stdout.flush()
         lines.append(line)
     return process.wait(), "".join(lines)
 
 
-def events(output):
-    result = []
+def plain_results(output):
+    tests, packages, errors = [], [], []
+    pending = []
+    shard_package = None
     for line in output.splitlines():
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(event, dict) and "Action" in event:
-            result.append(event)
-    return result
+        shard = re.match(r"^(ok|FAIL)\s+(\S+)\s+shard \d+/\d+\s+\d+s$", line)
+        summary = re.match(r"^(ok|FAIL)\s+(\S+)\s+\d+ shards\s+\d+s(?:\s+failing: (.*))?$", line)
+        package = re.match(r"^(ok|FAIL|\?)\s+(\S+)\s+(?:[\d.]+s|\(cached\)|\[[^\]]+\])(?:\s.*)?$", line)
+        test = re.match(r"^\s*--- (PASS|FAIL|SKIP): (\S+) \([\d.]+s\)\s*$", line)
+        if shard:
+            if pending:
+                errors.append("test results have no terminal package line before a shard")
+                pending = []
+            if shard_package and shard_package != shard[2]:
+                errors.append("sharded package has no terminal summary: " + shard_package)
+            # The sharder prints a header BEFORE each failing shard's output.
+            # Ordinary Go package output instead ends with its package line.
+            shard_package = shard[2]
+        elif summary:
+            if shard_package and shard_package != summary[2]:
+                errors.append("shard summary names a different package")
+            packages.append((summary[2], summary[1]))
+            if summary[1] == "FAIL":
+                names = summary[3]
+                if not names or names == "unknown":
+                    errors.append("shard summary has no attributable test name")
+                else:
+                    tests.extend((summary[2], name, "FAIL") for name in names.split(","))
+            shard_package = None
+        elif test:
+            # Keep the full name from Go, including every indented subtest.
+            # Parent propagation is removed only after package ownership is known.
+            if shard_package:
+                tests.append((shard_package, test[2], test[1]))
+            else:
+                pending.append((test[2], test[1]))
+        elif package:
+            if shard_package:
+                errors.append("sharded package has no terminal summary: " + shard_package)
+                shard_package = None
+            packages.append((package[2], package[1]))
+            tests.extend((package[2], name, action) for name, action in pending)
+            pending = []
+    if pending:
+        errors.append("test results have no terminal package line")
+    if shard_package:
+        errors.append("sharded package has no terminal summary: " + shard_package)
+    return {"tests": tests, "packages": packages, "errors": errors}
 
 
-def infrastructure(output, stream, status):
+def infrastructure(output, results, status):
     if status < 0 or status in (137, 143):
         return "killed process"
-    prose = output + "\n" + "".join(event.get("Output", "") for event in stream)
-    raw = []
-    for line in output.splitlines():
-        try:
-            json.loads(line)
-        except ValueError:
-            raw.append(line)
-    diagnostics = "\n".join(raw) + "\n" + "".join(
-        event.get("Output", "") for event in stream if not event.get("Test"))
     for pattern, reason in [
         (r"\[setup failed\]", "package setup failure ([setup failed])"),
-        (r"\[build failed\]|build-fail|^# \S+", "build failure ([build failed])"),
-        (r"shard-test:", "shard runner error"),
+        (r"\[build failed\]|^# \S+", "build failure ([build failed])"),
+        (r"^shard-test:", "shard runner error"),
         (r"signal: killed|\bKilled\b|(?:exit status|Error) (137|143)", "killed process"),
+        (r"^panic: test timed out", "package-level timeout (panic: test timed out)"),
+        (r"^panic:|^fatal error:", "panic outside a test or panic ownership unclear in plain output"),
     ]:
-        if re.search(pattern, diagnostics, re.MULTILINE):
+        if re.search(pattern, output, re.MULTILINE):
             return reason
-    if re.search(r"^panic: test timed out", prose, re.MULTILINE):
-        return "package-level timeout (panic: test timed out)"
-    if any(event.get("Action") == "build-fail" for event in stream):
-        return "build failure"
-    # A panic under a named test may be attributed. A panic outside one cannot,
-    # even when other tests in the same invocation also failed assertions.
-    panic_events = [event for event in stream if "panic:" in event.get("Output", "")]
-    if any(not event.get("Test") for event in panic_events):
-        return "panic outside a test"
-    if "panic:" in prose and not panic_events:
-        return "panic outside a test"
-    if status and not failed_tests(stream):
+    # Plain output cannot prove a panic belongs to an assertion's test, even
+    # when a named failure appears nearby. Uncertain ownership MUST stay red.
+    if results["errors"]:
+        return results["errors"][0]
+    if not results["packages"]:
+        return "runner produced no terminal package result"
+    failures = failed_tests(results)
+    if status and not failures:
         return "runner failed without an attributable test name"
-    failed_packages = {event.get("Package") for event in stream
-                       if event.get("Action") == "fail" and not event.get("Test")}
-    attributed = {package for package, _ in failed_tests(stream)}
+    failed_packages = {package for package, action in results["packages"] if action == "FAIL"}
+    attributed = {package for package, _ in failures}
     if failed_packages - attributed:
         return "package failed without an attributable test name"
+    if attributed - failed_packages:
+        return "failed test has no failing terminal package result"
+    if not status and failed_packages:
+        return "runner succeeded despite a failing package result"
     return None
 
 
-def failed_tests(stream):
-    failed = sorted({(event["Package"], event["Test"]) for event in stream
-                     if event.get("Action") == "fail" and event.get("Test") and event.get("Package")})
+def failed_tests(results):
+    failed = sorted({(package, name) for package, name, action in results["tests"] if action == "FAIL"})
     # Go reports each failed child and its parents. Retry the leaves so a
     # propagated parent failure does not rerun passing siblings as well.
     return [(package, name) for package, name in failed
@@ -112,28 +132,31 @@ def selector(name):
 
 
 def focused(package, name, timeout, cwd=None):
-    status, output = capture(["go", "test", "-json", "-count=1", "-p", "2",
+    # Ordinary -v exposes pass/skip names, so an absent or skipped target cannot
+    # masquerade as a pass. -json changes stderr and helper-process behaviour.
+    status, output = capture(["go", "test", "-v", "-count=1", "-p", "2",
                               "-timeout", timeout, "-run", selector(name), package], cwd)
-    stream = events(output)
-    reason = infrastructure(output, stream, status)
-    plain_output = output + "\n" + "".join(event.get("Output", "") for event in stream)
-    if reason and any(re.search(pattern, plain_output) for pattern in (
+    results = plain_results(output)
+    reason = infrastructure(output, results, status)
+    if reason and any(re.search(pattern, output) for pattern in (
         r"no required module provides package\s+" + re.escape(package) + r"(?:;|\s)",
         r"package " + re.escape(package) + r" is not in std",
         r"main module .* does not contain package\s+" + re.escape(package) + r"(?:\s|$)",
     )):
         return "absent", "package absent (cannot resolve target)"
-    target = [event for event in stream if event.get("Package") == package
-              and event.get("Test") == name and event.get("Action") in ("pass", "fail", "skip")]
+    target = [action for owner, test, action in results["tests"] if owner == package and test == name]
     if reason:
         return "error", reason
     if not target:
         return "absent", "test or package absent (no matching test result)"
-    if target[-1]["Action"] == "skip":
+    if target[-1] == "SKIP":
         return "absent", "test did not run (skipped)"
-    if target[-1]["Action"] == "fail":
+    if target[-1] == "FAIL":
+        if any(owner != package or (test != name and not test.startswith(name + "/"))
+               for owner, test in failed_tests(results)):
+            return "error", "focused run failed outside the selected test"
         return "fail", None
-    if status or failed_tests(stream):
+    if status or failed_tests(results):
         return "error", "focused run failed outside the selected test"
     return "pass", None
 
@@ -164,14 +187,11 @@ def run(args):
         status, output = capture(["make", "--no-print-directory", "-s", "test",
                                   "PKGS=" + " ".join(args.packages),
                                   "KNOWN_RED=", "TEST_SKIP=",
-                                  "TEST_FLAGS=-json -count=1 -p 2", "SHARDS=" + args.shards,
+                                  "TEST_FLAGS=-count=1 -p 2", "SHARDS=" + args.shards,
                                   "TEST_TIMEOUT=" + args.timeout])
-        stream = events(output)
-        reason = infrastructure(output, stream, status)
-        failures = failed_tests(stream)
-        if not any(event.get("Action") in ("pass", "fail", "skip")
-                   and not event.get("Test") for event in stream):
-            reason = reason or "runner produced no terminal package result"
+        results = plain_results(output)
+        reason = infrastructure(output, results, status)
+        failures = failed_tests(results)
         if reason:
             reasons.append(reason + "; no retry")
             annotation("error", reasons[-1])

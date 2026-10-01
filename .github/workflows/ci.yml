@@ -302,6 +302,9 @@ jobs:
         run: |
           nproc
           free -g
+      # Offline module-listing tests need the whole module cache; each leg compiles only part of the tree.
+      - name: Download modules
+        run: go mod download
       - name: Test and attribute failures
         env:
           BASE: ${{ needs.select.outputs.base }}

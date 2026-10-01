@@ -21,11 +21,12 @@ scenario = os.environ['SCENARIO']
 package = 'example.invalid/fixture/pkg'
 name = 'TestOne'
 
-def emit(action, test=None, output=None, pkg=package):
-    event = {'Action': action, 'Package': pkg}
-    if test: event['Test'] = test
-    if output: event['Output'] = output
-    print(json.dumps(event), flush=True)
+def test_result(test, action='FAIL'):
+    # Go prints full subtest names at an indentation matching their depth.
+    print('    ' * test.count('/') + f'--- {action}: {test} (0.00s)', flush=True)
+
+def package_result(pkg=package, failed=True):
+    print(('FAIL' if failed else 'ok  ') + '\t' + pkg + '\t0.001s', flush=True)
 
 if tool == 'git':
     if sys.argv[1:3] == ['worktree', 'add']:
@@ -51,48 +52,83 @@ if tool == 'gh':
         body = Path(sys.argv[sys.argv.index('--body-file') + 1]).read_text()
         (directory / 'issue-body').write_text(body)
     sys.exit(0)
+if tool in ('make', 'go'):
+    assert not any('-json' in arg or 'test2json' in arg for arg in sys.argv), sys.argv
 if tool == 'make':
     # No name-based skip may sneak back into the first run.
     assert not any('-skip' in arg for arg in sys.argv)
     assert 'KNOWN_RED=' in sys.argv and 'TEST_SKIP=' in sys.argv
-    if scenario == 'killed-silent':
-        emit('fail', name)
-        sys.exit(137)
-    if scenario in ('build', 'setup', 'timeout', 'panic', 'killed', 'shard'):
-        emit('fail', name)
-        prose = {'build': '[build failed]', 'setup': '[setup failed]',
-                 'timeout': 'panic: test timed out after 15m', 'panic': 'panic: outside a test',
-                 'killed': 'signal: killed', 'shard': 'shard-test: lost terminal test results'}[scenario]
-        emit('output', output=prose)
-    elif scenario == 'unnamed':
-        emit('fail')
-    elif scenario in ('cap', 'cap-five'):
-        for i in range(6 if scenario == 'cap' else 5): emit('fail', 'Test' + str(i))
-    elif scenario == 'subtest':
-        emit('fail', 'TestOne/child.with+marks')
-        emit('fail', 'TestOne')
-    elif scenario == 'mixed':
-        emit('fail', 'TestOne')
-        emit('fail', 'TestTwo')
-    elif scenario == 'green':
-        emit('pass', name)
-        emit('pass')
+    assert 'TEST_FLAGS=-count=1 -p 2' in sys.argv, sys.argv
+    if scenario == 'green':
+        package_result(failed=False)
+        print('?   \texample.invalid/fixture/empty\t[no test files]')
         sys.exit(0)
+    if scenario == 'no-results':
+        sys.exit(0)
+    if scenario == 'killed-silent':
+        test_result(name)
+        sys.exit(137)
+    if scenario in ('sharded', 'sharded-subtest', 'shard-missing-summary', 'shard-unknown'):
+        print(f'ok  {package}  shard 1/2  0s')
+        print(f'FAIL  {package}  shard 2/2  0s')
+        print('=== RUN   TestOne')
+        test_result(name)
+        if scenario == 'sharded-subtest': test_result('TestOne/child.with+marks')
+        print('FAIL')
+        if scenario != 'shard-missing-summary':
+            print(f'FAIL  {package}  2 shards  0s  failing: ' + ('unknown' if scenario == 'shard-unknown' else name))
+        package_result(pkg='example.invalid/fixture/other', failed=False)
+        sys.exit(1)
+    if scenario in ('build', 'setup', 'timeout', 'panic', 'named-panic', 'killed', 'shard'):
+        test_result(name)
+        package_result()
+        prose = {'build': '# example.invalid/fixture/broken\nFAIL\texample.invalid/fixture/broken [build failed]',
+                 'setup': 'FAIL\texample.invalid/fixture/broken [setup failed]',
+                 'timeout': 'panic: test timed out after 15m',
+                 'panic': 'panic: outside a test', 'named-panic': 'panic: test panic',
+                 'killed': 'signal: killed', 'shard': 'shard-test: lost terminal test results'}[scenario]
+        print(prose, flush=True)
+    elif scenario == 'unnamed':
+        package_result()
+        package_result(pkg='example.invalid/fixture/other', failed=False)
+    elif scenario in ('cap', 'cap-five'):
+        for i in range(6 if scenario == 'cap' else 5): test_result('Test' + str(i))
+        package_result()
+    elif scenario == 'subtest':
+        test_result('TestOne')
+        test_result('TestOne/child.with+marks')
+        test_result('TestOne/passing-sibling', 'PASS')
+        package_result()
+    elif scenario == 'mixed':
+        test_result('TestOne')
+        test_result('TestTwo')
+        package_result()
+    elif scenario == 'multi-package':
+        # -p 2 buffers each package's output as a block. Repeated test names
+        # must keep separate owners, with a passing block between the failures.
+        test_result(name)
+        package_result()
+        package_result(pkg='example.invalid/fixture/other', failed=False)
+        test_result(name)
+        package_result(pkg='example.invalid/fixture/second')
     elif scenario == 'readable-log':
         print('plain runner diagnostic', flush=True)
-        emit('output', 'TestX', '--- FAIL: TestX (0.00s)\n')
-        emit('fail', 'TestX')
+        test_result('TestX')
+        package_result()
     else:
-        emit('output', name, 'FIRST FAILURE REMAINS IN THE LOG')
-        emit('fail', name)
-    emit('fail')
+        print('FIRST FAILURE REMAINS IN THE LOG', flush=True)
+        test_result(name)
+        if scenario != 'no-terminal': package_result()
+        if scenario == 'regression-with-ok': package_result(pkg='example.invalid/fixture/other', failed=False)
     sys.exit(1)
 assert tool == 'go', tool
-assert '-count=1' in sys.argv and '-run' in sys.argv, sys.argv
+assert '-count=1' in sys.argv and '-run' in sys.argv and '-v' in sys.argv, sys.argv
+assert '-p' in sys.argv and sys.argv[sys.argv.index('-p') + 1] == '2', sys.argv
 assert '-skip' not in ' '.join(sys.argv)
 pattern = sys.argv[sys.argv.index('-run') + 1]
 assert pattern.startswith('^(') and pattern.endswith(')$'), pattern
-if scenario == 'subtest':
+package = sys.argv[-1]
+if scenario in ('subtest', 'sharded-subtest'):
     assert pattern == r'^(TestOne)$/^(child\.with\+marks)$', pattern
     name = 'TestOne/child.with+marks'
 if scenario == 'mixed' and pattern == '^(TestTwo)$': name = 'TestTwo'
@@ -100,22 +136,33 @@ if scenario == 'cap-five': name = pattern[2:-2]
 if scenario == 'readable-log': name = 'TestX'
 base = '/codeaf-touched-base-' in os.getcwd()
 if base and scenario in ('absent-test', 'base-skipped'):
-    if scenario == 'base-skipped': emit('skip', name)
-    emit('pass')
+    if scenario == 'base-skipped': test_result(name, 'SKIP')
+    else: print('testing: warning: no tests to run')
+    print('PASS')
+    package_result(failed=False)
     sys.exit(0)
 if base and scenario == 'absent-package':
-    emit('output', output='no required module provides package ' + package + '; [setup failed]')
-    emit('fail')
+    print('no required module provides package ' + package + '; to add it:')
+    print('FAIL\t' + package + ' [setup failed]')
     sys.exit(1)
 if base and scenario == 'base-build':
-    emit('output', output='[build failed]')
-    emit('fail')
+    print('# ' + package)
+    print('FAIL\t' + package + ' [build failed]')
     sys.exit(1)
-fails = scenario in ('inherited', 'cap-five', 'regression', 'absent-test', 'absent-package', 'base-build', 'base-skipped')
+if not base and scenario == 'head-build':
+    print('# ' + package)
+    print('FAIL\t' + package + ' [build failed]')
+    sys.exit(1)
+fails = scenario in ('inherited', 'cap-five', 'regression', 'regression-with-ok', 'multi-package',
+                     'absent-test', 'absent-package', 'base-build', 'base-skipped')
 if scenario == 'mixed': fails = name == 'TestTwo'
-if base and scenario in ('regression', 'mixed'): fails = False
-emit('fail' if fails else 'pass', name)
-emit('fail' if fails else 'pass')
+if base and scenario in ('regression', 'regression-with-ok', 'multi-package', 'mixed'): fails = False
+print('=== RUN   ' + name)
+if '/' in name: test_result(name.split('/')[0], 'FAIL' if fails else 'PASS')
+test_result(name, 'FAIL' if fails else 'PASS')
+print('FAIL' if fails else 'PASS')
+package_result(pkg=package, failed=fails)
+if scenario == 'regression-with-ok': package_result(pkg='example.invalid/fixture/other', failed=False)
 sys.exit(1 if fails else 0)
 PY
 chmod +x "$tmp/bin/stub"
@@ -152,14 +199,30 @@ grep -q '^plain runner diagnostic$' "$CASE_DIR/log"
 if grep -q '{"Action"' "$CASE_DIR/log"; then cat "$CASE_DIR/log" >&2; exit 1; fi
 run_case inherited 0 2 'already failing on the base'
 run_case regression 1 2 'introduced by this change'
+run_case regression-with-ok 1 2 'introduced by this change'
+run_case multi-package 1 4 'introduced by this change'
+python3 - "$CASE_DIR/report.json" <<'PY'
+import json, sys
+rows = json.load(open(sys.argv[1]))['tests']
+assert {(row['package'], row['test']) for row in rows} == {
+    ('example.invalid/fixture/pkg', 'TestOne'), ('example.invalid/fixture/second', 'TestOne')}, rows
+PY
 grep -q '::error::example.invalid/fixture/pkg: TestOne' "$CASE_DIR/log"
 run_case build 1 0 'build failure'
 run_case setup 1 0 'package setup failure'
 run_case timeout 1 0 'package-level timeout'
 run_case panic 1 0 'panic outside a test'
+run_case named-panic 1 0 'panic ownership unclear'
 run_case killed 1 0 'killed process'
 run_case killed-silent 1 0 'killed process'
 run_case shard 1 0 'shard runner error'
+run_case sharded 0 1 flaky
+run_case sharded-subtest 0 1 flaky
+run_case shard-missing-summary 1 0 'no terminal summary'
+run_case shard-unknown 1 0 'no attributable test name'
+run_case no-terminal 1 0 'no terminal package line'
+run_case no-results 1 0 'no terminal package result'
+run_case head-build 1 1 'head retry could not execute'
 run_case unnamed 1 0 'without an attributable test name'
 run_case cap 1 0 'exceed the cap of 5'
 run_case cap-five 0 10 'already failing on the base'

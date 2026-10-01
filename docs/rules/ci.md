@@ -90,10 +90,16 @@ failed, so it is not sharded. Its codeaf leg still runs beside tui3 and session
 on a separate runner. Each suite/shard and focused probe gets 15 minutes; a
 leg's 60-minute ceiling leaves room for bounded diagnosis.
 
-`scripts/touched-verdict.sh` parses Go JSON events for attribution and prints
-their human `Output` text plus non-JSON diagnostics in the job log. Every test
-runs in the initial selected suites: the classifier disables the shared
-Makefile's ledger skip flags. Each named failing test gets ONE focused retry on
+`scripts/touched-verdict.sh` reads the plain output of the same `make test` run
+everyone else gets, including package lines and the shard runner's summaries.
+The initial run, head retry and base probe all avoid `-json`: Go 1.26 replaces
+`os.Stderr` under that flag, and helpers re-executing the test binary inherit
+`-test.v=test2json` and print framing that changes their output. Those changes
+can manufacture failures at both head and base and hide a real regression.
+Focused probes use ordinary `-v` to distinguish a pass from an absent or skipped
+test. The job log is the original text. Every test runs in the initial selected
+suites: the classifier disables the shared Makefile's ledger skip flags.
+Each named failing test gets ONE focused retry on
 head, then, if it fails again, ONE focused probe at the exact base (PR base SHA,
 previous push tip, or `HEAD~1` for a first push or dispatch). Subtests use their
 full names so passing siblings are not retried; a temporary detached base
@@ -106,7 +112,9 @@ worktree is created only when needed and removed afterward.
   own and stays red. A skipped test or unbuildable base is inconclusive and red.
 - Build/setup failures, timeout panics, panics outside a test, killed processes,
   shard errors and other unnamed failures stay red without retries, even beside
-  named failures. **More than five failed tests per leg** fail with their list
+  named failures. Plain text cannot prove a panic's test ownership, so all
+  panics stay red; missing package lines or shard summaries also stay red.
+  **More than five failed tests per leg** fail with their list
   and no probes; ten focused runs is the maximum diagnostic budget.
 
 A flaky test is still a bug with an owner; it just is not evidence that this PR
@@ -148,6 +156,10 @@ prefix. The first dev push of each UTC day that misses the exact key saves;
 later exact hits do not, and PRs never save. Modules use
 `codeaf-go-v1-modules-<os>-<arch>-<go version>-<hashFiles(go.sum)>`, restore
 without the hash, and are saved only by light on a dev push that misses the key.
+Every touched leg runs `go mod download` after restoring caches and before
+testing: it compiles only part of the tree, but offline module-listing tests
+such as codeaf-notices need all dependencies available. Light builds the whole
+tree and continues saving the shared module cache.
 At most five build namespaces a day plus one module entry per go.sum cost about
 2 GB a day at the measured ~385 MB; GitHub's least-recently-used eviction at the
 10 GB repository limit removes old days without any pruning script. Cache
