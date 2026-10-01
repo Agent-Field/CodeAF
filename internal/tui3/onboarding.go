@@ -323,9 +323,8 @@ func (s *setupFlow) focusControl(a *app, delta int) {
 	was := s.example
 	s.example = exampleForControl(s.control)
 	s.refusal = ""
-	// The other deliberate act. Two rows share an example — the model row and
-	// `Start a conversation` both stand beside the first — and walking between
-	// them does not replay it: the panel would restart under a person who never
+	// The other deliberate act. A row that keeps the example the last row had
+	// does not replay it: the panel would restart under a person who never
 	// changed what it was showing.
 	if s.example != was {
 		a.restartSetupDemo()
@@ -829,6 +828,22 @@ var setupExamples = []setupExample{
 			"A recommendation you can argue with",
 		},
 	},
+	{
+		// THE OTHER EXAMPLE THAT SPELLS A COMMAND. `/senior-dev <brief>` hands the
+		// whole brief to the autonomous coding agent codeaf carries, and the
+		// manual's account of it (senior-dev.md) is what the three lines are held
+		// to: it writes the brief down word for word, works in a private copy on
+		// a branch of its own, and hands back a change it has built and tested on
+		// a frozen tree. Nothing here says "approved" or "merged" — it submits,
+		// and what happens to the branch is the person's.
+		title: "Hand off complex coding tasks",
+		ask:   "/senior-dev Add retries with backoff to the HTTP client, with tests.",
+		leads: []string{
+			"Your brief written down word for word",
+			"Work on a branch of its own, step by step",
+			"A change built and tested, handed back",
+		},
+	},
 }
 
 // exampleForControl is which example accompanies which field, and it is the
@@ -840,6 +855,11 @@ func exampleForControl(control setupControl) int {
 	switch control {
 	case controlLimit:
 		return 2
+	case controlStart:
+		// THE LAST ROW SHOWS THE BIGGEST THING THE PROGRAM DOES: a person about
+		// to start a conversation is shown that a whole change can be handed
+		// off, which is the one capability nothing above has hinted at.
+		return 4
 	case controlReview:
 		// THE HAND-OFF EXAMPLE stood beside the crew row, which is gone: a task's
 		// crew is picked per task now and asks nothing here. The review row is
@@ -940,16 +960,19 @@ func titleWord(word string) string {
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
-// The composition, in cells: ONE COLUMN. The form stands at the top, the legend
-// under it, and the example panel under that, at the composition's full width,
-// so the request and the three lines it leads to each stand on one row instead
-// of wrapping inside a thirty-six-cell box. Until 2026-10-01 the example was a
+// The composition, in cells: ONE COLUMN. The example panel stands at the top,
+// at the composition's full width, so the request and the three lines it leads
+// to each stand on one row instead of wrapping inside a thirty-six-cell box;
+// two blank rows under it; then the keyboard legend with the form directly
+// under it, because the legend is about the form and the two read as one
+// object when nothing stands between them. Until 2026-10-01 the example was a
 // second column to the right of the form, drawn only from 112 columns up and
 // level with the first field; on a tall window that left the whole lower half
-// of the screen empty while the panel squeezed its sentences three ways. The
-// panel now takes the rows the form leaves, WHOLE OR NOT AT ALL — a window with
-// no rows to spare under the form draws the form alone, which is also what keeps
-// the panel from ever standing between a person and `Start a conversation`.
+// of the screen empty while the panel squeezed its sentences three ways, and
+// the first move — under the form — put the legend between the form and the
+// panel, where it read as a caption for the wrong one. The panel takes the rows
+// the form leaves, WHOLE OR NOT AT ALL: a window with no rows to spare draws
+// the legend and the form alone, from the top.
 const (
 	// setupFormWidth is the form's width, a comfortable measure for a sentence
 	// and no wider.
@@ -1005,43 +1028,42 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	// before the form gets any: the header, the blank under it, and the legend.
 	body, doors, caretRow := sheet.trim(max(height-3, 1))
 	// THE DOORS ARE KEPT WITH THE FRAME THAT DREW THEM, so a press reads the
-	// rows that are actually on the screen: body row i is frame row i+2, under
-	// the header and the blank, and it spans the form's own columns.
-	s.doors = setupDoors{rows: doors, top: 2, left: lead, width: form}
+	// rows that are actually on the screen: body row i is frame row top+i,
+	// where top is settled below once the panel and the legend are placed, and
+	// it spans the form's own columns.
+	s.doors = setupDoors{rows: doors, left: lead, width: form}
 
 	// THE EXAMPLE TAKES THE ROWS THE FORM LEAVES, and only the whole of it.
-	// Four rows are spoken for around the form — the header, the blank under
-	// it, the legend, and the blank between the legend and the panel — and a
-	// panel that does not fit whole in what is left is not drawn: a cut panel
-	// is a panel without the line at its foot that says nothing in it has run.
-	// The decision is made before the legend is written, because the legend
-	// names the arrows only when there is a panel for them to browse.
+	// Three rows are spoken for around the form — the header, the blank under
+	// it, and the legend — and the panel needs its own rows plus the two blank
+	// ones under it; a panel that does not fit whole in what is left is not
+	// drawn, because a cut panel is a panel without the line at its foot that
+	// says nothing in it has run. The decision is made before the legend is
+	// written, because the legend names the arrows only when there is a panel
+	// for them to browse.
 	var block []string
 	if show > 0 {
-		block = a.setupShowcaseBlock(show, height-2-len(body)-2)
+		block = a.setupShowcaseBlock(show, height-3-len(body)-setupShowcaseGap)
 	}
 	s.exampleShown = len(block) > 0
 
 	lines := make([]string, 0, height)
 	lines = append(lines, pad+head, "")
-	for _, line := range body {
+	for _, line := range block {
 		lines = append(lines, pad+line)
 	}
-	// THE KEYBOARD GUIDANCE FOLLOWS THE FORM, and the panel follows that with
-	// one blank row between them. The legend is measured against the whole
-	// composition rather than the form ([app.setupControlsKeys] then cuts by
-	// whole clauses, never mid-word). It is not pinned to the last row of the
-	// window: a legend nailed to the foot of a frame under a short form leaves a
-	// hole in the middle of the composition, and a hole reads as a screen that
-	// stopped.
-	if len(lines) < height {
-		lines = append(lines, pad+a.pal.dim(a.setupControlsKeys(pair)))
-	}
-	if len(block) > 0 {
+	for i := 0; len(block) > 0 && i < setupShowcaseGap; i++ {
 		lines = append(lines, "")
-		for _, line := range block {
-			lines = append(lines, pad+line)
-		}
+	}
+	// THE KEYBOARD GUIDANCE STANDS DIRECTLY OVER THE FORM, with nothing between
+	// them. It is measured against the whole composition rather than the form
+	// ([app.setupControlsKeys] then cuts by whole clauses, never mid-word).
+	lines = append(lines, pad+a.pal.dim(a.setupControlsKeys(pair)))
+	// The form begins here: the row a press is measured from, and the caret's.
+	top := len(lines)
+	s.doors.top = top
+	for _, line := range body {
+		lines = append(lines, pad+line)
 	}
 	for len(lines) < height {
 		lines = append(lines, "")
@@ -1049,13 +1071,18 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	if len(lines) > height {
 		lines = lines[:height]
 	}
-	caretY := caretRow + 2
+	caretY := caretRow + top
 	a.caret = caretRow >= 0 && caretY < height
 	if !a.caret {
 		return lines, 0, 0
 	}
 	return lines, lead + sheet.caretX, caretY
 }
+
+// setupShowcaseGap is the blank rows between the example panel and the legend:
+// enough that the panel reads as its own object above the form, and the legend
+// as the form's.
+const setupShowcaseGap = 2
 
 // padTo pads a painted row out to a column, measuring the plain text under the
 // paint so an escape sequence is never counted as a cell.
@@ -1689,18 +1716,21 @@ func (a *app) setupControlsKeys(width int) string {
 		// has been told everything except how to reach the other four rows —
 		// which is the one thing this screen cannot be completed without. The way
 		// out is third and appears from sixty columns up.
+		// THE ROWS ARE WALKED WITH THE ARROWS, AND THE LEGEND SAYS SO. Tab
+		// walks them too, and used to be the word here; it was one more key to
+		// learn on a screen whose list a person already walks with ↑↓.
 		switch s.control {
 		case controlLimit:
-			parts = []string{"enter goes on", "tab moves", a.setupBackWord(), "type an amount or none"}
+			parts = []string{"enter sets the limit", setupMovesWord, a.setupBackWord(), "type an amount or none"}
 		case controlChatModel:
-			parts = []string{"enter opens the list", "tab moves", a.setupBackWord()}
+			parts = []string{"enter opens the list", setupMovesWord, a.setupBackWord()}
 		case controlReview:
-			parts = []string{"enter shows them", "tab moves", a.setupBackWord()}
+			parts = []string{"enter shows them", setupMovesWord, a.setupBackWord()}
 			if s.reviewOpen {
 				parts[0] = "enter goes on"
 			}
 		case controlStart:
-			parts = []string{"enter starts", "tab moves", a.setupBackWord()}
+			parts = []string{"enter starts", setupMovesWord, a.setupBackWord()}
 		}
 		if s.control <= controlChatModel {
 			parts = append(parts, "? detail")
@@ -1713,6 +1743,11 @@ func (a *app) setupControlsKeys(width int) string {
 	}
 	return clausesWithin(parts, width)
 }
+
+// setupMovesWord is the legend's clause for walking the rows. It is one
+// constant because the tmux suite waits for it to know the form is up
+// (internal/e2e's tmux_test.go), and a respelling has to be one edit.
+const setupMovesWord = "↑↓ moves"
 
 // clausesWithin joins as many whole clauses as fit, in the order they are given.
 // It never cuts one in half, which is the whole reason it is not [fit].
@@ -1771,7 +1806,7 @@ func (a *app) setupBackWord() string {
 // something that LOOKS like a run, and the panel says outright that it was not
 // one. Neither line is decoration and neither is dropped before the leads are.
 const (
-	showcaseTitleWord  = "Example · what you can do"
+	showcaseTitleWord  = "Example"
 	showcaseHonestWord = "An illustration. Nothing here has run."
 )
 
@@ -1807,7 +1842,7 @@ func (a *app) setupShowcaseBlock(width, maxHeight int) []string {
 		rows = append(rows, " "+padTo(line, inner)+" ")
 	}
 	block, _ := framed{
-		title:     pal.dim(showcaseTitle(pal)),
+		title:     showcaseTitle(pal, example),
 		keysAside: pal.dim(setupShowcaseCount(at, len(setupExamples))),
 	}.draw(pal, width, rows)
 	return block
@@ -1822,7 +1857,8 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 		caret = showcaseCaretASCII
 	}
 	rows := make([]string, 0, 16)
-	rows = append(rows, pal.muted(fit(example.title, inner)), "")
+	// The example's title is on the panel's top edge ([showcaseTitle]), so the
+	// body opens straight on the request.
 
 	// THE REQUEST, TYPED. It is drawn behind this surface's own `you` marker,
 	// which is the mark the transcript opens a person's own line with — so what
@@ -1839,12 +1875,18 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 		}
 		return strings.Repeat(" ", ansi.StringWidth(pal.youGlyph()))
 	}
+	// A COMMAND IN THE REQUEST WEARS ITS CHIP, the same chip the composer draws
+	// over a recognised command (slashchip.go's [paintCommands]), so the panel
+	// shows `/senior-dev` the way the box will show it when it is typed: as a
+	// word the program knows. While the request is still typing itself out the
+	// word is painted the moment it is whole, and plain before that, exactly as
+	// it is under a person's own fingers.
 	for i := range full {
 		switch {
 		case i < len(shown)-1:
-			rows = append(rows, lead(i)+pal.ink(shown[i]))
+			rows = append(rows, lead(i)+paintCommands(shown[i], pal, pal.ink, i == 0))
 		case i == len(shown)-1:
-			line := pal.ink(shown[i])
+			line := paintCommands(shown[i], pal, pal.ink, i == 0)
 			if typing {
 				line += pal.accent(caret)
 			}
@@ -1882,15 +1924,17 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 }
 
 // showcaseTitle is the panel's label, written into its top edge by the frame,
-// behind the one mark on it. A label on an edge is a label that cannot be
-// mistaken for content.
-func showcaseTitle(pal palette) string {
+// behind the one mark on it: the word that says what the panel IS, dim, and
+// then the example's own title at the panel's reading weight. A label on an edge
+// is a label that cannot be mistaken for content, and a title on the edge is a
+// row the body does not have to spend.
+func showcaseTitle(pal palette, example setupExample) string {
 	// THE MARK IS THIS SURFACE'S OWN GLYPH FOR "NOTHING IS TURNING"
 	// (tokens.GQueued, the empty circle that is deliberately not a spinner), which
 	// is exactly what this panel is. Borrowing it rather than inventing a shape
 	// keeps one vocabulary, and it means the one glyph on the frame agrees with
 	// the sentence at its foot.
-	return pal.glyph(tokens.GQueued) + " " + showcaseTitleWord
+	return pal.dim(pal.glyph(tokens.GQueued)+" "+showcaseTitleWord+" · ") + pal.muted(example.title)
 }
 
 // setupShowcaseCount is the position line on the panel's bottom edge —

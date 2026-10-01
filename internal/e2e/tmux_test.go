@@ -316,14 +316,14 @@ const setupPatience = 8 * time.Second
 // asks for a word.
 //
 // THE LEGEND'S SECOND CLAUSE IS HERE FOR NARROW FRAMES. Below sixty columns the
-// form draws no title and its legend keeps only `enter goes on · tab moves`
+// form draws no title and its legend keeps only `enter sets the limit · ↑↓ moves`
 // (internal/tui3's onboarding.go, [app.setupControlsKeys]), so a rig started at
 // forty-four columns saw neither of the other two words, decided there was no
 // setup, and left its scenario typing into the daily-limit field.
 const (
 	setupSkipKeysWord = "esc skips setup"
 	setupTitleWord    = "setting up"
-	setupMovesWord    = "tab moves"
+	setupMovesWord    = "↑↓ moves"
 )
 
 // keylessEnv is every variable a fresh-install run must not inherit: the two the

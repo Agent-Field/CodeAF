@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -372,7 +373,7 @@ func TestTheControlsScreenStaysUsableDownToFortyColumns(t *testing.T) {
 		// and a keyboard line that ends in one has taught nobody anything.
 		legend := ""
 		for _, line := range strings.Split(screen, "\n") {
-			if strings.Contains(line, "enter goes on") {
+			if strings.Contains(line, "enter sets the limit") {
 				legend = strings.TrimSpace(line)
 			}
 		}
@@ -386,8 +387,8 @@ func TestTheControlsScreenStaysUsableDownToFortyColumns(t *testing.T) {
 		// A legend teaching only what enter does and how to go back has taught
 		// everything except how to reach the other four rows, which is the one
 		// thing this screen cannot be completed without.
-		if !strings.Contains(legend, "tab moves") {
-			t.Fatalf("%s dropped `tab moves` from the keyboard line: %q", where, legend)
+		if !strings.Contains(legend, setupMovesWord) {
+			t.Fatalf("%s dropped %q from the keyboard line: %q", where, setupMovesWord, legend)
 		}
 		// AND NO SENTENCE IS LEFT HALF-DRAWN. Rows are given up whole block at a
 		// time, so a wrapped explanation is either all there or not there at all.
@@ -532,49 +533,104 @@ func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.
 	if strings.Contains(plain(short), showcaseTitleWord) {
 		t.Fatalf("the example panel was drawn on a 24-row window with no room for the whole of it:\n%s", plain(short))
 	}
-	if strings.Contains(plain(short), "←→ examples") {
+	if strings.Contains(plain(short), "examples") {
 		t.Fatalf("the legend names the arrows on a frame with no panel:\n%s", plain(short))
 	}
 }
 
-// THE PANEL STANDS UNDER THE FORM, AT THE COMPOSITION'S WIDTH. It used to be a
-// second column beside the form, drawn from 112 columns up; on a tall window
-// that left the lower half of the screen empty while the panel wrapped every
-// sentence three ways. Now it follows the legend, one blank row under it, and
-// its top edge is as wide as the composition, so the request stands on one row.
-func TestTheExamplePanelStandsUnderTheFormAtTheCompositionsWidth(t *testing.T) {
+// THE PANEL STANDS ABOVE THE LEGEND AND THE FORM, AT THE COMPOSITION'S WIDTH.
+// It used to be a second column beside the form, drawn from 112 columns up, and
+// then for a day it stood under the legend, where the legend read as a caption
+// for the wrong object. Now the order is panel, two blank rows, legend, form —
+// the legend directly over the form it is about — and the panel's top edge is
+// as wide as the composition, so the request stands on one row and the
+// example's title rides on the edge instead of spending a row of the body.
+func TestTheExamplePanelStandsAboveTheLegendAndTheForm(t *testing.T) {
 	a, _ := controlsApp(t, nil)
 	a.settleSetupDemo()
 	rows := strings.Split(rawSetupFrame(a), "\n")
-	legend, top := -1, -1
+	legend, title, top, bottom := -1, -1, -1, -1
+	box := framePiecesOf(a.pal)
 	for i, row := range rows {
-		if strings.Contains(row, "tab moves") {
+		switch {
+		case strings.Contains(row, setupMovesWord):
 			legend = i
-		}
-		if strings.Contains(row, showcaseTitleWord) {
+		case strings.Contains(row, controlsTitle):
+			title = i
+		case strings.Contains(row, showcaseTitleWord):
 			top = i
+		case top >= 0 && bottom < 0 && strings.Contains(row, box.bl):
+			bottom = i
 		}
 	}
-	if legend < 0 || top < 0 {
-		t.Fatalf("no legend (%d) or no panel (%d) on the frame:\n%s", legend, top, rawSetupFrame(a))
+	if legend < 0 || title < 0 || top < 0 || bottom < 0 {
+		t.Fatalf("legend %d, form title %d, panel top %d, panel bottom %d on the frame:\n%s", legend, title, top, bottom, rawSetupFrame(a))
 	}
-	if top != legend+2 {
-		t.Fatalf("the panel's top edge is on row %d and the legend on row %d; want the panel two rows under the legend", top, legend)
+	if top != 2 {
+		t.Fatalf("the panel's top edge is on row %d, want row 2 under the header and its blank", top)
+	}
+	if legend != bottom+1+setupShowcaseGap {
+		t.Fatalf("the legend is on row %d and the panel's bottom edge on row %d; want %d blank rows between them", legend, bottom, setupShowcaseGap)
+	}
+	if title != legend+1 {
+		t.Fatalf("the form's title is on row %d and the legend on row %d; want the form directly under the legend", title, legend)
 	}
 	panel := showcasePanel(a)
 	if got := len([]rune(panel[0])); got != setupShowcaseWidth {
 		t.Fatalf("the panel is %d cells wide, want the composition's %d:\n%s", got, setupShowcaseWidth, panel[0])
 	}
+	// The example's title is on the top edge, after the label, and not inside.
+	example := setupExamples[a.setup.example]
+	if !strings.Contains(panel[0], showcaseTitleWord+" · "+example.title) {
+		t.Fatalf("the top edge does not carry %q after the label:\n%s", example.title, panel[0])
+	}
+	for _, row := range panel[1:] {
+		if strings.Contains(row, example.title) {
+			t.Fatalf("the example's title is still inside the panel:\n%s", strings.Join(panel, "\n"))
+		}
+	}
 	// The request stands on one row inside it, which is what the width is for.
-	ask := setupExamples[a.setup.example].ask
 	found := false
 	for _, row := range panel {
-		if strings.Contains(row, ask) {
+		if strings.Contains(row, example.ask) {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("the request %q wrapped inside a %d-cell panel:\n%s", ask, setupShowcaseWidth, strings.Join(panel, "\n"))
+		t.Fatalf("the request %q wrapped inside a %d-cell panel:\n%s", example.ask, setupShowcaseWidth, strings.Join(panel, "\n"))
+	}
+	// And a click still lands on the form's rows where they now stand.
+	x, y := setupRowOf(t, a, controlModelLabel)
+	pressSetup(a, clickAt(x+2, y))
+	if a.setup.control != controlChatModel || !a.setup.modelOpen {
+		t.Fatalf("a press on the model row under the panel left the focus on %v with the list open=%v", a.setup.control, a.setup.modelOpen)
+	}
+}
+
+// THE HAND-OFF EXAMPLE SPELLS /senior-dev AND WEARS ITS CHIP. It stands beside
+// `Start a conversation`, and the command in its request is painted the way the
+// composer paints a recognised command, so the panel shows the word as one the
+// program knows rather than as prose.
+func TestTheSeniorDevExampleStandsOnTheLastRowWithItsCommandChipped(t *testing.T) {
+	// The program's row is on the command table once the engine's list has
+	// landed (delegate.go), which is what makes `/senior-dev` a word the
+	// composer chips; the fixture's agent has no list, so the row is installed
+	// the way the launch installs it.
+	installDelegateCommands([]session.DelegateRow{{Name: "senior-dev", Description: "an autonomous coding agent"}})
+	t.Cleanup(func() { installDelegateCommands(nil) })
+	a, _ := controlsApp(t, nil)
+	walkToControl(t, a, controlStart)
+	a.settleSetupDemo()
+	example := setupExamples[a.setup.example]
+	if !strings.HasPrefix(example.ask, "/senior-dev ") || example.title != "Hand off complex coding tasks" {
+		t.Fatalf("the last row's example is %q / %q, want the senior-dev hand-off", example.title, example.ask)
+	}
+	frame, _, _ := a.frame()
+	if !strings.Contains(frame, a.pal.chip("/senior-dev")) {
+		t.Fatalf("the panel does not paint /senior-dev as a command chip:\n%s", plain(frame))
+	}
+	if !strings.Contains(setupScreen(a), example.title) {
+		t.Fatalf("the panel's edge does not carry %q:\n%s", example.title, setupScreen(a))
 	}
 }
 

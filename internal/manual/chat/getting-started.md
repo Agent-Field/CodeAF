@@ -216,17 +216,28 @@ If a **task model** is pinned (`task.model`), one dim line under the chat model 
 `Tasks are pinned to … · /settings changes that` — because that pin decides the worker
 seat, and a screen that did not mention it would be hiding where tasks run.
 
-**Under the form**, below the keys line, a bordered panel labelled
-`○ Example · what you can do` and footed `An illustration. Nothing here has run.` stands
-on any window with the rows to hold the whole of it — the only bordered surface codeaf
-draws, so it cannot be read as more form. It is as wide as the screen allows, up to 92
-columns, so the request in it stands on one row. It holds one request you could type and
-what it leads to, and follows the row you are on: on the review row it shows `/task Fix the
-failing tests and explain the changes.` That request **types itself out once** on arriving
-and on `←`/`→`, then settles; typing settles it at once. On a window too short to hold the
-form and the whole panel — 24 rows, say — the panel is not drawn and the keys line does not
-name the arrows; the form is unchanged. (Until 2026-10-01 the panel was a second column to
-the right of the form, drawn only from 112 columns up.)
+**Above the form**, under the `codeaf · setup · 2 of 2` header, a bordered panel stands on
+any window with the rows to hold the whole of it — the only bordered surface codeaf draws,
+so it cannot be read as more form. Its top edge is labelled `○ Example · ` followed by the
+example's own title (`Understand an unfamiliar project`, `Hand off something longer`,
+`Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`), and
+its foot reads `An illustration. Nothing here has run.` It is as wide as the screen allows,
+up to 92 columns, so the request in it stands on one row. It holds one request you could
+type and what it leads to, and follows the row you are on: on the review row it shows
+`/task Fix the failing tests and explain the changes.`, and on `Start a conversation` it
+shows `/senior-dev Add retries with backoff to the HTTP client, with tests.` — a command
+in a request is painted as the same chip the message box paints a recognised command with.
+That request **types itself out once** on arriving and on `←`/`→`, then settles; typing
+settles it at once. Two blank rows separate the panel from the keys line, and the form
+stands directly under the keys line. On a window too short to hold the form and the whole
+panel — 24 rows, say — the panel is not drawn and the keys line does not name the arrows;
+the form is unchanged. (Until 2026-10-01 the panel was a second column to the right of the
+form, drawn only from 112 columns up.)
+
+The keys line reads `enter sets the limit · ↑↓ moves · esc back · type an amount or none ·
+? detail · ←→ examples` on the limit row; `enter` on the other rows says what it does
+there (`opens the list`, `shows them`, `goes on`, `starts`). `↑`/`↓` and `tab` both walk
+the rows.
 
 The controls screen shows **once, ever**. The default OpenRouter prerequisite above is the only
 step that may return.
