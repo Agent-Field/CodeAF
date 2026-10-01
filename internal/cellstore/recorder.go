@@ -23,6 +23,10 @@ type Options struct {
 	// call's record is durable in the WAL and rides the next seal. [SealWatch]
 	// is the holder of what the outcomes add up to.
 	Report func(error)
+	// Refresh, when set, is called just before each seal so the record the seal
+	// carries is true at that moment: the inventory uses it to say which of the
+	// chat's commands are still running.
+	Refresh func()
 }
 
 // Recorder is the one hook (task 0.7): an executor.Executor that logs each
@@ -94,6 +98,7 @@ func (r *Recorder) Around(ctx context.Context, call executor.Call, effect execut
 	out, failed := run()
 	done := executed(intent, executor.ExecResult{Exit: exitOfFailure(failed), Stdout: out}, nil, r.now().UnixMilli())
 	done.Changed = call.Changed
+	done.Command = commandOf(call.Args)
 	done.Trigger = trigger
 	r.complete(ctx, intent, done)
 	return nil
@@ -191,6 +196,9 @@ func (r *Recorder) complete(ctx context.Context, i Intent, e Executed) {
 // seal takes everything pending into one turn. On failure the batch stays
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {
+	if r.opts.Refresh != nil {
+		r.opts.Refresh()
+	}
 	batch := r.pending
 	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Models: r.models, Changed: changedOf(batch)}); err != nil {
 		r.report(err)

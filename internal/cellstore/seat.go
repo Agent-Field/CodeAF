@@ -35,7 +35,7 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	if over != nil {
 		store = over(engine)
 	}
-	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report})
+	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs)})
 	if err != nil {
 		return executor.Watching(base, obs), err
 	}
@@ -89,3 +89,15 @@ func (s sealed) trigger() Trigger {
 
 // NoteModelCall implements executor.ModelNoter.
 func (s sealed) NoteModelCall(m executor.ModelCall) { s.rec.NoteModelCall(m) }
+
+// refresher is an observer that keeps a record of what is running and brings it
+// up to date on request.
+type refresher interface{ Refresh() }
+
+// refreshOf is the observer's Refresh, and no hook for an observer that has none.
+func refreshOf(obs executor.Observer) func() {
+	if r, ok := obs.(refresher); ok {
+		return r.Refresh
+	}
+	return nil
+}

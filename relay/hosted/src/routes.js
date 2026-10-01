@@ -3,6 +3,7 @@
 // is refused with, and the handler. Handlers get {tenant, device, body} and the path's captures,
 // and answer a Response or throw a refusal; the Durable Object does everything around them.
 import { MAX_FRAME } from './frame.js';
+import { parseHolds } from './vouch.js';
 import { Wire, badRequest, json, empty, notFound } from './wire.js';
 
 const MAX_SMALL = 1 << 20; // directory.MaxBody, and every store body but a frame
@@ -40,7 +41,8 @@ const withVersion = (res, version) => (res.headers.set('Codeaf-Dir-Version', Str
 // The watch is an upgrade and nothing else: a plain GET is told so (contract 21.2).
 function watching(c) {
   if (c.request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new Wire('upgrade_required', 426);
-  return c.tenant.watch(c.device);
+  const holds = parseHolds(new URL(c.request.url).searchParams.getAll('hold'), c.tenant.limits.maxHolds);
+  return c.tenant.watch(c.device, holds);
 }
 
 const octets = (bytes) => new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });

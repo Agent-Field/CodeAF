@@ -92,13 +92,13 @@ func (f Files) prefix() string { return f.scope() + "/" }
 func (f Files) slot(rel string) Carried {
 	return Carried{
 		ID: f.prefix() + rel, Scope: f.scope(), Name: rel,
-		Medium: fileMedium{filepath.Join(f.Root, filepath.FromSlash(rel))},
+		Medium: fileMedium{root: f.Root, path: filepath.Join(f.Root, filepath.FromSlash(rel))},
 	}
 }
 
 // fileMedium is one file as a Medium. Its content is the mode and the bytes in
 // one text, so the vault's whole-slot rules keep the two together.
-type fileMedium struct{ path string }
+type fileMedium struct{ root, path string }
 
 func (m fileMedium) Read() (string, time.Time, error) {
 	info, err := os.Lstat(m.path)
@@ -114,7 +114,9 @@ func (m fileMedium) Read() (string, time.Time, error) {
 
 func (m fileMedium) Realized(content string) string { return content }
 
-func (m fileMedium) Clear() error { return ignoreMissing(os.Remove(m.path)) }
+func (m fileMedium) Clear() error {
+	return keepingFolderTimes(m.root, m.path, func() error { return ignoreMissing(os.Remove(m.path)) })
+}
 
 // Write puts the file back with its mode, and leaves a file that already is that
 // alone so an unchanged file keeps its save time.
@@ -126,10 +128,41 @@ func (m fileMedium) Write(content string) error {
 	if have, _, err := m.Read(); err == nil && have == content {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
-		return err
+	return keepingFolderTimes(m.root, m.path, func() error {
+		if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
+			return err
+		}
+		return writeAtomic(m.path, data, mode)
+	})
+}
+
+// keepingFolderTimes runs change, which adds or removes the withheld file at
+// path, and gives every folder between root and the file the save time it had
+// before. A folder's time is part of what a seal records, so a change that
+// moved it would read as an edit of the tree at the next takeover, yet putting
+// a withheld file back, or taking it away, is the vault's doing and not the
+// person's. Folders that change made are new and keep the time they got.
+func keepingFolderTimes(root, path string, change func() error) error {
+	before := map[string]os.FileInfo{}
+	for dir := filepath.Dir(path); within(root, dir); dir = filepath.Dir(dir) {
+		if info, err := os.Stat(dir); err == nil {
+			before[dir] = info
+		}
+		if dir == root {
+			break
+		}
 	}
-	return writeAtomic(m.path, data, mode)
+	err := change()
+	for dir, info := range before {
+		_ = os.Chtimes(dir, info.ModTime(), info.ModTime())
+	}
+	return err
+}
+
+// within says whether dir is root or a folder below it.
+func within(root, dir string) bool {
+	rel, err := filepath.Rel(root, dir)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // encodeFile is "<octal mode>:<base64 bytes>": text, so a binary key survives

@@ -171,6 +171,12 @@ type openChat struct {
 }
 
 func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string) *openChat {
+	return h.openObserved(s, eng, c, work, device, nil)
+}
+
+// openObserved is openOn with an observer on the seat, the way the door gives a
+// chat the machine that keeps the record of what it ran.
+func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer) *openChat {
 	h.t.Helper()
 	eng.Workspace = work
 	title := func() string { m, _ := session.LoadMeta(c.Root); return m.Title }
@@ -179,7 +185,7 @@ func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, devi
 		h.t.Fatal(err)
 	}
 	h.t.Cleanup(func() { _ = drive.Close(context.Background()) })
-	seat, err := cellstore.SeatOver(executor.HostBound, c, work, nil, nil,
+	seat, err := cellstore.SeatOver(executor.HostBound, c, work, obs, nil,
 		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) })
 	if err != nil {
 		h.t.Fatal(err)
@@ -909,6 +915,36 @@ func TestTwoHomesTakeOfAnUnopenedTakenChat(t *testing.T) {
 	if again.Taken.Kept != "" {
 		t.Fatalf("a tree nobody touched kept %s as edits", again.Taken.Kept)
 	}
+}
+
+// TestTwoHomesSecondTakeAfterRestoredSecretsIsClean: a take writes the vault's
+// secret files into subfolders, and that write moves the folders' times. Writing
+// back a file the seals withheld is not an edit, so a second take with nothing
+// touched in between finds the tree clean and keeps no branch.
+func TestTwoHomesSecondTakeAfterRestoredSecretsIsClean(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	seedTree(t, h.work)
+	h.vaultTheEnv()
+	a := h.openA()
+	a.mustSay("first")
+	h.durable(h.cell.ID, h.cell)
+	if err := a.drive.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	first, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEnvInjected(t, workspaceOf(first.Taken.Cell.Root))
+	again, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatalf("the second take failed: %v", err)
+	}
+	if again.Taken.Kept != "" {
+		t.Fatalf("a tree nobody touched kept %s after its secrets were restored", again.Taken.Kept)
+	}
+	assertEnvInjected(t, workspaceOf(again.Taken.Cell.Root))
 }
 
 // bigFile writes n bytes that do not compress or repeat, so what a publish

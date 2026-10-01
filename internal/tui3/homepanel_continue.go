@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -39,6 +40,10 @@ type Taken struct {
 	Device    string
 	// TaskCopies names the tasks whose working copies came along with the chat.
 	TaskCopies []string
+	// Resume is what the chat left behind on the other machine that this one
+	// lacks. A takeover with something in it raises the setup card in the chat
+	// it opens.
+	Resume machine.Resume
 }
 
 // Taker continues a chat here. `handoff.Taker` is what stands behind it; the
@@ -269,6 +274,9 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	cmd := a.homeOpenLine(line)
 	if kept != "" {
 		a.note(kept)
+	}
+	if a.file == line.row.Transcript {
+		a.offerSetup(msg.taken.Resume)
 	}
 	return tea.Batch(cmd, a.askMachines())
 }

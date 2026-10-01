@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -460,19 +461,47 @@ func (f *FakeEngine) Materialize(_ context.Context, c cell.Cell, head string) er
 	return fc.writeFiles(c.Root, snap)
 }
 
+// writeFiles restores snap over root the way the real engine does: a file
+// that already holds the right bytes is left alone, a file that differs is
+// replaced by a new file renamed over it (never written in place, because the
+// old one may be a hard link that another tree still reads), and a file the
+// snapshot does not hold is removed.
 func (fc *fakeCell) writeFiles(root string, snap snapshot) error {
 	for path, rid := range snap.Files {
 		_, content, err := unpack(fc.objects[rid])
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(root, path)
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return err
-		}
-		if err := os.WriteFile(target, content, 0o600); err != nil {
+		if err := replaceFile(filepath.Join(root, path), content); err != nil {
 			return err
 		}
 	}
-	return nil
+	return removeAbsent(root, snap)
+}
+
+func replaceFile(target string, content []byte) error {
+	if have, err := os.ReadFile(target); err == nil && bytes.Equal(have, content) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return err
+	}
+	next := target + ".fake-new"
+	if err := os.WriteFile(next, content, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(next, target)
+}
+
+func removeAbsent(root string, snap snapshot) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		if _, kept := snap.Files[filepath.ToSlash(rel)]; kept {
+			return nil
+		}
+		return os.Remove(path)
+	})
 }

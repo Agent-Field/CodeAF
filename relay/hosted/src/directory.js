@@ -3,6 +3,7 @@
 // depends on it), so nothing can interleave inside a swap: that is the compare-and-swap the
 // lease rules need. The rules themselves are pure and live in rules.js.
 import { makeRules, RuleError } from './rules.js';
+import { lifted } from './vouch.js';
 import { CLOSE_REVOKED, CLOSE_ROTATED, NOBODY } from './watch.js';
 
 const refuse = (code) => new RuleError(code);
@@ -41,7 +42,7 @@ export class Directory {
   write(kind, id, doc) {
     const before = this.#stored(kind, id);
     this.sql.exec('INSERT OR REPLACE INTO dir VALUES (?,?,?)', kind, id, JSON.stringify(doc));
-    if (!before || this.#visible(kind, before) !== this.#visible(kind, doc)) this.#bump();
+    if (!before || this.#visible(kind, id, before) !== this.#visible(kind, id, doc)) this.#bump();
     return doc;
   }
 
@@ -53,9 +54,21 @@ export class Directory {
 
   // What the home list shows of a record: all of it, except that a lease shows only whether it is held,
   // never when it runs out, so a heartbeat that moves the expiry alone is not a change (contract 21.4).
-  #visible(kind, doc) {
+  // Held is asked of the lifted lease, so a socket that vouches for it counts as much as a stored expiry.
+  #visible(kind, id, doc) {
     if (kind !== 'cells') return canonical(doc);
-    return canonical({ ...doc, lease: { ...doc.lease, expires: doc.lease.expires > this.clock() } });
+    const c = this.#lift(id, doc);
+    return canonical({ ...c, lease: { ...c.lease, expires: c.lease.expires > this.clock() } });
+  }
+
+  /**
+   * #lift is the one place the socket evidence meets a lease (contract 21.11): it answers the cell as a reader must
+   * see it, its expiry raised to what the holder's sockets vouch for. The sockets are asked only of a lease that has
+   * run out of stored time and was not released, so a lease that is plainly live costs no socket scan.
+   */
+  #lift(id, c) {
+    if (!c || c.lease.expires === 0 || c.lease.expires > this.clock()) return c;
+    return lifted(c, this.watchers.vouchedUntil(c.lease.device, id, c.lease.fence));
   }
 
   /** #bump moves the durable version up by one in the turn that made the change, then tells every socket. */
@@ -76,7 +89,7 @@ export class Directory {
   }
 
   cell(id) {
-    return { now: this.clock(), cell: present(this.read('cells', id)) };
+    return { now: this.clock(), cell: this.#lift(id, present(this.read('cells', id))) };
   }
 
   create(id, init, device) {
@@ -87,7 +100,7 @@ export class Directory {
   }
 
   acquire(id, device, force = false) {
-    return this.change(id, (c, now) => this.rules.acquire(c, device, now, force));
+    return this.change(id, (c, now) => this.rules.acquire(this.#lift(id, c), device, now, force));
   }
 
   heartbeat(id, device, beat) {
@@ -154,7 +167,7 @@ export class Directory {
     for (const { kind, id, doc } of this.sql.exec('SELECT kind, id, doc FROM dir').toArray()) {
       if (kind === 'identity') out.identity = JSON.parse(doc);
       else {
-        const rec = JSON.parse(doc);
+        const rec = kind === 'cells' ? this.#lift(id, JSON.parse(doc)) : JSON.parse(doc);
         // The list is the home screen's hot read: frame plans are for takers, and they
         // read them off the cell answer, so the list never carries them.
         if (kind === 'cells') delete rec.frames;

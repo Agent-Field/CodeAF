@@ -3,6 +3,7 @@ package relayserve_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sync"
 	"testing"
@@ -119,5 +120,44 @@ func TestWatchVersionSurvivesRestart(t *testing.T) {
 
 	if got := firstVersion(t, r, a); got != last {
 		t.Fatalf("first frame after a restart is %d, want %d", got, last)
+	}
+}
+
+// The lease cases of the contract (section 21.11) against the in-process relay
+// on its fake clock.
+func TestLeaseConformance(t *testing.T) {
+	directorytest.RunLease(t, func(t *testing.T) directorytest.WatchRig {
+		r := &rig{t: t, store: t.TempDir(), clock: directorytest.NewFakeClock(), watch: watchCap}
+		r.start()
+		return r.watchRig(t)
+	})
+}
+
+// A relay that restarts has no sockets, so only the stored expiry decides: a
+// lease whose holder kept it live by a socket lapses, and one whose holder
+// beat before the expiry (as a client does while its socket is down) does not.
+func TestLeaseSurvivesRestartByBeats(t *testing.T) {
+	r := newRig(t)
+	id, a := newIdentity(t)
+	b := newDevice(t, id, t.TempDir())
+	if _, err := r.dir(a).Create(bg, cell, directory.CellInit{Head: head1, Class: "chat"}); err != nil {
+		t.Fatal(err)
+	}
+	r.clock.Advance(60 * time.Second)
+	r.restart()
+
+	if _, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
+		t.Fatalf("the stored expiry did not hold the lease across a restart: %v", err)
+	}
+	if _, err := r.dir(a).Heartbeat(bg, cell, directory.Beat{Fence: 1}); err != nil {
+		t.Fatalf("a beat before the expiry: %v", err)
+	}
+	r.clock.Advance(80 * time.Second) // past the first expiry, inside the beat's
+	if _, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
+		t.Fatalf("the beat did not keep the lease live: %v", err)
+	}
+	r.clock.Advance(directory.LeaseTTL) // no beat, no socket: only the stored expiry is left
+	if _, err := r.dir(b).Acquire(bg, cell, directory.AcquireOpts{}); err != nil {
+		t.Fatalf("a lease with no beat and no socket did not lapse: %v", err)
 	}
 }

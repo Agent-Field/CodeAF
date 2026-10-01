@@ -52,24 +52,34 @@ func (g Guard) notify(line string) {
 // forgotten. A failure to record the exclusion fails the seal: nothing is
 // captured that was not screened.
 func (g Guard) Screen(c cell.Cell, tree, policyDir string, changed []string) error {
+	_, err := g.Look(c, tree, policyDir, changed, nil)
+	return err
+}
+
+// Look is [Guard.Screen] that also answers what else it found: the install
+// folders this seal leaves out and the lockfiles it saw. locks is the lockfiles
+// known from before, which a look at only the changed paths keeps.
+func (g Guard) Look(c cell.Cell, tree, policyDir string, changed, locks []string) (Screened, error) {
 	policy, err := readPolicy(tree, policyDir)
 	if err != nil {
-		return fmt.Errorf("screen for secrets: %w", err)
+		return Screened{}, fmt.Errorf("screen for secrets: %w", err)
 	}
+	left := g.leftOut(tree, changed, locks, policy)
+	policy = policy.leaving(left.paths())
 	found := g.scan(tree, changed, policy)
 	next := policy.with(pathsOf(found))
 	if err := next.write(policyDir); err != nil {
-		return fmt.Errorf("screen for secrets: %w", err)
+		return Screened{}, fmt.Errorf("screen for secrets: %w", err)
 	}
 	g.announce(policy, found)
 	g.vault(c, tree, found)
-	return nil
+	return left, nil
 }
 
 // scan is the findings among what a seal of changed would capture, plus the
 // paths already withheld.
 func (g Guard) scan(tree string, changed []string, policy policyFile) []keys.Finding {
-	held := keys.Scanner{Skip: policy.isLeftOut}.Paths(tree, policy.withheld)
+	held := keys.Scanner{Skip: func(rel string) bool { return policy.isLeftOut(rel) || policy.isRebuilt(rel) }}.Paths(tree, policy.withheld)
 	sc := keys.Scanner{Skip: skipping(policy), Ledger: g.Ledger}
 	if changed == nil || len(changed) > maxChangedArgs {
 		return append(held, sc.Walk(tree)...)
@@ -78,7 +88,7 @@ func (g Guard) scan(tree string, changed []string, policy policyFile) []keys.Fin
 }
 
 func skipping(policy policyFile) func(string) bool {
-	return func(rel string) bool { return policy.isLeftOut(rel) || policy.isWithheld(rel) }
+	return func(rel string) bool { return policy.isLeftOut(rel) || policy.isWithheld(rel) || policy.isRebuilt(rel) }
 }
 
 func pathsOf(found []keys.Finding) []string {

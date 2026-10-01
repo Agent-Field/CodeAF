@@ -259,3 +259,37 @@ func TestNoFileContentIsEverLogged(t *testing.T) {
 		t.Fatalf("a secret value leaked: %q", out.String())
 	}
 }
+
+// Putting a withheld file back, or taking it away, is the vault's doing and not
+// an edit: every folder above it keeps the time it had, so the next seal of the
+// tree sees no change there.
+func TestFileMediumKeepsFolderTimes(t *testing.T) {
+	root := t.TempDir()
+	deep := filepath.Join(root, "web", "app")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	then := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, dir := range []string{deep, filepath.Dir(deep), root} {
+		if err := os.Chtimes(dir, then, then); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := fileMedium{root: root, path: filepath.Join(deep, ".env")}
+	assertTimes := func(step string) {
+		t.Helper()
+		for _, dir := range []string{deep, filepath.Dir(deep), root} {
+			if info, err := os.Stat(dir); err != nil || !info.ModTime().Equal(then) {
+				t.Fatalf("after %s %s is dated %v (%v); want %v", step, dir, info.ModTime(), err, then)
+			}
+		}
+	}
+	if err := m.Write(encodeFile(0o600, []byte("K=v\n"))); err != nil {
+		t.Fatal(err)
+	}
+	assertTimes("Write")
+	if err := m.Clear(); err != nil {
+		t.Fatal(err)
+	}
+	assertTimes("Clear")
+}

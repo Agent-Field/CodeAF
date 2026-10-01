@@ -2,9 +2,12 @@ package cellstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -198,5 +201,46 @@ func TestFlagOnWrapRecords(t *testing.T) {
 	got, err := Wrap(&stubExec{}, newCell(t))
 	if _, ok := got.(*Recorder); err != nil || !ok {
 		t.Fatalf("Wrap with the flag on = %T, %v", got, err)
+	}
+}
+
+// The record of what is running is brought up to date just before the seal that
+// carries it, so a job started after the last tool call is in the seal taken at
+// the turn's end and not in the one after.
+func TestRunningRefreshedAtTurnEnd(t *testing.T) {
+	c := newCell(t)
+	fake := &fakeEngine{}
+	var sealsWhenRefreshed []int
+	r, err := NewRecorder(&stubExec{}, fake.engine(t), c, filepath.Join(t.TempDir(), "wal"), Options{Refresh: func() {
+		sealsWhenRefreshed = append(sealsWhenRefreshed, fake.count("turn-end"))
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := r.Exec(context.Background(), req(executor.NetPolicy{}, "true"), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if want := []int{0, 1}; !reflect.DeepEqual(sealsWhenRefreshed, want) {
+		t.Fatalf("the record was refreshed after %v seals, want before each one: %v", sealsWhenRefreshed, want)
+	}
+}
+
+func TestACallRecordsItsCommandForTheSealThatFollowsAndNotForTheReceipt(t *testing.T) {
+	c := newCell(t)
+	fake := &fakeEngine{}
+	r, err := NewRecorder(&stubExec{}, fake.engine(t), c, filepath.Join(t.TempDir(), "wal"), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := []byte(`{"command":"API_KEY=sk-abcdefghijklmnopqrstuvwx npm ci"}`)
+	if err := r.Around(context.Background(), executor.Call{Tool: "bash", Args: args}, executor.EffectLocal, AgentRun, func() ([]byte, bool) { return nil, false }); err != nil {
+		t.Fatal(err)
+	}
+	head, _ := Head(c)
+	enc, _ := json.Marshal(head.Receipt)
+	if strings.Contains(string(enc), "npm ci") || strings.Contains(string(enc), "sk-abc") {
+		t.Fatalf("the receipt carries the command line: %s", enc)
 	}
 }

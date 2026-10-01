@@ -148,8 +148,9 @@ func (refused) Command(context.Context, ExecRequest) (*exec.Cmd, error) { return
 // owns the process (a shell tool starts it through Command), so only the tool
 // knows the moment it exists; the record around the call listens here.
 type Spawns struct {
-	mu sync.Mutex
-	on func(pgid int)
+	mu     sync.Mutex
+	on     func(pgid int)
+	groups []int
 }
 
 type spawnsKey struct{}
@@ -159,6 +160,17 @@ type spawnsKey struct{}
 func WithSpawns(ctx context.Context) (context.Context, *Spawns) {
 	s := &Spawns{}
 	return context.WithValue(ctx, spawnsKey{}, s), s
+}
+
+// Groups is every process group the call has started so far, in order. It is
+// what lets the record around a finished call ask which of them outlived it.
+func (s *Spawns) Groups() []int {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]int(nil), s.groups...)
 }
 
 // Watch sets who is told of each group. A nil Spawns hears nobody.
@@ -180,6 +192,7 @@ func Spawned(ctx context.Context, pgid int) {
 	}
 	s.mu.Lock()
 	on := s.on
+	s.groups = append(s.groups, pgid)
 	s.mu.Unlock()
 	if on != nil {
 		on(pgid)
