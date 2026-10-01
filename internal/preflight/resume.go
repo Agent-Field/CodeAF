@@ -49,6 +49,11 @@ type Resume struct {
 // sends no message and writes nothing anywhere (the emptiness law).
 func (r Resume) Empty() bool { return !r.hasFacts() && len(r.Lacks) == 0 }
 
+// Worth reports whether the arrival has anything to show: what needs setting up,
+// or what is only shown (uncommitted files, the last test run). Empty stays the
+// test for what can be offered.
+func (r Resume) Worth() bool { return !r.Empty() || len(r.Uncommitted) > 0 || r.Tests != nil }
+
 // hasFacts is whether the chat left anything behind, apart from tools this
 // machine lacks, which the setup brief already names.
 func (r Resume) hasFacts() bool {
