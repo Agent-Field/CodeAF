@@ -166,6 +166,16 @@ const (
 	// exchange unreadable at exactly the moment it matters. U+21B3 is
 	// East_Asian_Width=Neutral and one cell under both shipping rulers.
 	GlyphReplyIn = "↳"
+	// GlyphFollowUp is A MESSAGE QUEUED FOR AFTER THE CURRENT TURN — one row of
+	// the block the session is holding above the box, put there by ctrl+enter
+	// (internal/tui3's followup.go). It is the return key's own arrow because
+	// the return key, held with ctrl, is how it got there, and it is in the
+	// prompt family for [GlyphReplyIn]'s reason: punctuation saying what a line
+	// of the person's own words is doing. It is deliberately not [GlyphQueued],
+	// the circle a waiting TASK wears — a queued message read as a task would
+	// be a row promising work it is not. U+21B5 is East_Asian_Width=Neutral and
+	// one cell under both shipping rulers.
+	GlyphFollowUp = "↵"
 	// GlyphDraftUnsent is a message a person typed and then CLEARED the whole
 	// box into — the mark the /drafts page draws in front of each line that
 	// is still waiting to come back (internal/tui3's draftpage.go).
@@ -475,6 +485,7 @@ func Glyphs() []GlyphInfo {
 		{"PromptChat", GlyphPromptChat, '›', false},
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
 		{"ReplyIn", GlyphReplyIn, '↳', false},
+		{"FollowUp", GlyphFollowUp, '↵', false},
 		{"DraftUnsent", GlyphDraftUnsent, '✐', false},
 		{"Pinned", GlyphPinned, '⌖', false},
 		{"Thought", GlyphThought, '✳', false},

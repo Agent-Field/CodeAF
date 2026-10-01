@@ -280,8 +280,6 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"enter open · ctrl+r reveal · ctrl+y copy · esc",
 			[]string{"enter", "ctrl+r", "ctrl+y", "esc"}},
 		{"/standing keeps this true", nil},
-		{"queued for after this turn · click takes one back · ctrl+enter queues the draft",
-			[]string{"ctrl+enter"}},
 		{"ctrl+g tasks", []string{"ctrl+g"}},
 		{"x stop", []string{"x"}},
 		{"nothing to rewind", nil},

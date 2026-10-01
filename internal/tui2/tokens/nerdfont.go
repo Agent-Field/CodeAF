@@ -310,6 +310,14 @@ var vocabulary = []GlyphBinding{
 		ID: GReplyIn, Name: "ReplyIn", Meaning: "the answer to a question put back to the asker, drawn under it",
 		Plain: GlyphReplyIn, UsualTint: TextTertiary, Geometry: true,
 	},
+	{
+		// The return key's arrow for a message the return key queued. Font
+		// Awesome 4 has no return-key icon, and its nearest (a corner arrow
+		// turning down) reads as a direction rather than a key, so the slot is
+		// geometry like the rest of the prompt family and no tier swaps it.
+		ID: GFollowUp, Name: "FollowUp", Meaning: "a message queued for after the current turn",
+		Plain: GlyphFollowUp, UsualTint: TextTertiary, Geometry: true,
+	},
 	// A composer's own mark that is NOT geometry: the unsent draft (a message
 	// cleared before sending). Both sides are "being written", the outline
 	// pencil on the floor and the compose icon where a patched font supplies

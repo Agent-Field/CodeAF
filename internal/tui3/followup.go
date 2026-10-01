@@ -5,7 +5,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -242,36 +241,12 @@ func (a *app) followWaiting() int {
 	return n
 }
 
-// followHeight is the block's height: one row per queued message plus the dim
-// line under it, or none.
+// followHeight is the block's height: one row per row a queued message wraps
+// over, or none.
 func (a *app) followHeight() int {
 	width, _ := a.size()
 	return len(a.followRows(width))
 }
-
-// queuedHint is the dim line under the queued block, in the pieces it is
-// trimmed down through on a narrow frame. Each piece is dropped from the right,
-// because what the message is DOING outranks what you can do about it — the
-// same order park.go's block keeps.
-//
-// THE CHORD PIECE IS CONDITIONAL ON THE TERMINAL, not on the queue: on a
-// terminal that cannot tell ctrl+enter from a plain enter the chord arrives as
-// ctrl+j, a newline, and naming it here would teach a gesture that opens a
-// line. This is [app.keysDisambiguated]'s own question, and it is the same gate
-// the key sheet's caveat rows behind (commands.go).
-//
-// THE TAKE-BACK PIECE NAMES THE POINTER ALONE, and that is the whole of the
-// gesture: ↑ does not reach this queue (input.go). The click is the only way to
-// take one queued message back, so it is the only thing said.
-//
-// THE TAKE-BACK PIECE IS CONDITIONAL ON THE AGENT, for the same law read from
-// the other end: an agent that cannot hand a queued message back is one whose
-// rows this surface may not offer to take — the words would come off the screen
-// and the turn would run anyway.
-var queuedHint = []string{"queued for after this turn", "click takes one back", queueQueueWord}
-
-// queueQueueWord is the piece that names the chord, spelled once.
-const queueQueueWord = "ctrl+enter queues the draft"
 
 // queueFootWord is what the running foot calls the queue key: the short
 // key-then-noun form every clause on that row keeps, not the queued block's
@@ -288,46 +263,31 @@ func (a *app) queueFootOffered() bool {
 	return a.keysDisambiguated && strings.TrimSpace(a.input.String()) != ""
 }
 
-// queuedWord is the dim line's sentence, trimmed to what fits. The count is
-// only spelled when there is more than one message waiting — one message
-// counted is a number that says nothing the rows above it do not.
-func queuedWord(n, width int, takesBack, disambiguated bool) string {
-	pieces := append([]string(nil), queuedHint...)
-	if !disambiguated {
-		pieces = pieces[:2]
-	}
-	if !takesBack {
-		pieces = append(pieces[:1], pieces[2:]...)
-	}
-	if n > 1 {
-		pieces[0] = itoa(n) + " queued for after this turn"
-	}
-	for len(pieces) > 1 {
-		// MEASURED, NOT COUNTED, for park.go's [parkedWord] reason.
-		line := strings.Join(pieces, " · ")
-		if ansi.StringWidth(line) <= width {
-			return line
-		}
-		pieces = pieces[:len(pieces)-1]
-	}
-	return pieces[0]
-}
-
-// followRows draws the queued block: one row per message the SESSION is
-// holding, then the dim line.
+// followRows draws the queued block: the messages the SESSION is holding, each
+// led by the return arrow, and nothing else.
 //
 // THE REGISTER IS THE POINT. A sent message is the person's accent hue with
 // their own glyph, and a parked one is the same hue held between the answer and
-// the box; these rows are dim with the queued glyph (tokens.GQueued, the empty
-// circle), so a person scanning the foot can see at a glance which of their
-// sentences the session is holding and which of them are already being worked.
-// They leave the block when their turn starts — where the words land in the
-// transcript as the ordinary sent line they become.
+// the box; these rows are dim and led by the return key's arrow
+// (tokens.GFollowUp — the key, held with ctrl, that put them there), so a
+// person scanning the foot can see at a glance which of their sentences the
+// session is holding and which of them are already being worked. They leave
+// the block when their turn starts — where the words land in the transcript as
+// the ordinary sent line they become.
+//
+// THERE IS NO LINE UNDER THE BLOCK, by the owner's call (2026-09-30). It said
+// `queued for after this turn · click takes one back · ctrl+enter queues the
+// draft`; the arrow says the first, the hover says the second, and the running
+// foot says the third, so the sentence was three things already on the frame.
 func (a *app) followRows(width int) []string {
 	if a.followWaiting() == 0 || width < 4 {
 		return nil
 	}
-	out := make([]string, 0, a.followWaiting()+1)
+	out := make([]string, 0, a.followWaiting())
+	// A ROW LIGHTS ONLY WHERE A PRESS WOULD TAKE IT. With no line under the
+	// block to say so, the hover is the whole of the take-back's advertisement,
+	// and an agent that cannot unqueue must not be shown offering to.
+	takes := a.queuedTakesBack()
 	for i, q := range a.follows {
 		if q.woken {
 			continue
@@ -335,11 +295,11 @@ func (a *app) followRows(width int) []string {
 		// THE WHOLE MESSAGE LIGHTS, NOT THE ROW THE POINTER IS ON — park.go's
 		// rule, because a sentence that wrapped over three rows with one of them
 		// banded would read as three things.
-		hot := a.hoveringQueued(i)
+		hot := takes && a.hoveringQueued(i)
 		for j, line := range wrap(q.text, width-2) {
 			lead := "   "
 			if j == 0 {
-				lead = "  " + a.pal.dim(a.icon(tokens.GQueued)) + " "
+				lead = "  " + a.pal.dim(a.icon(tokens.GFollowUp)) + " "
 			}
 			text := lead + a.pal.dim(line)
 			if hot {
@@ -348,14 +308,11 @@ func (a *app) followRows(width int) []string {
 			out = append(out, text)
 		}
 	}
-	word := queuedWord(a.followWaiting(), width-2, a.queuedTakesBack(), a.keysDisambiguated)
-	return append(out, a.pal.dim(fit("  "+word, width)))
+	return out
 }
 
 // followMark is the pointer's answer for one row of the block: which queued
-// message that row belongs to, so a click can take that one back. The dim line
-// at the foot belongs to no message and carries no mark, which is what keeps
-// [app.followPress] from answering for a statement.
+// message that row belongs to, so a click can take that one back.
 func (a *app) followMark(row, width int) chromeRow {
 	at := 0
 	for i, q := range a.follows {

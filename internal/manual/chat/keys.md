@@ -32,8 +32,8 @@ the moment it is typed, to run after the turn that is running; with no turn runn
 it starts at once, which reads as sending it. It needs a terminal that can tell it
 apart from a plain `enter` (the same support `ctrl+shift+enter` needs); where the
 terminal cannot, the key arrives as a plain enter and queues nothing. Queued messages
-sit above the box under a hollow `○`, dim, and you can take one back out of the queue
-before its turn starts — see "Typing while an answer is still coming" below.
+sit above the box behind a return arrow `↵`, dim, and you can take one back out of the
+queue before its turn starts — see "Typing while an answer is still coming" below.
 
 What `enter` does depends on what is in the box:
 
@@ -48,10 +48,9 @@ While a turn is running, plain `enter` **steers**: it stops the model's current
 reply where it is, keeps what has arrived, and sends your words into the same turn.
 See "Typing while an answer is still coming" below. `ctrl+enter` instead queues a
 fresh turn to run after the current one; an empty box does nothing. Until its turn
-starts, the queued message sits above the box under a hollow `○`, dim, one row each
-with a dim line under the block — `queued for after this turn · click takes one
-back · ctrl+enter queues the draft`, trimmed on a narrow frame. If queueing fails,
-codeaf notes `follow-up failed: <error>`.
+starts, the queued message sits above the box behind a return arrow `↵`, dim, one row
+each, and nothing is written under them. If queueing fails, codeaf notes
+`follow-up failed: <error>`.
 
 ## Typing while an answer is still coming — interrupting and steering
 
@@ -124,12 +123,16 @@ to the follow-up queue, so the words are never dropped.
 
 `ctrl+enter` over a draft hands the sentence to the session to run after the turn
 that is running. Until its turn starts, each queued message is drawn above the box:
-one row per message under a hollow `○`, dim — a register nothing in the transcript
-wears, so queued is visibly different from sent. The words are not in the
+one row per message behind a return arrow `↵`, dim — a register nothing in the
+transcript wears, so queued is visibly different from sent. The arrow is the return
+key's (it is `ctrl` and return that put it there), and it is deliberately not the
+hollow `○` a waiting task wears. No line is drawn under the queued messages; until
+2026-09-30 one said `queued for after this turn · click takes one back · ctrl+enter
+queues the draft`. The words are not in the
 conversation yet: they land as an ordinary sent line only when their turn begins.
 
-**Taking one back before it runs.** A click on a queued message's row pulls **that**
-one back into the box whole — the words and any pasted documents with them. `↑` is
+**Taking one back before it runs.** A queued row lights under the pointer — every row
+of that message — and a click on it pulls **that** one back into the box whole — the words and any pasted documents with them. `↑` is
 not this gesture: it belongs to the parked block and to history, and a queued message
 is named with the pointer alone. Taking one back removes it from the session's queue:
 the stream it would have run on ends with no events, so it simply never executes.

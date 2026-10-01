@@ -4580,9 +4580,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, cmd
 			}
 			// AND A MESSAGE THE SESSION IS HOLDING IS PRESSABLE the same way:
-			// the queued block says "click takes one back", and the press takes
-			// that message out of the session's queue before the turn that would
-			// have run it begins (followup.go). It is read beside the parked
+			// the press takes that message out of the session's queue before the
+			// turn that would have run it begins (followup.go), and the row's
+			// hover is the only thing that says so. It is read beside the parked
 			// block for the same reason every chrome target is.
 			if cmd, took := a.followPress(msg.Mouse().Y); took {
 				return a, cmd

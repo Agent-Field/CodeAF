@@ -274,9 +274,9 @@ const (
 	// hoverQueued is one MESSAGE the session is holding for after this turn;
 	// index is its place in the queue (followup.go). It is the parked hover's
 	// twin read off the session's queue: every row that message wrapped over
-	// lights, because the press takes the whole message back out of the queue —
-	// and the dim line under the block belongs to no message and lights not at
-	// all.
+	// lights, because the press takes the whole message back out of the queue.
+	// It lights only where the agent can give a message back (followup.go's
+	// [app.followRows]); there is no line under the block to light.
 	hoverQueued
 	// hoverChip is one thing on the tray above the box; index is the picture it
 	// names, or [trayHarnessChip] for the picked harness's own cell (attach.go,

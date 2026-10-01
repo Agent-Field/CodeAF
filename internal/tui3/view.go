@@ -140,9 +140,7 @@ const (
 	// chromeQueued is one row of a message the SESSION is holding for after this
 	// turn (followup.go); index is which queued message that row belongs to, so
 	// a press takes that one back out of the session's queue and into the box.
-	// The dim line under the block belongs to no message and is marked with
-	// nothing, which is what keeps [app.followPress] from answering for a
-	// statement.
+	// The block is its messages and nothing else: no line is drawn under it.
 	chromeQueued
 	// chromeJump is the gap row the jump-to-latest chip is floating on. The row
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on

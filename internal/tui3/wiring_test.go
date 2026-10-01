@@ -594,28 +594,21 @@ func TestCtrlEnterQueuesAMessageForAfterTheTurnAndDrawsTheQueue(t *testing.T) {
 		t.Fatalf("the box kept %q", a.input.String())
 	}
 	// THE QUEUE IS DRAWN MESSAGE BY MESSAGE, in a register nothing sent wears:
-	// the row sits above the box under the queued glyph in dim ink, and the dim
-	// line under it says what is happening and how to take one back. A count
-	// alone made a person guess which of their sentences were still queued
-	// (followup.go).
+	// the row sits above the box led by the return arrow in dim ink, and
+	// NOTHING is drawn under it — the line that once explained the block is
+	// gone by the owner's call (followup.go). A count alone made a person guess
+	// which of their sentences were still queued.
 	w, _ := a.size()
 	rows := a.followRows(w)
-	if len(rows) != 2 {
-		t.Fatalf("the queued block drew %d rows, want the message and the dim line:\n%s",
+	if len(rows) != 1 {
+		t.Fatalf("the queued block drew %d rows, want the message alone:\n%s",
 			len(rows), strings.Join(rows, "\n"))
 	}
-	if got := plain(rows[0]); !strings.HasPrefix(got, "  "+a.icon(tokens.GQueued)+" ") || !strings.Contains(got, "and then the tests") {
-		t.Fatalf("the queued row is not the queued glyph over the message: %q", got)
+	if got := plain(rows[0]); !strings.HasPrefix(got, "  "+a.icon(tokens.GFollowUp)+" ") || !strings.Contains(got, "and then the tests") {
+		t.Fatalf("the queued row is not the return arrow over the message: %q", got)
 	}
-	if got := plain(rows[1]); !strings.Contains(got, "queued for after this turn") {
-		t.Fatalf("the queued block's dim line is wrong: %q", got)
-	}
-	// ON A NARROW FRAME the pieces trim from the right, and the first to go is
-	// the chord piece (followup.go's [queuedWord]); on a wide one it is said.
-	a.width = 120
-	rows = a.followRows(120)
-	if got := plain(rows[len(rows)-1]); !strings.Contains(got, "ctrl+enter queues the draft") {
-		t.Fatalf("the wide frame dropped the chord piece: %q", got)
+	if strings.Contains(plain(frame(a)), "queued for after this turn") {
+		t.Fatalf("the explanation line under the queue is back:\n%s", plain(frame(a)))
 	}
 	// It is NOT in the transcript yet: it lands where it actually runs. The
 	// queued row above the box is the only place the words appear.
@@ -641,8 +634,8 @@ func TestCtrlEnterQueuesAMessageForAfterTheTurnAndDrawsTheQueue(t *testing.T) {
 	if !strings.Contains(body, "› and then the tests") {
 		t.Fatalf("the follow-up's own message is not in the transcript:\n%s", body)
 	}
-	if strings.Contains(plain(frame(a)), "queued for after this turn") {
-		t.Fatalf("the queued block outlived the queue:\n%s", plain(frame(a)))
+	if rows := a.followRows(w); len(rows) != 0 {
+		t.Fatalf("the queued block outlived the queue:\n%s", strings.Join(rows, "\n"))
 	}
 
 	// And that channel is the live stream now. Deltas become rows on the frame
@@ -754,8 +747,7 @@ func TestArrowUpReadsTheParkedMessageAndLeavesTheQueue(t *testing.T) {
 
 // A CLICK ON ONE QUEUED ROW TAKES THAT MESSAGE BACK, by the mark the layout
 // recorded: the pointer named a message, so the pointer's answer is that
-// message and not the newest one. The dim line under the block belongs to no
-// message and takes nothing.
+// message and not the newest one.
 func TestAClickTakesThatQueuedMessageBack(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
 	typeLine(t, a, "the first thing")
@@ -784,14 +776,35 @@ func TestAClickTakesThatQueuedMessageBack(t *testing.T) {
 	if got := plain(a.followRows(w)[0]); !strings.Contains(got, "first follow-up") {
 		t.Fatalf("the wrong message stayed queued: %q", got)
 	}
+}
 
-	// AND A PRESS ON THE DIM LINE TAKES NOTHING — it is a statement, not a
-	// message. The block is two rows shorter than it was, so the row the last
-	// click landed on is the dim line's now, and the layout is asked again for
-	// the row the remaining message actually sits on.
-	drive(t, a, press(2, queuedRowY(t, a, 0)+1))
-	if a.followWaiting() != 1 || a.input.String() != "second follow-up" {
-		t.Fatalf("the dim line gave up a message: waiting=%d box=%q", a.followWaiting(), a.input.String())
+// THE HOVER IS THE WHOLE ADVERTISEMENT. With no line under the queue saying a
+// click takes one back, a queued row lights under the pointer — every row the
+// message wrapped over — exactly where a press would take it, and an agent
+// that cannot hand a queued message back lights nothing.
+func TestAQueuedRowLightsOnlyWhereAClickWouldTakeIt(t *testing.T) {
+	_, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	settleAsk(a)
+	enhanced(t, a)
+	typeInto(t, a, "and then the tests")
+	drive(t, a, key("ctrl+enter"))
+	drive(t, a, frameMsg{})
+
+	y := queuedRowY(t, a, 0)
+	drive(t, a, motionTo(2, y))
+	if !a.hoveringQueued(0) {
+		t.Fatalf("the pointer on a queued row recorded %+v", a.hot)
+	}
+	if lines := strings.Split(frame(a), "\n"); !strings.Contains(lines[y], hoverBg()) {
+		t.Fatalf("the queued row did not light:\n%q", lines[y])
+	}
+
+	// The same row, behind an agent with no take-back: the type hides
+	// UnqueueFollowUp, so the press would do nothing and the row stays dark.
+	a.agent = struct{ Agent }{a.agent}
+	if lines := strings.Split(frame(a), "\n"); strings.Contains(lines[y], hoverBg()) {
+		t.Fatalf("a row the agent cannot give back lit up:\n%q", lines[y])
 	}
 }
 
@@ -871,28 +884,6 @@ func TestAClickWhoseTakeBackIsRefusedKeepsTheRow(t *testing.T) {
 	}
 	if a.input.String() != "" {
 		t.Fatalf("a refused take-back put %q in the box", a.input.String())
-	}
-}
-
-// THE CHORD PIECE IS CONDITIONAL ON THE TERMINAL (followup.go): a terminal
-// that cannot send ctrl+enter is never taught the chord, and an agent that
-// cannot hand a queued message back is never offered the take-back.
-func TestQueuedWordNamesTheChordOnlyWhereItCanBeSent(t *testing.T) {
-	if got := queuedWord(1, 200, true, false); strings.Contains(got, "ctrl+enter") {
-		t.Fatalf("a plain terminal was taught the chord: %q", got)
-	}
-	if got := queuedWord(1, 200, true, true); !strings.Contains(got, "ctrl+enter") {
-		t.Fatalf("a disambiguating terminal was not told the chord: %q", got)
-	}
-	if got := queuedWord(3, 200, true, true); !strings.HasPrefix(got, "3 queued") {
-		t.Fatalf("the count was not spelled for three: %q", got)
-	}
-	if got := queuedWord(1, 200, false, true); strings.Contains(got, "takes one back") {
-		t.Fatalf("an agent with no take-back was offered one: %q", got)
-	}
-	// ↑ IS NOT AN UNQUEUE GESTURE and no queue hint may name it (input.go).
-	if got := queuedWord(1, 200, true, true); strings.Contains(got, "↑") {
-		t.Fatalf("a queue hint still names ↑: %q", got)
 	}
 }
 
