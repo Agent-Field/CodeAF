@@ -205,8 +205,13 @@ stands under the message box once you are in a conversation. The model you
 are already on stays on the list whatever it costs, so accepting still confirms. The balance
 is read right after the key lands, so the cut usually arrives a moment after the screen does;
 a top-up is read on the next launch (*OpenRouter credits and free models*). A key OpenRouter
-refuses as **expired** is said the same way, on the last row — `Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys` — but the list is not cut, because
-free models fail on an expired key too; `esc` goes back to the connect step to paste a new one.
+refuses as **expired** is said the same way, on the last row, but the list is not cut, because
+free models fail on an expired key too. The line names the door to a new key, and the door
+depends on whether a connect step came before this screen: with one, it reads
+`Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys` and
+`esc` goes back there; when the key was already in the shell or the profile and only this
+screen was asked, `esc` skips the setup instead — the keys line says so — and the line reads
+`Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys`.
 
 **There is no crew question**, because the crew is three seats — the worker, the planner and the
 checker — and codeaf picks all three for each task from what kind of work it is, so there
@@ -252,8 +257,8 @@ there. Opening the list and leaving it with `esc` answers nothing.
 
 The keys line is the form's second row, directly under `Basic settings`. It reads `enter
 sets the limit · ↑↓ moves · esc back · type an amount or none · ? detail` on the limit
-row; `enter` on the other rows says what it does there (`opens the list`, `shows them`,
-`goes on`, `starts`). `↑`/`↓` and `tab` both walk the rows. It does not name the example's
+row; `enter` on the other rows says what it does there (`opens the list`, `starts`).
+`↑`/`↓` and `tab` both walk the rows. It does not name the example's
 arrows; the panel's own edge does.
 
 The controls screen shows **once, ever**. The default OpenRouter prerequisite above is the only
@@ -302,7 +307,7 @@ Every answer went through a settings row, so every answer has a door:
 | the crew | nothing was asked — it is auto. `/crew` shows it, and `/crew pin <seat> <model>` pins a seat |
 | the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `CODEAF_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |
-| memory, permissions, the task countdown | `/settings`; the setup screen only shows them, under `Other settings` |
+| memory, permissions, the task countdown | `/settings` — the setup screen does not show them; the note under **Start a conversation** points there |
 
 A credential changed in the settings row reaches the running conversation at once,
 exactly as the setup's does. A crew pin and the budget are read live too: the next task

@@ -54,11 +54,13 @@ import (
 //   - IT SPENDS NOTHING. Opening a model list reads the catalog this process
 //     already has; nothing on this screen sends a prompt or calls a model.
 //
-// The example under the form is labelled as an example. It is one request
-// somebody could make and the kind of result it leads to, and it moves only when
-// the person moves — a deliberate focus change or the arrow keys, never a timer
-// and never a keystroke inside a field. No invented cost, no fabricated
-// activity, no claim that anything has already run.
+// The example above the form is labelled as an example. It is one request
+// somebody could make and the kind of result it leads to. It turns on its own
+// clock, every [setupTurnEvery], and the arrow keys turn it by hand; any key
+// holds the clock for one more interval, and the focus never moves it, so a
+// person reading one is not interrupted and a person filling the form is not
+// followed. No invented cost, no fabricated activity, no claim that anything
+// has already run.
 
 // setupControl is one row of the controls screen, in the order tab walks them.
 // The day's limit comes first because it is the consequential one; the two model
@@ -474,8 +476,8 @@ func (a *app) setupPress(x, y int) bool {
 		return a.setupControlsEnter()
 	case doorControl:
 		if s.control != door.control {
-			// A tab to the row, which closes whatever was open on the way and
-			// moves the example with it ([setupFlow.focusControl]).
+			// A tab to the row, which closes whatever was open on the way
+			// ([setupFlow.focusControl]); the example stays where it is.
 			s.focusControl(a, int(door.control)-int(s.control))
 		} else if s.modelOpen && door.control == controlChatModel {
 			// A press on the field whose list is open puts the list away and
@@ -831,8 +833,8 @@ var setupExamples = []setupExample{
 	},
 }
 
-// The two labels that keep the column honest. They are the whole reason a person
-// does not read the right-hand side as a report about their own machine.
+// The two labels that keep the panel honest. They are the whole reason a person
+// does not read it as a report about their own machine.
 const (
 	exampleAskLabel  = "Example request"
 	exampleLeadLabel = "What it leads to"
@@ -1531,8 +1533,24 @@ func (a *app) setupModelCountWord(count int) string {
 const (
 	setupFreeOnlyWord   = "free only"
 	setupLowCreditsWord = "Your OpenRouter account is low on credits · the list shows free models only"
-	setupExpiredKeyWord = "Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys"
+	// The expired key's line names the door to a new one, and the door depends
+	// on where this screen stands: with the connect step before it, esc goes
+	// back there to paste; standing alone — a key already in the shell or the
+	// profile, only the controls asked — esc skips the setup, the keys line two
+	// rows up says so, and the door is /connect once the conversation opens.
+	setupExpiredKeyBackWord  = "Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys"
+	setupExpiredKeyAloneWord = "Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys"
 )
+
+// setupExpiredKeyWord is the expired key's line for the step this screen is on
+// — the one whose way out is the one [app.setupBackWord] names on the same
+// frame, so the two lines never disagree about what esc does.
+func (a *app) setupExpiredKeyWord() string {
+	if a.setup.at > 0 {
+		return setupExpiredKeyBackWord
+	}
+	return setupExpiredKeyAloneWord
+}
 
 // setupFootWarning is the account's one-line warning for this screen — the key
 // expired, or the balance low and the list cut — and "", the emptiness law,
@@ -1544,7 +1562,7 @@ const (
 func (a *app) setupFootWarning() string {
 	switch {
 	case a.setupKeyExpired():
-		return setupExpiredKeyWord
+		return a.setupExpiredKeyWord()
 	case a.setupFreeOnly():
 		return setupLowCreditsWord
 	}
@@ -1595,15 +1613,15 @@ func (a *app) setupControlsKeys(width int) string {
 			parts = append(parts, "type to narrow")
 		}
 	} else {
-		// THE TWO KEYS THAT DRIVE THE FORM COME FIRST, and `tab moves` is the
-		// second of them. At forty columns the legend has room for two clauses,
-		// and a person who has been told only what enter does and how to go back
-		// has been told everything except how to reach the other four rows —
-		// which is the one thing this screen cannot be completed without. The way
-		// out is third and appears from sixty columns up.
+		// THE TWO KEYS THAT DRIVE THE FORM COME FIRST: what enter does here, then
+		// how to reach the other rows. At forty columns the legend has room for
+		// two clauses, and a person who has been told only what enter does and
+		// how to go back has been told everything except how to reach the other
+		// rows — which is the one thing this screen cannot be completed without.
+		// The way out is third and appears from sixty columns up.
 		// THE ROWS ARE WALKED WITH THE ARROWS, AND THE LEGEND SAYS SO. Tab
-		// walks them too, and used to be the word here; it was one more key to
-		// learn on a screen whose list a person already walks with ↑↓.
+		// walks them too, and `tab moves` used to be the word here; it was one
+		// more key to learn on a screen whose list a person already walks with ↑↓.
 		switch s.control {
 		case controlLimit:
 			parts = []string{"enter sets the limit", setupMovesWord, a.setupBackWord(), "type an amount or none"}
@@ -1656,17 +1674,16 @@ func (a *app) setupBackWord() string {
 	return setupSkipKeysWord
 }
 
-// ── the demonstration panel on the right ────────────────────────────────────
+// ── the demonstration panel above the form ──────────────────────────────────
 //
 // A FRAME THAT IS THERE TO SAY "NOT YOURS".
 //
-// Nothing about the form on the left has an edge. This panel is framed, and the
+// Nothing about the form under it has an edge. This panel is framed, and the
 // reason is the one thing a frame is actually good at: it separates a thing
-// from its surroundings. Unframed, the right-hand column read as a SECOND
-// COLUMN OF THE FORM — more instructions, in the same voice, about the fields
-// on the left. A frame with a label on its top edge cannot be read that way.
-// Everything inside it is an illustration, and the frame is what says so before
-// a word is read.
+// from its surroundings. Unframed, the panel read as MORE OF THE FORM — more
+// instructions, in the same voice, about the fields under it. A frame with a
+// label on its top edge cannot be read that way. Everything inside it is an
+// illustration, and the frame is what says so before a word is read.
 //
 // It is drawn by the one frame (frame.go), which is also what a question hangs
 // in and what the two sheets raised over the page wear — this panel's header
@@ -1699,9 +1716,10 @@ const (
 
 // setupShowcaseBlock is the example panel as a framed block at the given width,
 // or nil when the window cannot hold the whole of it in maxHeight rows. It is
-// whole or nothing: the line at its foot — that nothing in it has run — is the
-// sentence that keeps the panel from being read as a report about this machine,
-// and a panel trimmed from the bottom would lose exactly that line first.
+// whole or nothing: the label on its top edge is what keeps the panel from being
+// read as a report about this machine, and a panel cut to fit would be an edge
+// with half an illustration under it — or, cut from the top, an illustration
+// with no edge to say what it is.
 func (a *app) setupShowcaseBlock(width, maxHeight int) []string {
 	pal := a.pal
 	if len(setupExamples) == 0 || width < setupShowcaseMinWidth {

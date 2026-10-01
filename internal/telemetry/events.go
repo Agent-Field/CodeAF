@@ -336,9 +336,10 @@ var allowedProps = map[string]map[string]bool{
 const EveryEvent = "every event"
 
 // propDocs is what each allowlisted prop IS, in a person's words: the third
-// column of docs/TELEMETRY.md's table, held here so that `codeaf telemetry
-// show` and the doc read from one table and the doc test can fail the build
-// when the two drift. Every allowlisted prop has a line, and the test holds
+// column of docs/TELEMETRY.md's table, held here so that the doc and the code
+// read from one table and the doc test can fail the build when the two drift.
+// Until 2026-10-01 `codeaf telemetry show` printed it too; the doc is its one
+// reader now. Every allowlisted prop has a line, and the test holds
 // that too.
 var propDocs = map[string]map[string]string{
 	EveryEvent: {

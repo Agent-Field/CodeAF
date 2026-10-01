@@ -83,11 +83,15 @@ OpenRouter service serves — free or paid — and never on a model served by Co
 model or another connected service. It wins over the low-credits line, and the free
 defaults are **not** used, because they would fail on the same key. A turn refused with
 `API key expired` mid-session starts a fresh read, so the warning arrives without a
-relaunch. On the first-run setup screen the same fact stands on the last row:
-`Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys`, and the list is not cut to free models. The fix is a new key at
-https://openrouter.ai/settings/keys, pasted on the setup's connect step (`esc` goes back
-to it), in `/settings`, or in `/connect`; the old key's warning goes the moment the new
-key is saved, before it has even been read.
+relaunch. On the first-run setup screen the same fact stands on the last row, and the list
+is not cut to free models. When a connect step came before the screen it reads
+`Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys`
+and `esc` goes back there; when the key was already in the shell or the profile and only the
+settings screen was asked, `esc` skips the setup instead and the line reads
+`Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys`.
+The fix is a new key at https://openrouter.ai/settings/keys, pasted on the connect step, in
+`/settings`, or in `/connect`; the old key's warning goes the moment the new key is saved,
+before it has even been read.
 
 ## Low on credits warning under the message box
 

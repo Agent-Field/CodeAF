@@ -350,8 +350,9 @@ func TestNothingSentinelEverReachesTheWire(t *testing.T) {
 	}
 }
 
-// TestExamplePropsCoverTheAllowlistExactly holds the example table `codeaf
-// telemetry show` prints to the allowlist: every prop an event adds has an
+// TestExamplePropsCoverTheAllowlistExactly holds the example table — once what
+// `codeaf telemetry show` printed, kept as the doc's worked example — to the
+// allowlist: every prop an event adds has an
 // example, no example names a prop the event cannot carry, and every example
 // is a value the contract admits where the contract enumerates one.
 func TestExamplePropsCoverTheAllowlistExactly(t *testing.T) {

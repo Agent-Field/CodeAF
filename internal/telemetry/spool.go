@@ -454,8 +454,9 @@ func SpoolContents() []json.RawMessage {
 	return out
 }
 
-// Show returns the spool as pretty JSON, so a person — or a test — can read
-// everything that has not left yet.
+// Show returns the spool as pretty JSON: everything that has not left yet. It
+// was what `codeaf telemetry show` printed until 2026-10-01; the tests are its
+// only readers now, and the spool itself is plain JSON lines a person can open.
 func Show() string {
 	contents := SpoolContents()
 	if len(contents) == 0 {

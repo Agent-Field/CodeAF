@@ -1166,11 +1166,49 @@ func TestAnExpiredKeyIsSaidUnderTheModelRowWithoutCuttingTheList(t *testing.T) {
 		t.Fatalf("an expired key cut the list to %d rows, want the catalog's %d", got, len(catalog))
 	}
 	screen := setupScreen(a)
-	if !strings.Contains(screen, setupExpiredKeyWord) {
-		t.Fatalf("the screen must say %q; got:\n%s", setupExpiredKeyWord, screen)
+	if !strings.Contains(screen, setupExpiredKeyBackWord) {
+		t.Fatalf("the screen must say %q; got:\n%s", setupExpiredKeyBackWord, screen)
 	}
 	if strings.Contains(screen, "free only") || strings.Contains(screen, setupLowCreditsWord) {
 		t.Fatalf("an expired key was spelled as a low account:\n%s", screen)
+	}
+}
+
+// AND THE EXPIRED KEY'S LINE NEVER DISAGREES WITH THE KEYS LINE ABOUT ESC. With
+// a key already saved and only the controls asked, the step stands alone: esc
+// skips the setup rather than going back to a connect step that is not there,
+// the keys line says so, and the foot names /connect as the door to a new key
+// instead of an esc that would not take anyone to one.
+func TestAnExpiredKeyOnAStandAloneControlsStepNamesConnectNotEsc(t *testing.T) {
+	a, dir, _ := setupApp(t, func(dir string) {
+		if err := config.WriteAPIKey(dir, "sk-or-v1-0123456789abcdef"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	a.pal = newPalette(tokens.ANSI256, false)
+	a.width, a.height = 120, 44
+	if !a.setup.open || a.setup.step() != setupControls || a.setup.at != 0 {
+		t.Fatalf("a profile with a key must be asked the controls alone, got open=%v steps=%v at=%d", a.setup.open, a.setup.steps, a.setup.at)
+	}
+	a.readCredits = func(context.Context) (credits.Reading, error) {
+		return credits.Reading{Known: true, Expired: true}, nil
+	}
+	if err := config.WriteCreditsReading(dir, config.APIKeyAt(dir), credits.Reading{Known: true, Expired: true}); err != nil {
+		t.Fatal(err)
+	}
+	pressSetup(a, creditReadMsg{reading: credits.Reading{Known: true, Expired: true}})
+	if !a.setupKeyExpired() {
+		t.Fatal("the reading did not mark the key expired")
+	}
+	screen := setupScreen(a)
+	if !strings.Contains(screen, setupExpiredKeyAloneWord) {
+		t.Fatalf("the screen must say %q; got:\n%s", setupExpiredKeyAloneWord, screen)
+	}
+	if strings.Contains(screen, setupExpiredKeyBackWord) {
+		t.Fatalf("the foot promised an esc that skips the setup; got:\n%s", screen)
+	}
+	if got := a.setupBackWord(); got != setupSkipKeysWord || !strings.Contains(screen, setupSkipKeysWord) {
+		t.Fatalf("the keys line says %q, want %q on the same frame:\n%s", got, setupSkipKeysWord, screen)
 	}
 }
 

@@ -69,7 +69,7 @@ func docPropsWithDocs(t *testing.T, body string) (common []string, perEvent map[
 }
 
 // TestDocPropertyWordsMatchPropDoc holds the doc's third column to the table
-// `codeaf telemetry show` prints from, word for word, and holds that table to
+// the code describes each prop with, word for word, and holds that table to
 // the allowlist: every allowlisted prop has a description, and every
 // description is of an allowlisted prop.
 func TestDocPropertyWordsMatchPropDoc(t *testing.T) {
