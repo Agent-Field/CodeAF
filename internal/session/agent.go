@@ -4830,10 +4830,15 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		// THE MODEL'S SKILLS CONTEXT IS NOT CONVERSATION. It rides the copy in
 		// a.messages the provider reads, and a transcript that drew it would show
 		// a list nobody asked for at the top of every reopened conversation and
-		// after every message (#1504's display half; skillturn.go's
-		// stripTurnSkillsBlock). The journal and store never held it.
+		// after every message (#1504's display half). The strip is by PROVENANCE,
+		// never by pattern: only a message attachTurnSkillsLocked marked, and only
+		// the exact bytes it appended, come off — a skills block the person typed
+		// or pasted themselves has no mark and keeps every word. The journal and
+		// store never held it, so a restored message carries no mark either.
 		if role == "user" {
-			displayText = stripTurnSkillsBlock(displayText)
+			if mark := presentation.of(msg); mark != nil && mark.SkillsBlock != "" {
+				displayText = strings.TrimSuffix(displayText, mark.SkillsBlock)
+			}
 		}
 		interrupted, explicitlyHuman := false, false
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {

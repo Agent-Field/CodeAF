@@ -446,12 +446,6 @@ func SkillEntryFromFact(fact store.Fact) SkillEntry {
 	return entry
 }
 
-// SkillsBlockConflictLine is the final line [RenderSkillsBlock] writes, and the
-// one the display layer matches to recognise a well-formed trailing block
-// (session's stripTurnSkillsBlock). It is named here so the producer and the
-// remover read the same bytes and cannot drift.
-const SkillsBlockConflictLine = "Earlier-listed skills win when two skills conflict."
-
 // RenderSkillsBlock renders attached skills as doc lines and shelf paths.
 // Each skill produces one line: "- <doc> [<path>]" when both exist, or a
 // shorter form when only one is available; an agentskills folder's line adds
@@ -490,7 +484,7 @@ func RenderSkillsBlock(skills []SkillEntry) string {
 		}
 		buf.WriteString("\n")
 	}
-	buf.WriteString(SkillsBlockConflictLine)
+	buf.WriteString("Earlier-listed skills win when two skills conflict.")
 	return buf.String()
 }
 

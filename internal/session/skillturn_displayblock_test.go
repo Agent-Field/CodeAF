@@ -12,8 +12,8 @@ import (
 // THE DISPLAY DOORS SHOW THE WORDS, NOT THE BLOCK. The skills a turn carries
 // are model context ([attachTurnSkillsLocked]); the copy in a.messages keeps
 // them because it is also the history the provider reads, so every display door
-// — Transcript and AttachReplay, both through shapeEntries — must strip the
-// trailing block itself. The journal and store already held the person's words
+// — Transcript and AttachReplay, both through shapeEntries — takes the block
+// off the row it draws. The journal and store already held the person's words
 // alone (#1504 pinned that half); this is the display half it never touched.
 func TestTheTranscriptShowsTheWordsWhenTheBlockRidesTheModelCopy(t *testing.T) {
 	brain := openTestBrain(t)
@@ -60,43 +60,81 @@ func TestTheTranscriptShowsTheWordsWhenTheBlockRidesTheModelCopy(t *testing.T) {
 	}
 }
 
-// IT IS EXACTLY THE BLOCK, OR IT IS THE PERSON'S OWN TEXT. A message containing
-// the marker, or even the closing sentence, that is not a whole trailing render
-// is left untouched — the reporter pasted this text themselves, and their words
-// survive.
-func TestTheStripLeavesAnyFragmentThatIsNotTheWholeBlock(t *testing.T) {
+// THE STRIP READS PROVENANCE, NEVER THE TEXT. Only a message
+// [attachTurnSkillsLocked] marked — and only the exact bytes it appended —
+// come off a displayed row. A block the person typed or pasted themselves has
+// no mark and keeps every word, however well-formed it is: suffix matching
+// cannot tell the two apart, and a restored message never had an injection at
+// all (the journal keeps the typed words; the mark is memory-only).
+func TestTheStripReadsProvenanceNeverTheText(t *testing.T) {
 	rendered := turnSkillsLead + plan.RenderSkillsBlock([]plan.SkillEntry{
 		{Name: "lint", Doc: "checks the lint rules for this repo", ShelfPath: "/shelf/lint"},
 	})
+	words := "how should I lint this repo?"
+	pasted := "\n\nSkills suited to this message:\n" +
+		"- the sheet as I received it [/elsewhere/SKILL.md — body in this file]\n" +
+		"Earlier-listed skills win when two skills conflict."
+
+	mark := func(text, block string) (ai.Message, *presentationIndex) {
+		msg := textMessage("user", text)
+		index := &presentationIndex{}
+		index.remember(msg, &messagePresentation{SkillsBlock: block})
+		return msg, index
+	}
+	injected, injectedIndex := mark(words+rendered, rendered)
+	both, bothIndex := mark(words+pasted+rendered, rendered)
+
 	cases := []struct {
-		name string
-		text string
-		want string
+		name  string
+		msg   ai.Message
+		index *presentationIndex
+		want  string
 	}{
 		{
-			name: "a real rendered block is removed",
-			text: "how should I lint this repo?" + rendered,
-			want: "how should I lint this repo?",
+			name:  "the block this session injected comes off",
+			msg:   injected,
+			index: injectedIndex,
+			want:  words,
 		},
 		{
-			name: "the marker with no closing line is the person's",
-			text: "I saw this at the top:\n\nSkills suited to this message:\nand it confused me",
-			want: "I saw this at the top:\n\nSkills suited to this message:\nand it confused me",
+			name:  "the same bytes without a mark are the person's own",
+			msg:   textMessage("user", words+rendered),
+			index: nil,
+			want:  words + rendered,
 		},
 		{
-			name: "the marker and closing line with words after are the person's",
-			text: "quote:\n\nSkills suited to this message:\n- nothing\nEarlier-listed skills win when two skills conflict.\nnever mind",
-			want: "quote:\n\nSkills suited to this message:\n- nothing\nEarlier-listed skills win when two skills conflict.\nnever mind",
+			name:  "a whole well-formed block and nothing else is still the person's",
+			msg:   textMessage("user", rendered),
+			index: nil,
+			want:  rendered,
 		},
 		{
-			name: "a closing line with no entry body is the person's",
-			text: "notes:\n\nSkills suited to this message:\nthe end.\nEarlier-listed skills win when two skills conflict.",
-			want: "notes:\n\nSkills suited to this message:\nthe end.\nEarlier-listed skills win when two skills conflict.",
+			name:  "only the injected copy comes off a pasted one",
+			msg:   both,
+			index: bothIndex,
+			want:  words + pasted,
+		},
+		{
+			name:  "the marker with no closing line is the person's",
+			msg:   textMessage("user", "I saw this at the top:\n\nSkills suited to this message:\nand it confused me"),
+			index: nil,
+			want:  "I saw this at the top:\n\nSkills suited to this message:\nand it confused me",
+		},
+		{
+			name:  "the marker and closing line with words after are the person's",
+			msg:   textMessage("user", "quote:\n\nSkills suited to this message:\n- nothing\nEarlier-listed skills win when two skills conflict.\nnever mind"),
+			index: nil,
+			want:  "quote:\n\nSkills suited to this message:\n- nothing\nEarlier-listed skills win when two skills conflict.\nnever mind",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			entries := shapeEntries([]ai.Message{textMessage("user", tc.text)}, nil)
+			var entries []DisplayEntry
+			if tc.index != nil {
+				entries = shapeEntries([]ai.Message{tc.msg}, nil, tc.index)
+			} else {
+				entries = shapeEntries([]ai.Message{tc.msg}, nil)
+			}
 			if len(entries) != 1 || entries[0].Role != "user" {
 				t.Fatalf("want one user entry, got %#v", entries)
 			}

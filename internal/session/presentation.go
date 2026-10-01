@@ -10,10 +10,18 @@ import (
 // messagePresentation records who a producer meant to address. The provider's
 // content remains untouched; Text, when supplied, is the exact human portion of
 // a mixed message. Operational records remain available behind disclosure.
+//
+// SkillsBlock is provenance of another kind: the exact bytes
+// [Agent.attachTurnSkillsLocked] spliced onto the copy of THIS message the
+// model reads, so shapeEntries can take them off the display by record rather
+// than by pattern — a block the person typed themselves has no mark and keeps
+// every word. It is memory only: the journal keeps the typed words, so a
+// restored message has no block and nothing to strip.
 type messagePresentation struct {
 	Audience    string  `json:"audience"`
 	Text        *string `json:"text,omitempty"`
 	Interrupted bool    `json:"interrupted,omitempty"`
+	SkillsBlock string  `json:"-"`
 }
 
 // Message identity follows its immutable content allocation, as reasoning repair
