@@ -3423,7 +3423,7 @@ func (a *app) Init() tea.Cmd {
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
-		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
+		a.setupDemoCmd(), a.setupTurnCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
 		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
@@ -4360,7 +4360,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Mouse().Button == tea.MouseLeft && a.setupPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, a.endSetup(false)
 			}
-			return a, nil
+			return a, a.holdSetupTurn()
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
 			// THE NAV IS READ BEFORE EVERY PAGE'S OWN ROWS, because it is the
@@ -5168,6 +5168,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// flow — no focus moves, nothing is written, and the caret stays in the
 		// field on the left (onboarding.go).
 		return a, a.setupDemoBeatAt(msg.gen)
+
+	case setupTurnMsg:
+		// The setup panel's turn: the next example arrives and plays, and the
+		// clock is armed again — unless a key retired this tick (onboarding.go).
+		return a, a.setupTurnAt(msg.gen)
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)

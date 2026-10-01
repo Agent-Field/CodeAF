@@ -201,14 +201,13 @@ func (a *app) setupControlsKey(name, text string) bool {
 		return true
 
 	case "left", "right":
-		// THE EXAMPLES ARE BROWSED AND NEVER CYCLED. No clock on this screen moves
-		// between them; these two keys are the only way the right-hand panel
-		// changes other than following the focus, and they change nothing about
-		// the profile. Each such move plays the panel's own one-shot
-		// demonstration once and then it is still — a browse is a deliberate act,
-		// which is exactly the condition that motion here is allowed under. Inside
-		// the model list they are not free — the filter box has the keyboard — so
-		// the list keeps them and does nothing.
+		// THE EXAMPLES ARE BROWSED WITH THESE TWO KEYS AND TURN BY THEMSELVES
+		// OTHERWISE ([app.setupTurnAt]). They change nothing about the profile,
+		// and they are the panel's own keys and nothing else's: the focus never
+		// moves the example (it did until 2026-10-01, which read as the panel
+		// jumping about under a person walking the rows). Inside the model list
+		// they are not free — the filter box has the keyboard — so the list
+		// keeps them and does nothing.
 		if s.modelOpen {
 			return true
 		}
@@ -216,12 +215,7 @@ func (a *app) setupControlsKey(name, text string) bool {
 		if name == "left" {
 			delta = -1
 		}
-		// THE EXAMPLES GO ROUND. `→` on the last one is the first again, so a
-		// person browsing them never hits a wall they cannot see the reason
-		// for; the count on the panel's edge says where they are.
-		s.example = wrapCursor(s.example, delta, len(setupExamples))
-		// One of the two deliberate acts the demonstration plays for.
-		a.restartSetupDemo()
+		a.turnSetupExample(delta)
 		return true
 
 	case "backspace":
@@ -312,22 +306,14 @@ func (s *setupFlow) closeChoosers() {
 }
 
 // focusControl walks the rows, closing whatever was open on the way. THE
-// EXAMPLE FOLLOWS THE FOCUS because a focus change is a deliberate act — which
-// is the whole rule the right-hand column is built on (docs/design/onboarding).
+// EXAMPLE DOES NOT FOLLOW THE FOCUS: it turns on its own clock and on ←/→, and
+// nothing a person does to the rows moves it ([app.setupTurnAt]).
 func (s *setupFlow) focusControl(a *app, delta int) {
 	s.closeChoosers()
 	// The detail belongs to the field it was asked about and goes with it.
 	s.detail = false
 	s.control = setupControl(moveCursor(int(s.control), delta, setupControlCount))
-	was := s.example
-	s.example = exampleForControl(s.control)
 	s.refusal = ""
-	// The other deliberate act. A row that keeps the example the last row had
-	// does not replay it: the panel would restart under a person who never
-	// changed what it was showing.
-	if s.example != was {
-		a.restartSetupDemo()
-	}
 	a.touch()
 }
 
@@ -738,7 +724,8 @@ func (a *app) startSetupControls() {
 	s.limitText, s.limitTyped = "", false
 	s.closeChoosers()
 	s.detail = false
-	s.example = exampleForControl(controlLimit)
+	// The panel opens on the first example and turns from there.
+	s.example = 0
 	// ARRIVING ON THE SCREEN IS THE FIRST OF THE TWO DELIBERATE ACTS, so the
 	// panel plays once here. Coming BACK from the step behind this one does not
 	// reach this line at all — the seeded guard above returns first — which is
@@ -768,10 +755,9 @@ type setupExample struct {
 	leads []string
 }
 
-// setupExamples are the four, in the order ←/→ walks them. Each one is tied to a
-// control by [exampleForControl] except the last, which belongs to no field and
-// is reachable by browsing — the design's own point that the column is an
-// invitation rather than a caption.
+// setupExamples are the five, in the order the panel turns through them and
+// ←/→ walk them. None is tied to a row: the panel is an invitation rather than
+// a caption, and it turns on its own clock ([app.setupTurnAt]).
 var setupExamples = []setupExample{
 	{
 		title: "Understand an unfamiliar project",
@@ -834,24 +820,6 @@ var setupExamples = []setupExample{
 			"A change built and tested, handed back",
 		},
 	},
-}
-
-// exampleForControl is which example accompanies which field, and it is the
-// design's own mapping: the money row is accompanied by following the work and
-// its cost, the crew by handing something off, and the model row — with the
-// connection that precedes it — by understanding a project, which is the first
-// thing most people actually type.
-func exampleForControl(control setupControl) int {
-	switch control {
-	case controlLimit:
-		return 2
-	case controlStart:
-		// THE LAST ROW SHOWS THE BIGGEST THING THE PROGRAM DOES: a person about
-		// to start a conversation is shown that a whole change can be handed
-		// off, which is the one capability nothing above has hinted at.
-		return 4
-	}
-	return 0
 }
 
 // The two labels that keep the column honest. They are the whole reason a person
@@ -1845,17 +1813,24 @@ func setupShowcaseCount(at, count int) string {
 	return "←  " + itoa(at+1) + " / " + itoa(count) + "  →"
 }
 
-// ── the one-shot demonstration ──────────────────────────────────────────────
+// ── the demonstration, and the clock that turns the examples ────────────────
 //
-// THE PANEL PLAYS ONCE, ON A DELIBERATE ACT, AND THEN IT IS STILL.
+// THE PANEL PLAYS EACH EXAMPLE ONCE AS IT ARRIVES, AND THE EXAMPLES TURN.
 //
 // The request types itself out and the three lines under it arrive in order,
-// which is the whole of it: about a second and a third, six beats of typing and
-// one per line. It is armed by exactly two things — arriving on this screen, and
-// a person moving the focus or browsing the examples with ←/→. Nothing else
-// starts it, nothing repeats it, and there is no clock anywhere on this screen
-// that switches examples by itself: a carousel on a setup screen is motion
-// competing with the decision a person is trying to make.
+// which is the whole of the demonstration: about a second and a third, six
+// beats of typing and one per line. It plays when an example arrives — on
+// reaching this screen, on ←/→, and on the turn — and then it is still.
+//
+// THE TURN is the second clock. Left alone, the panel shows the next example
+// every [setupTurnEvery], round and round, so a person reading the form sees
+// all five without touching anything; ←/→ browse them by hand. ANY KEY HOLDS
+// THE CLOCK for a full [setupTurnEvery] from that key, so the panel never
+// turns under a person who is typing an amount or walking the rows, and
+// browsing by hand is not raced by the clock. Until 2026-10-01 the design
+// refused a carousel here and moved the example with the focus instead; new
+// people read that as the panel jumping about as they walked the rows, and
+// the owner asked for the clock.
 //
 // AND ANY OTHER KEY SETTLES IT AT ONCE. Typing an amount, narrowing the model
 // list, opening a chooser — every one of those jumps the panel straight to its
@@ -1917,8 +1892,8 @@ func (a *app) showcaseRevealed(example setupExample) int {
 	return min(a.setup.demoAt-setupDemoTypeBeats+1, len(example.leads))
 }
 
-// restartSetupDemo plays the panel from the top. It is called on the two
-// deliberate acts and nowhere else.
+// restartSetupDemo plays the panel from the top: on arriving, on ←/→, and on
+// the turn.
 func (a *app) restartSetupDemo() {
 	s := &a.setup
 	s.demoGen++
@@ -1931,7 +1906,7 @@ func (a *app) restartSetupDemo() {
 }
 
 // settleSetupDemo puts the panel straight into its finished state and stops the
-// clock. Any key that is not one of the two deliberate acts lands here.
+// demonstration's clock. Any key that is not ←/→ lands here.
 func (a *app) settleSetupDemo() {
 	s := &a.setup
 	if last := a.setupDemoLast(); s.demoAt < last {
@@ -1975,6 +1950,68 @@ func (a *app) setupDemoBeatAt(gen int) tea.Cmd {
 	s.demoAt++
 	a.touch()
 	return a.setupDemoCmd()
+}
+
+// setupTurnEvery is how long the panel holds one example before showing the
+// next, and how long any key holds the clock.
+const setupTurnEvery = 3 * time.Second
+
+// setupTurnMsg is the turn's clock arriving, stamped with the generation that
+// armed it so a tick left over from before a key is dropped.
+type setupTurnMsg struct{ gen int }
+
+// turnSetupExample moves the panel by delta, round the ring, and plays the
+// example that arrives. It is the one way the example changes — ←/→ and the
+// clock both come through it.
+func (a *app) turnSetupExample(delta int) {
+	s := &a.setup
+	// THE EXAMPLES GO ROUND. `→` on the last one is the first again, so a
+	// person browsing them never hits a wall they cannot see the reason for;
+	// the count on the panel's edge says where they are.
+	s.example = wrapCursor(s.example, delta, len(setupExamples))
+	a.restartSetupDemo()
+	a.touch()
+}
+
+// setupTurnCmd arms the turn's clock, and answers nil in every state where
+// there should not be one: off this screen, already armed, or in the
+// screen-reader tier, where a panel that changed by itself would be the same
+// illustration announced over and over. It is the ONE place the clock is
+// armed, so a second cannot be started beside the first.
+func (a *app) setupTurnCmd() tea.Cmd {
+	s := &a.setup
+	if !s.open || len(s.steps) == 0 || s.step() != setupControls || a.linear || s.turnTicking {
+		return nil
+	}
+	s.turnTicking = true
+	gen := s.turnGen
+	return surfaceTick(setupTurnEvery, func(time.Time) tea.Msg { return setupTurnMsg{gen: gen} })
+}
+
+// holdSetupTurn is any key on this screen: the clock in flight is retired and
+// a fresh one armed, so the next turn is a full [setupTurnEvery] after the key.
+func (a *app) holdSetupTurn() tea.Cmd {
+	s := &a.setup
+	s.turnGen++
+	s.turnTicking = false
+	return a.setupTurnCmd()
+}
+
+// setupTurnAt is the clock arriving. A tick from a retired generation is
+// dropped whole, and so is one that finds the screen gone or stepped back to
+// the key; otherwise the next example arrives, plays, and the clock is armed
+// again.
+func (a *app) setupTurnAt(gen int) tea.Cmd {
+	s := &a.setup
+	if gen != s.turnGen {
+		return nil
+	}
+	s.turnTicking = false
+	if !s.open || len(s.steps) == 0 || s.step() != setupControls {
+		return nil
+	}
+	a.turnSetupExample(1)
+	return tea.Batch(a.setupDemoCmd(), a.setupTurnCmd())
 }
 
 // sortStrings is the one small thing the crew detail needs and nothing else here

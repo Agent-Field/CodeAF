@@ -226,14 +226,17 @@ example's own title (`Understand an unfamiliar project`, `Hand off something lon
 `Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`); its
 bottom edge carries `←  3 / 5  →`, the arrows that browse it. It is as wide as the screen allows,
 up to 92 columns, so the request in it stands on one row. It holds one request you could
-type and what it leads to, and follows the row you are on: beside the limit it shows
-`What has this cost me so far today?`, and on `Start a conversation` it shows
-`/senior-dev Add retries with backoff to the HTTP client, with tests.` — a command in a
-request is painted as the same chip the message box paints a recognised command with. The
-other three (`Understand an unfamiliar project`, `Hand off something longer` with
-`/task Fix the failing tests and explain the changes.`, `Compare the options`) are a `→` away.
-That request **types itself out once** on arriving and on `←`/`→`, then settles; typing
-settles it at once. `←`/`→` go round: `→` on the last example is the first again. Two blank rows separate the panel from the form's heading. On a window
+type and what it leads to. It opens on the first (`Understand an unfamiliar project`) and
+**turns to the next by itself every 3 seconds**, round and round through the five
+(`Hand off something longer` with `/task Fix the failing tests and explain the changes.`,
+`Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`
+with `/senior-dev Add retries with backoff to the HTTP client, with tests.`); a command in
+a request is painted as the same chip the message box paints a recognised command with.
+`←`/`→` browse by hand and go round the same ring. **Any key holds the clock** for 3
+seconds from that key — typing an amount, walking the rows, browsing — so the panel never
+turns under your hands. Walking the rows does not move it (until 2026-10-01 it followed the
+row you were on). Each example **types itself out once** on arriving, then settles; typing
+settles it at once. Two blank rows separate the panel from the form's heading. On a window
 too short to hold the form and the whole panel — 24 rows, say — the panel is not drawn and
 the form is unchanged. (Until 2026-10-01 the panel was a second column to the right of the
 form, drawn only from 112 columns up, and carried `An illustration. Nothing here has run.`

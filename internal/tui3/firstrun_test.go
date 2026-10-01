@@ -160,22 +160,23 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	if screen := setupScreen(a); !strings.Contains(screen, "finish connecting openrouter") || !strings.Contains(screen, flow.url) {
 		t.Fatalf("the wait must carry the browser address; got:\n%s", screen)
 	}
-	// A key landing here goes on to the controls screen, and the ONE command that
-	// comes back is the example panel's first beat: the arrival is one of the two
-	// deliberate acts its demonstration plays for (onboarding.go). Nothing else is
-	// started — no fetch, no second listener, no clock that keeps running.
+	// A key landing here goes on to the controls screen, and what comes back is
+	// the example panel's two clocks and nothing else — its first beat and its
+	// first turn (onboarding.go): no fetch, no second listener. They are read
+	// as the armed flags and the batch's size rather than waited out, because
+	// the turn is three seconds long.
 	_, next := a.Update(wait())
 	if a.setup.step() != setupControls {
 		t.Fatalf("the key must go on to the controls; step = %v", a.setup.step())
 	}
 	if next == nil {
-		t.Fatal("arriving on the controls armed no beat for the example panel")
+		t.Fatal("arriving on the controls armed no clock for the example panel")
 	}
-	// The beat is longer than the harness clock's budget, so it is waited out
-	// deliberately rather than asked of a clock that answers polls with nothing.
-	beat := waitOut(next)
-	if _, ok := beat.(setupDemoMsg); !ok {
-		t.Fatalf("the key started something other than the panel's beat: %T", beat)
+	if !a.setup.demoTicking || !a.setup.turnTicking {
+		t.Fatalf("arriving on the controls armed beat=%v turn=%v, want both", a.setup.demoTicking, a.setup.turnTicking)
+	}
+	if batch, ok := next().(tea.BatchMsg); !ok || len(batch) != 2 {
+		t.Fatalf("the key started %T with %d commands, want the panel's two clocks", next(), len(batch))
 	}
 	if got := config.PersistedAPIKey(dir); got != flow.key {
 		t.Fatalf("profile key = %q, want browser key", got)

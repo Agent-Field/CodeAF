@@ -118,6 +118,11 @@ type setupFlow struct {
 	demoAt      int
 	demoGen     int
 	demoTicking bool
+	// The turn's clock (onboarding.go's [app.setupTurnCmd]): turnGen stamps
+	// the ticks so one armed before a key is dropped, and turnTicking says one
+	// is in flight.
+	turnGen     int
+	turnTicking bool
 	// refusal is the one line the screen says under the box when enter was
 	// pressed on something it will not write. Any other key clears it.
 	refusal string
@@ -410,11 +415,11 @@ func (a *app) setupControlsPress(name, text string) (tea.Cmd, bool) {
 			return a.endSetup(false), true
 		}
 		a.touch()
-		return nil, true
+		return a.holdSetupTurn(), true
 	case "esc":
 		if a.setupControlsKey(name, text) {
 			a.touch()
-			return nil, true
+			return a.holdSetupTurn(), true
 		}
 		if s.at > 0 {
 			s.at--
@@ -427,12 +432,12 @@ func (a *app) setupControlsPress(name, text string) (tea.Cmd, bool) {
 	}
 	a.setupControlsKey(name, text)
 	a.touch()
-	// AND THE EXAMPLE PANEL'S CLOCK IS ARMED FROM HERE, once, after the key has
-	// been dealt with. [app.setupDemoCmd] answers nil in every state that should
-	// not have a beat — finished, already ticking, off this screen, or the
-	// screen-reader tier — so this line is safe on every key rather than only on
-	// the two that start it (onboarding.go).
-	return a.setupDemoCmd(), true
+	// AND THE PANEL'S TWO CLOCKS ARE DEALT WITH FROM HERE, once, after the key
+	// has been handled: the demonstration's beat is armed where one is owed
+	// ([app.setupDemoCmd] answers nil everywhere else), and the turn is held
+	// for a full interval from this key ([app.holdSetupTurn]), so the panel
+	// never turns under a person's hands (onboarding.go).
+	return tea.Batch(a.setupDemoCmd(), a.holdSetupTurn()), true
 }
 
 // advanceSetup moves past one answered step and closes the screen after the
@@ -452,7 +457,7 @@ func (a *app) advanceSetup() tea.Cmd {
 	if s.step() == setupControls {
 		a.startSetupControls()
 		a.touch()
-		return a.setupDemoCmd()
+		return tea.Batch(a.setupDemoCmd(), a.setupTurnCmd())
 	}
 	a.touch()
 	return nil

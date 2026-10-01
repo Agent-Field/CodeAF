@@ -465,27 +465,27 @@ func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.
 		t.Fatalf("the example panel must be labelled as one; got:\n%s", screen)
 	}
 	a.settleSetupDemo()
-	if want := setupExamples[exampleForControl(controlLimit)].title; !strings.Contains(screen, want) {
-		t.Fatalf("the limit's example is %q; got:\n%s", want, screen)
+	if want := setupExamples[0].title; !strings.Contains(screen, want) {
+		t.Fatalf("the panel opens on the first example %q; got:\n%s", want, screen)
 	}
-	// A deliberate focus change moves it, and nothing else does: a frame drawn
-	// again with no key pressed is the same frame. (The demonstration inside the
-	// panel is driven by beats that ARRIVE, never by drawing — settling it first
-	// is what makes this a question about the example and not about the clock.)
+	// Nothing a person does to the rows moves it, and a frame drawn again with
+	// no key pressed is the same frame. (The demonstration inside the panel is
+	// driven by beats that ARRIVE, never by drawing — settling it first is what
+	// makes this a question about the example and not about the clock.)
 	a.settleSetupDemo()
 	screen = setupScreen(a)
 	if again := setupScreen(a); again != screen {
 		t.Fatal("the example moved between two frames with no keypress")
 	}
 	walkToControl(t, a, controlStart)
-	if want := setupExamples[exampleForControl(controlStart)].title; !strings.Contains(setupScreen(a), want) {
-		t.Fatalf("the way out's example is %q; got:\n%s", want, setupScreen(a))
+	if a.setup.example != 0 {
+		t.Fatalf("walking the rows moved the example to %d; the focus must not move it", a.setup.example)
 	}
 	// ←/→ browse without touching anything.
 	limit := a.setup.limitText
 	pressSetup(a, key("right"))
-	if a.setup.example == exampleForControl(controlStart) {
-		t.Fatal("→ did not move the example")
+	if a.setup.example != 1 {
+		t.Fatalf("→ moved the example to %d, want the second", a.setup.example)
 	}
 	if a.setup.limitText != limit {
 		t.Fatal("browsing the examples changed a control")
@@ -579,11 +579,11 @@ func TestTheExamplePanelStandsAboveTheFormWithTheKeysLineUnderTheHeading(t *test
 	}
 }
 
-// THE HAND-OFF EXAMPLE SPELLS /senior-dev AND WEARS ITS CHIP. It stands beside
-// `Start a conversation`, and the command in its request is painted the way the
-// composer paints a recognised command, so the panel shows the word as one the
-// program knows rather than as prose.
-func TestTheSeniorDevExampleStandsOnTheLastRowWithItsCommandChipped(t *testing.T) {
+// THE HAND-OFF EXAMPLE SPELLS /senior-dev AND WEARS ITS CHIP. It is the last of
+// the ring, and the command in its request is painted the way the composer
+// paints a recognised command, so the panel shows the word as one the program
+// knows rather than as prose.
+func TestTheSeniorDevExampleIsTheLastOfTheRingWithItsCommandChipped(t *testing.T) {
 	// The program's row is on the command table once the engine's list has
 	// landed (delegate.go), which is what makes `/senior-dev` a word the
 	// composer chips; the fixture's agent has no list, so the row is installed
@@ -591,11 +591,11 @@ func TestTheSeniorDevExampleStandsOnTheLastRowWithItsCommandChipped(t *testing.T
 	installDelegateCommands([]session.DelegateRow{{Name: "senior-dev", Description: "an autonomous coding agent"}})
 	t.Cleanup(func() { installDelegateCommands(nil) })
 	a, _ := controlsApp(t, nil)
-	walkToControl(t, a, controlStart)
+	pressSetup(a, key("left")) // the ring's last example
 	a.settleSetupDemo()
 	example := setupExamples[a.setup.example]
 	if !strings.HasPrefix(example.ask, "/senior-dev ") || example.title != "Hand off complex coding tasks" {
-		t.Fatalf("the last row's example is %q / %q, want the senior-dev hand-off", example.title, example.ask)
+		t.Fatalf("the last example is %q / %q, want the senior-dev hand-off", example.title, example.ask)
 	}
 	frame, _, _ := a.frame()
 	if !strings.Contains(frame, a.pal.chip("/senior-dev")) {
@@ -646,16 +646,17 @@ func TestTheExamplePanelIsFramedAndFallsBackToAscii(t *testing.T) {
 	}
 }
 
-// THE DEMONSTRATION PLAYS ONCE, ON A DELIBERATE ACT, AND NOTHING ELSE STARTS IT.
+// THE DEMONSTRATION PLAYS ONCE PER EXAMPLE, AND NOTHING ELSE STARTS IT.
 //
-// This is the whole motion contract of the screen, and every clause of it is
-// something a person would notice if it broke: a panel that replayed on every
-// keystroke, or looped, or restarted while somebody was typing an amount, is a
-// screen with something moving in the corner of the eye for no reason.
-func TestTheExampleDemonstrationPlaysOnceOnADeliberateAct(t *testing.T) {
+// Every clause of this is something a person would notice if it broke: a panel
+// that replayed on every keystroke, or looped, or restarted while somebody was
+// typing an amount, is a screen with something moving in the corner of the eye
+// for no reason. (The examples themselves turn on their own clock — the next
+// test — and each turn plays the arriving example once.)
+func TestTheExampleDemonstrationPlaysOncePerExample(t *testing.T) {
 	a, _ := controlsApp(t, nil)
-	// Arriving on the screen is the first deliberate act, and it leaves the panel
-	// at its first beat with a beat armed.
+	// Arriving on the screen leaves the panel at its first beat with a beat
+	// armed.
 	if a.setup.demoAt != 0 {
 		t.Fatalf("the panel did not start from the top; demoAt = %d", a.setup.demoAt)
 	}
@@ -1299,5 +1300,66 @@ func TestExplanationsNameTheirCommandsAndTheWayOutHasNoLooseEnter(t *testing.T) 
 		if strings.Contains(row, controlStartWord) && strings.Contains(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(row), controlStartWord)), "enter") {
 			t.Fatalf("the way out still carries a loose enter: %q", row)
 		}
+	}
+}
+
+// THE EXAMPLES TURN ON THEIR OWN CLOCK, AND ANY KEY HOLDS IT. Left alone the
+// panel shows the next example every three seconds, round the ring; a key
+// retires the tick in flight and arms a fresh one, so the panel never turns
+// under a person's hands and a hand-browsed example stays for a full interval.
+// The clock is read as commands and generations rather than waited for.
+func TestTheExamplesTurnOnTheirOwnClockAndAnyKeyHoldsIt(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	if !a.setup.turnTicking {
+		t.Fatal("arriving on the controls screen armed no turn")
+	}
+	gen := a.setup.turnGen
+	// The tick arrives: the next example, played from the top, and another tick
+	// armed.
+	if cmd := a.setupTurnAt(gen); cmd == nil {
+		t.Fatal("the turn armed nothing after it")
+	}
+	if a.setup.example != 1 || a.setup.demoAt != 0 || !a.setup.turnTicking {
+		t.Fatalf("after the turn: example %d, demoAt %d, ticking %v; want the second example, played from the top, with a tick armed", a.setup.example, a.setup.demoAt, a.setup.turnTicking)
+	}
+	// Round the ring: four more turns are the first example again.
+	for i := 0; i < len(setupExamples)-1; i++ {
+		a.setupTurnAt(a.setup.turnGen)
+	}
+	if a.setup.example != 0 {
+		t.Fatalf("after a full ring the example is %d, want the first again", a.setup.example)
+	}
+	// A key retires the tick in flight: the old generation is dropped whole.
+	stale := a.setup.turnGen
+	pressSetup(a, key("down"))
+	if a.setup.turnGen == stale || !a.setup.turnTicking {
+		t.Fatal("a key did not retire the tick in flight and arm a fresh one")
+	}
+	at := a.setup.example
+	if cmd := a.setupTurnAt(stale); cmd != nil || a.setup.example != at {
+		t.Fatal("a retired tick turned the panel")
+	}
+	// Typing an amount holds it too, and browsing by hand is not raced.
+	pressSetup(a, key("2"))
+	gen = a.setup.turnGen
+	pressSetup(a, key("right"))
+	if a.setup.example != at+1 || a.setup.turnGen == gen {
+		t.Fatalf("→ moved the example to %d (from %d) and left the clock's generation at %d", a.setup.example, at, a.setup.turnGen)
+	}
+	// Back on the key step the tick is dropped and nothing is armed; returning
+	// arms it again.
+	pressSetup(a, key("esc"))
+	if a.setup.step() != setupKey {
+		t.Fatal("esc did not go back to the key step")
+	}
+	if cmd := a.setupTurnAt(a.setup.turnGen); cmd != nil {
+		t.Fatal("a tick on the key step turned something")
+	}
+	// The screen-reader tier never turns by itself.
+	b, _ := controlsApp(t, nil)
+	b.linear = true
+	b.setup.turnTicking = false
+	if cmd := b.setupTurnCmd(); cmd != nil {
+		t.Fatal("the screen-reader tier armed a turn")
 	}
 }
