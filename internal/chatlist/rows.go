@@ -36,6 +36,16 @@ type Row struct {
 	Mine bool
 }
 
+// Quiet is the row of a chat whose live holder has gone: a lease that still
+// runs on a device that is no longer online is a chat that stopped, so it reads
+// as one that went off (`studio off`), not `running on studio`.
+func (r Row) Quiet() Row {
+	if r.Status == Running {
+		r.Status = Off
+	}
+	return r
+}
+
 // Opener opens a sealed name with the metadata key.
 type Opener func(sealed string) (string, error)
 
