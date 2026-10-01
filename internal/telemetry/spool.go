@@ -397,7 +397,7 @@ func batchEvents(batch []spoolEntry) []jsonEvent {
 // allowlistedEvents is the event-name half of the contract's allowlist, for
 // the flush loop's one look per line.
 var allowlistedEvents = map[string]bool{
-	"first_run": true, "session_started": true, "session_ended": true, "fault": true,
+	"first_run": true, "session_started": true, "usage_delta": true, "session_ended": true, "fault": true,
 }
 
 // httpClient is the one client, and the package's one send seam: production

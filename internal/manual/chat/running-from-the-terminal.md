@@ -1055,9 +1055,12 @@ row can carry, and for the Model Pool one example row in the relay's own bytes; 
 prints what is waiting to leave right now as one JSON object, a key per destination
 (`usage`, `model_pool`) with its `destination`, an `off` reason when nothing is sent
 there, and `waiting`, the rows themselves, `[]` on the day you install; and `off` and
-`on` write the answer to your profile. `info` lists only what is sent, never a disclaimer.
-`session_ended` also carries `total_tokens`, the one exact number on it: the input and
-output tokens the provider reported across the session, never which model or what it read.
+`on` write the answer to your profile; `on` is an explicit opt-in and opens the send gate
+without waiting for another chat frame. `info` lists only what is sent, never a disclaimer.
+Each completed provider call queues a `usage_delta` with exact input, output and total
+tokens, never which model or what it read. The queue is sent every 30 seconds while the
+session stays open and once more when it ends; `session_ended` carries the outcome and
+bucketed session counts without repeating tokens that were already reported.
 `CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
 usage counts go quiet and the Model Pool is capped at `read`, so it can still fetch the index
 and sends nothing. The pool's own switch, `model_pool` in `/settings` or

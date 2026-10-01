@@ -27,7 +27,7 @@ it to stderr before they start. Until it has been shown, nothing is sent.
 
 ## What is sent
 
-Exactly four events. Each carries the every-event properties; three of them
+Exactly five events. Each carries the every-event properties; four of them
 add more. Values are counts, bands, or words from fixed lists. The
 table's names come from the same allowlist the code is held to and its words
 from the table `codeaf telemetry info` prints, and a test fails the build if
@@ -43,6 +43,10 @@ any of the three drift apart.
 | every event | install_method | script, source, or unknown |
 | session_started | mode | chat or task |
 | session_started | resumed | whether the session continued an earlier one |
+| usage_delta | mode | chat or task |
+| usage_delta | input_tokens | provider-reported input tokens since the preceding usage event |
+| usage_delta | output_tokens | provider-reported output tokens since the preceding usage event |
+| usage_delta | total_tokens | the sum of this event's input and output tokens |
 | session_ended | mode | chat or task |
 | session_ended | duration | a band: under 1m, 1-5m, 5-30m, 30m-2h, 2h or more |
 | session_ended | turns | a count band |
@@ -51,7 +55,6 @@ any of the three drift apart.
 | session_ended | tool_calls | a count band |
 | session_ended | tool_calls_failed | a count band |
 | session_ended | cost_usd | a dollar band |
-| session_ended | total_tokens | total provider-reported input and output tokens in this session |
 | session_ended | stop_reason | done, error, incomplete, budget, turn-cap, deadline, price, question, interrupted, or unknown |
 | session_ended | exit_code | 0 to 5 |
 | fault | mode | chat, task, or other |
@@ -60,8 +63,9 @@ any of the three drift apart.
 
 Count bands are 0, 1, 2-5, 6-20, 21-100 and 100+. Dollar bands are 0, under
 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+.
-The numeric `total_tokens` count sums provider-reported input and output across
-the run, including tokens read from cache once. Missing usage contributes zero.
+Each numeric usage delta is written when provider accounting arrives, including
+tokens read from cache once. Missing usage contributes no event. Deltas, rather
+than repeated session totals, make the stream safe to sum while a run is open.
 
 first_run carries only the every-event properties and is sent once per
 install.
@@ -81,10 +85,11 @@ the marshalled output.
 ## Where events wait
 
 Events wait in ~/.codeaf/telemetry/spool.jsonl until they are sent: at most 50
-per request, nothing older than 7 days, at most 1000 lines kept, and nothing
-sent before the notice has been shown. An event whose version is unknown is
-dropped at send time and never leaves the machine. `codeaf telemetry show`
-prints exactly what has not left yet, as JSON.
+per request, every 30 seconds while a session is open and once more when it
+ends. Nothing older than 7 days is sent, at most 1000 lines are kept, and
+nothing is sent before the notice has been shown. An event whose version is
+unknown is dropped at send time and never leaves the machine. `codeaf telemetry
+show` prints exactly what has not left yet, as JSON.
 
 ## Turning it off
 
@@ -96,7 +101,8 @@ Model Pool from sending. They are checked in this order:
 3. `telemetry = off` in the project's settings file, `.codeaf/config.json`. A
    project may only turn the counts off, never on.
 4. `codeaf telemetry off`, which writes the profile setting; `codeaf telemetry
-   on` is the way back.
+   on` is the way back and records that explicit opt-in as the notice being
+   shown.
 5. an empty `CODEAF_TELEMETRY_ENDPOINT`.
 
 A build that cannot name its own source — dirty or unstamped — never reports,

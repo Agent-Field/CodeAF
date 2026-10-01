@@ -41,18 +41,15 @@ var counters struct {
 	// every cost a provider reports at six places, and the one rounding —
 	// in costToMicro, at the boundary — is the only one there is.
 	costMicro atomic.Int64
-	tokens    atomic.Int64
 }
 
-// CountTokens adds provider-reported input and output tokens for one call.
-// Cache reads are already part of input; adding them again would overcount.
+// CountTokens records provider-reported input and output tokens for one
+// completed call. Cache reads are already part of input; adding them again
+// would overcount. Unlike the in-memory session counters above, token usage is
+// useful while a long session is still running, so it becomes a queued delta
+// event when telemetry is on and a session identity has been configured.
 func CountTokens(input, output int) {
-	if input > 0 {
-		counters.tokens.Add(int64(input))
-	}
-	if output > 0 {
-		counters.tokens.Add(int64(output))
-	}
+	recordUsageDelta(input, output)
 }
 
 // costToMicro is the single float-to-integer crossing. math.Round rather than
@@ -116,7 +113,6 @@ func Snapshot() SessionStats {
 		ToolCalls:        int(counters.toolCalls.Load()),
 		ToolCallsFailed:  int(counters.toolFail.Load()),
 		CostUSD:          microToCost(counters.costMicro.Load()),
-		TotalTokens:      int(counters.tokens.Load()),
 	}
 }
 
@@ -131,5 +127,4 @@ func resetCountersForTest() {
 	counters.toolCalls.Store(0)
 	counters.toolFail.Store(0)
 	counters.costMicro.Store(0)
-	counters.tokens.Store(0)
 }

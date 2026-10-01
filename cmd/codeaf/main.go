@@ -200,7 +200,7 @@ func execute() (code int) {
 	// still owes an answer to. Any error reads as "on" — the default — and
 	// the run carries on.
 	telemetry.Configure(telemetryConfiguredOff())
-	telemetrySession := telemetryBegin()
+	telemetrySession := telemetryStart(telemetryBegin())
 	defer func() {
 		telemetryEnd(telemetrySession, code)
 	}()
