@@ -81,10 +81,12 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) *syncs
 // device outright (removed from the fleet, replaced, over its limit) and
 // answers true, so the chat runs unsynced with the reason on screen instead
 // of opening as if nothing were wrong. Any other failure is not its business.
-func sayRefusal(err error) bool {
+func sayRefusal(err error) bool { return sayRefusalTo(surfaceNotices.Say, err) }
+
+func sayRefusalTo(say func(string), err error) bool {
 	r, ok := cellsync.RefusalOf(err)
 	if ok {
-		surfaceNotices.Say(r.Say(err))
+		say(r.Say(err))
 	}
 	return ok
 }
