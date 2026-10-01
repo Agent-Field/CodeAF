@@ -188,6 +188,10 @@ type ProgramFolder struct {
 	// NoAttribution is true when the run had no answered model call, so its
 	// finishing commit does not credit a model that did no work in this run.
 	NoAttribution bool `json:"noAttribution,omitempty"`
+	// message is the commit message the program wrote for the commit that
+	// ends its run, read from its notes just before they are moved
+	// ([ProgramFolder.readCommitMessage]); never written to the record.
+	message string
 	// Ended is the sentence the run's folder was finished with. Empty is a
 	// folder still owed its ending.
 	Ended string `json:"ended,omitempty"`
@@ -707,18 +711,27 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		// making the model credit would require rewriting that commit.
 		return ""
 	}
-	message := clip(firstLine(f.Title), 72)
-	if strings.TrimSpace(message) == "" {
-		// A run a shell started with no brief, on a command of its own, has no
-		// title, and git takes no commit without a subject.
-		message = f.Program + "'s work"
-	}
-	if result = strings.TrimSpace(result); result != "" {
-		message += "\n\n" + result
+	// THE PROGRAM'S OWN MESSAGE, WHEN IT WROTE ONE, IS THE COMMIT'S
+	// ([ProgramFolder.BriefNote] asks for it): it knows what it changed and
+	// why, where the task's title is the brief's first line and its ending is
+	// an account of the run rather than of the change.
+	message := f.message
+	if message == "" {
+		message = clip(firstLine(f.Title), 72)
+		if strings.TrimSpace(message) == "" {
+			// A run a shell started with no brief, on a command of its own, has no
+			// title, and git takes no commit without a subject.
+			message = f.Program + "'s work"
+		}
+		if result = strings.TrimSpace(result); result != "" {
+			message += "\n\n" + result
+		}
 	}
 	args := append([]string{"-c", "commit.gpgsign=false"}, codeafGitIdentity()...)
 	if !f.NoAttribution {
-		message = signed(message, gitSignature{named: f.SignModel != "", model: f.SignModel})
+		// signOnce, because a message the program wrote may already carry a
+		// line of the signature, which would otherwise appear twice.
+		message = gitSignature{named: f.SignModel != "", model: f.SignModel}.signOnce(message)
 	}
 	args = append(args, "commit", "-q", "--no-verify", "-m", message)
 	if out, err := git(f.Dir, args...); err != nil {

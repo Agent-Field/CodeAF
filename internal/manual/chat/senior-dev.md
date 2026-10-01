@@ -532,22 +532,19 @@ they never end up on a branch, and the next run in that folder never reads the l
 one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
 left where it is, and never ends up on a branch either.
 
-## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, one commit, nothing to squash, no wip commits
+## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, one commit
 
 In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`) from
 the commit your checkout stands on — with your uncommitted changes as its first commit, when
 you have some (see uncommitted changes) — checked out in a private copy of the repository
-(see where senior-dev's copy is), and senior-dev works there. **senior-dev makes no
-commits of its own**: no `wip(write): <path>` or `wip(edit): <path>` per file, and nothing
-authored `senior-dev`. The snapshots it restores from are kept outside the branch. (Runs
-before 2026-09-30 committed every file they wrote that way; those commits are still on
-their branches.)
+(see where senior-dev's copy is), and senior-dev works there; it makes no commits of its
+own (see does senior-dev commit or push).
 
 When the run ends — finished or not, stopped, crashed, or codeaf gone — codeaf commits
 what it left uncommitted on that branch, excluding paths ignored at the start and known
-test caches, in one commit whose subject is the task's title and whose body is senior-dev's
-own ending, and **removes the copy**, so the branch is checked out nowhere and free to
-merge, check out or hand back. **The branch is always kept**, even when the run changed
+test caches, in one commit — with **senior-dev's own commit message** when it wrote one,
+and otherwise the task's title as the subject and senior-dev's ending as the body — and
+**removes the copy**, so the branch is checked out nowhere and free to merge, check out or hand back. **The branch is always kept**, even when the run changed
 nothing. Nothing is merged into your own branch. The task's page and the conversation both
 say ``its work is on the branch <branch> in <folder>, N files; your checkout was not
 touched, and `git -C '<folder>' merge <branch>` brings it in``. Merge it when you are ready,
@@ -572,6 +569,28 @@ branch <branch> in <folder> as it stops` at once. **A run that changed nothing**
 nothing; its branch <branch> in <folder> is kept where it began, and your checkout was not
 touched`.
 
+
+## Does senior-dev commit or push — no wip commits, who writes the commit message
+
+**senior-dev makes no commits of its own**: no `wip(write): <path>` or `wip(edit): <path>`
+per file, and nothing authored `senior-dev`. The snapshots it restores from are kept
+outside its branch. Runs before 2026-09-30 committed every file they wrote that way, and
+those commits are still on their branches.
+
+Its brief opens with a line from codeaf telling it to leave its work uncommitted and not
+to push, switch branches or rewrite history — even when your brief asks it to — and to
+write the commit message for its change to `.senior-dev/commit-message`: a subject of at
+most 72 characters in the style of the repository's own `git log`, a blank line, and a
+body saying what changed and why.
+
+When the run ends, codeaf's one commit takes that message as it is, adding its model
+credit lines without repeating any the message already has. With no message, or an empty one, the subject is the
+task's title and the body is senior-dev's ending. The `.senior-dev/` folder itself never
+reaches the branch; it is kept in the run's record.
+
+This is asked, not enforced: nothing blocks a git command. A commit senior-dev makes
+anyway stays on its branch as it made it, and whatever it left uncommitted still goes into
+codeaf's commit. Pushing and opening a pull request are for after the run — ask the chat.
 ## Where is senior-dev's copy — a git worktree in codeaf's cache folder, removed when it ends
 
 In a git repository senior-dev works in a git worktree of your repository under your

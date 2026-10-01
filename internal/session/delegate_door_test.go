@@ -37,7 +37,7 @@ func testPrograms(name string) []delegate.Delegate {
 // subject is the task's title and whose body is the run's result, the copy is
 // removed so the branch is checked out nowhere, and the person's checkout is
 // never touched. The engine is a double whose `work` hook plays the program:
-// one file committed the way senior-dev commits every edit, and one left
+// one file committed by the program itself, despite its brief, and one left
 // uncommitted.
 func TestADelegatedRunWorksOnItsOwnBranchInACopyAndLeavesTheCheckoutAlone(t *testing.T) {
 	// The double answers the run's result off the completer it is handed, so

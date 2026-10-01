@@ -58,12 +58,14 @@ package session
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -1014,6 +1016,7 @@ type programKeptRef struct {
 // went away before it could end the run itself.
 func (f *ProgramFolder) settleCopy(result string, gone bool) ProgramFolderEnd {
 	end := ProgramFolderEnd{Folder: *f, Gone: gone}
+	f.message = f.readCommitMessage()
 	end.Notes = f.keepNotes()
 	f.unlinkCopy()
 	before := branchCommit(f.Repo, f.Branch)
@@ -1531,7 +1534,56 @@ func (f *ProgramFolder) BriefNote() string {
 	if len(f.Untracked) > 0 {
 		said += " Files that were untracked in the person's checkout are copied here as they were, uncommitted: edit any the work needs, and those you change are committed as your work; those you leave as they are stay off the branch."
 	}
+	// THE PROGRAM IS ASKED, NOT STOPPED. A shell that refused git's writing
+	// verbs would have to parse every way a command can reach git, and the
+	// owner chose steering over a guard that guesses (2026-09-30). What the
+	// program leaves is committed by codeaf in any case, and a commit it makes
+	// anyway stays on its branch as it made it.
+	said += " Leave your work uncommitted, and do not push, switch branches or rewrite history, even where the brief below asks you to: when the run ends, codeaf commits everything you changed onto this branch as one commit."
+	if f.messageAsked() {
+		said += " Before you finish, write that commit's message to " + f.Notes + "/" + programCommitMessageFile +
+			": a subject line of at most 72 characters in the style of this repository's own `git log`, a blank line, then a body saying what changed and why."
+	}
 	return said
+}
+
+// programCommitMessageFile is the file in the program's notes folder whose
+// words become the subject and body of the commit codeaf makes when the run
+// ends ([ProgramFolder.BriefNote], [ProgramFolder.commitLeftovers]).
+const programCommitMessageFile = "commit-message"
+
+// programCommitMessageMax is the most of that file codeaf reads. A commit
+// message is a paragraph or a few; anything longer is not one.
+const programCommitMessageMax = 8 << 10
+
+// messageAsked says the program is asked to write its commit's message: it
+// has a notes folder of its own, which the run's commits never take, and that
+// folder was not already there, so a message in it can only be this run's.
+func (f *ProgramFolder) messageAsked() bool {
+	return f.Notes != "" && !f.NotesWereThere
+}
+
+// readCommitMessage reads the message the program wrote for the commit that
+// ends its run, "" when it wrote none codeaf can use. It is read before the
+// notes are moved out of the copy ([ProgramFolder.keepNotes]).
+func (f *ProgramFolder) readCommitMessage() string {
+	if !f.messageAsked() {
+		return ""
+	}
+	file, err := os.Open(filepath.Join(f.Dir, f.Notes, programCommitMessageFile))
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	body, err := io.ReadAll(io.LimitReader(file, programCommitMessageMax+1))
+	if err != nil || len(body) > programCommitMessageMax || !utf8.Valid(body) {
+		return ""
+	}
+	message := strings.TrimSpace(strings.ReplaceAll(string(body), "\r\n", "\n"))
+	if strings.TrimSpace(firstLine(message)) == "" {
+		return ""
+	}
+	return message
 }
 
 // copySentence is how a run left its copy, in the sentence every surface says

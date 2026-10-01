@@ -205,9 +205,10 @@ A name your build does not carry is refused with the ones it does:
 In a git repository codeaf cuts the program a branch of its own (`task/<title>-<id>`) from
 the commit your checkout stands on, in a private copy of the repository, and the program
 works there. senior-dev commits nothing as it goes — no `wip(edit): …` commits, and
-nothing under its name. When it ends — finished, stopped, crashed, or codeaf gone — codeaf
-commits what it left uncommitted onto that branch (the task's title, with the program's
-own account of the ending as the body) and removes the copy, so **the branch is kept and
+nothing under its name — and its brief tells it not to commit or push even if yours asks.
+When it ends — finished, stopped, crashed, or codeaf gone — codeaf commits what it left
+uncommitted onto that branch in one commit (the message the program wrote for it, or else
+the task's title with the program's own account of the ending as the body) and removes the copy, so **the branch is kept and
 checked out nowhere**, even when the run changed nothing. **Your checkout is never
 touched**: tracked edits and staged additions become its branch's first commit while staying
 uncommitted in your folder. Untracked files it changed go on its branch; the rest stay off it
