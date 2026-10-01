@@ -77,14 +77,14 @@ func Open(home string) (*Sync, bool, error) {
 
 // OpenFirst is Open for the first launch of the app: a machine whose relay is
 // on and that has no identity yet is the first machine, so it makes the
-// identity (a fleet of one) instead of failing. The headless verbs keep Open,
+// identity (a fleet of one, solo and quiet: see quiet.go) instead of failing. The headless verbs keep Open,
 // which tells a machine without an identity so.
 func OpenFirst(home string) (*Sync, bool, error) {
 	if rotate.Pending(home) {
 		return nil, false, ErrRotating
 	}
 	if Resolve(home).On() {
-		if _, err := identity.Ensure(home); err != nil {
+		if _, err := identity.EnsureSolo(home); err != nil {
 			return nil, false, err
 		}
 	}
@@ -154,10 +154,10 @@ func flushInterval() (time.Duration, error) {
 // build binds both wires to one signer and one client, and leaves the store to be counted by scope.
 func build(home, base string, id identity.Identity, dev identity.Dev, interval time.Duration) *Sync {
 	sign := reqsign.SignFor(deviceSigner{id, dev}, time.Now)
-	hc := &http.Client{Timeout: requestTimeout}
+	hc := gated(home, &http.Client{Timeout: requestTimeout})
 	return &Sync{
 		Dir:        directory.NewHTTP(base, sign, hc),
-		Store:      blobstore.NewHTTP(base, sign, &http.Client{}),
+		Store:      blobstore.NewHTTP(base, sign, gated(home, &http.Client{})),
 		Device:     dev,
 		Identity:   id,
 		Relay:      base,
@@ -188,7 +188,7 @@ func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
 
 // RowsAt is Rows and the directory version the listing was read at.
 func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
-	l, err := s.Dir.List(ctx)
+	l, err := s.list(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
