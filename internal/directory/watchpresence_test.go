@@ -102,7 +102,7 @@ func TestASocketWithoutEventsHearsNothing(t *testing.T) {
 	f, _ := newTestFeed()
 	old, _ := join(t, f, "dev_a", false)
 	join(t, f, "dev_b", true)
-	f.AnnounceJoined("dev_c", "bg==", "linux")
+	f.announceJoin(Joined{Device: "dev_c", Name: "bg==", Platform: "linux"})
 	if len(old.events) != 0 {
 		t.Fatalf("a socket that did not opt in has %d queued events", len(old.events))
 	}
@@ -158,7 +158,7 @@ func TestJoinedGoesToOthersNotToTheNewDevice(t *testing.T) {
 	_, c := join(t, f, "dev_c", true)
 	drain(a)
 	drain(c)
-	f.AnnounceJoined("dev_c", "bg==", "linux")
+	f.announceJoin(Joined{Device: "dev_c", Name: "bg==", Platform: "linux"})
 	same(t, drain(a), []string{"joined:dev_c"})
 	same(t, drain(c), nil)
 }

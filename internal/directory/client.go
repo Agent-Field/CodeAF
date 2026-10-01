@@ -26,6 +26,10 @@ type Client interface {
 	Release(ctx context.Context, id string, fence uint64) error                 // ErrFenceStale
 	Archive(ctx context.Context, id string) error                               // idempotent
 
+	// Presence says which devices hold a watch socket now, and when the
+	// others were last seen. Live changes arrive on the watch socket instead.
+	Presence(ctx context.Context) (PresenceView, error)
+
 	// ApproveRequest lets a device that asked to join (see Requests) into this
 	// identity: it writes the device's record, keeps the grant for it and
 	// tells the other devices. The first decision wins; repeating it is a

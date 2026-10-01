@@ -29,7 +29,7 @@ type Memory struct {
 
 // NewMemory returns an empty directory that reads time from clock.
 func NewMemory(clock func() time.Time) *Memory {
-	return &Memory{
+	m := &Memory{
 		clock:    clock,
 		identity: IdentityRec{V: 1},
 		devices:  map[string]Device{},
@@ -37,6 +37,8 @@ func NewMemory(clock func() time.Time) *Memory {
 		grace:    DefaultGraceBounds,
 		feed:     NewFeed(clock),
 	}
+	wireFeed(m.feed, &m.pairing, m.seen)
+	return m
 }
 
 var _ Watchable = (*Memory)(nil)

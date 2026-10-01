@@ -129,6 +129,7 @@ func send(w http.ResponseWriter, status int, v any) {
 // routes is the §4.4 table, one entry per method and path.
 var routes = map[string]route{
 	"GET " + dirBase + "/list":                     func(c call) (any, error) { return pair(c.cl.List(c.ctx())) },
+	"GET " + dirBase + "/presence":                 func(c call) (any, error) { return pair(c.cl.Presence(c.ctx())) },
 	"GET " + dirBase + "/cells/{id}":               func(c call) (any, error) { return pair(c.cl.Cell(c.ctx(), c.id())) },
 	"PUT " + dirBase + "/devices/{id}":             withBody(putDevice),
 	"POST " + dirBase + "/devices/{id}/revoke":     func(c call) (any, error) { return nothing(c.cl.Revoke(c.ctx(), c.id())) },
