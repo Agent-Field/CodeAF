@@ -1120,7 +1120,9 @@ Limits:
 ## Refreshing the model list — a new model came out but it is not in /model; the model list is out of date
 
 The list `/model` shows is fetched from the router at most once a day, so a model a
-provider shipped this morning may not be in it yet. With the picker open, press
+provider shipped this morning may not be in it yet. When the saved list is more than a day
+old, codeaf starts with it anyway — starting never waits on that fetch — and fetches the
+newer list in the background, so it is there the next time codeaf starts. With the picker open, press
 **`ctrl+r`** to fetch the newest list now from the router and every connected provider
 that lists models. Each provider's group fills as its answer arrives; one provider's
 failure does not stop the others. The placeholder names it — `ctrl+r refresh` —
