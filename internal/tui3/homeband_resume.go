@@ -9,14 +9,24 @@ package tui3
 // takeover card the chat's own row raises ([app.offerContinue]), so the yes is
 // still asked there, with the reason, and nothing is taken by this card.
 //
-// THE OFFER IS DECIDED ONCE PER OPENING, from the first listing that arrives.
-// Whatever it decides, it is not decided again: a device that goes offline
-// later in the session is not a rescue, it is a thing the person watched.
+// THE OFFER IS DECIDED CONTINUOUSLY, from the newest listing and the feed's
+// presence, each time either moves. A device that still looks online when the
+// window opens (a lid shut without goodbye stays online until the relay's
+// offline debounce, 15 s, runs out) is offered the moment the feed says it is
+// gone; a device that comes back, or a chat that is let go of, withdraws the
+// card. What the person answered stays answered: a device they took up or put
+// off is not offered again in this opening.
 //
-// OFFLINE IS WHAT THE CHANGE FEED SAYS WHEN IT HAS SAID. Without the feed
-// (socket down, or a source that has none) a chat whose lease has lapsed
-// ([chatlist.Off]) stands in for it. A device that is online is never offered:
-// a chat running on it is busy and a chat it let go of is the person's to open.
+// THE TIME BOUND. With the feed up, the card stands within one feed frame of
+// the relay's offline word: the debounce plus the frame. With the feed down,
+// the lapsed lease is read from the next listing, at most [machinesCap] after
+// it lapsed.
+//
+// THE OFFER STANDS WHEN THE DEVICE IS AWAY: the change feed says it is not
+// online (presence is keyed by device id, never by name), OR the chat's lease
+// has lapsed ([chatlist.Off]). Without the feed (socket down, or a source that
+// has none) the lapsed lease stands in for it. A device that is online and
+// busy is never offered: a chat running on it is its own to finish.
 //
 // A card that cannot work is absent: with no [Taker] there is no takeover to
 // lead into, and the offer is never made.
@@ -50,19 +60,29 @@ func init() {
 		standing: true, draw: drawResumeBand})
 }
 
-// resumeOffer is the card's whole state. decided says the opening's one look
-// at the listing is over; row is the chat on offer while the card stands.
+// resumeOffer is the card's whole state. row is the chat on offer while the
+// card stands; answered holds the devices the person has taken up or put off.
 type resumeOffer struct {
-	decided bool
-	row     *chatlist.Row
+	row      *chatlist.Row
+	answered map[string]bool
+}
+
+// answer records that the person has dealt with the card for its device.
+func (r *resumeOffer) answer() {
+	if r.answered == nil {
+		r.answered = map[string]bool{}
+	}
+	r.answered[r.row.Device] = true
+	r.row = nil
 }
 
 // resumeState is what the offer needs to know about the fleet, so the choice of
 // chat is a pure function of it.
 type resumeState struct {
-	rows   []chatlist.Row
-	online []string
-	feedUp bool
+	rows     []chatlist.Row
+	online   []string
+	feedUp   bool
+	answered map[string]bool
 }
 
 // pick is the chat to offer: the newest recent one on an offline device.
@@ -80,36 +100,50 @@ func (s resumeState) pick() *chatlist.Row {
 // offered says a row is a chat to rescue.
 func (s resumeState) offered(row chatlist.Row) bool {
 	live := row.Status == chatlist.Running || row.Status == chatlist.Off
-	return live && row.Device != "" && row.DurableAgo <= resumeRecent && s.offline(row)
+	return live && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
 }
 
-// offline reads the feed's presence when it is up, and the lapsed lease when
-// it is not.
-func (s resumeState) offline(row chatlist.Row) bool {
-	if s.feedUp {
-		return !slices.Contains(s.online, row.Device)
+// away says the chat's device has let go of it or is gone: its lease lapsed,
+// or the feed, when it can speak and the row names the device, does not list it
+// as online.
+func (s resumeState) away(row chatlist.Row) bool {
+	if row.Status == chatlist.Off {
+		return true
 	}
-	return row.Status == chatlist.Off
+	return s.feedUp && row.DeviceID != "" && !slices.Contains(s.online, row.DeviceID)
 }
 
-// considerResume makes the opening's one decision, from the first listing that
-// was read. A listing that failed decides nothing.
-func (a *app) considerResume(msg homeMachinesMsg) {
+// considerResume decides the offer afresh from the newest good listing and the
+// feed. It runs whenever either has moved, and it withdraws a card whose reason
+// has gone. No listing yet, or no taker, offers nothing.
+func (a *app) considerResume() {
 	r := &a.leftOff
-	if r.decided || msg.err != nil {
-		return
+	var row *chatlist.Row
+	if a.taker != nil {
+		row = a.resumeState().pick()
 	}
-	r.decided = true
-	if a.taker == nil {
-		return
+	if !sameOffer(r.row, row) {
+		a.touch()
 	}
-	state := resumeState{rows: msg.rows}
+	r.row = row
+}
+
+// resumeState is the fleet as the newest good listing and the feed show it.
+func (a *app) resumeState() resumeState {
+	state := resumeState{rows: a.machineRead.rows, answered: a.leftOff.answered}
 	if a.dirFeed != nil {
 		st := a.dirFeed.State()
 		state.feedUp, state.online = st.Up, st.Online
 	}
-	r.row = state.pick()
-	a.touch()
+	return state
+}
+
+// sameOffer says two offers are the same chat.
+func sameOffer(x, y *chatlist.Row) bool {
+	if x == nil || y == nil {
+		return x == y
+	}
+	return x.Cell == y.Cell && x.Device == y.Device
 }
 
 // resumeKeyHandler claims the card's two chords where the card stands.
@@ -120,11 +154,11 @@ func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
 	}
 	switch key {
 	case resumeKey:
-		a.leftOff.row = nil
+		a.leftOff.answer()
 		a.touch()
 		return a.offerContinue(*row, chatlist.OfferFor(*row)), true
 	case resumeSkipKey:
-		a.leftOff.row = nil
+		a.leftOff.answer()
 		a.touch()
 		return nil, true
 	}
