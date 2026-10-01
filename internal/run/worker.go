@@ -13,9 +13,9 @@ import (
 )
 
 // Report is what a worker hands back when its task ends well. Result is the
-// task's own account of itself and lands in the store verbatim; Steps and USD
-// feed the run's counters, and USD in particular feeds the shared cost
-// counter the Limits govern.
+// task's own account of itself and lands in the store verbatim; Steps, USD and
+// token counts feed the run's receipt, and USD in particular feeds the shared
+// cost counter the Limits govern.
 //
 // WAITING IS NOT A RESULT. A worker that called `plandb wait` has not finished
 // its task: it parked it, the store released its claim, and it is owed a wake
@@ -23,10 +23,12 @@ import (
 // set and no Result, and the supervisor leaves the task open rather than
 // writing a completion.
 type Report struct {
-	Result  string
-	Steps   int
-	USD     float64
-	Waiting bool
+	Result    string
+	Steps     int
+	USD       float64
+	TokensIn  int
+	TokensOut int
+	Waiting   bool
 	// Verdict is a program's own word for the finished work it handed in —
 	// senior-dev's `pass` or `pass-unverified` — when a delegated run's program
 	// finished; empty for every other worker ([delegate.Terminal.Verdict]).

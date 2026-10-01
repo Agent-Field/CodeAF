@@ -24,14 +24,7 @@ func (runner *pipeline) soloShip(
 		// earlier green or coherent checkpoint available.
 		outcome.Status = "unsubmitted"
 		runner.soloFinalizeUnsubmitted(ctx, state, outcome)
-		reason := "no submission: the run stopped without calling submit"
-		if converseErr != nil {
-			reason += " (" + converseErr.Error() + ")"
-		}
-		if outcome.RestoreSource != "" {
-			reason += "; the live tree's suite could not start and it was restored from " + outcome.RestoreSource
-		}
-		runner.soloTerminal(outcome, reason)
+		runner.soloTerminal(outcome, runner.soloUnsubmittedEnding(outcome, converseErr))
 		return
 	}
 	outcome.Frozen = candidate
@@ -113,6 +106,34 @@ func (runner *pipeline) soloShip(
 	// finishes so the one ending carries their durable location on every road.
 	runner.soloRestoreIfDiverged(state, outcome)
 	runner.soloTerminal(outcome, endingReason)
+}
+
+// soloUnsubmittedEnding is the one sentence source for an unsubmitted run's
+// final account. A passing check is useful only when the person is also told
+// that the model never handed it in and where to continue the kept tree.
+func (runner *pipeline) soloUnsubmittedEnding(outcome *soloOutcome, converseErr error) string {
+	if soloVerificationPassed(outcome.Verification) {
+		return fmt.Sprintf(
+			"the checks passed, but nothing was submitted. The kept tree is at %q; "+
+				"to submit it, run: `codeaf senior-dev --dir %q -- \"submit the existing work\"`",
+			runner.workspace, runner.workspace,
+		)
+	}
+	reason := "no submission: the run stopped without calling submit"
+	if converseErr != nil {
+		reason += " (" + converseErr.Error() + ")"
+	}
+	if outcome.RestoreSource != "" {
+		reason += "; the live tree's suite could not start and it was restored from " + outcome.RestoreSource
+	}
+	return reason
+}
+
+// soloVerificationPassed recognizes a useful pass for an unsubmitted tree.
+// A command that found no tests is not evidence that the requested work passed.
+func soloVerificationPassed(verification *projectVerificationResult) bool {
+	return verification != nil && !verification.TimedOut && verification.Failed == nil &&
+		len(verification.Commands) > 0 && !(verification.NoTests && verification.NewFailures == 1)
 }
 
 // verificationUnaffordable reports whether post-submit verification can still

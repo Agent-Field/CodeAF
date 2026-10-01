@@ -1587,10 +1587,11 @@ type app struct {
 	width, height int
 	offset        int
 	stick         bool
-	// sizing says a resize is still settling, so the scroll clamp that a new
-	// size asks for is already on its way and a second one would be a second
-	// relayout for nothing (see [app.resized]).
-	sizing bool
+	// sizing says a resize is still settling, so its scroll clamp and complete
+	// repaint are already on their way. The version lets a grace tick notice
+	// that the drag has moved again without arming a clock for every size.
+	sizing        bool
+	resizeVersion uint64
 
 	pal palette
 	// mdBase is the painter this surface's environment built at construction
@@ -1885,11 +1886,19 @@ type app struct {
 	// (skillpick.go). It holds no attachment state of its own: the names live
 	// in the session, and the tray chip reads them there.
 	skillPick skillPick
+	// skillEmptyClose asks the picker to clear a bare command when its catalog
+	// answers empty; a typed picker must stay open so a path can become its next
+	// choice.
+	skillEmptyClose bool
 	// skillShelfSeen is the session's shelf as its last reading answered, nil
 	// until one has (skillpick.go's [app.readSkillShelf]). It outlives the
 	// list, so a list opened again draws the last answer while the next read
 	// is on its way.
 	skillShelfSeen *skillShelfReading
+	// skillDiskRead distinguishes an empty disk scan from the scan that has not
+	// answered yet; the picker must not close before the asynchronous catalog is
+	// known to be empty.
+	skillDiskRead bool
 	// skillDiskSeen is the last foreign folder scan. It outlives the picker
 	// so reopening can draw those rows while a fresh scan is in flight.
 	skillDiskSeen []skills.Skill
@@ -3617,11 +3626,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.groundReply(msg)
 
 	case resizeSettledMsg:
-		// The drag stopped moving, so the scroll is clamped once, against the
-		// size it stopped at (see [app.resized]).
+		if !a.sizing {
+			return a, nil
+		}
+		if msg.version != 0 && msg.version != a.resizeVersion {
+			return a, a.resizeSettlement()
+		}
+		// The renderer's old cell positions no longer describe the terminal
+		// after a resize. One complete repaint at settlement discards those
+		// positions without clearing at every intermediate size of a drag.
 		a.sizing = false
 		a.clampScroll()
-		return a, nil
+		return a, tea.ClearScreen
 
 	case doorMsg:
 		// ONE DOOR ANSWERED (offloop.go). The call was made on a command, off
@@ -4050,6 +4066,40 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.crewWheel(placeWheelDelta(msg.Mouse().Button))
 			return a, nil
 		}
+		// THE MODEL PICKER OWNS THE WHEEL WHILE IT IS UP, over the whole frame,
+		// like every modal above: the conversation under it is not live, and a
+		// notch that fell through used to scroll a transcript the person cannot
+		// see move (the owner's TODO on the /model menu). While the list is up
+		// every key belongs to it, and the wheel is a key here for the same
+		// reason; its window follows its cursor, so the wheel walks that — and
+		// [picker.move] clamps at both ends, so the wheel cannot run past the
+		// list either.
+		if a.pick.open {
+			a.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// THE COMPOSER'S MODEL LIST OWNS THE SAME GESTURE: its page is still
+		// drawn beneath the layer, but a notch must walk the choice in front.
+		if a.composerShowing() && a.composer.pick.open {
+			a.composer.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// A SETTINGS ROW'S MODEL LIST ANSWERS BEFORE THE PAGE, including
+		// its nav: the row being chosen must move, not the slot under it.
+		if a.at(pageSettings) && a.sheet.sel != nil && a.sheet.sel.pick.open {
+			a.sheet.sel.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// AND HOME'S DRAFT LIST ANSWERS BEFORE HOME, for the same reason:
+		// its window follows this cursor while the draft's page stays put.
+		if a.targetPickShowing() {
+			a.target.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
 		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on every page in the same
 		// cells, so a wheel answered by the place under it would scroll a list
@@ -4429,6 +4479,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
+			}
+			if a.draftPage.open {
+				return a, a.draftPagePress(msg.Mouse().Y)
 			}
 			// AND THE HARNESS PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
 			// ELSE, because it is not modal: it hangs under a draft somebody is
@@ -5170,6 +5223,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case steerFellMsg:
 		return a, a.steerFell(msg)
 
+	case memoryReplyMsg:
+		a.adoptMemoryReply(msg)
+		return a, nil
+
 	case compactedMsg:
 		// A LATE PASS BELONGS TO THE CONVERSATION THAT ASKED FOR IT. A
 		// page over that conversation still leaves its reply behind the page.
@@ -5266,7 +5323,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
 			started := msg.kind + " task " + msg.id + " started · " + msg.title
-			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
+			if msg.program != "" {
+				// A TYPED PROGRAM HAS NO PROPOSAL CARD. Its start receipt is the
+				// person's only account of the effective ceiling, so the work fold
+				// must keep it. The engine supplies the shell's own ceiling words.
+				started = msg.program + " task " + msg.id + " started · " + msg.title
+				if msg.note != "" {
+					started += " · " + msg.note
+				}
+				a.feed.toldNote(started, msg.program, msg.id, msg.title)
+			} else if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
 				a.feed.noteWritten(started, false, []string{msg.id, msg.title})
 			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
@@ -5274,7 +5340,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// somewhere other than where it was asked to go. Its own dim line
 			// under the started one, in the same slot [app.noteFacts] already
 			// carries facts in; empty is every ordinary start and says nothing.
-			if msg.note != "" {
+			if msg.note != "" && msg.program == "" {
 				a.feed.note(msg.note)
 			}
 			a.noticeEvent(eventTaskStarted)
@@ -7787,6 +7853,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// the command and its query into the box rather than opening the list
 		// from nowhere. A path typed on home must survive the new conversation
 		// that home opens before this command reaches the picker.
+		a.skillEmptyClose = rest == ""
 		a.input.reset()
 		a.input.insert("/skill " + rest)
 		cmd := a.edited()
@@ -7809,8 +7876,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "memory", "memories":
 		// Bare is the inspect-and-change panel; a query is the transcript form,
-		// for somebody who wants matching rows to remain scrollable. The plural
-		// alias keeps its older print posture even when it has no query.
+		// for somebody who wants matching rows to remain scrollable.
 		// AND /memories NOW OPENS THE PLACE TOO. The plural used to keep an older
 		// print posture — a bare /memories wrote the whole list into the
 		// transcript — which was the right answer while memory was a twelve-row
@@ -7827,16 +7893,13 @@ func (a *app) slash(line string) tea.Cmd {
 		if rest == "" && (name != "memories" || a.memoryReady()) {
 			return a.showPage(pageMemory)
 		}
-		a.runMemories(rest)
-		return nil
+		return a.runMemories(rest)
 
 	case "remember":
-		a.runRemember(rest)
-		return nil
+		return a.runRemember(rest)
 
 	case "forget":
-		a.runForget(rest)
-		return nil
+		return a.runForget(rest)
 
 	case "crew":
 		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is

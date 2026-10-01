@@ -77,6 +77,14 @@ type picker struct {
 	// cursor indexes list, and top is the first row drawn.
 	cursor int
 	top    int
+	// width is the frame the list last measured itself against. The scroll
+	// needs it between frames — a keystroke moves the window before the next
+	// draw ([picker.move]) — and the number of screen lines a row spends
+	// depends on the frame ([picker.rowLines]): a heading drawn only where the
+	// columns fit, a tail that wraps on a phone. [picker.height] and
+	// [picker.rows] both set it, and one of the two runs before the list is
+	// ever drawn.
+	width int
 
 	// unfold is the model whose lanes are open, empty when none is. ONE AT A
 	// TIME on purpose: the fold is a way of looking closer at one row, and a
@@ -260,28 +268,41 @@ func (p *picker) restock(models []Model) {
 		p.text[i] = label
 	}
 	p.score = make([]int, len(models))
-	// THE CURSOR GOES BACK TO THE MODEL IN USE WHATEVER IS TYPED. [picker.rank]
-	// only does that for an empty box, because a keystroke that narrows the list
-	// must not yank the cursor away from the row a person was walking towards —
-	// but a landed list is not a keystroke, and the row they were on may no
-	// longer exist. The model in use is the one row that is always there to land
-	// on (the same rule [picker.start] opens with).
+	// THE CURSOR GOES BACK TO THE HELD MODEL WHATEVER IS TYPED. A landed
+	// list is not a keystroke, and the row a person was walking towards may
+	// no longer exist. Enter must still confirm what this door holds; if that
+	// model is absent, the first selectable row is the available fallback.
 	p.rank()
 	p.cursorToCurrent()
 }
 
-// cursorToCurrent puts the cursor on the model in use. A picker that opened on
-// row zero would make enter — the key a person presses to confirm — a model
-// change they did not ask for; and a box emptied back out with ctrl+u is the
-// list the picker opened on, so it is the same rule again.
-func (p *picker) cursorToCurrent() {
-	for at, row := range p.list {
-		if row.lane == laneNone && p.all[p.hits[row.hit]].ID == p.current {
-			p.cursor = at
-			break
-		}
+// cursorToFirst rests the cursor on the first selectable row, skipping service
+// notices. An empty slot or a held model absent from the narrowed list has no
+// row to confirm, so this is the fallback every model door shares.
+func (p *picker) cursorToFirst() {
+	p.cursor = 0
+	for p.cursor < len(p.list) && p.rowUnavailable(p.cursor) {
+		p.cursor++
+	}
+	if p.cursor >= len(p.list) {
+		p.cursor = max(0, len(p.list)-1)
 	}
 	p.follow(pickerRows)
+}
+
+// cursorToCurrent puts the cursor on the model this door holds, visibly on the
+// screen. Opening, refreshing and emptying the filter all return here because
+// enter is a confirm key, and must not change a model nobody chose to change.
+// A missing held model falls back to the first selectable row.
+func (p *picker) cursorToCurrent() {
+	for at, row := range p.list {
+		if row.lane == laneNone && !p.rowUnavailable(at) && p.all[p.hits[row.hit]].ID == p.current {
+			p.cursor = at
+			p.follow(pickerRows)
+			return
+		}
+	}
+	p.cursorToFirst()
 }
 
 // pickRow is one drawn row: which hit it belongs to, and which of that model's
@@ -441,9 +462,11 @@ func (p *picker) rank() {
 	p.cursor, p.top = 0, 0
 	p.relist()
 	// AND A BOX WITH NOTHING IN IT IS THE LIST THE PICKER OPENED ON, so the
-	// cursor goes back to where it opened: on the model in use. Emptying the
-	// box with ctrl+u used to leave it on row zero, which made the enter that
-	// followed a switch to whatever sorted first.
+	// cursor goes back to the model in use: enter after an emptied box confirms
+	// rather than changes, which is [picker.cursorToCurrent]'s law — a rule
+	// about the confirm gesture that survives the new open law, since the box
+	// being emptied is a person backing out of a hunt, not a fresh list to
+	// start reading.
 	//
 	// THE SORT KEY MOVES IT TO THE TOP ITSELF ([picker.sortNext]) rather than this
 	// being asked to tell the two cases apart: opening the list and pressing the
@@ -595,8 +618,104 @@ func (p *picker) rowUnavailable(at int) bool {
 	return p.all[p.hits[row.hit]].Unavailable
 }
 
-// follow scrolls the window by the least that keeps the cursor inside it.
-func (p *picker) follow(height int) { p.top = listTop(p.cursor, p.top, len(p.list), height) }
+// follow scrolls the window by the least that keeps the cursor's row on the
+// screen. `lines` is the SCREEN lines the rows may spend — not the number of
+// list rows — because the drawing spends extra lines on a group's heading, on
+// the machines' heading and on a why line, and a window counted in rows
+// handed the cursor a place the frame never drew: the highlight vanished at
+// the bottom of the list and on the frame the menu opened with (owner's
+// report, 2026-09-30). [listTop]'s item arithmetic is the other lists' law;
+// this one is the picker's, because the picker is the list that grows headings.
+//
+// THE DRAW'S OWN CALL OWNS THE FINAL PLACEMENT. The keystroke-time calls pass
+// [pickerRows], a count of list rows, as their line budget; that is only ever
+// conservative — a heading can make the window scroll a row further than it
+// needed, never hide the cursor — and [picker.rowsOwned] calls this again with
+// the frame's true line budget before anything is drawn.
+func (p *picker) follow(lines int) {
+	if lines <= 0 || len(p.list) == 0 || p.cursor < 0 || p.cursor >= len(p.list) {
+		return
+	}
+	if p.cursor < p.top {
+		p.top = p.cursor
+		return
+	}
+	// THE CURSOR'S ROW IS ALREADY INSIDE THE WINDOW: scroll by the least, which
+	// is nothing. The count runs from the window's own top, where a heading the
+	// edge rule draws is a line the window pays for ([picker.rowLines]).
+	if p.spanLines(p.top, p.cursor) <= lines {
+		return
+	}
+	p.top = p.endingTop(p.cursor, lines)
+}
+
+// spanLines is how many screen lines the rows from `from` through `to` spend,
+// drawn from the top at `from` — the count [picker.follow] reads to answer
+// "is the cursor on the screen" and [picker.endingTop] to place a window.
+func (p *picker) spanLines(from, to int) int {
+	lines := 0
+	for at := from; at <= to && at < len(p.list); at++ {
+		lines += p.rowLines(at, at == from)
+	}
+	return lines
+}
+
+// endingTop is the window that ENDS at row `at` and spends no more than
+// `lines` screen lines: the top walked back from the cursor until the budget
+// runs out, every candidate charged with the heading the window's edge would
+// draw at it ([picker.rowLines]). The bottom of the list is where this earns
+// its keep — the walk stops at the budget, so the last rows and the door past
+// them are what the window shows, with the cursor's row the last one drawn.
+func (p *picker) endingTop(at, lines int) int {
+	top := at
+	for top > 0 && p.spanLines(top-1, at) <= lines {
+		top--
+	}
+	return top
+}
+
+// rowLines is how many screen lines drawing the row `at` costs: the group's
+// heading and the machines' heading ride ahead of their row, the why line
+// rides under it, and an unavailable row draws its notice as one plain line.
+//
+// atTop says whether this row would be the window's FIRST. A heading is drawn
+// at the window's edge even mid-block ([picker.groupBefore],
+// [picker.laneHeadBefore]) so the columns stay explained — which is a line the
+// scroll must pay for, and the scroll is the only asker that does not yet know
+// where the window starts.
+func (p *picker) rowLines(at int, atTop bool) int {
+	if at < 0 || at >= len(p.list) {
+		return 0
+	}
+	take := 0
+	if p.groupHead(at, atTop) != "" {
+		take++
+	}
+	if p.laneHead(at, atTop, p.width) != "" {
+		take++
+	}
+	if p.rowUnavailable(at) {
+		// THE NOTICE IS ONE PLAIN LINE ([picker.rowsOwned]), wherever the row's
+		// own tail would have wrapped.
+		return take + 1
+	}
+	if p.width > 0 && phoneList(p.width) {
+		// A PHONE WRAPS A ROW'S TAIL onto a line of its own, and whether there
+		// is a tail is what decides the row's height. Wide frames spend one
+		// line on every row, so the ask stays off the common path — and a
+		// width nobody has drawn at yet counts one line per row, the wide
+		// reading: the frame that draws re-asks with its own width before it
+		// lays anything out ([picker.rows]).
+		_, note := p.entryText(at, p.width, nil)
+		take += overlayItemLines(p.width, note)
+	} else {
+		take++
+	}
+	if p.lineUnder(at) != "" {
+		take++
+	}
+	return take
+}
 
 // ── THE LANES UNDER A MODEL ─────────────────────────────────────────────────
 //
@@ -719,12 +838,17 @@ func (p *picker) unfoldHere() bool {
 	return true
 }
 
-// revealFold scrolls by the least that puts the open block — the model's own
-// row and every row under it, with the dim lines they carry — inside a window
-// of height lines. Where the block is taller than the window the cursor wins,
-// because the row enter would act on is the one that may never be off screen.
-func (p *picker) revealFold(height int) {
-	from, to, extra := -1, -1, 0
+// revealFold scrolls by the least that puts the open block, including its
+// headings and reason lines, inside the window. A block already on screen
+// keeps the rows above it; a block below ends at the window's bottom. A block
+// taller than the window, or starting above it, starts at its model row.
+// [picker.follow] then keeps the confirmation cursor visible even when the
+// whole block cannot fit. Both counts spend screen lines, as the drawing does.
+func (p *picker) revealFold(lines int) {
+	if lines <= 0 || p.cursor < 0 || p.cursor >= len(p.list) {
+		return
+	}
+	from, to := -1, -1
 	for at, row := range p.list {
 		if row.hit != p.list[p.cursor].hit {
 			continue
@@ -733,25 +857,16 @@ func (p *picker) revealFold(height int) {
 			from = at
 		}
 		to = at
-		if p.lineUnder(at) != "" {
-			extra++
-		}
-		// THE PROVIDERS' HEADING IS A LINE OF THE BLOCK TOO, and a block scrolled
-		// into view against a count that left it out is a block one line taller
-		// than the room made for it ([picker.laneHeadBefore]).
-		if p.machines && row.lane == laneRoutAt {
-			extra++
-		}
 	}
 	if from >= 0 {
-		if to >= p.top+height-extra {
-			p.top = to - (height - extra) + 1
-		}
-		if from < p.top {
+		switch {
+		case from < p.top || p.spanLines(from, to) > lines:
 			p.top = from
+		case p.spanLines(p.top, to) > lines:
+			p.top = p.endingTop(to, lines)
 		}
 	}
-	p.follow(height)
+	p.follow(lines)
 }
 
 // foldHere is `←` and `tab` on an open block: close it and put the cursor back
@@ -1420,18 +1535,26 @@ func overlayRowCore(label, note string, hit []int, tint noteInk, oncursor bool, 
 
 	// lifted is whether this row wears a ground at all, which is the one thing
 	// the note's ink turns on: dim grey on a raised ground is grey on grey.
-	lifted := oncursor || hovered || marked == markFront
+	// THE FRONT MARK LIFTS A ROW ONLY WHERE THE GROUND IS ITS GRAMMAR: on the
+	// model menu ([palette.frontUnlifted]) the chosen row takes no ground, so
+	// its note stays dim with the resting rows it sits between.
+	lifted := oncursor || hovered || (marked == markFront && !pal.frontUnlifted)
 	// ON A PLACE THE POINTER'S ROW IS THE CURSOR'S ROW, word for word: the
 	// same ground, the same bold subject (styles.go's [palette.placeRows]).
 	lit := oncursor || (hovered && pal.placeRows)
+	// AND THE UNLIFTED FRONT MARK KEEPS ITS WEIGHT EXPLICITLY. Under the
+	// selected band the lift carried the row's emphasis; with no band the bold
+	// is what says the row is chosen, so it is drawn on purpose and not left
+	// to read as an accident of the ground it no longer has.
+	loud := lit || (marked == markFront && pal.frontUnlifted)
 
 	// THE LABEL'S OWN INK, THEN THE EMPHASIS: a searched row carries the bytes
 	// the search matched in bold over that ink ([rowLabelInk] is the switch
 	// every row already paints through, said once), and the rest of the label
 	// keeps it — the mark is on the matched letters and nowhere else.
-	ink := rowLabelInk(pal, marked, lit)
-	painted := paintHit(pal, label, hit, lit, ink)
-	if lit {
+	ink := rowLabelInk(pal, marked, loud)
+	painted := paintHit(pal, label, hit, loud, ink)
+	if loud {
 		painted = pal.bold(painted)
 	}
 	line := lead + painted
@@ -1450,10 +1573,14 @@ func overlayRowCore(label, note string, hit []int, tint noteInk, oncursor bool, 
 	// AN OVERLAY'S CHOSEN ROW OUTRANKS THE CURSOR ON THE ROW IT SHARES WITH IT
 	// — both can be true of one row, and the louder step wins so the row never
 	// gets quieter for being arrived at; the cursor is still said, on the lead.
-	// Home's own conversation deliberately is not in this switch: on a
-	// dashboard the ground is the hand's and only the hand's ([markHere]).
+	// EXCEPT WHERE THE MARK TAKES NO GROUND ([palette.frontUnlifted]): there
+	// the CURSOR ALONE INDICATES THE HIGHLIGHTED ROW, so a cursor arrived on
+	// the chosen row lifts it like any other, and the mark rides the row's own
+	// accent underneath. Home's own conversation deliberately is not in this
+	// switch: on a dashboard the ground is the hand's and only the hand's
+	// ([markHere]).
 	switch {
-	case marked == markFront:
+	case marked == markFront && !pal.frontUnlifted:
 		return pal.selected(line, width)
 	case oncursor, hovered:
 		return pal.cursor(line, width)
@@ -1561,10 +1688,15 @@ func overlayLinesCore(label, note string, hit []int, tint noteInk, selected, mar
 	}
 	head := overlayLead(selected, hovered, pal)
 	lit := selected || (hovered && pal.placeRows)
+	// AND THE UNLIFTED FRONT MARK KEEPS ITS WEIGHT HERE TOO
+	// ([palette.frontUnlifted]): the pair already takes no ground for a marked
+	// row, so the bold is what carries the choice — the same sentence the
+	// one-line row speaks ([overlayRowCore]).
+	loud := lit || (marked && pal.frontUnlifted)
 	// The label keeps the row's own ink ([rowLabelInk]) and carries the
 	// search's emphasis in bold over it, exactly as the one-line row does.
-	painted := paintHit(pal, fit(label, width-2), hit, lit, rowLabelInk(pal, markIf(marked), lit))
-	if lit {
+	painted := paintHit(pal, fit(label, width-2), hit, loud, rowLabelInk(pal, markIf(marked), loud))
+	if loud {
 		painted = pal.bold(painted)
 	}
 	head += painted
@@ -1767,23 +1899,13 @@ func (p *picker) height(width int) int {
 	// MODELS you can see (the manual makes it in those words). Charging the
 	// heading to the models would quietly make it eleven.
 	ceiling := pickerRows + p.tableHead(width)
+	p.width = width
 	lines := p.headLines(width)
 	for at := p.top; at < len(p.list) && lines < ceiling; at++ {
-		if p.groupBefore(at) != "" {
-			lines++
-		}
-		// The providers' own heading is counted where it is drawn, for
-		// [overlayItemLines]' reason: the count here and the lines the fill
-		// actually writes must agree or the list is laid into a block of the
-		// wrong size.
-		if p.laneHeadBefore(at, width) != "" {
-			lines++
-		}
-		_, note := p.entryText(at, width, nil)
-		take := overlayItemLines(width, note)
-		if p.lineUnder(at) != "" {
-			take++
-		}
+		// THE COUNT AND THE DRAW ARE ONE FUNCTION ([picker.rowLines]): the
+		// scroll reads the same costs the fill spends, so a cursor the window
+		// claims to hold is a cursor the frame really drew.
+		take := p.rowLines(at, at == p.top)
 		if lines+take > ceiling {
 			break
 		}
@@ -1809,6 +1931,12 @@ func (p *picker) rows(width, n int, pal palette, hover int, level func(string) s
 // against it (settings.go's [sheet.selectLines]), and "the hit is the line's
 // index from the top" stopped being true the moment a row could be two lines.
 func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(string) string) ([]string, []int) {
+	// THE MODEL MENU'S OWN GRAMMAR ([palette.frontUnlifted]): this is the one
+	// list whose chosen row is a persistent fact — the model in use — so its
+	// front mark keeps the accent and the weight and takes no ground; the
+	// cursor and pointer lift the rows they reach. Other lists using the shared
+	// renderer keep the ladder's selected step.
+	pal.frontUnlifted = true
 	if n <= 0 {
 		return nil, nil
 	}
@@ -1828,7 +1956,10 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 	if head := p.tableFit(width).header(); head != "" {
 		fill.plain(pal.head(fit(head, width)))
 	}
-	p.follow(overlayItems(n-p.headLines(width), width))
+	// THE SCROLL IS IN SCREEN LINES ([picker.follow]): every line the fill will
+	// spend after the heads is the budget the cursor's row must fit inside.
+	p.width = width
+	p.follow(n - p.headLines(width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
 		if group := p.groupBefore(at); group != "" {
 			if !fill.plain(pal.dim(fit("  "+group, width))) {
@@ -1873,12 +2004,21 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 // machine of an open block, and empty everywhere else — the same shape
 // [picker.groupBefore] has for a service's name, and for the same reason: a
 // heading belongs to the block under it and a scrolled window that starts
-// mid-block draws it again at the top.
+// mid-block draws it again at the top. The window's real top is known here,
+// which is what the scroll's ask ([picker.laneHead]) cannot say for itself.
 func (p *picker) laneHeadBefore(at, width int) string {
+	return p.laneHead(at, at == p.top, width)
+}
+
+// laneHead is [picker.laneHeadBefore] with the window's top named instead of
+// read: the scroll ([picker.rowLines]) asks with atTop because it is placing
+// the window and the window's first row is the only place the heading can
+// still change the count.
+func (p *picker) laneHead(at int, atTop bool, width int) string {
 	if at < 0 || at >= len(p.list) || p.list[at].lane < 0 {
 		return ""
 	}
-	if at > 0 && p.list[at-1].lane >= 0 && at != p.top {
+	if at > 0 && p.list[at-1].lane >= 0 && !atTop {
 		return ""
 	}
 	return p.laneFit(width).header()
@@ -2021,7 +2161,21 @@ func (p *picker) marked(at int) bool {
 // groupBefore is the dim service heading before a model row. Folded lane rows
 // stay under their model, and a scrolled window repeats the heading at its top
 // so a service name is never left above the viewport.
-func (p *picker) groupBefore(at int) string {
+// groupBefore is the service heading drawn ahead of the row `at`, with the
+// window's real top known ([picker.groupHead] says why there are two).
+func (p *picker) groupBefore(at int) string { return p.groupHead(at, at == p.top) }
+
+// groupHead is the service heading row `at` sits under, drawn when the row
+// opens its service's block — at the list's own top, where a block starts, or
+// at the window's top, where the heading is drawn so a mid-block window keeps
+// its columns explained ([picker.laneHead] carries the same rule for the
+// machines' table).
+//
+// atTop is whether this row would be the WINDOW's first, which is the form the
+// scroll asks with ([picker.rowLines]): the window's top is not yet decided
+// while the walk is placing it, and a heading drawn at that edge is a line the
+// budget must pay for.
+func (p *picker) groupHead(at int, atTop bool) string {
 	if at < 0 || at >= len(p.list) || p.list[at].lane != laneNone {
 		return ""
 	}
@@ -2038,7 +2192,7 @@ func (p *picker) groupBefore(at int) string {
 	if head == "" {
 		head = model.Group
 	}
-	if at == p.top || at == 0 {
+	if at == 0 || atTop {
 		return head
 	}
 	previous := p.list[at-1]
@@ -3266,6 +3420,8 @@ func (a *app) overlayHeight() int {
 		want = a.harnPick.height(width)
 	case a.skillPick.open:
 		want = a.skillPick.height(width)
+	case a.draftPage.open:
+		want = a.draftPage.height(width)
 	case a.permPanel.open:
 		want = a.permPanel.height(width)
 	case a.subPage.open:
@@ -3333,6 +3489,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.harnPick.draw(width, n, a.pal, hover)
 	case a.skillPick.open:
 		return a.skillPick.draw(width, n, a.pal, hover)
+	case a.draftPage.open:
+		return a.draftPage.draw(width, n, a.pal, hover)
 	case a.permPanel.open:
 		return a.permPanel.draw(width, n, a.pal, hover)
 	case a.subPage.open:

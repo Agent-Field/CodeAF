@@ -206,6 +206,61 @@ func TestSoloRunNudgesThenGivesUpHonestly(t *testing.T) {
 	}
 }
 
+func TestUnsubmittedPassingVerificationNamesHowToSubmitTheKeptTree(t *testing.T) {
+	workspace, base := guardWorkspace(t)
+	backend := &soloScriptedBackend{
+		onTurn: func(_ int, request turn) (turnResult, bool, error) {
+			if err := writeFile(filepath.Join(request.Workspace, "feature.txt"), "implemented\n"); err != nil {
+				return turnResult{}, true, err
+			}
+			return turnResult{Text: "the work is ready"}, true, nil
+		},
+	}
+	runner := newPipeline(cliArgs{}, workspace, pipelineDeps{
+		Backend: backend, Events: newEventWriter(io.Discard), Notes: io.Discard,
+	})
+	defer runner.runtime.Close()
+	runner.verifyForTest = func(context.Context) projectVerificationResult {
+		return soloTestVerification(0, false)
+	}
+
+	outcome, err := runner.runSolo(context.Background(), "Add the feature.", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, reason := soloResultStatus(outcome)
+	if status != "fail" {
+		t.Fatalf("status = %q, want fail so exit code remains 2", status)
+	}
+	ending := endingOf(pipelineResult{Status: status, Reason: reason, Terminal: outcome.TerminalData})
+	command := fmt.Sprintf("codeaf senior-dev --dir %q -- \"submit the existing work\"", workspace)
+	for name, message := range map[string]string{
+		"human ending":    ending.Message,
+		"terminal reason": outcome.TerminalReason,
+	} {
+		if !strings.Contains(message, "the checks passed, but nothing was submitted") {
+			t.Errorf("%s = %q, want the plain unsubmitted passing-check sentence", name, message)
+		}
+		if !strings.Contains(message, command) {
+			t.Errorf("%s = %q, want the command for submitting the kept tree", name, message)
+		}
+	}
+
+	var encoded bytes.Buffer
+	if err := delegate.NewEmitter(&encoded).Terminal(ending); err != nil {
+		t.Fatal(err)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(encoded.Bytes()), &record); err != nil {
+		t.Fatal(err)
+	}
+	message, _ := record["message"].(string)
+	if !strings.Contains(message, "the checks passed, but nothing was submitted") ||
+		!strings.Contains(message, command) {
+		t.Fatalf("JSON terminal message = %q, want the same sentence and command", message)
+	}
+}
+
 func TestSoloRunCorrectsPlainTextDSMLWithoutSpendingANudge(t *testing.T) {
 	workspace := gitWorkspace(t, map[string]string{
 		"README.md": "base\n",

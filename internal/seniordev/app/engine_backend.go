@@ -382,6 +382,13 @@ type modelTurnError struct {
 	responseBody string
 }
 
+func (err *modelTurnError) ErrorDetail() string {
+	if err == nil {
+		return ""
+	}
+	return err.responseBody
+}
+
 func (err *modelTurnError) Error() string {
 	if err.message != "" {
 		return err.message

@@ -453,6 +453,13 @@ The same guidance reaches briefs the conversation model writes with `propose_tas
 part of that tool rather than as a second call: it already has the whole conversation, so
 nothing needs to be re-read for it.
 
+## Why does a task's first name stop at a whole word?
+
+Before its naming model answers, a person's task uses up to eight words from
+the opening line within an 80-byte limit. It stops at a whole word and removes
+trailing glue such as `and` or `of`. A single word longer than the limit is
+shortened without breaking its characters. The full brief stays with the task.
+
 ## Why my task is called something I did not type — who names a task, why a row is named after a folder path or the first few words I typed, and can I rename it
 
 The name on the roster is written by a model, not cut out of your sentence.

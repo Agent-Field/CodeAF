@@ -9,6 +9,9 @@ it on. Enter does not close the list — three skills are three presses of it.
 Press `enter` on a skill that is already on to turn it off. `esc` closes the
 list and leaves your message exactly as you typed it.
 
+If the shelf has no skills, `/skill` says `no skills are available here` and
+clears itself from the message box, so the next command starts cleanly.
+
 `/skills` is the same command.
 
 A skill that is on is marked with a filled dot on its row; one that is off
