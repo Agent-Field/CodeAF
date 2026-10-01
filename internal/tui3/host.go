@@ -3,6 +3,8 @@ package tui3
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── A SESSION ON ANOTHER MACHINE ────────────────────────────────────────────
@@ -317,10 +319,30 @@ func placeShown(workspace string, owned bool, host string) string {
 // on a path worth reading. This is the prior question of whether there is a path
 // worth reading at all.
 func (a *app) placeWord(path string) string {
+	if a.movedName != "" {
+		return a.movedName
+	}
 	if a.owned {
 		return ownedWord
 	}
 	return path
+}
+
+// movedWord is how a chat that moved here from another machine is named when
+// its project is not on this one: the folder it was left in, marked as a copy,
+// else the chat's own title. It is "" for any chat that is not such a copy.
+func movedWord(workspace string, owned bool) string {
+	if owned || !session.OwnsFolder(workspace) {
+		return ""
+	}
+	name := session.TitleOf(workspace)
+	if origin := session.OriginOf(workspace); origin != "" {
+		return filepath.Base(origin) + " (copy here)"
+	}
+	if name == "" {
+		name = "this chat"
+	}
+	return name + " (copy here)"
 }
 
 // hostedPath is a path as it should be READ: on a remote session, the machine
