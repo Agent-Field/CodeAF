@@ -620,7 +620,10 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// One queued message, whichever of its rows the pointer is on — the
 			// same whole-message light the parked block wears, for the same reason
 			// (followup.go's [app.followRows]).
-			return hoverAt{kind: hoverQueued, index: mark.index}
+			if a.queuedTakesBackAt(mark.index) {
+				return hoverAt{kind: hoverQueued, index: mark.index}
+			}
+			return hoverAt{}
 		case chromeDraft:
 			if n := a.pastePointerAt(x, mark.index); n > 0 {
 				return hoverAt{kind: hoverPaste, index: n}

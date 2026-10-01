@@ -113,13 +113,11 @@ func standMarkAt(head, shape string) bool {
 	}
 }
 
-// standSayOffered reports whether the hint slot should name the typed door —
-// which is exactly whether the command would DO anything if it were run right
-// now.
+// standSayOffered reports whether the hint slot should name the typed door.
 //
-// A HINT MAY ONLY NAME A KEY THAT WORKS (render.go's [app.hintWord] states the
-// whole law). Every condition [app.standingSay] refuses on is a condition this
-// answers no to, and the two lists are the same list read from both ends.
+// A FULL TRAY KEEPS THIS COURTESY QUIET. The typed command still sends marked
+// words and leaves pictures or a picked harness on the tray; an absent hint is
+// not a refusal. With no ambient side the command really does refuse.
 func (a *app) standSayOffered() bool {
 	if a.input.empty() || !a.standingHere() {
 		return false

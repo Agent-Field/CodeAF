@@ -478,7 +478,7 @@ func (a *app) startChatKey(name string) (tea.Cmd, bool) {
 		// The greeting's own walk, on the greeting's own terms: only over an empty
 		// box, because a person editing a sentence is moving a caret.
 		return a.welcomeKey(name)
-	case "enter":
+	case "enter", "ctrl+enter":
 		if a.typedListOpen() {
 			return nil, false
 		}

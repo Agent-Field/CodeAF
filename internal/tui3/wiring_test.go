@@ -560,8 +560,8 @@ func TestTheTitleReachesTheTabsLiveAndOnResume(t *testing.T) {
 func ctrlQ() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl} }
 
 // enhanced answers the keyboard-enhancement query the way a terminal that can
-// send ctrl+enter does. Without it the chord does not exist on the surface at
-// all, which is its own test below.
+// advertise ctrl+enter does. A decoded chord is still honoured without this
+// reply, because modifyOtherKeys terminals can send it too.
 func enhanced(t *testing.T, a *app) {
 	t.Helper()
 	drive(t, a, tea.KeyboardEnhancementsMsg{Flags: 1})
@@ -646,24 +646,26 @@ func TestCtrlEnterQueuesAMessageForAfterTheTurnAndDrawsTheQueue(t *testing.T) {
 	}
 }
 
-// A TERMINAL THAT CANNOT TELL CTRL+ENTER FROM A PLAIN ENTER NEVER QUEUES WITH
-// IT: the key arrives as ctrl+j, a newline, and the router guard stands down
-// with the hints (followup.go). A chord that queued anyway would take the draft
-// on the very terminal whose enter means send.
-func TestCtrlEnterOnAPlainTerminalDoesNothing(t *testing.T) {
-	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
-	typeLine(t, a, "the first thing")
-	settleAsk(a)
-	if a.keysDisambiguated {
-		t.Fatal("the test app was born knowing its terminal")
-	}
-	typeInto(t, a, "and then the tests")
-	drive(t, a, key("ctrl+enter"))
-	if len(agent.asked) != 0 || a.followWaiting() != 0 {
-		t.Fatalf("a chord this terminal cannot send queued %q", agent.asked)
-	}
-	if a.input.String() != "and then the tests" {
-		t.Fatalf("the draft was spent by a key that did nothing: %q", a.input.String())
+// A plain terminal sends ordinary enter or ctrl+j for this hand shape. The
+// former keeps the ordinary send and the latter keeps the newline; neither
+// becomes a follow-up just because ctrl+enter owns the queue on richer terminals.
+func TestPlainTerminalEnterAndNewlineKeepTheirMeanings(t *testing.T) {
+	for _, item := range []struct{ seq, name string }{{"\r", "enter"}, {"\n", "ctrl+j"}} {
+		t.Run(item.name, func(t *testing.T) {
+			agent, a := wired(nil)
+			a.state, a.stream = stateWorking, make(chan session.Event)
+			a.input.setText("draft")
+			drive(t, a, wirePress(t, item.seq, item.name))
+			if len(agent.asked) != 0 || a.followWaiting() != 0 {
+				t.Fatalf("plain-terminal %s queued a follow-up", item.name)
+			}
+			if item.name == "enter" && (a.input.String() != "" || len(agent.steered) != 1 || agent.steered[0] != "draft") {
+				t.Fatalf("plain enter did not steer normally: steered=%+v draft=%q", agent.steered, a.input.String())
+			}
+			if item.name == "ctrl+j" && a.input.String() != "draft\n" {
+				t.Fatalf("ctrl+j did not open a line: %q", a.input.String())
+			}
+		})
 	}
 }
 

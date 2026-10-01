@@ -107,7 +107,10 @@ func (a *app) park(text string, standing bool) tea.Cmd {
 // jumped a queue the person filled first would be this surface reordering their
 // sentences. Whichever starts, the rest stay parked and go at the next close.
 func (a *app) sendParked() tea.Cmd {
-	if a.stream != nil || a.parkSending || len(a.parks) == 0 {
+	// A pending take-back can leave the surface between pumps while the
+	// session's next turn is already running. Its queue settles first; parked
+	// words must not open a second turn in that gap.
+	if a.stream != nil || len(a.follows) > 0 || a.parkSending || len(a.parks) == 0 {
 		return nil
 	}
 	next := a.parks[0]

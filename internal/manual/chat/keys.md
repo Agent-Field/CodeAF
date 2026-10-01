@@ -27,14 +27,19 @@ after this one. It is the secondary choice for when you do not want to change th
 work already under way. At rest it does nothing at all. **On Linux and Windows that key
 is called `super+enter`** — see "What cmd+enter is called on your keyboard" below.
 
-`ctrl+enter` **queues** what you have typed as a follow-up — handed to the session
-the moment it is typed, to run after the turn that is running; with no turn running,
-it starts at once, which reads as sending it. It needs a terminal that can tell it
-apart from a plain `enter` (the same support `ctrl+shift+enter` needs); where the
-terminal cannot, the key arrives as a plain enter and queues nothing. It queues words
-alone: with a picture on the tray it refuses in one line and changes nothing. Queued messages
-sit above the box behind a reply arrow `↳`, dim, and you can take one back out of the
-queue before its turn starts — see "Typing while an answer is still coming" below.
+`ctrl+enter` queues non-empty words **only while this conversation's turn is
+running**, from its own composer, and only when the draft is not a `/command`.
+With no turn running, on the new-chat start page, or over a `/command`, it is
+plain `enter`: send, start the chat, or run the command at once. An empty box
+also takes enter's ordinary action. It works wherever the terminal sends the
+chord, including modifyOtherKeys terminals; the hint and tip advertise it only
+after the terminal says it can distinguish keys. Terminals that cannot send it
+send plain `enter` on many keyboards or `ctrl+j` (a newline) on some.
+
+The queue carries words alone: mid-turn with a picture or a picked harness on
+the tray it refuses in one line and changes nothing. Queued messages sit above
+the box behind a dim reply arrow `↳`. Only messages queued from this window can
+be taken back before their turns start — see "The queued messages" below.
 
 What `enter` does depends on what is in the box:
 
@@ -48,7 +53,8 @@ What `enter` does depends on what is in the box:
 While a turn is running, plain `enter` **steers**: it stops the model's current
 reply where it is, keeps what has arrived, and sends your words into the same turn.
 See "Typing while an answer is still coming" below. `ctrl+enter` instead queues a
-fresh turn to run after the current one; an empty box does nothing. Until its turn
+fresh turn to run after the current one; commands and an empty box take plain
+enter's action. Until its turn
 starts, the queued message sits above the box behind a reply arrow `↳`, dim, one row
 each, and nothing is written under them. If queueing fails, codeaf notes
 `follow-up failed: <error>`.
@@ -122,33 +128,36 @@ to the follow-up queue, so the words are never dropped.
 
 ## The queued messages — what ctrl+enter holds, and how to take one back
 
-`ctrl+enter` over a draft hands the sentence to the session to run after the turn
-that is running. Until its turn starts, each queued message is drawn above the box:
-one row per message behind a reply arrow `↳`, dim — a register nothing in the
-transcript wears, so queued is visibly different from sent. The arrow says the words
-come after what is running, and it is deliberately not the hollow `○` a waiting task
-wears. No line is drawn under the queued messages; until
-2026-09-30 one said `queued for after this turn · click takes one back · ctrl+enter
-queues the draft`. The words are not in the
-conversation yet: they land as an ordinary sent line only when their turn begins.
+`ctrl+enter` queues non-empty words from this conversation's own box while its
+turn is running. With no turn running, on the new-chat start page, over a
+`/command`, or with an empty box, it takes plain enter's action. It works whenever
+the terminal sends it; hints and tips require the terminal's key-support reply.
+Terminals that cannot send it deliver plain enter or, on some, a newline.
 
-**Taking one back before it runs.** A queued row lights under the pointer — every row
-of that message — and a click on it pulls **that** one back into the box whole — the words and any pasted documents with them. `↑` is
-not this gesture: it belongs to the parked block and to history, and a queued message
-is named with the pointer alone. Taking one back removes it from the session's queue:
-the stream it would have run on ends with no events, so it simply never executes.
+Each queued message is drawn above the box behind a dim reply arrow `↳`, wrapping
+within the frame. Nothing is written under the block. Its words reach the
+transcript as an ordinary sent line only when its turn begins.
 
-**The queue carries words alone.** With a picture (or a picked harness) on the tray,
-`ctrl+enter` queues nothing and says `ctrl+enter queues words alone — take the pictures
-or the shape of work off first`; the draft and the tray stay as they were, and the
-`ctrl+enter queue` clause is not offered under the box. Send a message with pictures
-with `enter`, or take them off the tray and queue the words.
+**Taking one back before it runs.** Only messages you queued from this window
+light under the pointer and take a click. Rows admitted from another window or
+a steer that fell through are drawn the same but cannot be taken back here.
+A click asks the session to remove that message; another click while the answer
+is pending asks nothing. `↑` belongs to parked messages and history.
 
-**Two honest limits.** If the turn ended between your look and your press, the
-message has already started its turn — the row stays and the words run, because
-they are no longer yours to take back. And `esc` (an interrupt) drops the whole
-queue, saying `N queued messages dropped`: a drain never restarts a turn you
-stopped.
+A successful take-back returns the words, pasted documents and plain slash words
+to **this conversation's composer**, even if a task room has the keyboard. An
+empty box receives the original draft. In a non-empty box the returned message
+is appended on a new line; the existing draft and tray stay, and paste chips
+are renumbered to avoid collisions. Multiple take-backs keep click order. If you
+replaced the conversation before the answer, its words stay reachable in ↑ history.
+
+**The queue carries words alone.** With a picture or a picked harness on the tray,
+it refuses: `ctrl+enter queues words alone — take the pictures or the shape of work off first`.
+The draft and tray stay; the queue hint is absent. Send pictures with `enter`.
+
+**Limits.** A message whose turn already started cannot be restored: a false
+answer leaves it to run. `esc` drops the queue and says `N queued messages dropped`;
+a drain never restarts work you stopped.
 
 ## Correct it without stopping the turn — `enter` stops only the current reply and steers
 
@@ -210,7 +219,8 @@ enter steers it in · ctrl+enter queue · esc interrupt
 That is the form when no command can be kept. A running foreground command that can be
 kept adds `ctrl+g backgrounds` immediately before `esc interrupt`; a `!` command cannot
 be kept. The `ctrl+enter queue` clause appears only on a terminal that can send that
-chord. `cmd+enter` still waits and `ctrl+shift+enter` still stops and sends, but the
+chord and has replied that it can distinguish keys. `cmd+enter` still waits and
+`ctrl+shift+enter` still stops and sends, but the
 one-line slot advertises neither — they are on the keys sheet (`?`).
 
 ## My message went in too late — the answer finished first, so it became the next message
@@ -622,7 +632,7 @@ These apply with no overlay up, no room open, and no mode on.
 | Chord | What it does |
 |---|---|
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
-| `ctrl+enter` while a turn runs | Queue this message to run after the current turn. Empty box does nothing. Needs a terminal that can tell it apart from plain `enter` |
+| `ctrl+enter` | Queue non-empty words from this conversation's composer while its turn runs. Commands, idle sends, the start page and an empty box take plain enter's action. Any decoded chord works; hints need the terminal's reply |
 | `shift+enter` | Open a new line without sending, on home and in conversations |
 | `alt+enter` | Open a new line in a conversation |
 | `ctrl+j` | Same as `alt+enter` |
@@ -642,10 +652,10 @@ the whole turn and sends, and `shift+enter`, `alt+enter` or `ctrl+j` opens a lin
 
 Neither `ctrl+shift+enter` nor `cmd+enter` opens a line — use `shift+enter` for that.
 Both need a terminal that can tell them apart from plain `enter`; where it cannot, the
-key arrives as ordinary `enter` and the message steers instead. `ctrl+enter` needs the
-same support, and where the terminal cannot send it, the key arrives as a plain enter
-too — on such a terminal the queue is not available, and the sentence can simply be
-typed again after the answer.
+key arrives as ordinary `enter` and the message steers instead. A decoded `ctrl+enter`
+is accepted wherever the terminal sends it, including modifyOtherKeys without a kitty
+reply. Its hint and tip still require the terminal's key-support reply. A terminal that
+cannot send it delivers plain enter on many keyboards, or a newline on some.
 
 ## Keys in the message box: opening things and moving the view
 
@@ -1129,8 +1139,8 @@ that has moved on. There is nothing to press; it is automatic.
   **not** clear it.
 - **A box holding only blank lines or spaces is not a draft**, and nothing is written
   for it — the file is removed instead. Blank lines are what `ctrl+j` and `alt+enter`
-  leave behind, and what `ctrl+enter` and `shift+enter` leave behind on a terminal that
-  cannot send those chords, and nothing on the frame draws them. One kept on disk used
+  leave behind. Unsupported modified-enter chords can arrive as plain enter, or
+  as `ctrl+j` on some terminals; only the latter opens a blank line, and nothing on the frame draws them. One kept on disk used
   to be adopted by the next window in the directory, which then opened with a box that
   looked empty, was not, and refused `space space` for home.
 - The file is keyed by the directory plus this process's id, and is written with mode
@@ -2315,7 +2325,7 @@ shared composer, so a space left in it on another place still opens home from
 standing.
 
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
-`alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
+`alt+enter`, or a modified-enter chord delivered as `ctrl+j` by some terminals,
 draw nothing on the frame — and the gesture reads the box the same way the frame does, so
 two spaces open home and the blank lines go with the draft. The rule in one sentence:
 wherever the foot advertises `space space home`, two spaces open it.

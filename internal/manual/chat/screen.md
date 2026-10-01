@@ -814,10 +814,19 @@ turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
 is open. A waiting message changes the final clause to `esc stops and drops`; with
 neither words nor a picture the send clause is absent.
 
-**`ctrl+enter queue` needs words and a terminal that can send the chord.** A picture
-alone is not queued, so the clause is absent then; on a terminal that cannot tell
-`ctrl+enter` from a plain `enter` the clause is never drawn and the line reads
-`enter steers it in · esc interrupt`.
+**`ctrl+enter queue` needs non-empty words for this conversation's running turn**,
+a draft that is not a `/command`, and a tray without pictures or a picked harness.
+The clause and tip are advertised only after the terminal replies that it can
+distinguish keys. A decoded chord still works without that reply, including from
+modifyOtherKeys terminals. With no turn running, on the new-chat start page, or
+over a `/command`, ctrl+enter is plain enter; an empty box takes enter's action too.
+On terminals that cannot send the chord it arrives as plain enter on many keyboards,
+or a newline on some. The running foot there reads `enter steers it in · esc interrupt`.
+
+Only queued messages from this window light under the pointer and take a click.
+A successful take-back goes to this conversation's own composer, even from a task
+room. It restores an empty box exactly; with an existing draft it appends on a new
+line, keeping the draft and tray and renumbering the returned paste chips.
 
 **`ctrl+shift+enter` is not on this row.** It still stops the answer and sends, on a
 terminal that can send it, and the keys sheet (`?`) lists it; the row carried

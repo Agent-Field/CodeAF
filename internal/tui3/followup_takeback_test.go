@@ -1,0 +1,428 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/history"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/charmbracelet/x/ansi"
+	"path/filepath"
+)
+
+// queuedConversation gives the surface a live turn and queued messages without a model clock.
+func queuedConversation(t *testing.T, words ...string) (*wiredAgent, *app) {
+	t.Helper()
+	agent, a := wired(nil)
+	a.state, a.stream, a.keysDisambiguated = stateWorking, make(chan session.Event), true
+	for _, word := range words {
+		a.input.setText(word)
+		drive(t, a, key("ctrl+enter"))
+	}
+	return agent, a
+}
+
+func TestTakeBackPreservesCurrentDraft(t *testing.T) {
+	_, a := queuedConversation(t, "queued words")
+	a.input.setText("new draft " + pasteToken(2, 2))
+	a.pastes = []pasteChip{{n: 2, text: "new\ndocument"}}
+	drive(t, a, press(2, queuedRowY(t, a, 0)))
+	if !strings.Contains(a.input.String(), "new draft") || !strings.Contains(a.input.String(), "queued words") || len(a.pastes) != 1 {
+		t.Fatalf("take-back lost a draft or its paste: draft=%q pastes=%+v caret=%d", a.input.String(), a.pastes, a.input.cursor)
+	}
+}
+
+func TestSuccessfulTakeBackSurvivesParentCloseBeforeFold(t *testing.T) {
+	agent, a := queuedConversation(t, "unsent follow-up")
+	cmd, took := a.recallQueuedAt(0)
+	if !took {
+		t.Fatal("click was not claimed")
+	}
+	answer := cmd()
+	if len(agent.followStreams) != 0 {
+		t.Fatal("engine did not remove the message")
+	}
+	// The parent close can reach Update before the unqueue result, even when the engine removed it first.
+	_, _ = a.route(streamClosedMsg{gen: a.gen})
+	_, _ = a.route(answer)
+	if a.input.String() != "unsent follow-up" {
+		t.Fatalf("successful unqueue never restored its words: draft=%q waiting=%d entries=%+v", a.input.String(), a.followWaiting(), a.entries)
+	}
+}
+
+func TestTwoClicksBeforeFoldsPreserveBothMessages(t *testing.T) {
+	agent, a := queuedConversation(t, "first follow-up", "second follow-up")
+	first, ok := a.recallQueuedAt(0)
+	if !ok {
+		t.Fatal("first click was not claimed")
+	}
+	second, ok := a.recallQueuedAt(1)
+	if !ok {
+		t.Fatal("second click was not claimed")
+	}
+	answer1, answer2 := first(), second()
+	_, _ = a.route(answer1)
+	_, _ = a.route(answer2)
+	if len(agent.followStreams) != 0 {
+		t.Fatal("engine retained an unqueued message")
+	}
+	if !strings.Contains(a.input.String(), "first follow-up") || !strings.Contains(a.input.String(), "second follow-up") {
+		t.Fatalf("two successful take-backs retained only %q", a.input.String())
+	}
+}
+
+func TestQueuedRowsFitTheirHitTestWidth(t *testing.T) {
+	_, a := wired(nil)
+	for _, width := range []int{8, 20, 68} {
+		a.follows = []queued{{text: strings.Repeat("w", width-2) + "\n" + strings.Repeat("x", width-2)}}
+		for i, row := range a.followRows(width) {
+			if got := ansi.StringWidth(row); got > width {
+				t.Errorf("width=%d row=%d draws %d cells: %q", width, i, got, plain(row))
+			}
+		}
+	}
+}
+
+func TestModifyOtherKeysCtrlEnterQueuesWithoutKittyReply(t *testing.T) {
+	agent, a := wired(nil)
+	a.state, a.stream = stateWorking, make(chan session.Event)
+	a.input.setText("follow-up on xterm")
+	drive(t, a, wirePress(t, "\x1b[27;5;13~", "ctrl+enter"))
+	if len(agent.asked) != 1 {
+		t.Fatalf("decoded ctrl+enter was discarded without kitty reply: draft=%q", a.input.String())
+	}
+}
+
+func TestTakeBackStaysWithItsComposerRecipient(t *testing.T) {
+	agent, a := queuedConversation(t, "words for the main conversation")
+	cmd, ok := a.recallQueuedAt(0)
+	if !ok {
+		t.Fatal("click was not claimed")
+	}
+	answer := cmd()
+	// Opening an ordinary task room performs this same recipient change.
+	a.room = a.newRoom(7, "task seven")
+	a.retargetComposer(taskRecipient(7))
+	a.input.setText("existing task draft")
+	_, _ = a.route(answer)
+	if len(agent.followStreams) != 0 {
+		t.Fatal("engine did not remove the message")
+	}
+	main := a.mainComposer()
+	if a.input.String() != "existing task draft" || !strings.Contains(main.box.String(), "words for the main conversation") {
+		t.Fatalf("take-back crossed recipients: task=%q main=%q", a.input.String(), main.box.String())
+	}
+}
+
+func TestTakeBackPreservesDemotedSlashTag(t *testing.T) {
+	_, a := wired(nil)
+	a.state, a.stream, a.keysDisambiguated = stateWorking, make(chan session.Event), true
+	a.input.setText("say /standing")
+	if !a.demoteTagBehindCaret() || len(a.liveTags()) != 0 {
+		t.Fatal("could not demote the standing tag")
+	}
+	drive(t, a, key("ctrl+enter"))
+	drive(t, a, press(2, queuedRowY(t, a, 0)))
+	if len(a.liveTags()) != 0 {
+		t.Fatalf("take-back made a deliberately plain slash word executable: text=%q tags=%+v", a.input.String(), a.liveTags())
+	}
+}
+
+func TestCtrlEnterRunsCommandsAndIdleSendsThroughEnter(t *testing.T) {
+	for _, running := range []bool{false, true} {
+		t.Run(fmtRunning(running), func(t *testing.T) {
+			agent, a := wired(nil)
+			a.keysDisambiguated = true
+			if running {
+				a.state, a.stream = stateWorking, make(chan session.Event)
+			}
+			a.input.setText("/cost")
+			drive(t, a, key("ctrl+enter"))
+			if len(agent.asked) != 0 || a.input.String() != "" || len(agent.sent) != 0 {
+				t.Fatalf("ctrl+enter did not run /cost as enter: queued=%v sent=%v draft=%q", agent.asked, agent.sent, a.input.String())
+			}
+		})
+	}
+	agent, a := wired([]session.Event{})
+	a.keysDisambiguated = true
+	a.input.setText("an idle send")
+	drive(t, a, key("ctrl+enter"))
+	if len(agent.asked) != 0 || len(agent.sent) != 1 || agent.sent[0] != "an idle send" {
+		t.Fatalf("idle ctrl+enter bypassed the ordinary send: queued=%v sent=%v", agent.asked, agent.sent)
+	}
+}
+
+func fmtRunning(running bool) string {
+	if running {
+		return "running"
+	}
+	return "idle"
+}
+
+func TestCtrlEnterStartsTheChatOnTheStartPage(t *testing.T) {
+	lab := newStartLab(t)
+	a := lab.app()
+	a.keysDisambiguated = true
+	openStart(t, a)
+	a.input.setText("words for the new conversation")
+	drive(t, a, key("ctrl+enter"))
+	if lab.made != 1 || a.startingChat() || len(lab.next.sent) != 1 || len(lab.agent.queue) != 0 {
+		t.Fatalf("ctrl+enter sent under the start page: made=%d starting=%v new=%v old-queue=%d", lab.made, a.startingChat(), lab.next.sent, len(lab.agent.queue))
+	}
+}
+
+func TestASecondClickWhileTakeBackWaitsAsksNothing(t *testing.T) {
+	_, a := queuedConversation(t, "queued words")
+	first, ok := a.recallQueuedAt(0)
+	if !ok || first == nil {
+		t.Fatal("first click was not claimed")
+	}
+	second, _ := a.recallQueuedAt(0)
+	if second != nil {
+		t.Fatal("a second click asked for the same message again")
+	}
+	if a.queuedTakesBack() {
+		t.Fatal("an in-flight take-back still offered its hover")
+	}
+	_, _ = a.route(first())
+}
+
+func TestRefusedTakeBackAdoptsItsTurnAfterTheParentCloses(t *testing.T) {
+	agent, a := queuedConversation(t, "already running")
+	ch := a.follows[0].ch
+	agent.followStreams = nil
+	cmd, ok := a.recallQueuedAt(0)
+	if !ok {
+		t.Fatal("click was not claimed")
+	}
+	answer := cmd()
+	_, _ = a.route(streamClosedMsg{gen: a.gen})
+	if a.stream != nil || len(a.entries) != 0 {
+		t.Fatal("surface adopted a turn before its take-back settled")
+	}
+	_, _ = a.route(answer)
+	if a.stream != ch || len(a.entries) != 1 || a.entries[0].text != "already running" || a.input.String() != "" {
+		t.Fatalf("refusal failed to adopt exactly once: stream=%v entries=%+v draft=%q", a.stream, a.entries, a.input.String())
+	}
+}
+
+func TestTakeBackMergesPasteNumbersPlainTagsAndTheExistingTray(t *testing.T) {
+	_, a := queuedConversation(t)
+	a.input.setText(pasteToken(1, 3) + " say /standing")
+	a.pastes = []pasteChip{{n: 1, text: "old\ndocument\nbody"}}
+	if !a.demoteTagBehindCaret() {
+		t.Fatal("could not demote queued tag")
+	}
+	drive(t, a, key("ctrl+enter"))
+	a.input.setText("keep /standing " + pasteToken(9, 3))
+	a.input.demotedTags = []segment{{from: 5, to: 14}}
+	a.pastes = []pasteChip{{n: 9, text: "new\ndocument\nbody"}}
+	a.chips = []chip{{path: "/tmp/current.png"}}
+	a.harnChip = "picked"
+	a.input.cursor = 2
+	drive(t, a, press(2, queuedRowY(t, a, 0)))
+	want := "keep /standing " + pasteToken(9, 3) + "\n" + pasteToken(10, 3) + " say /standing"
+	if a.input.String() != want || len(a.pastes) != 2 || a.pastes[1].n != 10 || len(a.liveTags()) != 0 || len(a.input.demotedTags) != 2 || len(a.chips) != 1 || a.harnChip != "picked" || a.input.cursor != len([]rune(want)) {
+		t.Fatalf("merge damaged the composers: text=%q pastes=%+v plain=%+v tray=%+v harness=%q caret=%d", a.input.String(), a.pastes, a.input.demotedTags, a.chips, a.harnChip, a.input.cursor)
+	}
+}
+
+func TestSuccessfulTakeBackRestoresInClickOrderWhenAnswersFoldBackwards(t *testing.T) {
+	_, a := queuedConversation(t, "first in queue", "second in queue")
+	first, _ := a.recallQueuedAt(1)
+	second, _ := a.recallQueuedAt(0)
+	answer1, answer2 := first(), second()
+	_, _ = a.route(answer2)
+	_, _ = a.route(answer1)
+	if a.input.String() != "second in queue\nfirst in queue" {
+		t.Fatalf("restoration did not keep click order: %q", a.input.String())
+	}
+}
+
+func TestTakenBackWordsDoNotCrossConversations(t *testing.T) {
+	_, a := queuedConversation(t)
+	store := history.New(filepath.Join(t.TempDir(), "history.jsonl"))
+	t.Cleanup(func() { _ = store.Close() })
+	a.history = store
+	a.input.setText("words from the old conversation")
+	drive(t, a, key("ctrl+enter"))
+	cmd, _ := a.recallQueuedAt(0)
+	answer := cmd()
+	a.frontGen++
+	a.input.setText("new conversation draft")
+	_, _ = a.route(answer)
+	if a.input.String() != "new conversation draft" {
+		t.Fatalf("take-back crossed conversations: %q", a.input.String())
+	}
+	found := false
+	lines, _ := a.recallList()
+	for _, line := range lines {
+		found = found || line == "words from the old conversation"
+	}
+	if !found {
+		t.Fatal("queued words were not remembered for history")
+	}
+}
+
+func TestOnlyThisWindowsQueuedRowsOfferTakeBack(t *testing.T) {
+	_, a := queuedConversation(t, "local receipt")
+	other := make(chan session.Event)
+	_ = a.admitFollowing(Following{Said: "another window", Events: other})
+	for _, index := range []int{1, 2} {
+		if index == 2 {
+			_ = a.steerFell(steerFellMsg{words: "steer fell through", ch: make(chan session.Event), gen: a.convGen})
+		}
+		y := queuedRowY(t, a, index)
+		drive(t, a, motionTo(2, y))
+		if a.hot.kind == hoverQueued || strings.Contains(strings.Join(a.followRows(a.width), "\n"), "\x1b[48;") {
+			t.Fatalf("row %d without a local receipt offered hover", index)
+		}
+		if cmd, took := a.followPress(y); cmd != nil || took {
+			t.Fatalf("row %d without a local receipt took the press", index)
+		}
+	}
+}
+
+func TestPendingTakeBackKeepsParkedWordsBehindTheSessionQueue(t *testing.T) {
+	_, a := queuedConversation(t, "take this back", "then run this")
+	a.parks = []parked{{text: "parked words"}}
+	cmd, _ := a.recallQueuedAt(0)
+	answer := cmd()
+	_, _ = a.route(streamClosedMsg{gen: a.gen})
+	if len(a.parks) != 1 || len(a.entries) != 0 {
+		t.Fatalf("parked words jumped an unsettled take-back: parks=%+v entries=%+v", a.parks, a.entries)
+	}
+	_, _ = a.route(answer)
+	if a.input.String() != "take this back" || a.stream == nil || len(a.entries) != 1 || a.entries[0].text != "then run this" || len(a.parks) != 1 {
+		t.Fatalf("take-back did not adopt the next session turn first: draft=%q entries=%+v parks=%+v", a.input.String(), a.entries, a.parks)
+	}
+}
+
+func TestLastTakeBackLetsTheParkedMessageRunAfterParentClose(t *testing.T) {
+	_, a := queuedConversation(t, "take this back")
+	a.parks = []parked{{text: "parked words"}}
+	cmd, _ := a.recallQueuedAt(0)
+	answer := cmd()
+	_, _ = a.route(streamClosedMsg{gen: a.gen})
+	if len(a.parks) != 1 {
+		t.Fatal("parked message ran while a take-back was pending")
+	}
+	_, _ = a.route(answer)
+	if a.input.String() != "take this back" || len(a.parks) != 0 || len(a.entries) != 1 || a.entries[0].text != "parked words" {
+		t.Fatalf("last answer stranded or duplicated parked words: draft=%q parks=%+v entries=%+v", a.input.String(), a.parks, a.entries)
+	}
+}
+
+func TestStandingCommandKeepsThePickedHarnessAndPicturesOnTheTray(t *testing.T) {
+	a, agent, _ := standMarkLab(t)
+	a.harnChip = "picked"
+	a.chips = []chip{{path: "/tmp/current.png"}}
+	typeLine(t, a, "/standing always run the tests")
+	if len(agent.marked) != 1 || agent.marked[0] != "always run the tests" || a.harnChip != "picked" || len(a.chips) != 1 {
+		t.Fatalf("standing command did not keep the tray: marked=%v harness=%q chips=%+v", agent.marked, a.harnChip, a.chips)
+	}
+}
+
+func TestCtrlEnterCommitsTheSelectedSlashCommand(t *testing.T) {
+	agent, a := wired(nil)
+	store := history.New(filepath.Join(t.TempDir(), "history.jsonl"))
+	t.Cleanup(func() { _ = store.Close() })
+	a.history = store
+	typeInto(t, a, "/cos")
+	chosen := false
+	for i, hit := range a.menu.hits {
+		if commands[hit].name == "cost" {
+			a.menu.cursor, chosen = i, true
+		}
+	}
+	if !chosen {
+		t.Fatal("/cost is missing from the typed command list")
+	}
+	drive(t, a, key("ctrl+enter"))
+	lines, _ := a.recallList()
+	if len(agent.asked) != 0 || a.input.String() != "" || len(lines) != 1 || lines[0] != "/cost" {
+		t.Fatalf("ctrl+enter bypassed the selected command: queued=%v draft=%q history=%v", agent.asked, a.input.String(), lines)
+	}
+}
+
+func TestCtrlEnterKeepsTheTaskRoomsEnterMeaning(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+	a.input.setText("words for this task")
+	cmd, took := a.roomKey(key("ctrl+enter"))
+	if !took || cmd == nil {
+		t.Fatal("ctrl+enter bypassed the task room's enter door")
+	}
+	drive(t, a, runCmd(cmd)...)
+	if a.followWaiting() != 0 {
+		t.Fatal("task words reached the conversation queue")
+	}
+}
+
+func TestCtrlEnterKeepsTheHeldRostersEnterMeaning(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.railTake(true)
+	drive(t, a, key("ctrl+enter"))
+	if !a.roomOpen() || a.room.id != 7 {
+		t.Fatal("ctrl+enter did not open the roster's selected task")
+	}
+}
+
+func TestCtrlEnterKeepsRewindsEnterMeaning(t *testing.T) {
+	a, agent := newRewindApp(t, rewindPast())
+	drive(t, a, runCmd(a.enterRewind())...)
+	if !a.rew.on {
+		t.Fatal("rewind did not open")
+	}
+	drive(t, a, key("ctrl+enter"))
+	if a.rew.on || len(agent.cuts) != 1 {
+		t.Fatal("ctrl+enter did not commit the selected rewind")
+	}
+}
+
+func TestCtrlEnterLeavesTheModelPickersChordAlone(t *testing.T) {
+	_, a := wired(nil)
+	a.openPicker()
+	a.input.setText("untouched draft")
+	drive(t, a, key("ctrl+enter"))
+	if !a.pick.open || a.input.String() != "untouched draft" {
+		t.Fatal("ctrl+enter was converted above the model picker")
+	}
+}
+
+// The corpus is the model's only account of these doors. A behavior test alone
+// cannot catch a page that still tells it to deny a key or invent a refusal.
+func TestQueueManualDescribesMergeAndDoesNotInventAStandingTrayRefusal(t *testing.T) {
+	keys, ok := manual.Chat().Page("keys")
+	if !ok {
+		t.Fatal("keys page is missing")
+	}
+	if !strings.Contains(keys, "appended on a new line") || !strings.Contains(keys, "modifyOtherKeys") {
+		t.Error("queue manual omits draft merging or decoded modifyOtherKeys input")
+	}
+	if strings.Contains(keys, "`ctrl+enter` needs the\nsame support") {
+		t.Error("queue manual denies input from a terminal without a kitty reply")
+	}
+	standing, ok := manual.Chat().Page("standing-orders")
+	if !ok {
+		t.Fatal("standing page is missing")
+	}
+	if strings.Contains(standing, "hint is also absent wherever the command would refuse") {
+		t.Error("standing manual turns the full tray's absent hint into a refusal")
+	}
+}
+
+func TestTakeBackKeepsPlainTagsWhenQueueingTrimsTheDraft(t *testing.T) {
+	_, a := queuedConversation(t)
+	a.input.setText(" \tsay /standing \n")
+	a.input.cursor = len([]rune(" \tsay /standing"))
+	if !a.demoteTagBehindCaret() {
+		t.Fatal("could not demote the tag before the trailing whitespace")
+	}
+	drive(t, a, key("ctrl+enter"))
+	drive(t, a, press(2, queuedRowY(t, a, 0)))
+	if a.input.String() != "say /standing" || len(a.liveTags()) != 0 || len(a.input.demotedTags) != 1 || a.input.demotedTags[0] != (segment{from: 4, to: 13}) {
+		t.Fatalf("queue trimming lost the plain tag's position: draft=%q plain=%+v", a.input.String(), a.input.demotedTags)
+	}
+}

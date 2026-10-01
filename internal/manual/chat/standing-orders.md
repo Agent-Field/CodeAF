@@ -144,7 +144,11 @@ On a build with no ambient side at all it refuses in one line:
 **It used to have a chord.** `ctrl+enter` marked the draft from 2026-09-15 until
 2026-09-30, when queueing took the chord over (see the keys page, *The queued
 messages*). The command is the explicit road now, and it works on every terminal — no
-chord required.
+chord required. The queue chord is plain enter at rest, on the new-chat start page
+or over a `/command`; it queues only non-empty words mid-turn from the conversation's
+own composer. It works wherever the terminal sends it, while its hint and tip require
+the terminal's key-support reply. Unsupported terminals deliver enter or a newline
+on some keyboards.
 
 ## It didn't notice — it did the rule once instead of keeping it
 
@@ -166,8 +170,10 @@ Two things help:
 
 That word list is a courtesy for teaching you the command, **not** the rule for what can
 stand. Plenty of standing sentences never trip it, and they are still recognised when you
-just say them. The hint is also absent wherever the command would refuse — a tray with
-pictures on it, a picked shape of work, a build with no ambient side.
+just say them. The hint is absent with pictures on the tray or a picked shape of work,
+but **that is not a refusal**: `/standing <words>` still sends the marked words and
+leaves those pictures and the selected shape on the tray. Only a build with no ambient
+side refuses with `nothing here can hold a standing order`.
 
 To check afterwards whether anything actually stands, open `/standing`, or read the
 `◦ N standing orders` count at the foot of the task column.

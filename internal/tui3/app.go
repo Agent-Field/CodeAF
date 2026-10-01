@@ -1994,6 +1994,9 @@ type app struct {
 	// the stream the turn it starts will speak on — and the woken turns waiting
 	// on the same door, which are streams with no message at all (followup.go).
 	follows []queued
+	// followRecalls holds take-backs in click order, so answers folded in a
+	// different order cannot reorder the words restored to the main composer.
+	followRecalls []*followRecall
 	// parks are the messages typed with plain enter while an answer was still
 	// coming: held HERE rather than handed to the session, so they can still be
 	// edited, taken back, or steered into the running turn (park.go). Each one
@@ -9143,7 +9146,13 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.touch()
 		return nil, true
 
-	case "enter":
+	case "enter", "ctrl+enter":
+		// Commands take the list's ordinary enter road. Words that can queue
+		// still reach the chord below, even with an inline tag list showing.
+		// The harness and skill pickers above keep their original key message.
+		if msg.String() == "ctrl+enter" && a.queueSendOffered() {
+			return nil, false
+		}
 		if a.menu.open {
 			// A COMPLETE LIVE TAG OWNS ENTER, even while the spelling list is
 			// still visible under it. Choosing the row merely rewrote the word in

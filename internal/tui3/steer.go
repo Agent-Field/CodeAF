@@ -80,8 +80,8 @@ import (
 //
 // WHY THIS ONE — WHAT THE AUDIT LEFT. The gesture has to read as a SEND rather
 // than as a letter, which means a modifier on enter, and the other three are
-// spent: `alt+enter` (with `ctrl+j`) opens a line, `ctrl+enter` marks the
-// sentence as something to keep true (standmark.go), and `ctrl+shift+enter` stops the
+// spent: `alt+enter` (with `ctrl+j`) opens a line, `ctrl+enter` queues the
+// sentence for after this turn (followup.go), and `ctrl+shift+enter` stops the
 // answer and sends (bargein.go). cmd+enter is what is left, and it is the right
 // one on its own merits — it is the "send it now, properly" chord in every chat
 // application a person has ever used. Here it is deliberately secondary: plain

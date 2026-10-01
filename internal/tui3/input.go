@@ -787,7 +787,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// And enter belongs to the LINE under that list, not to the list. A person
 	// who typed a path out in full would otherwise have it swapped for whatever
 	// the ranking put first, by the key they pressed to run the command.
-	if a.comp.open && a.comp.arg && msg.String() == "enter" {
+	if a.comp.open && a.comp.arg && (msg.String() == "enter" || msg.String() == "ctrl+enter" && !a.queueSendOffered()) {
 		a.comp.close()
 		return a.enter()
 	}
@@ -871,26 +871,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.interrupt()
 		return cmd
 
-	case "enter":
+	case "enter", "ctrl+enter":
+		// THE QUEUE BELONGS TO THIS CONVERSATION'S RUNNING TURN. Everywhere
+		// else the chord takes enter's ordinary road, commands included. A
+		// decoded chord is honoured even without a keyboard-enhancement reply:
+		// modifyOtherKeys can deliver it too. Plain terminals send enter on
+		// many keyboards and ctrl+j on some, and those keep their own meanings.
+		if msg.String() == "ctrl+enter" && a.queueSendOffered() {
+			return a.followUp()
+		}
 		if a.steerAvailable() {
 			return a.steerIn()
 		}
 		return a.enter()
-
-	case "ctrl+enter":
-		// THE FOLLOW-UP: queue the draft to run after the current turn
-		// (followup.go). It is read directly beside enter because it is enter —
-		// the same road with the sentence handed to the session instead of held
-		// on the surface — and it sits ABOVE the newline pair below because
-		// those two are the other spellings of a different gesture entirely.
-		// A TERMINAL THAT CANNOT TELL THIS CHORD FROM A PLAIN ENTER NEVER SENDS
-		// IT HERE: it arrives as `ctrl+j`, the newline below, and stays one —
-		// which is why every sentence this surface says about the chord is
-		// gated on [app.keysDisambiguated], the same question bargein.go asks.
-		if !a.keysDisambiguated {
-			return nil
-		}
-		return a.followUp()
 
 	case steerKeySuper, steerKeyMeta:
 		// AND ALSO THIS, WITHOUT STOPPING ANYTHING (steer.go). It is read directly

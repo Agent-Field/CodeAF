@@ -184,13 +184,15 @@ build if the two disagree), so a tip you saw is on it word for word.
 **Steering a running answer**
 
 - `using enter steers conversations · use ctrl+enter to queue messages` — after the first
-  exchange, on a terminal that can tell `ctrl+enter` from a plain `enter`. Retired the first
+  exchange, after the terminal replies that it can distinguish keys. Retired the first
   time you queue a message. It was two rows until 2026-09-22
   — one for the steer and one for the queue — and the owner folded them into one; the
   queue half named `ctrl+q` until 2026-09-30, when the chord moved onto `ctrl+enter`. On a
-  terminal that cannot send the chord the tip is not shown at all, because the queue half
-  would name a key that does not work there; the steer half is taught by the running foot
-  on every terminal.
+  terminal that has not replied the tip is absent, even if it can send a decoded
+  ctrl+enter through modifyOtherKeys. The chord queues only non-empty words mid-turn
+  from this conversation's composer; at rest, on the start page or over a `/command` it
+  is plain enter. A terminal that cannot send it delivers plain enter or a newline on
+  some keyboards. The steer half is taught by the running foot on every terminal.
 
 **Moving around**
 

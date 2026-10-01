@@ -518,15 +518,12 @@ var notices = []notice{
 		// not been told the other half ([notice.id]). The queue half moved onto
 		// ctrl+enter on 2026-09-30 (followup.go); the words follow the key.
 		//
-		// AND IT IS TAUGHT ONLY WHERE THE CHORD EXISTS. ctrl+enter reaches a
-		// program only on a terminal that can tell it from a plain enter; where
-		// it cannot, the key arrives as a newline and queues nothing
-		// (followup.go, input.go). A tip that named it there would be the one
-		// thing every hint on this surface is written not to be — a key that
-		// does not work — and the half that IS true everywhere, that enter
-		// steers, is said live by the running foot on every terminal anyway
-		// (steer.go's [app.typingHint]). So the row is armed only on a
-		// terminal that answered for the chord.
+		// THE TERMINAL'S REPLY GATES THE TIP, NOT A DECODED KEY. A terminal
+		// speaking modifyOtherKeys can deliver ctrl+enter without that reply,
+		// and the router honours it. Plain terminals deliver enter on many
+		// keyboards or ctrl+j on some, keeping the ordinary send or newline.
+		// The steer half is taught by the running foot on every terminal;
+		// this tip advertises the pair only after the terminal answered.
 		id: "steer-and-queue", slot: slotHint,
 		armed:  func(a *app) bool { return spoken(a) && a.keysDisambiguated },
 		text:   "using enter steers conversations · use ctrl+enter to queue messages",

@@ -1,5 +1,20 @@
 # Commands
 
+## ctrl+enter over a slash command — commands run at once
+
+`ctrl+enter` over a `/command` takes plain enter's command action, even while a turn
+is running. With no turn running or on the new-chat start page it also acts as plain
+enter. It queues only non-empty words mid-turn from this conversation's own composer.
+The decoded chord works wherever the terminal sends it; the queue hint and tip are
+advertised only after the terminal's key-support reply. A terminal that cannot send
+it delivers plain enter or, on some keyboards, a newline.
+
+Only messages queued from this window can be clicked back out of the queue. Their
+words return to this conversation's composer. If a draft is already there, the
+returned message is appended on a new line, keeping the draft and tray and renumbering
+its paste chips. `/standing <words>` sends marked words even with pictures or a picked
+shape on the tray, leaving those on the tray; the standing hint's absence is separate.
+
 ## Bash mode — run a shell command with ! and keep its output in context
 
 Start a message with `!` to run a non-interactive shell command yourself:
