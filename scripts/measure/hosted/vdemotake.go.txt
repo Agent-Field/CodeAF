@@ -1,0 +1,43 @@
+package main
+
+// The validation rig's take verb: `codeaf vdemo-take <cell>` runs the same take the home screen's
+// `continue here` runs (the same Continuer, built the way synctake.go builds it) and prints one JSON
+// line. The home screen draws no remote row for a chat this machine already lists, so a warm take and
+// a take back cannot be pressed there; this is the only way to time them through the product's own
+// code. NOT product code: the rig copies this file into a private build of the tree, never commits it.
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
+)
+
+func init() {
+	if len(os.Args) != 3 || os.Args[1] != "vdemo-take" {
+		return
+	}
+	out := map[string]any{}
+	s, err := syncOf()
+	if err == nil {
+		cont := s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{DeviceName: deviceName(), RootFor: takeRootFor, Notify: func(string) {}})
+		t0 := time.Now()
+		got, terr := cont.Take(context.Background(), os.Args[2])
+		out["take_ms"] = float64(time.Since(t0).Microseconds()) / 1000
+		err = terr
+		if terr == nil {
+			out["root"], out["kept"], out["resume"] = got.Taken.Cell.Root, got.Taken.Kept, got.Resume
+			out["fence"] = got.Taken.Driving.Fence
+		}
+	}
+	if err != nil {
+		out["error"] = err.Error()
+	}
+	b, _ := json.Marshal(out)
+	fmt.Println(string(b))
+	os.Exit(0)
+}
