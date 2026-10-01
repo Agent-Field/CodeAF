@@ -83,6 +83,10 @@ func TestEveryBindingMeasuresOneCellInBothTiers(t *testing.T) {
 func TestOneGlyphOneMeaning(t *testing.T) {
 	deliberate := map[string]string{
 		GlyphStepPending: "queued, at two scales",
+		GlyphReplyIn: "the reply arrow: words that come AFTER something — an answer drawn under the " +
+			"question it answers, and a message queued to run after the current turn — told apart " +
+			"by position: the first is drawn only under a question in its room, the second only in " +
+			"the block above the message box. Both are geometry, so no tier can collapse them",
 		GlyphPointer: "a small right triangle: the row your key goes into — the fold you open, and " +
 			"the answer your enter takes on a question. Two slots so the question's pointer can be " +
 			"amber and move under a hand while a fold mark stays a dim fact",

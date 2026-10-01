@@ -32,7 +32,7 @@ the moment it is typed, to run after the turn that is running; with no turn runn
 it starts at once, which reads as sending it. It needs a terminal that can tell it
 apart from a plain `enter` (the same support `ctrl+shift+enter` needs); where the
 terminal cannot, the key arrives as a plain enter and queues nothing. Queued messages
-sit above the box behind a return arrow `↵`, dim, and you can take one back out of the
+sit above the box behind a reply arrow `↳`, dim, and you can take one back out of the
 queue before its turn starts — see "Typing while an answer is still coming" below.
 
 What `enter` does depends on what is in the box:
@@ -48,7 +48,7 @@ While a turn is running, plain `enter` **steers**: it stops the model's current
 reply where it is, keeps what has arrived, and sends your words into the same turn.
 See "Typing while an answer is still coming" below. `ctrl+enter` instead queues a
 fresh turn to run after the current one; an empty box does nothing. Until its turn
-starts, the queued message sits above the box behind a return arrow `↵`, dim, one row
+starts, the queued message sits above the box behind a reply arrow `↳`, dim, one row
 each, and nothing is written under them. If queueing fails, codeaf notes
 `follow-up failed: <error>`.
 
@@ -123,10 +123,10 @@ to the follow-up queue, so the words are never dropped.
 
 `ctrl+enter` over a draft hands the sentence to the session to run after the turn
 that is running. Until its turn starts, each queued message is drawn above the box:
-one row per message behind a return arrow `↵`, dim — a register nothing in the
-transcript wears, so queued is visibly different from sent. The arrow is the return
-key's (it is `ctrl` and return that put it there), and it is deliberately not the
-hollow `○` a waiting task wears. No line is drawn under the queued messages; until
+one row per message behind a reply arrow `↳`, dim — a register nothing in the
+transcript wears, so queued is visibly different from sent. The arrow says the words
+come after what is running, and it is deliberately not the hollow `○` a waiting task
+wears. No line is drawn under the queued messages; until
 2026-09-30 one said `queued for after this turn · click takes one back · ctrl+enter
 queues the draft`. The words are not in the
 conversation yet: they land as an ordinary sent line only when their turn begins.

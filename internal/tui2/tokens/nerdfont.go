@@ -311,10 +311,9 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphReplyIn, UsualTint: TextTertiary, Geometry: true,
 	},
 	{
-		// The return key's arrow for a message the return key queued. Font
-		// Awesome 4 has no return-key icon, and its nearest (a corner arrow
-		// turning down) reads as a direction rather than a key, so the slot is
-		// geometry like the rest of the prompt family and no tier swaps it.
+		// The reply arrow for a message that comes after what is running. It is
+		// geometry like the rest of the prompt family, so no tier swaps it, and
+		// it shares [GReplyIn]'s byte by position (glyphvocab_test.go).
 		ID: GFollowUp, Name: "FollowUp", Meaning: "a message queued for after the current turn",
 		Plain: GlyphFollowUp, UsualTint: TextTertiary, Geometry: true,
 	},
