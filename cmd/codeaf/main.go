@@ -572,9 +572,9 @@ Housekeeping — changes state on disk or on the network
       delete the build cache; you type "` + cacheCleanWord + `" to confirm, --yes skips it
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
-  codeaf pair [--relay url]
+  codeaf pair [--via url]
       show a code that shares your chats with another computer
-  codeaf pair <code> [--relay url] [--replace]
+  codeaf pair <code> [--via url] [--replace]
       type the code another computer shows: this one gets its chats
   codeaf serve [--workspace path] [--relay url]
       be reachable from your other devices without ssh, with a pairing code

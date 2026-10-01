@@ -2895,7 +2895,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many tries does a pairing code get", "use-this-on-another-computer"},
 		{"does the relay see my chats when I pair", "use-this-on-another-computer"},
 		{"can I use my own relay to pair", "use-this-on-another-computer"},
-		{"sync is off (CODEAF_SYNC_URL=off); pairing needs a relay", "use-this-on-another-computer"},
+		{"sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address", "use-this-on-another-computer"},
 		{"does revoking a device take my chats back", "use-this-on-another-computer"},
 		// LOCKING OUT A LOST COMPUTER FOR GOOD, ASKED BY SOMEBODY WHO READ THAT
 		// REVOKING IS NOT ENOUGH. The words are the wish (lock it out, make it
