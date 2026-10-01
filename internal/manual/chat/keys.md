@@ -1812,9 +1812,9 @@ running) · `m` its teams · `s` a new team · `e` the shown team's settings · 
 **team switcher** under the strip's team chip takes `↑` `↓` `enter` `esc`. The whole map is on
 the *Conversations and teams* page.
 
-**Teams page** (`alt+2`, `/teams`): while the manager's conversation has the box, keys type
-into it; `alt+↑` `alt+↓` put the keyboard on the page's buttons and `esc` gives it back. On
-the buttons: `↑` `↓` walk, `←` `→` cross between the rail and the pane, `enter` presses,
+**Teams page** (`alt+2`, `/teams`): the overview owns its keyboard. Member cards and
+interaction links lead into Chats. `pgup` / `pgdown` scroll the interaction table.
+On its controls: `↑` `↓` walk, `←` `→` cross between the rail and the pane, `enter` presses,
 `s` the team's card · `c` close · `w` open on the conversations view · `n` new team (inside
 the chosen team) · `o` Organize · `m` Move into… another team · `space` pick a team for a
 move of several · `p` the members card · `M` a manager · `r` reopen · `d` delete a closed

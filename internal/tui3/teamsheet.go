@@ -795,7 +795,6 @@ func (a *app) teamSheetWrite(change func(*teamstore.Settings)) {
 	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetSettings(id, change) }); err != nil {
 		a.tsheet.err = err.Error()
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 }
 

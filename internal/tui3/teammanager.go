@@ -346,9 +346,6 @@ func (a *app) teamHoverWords() string {
 			return a.teamCrewHint()
 		}
 	}
-	if words := a.teamsPageHint(); words != "" {
-		return words
-	}
 	if words := a.sideHoverWords(); words != "" {
 		return words
 	}

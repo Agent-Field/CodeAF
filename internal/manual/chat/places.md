@@ -208,7 +208,7 @@ page, which repeated the teams rail and home's sessions. Now:
 
 **The tab strip is a chat's row.** Teams is a place, like home, sessions, spend and
 settings, so the row under the top line is the rule, then a blank, and the page starts
-there. The manager's conversation in the pane does not bring the strip back. `chats` on
+there. The overview shows member cards and interactions. `chats` on
 the top line, `alt+k`, and home's sessions list open a conversation, and the strip is on
 that chat.
 
@@ -563,11 +563,11 @@ tree (a sub-team indented under its parent), each with its colour, and a mark on
 something is happening in it: a dim `⠿` while one of its members is working, and an amber
 `? 2` while two things wait on you. Under the tree are `+ New team` and `✦ Organize`, and
 at the foot a folded `▸ Closed · N` holds the teams you closed. On the right is the team
-you chose: a header with what it has spent today against its cap and three buttons,
-`Settings`, `Close…` and `Open ▦`; a line of its members, every one of them, open in this
-window or not; the decisions waiting on you, as cards you answer with one press; and the
-team manager's own conversation, which you talk to right there. `/teams`, `alt+2` and a
-click on the word open it. The **Teams page** of this manual has the whole of it.
+you chose: its name, spending and settings; equal-sized member cards with manager and
+member updates; decisions and permissions waiting on you; and a scrollable interaction
+table whose exchanges expand inline. Clicking a member or exchange opens Chats with that
+team selected. Selecting the team itself leaves the current chat and draft untouched.
+`/teams`, `alt+2` and a click on `teams` open it. The **Teams page** has the details.
 
 ## sessions — the sessions page for tasks and history, and how to get to it without a command
 

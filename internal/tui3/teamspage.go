@@ -12,44 +12,8 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
-// ── THE TEAMS PAGE: THE TEAM-LEVEL VIEW ─────────────────────────────────────
-//
-// The third of the three surfaces (DESIGN.md section 8.4, ruling c-b): the
-// strip is what is open in this window, the wall is the same open set drawn
-// big, and this page is the team as a team. Every member is on it whether this
-// window has it open or not, with what it is doing and when it last moved; the
-// packets waiting on the person are cards on it; and the selected team's
-// manager is not summarised here, it IS here, as the real conversation
-// (teamspagehost.go), so a person can run most of their work from this one
-// page and step away.
-//
-//	home  teams  chats  sessions  spend  settings
-//	────────────────────────────────────────────────────────────────────────
-//	 All teams   + Manager │ ◆ harbor   $1.20 of $5 today  Settings  Close…  Open ▦
-//	 ● harbor          ⠿   │ @web running now · @api idle 2h · @docs not open 3d
-//	   ● parser      ? 1   │
-//	 ● orbit               │ ◆ conflict · raised by @web                waiting on you
-//	                       │ which shape does the signup form send?
-//	 + New team            │  JSON   @api changes the handler     recommended
-//	 ✦ Organize            │
-//	                       │ (the manager's own conversation, composer and all)
-//	 ▸ Closed · 2          │
-//
-// THE LEFT RAIL IS THE TREE (teamspagedraw.go). One row per open team,
-// indented by level, each with its colour dot and at most one mark, and a mark
-// only when something is happening: `⠿` dim while a member works, and the
-// needs-you amber `? N` while N things wait on the person. Idle draws nothing.
-// Above the teams is `All teams`: with no root team it carries `+ Manager` (the
-// optional global manager, which makes the root); with one it is the root and
-// selects like any team. Below them `+ New team` and `✦ Organize`, and at the
-// foot, folded, `Closed · N`.
-//
-// EVERYTHING HERE IS READ OFF THE LOOP, THROUGH THE SEAM, WITH A STAMP
-// (teamseam.go). The page's clock turns only while the page is up AND some
-// team has a manager, because nothing else writes packets or spends a team's
-// money; each turn asks the seam for the packets and the spend with the stamps
-// it holds, and a quiet turn is answered `same` and draws nothing new. The
-// frame reads memory and nothing else (framedisk_law_test.go).
+// The Teams overview draws team membership, previews, decisions and exchanges.
+// Reads happen off the loop; selecting a team never opens its manager.
 
 // teamsAllRow is the rail's `All teams` row while there is no root team behind
 // it: a row the page draws over the top level with nothing stored.
@@ -75,20 +39,22 @@ const (
 	teamsOrganizeWord  = "Organize my conversations"
 	teamsNewTeamWord   = "New team"
 	teamsHostedWord    = "the inbox and the spend are not available over this connection"
-	teamsFocusKeys     = "alt+↑↓"
 )
 
 // teamsPage is the page's whole state, on the app (place_teams.go's handle
 // holds none).
 type teamsPage struct {
+	previews           map[string]teamsPreview
+	interactionOffsets map[string]int
+	table              teamsTableRect
+	tableOver          int
+
 	// sel is the team the pane is about: a team id, [teamsAllRow], or "" for
 	// none (no teams at all).
 	sel string
 	// closedOpen says the `Closed · N` fold is open.
 	closedOpen bool
-	// focus says the keyboard is on the page's buttons rather than on the
-	// manager's composer. With no manager in the pane there is no composer and
-	// the page always has the keyboard ([app.teamsHasKeys]).
+	// focus lights the keyboard target while the overview owns the keyboard.
 	focus bool
 	// cur is the target the keyboard is on and hot the one under the pointer,
 	// each named by what it does rather than by where it was drawn, so a
@@ -99,15 +65,8 @@ type teamsPage struct {
 	// expand is an inbox card beyond the first three that a press unfolded.
 	expand string
 	// railW is the rail's columns on the last sync, its separator included.
-	railW int
-	// host is the manager key the pane hosts, "" when it hosts none; forwarding
-	// says a key or a pointer event is being handed to that conversation
-	// (teamspagehost.go).
-	host       string
-	forwarding bool
-	// traffic says the hosted manager's Traffic rail is out. It is folded by
-	// default here, because this page has a rail of its own on the left.
-	traffic bool
+	railW      int
+	railOffset int
 	// reading says a read is out, so a beat that comes round before it is
 	// answered does not start a second; again says a read was asked for while
 	// it was out, and againWorld that the ask wanted the members' rows too.
@@ -131,15 +90,6 @@ type teamsPage struct {
 	answer    editor
 	// msg is the page's one line of news, said on its note.
 	msg string
-	// open is the attempt to bring the selected team's manager in front, so
-	// the pane says what it is doing and, when it cannot, why (teamsopen.go).
-	// opens is every open a door has not answered yet, by manager, and
-	// openSeq the last attempt's number.
-	open    teamsOpen
-	opens   map[string]teamsOpenOut
-	openSeq int
-	// top is the hosted pane's header rows, kept between frames.
-	top teamsTopCache
 	// undo is the last close, while Undo is offered (teamclose.go).
 	undo teamsUndo
 	// picked is the teams picked on the rail with `space`, which one `Move
@@ -149,6 +99,7 @@ type teamsPage struct {
 
 // teamsTarget is one pressable thing on the page, in frame cells.
 type teamsTarget struct {
+	hidden    bool
 	x0, x1, y int
 	act       teamsAct
 	// id is the team it acts on; arg and opt are the member key, the packet
@@ -197,14 +148,16 @@ const (
 	teamsActDelete
 	teamsActTraffic
 	teamsActUndo
-	teamsActRetryManager
-	teamsActOpenInChats
 	// The nesting acts (teammove.go, teamcrew.go): `Move` and `Cancel` on a
 	// move's consequence line, the header's `◆ Manager` and its members word.
 	teamsActMoveYes
 	teamsActMoveNo
 	teamsActManagerGo
 	teamsActCrew
+	teamsActInteractionToggle
+	teamsActInteractionJump
+	teamsActInteractionUp
+	teamsActInteractionDown
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────
@@ -393,7 +346,6 @@ func (a *app) teamsPick(id string) {
 	} else {
 		a.tp.picked[id] = true
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 }
 
@@ -517,7 +469,7 @@ func (a *app) teamsPrompts(t team) []session.SessionRow {
 	now := time.Now()
 	for _, m := range t.Members {
 		row, ok := a.tp.world[filepath.Clean(m.File)]
-		if !ok || a.answeringHere(row) {
+		if !ok {
 			continue
 		}
 		if _, ok := answerable(row, now); ok {
@@ -546,6 +498,10 @@ func (a *app) teamsPool(t team) (string, teamstore.Effective) {
 
 // teamsGot is what one read found, folded on the loop.
 type teamsGot struct {
+	previews        map[string]teamsPreview
+	interactionTeam string
+	interactions    []teamstore.Entry
+
 	packets      []teamstore.Packet
 	packetsStamp string
 	packetsSame  bool
@@ -622,6 +578,9 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	if withWorld {
 		files = a.teamsMemberFiles()
 	}
+	selected, _ := a.teamsSelected()
+	members := append([]teamMember(nil), a.teamsCrewMembers(selected)...)
+	previous := a.tp.previews
 	worldDoor, hosted, rowsDoor := a.world, a.hosted(), a.teamsDisk.rows
 	if rowsDoor == nil {
 		rowsDoor = session.ReadRows
@@ -635,6 +594,20 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 				defer wg.Done()
 				read()
 			}()
+		}
+		if !hosted {
+			side(func() {
+				got.previews = map[string]teamsPreview{}
+				for _, m := range members {
+					got.previews[m.Key] = teamsReadPreview(m.File, previous[m.Key])
+				}
+			})
+		}
+		if selected.ID != "" && seam.Traffic != nil {
+			side(func() {
+				got.interactionTeam = selected.ID
+				got.interactions, _ = seam.Traffic(selected.ID, "", trafficKeep)
+			})
 		}
 		type spendGot struct {
 			spend teamstore.Spend
@@ -760,6 +733,20 @@ func teamsMemberRows(door func() (session.World, bool), hosted bool,
 func (a *app) teamsFold(got teamsGot) tea.Cmd {
 	a.tp.reading = false
 	changed := false
+	if got.previews != nil {
+		if a.tp.previews == nil {
+			a.tp.previews = map[string]teamsPreview{}
+		}
+		for key, preview := range got.previews {
+			if a.tp.previews[key] != preview {
+				a.tp.previews[key] = preview
+				changed = true
+			}
+		}
+	}
+	if got.interactionTeam != "" && got.interactions != nil {
+		changed = a.teamsTakeInteractions(got.interactionTeam, got.interactions) || changed
+	}
 	if got.packetsErr == nil && !got.packetsSame && got.packetsStamp != "" {
 		a.tp.packets, a.tp.packetsStamp, a.tp.packetsKnown = got.packets, got.packetsStamp, true
 		changed = true
@@ -791,7 +778,6 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 		changed = true
 	}
 	if changed {
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	} else {
 		a.ptr.still = a.drawn
@@ -817,7 +803,7 @@ func teamsSameWorld(was, now map[string]session.SessionRow) bool {
 	}
 	for k, r := range now {
 		o, ok := was[k]
-		if !ok || !o.At.Equal(r.At) || o.Open != r.Open || o.Live != r.Live ||
+		if !ok || !o.At.Equal(r.At) || o.Open != r.Open || o.Live != r.Live || o.Title != r.Title ||
 			o.Presence.State != r.Presence.State || o.Presence.Question.ID != r.Presence.Question.ID ||
 			o.Presence.Question.Kind != r.Presence.Question.Kind {
 			return false

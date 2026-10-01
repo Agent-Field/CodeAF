@@ -292,7 +292,8 @@ a member's chat that member is `you` (`◆ → you`, `you → ◆`). A press on 
 manager's opens on the Traffic, a member's on its tasks, `←` `→` switch them while the column has
 the keyboard, `alt+l` shows or hides it, and `alt+m` goes to the manager. What a manager can do, and how members talk to each other, is on the
 **team manager** page. The **teams page** (`/teams`, `alt+2`) lists every team as a tree
-and puts the chosen team's manager conversation beside it, with what waits on you.
+and shows the chosen team's member cards, saved updates, interactions and what waits on you.
+Member aliases and interaction links open Chats with the originating team selected.
 
 ## What clicking a team name in a chat does, and how team names and handles are links
 

@@ -69,14 +69,12 @@ func (a *app) teamsWriteSettled(w teamsWrote) {
 	}
 	if a.tp.undo.said.settle(w) {
 		a.tp.undo.at = now
-		a.tp.top = teamsTopCache{}
 	}
 	if a.tmove.undo.said.settle(w) {
 		a.tmove.undo.at = now
 		if why := a.tmove.undo.said.why; why != "" {
 			a.tmove.undo.word = teamNotSaved("the move", why)
 		}
-		a.tp.top = teamsTopCache{}
 	}
 	a.touch()
 }

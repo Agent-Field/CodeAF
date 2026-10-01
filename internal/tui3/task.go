@@ -4068,22 +4068,6 @@ func (a *app) railWiden(wide bool) {
 // session opens where the last one was told to, which is the behaviour of a
 // session that has never been told anything.
 func (a *app) railStow(away bool) {
-	// ON THE TEAMS PAGE THE ANSWER IS THE PAGE'S, and it is not written: the
-	// page opens with the column folded because it has a rail of its own on
-	// the left (teamspagehost.go).
-	if a.teamsHosting() {
-		if a.tp.traffic == !away {
-			return
-		}
-		a.tp.traffic = !away
-		if away {
-			a.railHold = false
-			a.side.up = ""
-		}
-		a.dropHover()
-		a.touch()
-		return
-	}
 	if a.railAway == away {
 		return
 	}

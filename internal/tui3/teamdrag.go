@@ -100,7 +100,6 @@ func (a *app) teamDragMotion(x, y int, held bool) bool {
 	over, ok, why := a.teamDropAt(x, y)
 	if over != d.over || ok != d.ok || why != d.why {
 		d.over, d.ok, d.why = over, ok, why
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	}
 	return true
@@ -201,7 +200,6 @@ func (a *app) teamDragRelease() (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.tdrag = teamDrag{}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	if !d.on {
 		if d.clicked {
@@ -252,7 +250,6 @@ func (a *app) teamDropMember(d teamDrag) tea.Cmd {
 // teamDragCancel drops the drag, and nothing happens.
 func (a *app) teamDragCancel() {
 	a.tdrag = teamDrag{}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 }
 

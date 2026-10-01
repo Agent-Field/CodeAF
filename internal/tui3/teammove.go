@@ -540,7 +540,6 @@ func (a *app) teamMoveAsk(ids []string, parent string, from int) tea.Cmd {
 	} else {
 		a.tsheet.cursor = tsMoveYes
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	return nil
 }
@@ -641,7 +640,6 @@ func (a *app) teamMoveApply(ids []string, parent string, from int) tea.Cmd {
 	a.tmove.pend = teamMovePend{}
 	a.tmove.undo = teamMoveUndo{back: back, homes: homes, word: word, from: from, at: a.now(), said: a.teamWriteWatch(nil)}
 	a.tp.msg = ""
-	a.tp.top = teamsTopCache{}
 	if a.tp.cur.act == teamsActMoveYes || a.tp.cur.act == teamsActMoveNo {
 		a.tp.cur = teamsRef{act: teamsActUndo}
 	}
@@ -678,7 +676,6 @@ func (a *app) teamMoveCancel() {
 	if a.tsheet.cursor == tsMoveYes || a.tsheet.cursor == tsMoveNo {
 		a.tsheet.cursor = tsInside
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 }
 
@@ -729,7 +726,6 @@ func (a *app) teamMoveUndo() tea.Cmd {
 	} else {
 		a.tp.msg = "moved back"
 	}
-	a.tp.top = teamsTopCache{}
 	if a.tp.cur.act == teamsActUndo {
 		a.teamsCursorHome()
 	}

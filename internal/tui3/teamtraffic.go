@@ -299,6 +299,7 @@ func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
 // the clock sets the next one here, slower after a run of quiet ones.
 func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, tick bool) tea.Cmd {
 	a.traffic.reading = false
+	version := a.traffic.version
 	changed := false
 	if edits == a.traffic.edits && a.traffic.wrote == a.traffic.edits {
 		if fresh != nil {
@@ -308,7 +309,10 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 		a.traffic.stamp = at
 	}
 	if a.traffic.cursor == nil {
-		a.traffic.cursor, a.traffic.rows, a.traffic.done = map[string]string{}, map[string][]teamstore.Entry{}, map[string]bool{}
+		a.traffic.cursor, a.traffic.done = map[string]string{}, map[string]bool{}
+		if a.traffic.rows == nil {
+			a.traffic.rows = map[string][]teamstore.Entry{}
+		}
 	}
 	var acts []tea.Cmd
 	for _, g := range got {
@@ -327,11 +331,7 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 			continue
 		}
 		a.traffic.cursor[g.id] = g.entries[len(g.entries)-1].ID
-		rows := append(a.traffic.rows[g.id], g.entries...)
-		if len(rows) > trafficKeep {
-			rows = append([]teamstore.Entry(nil), rows[len(rows)-trafficKeep:]...)
-		}
-		a.traffic.rows[g.id] = rows
+		a.teamsTakeInteractions(g.id, g.entries)
 		changed = true
 		if g.first {
 			// A first look is history: what was asked before this window
@@ -354,7 +354,9 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 		}
 	}
 	if changed {
-		a.traffic.version++
+		if a.traffic.version == version {
+			a.traffic.version++
+		}
 		a.touch()
 	} else if len(acts) == 0 {
 		a.ptr.still = a.drawn

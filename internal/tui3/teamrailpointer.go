@@ -99,10 +99,6 @@ func (a *app) trafficHint() string {
 	if a.teamsOff() || !a.wall.loaded || len(a.wall.teams) == 0 {
 		return ""
 	}
-	// On the teams page the box says which team as well as who.
-	if words := a.teamsComposerWord(); words != "" {
-		return words
-	}
 	if _, ok := a.teamFrontManaged(); ok {
 		return "to " + a.teamManagerMark() + " manager"
 	}

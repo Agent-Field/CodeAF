@@ -6,6 +6,17 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Teams overview reading bounds
+
+Member previews read at most **64 KiB** (`teamsPreviewBytes`) from each selected local
+member's journal, off the UI loop. An unchanged size/mtime reuses its cached preview;
+remote journals are never opened on this machine. Interaction readings retain at most
+**200 entries** (`trafficKeep`), merged by id without consuming the live delivery cursor.
+The table paints at most **10 body rows**, reduced to fit the available pane, with a
+pinned header and independent scrolling. Paint performs no filesystem or network reads.
+`TestTeamsPreviewReadsOnlyTheTailAndFollowsUpdates`, the overview navigation/geometry
+regressions, and `TestTheFrameNeverReadsTheDisk` defend these bounds.
+
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;

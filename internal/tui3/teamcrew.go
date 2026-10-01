@@ -110,8 +110,8 @@ func (a *app) teamsCrew(t team) []teamsCrewRow {
 			if home, ok := tree.Home(m.Key); ok && home.Team != t.ID && home.Via != t.ID && !r.manager {
 				r.also = a.teamNameOf(home.Team)
 			}
-			if r.title == "" && r.handle == "" {
-				continue
+			if row, known := a.tp.world[m.File]; known && strings.TrimSpace(row.Title) != "" {
+				r.title = row.Title
 			}
 			out = append(out, r)
 		}
@@ -181,7 +181,7 @@ func (a *app) teamsCrewHint(r teamsCrewRow) string {
 	if r.held {
 		return words + hintSegment + "click opens"
 	}
-	return words + hintSegment + "click resumes it behind, in its own tab"
+	return words + hintSegment + "click opens in Chats"
 }
 
 // ── THE HEADER ──────────────────────────────────────────────────────────────
@@ -249,11 +249,7 @@ func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
 					hint += hintSegment + r.word
 				}
 			}
-			if a.teamsHosting() {
-				hint += hintSegment + "it is the conversation below"
-			} else {
-				hint += hintSegment + "click brings it in front"
-			}
+			hint += hintSegment + "click opens Chats"
 			pieces = append(pieces, teamsHeadPiece{s: word, w: ansi.StringWidth(word),
 				t: teamsTarget{act: teamsActManagerGo, id: t.ID, hint: hint}, btn: true, drop: dropBoss})
 		}
@@ -392,15 +388,7 @@ func (a *app) teamsManagerGo(id string) tea.Cmd {
 	if !ok || t.Manager == "" {
 		return nil
 	}
-	if t.Manager == a.frontTabKey() {
-		// It is in front already: the keyboard goes to its box.
-		a.tp.focus = false
-		a.tp.top = teamsTopCache{}
-		a.touch()
-		return nil
-	}
-	a.tp.sel = id
-	return a.teamsBringManager()
+	return a.teamsMemberGo(id, t.Manager)
 }
 
 // ── THE MEMBERS CARD ────────────────────────────────────────────────────────
@@ -477,9 +465,7 @@ func (a *app) teamCrewKey(msg tea.KeyPressMsg) tea.Cmd {
 // stays, so the person sees it change to `Open`.
 func (a *app) teamCrewGo(r teamsCrewRow) tea.Cmd {
 	id := a.tcrew.team
-	if r.held {
-		a.teamCrewShut()
-	}
+	a.teamCrewShut()
 	return a.teamsMemberGo(id, r.key)
 }
 
@@ -524,7 +510,7 @@ func (a *app) teamCrewMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		default:
 			if hit.arg >= 0 && hit.arg < len(rows) {
 				c.cursor = hit.arg
-				a.teamDragPress(m.X, m.Y, true, c.team, rows[hit.arg].key, teamsTarget{}, false)
+				a.teamDragPress(m.X, m.Y, true, c.team, rows[hit.arg].key, teamsTarget{act: teamsActMember, id: c.team, arg: rows[hit.arg].key}, true)
 				a.touch()
 			}
 		}
@@ -658,7 +644,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 	c.top = top
 	// The columns: handle, state and age, the tag and the button are sized;
 	// the title takes what is left.
-	const nameW, stateW, ageW, buttonW = 13, 10, 5, 8
+	const nameW, stateW, ageW, buttonW = 13, 10, 5, 0
 	tagW := 0
 	for _, r := range rows {
 		if r.also != "" {
@@ -693,7 +679,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 		text := pal.ink(teamsPad(fitConversationTitle(name, nameW-1), nameW)) +
 			pal.muted(teamsPad(fitConversationTitle(title, max(titleW-2, 1)), titleW)) +
 			ink(teamsPad(r.word, stateW)) + pal.dim(teamsPad(age, ageW))
-		hits := []wallHit{{x0: 0, x1: inner - buttonW, y1: 1, kind: crewHitRow, arg: at}}
+		hits := []wallHit{{x0: 0, x1: inner, y1: 1, kind: crewHitRow, arg: at}}
 		if tagW > 0 {
 			tag := ""
 			if r.also != "" {
@@ -702,20 +688,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 			}
 			text += pal.dim(teamsPad(fit(tag, tagW-2), tagW))
 		}
-		word := "Resume"
-		if r.held {
-			word = "Open"
-		}
-		chip := " " + word + " "
-		lit := c.hot == at && c.hotButton
-		switch {
-		case lit:
-			chip = pal.cursor(pal.ink(chip), 0)
-		default:
-			chip = pal.ink(chip)
-		}
-		text = teamsPad(text, inner-buttonW) + chip
-		hits = append(hits, wallHit{x0: inner - buttonW, x1: inner - buttonW + ansi.StringWidth(" "+word+" "), y1: 1, kind: crewHitButton, arg: at})
+		text = teamsPad(text, inner)
 		if at == c.cursor || (c.hot == at && !c.hotButton) {
 			text = pal.cursor(teamsPad(text, inner), inner)
 		}

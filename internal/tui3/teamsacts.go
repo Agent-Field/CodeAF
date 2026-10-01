@@ -23,6 +23,20 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	a.tp.msg = ""
 	a.tp.cur = t.ref()
 	switch t.act {
+	case teamsActInteractionToggle:
+		a.trafficToggle(trafficOpenKey(t.id, t.arg))
+		return nil
+	case teamsActInteractionJump:
+		a.wall.activeID = t.id
+		a.leavePlace()
+		a.closeRoom()
+		return a.trafficJumpFromTeam(t.id, t.arg, t.opt)
+	case teamsActInteractionUp:
+		a.teamsInteractionsScroll(-3)
+		return nil
+	case teamsActInteractionDown:
+		a.teamsInteractionsScroll(3)
+		return nil
 	case teamsActSelect:
 		return a.teamsSelect(t.id)
 	case teamsActClosedFold:
@@ -65,7 +79,6 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActOption:
 		if t.opt == "" {
 			a.tp.expand = t.arg
-			a.tp.top = teamsTopCache{}
 			a.touch()
 			return nil
 		}
@@ -73,17 +86,12 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActOwnAnswer:
 		a.tp.answering = t.arg
 		a.tp.answer.reset()
-		a.tp.top = teamsTopCache{}
 		a.touch()
 		return nil
 	case teamsActPrompt:
 		return a.teamsPrompt(t.arg, t.opt)
 	case teamsActUndo:
 		return a.teamsUndoAny()
-	case teamsActRetryManager:
-		return a.teamsRetryManager()
-	case teamsActOpenInChats:
-		return a.teamsOpenInChats()
 	case teamsActMoveYes:
 		return a.teamMoveConfirm()
 	case teamsActMoveNo:
@@ -113,39 +121,25 @@ func (a *app) teamDraggable(t teamsTarget) bool {
 // teamsSelect puts the pane on team id and, when it has a manager, brings that
 // conversation in front, where the pane draws it. The keyboard goes back to the
 // composer: choosing a team is choosing whom to talk to.
+// Selecting a team changes only the overview; background work keeps its focus.
 func (a *app) teamsSelect(id string) tea.Cmd {
 	a.tp.sel = id
 	a.tp.expand, a.tp.answering = "", ""
-	a.tp.top = teamsTopCache{}
-	if t, ok := a.teamByID(id); ok && t.Manager != "" && !t.Closed() {
-		a.tp.focus = false
-	}
+	a.tp.focus = true
+	a.tp.cur = teamsRef{act: teamsActSelect, id: id}
 	a.touch()
-	return tea.Batch(a.teamsBringManager(), a.teamsRead(false))
+	return a.teamsRead(true)
 }
 
-// teamsMemberGo is a press on a member: one this window holds is opened, and
-// one it does not is resumed BEHIND, as its own tab, without moving the
-// person's focus (ruling c-b).
+// Member aliases lead to Chats with the originating team's overlay selected.
 func (a *app) teamsMemberGo(id, key string) tea.Cmd {
-	if a.trafficHeld(key) {
-		if key == a.frontTabKey() {
-			a.leavePlace()
-			return nil
-		}
-		cmd := a.trafficGo(key)
-		a.leavePlace()
-		return cmd
-	}
-	t, ok := a.teamByID(id)
-	if !ok {
+	if key == "" {
 		return nil
 	}
-	m, ok := t.Member(key)
-	if !ok || strings.TrimSpace(m.File) == "" {
-		return nil
-	}
-	return a.teamsResumeBehind(m)
+	a.wall.activeID = id
+	a.leavePlace()
+	a.closeRoom()
+	return a.trafficGo(key)
 }
 
 // teamsResumeBehind opens one member's conversation behind the one in front,
@@ -193,7 +187,6 @@ func (a *app) teamsResumeBehind(m teamMember) tea.Cmd {
 			a.trafficBehindTop(key)
 			a.chatTabBar = tabBar{}
 			a.tp.msg = name + " is open behind, in its own tab"
-			a.tp.top = teamsTopCache{}
 			a.touch()
 			return cmd
 		}
@@ -278,8 +271,9 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 func (a *app) teamsStartManager(where string, made func(chatTab)) tea.Cmd {
 	take := func() {
 		made(chatTab{key: a.convKey(a.file), file: a.file, where: a.workspace})
+		a.wall.activeID = a.tp.sel
+		a.leavePlace()
 		a.tp.focus = false
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	}
 	if a.start == nil || a.shared {
@@ -366,7 +360,6 @@ func (a *app) teamsDecide(id, opt, words string) tea.Cmd {
 		label = o.Label
 	}
 	a.tp.msg = "decided " + a.teamsDot() + " " + label
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	// A CLOSING REPORT'S `Close` closes the team (DESIGN.md 8.8). Every other
 	// decision, a cap's `Raise to $X` included, is the decision and nothing
@@ -393,7 +386,6 @@ func (a *app) teamsPrompt(file, key string) tea.Cmd {
 	cmd, took := a.sendAnswer(row, question, key)
 	if took {
 		a.tp.msg = answerSentWord + question.Label(key)
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	}
 	return cmd

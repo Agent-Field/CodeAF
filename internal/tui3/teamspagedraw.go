@@ -243,7 +243,7 @@ func (a *app) teamsRailTeam(d *teamsDraw, t team, depth, width, y int) string {
 	}
 	hint := t.Name
 	if t.Manager != "" {
-		hint += hintSegment + "talk to its manager here"
+		hint += hintSegment + "view members and recent interactions"
 	} else {
 		hint += hintSegment + "no manager yet"
 	}
@@ -310,53 +310,6 @@ func (a *app) teamsRailNewWords() (string, bool) {
 
 // ── THE PANE'S HEAD: HEADER, MEMBERS, INBOX ─────────────────────────────────
 
-// teamsTopCache is the hosted pane's head rows as last drawn, and what they
-// were drawn from, so the rows and the height the conversation is laid out
-// under are one answer between frames.
-type teamsTopCache struct {
-	key     teamsTopKey
-	rows    []string
-	targets []teamsTarget
-	ok      bool
-}
-
-// teamsTopKey is everything the head rows are drawn from that can move
-// without the page hearing of it.
-type teamsTopKey struct {
-	width, edits  int
-	height        int
-	stamp, sel    string
-	cur, hot      teamsRef
-	focus         bool
-	sig           uint64
-	minute        int64
-	answering     string
-	answer        string
-	expand        string
-	ascii, linear bool
-	undoing       bool
-	moving        string
-	dragging      bool
-	// wrap is the selected team's wrap-up words, which move with the clock
-	// on a boundary of their own rather than the minute's.
-	wrap string
-}
-
-// teamsTopSig is a digest of the members' states this window can see change
-// on its own: each held member's signal. It allocates nothing.
-func (a *app) teamsTopSig(t team) uint64 {
-	var h uint64 = 14695981039346656037
-	front := a.frontTabKey()
-	for _, m := range t.Members {
-		s := uint64(0)
-		if a.trafficHeld(m.Key) {
-			s = uint64(a.tabSignalFor(m.Key, m.Key == front)) + 1
-		}
-		h = (h ^ s) * 1099511628211
-	}
-	return h
-}
-
 // teamsTop is the pane's head for the selection, width cells wide: the header
 // row, the members, and the inbox. Targets are recorded on rows counted from
 // its first and columns from the pane's.
@@ -377,7 +330,7 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		}
 		return out
 	}
-	out = append(out, a.teamsHeader(d, t, width, len(out)))
+	out = append(out, a.teamsOverviewHeader(d, t, width, len(out)))
 	if t.Closed() {
 		return out
 	}
@@ -605,16 +558,6 @@ func (a *app) teamsHandleOf(t team, file string) string {
 // teamsInboxRows is the packets waiting on the person or on this team's
 // manager, one card each, newest last, each beyond the last three folded to
 // one line a press unfolds.
-//
-// BESIDE THE MANAGER THE INBOX HAS A HEIGHT. While the pane hosts the
-// manager's conversation, the cards are rows pinned over it, so three whole
-// cards on a laptop's 34 rows left the conversation one row: the person could
-// decide packets and could no longer read or steer the manager, which is what
-// the page is for. So hosted, the cards may take about a third of the
-// frame: the newest (or the one a press unfolded) is always whole, older ones
-// stay whole while they fit, and the rest are one line each, as the fourth
-// card always was. Unhosted, nothing else shares the pane and the old rule
-// stands.
 func (a *app) teamsInboxRows(d *teamsDraw, width, y int) []string {
 	pal := a.pal
 	if !a.teamsCanDelegate() {
@@ -624,36 +567,6 @@ func (a *app) teamsInboxRows(d *teamsDraw, width, y int) []string {
 	whole := make([]bool, len(packets))
 	for i := range packets {
 		whole[i] = i >= len(packets)-teamsInboxWhole || a.tp.expand == packets[i].ID
-	}
-	if a.teamsHosting() && len(packets) > 1 {
-		budget := max(a.height/3-y, teamsInboxFloor)
-		// Measured on a scratch draw so the real one records only the targets
-		// it draws.
-		height := func(p teamstore.Packet) int {
-			return len(a.teamsCard(&teamsDraw{a: a}, p, width, 0)) + 1
-		}
-		used := 0
-		order := make([]int, 0, len(packets))
-		for i := len(packets) - 1; i >= 0; i-- {
-			if a.tp.expand == packets[i].ID {
-				order = append([]int{i}, order...)
-				continue
-			}
-			order = append(order, i)
-		}
-		for n, i := range order {
-			if !whole[i] {
-				used++
-				continue
-			}
-			h := height(packets[i])
-			if n > 0 && used+h > budget && a.tp.expand != packets[i].ID {
-				whole[i] = false
-				used++
-				continue
-			}
-			used += h
-		}
 	}
 	var out []string
 	for i, p := range packets {
@@ -676,13 +589,8 @@ func (a *app) teamsInboxRows(d *teamsDraw, width, y int) []string {
 	return out
 }
 
-// teamsInboxFloor is the fewest rows the hosted inbox is given however short
-// the frame: one card's head, question and a couple of options.
-const teamsInboxFloor = 8
-
-// teamsFoldWaiting is a folded card's right edge when it waits on the person:
-// the same needs-you word its whole card carries, so folding a card never
-// hides that it is the person's to answer.
+// A folded decision retains the same waiting label as its expanded card so
+// folding cannot hide that the person needs to answer it.
 const teamsFoldWaiting = "waiting on you"
 
 // teamsCard is one decision packet as a card:
@@ -855,11 +763,11 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 	case !ok:
 	case t.Closed():
 		out = append(out, a.teamsClosedRows(d, t, width, y)...)
-	case t.Manager == "":
-		// Its offer is drawn under the members ([app.teamsNoManagerRows]).
 	default:
-		// The manager on its way in, or why it is not (teamsopen.go).
-		out = append(out, a.teamsOpeningRows(d, t, width, y+len(out))...)
+		out = append(out, "")
+		out = append(out, a.teamsMemberCards(d, t, width, y+len(out))...)
+		out = append(out, "")
+		out = append(out, a.teamsInteractionTable(d, t, width, y+len(out))...)
 	}
 	return out
 }
@@ -868,7 +776,7 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 // members and above anything waiting, so a long inbox never pushes it off the
 // pane: `+ Manager` and what a manager is, wrapped beside it.
 func (a *app) teamsNoManagerRows(d *teamsDraw, t team, width, y int) []string {
-	if t.Manager != "" || t.Closed() || t.Root || a.teamsOff() {
+	if (t.Manager != "" && !a.teamsManagerMissing(t)) || t.Closed() || t.Root || a.teamsOff() {
 		return nil
 	}
 	pal := a.pal
@@ -963,6 +871,7 @@ func (a *app) teamsEmpty(d *teamsDraw, width, height int) []string {
 // recorded in frame cells.
 func (a *app) teamsBody(width, room int) []placeRow {
 	d := &teamsDraw{a: a}
+	a.tp.table = teamsTableRect{}
 	a.teamsSettle()
 	var lines []string
 	if !a.teamsAny() {
@@ -980,12 +889,33 @@ func (a *app) teamsBody(width, room int) []placeRow {
 				d.targets[i].line = d.targets[i].y
 			}
 		} else {
-			// TOO NARROW FOR TWO COLUMNS, the rail stands over the pane as one
-			// list, and the arrows walk the two as one.
-			lines = a.teamsRail(d, width, len(a.teamsRailRows()))
-			lines = append(lines, a.pal.dim(rule(width)))
+			// A narrow rail has its own window so a long team list cannot take
+			// all the space needed by the selected team's overview.
+			all := a.teamsRail(d, width, len(a.teamsRailRows()))
+			limit := min(len(all), max(min(room/3, 5), 1))
+			focusY := 0
+			for _, target := range d.targets {
+				if target.ref() == a.tp.cur || target.act == teamsActSelect && target.id == a.tp.sel && focusY == 0 {
+					focusY = target.y
+				}
+				if target.ref() == a.tp.cur {
+					break
+				}
+			}
+			off := min(a.tp.railOffset, max(len(all)-limit, 0))
+			if focusY < off {
+				off = focusY
+			}
+			if focusY >= off+limit {
+				off = focusY - limit + 1
+			}
+			a.tp.railOffset = off
+			lines = append(lines, all[off:off+limit]...)
+			lines = append(lines, "")
 			for i := range d.targets {
 				d.targets[i].line = d.targets[i].y
+				d.targets[i].y -= off
+				d.targets[i].hidden = d.targets[i].y < 0 || d.targets[i].y >= limit
 			}
 		}
 		top := len(lines)
@@ -1000,17 +930,26 @@ func (a *app) teamsBody(width, room int) []placeRow {
 		if vis := room - top; len(pane) > vis && vis > 0 {
 			off := 0
 			for _, t := range d.targets[mark:] {
-				if t.ref() == a.tp.cur && t.y >= vis {
-					off = min(t.y-vis+1, len(pane)-vis)
+				if t.ref() == a.tp.cur {
+					if t.y >= vis {
+						off = min(t.y-vis+1, len(pane)-vis)
+					}
+					if t.act == teamsActInteractionUp || t.act == teamsActInteractionDown || t.act == teamsActInteractionToggle || t.act == teamsActInteractionJump {
+						off = min(max(a.tp.table.y+a.tp.table.h-vis, 0), len(pane)-vis)
+					}
+					break
 				}
 			}
 			if off > 0 {
 				pane = pane[off:]
 				d.shift(mark, 0, -off)
+				a.tp.table.y -= off
 			}
 		}
 		d.shift(mark, railW, top)
-		for i := mark; i < len(d.targets) && railW > 0; i++ {
+		a.tp.table.x += railW
+		a.tp.table.y += top + placeHeadRows
+		for i := mark; i < len(d.targets); i++ {
 			d.targets[i].pane = true
 		}
 		sep := a.pal.dim(a.linearMark("│", "|"))
@@ -1030,14 +969,7 @@ func (a *app) teamsBody(width, room int) []placeRow {
 			lines = append(lines, left+teamsPad(right, paneW))
 		}
 	}
-	// Only what was drawn can be pressed.
-	kept := d.targets[:0]
-	for _, t := range d.targets {
-		if t.y >= 0 && t.y < room {
-			kept = append(kept, t)
-		}
-	}
-	d.targets = kept
+	// Offscreen targets remain keyboard stops so long overviews can be walked.
 	d.shift(0, 0, placeHeadRows)
 	a.tp.targets = d.targets
 	// A CURSOR WHOSE BUTTON IS GONE (a team closed, a card decided) comes home

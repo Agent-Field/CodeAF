@@ -292,9 +292,6 @@ func (a *app) sideStep() {
 // answer, and on the teams page the page's own, which starts folded because
 // the page has a rail of its own on the left (teamspagehost.go).
 func (a *app) sideAway() bool {
-	if a.teamsHosting() {
-		return !a.tp.traffic
-	}
 	return a.railAway
 }
 

@@ -261,13 +261,12 @@ func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) t
 	if a.wall.activeID == id {
 		a.wall.activeID = ""
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	if !tell {
-		return a.teamsBringManager()
+		return nil
 	}
 	return tea.Batch(a.teamsTell(id, teamstore.Entry{Kind: teamstore.KindClose, From: teamstore.FromYou, To: teamstore.ToEveryone,
-		Text: "the person closed the team"}), a.teamsBringManager())
+		Text: "the person closed the team"}))
 }
 
 // teamsUndoing reports whether Undo is still offered for the last close.
@@ -295,10 +294,9 @@ func (a *app) teamsUndoClose() tea.Cmd {
 	}
 	a.tp.msg = u.name + " is open again"
 	a.tp.sel = u.team
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	return tea.Batch(a.teamsTell(u.team, teamstore.Entry{Kind: teamstore.KindReopen, From: teamstore.FromYou, To: teamstore.ToEveryone,
-		Text: "the person reopened the team"}), a.teamsBringManager())
+		Text: "the person reopened the team"}))
 }
 
 // teamsReopen is `Reopen` on a closed team, and `Reopen <parent> too` on one
@@ -351,14 +349,13 @@ func (a *app) teamsReopen(id string, withParents bool) tea.Cmd {
 	a.chatTabBar = tabBar{}
 	a.tp.sel = id
 	a.tp.msg = t.Name + " is open again"
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	var tells []tea.Cmd
 	for _, c := range chain {
 		tells = append(tells, a.teamsTell(c, teamstore.Entry{Kind: teamstore.KindReopen, From: teamstore.FromYou, To: teamstore.ToEveryone,
 			Text: "the person reopened the team"}))
 	}
-	return tea.Batch(append(tells, a.teamsBringManager())...)
+	return tea.Batch(tells...)
 }
 
 // teamsWrapUp is `Wrap up first`: the seam's wrap-up door appends the one
@@ -519,7 +516,6 @@ func (a *app) teamsDelete(id string) tea.Cmd {
 				a.tp.sel = ""
 				a.teamsSettle()
 			}
-			a.tp.top = teamsTopCache{}
 			a.touch()
 			return nil
 		}
