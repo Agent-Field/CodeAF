@@ -23,9 +23,11 @@ nothing else on the frame:
    **Chat model**, each already showing the value that is in force
 
 **With a key already found, there is no setup screen.** When a provider key is saved in
-the profile or set in the environment, such as `OPENROUTER_API_KEY`, a plain launch opens
-straight on home: no connection screen and no **Models and spending**. `/budget` sets a
-daily limit later. A `--no-host` launch on such a profile skips only the connection screen,
+the profile or set in the environment, such as `OPENROUTER_API_KEY`, a plain launch skips
+the connection screen and **Models and spending**. With nothing elsewhere to show, it
+opens the chat's greeting, `What would you like to work on?`; when other conversations
+are available, it opens home. `/budget` sets a daily limit
+later. A `--no-host` launch on such a profile skips only the connection screen,
 and still opens **Models and spending** while no daily limit is set. A resumed conversation,
 or one on another machine, never opens first-run setup.
 

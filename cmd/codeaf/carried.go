@@ -122,13 +122,14 @@ func carriedSignals() (context.Context, context.CancelFunc) {
 // model goes out through, whether this person's services can take a call on a
 // model, and the work seat a call nothing here can serve is answered on.
 type carriedRoad struct {
-	completerFor func(model string) modelapi.Completer
-	serves       func(model string) bool
-	resolveModel func(word string) (string, error)
-	modelPrice   func(model string) (input, output float64, known bool)
-	seat         string
-	defaultSeat  func() (string, error)
-	signNamed    bool
+	completerFor  func(model string) modelapi.Completer
+	authKeySource func(model string) string
+	serves        func(model string) bool
+	resolveModel  func(word string) (string, error)
+	modelPrice    func(model string) (input, output float64, known bool)
+	seat          string
+	defaultSeat   func() (string, error)
+	signNamed     bool
 }
 
 // carriedModels resolves a shell run's road. It is the person's own profile,
@@ -151,8 +152,9 @@ func profileRoad() (carriedRoad, error) {
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
 	return carriedRoad{
-		completerFor: adapters.forModel,
-		serves:       func(model string) bool { return session.ServesModel(sources, model) },
+		completerFor:  adapters.forModel,
+		authKeySource: func(model string) string { return config.APIKeySourceForModel(settings.ProfileDir, sources, model) },
+		serves:        func(model string) bool { return session.ServesModel(sources, model) },
 		resolveModel: func(word string) (string, error) {
 			// A shell has no model picker already warming in the background.
 			// Wait for the same catalog the chat's task matcher reads before
@@ -322,12 +324,13 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// name it has, so its rows are filed as one piece of work under it.
 	subject := filepath.Base(record)
 	api, err := modelapi.Open(modelapi.Config{
-		TaskDir:      record,
-		CompleterFor: road.completerFor,
-		Serves:       road.serves,
-		ModelPrice:   road.modelPrice,
-		Seat:         road.seat,
-		Ceiling:      inv.Ceilings.CostUSD,
+		TaskDir:       record,
+		CompleterFor:  road.completerFor,
+		AuthKeySource: road.authKeySource,
+		Serves:        road.serves,
+		ModelPrice:    road.modelPrice,
+		Seat:          road.seat,
+		Ceiling:       inv.Ceilings.CostUSD,
 		Bank: func(charge modelapi.Charge) {
 			// THE MACHINE'S SPENDING LEDGER, one row per call, written here and
 			// nowhere else: nothing else in this process meters these calls.

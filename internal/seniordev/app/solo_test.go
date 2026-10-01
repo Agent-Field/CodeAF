@@ -930,6 +930,35 @@ func TestTransientTurnErrorUsesStructuredProviderStatusAndExcludesQuota(t *testi
 	}
 }
 
+func TestTransientTurnErrorRejectsTextOnlyAuthenticationStatuses(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprintf("status-%d", status), func(t *testing.T) {
+			failure := &modelTurnError{
+				kind: "APIError", message: fmt.Sprintf("API error (%d): key rejected", status),
+				retryable: true,
+			}
+			if info, transient := transientTurnError(failure); transient || info.Class != "" {
+				t.Fatalf("text-only auth classification = %#v,%v; want terminal", info, transient)
+			}
+		})
+	}
+}
+
+// An upstream authentication refusal is a gateway response, because the
+// program's loopback token is still valid. Its own 401/403 remains terminal.
+func TestGatewayAuthenticationFailureDoesNotRetryTheProgramToken(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		outer := uint64(502)
+		failure := &modelTurnError{
+			statusCode: &outer, retryable: true,
+			responseBody: fmt.Sprintf(`{"error":{"code":502,"message":"API error (%d): account refused"}}`, status),
+		}
+		if info, retry := transientTurnError(failure); retry {
+			t.Errorf("upstream %d through the gateway was retried: %+v", status, info)
+		}
+	}
+}
+
 func TestSubmitRefusalsAreCountableEvents(t *testing.T) {
 	// A refusal that travels only as tool-call error text cannot be counted
 	// without opening a log. Every refusal is an event with a reason class.

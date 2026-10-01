@@ -34,6 +34,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 // NewBeltWorker builds one bash-belt worker agent for one store task. The
@@ -104,6 +105,7 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// account pool the same way every other production agent gets one; a nil
 	// provider builds the real client the way New always does.
 	config.completer = completer
+	config.workerWireModel = beltWorkerTransportModel(completer)
 	agent, err := New(config)
 	if err != nil {
 		return nil, err
@@ -122,6 +124,33 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	g.plan = plan
 	g.planMu.Unlock()
 	return agent, nil
+}
+
+// beltWorkerTransportModel reads the slug from a transport the door already
+// built. Account-aware conversation completers have no transport model here:
+// they must receive the qualified identity and resolve it themselves. A do
+// seat owns a raw client instead, whose already resolved slug must survive
+// without borrowing the worker's auth-explanation facts for routing.
+func beltWorkerTransportModel(completer Completer) string {
+	switch client := completer.(type) {
+	case seatCompleter:
+		return beltWorkerTransportModel(client.next)
+	case seatChain:
+		return beltWorkerTransportModel(client.next)
+	case guardedCompleter:
+		return beltWorkerTransportModel(client.next)
+	case guardedChain:
+		return beltWorkerTransportModel(client.next)
+	case interface {
+		Snapshot() (string, router.Client)
+	}:
+		_, transport := client.Snapshot()
+		return transport.Model()
+	case interface{ Model() string }:
+		return client.Model()
+	default:
+		return ""
+	}
 }
 
 // workerJournalName mints the transcript's file name the way

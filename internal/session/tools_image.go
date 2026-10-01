@@ -238,8 +238,8 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		gen.Account(model, response.Usage)
 	}
 
-	path, err := mediaDestinationFrom(gen.Workspace, parsed.Path, parsed.Prompt,
-		imageExtension(response.Data[0].MediaType), gen.Directory)
+	path, err := imageDestinationFrom(gen.Workspace, parsed.Path, parsed.Prompt, data,
+		response.Data[0].MediaType, gen.Directory)
 	if err != nil {
 		return "Could not save the generated image: " + err.Error(), true
 	}
@@ -255,20 +255,14 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	return describeGeneratedImage(path, data, model), false
 }
 
-// imageExtension maps what the provider says it sent onto a file suffix. png is
-// the default because png is what the request asked for: a provider that names
-// no type sent the format it was told to.
-func imageExtension(mediaType string) string {
-	switch strings.ToLower(strings.TrimSpace(mediaType)) {
-	case "image/jpeg", "image/jpg":
-		return ".jpg"
-	case "image/webp":
-		return ".webp"
-	case "image/gif":
-		return ".gif"
-	default:
-		return ".png"
+func imageDestinationFrom(workspace, asked, prompt string, data []byte, declared, directory string) (string, error) {
+	extension := provider.ImageExtension(data, declared)
+	if trimmed := strings.TrimSpace(asked); trimmed != "" {
+		if ext := filepath.Ext(trimmed); ext != "" && ext != "." {
+			asked = strings.TrimSuffix(trimmed, ext) + extension
+		}
 	}
+	return mediaDestinationFrom(workspace, asked, prompt, extension, directory)
 }
 
 // describeGeneratedImage is the whole result the model reads: WHERE and HOW BIG,
