@@ -68,7 +68,7 @@ func (s *Sync) relayOf(sig reqsign.Signer) rotate.Relay {
 func deviceRecord(id identity.Identity, name string) (directory.Device, error) {
 	sealed, err := directory.SealName(directory.MetadataKey(id.CellKey()), name)
 	return directory.Device{
-		V: 1, Name: sealed, AddedBy: id.ID(),
+		V: 1, Name: sealed, AddedBy: id.ID(), Platform: runtime.GOOS,
 		Caps: directory.Caps{OS: runtime.GOOS, Arch: runtime.GOARCH, Cow: "none"},
 	}, err
 }

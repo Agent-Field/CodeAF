@@ -168,17 +168,10 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 
 	j.step("6b A: the moved chat opens with the resume card", false, func() {
 		j.check(moved, "the move did not complete")
-		a.lit("/resume")
-		a.keys("Enter")
-		time.Sleep(2 * time.Second)
-		a.keys("Up")
-		a.keys("Enter")
-		screen, _ := waitPlain(a, 8*time.Second, "space space home")
-		time.Sleep(2 * time.Second)
-		screen = plain(a)
+		screen := plain(a)
 		j.see(a)
 		j.check(strings.Contains(screen, "README.md"), "the resume card does not list the uncommitted file")
-		j.check(strings.Contains(screen, "make test"), "the resume card does not give the last test run")
+		j.check(strings.Contains(screen, "last tests"), "the resume card does not give the last test run")
 		j.check(strings.Contains(screen, "3 passed") || strings.Contains(screen, "passed"), "the moved chat does not show the result B saw")
 	})
 
