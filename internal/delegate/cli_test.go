@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -48,6 +49,22 @@ func TestParseRunsTheDefaultCommandOnABareBrief(t *testing.T) {
 	}
 	if inv.Workspace == "" || inv.Workspace[0] != '/' {
 		t.Fatalf("workspace = %q, want the current folder, absolute", inv.Workspace)
+	}
+}
+
+func TestParseReadsFlagsAfterTheBrief(t *testing.T) {
+	inv, err := Parse(testProgram(nil), []string{"brief", "--max-cost", "0.5"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Brief() != "brief" || inv.Ceilings.CostUSD != 0.5 {
+		t.Fatalf("invocation = %+v, want brief and max-cost 0.5", inv)
+	}
+}
+
+func TestParseRefusesAnUnknownFlagAfterTheBrief(t *testing.T) {
+	if _, err := Parse(testProgram(nil), []string{"brief", "--not-a-flag"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("an unknown flag after the brief was folded into the brief")
 	}
 }
 
@@ -381,4 +398,22 @@ func TestAChildThatIgnoresItsGoneHostIsEndedAfterTheGrace(t *testing.T) {
 	}
 	close(release)
 	<-done
+}
+
+// After the first marker, even another marker is a literal brief argument.
+func TestParsePreservesEveryArgumentAfterTheEndMarker(t *testing.T) {
+	for _, args := range [][]string{{"--", "--"}, {"--max-cost", "0.5", "--", "--", "--max-cost", "2", "last"}} {
+		inv, err := Parse(testProgram(nil), args, &bytes.Buffer{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		marker := 0
+		for args[marker] != "--" {
+			marker++
+		}
+		want := strings.Join(args[marker+1:], " ")
+		if inv.Brief() != want || !reflect.DeepEqual(inv.Args, args[marker+1:]) {
+			t.Fatalf("brief=%q args=%q, want %q from %q", inv.Brief(), inv.Args, want, args)
+		}
+	}
 }

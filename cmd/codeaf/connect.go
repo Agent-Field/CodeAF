@@ -47,7 +47,7 @@ var (
 func runConnect(args []string) error {
 	flags := commandFlags("connect")
 	noBrowser := flags.Bool("no-browser", false, "print the browser address without opening it")
-	region := flags.String("region", "", "service region: intl or cn")
+	region := flags.String("region", "", "provider region: intl or cn")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}

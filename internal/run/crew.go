@@ -39,6 +39,7 @@ import (
 	"fmt"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -122,13 +123,28 @@ type Seats struct {
 // for a tier key the profile has never held and only a row CLEARED on purpose
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
-func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer) WorkerFactory {
+func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
+	// The admitted source set explains the refused account without resolving
+	// worker requests a second time. The completer still owns every route.
+	var sources modelsource.Set
+	if len(sourceSets) > 0 && !sourceSets[0].Empty() {
+		sources = sourceSets[0]
+	} else {
+		sources = config.ResolveSources(profileDir, config.APIKeyAt(profileDir), config.DefaultBaseURL)
+	}
+	workerFor := func(model string, completer session.Completer) *BashWorker {
+		worker := NewBashWorker(store, workspace, model, standing, completer)
+		worker.authKeySource = func(model string) string {
+			return config.APIKeySourceForModel(profileDir, sources, model)
+		}
+		return worker
+	}
 	return func(task plandb.Task) Worker {
 		// UNDER `--one-model` THERE IS NO TIER TO READ. The door named one model
 		// for every seat ([Seats.One]), so the role does not matter and neither
 		// the profile nor the environment is asked.
 		if seats.One != "" {
-			return NewBashWorker(store, workspace, seats.One, standing, completerFor(seats.One))
+			return workerFor(seats.One, completerFor(seats.One))
 		}
 		// A task the store cannot name — which the supervisor never hands over —
 		// reads as the work seat, the same fallback SeatFor gives an unknown
@@ -144,7 +160,7 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		// ceiling by seat, and a crew whose seats share one model would give it
 		// nothing else to tell a check's call from a worker's.
 		seat, _ := config.CrewTierSeat(tier)
-		return NewBashWorker(store, workspace, model, standing, session.SeatCompleter(seat, completerFor(model)))
+		return workerFor(model, session.SeatCompleter(seat, completerFor(model)))
 	}
 }
 
