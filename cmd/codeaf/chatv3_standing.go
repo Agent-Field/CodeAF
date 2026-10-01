@@ -37,6 +37,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -126,7 +127,17 @@ func standingWatch(store *standing.Store) standing.Watch {
 // over: the posture's model catalog warms in the background and writes a cache
 // when it lands, and the release cancels and joins it (#1274). It is never nil
 // when the error is.
-func v3StandingTicker(store *standing.Store) (*standing.Ticker, func(), error) {
+//
+// THE ACCOUNTS MANAGER IS THE CALLER'S AND NEVER ONE BUILT HERE. A live window
+// already resolved the process's one manager ([v3Process.Conns]) and a tick it
+// runs must reach the same object the conversation's own belt does, or the two
+// would hold separate caches and a token one refreshed would be a token the
+// other still believed had not moved (chatv3.go's [v3Connect] states the law).
+// The detached `codeaf tick` has no process and so resolves the profile's own
+// manager before it calls this — one manager in that process, for the one pass
+// it makes. Nil is the honest absence the belt reads: no manager means no
+// account tools at all, and this must not invent one to fill the gap.
+func v3StandingTicker(store *standing.Store, conns *connect.Manager) (*standing.Ticker, func(), error) {
 	if store == nil {
 		return nil, nil, fmt.Errorf("standing: no store")
 	}
@@ -134,7 +145,7 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	posture, models, err := v3StandingPosture(settings)
+	posture, models, err := v3StandingPosture(settings, conns)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -178,9 +189,17 @@ func v3MemoryPath(profileDir string) string {
 // The workspace here is only where the rows are read from. Every firing runs in
 // its own item's workspace, which the runner sets before it opens anything.
 //
+// conns is the accounts manager the firing's session is given, and it is a
+// PARAMETER rather than something resolved here: the live process resolved its
+// one manager at the door and the detached tick resolved the profile's before
+// it called, and a second manager built in this function would share the store
+// with the first while disagreeing about every token either refreshed. Nil is
+// left nil — the belt then carries no account tool at all rather than a tool
+// that answers "not configured" ([session.Config.Connect]).
+//
 // It answers the lazy catalog it opened as well, which the caller closes when
 // the pass is over; closing it does not take the rows it has already read.
-func v3StandingPosture(settings config.Config) (session.Config, *catalog.Catalog, error) {
+func v3StandingPosture(settings config.Config, conns *connect.Manager) (session.Config, *catalog.Catalog, error) {
 	root, err := os.UserHomeDir()
 	if err != nil || root == "" {
 		root = os.TempDir()
@@ -216,6 +235,12 @@ func v3StandingPosture(settings config.Config) (session.Config, *catalog.Catalog
 	if err != nil {
 		return session.Config{}, nil, err
 	}
+	// AND THE ACCOUNTS MANAGER IS THE CALLER'S, wired after governance for the
+	// reason the live launch wires it there (chatv3.go): governance leaves the
+	// field empty on purpose, because an account connected on the panel must be
+	// connected for a firing's belt in the same breath and one manager on one
+	// store is the only way that is true.
+	cfg.Connect = conns
 	// The media pair, resolved the way a conversation resolves it (chatv3.go):
 	// a firing briefed to draw a diagram needs the hand that draws it, and the
 	// resolver is what says which model does. The catalog is LAZY and is never
@@ -253,7 +278,9 @@ func v3StandingPosture(settings config.Config) (session.Config, *catalog.Catalog
 var standingTickInterval = standing.Interval
 
 // standingTickPass is the seam the ticker calls; tests replace it to hold a
-// pass in flight. The default is the real pass.
+// pass in flight. The default is the real pass. It carries the process's
+// accounts manager so the pass's belt reaches the very one the surface and
+// every conversation hold ([v3Process.Conns]).
 var standingTickPass = runStandingTick
 
 func (p *v3Process) startStandingTicks(store *standing.Store) {
@@ -285,7 +312,7 @@ func (p *v3Process) startStandingTicks(store *standing.Store) {
 		for {
 			select {
 			case <-ticker.C:
-				standingTickPass(ctx, store)
+				standingTickPass(ctx, store, p.Conns)
 			case <-stop:
 				return
 			}
@@ -334,13 +361,15 @@ var standingTicks atomic.Bool
 func standingTicking() bool { return standingTicks.Load() }
 
 // runStandingTick is one pass, bounded, with everything it can say written to a
-// file.
-func runStandingTick(ctx context.Context, store *standing.Store) {
+// file. conns is the process's accounts manager, handed straight to the pass so
+// a firing's belt holds the same accounts every conversation in this window
+// does.
+func runStandingTick(ctx context.Context, store *standing.Store, conns *connect.Manager) {
 	// A PANIC HERE MUST NOT END THE TICKING. The loop above is this process's
 	// whole contribution to the ambient side, and a goroutine that unwound out
 	// of it would leave a window that looks like it is keeping watch and is not.
 	defer guard.Recover("standing tick")
-	pass, release, err := v3StandingTicker(store)
+	pass, release, err := v3StandingTicker(store, conns)
 	if err != nil {
 		noteStanding("could not start a pass: " + err.Error())
 		return
