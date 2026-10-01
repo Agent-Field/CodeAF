@@ -1084,6 +1084,11 @@ var OperatorEnvPins = []string{
 	// program has gone too. codeaf sets it on the launch and the program reads
 	// it back; it is a number only that one process can mean, so plumbing.
 	"CODEAF_PROGRAM_HOLD_FD",
+	// The inbox file a listening program reads the words sent to it from
+	// (internal/delegate's EnvInbox). codeaf sets it on the launch of a program
+	// that can be told something while it works, and that program reads it
+	// back; it is a path into one task's record folder, so plumbing.
+	"CODEAF_INBOX",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
