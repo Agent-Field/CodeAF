@@ -27,14 +27,8 @@ func TestGitRecorderKeepsCopiedInputsOutOfObjectsAndCandidates(t *testing.T) {
 	}
 	t.Setenv("SENIOR_DEV_IGNORED_AT_START", list)
 	recorder := newGitRecorder(workspace, func(string) {})
-	if findings := recorder.statusFindings(); len(findings) != 0 {
-		t.Fatalf("copied inputs prompt a commit: %q", findings)
-	}
 	if err := writeFile(filepath.Join(workspace, "made.txt"), "new work\n"); err != nil {
 		t.Fatal(err)
-	}
-	if findings := recorder.statusFindings(); len(findings) == 0 {
-		t.Fatal("the program's own new file was mistaken for a copied input")
 	}
 	tree, err := recorder.Snapshot()
 	if err != nil {
@@ -71,8 +65,8 @@ func TestGitRecorderKeepsCopiedInputsOutOfObjectsAndCandidates(t *testing.T) {
 
 // AN INPUT THE RUN CHANGED IS ITS WORK. codeaf hands the run its copied
 // untracked files with their fingerprints (gitidentity.InputsEnv): the one it
-// finished enters the candidate and counts against a clean tree, and the one
-// it left alone does neither and never becomes a blob.
+// finished enters the candidate, and the one it left alone never becomes a
+// blob.
 func TestGitRecorderTakesTheInputsTheRunChanged(t *testing.T) {
 	workspace, _ := guardWorkspace(t)
 	for path, body := range map[string]string{"parser.py": "half\n", "credentials.json": "secret\n"} {
@@ -90,14 +84,8 @@ func TestGitRecorderTakesTheInputsTheRunChanged(t *testing.T) {
 	}
 	t.Setenv(gitidentity.InputsEnv, list)
 	recorder := newGitRecorder(workspace, func(string) {})
-	if findings := recorder.statusFindings(); len(findings) != 0 {
-		t.Fatalf("inputs as they were copied prompt a commit: %q", findings)
-	}
 	if err := writeFile(filepath.Join(workspace, "parser.py"), "finished\n"); err != nil {
 		t.Fatal(err)
-	}
-	if findings := recorder.statusFindings(); len(findings) == 0 {
-		t.Fatal("the input the run finished was not counted as its uncommitted work")
 	}
 	tree, err := recorder.Snapshot()
 	if err != nil {

@@ -188,8 +188,9 @@ const changedFilesMaxLines = 40
 
 // seniorDevChangedFiles computes the changed-files record pinned beside every
 // compaction summary: a diffstat of the working tree against the starting
-// tree (tracked files, which eager-commit makes every file the model writes)
-// plus the short status (untracked files, in-progress edits). Read-only, no
+// tree (tracked files) plus the short status (the files the model added,
+// which stay untracked because the run commits nothing, and every edit not
+// yet committed). Read-only, no
 // diff contents, hard line cap. An unavailable git answers with nothing.
 func seniorDevChangedFiles(ctx context.Context, workspace string) []string {
 	if workspace == "" {

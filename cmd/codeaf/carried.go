@@ -390,7 +390,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		Args: carriedInFolder(carriedChildLine(inv), inv, folder),
 		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the engine
 		// gets the loopback token it needs, and model commands lose that token.
-		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+folder.Branch, "SENIOR_DEV_IGNORED_AT_START="+folder.IgnoredFile(),
+		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_IGNORED_AT_START="+folder.IgnoredFile(),
 			gitidentity.InputsEnv+"="+folder.InputsFile()),
 		Dir:        here,
 		StderrPath: filepath.Join(record, carriedStderrName),
@@ -412,7 +412,10 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// the API: the program's ending is read off its last record, and its
 	// process — its whole group, on a stop — is already gone.
 	view.closed(ended)
-	finish(view.endingWords())
+	if folder != nil {
+		folder.Passed = view.commitPassed(result, runErr, limited.Load())
+	}
+	finish(view.finishingWords(result, limited.Load()))
 	// The program has exited: its API goes with it, so nothing it left behind
 	// can spend, and every row it cost is on disk before this process leaves —
 	// the close waits for the price of a call the stop cut in the middle.
@@ -768,13 +771,40 @@ func (v *carriedView) left(sentence string) {
 }
 
 // endingWords is the program's ending in the one sentence a person reads
-// ([carriedEnding]), the body of the commit that holds what it left.
+// ([carriedEnding]), used with its message when its run did not pass.
 func (v *carriedView) endingWords() string {
 	terminal, _ := v.ending()
 	if terminal == nil {
 		return ""
 	}
 	return carriedEnding(v.inv.Program.Name, *terminal)
+}
+
+// commitPassed uses the conversation road's meaning of passed: a completed
+// run whose own check passed. Handing in work does not make a failed check
+// pass, and a terminal arriving during a stop cannot make that run pass.
+func (v *carriedView) commitPassed(result delegate.Result, runErr error, limited bool) bool {
+	terminal, _ := v.ending()
+	return !limited && !result.Stopped && runErr == nil && terminal != nil &&
+		terminal.Verdict() == "pass" && (terminal.Status == delegate.StatusPass ||
+		(terminal.Status == delegate.StatusFail && terminal.HandedIn()))
+}
+
+// finishingWords preserves the terminal's existing commit words. When the
+// program left none, the shell's own ending sentence supplies the fallback.
+func (v *carriedView) finishingWords(result delegate.Result, limited bool) string {
+	if words := v.endingWords(); words != "" {
+		return words
+	}
+	name := v.inv.Program.Name
+	if limited {
+		return name + " was stopped at a limit you set"
+	}
+	line := fmt.Sprintf("%s exited %d without saying how it ended", name, result.ExitCode)
+	if result.Reading.LastStage != "" {
+		line += "; its last stage was " + result.Reading.LastStage
+	}
+	return line
 }
 
 func (v *carriedView) Hello(h delegate.Hello) {

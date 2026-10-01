@@ -151,7 +151,7 @@ func programNextStep(o programOutcome) string {
 	if o.verdict == programCrashed {
 		return fmt.Sprintf("It broke rather than finished. If the cause looks passing (a network or provider failure), hand the same work to %s again; otherwise tell the person plainly. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 	}
-	return fmt.Sprintf("It handed in no finished change. Read what it got done on its branch; finish a small gap yourself, or hand the work back to %s with a brief sharpened by what is missing. You may send it back %d more time%s on your own.", o.program, left, plural(left))
+	return fmt.Sprintf("It handed in no finished change. Read what it got done on its branch, then hand the work back to %s with a brief sharpened by what is missing, which counts as fixing it yourself; finish only a trivial gap in your own worktree. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 }
 
 // rememberProgramOutcomeLocked keeps a program's ending until the person next

@@ -57,7 +57,8 @@ func delegatedRunThatDid(t *testing.T, prepare func(repo string), play func(t *t
 	return conversation, base, row, beltRunNotes(t, filepath.Dir(spec.Store.Path()), spec.Store.RootID())
 }
 
-// commitIn writes each file and commits it the way senior-dev commits an edit.
+// commitIn writes each file and commits it, the way a program that commits
+// despite its brief leaves a commit of its own on its branch.
 func commitIn(t *testing.T, workspace string, names ...string) {
 	t.Helper()
 	for _, name := range names {

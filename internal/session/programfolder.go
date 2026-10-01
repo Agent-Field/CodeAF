@@ -32,7 +32,8 @@ package session
 //  4. WHEN IT ENDS — done, not finished, stopped, crashed, or its process gone
 //     — in a repository, what the program left uncommitted in its copy, except
 //     paths ignored at start and known test droppings, is committed onto its
-//     branch in one commit (the task's title, the result under it), and the
+//     branch in one commit with its usable message, or the title and ending
+//     as a fallback; a run that did not pass carries its ending too, and the
 //     copy is removed (programcopy.go) — unless what it left could be kept
 //     nowhere else, when the copy stays and the ending says where. In either kind of folder the program's
 //     notes ([delegate.Delegate.Notes]) are moved into the run's record folder
@@ -188,6 +189,15 @@ type ProgramFolder struct {
 	// NoAttribution is true when the run had no answered model call, so its
 	// finishing commit does not credit a model that did no work in this run.
 	NoAttribution bool `json:"noAttribution,omitempty"`
+	// message is the commit message the program wrote for the commit that
+	// ends its run, read from its notes just before they are moved
+	// ([ProgramFolder.readCommitMessage]); never written to the record.
+	message string
+	// Passed says the program's own checks passed at the end of this run.
+	// The caller sets it from the outcome; the default carries the ending
+	// after the program's message. It is never persisted, because a gone run
+	// has no completed outcome to trust.
+	Passed bool `json:"-"`
 	// Ended is the sentence the run's folder was finished with. Empty is a
 	// folder still owed its ending.
 	Ended string `json:"ended,omitempty"`
@@ -225,7 +235,8 @@ type ProgramFolder struct {
 func (f *ProgramFolder) Plain() bool { return f == nil || f.Branch == "" }
 
 // IgnoredFile is the run's start-time ignore list, kept outside the repository
-// so the child can protect eager commits after it changes .gitignore.
+// so the child's recorder still keeps those paths out of its trees after the
+// run changes .gitignore.
 func (f *ProgramFolder) IgnoredFile() string {
 	if f == nil || f.Keep == "" {
 		return ""
@@ -235,7 +246,7 @@ func (f *ProgramFolder) IgnoredFile() string {
 
 // InputsFile is the run's list of its copy's inputs and their fingerprints
 // ([ProgramFolder.Inputs]), kept beside [ProgramFolder.IgnoredFile] for the
-// child's commits to read (gitidentity.InputsEnv); "" when there is none.
+// child's recorder to read (gitidentity.InputsEnv); "" when there is none.
 func (f *ProgramFolder) InputsFile() string {
 	if f == nil || f.Keep == "" || len(f.Inputs) == 0 {
 		return ""
@@ -562,8 +573,8 @@ func keptProgramFolderEnd(keep string) (ProgramFolderEnd, bool) {
 
 // Finish ends a program's run in its folder, per the fourth point of the
 // contract at the top of this file, and lets the folder go. result is the
-// run's ending in words, the body of the commit that holds what the program
-// left. It answers what it found and did.
+// run's ending in words, used below the title when there is no usable
+// message, and after its message when the run did not pass.
 func (f *ProgramFolder) Finish(result string) ProgramFolderEnd {
 	end := f.settle(result)
 	f.Ended = end.Sentence()
@@ -612,7 +623,8 @@ func (f *ProgramFolder) settle(result string) ProgramFolderEnd {
 func (f *ProgramFolder) settleGone() ProgramFolderEnd {
 	if f.Copied() {
 		_ = SetProgramAnswerAttribution(f, f.SignModel != "")
-		return f.settleCopy("", true)
+		f.Passed = false
+		return f.settleCopy("codeaf found its run had gone before it finished.", true)
 	}
 	end := ProgramFolderEnd{Folder: *f, Gone: true}
 	end.Notes = f.keepNotes()
@@ -673,8 +685,9 @@ func (f *ProgramFolder) homeMoved() (bool, string) {
 }
 
 // commitLeftovers commits everything the program left uncommitted in its
-// folder onto its branch, in one commit whose subject is the run's title and
-// whose body is result, and answers git's line when it would not go.
+// folder onto its branch in one commit with its usable message, or the title
+// and result as a fallback. Unless Passed is true, result follows its message
+// before the credits. It answers git's line when it would not go.
 //
 // TRACKED WORK IS COMMITTED AT THE START, but the copied untracked inputs are
 // not, and ignore rules can change during the run. An input the run left as it
@@ -731,18 +744,37 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		// making the model credit would require rewriting that commit.
 		return ""
 	}
-	message := clip(firstLine(f.Title), 72)
-	if strings.TrimSpace(message) == "" {
-		// A run a shell started with no brief, on a command of its own, has no
-		// title, and git takes no commit without a subject.
-		message = f.Program + "'s work"
-	}
-	if result = strings.TrimSpace(result); result != "" {
-		message += "\n\n" + result
+	// THE PROGRAM'S OWN MESSAGE, WHEN USABLE, DESCRIBES ITS CHANGE
+	// ([ProgramFolder.BriefNote] asks for it): it knows what it changed and
+	// why, where the task's title is the brief's first line and its ending is
+	// an account of the run rather than of the change.
+	message := f.message
+	if message == "" {
+		message = clip(firstLine(f.Title), 72)
+		if strings.TrimSpace(message) == "" {
+			// A run a shell started with no brief, on a command of its own, has no
+			// title, and git takes no commit without a subject.
+			message = f.Program + "'s work"
+		}
+		if result = strings.TrimSpace(result); result != "" {
+			message += "\n\n" + result
+		}
+	} else if !f.Passed {
+		words, credits := splitProgramCredits(message)
+		ending := strings.TrimSpace(result)
+		if ending == "" {
+			ending = "the run ended without saying how it finished."
+		}
+		message = words + "\n\n" + ending
+		if credits != "" {
+			message += "\n\n" + credits
+		}
 	}
 	args := append([]string{"-c", "commit.gpgsign=false"}, codeafGitIdentity()...)
 	if !f.NoAttribution {
-		message = signed(message, gitSignature{named: f.SignModel != "", model: f.SignModel})
+		// signOnce, because a message the program wrote may already carry a
+		// line of the signature, which would otherwise appear twice.
+		message = gitSignature{named: f.SignModel != "", model: f.SignModel}.signOnce(message)
 	}
 	args = append(args, "commit", "-q", "--no-verify", "-m", message)
 	if out, err := git(f.Dir, args...); err != nil {

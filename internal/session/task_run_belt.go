@@ -187,9 +187,10 @@ type RunSpec struct {
 	// git ([ProgramFolder.Plain]), so it is started with its own flags for that
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
-	// ProgramBranch and ProgramIgnoredFile fence the child's eager commits to
-	// its own branch and the ignore rules recorded before it started, and
-	// ProgramInputsFile to the untracked files it changed of those copied in
+	// ProgramBranch is the program's own branch ([ProgramFolder.Branch]).
+	// ProgramIgnoredFile and ProgramInputsFile hold the child's recorded
+	// trees to the ignore rules recorded before it started and to the
+	// untracked files it changed of those copied in
 	// ([ProgramFolder.InputsFile]).
 	ProgramBranch      string
 	ProgramIgnoredFile string

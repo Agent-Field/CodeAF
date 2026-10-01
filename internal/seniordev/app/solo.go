@@ -615,12 +615,6 @@ func (runner *pipeline) soloUnsubmittedFindings(baseSHA string) []string {
 				"the tree differs from the starting commit in %d file(s)", change.files))
 		}
 	}
-	// Only the git recorder has an index to be unclean, and only it can act on
-	// the advice. Under --in-place nothing commits, so the finding would send
-	// the model after a step it cannot take.
-	if git, ok := runner.recorder.(*gitRecorder); ok {
-		findings = append(findings, git.statusFindings()...)
-	}
 	if pinned := runner.readPinnedCommand(); pinned == "" {
 		findings = append(findings,
 			"no pinned command was recorded in .senior-dev/pinned.txt — "+

@@ -33,7 +33,6 @@ var VariableNames = []string{
 	"SENIOR_DEV_DISABLE_MODELS_FETCH",
 	"SENIOR_DEV_DISABLE_PROJECT_CONFIG",
 	"SENIOR_DEV_DISABLE_PRUNE",
-	"SENIOR_DEV_EAGER_COMMIT",
 	"SENIOR_DEV_ENABLE_EXA",
 	"SENIOR_DEV_ENABLE_PARALLEL",
 	"SENIOR_DEV_ENABLE_QUESTION_TOOL",
@@ -57,8 +56,7 @@ var VariableNames = []string{
 
 var boolModes = map[string]BoolMode{
 	// Exact opt-outs.
-	"SENIOR_DEV_EAGER_COMMIT": OptOutZero,
-	"SENIOR_DEV_ENV_SIGNALS":  OptOutZero,
+	"SENIOR_DEV_ENV_SIGNALS": OptOutZero,
 
 	// Exact opt-ins.
 	"SENIOR_DEV_SHARED_BUILD_CACHE": OptInOne,

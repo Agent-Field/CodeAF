@@ -50,7 +50,7 @@ func newGitRecorder(workspace string, note func(string)) *gitRecorder {
 // AN INPUT THE RUN LEFT AS IT WAS IS FILTERED THE SAME WAY, and one it changed
 // is not: the person's untracked file it finished is its work, and the rest are
 // only what it was given (gitidentity's inputs.go). That holds for the
-// candidate, the clean-tree check and a restore alike.
+// candidate and a restore alike.
 func (recorder *gitRecorder) ignoredAtStart(path string, paths []string) bool {
 	return !recorder.startTracked[path] &&
 		(ignoredAtStart(path, recorder.startRules, paths) || recorder.inputs.LeftAlone(recorder.workspace, path))
@@ -73,8 +73,7 @@ func (recorder *gitRecorder) startLists() ([]string, error) {
 	return paths, nil
 }
 
-func (recorder *gitRecorder) Kind() string         { return "git" }
-func (recorder *gitRecorder) CommitsOnWrite() bool { return true }
+func (recorder *gitRecorder) Kind() string { return "git" }
 
 // git runs a git command in the workspace and keeps NUL-delimited path lists
 // byte-for-byte while trimming ordinary human-readable output.
@@ -422,7 +421,17 @@ func (recorder *gitRecorder) Summary(
 	if head := gitOutput(ctx, workspace, "rev-parse", "HEAD"); head != "" {
 		data["head_sha"] = head
 	}
-	nameOutput := gitOutput(ctx, workspace, "diff", "--name-only", "--no-renames", base, "--")
+	// Measure the candidate tree, including files the run has not staged.
+	// Snapshot applies the same start-time exclusions as Change; a failed
+	// capture still leaves the old tracked working-tree measurement available.
+	diffTargets := []string{base, "--"}
+	if tree, err := recorder.Snapshot(); err == nil {
+		diffTargets = append([]string{base + "^{tree}", tree, "--"}, seniorDevArtifactPathspecs...)
+	}
+	diffArgs := func(flags ...string) []string {
+		return append(append([]string{"diff"}, flags...), diffTargets...)
+	}
+	nameOutput := gitOutput(ctx, workspace, diffArgs("--name-only", "--no-renames")...)
 	files := 0
 	if strings.TrimSpace(nameOutput) != "" {
 		files = len(strings.Split(strings.TrimSpace(nameOutput), "\n"))
@@ -431,7 +440,7 @@ func (recorder *gitRecorder) Summary(
 
 	additions, deletions, binaries := int64(0), int64(0), 0
 	for _, line := range strings.Split(
-		gitOutput(ctx, workspace, "diff", "--numstat", "--no-renames", base, "--"), "\n",
+		gitOutput(ctx, workspace, diffArgs("--numstat", "--no-renames")...), "\n",
 	) {
 		fields := strings.Fields(line)
 		if len(fields) < 3 {
@@ -452,7 +461,7 @@ func (recorder *gitRecorder) Summary(
 
 	var patchBytes countingWriter
 	var diffError bytes.Buffer
-	command := exec.CommandContext(ctx, "git", "diff", "--binary", "--no-renames", base, "--")
+	command := exec.CommandContext(ctx, "git", diffArgs("--binary", "--no-renames")...)
 	command.Dir, command.Stdout, command.Stderr = workspace, &patchBytes, &diffError
 	status := "completed"
 	if err := command.Run(); err != nil {
@@ -468,42 +477,6 @@ func (recorder *gitRecorder) Summary(
 		data["untracked_files"] = 0
 	}
 	return data, status
-}
-
-// gitStatusFindings reports an unclean index as a landing finding. It exists
-// only under the git recorder: the advice it gives -- commit before verifying
-// -- is meaningless where nothing commits.
-func (recorder *gitRecorder) statusFindings() []string {
-	status, err := recorder.git("status", "--porcelain", "--untracked-files=all", "-z")
-	if err != nil {
-		return nil
-	}
-	startPaths, err := recorder.startLists()
-	if err != nil {
-		return []string{err.Error()}
-	}
-	entries := 0
-	fields := strings.Split(status, "\x00")
-	for i := 0; i < len(fields); i++ {
-		entry := fields[i]
-		if len(entry) < 4 {
-			continue
-		}
-		if entry[0] == 'R' || entry[0] == 'C' || entry[1] == 'R' || entry[1] == 'C' {
-			i++
-		}
-		if path := entry[3:]; !recorder.ignoredAtStart(path, startPaths) && !gitRunArtifact(path) {
-			entries++
-		}
-	}
-	if entries == 0 {
-		return nil
-	}
-	return []string{fmt.Sprintf(
-		"git status is not clean (%d uncommitted entr%s) — the pinned command must pass "+
-			"on the COMMITTED tree, so commit before verifying",
-		entries, plural(entries, "y", "ies"),
-	)}
 }
 
 // summaryTimeout bounds the observational patch summary.

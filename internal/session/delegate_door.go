@@ -442,8 +442,8 @@ func delegateStand(folder string) taskStand {
 
 // landDelegateRun is a delegated run's landing, in place of the engine's own:
 // the program's folder finished per the contract ([ProgramFolder.Finish]) —
-// what it left uncommitted committed on its branch with the run's ending as
-// the commit's body, or a run that changed nothing undone — and the landing
+// what it left uncommitted committed with its usable message or title and
+// ending, and the ending after its message when it did not pass — and the landing
 // that says where the work is ([ProgramFolderEnd.landing]).
 //
 // A TEXT PROGRAM LANDS NOTHING: it worked in place and promised to change
@@ -461,5 +461,6 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	if result == "" {
 		result = outcome
 	}
+	run.folder.Passed = programVerdictOf(summary) == programPassed
 	return run.folder.Finish(result).landing()
 }
