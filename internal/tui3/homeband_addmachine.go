@@ -37,6 +37,12 @@ type Fleet interface {
 	FleetSize(ctx context.Context) (int, error)
 }
 
+// Engager is a [Fleet] that holds back from the network until the person shows
+// interest in adding a machine. Opening the card is that interest.
+type Engager interface {
+	Engage()
+}
+
 const (
 	// addMachineKey is the chord that opens and closes the instructions.
 	addMachineKey = "alt+d"
@@ -118,13 +124,20 @@ func (a *app) toggleAddMachine() tea.Cmd {
 	}
 	m.open = !m.open
 	a.touch()
+	if !m.open {
+		return nil
+	}
+	if e, ok := a.fleet.(Engager); ok {
+		e.Engage()
+	}
 	return nil
 }
 
-// pasteLink is a paste that lands on the open card: a link goes to the same
-// approve screen `/pair <link>` opens, and anything else is not the card's.
+// pasteLink is a paste that lands on home: a pair link goes to the same
+// approve screen `/pair <link>` opens, whether or not the card is open, and
+// anything else is not the card's.
 func (a *app) pasteLink(text string) (tea.Cmd, bool) {
-	if !a.addMachine.open || !a.addMachineWanted() || !isLinkShape(text) {
+	if !a.at(pageHome) || a.approvals == nil || !isPairLink(text) {
 		return nil, false
 	}
 	a.addMachine.open = false

@@ -79,6 +79,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if d.batcher, err = s.batcher(eng, c, drv, d); err != nil {
 		return nil, err
 	}
+	d.catchUp(drv)
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
 	go func() {
@@ -86,6 +87,33 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 		_ = d.batcher.Run(run)
 	}()
 	return d, nil
+}
+
+// catchUp notes the newest turn sealed on this machine when the relay does not
+// hold it yet. The Batcher's list of turns not yet durable lived in the process
+// that sealed them, so a run that died (a kill, a dead battery) before its last
+// upload left turns that nobody would send until the next seal. A relay head that
+// is not one of this machine's own turns means another machine has moved the chat
+// on, and nothing is noted: sending an older head would take it back.
+func (d *Drive) catchUp(drv cellsync.Driving) {
+	turns, err := cellstore.Turns(d.cell)
+	if err != nil || len(turns) == 0 {
+		return
+	}
+	newest := turns[len(turns)-1]
+	if newest.ID == drv.Head || (drv.Head != "" && !holdsTurn(turns, drv.Head)) {
+		return
+	}
+	d.batcher.Note(newest)
+}
+
+func holdsTurn(turns []cellstore.Turn, id string) bool {
+	for _, t := range turns {
+		if t.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // syncVault sends this machine's secrets along with the chat, so a machine that

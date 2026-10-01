@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/handoff"
+	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -86,7 +87,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 		Branch:  c.branch(brancher),
 		RootFor: c.opt.RootFor,
 		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
-		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, c.pullVault},
+		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, c.pullVault},
 	}
 }
 
@@ -222,6 +223,30 @@ func borrowsProject(root string) bool {
 func dirExists(path string) bool {
 	info, err := os.Stat(strings.TrimSpace(path))
 	return path != "" && err == nil && info.IsDir()
+}
+
+// recordOrigin keeps, beside the chat, the folder it was left in on the machine
+// it came from when that folder is not here: the seal's inventory names it, and
+// this machine's own seals will overwrite it. A chat whose project is here
+// needs no note.
+func recordOrigin(_ context.Context, c cell.Cell) error {
+	if !session.OwnsFolder(workspaceOf(c.Root)) {
+		return nil
+	}
+	store, err := inventory.Open(c.Root)
+	if err != nil {
+		return err
+	}
+	origin := store.Snapshot().Workspace
+	if origin == "" || origin == workspaceOf(c.Root) {
+		return nil
+	}
+	m, err := session.LoadMeta(c.Root)
+	if err != nil || m.ID == "" {
+		return err
+	}
+	m.Origin = origin
+	return session.SaveMeta(c.Root, m)
 }
 
 func titleOf(root string) string {

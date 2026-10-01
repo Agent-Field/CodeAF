@@ -214,7 +214,7 @@ while `CODEAF_CELLS` is on. Its verbs are described under "The cell verbs" below
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-**`codeaf pair`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
+**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The cell verbs — list a cell's turns and rewind it, and why they only work with CODEAF_CELLS on
 
@@ -837,7 +837,9 @@ is refused in words. Only the run engine keeps this record, so `--continue` is r
 `CODEAF_TASK_BELT` selects the older engine.
 
 With `CODEAF_CELLS=1`, `codeaf do` runs inside a cell, the same kind of folder a chat is, and
-every tool call the run's workers make is sealed as a turn: `codeaf cell log` lists the turns,
+the tool calls the run's workers make are sealed as turns, one turn for each set of calls the
+model asked for together, taken after the calls' results are written down, and the end of
+a worker's turn is sealed after its answer: `codeaf cell log` lists the turns,
 and the kept record holds a `cell` file naming the cell. `codeaf do --continue <id>` then goes
 on in that same cell from its last sealed turn: its files stand as that turn left them, and the
 new run is told how many turns were sealed. A call that began and never finished (the run was

@@ -187,7 +187,7 @@ func (r *rig) paste(text string) {
 	time.Sleep(300 * time.Millisecond)
 }
 
-var linkShape = regexp.MustCompile(`https://codeaf\.link/p/\S+`)
+var linkShape = regexp.MustCompile(`https://codeaf\.agentfield\.ai/p/\S+`)
 
 func TestPairJourney(t *testing.T) {
 	key := requireTmuxAndKey(t)
@@ -239,8 +239,12 @@ func (j *journey) write(path string) {
 	j.t.Logf("whole journey: %s (budget %s)", total.Round(time.Millisecond), journeyBudget)
 }
 
-// loseLid ends the program the way a closed lid does: no goodbye, nothing
-// released. The pid is the pane's own, read from tmux.
+// loseLid ends the machine the way a closed lid does: no goodbye, nothing
+// released, and nothing left running. The pid is the pane's own, read from
+// tmux; the engine that held the chat is a separate process that outlives the
+// window, and a lid takes it too, so it is ended with the window. Left alive it
+// keeps the device online, and a device that is online and busy is rightly not
+// offered as a rescue.
 func (r *rig) loseLid() {
 	r.t.Helper()
 	raw, _ := exec.Command("tmux", "display-message", "-p", "-t", r.name, "#{pane_pid}").Output()
@@ -249,4 +253,26 @@ func (r *rig) loseLid() {
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 	}
 	r.kill()
+	for _, daemon := range engineDaemonsOf(r.ws) {
+		_ = syscall.Kill(daemon, syscall.SIGKILL)
+	}
+}
+
+// engineDaemonsOf lists the pids of the engine daemons serving one workspace,
+// read from the process table by their own command line, never by pattern.
+func engineDaemonsOf(ws string) []int {
+	want := "engine\x00--daemon\x00--workspace\x00" + ws + "\x00"
+	entries, _ := os.ReadDir("/proc")
+	var pids []int
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		cmd, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
+		if err == nil && strings.Contains(string(cmd), want) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }

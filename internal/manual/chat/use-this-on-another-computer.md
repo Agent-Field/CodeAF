@@ -1,6 +1,6 @@
 # Pairing your chats with a second computer
 
-## How do I use this on my laptop — pair a second computer with a code, and log in on a new machine
+## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
 There is no account and no password to log in with. You pair: a code on one screen, typed on the other.
 
@@ -8,9 +8,11 @@ You learn one thing here: **a code shown on a screen you own, typed on the other
 
 The computer that has your chats shows the code. The other computer types it. After that, both computers have the same chats.
 
+This page is the code way. A new computer can also ask to join and be approved from a link, with a four-digit check: the page *Adding a computer to your devices, approving it, and removing it* tells it.
+
 There are two doors. Pick one.
 
-1. On the computer that has your chats, type `/pair` in the chat. Or run `codeaf pair` in a terminal. It shows a code and how to use it:
+1. On the computer that has your chats, type `/pair` in the chat. Or run `codeaf pair --code` in a terminal. It shows a code and how to use it:
 
 ```
   this shares your chats with the device you pair
@@ -26,7 +28,7 @@ Dashes and spaces in the code do not matter. `42-715-302`, `42 715 302` and `427
 
 The code is good for 10 minutes. It works once.
 
-`/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair` with nothing after it shows a code in a terminal. `codeaf pair <code>` uses one.
+`/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair --code` shows a code in a terminal; `codeaf pair` with nothing after it asks to join by link instead. `codeaf pair <code>` uses one.
 
 ```
 usage: codeaf pair [<code>] [--via url] [--replace]
