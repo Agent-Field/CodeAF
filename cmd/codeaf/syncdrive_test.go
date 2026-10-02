@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -296,5 +297,59 @@ func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
 	}
 	if line := again.Gate(); line != nil {
 		t.Fatalf("a chat opened after it was moved back is refused: %v", line)
+	}
+}
+
+// A chat that another computer took and that was then taken back here, with no word reaching the
+// drive side this window kept, opens with a drive side of its own: the old one publishes under a
+// lease that is gone, so reusing it would refuse every tool call in the chat that came back.
+func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
+	cfg, c := doorChat(t)
+	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
+	t.Cleanup(srv.Close)
+	t.Setenv(syncsetup.URLVar, srv.URL)
+	t.Setenv(syncsetup.IntervalVar, "50")
+	first := home.Dir()
+	id, err := identity.Ensure(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seated := v3Seated(cfg)
+	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	kept := syncDrives.drive[c.ID]
+
+	second := t.TempDir()
+	blob, err := identity.Export(id, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := identity.Import(blob, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.Adopt(second, moved, false); err != nil {
+		t.Fatal(err)
+	}
+	force := func(dir string) {
+		t.Helper()
+		s, ok, err := syncsetup.Open(dir)
+		if err != nil || !ok {
+			t.Fatalf("Open(%s) = %v, %v", dir, ok, err)
+		}
+		if _, err := s.Dir.Acquire(context.Background(), c.ID, directory.AcquireOpts{Force: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	force(second) // the other computer takes the chat
+	force(first)  // and it is taken back here, as a take does
+
+	again := syncDrives.driveOf(c, cellstore.EngineFor(cfg.Place.Workspace), func(error) {})
+	if again == kept {
+		t.Fatal("the drive side whose lease was taken was reused")
+	}
+	if err := again.Gate(); err != nil {
+		t.Fatalf("a chat taken back is refused: %v", err)
 	}
 }

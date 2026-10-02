@@ -46,9 +46,9 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	if d := b.drive[c.ID]; d != nil && !d.superseded() {
 		return d
 	}
-	// A drive side that only shows the chat, because another machine took it, never drives again: the
-	// chat opened here after it was moved back needs a drive side of its own, or every tool call in
-	// it would still be refused as superseded.
+	// A drive side that no longer holds the chat's lease (another machine took it, or it was moved
+	// back here) never drives again: the chat opened here needs a drive side of its own, or every
+	// tool call in it would be refused as superseded.
 	delete(b.drive, c.ID)
 	d := newLiveDrive(func() (*syncsetup.Drive, error) { return startDrive(c, engine, report) })
 	if d != nil {
