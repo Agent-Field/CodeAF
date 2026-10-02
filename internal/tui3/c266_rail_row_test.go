@@ -87,18 +87,26 @@ func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 	rows := c266PlanRows()
 	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
 	// The widened column, where both titles are drawn whole beside the wait.
-	_, rail := c266Rail(t, rows, 160, true)
+	a, rail := c266Rail(t, rows, 160, true)
 	_, parent := c266RowWith(t, rail, "write the tests")
 	_, child := c266RowWith(t, rail, "write the fi")
 	if strings.Index(child, "write") <= strings.Index(parent, "write") {
 		t.Fatalf("the task under a task is not indented under it:\n%s\n%s", parent, child)
 	}
+	// The child's row pins connector, mark and title together: a regression
+	// that drops the pending mark off the lead (rendering the lead as a bare
+	// '-') now fails here instead of passing the position check above. The
+	// mark's glyph comes from the palette so its spelling is never assumed.
+	pending := plain(a.pal.glyph(tokens.GQueued))
+	if !strings.Contains(plain(child), plain("\u2514   "+pending+" ")+"write the fixtures") {
+		t.Fatalf("the task under a task does not wear its mark before its title:\n%s", child)
+	}
 }
 
 // A TASK UNDER A TASK STANDS A LEVEL IN, AND THE LINE A RUNNING PART WOULD
-// HAVE HAD UNDER IT IS THE HINT'S. The family's connectors are gone from the
-// side column (DESIGN.md, One side column): every task is one line, and a part
-// shows its depth by its indent alone.
+// HAVE HAD UNDER IT IS THE HINT'S. Every task is one line; a part shows its
+// depth by the tree's own connectors in its lead ([app.railLead]), and its
+// call is the hint's, never a line under the row.
 func TestTheFamilysLineRunsThroughTheLinesUnderARow(t *testing.T) {
 	rows := c266PlanRows()
 	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})

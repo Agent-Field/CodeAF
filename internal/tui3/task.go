@@ -3418,7 +3418,7 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 		}
 		if node := carrier[run]; node != nil {
 			if at, ok := visible[node]; ok {
-				lines := a.planRailLines(kids, 1, width)
+				lines := a.planRailLines(kids, nil, width, railLevels(width))
 				under[at] = append(under[at], lines...)
 				markPlan(lines)
 				drawnPlan[run] = true
@@ -4309,8 +4309,9 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 		return ""
 	}
 	const indent = "  "
+	fig := a.railFigWord(node)
 	glyph := a.railTreeGlyph(node)
-	room := width - len(indent) - 2
+	room := width - len(indent) - ansi.StringWidth(fig) - 2
 	// A program's badge stays on its row when the side column is compact.
 	// The time gives up cells first, then the badge shortens, while the title
 	// keeps enough room to name the work.
@@ -4328,7 +4329,7 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 		age = ""
 	}
 	title, w := fitWidth(node.title, room)
-	line := indent + glyph + " " + a.railTitle(node, title) + a.pal.programAfter(wears)
+	line := indent + a.pal.dim(fig) + " " + glyph + " " + a.railTitle(node, title) + a.pal.programAfter(wears)
 	if age != "" {
 		line += strings.Repeat(" ", max(room-w, 0)+1) + a.pal.dim(age)
 	}
