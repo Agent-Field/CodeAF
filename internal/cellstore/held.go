@@ -44,3 +44,42 @@ func orDefault(s, fallback string) string {
 	}
 	return s
 }
+
+// heldBefore is the names an earlier take set apart in this cell, with the
+// reasons the record gave. A cell that has none, or a record that cannot be
+// read, answers none: the names are then found again by the take that needs them.
+func heldBefore(c cell.Cell, policyDir string) []heldName {
+	policy, err := readPolicyAt(policyDir)
+	if err != nil || len(policy.held) == 0 {
+		return nil
+	}
+	reasons := map[string]string{}
+	if store, err := inventory.Open(c.Root); err == nil {
+		for _, w := range store.Snapshot().Withheld {
+			reasons[w.Path] = w.Reason
+		}
+	}
+	out := make([]heldName, len(policy.held))
+	for i, path := range policy.held {
+		out[i] = heldName{Path: path, Reason: reasons[path]}
+	}
+	return out
+}
+
+// mergeHeld is the earlier names plus this take's, once each; this take's reason
+// wins for a name both name.
+func mergeHeld(earlier, now []heldName) []heldName {
+	byPath := map[string]heldName{}
+	var order []string
+	for _, h := range append(append([]heldName(nil), earlier...), now...) {
+		if _, seen := byPath[h.Path]; !seen {
+			order = append(order, h.Path)
+		}
+		byPath[h.Path] = h
+	}
+	out := make([]heldName, len(order))
+	for i, path := range order {
+		out[i] = byPath[path]
+	}
+	return out
+}

@@ -183,3 +183,40 @@ func TestPolicyRoundTripsEveryBlock(t *testing.T) {
 		t.Fatalf("holding %v", again.held)
 	}
 }
+
+// wiping is a Transport that does what a real restore does to the cell's own
+// folder: the sender's policy file and record replace this machine's.
+type wiping struct {
+	r    *guardRig
+	body string
+}
+
+func (w wiping) Do(context.Context, Target, Op) ([]byte, error) {
+	_ = os.Remove(filepath.Join(w.r.state(), policyName))
+	_ = inventory.Record(w.r.cell.Root, func(inv *inventory.Inventory) { inv.Withheld = nil })
+	return []byte(w.body), nil
+}
+
+func TestAWarmTakeKeepsTheNamesAnEarlierTakeSetApart(t *testing.T) {
+	r := newRig(t)
+	target := func(c cell.Cell) Target { return Target{Tree: r.tree, CellDir: r.state()} }
+	first := syncEngineOver(answering(`{"snapshot":"s","held":[{"path":"Readme.md","reason":"same name as README.md here"}]}`))
+	first.Target = target
+	if err := first.Materialize(context.Background(), r.cell, "h1"); err != nil {
+		t.Fatal(err)
+	}
+
+	warm := syncEngineOver(wiping{r, `{"snapshot":"s2"}`})
+	warm.Target = target
+	if err := warm.Materialize(context.Background(), r.cell, "h2"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := r.policy().held; !reflect.DeepEqual(got, []string{"Readme.md"}) {
+		t.Fatalf("the earlier name was forgotten: %v", got)
+	}
+	want := []inventory.Withheld{{Path: "Readme.md", Reason: "same name as README.md here"}}
+	if rec := r.recorded(); !reflect.DeepEqual(rec, want) {
+		t.Fatalf("record %+v, want %+v", rec, want)
+	}
+}

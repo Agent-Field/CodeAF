@@ -236,13 +236,17 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 	var out struct {
 		Held []heldName `json:"held"`
 	}
+	// The restore brings the sender's policy file and record over this machine's,
+	// which would forget the names an earlier take set apart: they are read first
+	// and written back with this take's.
+	earlier := heldBefore(c, e.holdDir(c))
 	if err := e.ask(ctx, c, materializeOp{Head: head}, &out); err != nil {
 		return err
 	}
 	if err := noteAdopted(c, head); err != nil {
 		return err
 	}
-	return noteHeld(c, e.holdDir(c), out.Held)
+	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))
 }
 
 // holdDir is where the cell's policy file lives: the composed .cell/ directory
