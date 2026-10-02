@@ -66,6 +66,20 @@ type Composer interface {
 	Compose(c cell.Cell) error
 }
 
+// Composers is several Composers run in order; the first that fails stops the
+// seal, since a seal missing one of its carried parts is not the chat.
+type Composers []Composer
+
+// Compose implements Composer.
+func (cs Composers) Compose(c cell.Cell) error {
+	for _, one := range cs {
+		if err := one.Compose(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // LocalDir is the device-local directory of a cell: the engine store and the
 // call WAL. It is never inside the cell and never synced.
 func (e Engine) LocalDir(c cell.Cell) string { return filepath.Join(e.Root(), c.ID) }
