@@ -32,10 +32,14 @@ hv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hv)
 import tuidrive as td  # noqa: E402
 
-A_ROOT = os.path.expanduser("~/caf-vfid-rig-fid/a")
-B_ROOT = "/Users/santoshkumarradha/codeaf-bench-vfid"
+# Where the two homes live; a second lane that runs this at the same time sets its own folders, so neither builds into
+# or kills the processes of the other.
+A_ROOT = os.path.expanduser(os.environ.get("FID_A_ROOT", "~/caf-vfid-rig-fid/a"))
+B_ROOT = os.environ.get("FID_B_ROOT", "/Users/santoshkumarradha/codeaf-bench-vfid")
 B_HOST = "dumb"
-CTL = "/tmp/vf-fid-ssh"
+CTL = os.environ.get("FID_CTL", "/tmp/vf-fid-ssh")
+# The tmux sockets are named after the run, so killing one's own server never takes another run's.
+SUF = os.environ.get("FID_TMUX_SUFFIX", "")
 BIN = os.environ.get("CONT_BIN", "/home/santosh/caf-vfid-bins")
 # FID_REUSE keeps both homes and their pairing (the relay limits pairings per network); each run then gets a new folder.
 REUSE = bool(os.environ.get("FID_REUSE"))
@@ -54,8 +58,8 @@ def bsh(cmd, check=True, timeout=None, stdin=None):
     return r
 
 
-A = hv.Box("A", A_ROOT, sh, "vfa")
-B = hv.Box("B", B_ROOT, bsh, "vfb")
+A = hv.Box("A", A_ROOT, sh, "vfa" + SUF)
+B = hv.Box("B", B_ROOT, bsh, "vfb" + SUF)
 log = hv.log
 
 
@@ -99,11 +103,11 @@ class Fid:
             sh(f"{ODD} bash {KIT}/fidelity-fixture.sh {WS_A} > {self.dir}/fixture.log 2>&1")
 
     def pair(self):
-        sh("tmux -L vfp kill-server", check=False)
-        sh(f"tmux -L vfp new-session -d -s vfp -x 150 -y 30 \"bash -lc '. {A_ROOT}/env.sh; codeaf pair --code; echo EXIT=\\$?; sleep 60'\"")
+        sh(f"tmux -L vfp{SUF} kill-server", check=False)
+        sh(f"tmux -L vfp{SUF} new-session -d -s vfp -x 150 -y 30 \"bash -lc '. {A_ROOT}/env.sh; codeaf pair --code; echo EXIT=\\$?; sleep 60'\"")
         code, t0 = None, time.time()
         while time.time() - t0 < 60 and not code:
-            m = re.search(r"codeaf pair (\d\d-\d\d\d-\d\d\d)", sh("tmux -L vfp capture-pane -p -t vfp", check=False).stdout)
+            m = re.search(r"codeaf pair (\d\d-\d\d\d-\d\d\d)", sh(f"tmux -L vfp{SUF} capture-pane -p -t vfp", check=False).stdout)
             code = m and m.group(1)
             time.sleep(0.05)
         assert code, "no pairing code shown"
@@ -111,15 +115,15 @@ class Fid:
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         answered = False
         while time.time() - t0 < 60:
-            out = sh("tmux -L vfp capture-pane -p -t vfp", check=False).stdout
+            out = sh(f"tmux -L vfp{SUF} capture-pane -p -t vfp", check=False).stdout
             if "wants your chats" in out and not answered:
-                sh("tmux -L vfp send-keys -t vfp y Enter")
+                sh(f"tmux -L vfp{SUF} send-keys -t vfp y Enter")
                 answered = True
             if "EXIT=" in out:
                 break
             time.sleep(0.05)
         jout = join.communicate(timeout=60)[0]
-        sh("tmux -L vfp kill-server", check=False)
+        sh(f"tmux -L vfp{SUF} kill-server", check=False)
         assert "paired." in jout, jout
         log("paired")
 
