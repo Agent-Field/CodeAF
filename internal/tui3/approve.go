@@ -102,6 +102,27 @@ func isPairLink(typed string) bool {
 	return (err == nil && len(ref.Key) > 0) || strings.Contains(strings.ToLower(text), "/p/")
 }
 
+// takePairLink is the box's answer to enter, asked before the line can become a
+// message: a pair link carries the key that opens a fleet, so it is the approve
+// screen's and never a model's, in a running conversation and on the start page
+// alike. With no door to approve through, openApprove says so and the link is
+// still not sent.
+func (a *app) takePairLink() (tea.Cmd, bool) {
+	line := strings.TrimSpace(a.pastesUnfolded(strings.TrimSpace(a.input.String())))
+	if !isPairLink(line) {
+		return nil, false
+	}
+	a.input.reset()
+	a.endRecall()
+	a.closeLists()
+	if a.approvals == nil && a.startingChat() {
+		// The start page draws no transcript, so a note there is said to nobody.
+		a.startSay(pairUnavailableWord)
+		return nil, true
+	}
+	return a.openApprove(line), true
+}
+
 func isLinkShape(typed string) bool { return linkShape.MatchString(strings.TrimSpace(typed)) }
 
 // platformInfo is the icon and word a platform is shown as. A platform not
