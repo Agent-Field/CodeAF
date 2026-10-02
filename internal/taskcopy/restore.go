@@ -111,7 +111,21 @@ func (k Carry) cutAgain(project, dest, name, from string, rec record) error {
 	kept := holdsBranch(project, branch, rec.Head)
 	_, _ = git(project, "update-ref", "-d", "refs/heads/"+branch, rec.Head)
 	cutErr := k.Cutter.Cut(project, dest, Spec{Branch: branch, At: rec.Head, Linked: rec.Linked})
+	if cutErr == nil {
+		cutErr = holdCommit(dest, rec.Head)
+	}
 	return errors.Join(cutErr, keepBranch(project, branch, rec.Head, kept))
+}
+
+// holdCommit puts the tracked files of a freshly cut copy at the commit it was
+// at. A fork starts as the project's folder as it stands, and git carries a
+// local edit across the checkout of a branch, so the project's own uncommitted
+// edits on this machine would otherwise show up in a task's copy. The carried
+// files are laid over it afterwards, which is what the copy held beyond its
+// commit. Ignored files stay: they are the fork's reason to exist.
+func holdCommit(dest, commit string) error {
+	_, err := git(dest, "reset", "--hard", "--quiet", commit)
+	return err
 }
 
 // holdsBranch says whether the project has the branch at exactly the commit.
