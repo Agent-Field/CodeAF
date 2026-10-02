@@ -95,6 +95,8 @@ type TeamsSeam struct {
 	// answers the ids forgotten. The window reads the list again after it
 	// (ReadSince), because the file moved.
 	Delete func(team string) ([]string, error)
+	// DeleteChecked enforces the exact descendants named in the confirmation.
+	DeleteChecked func(team string, expected []string) ([]string, error)
 
 	// ── THE TEAMS PAGE (place_teams.go) ──
 	//
@@ -210,7 +212,8 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			spend, err := teamstore.TeamSpend(dir, team, day)
 			return spend, stamp, false, err
 		},
-		Delete: func(team string) ([]string, error) { return teamstore.Delete(dir, team) },
+		Delete:        func(team string) ([]string, error) { return teamstore.Delete(dir, team) },
+		DeleteChecked: func(team string, expected []string) ([]string, error) { return teamstore.Delete(dir, team, expected) },
 		History: func(team string) ([]teamstore.Packet, error) {
 			return teamstore.Packets(dir, team)
 		},

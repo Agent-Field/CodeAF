@@ -278,8 +278,9 @@ type Engine struct {
 	// crosses whole or it does not cross, and nil is memory off over there —
 	// which the surface says in those words rather than in this session's own
 	// ([EngineMemory]).
-	Memory  EngineMemory
-	Archive func(dir string, archived bool) error
+	Memory             EngineMemory
+	Archive            func(dir string, archived bool) error
+	DeleteConversation func(file string, choices map[string]string, affected map[string][]string) error
 	// PlacesRoot is the directory World walked, carried on the welcome so the
 	// surface can put THIS conversation back into a walk taken before it existed
 	// ([Welcome.PlacesRoot] holds the argument). Empty says nothing about the
@@ -1217,8 +1218,9 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// Whether this engine can hold a folder at all, asked of the agent it has
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.
-		Folders: keepsFolders(sess.agent),
-		Memory:  memoryCommandsKnown(sess.agent),
+		Folders:            keepsFolders(sess.agent),
+		ConversationDelete: sess.engine.DeleteConversation != nil,
+		Memory:             memoryCommandsKnown(sess.agent),
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.
 		Teams: true,

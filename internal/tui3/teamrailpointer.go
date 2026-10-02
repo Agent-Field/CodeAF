@@ -37,7 +37,17 @@ func (a *app) trafficGo(key string) tea.Cmd {
 		return cmd
 	}
 	for _, t := range a.wall.teams {
-		if m, ok := t.Member(key); ok && m.File != "" {
+		var m teamMember
+		m, ok := t.Member(key)
+		if !ok {
+			for _, former := range t.FormerMembers {
+				if former.Key == key {
+					m, ok = former, true
+					break
+				}
+			}
+		}
+		if ok && m.File != "" {
 			return a.tabGo(chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word, full: m.Word})
 		}
 	}

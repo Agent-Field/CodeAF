@@ -51,6 +51,7 @@ const (
 	// There is no cache behind it — a query is not a beat, it is an answer
 	// somebody's enter key is waiting for.
 	MethodPlacesSearch  = "Places.Search"  // SearchArgs → []store.ConversationHit
+	MethodPlacesDelete  = "Places.Delete"  // ConversationDeleteArgs → nothing
 	MethodPlacesArchive = "Places.Archive" // ArchiveArgs → nothing
 
 	// ── the folders a person attaches ───────────────────────────────────────
@@ -227,4 +228,11 @@ type MemoryCommands interface {
 	Remember(text string) (string, error)
 	Forget(query string) (string, error)
 	Memories(query string) ([]session.MemoryLine, error)
+}
+
+// ConversationDeleteArgs carries explicit manager choices from the confirmation.
+type ConversationDeleteArgs struct {
+	File     string              `json:"file"`
+	Choices  map[string]string   `json:"choices"`
+	Affected map[string][]string `json:"affected"`
 }

@@ -214,6 +214,7 @@ func TestWallClickTeamsPopoverAndSettings(t *testing.T) {
 	// once closed, from the teams page), and the wall's Teams row drops it.
 	wallClick(t, a, wallHitForTeam(t, a, wallHitChipMenu, harbor))
 	a.teamSheetDo(tsCloseTeam)
+	a.teamSheetDo(tsCloseNow)
 	if got, ok := a.teamByID(harbor); !ok || !got.Closed() {
 		t.Fatalf("Close team did not close it: %+v", a.teamNames())
 	}

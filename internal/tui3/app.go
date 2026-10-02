@@ -1448,9 +1448,11 @@ type app struct {
 	// teamMenu is the strip chip's team switcher (teammenu.go).
 	teamMenu teamMenu
 	// Overlay selection belongs to the view; conversation drafts stay in the keeper.
-	teamViews    teamOverlayViews
-	tmembers     teamMembershipSheet
-	tmemberStart teamMemberStart
+	teamViews          teamOverlayViews
+	tmembers           teamMembershipSheet
+	cdelete            conversationDeleteSheet
+	deleteConversation func(file string, choices map[string]string, affected map[string][]string) error
+	tmemberStart       teamMemberStart
 	// tp is the teams page's own state: its selection, its reading of the
 	// store and the targets it drew (teamspage.go).
 	tp teamsPage
@@ -3008,6 +3010,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
 		archive:             opts.Archive,
+		deleteConversation:  opts.DeleteConversation,
 		world:               opts.World,
 		farPlaces:           opts.WorldRoot,
 		farRecord:           opts.TaskRecord,
@@ -3719,6 +3722,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteKey(msg)
+		}
 		// A repeated enter keeps the pending conversation; ctrl+enter does
 		// the same only on the start page, where it is another enter spelling.
 		// Any other key cancels the transition before editing or navigating.
@@ -4033,6 +4039,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
 			return a, cmd
@@ -4047,6 +4056,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.closeTeamMenu()
 		}
 		if a.tsheet.on || a.tmove.on {
+			if a.tsheet.on && a.tsheet.mode != teamSheetSettings {
+				a.tsheet.detailsTop = min(max(a.tsheet.detailsTop+placeWheelDelta(msg.Mouse().Button), 0), a.tsheet.detailsMax)
+				a.touch()
+			}
 			return a, nil
 		}
 		if a.wall.on {
@@ -4300,6 +4313,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
 			return a, cmd
@@ -4731,6 +4747,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
 			return a, cmd
@@ -4776,6 +4795,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseMotionMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
 			return a, cmd
@@ -8083,6 +8105,8 @@ func (a *app) slash(line string) tea.Cmd {
 		// conversation, a search over it, and a look at the point before the cut.
 		return a.openRewindSheet()
 
+	case "delete":
+		return a.conversationDeleteOpen(a.file, a.sessionName())
 	case "new":
 		// The command that replaces the agent is the one command here that
 		// returns work: the standing task lane belongs to the agent that handed

@@ -948,3 +948,24 @@ func (p *v3Process) liveSettings(base config.Config) func() config.Config {
 		return live
 	}
 }
+
+// Permanent deletion stops every owner this process built for the journal.
+// Snapshotting avoids holding the process lock while a turn finishes leaving.
+func (p *v3Process) stopConversation(file string) error {
+	agents := func() []*session.Agent {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return append([]*session.Agent(nil), p.agents...)
+	}()
+	for _, agent := range agents {
+		path, _ := filepath.EvalSymlinks(agent.SessionPath())
+		if path == file {
+			agent.InterruptFor(session.StopByPerson)
+			if err := agent.Close(); err != nil {
+				return err
+			}
+			p.forget(agent)
+		}
+	}
+	return nil
+}

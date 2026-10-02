@@ -249,7 +249,7 @@ func TestTeamsInteractionPagingDoesNotRepeatTheShortLastPage(t *testing.T) {
 	}
 }
 
-func TestTeamsClosedCategoryIsBelowAllAndItsLongListCanBeWalked(t *testing.T) {
+func TestTeamsClosedCategoryStaysInTheFooterAndItsLongListCanBeWalked(t *testing.T) {
 	a, harbor, orbit := teamsHostedLab(t)
 	a.width, a.height = 120, 24
 	last := ""
@@ -270,8 +270,8 @@ func TestTeamsClosedCategoryIsBelowAllAndItsLongListCanBeWalked(t *testing.T) {
 	}
 	_ = teamsFrameText(a)
 	for _, hit := range a.tp.targets {
-		if hit.act == teamsActClosedFold && hit.y != placeHeadRows+1 {
-			t.Fatalf("Closed category is on row %d, want immediately below All", hit.y)
+		if hit.act == teamsActClosedFold && hit.y != a.height-placeFootRowsFor(pageTeams, a.height)-1 {
+			t.Fatalf("Closed category is on row %d, want the sidebar footer", hit.y)
 		}
 	}
 	a.teamsDo(teamsTarget{act: teamsActClosedFold})
@@ -393,8 +393,8 @@ func TestTeamsDragNeverDropsOnHiddenRailRowsInTheHeadOrFooter(t *testing.T) {
 			continue
 		}
 		checked++
-		if id, ok, _ := a.teamDropAt(hit.x0+1, hit.y); ok || id != "" {
-			t.Fatalf("hidden row at y=%d can receive a drag: %q", hit.y, id)
+		if id, ok, _ := a.teamDropAt(hit.x0+1, hit.y); ok && id == hit.id {
+			t.Fatalf("hidden row at y=%d can receive its own drag: %q", hit.y, id)
 		}
 	}
 	if checked == 0 {
@@ -513,5 +513,39 @@ func TestTeamsOverviewKeepsMembersAndInteractionsReachableAtSmallWidths(t *testi
 				t.Fatal("cannot reach interaction table")
 			}
 		})
+	}
+}
+
+func TestTeamsRailKeepsCreationAndHistoryVisibleWithALongTree(t *testing.T) {
+	a, _, orbit := teamsHostedLab(t)
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.Close(orbit, a.now(), ""); err != nil {
+			return err
+		}
+		for i := 0; i < 40; i++ {
+			f.Teams = append(f.Teams, teamstore.Team{ID: teamstore.NewID(), Name: fmt.Sprint("long ", i)})
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, height := range []int{1, 3, 10} {
+		d := &teamsDraw{a: a}
+		rows := a.teamsRailWindow(d, 24, height)
+		if len(rows) != height {
+			t.Fatal("rail exceeded its height")
+		}
+		newVisible, closedVisible := false, false
+		for _, target := range d.targets {
+			if target.act == teamsActNewTeam && !target.hidden {
+				newVisible = true
+			}
+			if target.act == teamsActClosedFold && !target.hidden {
+				closedVisible = true
+			}
+		}
+		if !newVisible || height >= 4 && !closedVisible {
+			t.Fatal("permanent sidebar controls disappeared")
+		}
 	}
 }

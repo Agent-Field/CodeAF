@@ -201,12 +201,11 @@ Moving a whole team under another writes the same kind of line on the team that 
 its new parent. A move that does not go through writes nothing. The manager of a team that
 gained or lost a member is told on its next wake, from the Traffic it already reads.
 
-**Closing a team.** `D` closes the team that is shown: at once, with Undo, when nothing in it
-is running, and with a card offering **Wrap up first**, **Close now** and **Cancel** when
-something is. A closed team leaves the Teams row and the switcher and waits under
-`Closed teams · N ▸` below `All teams` on the teams page, where it can be reopened,
-and deleted once you are sure.
-Closing or deleting a team never deletes a conversation.
+**Disbanding a team.** `D` asks for confirmation naming the selected team and every subteam.
+Current work finishes. Conversations and other memberships survive; lost reporting memberships
+leave conversations independent. The bottom `Closed teams` category retains read-only history.
+Disbanded teams cannot be reopened. Permanent team deletion removes team records and history,
+never their conversations. Permanent conversation deletion removes all its memberships instead.
 
 ## Organize: teams suggested for your conversations
 
@@ -252,8 +251,8 @@ After an Apply the Teams row says what it did for a few seconds, like
 back exactly as they were.
 
 When some teams have had no activity for a week and nothing waiting on them, the card also
-offers **Close 3 quiet teams** under `Quiet for a week`, ticked like the rest; Apply closes
-them and Undo reopens them. Apart from that Organize only ever adds: it never renames a team
+offers **Disband 3 quiet teams** under `Quiet for a week`, ticked like the rest; Apply closes
+them; Undo does not reopen disbanded teams. Apart from that Organize only ever adds: it never renames a team
 and never takes a conversation out of one, so pressing it again is how you refresh the
 suggestions. Nothing runs by itself. The button
 counts the conversations in no team once there are five or more, `✦ Organize 7`, and after a
@@ -412,3 +411,11 @@ In the new-team card: type the name, `ctrl+r` another name and colour, `←` `�
 `enter` create, `esc` cancel.
 
 In the Organize card: `↑` `↓` move, `space` tick or untick, `enter` apply, `esc` cancel.
+
+## Does deleting a team close its conversations?
+
+No. Permanently deleting a team removes the selected team and every descendant record and
+their saved interactions and decisions. Active teams are disbanded first. Their conversations,
+context and current work survive as ordinary sessions. Other memberships survive too.
+The confirmation names every affected team. Deleting a conversation itself is separate:
+`/delete` stops that conversation, deletes its transcript and removes all its memberships.

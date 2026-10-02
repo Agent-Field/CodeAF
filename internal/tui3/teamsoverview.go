@@ -120,14 +120,20 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 		left += "  " + a.pal.dim(spend)
 	}
 	if !t.Root {
-		x := ansi.StringWidth(left) + 1
-		button, _ := d.button("+ Add member", teamsTarget{act: teamsActAddMember, id: t.ID, x0: x, y: y, hint: "Add a new or existing conversation" + hintSegment + "a", pane: true}, a.pal.muted)
-		if x+ansi.StringWidth(button) <= width {
-			left += " " + button
-		} else {
-			d.targets = d.targets[:len(d.targets)-1]
+		for _, control := range []struct {
+			word string
+			act  teamsAct
+		}{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}} {
+			x := ansi.StringWidth(left) + 1
+			button, _ := d.button(control.word, teamsTarget{act: control.act, id: t.ID, x0: x, y: y, hint: control.word, pane: true}, a.pal.muted)
+			if x+ansi.StringWidth(button) <= width {
+				left += " " + button
+			} else {
+				d.targets = d.targets[:len(d.targets)-1]
+			}
 		}
 	}
+
 	x := ansi.StringWidth(left) + 1
 	button, _ := d.button("Settings", teamsTarget{act: teamsActSettings, id: t.ID, x0: x, y: y,
 		hint: "Team settings and spending controls" + hintSegment + "s"}, a.pal.muted)
@@ -138,7 +144,7 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	}
 	if !t.Root {
 		x = ansi.StringWidth(left) + 1
-		button, _ = d.button("Close"+a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, x0: x, y: y, hint: "Close this team" + hintSegment + "c"}, a.pal.muted)
+		button, _ = d.button("Disband"+a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, x0: x, y: y, hint: "Disband this team and its subteams; current work continues" + hintSegment + "c"}, a.pal.muted)
 		if x+ansi.StringWidth(button) <= width {
 			left += " " + button
 		} else {
@@ -206,11 +212,11 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 						x0: x + 2, y: y + len(out) + 1 + row, hint: a.teamsCrewHint(r), pane: true}, false)
 				}
 				if row == 0 && !t.Root && !t.Closed() {
-					const actionCells = 9
+					const actionCells = 3
 					if !a.tp.previews[r.key].missing {
 						d.targets[len(d.targets)-1].x1 = x + w - 2 - actionCells
 					}
-					action, _ := d.button("Actions", teamsTarget{act: teamsActMemberActions, id: t.ID, arg: r.key, x0: x + w - 2 - actionCells, y: y + len(out) + 1, hint: "Edit this team membership", pane: true}, a.pal.muted)
+					action, _ := d.button(a.linearMark(tabCloseASCII, tabCloseASCII), teamsTarget{act: teamsActRemoveMember, id: t.ID, arg: r.key, x0: x + w - 2 - actionCells, y: y + len(out) + 1, hint: "Remove from this team; conversation and work continue", pane: true}, a.pal.muted)
 					line = fit(line, w-4-actionCells) + action
 				}
 				lines = append(lines, wallCardLine{s: line})
@@ -257,16 +263,38 @@ func (a *app) teamsInteractionsPage(delta int) {
 	a.teamsInteractionsScroll(next - off)
 }
 
+// Old logs without stable keys are linked only when their alias is unambiguous.
 func teamsInteractionMember(t team, who string) string {
 	if who == teamstore.FromManager {
+		if t.FormerManager != "" {
+			return ""
+		}
 		return t.Manager
 	}
-	for _, m := range t.Members {
-		if m.Handle == who {
-			return m.Key
+	key := ""
+	for _, m := range append(append([]teamstore.Member(nil), t.Members...), t.FormerMembers...) {
+		if m.Handle != who {
+			continue
 		}
+		if key != "" && key != m.Key {
+			return ""
+		}
+		key = m.Key
 	}
-	return ""
+	return key
+}
+
+func teamsInteractionIdentity(t team, e teamstore.Entry, sender bool) string {
+	if sender {
+		if e.FromKey != "" {
+			return e.FromKey
+		}
+		return teamsInteractionMember(t, e.From)
+	}
+	if e.ToKey != "" {
+		return e.ToKey
+	}
+	return teamsInteractionMember(t, e.To)
 }
 
 type teamsInteractionLine struct {
@@ -334,14 +362,17 @@ func (a *app) teamsInteractionTable(d *teamsDraw, t team, width, y int) []string
 			line += " " + a.pal.dim(teamsPad(strings.TrimSpace(meta), metaWidth))
 		}
 		root := teamsTarget{act: teamsActInteractionToggle, id: t.ID, arg: e.ID, x0: 0, x1: 2, hint: "Expand or collapse this exchange", pane: true}
-		member := teamsInteractionMember(t, e.From)
+		member := teamsInteractionIdentity(t, e, true)
+		if !a.trafficHeld(member) && a.tp.previews[member].missing {
+			member = ""
+		}
 		jump := teamsTarget{act: teamsActInteractionJump, id: t.ID, arg: member, opt: e.ID, x0: 2, x1: inner, hint: "Go to this interaction in Chats", pane: true}
 		targets := []teamsTarget{root}
 		if member != "" {
 			targets = append(targets, jump)
 		}
 		toStart := 2 + ansi.StringWidth(who+" to ")
-		if recipient := teamsInteractionMember(t, e.To); recipient != "" && toStart < 2+labelWidth {
+		if recipient := teamsInteractionIdentity(t, e, false); recipient != "" && (a.trafficHeld(recipient) || !a.tp.previews[recipient].missing) && toStart < 2+labelWidth {
 			toTarget := jump
 			toTarget.arg, toTarget.x0, toTarget.x1 = recipient, toStart, min(toStart+ansi.StringWidth(to), 2+labelWidth)
 			if len(targets) > 1 {
@@ -373,11 +404,11 @@ func (a *app) teamsInteractionTable(d *teamsDraw, t team, width, y int) []string
 					entry = reply.entry
 				}
 				text = "@" + reply.who + "  " + reply.state + "  " + text
-				replyTarget := teamsTarget{act: teamsActInteractionJump, id: t.ID, arg: teamsInteractionMember(t, reply.who), opt: entry.ID,
+				replyTarget := teamsTarget{act: teamsActInteractionJump, id: t.ID, arg: teamsInteractionIdentity(t, entry, true), opt: entry.ID,
 					x0: 0, x1: inner, hint: "Go to this reply in Chats", pane: true}
 				for _, line := range wrap(text, inner-2) {
 					var hits []teamsTarget
-					if replyTarget.arg != "" {
+					if replyTarget.arg != "" && (a.trafficHeld(replyTarget.arg) || !a.tp.previews[replyTarget.arg].missing) {
 						hits = []teamsTarget{replyTarget}
 					}
 					rows = append(rows, teamsInteractionLine{text: "  " + a.pal.dim(line), targets: hits})

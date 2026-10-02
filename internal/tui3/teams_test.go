@@ -396,6 +396,7 @@ func TestTeamDeleteOrReorderNeverRetargetsAnother(t *testing.T) {
 		t.Fatalf("the hover followed the place, not the team:\n%s", frame)
 	}
 	wallKeyPress(a, "D")
+	_ = a.teamSheetDo(tsCloseNow)
 	if got, ok := a.teamByID(second); !ok || !got.Closed() || a.wall.activeID != "" {
 		t.Fatalf("D closed the wrong team: %v active %q", a.teamNames(), a.wall.activeID)
 	}

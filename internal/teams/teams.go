@@ -58,6 +58,9 @@ type Team struct {
 	Parent string
 	// Members are the conversations, in the order the person stored them.
 	Members []Member
+	// FormerMembers retain aliases for history links and confer no membership.
+	FormerMembers []Member
+	FormerManager string
 	// Manager is the conversation key of the member that manages the team, ""
 	// for none. It is always one of Members.
 	Manager string
@@ -106,21 +109,23 @@ var knownFields = map[string]bool{
 	"hue": true, "tier": true, "made": true,
 	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
-	"wrap": true,
+	"wrap": true, "former_members": true, "former_manager": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
 // colour is written without one, and the next reader with a palette colours
 // it rather than reading 0 as a choice.
 type wireTeam struct {
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Parent  string    `json:"parent"`
-	Members []Member  `json:"members"`
-	Manager string    `json:"manager"`
-	Hue     *float64  `json:"hue,omitempty"`
-	Tier    *int      `json:"tier,omitempty"`
-	Made    time.Time `json:"made"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Parent        string    `json:"parent"`
+	Members       []Member  `json:"members"`
+	FormerMembers []Member  `json:"former_members,omitempty"`
+	FormerManager string    `json:"former_manager,omitempty"`
+	Manager       string    `json:"manager"`
+	Hue           *float64  `json:"hue,omitempty"`
+	Tier          *int      `json:"tier,omitempty"`
+	Made          time.Time `json:"made"`
 	// The lifecycle, written only for a closed team.
 	State      string     `json:"state,omitempty"`
 	ClosedAt   *time.Time `json:"closed_at,omitempty"`
@@ -145,7 +150,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &all); err != nil {
 		return err
 	}
-	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, Manager: w.Manager, Made: w.Made,
+	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Manager: w.Manager, Made: w.Made,
 		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
@@ -171,7 +176,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // MarshalJSON writes the known fields in their order, then any field a later
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
-	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, Manager: t.Manager, Made: t.Made,
+	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Manager: t.Manager, Made: t.Made,
 		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.
@@ -259,6 +264,7 @@ func (t Team) member(key string) int {
 // Clone is a copy of t that shares nothing with it.
 func (t Team) Clone() Team {
 	t.Members = append([]Member(nil), t.Members...)
+	t.FormerMembers = append([]Member(nil), t.FormerMembers...)
 	t.Settings = t.Settings.clone()
 	if t.Wrap != nil {
 		w := *t.Wrap
@@ -435,9 +441,13 @@ func (f *File) RemoveMember(id, key string) error {
 		}
 	}
 	if j := t.member(key); j >= 0 {
+		m := t.Members[j]
+		m.Home, m.Independent = false, false
+		t.FormerMembers = append(t.FormerMembers, m)
 		t.Members = append(t.Members[:j:j], t.Members[j+1:]...)
 	}
 	if t.Manager == key {
+		t.FormerManager = key
 		t.Manager = ""
 	}
 	return nil
@@ -455,6 +465,9 @@ func (f *File) SetManager(id, key string) error {
 		return err
 	}
 	idx := Index(f.Teams, id)
+	if old := f.Teams[idx].Manager; old != "" && old != key {
+		f.Teams[idx].FormerManager = old
+	}
 	f.Teams[idx].Manager = key
 	assignHandles(&f.Teams[idx])
 	return nil
@@ -466,6 +479,9 @@ func (f *File) ClearManager(id string) error {
 	i, err := f.at(id)
 	if err != nil {
 		return err
+	}
+	if old := f.Teams[i].Manager; old != "" {
+		f.Teams[i].FormerManager = old
 	}
 	f.Teams[i].Manager = ""
 	return nil

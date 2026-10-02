@@ -29,13 +29,13 @@ The left column is the **rail**:
 
 ```
  All teams     + Manager │
- Closed teams · 2 ▸      │
+ + New team              │
  ● harbor ◆          ? 1 │
    ● orbit           ⠿   │
  ● docs                  │
                          │
- + New team in harbor    │
  ✦ Organize              │
+ Closed teams · 2 ▸      │
 ```
 
 - **`All teams`** is the top row. With no manager over every team it offers `+ Manager`,
@@ -47,15 +47,12 @@ The left column is the **rail**:
   working; an amber `? 2` says two things wait on you from it or from a team under it: a
   decision addressed to you, or a member stopped on a question only you can answer. A team
   where nothing is happening draws no mark at all.
-- **`+ New team`** makes a team of the conversation in front (the new-team card of the
-  conversations view). With a team chosen it reads **`+ New team in harbor`** and the new team
-  is made inside that team; on a narrow rail it takes two rows, `+ New team` and `in harbor`.
-  A team already at its depth limit dims it and says why. **`✦ Organize`** suggests teams for
-  your conversations and offers to close the quiet ones (see *Organize closes quiet teams*
-  below).
-- **`Closed teams · N ▸`**, immediately below `All teams` with the same category styling,
-  holds the teams you closed. A press opens the fold
-  and lists them; a press on one shows what it left behind.
+- **`+ New team`** stays visible below `All teams` and always creates a top-level team.
+  **`+ Add subteam`**, beside and after **`+ Add member`** in a selected team's header,
+  creates inside that team. The depth limit still applies.
+- **`✦ Organize`** suggests groupings and disbanding quiet teams.
+- **`Closed teams · N ▸`** is at the bottom of the rail. Expand it to inspect disbanded history.
+  The category remains visible while a long team list scrolls.
 
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
 and the pane beside it. Choosing a team changes the overview without changing the chat in
@@ -94,13 +91,13 @@ creates a session in the team's workspace, adds its membership, opens it in Chat
 team's overlay, and submits the assignment. It follows the conversation's ordinary tool
 approval rules. `Cancel · esc` dismisses the sheet; Esc also cancels a pending creation.
 
-Each card's `Actions` opens `Remove from this team` and `Make manager`. Removal affects
-only the selected membership. Its session, draft, transcript, running work and other
-memberships survive. A manager must be replaced by another member before it can be removed.
-Removing the membership supplying its reporting manager leaves the conversation independent;
-other teams remain links until reporting is explicitly assigned.
+Each ordinary member card has a small `x` that removes only this membership. Its session,
+draft, transcript, running work and other memberships survive. A manager cannot be removed
+with `x`; permanent manager-conversation deletion requires explicit replacement or disbanding
+choices. There is no member Actions menu. Removing the reporting membership leaves that
+conversation independent; another manager is never assigned automatically.
 
-`a` opens Add member. With a member card selected, `e` opens its Actions.
+`a` opens Add member. The picker uses `Name` and `Project` columns and does not display IDs.
 
 ## Recent interactions: scrolling, expanding replies and opening their conversations
 
@@ -231,18 +228,17 @@ Teams owns its keyboard. Typing here does not edit a manager's draft.
 | `tab`, `shift+tab` | next or previous place |
 | `alt+1` … `alt+8`, `alt+.` | jump to a place, show the map |
 | `s` | team settings |
-| `c` | close the selected team |
+| `c` | confirm disbanding the selected team |
 | `w` | conversations view for this team |
-| `n` | new team inside the selected team |
+| `n` | new top-level team |
 | `o` | Organize |
 | `m` | Move into… |
 | `space` on a team | pick it for a move of several |
 | `p` | member list |
 | `a` | Add member picker |
-| `e` | Actions for the selected member card |
 | `M` | start a manager when offered |
-| `r`, `d` | reopen or delete a closed team |
-| `u` | Undo a close or move while offered |
+| `d` | confirm permanent team deletion |
+| `u` | Undo a move while offered |
 | `esc` | cancel a drag, pending move or picks; otherwise return to Chats |
 
 After `M` starts a manager, Chats opens and its message box receives the keyboard.
@@ -276,48 +272,34 @@ cursor is on. A cap is dollars a day (0 for none), a depth is 1 to 10 levels, a 
 100 percent. The name is edited as you type and kept with `enter` or when the card is put
 away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
 
-## Closing a team — will closing a sub-team stop its manager if also in the parent team
+## Disbanding a team — does current work stop?
 
-`Close…`, `c`, `Close team…` on the card, or `D` on the conversations view closes a team.
+`Disband…`, `c`, `Disband team…` in Settings, or `D` on the conversations view asks for
+confirmation. It lists the selected team and every descendant. Disbanding ends all their
+memberships and coordination. Current turns finish, conversations survive, and memberships
+in other active teams survive. A conversation losing its reporting manager becomes independent.
+The team overlay returns to All; the current conversation stays selected.
 
-- **Nothing running:** it closes at once, and `harbor is closed   Undo` stays at the top of the
-  pane for a few seconds. `Undo` or `u` reopens it with its tabs.
-- **Something running:** a card says who is still working and offers **Wrap up first**,
-  **Close now** and **Cancel**. When the team has a manager, `Wrap up first` leads: the manager
-  is asked to have everyone finish and commit and to bring you a closing report, which arrives
-  as a card on this page with `Close` and `Keep going`; the team closes when you choose Close.
-  A working manager is named on the card even when it is also in a team above this one.
-  `Close now` stops every member's turn, including that manager's, and closes tabs belonging
-  only to the closing teams. A manager also in an open team above keeps its tab. `Cancel` or `esc`
-  changes nothing.
+Long confirmations scroll with `pgup`, `pgdown` or the wheel. Cancel changes nothing.
+Disbanding cannot be undone or reopened. `Closed teams` keeps the disbanded history.
 
-Closing a team closes the teams under it. Other conversations that are also in another open team
-are not stopped by the close. The conversation you are looking at keeps its tab, so a close never
-moves you. A closed team spends nothing, is not on the conversations view or the strip, and
-waits under `Closed teams · N ▸`.
+## Closed teams: read-only history and permanent deletion
 
-Over `--host`, against an engine that does not offer the wrap-up, the card says
-`Wrap up first is not offered over this connection` and offers `Close now` and `Cancel`.
+Open the bottom `Closed teams · N ▸` category and choose a team. The pane retains its
+roster, interactions, decisions, report and spending history. Surviving conversation links
+open bare Chats. Deleted conversations are unavailable, while copied exchanges and decisions
+remain readable. New messages and decisions cannot change disbanded history.
 
-## Closed teams: reopening, reports and deleting
+`Delete…` (`d`) permanently deletes the selected team and every descendant, including their
+interactions and decisions. Settings offers `Delete team…` for active teams too: they are
+first disbanded. The confirmation names all affected teams. Conversations and current work
+survive. Deletion cannot be undone. Older hosted engines without checked deletion refuse it.
 
-Open `Closed teams · N ▸` below `All teams` on the rail and choose a team. On this machine, the pane shows when it was
-opened and closed, its `closing report` when it closed on one (`done`, `left`, `files`, and
-`spent`), and its members, each still a door to its conversation. Two buttons:
+## Organize disbands quiet teams
 
-- **`Reopen`** (`r`) opens the team again. The overview stays selected; opening a member
-  remains an explicit click. A team whose parent is closed too offers **`Reopen harbor too`**, because a
-  sub-team cannot be open under a closed team.
-- **`Delete…`** (`d`) asks first, then forgets the team, its Traffic and its decisions. Its
-  conversations stay in your history. Only a closed team can be deleted.
-
-## Organize closes quiet teams
-
-`✦ Organize` on the rail (or on the conversations view) suggests teams for your conversations,
-and when some teams have had no activity for a week and nothing waiting, it also suggests
-**`Close 3 quiet teams`**, ticked like every other suggestion. Nothing closes until you Apply,
-and `Undo` on the Teams row for a few seconds after reopens them. Organize never closes a team
-by itself. Over `--host` this suggestion is not offered yet.
+`✦ Organize` suggests groupings and **`Disband 3 quiet teams`** when teams have no activity
+for a week and nothing waiting. Nothing changes until Apply. Undo restores grouping changes;
+it does not reopen disbanded teams. Over `--host` quiet-team suggestions are not offered yet.
 
 ## With no teams yet
 
@@ -344,9 +326,15 @@ opening a conversation; aliases and exchanges lead into Chats when detail is nee
 The interaction table keeps many exchanges visible in one panel and expands replies inline.
 Choosing a team never changes the current chat or takes the keyboard into its draft.
 
-## Assigning a reporting manager after removal
+## Reporting after membership removal
 
-An ordinary member’s `Actions` menu includes `Report to this team’s manager` while that team has its own manager. This explicitly chooses
-that membership as the conversation’s reporting home and releases any previous reporting
-assignment. The action is absent on the manager’s own card and in a team without its own manager. Independent
-conversations stay independent until you choose a reporting manager.
+A conversation has one reporting manager, chosen by its reporting membership. Removing that
+membership or disbanding its team leaves it independent. Other memberships remain links.
+There is no reporting-assignment action on the member cards.
+
+## Will closing a sub-team stop its manager if that manager is also in the parent team?
+
+The former Close/Reopen actions have been replaced by Disband. Disbanding a sub-team lets
+its manager's current work finish, preserves its conversation and keeps its parent-team
+membership. It recursively disbands only the selected sub-team and its descendants.
+The confirmation lists them. History stays read-only under Closed teams; there is no Reopen.

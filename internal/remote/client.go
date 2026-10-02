@@ -2655,3 +2655,9 @@ func (a *Agent) NeedsPerson() bool { return a.c.facts.read().NeedsPerson }
 func (a *Agent) ReplaceQuestion(ctx context.Context, answer session.Answer) (<-chan session.Event, error) {
 	return a.open(ctx, MethodQuestionReplace, QuestionArgs{Answer: answer})
 }
+
+// DeleteConversation runs the engine's checked permanent deletion operation.
+func (c *Client) DeleteConversation(file string, choices map[string]string, affected map[string][]string) error {
+	_, err := c.call(nil, MethodPlacesDelete, ConversationDeleteArgs{File: file, Choices: choices, Affected: affected})
+	return err
+}

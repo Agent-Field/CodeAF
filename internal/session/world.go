@@ -653,6 +653,9 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
 func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
+	if _, err := os.Stat(filepath.Join(dir, conversationDeletedFile)); err == nil {
+		return SessionRow{}, false
+	}
 	place := Place{Dir: dir}
 	transcript := place.Transcript()
 	info, err := os.Stat(transcript)

@@ -887,3 +887,23 @@ status deck, the task page, and the task column's focus.
 Contrast that with what `/quit` and `ctrl+c` do, which is close for real: the turn is
 cancelled with a grace wait, background jobs are shut down, running tasks end, and the
 journal is synced and unlocked — see *Will I lose this if it crashes?*.
+
+## Permanently deleting a conversation — /delete and the Home delete action
+
+`/delete` asks to stop the current conversation and permanently remove its transcript.
+The Home conversation row's `delete` action (or `ctrl+e` on a selected conversation) opens
+the same confirmation. Cancel changes nothing. This replaces the old close/reopen action.
+
+Deleting removes every team membership. If the conversation manages active teams, explicitly
+choose an eligible replacement or disband each managed team. Disbanding includes every named
+subteam; a changed tree requires another confirmation. The optional global manager can be
+removed without disbanding All teams. Use `pgup` and `pgdown` to read a long choice's details.
+
+Earlier team exchanges and decisions remain in team history. Links to the deleted conversation
+become unavailable. Files and deliverables written during the conversation survive. Its transcript
+cannot be reopened or recreated from a stale tab. Other conversations and their work survive.
+Deleting the current chat switches to another open tab, or Home when none remains.
+
+An older hosted engine without permanent deletion does not offer this operation. Deletion
+requires a recorded saved conversation on the engine machine; unsaved conversations cannot
+be permanently deleted through this door. This cannot be undone.

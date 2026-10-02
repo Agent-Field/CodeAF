@@ -160,7 +160,8 @@ const (
 	teamsActInteractionUp
 	teamsActInteractionDown
 	teamsActAddMember
-	teamsActMemberActions
+	teamsActRemoveMember
+	teamsActAddSubteam
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────
@@ -228,21 +229,17 @@ func (a *app) teamsClosed() []team {
 
 // teamsRailRows is the rail, top to bottom. Memory only.
 func (a *app) teamsRailRows() []teamsRailRow {
-	rows := []teamsRailRow{{kind: railRowAll}}
+	rows := []teamsRailRow{{kind: railRowAll}, {kind: railRowNew}}
+	rows = append(rows, a.teamsOpenTree()...)
+	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowOrganize})
 	if closed := a.teamsClosed(); len(closed) > 0 {
-		rows = append(rows, teamsRailRow{kind: railRowClosed})
+		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
 		if a.tp.closedOpen {
 			for _, t := range closed {
 				rows = append(rows, teamsRailRow{kind: railRowClosedTeam, id: t.ID})
 			}
 		}
 	}
-	rows = append(rows, a.teamsOpenTree()...)
-	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowNew})
-	if _, split := a.teamsRailNewWords(); split {
-		rows = append(rows, teamsRailRow{kind: railRowNewIn})
-	}
-	rows = append(rows, teamsRailRow{kind: railRowOrganize})
 	return rows
 }
 
@@ -453,6 +450,9 @@ func (a *app) teamsInbox() []teamstore.Packet {
 		if !p.Waiting() {
 			continue
 		}
+		if origin, ok := a.teamByID(p.Origin); !ok || origin.Closed() {
+			continue
+		}
 		switch {
 		case p.Team == teamstore.Person && (all || a.teamsSubtree(sel, p.Origin)):
 			out = append(out, p)
@@ -565,6 +565,7 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	if t, ok := a.teamsSelected(); ok {
 		if t.Closed() {
 			closedReports = append(closedReports, t.ID)
+			pools = append(pools, t.ID)
 		} else {
 			owner, _ := a.teamsPool(t)
 			pools = append(pools, owner)
@@ -583,6 +584,7 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	}
 	selected, _ := a.teamsSelected()
 	members := append([]teamMember(nil), a.teamsCrewMembers(selected)...)
+	members = append(members, selected.FormerMembers...)
 	previous := a.tp.previews
 	worldDoor, hosted, rowsDoor := a.world, a.hosted(), a.teamsDisk.rows
 	if rowsDoor == nil {

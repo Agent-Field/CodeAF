@@ -948,6 +948,27 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// there is exactly one door and no road on which a swap can still happen.
 	options.Start = fleet.start
 	options.Open = fleet.open
+	if welcome.ConversationDelete {
+		options.DeleteConversation = func(file string, choices map[string]string, affected map[string][]string) error {
+			if err := client.DeleteConversation(file, choices, affected); err != nil {
+				return err
+			}
+			world.mu.Lock()
+			defer world.mu.Unlock()
+			for i := range world.held.Projects {
+				rows := world.held.Projects[i].Sessions
+				kept := rows[:0:0]
+				for _, row := range rows {
+					if row.Transcript != file {
+						kept = append(kept, row)
+					}
+				}
+				world.held.Projects[i].Sessions = kept
+			}
+			return nil
+		}
+	}
+
 	return options, settings
 }
 

@@ -134,7 +134,7 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 			if a.tp.closedOpen {
 				fold = a.icon(tokens.GExpanded)
 			}
-			word := " " + pal.bold(pal.ink("Closed teams")) + pal.dim(" "+a.teamsDot()+" "+itoa(len(a.teamsClosed()))) + " " + pal.ink(fold)
+			word := " " + fold + " Closed teams " + a.teamsDot() + " " + itoa(len(a.teamsClosed()))
 			hint := "Show the closed teams"
 			if a.tp.closedOpen {
 				hint = "Fold the closed teams away"
@@ -143,7 +143,7 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 		case railRowClosedTeam:
 			t, _ := a.teamByID(r.id)
 			return d.row("   "+pal.dim(t.Name), width, teamsTarget{act: teamsActSelect, id: t.ID, y: y,
-				hint: t.Name + " closed" + hintSegment + "its report, members, Reopen and Delete"}, a.tp.sel == t.ID)
+				hint: t.Name + " closed" + hintSegment + "read-only history and permanent Delete"}, a.tp.sel == t.ID)
 		}
 		return strings.Repeat(" ", width)
 	}
@@ -160,31 +160,77 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 // the cursor. Expanding a long Closed category must not hide its later teams.
 func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 	mark := len(d.targets)
-	all := a.teamsRail(d, width, len(a.teamsRailRows()))
-	limit := min(len(all), max(height, 1))
-	focusY := 0
+	kinds := a.teamsRailRows()
+	all := a.teamsRail(d, width, len(kinds))
+	if height <= 0 {
+		return nil
+	}
+	var head, middle, foot []int
+	for i, row := range kinds {
+		switch row.kind {
+		case railRowAll, railRowNew:
+			head = append(head, i)
+		case railRowClosed, railRowOrganize:
+			foot = append(foot, i)
+		case railRowBlank:
+		default:
+			middle = append(middle, i)
+		}
+	}
+	// Creation takes the only available row on a very short terminal.
+	if height == 1 {
+		head = head[1:]
+		foot = nil
+	}
+	for len(head)+len(foot) > height {
+		foot = foot[:len(foot)-1]
+	}
+	room := max(height-len(head)-len(foot), 0)
+	off := min(a.tp.railOffset, max(len(middle)-room, 0))
 	for _, target := range d.targets[mark:] {
-		if target.ref() == a.tp.cur || target.act == teamsActSelect && target.id == a.tp.sel && focusY == 0 {
-			focusY = target.y
+		if target.ref() != a.tp.cur {
+			continue
 		}
-		if target.ref() == a.tp.cur {
-			break
+		for i, line := range middle {
+			if line != target.y {
+				continue
+			}
+			if i < off {
+				off = i
+			}
+			if room > 0 && i >= off+room {
+				off = i - room + 1
+			}
 		}
-	}
-	off := min(a.tp.railOffset, max(len(all)-limit, 0))
-	if focusY < off {
-		off = focusY
-	}
-	if focusY >= off+limit {
-		off = focusY - limit + 1
 	}
 	a.tp.railOffset = off
-	for i := mark; i < len(d.targets); i++ {
-		d.targets[i].line = d.targets[i].y
-		d.targets[i].y -= off
-		d.targets[i].hidden = d.targets[i].y < 0 || d.targets[i].y >= limit
+	positions := map[int]int{}
+	out := make([]string, height)
+	for i := range out {
+		out[i] = strings.Repeat(" ", width)
 	}
-	return all[off : off+limit]
+	paint := func(line, y int) { positions[line] = y; out[y] = all[line] }
+	for y, line := range head {
+		paint(line, y)
+	}
+	for i := off; i < min(off+room, len(middle)); i++ {
+		paint(middle[i], len(head)+i-off)
+	}
+	for i, line := range foot {
+		paint(line, height-len(foot)+i)
+	}
+	for i := mark; i < len(d.targets); i++ {
+		t := &d.targets[i]
+		t.line = t.y
+		y, visible := positions[t.y]
+		t.hidden = !visible
+		if visible {
+			t.y = y
+		} else {
+			t.y -= off
+		}
+	}
+	return out
 }
 
 // teamsDot is the middle dot in this terminal's glyphs.
@@ -290,46 +336,13 @@ func (a *app) teamsRailTeam(d *teamsDraw, t team, depth, width, y int) string {
 	return d.row(text, width, tg, a.tp.sel == t.ID)
 }
 
-// teamsRailNew is the rail's `+ New team`, which with a team chosen reads
-// `+ New team in harbor` and makes the new team inside it. On a rail too narrow
-// for that on one row it is two, `+ New team` and `in harbor` under it, each a
-// press on the same thing (second says which row this is); a name is never cut
-// to make it fit. A chosen team that cannot take one more level dims it and
-// says why.
+// teamsRailNew always creates a top-level team; subteams have their own header door.
 func (a *app) teamsRailNew(d *teamsDraw, width, y int, second bool) string {
-	pal := a.pal
-	t, ok := a.teamsSelected()
-	if !ok || t.Closed() || t.Root {
-		return d.row(" + "+teamsNewTeamWord, width, teamsTarget{act: teamsActNewTeam, y: y,
-			hint: "Make a team of the conversation in front" + hintSegment + "n"}, false)
-	}
-	words, split := a.teamsRailNewWords()
-	tg := teamsTarget{act: teamsActNewTeam, id: t.ID, y: y,
-		hint: "Make a team inside " + t.Name + " of the conversation in front" + hintSegment + "n"}
-	switch {
-	case split && second:
-		words = "   in " + t.Name
-		tg.opt = "in"
-	case split:
-		words = " + " + teamsNewTeamWord
-	}
-	if ok, why := a.teamsCanNest(t.ID); !ok {
-		tg.hint = why
-		return d.row(pal.dim(words), width, tg, false)
-	}
-	return d.row(words, width, tg, false)
+	return d.row(" + "+teamsNewTeamWord, width, teamsTarget{act: teamsActNewTeam, y: y,
+		hint: "Create a top-level team" + hintSegment + "n"}, false)
 }
 
-// teamsRailNewWords is `+ New team in harbor` for the chosen team, and whether
-// the rail is too narrow to hold it on one row.
-func (a *app) teamsRailNewWords() (string, bool) {
-	t, ok := a.teamsSelected()
-	if !ok || t.Closed() || t.Root {
-		return " + " + teamsNewTeamWord, false
-	}
-	words := " + " + teamsNewTeamWord + " in " + t.Name
-	return words, a.tp.railW > 0 && ansi.StringWidth(words) > a.tp.railW-2
-}
+func (a *app) teamsRailNewWords() (string, bool) { return " + " + teamsNewTeamWord, false }
 
 // ── THE PANE'S HEAD: HEADER, MEMBERS, INBOX ─────────────────────────────────
 
@@ -355,17 +368,23 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 	}
 	out = append(out, a.teamsOverviewHeader(d, t, width, len(out)))
 	if !t.Closed() && !t.Root {
-		visible := false
-		for _, target := range d.targets {
-			if target.act == teamsActAddMember && target.id == t.ID {
-				visible = true
+		for _, control := range []struct {
+			word string
+			act  teamsAct
+		}{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}} {
+			visible := false
+			for _, target := range d.targets {
+				if target.act == control.act && target.id == t.ID {
+					visible = true
+				}
+			}
+			if !visible {
+				button, _ := d.button(control.word, teamsTarget{act: control.act, id: t.ID, x0: 1, y: len(out), hint: control.word, pane: true}, pal.muted)
+				out = append(out, " "+button)
 			}
 		}
-		if !visible {
-			button, _ := d.button("+ Add member", teamsTarget{act: teamsActAddMember, id: t.ID, x0: 1, y: len(out), hint: "Add a new or existing conversation" + hintSegment + "a", pane: true}, pal.muted)
-			out = append(out, " "+button)
-		}
 	}
+
 	if t.Closed() {
 		return out
 	}
@@ -441,7 +460,7 @@ func possessiveTeamName(name string) string {
 
 // teamsClosedWords is a closed team's dates: when it was made and closed.
 func (a *app) teamsClosedWords(t team) string {
-	words := "closed"
+	words := "disbanded"
 	if !t.ClosedAt.IsZero() {
 		words += " " + t.ClosedAt.Local().Format("2 Jan")
 	}
@@ -743,10 +762,13 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 	}
 	for _, o := range p.Options {
 		word := o.Label
+		if p.Kind == teamstore.PacketClosing && (o.ID == teamstore.OptionClose || o.ID == teamstore.OptionCloseNow) {
+			word = "Disband"
+		}
 		if ansi.StringWidth(word) > labelW-2 {
 			word = ansi.Truncate(word, labelW-2, a.linearMark("…", "~"))
 		}
-		hint := o.Label + hintSegment + o.Consequence
+		hint := word + hintSegment + o.Consequence
 		s, w := d.button(word, teamsTarget{act: teamsActOption, arg: p.ID, opt: o.ID, x0: 1, y: y + len(out), hint: hint}, pal.ink)
 		rest := strings.Repeat(" ", max(labelW-w, 0)) + "  " + pal.dim(o.Consequence)
 		if o.ID == rec {
@@ -866,11 +888,32 @@ func (a *app) teamsClosedRows(d *teamsDraw, t team, width, y int) []string {
 	case !a.teamsCanReadHistory():
 		out = append(out, " "+pal.dim(fit("its closing report is kept where the team ran, and is not readable over this connection", width-2)))
 	default:
-		out = append(out, " "+pal.dim("closed without a report"))
+		out = append(out, " "+pal.dim("disbanded without a report"))
 	}
 	out = append(out, "", " "+pal.muted("members"))
 	members := a.teamsMembersRows(d, t, width, y+len(out))
-	return append(out, members...)
+	out = append(out, members...)
+	if spend := a.teamsSpendWords(t); spend != "" {
+		out = append(out, "", " "+pal.dim(spend))
+	}
+	out = append(out, "", " "+pal.muted("Decisions"))
+	for _, packet := range a.tp.history[t.ID] {
+		if packet.Kind == teamstore.PacketClosing {
+			continue
+		}
+		text := packet.Question
+		if packet.Decision != "" {
+			text += " · " + packet.Decision
+		}
+		if packet.Reason != "" {
+			text += " · " + packet.Reason
+		}
+		for _, line := range wrap(text, max(width-2, 1)) {
+			out = append(out, " "+pal.dim(line))
+		}
+	}
+	out = append(out, "")
+	return append(out, a.teamsInteractionTable(d, t, width, y+len(out))...)
 }
 
 // teamsEmpty is the page with no teams at all: what a team is, and the two
@@ -909,74 +952,70 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	a.tp.table = teamsTableRect{}
 	a.teamsSettle()
 	var lines []string
-	if !a.teamsAny() {
-		lines = a.teamsEmpty(d, width, room)
-		for i := range d.targets {
-			d.targets[i].line = d.targets[i].y
-		}
+	railW := teamsRailCols(width)
+	paneW := width - railW
+	var rail []string
+	if railW > 0 {
+		rail = a.teamsRailWindow(d, railW-1, room)
 	} else {
-		railW := teamsRailCols(width)
-		paneW := width - railW
-		var rail []string
+		// A narrow rail has its own window so a long team list cannot take
+		// all the space needed by the selected team's overview.
+		limit := max(min(room/3, 5), 1)
+		lines = append(lines, a.teamsRailWindow(d, width, limit)...)
+		lines = append(lines, "")
+	}
+	top := len(lines)
+	mark := len(d.targets)
+	pane := a.teamsTop(d, paneW-1)
+	if !a.teamsAny() {
+		pane = a.teamsEmpty(d, paneW-1, room-top)
+	}
+	pane = append(pane, a.teamsPaneRest(d, paneW-1, len(pane))...)
+	for i := mark; i < len(d.targets); i++ {
+		d.targets[i].line = top + d.targets[i].y
+	}
+	// THE PANE SCROLLS TO KEEP THE CURSOR ON IT: a long inbox moves up
+	// under a cursor walking down it, rather than walking it off the frame.
+	if vis := room - top; len(pane) > vis && vis > 0 {
+		off := 0
+		for _, t := range d.targets[mark:] {
+			if t.ref() == a.tp.cur {
+				if t.y >= vis {
+					off = min(t.y-vis+1, len(pane)-vis)
+				}
+				if t.act == teamsActInteractionUp || t.act == teamsActInteractionDown || t.act == teamsActInteractionToggle || t.act == teamsActInteractionJump {
+					off = min(max(a.tp.table.y+a.tp.table.h-vis, 0), len(pane)-vis)
+				}
+				break
+			}
+		}
+		if off > 0 {
+			pane = pane[off:]
+			d.shift(mark, 0, -off)
+			a.tp.table.y -= off
+		}
+	}
+	d.shift(mark, railW, top)
+	a.tp.table.x += railW
+	a.tp.table.y += top + placeHeadRows
+	for i := mark; i < len(d.targets); i++ {
+		d.targets[i].pane = true
+	}
+	sep := a.pal.dim(a.linearMark("│", "|"))
+	for i := 0; i < room-top; i++ {
+		left := ""
 		if railW > 0 {
-			rail = a.teamsRailWindow(d, railW-1, room)
-		} else {
-			// A narrow rail has its own window so a long team list cannot take
-			// all the space needed by the selected team's overview.
-			limit := max(min(room/3, 5), 1)
-			lines = append(lines, a.teamsRailWindow(d, width, limit)...)
-			lines = append(lines, "")
-		}
-		top := len(lines)
-		mark := len(d.targets)
-		pane := a.teamsTop(d, paneW-1)
-		pane = append(pane, a.teamsPaneRest(d, paneW-1, len(pane))...)
-		for i := mark; i < len(d.targets); i++ {
-			d.targets[i].line = top + d.targets[i].y
-		}
-		// THE PANE SCROLLS TO KEEP THE CURSOR ON IT: a long inbox moves up
-		// under a cursor walking down it, rather than walking it off the frame.
-		if vis := room - top; len(pane) > vis && vis > 0 {
-			off := 0
-			for _, t := range d.targets[mark:] {
-				if t.ref() == a.tp.cur {
-					if t.y >= vis {
-						off = min(t.y-vis+1, len(pane)-vis)
-					}
-					if t.act == teamsActInteractionUp || t.act == teamsActInteractionDown || t.act == teamsActInteractionToggle || t.act == teamsActInteractionJump {
-						off = min(max(a.tp.table.y+a.tp.table.h-vis, 0), len(pane)-vis)
-					}
-					break
-				}
+			left = strings.Repeat(" ", railW-1)
+			if i < len(rail) {
+				left = rail[i]
 			}
-			if off > 0 {
-				pane = pane[off:]
-				d.shift(mark, 0, -off)
-				a.tp.table.y -= off
-			}
+			left += sep
 		}
-		d.shift(mark, railW, top)
-		a.tp.table.x += railW
-		a.tp.table.y += top + placeHeadRows
-		for i := mark; i < len(d.targets); i++ {
-			d.targets[i].pane = true
+		right := ""
+		if i < len(pane) {
+			right = pane[i]
 		}
-		sep := a.pal.dim(a.linearMark("│", "|"))
-		for i := 0; i < room-top; i++ {
-			left := ""
-			if railW > 0 {
-				left = strings.Repeat(" ", railW-1)
-				if i < len(rail) {
-					left = rail[i]
-				}
-				left += sep
-			}
-			right := ""
-			if i < len(pane) {
-				right = pane[i]
-			}
-			lines = append(lines, left+teamsPad(right, paneW))
-		}
+		lines = append(lines, left+teamsPad(right, paneW))
 	}
 	// Offscreen targets remain keyboard stops so long overviews can be walked.
 	d.shift(0, 0, placeHeadRows)

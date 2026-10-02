@@ -464,6 +464,26 @@ func (a *Agent) teamBoundary() string {
 		roles = a.teamRolesLocked(profile)
 	}
 	role := teamRoleBlock(roles, a.team.file)
+	var releases []string
+	if a.team.file != nil {
+		for _, t := range a.team.file.Teams {
+			if !t.Closed() {
+				continue
+			}
+			for _, key := range a.team.keys {
+				if t.Holds(key) {
+					releases = append(releases, "Team "+t.Name+" has been disbanded. Your membership in it has ended.")
+					break
+				}
+			}
+		}
+	}
+	if len(releases) > 0 {
+		if role == "" {
+			role = teamRoleWithdrawn + " You are independent."
+		}
+		role = strings.Join(releases, "\n") + "\n\n" + role
+	}
 	told := append([]string(nil), a.team.told...)
 	a.team.told = nil
 	a.team.mu.Unlock()

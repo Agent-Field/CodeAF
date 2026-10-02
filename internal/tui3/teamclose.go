@@ -10,33 +10,9 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
-// ── CLOSING, REOPENING AND DELETING A TEAM (DESIGN.md section 8.5, c-9) ─────
-//
-// A team is open or closed. `Close…` asks what to do only when there is
-// something to decide: with nothing running it closes at once and offers Undo,
-// because a question with one useful answer is friction. With work running the
-// card offers three ([app.teamSheetOpen]'s close mode):
-//
-//   - `Wrap up first` (the default while a manager has work running): the
-//     manager is asked, in the team's Traffic, to have everyone finish and
-//     commit, answer what it can, and bring the person a closing report. The
-//     team closes only when the person picks `Close` on that report, which is
-//     an ordinary card in the inbox.
-//   - `Close now`: every member's current turn is stopped (the person's own
-//     Stop, nothing deleted), the team's tabs close, and the team moves to
-//     Closed, in one step, with Undo.
-//   - `Cancel`.
-//
-// A CONVERSATION THAT IS ALSO IN ANOTHER OPEN TEAM IS NEVER CLOSED by this, and
-// never stopped, with ONE EXCEPTION: the manager of a team being closed. A
-// sub-team's manager is also a member of the team above, so it is still that
-// team's and keeps its tab; but the turn it is running is this team's work, so
-// it counts as working (the card, and `Wrap up first`, rather than a close at
-// once while it runs on) and `Close now` stops that turn. Closing a team
-// closes the teams under it
-// (internal/teams' [teamstore.File.Close]); reopening reopens exactly what the
-// close closed. Delete is only ever offered on a closed team, and forgets the
-// grouping, the Traffic and the packets; the conversations stay in history.
+// Disbanding releases coordination recursively without stopping conversations.
+// Deletion removes the team's own history, never the conversations it held.
+// Closed records remain readable; the surface does not offer reopen or close undo.
 
 // teamsUndoFor is how long a close offers Undo: the wall's own span for an
 // Apply, so a person learns one length of time for taking a thing back.
@@ -174,29 +150,31 @@ func (a *app) teamsCloseAsk(id string) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	if names, _ := a.teamsRunning(id); len(names) > 0 {
-		return a.teamSheetOpen(id, teamSheetClose)
-	}
-	return a.teamsCloseNow(id, "")
+	return a.teamSheetOpen(id, teamSheetClose)
 }
 
-// teamsCloseNow closes team id at once: every member's turn stopped, the
-// team's tabs closed, the team moved to Closed, and Undo offered. report is the
-// closing report's packet id when the close was the report's `Close`.
-func (a *app) teamsCloseNow(id, report string) tea.Cmd {
+// teamsCloseNow disbands the reviewed scope and keeps conversations working.
+func (a *app) teamsCloseNow(id, report string, expected ...[]string) tea.Cmd {
 	t, ok := a.teamByID(id)
 	if !ok || t.Closed() || t.Root {
 		return nil
 	}
 	now := a.now()
-	shut := a.teamsStopMembers(id)
-	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(id, now, report) }); err != nil {
+	var shut []string
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if len(expected) > 0 {
+			if err := f.CheckAffected(id, expected[0]); err != nil {
+				return err
+			}
+		}
+		return f.Disband(id, now, report)
+	}); err != nil {
 		a.tp.msg = "not closed: " + err.Error()
 		a.touch()
 		return nil
 	}
 	cmd := a.teamsAfterClose(t, shut, now, true)
-	a.tp.undo.said = a.teamWriteWatch(nil)
+	a.tp.msg = t.Name + " is disbanded; conversations and current work continue"
 	return cmd
 }
 
@@ -250,23 +228,20 @@ func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) t
 	id := t.ID
 	// On the page the Undo row says it; off it the close is said where the
 	// person is standing.
-	a.tp.undo = teamsUndo{team: id, name: t.Name, shut: shut, at: now}
+	a.tp.undo = teamsUndo{}
 	if !a.at(pageTeams) {
-		a.note(t.Name + " is closed · its conversations are kept · Closed on the teams page reopens it")
+		a.note(t.Name + " is disbanded; its conversations and current work continue")
 	}
-	if a.tp.sel == id {
-		a.tp.sel = ""
-		a.teamsSettle()
-	}
-	if a.wall.activeID == id {
-		a.wall.activeID = ""
+	a.tp.closedOpen, a.tp.sel = true, id
+	if active, ok := a.teamByID(a.teamViews.id); !ok || active.Closed() {
+		a.teamViewSet("")
 	}
 	a.touch()
 	if !tell {
 		return nil
 	}
 	return tea.Batch(a.teamsTell(id, teamstore.Entry{Kind: teamstore.KindClose, From: teamstore.FromYou, To: teamstore.ToEveryone,
-		Text: "the person closed the team"}))
+		Text: "the person disbanded the team; memberships ended and current work continues"}))
 }
 
 // teamsUndoing reports whether Undo is still offered for the last close.
@@ -410,7 +385,7 @@ func (a *app) teamsAcceptReport(p teamstore.Packet, decision string) tea.Cmd {
 		cmd := a.teamsCloseNow(p.Origin, p.ID)
 		return tea.Batch(cmd, a.teamsDecideOnly(seam, p.ID, decision))
 	}
-	shut := a.teamsStopMembers(p.Origin)
+	var shut []string
 	reserved, now, id := teamReservedHues(a.pal), a.now(), p.ID
 	return a.offLoop(func() func(bool) tea.Cmd {
 		_, err := seam.Decide(id, teamstore.Person, decision, "")
@@ -479,14 +454,9 @@ func (a *app) teamsTell(id string, e teamstore.Entry) tea.Cmd {
 
 // teamsDelete forgets closed team id through the seam, off the loop, and then
 // reads the teams again, because the file moved under the window.
-func (a *app) teamsDelete(id string) tea.Cmd {
+func (a *app) teamsDelete(id string, expected ...[]string) tea.Cmd {
 	t, ok := a.teamByID(id)
 	if !ok {
-		return nil
-	}
-	if !t.Closed() {
-		a.tp.msg = "only a closed team can be deleted"
-		a.touch()
 		return nil
 	}
 	seam := a.teamsSeam()
@@ -496,8 +466,17 @@ func (a *app) teamsDelete(id string) tea.Cmd {
 		return nil
 	}
 	reserved, name := teamReservedHues(a.pal), t.Name
+	ids := a.teamsAffectedIDs(id)
+	if len(expected) > 0 {
+		ids = expected[0]
+	}
+	if seam.DeleteChecked == nil {
+		a.tp.msg = "This engine does not offer permanent team deletion"
+		a.touch()
+		return nil
+	}
 	return a.offLoop(func() func(bool) tea.Cmd {
-		_, err := seam.Delete(id)
+		_, err := seam.DeleteChecked(id, ids)
 		var teams []team
 		var stamp string
 		if err == nil {
@@ -510,6 +489,9 @@ func (a *app) teamsDelete(id string) tea.Cmd {
 				return nil
 			}
 			a.teamAdopt(teamsClone(teams))
+			if active, ok := a.teamByID(a.teamViews.id); !ok || active.Closed() {
+				a.teamViewSet("")
+			}
 			a.traffic.stamp = stamp
 			a.tp.msg = name + " is forgotten; its conversations stay in your history"
 			if a.tp.sel == id {

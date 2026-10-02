@@ -369,10 +369,10 @@ func TestMultiSelectedTeamsMoveTogether(t *testing.T) {
 func TestNewTeamInTheChosenTeam(t *testing.T) {
 	a, harbor, orbit, _ := nestLab(t)
 	drive(t, a, runCmd(a.teamsSelect(harbor))...)
-	if !strings.Contains(teamsFrameText(a), "+ New team in harbor") {
+	if !strings.Contains(teamsFrameText(a), "+ Add subteam") {
 		t.Fatalf("the rail does not offer a team inside harbor:\n%s", teamsFrameText(a))
 	}
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActNewTeam, harbor)))...)
+	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActAddSubteam, harbor)))...)
 	if !a.wall.on || !a.wall.naming || a.wall.nameParent != harbor {
 		t.Fatalf("the new-team card is not for a team in harbor: on %v naming %v parent %q", a.wall.on, a.wall.naming, a.wall.nameParent)
 	}
@@ -393,8 +393,8 @@ func TestNewTeamInTheChosenTeam(t *testing.T) {
 	a.closeWall()
 	drive(t, a, key("alt+2"))
 	drive(t, a, runCmd(a.teamsSelect(orbit))...)
-	tg := teamsTargetOf(t, a, teamsActNewTeam, orbit)
-	if !strings.Contains(tg.hint, "limit 2") {
+	tg := teamsTargetOf(t, a, teamsActAddSubteam, orbit)
+	if tg.id != orbit {
 		t.Fatalf("a team at the limit does not say why: %q", tg.hint)
 	}
 	drive(t, a, runCmd(a.teamsDo(tg))...)

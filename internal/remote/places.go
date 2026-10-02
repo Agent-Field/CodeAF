@@ -42,6 +42,15 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 	sess.mu.Unlock()
 
 	switch call.Method {
+	case MethodPlacesDelete:
+		args, err := arg[ConversationDeleteArgs](call)
+		if err != nil {
+			return nil, true, err
+		}
+		if engine.DeleteConversation == nil {
+			return nil, true, errors.New(engineOffWord + "this engine cannot permanently delete conversations")
+		}
+		return nil, true, engine.DeleteConversation(args.File, args.Choices, args.Affected)
 	case MethodPlacesArchive:
 		args, err := arg[ArchiveArgs](call)
 		if err != nil {

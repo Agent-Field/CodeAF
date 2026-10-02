@@ -277,7 +277,7 @@ func TestStartingAManagerReturnsKeyboardToItsComposer(t *testing.T) {
 
 func TestTeamsActionKeysAreListedOnTheHelpSheet(t *testing.T) {
 	sheet := helpText("", chordSpelling{meta: chordAltWord})
-	if !strings.Contains(sheet, "s c w n o M m p r d u") {
+	if !strings.Contains(sheet, "s c w n o M m p d u") {
 		t.Fatalf("the teams action keys are missing from help:\n%s", sheet)
 	}
 }
@@ -330,26 +330,26 @@ func TestTeamsCardShowsProvenanceAndResets(t *testing.T) {
 
 // NOTHING RUNNING IS ONE CLOSE AND AN UNDO; the team moves to Closed and Undo
 // puts it back.
-func TestTeamsCloseWithNothingRunningIsOneClickAndUndo(t *testing.T) {
+func TestTeamsDisbandRequiresConfirmationAndKeepsReadOnlyHistory(t *testing.T) {
 	a, _, orbit := teamsPlaceLabIDs(t)
 	drive(t, a, runCmd(a.teamsCloseAsk(orbit))...)
-	if a.tsheet.on {
-		t.Fatal("a quiet team asked before closing")
+	if !a.tsheet.on || a.tsheet.cursor != tsCancel {
+		t.Fatal("disband did not default to cancellation")
 	}
+	if got, _ := a.teamByID(orbit); got.Closed() {
+		t.Fatal("opening confirmation changed the team")
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
 	if got, _ := a.teamByID(orbit); !got.Closed() {
-		t.Fatal("orbit did not close")
+		t.Fatal("confirmed disband failed")
 	}
 	text := teamsFrameText(a)
-	if !strings.Contains(text, "Undo") || !strings.Contains(text, "Closed teams · 1") {
-		t.Fatalf("the close offers no Undo or no Closed fold:\n%s", text)
-	}
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActUndo, "")))...)
-	if got, _ := a.teamByID(orbit); got.Closed() {
-		t.Fatal("Undo did not reopen orbit")
+	if strings.Contains(text, "Reopen") || strings.Contains(text, "Undo") || !strings.Contains(text, "Delete") {
+		t.Fatalf("history is not read-only:\n%s", text)
 	}
 }
 
-func TestTeamsCloseCountsAndStopsASubteamManagerSharedWithItsParent(t *testing.T) {
+func TestTeamsDisbandKeepsASubteamManagerWorkingInItsParent(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
 	var shared chatTab
 	for _, tab := range a.tabList() {
@@ -374,81 +374,47 @@ func TestTeamsCloseCountsAndStopsASubteamManagerSharedWithItsParent(t *testing.T
 	watch.turning.Store(true)
 	a.behind[shared.key] = &kept{conv: Conversation{Agent: member, SessionFile: shared.file}, watch: watch}
 	drive(t, a, runCmd(a.teamsCloseAsk(orbit))...)
-	if !a.tsheet.on || a.tsheet.cursor != tsWrapUp {
+	if !a.tsheet.on || a.tsheet.cursor != tsCancel {
 		t.Fatalf("the working sub-team manager was skipped: %+v", a.tsheet)
 	}
-	if text := teamsFrameText(a); !strings.Contains(text, a.teamManagerMark()+" manager") {
-		t.Fatalf("the card does not name the working manager:\n%s", text)
-	}
 	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
-	if member.stops != 1 || a.tabShut[shared.key] {
+	if member.stops != 0 || a.tabShut[shared.key] {
 		t.Fatalf("Close now stopped %d turns and shut the parent's tab=%v", member.stops, a.tabShut[shared.key])
 	}
 }
 
 // SOMETHING RUNNING PUTS UP THE CARD: `Close now` first when no manager runs
 // the team, `Wrap up first` first when one does, and Cancel changes nothing.
-func TestTeamsCloseCardOffersWrapUpNowAndCancel(t *testing.T) {
-	a, harbor, _ := teamsPlaceLabIDs(t)
+func TestTeamsDisbandCancelLeavesCoordinationUntouched(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
 	a.state = stateWorking
 	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if !a.tsheet.on || a.tsheet.mode != teamSheetClose || a.tsheet.cursor != tsCloseNow {
-		t.Fatalf("the card for a team with no manager: %+v", a.tsheet)
-	}
 	text := teamsFrameText(a)
-	if strings.Contains(text, "Wrap up first") || !strings.Contains(text, "Close now") || !strings.Contains(text, "Cancel") {
-		t.Fatalf("the card with no manager:\n%s", text)
+	if strings.Contains(text, "Close now") || strings.Contains(text, "Wrap up first") || !strings.Contains(text, "Disband") || !strings.Contains(text, "orbit") {
+		t.Fatalf("confirmation omitted the consequences:\n%s", text)
 	}
 	a.teamSheetKey(key("esc"))
-	if got, _ := a.teamByID(harbor); a.tsheet.on || got.Closed() {
-		t.Fatal("Cancel closed the team or left the card up")
-	}
-	for _, tab := range a.tabList() {
-		if tab.key == a.frontTabKey() {
-			if err := a.teamMakeManager(harbor, tab); err != nil {
-				t.Fatal(err)
-			}
+	for _, id := range []string{harbor, orbit} {
+		if got, _ := a.teamByID(id); got.Closed() {
+			t.Fatal("Cancel disbanded a team")
 		}
-	}
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if !a.tsheet.on || a.tsheet.cursor != tsWrapUp {
-		t.Fatalf("a managed team's card does not lead with Wrap up first: %+v", a.tsheet)
-	}
-	drive(t, a, runCmd(a.teamSheetDo(tsWrapUp))...)
-	if got, _ := a.teamByID(harbor); got.Closed() {
-		t.Fatal("Wrap up first closed the team at once")
-	}
-	if !strings.Contains(a.tp.msg, "wrap up") {
-		t.Fatalf("the wrap-up said nothing: %q", a.tp.msg)
-	}
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
-	if got, _ := a.teamByID(harbor); !got.Closed() {
-		t.Fatal("Close now did not close the team")
 	}
 }
 
 // THE CLOSED FOLD shows a closed team's report, members and dates with
 // Reopen and Delete…, and a team under a closed parent offers to reopen the
 // parent too.
-func TestTeamsClosedFoldReopensWithItsParent(t *testing.T) {
+func TestTeamsDisbandedSubteamHasNoReopenAction(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if got, _ := a.teamByID(orbit); !got.Closed() {
-		t.Fatal("closing the parent left the sub-team open")
-	}
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActClosedFold, "")))...)
+	drive(t, a, runCmd(a.teamsCloseNow(harbor, ""))...)
 	drive(t, a, runCmd(a.teamsSelect(orbit))...)
 	text := teamsFrameText(a)
-	for _, want := range []string{"Reopen harbor too", "Delete…", "closed"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the closed sub-team lost %q:\n%s", want, text)
-		}
+	if !strings.Contains(text, "Delete") || strings.Contains(text, "Reopen") {
+		t.Fatalf("disbanded team controls:\n%s", text)
 	}
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActReopenParent, orbit)))...)
 	for _, id := range []string{harbor, orbit} {
-		if got, _ := a.teamByID(id); got.Closed() {
-			t.Fatalf("%s is still closed", got.Name)
+		if got, _ := a.teamByID(id); !got.Closed() {
+			t.Fatal("descendant coordination remained active")
 		}
 	}
 }
@@ -677,14 +643,14 @@ func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
 			quiet = &a.wall.org.props[i]
 		}
 	}
-	if quiet == nil || len(quiet.closes) != 2 || quiet.name != "Close 2 quiet teams" {
+	if quiet == nil || len(quiet.closes) != 2 || quiet.name != "Disband 2 quiet teams" {
 		t.Fatalf("Organize did not offer the quiet teams: %+v", a.wall.org.props)
 	}
 	// Its row is its sentence whole, then the teams: no colour dot and no
 	// second count, and not cut to a team name's width.
 	a.width, a.height = 110, 30
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "☑ Close 2 quiet teams  harbor, orbit") {
+	if !strings.Contains(frame, "☑ Disband 2 quiet teams  harbor, orbit") {
 		t.Fatalf("the quiet-teams row reads:\n%s", frame)
 	}
 	for _, id := range []string{harbor, orbit} {
@@ -715,11 +681,7 @@ func TestTeamsWrapUpAsksTheManagerAndTheReportCloses(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
 	flushTeams(t, a)
 	a.state = stateWorking
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if a.tsheet.cursor != tsWrapUp {
-		t.Fatalf("the card does not lead with Wrap up first: %+v", a.tsheet)
-	}
-	drive(t, a, runCmd(a.teamSheetDo(tsWrapUp))...)
+	drive(t, a, runCmd(a.teamsWrapUp(harbor))...)
 	log, err := teamstore.ReadTraffic(a.profileDir, harbor, "", 20)
 	if err != nil {
 		t.Fatal(err)

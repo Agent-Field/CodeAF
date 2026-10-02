@@ -3,7 +3,6 @@ package tui3
 import (
 	"fmt"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
-	"github.com/charmbracelet/x/ansi"
 	"path/filepath"
 	"strings"
 
@@ -383,14 +382,19 @@ func (a *app) teamMembershipOver(frame string) string {
 	} else {
 		lines = append(lines, wallCardLine{s: a.pal.dim("Filter  ") + fit(s.filter.String()+a.linearMark("▏", "|"), inner-8)})
 		rows := a.teamMembershipRows()
+		nameWidth := max(inner*2/3, 1)
+		projectWidth := max(inner-nameWidth-2, 1)
+		lines = append(lines, wallCardLine{s: a.pal.dim(teamsPad("Name", nameWidth) + "  " + teamsPad("Project", projectWidth))})
 		all := []string{"+ New conversation"}
 		for _, r := range rows {
-			identity := filepath.Base(r.where) + " · " + filepath.Base(filepath.Dir(r.file))
-			identity = ansi.Truncate(identity, min(inner/2, 32), "…")
-			all = append(all, fit(r.word, max(inner-ansi.StringWidth(identity)-3, 1))+" · "+identity)
+			project := filepath.Base(r.where)
+			if r.where == "" {
+				project = ""
+			}
+			all = append(all, teamsPad(r.word, nameWidth)+"  "+teamsPad(project, projectWidth))
 		}
 		s.cursor = min(max(s.cursor, 0), len(all)-1)
-		room := max(height-9, 1)
+		room := max(height-10, 1)
 		s.top = min(s.top, max(len(all)-room, 0))
 		if s.cursor < s.top {
 			s.top = s.cursor

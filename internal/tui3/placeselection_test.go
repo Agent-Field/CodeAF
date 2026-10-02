@@ -99,8 +99,8 @@ func TestHomeCloseActsOnTheLastKeyboardSelection(t *testing.T) {
 		t.Fatal("the retired a shortcut still closed a thread")
 	}
 	drive(t, a, key("x"))
-	if archived != selected.row.Dir {
-		t.Fatalf("put away acted on %q, want %q", archived, selected.row.Dir)
+	if archived != "" || !a.cdelete.on || a.cdelete.file != selected.row.Transcript {
+		t.Fatal("delete did not ask about the last selected conversation")
 	}
 }
 

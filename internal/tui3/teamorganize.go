@@ -518,7 +518,7 @@ func (a *app) orgWithQuiet(props []orgProp) []orgProp {
 	if len(p.closes) == 0 {
 		return props
 	}
-	p.name = "Close " + strconv.Itoa(len(p.closes)) + " quiet team"
+	p.name = "Disband " + strconv.Itoa(len(p.closes)) + " quiet team"
 	if len(p.closes) != 1 {
 		p.name += "s"
 	}
@@ -756,7 +756,7 @@ func (a *app) wallOrganizeUndo() {
 	if o.undo == nil || o.doneAt.IsZero() || a.now().Sub(o.doneAt) >= wallOrganizedFor {
 		return
 	}
-	made, joins, closed := o.undoMade, o.undoJoins, o.undoClosed
+	made, joins := o.undoMade, o.undoJoins
 	o.undo, o.doneAt = nil, time.Time{}
 	o.undoMade, o.undoJoins, o.undoClosed = nil, nil, nil
 	a.wall.hover = wallHitRef{}
@@ -774,14 +774,7 @@ func (a *app) wallOrganizeUndo() {
 				return err
 			}
 		}
-		for _, id := range closed {
-			if t, ok := f.Team(id); !ok || !t.Closed() {
-				continue
-			}
-			if err := f.Reopen(id); err != nil {
-				return err
-			}
-		}
+
 		return nil
 	})
 	if teamIndex(a.wall.teams, a.wall.activeID) < 0 {
@@ -915,7 +908,7 @@ func wallOrganizeButton(pal palette, g wallGlyphs, v wallView, y int) wallOrgPie
 			said = append(said, strconv.Itoa(o.added)+" added")
 		}
 		if o.closed > 0 {
-			said = append(said, strconv.Itoa(o.closed)+" closed")
+			said = append(said, strconv.Itoa(o.closed)+" disbanded")
 		}
 		word := "Organized " + g.sep + " " + strings.Join(said, ", ") + "  "
 		undo := wallButton{act: wallActOrgUndo, label: "Undo"}

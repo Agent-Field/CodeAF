@@ -25,13 +25,29 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	switch t.act {
 	case teamsActAddMember:
 		return a.teamMembershipOpen(t.id, "")
-	case teamsActMemberActions:
-		return a.teamMembershipOpen(t.id, t.arg)
+	case teamsActRemoveMember:
+		if err := a.teamRemove(t.id, []string{t.arg}); err != nil {
+			a.tp.msg = err.Error()
+			a.touch()
+			return nil
+		}
+		return a.teamsRead(true)
+	case teamsActAddSubteam:
+		return a.teamMenuNewTeamIn(t.id)
 	case teamsActInteractionToggle:
 		a.trafficToggle(trafficOpenKey(t.id, t.arg))
 		return nil
 	case teamsActInteractionJump:
-		a.teamViewSet(t.id)
+		if !a.trafficHeld(t.arg) && a.tp.previews[t.arg].missing {
+			a.tp.msg = "Conversation unavailable"
+			a.touch()
+			return nil
+		}
+		id := t.id
+		if team, ok := a.teamByID(id); ok && team.Closed() {
+			id = ""
+		}
+		a.teamViewSet(id)
 		a.leavePlace()
 		a.closeRoom()
 		return a.trafficJumpFromTeam(t.id, t.arg, t.opt)
@@ -54,8 +70,7 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		a.touch()
 		return nil
 	case teamsActNewTeam:
-		// On the rail with a team chosen, the new team is made inside it.
-		return a.teamMenuNewTeamIn(t.id)
+		return a.teamMenuNewTeamIn("")
 	case teamsActOrganize:
 		open := a.openWall()
 		a.wallSetTeam("")
@@ -73,9 +88,9 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActClose:
 		return a.teamsCloseAsk(t.id)
 	case teamsActReopen:
-		return a.teamsReopen(t.id, false)
+		return nil
 	case teamsActReopenParent:
-		return a.teamsReopen(t.id, true)
+		return nil
 	case teamsActDelete:
 		return a.teamSheetOpen(t.id, teamSheetDelete)
 	case teamsActMember:
@@ -139,6 +154,14 @@ func (a *app) teamsSelect(id string) tea.Cmd {
 func (a *app) teamsMemberGo(id, key string) tea.Cmd {
 	if key == "" {
 		return nil
+	}
+	if !a.trafficHeld(key) && a.tp.previews[key].missing {
+		a.tp.msg = "Conversation unavailable"
+		a.touch()
+		return nil
+	}
+	if t, ok := a.teamByID(id); ok && t.Closed() {
+		id = ""
 	}
 	a.teamViewSet(id)
 	a.leavePlace()

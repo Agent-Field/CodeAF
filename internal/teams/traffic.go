@@ -75,6 +75,9 @@ type Entry struct {
 	Kind string `json:"kind"`
 	// From is a member's handle, or manager, you or system.
 	From string `json:"from"`
+	// Stable identities keep history links correct when an alias or manager changes.
+	FromKey string `json:"from_key,omitempty"`
+	ToKey   string `json:"to_key,omitempty"`
 	// To is a member's handle, or everyone, manager or room, or several with
 	// the handles in Handles.
 	To   string `json:"to"`
@@ -151,7 +154,28 @@ func AppendTraffic(profileDir, teamID string, e Entry) error {
 
 // AppendTrafficID is [AppendTraffic], and the id the entry was given, which a
 // writer that will be answered keeps so the answer can name it.
-func AppendTrafficID(profileDir, teamID string, e Entry) (string, error) {
+func appendTrafficIDLocked(profileDir, teamID string, e Entry) (string, error) {
+	if f, _, _, err := read(profileDir); err != nil {
+		return "", err
+	} else if f != nil {
+		t, ok := f.Team(teamID)
+		if !ok || t.Closed() {
+			return "", ErrClosed
+		}
+		identity := func(who string) string {
+			if who == FromManager {
+				return t.Manager
+			}
+			for _, m := range t.Members {
+				if m.Handle == who {
+					return m.Key
+				}
+			}
+			return ""
+		}
+		e.FromKey, e.ToKey = identity(e.From), identity(e.To)
+	}
+
 	if err := safeTeamID(teamID); err != nil {
 		return "", err
 	}
@@ -580,4 +604,21 @@ func lastIDIn(path string) (int64, bool, error) {
 		}
 	}
 	return 0, false, nil
+}
+
+// AppendTrafficID keeps history read-only once disbanding commits.
+func AppendTrafficID(profileDir, teamID string, e Entry) (string, error) {
+	var id string
+	err := withLock(profileDir, lockWait, func() error {
+		var err error
+		id, err = appendTrafficIDLocked(profileDir, teamID, e)
+		return err
+	})
+	return id, err
+}
+
+// Decision writes already hold the lifecycle lock when they record their traffic.
+func appendTrafficLocked(profileDir, teamID string, e Entry) error {
+	_, err := appendTrafficIDLocked(profileDir, teamID, e)
+	return err
 }

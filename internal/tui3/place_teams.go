@@ -147,7 +147,7 @@ func (placeTeams) hint(a *app) string {
 	if !a.teamsAny() {
 		return "o organize · n new team · " + homeDoorWord
 	}
-	return "↑↓ walk · enter open · m move into… · space pick · p members · s settings · c close · n new team · o organize · " + homeDoorWord
+	return "↑↓ walk · enter open · m move into… · space pick · a add member · s settings · c disband · n new team · o organize · " + homeDoorWord
 }
 
 // changed is how many packets wait on the person, which is the count a person
@@ -324,7 +324,7 @@ func (a *app) teamsWalk(dx, dy int) bool {
 // team is moved whenever the tree is reshaped.
 var teamsLetters = map[string]teamsAct{
 	"s": teamsActSettings, "c": teamsActClose, "w": teamsActWall, "n": teamsActNewTeam,
-	"o": teamsActOrganize, "M": teamsActManager, "r": teamsActReopen, "d": teamsActDelete,
+	"o": teamsActOrganize, "M": teamsActManager, "d": teamsActDelete,
 }
 
 // teamsMoveLetter is `Move into…`, on the selected team or the picked ones.
@@ -401,11 +401,6 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "a":
 		if t, ok := a.teamsSelected(); ok {
 			return a.teamMembershipOpen(t.ID, ""), true
-		}
-		return nil, true
-	case "e":
-		if target, ok := a.teamsCursorTarget(); ok && target.act == teamsActMember {
-			return a.teamMembershipOpen(target.id, target.arg), true
 		}
 		return nil, true
 	case teamCrewLetter:

@@ -66,6 +66,7 @@ const (
 	tsDepth
 	tsShare
 	tsCloseTeam
+	tsDeleteTeam
 	tsDone
 	tsWrapUp
 	tsCloseNow
@@ -86,9 +87,11 @@ const (
 
 // teamSheet is the card's whole state.
 type teamSheet struct {
-	on   bool
-	mode teamSheetMode
-	team string
+	on                     bool
+	mode                   teamSheetMode
+	affected               []string
+	detailsTop, detailsMax int
+	team                   string
 	// cursor is the row or button the keyboard is on, hot the one under the
 	// pointer (-1 none).
 	cursor, hot int
@@ -112,17 +115,14 @@ func (a *app) teamSheetOpen(id string, mode teamSheetMode) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	s := teamSheet{on: true, mode: mode, team: id, hot: -1, editing: -1}
+	s := teamSheet{on: true, mode: mode, team: id, hot: -1, editing: -1, affected: a.teamsAffectedIDs(id)}
 	switch mode {
 	case teamSheetSettings:
 		s.cursor = tsName
 		s.name.setText(t.Name)
 		s.choices = append([]teamHueSpec{t.HueSpec()}, teamHueChoices(a.teamHues(id), teamReservedHues(a.pal), wallSwatchCount-1)...)
 	case teamSheetClose:
-		s.cursor = tsCloseNow
-		if _, managed := a.teamsRunning(id); managed && a.teamsCanWrapUp() {
-			s.cursor = tsWrapUp
-		}
+		s.cursor = tsCancel
 	case teamSheetDelete:
 		s.cursor = tsKeep
 	}
@@ -268,14 +268,33 @@ func (a *app) teamSheetCard(width, height int) wallCard {
 	}
 	var title string
 	var lines []wallCardLine
-	inner := min(max(width-12, 40), 64)
+	inner := min(width-8, 64)
+	if inner < 10 || height < 8 {
+		return wallCard{}
+	}
 	switch s.mode {
 	case teamSheetSettings:
 		title, lines = "Team settings", a.teamSheetSettingsLines(t, inner)
 	case teamSheetClose:
-		title, lines = "Close "+t.Name, a.teamSheetCloseLines(t, inner)
+		title, lines = "Disband "+t.Name, a.teamSheetCloseLines(t, inner)
 	case teamSheetDelete:
 		title, lines = "Delete "+t.Name, a.teamSheetDeleteLines(t, inner)
+	}
+	if s.mode != teamSheetSettings {
+		footer := 1
+		if s.mode == teamSheetClose {
+			footer = 2
+		}
+		budget := max(height-7-footer, 1)
+		content := lines[:len(lines)-footer]
+		s.detailsMax = max(len(content)-budget, 0)
+		s.detailsTop = min(max(s.detailsTop, 0), s.detailsMax)
+		if s.detailsMax > 0 {
+			ending := append([]wallCardLine(nil), lines[len(lines)-footer:]...)
+			lines = append([]wallCardLine{}, content[s.detailsTop:min(s.detailsTop+budget, len(content))]...)
+			lines = append(lines, wallCardLine{s: a.pal.dim("PgUp/PgDn or wheel · view affected teams")})
+			lines = append(lines, ending...)
+		}
 	}
 	w := inner + 2 + 2*wallCardPadX
 	h := len(lines) + 2 + 2*wallCardPadY
@@ -369,12 +388,15 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 		lines = append(lines, wallCardLine{s: pal.bad(fit(s.err, inner))})
 	}
 	lines = append(lines, wallCardLine{rule: true})
-	closeWord := "Close team" + a.linearMark("…", "...")
+	closeWord := "Disband team" + a.linearMark("…", "...")
 	var hits []wallHit
 	row := ""
 	if !t.Root {
 		b, hit, _ := a.teamSheetButton(closeWord, "", tsCloseTeam, 0, false)
 		row, hits = b, append(hits, hit)
+		b, hit, _ = a.teamSheetButton("Delete team…", "", tsDeleteTeam, ansi.StringWidth(row)+1, false)
+		row += " " + b
+		hits = append(hits, hit)
 	}
 	enter := a.linearMark("⏎", "enter")
 	doneX := inner + 2 - a.teamSheetButtonW("Done", enter)
@@ -453,49 +475,17 @@ func teamSheetBoxHint(code int) string {
 // on, the default in the accent.
 func (a *app) teamSheetCloseLines(t team, inner int) []wallCardLine {
 	pal := a.pal
-	names, managed := a.teamsRunning(t.ID)
 	var lines []wallCardLine
-	for _, l := range wrap(teamsCloseWords(names)+".", inner) {
-		lines = append(lines, wallCardLine{s: pal.ink(l)})
+	for _, word := range wrap("Disband these teams: "+a.teamsAffectedNames(t.ID)+". Memberships end, current work finishes, and every conversation survives. Team history is kept read-only.", inner) {
+		lines = append(lines, wallCardLine{s: pal.ink(word)})
 	}
 	lines = append(lines, wallCardLine{})
-	type choice struct {
-		code        int
-		label, key  string
-		consequence string
-	}
-	var cs []choice
-	switch {
-	case t.Manager != "" && a.teamsCanWrapUp():
-		cs = append(cs, choice{tsWrapUp, "Wrap up first", "", "the manager asks everyone to finish and commit, then brings you a closing report"})
-	case t.Manager != "":
-		// The engine behind this window has no wrap-up door: said, not hidden.
-		for _, l := range wrap(teamsNoWrapUpWord, inner) {
-			lines = append(lines, wallCardLine{s: pal.dim(l)})
-		}
-		lines = append(lines, wallCardLine{})
-	}
-	cs = append(cs,
-		choice{tsCloseNow, "Close now", "", "stops every turn and closes the tabs; Undo for a few seconds"},
-		choice{tsCancel, "Cancel", "esc", ""})
-	labelW := 0
-	for _, c := range cs {
-		labelW = max(labelW, a.teamSheetButtonW(c.label, c.key))
-	}
-	for _, c := range cs {
-		accent := c.code == tsWrapUp && managed
-		b, hit, w := a.teamSheetButton(c.label, c.key, c.code, 0, accent)
-		text := b + strings.Repeat(" ", max(labelW-w, 0))
-		// The consequence wraps under itself rather than being cut: it is the
-		// one thing that says what the button does.
-		said := wrap(c.consequence, max(inner-labelW-2, 8))
-		if len(said) > 0 {
-			text += "  " + pal.dim(said[0])
-		}
-		lines = append(lines, wallCardLine{s: text, hits: []wallHit{hit}, bleed: true})
-		for _, l := range said[min(1, len(said)):] {
-			lines = append(lines, wallCardLine{s: strings.Repeat(" ", labelW+2) + pal.dim(l)})
-		}
+	for _, choice := range []struct {
+		word string
+		code int
+	}{{"Cancel", tsCancel}, {"Disband", tsCloseNow}} {
+		button, hit, _ := a.teamSheetButton(choice.word, "", choice.code, 0, choice.code == tsCloseNow)
+		lines = append(lines, wallCardLine{s: button, hits: []wallHit{hit}, bleed: true})
 	}
 	return lines
 }
@@ -505,7 +495,7 @@ func (a *app) teamSheetCloseLines(t team, inner int) []wallCardLine {
 func (a *app) teamSheetDeleteLines(t team, inner int) []wallCardLine {
 	pal := a.pal
 	var lines []wallCardLine
-	say := "Forget " + t.Name + "? Its grouping, its Traffic and its packets go. Its conversations stay in your history."
+	say := "Permanently delete these teams: " + a.teamsAffectedNames(t.ID) + "? Active teams are disbanded first. Their records, interactions and decisions are deleted. Conversations and their current work survive. This cannot be undone."
 	for _, l := range wrap(say, inner) {
 		lines = append(lines, wallCardLine{s: pal.ink(l)})
 	}
@@ -542,15 +532,11 @@ func (a *app) teamSheetStops() []int {
 		}
 		stops = append(stops, tsQuestions, tsWake, tsCap, tsDepth, tsShare)
 		if ok && !t.Root {
-			stops = append(stops, tsCloseTeam)
+			stops = append(stops, tsCloseTeam, tsDeleteTeam)
 		}
 		return append(stops, tsDone)
 	case teamSheetClose:
-		var stops []int
-		if t, ok := a.teamByID(s.team); ok && t.Manager != "" && a.teamsCanWrapUp() {
-			stops = append(stops, tsWrapUp)
-		}
-		return append(stops, tsCloseNow, tsCancel)
+		return []int{tsCancel, tsCloseNow}
 	case teamSheetDelete:
 		return []int{tsKeep, tsDelete}
 	}
@@ -560,6 +546,18 @@ func (a *app) teamSheetStops() []int {
 // teamSheetKey is a key while the card is up: it has the keyboard, as every
 // card does.
 func (a *app) teamSheetKey(msg tea.KeyPressMsg) tea.Cmd {
+	if a.tsheet.mode != teamSheetSettings {
+		switch msg.String() {
+		case "pgup":
+			a.tsheet.detailsTop = max(a.tsheet.detailsTop-5, 0)
+			a.touch()
+			return nil
+		case "pgdown":
+			a.tsheet.detailsTop = min(a.tsheet.detailsTop+5, a.tsheet.detailsMax)
+			a.touch()
+			return nil
+		}
+	}
 	s := &a.tsheet
 	key := msg.String()
 	a.touch()
@@ -650,6 +648,7 @@ func (a *app) teamSheetKey(msg tea.KeyPressMsg) tea.Cmd {
 func (a *app) teamSheetDo(code int) tea.Cmd {
 	s := &a.tsheet
 	id := s.team
+	expected := append([]string(nil), s.affected...)
 	s.err = ""
 	switch {
 	case code >= tsSwatch:
@@ -695,6 +694,9 @@ func (a *app) teamSheetDo(code int) tea.Cmd {
 	case tsMoveUndo:
 		s.cursor = tsInside
 		return a.teamMoveUndo()
+	case tsDeleteTeam:
+		a.teamSheetShut()
+		return a.teamSheetOpen(id, teamSheetDelete)
 	case tsCloseTeam:
 		a.teamSheetShut()
 		return a.teamsCloseAsk(id)
@@ -704,14 +706,24 @@ func (a *app) teamSheetDo(code int) tea.Cmd {
 		a.tsheet = teamSheet{}
 		return a.teamsWrapUp(id)
 	case tsCloseNow:
+		if a.teamSheetCard(a.width, a.height).w == 0 {
+			s.err = "Resize the terminal to read the confirmation"
+			a.touch()
+			return nil
+		}
 		a.tsheet = teamSheet{}
-		return a.teamsCloseNow(id, "")
+		return a.teamsCloseNow(id, "", expected)
 	case tsCancel, tsKeep:
 		a.tsheet = teamSheet{}
 		a.touch()
 	case tsDelete:
+		if a.teamSheetCard(a.width, a.height).w == 0 {
+			s.err = "Resize the terminal to read the confirmation"
+			a.touch()
+			return nil
+		}
 		a.tsheet = teamSheet{}
-		return a.teamsDelete(id)
+		return a.teamsDelete(id, expected)
 	}
 	return nil
 }
@@ -843,9 +855,9 @@ func (a *app) teamSheetHint() string {
 	s := &a.tsheet
 	switch s.mode {
 	case teamSheetClose:
-		return "↑↓ choose · enter · esc cancel"
+		return "PgUp/PgDn details · ↑↓ choose · enter · esc cancel"
 	case teamSheetDelete:
-		return "enter · esc keep it"
+		return "PgUp/PgDn details · enter · esc keep it"
 	}
 	if s.editing >= 0 {
 		return "enter keep it as this team's own · esc cancel"
@@ -867,4 +879,24 @@ func (a *app) teamSheetHint() string {
 		return "Put it back where it was · u"
 	}
 	return "↑↓ move · enter · esc done"
+}
+
+// Every affected name is shown before a recursive lifecycle action is accepted.
+func (a *app) teamsAffectedNames(id string) string {
+	var names []string
+	if t, ok := a.teamByID(id); ok {
+		names = append(names, t.Name)
+	}
+	for _, t := range a.teamTree().Descendants(id) {
+		names = append(names, t.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func (a *app) teamsAffectedIDs(id string) []string {
+	ids := []string{id}
+	for _, t := range a.teamTree().Descendants(id) {
+		ids = append(ids, t.ID)
+	}
+	return ids
 }

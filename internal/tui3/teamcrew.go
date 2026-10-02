@@ -213,18 +213,12 @@ func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
 	}
 	var bs []btn
 	if t.Closed() {
-		bs = append(bs,
-			btn{"Reopen", teamsTarget{act: teamsActReopen, id: t.ID, hint: "Reopen " + t.Name + ": its tabs come back and its manager resumes" + hintSegment + "r"}},
-			btn{"Delete" + a.linearMark("…", "..."), teamsTarget{act: teamsActDelete, id: t.ID, hint: "Forget this team, its Traffic and its packets; the conversations stay" + hintSegment + "d"}})
-		if p, ok := a.teamsParentClosed(t); ok {
-			bs = append([]btn{{"Reopen " + p.Name + " too", teamsTarget{act: teamsActReopenParent, id: t.ID,
-				hint: t.Name + " sits under " + p.Name + ", which is closed" + hintSegment + "r"}}}, bs[1:]...)
-		}
+		bs = append(bs, btn{"Delete" + a.linearMark("…", "..."), teamsTarget{act: teamsActDelete, id: t.ID, hint: "Permanently delete the retained team record; conversations stay" + hintSegment + "d"}})
 	} else {
 		bs = append(bs,
 			btn{"Settings", teamsTarget{act: teamsActSettings, id: t.ID, hint: "What this team overrides, and what it inherits" + hintSegment + "s"}})
 		if !t.Root {
-			bs = append(bs, btn{"Close" + a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, hint: "Close " + t.Name + ": wrap up first, or now" + hintSegment + "c"}})
+			bs = append(bs, btn{"Disband" + a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, hint: "Close " + t.Name + ": wrap up first, or now" + hintSegment + "c"}})
 		}
 		bs = append(bs, btn{"Open " + a.linearMark("▦", "#"), teamsTarget{act: teamsActWall, id: t.ID, hint: "The wall, showing " + name + "'s open conversations" + hintSegment + "w"}})
 	}

@@ -217,8 +217,8 @@ func TestWrapUpMarkerAndAcceptingAClosingReport(t *testing.T) {
 		t.Fatalf("dock after accepting: %+v", dock)
 	}
 	log, _ := ReadTraffic(dir, "bbbbbbbbbbbb", "", 0)
-	if last := log[len(log)-1]; last.Kind != KindClose || !strings.Contains(last.Text, "closed dock") {
-		t.Fatalf("no close line: %+v", last)
+	if last := log[len(log)-1]; last.Kind != KindPacket || last.Packet != p.ID || last.State != PacketDecided {
+		t.Fatalf("no preserved decision line: %+v", last)
 	}
 	if _, err := AcceptClosing(dir, Packet{Kind: PacketCap}); err != ErrNotClosing {
 		t.Fatalf("a cap packet: %v", err)

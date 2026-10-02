@@ -2800,7 +2800,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if line, ok := h.previewLine(); ok {
 			switch line.kind {
 			case homeSession:
-				return a.homeArchiveRow(line.row)
+				return a.conversationDeleteOpen(line.row.Transcript, homeName(line.row))
 			case homeItem:
 				return a.homeItemWrite(line, standing.StatusPaused)
 			}

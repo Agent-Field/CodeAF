@@ -1031,6 +1031,8 @@ type Welcome struct {
 	// under a project on the laptop. Empty is an engine that answers no world,
 	// which is version 3 and every build before it.
 	PlacesRoot string `json:"placesRoot,omitempty"`
+	// ConversationDelete advertises the permanent deletion door.
+	ConversationDelete bool `json:"conversationDelete,omitempty"`
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 
