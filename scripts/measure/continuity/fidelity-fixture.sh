@@ -5,14 +5,17 @@
 # Works with bash 3.2 (macOS) and needs only git and python3.
 set -eu
 
-SCRATCH=/tmp/claude-1001/-home-santosh/aea61d84-87f0-47fc-afde-ed7141b18d38/scratchpad
-
 # Why: the script runs rm -rf on its argument, so it must prove the target is a throwaway place
-# before it deletes anything; /private/tmp is what /tmp resolves to on macOS.
+# before it deletes anything: a temporary folder (/private/tmp is what /tmp resolves to on macOS) or
+# a folder inside a rig root the person named in CODEAF_FIRST_ROOT or CODEAF_SECOND_ROOT.
 is_allowed_root() {
   case "$1" in
-    /tmp/* | /private/tmp/* | /home/santosh/caf-vcont-rig* | /home/santosh/caf-vfid-rig* | "$SCRATCH"/*) return 0 ;;
+    /tmp/* | /private/tmp/*) return 0 ;;
   esac
+  local root
+  for root in "${CODEAF_FIRST_ROOT:-}" "${CODEAF_SECOND_ROOT:-}"; do
+    case "$1" in "${root:-/nonexistent}"/*) return 0 ;; esac
+  done
   return 1
 }
 
@@ -204,7 +207,7 @@ build_modes() {
 main() {
   local dir
   dir="$(resolve "${1:?usage: fidelity-fixture.sh <dir>}")"
-  is_allowed_root "$dir" || { echo "refusing: $dir is outside the allowed scratch roots" >&2; exit 2; }
+  is_allowed_root "$dir" || { echo "refusing: $dir is outside /tmp and the rig roots (CODEAF_FIRST_ROOT, CODEAF_SECOND_ROOT)" >&2; exit 2; }
   wipe "$dir"
   wipe "$dir.subsrc"
   git_env

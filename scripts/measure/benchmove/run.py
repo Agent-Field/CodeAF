@@ -2,7 +2,7 @@
 """run.py: the move benchmark's orchestrator (called by scripts/bench-move.sh).
 
 For each environment and repo size it drives the `benchmove` probe on two
-devices, A (spark, always) and B (this box's second home, or `dumb`), through
+devices, A (this box, always) and B (this box's second home, or the second machine), through
 the one relay, with scripted edits and no model:
 
   first    A seals the whole project and uploads it (chat created)
@@ -21,8 +21,10 @@ import argparse, json, os, shlex, subprocess, sys, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PROTO = HERE.parents[2]
-K = Path(os.environ.get("BENCH_CORPUS", PROTO / "stage-k" / "corpus"))
+sys.path.insert(0, str(HERE.parent))
+import rigenv  # noqa: E402
+
+K = None  # the corpus folder, read from CODEAF_CORPUS by main() once the arguments are parsed
 CLASSES = {"S": "r18-pareto-c365", "M": "r02-mj-base", "L": "r06-agentfield", "XL": "r03-hax-sdk"}
 
 
@@ -54,6 +56,13 @@ class Box:
         return out
 
 
+def need(flag, value, variable):
+    """A setting the second machine cannot do without, named by its flag and its variable when absent."""
+    if not value:
+        sys.exit(f"{flag} is not set: pass it or export {variable} (docs/testing-anywhere.md lists every setting).")
+    return value
+
+
 def log(*a):
     print(time.strftime("%T"), *a, file=sys.stderr, flush=True)
 
@@ -69,7 +78,7 @@ class Run:
         self.rows = open(Path(args.out) / "rows.jsonl", "a")
 
     def row(self, **kw):
-        kw.update(sha=self.sha, ts=time.strftime("%FT%TZ", time.gmtime()), load_spark=float(open("/proc/loadavg").read().split()[0]))
+        kw.update(sha=self.sha, ts=time.strftime("%FT%TZ", time.gmtime()), load_a=float(open("/proc/loadavg").read().split()[0]))
         self.rows.write(json.dumps(kw) + "\n")
         self.rows.flush()
 
@@ -175,25 +184,25 @@ def main():
     ap.add_argument("--scratch", default=os.environ.get("BENCH_SCRATCH", str(Path.home() / "bench-move-scratch")))
     ap.add_argument("--bin", required=True, help="dir with benchmove-linux, benchmove-darwin, furrow-linux")
     ap.add_argument("--keep", action="store_true")
-    ap.add_argument("--dumb-host", default="dumb")
-    ap.add_argument("--dumb-home", default="")
+    ap.add_argument("--second-host", default=os.environ.get("CODEAF_SECOND_HOST"), help="the second machine (default: $CODEAF_SECOND_HOST)")
+    ap.add_argument("--second-root", default=os.environ.get("CODEAF_SECOND_ROOT"), help="its bench folder holding bin/ and run/ (default: $CODEAF_SECOND_ROOT)")
     args = ap.parse_args()
+    global K
+    K = Path(rigenv.get("CODEAF_CORPUS"))
     args.kinds = args.kinds.split(",")
     Path(args.out).mkdir(parents=True, exist_ok=True)
     bin_ = Path(args.bin)
-    CF = {"cf-a": "https://caf-relay-a.instrument-santosh.workers.dev", "cf-c": "https://caf-relay-c.instrument-santosh.workers.dev",
-          "cf-s": "https://caf-relay-staging.instrument-santosh.workers.dev",
-          "cf-l": "http://127.0.0.1:18789"}
-    label = {"same": "same-box", "dumb": "spark-dumb", "cf-a": "cf-a spark-dumb", "cf-c": "cf-c spark-dumb", "cf-s": "staging spark-dumb", "cf-l": "local-worker spark-dumb"}
+    urls = {"hosted": lambda: rigenv.get("CODEAF_RELAY"), "cf-l": lambda: "http://127.0.0.1:18789"}
+    label = {"same": "same-box", "second": "two-machines", "hosted": "hosted two-machines", "cf-l": "local-worker two-machines"}
     run = None
     for env in args.envs.split(","):
-        url = CF.get(env, args.url)
-        a = Box("spark", None, args.scratch, str(bin_ / "benchmove-linux"), str(bin_ / "furrow-linux"), url)
+        url = urls.get(env, lambda: args.url)()
+        a = Box("A", None, args.scratch, str(bin_ / "benchmove-linux"), str(bin_ / "furrow-linux"), url)
         if env == "same":
-            b = Box("spark-b", None, args.scratch, a.bm, a.furrow, url)
-        else:  # dumb reaches the docker relay through ssh -R, and the Cloudflare Workers directly
-            b = Box("dumb", args.dumb_host, args.dumb_home + "/codeaf-bench/run", args.dumb_home + "/codeaf-bench/bin/benchmove",
-                    args.dumb_home + "/codeaf-bench/bin/furrow", url, "/opt/homebrew/bin:")
+            b = Box("A2", None, args.scratch, a.bm, a.furrow, url)
+        else:  # B reaches the docker relay through ssh -R, and a hosted relay directly
+            host, root = need("--second-host", args.second_host, "CODEAF_SECOND_HOST"), need("--second-root", args.second_root, "CODEAF_SECOND_ROOT")
+            b = Box("B", host, root + "/run", root + "/bin/benchmove", root + "/bin/furrow", url, "/opt/homebrew/bin:")
         run = Run(a, args, args.sha)
         for size in args.sizes.split(","):
             log("=== env", env, "size", size, "url", url)
