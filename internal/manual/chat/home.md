@@ -1483,7 +1483,8 @@ home's column, with the same sections and the same prefixes. Its first row is th
 files and folders under the folder the next conversation opens in (the one at the right
 of the keys row), ranked as you type, `folder` and `img` tags on the right. `@team:`
 keeps only teams, `@chat:` only conversations, `@file:` only files, exactly as in a
-conversation. The conversations are every tab open in this window — including the one
+conversation. Typing or pasting opens the catalogs and starts the same reads.
+The conversations are every tab open in this window, including other projects' tabs and the one
 behind home, since the sentence opens a new conversation — then the twenty most recent
 in this project, read again each time the list opens.
 
@@ -1497,6 +1498,20 @@ task pointer is minted when a conversation sends, and home has none yet. While t
 still running the column reads `looking…`; with no match it reads `no matches`, or under a
 prefix `no team matches`, `no conversation matches` or `no file matches`. On home the three
 words on the first row are not buttons: type the prefix.
+
+## Searching home's @ list with spaces and writing after a mention
+
+On home, a bare `@` token ends at its first space: `ask @ben to fix` stays a
+sentence, and Enter starts the conversation with the whole sentence. `@ ` is no
+token. Only prefixed searches hold spaces, up to three and never across a newline:
+`@chat:who is`, `@team:har bor` and `@file:tui3 app`. Teams, conversations and files
+match every word in any order; finished words match whole, and only the final
+word may match by letters in order.
+
+A first pasted search stays open while its catalog is being read. A prefixed
+search of several words with no match closes after that read. New rows keep the
+chosen row selected while it is still offered. After choosing, a space or
+punctuation such as a comma keeps the list closed so you can write on.
 
 ## How do I get back to the dashboard or the home screen from any page — press space twice
 

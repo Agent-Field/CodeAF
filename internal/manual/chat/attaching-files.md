@@ -561,9 +561,11 @@ filters every section at once. `@file:` keeps only files, `@team:` only teams,
 `@chat:` only conversations. The three words are buttons: a press types that prefix,
 the word under the pointer takes a background, and the hint names the key, `click`.
 
-The conversations on it are the tabs open in this window, except the one you are
+The conversations on it are the tabs open in this window, including other projects'
+tabs, except the one you are
 typing in, and then the twenty most recent in this project, read again each time
-the list opens. One older than that, or in another project, is not on it. The bare
+the list opens, by typing or pasting. An older conversation or one in another
+project is offered only if already open here; otherwise use `/resume`. The bare
 `@` shows eight of them; `@chat:` shows them all and scrolls. Home's box opens the
 same list with the same sections and prefixes, leaving no conversation off.
 
@@ -580,3 +582,17 @@ conversations view on it instead. The
 model is handed a short digest of each one, not the transcript, and the other
 conversation is not messaged and not woken. The words in your transcript are the
 words you typed.
+
+## Searching files and conversations with spaces after @
+
+A bare `@` token ends at its first space, so `ask @ben to fix` stays prose and
+Enter sends the whole sentence. `@ ` is no token. Only a prefixed search can
+hold spaces: `@file:tui3 app`, `@chat:who is` or `@team:har bor`, up to three
+spaces and never across a newline. Teams, conversations and files match every
+word in any order; only the final word may match by letters in order. Tasks keep
+their own scorer for the whole query.
+
+Typing or pasting starts the same catalog reads, including on home. Several
+words with no match close a prefixed search only after its catalog has been read;
+before then it stays open with `looking…`. A space or punctuation after a chosen
+mention keeps the list closed so you can write on.

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -238,6 +239,7 @@ func mentionToken(chat mentionChat) string {
 func (a *app) fillMentions() {
 	a.comp.teams = a.mentionTeams()
 	a.comp.chats = a.mentionChats()
+	a.comp.recentsLoaded = a.comp.recentsLoaded || len(a.comp.recents) > 0 || a.recentSessions == nil
 }
 
 func (a *app) mentionTeams() []mentionTeam {
@@ -337,7 +339,10 @@ func (a *app) mentionHandle(key string) string {
 }
 
 // mentionRecentsMsg is the recent list, read off the loop.
-type mentionRecentsMsg struct{ rows []Session }
+type mentionRecentsMsg struct {
+	rows []Session
+	keys []string
+}
 
 // loadMentionRecents reads the door's recent list. The door's function may
 // open a directory, so it runs inside the command and not on the loop.
@@ -353,29 +358,52 @@ func (a *app) loadMentionRecents() tea.Cmd {
 		return nil
 	}
 	a.comp.recentsHeld = true
-	read := a.recentSessions
+	read, hosted := a.recentSessions, a.hosted()
 	return func() tea.Msg {
 		list := read()
 		if len(list) > mentionRecentCap {
 			list = list[:mentionRecentCap]
 		}
-		return mentionRecentsMsg{rows: list}
+		// Canonical keys travel with the read because resolving a symlink is
+		// disk work. The hosted rule is captured before this closure runs.
+		keys := make([]string, len(list))
+		for i, row := range list {
+			file := strings.TrimSpace(row.File)
+			if file == "" {
+				continue
+			}
+			if hosted {
+				keys[i] = filepath.Clean(file)
+			} else {
+				keys[i] = convKey(file)
+			}
+		}
+		return mentionRecentsMsg{rows: list, keys: keys}
 	}
 }
 
-func (a *app) mentionRecentsLoaded(rows []Session) {
+// mentionRecentsLoaded folds in keys already computed by the read. A message
+// supplied without keys uses cleaned spellings and never resolves local files.
+func (a *app) mentionRecentsLoaded(rows []Session, keys ...string) {
 	// The read has landed, so the next opening of the list may ask again.
-	a.comp.recentsHeld = false
+	chosen := a.comp.selectionKey(a.comp.selLine())
+	homeChosen := a.home.comp.selectionKey(a.home.cursor)
+	a.comp.recentsHeld, a.comp.recentsLoaded = false, true
 	a.comp.recents = a.comp.recents[:0]
 	seen := map[string]bool{}
-	for _, row := range rows {
+	for i, row := range rows {
 		file := strings.TrimSpace(row.File)
 		// THE KEY IS THE CANONICAL FILE, the same spelling every tab carries
 		// (chattabs.go's [chatTab.key]). Keyed on the row's own spelling, a
 		// home reached through a symlink listed the conversation in front,
 		// and every open tab a second time, as recent rows: `/tmp` is
 		// `/private/tmp` on a Mac, and the walk spells what it was given.
-		key := a.convKey(file)
+		key := ""
+		if i < len(keys) {
+			key = keys[i]
+		} else if file != "" {
+			key = filepath.Clean(file)
+		}
 		if key == "" || seen[key] {
 			continue
 		}
@@ -395,12 +423,14 @@ func (a *app) mentionRecentsLoaded(rows []Session) {
 	}
 	if a.comp.open {
 		a.fillMentions()
-		a.comp.rank()
+		a.comp.refresh(&a.input)
+		a.comp.restoreSelection(chosen)
 	}
 	// AND HOME'S LIST IS THE OTHER READER OF THE SAME SNAPSHOT (homeat.go).
 	if a.home.comp.open {
 		a.fillHomeMentions()
 		a.home.comp.rank()
+		a.home.comp.restoreSelection(homeChosen)
 		a.home.build()
 	}
 	a.touch()

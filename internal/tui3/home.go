@@ -2402,6 +2402,20 @@ func (h *homeView) move(delta int) {
 	if delta == 0 || len(h.lines) == 0 {
 		return
 	}
+	// Home and the list share one choice, so an arrival can follow the row
+	// an arrow selected rather than restoring a second, stale cursor.
+	if h.comp.open {
+		for cursor, at := range h.comp.sel {
+			if at == h.cursor {
+				h.comp.cursor = cursor
+				break
+			}
+		}
+		h.comp.move(delta)
+		h.cursor = h.clamp(h.completionCursor())
+		h.picked = len(h.lines) > 0
+		return
+	}
 	// ON THE GRID THE WALK STAYS IN ITS COLUMN (homegrid.go's [homeView.gridMove]):
 	// the lines are laid out column by column, and a walk off the foot of one
 	// column into the top of the next would be the cursor jumping across the

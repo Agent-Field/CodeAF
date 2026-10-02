@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -128,11 +129,11 @@ func (h *homeView) completionWords(line homeLine, pal palette) (label, note stri
 	}
 	cl := c.lines[line.comp]
 	switch {
-	case cl.team >= 0:
+	case cl.team >= 0 && cl.team < len(c.teamHits):
 		return mentionTeamLabel(c.teamHits[cl.team], pal), c.lineNote(line.comp), true
-	case cl.chat >= 0:
+	case cl.chat >= 0 && cl.chat < len(c.chatHits):
 		return mentionChatLabel(c.chatHits[cl.chat]), c.lineNote(line.comp), true
-	case cl.file >= 0:
+	case cl.file >= 0 && cl.file < len(c.all):
 		return c.all[cl.file], c.lineNote(line.comp), true
 	}
 	return "", "", false
@@ -144,53 +145,90 @@ func (h *homeView) completionPath(line homeLine) (string, bool) {
 	if line.comp < 0 || line.comp >= len(c.lines) || c.lines[line.comp].file < 0 {
 		return "", false
 	}
-	return c.all[c.lines[line.comp].file], true
+	at := c.lines[line.comp].file
+	if at >= len(c.all) {
+		return "", false
+	}
+	return c.all[at], true
 }
 
 // fillHomeMentions copies the in-memory catalogs onto home's list, the way
-// [app.fillMentions] copies them onto the conversation's. It runs on the key
-// that reaches home's box and never from a frame, and it leaves no
+// [app.fillMentions] copies them onto the conversation's. It runs before a key
+// or paste reaches home's box and never from a frame, and it leaves no
 // conversation off (the file's own note).
 func (a *app) fillHomeMentions() {
 	a.home.comp.teams = a.mentionTeams()
 	a.home.comp.chats = a.mentionChatsExcept("")
+	a.home.comp.recentsLoaded = a.comp.recentsLoaded || len(a.comp.recents) > 0 || a.recentSessions == nil
 }
 
-// loadHomeFiles walks the target folder for the list, once per target: a
-// walk already done or already running is left alone, and a target that moved
-// since the last walk starts a fresh one. It is asked after every key on home
-// (place_home.go), and answers nil on every key that did not open the list.
-func (a *app) loadHomeFiles() tea.Cmd {
-	h := &a.home
-	if !h.comp.open {
-		return nil
+// homeCompletionRoot captures the target before the list replaces the project
+// row that supplied it. While the list is up, its own rows have no project address.
+func (a *app) homeCompletionRoot() string {
+	if a.home.comp.open && strings.TrimSpace(a.target.where) == "" && a.home.walked != "" {
+		return a.home.walked
 	}
 	root := a.targetWhere()
 	if root == "" {
 		root = a.pathRoot()
 	}
-	if root == "" {
-		return nil
-	}
+	return root
+}
+
+// prepareHomeCompletion captures the project's address and aligns its catalog
+// before the edit ranks it. A pasted search must not run against an old target.
+func (a *app) prepareHomeCompletion() string {
+	root := a.homeCompletionRoot()
+	a.fillHomeMentions()
+	h := &a.home
 	if h.walked != root {
 		h.comp.all, h.comp.loaded, h.comp.loading = nil, false, false
 		h.walked = root
+		h.comp.rank()
+		if h.comp.open {
+			h.build()
+		}
+	}
+	return root
+}
+
+// syncHomeCompletion starts the same reads for a typed or pasted opening.
+// The root was captured before the edit, while home's project row still existed.
+func (a *app) syncHomeCompletion(was bool, root string) tea.Cmd {
+	files := a.loadHomeFiles(root)
+	var recents tea.Cmd
+	if a.home.comp.open && !was {
+		recents = a.loadMentionRecents()
+	}
+	return tea.Batch(files, recents)
+}
+
+// loadHomeFiles walks the captured target once, off the loop. Catalogs and
+// their ranked rows change together, so no frame can paint an old file index.
+func (a *app) loadHomeFiles(root string) tea.Cmd {
+	h := &a.home
+	if !h.comp.open || root == "" {
+		return nil
 	}
 	if h.comp.loaded || h.comp.loading {
 		return nil
 	}
-	// Tasks never load here (the file's own note), so the list is never
-	// waiting on them.
+	// Home offers no task pointers, so there is no task read to wait for.
 	h.comp.tasksLoaded, h.comp.loading = true, true
-	return func() tea.Msg { return filesLoadedMsg{paths: walkFiles(root, walkCap), home: true} }
+	return func() tea.Msg { return filesLoadedMsg{paths: walkFiles(root, walkCap), home: true, root: root} }
 }
 
 // homeFilesLoaded takes the walk back onto home's list and rebuilds the rows
 // under the cursor.
-func (a *app) homeFilesLoaded(paths []string) {
+func (a *app) homeFilesLoaded(paths []string, root string) {
 	h := &a.home
+	if root != "" && root != h.walked {
+		return
+	}
+	chosen := h.comp.selectionKey(h.cursor)
 	h.comp.all, h.comp.loaded, h.comp.loading = paths, true, false
 	h.comp.rank()
+	h.comp.restoreSelection(chosen)
 	h.build()
 	a.touch()
 }
@@ -206,12 +244,12 @@ func (a *app) homeComplete(line homeLine) tea.Cmd {
 	if line.comp >= 0 && line.comp < len(c.lines) {
 		cl := c.lines[line.comp]
 		switch {
-		case cl.team >= 0:
+		case cl.team >= 0 && cl.team < len(c.teamHits):
 			completeTeamIn(&h.box, c, c.teamHits[cl.team])
 			h.build()
 			a.touch()
 			return nil
-		case cl.chat >= 0:
+		case cl.chat >= 0 && cl.chat < len(c.chatHits):
 			completeChatIn(&h.box, c, c.chatHits[cl.chat])
 			h.build()
 			a.touch()

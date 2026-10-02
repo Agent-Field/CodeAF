@@ -316,49 +316,67 @@ each row a coloured dot and the team's name. Conversations are the next section:
 the ones open in this window first, in the tab strip's order, then recent ones. A
 conversation in no team is on that list.
 
-**Which conversations are on the list, and which are not.** Every tab open in this
-window except the one you are typing in: pointing at the conversation you are in is
-not a reference, so it is left off. On the new-chat page (`+` on the strip, or `ctrl+t`)
-nothing is left off, because the sentence typed there opens a new conversation — the
-one you came from is on the list. Then the twenty most recent conversations in this
-project, by when you last spoke in them, read from the disk again each time the list
-opens, so a conversation started in another window a minute ago is on it. Over
-`--host` those are the far machine's. A conversation older than those twenty, or in
-another project, is not on the list: `/resume` is the way to it.
-
 The first row is the words **team**, **chat** and **file**. Each is a button with a
 background under the pointer and a one-line hint (`only teams · click`). A press
-types `@team:`, `@chat:` or `@file:`, and the list keeps only that section. Typing
-filters every section that is still showing. Matching is by prefix, then substring,
-then the letters in order — `cloudfl`, `worker` and `cfwd` all find `Cloudflare worker
-deploy` — against the title, the handle and the slug, never the transcript. The words
-may have spaces in them, up to three: `@chat:who is` finds `who is kim jong il`, and
-`deploy worker` finds it too, because every word must match, in any order. The word
-still being typed may match by its letters in order; the words before it match whole.
-That is the same rule on every section — `@team:har bor`, `@file:tui3 app` — and on
-every box: a conversation's, home's and the new-chat page's. Several words that match
-nothing close the list, since that is a sentence after a mention, and the words typed
-after a mention the list has just put in never reopen it; one word that matches nothing
-says `no conversation matches`.
+types `@team:`, `@chat:` or `@file:`, and the list keeps only that section.
 
-The bare `@` keeps eight teams and eight conversations beside the tasks and files;
-`@chat:` keeps every conversation on the list (thirty-two at most) and scrolls.
-
-**Home's box has the same list**, the same sections and the same three prefixes, with one
-difference: it leaves no conversation off, because a sentence sent from home opens a new
-one. The three words on its first row are not buttons there; type the prefix.
-
-Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
-inserts `@handle`, or a short slug of its title when it has none, and the row's
-hint is the full title. After you send, both stay links. A press on the team opens
-the teams page with it selected. A press on the conversation opens that conversation.
-Over `--host`, against an engine with no teams doors, a press on the team opens the
-conversations view on it instead.
+Choosing a team inserts `●harbor` in the team's colour, on home's box too.
+Choosing a conversation inserts `@handle`, or a short slug of its title when it
+has none, and the row's hint is the full title. After you send, both stay links.
+A press on the team opens the teams page with it selected. A press on the
+conversation opens that conversation. Over `--host`, against an engine with no
+teams doors, a press on the team opens the conversations view on it instead.
 
 The model receives a short digest of each reference: for a team, its members,
 handles, states and recent traffic; for a chat, its title, its state and an excerpt
 of the last reply. It does not receive the transcript. Mentioning a conversation
 does not message it and does not wake it. Your transcript keeps the words you typed.
+
+## Which conversations the @ list offers, and why the one I am in is missing
+
+The `@` list offers every tab open in this window, including tabs from other
+projects, except the conversation you are typing in. Pointing at that conversation
+is not a reference, so it is left off. On the new-chat page (`+` on the strip, or
+`ctrl+t`) nothing is left off: the sentence opens a new conversation, so the one
+you came from is on the list.
+
+After the tabs come the twenty most recent conversations in this project, by when
+you last spoke in them. They are read again each time the list opens, including a
+pasted opening, so a conversation started in another window a minute ago is on it.
+Over `--host` those are the far machine's. An older conversation, or one in another
+project, is offered only if it is already an open tab here; otherwise use `/resume`.
+The same transcript appears once, even when its folder has a symlink spelling.
+
+The bare `@` keeps eight teams and eight conversations beside the tasks and files;
+`@chat:` and `@team:` keep up to thirty-two rows in their section and scroll.
+
+Home's box has the same sections and three prefixes, with one difference: it
+leaves no conversation off, because its sentence opens a new one. The three words
+on its first row are not buttons there; type the prefix. Typing or pasting opens
+its catalogs and starts the same reads. Rows arriving keep the row you chose
+selected while it is still offered.
+
+## Searching the @ list with spaces — @chat:who is
+
+A bare `@` token ends at the first space: `cc @ara on this` is prose, and Enter
+sends the whole sentence. `@ ` is no token. Spaces belong to prefixed searches
+only: `@chat:who is` finds `who is kim jong il`, `@team:har bor` finds `harbor`,
+and `@file:tui3 app` finds `internal/tui3/app.go`. The token may hold up to three
+spaces and never crosses a newline, on a conversation's box, home's box and the
+new-chat page's box.
+
+Teams, conversations and files match every word, in any order. A word matches
+by prefix, substring or letters in order; only the word still being typed
+may match by letters in order. Finished words match whole. `@chat:deploy worker`
+finds `Cloudflare worker deploy`. Conversations match their title, handle and
+slug, never their transcript. Tasks keep their own scorer for the whole query;
+they do not use this every-word rule.
+
+A prefixed search of several words that matches nothing closes after its catalog
+has been read. Before that it stays open with `looking…` and starts the read.
+One word that matches nothing says `no team matches`, `no conversation matches`
+or `no file matches`. After a chosen mention, a space or punctuation such as
+`,`, `.`, `;`, `:`, `!`, `?` or `)` keeps the list closed: you are writing on.
 
 ## Where teams are kept
 

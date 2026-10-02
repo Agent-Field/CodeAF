@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -136,6 +137,8 @@ type completion struct {
 	// the read is started and cleared when its rows land, and a test that
 	// hands the list its own recents sets it to keep the door shut.
 	recentsHeld bool
+	// recentsLoaded distinguishes an unread catalog from a read that found nothing.
+	recentsLoaded bool
 
 	// lines is what the overlay DRAWS, section rules included, and sel is the
 	// line each selectable row sits on, in cursor order. The split is what lets
@@ -206,25 +209,34 @@ func (c *completion) sync(e *editor) {
 	// takes the "@" out. Matching it here closed a list on the first "@" of
 	// a draft, because that token sits at rune 0 with an empty query and the
 	// zero at is 0 too.
-	// AND THE SENTENCE AFTER IT IS NOT A SEARCH EITHER. The token may hold
-	// spaces now, so `@side-chat is a chat` walks back to the same `@` and
-	// would be ranked — and `is`, `a` and `chat` all match `side chat` by
-	// their letters, which reopened the list over the words and let enter put
-	// the mention back in their place. What this list inserted, followed by a
-	// space, is the person writing on.
-	if c.done != "" && at == c.at && (query == c.done || strings.HasPrefix(query, c.done+" ")) {
-		c.open = false
-		return
+	// THE SENTENCE AFTER A CHOSEN MENTION IS NOT A SEARCH. A separator
+	// means the person is writing on, including punctuation typed before a space.
+	if c.done != "" && at == c.at && strings.HasPrefix(query, c.done) {
+		tail := []rune(strings.TrimPrefix(query, c.done))
+		if len(tail) == 0 || !mentionContinuation(tail[0]) {
+			c.open = false
+			return
+		}
 	}
 	c.narrow(at, query, false)
-	// A MULTI-WORD SEARCH THAT MATCHES NOTHING IS A SENTENCE, and the list
+	// A MULTI-WORD SEARCH THAT MATCHES NOTHING AFTER ITS CATALOGS ARRIVE
 	// closes rather than saying `no matches` under it: the words after a
 	// chosen `@side-chat` are the message, not a search for it, and a list
 	// that stayed up over them would be a list over every sentence that
 	// mentions somebody. One word that matches nothing still says so, exactly
 	// as it did before spaces were allowed.
-	if strings.Contains(strings.TrimSpace(query), " ") && !c.anyHits() {
+	if strings.Contains(strings.TrimSpace(query), " ") && !c.anyHits() && c.catalogsReady() {
 		c.open = false
+	}
+}
+
+// refresh reconsiders a search after its catalogs arrive. An argument opened
+// by tab must stay open even when its empty query equals the zero insertion stamp.
+func (c *completion) refresh(e *editor) {
+	if c.open && !c.arg {
+		c.sync(e)
+	} else {
+		c.rank()
 	}
 }
 
@@ -285,10 +297,10 @@ func argToken(value []rune, cursor int) (int, string, bool) {
 	return 0, "", false
 }
 
-// atToken finds the @-word the caret is standing in: the run back to a space,
-// a newline or the start of the draft, which must begin with '@'. An @ in the
-// middle of a word (an email address, a Go doc link) is not one — the run has
-// to start with it.
+// atToken finds the @-word the caret is standing in. A bare token ends at
+// its first space; only a section prefix admits spaces, and a newline ends both.
+// An @ in the middle of a word, such as an email address or a Go doc link,
+// never opens the list.
 func atToken(value []rune, cursor int) (int, string, bool) {
 	spaces := 0
 	for start := cursor - 1; start >= 0; start-- {
@@ -296,9 +308,9 @@ func atToken(value []rune, cursor int) (int, string, bool) {
 		case r == '\n':
 			return 0, "", false
 		case r == ' ':
-			// THE WORDS AFTER THE `@` MAY HAVE SPACES IN THEM, up to
+			// A PREFIXED SEARCH MAY HAVE SPACES IN IT, up to
 			// [atTokenSpaces]: `@chat:who is` finds `who is kim jong il`, and
-			// `@internal tui3` finds internal/tui3. Past that many it is a
+			// `@file:internal tui3` finds internal/tui3. Past that many it is a
 			// sentence, not a search.
 			spaces++
 			if spaces > atTokenSpaces {
@@ -307,13 +319,17 @@ func atToken(value []rune, cursor int) (int, string, bool) {
 		case r == '@' && (start == 0 || value[start-1] == ' ' || value[start-1] == '\n'):
 			// The nearest `@` that BEGINS a word: one in the middle of an email
 			// address or a Go doc link never opens the list.
-			return start, string(value[start+1 : cursor]), true
+			query := string(value[start+1 : cursor])
+			if scope, _ := mentionScope(query); spaces > 0 && scope == "" {
+				return 0, "", false
+			}
+			return start, query, true
 		}
 	}
 	return 0, "", false
 }
 
-// atTokenSpaces is how many spaces the words after an `@` may hold before they
+// atTokenSpaces is how many spaces a prefixed `@` search may hold before its words
 // stop being a search. Three is a title's worth — `who is kim jong` — and it
 // is also what bounds the walk back from the caret through a long message.
 const atTokenSpaces = 3
@@ -321,6 +337,63 @@ const atTokenSpaces = 3
 // anyHits reports whether the last ranking kept a single row of any section.
 func (c *completion) anyHits() bool {
 	return len(c.hits) > 0 || len(c.teamHits) > 0 || len(c.chatHits) > 0 || len(c.taskHits) > 0
+}
+
+// mentionContinuation is the spelling a handle or path may extend with. A dot
+// after a complete choice is punctuation; existing dots inside the choice stay text.
+func mentionContinuation(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_-/\\", r)
+}
+
+// catalogsReady keeps a first pasted search open until the catalog it needs
+// has answered. An empty read is an answer; an unread catalog is not.
+func (c *completion) catalogsReady() bool {
+	switch c.scope {
+	case scopeTeam:
+		return true
+	case scopeChat:
+		return c.recentsLoaded
+	case scopeFile:
+		return c.loaded
+	default:
+		return c.loaded
+	}
+}
+
+// selectionKey names a row independently of its position, so data arriving
+// cannot change what enter chooses while that row is still offered.
+func (c *completion) selectionKey(at int) string {
+	if at < 0 || at >= len(c.lines) {
+		return ""
+	}
+	line := c.lines[at]
+	switch {
+	case line.team >= 0 && line.team < len(c.teamHits):
+		return "team:" + c.teamHits[line.team].id
+	case line.chat >= 0 && line.chat < len(c.chatHits):
+		return "chat:" + c.chatHits[line.chat].key
+	case line.file >= 0 && line.file < len(c.all):
+		return "file:" + c.all[line.file]
+	case line.task >= 0 && line.task < len(c.taskHits):
+		row := c.taskHits[line.task]
+		return "task:" + row.SessionID + ":" + row.ID
+	}
+	return ""
+}
+
+// restoreSelection follows the chosen row through a fresh ranking. A row
+// removed by the new data leaves the ordinary clamped cursor in force.
+func (c *completion) restoreSelection(chosen string) {
+	if chosen == "" {
+		return
+	}
+	for cursor, at := range c.sel {
+		if c.selectionKey(at) == chosen {
+			c.cursor = cursor
+			break
+		}
+	}
+	c.follow(c.rowsWanted())
 }
 
 // rank scores every path, team, conversation and task against the query, keeps
@@ -389,9 +462,12 @@ func (c *completion) layout() {
 		c.lines = append(c.lines, line)
 	}
 	selectable := len(c.teamHits) > 0 || len(c.chatHits) > 0 || len(c.taskHits) > 0 || len(c.hits) > 0
-	if !c.arg && !selectable && c.loaded {
+	if !c.arg && !selectable {
 		line := deadLine()
-		line.header = c.emptyWord()
+		line.header = homeLookingWord
+		if c.catalogsReady() {
+			line.header = c.emptyWord()
+		}
 		c.lines = append(c.lines, line)
 	}
 	for at, line := range c.lines {
@@ -616,22 +692,25 @@ func isFolderPath(path string) bool { return strings.HasSuffix(path, "/") }
 // the line's height at [tierPhone], so [completion.height] and
 // [completion.rows] ask it rather than each deciding for themselves.
 func (c *completion) lineNote(at int) string {
+	if at < 0 || at >= len(c.lines) {
+		return ""
+	}
 	line := c.lines[at]
 	switch {
 	case line.header != "" || line.filters:
 		return ""
-	case line.team >= 0:
+	case line.team >= 0 && line.team < len(c.teamHits):
 		return mentionCount(c.teamHits[line.team])
-	case line.chat >= 0:
+	case line.chat >= 0 && line.chat < len(c.chatHits):
 		return c.chatHits[line.chat].note
-	case line.task >= 0:
+	case line.task >= 0 && line.task < len(c.taskHits):
 		return taskNoteWord(c.taskHits[line.task])
-	case isFolderPath(c.all[line.file]):
+	case line.file >= 0 && line.file < len(c.all) && isFolderPath(c.all[line.file]):
 		// A FOLDER IS A FOLDER ON BOTH LISTS, `@` and a command's argument
 		// alike — the tag says what the row IS, and that does not change with
 		// the door it was opened from the way the picture's tag does.
 		return folderTag
-	case !c.arg && isImagePath(c.all[line.file]):
+	case !c.arg && line.file >= 0 && line.file < len(c.all) && isImagePath(c.all[line.file]):
 		return imageTag
 	default:
 		return ""
@@ -681,6 +760,8 @@ type filesLoadedMsg struct {
 	paths []string
 	// home says the walk was home's list's (homeat.go) and not the box's.
 	home bool
+	// root identifies a home walk, so an older target cannot replace a newer catalog.
+	root string
 }
 
 // loadFiles walks the workspace off the loop. It runs ONCE per surface: the

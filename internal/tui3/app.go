@@ -3885,17 +3885,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case filesLoadedMsg:
 		if msg.home {
-			a.homeFilesLoaded(msg.paths)
+			a.homeFilesLoaded(msg.paths, msg.root)
 			return a, nil
 		}
+		chosen := a.comp.selectionKey(a.comp.selLine())
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.fillMentions()
-		a.comp.rank()
+		a.comp.refresh(&a.input)
+		a.comp.restoreSelection(chosen)
 		a.touch()
 		return a, nil
 
 	case mentionRecentsMsg:
-		a.mentionRecentsLoaded(msg.rows)
+		a.mentionRecentsLoaded(msg.rows, msg.keys...)
 		return a, nil
 
 	case tasksLoadedMsg:
@@ -9016,6 +9018,10 @@ func (a *app) paste(text string) tea.Cmd {
 		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
 		// ask the same question of the same keyboard and get the same answer.
 		box, chips := a.keyboardBox()
+		was, root := a.home.comp.open, ""
+		if box == &a.home.box {
+			root = a.prepareHomeCompletion()
+		}
 		wasEmpty := len(box.value) == 0
 		if box == &a.home.box {
 			a.home.projectPaste.path = ""
@@ -9031,6 +9037,9 @@ func (a *app) paste(text string) tea.Cmd {
 		}
 		a.dropLanded(box)
 		a.touch()
+		if box == &a.home.box {
+			return a.syncHomeCompletion(was, root)
+		}
 		return nil
 	}
 	// A DROPPED PICTURE IS A PICTURE. A terminal writes a drag-and-drop into the

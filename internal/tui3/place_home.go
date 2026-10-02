@@ -551,17 +551,10 @@ func (placeHome) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
 func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	// THE `@` LIST'S CATALOGS ARE COPIED BEFORE THE KEY IS READ, because the
 	// key may be the one that ranks them (homeat.go's [app.fillHomeMentions]).
-	a.fillHomeMentions()
 	was := a.home.comp.open
+	root := a.prepareHomeCompletion()
 	answered := a.homeKey(msg)
-	// AND THE `@` LIST'S WALK STARTS THE KEY THAT OPENED IT (homeat.go), and
-	// so does the read of the recent conversations, on the opening and not on
-	// the letters after it (mention.go's [app.loadMentionRecents]).
-	var recents tea.Cmd
-	if a.home.comp.open && !was {
-		recents = a.loadMentionRecents()
-	}
-	return tea.Batch(answered, a.loadHomeFiles(), recents, a.refreshHomeCard(a.now()))
+	return tea.Batch(answered, a.syncHomeCompletion(was, root), a.refreshHomeCard(a.now()))
 }
 
 // owns is the two layers of home that take the WHOLE keyboard, `tab` included,

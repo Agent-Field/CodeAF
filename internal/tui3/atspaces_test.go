@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// ── THE WORDS AFTER `@` MAY HAVE SPACES, ON EVERY SECTION AND EVERY BOX ──────
+// ── PREFIXED SEARCHES MAY HAVE SPACES, ON EVERY BOX ──────
 
-// The token walks back over spaces to the nearest `@` that begins a word, and
+// A prefixed token walks back over spaces to the nearest `@` beginning a word, and
 // no further than three of them or a newline.
 func TestAtTokenHoldsSpaces(t *testing.T) {
 	for _, tc := range []struct {
@@ -20,7 +20,7 @@ func TestAtTokenHoldsSpaces(t *testing.T) {
 		ok    bool
 	}{
 		{"@chat:who is", 0, "chat:who is", true},
-		{"see @who is kim jong", 4, "who is kim jong", true},
+		{"see @who is kim jong", 0, "", false},
 		{"see @one two three four five", 0, "", false},
 		{"mail foo@bar.com now", 0, "", false},
 		{"@parser\nand then", 0, "", false},
