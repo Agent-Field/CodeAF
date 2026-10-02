@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -35,6 +37,27 @@ func newApprovalsDoor(dir string) *approvalsDoor {
 	return &approvalsDoor{dir: dir, mailbox: pairMailbox, approver: linkApprover(dir), asking: map[string]pair.Asking{}}
 }
 
+// toldLine is a refusal said in the sentence every sync surface uses for it, and
+// it still is the refusal for errors.Is.
+type toldLine struct {
+	line string
+	err  error
+}
+
+func (e toldLine) Error() string { return e.line }
+func (e toldLine) Unwrap() error { return e.err }
+
+// told puts the relay's refusals (a stopped computer, a clock that is off) in
+// the words a person reads, so a screen that lists devices says why it cannot,
+// and the sentence is the one the chat list and the sync notice already say.
+// Anything that is not a refusal is returned as it came.
+func told(err error) error {
+	if refusal, ok := cellsync.RefusalOf(err); ok {
+		return toldLine{line: refusal.Say(err), err: err}
+	}
+	return err
+}
+
 func (d *approvalsDoor) who() (pair.Approver, error) {
 	route, err := d.mailbox("")
 	if err != nil {
@@ -54,7 +77,7 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 	}
 	as, err := who.Look(ctx, ref)
 	if err != nil {
-		return tui3.PendingDevice{}, err
+		return tui3.PendingDevice{}, told(err)
 	}
 	d.remember(as)
 	return pendingOf(as), nil
@@ -104,7 +127,7 @@ func (d *approvalsDoor) answer(p tui3.PendingDevice, decide func(pair.Approver, 
 		return err
 	}
 	if err := decide(who, as); err != nil {
-		return err
+		return told(err)
 	}
 	d.forget(p.Code)
 	return nil
@@ -137,9 +160,25 @@ func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
 	}
 	listing, err := client.List(ctx)
 	if err != nil {
-		return nil, err
+		return nil, told(err)
 	}
-	return rowsOf(listing, directory.MetadataKey(id.CellKey()), self), nil
+	rows := rowsOf(listing, directory.MetadataKey(id.CellKey()), self)
+	if own, named := devname.Chosen(d.dir); named {
+		rows = withOwnName(rows, own)
+	}
+	return rows, nil
+}
+
+// withOwnName puts this computer's own name on its own row. The directory holds
+// the name this computer last managed to tell it, which is the old one for a
+// person who renamed offline; the name kept here is the one they typed.
+func withOwnName(rows []tui3.DeviceRow, own string) []tui3.DeviceRow {
+	for i := range rows {
+		if rows[i].Self {
+			rows[i].Name = own
+		}
+	}
+	return rows
 }
 
 func rowsOf(l directory.Listing, key []byte, self string) []tui3.DeviceRow {
@@ -174,7 +213,7 @@ func (d *approvalsDoor) Revoke(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return client.Revoke(ctx, id)
+	return told(client.Revoke(ctx, id))
 }
 
 func (d *approvalsDoor) DeviceName(sealed string) string {
@@ -183,4 +222,11 @@ func (d *approvalsDoor) DeviceName(sealed string) string {
 		return "a new device"
 	}
 	return openName(directory.MetadataKey(id.CellKey()), sealed)
+}
+
+// Rename names this computer. It is the door's one write of its own record: the
+// same function `codeaf devices rename` runs, so the two cannot say different
+// things.
+func (d *approvalsDoor) Rename(ctx context.Context, typed string) (string, error) {
+	return renameThisDevice(ctx, d.dir, typed)
 }

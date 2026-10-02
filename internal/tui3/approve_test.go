@@ -21,6 +21,8 @@ type fakeApprovals struct {
 	err     error
 	devices []DeviceRow
 	calls   []string
+	// renameErr is the refusal Rename answers, when a test wants one.
+	renameErr error
 }
 
 func (f *fakeApprovals) log(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
@@ -50,6 +52,20 @@ func (f *fakeApprovals) Revoke(_ context.Context, id string) error {
 	return f.err
 }
 func (f *fakeApprovals) DeviceName(sealed string) string { return "n:" + sealed }
+func (f *fakeApprovals) Rename(_ context.Context, typed string) (string, error) {
+	f.log("rename:" + typed)
+	if f.renameErr != nil {
+		return "", f.renameErr
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.devices {
+		if f.devices[i].Self {
+			f.devices[i].Name = strings.TrimSpace(typed)
+		}
+	}
+	return "This computer is now called " + strings.TrimSpace(typed) + " on all your devices.", nil
+}
 
 func spark(now time.Time) PendingDevice {
 	return PendingDevice{Code: "k7m2q9xd", Device: "dev_B", Name: "spark", Platform: "linux", Check: "4821",

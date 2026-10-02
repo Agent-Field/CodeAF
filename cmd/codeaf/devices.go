@@ -60,10 +60,12 @@ func runDevices(args []string) error {
 	switch {
 	case len(args) > 0 && args[0] == "revoke":
 		return stopDevice(kinds, args[1:])
+	case len(args) > 0 && args[0] == "rename":
+		return runDevicesRename(args[1:])
 	case askedForHelp(args):
 		return commandHelp("devices")
 	case len(args) > 0:
-		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all]]")
+		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all] | rename <name>]")
 	}
 	return listDevices(kinds, time.Now())
 }

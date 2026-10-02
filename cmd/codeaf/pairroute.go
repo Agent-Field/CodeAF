@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -76,7 +77,7 @@ func pairJoiningAt(dir string) func(replace bool) pair.Joining {
 	return func(replace bool) pair.Joining {
 		return pair.Joining{
 			Home:        dir,
-			Label:       pair.ThisMachineLabel(),
+			Label:       devname.Name(dir),
 			Replace:     replace,
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(dir, url) },
 		}

@@ -21,7 +21,7 @@ Press `alt+d` to open the steps, and `alt+d` again to close them:
 ```
 
 1. On the new device, install codeaf and run `codeaf pair`. It makes a link and waits.
-2. On this device, paste that link into the card, or paste it anywhere on home, or type it as your message there and press enter. The approve screen opens (see "Approve a new device" below). Text that is not a pair link stays in the box as before.
+2. On this device, paste that link into the card, or paste it anywhere on home, or type it as your message (on home, on the start page of a new chat, or in any chat) and press enter. The link is never sent to the model. The approve screen opens (see "Approve a new device" below). Text that is not a pair link stays in the box as before.
 
 The card goes away once you have two devices. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
@@ -49,12 +49,13 @@ Paired - 3 workspaces available.
 ## The pair words — approve, --code and --via
 
 ```
-usage: codeaf pair [--replace] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] | codeaf pair --code
+usage: codeaf pair [--replace] [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
 ```
 
 - `codeaf pair` with nothing after it is for the NEW device. It asks to join and shows a link.
 - `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and asks `y / n`. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
 - `codeaf pair --code` shows a six-digit code that gives your chats to another device, the older way. It is told in the page *Pairing your chats with a second device*.
+- `--name <name>` is what your devices call this computer. See the page *Naming a device*.
 - `--via <address>` names the address of the service to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
 
 A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair` on the new device again.
@@ -111,7 +112,7 @@ Type `/devices` to list them:
 › ● This Mac  Mac  this device
   ● spark  Linux
   ○ dumb  Linux  seen 3h ago
-↑↓ choose · r revoke · esc close
+↑↓ choose · n name this device · r revoke · esc close
 ```
 
 A filled dot is online, a hollow one is not, and `seen 3h ago` says when an offline device was last on. With only your own device it says `no other device is in your fleet yet - /pair adds one`.
@@ -130,7 +131,7 @@ The list is in a fixed order: this device first, then devices that are online, t
 this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back
 ```
 
-It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
+`/devices` on the removed computer says the same line in place of the list. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
 
 ## The link did not work — a pairing link or token that ran out, was declined or was answered already
 

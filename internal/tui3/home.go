@@ -3137,7 +3137,7 @@ func (h *homeView) buildFor() {
 func (a *app) homeSubmit() tea.Cmd {
 	h := &a.home
 	typed := strings.TrimSpace(h.box.String())
-	if a.approvals != nil && isPairLink(typed) {
+	if isPairLink(typed) {
 		h.box.reset()
 		h.build()
 		return a.openApprove(typed)
