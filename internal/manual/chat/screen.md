@@ -1150,7 +1150,7 @@ about 3ms` under `connection`.
 While a conversation's calls are being sealed and the last seal failed, the status line
 carries `✗ not sealed` beside the state word. It is drawn for as long as it is true and it
 goes the moment a seal holds; a conversation whose calls are sealing normally, or whose
-folder is not sealed at all, draws nothing. Each conversation shows its own: another chat's failure never appears on this one. A failed seal never fails the call or stops
+folder is not sealed at all, draws nothing. Each conversation shows its own: another chat's failure never appears on this one. It shows on every launch, including the ordinary one where the conversation runs in a separate engine process, because the engine states the fact to the screen. A failed seal never fails the call or stops
 the conversation, so this segment is the only sign that rewind cannot reach what came
 after the failure.
 
