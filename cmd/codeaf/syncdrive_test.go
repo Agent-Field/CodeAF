@@ -225,3 +225,18 @@ func TestDrivePathsFollowMayTalk(t *testing.T) {
 		})
 	}
 }
+
+// A computer with no identity is waiting, not failing to seal: with the hosted default every fresh
+// computer is in that state, and it must not show a failing seal on its first launch.
+func TestStartDriveWithNoIdentityReportsNothing(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv(syncsetup.URLVar, "")
+	var reported []error
+	d, err := startDrive(cell.Cell{}, cellstore.Engine{}, func(e error) { reported = append(reported, e) })
+	if d != nil || !errors.Is(err, syncsetup.ErrNoIdentity) {
+		t.Fatalf("startDrive = %v, %v; want no drive and ErrNoIdentity", d, err)
+	}
+	if len(reported) != 0 {
+		t.Fatalf("waiting for an identity was reported as a seal outcome: %v", reported)
+	}
+}
