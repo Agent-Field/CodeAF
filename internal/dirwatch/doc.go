@@ -19,9 +19,13 @@
 // the follower's State shows them to a surface:
 //
 //   - State.Online lists, sorted, the other devices that hold a watch socket
-//     now. A device is online while it holds at least one socket; the relay
-//     tells that it is offline 15 s after its last socket closed, and says
-//     nothing when it reconnects inside that gap. The set is empty while
+//     now. A device is online while it holds at least one live socket, one
+//     that answered a ping within 2.5 beats (25 s at the 10 s beat); the relay
+//     tells that it is offline when that window passes, so a frozen computer
+//     shows offline within 30 s, and 15 s after its last socket closed
+//     otherwise, and says nothing when it reconnects inside that gap. A socket
+//     the relay closed because it went quiet (CloseSilent) is dialled again at
+//     once. The set is empty while
 //     State.Up is false, because the relay names who is online only when a
 //     socket opens. A surface draws "● spark" for a name in Online and
 //     "○ dumb" otherwise, and reads the last time a device was seen from the

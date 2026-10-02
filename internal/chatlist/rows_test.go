@@ -139,3 +139,16 @@ func TestAChatHeldByARevokedDeviceReadsAsReleased(t *testing.T) {
 		}
 	}
 }
+
+// A device record sealed before names went through devname still carries the
+// macOS ".local" suffix; every label that reads it must show the same name.
+func TestEveryLabelOfADeviceDropsTheLocalSuffix(t *testing.T) {
+	l := listing(map[string]directory.Cell{"c1": cell(other, 1_010_000, nil)})
+	l.Devices[other] = directory.Device{Name: "studio.local"}
+	if r := Rows(l, self, plain)[0]; r.Device != "studio" {
+		t.Errorf("row shows %q", r.Device)
+	}
+	if got := DeviceName(l.Devices, other, plain); got != "studio" {
+		t.Errorf("DeviceName shows %q", got)
+	}
+}

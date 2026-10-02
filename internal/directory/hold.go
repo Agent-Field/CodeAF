@@ -4,7 +4,49 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// The presence declaration of a watch socket (contract 21.12.3). A client says
+// at what period it promises to ping, in whole seconds from 1 to MaxBeat, and the
+// relay counts it online for WindowFactor beats after its last sign of life. A
+// socket that declares nothing is a client from before presence, which pings at
+// DefaultBeat. The hosted relay reads the same numbers as maxBeat, windowFactor
+// and defaultBeat in limits.js.
+const (
+	MaxBeat      = 60
+	WindowFactor = 2.5
+	DefaultBeat  = 30 * time.Second
+)
+
+// Window is how long a socket that promised to ping every beat stays live after
+// its last sign of life: enough for one lost ping and a late second one.
+func Window(beat time.Duration) time.Duration {
+	return time.Duration(float64(beat) * WindowFactor)
+}
+
+// ParseBeat reads the beat parameters of a watch URL: DefaultBeat when there are
+// none, otherwise the one value named, which must be a plain decimal from 1 to
+// MaxBeat. The same value twice is one value; two different values are malformed.
+func ParseBeat(values []string) (time.Duration, error) {
+	beat := DefaultBeat
+	for i, v := range values {
+		n, ok := parseBeat(v)
+		if !ok || (i > 0 && n != beat) {
+			return 0, errBadRequest
+		}
+		beat = n
+	}
+	return beat, nil
+}
+
+func parseBeat(v string) (time.Duration, bool) {
+	n, err := strconv.Atoi(v)
+	if err != nil || !plainDecimal(v) || n < 1 || n > MaxBeat {
+		return 0, false
+	}
+	return time.Duration(n) * time.Second, true
+}
 
 // MaxHolds is how many holds one watch socket may name. A process that holds
 // more cells than this names the first MaxHolds and keeps beating for the rest.
