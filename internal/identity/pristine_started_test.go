@@ -124,14 +124,15 @@ func TestPristineRefusesEveryKindOfUse(t *testing.T) {
 		"a typed request": func(h string) {
 			put(t, filepath.Join(h, "v3/history.jsonl"), `{"text":"/quit"}`+"\n"+`{"text":"fix the bug"}`+"\n")
 		},
-		"a stored blob":    func(h string) { put(t, filepath.Join(h, "cas/ab/blob"), "x") },
-		"a synced cell":    func(h string) { put(t, filepath.Join(h, "v3/stores/01SESSION/store-v1/packs/p"), "x") },
-		"a task history":   func(h string) { put(t, filepath.Join(h, "v3/projects/-work-notes/tasks.jsonl"), "{}") },
-		"a secret":         func(h string) { put(t, filepath.Join(h, "provider-keys.enc"), "x") },
-		"an unknown file":  func(h string) { put(t, filepath.Join(h, "v3/notes.txt"), "x") },
-		"a stored message": func(h string) { makeGraph(t, h, []string{`INSERT INTO messages VALUES ('m')`}) },
-		"a second node":    func(h string) { makeGraph(t, h, []string{`INSERT INTO nodes VALUES ('task')`}) },
-		"a broken graph":   func(h string) { put(t, filepath.Join(h, "graph.db"), "not a database") },
+		"a stored blob":            func(h string) { put(t, filepath.Join(h, "cas/ab/blob"), "x") },
+		"a synced cell":            func(h string) { put(t, filepath.Join(h, "v3/stores/01SESSION/store-v1/packs/p"), "x") },
+		"a task history":           func(h string) { put(t, filepath.Join(h, "v3/projects/-work-notes/tasks.jsonl"), "{}") },
+		"a secret":                 func(h string) { put(t, filepath.Join(h, "provider-keys.enc"), "x") },
+		"an unknown file":          func(h string) { put(t, filepath.Join(h, "v3/notes.txt"), "x") },
+		"a stored message":         func(h string) { makeGraph(t, h, []string{`INSERT INTO messages VALUES ('m')`}) },
+		"a second node":            func(h string) { makeGraph(t, h, []string{`INSERT INTO nodes VALUES ('task')`}) },
+		"a stray byte for a graph": func(h string) { put(t, filepath.Join(h, "graph.db"), "x") },
+		"a broken graph":           func(h string) { put(t, filepath.Join(h, "graph.db"), "not a database") },
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -149,6 +150,9 @@ const graphRoot = "root"
 // every other node is work the person did. It is opened read-only so judging a
 // home never changes it.
 func bareGraph(path string) (bool, error) {
+	if sound, err := soundDatabase(path); !sound || err != nil {
+		return true, err
+	}
 	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Opaque: filepath.ToSlash(path), RawQuery: "mode=ro"}).String())
 	if err != nil {
 		return true, err
@@ -164,6 +168,25 @@ func bareGraph(path string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// sqliteMagic opens every SQLite file. The driver reads a file shorter than its
+// header as an empty database, which would call a stray byte "nothing", so the
+// header is checked first and a file that is not one is use.
+const sqliteMagic = "SQLite format 3\x00"
+
+func soundDatabase(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	head := make([]byte, len(sqliteMagic))
+	n, err := io.ReadFull(f, head)
+	if n == 0 {
+		return true, nil // a file with no bytes is an empty database
+	}
+	return err == nil && string(head) == sqliteMagic, nil
 }
 
 // graphTables lists the tables that hold rows of their own. Full-text indexes
