@@ -370,7 +370,7 @@ func TestDriveSideOffIsStageZero(t *testing.T) {
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	t.Setenv(URLVar, "")
+	hosted(t, "") // a build with no default relay: empty now means the built-in one
 	t.Setenv(cell.EnvVar, "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	h := t.TempDir()

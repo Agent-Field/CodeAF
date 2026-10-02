@@ -4,12 +4,12 @@
 
 A relay is the small service your computers sync through. There are two kinds. Both speak the same wire: the chat cannot tell them apart.
 
-- **A hosted relay** is run for you on a cloud account. You do nothing to run it. You give the chat its address.
+- **A hosted relay** is run for you on a cloud account. You do nothing to run it. codeaf's own is the fabric, built in; any other you give the chat the address of.
 - **Your own relay** is the program `codeaf relay`. You run it on a computer you control.
 
 Either way the relay sees only ciphertext and the short list on "What can the relay see".
 
-**In this build no relay address is built in, and the hosted relay in this repository is code you deploy to your own account; no public address is named here.** The chat does not pick a relay for you. With no address it says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. Give it one of the two below.
+**In this build the address `https://codeaf.agentfield.ai/fabric` is built in: it is codeaf's fabric, the hosted sync service, and a computer with no other word syncs through it.** The address has a path, `/fabric`, and you keep it if you type it yourself. You can still choose another: set `CODEAF_SYNC_URL`, or pass `--via <address>` to a pairing command. A computer that has paired with a relay of its own uses that one. A build with no address built in does not pick one for you, and says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. Give it one of the two below.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
 
@@ -21,7 +21,7 @@ CODEAF_SYNC_URL=https://relay.example.com codeaf
 
 - **A web address** like `https://relay.example.com` or `http://host:8787`. Plain `http` is for trying it out inside an ssh tunnel. An address that is not a web address stops with `CODEAF_SYNC_URL is not a web address like http://host:8787`.
 - **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
-- **Unset:** a computer that was paired uses the relay the pairing saved. A computer that never paired has none.
+- **Unset:** a computer that was paired uses the relay the pairing saved. A computer that never paired syncs through the built-in `https://codeaf.agentfield.ai/fabric`.
 
 Your own computers must all name the same relay and hold the same identity, or they see different chats.
 

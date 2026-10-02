@@ -45,6 +45,7 @@ func TestCellListAll(t *testing.T) {
 func TestCellListAllSyncOff(t *testing.T) {
 	old := cellListSource
 	t.Cleanup(func() { cellListSource = old })
+	t.Setenv("CODEAF_SYNC_URL", "off") // an empty value now means the built-in default
 	err := runCellIn([]string{"list", "--all"}, &bytes.Buffer{}, t.TempDir())
 	if err == nil || err.Error() != chatlist.SyncOff {
 		t.Fatalf("err = %v, want %q", err, chatlist.SyncOff)
