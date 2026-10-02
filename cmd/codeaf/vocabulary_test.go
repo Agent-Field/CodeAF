@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/plan"
@@ -410,8 +411,14 @@ func TestARenameNoticeNeverReachesTheJSONOnStdout(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	// The writer itself, first: nothing else in this test can be right if the
 	// notice is aimed at the wrong stream to begin with.
-	if renameNotice != os.Stderr {
-		t.Fatalf("the rename notice is written to %T, want os.Stderr", renameNotice)
+	//
+	// THE DESCRIPTOR IS THE FACT, NOT THE VARIABLE. Under `go test -json` the
+	// testing package swaps os.Stderr for a pipe of its own after this package's
+	// variables are initialized, so comparing with os.Stderr failed there although
+	// the notice still went to the process's standard error. The touched-packages
+	// job and `make test-report` both run that way.
+	if file, ok := renameNotice.(*os.File); !ok || file.Fd() != uintptr(syscall.Stderr) {
+		t.Fatalf("the rename notice is written to %T, want the process's standard error", renameNotice)
 	}
 
 	out, said := captureUsage(t)

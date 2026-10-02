@@ -17,7 +17,7 @@ name: PR gate
 # `make test-laws` finds every one of them without anybody keeping a list.
 #
 # The whole suite is not here. The packages a change touched run in full in the
-# second job below, on every pull request, and `check` — the one name a person
+# concurrent touched legs below, on every pull request, and `check` — the one name a person
 # and a ruleset look at — is green only when both are; everything else runs on
 # the way into `staging`, and nightly against `dev` — see ci-full.yml.
 # docs/rules/ci.md says why the line is drawn in that place.
@@ -70,9 +70,33 @@ jobs:
           # which a shallow clone does not contain.
           fetch-depth: 0
       - uses: actions/setup-go@v5
+        id: go
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+
+      # UTC-day keys refresh each namespace on its first dev push of the day.
+      # PRs only restore; the undated prefix finds the newest compatible entry.
+      - name: Cache paths
+        id: cache-paths
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: build-cache
+        with:
+          path: ${{ steps.cache-paths.outputs.build }}
+          key: codeaf-go-v1-light-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ steps.cache-paths.outputs.today }}
+          restore-keys: |
+            codeaf-go-v1-light-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      - uses: actions/cache/restore@v4
+        id: module-cache
+        with:
+          path: ${{ steps.cache-paths.outputs.modules }}
+          key: codeaf-go-v1-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            codeaf-go-v1-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
 
       # Several sessions work this tree at once and a half-finished file breaks
       # the build for everyone. This is the cheapest way to find that out, and
@@ -184,33 +208,31 @@ jobs:
           mkdir -p "$TMPDIR"
           make test-laws
 
-  # THE PACKAGES THIS CHANGE TOUCHED, IN FULL. The laws catch a shape; this
-  # catches a behaviour, in the one place a change can have broken it. It is a
-  # job of its own so that the light gate's answer arrives in its few minutes
-  # while this one takes as long as the slowest touched package — internal/tui3
-  # is about eight minutes on this runner — and the two run side by side rather
-  # than one after the other.
-  #
-  # It reads the same ledger and the same timeout as `make test`, through
-  # `make test`, so a red here is a red on a clean laptop too. AND IT BLOCKS.
-  # It was neutral for a day and then, for a day, off pull requests altogether
-  # (#499); in that day #523 merged red on cmd/codeaf with `check` green, the
-  # way #437, #439 and #483 had before the job existed. A red that reaches
-  # nobody before the merge is the whole story of this file, so the owner's
-  # ruling is that this runs on every pull request and `check` needs it.
-  # THE JOB'S OWN CEILING SITS ABOVE THE GO ONE. `make test` gives each
-  # package fifteen minutes so a hang panics with the package's name; a job
-  # killed by GitHub first names nothing. A wide change can touch the three
-  # heaviest packages at once, so this is three of those with room.
-  #
-  #
-  # A change with no Go file and no module file in it — docs, a bench record,
-  # a manual page — runs nothing here and is green in a minute. A change to
-  # go.mod or go.sum touches every package and runs the whole tree.
-  touched:
-    name: touched packages
+      # THE CACHE BUDGET IS DAILY, NOT PER COMMIT. At most five build
+      # namespaces a day plus one module entry per go.sum cost about 2 GB a day
+      # at the measured ~385 MB. GitHub's least-recently-used eviction at the
+      # 10 GB repository limit removes old days without a pruning script.
+      # Only dev pushes that miss the exact key save; PRs never save.
+      - uses: actions/cache/save@v4
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache-paths.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.cache-paths.outputs.build }}
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
+      - uses: actions/cache/save@v4
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache-paths.outcome == 'success' && steps.module-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.cache-paths.outputs.modules }}
+          key: ${{ steps.module-cache.outputs.cache-primary-key }}
+
+  # The selector does no compilation unless module files changed. A docs-only
+  # change creates no test runner; the light gate and the aggregate still run.
+  select:
+    name: select touched packages
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      has-tests: ${{ steps.select.outputs.has-tests }}
+      base: ${{ steps.select.outputs.base }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -218,64 +240,136 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
-      - name: Test the packages this change touched
+          cache: false
+      - name: Select and partition packages
+        id: select
         env:
-          # A pull request diffs against its base; a push against what the
-          # branch was before it. A first push has no before, and diffs one
-          # commit.
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          case "${BASE:-}" in ''|0000000000000000000000000000000000000000) BASE="$(git rev-parse HEAD~1)";; esac
+          export BASE
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          ./scripts/touched-packages.sh | python3 scripts/touched-matrix.py >> "$GITHUB_OUTPUT"
+
+  # THE LEGS START TOGETHER ON SEPARATE RUNNERS. A failure never cancels another
+  # leg's evidence. Five named failures at most receive one focused retry each
+  # and then a base probe; unnamed failures fail immediately. No test is skipped.
+  touched-leg:
+    name: touched ${{ matrix.leg }}
+    needs: select
+    if: needs.select.outputs.has-tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        id: go
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # UTC-day keys refresh each namespace on its first dev push of the day.
+      # PRs only restore; the undated prefix finds the newest compatible entry.
+      - name: Cache paths
+        id: cache-paths
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: build-cache
+        with:
+          path: ${{ steps.cache-paths.outputs.build }}
+          key: codeaf-go-v1-${{ matrix.leg }}-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ steps.cache-paths.outputs.today }}
+          restore-keys: |
+            codeaf-go-v1-${{ matrix.leg }}-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+            codeaf-go-v1-light-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      - uses: actions/cache/restore@v4
+        id: module-cache
+        with:
+          path: ${{ steps.cache-paths.outputs.modules }}
+          key: codeaf-go-v1-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            codeaf-go-v1-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+
+      - name: Runner capacity
+        run: |
+          nproc
+          free -g
+      # Offline module-listing tests need the whole module cache; each leg compiles only part of the tree.
+      - name: Download modules
+        run: go mod download
+      - name: Test and attribute failures
+        env:
+          BASE: ${{ needs.select.outputs.base }}
+          PACKAGES: ${{ matrix.packages }}
+          LEG: ${{ matrix.leg }}
           TMPDIR: /tmp/codeaf-ci
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR"
-          case "${BASE:-}" in ''|0000000000000000000000000000000000000000) BASE="$(git rev-parse HEAD~1)";; esac
-          changed="$(git diff --name-only "$BASE" HEAD -- '*.go' go.mod go.sum)"
-          if printf '%s\n' "$changed" | grep -qxE 'go\.(mod|sum)'; then
-            # A module change reaches every package; the tree is the touched set.
-            pkgs="./..."
-          else
-            # `|| true`: a change with no Go file makes this grep exit 1, and
-            # under pipefail that would turn a docs pull request red.
-            dirs="$(printf '%s\n' "$changed" | { grep '\.go$' || true; } | xargs -r -n1 dirname | sort -u)"
-            pkgs=""
-            for dir in $dirs; do
-              # A DIRECTORY UNDER ITS OWN go.mod IS ANOTHER MODULE, not a package
-              # of this one, and `go test ./that/dir` from the root answers
-              # "main module does not contain package" and fails the job as a
-              # setup error. The bench fixtures under bench/bashloop/fixtures
-              # are exactly that: small programs the task door edits, each with
-              # a go.mod of its own. Walking up from the directory to the first
-              # go.mod is what tells the two apart. This walk is the same one
-              # the Makefile's test-touched target does, and the two must keep
-              # deriving the same set or `make pr-ready` stops predicting CI.
-              nested=0; walk="$dir"
-              while [ "$walk" != "." ] && [ "$walk" != "/" ]; do
-                if [ -f "$walk/go.mod" ]; then nested=1; break; fi
-                walk="$(dirname "$walk")"
-              done
-              if [ "$nested" = 1 ]; then continue; fi
-              # A directory the change emptied has no package left to test.
-              if ls "$dir"/*.go >/dev/null 2>&1; then pkgs="$pkgs ./$dir"; fi
-            done
-          fi
-          if [ -z "$pkgs" ]; then
-            echo 'No Go file and no module file changed; nothing to run.'
-            exit 0
-          fi
-          echo "touched:$pkgs"
-          # -p 1 for the reason ci-full.yml gives: this runner has been shut
-          # down under the link load of the heavy binaries twice, and a change
-          # touching tui3, session and cmd/codeaf links all three at once.
-          # -count=1 so a cached pass never stands in for a run.
-          make test TEST_FLAGS='-count=1 -p 1' PKGS="$pkgs"
+          # -p 2 permits concurrent compilation/testing in rest on the public
+          # 4-vCPU / 16-GB runner, leaving headroom for the linker. tui3 and
+          # session use four shards; codeaf runs its suite without sharding.
+          ./scripts/touched-verdict.sh run --base "$BASE" --shards 4 --report "$TMPDIR/$LEG.json" $PACKAGES
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: touched-verdict-${{ matrix.leg }}
+          path: /tmp/codeaf-ci/${{ matrix.leg }}.json
+          retention-days: 7
+      - uses: actions/cache/save@v4
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache-paths.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.cache-paths.outputs.build }}
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
 
-  # ONE NAME FOR THE TWO. The name of this job is the name of the required
-  # status check in .github/rulesets/dev.json and the name every landing script
-  # and every person reads. Renaming it silently un-protects the branch, so the
-  # two move together or not at all. It is green only when the light gate and
-  # the touched packages both are — the same shape `full tests` and `cross
-  # build` use in ci-full.yml for a matrix a rule cannot spell.
+  # KEEP THIS NAME. Consumers of `touched packages` see the aggregate even when
+  # no leg was needed; selector failures and failed/cancelled legs remain red.
+  touched:
+    name: touched packages
+    needs: [select, touched-leg]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        if: needs.select.outputs.has-tests == 'true'
+        continue-on-error: true
+        with:
+          pattern: touched-verdict-*
+          merge-multiple: true
+          path: /tmp/codeaf-verdicts
+      - name: Record flaky and inherited failures
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOUCHED_REPORT_ISSUE: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: ./scripts/touched-verdict.sh report-issues /tmp/codeaf-verdicts
+      - name: Every needed leg passed
+        if: always()
+        env:
+          SELECT: ${{ needs.select.result }}
+          HAS_TESTS: ${{ needs.select.outputs.has-tests }}
+          LEGS: ${{ needs.touched-leg.result }}
+        run: |
+          set -euo pipefail
+          echo "selection: $SELECT; needed: $HAS_TESTS; touched legs: $LEGS"
+          [ "$SELECT" = success ]
+          if [ "$HAS_TESTS" = true ]; then [ "$LEGS" = success ]; else [ "$LEGS" = skipped ]; fi
+
+  # The single required name stays check. Rulesets and landing scripts need
+  # only this result, which requires both the light gate and the aggregate.
   check:
     name: check
     needs: [light, touched]
