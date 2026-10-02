@@ -50,6 +50,7 @@ func (r *recoveryModelRecorder) CompleteWithMessages(_ context.Context, _ []ai.M
 // The profile and conversation deliberately disagree with every accepted seat.
 // Reopening must use the stored policy, not ask the router for another decision.
 func TestHeldRecoveryRetainsTheAcceptedCrew(t *testing.T) {
+	littleMemoryHost(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	engine := newBeltRunDouble("done")
 	registerBeltRunEngine(t, engine)

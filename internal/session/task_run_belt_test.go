@@ -389,9 +389,7 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 }
 
 func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
-	if _, err := os.Stat("/proc/meminfo"); err != nil {
-		t.Skip("host has no proc memory reading")
-	}
+	requireHostMemoryReading(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)
@@ -449,6 +447,7 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 }
 
 func TestHeldBeltRunStopsWithoutPreparingRepository(t *testing.T) {
+	littleMemoryHost(t)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)
@@ -486,7 +485,11 @@ func TestHeldBeltRunStopsWithoutPreparingRepository(t *testing.T) {
 	if !strings.Contains(line, "stopping") {
 		t.Fatalf("stop line = %q, want stopping", line)
 	}
-	beltRunWaitFor(t, "the stopped held run", func() bool { return agent.beltRun == nil })
+	beltRunWaitFor(t, "the stopped held run", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
 	rows := agent.graph().runRows(id)
 	if len(rows) != 1 || rows[0].State != TaskFailed || !rows[0].Stopped {
 		t.Fatalf("stopped held row = %+v", rows)
