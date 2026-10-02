@@ -255,6 +255,8 @@ def evidence_verdict(rel, fa, b_files, withheld, cap):
 def chat_evidence_checks(a, b, cap=EVIDENCE_CAP):
     """Row 10: every file of A's logs/jobs/, logs/stubs/ and tasks/ is byte-equal on B, or over the cap and named withheld."""
     wh = withheld_paths(b)
+    # Opening the chat on B files the task journals under .cell/tasks; the bytes are the same, so either place counts.
+    b = dict(b, chat_files={**{k: v for k, v in b["cell_files"].items() if k.startswith("tasks/")}, **b["chat_files"]})
     files = {r: v for r, v in a["chat_files"].items() if r.startswith(EVIDENCE_DIRS) and "sha" in v}
     verdicts = {r: evidence_verdict(r, v, b["chat_files"], wh, cap) for r, v in files.items()}
     bad = sorted(r for r, v in verdicts.items() if v in ("differ", "missing"))
