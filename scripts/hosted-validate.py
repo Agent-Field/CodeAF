@@ -162,7 +162,7 @@ class Pass:
         t0 = time.time()
         shown = f"{self.dir}/b-pair-invite.txt"
         with open(shown, "w") as f:
-            join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_R}/env.sh; codeaf pair'"],
+            join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_R}/env.sh; codeaf pair --name dumb-b'"],
                                     stdout=f, stderr=subprocess.STDOUT, text=True)
         link, check = self.wait_for(lambda: parse_invite(open(shown).read()), 20, "B never showed a link and a check number")
         approve = f". {A_R}/env.sh; codeaf pair approve {shlex.quote(link)}; echo EXIT=$?; sleep 120"
