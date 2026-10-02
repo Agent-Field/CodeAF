@@ -1230,6 +1230,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// hand, asked of the agent it has open — for [Welcome.Skills]'s stated
 		// reason (skills.go).
 		Skills: skillsKnown(sess.agent),
+		Memory: memoryKnown(sess.agent),
 		Setup:  setupKnown(sess.agent),
 	}
 }
@@ -2667,6 +2668,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			s.session.announce()
 		}
 		return payload, err
+
+	case MethodRemember, MethodForget, MethodMemories:
+		return serveMemory(agent, call)
 
 	case MethodEffort, MethodResolvedEffort, MethodSetEffort:
 		door, ok := agent.(effortDoor)

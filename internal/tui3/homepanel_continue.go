@@ -196,6 +196,7 @@ func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 // continueShown is the takeover question: `continue here` as the yes, and the
 // takeover sentence as the reason. The cursor starts on option `at`.
 func (a *app) continueShown(row chatlist.Row, at int) questionShown {
+	row = a.presentRow(row)
 	return questionShown{
 		question: session.Question{
 			Kind:    homeContinueKind,
@@ -220,6 +221,15 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			return a.takeRemote(row)
 		},
 	}
+}
+
+// presentRow is the row as the device's presence reads now: a chat whose holder
+// is not online is one that stopped, so the card does not say it runs there.
+func (a *app) presentRow(row chatlist.Row) chatlist.Row {
+	if a.resumeState().away(row) {
+		return row.Quiet()
+	}
+	return row
 }
 
 // homeTakenMsg is the takeover's answer, coming back off the update loop.
@@ -279,7 +289,7 @@ func (a *app) lostRace(row chatlist.Row) tea.Cmd {
 // chat of its own would keep showing `nothing here yet` over the rows that just
 // arrived.
 func (a *app) rebuildMachines() {
-	a.home.others = a.machineRead
+	a.home.others = a.othersNow()
 	if a.home.gridOn() || a.home.phone {
 		a.home.build()
 	}
@@ -442,4 +452,11 @@ func (a *app) tookBranch(msg homeBranchMsg) tea.Cmd {
 		a.home.say(branchFails, "")
 	}
 	return a.askMachines()
+}
+
+// othersNow is the held reading with presence as the feed says it now.
+func (a *app) othersNow() machineReading {
+	reading := a.machineRead
+	reading.away = a.resumeState().away
+	return reading
 }
