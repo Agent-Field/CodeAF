@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
@@ -1429,6 +1430,11 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 // cannot be shown a fuel gate (engine.go) — and a door deciding that for itself
 // would be this file guessing who is watching.
 func openV3Agent(cfg session.Config, workspace string, open func(session.Config) (*session.Agent, error)) (*session.Agent, session.Config, string, error) {
+	// A chat in the middle of being taken over here is not opened: a session booted
+	// now would read the journal from before the swap (see [handoff.Arrive]).
+	if handoff.Arriving(cfg.Place.Dir) {
+		return nil, cfg, "", errors.New(chatArrivingSentence)
+	}
 	cfg = v3Seated(v3Migrated(cfg))
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
@@ -1480,6 +1486,10 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 		reason:     sessionHeldElsewhereSentence(workspace),
 	}
 }
+
+// chatArrivingSentence is what a door says about a chat that is being moved onto
+// this computer right now: it opens by itself when the move ends.
+const chatArrivingSentence = "this chat is arriving on this computer; it opens by itself in a moment"
 
 // sessionHeldElsewhere is a conversation another window is writing, named so a
 // door with a SCREEN can do something better than print the sentence.
