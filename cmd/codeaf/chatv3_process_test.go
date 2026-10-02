@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -434,7 +435,7 @@ func TestCloseAllCancelsAnInFlightStandingPass(t *testing.T) {
 	sawCancel := make(chan struct{})
 	var once sync.Once
 	oldPass := standingTickPass
-	standingTickPass = func(ctx context.Context, _ *standing.Store) {
+	standingTickPass = func(ctx context.Context, _ *standing.Store, _ *connect.Manager) {
 		once.Do(func() { close(started) })
 		<-ctx.Done()
 		close(sawCancel)
