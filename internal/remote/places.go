@@ -42,6 +42,15 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 	sess.mu.Unlock()
 
 	switch call.Method {
+	case MethodPlacesTaskDelete:
+		args, err := arg[TaskDeleteArgs](call)
+		if err != nil {
+			return nil, true, err
+		}
+		if engine.DeleteTask == nil {
+			return nil, true, errors.New(engineOffWord + "this engine cannot permanently delete tasks")
+		}
+		return nil, true, engine.DeleteTask(args.File, args.ID)
 	case MethodPlacesDelete:
 		args, err := arg[ConversationDeleteArgs](call)
 		if err != nil {

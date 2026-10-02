@@ -808,10 +808,12 @@ func (d *presenceDesk) beat() {
 			// would be this fix paying for itself in the one cost the heartbeat
 			// was tuned to avoid.
 			d.agent.drainConversationDeletion()
+			d.agent.drainTaskDeletion()
 			d.agent.drainTakeover()
 		case <-ticker.C:
 			d.agent.drainAnswers()
 			d.agent.drainConversationDeletion()
+			d.agent.drainTaskDeletion()
 			d.agent.drainTakeover()
 			// AND A QUESTION WHOSE SUBJECT WENT AWAY IS TAKEN BACK, with a
 			// reason (question.go's [Agent.sweepQuestions]). It is on this beat

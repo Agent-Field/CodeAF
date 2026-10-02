@@ -232,8 +232,9 @@ func (a *app) teamsClosed() []team {
 
 // teamsRailRows is the rail, top to bottom. Memory only.
 func (a *app) teamsRailRows() []teamsRailRow {
-	rows := []teamsRailRow{{kind: railRowAll}, {kind: railRowNew}}
+	rows := []teamsRailRow{{kind: railRowAll}}
 	rows = append(rows, a.teamsOpenTree()...)
+	rows = append(rows, teamsRailRow{kind: railRowNew})
 	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowOrganize})
 	if closed := a.teamsClosed(); len(closed) > 0 {
 		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})

@@ -281,6 +281,7 @@ type Engine struct {
 	Memory             EngineMemory
 	Archive            func(dir string, archived bool) error
 	DeleteConversation func(file string, choices map[string]string, affected map[string][]string) error
+	DeleteTask         func(file, id string) error
 	// PlacesRoot is the directory World walked, carried on the welcome so the
 	// surface can put THIS conversation back into a walk taken before it existed
 	// ([Welcome.PlacesRoot] holds the argument). Empty says nothing about the
@@ -1220,6 +1221,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// assertion cannot see across the wire.
 		Folders:            keepsFolders(sess.agent),
 		ConversationDelete: sess.engine.DeleteConversation != nil,
+		TaskDelete:         sess.engine.DeleteTask != nil,
 		Memory:             memoryCommandsKnown(sess.agent),
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.

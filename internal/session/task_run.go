@@ -1011,6 +1011,8 @@ type TaskNode struct {
 type TaskGraph struct {
 	mu    sync.Mutex
 	nodes map[uint64]*TaskNode
+	// Deleted ids cannot admit later children or return through run updates.
+	deleted map[uint64]bool
 	// plan is the bash belt's plan store side (plandb_plan.go), nil on every
 	// session outside the experiment and until the first ordinary task seeds
 	// it. planMu is ITS gate, and the lock order is written at the top of
@@ -1224,7 +1226,11 @@ func (g *TaskGraph) runRowsLocked() []TaskNotice {
 	}
 	out := make([]TaskNotice, 0, len(g.runRuns))
 	for _, root := range g.runRuns {
-		out = append(out, g.runs[root]...)
+		for _, row := range g.runs[root] {
+			if !g.deleted[row.ID] && !g.deleted[row.Parent] {
+				out = append(out, row)
+			}
+		}
 	}
 	return out
 }
@@ -1254,6 +1260,13 @@ func (a *Agent) graph() *TaskGraph {
 		graph := newTaskGraph()
 		graph.quitting = a.closed || a.workStopped
 		graph.home = a
+		graph.deleted = map[uint64]bool{}
+		for id := range taskDeletions(a.config.SessionFile) {
+			number, err := strconv.ParseUint(id, 10, 64)
+			if err == nil && number != 0 {
+				graph.deleted[number] = true
+			}
+		}
 		graph.run = graph.runOwned
 		graph.report = a.reportTaskNode
 		// The two ceilings start from config and refresh from the profile's one
@@ -1383,7 +1396,13 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	if g.nodes == nil {
 		g.nodes = make(map[uint64]*TaskNode, 1)
 	}
-	refused := g.quitting
+	refused := g.quitting || g.deleted[spec.parent]
+	if g.deleted[spec.parent] {
+		g.deleted[id] = true
+		g.releaseChildLocked(spec.parent)
+		g.mu.Unlock()
+		return TaskFailed
+	}
 	if refused {
 		node.state, node.stopped = TaskFailed, true
 		node.landLocked(taskStoppedQueuedWord)

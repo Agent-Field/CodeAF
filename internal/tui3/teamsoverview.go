@@ -111,6 +111,29 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	if t.Closed() {
 		return a.teamsHeader(d, t, width, y)
 	}
+	type control struct {
+		word string
+		act  teamsAct
+	}
+	right := []control{{"Settings", teamsActSettings}}
+	if !t.Root {
+		right = append(right, control{"Disband", teamsActClose})
+	}
+	rightWidth := 0
+	for _, c := range right {
+		rightWidth += ansi.StringWidth(c.word) + 2
+	}
+	rightWidth += len(right) - 1
+	if rightWidth+3 > width {
+		right = right[:1]
+		rightWidth = 10
+	}
+	if rightWidth+3 > width {
+		right = nil
+		rightWidth = 0
+	}
+	rightX := width - rightWidth - 1
+	leftRoom := max(rightX-2, 1)
 	name := t.Name
 	if t.Root {
 		name = teamstore.RootName
@@ -122,39 +145,32 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	if wrap := a.teamWrapWords(t, a.now()); wrap != "" {
 		left += "  " + a.pal.dim(wrap)
 	}
+	left = fit(left, leftRoom)
 	if !t.Root {
-		for _, control := range []struct {
-			word string
-			act  teamsAct
-		}{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}} {
+		for _, c := range []control{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}} {
 			x := ansi.StringWidth(left) + 1
-			button, _ := d.button(control.word, teamsTarget{act: control.act, id: t.ID, x0: x, y: y, hint: control.word, pane: true}, a.pal.muted)
-			if x+ansi.StringWidth(button) <= width {
-				left += " " + button
-			} else {
-				d.targets = d.targets[:len(d.targets)-1]
+			if x+ansi.StringWidth(c.word)+2 > leftRoom {
+				continue
 			}
-		}
-	}
-
-	x := ansi.StringWidth(left) + 1
-	button, _ := d.button("Settings", teamsTarget{act: teamsActSettings, id: t.ID, x0: x, y: y,
-		hint: "Team settings and spending controls" + hintSegment + "s"}, a.pal.muted)
-	if x+ansi.StringWidth(button) <= width {
-		left += " " + button
-	} else {
-		d.targets = d.targets[:len(d.targets)-1]
-	}
-	if !t.Root {
-		x = ansi.StringWidth(left) + 1
-		button, _ = d.button("Disband"+a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, x0: x, y: y, hint: "Disband this team and its subteams; current work continues" + hintSegment + "c"}, a.pal.muted)
-		if x+ansi.StringWidth(button) <= width {
+			button, _ := d.button(c.word, teamsTarget{act: c.act, id: t.ID, x0: x, y: y, hint: c.word, pane: true}, a.pal.muted)
 			left += " " + button
-		} else {
-			d.targets = d.targets[:len(d.targets)-1]
 		}
 	}
-	return fit(left, width)
+	var buttons []string
+	x := rightX
+	for _, c := range right {
+		hint := "Team settings and spending controls" + hintSegment + "s"
+		if c.act == teamsActClose {
+			hint = "Disband this team and its subteams; current work continues" + hintSegment + "c"
+		}
+		button, cells := d.button(c.word, teamsTarget{act: c.act, id: t.ID, x0: x, y: y, hint: hint, pane: true}, a.pal.muted)
+		buttons = append(buttons, button)
+		x += cells + 1
+	}
+	if len(right) == 0 {
+		return fit(left, width)
+	}
+	return left + strings.Repeat(" ", max(rightX-ansi.StringWidth(left), 0)) + strings.Join(buttons, " ") + " "
 }
 
 // Manager and member cards share their geometry. Role and ink distinguish the

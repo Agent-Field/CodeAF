@@ -61,6 +61,14 @@ func (s *teamWriteSaid) settle(w teamsWrote) bool {
 // a slow write over a connection still shows its notice for the whole time.
 func (a *app) teamsWriteSettled(w teamsWrote) {
 	a.tmemberStart.said.settle(w)
+	if a.cdelete.newSaid.settle(w) {
+		if a.cdelete.newSaid.why != "" {
+			a.cdelete.message = teamNotSaved("the new manager membership", a.cdelete.newSaid.why)
+		} else {
+			a.cdelete.choices[a.cdelete.pendingTeam] = a.cdelete.pendingKey
+			a.cdelete.message = ""
+		}
+	}
 	if a.tp.disbandSaid.settle(w) {
 		a.teamsDisbandSaid(a.tp.disbandName, a.tp.disbandSaid.why)
 	}

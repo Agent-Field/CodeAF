@@ -1105,6 +1105,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		},
 		Memory:  v3MemorySeam(proc.Memory),
 		Archive: session.SetArchived,
+		DeleteTask: func(file, id string) error {
+			return session.DeleteTaskUnder(session.PlacesRoot(), file, id, proc.deleteOwnedTask)
+		},
 		DeleteConversation: func(file string, choices map[string]string, affected map[string][]string) error {
 			return session.DeleteConversationUnder(session.PlacesRoot(), proc.ProfileDir, file, choices, proc.stopConversation, affected)
 		},

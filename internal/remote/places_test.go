@@ -303,3 +303,23 @@ func TestConversationDeleteCrossesWireWithManagerChoicesAndReviewedScope(t *test
 		t.Fatal("explicit disband choice lost")
 	}
 }
+
+func TestTaskDeleteCrossesWireAndRequiresEngineCapability(t *testing.T) {
+	var got TaskDeleteArgs
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: &fakeAgent{model: "m"}, DeleteTask: func(file, id string) error { got = TaskDeleteArgs{File: file, ID: id}; return nil }}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	if !loop.Client.Welcome().TaskDelete {
+		t.Fatal("engine capability absent")
+	}
+	if err = loop.Client.DeleteTask("/srv/chat/transcript.jsonl", "t-child"); err != nil {
+		t.Fatal(err)
+	}
+	if got.File != "/srv/chat/transcript.jsonl" || got.ID != "t-child" {
+		t.Fatalf("wrong target: %+v", got)
+	}
+}

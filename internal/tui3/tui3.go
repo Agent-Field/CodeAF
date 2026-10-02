@@ -515,6 +515,8 @@ type Options struct {
 	Archive func(dir string, archived bool) error
 	// DeleteConversation removes the engine-owned transcript after confirmation.
 	DeleteConversation func(file string, choices map[string]string, affected map[string][]string) error
+	// DeleteTask removes only the selected task and its descendants.
+	DeleteTask func(file, id string) error
 
 	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────
 	//

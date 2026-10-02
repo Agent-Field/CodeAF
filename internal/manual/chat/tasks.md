@@ -4599,7 +4599,7 @@ not a shortlist: `"claude" matches several models — say which: a, b, c, d.`
 No proposal reaches you until that is settled. The model can name one of the ids the
 refusal offers, or leave the model out so the work runs on the default.
 
-## Stopping a task — how to cancel or kill running work
+## How do I stop a running task — stopping a task, how to cancel or kill running work
 
 **`x` stops it, and it asks first.** Press `x` over an empty message box: with the roster's
 cursor on the task, or inside the task's room, or — when the roster does not hold the
@@ -4627,9 +4627,9 @@ Strip chips do not carry a stop button.
 **There is one other way to stop a task, and it asks no card.** On the **sessions** place
 (`ctrl+.`, `/history`), `→` on a task this conversation is holding opens the row's verbs and
 draws `s stop it`; `s` then ends it. That is two deliberate presses with the word on screen
-for the second of them, which is what the card protects `x` from being without — and the
-card cannot be drawn over a full-screen place anyway, so it would be a question nobody could
-see. It uses the same door in the engine and answers with the same sentence.
+for the second of them. It uses the same door in the engine and answers with the
+same sentence. On Sessions, `x` means permanent deletion instead, with its own
+confirmation card.
 
 **What stopping does.** A task that is RUNNING has its worker cut off where it stands: the
 turn it was in the middle of ends, and the task settles as `stopped`. A task still QUEUED
@@ -5456,58 +5456,25 @@ come back exactly as you left them.
 **`esc` clears the filter first and closes the place second**, which is why the foot says
 `esc clear the filter` while one is on.
 
-## The foot of the sessions place, and the one verb on its row strip
+## The foot of the sessions place — x delete, row verbs and stopping work
 
-The last line of the sessions place is assembled from the clauses that are **true of the row
-under the cursor**, and never from a fixed sentence. Over a task this window is running it
-reads
+The foot names the actions available for the selected row. `enter` opens its
+conversation, task room or saved record. `→` opens its verbs. An expandable row
+also offers a fold control. Type to filter; `esc` clears a filter before leaving
+the page. `tab` selects the next place.
 
-```
-enter open its room · → verbs: stop it · type to filter · alt+. map · tab next place
-```
+Every saved conversation, task and subtask row offers `x delete` when its engine
+supports deletion. With no filter being typed, `x` opens the confirmation directly;
+it also appears in the row's verbs. The question is `Stop work and permanently
+delete the transcript?`, with `cancel` selected by default and `yes`. `enter choose`
+and `esc cancel` appear at the bottom right. Deleting a conversation removes all
+its tasks. Deleting a task removes that task and its contained subtasks; a leaf
+removes only itself. Other tasks are kept. These rows have no close or reopen action.
 
-The last two keys are on every place and the router adds them. What comes before them
-changes with the cursor:
-
-- `enter open its room` over a task **this conversation is holding** — it has a room.
-- `enter go inside it` over work **another conversation ran** — no room exists, so `enter`
-  opens the record card instead.
-- `enter go to that conversation` over work running in a conversation **this terminal is
-  already holding**: the row switches to it and stands in that task's room.
-- `enter read it as it runs` over work running in a conversation **the local engine holds**
-  but this window is not in — the read-only page described in *Opening a task another window
-  is running*.
-- `enter about that window` over work this machine cannot reach at all, which opens the card
-  naming where it is.
-- `→ verbs: stop it` **only while the row has that verb** — see below.
-- A row whose work has raised something for you answers on the same line, behind the door:
-  the foot reads `enter open its room · hello.txt · waiting in this conversation · alt+y`,
-  with the page's own clauses — the fold, the verbs, the filter, the way out — giving way
-  first when the width runs short. The row keeps its door, and the question keeps its way
-  in, on the one line the foot draws them on.
-- `→ what ran under it` or `← fold it back up` over a fold, whichever the fold is not.
-
-The final clauses describe the **page** rather than the row:
-
-- `esc close` returns to the conversation when the filter is clear.
-- `type to filter`, because nothing else on the frame says that a letter goes into the box on
-  the control row rather than to the page's own keys. While a filter **is** on, that slot
-  says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
-  now means the filter and not the page.
-
-**`→` opens the row's verbs, and the sessions place has exactly one: `s stop it`.** It is
-offered over a task **this conversation is holding** that is still `queued` or `running` —
-the same work the roster's own `x` can end, through the same door in the engine, and it
-answers with the engine's own sentence (`stopping task 7 — its branch is kept`). A settled
-task has nothing left to stop, work another conversation ran has no live worker here, and a
-session whose engine has no cancel door is offered nothing — in every one of those cases the
-verb is **absent**, and the foot does not name it.
-
-**It asks no confirmation, and that is deliberate.** The confirmation card guards `x`, which
-is one bare keystroke over a list; on the strip the word `stop it` is drawn on screen and
-only then does `s` mean anything, which is two deliberate presses with the verb in front of
-you. The card is also not available here: it is drawn in the conversation's chrome, and a
-question raised over a full-screen place would be one nobody could see.
+A running task may separately offer `s stop it` on its verbs strip. That ends the
+work and keeps its saved record and branch, through the same engine door used by
+stopping it in its room. The strip asks no extra confirmation: `→` first exposes
+the action, then `s` chooses it. A task that has settled has nothing left to stop.
 
 ## Retry an incomplete or errored task — enter retry on its task screen
 

@@ -168,9 +168,9 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 	var head, middle, foot []int
 	for i, row := range kinds {
 		switch row.kind {
-		case railRowAll, railRowNew:
+		case railRowAll:
 			head = append(head, i)
-		case railRowClosed, railRowOrganize:
+		case railRowNew, railRowClosed, railRowOrganize:
 			foot = append(foot, i)
 		case railRowBlank:
 		default:
@@ -179,7 +179,7 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 	}
 	// Creation takes the only available row on a very short terminal.
 	if height == 1 {
-		head = head[1:]
+		head = []int{foot[0]}
 		foot = nil
 	}
 	for len(head)+len(foot) > height {
@@ -217,7 +217,11 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 		paint(middle[i], len(head)+i-off)
 	}
 	for i, line := range foot {
-		paint(line, height-len(foot)+i)
+		y := height - len(foot) + i
+		if kinds[line].kind == railRowNew {
+			y = min(y, len(head)+min(room, len(middle)-off))
+		}
+		paint(line, y)
 	}
 	for i := mark; i < len(d.targets); i++ {
 		t := &d.targets[i]

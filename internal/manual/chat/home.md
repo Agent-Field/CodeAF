@@ -1991,7 +1991,7 @@ drawn only when it has something to say:
 7. **what is scheduled** and **news since you last looked**;
 8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
-9. one dim line naming the strip: `→ verbs: close, copy name, new in project,
+9. one dim line naming the strip: `→ verbs: delete, copy name, new in project,
    open folder`.
 
 It never moves while the list lifts under your typing, and it goes empty on the
@@ -2011,7 +2011,7 @@ project path. Task rows keep their separate `p copy project` action.
 ## What do the keys on a home card do — open, new chat, folder, and copy path
 
 **The card beside a search does not list letters.** Its last dim line names the strip and
-the words instead — `→ verbs: close, copy name, new in project, open folder` — because
+the words instead — `→ verbs: delete, copy name, new in project, open folder` — because
 a letter is a verb only while the strip naming it is on screen.
 
 **The chords work on any conversation row, card or no card**, and each acts on the row you
@@ -2042,7 +2042,7 @@ that column, they appear directly under the selected row. **While the options ar
 those letters are the verbs and the box is asleep**:
 
 ```
-1 let it send   2 not this time   x close   n new in project
+1 let it send   2 not this time   x delete   n new in project
 esc or ← to leave · enter opens it instead
 ```
 
@@ -2155,7 +2155,7 @@ time, news text, task file count or cost, and answer chip remain visible. A sing
 wider than the card is still clipped. The card's place line clips from the left so the
 path's basename remains visible.
 
-**The verbs line breaks the same way** — `→ verbs: close, copy name, new in project,` /
+**The verbs line breaks the same way** — `→ verbs: delete, copy name, new in project,` /
 `         open folder` — keeping the comma on the row it ends and hanging the
 second row under the first word.
 

@@ -441,7 +441,7 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `c copy name`, `n new in project`, `o open folder`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -588,7 +588,7 @@ rather than home's `› type to search or start something new`. It used to show 
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's options: `x close`, `n new in project`, `o open folder`, and
+the row's options: `x delete`, `n new in project`, `o open folder`, and
 `p copy project` where the local conversation and project are available. A task this
 conversation is holding that is still queued or running also offers `s stop it`. Everything starts expanded; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
@@ -596,22 +596,18 @@ the list already draws, and it says `nothing matches` only when your filter has 
 page — and the foot names only what is true of the row you are on: `enter open its room ·
 → verbs: stop it`.
 
-## Close or put away a task, find an archived task, or reopen it
+## Delete a task, subtask, or conversation — replaces close, put away, and reopen
 
-On home or the Sessions list, select the task, press `→`, then `x close`.
-The task disappears immediately from the Sessions list, including the current filter
-results, and from home's panels. Its work continues if it is running; its record,
-conversation, and other tasks are unchanged. The choice is saved with the conversation
-and survives reopening the app.
+On Home or Sessions, select any conversation or task row, press `→`, then `x delete`.
+On Sessions an empty filter also permits the bare `x` key. Typing a filter keeps `x` as text.
+The confirmation defaults to `cancel`; `yes` permanently deletes the selected row.
+A conversation deletes its transcript and every task underneath it. A task deletes only
+its own records and descendants. Deleting a leaf subtask deletes only that subtask.
+Surviving siblings and their conversations remain. Deleted records cannot be recovered by search or reopened.
 
-To recover it, change the Sessions filter or reopen the page and type its name. Search
-includes put-away tasks within the selected time window; expand that window if the task is older. Select the matching
-task and use `→`, then `x reopen`. `enter` can still open its record.
-
-`n new in project`, `o open folder`, and `p copy project` use the project of the conversation
-that owns the selected task. A new chat is independent of the task. These folder actions
-and per-task put-away are local capabilities; a connected remote window does not offer
-them. Its existing stop action remains available when that engine supports it.
+`n new in project`, `o open folder`, and `p copy project` use the selected task's owner project.
+Folder actions are local. Permanent deletion is also available over a connection when
+that engine advertises the capability. Stopping work without deletion remains a separate action.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
@@ -937,7 +933,8 @@ conversation, the commands and page say
 
 ## Can I put away a conversation on the other machine from home
 
-Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
+Yes. `x delete` on the row menu or `ctrl+e` opens the same default-cancel confirmation.
+Choosing `yes` stops and permanently deletes that conversation and its tasks on the machine whose Home you are viewing.
 `enter` on a far conversation opens it in this window. `c copy name` copies its current
 name to this computer’s clipboard. `o open folder` and starting a new conversation in that
 folder are absent on far rows because those paths do not name local folders.

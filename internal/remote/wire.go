@@ -1033,6 +1033,7 @@ type Welcome struct {
 	PlacesRoot string `json:"placesRoot,omitempty"`
 	// ConversationDelete advertises the permanent deletion door.
 	ConversationDelete bool `json:"conversationDelete,omitempty"`
+	TaskDelete         bool `json:"taskDelete,omitempty"`
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 

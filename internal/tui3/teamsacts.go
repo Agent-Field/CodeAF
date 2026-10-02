@@ -26,12 +26,11 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActAddMember:
 		return a.teamMembershipOpen(t.id, "")
 	case teamsActRemoveMember:
-		if err := a.teamRemove(t.id, []string{t.arg}); err != nil {
-			a.tp.msg = err.Error()
-			a.touch()
-			return nil
+		cmd := a.teamMembershipOpen(t.id, t.arg)
+		if a.tmembers.on {
+			a.tmembers.removing = true
 		}
-		return a.teamsRead(true)
+		return cmd
 	case teamsActAddSubteam:
 		return a.teamMenuNewTeamIn(t.id)
 	case teamsActInteractionToggle:

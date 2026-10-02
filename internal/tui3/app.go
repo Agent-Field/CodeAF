@@ -1452,6 +1452,8 @@ type app struct {
 	tmembers           teamMembershipSheet
 	cdelete            conversationDeleteSheet
 	deleteConversation func(file string, choices map[string]string, affected map[string][]string) error
+	deletedSessionRows map[tasksKey]bool
+	deleteTask         func(file, id string) error
 	tmemberStart       teamMemberStart
 	// tp is the teams page's own state: its selection, its reading of the
 	// store and the targets it drew (teamspage.go).
@@ -3011,6 +3013,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		ledger:              opts.Ledger,
 		archive:             opts.Archive,
 		deleteConversation:  opts.DeleteConversation,
+		deleteTask:          opts.DeleteTask,
 		world:               opts.World,
 		farPlaces:           opts.WorldRoot,
 		farRecord:           opts.TaskRecord,

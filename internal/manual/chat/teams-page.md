@@ -338,3 +338,13 @@ The former Close/Reopen actions have been replaced by Disband. Disbanding a sub-
 its manager's current work finish, preserves its conversation and keeps its parent-team
 membership. It recursively disbands only the selected sub-team and its descendants.
 The confirmation lists them. History stays read-only under Closed teams; there is no Reopen.
+
+## New team placement and removing a member
+
+The Teams sidebar keeps `+ New team` directly after the active teams list. `Closed teams`
+remains at the bottom of the sidebar. `+ Add member` and `+ Add subteam` stay together
+on the left of the selected team's header; `Settings` and `Disband` sit on the right.
+
+A member card's `x` opens a confirmation naming the member and team. `cancel` is selected
+by default; choose `yes` to remove only that team's membership. Its work finishes and its
+conversation remains. Removing the manager requires replacing it first.

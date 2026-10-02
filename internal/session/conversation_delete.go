@@ -25,7 +25,7 @@ func (a *Agent) SessionPath() string { return a.config.SessionFile }
 // claimed, and manager choices are rechecked in the same store write as removal.
 func DeleteConversationUnder(root, profile, file string, choices map[string]string, stop func(string) error, affected ...map[string][]string) error {
 	canonical := func(path string) (string, error) { return filepath.EvalSymlinks(filepath.Clean(path)) }
-	resolved, err := canonical(file)
+	resolved, err := deletedConversationPath(file)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 	}
 	defer filelock.Unlock(deletionLock)
 	if _, err := os.Stat(filepath.Join(filepath.Dir(resolved), conversationDeletedFile)); err == nil {
-		return errors.New("this conversation was permanently deleted")
+		return finishConversationTaskCleanup(profile, resolved, meta.ID, choices, affected...)
 	}
 	f, err := teams.Load(profile)
 	if err != nil {
@@ -76,6 +76,13 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 		return err
 	}
 	defer filelock.Unlock(journal)
+	taskRows, err := taskDeleteRows(resolved, meta.ID, nil)
+	if err != nil {
+		return err
+	}
+	if err = saveConversationTaskCleanup(resolved, taskRows, aliases); err != nil {
+		return err
+	}
 	marker := filepath.Join(filepath.Dir(resolved), conversationDeletedFile)
 	if err = os.WriteFile(marker, []byte("This conversation was permanently deleted.\n"), 0o600); err != nil {
 		return err
@@ -95,11 +102,7 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 		_ = os.Remove(marker)
 		return err
 	}
-	if err = journal.Truncate(0); err != nil {
-		return fmt.Errorf("memberships removed; transcript cleanup needs retry: %w", err)
-	}
-	_ = os.Remove(pending)
-	return nil
+	return finishConversationTaskCleanup(profile, resolved, meta.ID, choices, affected...)
 }
 
 // Hosted keys may retain a symlink spelling; every spelling names the same

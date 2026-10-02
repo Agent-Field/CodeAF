@@ -14,11 +14,11 @@ links choose that team's overlay. The composer names the recipient and selected 
 ## Milestone 2: membership and overlays — revised
 
 Add member lists Name and Project in columns without displaying IDs. Each member card has
-only an `x` removal control. Removal affects that membership, keeps work and context, and
+only an `x` removal control with a default-cancel confirmation. Removal affects that membership, keeps work and context, and
 preserves other memberships. Losing the reporting membership preserves independence.
 New member creation waits for persisted membership before submitting its assignment.
 
-The sidebar has a permanent top-level New team control. Add subteam sits beside and after
+The sidebar has a permanent top-level New team control after the active teams list. Add subteam sits beside and after
 Add member in the selected team's header. Closed teams is back at the bottom of the sidebar.
 Long sidebar lists keep creation and history controls reachable.
 
@@ -53,3 +53,20 @@ The milestone 3 review fixture is `/private/tmp/codeaf-teams-milestone-3`. It co
 conversations, an Interface cleanup team and an Interaction cleanup subteam, retained history
 and a populated interaction table. Its launcher is `review.sh`; it does not use the owner's
 normal profile. Later navigation ideas in the planning document remain separate proposals.
+
+## Milestone 3 revision: every saved row can be deleted
+
+The conversation confirmation has no title: `Stop work and permanently delete the transcript?`,
+then `cancel` (default) and `yes`. Muted `enter choose · esc cancel` hints sit at bottom right.
+A managing conversation proceeds to a separate manager choice step after yes, including a
+new blank manager conversation whose membership must be saved before replacement.
+
+Sessions offers x delete on every conversation, task, and subtask row. Conversations remove
+all task records. Tasks remove their true containment subtree; leaf tasks remove only themselves.
+Sibling and other-conversation records survive, including after restart. Store tombstones,
+worker lifetime acknowledgements, and durable cleanup receipts cover late writes and retries.
+The existing stop action remains separate; close/reopen is removed from row actions.
+
+Settings and Disband sit on the right of the selected-team header, separate from add controls.
+Disband has no trailing ellipsis. The New team sidebar control follows the active list.
+Additional improvements remain pending a fresh discussion with the owner.

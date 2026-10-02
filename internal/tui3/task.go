@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -5175,6 +5177,14 @@ func (a *app) railJoin(text, rail string) string {
 func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	notice := ev.Task
 	if notice == nil {
+		return nil
+	}
+	owner := filepath.Base(filepath.Dir(a.file))
+	id, parent := strconv.FormatUint(notice.ID, 10), strconv.FormatUint(notice.Parent, 10)
+	if a.deletedSessionRows[tasksChatKey(owner)] || a.deletedSessionRows[tasksKey{session: owner, id: id}] || a.deletedSessionRows[tasksKey{session: owner, id: parent}] {
+		if a.deletedSessionRows != nil {
+			a.deletedSessionRows[tasksKey{session: owner, id: id}] = true
+		}
 		return nil
 	}
 	// A BACKGROUND JOB IS NOT A TASK AND IS NOT FILED AS ONE. Jobs arrive on

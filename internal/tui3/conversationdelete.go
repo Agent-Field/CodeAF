@@ -2,21 +2,30 @@ package tui3
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"errors"
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 // Permanent deletion owns a confirmation and explicit choices for every team
 // this conversation manages. No destructive choice is selected by default.
 type conversationDeleteSheet struct {
-	on, busy               bool
-	file, name, message    string
-	choices                map[string]string
-	affected               map[string][]string
-	detailsTop, detailsMax int
-	cursor, top            int
-	hits                   []wallHit
-	rect                   wallRect
+	on, busy                bool
+	managing                bool
+	token                   *byte
+	taskID                  string
+	pendingTeam, pendingKey string
+	newSaid                 teamWriteSaid
+	file, name, message     string
+	choices                 map[string]string
+	affected                map[string][]string
+	detailsTop, detailsMax  int
+	cursor, top             int
+	hits                    []wallHit
+	rect                    wallRect
 }
 
 type conversationDeleteOption struct {
@@ -25,15 +34,22 @@ type conversationDeleteOption struct {
 }
 
 func (a *app) conversationDeleteOpen(file, name string) tea.Cmd {
+	return a.deleteSheetOpen(file, name, false)
+}
+
+func (a *app) deleteSheetOpen(file, name string, task bool) tea.Cmd {
 	if file == "" {
 		a.note("This conversation has no saved transcript yet")
 		return nil
 	}
-	if a.deleteConversation == nil && a.hosted() {
+	if !task && a.deleteConversation == nil && a.hosted() {
 		a.note("This engine does not offer permanent deletion")
 		return nil
 	}
-	a.cdelete = conversationDeleteSheet{on: true, file: file, name: name, choices: map[string]string{}}
+	if a.deletedSessionRows == nil {
+		a.deletedSessionRows = map[tasksKey]bool{}
+	}
+	a.cdelete = conversationDeleteSheet{on: true, token: new(byte), file: file, name: name, choices: map[string]string{}}
 	a.cdelete.affected = map[string][]string{}
 	for _, t := range a.wall.teams {
 		if !t.Closed() && t.Manager == a.convKey(file) {
@@ -51,7 +67,10 @@ func (a *app) conversationDeleteOpen(file, name string) tea.Cmd {
 func (a *app) conversationDeleteOptions() []conversationDeleteOption {
 	s := &a.cdelete
 	key := a.convKey(s.file)
-	var options []conversationDeleteOption
+	if !s.managing {
+		return []conversationDeleteOption{{word: "cancel", action: 1}, {word: "yes", action: 2}}
+	}
+	options := []conversationDeleteOption{{word: "cancel", action: 1}}
 	for _, t := range a.wall.teams {
 		if t.Closed() || t.Manager != key {
 			continue
@@ -73,9 +92,12 @@ func (a *app) conversationDeleteOptions() []conversationDeleteOption {
 		if chosen, ok := s.choices[t.ID]; ok && chosen == "" {
 			word += " (selected)"
 		}
+		if a.start != nil && !a.shared {
+			options = append(options, conversationDeleteOption{word: "+ New manager for " + t.Name, team: t.ID, action: 3})
+		}
 		options = append(options, conversationDeleteOption{word: word, team: t.ID})
 	}
-	options = append(options, conversationDeleteOption{word: "Cancel · esc", action: 1}, conversationDeleteOption{word: "Permanently delete", action: 2})
+	options = append(options, conversationDeleteOption{word: "yes", action: 2})
 	return options
 }
 
@@ -94,21 +116,47 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 		a.touch()
 		return nil
 	}
+	if option.action == 3 {
+		if s.newSaid.pending || a.conversationOpening {
+			return nil
+		}
+		return a.conversationDeleteNewManager(option.team)
+	}
 	if option.action == 0 {
 		s.choices[option.team] = option.replacement
 		s.message = ""
 		a.touch()
 		return nil
 	}
+	if !s.managing {
+		if _, visible := a.simpleConfirmCard(a.conversationDeleteQuestion(), s.cursor, s.message); !visible {
+			return nil
+		}
+	}
 	width, height := a.size()
-	if width < 24 || height < 14 {
+	if s.managing && (width < 24 || height < 14) {
 		s.message = "Resize the terminal to review deletion"
 		a.touch()
 		return nil
 	}
 	key := a.convKey(s.file)
+	if s.newSaid.pending {
+		s.message = "Saving the new manager membership"
+		a.touch()
+		return nil
+	}
+	if !s.managing && s.taskID == "" {
+		for _, t := range a.wall.teams {
+			if !t.Closed() && t.Manager == key {
+				s.managing = true
+				s.cursor = 0
+				a.touch()
+				return nil
+			}
+		}
+	}
 	for _, t := range a.wall.teams {
-		if !t.Closed() && t.Manager == key {
+		if s.taskID == "" && !t.Closed() && t.Manager == key {
 			if _, chosen := s.choices[t.ID]; !chosen {
 				s.message = "Choose a replacement or disband " + t.Name + " first"
 				a.touch()
@@ -116,7 +164,7 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 			}
 		}
 	}
-	file, name, choices := s.file, s.name, make(map[string]string, len(s.choices))
+	file, name, taskID, choices := s.file, s.name, s.taskID, make(map[string]string, len(s.choices))
 	for id, replacement := range s.choices {
 		choices[id] = replacement
 	}
@@ -138,8 +186,19 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 			}, affected)
 		}
 	}
+	if taskID != "" {
+		remove := a.deleteTask
+		if remove == nil {
+			root := a.placesRoot()
+			remove = func(file, id string) error { return session.DeleteTaskUnder(root, file, id, nil) }
+		}
+		door = func(file string, _ map[string]string, _ map[string][]string) error { return remove(file, taskID) }
+	}
 	affected := s.affected
 	s.busy, s.message = true, "Deleting conversation"
+	if taskID != "" {
+		s.message = "Deleting task"
+	}
 	a.touch()
 	return a.offLoop(func() func(bool) tea.Cmd {
 		err := door(file, choices, affected)
@@ -150,6 +209,10 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 				return a.teamsRead(true)
 			}
 			a.cdelete = conversationDeleteSheet{}
+			if taskID != "" {
+				return a.taskDeletionFinished(file, taskID)
+			}
+			a.deletedSessionRows[tasksChatKey(filepath.Base(filepath.Dir(file)))] = true
 			a.teamViewSet("")
 			cleanup := func() tea.Cmd {
 				if held := a.behind[key]; held != nil {
@@ -231,6 +294,16 @@ func (a *app) conversationDeleteOver(frame string) string {
 		return frame
 	}
 	s := &a.cdelete
+	if !s.managing {
+		card, visible := a.simpleConfirmCard(a.conversationDeleteQuestion(), s.cursor, s.message)
+		s.hits = nil
+		if !visible {
+			return frame
+		}
+		s.hits = card.hits
+		s.rect = wallRect{card.x, card.y, card.x + card.w, card.y + len(card.rows)}
+		return a.confirmCardOver(frame, card)
+	}
 	width, height := a.size()
 	w := min(width-2, 90)
 	inner := w - 4
@@ -238,7 +311,7 @@ func (a *app) conversationDeleteOver(frame string) string {
 		return frame
 	}
 	var lines []wallCardLine
-	lines = append(lines, wallCardLine{s: a.pal.ink(fit("Stop work and permanently delete the transcript?", inner))}, wallCardLine{s: a.pal.dim(fit("Memberships end; team history stays. Cannot be undone.", inner))})
+	lines = append(lines, wallCardLine{s: a.pal.ink(fit("Choose replacement managers or disband their teams", inner))})
 	options := a.conversationDeleteOptions()
 	room := min(max(height-11, 1), 8)
 	s.cursor = min(s.cursor, len(options)-1)
@@ -264,7 +337,7 @@ func (a *app) conversationDeleteOver(frame string) string {
 		lines = append(lines, wallCardLine{s: a.pal.warn(fit(s.message, inner))})
 	}
 	x, y := (width-w)/2, max((height-len(lines)-2)/3, 1)
-	card := wallCardBuild(a.pal, "Delete "+s.name, lines, x, y, w, 1, 0)
+	card := wallCardBuild(a.pal, "Choose managers", lines, x, y, w, 1, 0)
 	s.hits = card.hits
 	s.rect = wallRect{card.x, card.y, card.x + card.w, card.y + len(card.rows)}
 	rows := strings.Split(frame, "\n")
@@ -277,4 +350,98 @@ func (a *app) conversationDeleteOver(frame string) string {
 		}
 	}
 	return strings.Join(rows[:height], "\n")
+}
+
+func (a *app) conversationDeleteQuestion() string {
+	if a.cdelete.taskID != "" {
+		return "Stop work and permanently delete this task?"
+	}
+	return "Stop work and permanently delete the transcript?"
+}
+
+func (a *app) taskDeleteOpen(row session.SessionRow, entry session.TaskIndexEntry) tea.Cmd {
+	if a.hosted() && a.deleteTask == nil {
+		a.note("This engine does not offer permanent task deletion")
+		return nil
+	}
+	cmd := a.deleteSheetOpen(row.Transcript, entry.Title, true)
+	if a.cdelete.on {
+		a.cdelete.taskID = entry.ID
+	}
+	return cmd
+}
+
+func (a *app) taskDeletionFinished(file, id string) tea.Cmd {
+	owner := filepath.Base(filepath.Dir(file))
+	rows := a.taskSheet.reading.items
+	ids := map[string]bool{id: true}
+	for changed := true; changed; {
+		changed = false
+		for _, row := range rows {
+			parent := row.entry.Parent
+			if row.plan != nil {
+				parent = row.plan.Parent
+			}
+			if row.entry.SessionID == owner && ids[parent] && !ids[row.entry.ID] {
+				ids[row.entry.ID] = true
+				changed = true
+			}
+		}
+	}
+	if a.deletedSessionRows == nil {
+		a.deletedSessionRows = map[tasksKey]bool{}
+	}
+	for id := range ids {
+		a.deletedSessionRows[tasksKey{session: owner, id: id}] = true
+		if a.convKey(file) == a.frontTabKey() {
+			number, _ := strconv.ParseUint(id, 10, 64)
+			delete(a.tasks, number)
+		}
+	}
+	a.taskSheet.detailOn = false
+	a.railStamp++
+	a.taskSheet.actionNote = "Deleted task"
+	a.refreshHome()
+	a.touch()
+	return nil
+}
+
+// A brand new replacement is created beside the existing conversation. Its
+// membership must reach the store before deletion can appoint it as manager.
+func (a *app) conversationDeleteNewManager(id string) tea.Cmd {
+	t, ok := a.teamByID(id)
+	if !ok || t.Closed() || a.start == nil || a.shared {
+		return nil
+	}
+	file, token := a.cdelete.file, a.cdelete.token
+	ask, _ := a.startDoor(a.teamWhere(t))
+	return a.conversationLater(ask, func(word string) { a.cdelete.message = word }, func(conv Conversation) tea.Cmd {
+		if a.behind == nil {
+			a.behind = map[string]*kept{}
+		}
+		key := a.convKey(conv.SessionFile)
+		a.behind[key] = &kept{conv: conv, watch: startBehindWatch(key, conv.Agent, a.stirs)}
+		a.rememberOpen(key)
+		if !a.cdelete.on || a.cdelete.file != file || a.cdelete.token != token {
+			a.touch()
+			return nil
+		}
+		m := teamstore.Member{Key: key, File: conv.SessionFile, Where: conv.Workspace, Word: "Manager of " + t.Name}
+		if err := a.teamEdit(func(f *teamstore.File) error {
+			current, ok := f.Team(id)
+			if !ok || current.Closed() {
+				return errors.New("this team is no longer active")
+			}
+			return f.AddMember(id, m)
+		}); err != nil {
+			a.cdelete.message = err.Error()
+			a.touch()
+			return nil
+		}
+		a.cdelete.pendingTeam, a.cdelete.pendingKey = id, key
+		a.cdelete.newSaid = a.teamWriteWatch(nil)
+		a.cdelete.message = "Saving the new manager membership"
+		a.touch()
+		return nil
+	})
 }

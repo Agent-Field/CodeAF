@@ -295,7 +295,7 @@ func TestTheCancelKeyOnAPlanRowEndsItThroughTheStore(t *testing.T) {
 	if item, ok := a.taskSheetCurrent(); !ok || item.plan == nil {
 		t.Fatalf("the cursor is not on a plan row: %+v", item.entry)
 	}
-	drive(t, a, key("x"))
+	drive(t, a, key("s"))
 	if len(fake.cancelled) != 1 || fake.cancelled[0] != "t-alpha" {
 		t.Fatalf("the cancel key was turned into %v, want one cancel of t-alpha", fake.cancelled)
 	}

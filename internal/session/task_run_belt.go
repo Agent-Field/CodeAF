@@ -119,6 +119,8 @@ type RunSpec struct {
 	Admission RunAdmission
 	// OnHold announces the changed set of task ids whose starts are held.
 	OnHold func([]string)
+	// OnWorker identifies when each worker has finished its record writes.
+	OnWorker func(string, bool)
 	// ProfileDir is the person's profile directory, read by the engine's crew
 	// factory to seat a task on the model its role rides.
 	ProfileDir string
@@ -354,6 +356,7 @@ type beltRun struct {
 	// machineHeld is the set of starts refused on the latest pass. Readers
 	// take beltMu before copying membership onto live plan rows.
 	machineHeld map[string]bool
+	workers     map[string]chan struct{}
 	// cut ends the context the run's workers and every call they have out run
 	// under, and stopped and stopReason say a PERSON ended it and in what words
 	// (stoprun.go). cut is set once before the run starts; the other two are
@@ -1039,6 +1042,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		// none. Run and node workers must charge that same conversation.
 		Admission:    admission,
 		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
+		OnWorker:     func(id string, on bool) { a.beltWorkerLifetime(run, id, on) },
 		ProfileDir:   a.config.ProfileDir,
 		Sources:      a.liveSources(),
 		WorkModel:    workSeat,
@@ -2519,4 +2523,18 @@ func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
 		notice.Crew = kept.Crew
 	}
 	return notice
+}
+
+func (a *Agent) beltWorkerLifetime(run *beltRun, id string, on bool) {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if run.workers == nil {
+		run.workers = map[string]chan struct{}{}
+	}
+	if on {
+		run.workers[id] = make(chan struct{})
+	} else if done := run.workers[id]; done != nil {
+		close(done)
+		delete(run.workers, id)
+	}
 }

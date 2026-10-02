@@ -171,3 +171,72 @@ func TestConversationDeleteStaleOwnerRequestIsDiscarded(t *testing.T) {
 		t.Fatal("stale request was kept")
 	}
 }
+
+func TestConversationDeleteManagerCleanupIsIdempotent(t *testing.T) {
+	for _, replacement := range []string{"", "replacement"} {
+		t.Run(replacement, func(t *testing.T) {
+			root, profile, file := deletionFixture(t)
+			if err := teams.Update(profile, func(f *teams.File) error {
+				if err := f.AddMember("aaaaaaaaaaaa", teams.Member{Key: "replacement", Handle: "next"}); err != nil {
+					return err
+				}
+				return f.SetManager("aaaaaaaaaaaa", file)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := DeleteConversationUnder(root, profile, file, map[string]string{"aaaaaaaaaaaa": replacement}, nil); err != nil {
+				t.Fatal(err)
+			}
+			f, err := teams.Load(profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			team := f.Teams[0]
+			if team.Holds(file) || (replacement == "" && !team.Closed()) || (replacement != "" && team.Manager != replacement) {
+				t.Fatalf("wrong manager result: %+v", team)
+			}
+			if _, err := os.Stat(file + ".delete-pending"); !os.IsNotExist(err) {
+				t.Fatal("pending journal survived")
+			}
+		})
+	}
+}
+
+func TestConversationDeleteRetryPreservesCapturedManagerAliases(t *testing.T) {
+	root, profile, file := deletionFixture(t)
+	alias := filepath.Join(root, "different-journal-name.jsonl")
+	if err := os.Symlink(file, alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := teams.Update(profile, func(f *teams.File) error {
+		if err := f.AddMember("aaaaaaaaaaaa", teams.Member{Key: alias, File: alias, Handle: "alias"}); err != nil {
+			return err
+		}
+		return f.SetManager("aaaaaaaaaaaa", alias)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := teams.Load(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = saveConversationTaskCleanup(file, nil, deletedMemberAliases(f, file)); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(filepath.Dir(file), conversationDeletedFile), []byte("deleted"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Rename(file, file+".delete-pending"); err != nil {
+		t.Fatal(err)
+	}
+	if err = DeleteConversationUnder(root, profile, file, map[string]string{"aaaaaaaaaaaa": ""}, nil); err != nil {
+		t.Fatal(err)
+	}
+	f, err = teams.Load(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Teams[0].Closed() || f.Teams[0].Holds(alias) || f.Teams[0].Holds(file) {
+		t.Fatalf("alias survived retry: %+v", f.Teams[0])
+	}
+}

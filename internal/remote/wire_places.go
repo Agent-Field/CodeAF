@@ -50,9 +50,10 @@ const (
 	// has that place, and this door is what keeps its box finding anything.
 	// There is no cache behind it — a query is not a beat, it is an answer
 	// somebody's enter key is waiting for.
-	MethodPlacesSearch  = "Places.Search"  // SearchArgs → []store.ConversationHit
-	MethodPlacesDelete  = "Places.Delete"  // ConversationDeleteArgs → nothing
-	MethodPlacesArchive = "Places.Archive" // ArchiveArgs → nothing
+	MethodPlacesSearch     = "Places.Search" // SearchArgs → []store.ConversationHit
+	MethodPlacesTaskDelete = "Places.DeleteTask"
+	MethodPlacesDelete     = "Places.Delete"  // ConversationDeleteArgs → nothing
+	MethodPlacesArchive    = "Places.Archive" // ArchiveArgs → nothing
 
 	// ── the folders a person attaches ───────────────────────────────────────
 	//
@@ -235,4 +236,10 @@ type ConversationDeleteArgs struct {
 	File     string              `json:"file"`
 	Choices  map[string]string   `json:"choices"`
 	Affected map[string][]string `json:"affected"`
+}
+
+// TaskDeleteArgs identifies a row by its saved conversation and task id.
+type TaskDeleteArgs struct {
+	File string `json:"file"`
+	ID   string `json:"id"`
 }

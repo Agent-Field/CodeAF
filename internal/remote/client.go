@@ -2661,3 +2661,9 @@ func (c *Client) DeleteConversation(file string, choices map[string]string, affe
 	_, err := c.call(nil, MethodPlacesDelete, ConversationDeleteArgs{File: file, Choices: choices, Affected: affected})
 	return err
 }
+
+// DeleteTask deletes one saved task subtree on its owning engine.
+func (c *Client) DeleteTask(file, id string) error {
+	_, err := c.call(nil, MethodPlacesTaskDelete, TaskDeleteArgs{File: file, ID: id})
+	return err
+}

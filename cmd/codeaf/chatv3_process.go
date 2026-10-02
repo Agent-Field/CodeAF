@@ -969,3 +969,19 @@ func (p *v3Process) stopConversation(file string) error {
 	}
 	return nil
 }
+
+// deleteOwnedTask keeps other conversations and sibling tasks running.
+func (p *v3Process) deleteOwnedTask(file, id string) (bool, error) {
+	agents := func() []*session.Agent {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return append([]*session.Agent(nil), p.agents...)
+	}()
+	for _, agent := range agents {
+		path, _ := filepath.EvalSymlinks(agent.SessionPath())
+		if path == file {
+			return true, agent.DeleteTask(id)
+		}
+	}
+	return false, nil
+}

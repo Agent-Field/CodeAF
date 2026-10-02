@@ -917,6 +917,15 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		options.SubscribeServiceModels = listing.registerServiceNotice
 		options.ApplyModelSources = shelf.setSources
 	}
+	if welcome.TaskDelete {
+		options.DeleteTask = func(file, id string) error {
+			if err := client.DeleteTask(file, id); err != nil {
+				return err
+			}
+			world.fetch()
+			return nil
+		}
+	}
 	if !fleet.canBeside() {
 		// A DOOR THAT CANNOT DIAL AGAIN REALLY DOES HOLD ONE CONVERSATION AT A
 		// TIME, and says so ([tui3.Options.SharedAgent]) rather than letting

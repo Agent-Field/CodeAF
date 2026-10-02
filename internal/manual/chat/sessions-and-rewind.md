@@ -888,22 +888,35 @@ Contrast that with what `/quit` and `ctrl+c` do, which is close for real: the tu
 cancelled with a grace wait, background jobs are shut down, running tasks end, and the
 journal is synced and unlocked — see *Will I lose this if it crashes?*.
 
-## Permanently deleting a conversation — /delete and the Home delete action
+## Permanently deleting any conversation or task — /delete and x delete
 
 `/delete` asks to stop the current conversation and permanently remove its transcript.
-The Home conversation row's `delete` action (or `ctrl+e` on a selected conversation) opens
-the same confirmation. Cancel changes nothing. This replaces the old close/reopen action.
+Home's `delete` action (or `ctrl+e` on a conversation) and Sessions' `x delete` use
+that same confirmation. Its question is `Stop work and permanently delete the transcript?`.
+Only `cancel` and `yes` appear, with `cancel` selected by default. The bottom-right hints
+are `enter choose · esc cancel`. Cancel changes nothing.
 
-Deleting removes every team membership. If the conversation manages active teams, explicitly
-choose an eligible replacement or disband each managed team. Disbanding includes every named
-subteam; a changed tree requires another confirmation. The optional global manager can be
-removed without disbanding All teams. Use `pgup` and `pgdown` to read a long choice's details.
+A conversation that manages active teams opens a separate manager step after `yes`.
+Choose an eligible replacement, create a new manager conversation, or disband each managed
+team. A new manager's membership is saved before deletion can appoint it. Disbanding includes
+all named subteams; a changed tree requires another confirmation. The optional global manager
+can be replaced or removed without disbanding the global team.
 
-Earlier team exchanges and decisions remain in team history. Links to the deleted conversation
-become unavailable. Files and deliverables written during the conversation survive. Its transcript
-cannot be reopened or recreated from a stale tab. Other conversations and their work survive.
-Deleting the current chat switches to another open tab, or Home when none remains.
+Deletion removes all team memberships and the conversation's tasks and transcripts.
+Earlier team exchanges and decisions remain in team history. Links to a deleted conversation
+say it is unavailable. Other conversations and their work survive. Deleted conversations
+cannot be reopened or recreated from a stale tab. This cannot be undone.
 
-An older hosted engine without permanent deletion does not offer this operation. Deletion
-requires a recorded saved conversation on the engine machine; unsaved conversations cannot
-be permanently deleted through this door. This cannot be undone.
+## Delete a task or subtask from Sessions — no close or reopen
+
+Every saved Sessions row offers `x delete`. With an empty filter, `x` opens confirmation;
+while typing a filter it remains text. Task confirmation asks
+`Stop work and permanently delete this task?`, with the same default `cancel` and `yes` choices.
+Deleting a task stops and removes its own work and every descendant. A leaf subtask deletes
+only itself. The owning conversation and sibling tasks remain. A task inside a manager
+conversation does not need manager replacement. Deleted tasks stay absent after restart
+and cannot return through search or a late worker update.
+
+Deletion uses the connected engine when it supports it. An older engine without that
+capability does not offer the action. Only normal saved conversation folders can be deleted
+through this door; legacy flat transcripts cannot. This cannot be undone.

@@ -13,6 +13,7 @@ import (
 // Candidate sessions are read once off-loop, and frames use only this snapshot.
 type teamMembershipSheet struct {
 	on           bool
+	removing     bool
 	team, member string
 	filter       editor
 	rows         []chatTab
@@ -112,6 +113,25 @@ func (a *app) teamMembershipChoose(index int) tea.Cmd {
 		s.message = "This team is no longer active"
 		a.touch()
 		return nil
+	}
+	if s.removing {
+		if index == 0 {
+			a.teamMembershipShut()
+			return nil
+		}
+		if index != 1 {
+			return nil
+		}
+		if _, visible := a.simpleConfirmCard(a.teamRemovalQuestion(t), s.cursor, s.message); !visible {
+			return nil
+		}
+		if err := a.teamRemove(t.ID, []string{s.member}); err != nil {
+			s.message = err.Error()
+			a.touch()
+			return nil
+		}
+		a.teamMembershipShut()
+		return a.teamsRead(true)
 	}
 	if s.member != "" {
 		if index >= len(a.teamMembershipActions(t)) {
@@ -278,6 +298,9 @@ func (a *app) teamMembershipKey(msg tea.KeyPressMsg) tea.Cmd {
 		if s.member != "" {
 			if t, ok := a.teamByID(s.team); ok {
 				last = len(a.teamMembershipActions(t)) - 1
+				if s.removing {
+					last = 1
+				}
 			}
 		}
 		s.cursor = min(s.cursor+1, last)
@@ -317,6 +340,9 @@ func (a *app) teamMembershipMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		last := len(a.teamMembershipRows())
 		if t, ok := a.teamByID(s.team); ok && s.member != "" {
 			last = len(a.teamMembershipActions(t)) - 1
+			if s.removing {
+				last = 1
+			}
 		}
 		s.cursor = min(max(s.cursor+placeWheelDelta(m.Button), 0), max(last, 0))
 		a.touch()
@@ -359,6 +385,16 @@ func (a *app) teamMembershipOver(frame string) string {
 	if !ok {
 		a.teamMembershipShut()
 		return frame
+	}
+	if s.removing {
+		card, visible := a.simpleConfirmCard(a.teamRemovalQuestion(t), s.cursor, s.message)
+		s.hits = nil
+		if !visible {
+			return frame
+		}
+		s.hits = card.hits
+		s.rect = wallRect{card.x, card.y, card.x + card.w, card.y + len(card.rows)}
+		return a.confirmCardOver(frame, card)
 	}
 	width, height := a.size()
 	w := min(width-2, 76)
@@ -436,4 +472,13 @@ func (a *app) teamMembershipActions(t team) []string {
 		actions = append(actions, "Report to this team’s manager")
 	}
 	return actions
+}
+
+func (a *app) teamRemovalQuestion(t team) string {
+	m, _ := t.Member(a.tmembers.member)
+	name := m.Word
+	if m.Handle != "" {
+		name = "@" + m.Handle
+	}
+	return "Remove " + name + " from " + t.Name + "?"
 }
