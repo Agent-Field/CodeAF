@@ -199,7 +199,7 @@ func TestRememberKeepsOneThingAndSaysWhatItKept(t *testing.T) {
 	agent := &rememberingAgent{}
 	a := newTestApp(agent)
 
-	a.slash("/remember I prefer tabs over spaces in Go")
+	drain(t, a, a.slash("/remember I prefer tabs over spaces in Go"))
 
 	if len(agent.remembered) != 1 || agent.remembered[0] != "I prefer tabs over spaces in Go" {
 		t.Fatalf("the agent was asked to remember %v", agent.remembered)
@@ -216,7 +216,7 @@ func TestMemoriesListsOnePerLineWithTheIdThatNamesIt(t *testing.T) {
 	}}
 	a := newTestApp(agent)
 
-	a.slash("/memories")
+	drain(t, a, a.slash("/memories"))
 
 	text := lastNote(t, a)
 	lines := strings.Split(text, "\n")
@@ -235,7 +235,7 @@ func TestMemoriesWithAQueryNarrowsTheList(t *testing.T) {
 	}}
 	a := newTestApp(agent)
 
-	a.slash("/memories standup")
+	drain(t, a, a.slash("/memories standup"))
 
 	if len(agent.listed) != 1 || agent.listed[0] != "standup" {
 		t.Fatalf("the agent was asked for %v", agent.listed)
@@ -252,7 +252,7 @@ func TestForgetDropsTheMatchAndNamesIt(t *testing.T) {
 	}}
 	a := newTestApp(agent)
 
-	a.slash("/forget standup")
+	drain(t, a, a.slash("/forget standup"))
 
 	if text := lastNote(t, a); !strings.Contains(text, "forgot") || !strings.Contains(text, "standup time") {
 		t.Fatalf("the answer was %q", text)
@@ -271,18 +271,18 @@ func TestTheEmptyStatesEachSayWhichEmptinessItIs(t *testing.T) {
 	agent := &rememberingAgent{}
 	a := newTestApp(agent)
 
-	a.slash("/memories")
+	drain(t, a, a.slash("/memories"))
 	if text := lastNote(t, a); text != "nothing is remembered yet" {
 		t.Fatalf("an empty store answered %q", text)
 	}
 
 	agent.kept = []session.MemoryLine{{ID: "mem_1", Title: "prefers tabs", Text: "prefers tabs over spaces in Go"}}
-	a.slash("/memories pineapples")
+	drain(t, a, a.slash("/memories pineapples"))
 	if text := lastNote(t, a); !strings.Contains(text, "nothing remembered matches pineapples") {
 		t.Fatalf("an empty search answered %q", text)
 	}
 
-	a.slash("/forget pineapples")
+	drain(t, a, a.slash("/forget pineapples"))
 	if text := lastNote(t, a); !strings.Contains(text, "nothing matched pineapples") {
 		t.Fatalf("a no-match forget answered %q", text)
 	}
@@ -291,11 +291,11 @@ func TestTheEmptyStatesEachSayWhichEmptinessItIs(t *testing.T) {
 func TestTheTwoArgumentCommandsAskForTheirArgument(t *testing.T) {
 	a := newTestApp(&rememberingAgent{})
 
-	a.slash("/remember")
+	drain(t, a, a.slash("/remember"))
 	if text := lastNote(t, a); !strings.Contains(text, "what should be kept") {
 		t.Fatalf("/remember with nothing answered %q", text)
 	}
-	a.slash("/forget   ")
+	drain(t, a, a.slash("/forget   "))
 	if text := lastNote(t, a); !strings.Contains(text, "what should be dropped") {
 		t.Fatalf("/forget with nothing answered %q", text)
 	}
@@ -311,7 +311,7 @@ func TestWithoutABrainAllThreeSayMemoryIsOff(t *testing.T) {
 	for _, agent := range []Agent{&fakeAgent{model: "m"}, &rememberingAgent{off: true}} {
 		a := newTestApp(agent)
 		for _, line := range []string{"/memories", "/remember something", "/forget something"} {
-			a.slash(line)
+			drain(t, a, a.slash(line))
 			if text := lastNote(t, a); !strings.Contains(text, "memory is off") || !strings.Contains(text, "/settings") {
 				t.Fatalf("%s answered %q", line, text)
 			}
@@ -329,14 +329,14 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 		t.Fatalf("panel did not list memory:\n%s", got)
 	}
 	a.leavePlace()
-	a.slash("/memory vim")
+	drain(t, a, a.slash("/memory vim"))
 	if a.at(pageMemory) {
 		t.Fatal("/memory <query> opened the panel")
 	}
 	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
 		t.Fatalf("print posture said %q", got)
 	}
-	a.slash("/memories vim")
+	drain(t, a, a.slash("/memories vim"))
 	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
 		t.Fatalf("alias said %q", got)
 	}
@@ -346,7 +346,7 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	// the transcript instead was sending them to the worse half of the feature.
 	// With a query BOTH spellings still print, because a query is a question
 	// rather than a door.
-	a.slash("/memories")
+	drain(t, a, a.slash("/memories"))
 	if !a.at(pageMemory) {
 		t.Fatal("bare /memories did not open the memory place")
 	}
@@ -521,7 +521,7 @@ func TestAFailureIsReportedAndNotSwallowed(t *testing.T) {
 	agent := &rememberingAgent{failing: errors.New("the brain is locked")}
 	a := newTestApp(agent)
 
-	a.slash("/remember I prefer tabs")
+	drain(t, a, a.slash("/remember I prefer tabs"))
 	if text := lastNote(t, a); !strings.Contains(text, "the brain is locked") {
 		t.Fatalf("a failed write answered %q", text)
 	}

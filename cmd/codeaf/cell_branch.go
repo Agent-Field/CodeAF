@@ -75,7 +75,7 @@ func (b branchDoor) prove(ctx context.Context, c cell.Cell, branchID string) err
 		return err
 	}
 	if _, err := b.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: parent.Cell.Lease.Pending}); err != nil {
-		return fmt.Errorf("this device does not hold the lease of %s: %w", short(d.ID()), err)
+		return fmt.Errorf("this device is not the one working on %s: %w", short(d.ID()), err)
 	}
 	branch, err := b.Dir.Cell(ctx, branchID)
 	if err != nil {
