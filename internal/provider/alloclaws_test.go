@@ -1,8 +1,10 @@
 package provider
 
 import (
+	"encoding"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -61,6 +63,26 @@ func TestTheWarmToolEncodeAllocatesNothing(t *testing.T) {
 // the memo. A new fixture shape needs its own price rather than a guess.
 func markedJSONPrice(t *testing.T, message ai.Message) float64 {
 	t.Helper()
+	// A wire type's own marshaler makes encoding/json's measured price include this package's work.
+	// A deliberate marshaler needs named overhead here and in PERF.md in the same change.
+	for _, wireType := range []reflect.Type{
+		reflect.TypeFor[markedTextPart](),
+		reflect.TypeFor[markedMessage](),
+		reflect.TypeFor[markedToolMessage](),
+	} {
+		for _, candidate := range []reflect.Type{wireType, reflect.PointerTo(wireType)} {
+			for _, marshaler := range []reflect.Type{
+				reflect.TypeFor[json.Marshaler](),
+				reflect.TypeFor[encoding.TextMarshaler](),
+			} {
+				if candidate.Implements(marshaler) {
+					t.Fatalf("%v implements %v: encoding/json's price is measured only while the wire types "+
+						"have no marshaler of their own. A marshaler added on purpose is this package's work "+
+						"and must be priced as a named overhead here and in PERF.md together.", candidate, marshaler)
+				}
+			}
+		}
+	}
 	if len(message.Content) != 1 || message.Content[0].Type != "text" || len(message.ToolCalls) != 0 {
 		t.Fatalf("marked JSON price has no law for role %q with %d content parts and %d tool calls",
 			message.Role, len(message.Content), len(message.ToolCalls))
@@ -185,11 +207,15 @@ func TestTheWarmTranscriptEncodeCostsTheSameAtEightyTurnsAsAtEight(t *testing.T)
 		t.Logf("marked %s position: encoding/json=%.0f package=%.0f total=%.0f",
 			position.name, position.jsonCost, position.ownCost, allocations)
 		if want := position.jsonCost + position.ownCost; allocations != want {
+			change := "Fewer allocations mean the marked shape or its named overhead has changed."
+			if allocations > want {
+				change = "An extra allocation inside marshalMarked must fail rather than raise its own allowance."
+			}
 			t.Fatalf("marked %s position (%d) costs %.0f allocations, want %.0f: "+
 				"encoding/json's price is measured in-process (%.0f), and this package's "+
-				"own overhead is named (%.0f). An extra allocation inside marshalMarked "+
-				"must fail rather than raise its own allowance.",
-				position.name, position.index, allocations, want, position.jsonCost, position.ownCost)
+				"own overhead is named (%.0f). %s If this is deliberate, update markedJSONPrice's "+
+				"shapes, the named overhead constants, and the PERF.md row together.",
+				position.name, position.index, allocations, want, position.jsonCost, position.ownCost, change)
 		}
 	}
 
