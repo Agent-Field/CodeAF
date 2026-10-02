@@ -229,6 +229,9 @@ def judge_case_group(a, b, ctx, keys):
 
 def case_result(a, b, ctx):
     groups = case_groups(a["entries"])
+    if not groups and ctx.reported and case_groups(b["entries"]):
+        kept = listing(", ".join(text(k) for k in ks) for ks in case_groups(b["entries"]).values())
+        return PASS, "the machine that had both names still has both: " + kept, set()
     if not groups:
         return (*vacuous("case-colliding names"), set())
     verdicts, notes, explained = [], [], set()
@@ -276,8 +279,14 @@ def r1(a, b, ctx):
         parts += ["ghosts on B: " + listing(ghosts)] if ghosts else []
         return FAIL, " | ".join(parts)
     if explained:
-        return DEFINED, "all other entries equal; %d entries are the defined R4/R5 differences" % len(explained)
+        return named_or_defined(ctx, "all other entries equal; %d entries are the R4/R5 differences" % len(explained))
     return PASS, "%d entries equal in kind, mode, size, sha256" % len(keys)
+
+
+def holds_set_apart(side, ctx, key):
+    """A directory that holds a set-apart file on this side is not empty there by design."""
+    prefix = raw(key) + b"/"
+    return any(raw(k).startswith(prefix) and is_set_apart(ctx, k) for k in side["entries"])
 
 
 def r2(a, b, ctx):
@@ -285,6 +294,7 @@ def r2(a, b, ctx):
               if a["entries"][k]["kind"] == "dir" and a["entries"][k].get("empty")]
     if not wanted:
         return vacuous("empty directories")
+    wanted = [k for k in wanted if not holds_set_apart(b, ctx, k)]
     bad = [show(a["entries"], k) for k in wanted
            if not (k in b["entries"] and b["entries"][k]["kind"] == "dir" and b["entries"][k].get("empty"))]
     return (FAIL, "lost or no longer empty: " + listing(bad)) if bad else (PASS, "%d empty directories kept" % len(wanted))
@@ -481,6 +491,18 @@ def r10(a, b, ctx):
     return (DEFINED if withheld else PASS), note
 
 
+def r11(a, b, ctx):
+    """Set-apart files the other machine held before this move are still here, byte for byte (take back deletes nothing)."""
+    if not ctx.keeps:
+        return PASS, "no --keeps manifest given"
+    held = [k for k in ctx.keeps["entries"] if is_set_apart(ctx, k) and ctx.keeps["entries"][k]["kind"] == "file"]
+    if not held:
+        return vacuous("set-apart files")
+    bad = [show(ctx.keeps["entries"], k) for k in held
+           if k not in b["entries"] or content_diff(ctx.keeps["entries"][k], b["entries"][k])]
+    return (FAIL, "lost on the machine that held them: " + listing(bad)) if bad else (PASS, "%d set-apart files still here, content equal" % len(held))
+
+
 ROWS = [
     ("R1", "every path equal in kind, mode, size, sha256; no ghosts", r1),
     ("R2", "empty directories preserved", r2),
@@ -491,6 +513,7 @@ ROWS = [
     ("R7", "symlinks, hard links, executable, 0000, read-only dir", r7),
     ("R8", ".git intact (fsck, files, stash, status, refs, submodules)", r8),
     ("R9", "no ghosts after a mutation (--expect-gone)", r9),
+    ("R11", "set-apart files survive a take back", r11),
     ("R10", "ignored files, secret modes, node_modules (informational)", r10),
 ]
 
@@ -519,9 +542,10 @@ def main():
     parser.add_argument("--platform-b", default="linux")
     parser.add_argument("--expect-gone", default="")
     parser.add_argument("--reported", default="")
+    parser.add_argument("--keeps", default="")
     args = parser.parse_args()
     ctx = SimpleNamespace(platform_b=args.platform_b, expect_gone=split_list(args.expect_gone),
-                          reported=split_list(args.reported))
+                          reported=split_list(args.reported), keeps=json.load(open(args.keeps)) if args.keeps else None)
     with open(args.a) as fa, open(args.b) as fb:
         results = evaluate(json.load(fa), json.load(fb), ctx)
     print(render(results))
