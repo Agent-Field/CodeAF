@@ -1709,7 +1709,9 @@ status sheet. Change that machine's profile there.
 ## /connect — your connected accounts
 
 `/connect` (or `/connections`) opens the connect panel. Its pinned `providers` group
-holds the six built-in model providers plus every one already connected; the account
+holds the eight built-in model providers — DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen,
+ai&, Codex and Ollama — plus **Custom OpenAI-compatible API** and every one already
+connected; the account
 catalog groups follow it. The Codex row says `browser`; enter opens the sign-in road and
 the waiting card keeps the address available to copy. The other listed providers say what
 they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom provider: it asks for a

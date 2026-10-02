@@ -38,7 +38,8 @@ func rawCrewRow(t *testing.T, dir, key string) string {
 func crewProfile(t *testing.T) string {
 	t.Helper()
 	for _, name := range []string{APIKeyEnv, "OPENAI_API_KEY", ModelEnv, PlanModelEnv, CheckModelEnv, "CODEAF_BASE_URL",
-		"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "MINIMAX_API_KEY", "DASHSCOPE_API_KEY"} {
+		"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "MINIMAX_API_KEY", "DASHSCOPE_API_KEY",
+		"AIAND_API_KEY"} {
 		t.Setenv(name, "")
 	}
 	dir := t.TempDir()
@@ -396,6 +397,167 @@ func TestAPlanRouteIsFreeAndCollidingIdsKeepTheirRouterSpelling(t *testing.T) {
 	d, _ = RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
 	if p := d.Seat(crewroute.Planner); p.Send != "openrouter/z-ai/glm-5.3-flash" || p.Provider != "openrouter" {
 		t.Errorf("planner pinned @openrouter: %+v", p)
+	}
+}
+
+// A DIRECT CONNECTION REACHES THE CATALOG VENDORS IT ACTUALLY CARRIES, which is
+// what [crewVendors] is for: Moonshot's Written is `moonshot` where the catalog
+// writes `moonshotai/`, and Codex's is `codex` where the catalog writes `openai/`,
+// so neither would ever be offered a Kimi or a GPT without a row naming the
+// vendor the catalog actually uses.
+//
+// THE SEND IS THE ID THAT CONNECTION'S OWN API KNOWS, and that is not always the
+// catalog's id with the segment dropped. ai& is the first connection whose own
+// API is ITSELF a router — its 2026-10-02 listing named
+// `deepseek-ai/deepseek-v4-flash` and `zai-org/glm-5.3-flash` — so its send
+// keeps the segment, spelled as ai& spells it rather than as the catalog does.
+//
+// AND IT IS A MULTI-FAMILY PROVIDER, which is the whole reason a row naming six
+// vendors exists at all. ai& is not one lab with one model line: its listing
+// reaches GLM, DeepSeek, Qwen and Kimi at once, so ONE key buys the same
+// families a person would otherwise open four accounts for. The two facts are
+// kept apart on purpose — a vendor that served only one family would need no row
+// naming vendors at all, because its own Written would be that family.
+func TestADirectRouterConnectionServesItsCatalogVendorsUnderItsOwnIds(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{
+		{ID: "aiand", Written: "aiand", Key: "sk-aiand-crewtest-0123456789ab", Order: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// THE FIXTURE CATALOG IS DELIBERATELY WIDENED HERE AND ONLY HERE. The shared
+	// rows carry one model per family for three families, which is enough to keep
+	// the routing tests cheap but cannot show a multi-family provider reaching
+	// more than one — and a claim that one key spans four labs deserves the four
+	// labs in the fixture rather than an inference from three.
+	widenCrewCatalog(t,
+		catalog.Model{ID: "qwen/qwen3.8-flash", OpenWeights: true, PromptPrice: 2e-7, CompletionPrice: 6e-7,
+			IntelligenceIndex: 40.1, CodingIndex: 70.2, AgenticIndex: 49, ArenaElo: 1330,
+			ContextLength: 1310720, Parameters: []string{"tools"}},
+		catalog.Model{ID: "openai/gpt-oss-120b", OpenWeights: true, PromptPrice: 1e-7, CompletionPrice: 4e-7,
+			IntelligenceIndex: 33, CodingIndex: 55, AgenticIndex: 30, ArenaElo: 1200,
+			ContextLength: 131072, Parameters: []string{"tools"}},
+		catalog.Model{ID: "google/gemma-4-31b-it", OpenWeights: true, PromptPrice: 2e-7, CompletionPrice: 5e-7,
+			IntelligenceIndex: 36, CodingIndex: 58, AgenticIndex: 31, ArenaElo: 1240,
+			ContextLength: 262144, Parameters: []string{"tools"}},
+		// AND THE ONE THAT IS NOT. motif-technologies is on ai&'s listing and in
+		// no catalog row, so it can never become a candidate the crew weighs —
+		// which is the whole difference between a vendor ai& happens to serve and
+		// one the router knows how to price.
+		catalog.Model{ID: "motif-technologies/motif-3", OpenWeights: true, PromptPrice: 5e-7, CompletionPrice: 2e-6,
+			IntelligenceIndex: 45, CodingIndex: 68, AgenticIndex: 44, ArenaElo: 1300,
+			ContextLength: 262144, Parameters: []string{"tools"}},
+	)
+	routes := map[string]string{}
+	families := map[string]bool{}
+	for _, c := range CrewCandidatesAt(dir) {
+		for _, r := range c.Routes {
+			if r.Provider == "aiand" {
+				routes[c.Model.ID] = r.Send
+				if vendor, _, ok := strings.Cut(c.Model.ID, "/"); ok {
+					families[vendor] = true
+				}
+			}
+		}
+	}
+	want := map[string]string{
+		// Both renames come from the listing the row's comment cites.
+		"deepseek/deepseek-v4-flash": "aiand/deepseek-ai/deepseek-v4-flash",
+		"z-ai/glm-5.3-flash":         "aiand/zai-org/glm-5.3-flash",
+		// And a vendor the catalog and ai& already spell the same way keeps the
+		// catalog's segment rather than losing it.
+		"moonshotai/kimi-k3":  "aiand/moonshotai/kimi-k3",
+		"qwen/qwen3.8-flash":  "aiand/qwen/qwen3.8-flash",
+		"openai/gpt-oss-120b": "aiand/openai/gpt-oss-120b",
+		// A vendor no OTHER connected provider carries is still reached, because
+		// what the crew needs is a CATALOG vendor and google is one. This is the
+		// half of the listing that is easy to get backwards.
+		"google/gemma-4-31b-it": "aiand/google/gemma-4-31b-it",
+	}
+	for model, send := range want {
+		if routes[model] != send {
+			t.Errorf("%s through ai& sends %q, want %q", model, routes[model], send)
+		}
+	}
+	// THE MULTI-FAMILY CLAIM, counted rather than read off the sends above: one
+	// connection, four labs. A row that quietly collapsed to a single family would
+	// still pass every send assertion while failing this.
+	for _, family := range []string{"deepseek", "z-ai", "moonshotai", "qwen"} {
+		if !families[family] {
+			t.Errorf("ai& reaches no %s model, want a family alongside the other three", family)
+		}
+	}
+	// A vendor it does not carry is still not offered through it, however good
+	// the catalog's figures for it are.
+	if _, offered := routes["anthropic/claude-opus-5"]; offered {
+		t.Error("ai& offers a model from a vendor it does not serve")
+	}
+	// AND a model the CATALOG does not carry is not offered through it either,
+	// however good ai&'s own figures are. Motif 3 is on the listing and in the
+	// crew row's absence is the whole story: no catalog row, no candidate.
+	if _, offered := routes["motif-technologies/motif-3"]; offered {
+		t.Error("ai& offers a model no catalog row names, so the crew cannot weigh it")
+	}
+}
+
+// ONE KEY, TWO FAMILIES, TWO SEATS. This is the claim the row above cannot make
+// on its own: that a multi-family provider is not merely reachable but USABLE as
+// one route, so a single connection can carry a planner and a checker that sit on
+// different labs in the same task. A crew that treated ai& as one family would
+// have to put both seats on the same model, and the point of the provider is that
+// it does not have to.
+func TestOneMultiFamilyKeyCarriesSeatsOnDifferentLabs(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{
+		{ID: "aiand", Written: "aiand", Key: "sk-aiand-crewtest-0123456789ab", Order: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	widenCrewCatalog(t, catalog.Model{ID: "qwen/qwen3.8-flash", OpenWeights: true, PromptPrice: 2e-7, CompletionPrice: 6e-7,
+		IntelligenceIndex: 40.1, CodingIndex: 70.2, AgenticIndex: 49, ArenaElo: 1330,
+		ContextLength: 1310720, Parameters: []string{"tools"}})
+	decision, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: openTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seats := map[crewroute.Seat]crewroute.Pick{}
+	for _, seat := range crewroute.Seats {
+		seats[seat] = decision.Seat(seat)
+	}
+	// Every seat is answered, and every answer is answered by the one key.
+	labelled := map[string][]string{}
+	for _, seat := range crewroute.Seats {
+		pick := seats[seat]
+		if pick.Model == "" {
+			t.Fatalf("the %s seat got no model", seat)
+		}
+		if pick.Provider != "aiand" {
+			t.Errorf("the %s seat ran on %q, want the one connected provider", seat, pick.Provider)
+		}
+		vendor, _, _ := strings.Cut(pick.Model, "/")
+		labelled[vendor] = append(labelled[vendor], string(seat))
+	}
+	// The checker buys the stronger model when the work is open-ended, so the
+	// seats genuinely straddle two labs here — which is the behaviour under test,
+	// and the reason this is asserted on the SEATS rather than on the catalog.
+	if len(labelled) < 2 {
+		t.Fatalf("every seat landed on one family (%v), want the crew spanning labs through one key", labelled)
+	}
+	for family, seats := range labelled {
+		t.Logf("ai& served %s to the %s", family, strings.Join(seats, " and "))
+	}
+}
+
+// widenCrewCatalog adds rows to the catalog for THIS test only and puts the
+// previous one back afterwards. It reads the live catalog rather than a literal
+// so a row added to the shared fixture is carried along instead of dropped.
+func widenCrewCatalog(t *testing.T, extra ...catalog.Model) {
+	t.Helper()
+	previous := CrewCatalog
+	base := previous()
+	t.Cleanup(func() { CrewCatalog = previous })
+	CrewCatalog = func() []catalog.Model {
+		return append(append([]catalog.Model(nil), base...), extra...)
 	}
 }
 

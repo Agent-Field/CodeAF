@@ -501,6 +501,40 @@ func Vendored() []Source {
 			Preferred: "qwen3.7-plus",
 		},
 		{
+			// OBSERVED 2026-10-02 against api.aiand.com: one door, and
+			// <base>/models answering 200 with thirteen models under the
+			// catalog's own vendor/model spelling. Nothing on the wire tells a
+			// plan from metered credit — the same host, bearer, model and
+			// request spend the balance either way — so this row claims NO
+			// second door, the way MiniMax's does not, and returns one only
+			// when an observed response field, header or error can prove which
+			// billing product answered. It serves Japan only, so there are no
+			// regions. Its backend is vLLM over several kinds of GPU rather
+			// than one named machine, so nothing about an answer names a
+			// server and there is no ServedAs either.
+			ID: "aiand", Written: "aiand", Name: "ai&", KeyEnv: "AIAND_API_KEY",
+			Address: "https://api.aiand.com/v1", KeyShape: LooksLikeAPIKey,
+			// The probe model is the cheapest lane that still holds a million
+			// tokens of context ($0.15/$0.25 as listed), and the preference is
+			// the cheapest lane that also takes a FILE — the rule [Source] states
+			// is "the vendor's best model, not simply its flagship", and a model
+			// that refuses an attachment cannot be the best one a person lands
+			// on.
+			//
+			// READ 2026-10-02 off the vendor's own manifest, which is where these
+			// two figures come from: `zai-org/glm-5.3` is the flagship and takes
+			// text alone — `attachment: false`, `input: [text]` — so a person who
+			// dropped a screenshot into their first ai& conversation was refused by
+			// the model codeaf had just seated them on. `zai-org/glm-5.3-flash` is
+			// the same family and the same million tokens (1048550 against
+			// 1048576), takes text, image and video, and costs $0.15/$0.50 against
+			// the flagship's $1.00/$4.00. Four of the thirteen rows take
+			// attachments; this is the cheapest of the four that also holds 1M, so
+			// it is the preference rather than the flagship.
+			Listing: ListingModels, ProbeModel: "deepseek-ai/deepseek-v4-flash",
+			Probe: listingProbe(), Preferred: "zai-org/glm-5.3-flash",
+		},
+		{
 			ID: "codex", Written: "codex", Name: CodexName, ServedAs: CodexName,
 			Address:  "https://chatgpt.com/backend-api/codex",
 			KeyShape: func(key string) bool { return strings.TrimSpace(key) == "chatgpt" },

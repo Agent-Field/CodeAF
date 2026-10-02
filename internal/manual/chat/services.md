@@ -7,8 +7,8 @@ something else again: long-running background processes, covered by their own pa
 ## Add a key — connect a provider, add an api key, use a different provider
 
 An api key for another provider, or another model provider, is added here. Open `/connect` or
-`/connections`. The `providers` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex,
-Ollama and **Custom OpenAI-compatible API**, followed by any provider already connected and, once
+`/connections`. The `providers` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen,
+ai&, Codex, Ollama and **Custom OpenAI-compatible API**, followed by any provider already connected and, once
 a custom provider is connected, a `+ add a provider` row. Codex says `browser`; it signs
 in a ChatGPT plan instead of asking for an API key. Ollama needs no key. The other named vendors
 ask for theirs.

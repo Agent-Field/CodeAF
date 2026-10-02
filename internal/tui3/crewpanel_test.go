@@ -27,7 +27,7 @@ func crewLab(t *testing.T) (*app, string) {
 	t.Helper()
 	for _, name := range []string{config.APIKeyEnv, "OPENAI_API_KEY", config.ModelEnv, config.PlanModelEnv,
 		config.CheckModelEnv, "CODEAF_BASE_URL", "DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY",
-		"MINIMAX_API_KEY", "DASHSCOPE_API_KEY"} {
+		"MINIMAX_API_KEY", "DASHSCOPE_API_KEY", "AIAND_API_KEY"} {
 		t.Setenv(name, "")
 	}
 	a, dir := sheetApp(t)
