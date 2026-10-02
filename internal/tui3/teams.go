@@ -571,8 +571,8 @@ func (a *app) teamAdd(id string, tabs []chatTab) error {
 	members := teamFromTabs("", tabs, time.Time{}).Members
 	return a.teamEdit(func(f *teamstore.File) error {
 		current, ok := f.Team(id)
-		if !ok || current.Closed() || current.Root {
-			return errors.New("memberships can be edited only in active regular teams")
+		if !ok || current.Closed() {
+			return errors.New("members can be added only in active teams")
 		}
 		for _, m := range members {
 			m.JoinedAt = time.Now()
@@ -602,7 +602,7 @@ func (a *app) teamRemove(id string, keys []string) error {
 		}
 		for _, k := range keys {
 			if current.Manager == k {
-				return errors.New("choose another member as manager before removing this one")
+				return errors.New(teamManagerRemovalWord)
 			}
 			// A manager taken out of its team is no longer its manager.
 			if err := f.RemoveMember(id, k); err != nil {

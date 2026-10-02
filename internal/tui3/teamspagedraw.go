@@ -371,11 +371,14 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		return out
 	}
 	out = append(out, a.teamsOverviewHeader(d, t, width, len(out)))
-	if !t.Closed() && !t.Root {
+	if !t.Closed() {
 		for _, control := range []struct {
 			word string
 			act  teamsAct
-		}{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}} {
+		}{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}, {"Choose manager", teamsActChooseManager}} {
+			if t.Root && control.act == teamsActAddSubteam {
+				continue
+			}
 			visible := false
 			for _, target := range d.targets {
 				if target.act == control.act && target.id == t.ID {

@@ -30,7 +30,7 @@ team deletion disbands active teams and removes their records and descendant his
 conversations. Confirmation names the exact affected scope and scrolls when necessary.
 
 Conversation deletion stops its owner, removes its transcript and every membership, and
-requires explicit replacement or recursive disband choices for all active managed teams.
+requires leadership to be reassigned in Teams before deleting any active manager.
 The engine checks the reviewed scope under the team-store lock. Stable deletion locks and
 permanent tombstones protect against concurrent callers and stale windows. Team exchanges
 and decisions survive; historical links retain stable conversation identities. Ambiguous
@@ -58,8 +58,8 @@ normal profile. Later navigation ideas in the planning document remain separate 
 
 The conversation confirmation puts `Stop work and permanently delete?` on the top border,
 with only `cancel` (default) and `delete` inside. Muted `enter choose · esc cancel` hints sit at bottom right.
-A managing conversation proceeds to a separate manager choice step after delete, including a
-new blank manager conversation whose membership must be saved before replacement.
+Deleting a managing conversation instead requires choosing another manager in Teams first.
+Choose manager lists existing members only; new managers use Add member first.
 
 Sessions offers x delete on every conversation, task, and subtask row. Conversations remove
 all task records. Tasks remove their true containment subtree; leaf tasks remove only themselves.
@@ -71,7 +71,10 @@ Settings and Disband sit on the right of the selected-team header, separate from
 Disband has no trailing ellipsis. The New team sidebar control follows the active list.
 Additional improvements remain pending a fresh discussion with the owner.
 
-The manager dialog contains direct delete-and-assign, delete-and-create, and delete-and-disband
-actions with a team count. It has no details pane or redundant final yes row. Multiple managed
-teams are resolved in turn. Deletion hides the dialog during the engine call, restoring it only
-for a failure; Sessions has no transient deleting-status dialog.
+Home, Chats and Sessions refuse manager deletion with the same instruction as member
+removal: choose another member as manager before removing this one. Teams has a separate
+Choose manager button, which only selects an existing member and preserves the former
+manager's membership. A new manager requires Add member first, then Choose manager.
+Deletion hides the dialog during the engine call, restoring it only for a failure; Sessions
+has no transient deleting-status dialog. Deleting Home's final saved conversation leaves
+no phantom start-tab session row.

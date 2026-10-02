@@ -1,9 +1,13 @@
 package teams
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ManagerRemovalInstruction keeps every deletion door clear about leadership.
+const ManagerRemovalInstruction = "Choose another member as manager before removing this one"
 
 // RemoveConversation removes every membership only after each managed team's
 // replacement or disbanding choice has been checked against the current file.
@@ -16,7 +20,7 @@ func (f *File) RemoveConversation(key string, choices map[string]string, at time
 		}
 		replacement, chosen := choices[t.ID]
 		if !chosen {
-			return fmt.Errorf("choose a replacement or disband %s before deleting its manager", t.Name)
+			return errors.New(ManagerRemovalInstruction)
 		}
 		if replacement == "" && !t.Root && len(affected) > 0 {
 			if err := f.CheckAffected(t.ID, affected[0][t.ID]); err != nil {

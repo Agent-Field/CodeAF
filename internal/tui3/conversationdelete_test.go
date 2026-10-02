@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/charmbracelet/x/ansi"
@@ -27,39 +28,6 @@ func TestConversationDeleteOnlyFrontReturnsHomeWithoutRequiringStart(t *testing.
 	drain(t, a, cmd)
 	if a.file != "" || a.agent != nil || !a.at(pageHome) || a.cdelete.on {
 		t.Fatalf("deleted front retained: file=%s agent=%v page=%v", a.file, a.agent, a.page)
-	}
-}
-
-func TestConversationDeleteManagerDialogIsCleanAndCountsAffectedTeams(t *testing.T) {
-	a, parent, _ := menuApp(t)
-	a.width, a.height = 60, 24
-	for i := range a.wall.teams {
-		if a.wall.teams[i].ID == parent {
-			a.wall.teams[i].Manager = a.frontTabKey()
-		}
-	}
-	for i := 0; i < 60; i++ {
-		a.wall.teams = append(a.wall.teams, team{ID: fmt.Sprintf("%012x", 1000+i), Name: fmt.Sprintf("descendant-%02d", i), Parent: parent})
-	}
-	a.conversationDeleteOpen(a.file, "manager")
-	a.conversationDeleteChoose(1)
-	text := ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", 24)))
-	if !strings.Contains(text, "delete and disband teams (61)") || !strings.Contains(text, "enter choose · esc cancel") {
-		t.Fatalf("missing clean manager actions: %s", text)
-	}
-	for _, old := range []string{"Details", "pgup", "Replace manager of", "(selected)"} {
-		if strings.Contains(text, old) {
-			t.Fatalf("old manager UI: %s", text)
-		}
-	}
-	for _, option := range a.conversationDeleteOptions() {
-		if option.word == "yes" {
-			t.Fatal("redundant confirmation remained")
-		}
-	}
-	a.width = 10
-	if cmd := a.conversationDeleteChoose(len(a.conversationDeleteOptions()) - 1); cmd != nil || a.cdelete.busy {
-		t.Fatal("invisible confirmation deleted")
 	}
 }
 
@@ -147,8 +115,8 @@ func TestConversationDeleteSimpleDefaultCancelAndTaskDoesNotReplaceManager(t *te
 		t.Fatal("footer hints missing")
 	}
 	a.conversationDeleteChoose(1)
-	if !a.cdelete.managing || a.cdelete.cursor != 0 {
-		t.Fatal("manager step did not follow yes")
+	if a.cdelete.message != teamManagerRemovalWord || a.cdelete.cursor != 0 || len(a.conversationDeleteOptions()) != 2 {
+		t.Fatal("manager deletion did not require a replacement in Teams")
 	}
 	called := false
 	a.deleteTask = func(string, string) error { called = true; return nil }
@@ -211,75 +179,6 @@ func TestTeamMemberRemovalDefaultsToCancel(t *testing.T) {
 	if tm.Holds(member) {
 		t.Fatal("yes did not remove membership")
 	}
-}
-
-func TestConversationDeleteNewManagerCannotFallThroughWhileOpening(t *testing.T) {
-	a, parent, _ := menuApp(t)
-	a.width, a.height = 100, 30
-	for i := range a.wall.teams {
-		if a.wall.teams[i].ID == parent {
-			a.wall.teams[i].Manager = a.frontTabKey()
-		}
-	}
-	a.start = func(string) (Conversation, error) { return Conversation{}, nil }
-	a.conversationDeleteOpen(a.file, "manager")
-	a.conversationDeleteChoose(1)
-	for i, o := range a.conversationDeleteOptions() {
-		if o.action == 3 {
-			a.conversationOpening = true
-			if cmd := a.conversationDeleteChoose(i); cmd != nil || a.cdelete.busy {
-				t.Fatal("pending new manager fell through to deletion")
-			}
-			a.conversationOpening = false
-			a.cdelete.newSaid.pending = true
-			if cmd := a.conversationDeleteChoose(i); cmd != nil || a.cdelete.busy {
-				t.Fatal("pending membership fell through to deletion")
-			}
-			return
-		}
-	}
-	t.Fatal("new manager action absent")
-}
-
-func TestConversationDeleteCreatesAndSavesABrandNewReplacementManager(t *testing.T) {
-	a, parent, _ := menuApp(t)
-	a.width, a.height = 120, 35
-	a.profileDir = t.TempDir()
-	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch)
-	old := a.frontTabKey()
-	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(parent, old) }); err != nil {
-		t.Fatal(err)
-	}
-	drain(t, a, a.teamsWrite())
-	file := filepath.Join(t.TempDir(), "transcript.jsonl")
-	if err := os.WriteFile(file, []byte(""), 0600); err != nil {
-		t.Fatal(err)
-	}
-	a.start = func(string) (Conversation, error) {
-		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: file, Workspace: a.workspace}, nil
-	}
-	called := false
-	replacement := a.convKey(file)
-	a.deleteConversation = func(_ string, choices map[string]string, _ map[string][]string) error {
-		stored, err := teamstore.Load(a.profileDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		tm, ok := stored.Team(parent)
-		if !ok || !tm.Holds(replacement) || tm.Manager != old || choices[parent] != replacement {
-			t.Fatal("deletion preceded persisted replacement membership")
-		}
-		called = true
-		return errors.New("captured deletion")
-	}
-	a.conversationDeleteOpen(a.file, "manager")
-	a.conversationDeleteChoose(1)
-	drain(t, a, a.conversationDeleteNewManager(parent))
-	drain(t, a, a.teamsWrite())
-	if !called || a.cdelete.busy || a.cdelete.message != "captured deletion" {
-		t.Fatal("new manager action did not proceed after save")
-	}
-
 }
 
 func TestTeamsRevisedHeaderAndSidebarPlacement(t *testing.T) {
@@ -358,100 +257,267 @@ func TestConversationDeleteBorderTitleAndNoBusyFlash(t *testing.T) {
 	}
 }
 
-func TestConversationDeleteManagerActionsResolveEveryManagedTeam(t *testing.T) {
-	a, parent, child := menuApp(t)
-	a.width, a.height = 120, 35
-	for i := range a.wall.teams {
-		if a.wall.teams[i].ID == parent || a.wall.teams[i].ID == child {
-			a.wall.teams[i].Manager = a.frontTabKey()
+func TestHomeDeleteLastSavedRowThroughItsOptions(t *testing.T) {
+	lab := newHomeLab(t)
+	workspace := lab.workspace("project")
+	file := lab.session("project", "last-conversation", "Last conversation", workspace, time.Now())
+	a := lab.app(file)
+	a.profileDir = t.TempDir()
+	a.width, a.height = 140, 36
+	a.behind = nil
+	drain(t, a, a.openHome())
+	a.home.point(file)
+	drive(t, a, key("right"), key("x"))
+	if !a.cdelete.on || a.cdelete.file != file {
+		t.Fatal("last saved Home row did not open deletion")
+	}
+	drain(t, a, a.conversationDeleteChoose(1))
+	if a.cdelete.on {
+		t.Fatalf("last saved row deletion failed: %s", a.cdelete.message)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatalf("last transcript survived: %v", err)
+	}
+	if a.file != "" || a.agent != nil || !a.at(pageHome) {
+		t.Fatal("last conversation did not leave a usable Home")
+	}
+	for _, line := range a.home.lines {
+		if line.kind == homeSession {
+			t.Fatalf("deleted last row still shown: %+v", line.row)
 		}
 	}
+}
+
+func TestConversationDeleteBlockedUntilEveryActiveManagerChangedInTeams(t *testing.T) {
+	a, parent, child := menuApp(t)
+	a.width, a.height = 120, 35
+	a.profileDir = t.TempDir()
+	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch)
+	old := a.frontTabKey()
+	for _, id := range []string{parent, child} {
+		if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(id, old) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	drain(t, a, a.teamsWrite())
 	called := false
-	a.deleteConversation = func(_ string, choices map[string]string, _ map[string][]string) error {
-		if choices[parent] != "replacement" || choices[child] != "" {
-			t.Fatalf("lost a managed-team choice: %+v", choices)
+	a.deleteConversation = func(_ string, choices map[string]string, affected map[string][]string) error {
+		if len(choices) != 0 || len(affected) != 0 {
+			t.Fatal("deletion changed leadership or disbanded teams")
 		}
 		called = true
 		return errors.New("captured")
 	}
-	a.conversationDeleteOpen(a.file, "manager")
-	a.conversationDeleteChoose(1)
-	if cmd := a.conversationDeleteManagerChoice(parent, "replacement"); cmd != nil || called || a.cdelete.busy {
-		t.Fatal("deleted before choosing for the child team")
+	for _, id := range []string{parent, child} {
+		a.conversationDeleteOpen(a.file, "manager")
+		drain(t, a, a.conversationDeleteChoose(1))
+		if called || a.cdelete.message != teamManagerRemovalWord {
+			t.Fatalf("current manager was deletable: called=%v message=%q team=%s", called, a.cdelete.message, id)
+		}
+		text := ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", 35)))
+		for _, old := range []string{"Choose managers", "delete and assign", "delete and create", "delete and disband"} {
+			if strings.Contains(text, old) {
+				t.Fatal("old manager deletion actions remain")
+			}
+		}
+		a.conversationDeleteChoose(0)
+		a.teamsDo(teamsTarget{act: teamsActChooseManager, id: id})
+		rows := a.teamMembershipRows()
+		if len(rows) == 0 {
+			t.Fatal("no existing member offered")
+		}
+		drain(t, a, a.teamMembershipChoose(1))
 	}
-	options := a.conversationDeleteOptions()
-	if options[len(options)-1].team != child || a.cdelete.cursor != 0 {
-		t.Fatal("next team did not open on cancel")
-	}
-	drain(t, a, a.conversationDeleteChoose(len(options)-1))
+	a.conversationDeleteOpen(a.file, "former manager")
+	drain(t, a, a.conversationDeleteChoose(1))
 	if !called {
-		t.Fatal("final manager action required another confirmation")
+		t.Fatal("former manager still cannot be deleted")
 	}
 }
 
-func TestConversationDeleteDisbandActionIncludesManagedDescendants(t *testing.T) {
-	a, parent, child := menuApp(t)
+func TestTeamsChooseManagerExistingMembersOnlyAndPersists(t *testing.T) {
+	a, parent, other := menuApp(t)
 	a.width, a.height = 120, 35
-	for i := range a.wall.teams {
-		if a.wall.teams[i].ID == parent || a.wall.teams[i].ID == child {
-			a.wall.teams[i].Manager = a.frontTabKey()
-			if a.wall.teams[i].ID == child {
-				a.wall.teams[i].Parent = parent
+	a.profileDir = t.TempDir()
+	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch)
+	old := a.frontTabKey()
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(parent, old) }); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, a, a.teamsWrite())
+	a.start = func(string) (Conversation, error) {
+		t.Fatal("choosing a manager created a conversation")
+		return Conversation{}, nil
+	}
+	a.teamsDo(teamsTarget{act: teamsActChooseManager, id: parent})
+	rows := a.teamMembershipRows()
+	tm, _ := a.teamByID(parent)
+	unrelated, _ := a.teamByID(other)
+	if !a.tmembers.choosingManager || len(rows) != len(tm.Members)-1 {
+		t.Fatal("wrong candidate set")
+	}
+	for _, row := range rows {
+		if row.key == old || !tm.Holds(row.key) || unrelated.Holds(row.key) {
+			t.Fatal("nonmember or current manager offered")
+		}
+	}
+	text := ansi.Strip(a.teamMembershipOver(strings.Repeat("\n", 35)))
+	if !strings.Contains(text, "Choose manager for harbor") || strings.Contains(text, "+ New conversation") || !strings.Contains(text, "enter choose · esc cancel") {
+		t.Fatal("manager picker includes creation or lacks hints")
+	}
+	a.teamMembershipChoose(0)
+	if tm, _ := a.teamByID(parent); tm.Manager != old {
+		t.Fatal("cancel changed manager")
+	}
+	a.teamChooseManagerOpen(parent)
+	selected := a.teamMembershipRows()[0].key
+	drain(t, a, a.teamMembershipChoose(1))
+	drain(t, a, a.teamsWrite())
+	stored, err := teamstore.Load(a.profileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, ok := stored.Team(parent)
+	if !ok || current.Manager != selected || !current.Holds(old) || len(current.Members) != len(tm.Members) {
+		t.Fatal("manager selection did not persist or changed membership")
+	}
+	second, _ := stored.Team(other)
+	if second.Manager != unrelated.Manager {
+		t.Fatal("another team's manager changed")
+	}
+	// Replaying the queued edit against a changed store must not add a removed candidate.
+	a.teamChooseManagerOpen(parent)
+	candidate := a.teamMembershipRows()[0].key
+	a.teamMembershipChoose(1)
+	if len(a.teamsDisk.queue) == 0 {
+		t.Fatal("manager change was not queued")
+	}
+	edit := a.teamsDisk.queue[len(a.teamsDisk.queue)-1]
+	for i := range stored.Teams {
+		if stored.Teams[i].ID == parent {
+			stored.Teams[i].Manager = ""
+			for j, m := range stored.Teams[i].Members {
+				if m.Key == candidate {
+					stored.Teams[i].Members = append(stored.Teams[i].Members[:j], stored.Teams[i].Members[j+1:]...)
+					break
+				}
 			}
 		}
 	}
-	called := false
-	a.deleteConversation = func(_ string, choices map[string]string, _ map[string][]string) error {
-		for _, id := range []string{parent, child} {
-			if replacement, ok := choices[id]; !ok || replacement != "" {
-				t.Fatalf("missing recursive choice: %+v", choices)
-			}
-		}
-		called = true
-		return errors.New("captured")
-	}
-	a.conversationDeleteOpen(a.file, "manager")
-	a.conversationDeleteChoose(1)
-	drain(t, a, a.conversationDeleteChoose(len(a.conversationDeleteOptions())-1))
-	if !called {
-		t.Fatal("recursive disband action did not delete directly")
+	if err := edit(stored); err == nil {
+		t.Fatal("concurrent removal resurrected manager membership")
 	}
 }
 
-func TestConversationDeleteManyManagersAndLongNamesRemainVisible(t *testing.T) {
-	a, first, second := menuApp(t)
-	a.width, a.height = 70, 24
-	for i := range a.wall.teams {
-		if a.wall.teams[i].ID == first || a.wall.teams[i].ID == second {
-			a.wall.teams[i].Manager = a.frontTabKey()
-			a.wall.teams[i].Name = strings.Repeat("long team name ", 15)
+func TestTeamsChooseManagerHiddenPickerCannotAct(t *testing.T) {
+	a, parent, _ := menuApp(t)
+	a.width, a.height = 120, 35
+	a.teamChooseManagerOpen(parent)
+	a.teamMembershipOver(strings.Repeat("\n", 35))
+	if len(a.tmembers.hits) == 0 {
+		t.Fatal("no picker targets")
+	}
+	before := mustTeam(t, a, parent).Manager
+	for _, size := range [][2]int{{18, 35}, {120, 9}} {
+		a.width, a.height = size[0], size[1]
+		a.teamMembershipKey(key("down"))
+		if cmd := a.teamMembershipKey(key("enter")); cmd != nil || mustTeam(t, a, parent).Manager != before {
+			t.Fatal("hidden picker changed manager")
 		}
-		if a.wall.teams[i].ID == first {
-			for j := 0; j < 30; j++ {
-				a.wall.teams[i].Members = append(a.wall.teams[i].Members, teamstore.Member{Key: fmt.Sprintf("person-%d", j), Handle: fmt.Sprintf("person-%d", j)})
+		frame := strings.Repeat("\n", size[1])
+		if a.teamMembershipOver(frame) != frame || len(a.tmembers.hits) != 0 {
+			t.Fatal("hidden picker kept stale mouse targets")
+		}
+	}
+}
+
+func TestTeamsChooseManagerRootAndLongListsRemainReachable(t *testing.T) {
+	a, parent, _ := teamsHostedLab(t)
+	tm := mustTeam(t, a, parent)
+	for i := 0; i < 35; i++ {
+		if err := a.teamAdd(parent, []chatTab{{key: fmt.Sprintf("candidate-%d", i), file: fmt.Sprintf("/tmp/candidate-%d/transcript.jsonl", i), word: fmt.Sprintf("Candidate %d", i)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, width := range []int{40, 72, 160} {
+		a.width, a.height = width, 16
+		a.teamChooseManagerOpen(parent)
+		for index := range a.teamMembershipRows() {
+			a.tmembers.cursor = index + 1
+			text := a.teamMembershipOver(strings.Repeat("\n", 16))
+			for _, line := range strings.Split(text, "\n") {
+				if ansi.StringWidth(line) > width {
+					t.Fatal("picker overflows terminal")
+				}
+			}
+			found := false
+			for _, hit := range a.tmembers.hits {
+				found = found || hit.arg == index+1
+			}
+			if !found {
+				t.Fatal("selected member is not visible")
 			}
 		}
 	}
-	a.conversationDeleteOpen(a.file, "manager")
-	a.conversationDeleteChoose(1)
-	options := a.conversationDeleteOptions()
-	for cursor := range options {
-		a.cdelete.cursor = cursor
-		card, visible := a.conversationDeleteManagerCard()
-		if !visible {
-			t.Fatalf("manager dialog vanished at option %d", cursor)
-		}
-		for _, row := range card.rows {
-			if ansi.StringWidth(row) > a.width {
-				t.Fatal("manager card exceeds terminal")
-			}
-		}
-		found := false
-		for _, hit := range card.hits {
-			found = found || hit.arg == cursor
-		}
-		if !found {
-			t.Fatalf("selected option %d is invisible", cursor)
-		}
+	a.teamMembershipShut()
+	root := team{ID: "000000000001", Members: tm.Members}
+	root.Root = true
+	root.Manager = tm.Manager
+	a.wall.teams = append(a.wall.teams, root)
+	a.tp.sel = root.ID
+	a.width, a.height = 72, 42
+	if target := teamsTargetOf(t, a, teamsActChooseManager, root.ID); target.id != root.ID {
+		t.Fatal("global manager cannot be replaced")
+	}
+}
+
+func TestTeamsChooseManagerKeepsTheDisplayedIdentityDuringRefresh(t *testing.T) {
+	a, parent, _ := menuApp(t)
+	a.width, a.height = 120, 35
+	if err := a.teamAdd(parent, []chatTab{{key: "third", file: "/tmp/third/transcript.jsonl", word: "Third"}}); err != nil {
+		t.Fatal(err)
+	}
+	a.teamChooseManagerOpen(parent)
+	a.tmembers.cursor = 1
+	a.teamMembershipOver(strings.Repeat("\n", 35))
+	selected := a.tmembers.shown[0].key
+	before := mustTeam(t, a, parent).Manager
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.RemoveMember(parent, selected) }); err != nil {
+		t.Fatal(err)
+	}
+	// Enter after the refresh but before the next frame must not select the following member.
+	if cmd := a.teamMembershipChoose(1); cmd != nil || mustTeam(t, a, parent).Manager != before {
+		t.Fatal("refresh substituted another manager")
+	}
+	a.tmembers.cursor = 1
+	a.teamMembershipOver(strings.Repeat("\n", 35))
+	if a.tmembers.cursor != 0 {
+		t.Fatal("removed highlighted candidate did not reset to cancel")
+	}
+}
+
+func TestTeamsGlobalManagerCanAddReplacementBeforeChoosing(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.width, a.height = 120, 35
+	var root string
+	if err := a.teamEdit(func(f *teamstore.File) error { root = f.MakeRoot(a.now()); return f.SetManager(root, a.frontTabKey()) }); err != nil {
+		t.Fatal(err)
+	}
+	// Only the global manager exists: no ordinary team's manager can serve as a candidate.
+	a.teamMembershipOpen(root, "")
+	if !a.tmembers.on {
+		t.Fatal("global team has no Add member path")
+	}
+	added := chatTab{key: "new-global", file: "/tmp/new-global/transcript.jsonl", word: "New global manager"}
+	if err := a.teamAdd(root, []chatTab{added}); err != nil {
+		t.Fatal(err)
+	}
+	a.teamChooseManagerOpen(root)
+	found := false
+	for _, row := range a.teamMembershipRows() {
+		found = found || row.key == added.key
+	}
+	if !found {
+		t.Fatal("added global candidate absent from manager picker")
 	}
 }

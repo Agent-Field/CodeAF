@@ -399,7 +399,7 @@ func (a *app) teamsWrite() tea.Cmd {
 			}
 			return func(bool) tea.Cmd {
 				a.teamsTake(teamsWrote{teams: teams, stamp: stamp, err: err, covers: covers, seqs: seqs, refused: refusedBy})
-				return a.conversationDeleteAfterManagerWrite()
+				return nil
 			}
 		}))
 	}

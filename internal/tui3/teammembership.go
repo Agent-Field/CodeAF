@@ -7,28 +7,31 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // A membership sheet edits the selected team, never a conversation's lifetime.
 // Candidate sessions are read once off-loop, and frames use only this snapshot.
 type teamMembershipSheet struct {
-	on           bool
-	removing     bool
-	team, member string
-	filter       editor
-	rows         []chatTab
-	cursor, top  int
-	new          bool
-	loading      bool
-	message      string
-	rect         wallRect
-	hits         []wallHit
-	generation   int
+	on              bool
+	removing        bool
+	choosingManager bool
+	team, member    string
+	filter          editor
+	rows            []chatTab
+	shown           []chatTab
+	cursor, top     int
+	new             bool
+	loading         bool
+	message         string
+	rect            wallRect
+	hits            []wallHit
+	generation      int
 }
 
 func (a *app) teamMembershipOpen(id, member string) tea.Cmd {
 	t, ok := a.teamByID(id)
-	if !ok || t.Closed() || t.Root {
+	if !ok || t.Closed() || t.Root && member != "" {
 		return nil
 	}
 	gen := a.tmembers.generation + 1
@@ -78,6 +81,27 @@ func (a *app) teamMembershipOpen(id, member string) tea.Cmd {
 	})
 }
 
+// Choosing leadership is separate from adding members and cannot create a chat.
+func (a *app) teamChooseManagerOpen(id string) tea.Cmd {
+	t, ok := a.teamByID(id)
+	if !ok || t.Closed() {
+		return nil
+	}
+	a.tmembers = teamMembershipSheet{on: true, choosingManager: true, team: id, generation: a.tmembers.generation + 1}
+	for _, m := range t.Members {
+		if m.Key != t.Manager {
+			word := "@" + m.Handle
+			if m.Word != "" {
+				word += " · " + m.Word
+			}
+			a.tmembers.rows = append(a.tmembers.rows, chatTab{key: m.Key, file: m.File, where: m.Where, word: word})
+		}
+	}
+	a.tmembers.shown = append([]chatTab(nil), a.tmembers.rows...)
+	a.touch()
+	return nil
+}
+
 func (a *app) teamMembershipShut() {
 	if a.tmembers.on && a.conversationOpening {
 		a.cancelConversationOpening()
@@ -95,7 +119,11 @@ func (a *app) teamMembershipRows() []chatTab {
 	var rows []chatTab
 	filter := strings.ToLower(a.tmembers.filter.String())
 	for _, row := range a.tmembers.rows {
-		if teamHolds(t, row.key) || !strings.Contains(strings.ToLower(row.word+" "+row.where+" "+row.file), filter) {
+		eligible := !teamHolds(t, row.key)
+		if a.tmembers.choosingManager {
+			eligible = teamHolds(t, row.key) && row.key != t.Manager
+		}
+		if !eligible || !strings.Contains(strings.ToLower(row.word+" "+row.where+" "+row.file), filter) {
 			continue
 		}
 		rows = append(rows, row)
@@ -113,6 +141,38 @@ func (a *app) teamMembershipChoose(index int) tea.Cmd {
 		s.message = "This team is no longer active"
 		a.touch()
 		return nil
+	}
+	if s.choosingManager {
+		if index == 0 {
+			a.teamMembershipShut()
+			return nil
+		}
+		if !a.teamManagerPickerVisible() {
+			return nil
+		}
+		rows := s.shown
+		if index > len(rows) {
+			return nil
+		}
+		key := rows[index-1].key
+		if !t.Holds(key) || t.Manager == key {
+			s.message, s.cursor = "This member is no longer eligible; choose again", 0
+			a.touch()
+			return nil
+		}
+		if err := a.teamEdit(func(f *teamstore.File) error {
+			current, ok := f.Team(t.ID)
+			if !ok || current.Closed() || !current.Holds(key) {
+				return fmt.Errorf("this member is no longer in the active team")
+			}
+			return f.SetManager(t.ID, key)
+		}); err != nil {
+			s.message = err.Error()
+			a.touch()
+			return nil
+		}
+		a.teamMembershipShut()
+		return a.teamsRead(true)
 	}
 	if s.removing {
 		if index == 0 {
@@ -161,7 +221,7 @@ func (a *app) teamMembershipChoose(index int) tea.Cmd {
 			}
 		} else {
 			if t.Manager == s.member {
-				s.message = "Choose another member as manager before removing this one"
+				s.message = teamManagerRemovalWord
 				a.touch()
 				return nil
 			}
@@ -295,6 +355,9 @@ func (a *app) teamMembershipKey(msg tea.KeyPressMsg) tea.Cmd {
 		s.cursor = max(s.cursor-1, 0)
 	case "down":
 		last := len(a.teamMembershipRows())
+		if s.choosingManager {
+			last = len(s.shown)
+		}
 		if s.member != "" {
 			if t, ok := a.teamByID(s.team); ok {
 				last = len(a.teamMembershipActions(t)) - 1
@@ -338,6 +401,9 @@ func (a *app) teamMembershipMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		}
 	case tea.MouseWheelMsg:
 		last := len(a.teamMembershipRows())
+		if s.choosingManager {
+			last = len(s.shown)
+		}
 		if t, ok := a.teamByID(s.team); ok && s.member != "" {
 			last = len(a.teamMembershipActions(t)) - 1
 			if s.removing {
@@ -376,6 +442,12 @@ func (a *app) teamMembershipMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	return nil, true
 }
 
+// A hidden picker must not accept a leadership change from keys or old mouse hits.
+func (a *app) teamManagerPickerVisible() bool {
+	width, height := a.size()
+	return min(width-2, 76)-4 >= ansi.StringWidth("enter choose · esc cancel") && height >= 10
+}
+
 func (a *app) teamMembershipOver(frame string) string {
 	if !a.tmembers.on {
 		return frame
@@ -399,10 +471,15 @@ func (a *app) teamMembershipOver(frame string) string {
 	width, height := a.size()
 	w := min(width-2, 76)
 	inner := w - 4
-	if inner < 12 || height < 10 {
+	if inner < 12 || height < 10 || s.choosingManager && !a.teamManagerPickerVisible() {
+		s.hits = nil
+		s.rect = wallRect{}
 		return frame
 	}
 	title := "Add member to " + t.Name
+	if s.choosingManager {
+		title = "Choose manager for " + t.Name
+	}
 	var lines []wallCardLine
 	if s.member != "" {
 		m, _ := t.Member(s.member)
@@ -418,10 +495,30 @@ func (a *app) teamMembershipOver(frame string) string {
 	} else {
 		lines = append(lines, wallCardLine{s: a.pal.dim("Filter  ") + fit(s.filter.String()+a.linearMark("▏", "|"), inner-8)})
 		rows := a.teamMembershipRows()
+		if s.choosingManager {
+			// Preserve the highlighted identity across a team refresh; never substitute a row.
+			if s.cursor > 0 && s.cursor <= len(s.shown) {
+				selected := s.shown[s.cursor-1].key
+				s.cursor = 0
+				for i, row := range rows {
+					if row.key == selected {
+						s.cursor = i + 1
+						break
+					}
+				}
+				if s.cursor == 0 {
+					s.message = "This member is no longer eligible; choose again"
+				}
+			}
+			s.shown = append([]chatTab(nil), rows...)
+		}
 		nameWidth := max(inner*2/3, 1)
 		projectWidth := max(inner-nameWidth-2, 1)
 		lines = append(lines, wallCardLine{s: a.pal.dim(teamsPad("Name", nameWidth) + "  " + teamsPad("Project", projectWidth))})
 		all := []string{"+ New conversation"}
+		if s.choosingManager {
+			all[0] = "cancel"
+		}
 		for _, r := range rows {
 			project := filepath.Base(r.where)
 			if r.where == "" {
@@ -448,7 +545,12 @@ func (a *app) teamMembershipOver(frame string) string {
 	if s.message != "" {
 		lines = append(lines, wallCardLine{s: a.pal.warn(fit(s.message, inner))})
 	}
-	lines = append(lines, wallCardLine{s: a.pal.dim("Cancel · esc"), hits: []wallHit{{x1: inner, y1: 1, arg: -1}}})
+	if s.choosingManager {
+		hint := "enter choose · esc cancel"
+		lines = append(lines, wallCardLine{s: a.pal.dim(strings.Repeat(" ", max(inner-ansi.StringWidth(hint), 0)) + fit(hint, inner))})
+	} else {
+		lines = append(lines, wallCardLine{s: a.pal.dim("Cancel · esc"), hits: []wallHit{{x1: inner, y1: 1, arg: -1}}})
+	}
 	h := len(lines) + 2
 	x, y := (width-w)/2, max((height-h)/3, 1)
 	card := wallCardBuild(a.pal, title, lines, x, y, w, 1, 0)

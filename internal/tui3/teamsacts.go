@@ -23,6 +23,8 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	a.tp.msg = ""
 	a.tp.cur = t.ref()
 	switch t.act {
+	case teamsActChooseManager:
+		return a.teamChooseManagerOpen(t.id)
 	case teamsActAddMember:
 		return a.teamMembershipOpen(t.id, "")
 	case teamsActRemoveMember:

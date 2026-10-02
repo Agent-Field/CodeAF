@@ -896,13 +896,13 @@ that same confirmation. Its question is `Stop work and permanently delete?`.
 The question sits on the top border. Only `cancel` and `delete` appear, with `cancel` selected by default. The bottom-right hints
 are `enter choose · esc cancel`. Cancel changes nothing.
 
-A conversation that manages active teams opens a separate manager step after `delete`.
-Choose `delete and assign @<member> as manager`, `delete and create new manager`,
-or `delete and disband teams (N)`. Each action proceeds directly; there is no extra yes row.
-When the conversation manages several teams, choose for each team in turn before deletion.
-The manager dialog has only its action choices and the same Enter/Esc footer hints. A new manager's membership is saved before deletion can appoint it. Disbanding includes
-all descendant teams; a changed tree requires another confirmation. The optional global manager
-can be replaced or removed without disbanding the global team.
+A conversation that manages any active team cannot be deleted. After `delete`, the
+confirmation says `Choose another member as manager before removing this one`.
+Go to Teams, select each team it manages, and use `Choose manager` to select an existing
+member. To use a new conversation, first use `+ Add member`, then `Choose manager`.
+Return to Home, Chats or Sessions to delete the former manager. Deletion never appoints a
+manager, creates a conversation or disbands a team. Tasks inside manager conversations
+can still be deleted independently.
 
 The dialog disappears while deletion runs; a failure restores it with the reason.
 Deletion removes all team memberships and the conversation's tasks and transcripts.

@@ -146,8 +146,11 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 		left += "  " + a.pal.dim(wrap)
 	}
 	left = fit(left, leftRoom)
-	if !t.Root {
-		for _, c := range []control{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}} {
+	if !t.Closed() {
+		for _, c := range []control{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}, {"Choose manager", teamsActChooseManager}} {
+			if t.Root && c.act == teamsActAddSubteam {
+				continue
+			}
 			x := ansi.StringWidth(left) + 1
 			if x+ansi.StringWidth(c.word)+2 > leftRoom {
 				continue

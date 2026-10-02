@@ -163,6 +163,7 @@ const (
 	teamsActInteractionUp
 	teamsActInteractionDown
 	teamsActAddMember
+	teamsActChooseManager
 	teamsActRemoveMember
 	teamsActAddSubteam
 )

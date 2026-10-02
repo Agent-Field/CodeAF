@@ -30,8 +30,8 @@ func TestConversationDeleteChoicesAreExplicitAndReviewedScopeIsStable(t *testing
 		{ID: "aaaaaaaaaaaa", Name: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "replacement"}}},
 		{ID: "bbbbbbbbbbbb", Name: "child", Parent: "aaaaaaaaaaaa", Manager: "manager", Members: []Member{{Key: "manager"}}},
 	}}
-	if f.RemoveConversation("manager", nil, time.Now()) == nil {
-		t.Fatal("manager deletion needs explicit choices")
+	if err := f.RemoveConversation("manager", nil, time.Now()); err == nil || err.Error() != ManagerRemovalInstruction {
+		t.Fatalf("manager deletion must require replacement in Teams: %v", err)
 	}
 	choices := map[string]string{"aaaaaaaaaaaa": "", "bbbbbbbbbbbb": ""}
 	if f.RemoveConversation("manager", choices, time.Now(), map[string][]string{"aaaaaaaaaaaa": {"aaaaaaaaaaaa"}, "bbbbbbbbbbbb": {"bbbbbbbbbbbb"}}) == nil {

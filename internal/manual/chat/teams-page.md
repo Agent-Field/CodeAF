@@ -343,8 +343,22 @@ The confirmation lists them. History stays read-only under Closed teams; there i
 
 The Teams sidebar keeps `+ New team` directly after the active teams list. `Closed teams`
 remains at the bottom of the sidebar. `+ Add member` and `+ Add subteam` stay together
-on the left of the selected team's header; `Settings` and `Disband` sit on the right.
+on the left of the selected team's header, followed by `Choose manager`; `Settings` and `Disband` sit on the right.
 
 A member card's `x` opens a confirmation naming the member and team. `cancel` is selected
 by default; choose `yes` to remove only that team's membership. Its work finishes and its
 conversation remains. Removing the manager requires replacing it first.
+
+## Choose manager — change a team's manager from existing members
+
+`Choose manager` in the selected team's header opens a filtered Name/Project list of its
+existing members, excluding the current manager. `cancel` is selected by default. Choose
+a member with Enter or click; Esc cancels. Only this team's manager changes. The former
+manager remains a member, and both conversations keep their work and history.
+
+The picker cannot create a conversation or add membership. All teams also offers
+`+ Add member` for adding a global-manager candidate; automatic memberships stay protected. For a new manager, first use
+`+ Add member` to add or create its conversation, then use `Choose manager`.
+A manager cannot be removed or permanently deleted while it manages an active team.
+The deletion confirmation says `Choose another member as manager before removing this one`.
+Replace it in every active team it manages before deleting its conversation.
