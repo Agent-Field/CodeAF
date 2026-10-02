@@ -3,9 +3,9 @@
 
 It runs ON the machine whose screen it reads, so a keystroke and the poll that watches its effect share
 one clock and one process: no ssh hop sits inside a measured interval. Every timestamp is that
-machine's own wall clock in ms; the orchestrator converts B's to spark's with a measured offset.
+machine's own wall clock in ms; the orchestrator converts B's to A's with a measured offset.
 Adapted from scripts/measure/bstep.py, which reads the same home screen, with two changes: a take
-works from a chat that is running elsewhere (the card says "running on spark"), and the same file
+works from a chat that is running elsewhere (the card says "running on <machine>"), and the same file
 serves both machines (VD_TMUX names the tmux server).
 
   tuidrive.py cap                      print the pane

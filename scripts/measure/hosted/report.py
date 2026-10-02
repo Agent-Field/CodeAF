@@ -43,16 +43,16 @@ def steps(passes):
     rows = [
         row("Pair (scripted)", f("pair_s"), "n/a", lambda v: True, note="`codeaf pair` shows a code, the other machine types it, `y` is typed; staging keeps a mailbox 4 s"),
         row("First upload durable, after the turn ended", f("first_upload_durable_s"), "n/a", lambda v: True, note="202 MB tree, 226 frame puts"),
-        row("Save: seal after a tool call, spark (median)", seal("a_latency"), "~0.15 s", lambda v: v <= 0.16, note="tool call ended to turn sealed"),
-        row("Save: seal after a tool call, spark (worst)", seal_max("a_latency"), "~0.15 s", lambda v: v <= 0.16),
-        row("Save: seal after a tool call, dumb (median)", seal("b_latency"), "~0.15 s", lambda v: v <= 0.16),
-        row("Save: seal to durable at the relay, spark (median)", dur("a_latency"), "n/a", lambda v: True, note="calls after the first upload; relay clock within about 0.2 s"),
-        row("Save: seal to durable at the relay, dumb (median)", dur("b_latency"), "n/a", lambda v: True),
-        row("Push: durable at the relay to a new row on dumb's home (median of 5)", push("push_durable_to_home_ms"), "~0.1 s", lambda v: v <= 0.12, note="new chat on spark; screen polled every 10 ms on dumb"),
-        row("Push: seal on spark to the row on dumb's home (median of 5)", push("push_seal_to_home_ms"), "~0.1 s", lambda v: v <= 0.12, note="includes the upload"),
-        row("Cold take, M, dumb: confirm to chat open", f("cold_take_s"), "<10 s", lambda v: v < 10, note="home screen, `continue here`, 200.7 MB, 209 GETs"),
-        row("Warm take, M, dumb (Mac), 1 file changed", [p["warm_take_ms"] / 1000 for p in passes], "<5 s", lambda v: v < 5, note="same take as the home screen, `vdemo-take`"),
-        row("Take back, M, spark (Linux), 1 file changed on the other side", [p["take_back_ms"] / 1000 for p in passes], "<5 s", lambda v: v < 5, note="same take as the home screen, `vdemo-take`"),
+        row("Save: seal after a tool call, A (median)", seal("a_latency"), "~0.15 s", lambda v: v <= 0.16, note="tool call ended to turn sealed"),
+        row("Save: seal after a tool call, A (worst)", seal_max("a_latency"), "~0.15 s", lambda v: v <= 0.16),
+        row("Save: seal after a tool call, B (median)", seal("b_latency"), "~0.15 s", lambda v: v <= 0.16),
+        row("Save: seal to durable at the relay, A (median)", dur("a_latency"), "n/a", lambda v: True, note="calls after the first upload; relay clock within about 0.2 s"),
+        row("Save: seal to durable at the relay, B (median)", dur("b_latency"), "n/a", lambda v: True),
+        row("Push: durable at the relay to a new row on B's home (median of 5)", push("push_durable_to_home_ms"), "~0.1 s", lambda v: v <= 0.12, note="new chat on A; screen polled every 10 ms on B"),
+        row("Push: seal on A to the row on B's home (median of 5)", push("push_seal_to_home_ms"), "~0.1 s", lambda v: v <= 0.12, note="includes the upload"),
+        row("Cold take, M, B: confirm to chat open", f("cold_take_s"), "<10 s", lambda v: v < 10, note="home screen, `continue here`, 200.7 MB, 209 GETs"),
+        row("Warm take, M, B, 1 file changed", [p["warm_take_ms"] / 1000 for p in passes], "<5 s", lambda v: v < 5, note="same take as the home screen, `vdemo-take`"),
+        row("Take back, M, A, 1 file changed on the other side", [p["take_back_ms"] / 1000 for p in passes], "<5 s", lambda v: v < 5, note="same take as the home screen, `vdemo-take`"),
     ]
     return "\n".join([head] + rows)
 
@@ -60,7 +60,7 @@ def steps(passes):
 def latency(passes):
     lines = ["| Pass | Machine | Seal after each tool call (ms) | Durable at the relay (ms) |", "|---|---|---|---|"]
     for p in passes:
-        for who, name in (("a_latency", "spark"), ("b_latency", "dumb")):
+        for who, name in (("a_latency", "A"), ("b_latency", "B")):
             c = p[who]["calls"]
             lines.append(f"| {p['pass']} | {name} | {', '.join(str(x['seal_ms']) for x in c)} | {', '.join(str(x['durable_ms']) for x in c)} |")
     return "\n".join(lines)
@@ -77,15 +77,15 @@ def integrity(passes):
     lines = ["| Check | " + " | ".join(f"pass {p['pass']}" for p in passes) + " |", "|---|" + "---|" * len(passes)]
     yes = lambda b: "PASS" if b else "FAIL"
     checks = [
-        ("`diff -r --no-dereference` spark tree against dumb tree (`.git`, `.furrow`, `node_modules` excluded): no output", lambda i: yes(i["diff_r_exit"] == 0 and i["diff_r_lines"] == 0)),
+        ("`diff -r --no-dereference` A tree against B tree (`.git`, `.furrow`, `node_modules` excluded): no output", lambda i: yes(i["diff_r_exit"] == 0 and i["diff_r_lines"] == 0)),
         ("sha256 and mode of every file equal (`treehash.py`)", lambda i: yes(i["treehash_equal_ignoring_node_modules"] and i["modes_equal"])),
-        ("`.env` 0600, `svc/api/.env` 0640, `web/client/app/.env.local` 0600, `run.sh` 0755 on dumb, bytes equal", lambda i: yes(all(s["spark"] == s["dumb"] and s["bytes_equal"] for s in i["secrets"].values())) + " (" + "/".join(s["dumb"] for s in i["secrets"].values()) + ")"),
-        ("withheld `node_modules` absent on dumb after the take", lambda i: yes(i["node_modules_on_b_before_rebuild"] == "no")),
-        ("`git status` on dumb differs from spark's only by the withheld folder", lambda i: yes(i["git_status_only_on_spark_before_rebuild"] == ["?? node_modules/"])),
+        ("`.env` 0600, `svc/api/.env` 0640, `web/client/app/.env.local` 0600, `run.sh` 0755 on B, bytes equal", lambda i: yes(all(s["a"] == s["b"] and s["bytes_equal"] for s in i["secrets"].values())) + " (" + "/".join(s["b"] for s in i["secrets"].values()) + ")"),
+        ("withheld `node_modules` absent on B after the take", lambda i: yes(i["node_modules_on_b_before_rebuild"] == "no")),
+        ("`git status` on B differs from A's only by the withheld folder", lambda i: yes(i["git_status_only_on_a_before_rebuild"] == ["?? node_modules/"])),
         ("`git log` and `git diff` hash equal", lambda i: yes(i["git_log_and_diff_equal"])),
         ("no `.codeaf/` in `git status` on either machine", lambda i: yes(not i["codeaf_in_git_status_b"])),
-        ("`npm ci` on dumb rebuilds it (seconds in the row below) and `git status` then equals spark's", lambda i: yes(i["git_equal_after_rebuild"])),
-        ("rebuilt `node_modules` has the same files and hashes as spark's", lambda i: yes(i["node_modules_rebuilt_equal"] and not i["node_modules_file_diff"])),
+        ("`npm ci` on B rebuilds it (seconds in the row below) and `git status` then equals A's", lambda i: yes(i["git_equal_after_rebuild"])),
+        ("rebuilt `node_modules` has the same files and hashes as A's", lambda i: yes(i["node_modules_rebuilt_equal"] and not i["node_modules_file_diff"])),
         ("rebuild time", lambda i: f"{i['rebuild_s']} s"),
     ]
     for name, fn in checks:

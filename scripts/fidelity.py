@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Does a folder move byte for byte? One fixture tree of awkward things, spark -> dumb (Mac) and back.
+"""Does a folder move byte for byte? One fixture tree of awkward things, this machine to a second one and back.
 
   scripts/fidelity.py run [--out DIR]     pair, build the fixture, move it there, mutate and move again, move it back
 
-Home A is on this box (Linux), home B is on `ssh dumb` (macOS, APFS). The fixture (measure/continuity/fidelity-fixture.sh)
+Home A is on this box, home B is on the second machine reached with ssh (a Mac on APFS is the case it was
+measured on). Settings come from the environment (measure/rigenv.py, docs/testing-anywhere.md):
+CODEAF_RELAY, CODEAF_SECOND_HOST, CODEAF_SECOND_ROOT, CODEAF_FIRST_ROOT and CODEAF_RIG_BIN. The fixture (measure/continuity/fidelity-fixture.sh)
 holds deletes-to-come, renames-to-come, empty and deep paths, unicode and case-colliding names, two big binaries, every
 kind of symlink, a hard-linked pair, odd modes, a full .git (stash, staged change, submodule) and ignored files. Each leg
 takes a manifest of the whole tree on both machines (fidelity-manifest.py) and compares them (fidelity-compare.py).
@@ -30,16 +32,16 @@ import importlib.util  # noqa: E402
 spec = importlib.util.spec_from_file_location("hv", os.path.join(HERE, "hosted-validate.py"))
 hv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hv)
+sys.path.insert(0, os.path.join(HERE, "measure"))
+import rigenv  # noqa: E402
 import tuidrive as td  # noqa: E402
 
-A_ROOT = os.path.expanduser("~/caf-vfid-rig-fid/a")
-B_ROOT = "/Users/santoshkumarradha/codeaf-bench-vfid"
-B_HOST = "dumb"
+# The machines and folders are read by configure() once the arguments are parsed, so that `--help`
+# works on a box where none of them is set.
+A_ROOT = B_ROOT = B_HOST = BIN = RELAY = WS_A = A = B = None
 CTL = "/tmp/vf-fid-ssh"
-BIN = os.environ.get("CONT_BIN", "/home/santosh/caf-vfid-bins")
 # FID_REUSE keeps both homes and their pairing (the relay limits pairings per network); each run then gets a new folder.
 REUSE = bool(os.environ.get("FID_REUSE"))
-WS_A = f"{A_ROOT}/work/fx{int(time.time()) if REUSE else ''}"
 # The four awkward cases (case and NFC/NFD collisions, a read-only directory, a 0000 file) are part of the main fixture
 # now that a move carries them; FID_PLAIN=1 builds the older fixture without them.
 ODD = "" if os.environ.get("FID_PLAIN") else "FIXTURE_NAME_COLLISIONS=1 FIXTURE_RO_DIR=1 FIXTURE_ZERO_MODE=1"
@@ -50,13 +52,25 @@ def bsh(cmd, check=True, timeout=None, stdin=None):
     r = subprocess.run(["ssh", "-o", f"ControlPath={CTL}", "-o", "BatchMode=yes", B_HOST, "bash -l -s"], capture_output=True, text=True,
                        input="export PATH=/opt/homebrew/bin:$PATH; " + cmd + "\n", timeout=timeout)
     if check and r.returncode:
-        raise RuntimeError(f"dumb: {cmd[:160]} -> {r.returncode}: {r.stderr[-400:]}")
+        raise RuntimeError(f"B: {cmd[:160]} -> {r.returncode}: {r.stderr[-400:]}")
     return r
 
 
-A = hv.Box("A", A_ROOT, sh, "vfa")
-B = hv.Box("B", B_ROOT, bsh, "vfb")
 log = hv.log
+
+
+def configure():
+    """Read every machine and folder setting, stopping with the name of the first one that is missing."""
+    global A_ROOT, B_ROOT, B_HOST, BIN, RELAY, WS_A, A, B
+    A_ROOT, B_ROOT = rigenv.get("CODEAF_FIRST_ROOT"), rigenv.get("CODEAF_SECOND_ROOT")
+    B_HOST, BIN, RELAY = rigenv.get("CODEAF_SECOND_HOST"), rigenv.get("CODEAF_RIG_BIN"), rigenv.get("CODEAF_RELAY")
+    WS_A = f"{A_ROOT}/work/fx{int(time.time()) if REUSE else ''}"
+    A, B = hv.Box("A", A_ROOT, sh, "vfa"), hv.Box("B", B_ROOT, bsh, "vfb")
+
+
+def platform(run):
+    """The comparator's name for the platform a command runner works on: `mac` folds case, `linux` does not."""
+    return "mac" if run("uname -s").stdout.strip() == "Darwin" else "linux"
 
 
 def stop_a():
@@ -89,11 +103,11 @@ class Fid:
     # ---- rig ----
 
     def reset(self, fixture=True):
-        sh(f"mkdir -p {A_ROOT}/bin" + ("" if REUSE else f" && chmod -R u+rwx {A_ROOT}/work 2>/dev/null; bash {KIT}/rig.sh {A_ROOT}"))
-        sh(f"cp {BIN}/codeaf {BIN}/codeaf-vd {HELP}/tuidrive.py {HELP}/treehash.py {A_ROOT}/bin/ && cp /home/santosh/caf-vdemo-rig/bin/s1probe {A_ROOT}/bin/")
+        sh(f"mkdir -p {A_ROOT}/bin" + ("" if REUSE else f" && chmod -R u+rwx {A_ROOT}/work 2>/dev/null; bash {KIT}/rig.sh {A_ROOT} {RELAY}"))
+        sh(f"cp {BIN}/codeaf {BIN}/codeaf-vd {HELP}/tuidrive.py {HELP}/treehash.py {A_ROOT}/bin/ && cp {BIN}/s1probe {A_ROOT}/bin/")
         subprocess.run(["scp", "-q", "-o", f"ControlPath={CTL}", f"{KIT}/rig.sh", f"{KIT}/fidelity-manifest.py", f"{B_HOST}:/tmp/"], check=True)
         subprocess.run(["scp", "-q", "-o", f"ControlPath={CTL}", f"{HELP}/tuidrive.py", f"{HELP}/treehash.py", f"{B_HOST}:/tmp/"], check=True)
-        bsh((f"bash /tmp/rig.sh {B_ROOT}; " if not REUSE else "") + f"mkdir -p {B_ROOT}/bin {B_ROOT}/work/b; cp /tmp/fidelity-manifest.py /tmp/tuidrive.py /tmp/treehash.py {B_ROOT}/bin/")
+        bsh((f"bash /tmp/rig.sh {B_ROOT} {RELAY}; " if not REUSE else "") + f"mkdir -p {B_ROOT}/bin {B_ROOT}/work/b; cp /tmp/fidelity-manifest.py /tmp/tuidrive.py /tmp/treehash.py {B_ROOT}/bin/")
         bsh(f"cd {B_ROOT}/work/b && (test -d .git || (git init -q && echo b > README.md && git add . && git -c user.name=v -c user.email=v@x commit -qm init))")
         if fixture:
             sh(f"{ODD} bash {KIT}/fidelity-fixture.sh {WS_A} > {self.dir}/fixture.log 2>&1")
@@ -223,7 +237,7 @@ class Fid:
         self.manifest(B, bt, "b1")
         apart = self.set_apart(B, cell)
         self.res["set_apart_leg1"] = apart
-        self.compare("a0", "b1", "leg1-spark-to-dumb", "--platform-b", "mac", "--reported", ",".join(apart))
+        self.compare("a0", "b1", "leg1-first-to-second", "--platform-b", platform(bsh), "--reported", ",".join(apart))
         # leg 2: deletes and renames on A after the first move, then a warm move
         back = self.take(A, cell)           # A takes its chat back from B (no new seals there)
         self.save("leg2-takeback.json", back)
@@ -252,7 +266,7 @@ class Fid:
         self.save("leg3-take.json", t3)
         self.res["leg3_take_s"], self.res["leg3_error"] = t3.get("take_ms"), t3.get("error")
         self.manifest(A, WS_A, "a3")
-        self.compare("b3", "a3", "leg3-dumb-to-spark", "--platform-b", "linux", "--expect-gone", "docs/b.md,docs/feature.md", "--reported", ",".join(apart), "--keeps", f"{self.dir}/a2.json")
+        self.compare("b3", "a3", "leg3-second-to-first", "--platform-b", platform(sh), "--expect-gone", "docs/b.md,docs/feature.md", "--reported", ",".join(apart), "--keeps", f"{self.dir}/a2.json")
         self.save("results.json", self.res)
 
     PROBES = {
@@ -331,6 +345,7 @@ def main():
     ap.add_argument("cmd", choices=["run", "probes"])
     ap.add_argument("--out", default=os.path.join(os.path.dirname(HERE), ".lane", "fidelity"))
     args = ap.parse_args()
+    configure()
     f = Fid(args.out)
     try:
         f.run() if args.cmd == "run" else f.probes()
