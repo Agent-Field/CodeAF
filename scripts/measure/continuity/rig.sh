@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# rig.sh <root> : a clean home for one machine of the continuity rig, with every model role pinned to the one
-# model and an env.sh that points the product at the hosted relay under test. Two roots on one box are two
+# rig.sh <root> [relay] : a clean home for one machine of the continuity rig, with every model role pinned to the one
+# model and an env.sh that points the product at the hosted relay under test (the second argument, else $CODEAF_RELAY). Two roots on one box are two
 # devices: each has its own CODEAF_HOME, so each has its own identity file, graph.db, usage ledger and cells.
 set -euo pipefail
 R=$1
 MODEL=deepseek/deepseek-v4.1-flash
-URL=${CODEAF_SYNC_URL:-https://caf-relay-staging.instrument-santosh.workers.dev}
+URL=${2:-${CODEAF_RELAY:?CODEAF_RELAY is not set: it is the relay under test, for example https://relay.example.com}}
 mkdir -p "$R/bin" "$R/run"
 rm -rf "$R/home" "$R/work"; mkdir -p "$R/home" "$R/work"
 {

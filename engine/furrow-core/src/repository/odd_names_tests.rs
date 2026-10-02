@@ -224,3 +224,57 @@ fn a_file_system_that_keeps_every_name_restores_both_copies_and_holds_none() {
     assert_eq!(folder.read("README.md").as_deref(), Some("upper\n"));
     assert!(plan.held.is_empty());
 }
+
+fn read_only_tree(folder: &Folder) {
+    folder.write("ro/inside.txt", "kept\n");
+    folder.write("ro/deep/more.txt", "deeper\n");
+    fs::set_permissions(
+        folder.root.join("ro/deep"),
+        fs::Permissions::from_mode(0o555),
+    )
+    .unwrap();
+    fs::set_permissions(folder.root.join("ro"), fs::Permissions::from_mode(0o555)).unwrap();
+}
+
+fn assert_read_only_copy(copy: &Path) {
+    assert_eq!(
+        fs::read_to_string(copy.join("ro/inside.txt")).unwrap(),
+        "kept\n"
+    );
+    assert_eq!(
+        fs::read_to_string(copy.join("ro/deep/more.txt")).unwrap(),
+        "deeper\n"
+    );
+    for name in ["ro", "ro/deep"] {
+        let mode = fs::metadata(copy.join(name)).unwrap().permissions().mode();
+        assert_eq!(mode & 0o7777, 0o555, "{name}");
+    }
+    make_writable(&copy.join("ro"));
+}
+
+#[test]
+fn a_fork_from_a_snapshot_copies_a_read_only_directory_with_files() {
+    let folder = Folder::new();
+    read_only_tree(&folder);
+    let (mut repository, id) = folder.seal();
+    let destination = folder._temp.path().join("fork-at");
+
+    let plan = repository.prepare_fork_at("at", &destination, &id).unwrap();
+    repository.materialize_fork(plan).unwrap();
+
+    assert_read_only_copy(&destination);
+    make_writable(&folder.root.join("ro"));
+}
+
+#[test]
+fn a_live_fork_copies_a_read_only_directory_with_files() {
+    let folder = Folder::new();
+    read_only_tree(&folder);
+    let (mut repository, _) = folder.seal();
+    let destination = folder._temp.path().join("fork-live");
+
+    repository.fork("live", &destination).unwrap();
+
+    assert_read_only_copy(&destination);
+    make_writable(&folder.root.join("ro"));
+}
