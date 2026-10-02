@@ -1,6 +1,6 @@
 // Package chatfiles carries the files a chat owns that sit beside its cell and
 // that its own transcript names by path: the logs of background jobs, the full
-// output a long tool result was cut to, and the journals of its tasks.
+// output a long tool result was cut to.
 //
 // The sealed tree holds the workspace and the cell's .cell/ folder, and none of
 // these live in either, so a chat that moved arrived with messages saying "log
@@ -48,12 +48,21 @@ const (
 )
 
 // roots are the folders beside a chat that hold what its messages name.
-var roots = []string{"logs/jobs", "logs/stubs", "tasks"}
+//
+// The journals of the chat's tasks are not here: they are truth and live in
+// .cell/tasks, which the seal carries whole with the cell (plandb.TaskDir).
+// Carrying them again from beside the chat would put a second copy on the
+// other machine and a second answer to where a journal is.
+var roots = []string{"logs/jobs", "logs/stubs"}
+
+// formerRoots are folders an earlier seal also carried from beside the chat.
+// Their entries in an old inventory are still ours to clear.
+var formerRoots = []string{"tasks"}
 
 // OwnsWithheld reports whether a record entry names one of these files, which
 // are the entries this package writes and the seal's other steps leave alone.
 func OwnsWithheld(recordPath string) bool {
-	return slices.ContainsFunc(roots, func(r string) bool { return strings.HasPrefix(recordPath, r+"/") })
+	return slices.ContainsFunc(slices.Concat(formerRoots, roots), func(r string) bool { return strings.HasPrefix(recordPath, r+"/") })
 }
 
 // Carry is the mechanism: [Carry.Compose] on the seal side, [Carry.Restore] on

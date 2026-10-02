@@ -294,8 +294,11 @@ func titleOf(root string) string {
 	return m.Title
 }
 
-// restoreChatFiles puts the chat's job logs, saved tool output and task
-// journals back beside it, so the paths its messages name open on this machine.
+// restoreChatFiles puts the chat's job logs and saved tool output back beside
+// it, so the paths its messages name open on this machine. Task journals are
+// not among them: they travel inside .cell/tasks and arrive where they are read.
+// A carry made before that (task journals under .cell/files) still restores
+// them beside the chat, and the open that follows files them into .cell/tasks.
 func restoreChatFiles(_ context.Context, c cell.Cell) error {
 	_, err := chatfiles.Carry{}.Restore(c)
 	return err

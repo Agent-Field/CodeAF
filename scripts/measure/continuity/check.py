@@ -140,6 +140,8 @@ def workspace(ws, home):
 # ------------------------------------------------------------------ compare --
 
 CATEGORIES = ("card.json", "plandb.db", "logs/jobs/", "logs/stubs/", "tasks/", "trees/", "meta.json")
+# Task journals are truth, so they live in .cell/tasks and travel with the cell; none belongs beside the chat.
+JOURNAL_HOME = "tasks/"
 # Derived files are made again from the cell on open (cellindex's rule: the sealed cell is the only truth), so their absence
 # on B right after a take is not a loss by itself; what they say is checked through the facts in the cell.
 DERIVED = ("card.json", "plandb.db", "meta.json")
@@ -161,7 +163,7 @@ def machine_local(rel):
 def chat_folder_checks(a, b):
     """The chat folder beside the cell, one verdict per kind of file, so a gap names what is missing."""
     out = {}
-    for cat in sorted({category(r) for r in list(a["chat_files"]) + list(b["chat_files"])}):
+    for cat in sorted({category(r) for r in list(a["chat_files"]) + list(b["chat_files"])} - {JOURNAL_HOME}):
         fa = {r: v.get("sha") for r, v in a["chat_files"].items() if category(r) == cat and not machine_local(r)}
         fb = {r: v.get("sha") for r, v in b["chat_files"].items() if category(r) == cat and not machine_local(r)}
         r = check_map(fa, fb, cat)
@@ -252,11 +254,23 @@ def evidence_verdict(rel, fa, b_files, withheld, cap):
     return "differ" if fb else "missing"
 
 
+def tasks_in_cell(s):
+    """The task journals of a snapshot: every file of the cell's own tasks/ folder."""
+    return {k: v for k, v in s["cell_files"].items() if k.startswith(JOURNAL_HOME)}
+
+
+def journal_home_checks(a, b):
+    """Row 10e: neither machine keeps a task journal beside the chat, so one reader looking in .cell/tasks finds them all."""
+    beside = {n: sorted(r for r in s["chat_files"] if r.startswith(JOURNAL_HOME))[:6] for n, s in (("a", a), ("b", b))}
+    return {"task_journals_in_cell": {"beside_chat": beside, "on_a": len(tasks_in_cell(a)), "on_b": len(tasks_in_cell(b)),
+                                       "pass": not any(beside.values()) and len(tasks_in_cell(a)) == len(tasks_in_cell(b))}}
+
+
 def chat_evidence_checks(a, b, cap=EVIDENCE_CAP):
     """Row 10: every file of A's logs/jobs/, logs/stubs/ and tasks/ is byte-equal on B, or over the cap and named withheld."""
     wh = withheld_paths(b)
-    # Opening the chat on B files the task journals under .cell/tasks; the bytes are the same, so either place counts.
-    b = dict(b, chat_files={**{k: v for k, v in b["cell_files"].items() if k.startswith("tasks/")}, **b["chat_files"]})
+    # Task journals live in .cell/tasks on both machines; the logs and stubs sit beside the chat.
+    a, b = (dict(s, chat_files={**s["chat_files"], **tasks_in_cell(s)}) for s in (a, b))
     files = {r: v for r, v in a["chat_files"].items() if r.startswith(EVIDENCE_DIRS) and "sha" in v and not machine_local(r)}
     verdicts = {r: evidence_verdict(r, v, b["chat_files"], wh, cap) for r, v in files.items()}
     bad = sorted(r for r, v in verdicts.items() if v in ("differ", "missing"))
@@ -409,6 +423,7 @@ def compare(a, b):
     res.update(chat_folder_checks(a, b))
     res.update(reference_checks(a, b))
     res.update(chat_evidence_checks(a, b))
+    res.update(journal_home_checks(a, b))
     res["spend_in_chat_meta"] = {"a": spent(a), "b": spent(b), "pass": spent(a) == spent(b)}
     res["title"] = {"a": title_of(a), "b": title_of(b), "pass": bool(title_of(a)) and title_of(a) == title_of(b)}
     res["effort"] = {"a": effort_of(a), "b": effort_of(b), "pass": bool(effort_of(a)) and effort_of(a) == effort_of(b)}
