@@ -3894,17 +3894,25 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case filesLoadedMsg:
 		if msg.home {
-			a.homeFilesLoaded(msg.paths)
+			a.homeFilesLoaded(msg.paths, msg.root)
 			return a, nil
 		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.fillMentions()
-		a.comp.rank()
+		a.comp.refresh(&a.input)
 		a.touch()
 		return a, nil
 
 	case mentionRecentsMsg:
-		a.mentionRecentsLoaded(msg.rows)
+		if msg.read == 0 || msg.read == a.comp.recentsRead {
+			if msg.read != 0 && a.comp.recentsAgain {
+				// Openings after this read began need rows from the follow-up,
+				// so its older answer must leave their search pending.
+				a.comp.recentsHeld, a.comp.recentsPending, a.comp.recentsAgain = false, false, false
+				return a, a.loadMentionRecents()
+			}
+			a.mentionRecentsLoaded(msg.rows, msg.keys...)
+		}
 		return a, nil
 
 	case tasksLoadedMsg:
@@ -9097,6 +9105,10 @@ func (a *app) paste(text string) tea.Cmd {
 		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
 		// ask the same question of the same keyboard and get the same answer.
 		box, chips := a.keyboardBox()
+		was := a.home.comp.open
+		if box == &a.home.box {
+			a.prepareHomeCompletion(text)
+		}
 		wasEmpty := len(box.value) == 0
 		if box == &a.home.box {
 			a.home.projectPaste.path = ""
@@ -9112,6 +9124,9 @@ func (a *app) paste(text string) tea.Cmd {
 		}
 		a.dropLanded(box)
 		a.touch()
+		if box == &a.home.box {
+			return a.syncHomeCompletion(was)
+		}
 		return nil
 	}
 	// A DROPPED PICTURE IS A PICTURE. A terminal writes a drag-and-drop into the
@@ -9210,8 +9225,8 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "esc":
-		// It SEALS the word it was pressed over, so the list does not reappear
-		// on the next letter of it ([app.dismissLists]).
+		// It seals a command word, or ends an @ opening so the next letter
+		// starts a fresh one ([app.dismissLists]).
 		a.dismissLists()
 		a.touch()
 		return nil, true
@@ -9269,6 +9284,7 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // no draft can put the caret in both at once (slashchip.go's [slashToken],
 // files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
+	opening := a.comp.beginToken(&a.input)
 	if _, bash := session.BashCommand(a.input.String()); bash {
 		a.closeLists()
 		return nil
@@ -9301,17 +9317,19 @@ func (a *app) syncLists() tea.Cmd {
 		a.comp.close()
 		return read
 	}
-	was := a.comp.open
+	var recents tea.Cmd
+	if opening {
+		a.noticeEvent(eventAtOpened)
+		recents = a.loadMentionRecents()
+	}
 	a.fillMentions()
 	a.comp.sync(&a.input)
-	if a.comp.open && !was {
-		// The list coming up is the proof that `@` has been found (notice.go).
-		a.noticeEvent(eventAtOpened)
+	if opening {
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
 		// walk lands when it lands (taskmention.go, files.go). The recent
 		// conversations ride the same opening (mention.go).
-		return tea.Batch(a.loadFiles(), a.loadTasks(), a.loadMentionRecents())
+		return tea.Batch(a.loadFiles(), a.loadTasks(), recents)
 	}
 	return nil
 }
@@ -9319,18 +9337,22 @@ func (a *app) syncLists() tea.Cmd {
 func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
+	if len(a.input.value) == 0 {
+		// Sending removes the token before closing its list, without another edit.
+		a.comp.beginToken(&a.input)
+	}
 	a.harnPick.close()
 	a.skillPick.close()
 }
 
-// dismissLists is esc over a typed list, which is [app.closeLists] plus the one
-// thing esc means that a close does not: the person MEANT the word they are
-// typing. Without the seal the list is back on the next keystroke — the overlays
-// are derived from the draft, so closing one over a word that still matches is a
-// dismissal that lasts exactly until the next letter — and a slash word inside a
-// sentence would be uncloseable. See [menu.dismiss].
+// dismissLists is esc over a typed list. A command word is sealed so its list
+// stays closed while the person writes on ([menu.dismiss]). An @ list instead
+// ends its opening, so the next letter can bring it back with a fresh read.
 func (a *app) dismissLists() {
 	sealed, at := a.menu.open, a.menu.at
+	if a.comp.open {
+		a.comp.dismiss()
+	}
 	a.closeLists()
 	if sealed {
 		a.menu.dismiss(at)

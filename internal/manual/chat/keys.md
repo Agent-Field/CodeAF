@@ -1579,50 +1579,95 @@ the original**. Replaying a conversation starts its attachments collapsed again.
 
 Type `@` and codeaf offers one list under the message box. The first row is the
 words **team**, **chat** and **file**. Under them: **teams**, then **conversations**,
-then **tasks**, then **files and folders**. It opens on the bare `@`. You do not have
-to type a letter first. It closes on `esc`, on committing, or when the token stops
-being one.
+then **tasks**, then **files and folders**. It opens on the bare `@`; no letter is
+needed first. It closes on `esc`, on committing, or when the token stops being one.
 
 **team**, **chat** and **file** are presses. The word under the pointer takes a
 background, and the hint says `only teams · click`, `only conversations · click` or
-`only files · click`. A press types that prefix, `@team:`, `@chat:` or `@file:`, and
-the list keeps only that section. Press the same word again and the prefix comes off.
-Typing still filters every section that is showing. A command's path argument
-(`/image `, `/export `, `/attach `) stays a file list and has no prefix row.
+`only files · click`. A press types `@team:`, `@chat:` or `@file:` and keeps only
+that section. Press the same word again and the prefix comes off. Home's list has
+the same prefixes; its first-row words are not buttons, so type the prefix there.
+A command's path argument (`/image `, `/export `, `/attach `) stays a file list
+and has no prefix row.
 
-**Folders are on the list too**, spelled with a trailing slash — `internal/tui3/` — and
-marked `folder` on the right the way a picture row is marked `img`. Choosing one puts
-its path into your sentence exactly as choosing a file does. It does not choose that
-folder as a place; `/folder` is what does that.
+Folders have a trailing slash (`internal/tui3/`) and a `folder` note, like a
+picture's `img` note. Choosing one puts its path into the sentence. Use `/folder`
+to choose a folder as a place.
 
-The token is found by walking back from the caret to a space, a newline, or the start
-of the message; that run must **begin** with `@`. So an `@` in the middle of a word —
-an email address, a Go doc link — never opens the list.
+The prefix words, teams and tabs arrive from memory; recent conversations and
+files arrive as they are read. Recents are read once per opening when no read is
+pending: a new `@` token or the next letter after `esc`. Openings during a read
+share one follow-up; the older answer cannot settle their search. Letters, caret
+moves and automatic closes start no read. Removing the token ends it. After `esc`,
+a space or punctuation keeps even a bare `@` closed. A prefixed multi-word chat
+search waits with `looking…` for its fresh answer.
+An unread catalog says `looking…`; a read with no match says `no matches`, or
+`no team matches`, `no conversation matches` or `no file matches` for a prefix.
+Arrivals select the best match unless you chose a row with arrows since the query
+changed; that choice survives while offered. A changed query returns to the best
+match. On home, clicking inserts the row.
 
-**What it walks:** the conversation's workspace, or **your own machine's** working
-directory over `--host`. **On home** the same list opens over home's box (since
-2026-09-22) and walks the folder the next conversation opens in — the `project:` at the right of the keys row —
-so moving the target with `alt+p` or `/project` walks again; it offers files and folders
-there and never tasks, because a task pointer is minted when a conversation sends and
-home has none yet. Skipped: `.git`, `vendor`, `node_modules`, every
-dot-directory, every dot-file, and every symlink. Unreadable directories are skipped
-rather than fatal. The walk is capped at **10,000 files**, and paths are stored
-relative to the root with forward slashes.
+## Searching the @ list with spaces — which words are a search
 
-**The walk runs once per session.** A file created part-way through the conversation
-will not appear in the list.
+A bare `@` ends at its first space: `ask @ben to fix` stays a sentence and Enter
+sends it whole. `@ ` is no token. An `@` in the middle of a word, such as an email
+address or a Go doc link, never opens the list.
 
-Ranking puts a prefix match above a substring above a subsequence; the whole path and
-the base name are both tried at each tier, the base name a hair below the path.
-Inside a tier the earlier match wins, then the shorter path. File hits are capped at
-32. The list shows 8 rows, or **14** when a team, a conversation or a task is on it.
-Team rows, conversation rows and task rows are each capped at 8. Tasks are searched
-to a pool of 40.
+Only `@team:`, `@chat:` and `@file:` searches may hold spaces. The token walks back
+from the caret over at most three spaces, never past a newline. `@chat:who is`
+finds `who is kim jong il`; `@file:internal tui3` finds `internal/tui3/`;
+`@team:har bor` finds `harbor`. These searches work in a conversation, on home
+and on the new-chat page.
 
-The prefix words are there at once. Teams and the conversations already open in this
-window are there at once, from memory. Recent conversations and the file walk arrive
-as they are read. With no match the line is `no matches`. A prefix that finds nothing
-says `no team matches`, `no conversation matches` or `no file matches`.
+Teams, conversations and files match every word in any order. A word may match
+a prefix, substring or subsequence; only the last word, still being typed, may match
+by its letters in order. Finished words match whole. Tasks keep their own scorer
+for the whole query rather than matching each word separately.
+
+A prefixed search of several words that matches nothing closes only after its
+catalog has been read; before then the list stays up and starts the read. One word
+that matches nothing still says so. A space or punctuation after a chosen mention
+keeps the list closed: `@side-chat,` and `@side-chat is a chat` are writing on.
+
+## Which conversations and how many rows the @ list shows
+
+The conversations are every tab open in this window, including other projects'
+tabs, except the one you are typing in. Only the window's own front conversation
+is absent for being unnamed with nothing sent, even if its draft names its tab.
+Held, restored and side tabs are offered without that check. Then come the twenty
+most recent in this project, read once per opening when no read is pending;
+openings during a read share one follow-up. Older conversations and other
+projects' saved conversations require `/resume` unless they are already open here.
+Home and the new-chat page leave no eligible conversation off: their sentences start a
+new conversation, so the one behind them can be a reference too.
+
+The bare `@` keeps eight teams and eight conversations. `@chat:` and `@team:`
+keep up to thirty-two rows and scroll. File hits are capped at 32. The list draws
+8 rows, or 14 when a team, conversation or task is present. Task rows are capped
+at 8 and searched to a pool of 40.
+
+## Which folders the @ file list walks and why a new file is missing
+
+The `@` file list walks the conversation's workspace, or your own machine's
+working directory over `--host`. Home's list walks the pinned target, otherwise
+this window's file root. On a local window that is the workspace, where the next
+conversation opens and what `project:` names while the list is up. Over `--host`,
+the unpinned list offers this machine's files, as a conversation's list does;
+the foot and sent sentence use the far machine's workspace. The row selected
+before opening the list does not choose the file root.
+Moving that target with `alt+p` or `/project` replaces the catalog and walks again. Home offers files and folders, never tasks:
+a task pointer is minted when a conversation sends and home has none yet.
+
+Skipped: `.git`, `vendor`, `node_modules`, every dot-directory, every dot-file and
+every symlink. Unreadable directories are skipped rather than fatal. The walk is
+capped at 10,000 files, with paths relative to its root and forward slashes.
+It runs once per conversation; a file created part-way through will not appear.
+With its list closed, home keeps its completed walk across arrows over other
+projects and reuses it when the list next opens in the same folder.
+
+File ranking puts a prefix above a substring above a subsequence. The whole path
+and base name are both tried at each tier, with the base name a hair below the path.
+Inside a tier the earlier match wins, then the shorter path.
 
 ## What `@` puts into your message
 
@@ -1642,7 +1687,9 @@ says `no team matches`, `no conversation matches` or `no file matches`.
 - **Under a command's path argument:** the path replaces the argument whole, with no
   `@` in front, and an image is written into the line like any other file.
 
-**When you send,** every `@<slug>` that names a task codeaf already knows about grows
+## What happens when I send a task, team or chat mention
+
+Every `@<slug>` that names a task codeaf already knows about grows
 a pointer-block footnote after the message, one block per task, in token order,
 deduplicated. A team mark and a chat mark do something else, on the engine: the
 model is handed a short digest of that team or that conversation, and your

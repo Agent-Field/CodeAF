@@ -559,18 +559,57 @@ Type `@` in the message box. The list under it has three words on the first row,
 **team**, **chat** and **file**, then teams, conversations, tasks, and files. Typing
 filters every section at once. `@file:` keeps only files, `@team:` only teams,
 `@chat:` only conversations. The three words are buttons: a press types that prefix,
-the word under the pointer takes a background, and the hint names the key, `click`.
+the hint says `click`.
+
+The conversations on it are the tabs open in this window, including other projects'
+tabs, except the one you are typing in. Only the window's own front conversation
+is absent for being unnamed with nothing sent, even if its draft names its tab.
+Held, restored and side tabs are offered without that check. Then come the twenty
+most recent in this project, read once per opening when no read is pending: a new
+`@` token or the next letter after `esc`. Openings during a read share one follow-up. For older or other-project conversations
+not open here, use `/resume`. The bare
+`@` shows eight of them; `@chat:` shows them all and scrolls. Home's box opens the
+same list with the same sections and prefixes, leaving no eligible conversation off.
+Files use the pinned target or workspace. Locally the foot's `project: `
+names that folder and the sentence opens there. Over `--host`, the unpinned
+list offers this machine's files, as in a conversation; the foot and sent
+sentence use the far workspace.
 
 Choosing a file still puts `@` and the path in the sentence, and nothing is read
-until the model asks. Choosing a team puts `●harbor` in the team's colour. Choosing
-a conversation puts `@handle`, or a short slug of the title when it has no handle,
-and the hint on the row is the full title. A conversation that is in no team is
-still on the list.
+until the model asks. Choosing a team puts `●harbor` in its current colour, on
+home too. Choosing a conversation puts `@handle`, or a short slug of the title when it has no handle,
+and the hint on the row is the full title. Conversations in no team are offered too.
 
-After you send, that team mark and that `@handle` stay clickable. A press on the
+## After sending a team or conversation mention
+
+After you send, a team mark such as `●harbor` and a conversation's `@handle` stay
+clickable. A press on the
 team opens the teams page with it selected. A press on the conversation opens it. Over
 `--host`, against an engine with no teams doors, a press on the team opens the
 conversations view on it instead. The
 model is handed a short digest of each one, not the transcript, and the other
 conversation is not messaged and not woken. The words in your transcript are the
 words you typed.
+
+## Searching files and conversations with spaces after @
+
+A bare `@` token ends at its first space, so `ask @ben to fix` stays prose and
+Enter sends the whole sentence. `@ ` is no token. Only a prefixed search can
+hold spaces: `@file:tui3 app`, `@chat:who is` or `@team:har bor`, up to three
+spaces and never across a newline. Teams, conversations and files match every
+word in any order; only the final word may match by letters in order. Tasks keep
+their own scorer for the whole query.
+
+Recents are read once per opening when no read is pending: a new `@` token or the
+next letter after `esc`. Openings during a read share one follow-up; the older answer
+cannot settle their search. Letters, caret moves and automatic closes start no read.
+After `esc`, a space or punctuation keeps even a bare `@` closed.
+Removing the token, including clearing home's box,
+ends it; the next `@` reads again. A prefixed multi-word chat search waits with
+`looking…` for its fresh read. Several words with no match close a prefixed search
+after its catalog has been read.
+
+An arrival selects the best match unless you chose a row with the arrows since
+the query last changed; that choice survives while still offered. A changed query
+returns to the best match. On home, clicking a row inserts it immediately. A space
+or punctuation after a chosen mention keeps the list closed so you can write on.
