@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io/fs"
+	"math"
 	"os"
 	"time"
 
@@ -28,16 +29,25 @@ func (usageIndex) Name() string { return "usage.jsonl" }
 
 // Present reports whether the ledger already names the session in any row.
 func (usageIndex) Present(c cell.Cell) bool {
-	return ledgerNames(session.UsageLedgerPath(), []byte(`"session":"`+c.ID+`"`))
+	return ledgerRows(session.UsageLedgerPath(), c.ID) > 0
 }
 
+// Behind reports whether the chat spent on calls the ledger has no row for: the
+// copy this machine held was older than the one a take just brought.
+func (usageIndex) Behind(c cell.Cell, d session.Digest) bool {
+	lines, err := usageLines(c, d)
+	return err == nil && len(lines) > ledgerRows(session.UsageLedgerPath(), c.ID)
+}
+
+// Build appends the rows the ledger lacks. Rows are in call order and a copy
+// holds a prefix of them, so the rows already held are the first ones.
 func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 	lines, err := usageLines(c, d)
 	if err != nil {
 		return err
 	}
 	path := session.UsageLedgerPath()
-	for _, line := range lines {
+	for _, line := range lines[min(ledgerRows(path, c.ID), len(lines)):] {
 		session.RecordUsage(path, line)
 	}
 	session.FlushUsage()
@@ -67,24 +77,27 @@ func usageOfCall(c cell.Cell, d session.Digest, s cellstore.SealedCall) session.
 	}
 }
 
-// ledgerNames scans the ledger for a marker without parsing any row.
-func ledgerNames(path string, marker []byte) bool {
+// ledgerRows counts the ledger rows that name the session, without parsing any
+// row. An unreadable ledger answers as if it were full: it is not ours to append to.
+func ledgerRows(path, session string) int {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false
+		return 0
 	}
 	if err != nil {
-		return true // an unreadable ledger is not ours to append to
+		return math.MaxInt
 	}
 	defer f.Close()
+	marker := []byte(`"session":"` + session + `"`)
+	n := 0
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, err := r.ReadBytes('\n')
 		if bytes.Contains(line, marker) {
-			return true
+			n++
 		}
 		if err != nil {
-			return false
+			return n
 		}
 	}
 }

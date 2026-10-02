@@ -255,9 +255,10 @@ func titleOf(root string) string {
 }
 
 // rebuildIndexes makes the session row and the other derived files of a chat
-// that just arrived, from its transcript, so this machine lists it.
+// that just arrived, from its transcript, so this machine lists it. A chat this
+// machine already held comes with older indexes: they are brought up to date too.
 func rebuildIndexes(_ context.Context, c cell.Cell) error {
-	_, err := cellindex.Rebuild(c, workspaceOf(c.Root))
+	_, err := cellindex.Refresh(c, workspaceOf(c.Root))
 	return err
 }
 
