@@ -217,6 +217,32 @@ and does not open another window. The focus stays where it was. The hint says
 
 A deliberate message jump opens the activity and tool-call groups that contain the target before scrolling to it. Other history stays collapsed.
 
+The row keeps its own team's message even with `All` chats shown, or when its manager also
+belongs to `All teams`. Showing another team on the rail does not change which message opens.
+A same-number `team_post` to `All teams` cannot replace the ordinary team's message.
+If the message has left that conversation's history, the chat opens at the bottom and the
+hint says `that message is older than this chat's history`.
+
+## Opening a message after renaming its team
+
+A Traffic handle still opens its recipient at the retained delivered card after the team is
+renamed. This includes a long message or new-member brief whose delivered words were clipped, and a team whose
+old name has since been given to another team. The name on an older delivered card records
+what the team was called when the message arrived.
+
+Pressing a member's own post row still finds its retained `team_post` receipt after a rename
+when the post did not name a team and loaded Traffic identifies its owner. Matching uses this
+conversation's sender handle in each team; identical words and message numbers under different
+handles cannot make another team's receipt open. A receipt naming another current team cannot
+be claimed by the renamed team. A historical name with unresolved ownership keeps the history hint.
+
+The jump needs a message it can identify in that conversation's loaded history. If the
+retained messages cannot distinguish it from another team's message, codeaf does not choose
+one. When another team owns the name on an old card, its numbered Traffic row or empty log
+must be loaded before the jump can distinguish them. An unloaded or older row that has left
+the Traffic history cannot establish that ownership. The chat opens at the bottom and the hint says
+`that message is older than this chat's history`.
+
 ## What members say without being asked
 
 A member of a team that has a manager tells the manager, through the traffic, three things it
