@@ -3,6 +3,7 @@ package directory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -17,6 +18,8 @@ import (
 const (
 	CloseRevoked websocket.StatusCode = 4401 // this device was stopped; never reconnect
 	CloseRotated websocket.StatusCode = 4410 // the identity was replaced; poll only
+	// CloseSilent says the relay stopped hearing this socket's pings: redial now.
+	CloseSilent websocket.StatusCode = 4408
 )
 
 const (
@@ -45,6 +48,7 @@ func (h *handler) watch(w http.ResponseWriter, r *http.Request) {
 	defer sub.Close()
 	// Accept keeps the headers set on w, so this one rides the 101 answer.
 	w.Header().Set(VouchHeader, "1")
+	w.Header().Set(PresenceHeader, "1")
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		return
@@ -60,6 +64,10 @@ func wantsEvents(r *http.Request) bool { return r.URL.Query().Get("events") == "
 // names a hold as proof its holder is alive (contract 21.11.1). A client that
 // does not see it keeps beating.
 const VouchHeader = "Codeaf-Vouch"
+
+// PresenceHeader on the 101 answer says this relay counts a socket online only
+// while its pings keep coming (contract 21.12.3).
+const PresenceHeader = "Codeaf-Presence"
 
 // subscribe applies every refusal that precedes the upgrade and takes a place
 // under the identity's cap. An identity that is replaced can only ever be
@@ -83,7 +91,11 @@ func subscribe(c call) (*Sub, error) {
 	if err != nil {
 		return nil, err
 	}
-	return feed.Feed().Subscribe(c.device, holds)
+	beat, err := ParseBeat(c.r.URL.Query()["beat"])
+	if err != nil {
+		return nil, err
+	}
+	return feed.Feed().SubscribeBeat(c.device, holds, beat)
 }
 
 func isUpgrade(r *http.Request) bool {
@@ -141,6 +153,9 @@ func sendEvent(ctx context.Context, conn *websocket.Conn, e dirwatch.Event) erro
 func tell(ctx context.Context, conn *websocket.Conn, sub *Sub, device string, first func()) (websocket.StatusCode, string) {
 	for {
 		st, err := sub.Next(ctx)
+		if errors.Is(err, errSilent) {
+			return CloseSilent, "silent"
+		}
 		if err != nil {
 			return closing(ctx)
 		}

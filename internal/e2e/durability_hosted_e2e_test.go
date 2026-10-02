@@ -6,8 +6,8 @@ package e2e
 //
 // The real binary is the holding machine (home A, in a real terminal) and runs
 // a scripted model, so every tool call is the same call every time and the
-// moment it finished is known to the millisecond. The relay is the hosted
-// staging Worker. A machine that dies mid-work is simulated by what really
+// moment it finished is known to the millisecond. The relay is the one
+// CODEAF_RELAY names. A machine that dies mid-work is simulated by what really
 // kills one: SIGKILL, a dead network, a frozen process. Then the other machine
 // (home B, in this process, over the same real take path the chat uses) takes
 // the chat over, and the run counts: calls completed on A against calls present
@@ -15,13 +15,15 @@ package e2e
 // two numbers.
 //
 // One identity per run, made fresh and shared between the homes, so a run never
-// meets another run's chats on the relay. The relay is CODEAF_HOSTED_URL, and
-// staging when unset.
+// meets another run's chats on the relay. The relay is CODEAF_RELAY (relayenv_test.go);
+// with it unset the suite skips and says why.
 //
 //	go test -tags e2e -count=1 -run TestDurability -v -timeout 40m ./internal/e2e/
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,6 +36,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -42,8 +45,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
-
-const stagingRelay = "https://caf-relay-staging.instrument-santosh.workers.dev"
 
 // durable is one run's world: two homes of one identity, the scripted model,
 // the proxy that can cut the holder's network, and the chat on A.
@@ -66,10 +67,7 @@ func newDurable(t *testing.T, script ...brainStep) *durable {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
-	relay := os.Getenv("CODEAF_HOSTED_URL")
-	if relay == "" {
-		relay = stagingRelay
-	}
+	relay := relayUnderTest(t)
 	overrides := map[string]any{
 		"model.talk": durabilityModel, "model.work": durabilityModel, "model.plan": durabilityModel,
 		"models.tiers.worker": durabilityModel, "models.tiers.high": durabilityModel,
@@ -333,7 +331,11 @@ func sorted(m map[int]bool) string {
 // completed is missing on B. A call is present when BOTH its effect (the file it
 // wrote, in the tree) and its record (the tool result, in the transcript) are
 // there; the two are counted apart because they are sealed apart.
-func (d *durable) verdict(mode string, completed int, got cell.Cell, note string) {
+//
+// A row that lost work is not a failure when the kill came sooner than the relay
+// could have acknowledged any upload: unreachable says whether it did. Such a row
+// is stated as UNREACHABLE with the floor it was measured against.
+func (d *durable) verdict(mode string, completed int, got cell.Cell, unreachable func() (bool, time.Duration), note string) {
 	d.t.Helper()
 	results, files := callsIn(got.Root)
 	var lostEffects, lostRecords []int
@@ -355,7 +357,10 @@ func (d *durable) verdict(mode string, completed int, got cell.Cell, note string
 	case len(lostRecords) > 0:
 		status = "FAIL-RECORD"
 	}
-	if status != "PASS" {
+	if cannot, floor := unreachable(); status != "PASS" && cannot {
+		status, note = "UNREACHABLE", fmt.Sprintf("%s relayAckFloor=%v", note, floor)
+	}
+	if status != "PASS" && status != "UNREACHABLE" {
 		d.t.Fail()
 	}
 	d.t.Logf("DURABILITY %s mode=%s completedOnA=%d effectsOnB=%s recordsOnB=%s lostEffects=%v lostRecords=%v %s",
@@ -393,7 +398,8 @@ type holdRun struct {
 	id       string
 	watch    *headWatch
 	t0       time.Time
-	killedAt time.Time // when the ending was applied
+	after    time.Duration // how long after the anchor the ending was applied
+	killedAt time.Time     // when the ending was applied
 }
 
 func (d *durable) begin(name string, from anchor) *holdRun {
@@ -419,7 +425,7 @@ func sigkill(s *holdRun) { s.d.signalA(syscall.SIGKILL) }
 // strike waits until after the anchor and applies the ending.
 func (s *holdRun) strike(after time.Duration, end ending) {
 	at(s.t0, after)
-	s.killedAt = time.Now()
+	s.after, s.killedAt = after, time.Now()
 	end(s)
 }
 
@@ -432,11 +438,59 @@ func (s *holdRun) finish(mode, note string) {
 	s.d.awayFromA()
 	got, err := s.b.take(s.id)
 	if err != nil {
-		s.d.t.Fatalf("DURABILITY FAIL mode=%s completedOnA=%d: B could not take the chat: %v", mode, completed, err)
+		s.noTake(mode, completed, err)
+		return
 	}
 	s.d.logSyncStats()
-	s.d.verdict(mode, completed, got, fmt.Sprintf("%s durableAfterAnchor=%v timeline=%s", note, s.watch.durableAfter(s.t0), s.timeline()))
+	s.d.verdict(mode, completed, got, s.beforeAck, fmt.Sprintf("%s durableAfterAnchor=%v timeline=%s", note, s.watch.durableAfter(s.t0), s.timeline()))
 }
+
+// noTake states a run whose chat B could not take at all: the relay never heard
+// of it. It is a failure unless the kill came before the relay could have stored anything.
+func (s *holdRun) noTake(mode string, completed int, err error) {
+	s.d.t.Helper()
+	if cannot, floor := s.beforeAck(); cannot {
+		s.d.t.Logf("DURABILITY UNREACHABLE mode=%s completedOnA=%d: B could not take the chat (%v) relayAckFloor=%v killedAfterAnchor=%v", mode, completed, err, floor, s.after)
+		return
+	}
+	s.d.t.Fatalf("DURABILITY FAIL mode=%s completedOnA=%d: B could not take the chat: %v", mode, completed, err)
+}
+
+// beforeAck says whether the ending came sooner after the anchor than the relay
+// takes to acknowledge an upload, which is the one physical limit on durability:
+// a chat that is killed before the relay has stored what it sent has nothing
+// there to take over. The floor is the fastest of a few probe puts.
+func (s *holdRun) beforeAck() (bool, time.Duration) {
+	floor := s.b.ackFloor()
+	return s.after < floor, floor
+}
+
+// ackFloor is the fastest of three single-object frame puts to the relay, so it
+// holds no queueing and no transfer time: only the relay's own time to store a frame.
+func (b *machineB) ackFloor() time.Duration {
+	floor := time.Hour
+	for i := 0; i < 3; i++ {
+		frame, err := blobstore.Encode(strings.Repeat("0", 32), []blobstore.Object{probeObject(i)})
+		if err != nil {
+			b.d.t.Fatal(err)
+		}
+		t0 := time.Now()
+		if _, err := b.sync.Store.PutFrame(context.Background(), frame); err != nil {
+			b.d.t.Fatalf("the relay refused a probe frame: %v", err)
+		}
+		floor = min(floor, time.Since(t0))
+	}
+	return floor.Round(10 * time.Millisecond)
+}
+
+// probeObject is a sealed-looking object no other run holds: its id is the hash
+// of a time-and-counter label, so each probe is a new frame and a put, not a repeat.
+func probeObject(i int) blobstore.Object {
+	label := fmt.Sprintf("ack-floor-%d-%d", time.Now().UnixNano(), i)
+	return blobstore.Object{RID: hex.EncodeToString(sha256Sum(label)), Bytes: append([]byte("AGEO\x01"), label...)}
+}
+
+func sha256Sum(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
 
 // timeline is every call's finish and every head the relay showed, in seconds
 // from the moment the first call finished, so a lost call can be read against
@@ -703,7 +757,7 @@ func TestDurabilityLidClose(t *testing.T) {
 	d.launcher = freezable
 	s := d.begin("lid", finished(2))
 	pid := d.pidA()
-	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGCONT) }) // a stopped process cannot be reaped
+	t.Cleanup(func() { reapHolder(pid) })
 	s.strike(0, func(s *holdRun) { s.d.signalA(syscall.SIGSTOP) })
 	frozen := time.Now()
 	for i := 0; i < 3; i++ {
@@ -755,6 +809,25 @@ func TestDurabilityLidClose(t *testing.T) {
 	t.Logf("DURABILITY %s mode=lid-close completedOnA=2 effectsOnB=%s recordsOnB=%s (B took the chat; call 2 was never uploaded) "+
 		"leaseLapsedAfter=%v frozen=%v relayHeadOverwrittenByA=%v keptBranch=%v branchHolds{%s} supersededAfterWake=%v",
 		status, sorted(files), sorted(results), lapsedAfter, frozenFor, overwritten, kept != "", branchCalls, time.Since(woke).Round(time.Second))
+}
+
+// reapHolder ends the chat process that ran under [freezable] and waits until
+// it is gone. The rig's own cleanup waits only for the pane's launcher, which
+// leaves at the hangup while the chat, a child of it, is still writing its
+// final files into a home that testing is about to remove. A stopped process
+// cannot act on a signal, so it is resumed first. The pid is the one pidA
+// checked to be the binary under test, never a pattern match.
+func reapHolder(pid int) {
+	_ = syscall.Kill(pid, syscall.SIGCONT)
+	_ = syscall.Kill(pid, syscall.SIGTERM)
+	for _, wait := range []time.Duration{10 * time.Second, 5 * time.Second} {
+		for deadline := time.Now().Add(wait); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if terminalProcessExited(pid) {
+				return
+			}
+		}
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
 }
 
 // watchLeaseLapse polls the relay while A is frozen and answers how long after

@@ -82,17 +82,21 @@ times and verdicts go to `$UX_EVIDENCE` (default `~/ux-evidence/e2e-run.json`).
 Pass: every step prints its screen and the test ends `ok`. The journey budget is two minutes.
 
 **Durability, against the Go relay or any other.** The same tests as section 3 run against
-`$CODEAF_HOSTED_URL`; point it at your own relay to keep the load off the hosted one:
+`$CODEAF_RELAY`, the same variable every script reads, with no default; a run with it unset stops
+(the Go suite skips) and names it. Point it at your own relay to keep the load off a hosted one:
 
 ```sh
-CODEAF_HOSTED_URL=$CODEAF_RELAY scripts/durability-hosted.sh KillAfterLoneCall
+CODEAF_RELAY=https://relay.example.com scripts/durability-hosted.sh KillAfterLoneCall
 ```
 
 The name after the script picks one test (`KillAfterLoneCall`, `KillAfterBurst`,
 `KillAfterTurnEnds`, `KillAfterLaterLoneCall`, `KillDuringCall`, `NetworkCutThenKill`,
 `LidClose`, `FirstCallKillRate`). Without a name it runs them all. Each prints one `DURABILITY`
 line, `PASS`, `FAIL` (work missing on the other machine) or `FAIL-RECORD` (the work arrived,
-its transcript line did not). It uses a scripted model, so it makes no model calls.
+its transcript line did not), or `UNREACHABLE` (work is missing, but the kill came sooner after the
+call than the relay takes to store a frame, which the run measures with three probe puts and prints
+as `relayAckFloor`; nothing could have been durable yet, so it does not fail the run). It uses a
+scripted model, so it makes no model calls.
 
 **Real engine round trips, in process.**
 `go test -tags engine ./internal/cellsync/ ./internal/cellstore/ ./internal/syncsetup/`

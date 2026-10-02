@@ -2,6 +2,8 @@ package devname
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -65,5 +67,31 @@ func TestARefusedNameChangesNothing(t *testing.T) {
 func TestDefaultCutsTheDomainOff(t *testing.T) {
 	if strings.Contains(Default(), ".") && !strings.HasPrefix(Default(), ".") {
 		t.Fatalf("default %q still carries a domain", Default())
+	}
+}
+
+func TestShownCutsTheLocalSuffixAMacHostNameCarries(t *testing.T) {
+	cases := map[string]string{
+		"mac.local":     "mac",
+		"Mac.LOCAL":     "Mac",
+		"desk":          "desk",
+		"my.laptop":     "my.laptop",
+		".local":        ".local",
+		"a.local.local": "a.local",
+	}
+	for name, want := range cases {
+		if got := Shown(name); got != want {
+			t.Errorf("Shown(%q) = %q; want %q", name, got, want)
+		}
+	}
+}
+
+func TestNameIsShownThroughTheSameRuleForAChosenName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte("studio.local\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := Name(dir); got != "studio" {
+		t.Fatalf("Name = %q; a chosen name reads like every other label", got)
 	}
 }

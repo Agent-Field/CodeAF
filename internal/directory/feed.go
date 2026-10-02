@@ -26,6 +26,9 @@ var ErrTooManyWatchers = errors.New("directory: too many watchers")
 // errFeedClosed is what a subscriber hears when its directory is closed.
 var errFeedClosed = errors.New("directory: closed")
 
+// errSilent is what a subscriber hears when the relay stopped hearing its pings.
+var errSilent = errors.New("directory: silent")
+
 // Status is what a watcher may learn about an identity: the directory's
 // version, which devices are stopped and whether the identity was replaced. It
 // is immutable once published, so it is shared without copying or locking.
@@ -92,6 +95,14 @@ func NewFeed(clock func() time.Time) *Feed {
 	return f
 }
 
+// SetAfter changes the timers the feed's presence runs on, which a test that
+// keeps its own clock sets once before it serves.
+func (f *Feed) SetAfter(after After) {
+	f.pres.mu.Lock()
+	defer f.pres.mu.Unlock()
+	f.pres.after = after
+}
+
 // Status is the newest published Status.
 func (f *Feed) Status() Status { return *f.cur.Load() }
 
@@ -131,22 +142,32 @@ func (f *Feed) Close() {
 }
 
 // Subscribe adds a watcher opened by device that names holds, or refuses with
-// ErrTooManyWatchers at the cap. Its accept time is its first sign of life.
+// ErrTooManyWatchers at the cap. Its accept time is its first sign of life. It
+// is a client from before presence, which pings at DefaultBeat.
 func (f *Feed) Subscribe(device string, holds []Hold) (*Sub, error) {
-	s, err := f.subscribe(device, holds)
+	return f.SubscribeBeat(device, holds, DefaultBeat)
+}
+
+// SubscribeBeat is Subscribe for a watcher that promised to ping every beat: it
+// counts as online for Window(beat) after its last sign of life.
+func (f *Feed) SubscribeBeat(device string, holds []Hold, beat time.Duration) (*Sub, error) {
+	s, err := f.subscribe(device, holds, beat)
 	if err == nil {
 		f.pres.opened(s)
 	}
 	return s, err
 }
 
-func (f *Feed) subscribe(device string, holds []Hold) (*Sub, error) {
+func (f *Feed) subscribe(device string, holds []Hold, beat time.Duration) (*Sub, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.subs) >= f.cap {
 		return nil, ErrTooManyWatchers
 	}
-	s := &Sub{f: f, poke: make(chan struct{}, 1), device: device, events: make(chan dirwatch.Event, eventBuffer), keys: keysOf(device, holds)}
+	s := &Sub{
+		f: f, poke: make(chan struct{}, 1), device: device, beat: beat, silence: make(chan struct{}),
+		events: make(chan dirwatch.Event, eventBuffer), keys: keysOf(device, holds),
+	}
 	s.alive.Store(f.clock().UnixMilli())
 	f.subs[s] = struct{}{}
 	for _, k := range s.keys {
@@ -218,6 +239,28 @@ type Sub struct {
 	events chan dirwatch.Event // event frames, once Events was called
 	keys   []holdKey
 	alive  atomic.Int64 // unix ms of the last sign of life
+
+	// beat is the period the socket promised to ping at; it sets how long the
+	// socket stays live (contract 21.12.2).
+	beat time.Duration
+	// lapsed is set once the relay announced the socket's device offline and
+	// told the socket to go: a lapsed socket is never live again. silence is
+	// closed with it, which is what ends the socket's own goroutine.
+	lapsed  atomic.Bool
+	silence chan struct{}
+}
+
+// liveAt says whether the socket's last sign of life, at unix ms now, is inside
+// its window: only a live socket counts toward its device being online.
+func (s *Sub) liveAt(now int64) bool {
+	return !s.lapsed.Load() && now-s.alive.Load() <= Window(s.beat).Milliseconds()
+}
+
+// lapse marks the socket silent for good and tells its goroutine to close it.
+func (s *Sub) lapse() {
+	if s.lapsed.CompareAndSwap(false, true) {
+		close(s.silence)
+	}
 }
 
 // Ping records a sign of life at the directory's time. It changes no version
@@ -245,6 +288,8 @@ func (s *Sub) Next(ctx context.Context) (Status, error) {
 			return Status{}, ctx.Err()
 		case <-s.f.closed:
 			return Status{}, errFeedClosed
+		case <-s.silence:
+			return Status{}, errSilent
 		case <-s.poke:
 		}
 	}

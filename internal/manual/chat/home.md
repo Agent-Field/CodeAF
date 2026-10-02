@@ -301,7 +301,7 @@ happened. The row says where the chat is only where that tells you something:
 | a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
 | held by this machine, or let go by everyone | nothing |
 
-Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box off` says that computer is switched off, asleep or offline and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `off` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box off` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `off` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a

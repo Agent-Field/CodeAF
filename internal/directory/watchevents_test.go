@@ -121,7 +121,8 @@ func TestPresenceAnswersWhoIsOnlineAndWhenTheOthersWereSeen(t *testing.T) {
 	}
 	s := watcher(t, b)
 	read(t, s)
-	g.clock.Advance(time.Minute)
+	// The socket pings every 10 s, so a quiet 20 s is inside its 25 s window; a silent minute would show it off.
+	g.clock.Advance(20 * time.Second)
 	v, err := a.(interface {
 		Presence(context.Context) (directory.PresenceView, error)
 	}).Presence(ctx)
