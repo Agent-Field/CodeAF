@@ -21,7 +21,7 @@ Press `alt+d` to open the steps, and `alt+d` again to close them:
 ```
 
 1. On the new device, install codeaf and run `codeaf pair`. It makes a link and waits.
-2. On this device, paste that link into the card, or paste it anywhere on home, or type it as your message there and press enter. The approve screen opens (see "Approve a new device" below). Text that is not a pair link stays in the box as before.
+2. On this device, paste that link into the card, or paste it anywhere on home, or type it as your message (on home, on the start page of a new chat, or in any chat) and press enter. The link is never sent to the model. The approve screen opens (see "Approve a new device" below). Text that is not a pair link stays in the box as before.
 
 The card goes away once you have two devices. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
@@ -130,7 +130,7 @@ The list is in a fixed order: this device first, then devices that are online, t
 this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back
 ```
 
-It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
+`/devices` on the removed computer says the same line in place of the list. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
 
 ## The link did not work — a pairing link or token that ran out, was declined or was answered already
 

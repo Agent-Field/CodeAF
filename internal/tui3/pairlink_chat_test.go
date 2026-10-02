@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -65,5 +66,19 @@ func TestPairLinkInARunningChatShowsTheApproveScreenAndIsNotSent(t *testing.T) {
 	}
 	if a.input.String() != "" {
 		t.Fatalf("the link stayed in the box: %q", a.input.String())
+	}
+}
+
+// A DEVICE LIST THAT CANNOT LOAD SAYS WHY. The error used to land on a card that
+// was still drawing "looking up your devices…", so a refusal never showed.
+func TestDevicesCardSaysWhyItCannotLoad(t *testing.T) {
+	const why = "this computer was stopped by another of your computers"
+	door := &fakeApprovals{err: errors.New(why)}
+	a, r := approveApp(t, door)
+	r.slash("/devices")
+	r.until("the failure", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.line != "" })
+	got := plain(frame(a))
+	if !strings.Contains(got, why) || strings.Contains(got, devicesLoading) {
+		t.Fatalf("the card did not say why:\n%s", got)
 	}
 }

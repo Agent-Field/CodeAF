@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -118,5 +119,37 @@ func TestApprovalsDoorRefusesAWrongLink(t *testing.T) {
 	rig := newPairRig(t)
 	if _, err := rig.approvalsAt(rig.homeA).Pending(context.Background(), "nope"); err == nil {
 		t.Fatal("a bad link was read")
+	}
+}
+
+// A computer that another of the person's computers stopped is told so, in the
+// one sentence every sync surface uses, by the screens that list devices.
+func TestApprovalsDoorTellsAStoppedComputerItWasStopped(t *testing.T) {
+	rig := newPairRig(t)
+	screen, done := rig.asking(t)
+	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
+	door := rig.approvalsAt(rig.homeA)
+	ctx := context.Background()
+	rig.enrol(t, door, "this computer")
+	p, err := door.Pending(ctx, link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := door.Approve(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := door.Revoke(ctx, p.Device); err != nil {
+		t.Fatal(err)
+	}
+
+	stopped := rig.approvalsAt(rig.homeB)
+	if _, err := stopped.Devices(ctx); err == nil || err.Error() != chatlist.Removed {
+		t.Fatalf("the stopped computer's device list said %v, want %q", err, chatlist.Removed)
+	}
+	if err := stopped.Revoke(ctx, p.Device); err == nil || err.Error() != chatlist.Removed {
+		t.Fatalf("the stopped computer's revoke said %v, want %q", err, chatlist.Removed)
 	}
 }
