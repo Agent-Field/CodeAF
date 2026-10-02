@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -220,5 +222,53 @@ func TestWatchWithoutTheVouchWordIsNotVouching(t *testing.T) {
 	defer s.Close()
 	if s.Vouching() {
 		t.Fatal("an old relay's socket is believed to vouch")
+	}
+}
+
+// TestWatchDialsWithBeat is the contract's one source for the ping period: both
+// kinds of dial declare the beat the feed pings at, so the relay sizes the
+// presence window from the truth.
+func TestWatchDialsWithBeat(t *testing.T) {
+	if time.Duration(directory.BeatSeconds)*time.Second != dirwatch.KeepEvery {
+		t.Fatalf("BeatSeconds %d and KeepEvery %v disagree", directory.BeatSeconds, dirwatch.KeepEvery)
+	}
+	dials := map[string]func(*directory.HTTP) (dirwatch.Stream, error){
+		"home": func(c *directory.HTTP) (dirwatch.Stream, error) { return c.Watch(context.Background()) },
+		"holder": func(c *directory.HTTP) (dirwatch.Stream, error) {
+			return c.WatchHolding(context.Background(), []directory.Hold{{Cell: "c1", Fence: 3}})
+		},
+	}
+	for name, dial := range dials {
+		seen := make(chan url.Values, 1)
+		c := serve(t, func(w http.ResponseWriter, r *http.Request) {
+			seen <- r.URL.Query()
+			conn := accept(t, w, r)
+			conn.Close(websocket.StatusNormalClosure, "")
+		})
+		s, err := dial(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		if got := (<-seen)["beat"]; len(got) != 1 || got[0] != "10" {
+			t.Errorf("%s dial declared beat %v, want exactly [10]", name, got)
+		}
+	}
+}
+
+// TestWatchReadsSilentCloseAsItsSentinel is the wire half of the redial: the
+// relay's 4408 close reaches the feed as dirwatch.ErrSilent.
+func TestWatchReadsSilentCloseAsItsSentinel(t *testing.T) {
+	c := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		conn := accept(t, w, r)
+		conn.Close(websocket.StatusCode(4408), "silent")
+	})
+	s, err := c.Watch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Next(context.Background()); !errors.Is(err, dirwatch.ErrSilent) {
+		t.Fatalf("a 4408 close read as %v, want ErrSilent", err)
 	}
 }

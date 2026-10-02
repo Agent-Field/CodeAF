@@ -42,26 +42,35 @@ var (
 	// read says it in the words every surface already uses.
 	ErrRevoked = errors.New("dirwatch: device revoked")
 	ErrRotated = errors.New("dirwatch: identity rotated")
+	// ErrSilent is the relay saying it stopped hearing this device and closed
+	// the socket. It is not a refusal: the device is welcome, so the feed dials
+	// again at once.
+	ErrSilent = errors.New("dirwatch: the relay stopped hearing this socket")
 )
 
 // The close codes the server ends a socket with, and the sentinels they mean.
 const (
 	CloseRevoked = 4401
 	CloseRotated = 4410
+	// CloseSilent ends a socket whose last sign of life was too old; the
+	// device is announced offline and must redial (STAGE-1-CONTRACTS.md 21.12.4).
+	CloseSilent = 4408
 )
 
 // The pace of the feed. Each number is here once.
 const (
-	// KeepEvery is how often a quiet socket pings: about every 30 s, the
-	// number STAGE-1-CONTRACTS.md §21.3 gives. The relay answers a ping
-	// without waking anything, so it costs nothing, and it keeps a middlebox
-	// that drops idle connections from dropping this one.
-	KeepEvery = 30 * time.Second
-	// DeadAfter is how long a socket may stay silent before it is dead: 75 s,
-	// two missed pongs, the number §21.3 gives. A shorter deadline would drop
-	// healthy sockets on a slow mobile link and throw the screen back to fast
-	// polling, which costs money.
-	DeadAfter = 75 * time.Second
+	// KeepEvery is how often a quiet socket pings: every 10 s, the beat
+	// STAGE-1-CONTRACTS.md 21.12 gives. The relay derives the window in which
+	// it counts this device online from the beat the dial declares, and the
+	// directory package derives that declaration from this constant, so the
+	// two halves cannot drift. The relay answers a ping without waking
+	// anything, so it costs nothing, and it keeps a middlebox that drops idle
+	// connections from dropping this one.
+	KeepEvery = 10 * time.Second
+	// DeadAfter is how long a socket may stay silent before it is dead: 2.5
+	// beats, 25 s. That tolerates one lost pong and a late second one, the
+	// same factor the relay uses for its presence window.
+	DeadAfter = KeepEvery * 5 / 2
 	// PongWithin is how long a ping may go unanswered: what is left of DeadAfter
 	// once the quiet wait before the ping has passed.
 	PongWithin = DeadAfter - KeepEvery

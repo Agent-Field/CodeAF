@@ -43,6 +43,9 @@ type Config struct {
 	// MaxWatchers is how many directory watch sockets one identity may hold; the
 	// zero value is directory.MaxWatchers. A relay a test drives lowers it.
 	MaxWatchers int
+	// After is the timers presence runs on; nil is the wall clock's. A relay a
+	// test drives on a fake clock hands timers that move with it.
+	After directory.After
 }
 
 // Service is a built relay: one handler and the files it holds open.
@@ -106,6 +109,7 @@ func New(cfg Config) *Service {
 	}
 	links := directory.NewLinks(now, directory.DefaultLinkLimits)
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
+	svc.ns.after = cfg.After
 	svc.ns.links = links
 	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
 	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
