@@ -604,3 +604,39 @@ func TestARefusalOfOurOwnRequestNeitherRetriesNorMoves(t *testing.T) {
 		t.Fatalf("%d retries were announced for a request no endpoint would take", got)
 	}
 }
+
+// A PIN HOLDS UNDER REPEATED MARKUP LEAKS. The person pinned the model, so the
+// chain the adapter offers is empty ([provider.Client.FallbackModels] on a
+// fallbacks row naming only that model). Every request rides the pinned model,
+// the retries are bounded, and the turn says plainly what failed.
+func TestAPinnedModelIsRetriedThenTheTurnSaysWhatFailed(t *testing.T) {
+	const markup = `<｜DSML｜_web_search>{"query":"x"}<｜/DSML｜_web_search>`
+	completer := chained(nil,
+		cutStep(provider.CutMachinery, markup),
+		cutStep(provider.CutMachinery, markup),
+		cutStep(provider.CutMachinery, markup),
+		cutStep(provider.CutMachinery, markup),
+	)
+	agent, _ := newTestAgent(t, completer, nil)
+	events, err := agent.Submit(context.Background(), "go on")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if completer.requests() == 0 || completer.requests() > 4 {
+		t.Fatalf("requests = %d, want a bounded number of retries", completer.requests())
+	}
+	for n := 0; n < completer.requests(); n++ {
+		if got := completer.model(n); got != "test/model" {
+			t.Fatalf("request %d rode %q, want the pinned test/model", n, got)
+		}
+	}
+	failure, failed := firstOfKind(collected, EventError)
+	if !failed {
+		t.Fatalf("repeated markup under a pin did not end the turn plainly; events were %v", kinds(collected))
+	}
+	if !strings.Contains(failure.Err.Error(), "internal markup") {
+		t.Fatalf("the sentence %q does not say what failed", failure.Err.Error())
+	}
+}
