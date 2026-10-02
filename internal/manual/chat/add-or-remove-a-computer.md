@@ -1,6 +1,6 @@
 # Adding a computer to your devices, approving it, and removing it
 
-## How do I add a second device — the Add another machine card, codeaf pair, and a link to paste
+## How do I add a second device — the Add another machine card, codeaf pair, a link to paste, and pairing a server with no browser
 
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
@@ -38,7 +38,7 @@ Check number: 4821 (the other device shows the same number)
 Waiting for approval; good for 10 minutes. Press ctrl+c to cancel.
 ```
 
-A device with no screen, such as a server, does the same: run `codeaf pair` there and approve from your laptop. When it is approved it says how many workspaces it can now reach:
+A device with no screen or no browser, such as a server, does the same: run `codeaf pair` there and approve from your laptop. Two things name the same request: the link `https://codeaf.agentfield.ai/p/<code>#<key>`, which opens in a browser and hands over to the installed app (the part after `#` never leaves the browser), and the bare token `<code>.<key>`, for a terminal where nobody can click. `codeaf pair approve` takes either one, and so does pasting into home. When it is approved it says how many workspaces it can now reach:
 
 ```
 Paired - 3 workspaces available.
@@ -131,3 +131,18 @@ this computer was stopped by another of your computers, so this chat stays here 
 ```
 
 It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
+
+## The link did not work — a pairing link or token that ran out, was declined or was answered already
+
+These are the sentences a link pairing says when it stops, in the words the screen uses. Nothing was changed on either device when you read one of them.
+
+- `that is not a codeaf pairing link or code; it looks like https://codeaf.agentfield.ai/p/k7m2q9xd#... or k7m2q9xd.<key>`: what was pasted is neither shape. Paste the whole link or the whole `<code>.<key>` token. A link from any other host is not a codeaf link.
+- `the link ran out before anyone approved it; run `codeaf pair` again for a new one`: a link is good for 10 minutes.
+- `that link is not waiting any more; run `codeaf pair` on the new device for a fresh one`: the link is unknown, already used or gone. Those are one answer on purpose.
+- `that request was already answered`: another of your devices approved or denied it first.
+- `the request was declined on your other device; run `codeaf pair` to ask again`: the new device sees this when you deny.
+- `the check number does not fit that device, so nothing was approved`: the number on the approve screen does not belong to the device that asked. Do not approve; ask again.
+- `this computer is not paired with any device yet, so it cannot approve one; run `codeaf pair` first`: you ran `codeaf pair approve` on a computer that is not in a fleet yet.
+- `paired, but your devices could not be read yet; open codeaf again in a moment`: the pairing worked; the device list needs a moment.
+
+Too many requests from one network are refused too: at most 10 new links in an hour and 3 waiting at once from one network. See *Pairing your chats with a second computer* for the older six-digit code and its own limit `too many pairings from this network; wait 7 min`.

@@ -1557,11 +1557,7 @@ impl FurrowRepository {
             let destination_path = safe_join(&staging_path, path)?;
             match flat.entry.kind {
                 EntryKind::Directory => {
-                    fs::create_dir_all(&destination_path)?;
-                    fs::set_permissions(
-                        &destination_path,
-                        fs::Permissions::from_mode(flat.entry.mode),
-                    )?;
+                    prepare_directory(&destination_path, &flat.entry)?;
                 }
                 EntryKind::File => {
                     if let Some(parent) = destination_path.parent() {
@@ -1604,15 +1600,13 @@ impl FurrowRepository {
                 EntryKind::SocketMarker => {}
             }
         }
-        // Directory mtimes are applied last so materializing their children
-        // does not overwrite the captured timestamp.
+        // Directory modes and mtimes are applied last, deepest first, so a
+        // read-only directory is filled while writable and its children do
+        // not overwrite the captured timestamp.
         for (path, flat) in target.iter().rev() {
-            if flat.entry.kind != EntryKind::Directory {
-                continue;
+            if flat.entry.kind == EntryKind::Directory {
+                finish_directory(&safe_join(&staging_path, path)?, &flat.entry)?;
             }
-            let destination_path = safe_join(&staging_path, path)?;
-            let mtime = FileTime::from_unix_time(flat.entry.mtime_secs, flat.entry.mtime_nanos);
-            filetime::set_file_mtime(destination_path, mtime)?;
         }
 
         fs::rename(&staging_path, &destination)
@@ -4150,13 +4144,7 @@ impl FurrowRepository {
                     remove_path(&destination)?;
                 }
             }
-            fs::create_dir_all(&destination)?;
-            // The owner can write here until every child is in place; the
-            // recorded mode is applied last, after the children (see below).
-            fs::set_permissions(
-                &destination,
-                fs::Permissions::from_mode(flat.entry.mode | OWNER_WRITABLE_DIR),
-            )?;
+            prepare_directory(&destination, &flat.entry)?;
         }
 
         for (path, flat) in target {
@@ -4256,10 +4244,7 @@ impl FurrowRepository {
             {
                 continue;
             }
-            let destination = safe_join(root, path)?;
-            fs::set_permissions(&destination, fs::Permissions::from_mode(flat.entry.mode))?;
-            let mtime = FileTime::from_unix_time(flat.entry.mtime_secs, flat.entry.mtime_nanos);
-            filetime::set_file_mtime(destination, mtime)?;
+            finish_directory(&safe_join(root, path)?, &flat.entry)?;
         }
         Ok(())
     }
@@ -5225,6 +5210,28 @@ fn split_parent(path: &[u8]) -> (&[u8], &[u8]) {
 /// The owner's read, write and search bits, which a directory needs while a
 /// restore fills it.
 const OWNER_WRITABLE_DIR: u32 = 0o700;
+
+/// Create `destination` so its owner can fill it. The recorded mode is applied
+/// by [`finish_directory`] after the children are in place, which lets a
+/// read-only directory that holds files be written at all.
+fn prepare_directory(destination: &Path, entry: &TreeEntry) -> anyhow::Result<()> {
+    fs::create_dir_all(destination)?;
+    fs::set_permissions(
+        destination,
+        fs::Permissions::from_mode(entry.mode | OWNER_WRITABLE_DIR),
+    )?;
+    Ok(())
+}
+
+/// Give a filled directory its recorded mode and mtime. This runs deepest
+/// first, after every child is written, so a child write cannot move the
+/// captured timestamp and a read-only mode cannot block the children.
+fn finish_directory(destination: &Path, entry: &TreeEntry) -> anyhow::Result<()> {
+    fs::set_permissions(destination, fs::Permissions::from_mode(entry.mode))?;
+    let mtime = FileTime::from_unix_time(entry.mtime_secs, entry.mtime_nanos);
+    filetime::set_file_mtime(destination, mtime)?;
+    Ok(())
+}
 
 fn display_relative(path: &[u8]) -> String {
     String::from_utf8_lossy(path).into_owned()
