@@ -16,9 +16,10 @@ const stashName = "resume.pending"
 func (m *Machine) stashPath() string { return filepath.Join(m.root, stashName) }
 
 // stash keeps a resume for the chat's next step. A resume with nothing to say
-// keeps nothing, and clears what an earlier takeover left.
+// keeps nothing, and clears what an earlier takeover left. Files that moved to
+// another folder are something to say, though nothing to offer.
 func (m *Machine) stash(r Resume) error {
-	if r.Empty() {
+	if r.Empty() && !r.chatMoved() {
 		return m.unstashErr()
 	}
 	raw, err := json.Marshal(r)

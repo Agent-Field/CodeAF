@@ -3,12 +3,13 @@ package taskcopy
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/mirror"
 )
 
 // Cutter makes a task copy the way a task makes one. Restore asks it instead of
@@ -94,7 +95,8 @@ func applyModes(dest string, modes map[string]fs.FileMode) error {
 // fork kept them in a repository the seal did not capture. The branch name is
 // then freed if the project still holds it at that same commit, because the
 // cutter makes its branch new, and a branch at any other commit is left alone
-// and reported by the cutter rather than moved.
+// and reported by the cutter rather than moved. A branch the project held and
+// the cut did not make again in the project is put back after it.
 func (k Carry) cutAgain(project, dest, name, from string, rec record) error {
 	if isRepository(dest) {
 		return nil
@@ -106,8 +108,44 @@ func (k Carry) cutAgain(project, dest, name, from string, rec record) error {
 		return err
 	}
 	branch := branchFor(rec, name)
+	kept := holdsBranch(project, branch, rec.Head)
 	_, _ = git(project, "update-ref", "-d", "refs/heads/"+branch, rec.Head)
-	return k.Cutter.Cut(project, dest, Spec{Branch: branch, At: rec.Head, Linked: rec.Linked})
+	cutErr := k.Cutter.Cut(project, dest, Spec{Branch: branch, At: rec.Head, Linked: rec.Linked})
+	if cutErr == nil {
+		cutErr = holdCommit(dest, rec.Head)
+	}
+	return errors.Join(cutErr, keepBranch(project, branch, rec.Head, kept))
+}
+
+// holdCommit puts the tracked files of a freshly cut copy at the commit it was
+// at. A fork starts as the project's folder as it stands, and git carries a
+// local edit across the checkout of a branch, so the project's own uncommitted
+// edits on this machine would otherwise show up in a task's copy. The carried
+// files are laid over it afterwards, which is what the copy held beyond its
+// commit. Ignored files stay: they are the fork's reason to exist.
+func holdCommit(dest, commit string) error {
+	_, err := git(dest, "reset", "--hard", "--quiet", commit)
+	return err
+}
+
+// holdsBranch says whether the project has the branch at exactly the commit.
+func holdsBranch(project, branch, commit string) bool {
+	out, err := git(project, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil && strings.TrimSpace(out) == commit
+}
+
+// keepBranch gives the project back a branch it held before the copy was cut.
+// A copy that is a fork makes its branch in a repository of its own, so freeing
+// the name for the cutter would otherwise leave the project with the commit and
+// no ref: a kept task's record unreferenced, for the next garbage collection to
+// drop. A branch the cutter made in the project already stands at the commit
+// and is left as it is.
+func keepBranch(project, branch, commit string, held bool) error {
+	if !held || holdsBranch(project, branch, commit) {
+		return nil
+	}
+	_, err := git(project, "update-ref", "refs/heads/"+branch, commit)
+	return err
 }
 
 // branchFor is the branch a restored copy is cut on: the one it was on, or for a
@@ -146,7 +184,7 @@ func overlay(files, dest string, rec record) error {
 		if err != nil {
 			return err
 		}
-		return copyFile(path, filepath.Join(dest, rel), info, rec.modeOf(filepath.ToSlash(rel), info))
+		return mirror.Copy(path, filepath.Join(dest, rel), info, rec.modeOf(filepath.ToSlash(rel), info))
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -164,36 +202,4 @@ func removeAll(dest string, rels []string) error {
 		}
 	}
 	return nil
-}
-
-// copyFile writes to with the bytes and modified time of from, whose stat is
-// info, and exactly the permission bits in mode. The mode is set after the write
-// because a mode given to the create is cut down by the umask of the machine,
-// and a copy that comes back with other bits than it left with is not the same
-// copy. Keeping the time is what lets [copyIfChanged] recognise a file it
-// already carried.
-func copyFile(from, to string, info fs.FileInfo, mode fs.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
-		return err
-	}
-	src, err := os.Open(from)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	dst, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(dst, src); err != nil {
-		_ = dst.Close()
-		return err
-	}
-	if err := dst.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(to, mode); err != nil {
-		return err
-	}
-	return os.Chtimes(to, info.ModTime(), info.ModTime())
 }
