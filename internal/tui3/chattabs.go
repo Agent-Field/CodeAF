@@ -1116,6 +1116,9 @@ func (a *app) tabName(tab chatTab, width int) string {
 // makes the same trade for the same reason).
 func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
+	// The grid is the alternate view of these tabs, so touching a conversation
+	// also reveals its overview button without moving either pointer target.
+	gridHot := lit && (hot.kind == tabWall || hot.kind == tabHere || hot.kind == tabOther || hot.kind == tabClose || hot.kind == tabManager)
 	line := ""
 	for _, piece := range pieces {
 		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabTeam && hot.kind != tabWall && hot.kind != tabManager
@@ -1123,7 +1126,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
 		case piece.kind == tabWall:
-			line += a.tabWallPaint(piece.word, lit && hot.kind == tabWall)
+			line += a.tabWallPaint(piece.word, gridHot)
 		case piece.kind == tabClose:
 			line += a.tabClosePaint(piece, hot, lit, on)
 		case piece.kind == tabHere:

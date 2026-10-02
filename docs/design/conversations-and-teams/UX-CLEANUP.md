@@ -142,3 +142,8 @@ persistence and historical membership dots. Those were repaired with focused reg
 including picker resize bounds. The focused navigation/team/grid suites and lightweight
 gate pass. Review data is isolated in `/private/tmp/codeaf-teams-followup-milestone-2`;
 `review.sh` launches this worktree's canonical binary against that fixture.
+
+Milestone 2 review revision: hovering a conversation tab, including its close cells or
+manager place, gives the fixed All button its normal hover emphasis. Its geometry, action
+and pointer hint still belong to the button itself; team selection and new-chat controls
+do not trigger that emphasis.

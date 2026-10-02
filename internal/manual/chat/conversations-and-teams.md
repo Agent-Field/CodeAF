@@ -38,6 +38,7 @@ Open the grid with:
 The strip belongs to Chats; from a place use `alt+v` or `/wall`. On strips narrower than the
 12-column header floor it is absent. The title reads `Conversations · open in this window`.
 Membership dots on tiles are context; they do not filter the grid or edit teams.
+Hovering a conversation tab also highlights `▦ All`, revealing the alternate grid view.
 The toolbar offers `Filter /`, `Columns − +`, `Help ?` and `Back`.
 
 Cancel with `alt+v`, `esc`, `Back`, or the strip's `▦ All`. Cancelling restores the original
