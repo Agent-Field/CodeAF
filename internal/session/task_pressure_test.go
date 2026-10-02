@@ -62,7 +62,7 @@ func loaded() machineReading {
 
 // littleMemoryHost makes every governor built for the rest of the test see a
 // quiet machine with one gibibyte available, so a test that holds work under
-// a 1 TiB floor (`TaskMinFreeMB = 1 << 40`) is held on every host. The real
+// a 1 EiB floor (`TaskMinFreeMB = 1 << 40` MiB) is held on every host. The real
 // reading is /proc/meminfo, and a host without it — macOS — reports unknown,
 // which admits everything; stating the machine here instead of skipping
 // keeps the held-run tests running wherever the suite is run.
