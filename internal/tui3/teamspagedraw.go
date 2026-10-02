@@ -130,14 +130,10 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 			return d.row(" "+a.teamsSpark()+" Organize", width, teamsTarget{act: teamsActOrganize, y: y,
 				hint: "Suggest teams for your conversations, and close quiet ones" + hintSegment + "o"}, false)
 		case railRowClosed:
-			fold := a.icon(tokens.GCollapsed)
+			word := " " + wallSelGlyph(pal.ascii, a.tp.closedOpen) + " Show closed " + a.teamsDot() + " " + itoa(len(a.teamsClosed()))
+			hint := "Show retained teams in the list and All teams overview"
 			if a.tp.closedOpen {
-				fold = a.icon(tokens.GExpanded)
-			}
-			word := " " + fold + " Closed teams " + a.teamsDot() + " " + itoa(len(a.teamsClosed()))
-			hint := "Show the closed teams"
-			if a.tp.closedOpen {
-				hint = "Fold the closed teams away"
+				hint = "Hide retained teams from the list and All teams overview"
 			}
 			return d.row(word, width, teamsTarget{act: teamsActClosedFold, y: y, hint: hint + hintSegment + "enter"}, false)
 		case railRowClosedTeam:
@@ -162,7 +158,7 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 }
 
 // The rail keeps every keyboard stop while showing a bounded window around
-// the cursor. Expanding a long Closed category must not hide its later teams.
+// the cursor. Showing retained teams must not hide their later keyboard stops.
 func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 	mark := len(d.targets)
 	kinds := a.teamsRailRows()

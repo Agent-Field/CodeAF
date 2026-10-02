@@ -22,7 +22,7 @@ func (a *app) teamsAllSelected() bool {
 func (a *app) teamsOverviewChildren(parent string) []team {
 	var out []team
 	for _, t := range a.wall.teams {
-		if !t.Root && !t.Closed() && t.Parent == parent {
+		if !t.Root && (!t.Closed() || a.tp.closedOpen) && t.Parent == parent {
 			out = append(out, t)
 		}
 	}
@@ -33,7 +33,7 @@ func (a *app) teamsOverviewRoots() []team {
 	root, hasRoot := a.teamsRoot()
 	var out []team
 	for _, t := range a.wall.teams {
-		if !t.Root && !t.Closed() && (t.Parent == "" || hasRoot && t.Parent == root.ID) {
+		if !t.Root && (!t.Closed() || a.tp.closedOpen) && (t.Parent == "" || hasRoot && t.Parent == root.ID) {
 			out = append(out, t)
 		}
 	}
@@ -181,6 +181,9 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 	defer delete(ancestors, t.ID)
 	inner := width - 4
 	selectTarget := teamsTarget{act: teamsActSelect, id: t.ID, arg: "overview", x0: x + 2, y: y + 1, hint: "View " + a.teamsAncestryName(t) + "; m moves this team", pane: true}
+	if t.Closed() {
+		selectTarget.hint = "Read " + a.teamsAncestryName(t) + " history"
+	}
 	var lines []wallCardLine
 	add := func(word string) {
 		target := selectTarget
@@ -197,11 +200,17 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 		count = "1 conversation"
 	}
 	add(a.pal.dim(count))
-	for _, line := range wrap(a.teamsOverviewState(t), inner) {
-		add(line)
+	if t.Closed() {
+		add(a.pal.dim("closed " + a.teamsDot() + " read-only history"))
+	} else {
+		for _, line := range wrap(a.teamsOverviewState(t), inner) {
+			add(line)
+		}
 	}
 	if !compact {
-		add(a.pal.dim(a.teamsSpendWords(t)))
+		if !t.Closed() {
+			add(a.pal.dim(a.teamsSpendWords(t)))
+		}
 		add("")
 	}
 	if m, ok := t.Member(t.Manager); ok {
@@ -219,13 +228,13 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 		if !compact && title != name {
 			word += "  " + a.pal.dim(title)
 		}
-		if !a.tp.previews[m.Key].missing {
+		if !t.Closed() && !a.tp.previews[m.Key].missing {
 			target := teamsTarget{act: teamsActMember, id: t.ID, arg: m.Key, x0: x + 2, y: y + 1 + len(lines), hint: "Open " + name + " of " + t.Name, pane: true}
 			lines = append(lines, wallCardLine{s: d.row(word, inner, target, false)})
 		} else {
 			add(word)
 		}
-		if !compact {
+		if !compact && !t.Closed() {
 			preview := a.tp.previews[m.Key]
 			words := preview.text
 			if words == "" {
@@ -246,7 +255,7 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 				add(a.pal.ink(line))
 			}
 		}
-	} else {
+	} else if !t.Closed() {
 		add(a.pal.dim("Choose a manager in the team overview"))
 	}
 	children := a.teamsOverviewChildren(t.ID)

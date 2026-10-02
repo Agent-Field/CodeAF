@@ -230,3 +230,96 @@ func TestTeamsOrganizeFirstApplyOffersOneWorkingUndoOnTeams(t *testing.T) {
 		t.Fatal(text)
 	}
 }
+
+func TestTeamsShowClosedToggleRevealsHistoryInListAndOverview(t *testing.T) {
+	a, _, orbit := teamsPlaceLabIDs(t)
+	a.width, a.height = 160, 55
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.Disband(orbit, a.now(), ""); err != nil {
+			return err
+		}
+		for i := range f.Teams {
+			if f.Teams[i].ID == orbit {
+				f.Teams[i].Manager = ""
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	teamsFlush(t, a)
+	drive(t, a, runCmd(a.teamsSelect(teamsAllRow))...)
+	text := teamsFrameText(a)
+	if !strings.Contains(text, "Show closed") || strings.Contains(text, "read-only history") {
+		t.Fatal(text)
+	}
+	for _, tg := range a.tp.targets {
+		if tg.id == orbit && tg.act == teamsActSelect {
+			t.Fatal("closed team visible before toggle")
+		}
+	}
+	toggle := teamsTargetOf(t, a, teamsActClosedFold, "")
+	drive(t, a, tea.MouseClickMsg{X: toggle.x0, Y: toggle.y, Button: tea.MouseLeft})
+	text = teamsFrameText(a)
+	if !a.tp.closedOpen || !strings.Contains(text, "closed · read-only history") || !strings.Contains(text, "harbor › orbit") {
+		t.Fatal(text)
+	}
+	closed, _ := a.teamByID(orbit)
+	d := &teamsDraw{a: a}
+	closedCard := strings.Join(a.teamsOverviewCard(d, closed, 60, 0, 0, false, map[string]bool{}), "\n")
+	if strings.Contains(closedCard, "Choose a manager in the team overview") {
+		t.Fatal("closed card offered manager assignment")
+	}
+	var card teamsTarget
+	visibleList := false
+	for _, tg := range a.tp.targets {
+		if tg.id == orbit && tg.act == teamsActMember {
+			t.Fatal("retained manager card exposes an active manager link")
+		}
+		if tg.id != orbit || tg.act != teamsActSelect {
+			continue
+		}
+		if tg.arg == "overview" {
+			if strings.Contains(tg.hint, "moves this team") {
+				t.Fatal("closed card offered a move")
+			}
+			card = tg
+		} else if !tg.hidden {
+			visibleList = true
+		}
+	}
+	if !visibleList || card.id == "" {
+		t.Fatal("closed team missing from list or overview")
+	}
+	drive(t, a, tea.MouseClickMsg{X: card.x0, Y: card.y, Button: tea.MouseLeft}, tea.MouseReleaseMsg{X: card.x0, Y: card.y, Button: tea.MouseLeft})
+	if a.tp.sel != orbit || !strings.Contains(teamsFrameText(a), "Delete") {
+		t.Fatal("retained card did not open its history")
+	}
+	toggle = teamsTargetOf(t, a, teamsActClosedFold, "")
+	drive(t, a, tea.MouseClickMsg{X: toggle.x0, Y: toggle.y, Button: tea.MouseLeft})
+	if a.tp.closedOpen || a.tp.sel != teamsAllRow || strings.Contains(teamsFrameText(a), "read-only history") {
+		t.Fatal("turning off the toggle did not hide closed records")
+	}
+}
+
+func TestTeamsShowClosedImmediatelyRevealsRowsBesideLongActiveList(t *testing.T) {
+	a, _, orbit := teamsPlaceLabIDs(t)
+	a.width, a.height = 120, 24
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.Disband(orbit, a.now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 40; i++ {
+		a.wall.teams = append(a.wall.teams, team{ID: fmt.Sprint("active-", i), Name: fmt.Sprint("Active ", i)})
+	}
+	a.tp.sel = teamsAllRow
+	_ = teamsFrameText(a)
+	toggle := teamsTargetOf(t, a, teamsActClosedFold, "")
+	drive(t, a, tea.MouseClickMsg{X: toggle.x0, Y: toggle.y, Button: tea.MouseLeft})
+	_ = teamsFrameText(a)
+	for _, tg := range a.tp.targets {
+		if tg.id == orbit && tg.act == teamsActSelect && !tg.pane && !tg.hidden {
+			return
+		}
+	}
+	t.Fatal("Show closed added history outside the visible sidebar window")
+}

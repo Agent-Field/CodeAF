@@ -108,6 +108,9 @@ spending when known, and a compact saved manager update. Card backgrounds open t
 overview; manager aliases open Chats with that team's overlay. Organization suggestions,
 Apply and Undo stay on Teams. Global manager controls and directly actionable decisions
 remain above the cards. Closed records show complete ancestry paths, wrapping when needed.
+The sidebar's Show closed checkbox includes those records in the sidebar list and overview
+hierarchy. It reveals retained sidebar rows immediately and hides them again without deleting
+history; retained cards are marked closed and open their read-only history.
 
 Focused regressions cover nested targets, origin routing, long and narrow overviews,
 global controls and decisions, activity refresh, and real Teams Apply/Undo. The isolated

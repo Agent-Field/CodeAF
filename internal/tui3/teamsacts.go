@@ -62,9 +62,13 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		return a.teamsSelect(t.id)
 	case teamsActClosedFold:
 		a.tp.closedOpen = !a.tp.closedOpen
-		if !a.tp.closedOpen {
+		if a.tp.closedOpen {
+			// Reveal the added rows immediately, even beside a long active list.
+			a.tp.railOffset = len(a.teamsOpenTree())
+		} else {
+			a.tp.railOffset = 0
 			if sel, ok := a.teamsSelected(); ok && sel.Closed() {
-				a.tp.sel = ""
+				a.tp.sel = teamsAllRow
 				a.teamsSettle()
 			}
 		}

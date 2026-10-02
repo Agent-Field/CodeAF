@@ -202,7 +202,7 @@ gained or lost a member is told on its next wake, from the Traffic it already re
 
 **Disbanding a team.** `D` asks for confirmation naming the selected team and every subteam.
 Current work finishes. Conversations and other memberships survive; lost reporting memberships
-leave conversations independent. The bottom `Closed teams` category retains read-only history.
+leave conversations independent. The bottom `Show closed` toggle reveals read-only history.
 Disbanded teams cannot be reopened. Permanent team deletion removes team records and history,
 never their conversations. Permanent conversation deletion removes all its memberships instead.
 
@@ -296,7 +296,7 @@ included:
 - **+ Add this conversation** puts the conversation in front into the team that is shown, and
   the row turns into **− Remove this conversation**
 - **Closed · 2** is there while you have closed teams: a press opens the teams page with its
-  Closed fold open. A closed team is never one of the switcher's teams
+  Show closed toggle on. A closed team is never one of the switcher's teams
 - **+ New team…** opens the conversations view with the new-team card, the conversation in
   front already picked
 - **Team settings…** opens the shown team's card, over whatever page you are on

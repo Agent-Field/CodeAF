@@ -19,7 +19,7 @@ every open conversation at once; All teams on this page is where you organize yo
 A team link in a chat opens this page. That is a team's name written as a team (`team harbor`,
 `the harbor team`, `"harbor"`), a team name on a team card or in a team tool's row, and a
 `●harbor` you sent with `@`. A press selects that team: the rail's cursor on it, the pane
-showing it. A closed team is selected inside `Closed`, and that fold is opened. The hint says
+showing it. A closed team turns on `Show closed` and selects its retained history. The hint says
 `Open harbor on the teams page · click`. Over `--host`, when the engine has no teams doors,
 the press opens the conversations view on that team instead, and the hint says so.
 
@@ -34,7 +34,7 @@ The left column is the **rail**:
  ● docs                  │
  + New team              │
                          │
- Closed teams · 2 ▸      │
+ ☐ Show closed · 2       │
 ```
 
 - **`All teams`** is the top row. With no manager over every team it offers `+ Manager`,
@@ -50,8 +50,11 @@ The left column is the **rail**:
   **`+ Add subteam`**, beside and after **`+ Add member`** in a selected team's header,
   creates inside that team. The depth limit still applies.
 - **`✦ Organize`** in the All teams header suggests groupings and disbanding quiet teams. Its dialog stays on Teams; nothing changes until Apply.
-- **`Closed teams · N ▸`** is at the bottom of the rail. Expand it to inspect disbanded history.
-  The category remains visible while a long team list scrolls. Each record shows its full ancestry, such as `harbor › orbit`; long paths wrap. Its history also shows the full path.
+- **`Show closed · N`** is a toggle at the bottom of the rail. Turn it on to include retained
+  teams in the list and All teams cards, marked `closed · read-only history`. The toggle stays
+  visible while long lists scroll, and turning it on reveals the retained sidebar rows.
+  Each record shows its full ancestry, such as `harbor › orbit`; long paths wrap. Turning it
+  off hides those teams again; it never deletes their history.
 
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
 and the pane beside it. Choosing a team changes the overview without changing the chat in
@@ -63,7 +66,8 @@ Choose **All teams** in the Teams sidebar to see one card per top-level team, in
 Each card shows the team's name, conversation count, activity and unread counts separately,
 spending when available, the manager's alias and conversation title, and up to two lines
 of its latest saved assistant update. Smaller subteam cards sit inside their parent's card;
-deeper descendants remain nested. Narrow panes use one column. The existing preview limits
+deeper descendants remain nested. `Show closed` includes retained teams in this hierarchy;
+their cards lead to read-only history. Narrow panes use one column. The existing preview limits
 and remote restrictions described below also apply here.
 
 Click a team's name or card background to inspect its Teams overview without opening a chat.
@@ -304,11 +308,12 @@ in other active teams survive. A conversation losing its reporting manager becom
 The team overlay returns to All; the current conversation stays selected.
 
 Long confirmations scroll with `pgup`, `pgdown` or the wheel. Cancel changes nothing.
-Disbanding cannot be undone or reopened. `Closed teams` keeps the disbanded history.
+Disbanding cannot be undone or reopened. `Show closed` reveals the disbanded history.
 
 ## Closed teams: read-only history and permanent deletion
 
-Open the bottom `Closed teams · N ▸` category and choose a team. The pane retains its
+Turn on the bottom `Show closed · N` toggle and choose a retained team in the list or
+All teams cards. The pane retains its
 roster, interactions, decisions, report and spending history. Surviving conversation links
 open bare Chats. Deleted conversations are unavailable, while copied exchanges and decisions
 remain readable. New messages and decisions cannot change disbanded history.
@@ -360,11 +365,11 @@ There is no reporting-assignment action on the member cards.
 The former Close/Reopen actions have been replaced by Disband. Disbanding a sub-team lets
 its manager's current work finish, preserves its conversation and keeps its parent-team
 membership. It recursively disbands only the selected sub-team and its descendants.
-The confirmation lists them. History stays read-only under Closed teams; there is no Reopen.
+The confirmation lists them. History stays read-only with Show closed; there is no Reopen.
 
 ## New team placement and removing a member
 
-The Teams sidebar keeps `+ New team` directly after the active teams list. `Closed teams`
+The Teams sidebar keeps `+ New team` directly after the displayed teams list. `Show closed`
 remains at the bottom of the sidebar. `+ Add member` and `+ Add subteam` stay together
 on the left of the selected team's header, followed by `Choose manager`; `Settings` and `Disband` sit on the right.
 

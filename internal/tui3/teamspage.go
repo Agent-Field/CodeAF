@@ -55,7 +55,7 @@ type teamsPage struct {
 	// sel is the team the pane is about: a team id, [teamsAllRow], or "" for
 	// none (no teams at all).
 	sel string
-	// closedOpen says the `Closed · N` fold is open.
+	// closedOpen includes retained teams in the sidebar and All teams overview.
 	closedOpen bool
 	// focus lights the keyboard target while the overview owns the keyboard.
 	focus bool
@@ -238,9 +238,7 @@ func (a *app) teamsClosed() []team {
 func (a *app) teamsRailRows() []teamsRailRow {
 	rows := []teamsRailRow{{kind: railRowAll}}
 	rows = append(rows, a.teamsOpenTree()...)
-	rows = append(rows, teamsRailRow{kind: railRowNew})
 	if closed := a.teamsClosed(); len(closed) > 0 {
-		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
 		if a.tp.closedOpen {
 			width := teamsRailCols(a.width) - 1
 			if width < 1 {
@@ -252,6 +250,10 @@ func (a *app) teamsRailRows() []teamsRailRow {
 				}
 			}
 		}
+	}
+	rows = append(rows, teamsRailRow{kind: railRowNew})
+	if len(a.teamsClosed()) > 0 {
+		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
 	}
 	return rows
 }
