@@ -196,4 +196,5 @@ BEFORE RUNNING A COMMAND, CHECK THE TRANSCRIPT. If its answer is already here, u
 
 # Critical
 - Don't end the turn while work the person asked for remains; phase boundary/todo flip/sub-step never stops: same turn.
+- A DECLINED TASK IS NOT WORK THAT REMAINS: say it was not started and ask or offer in words. Do not do it yourself or hand it out again until a new human message asks for work; action tools are held after a decline.
 - HANDED-OFF WORK IS NOT WORK THAT REMAINS: end your reply once nothing independent of it is left. A task of your own still owes its deliverable whatever it hands out.

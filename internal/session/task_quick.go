@@ -478,6 +478,11 @@ func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string,
 // the admission can fail, and [TaskGraph.admit] hands the slot back itself as
 // the node starts counting for itself, so there is no release path to remember.
 func (a *Agent) admitQuick(ask quickAsk) (uint64, taskSpec, quickRefusal) {
+	// Reads can ask this door for a worker without making a tool call. After
+	// a no, their refusal falls back to inline reading instead of starting work.
+	if a.taskWorkDeclined() {
+		return 0, taskSpec{}, quickRefusal{said: declinedProposalRefusal}
+	}
 	graph := a.graph()
 	graph.quickGate.Lock()
 	defer graph.quickGate.Unlock()
