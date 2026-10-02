@@ -160,6 +160,18 @@ Other commands remain ordinary prose away from the start. `later I will run /com
 this` is sent literally, and codeaf still chips `/compact` there — the mark says the word
 is recognised, not that enter will run it.
 
+## Asking what a quoted /task or /standing command does
+
+`What does '/task' do?` sends that whole sentence as an ordinary message. A command
+named in straight single or double quotes, or curly quotes, never acts as a send-door
+tag. `What does “/task” do?` starts no task; quoting `/standing` raises no standing
+order. The quoted command still wears the composer's chip in explanations and help,
+and a quoted path stays plain. In the sent message, a quoted send-door name is plain
+because no door acted on it.
+
+Without quotes, `What does /task do?` still contains a live task tag: Enter starts a
+task with the remaining words. Quote the command when you want to ask about it.
+
 ## Backspace after a slash tag makes it plain words
 
 With the caret immediately after a live `/standing`, `/orders`, or `/task` tag, the first
