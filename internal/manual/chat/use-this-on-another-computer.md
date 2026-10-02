@@ -31,7 +31,7 @@ The code is good for 10 minutes. It works once.
 `/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair --code` shows a code in a terminal; `codeaf pair` with nothing after it asks to join by link instead. `codeaf pair <code>` uses one.
 
 ```
-usage: codeaf pair [<code>] [--via url] [--replace]
+usage: codeaf pair [<code>] [--via url] [--replace] [--name <name>]
 ```
 
 Press ctrl+c in the terminal to take a shown code back. In the chat, Esc stops it.

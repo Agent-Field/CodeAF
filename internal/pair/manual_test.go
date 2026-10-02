@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/relay"
 )
@@ -159,5 +160,29 @@ func TestTheManualDoesNotPromiseAKeychainThisBuildDoesNotHave(t *testing.T) {
 	// And the seam itself must keep saying what it really is.
 	if strings.Contains(strings.ToLower(OpenKeeper().Where()), "keychain") {
 		t.Error("the keeper describes itself as a keychain, and this build has none")
+	}
+}
+
+// THE SENTENCES OF NAMING A COMPUTER ARE ON THE PAGE THAT TELLS HOW. A person
+// who is asked what to call this computer, or told what it is called now, asks
+// the chat what that means, and the chat answers from the page.
+func TestEverySentenceOfNamingAComputerIsOnItsPage(t *testing.T) {
+	const name = "naming-a-device"
+	page, ok := manual.Chat().Page(name)
+	if !ok {
+		t.Fatalf("the page %s is not in the corpus", name)
+	}
+	for _, sentence := range []string{
+		NamePrompt("spark"),
+		RenamedLine("atlas"),
+		RenamedHereLine("atlas"),
+		RenamedAloneLine("atlas"),
+		devname.ErrEmpty.Error(),
+		devname.ErrTooLong.Error(),
+		devname.ErrControl.Error(),
+	} {
+		if !strings.Contains(page, sentence) {
+			t.Errorf("the page %s does not say %q - add it to internal/manual/chat/%s.md", name, sentence, name)
+		}
 	}
 }
