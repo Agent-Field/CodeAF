@@ -28,3 +28,16 @@ func (metaIndex) Build(c cell.Cell, d session.Digest) error {
 	held, _ := session.LoadMeta(c.Root) // the sealed truth the summary is written beside
 	return session.SaveMeta(c.Root, d.Derive(held))
 }
+
+// spendEpsilon is the dollars below which two spends are the same: the ledger
+// keeps whole micro dollars.
+const spendEpsilon = 1e-6
+
+// Behind reports whether the transcript holds spend the row does not: the row
+// is from an older copy. A row that says MORE than the transcript is the live
+// session's own total, which also counts calls no transcript line holds.
+func (metaIndex) Behind(c cell.Cell, d session.Digest) bool {
+	m, _ := session.LoadMeta(c.Root)
+	usd, tokens := d.Spend()
+	return usd > m.SpentUSD+spendEpsilon || tokens > m.Tokens
+}
