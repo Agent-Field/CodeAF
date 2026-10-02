@@ -17,12 +17,21 @@ import (
 // are the engine's, never theirs. The check reads string literals only, so a
 // type, a package or a comment may keep the engine's name; what a person can
 // read may not.
-var bannedWords = regexp.MustCompile(`(?i)\b(relays?|nodes?|leases?|leased|manifests?|takeovers?|take over|took over|taken over)\b`)
+var bannedWords = regexp.MustCompile(`(?i)\b(relays?|nodes?|leases?|leased|manifests?|takeovers?|take over|took over|taken over|take back|(warm|cold) take|(the|a|your) take)\b`)
 
 // spelledForTheMachine are the pieces of a string that name a flag or a value
 // a person types. They are removed before the check, so the flag stays and the
 // sentence around it is still judged.
-var spelledForTheMachine = strings.NewReplacer("CODEAF_TASK_BELT=node", "")
+var spelledForTheMachine = strings.NewReplacer("CODEAF_TASK_BELT=node", "", "--node", "")
+
+// typedLiterals are whole literals that are a word a person types, a wire name
+// or a pattern over an engine message, never a sentence they read.
+var typedLiterals = map[string]bool{
+	"relay":       true, // the `codeaf relay` command word
+	"nodes":       true, // a key of the --json envelope
+	"node ":       true, // the prefix the engine puts on its own error
+	`^node \d+: `: true, // the pattern that strips that prefix
+}
 
 // uiStringFiles are the tables of text a person reads (module-relative).
 var uiStringFiles = []string{
@@ -38,6 +47,7 @@ var uiStringFiles = []string{
 	"internal/tui3/commands.go",
 	"internal/config/settings.go",
 	"internal/pair/lines.go",
+	"internal/remote/driver.go",
 	"internal/pair/errors.go",
 	"internal/pair/offer.go",
 	"internal/pair/join.go",
@@ -46,11 +56,28 @@ var uiStringFiles = []string{
 
 func TestVocabularyLawUIStrings(t *testing.T) {
 	root := moduleRoot(t)
-	for _, file := range uiStringFiles {
+	for _, file := range append(uiStringFiles, commandFiles(t, root)...) {
 		for _, found := range bannedInStrings(t, filepath.Join(root, file)) {
 			t.Errorf("%s: %s", file, found)
 		}
 	}
+}
+
+// commandFiles are every non-test source file of the command, whose usage and
+// help text a person reads (module-relative).
+func commandFiles(t *testing.T, root string) []string {
+	t.Helper()
+	all, err := filepath.Glob(filepath.Join(root, "cmd/codeaf/*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files []string
+	for _, path := range all {
+		if !strings.HasSuffix(path, "_test.go") {
+			files = append(files, "cmd/codeaf/"+filepath.Base(path))
+		}
+	}
+	return files
 }
 
 // manualPages are manual pages whose fenced blocks quote what the program
@@ -102,7 +129,7 @@ func bannedInStrings(t *testing.T, path string) []string {
 		if err != nil {
 			continue
 		}
-		if word := bannedWords.FindString(spelledForTheMachine.Replace(text)); word != "" {
+		if word := bannedWords.FindString(spelledForTheMachine.Replace(text)); word != "" && !typedLiterals[text] {
 			found = append(found, fset.Position(lit.Pos()).String()+": "+strconv.Quote(word)+" in "+strconv.Quote(text))
 		}
 	}
@@ -146,20 +173,31 @@ func isOldSpelling(call *ast.CallExpr) bool {
 // word the person types, the help is a sentence they read.
 func isFlagDeclaration(call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || len(call.Args) < 3 {
+	if !ok {
 		return false
 	}
-	switch sel.Sel.Name {
-	case "String", "Bool", "Int", "Duration", "Float64":
-		first, ok := call.Args[0].(*ast.BasicLit)
-		return ok && first.Kind == token.STRING
-	}
-	return false
+	shape, ok := flagDeclarations[sel.Sel.Name]
+	return ok && len(call.Args) > shape.help && isStringLit(call.Args[shape.name])
+}
+
+// flagShape says where a declaring method keeps the flag's name and where its
+// help text starts.
+type flagShape struct{ name, help int }
+
+var flagDeclarations = map[string]flagShape{
+	"String": {0, 2}, "Bool": {0, 2}, "Int": {0, 2}, "Duration": {0, 2}, "Float64": {0, 2},
+	"StringVar": {1, 3}, "BoolVar": {1, 3}, "IntVar": {1, 3}, "DurationVar": {1, 3}, "Float64Var": {1, 3},
+}
+
+func isStringLit(expr ast.Expr) bool {
+	lit, ok := expr.(*ast.BasicLit)
+	return ok && lit.Kind == token.STRING
 }
 
 func flagHelp(call *ast.CallExpr) []*ast.BasicLit {
 	var out []*ast.BasicLit
-	for _, arg := range call.Args[2:] {
+	sel := call.Fun.(*ast.SelectorExpr)
+	for _, arg := range call.Args[flagDeclarations[sel.Sel.Name].help:] {
 		ast.Inspect(arg, func(n ast.Node) bool {
 			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
 				out = append(out, lit)

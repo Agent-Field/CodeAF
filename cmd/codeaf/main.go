@@ -581,7 +581,7 @@ Housekeeping — changes state on disk or on the network
   codeaf devices
       list the devices with your chats and the ones that can use this machine
   codeaf devices revoke <name> [--all]
-      stop one device; it cannot take back what a computer already holds
+      stop one device; it cannot undo what a computer already holds
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
