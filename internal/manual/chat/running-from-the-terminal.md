@@ -326,7 +326,7 @@ If this computer's clock is more than five minutes off, sync shows `this compute
 once and tries again on the next round; fix the clock and it carries on. With sync off none of
 this exists and the chat behaves as it always did.
 
-## What syncing a conversation cost — codeaf cell report, and sending the numbers only if you choose
+## What syncing a conversation cost — how much data it uploaded, codeaf cell report, and sending the numbers only if you choose
 
 Each time a conversation is synced to another machine, codeaf adds one line of counts to a file on this
 machine, `v3/sync/stats/<cell>.jsonl` in the codeaf home: how many turns, frames and objects that flush

@@ -3,7 +3,7 @@
 
   scripts/hosted-validate.py <pass number> [--repo r02-mj-base] [--out DIR]
 
-One pass: pair two machines (spark and `ssh dumb`) through the relay in CODEAF_SYNC_URL, work in a
+One pass: pair two machines (this one, A, and the second one, B, reached with ssh) through the relay in CODEAF_RELAY, work in a
 real chat with a live model, time the instant save of each tool call, move the chat to the other
 machine (a cold take through the home screen, a warm take and a take back through the same take the
 home screen runs), capture the resume card, and time how fast a new chat reaches the other machine's
@@ -11,11 +11,13 @@ home screen. Then the integrity checks on the trees the pass produced. Everythin
 <out>/pass<N>/ as raw files plus results.json.
 
 It makes REAL MODEL CALLS (deepseek/deepseek-v4.1-flash for every role, keys from each machine's own
-login environment, never read or printed here) and talks to the staging relay. It takes the lock
-~/caf-bench.lock on the Mac while it runs, because its numbers are timings.
+login environment, never read or printed here) and talks to the relay under test. It takes the lock
+~/caf-bench.lock on the second machine while it runs, because its numbers are timings.
 
-Roots: spark ~/caf-vdemo-rig, dumb ~/caf-vdemo-rig (home/, bin/, work/). Binaries and the helper
-programs (s1probe, codeaf-vd) are put there by hand beforehand; see docs/BENCH-MOVE.md.
+Settings come from the environment (measure/rigenv.py, docs/testing-anywhere.md): CODEAF_RELAY,
+CODEAF_SECOND_HOST, CODEAF_SECOND_ROOT, CODEAF_FIRST_ROOT, CODEAF_CORPUS and CODEAF_EVIDENCE. Each root
+holds home/, bin/ and work/. Binaries and the helper programs (s1probe, codeaf-vd) are put in the
+bin/ of each root by hand beforehand; see docs/BENCH-MOVE.md.
 """
 import argparse
 import json
@@ -30,13 +32,14 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 HELP = os.path.join(HERE, "measure", "hosted")
 sys.path.insert(0, HELP)
+sys.path.insert(0, os.path.join(HERE, "measure"))
 import cellread  # noqa: E402
 import durable  # noqa: E402
+import rigenv  # noqa: E402
 
-CORPUS = "/home/santosh/codeaf-prototype/stage-k/corpus"
-A_R = "/home/santosh/caf-vdemo-rig"
-B_HOST = "dumb"
-B_R = "/Users/santoshkumarradha/caf-vdemo-rig"
+# The machines and folders are read by configure() once the arguments are parsed, so that `--help`
+# and an import by another rig work on a box where none of them is set.
+CORPUS = A_R = B_HOST = B_R = A = B = None
 CTL = "/tmp/vd-ssh"
 B_PRE = "export PATH=/opt/homebrew/bin:$PATH; "
 MODEL = "deepseek/deepseek-v4.1-flash"
@@ -47,7 +50,7 @@ MODEL = "deepseek/deepseek-v4.1-flash"
 def sh(cmd, check=True, input=None, timeout=None):
     r = subprocess.run(["bash", "-lc", cmd], capture_output=True, text=True, input=input, timeout=timeout)
     if check and r.returncode:
-        raise RuntimeError(f"spark: {cmd[:160]} -> {r.returncode}: {r.stderr[-400:]}")
+        raise RuntimeError(f"A: {cmd[:160]} -> {r.returncode}: {r.stderr[-400:]}")
     return r
 
 
@@ -55,7 +58,7 @@ def bsh(cmd, check=True, timeout=None):
     r = subprocess.run(["ssh", "-o", f"ControlPath={CTL}", "-o", "BatchMode=yes", B_HOST, "bash -l -s"],
                        capture_output=True, text=True, input=B_PRE + cmd + "\n", timeout=timeout)
     if check and r.returncode:
-        raise RuntimeError(f"dumb: {cmd[:160]} -> {r.returncode}: {r.stderr[-400:]}")
+        raise RuntimeError(f"B: {cmd[:160]} -> {r.returncode}: {r.stderr[-400:]}")
     return r
 
 
@@ -85,8 +88,12 @@ class Box:
         return self.run(f"tmux -L {self.sess} " + " ".join(shlex.quote(a) for a in args), check=False).stdout
 
 
-A = Box("spark", A_R, sh, "vda")
-B = Box("dumb", B_R, bsh, "vdb")
+def configure():
+    """Read every machine and folder setting, stopping with the name of the first one that is missing."""
+    global CORPUS, A_R, B_HOST, B_R, A, B
+    CORPUS, A_R = rigenv.get("CODEAF_CORPUS"), rigenv.get("CODEAF_FIRST_ROOT")
+    B_HOST, B_R = rigenv.get("CODEAF_SECOND_HOST"), rigenv.get("CODEAF_SECOND_ROOT")
+    A, B = Box("A", A_R, sh, "vda"), Box("B", B_R, bsh, "vdb")
 
 
 def log(*a):
@@ -130,11 +137,11 @@ class Pass:
     def clean(self):
         for box in (A, B):
             self.stop_rig_processes(box)
-        sh(f"bash {HELP}/setup.sh a")
+        sh(f"bash {HELP}/setup.sh {A_R} {rigenv.get('CODEAF_RELAY')}")
         sh(f"cp {HELP}/tuidrive.py {HELP}/cellread.py {HELP}/treehash.py {A_R}/bin/")
         helpers = [f"{HELP}/{f}" for f in ("setup.sh", "tuidrive.py", "cellread.py", "treehash.py")]
         subprocess.run(["scp", "-q", "-o", f"ControlPath={CTL}", *helpers, f"{B_HOST}:/tmp/"], check=True)
-        bsh(f"bash /tmp/setup.sh b; mkdir -p {B_R}/bin; cp /tmp/tuidrive.py /tmp/cellread.py /tmp/treehash.py {B_R}/bin/")
+        bsh(f"bash /tmp/setup.sh {B_R} {rigenv.get('CODEAF_RELAY')}; mkdir -p {B_R}/bin; cp /tmp/tuidrive.py /tmp/cellread.py /tmp/treehash.py {B_R}/bin/")
 
     # ---- pairing: the staging relay keeps a mailbox 4 s, so the handshake is scripted ----
 
@@ -233,7 +240,7 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
 
     def card_test(self, n):
         """How often the resume card shows on a cold take through the home screen. n small chats are made on
-        spark, each with a rebuildable install and a server left running, and dumb takes them one by one."""
+        A, each with a rebuildable install and a server left running, and B takes them one by one."""
         self.timed("clean", self.clean)
         self.timed("pair", self.pair)
         bsh(f"mkdir -p {B_R}/work/b && cd {B_R}/work/b && git init -q && echo b > README.md && git add . && git -c user.name=v -c user.email=v@x commit -qm init")
@@ -244,7 +251,7 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
             d = f"{A_R}/work/c{i}"
             sh(f"cp -a {CORPUS}/{self.repo} {d} && rm -rf {d}/.furrow {d}/.codeaf && cd {d} && printf '{{\"name\":\"vdemo\",\"version\":\"1.0.0\",\"dependencies\":{{\"left-pad\":\"1.3.0\"}}}}\n' > package.json && npm install --no-audit --no-fund >/dev/null 2>&1")
             sess = f"vdc{i}"
-            box = Box("spark", A_R, sh, sess)
+            box = Box("A", A_R, sh, sess)
             sh(f"tmux -L {sess} new-session -d -s {sess} -x 200 -y 50 \"bash -lc '. {A_R}/env.sh; cd {d}; exec codeaf chat'\"")
             time.sleep(6)
             self.send(box, f"Make exactly 2 bash tool calls, one per call, no other commentary: (1) echo edited-card-{i} >> README.md ; (2) nohup python3 -m http.server {8800 + i} --bind 127.0.0.1 > /tmp/vdemo-card-{i}.log 2>&1 & . Then reply with the single word done.", 120)
@@ -303,7 +310,7 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
         rows = json.loads(sh(f"python3 {HELP}/cellread.py {cdir}").stdout)
         self.save("a-cellread.json", rows)
         res["a_latency"] = self.latency(rows, f"{self.dir}/a-directory-watch.jsonl", cell)
-        self.log_latency("spark", res["a_latency"])
+        self.log_latency("A", res["a_latency"])
         self.save("a-pane-before-move.txt", A.tmux("capture-pane", "-p", "-t", A.sess))
 
     @staticmethod
@@ -348,7 +355,7 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
         self.save("b-resume-card.txt", take.get("resume_card", "") or "(no card appeared)")
         self.save("b-screen-after-card.txt", take.get("screen_after", ""))
         assert "error" not in take, take.get("error")
-        # the old window on spark goes the way a closed lid does: its process ends, nothing is typed in it
+        # the old window on A goes the way a closed lid does: its process ends, nothing is typed in it
         self.stop_rig_processes(A)
         bcdir = B.run(f"ls -d {B_R}/home/v3/projects/*/{cell}/.cell").stdout.strip()
         res["b_cell_dir"] = bcdir
@@ -364,9 +371,9 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
         rows = json.loads(B.run(f"python3 {B_R}/bin/cellread.py {bcdir}").stdout)
         self.save("b-cellread.json", rows)
         res["b_latency"] = self.latency(rows, f"{self.dir}/b-directory-watch.jsonl", cell, since_ms=res["b_watch_started_ms"])
-        self.log_latency("dumb", res["b_latency"])
+        self.log_latency("B", res["b_latency"])
         self.stop_rig_processes(B)
-        # take back to spark, then change one file there, then warm take on dumb
+        # take back to A, then change one file there, then warm take on B
         tb = json.loads(sh(f". {A_R}/env.sh; codeaf-vd vdemo-take {cell}").stdout.strip().splitlines()[-1])
         self.save("a-take-back.json", tb)
         res["take_back_ms"] = tb.get("take_ms")
@@ -385,11 +392,11 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
         log("warm take", tw.get("take_ms"), tw.get("error"))
         res["b_tree"] = os.path.join(os.path.dirname(bcdir), "work")
 
-    # ---- push latency: a new chat on spark reaches dumb's home screen ----
+    # ---- push latency: a new chat on A reaches B's home screen ----
 
     def push(self, res):
         n = 5
-        offset = json.loads(sh(f"BHOST={B_HOST} python3 {HELP}/clockoff.py /tmp/vd-cm").stdout)
+        offset = json.loads(sh(f"CODEAF_SECOND_HOST={B_HOST} python3 {HELP}/clockoff.py /tmp/vd-cm").stdout)
         res["clock_offset"] = offset
         self.start_chat(B, f"{B_R}/work/b")
         B.drive("home")
@@ -402,7 +409,7 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
             sess = f"vdp{i}"
             sh(f"tmux -L {sess} new-session -d -s {sess} -x 200 -y 50 \"bash -lc '. {A_R}/env.sh; cd {d}; exec codeaf chat'\"")
             time.sleep(5)
-            box = Box("spark", A_R, sh, sess)
+            box = Box("A", A_R, sh, sess)
             self.send(box, f"Make exactly 1 bash tool call: echo push-probe-{i} >> probe.txt . Then reply with the single word done.", 120)
             cdir = box.cell_dir(f"-work-p{i}")
             cid = os.path.basename(os.path.dirname(cdir))
@@ -410,7 +417,7 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
             rows = cellread.rows(cdir)
             probe = json.loads(sh(f". {A_R}/env.sh; s1probe cells").stdout)
             row = next(c for c in probe["cells"] if c["id"] == cid)
-            samples.append({"i": i, "sealed_ms": rows[-1]["sealed_ms"], "cell": cid, "durable_at_spark_ms": row["durable_at"] + probe["local_ms"] - probe["now"]})
+            samples.append({"i": i, "sealed_ms": rows[-1]["sealed_ms"], "cell": cid, "durable_at_a_ms": row["durable_at"] + probe["local_ms"] - probe["now"]})
             time.sleep(6)
             sh(f"tmux -L {sess} kill-server", check=False)
         time.sleep(4)
@@ -424,7 +431,7 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
             later = [x for x in sightings if x["ms"] - off >= s["sealed_ms"] - 50]
             if later:
                 out.append({"i": s["i"], "seal_to_home_ms": later[0]["ms"] - off - s["sealed_ms"],
-                            "durable_to_home_ms": later[0]["ms"] - off - s["durable_at_spark_ms"]})
+                            "durable_to_home_ms": later[0]["ms"] - off - s["durable_at_a_ms"]})
                 sightings = sightings[sightings.index(later[0]) + 1:]
         res["push_samples"] = out
         res["push_seal_to_home_ms"] = [o["seal_to_home_ms"] for o in out]
@@ -456,14 +463,14 @@ printf '#!/bin/sh\\necho run\\n' > run.sh; chmod 755 run.sh""")
             ma = sh(f"stat -c %a {a}/{f}").stdout.strip()
             mb = bsh(f"stat -f %Lp {b}/{f}").stdout.strip()
             same = sh(f"cmp {a}/{f} {local_b}/{f}", check=False).returncode == 0
-            secrets[f] = {"spark": ma, "dumb": mb, "bytes_equal": same}
+            secrets[f] = {"a": ma, "b": mb, "bytes_equal": same}
         ig["secrets"] = secrets
         ga = sh(f"cd {a}; git status --porcelain; echo ---; git log --oneline -3; echo ---; git diff | sha256sum").stdout
         gb = bsh(f"cd {b}; git status --porcelain; echo ---; git log --oneline -3; echo ---; git diff | sha256sum").stdout
         self.save("git-a.txt", ga)
         self.save("git-b.txt", gb)
         only_a = set(ga.split("---")[0].split("\n")) - set(gb.split("---")[0].split("\n"))
-        ig["git_status_only_on_spark_before_rebuild"] = sorted(only_a - {""})
+        ig["git_status_only_on_a_before_rebuild"] = sorted(only_a - {""})
         ig["git_log_and_diff_equal"] = ga.split("---", 1)[1] == gb.split("---", 1)[1]
         ig["codeaf_in_git_status_b"] = ".codeaf" in gb.split("---")[0]
         ig["node_modules_on_b_before_rebuild"] = bsh(f"test -e {b}/node_modules && echo yes || echo no").stdout.strip()
@@ -491,12 +498,14 @@ def main():
     ap.add_argument("--repo", default="r02-mj-base")
     ap.add_argument("--resume", action="store_true", help="redo push and integrity on the state the pass left")
     ap.add_argument("--card-test", type=int, default=0, help="n cold takes of small chats, counting resume cards")
-    ap.add_argument("--out", default="/home/santosh/codeaf-prototype/evidence/hosted-validate")
+    ap.add_argument("--out", default=None, help="result folder (default: $CODEAF_EVIDENCE/hosted-validate)")
     args = ap.parse_args()
+    configure()
+    args.out = args.out or os.path.join(rigenv.get("CODEAF_EVIDENCE"), "hosted-validate")
     sh(f"ssh -MNf -o ControlPath={CTL} -o ControlPersist=3h -o BatchMode=yes {B_HOST}", check=False)
     # the Mac is shared: timings only while its lock is ours
     while bsh("mkdir ~/caf-bench.lock 2>/dev/null && echo got", check=False).stdout.strip() != "got":
-        log("dumb is locked by another run; waiting 30 s")
+        log("B is locked by another run; waiting 30 s")
         time.sleep(30)
     p = Pass(args.n, args.repo, args.out)
     try:
