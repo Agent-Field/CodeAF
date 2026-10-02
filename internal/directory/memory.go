@@ -49,6 +49,9 @@ func (m *Memory) Feed() *Feed { return m.feed }
 // SetMaxWatchers changes the per-identity watcher cap.
 func (m *Memory) SetMaxWatchers(n int) { m.feed.SetMaxWatchers(n) }
 
+// SetAfter changes the timers presence runs on.
+func (m *Memory) SetAfter(after After) { m.feed.SetAfter(after) }
+
 // Close ends every watch.
 func (m *Memory) Close() error {
 	m.feed.Close()
