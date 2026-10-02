@@ -252,7 +252,7 @@ class Fid:
         self.save("leg3-take.json", t3)
         self.res["leg3_take_s"], self.res["leg3_error"] = t3.get("take_ms"), t3.get("error")
         self.manifest(A, WS_A, "a3")
-        self.compare("b3", "a3", "leg3-dumb-to-spark", "--platform-b", "linux", "--expect-gone", "docs/b.md,docs/feature.md", "--reported", ",".join(apart))
+        self.compare("b3", "a3", "leg3-dumb-to-spark", "--platform-b", "linux", "--expect-gone", "docs/b.md,docs/feature.md", "--reported", ",".join(apart), "--keeps", f"{self.dir}/a2.json")
         self.save("results.json", self.res)
 
     PROBES = {
@@ -299,7 +299,8 @@ class Fid:
                 sh(f"chmod -R u+rwx {ws}", check=False)
                 continue
             take = self.take(B, cell)
-            out[name] = {"sealed": True, "durable_s": head, "take_error": take.get("error"), "take_ms": take.get("take_ms")}
+            out[name] = {"sealed": True, "durable_s": head, "take_error": take.get("error"), "take_ms": take.get("take_ms"),
+                         "screen_names_the_file": "cannot be read here" in turn.get("pane", "")}
             if not take.get("error"):
                 out[name].update(self.arrived(cell, name))
             sh(f"chmod -R u+rwx {ws}", check=False)
