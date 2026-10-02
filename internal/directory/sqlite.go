@@ -124,6 +124,9 @@ func statusIn(tx *sql.Tx) (Status, error) {
 	return statusOf(n, rec, devices), err
 }
 
+// SetAfter changes the timers presence runs on.
+func (s *SQLite) SetAfter(after After) { s.feed.SetAfter(after) }
+
 // SetGraceBounds changes what a retire may ask for.
 func (s *SQLite) SetGraceBounds(b GraceBounds) {
 	s.mu.Lock()

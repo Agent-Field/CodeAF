@@ -161,3 +161,13 @@ func TestLeaseSurvivesRestartByBeats(t *testing.T) {
 		t.Fatalf("a lease with no beat and no socket did not lapse: %v", err)
 	}
 }
+
+// The presence cases of the contract (section 21.12) against the in-process
+// relay, whose timers run on the same fake clock as its time.
+func TestPresenceConformance(t *testing.T) {
+	directorytest.RunPresence(t, func(t *testing.T) directorytest.WatchRig {
+		r := &rig{t: t, store: t.TempDir(), clock: directorytest.NewFakeClock(), watch: watchCap}
+		r.start()
+		return r.watchRig(t)
+	})
+}
