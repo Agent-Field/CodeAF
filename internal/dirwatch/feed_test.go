@@ -405,3 +405,36 @@ func TestOneSocketServesEveryFollowerAndTheLastToLeaveClosesIt(t *testing.T) {
 		t.Fatalf("a follower after everyone left dialled %d times in all, want 2", dials)
 	}
 }
+
+func TestRedialsAtOnceOnSilentClose(t *testing.T) {
+	list := make(chan *fakeStream, 8)
+	r := newRig(t, sockets(list))
+	r.dialAt()
+	(<-list).send(Frame{}, errors.New("reset"))
+	// An ordinary drop climbs the ladder: 0.4 of the first rung.
+	r.clock.tick(400 * time.Millisecond)
+	r.dialAt()
+	// The relay saying it stopped hearing us is answered with a dial and no
+	// wait, so no timer stands between the close and the dial.
+	(<-list).send(Frame{}, ErrSilent)
+	r.dialAt()
+	if r.sub.State().Refused != nil {
+		t.Fatal("a silent close was taken as a refusal")
+	}
+	// The ladder was reset: the next ordinary drop waits from the bottom rung.
+	(<-list).send(Frame{}, errors.New("reset"))
+	r.clock.tick(400 * time.Millisecond)
+	r.dialAt()
+}
+
+func TestDeadAfterIsTwoAndAHalfBeats(t *testing.T) {
+	if KeepEvery != 10*time.Second {
+		t.Fatalf("KeepEvery = %v, want the 10 s beat", KeepEvery)
+	}
+	if DeadAfter != 25*time.Second {
+		t.Fatalf("DeadAfter = %v, want 2.5 beats (25 s)", DeadAfter)
+	}
+	if PongWithin != DeadAfter-KeepEvery {
+		t.Fatalf("PongWithin = %v, want what is left of DeadAfter after one beat", PongWithin)
+	}
+}
