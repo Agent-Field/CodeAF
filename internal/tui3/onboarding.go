@@ -120,14 +120,13 @@ const (
 // be billed more than this" would be making a promise with somebody else's
 // money.
 const (
-	controlLimitDetail = "The day's ceiling for everything " + product + " does: /budget 50 " +
-		"changes it later and /budget none removes it. A conversation can carry a " +
-		"smaller ceiling of its own: /budget conversation 20 sets one for the " +
-		"conversation you are in and keeps it as the default for new ones. Both hold " +
-		"at once, and whichever is reached first stops the work — the day's holds " +
-		"everything until midnight or you raise it, a conversation's holds just that " +
-		"conversation. The turn already running always finishes, and your provider " +
-		"account has controls of its own."
+	// The commands are quoted whole, so a reader sees that the amount is part of
+	// what is typed; the chip painter treats a quote as a word boundary
+	// (slashchip.go's [recognizedCommandSpans]) and still marks each command.
+	controlLimitDetail = "The day's ceiling for everything " + product + " does: '/budget 50' " +
+		"changes it later and '/budget none' removes it. A conversation can carry a " +
+		"smaller ceiling of its own set by e.g. '/budget conversation 20'. Both hold " +
+		"at once, and whichever is reached first stops the work."
 	controlModelDetail = "It also handles this conversation's tool use. Changing it here is " +
 		"the same choice /model makes, and it is kept for the next launch." +
 		" Tasks get their own crew, picked per task · /crew shows it."

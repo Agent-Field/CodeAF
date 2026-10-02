@@ -152,13 +152,12 @@ Its one line reads:
 Type a number to change it — the `$` is drawn for you rather than typed — or type
 **`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
 `?` on the row explains the two ceilings and how they meet: *The day's ceiling for
-everything codeaf does: /budget 50 changes it later and /budget none removes it. A
-conversation can carry a smaller ceiling of its own: /budget conversation 20 sets one for
-the conversation you are in and keeps it as the default for new ones. Both hold at once,
-and whichever is reached first stops the work — the day's holds everything until midnight
-or you raise it, a conversation's holds just that conversation. The turn already running
-always finishes, and your provider account has controls of its own.* Each `/budget` in it is
-painted as a command chip. (Until 2026-10-01 the detail said only that the figure counts
+everything codeaf does: '/budget 50' changes it later and '/budget none' removes it. A
+conversation can carry a smaller ceiling of its own set by e.g. '/budget conversation 20'.
+Both hold at once, and whichever is reached first stops the work.* The commands are quoted
+whole, and each `/budget` in it is painted as a command chip. The day's limit holds
+everything until midnight or you raise it; a conversation's holds just that conversation;
+the turn already running always finishes (*Models and cost* has the rest). (Until 2026-10-01 the detail said only that the figure counts
 recorded spending, that running calls can carry it a little past, and that task crews have
 a cap of their own in `/crew`.)
 

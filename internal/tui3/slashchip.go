@@ -100,7 +100,9 @@ func knownCommand(word string) bool {
 // That one rule is what keeps a path out of this: "/Users/example" is a single
 // candidate whose word is "Users/santosh" and matches nothing, rather than two
 // candidates one of which might. A slash with a letter in front of it — the one
-// in "http://", the one in "cmd/codeaf" — is not a candidate at all.
+// in "http://", the one in "cmd/codeaf" — is not a candidate at all. A QUOTE IS
+// A WORD BOUNDARY TOO, on either side: prose that says '/budget 50' is naming
+// the command, and the closing quote of '/settings' is not part of its name.
 //
 // boundary says whether position 0 of value counts as a word boundary. The
 // composer paints one soft-wrapped ROW at a time, and a row that begins in the
@@ -116,11 +118,11 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 			if !boundary {
 				continue
 			}
-		case value[i-1] != ' ' && value[i-1] != '\n':
+		case !commandBoundary(value[i-1]):
 			continue
 		}
 		end := i + 1
-		for end < len(value) && value[end] != ' ' && value[end] != '\n' {
+		for end < len(value) && !commandBoundary(value[end]) {
 			end++
 		}
 		if knownCommand(string(value[i+1 : end])) {
@@ -132,6 +134,17 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 		i = end
 	}
 	return out
+}
+
+// commandBoundary is a rune a command's name stops at or starts after: the
+// spaces and newlines that separate words, and the straight and curly quotes
+// that prose wraps a command in.
+func commandBoundary(r rune) bool {
+	switch r {
+	case ' ', '\n', '\'', '"', '\u2018', '\u2019', '\u201c', '\u201d':
+		return true
+	}
+	return false
 }
 
 func commandSpans(value []rune, boundary bool) []segment {

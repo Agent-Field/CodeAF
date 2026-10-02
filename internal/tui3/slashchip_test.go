@@ -343,6 +343,29 @@ func TestTheCommandListOpensAtAWordBoundaryAndNotInsideAWord(t *testing.T) {
 	}
 }
 
+// A QUOTED COMMAND IS STILL THE COMMAND. Prose that names one — the setup's
+// detail says '/budget 50' — gets its chip on the name alone, and a closing
+// quote right after the name is not part of it. A quoted path stays a path.
+func TestAQuoteIsAWordBoundaryForACommandChip(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		want []string
+	}{
+		{"type '/budget 50' to change it", []string{"/budget"}},
+		{"\u201c/budget conversation 20\u201d sets one", []string{"/budget"}},
+		{"see '/settings'", []string{"/settings"}},
+		{"open '/Users/person/notes.md'", nil},
+	} {
+		var got []string
+		for _, span := range recognizedCommandSpans([]rune(c.text), true) {
+			got = append(got, string([]rune(c.text)[span.from:span.to]))
+		}
+		if strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Errorf("%q chipped %v, want %v", c.text, got, c.want)
+		}
+	}
+}
+
 func TestAnAbsolutePathDoesNotHoldTheCommandListOpen(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 
