@@ -1,7 +1,6 @@
 package teams
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -20,7 +19,7 @@ func (f *File) RemoveConversation(key string, choices map[string]string, at time
 		}
 		replacement, chosen := choices[t.ID]
 		if !chosen {
-			return errors.New(ManagerRemovalInstruction)
+			return fmt.Errorf("%s", f.ManagerRemovalMessage(key))
 		}
 		if replacement == "" && !t.Root && len(affected) > 0 {
 			if err := f.CheckAffected(t.ID, affected[0][t.ID]); err != nil {

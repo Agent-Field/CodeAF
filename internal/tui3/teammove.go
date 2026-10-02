@@ -631,7 +631,8 @@ func (a *app) teamMoveApply(ids []string, parent string, from int) tea.Cmd {
 	// it. The edit runs twice (teams.go), so the append is not inside it: it
 	// would be written twice, and the first time on the loop. One command
 	// writes them, through the store, after the move has been accepted.
-	before := &teamstore.File{Teams: teamsClone(a.wall.teams)}
+	before := a.teamTree().ManagementSnapshot()
+	before.Teams = teamsClone(a.wall.teams)
 	if err := a.teamEdit(func(f *teamstore.File) error { return f.Move(roots, target) }); err != nil {
 		a.tp.msg = "not moved: " + err.Error()
 		a.touch()

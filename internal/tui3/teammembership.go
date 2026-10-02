@@ -121,7 +121,7 @@ func (a *app) teamMembershipRows() []chatTab {
 	for _, row := range a.tmembers.rows {
 		eligible := !teamHolds(t, row.key)
 		if a.tmembers.choosingManager {
-			eligible = teamHolds(t, row.key) && row.key != t.Manager
+			eligible = teamHolds(t, row.key) && row.key != t.Manager && (!a.tp.previews[row.key].missing || a.trafficHeld(row.key))
 		}
 		if !eligible || !strings.Contains(strings.ToLower(row.word+" "+row.where+" "+row.file), filter) {
 			continue
@@ -155,7 +155,7 @@ func (a *app) teamMembershipChoose(index int) tea.Cmd {
 			return nil
 		}
 		key := rows[index-1].key
-		if !t.Holds(key) || t.Manager == key {
+		if !t.Holds(key) || t.Manager == key || a.tp.previews[key].missing && !a.trafficHeld(key) {
 			s.message, s.cursor = "This member is no longer eligible; choose again", 0
 			a.touch()
 			return nil

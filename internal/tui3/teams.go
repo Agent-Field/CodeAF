@@ -68,7 +68,13 @@ func teamIndex(teams []team, id string) int { return teamstore.Index(teams, id) 
 
 // teamTree is the loaded sets as the store's file, for its tree walks. It
 // shares the slice, so a change through it is a change to the loaded sets.
-func (a *app) teamTree() *teamstore.File { return &teamstore.File{Teams: a.wall.teams} }
+func (a *app) teamTree() *teamstore.File {
+	f := &teamstore.File{Teams: a.wall.teams}
+	if !a.hosted() {
+		f.UseLocalIdentities()
+	}
+	return f
+}
 
 // teamByID is the team with id. Frame-safe: memory only.
 func (a *app) teamByID(id string) (team, bool) { return a.teamTree().Team(id) }
@@ -334,7 +340,14 @@ func (a *app) teamEdit(change func(f *teamstore.File) error) error {
 	}
 	a.teamsEnsure()
 	mine := &teamstore.File{Version: teamstore.Version, Teams: teamsClone(a.wall.teams)}
+	if !a.hosted() {
+		mine.UseLocalIdentities()
+	}
+	previous := mine.ManagementSnapshot()
 	if err := change(mine); err != nil {
+		return err
+	}
+	if err := mine.CheckManagementChange(previous); err != nil {
 		return err
 	}
 	a.teamRefreshWords(mine.Teams)

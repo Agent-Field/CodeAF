@@ -281,8 +281,8 @@ surface's own files — model cache, input history, drafts — sit in `~/.codeaf
 
 Coming back with no arguments opens the conversation **you spoke in most recently**, not
 the file that was written to most recently: work finishing in the background does not
-change which conversation you were having. A conversation you opened and never said
-anything in is reused rather than piled up, and the leftovers are cleaned away.
+change which conversation you were having. When only unused conversations remain, a launch creates a fresh identity and cleans
+up unassigned empty folders. Team conversations are preserved.
 
 ## What is saved in a conversation transcript — file contents and line types
 
@@ -897,12 +897,13 @@ The question sits on the top border. Only `cancel` and `delete` appear, with `ca
 are `enter choose · esc cancel`. Cancel changes nothing.
 
 A conversation that manages any active team cannot be deleted. After `delete`, the
-confirmation says `Choose another member as manager before removing this one`.
-Go to Teams, select each team it manages, and use `Choose manager` to select an existing
-member. To use a new conversation, first use `+ Add member`, then `Choose manager`.
-Return to Home, Chats or Sessions to delete the former manager. Deletion never appoints a
-manager, creates a conversation or disbands a team. Tasks inside manager conversations
-can still be deleted independently.
+confirmation names every active team it manages: `This conversation manages <teams>.
+Choose another manager for each in Teams before deleting it.` Go to Teams, select each
+named team, and use `Choose manager` to select an existing member. To use a new
+conversation, first use `+ Add member`, then `Choose manager`. Return to Home, Chats or
+Sessions to delete the former manager. Deletion never appoints a manager, creates a
+conversation or disbands a team. Tasks inside manager conversations can still be deleted
+independently.
 
 The dialog disappears while deletion runs; a failure restores it with the reason.
 Deletion removes all team memberships and the conversation's tasks and transcripts.
@@ -923,3 +924,14 @@ and cannot return through search or a late worker update.
 Deletion uses the connected engine when it supports it. An older engine without that
 capability does not offer the action. Only normal saved conversation folders can be deleted
 through this door; legacy flat transcripts cannot. This cannot be undone.
+
+## Empty conversations assigned to teams survive restart
+
+An empty conversation assigned to a team is intentional. Launch cleanup does not remove
+it or reuse it for a different conversation, even before its first message. References in
+retained team history also protect it. If team records cannot be read, empty conversations
+are kept. Unassigned empty conversations can still be cleaned up. A new launch uses a fresh identity
+rather than taking over an empty conversation that could acquire membership during launch.
+
+`Conversation unavailable` on a team card means its saved transcript is missing. A missing
+file is not recreated silently; add a new conversation and choose it as manager explicitly.

@@ -372,7 +372,8 @@ func (a *app) teamsWrite() tea.Cmd {
 			teams, stamp, err := seam.Update(func(f *teamstore.File) error {
 				refused, refusedBy = nil, map[int]error{}
 				for i, change := range changes {
-					mine := &teamstore.File{Version: f.Version, Teams: teamsClone(f.Teams)}
+					mine := f.ManagementSnapshot()
+					mine.Teams = teamsClone(f.Teams)
 					if err := change(mine); err != nil {
 						if refused == nil {
 							refused = err

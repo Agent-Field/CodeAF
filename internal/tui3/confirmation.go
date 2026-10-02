@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"strings"
 )
@@ -14,6 +15,12 @@ func (a *app) simpleConfirmCard(question string, cursor int, message string) (wa
 // Titles stay on the border. Options wrap without a second details pane, and
 // the selected option must fit fully before its destructive action can run.
 func (a *app) choiceConfirmCard(title, question string, words []string, cursor int, message string, limit int) (wallCard, bool) {
+	return a.choiceConfirmCardAt(title, question, words, cursor, message, limit, nil)
+}
+
+// A refusal can name many teams. Its text scrolls independently while the
+// choices and keyboard hints stay visible, even in a short terminal.
+func (a *app) choiceConfirmCardAt(title, question string, words []string, cursor int, message string, limit int, messageTop *int) (wallCard, bool) {
 	width, height := a.size()
 	w := min(width-2, limit)
 	inner := w - 4
@@ -29,8 +36,36 @@ func (a *app) choiceConfirmCard(title, question string, words []string, cursor i
 	}
 	lines = append(lines, wallCardLine{})
 	room := height - len(lines) - 6
-	if message != "" {
-		room -= len(wrap(message, inner))
+	messageRows := wrap(message, inner)
+	if message == "" {
+		messageRows = nil
+	}
+	messageRange := ""
+	if messageTop != nil && len(messageRows) > 0 {
+		options := 0
+		for _, word := range words {
+			options += len(wrap(word, inner))
+		}
+		capacity := room - options
+		if capacity < 1 {
+			return wallCard{}, false
+		}
+		if len(messageRows) > capacity {
+			capacity--
+			if capacity < 1 {
+				return wallCard{}, false
+			}
+			*messageTop = min(max(*messageTop, 0), len(messageRows)-capacity)
+			end := *messageTop + capacity
+			messageRange = fmt.Sprintf("%d-%d of %d · scroll", *messageTop+1, end, len(messageRows))
+			messageRows = messageRows[*messageTop:end]
+		} else {
+			*messageTop = 0
+		}
+	}
+	room -= len(messageRows)
+	if messageRange != "" {
+		room--
 	}
 	start, count := min(cursor, len(words)-1), 0
 	if start < 0 {
@@ -55,10 +90,11 @@ func (a *app) choiceConfirmCard(title, question string, words []string, cursor i
 		}
 		count += len(wrapped)
 	}
-	if message != "" {
-		for _, line := range wrap(message, inner) {
-			lines = append(lines, wallCardLine{s: a.pal.warn(line)})
-		}
+	for _, line := range messageRows {
+		lines = append(lines, wallCardLine{s: a.pal.warn(line)})
+	}
+	if messageRange != "" {
+		lines = append(lines, wallCardLine{s: a.pal.muted(messageRange)})
 	}
 	lines = append(lines, wallCardLine{}, wallCardLine{s: strings.Repeat(" ", inner-ansi.StringWidth(hint)) + a.pal.muted(hint)})
 	h := len(lines) + 2

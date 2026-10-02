@@ -39,7 +39,7 @@ The left column is the **rail**:
 ```
 
 - **`All teams`** is the top row. With no manager over every team it offers `+ Manager`,
-  which starts one conversation that manages all of your teams: you talk to it, and it talks
+  which starts a separate global manager conversation: you talk to it, and it talks
   to each team's own manager. Once there is one, the row is that manager's.
 - **Every open team**, a sub-team indented under the team it belongs to, with its colour dot.
   A team with a manager wears a dim `◆`.
@@ -360,5 +360,28 @@ The picker cannot create a conversation or add membership. All teams also offers
 `+ Add member` for adding a global-manager candidate; automatic memberships stay protected. For a new manager, first use
 `+ Add member` to add or create its conversation, then use `Choose manager`.
 A manager cannot be removed or permanently deleted while it manages an active team.
-The deletion confirmation says `Choose another member as manager before removing this one`.
-Replace it in every active team it manages before deleting its conversation.
+The deletion confirmation names every active team it manages and says
+`Choose another manager for each in Teams before deleting it.` Replace it in every named
+team before deleting its conversation. Missing conversations are not replacement candidates.
+
+## Can one conversation manage multiple teams?
+
+A conversation can manage one team and any descendants of that team. It cannot also
+manage an unrelated team. Managing sibling teams requires also managing their common
+ancestor. The global All teams manager is a separate conversation; it cannot also manage
+an ordinary team. Ordinary membership in multiple teams remains allowed.
+
+Choose manager and team moves refuse changes that introduce conflicting responsibilities,
+naming the affected teams. Replacing a parent manager can also be refused if it would
+leave the former manager managing sibling teams without a managed ancestor; replace those
+subteam managers first. Older conflicting assignments remain visible and can be repaired
+explicitly in Teams. Loading them does not silently change managers.
+
+A new manager's empty conversation survives navigation and restart. If its transcript is
+missing, its card says `Conversation unavailable`; add or select a replacement explicitly.
+
+## Reading a long manager deletion refusal
+
+A blocked deletion names every active team the conversation manages. In a short terminal,
+scroll the message with the mouse wheel or Page Up/Page Down. Cancel/delete and the
+keyboard hints remain visible. Choose replacements through Teams → Choose manager first.

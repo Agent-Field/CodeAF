@@ -101,6 +101,9 @@ type Team struct {
 type File struct {
 	Version int
 	Teams   []Team
+	// Only the engine that loaded local records may resolve filesystem aliases.
+	// A hosted window receives paths belonging to a different machine.
+	localIdentities bool
 }
 
 // knownFields is every key [Team] reads itself.
@@ -374,6 +377,11 @@ func (f *File) SetParent(id, parent string) error {
 			return errors.New("a team cannot sit under itself")
 		}
 	}
+	next := f.ManagementSnapshot()
+	next.Teams[i].Parent = parent
+	if err := next.CheckManagementChange(f); err != nil {
+		return err
+	}
 	f.Teams[i].Parent = parent
 	return nil
 }
@@ -458,6 +466,9 @@ func (f *File) RemoveMember(id, key string) error {
 // is added first, with only its key; call [File.AddMember] before this to add
 // it with its title and file.
 func (f *File) SetManager(id, key string) error {
+	if err := f.CheckManager(id, key); err != nil {
+		return err
+	}
 	if key == "" {
 		return errors.New("a manager needs a conversation key")
 	}
@@ -480,6 +491,12 @@ func (f *File) ClearManager(id string) error {
 	if err != nil {
 		return err
 	}
+	next := f.ManagementSnapshot()
+	next.Teams[i].Manager = ""
+	if err := next.CheckManagementChange(f); err != nil {
+		return err
+	}
+
 	if old := f.Teams[i].Manager; old != "" {
 		f.Teams[i].FormerManager = old
 	}

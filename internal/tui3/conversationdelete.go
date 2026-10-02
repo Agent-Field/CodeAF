@@ -14,7 +14,7 @@ type conversationDeleteSheet struct {
 	on, busy            bool
 	taskID              string
 	file, name, message string
-	cursor              int
+	cursor, messageTop  int
 	hits                []wallHit
 	rect                wallRect
 }
@@ -65,12 +65,11 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 		return nil
 	}
 	if s.taskID == "" {
-		for _, t := range a.wall.teams {
-			if !t.Closed() && t.Manager == a.convKey(s.file) {
-				s.message, s.cursor = teamManagerRemovalWord, 0
-				a.touch()
-				return nil
-			}
+		file := a.teamTree()
+		if len(file.ManagedTeams(a.convKey(s.file))) > 0 {
+			s.message, s.cursor, s.messageTop = file.ManagerRemovalMessage(a.convKey(s.file)), 0, 0
+			a.touch()
+			return nil
 		}
 	}
 	return a.conversationDeleteRun()
@@ -113,7 +112,7 @@ func (a *app) conversationDeleteRun() tea.Cmd {
 		return func(bool) tea.Cmd {
 			if err != nil {
 				a.cdelete.busy, a.cdelete.message = false, err.Error()
-				a.cdelete.cursor = 0
+				a.cdelete.cursor, a.cdelete.messageTop = 0, 0
 				a.touch()
 				return a.teamsRead(true)
 			}
@@ -159,6 +158,12 @@ func (a *app) conversationDeleteKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		a.cdelete = conversationDeleteSheet{}
 		a.touch()
+	case "pgup":
+		a.cdelete.messageTop = max(a.cdelete.messageTop-5, 0)
+		a.touch()
+	case "pgdown":
+		a.cdelete.messageTop += 5
+		a.touch()
 	case "up", "shift+tab":
 		a.cdelete.cursor = max(a.cdelete.cursor-1, 0)
 		a.touch()
@@ -184,7 +189,11 @@ func (a *app) conversationDeleteMouse(msg tea.Msg, m tea.Mouse) tea.Cmd {
 		}
 	}
 	if _, wheel := msg.(tea.MouseWheelMsg); wheel {
-		a.cdelete.cursor = min(max(a.cdelete.cursor+placeWheelDelta(m.Button), 0), len(a.conversationDeleteOptions())-1)
+		if a.cdelete.message != "" {
+			a.cdelete.messageTop = max(a.cdelete.messageTop+placeWheelDelta(m.Button), 0)
+		} else {
+			a.cdelete.cursor = min(max(a.cdelete.cursor+placeWheelDelta(m.Button), 0), len(a.conversationDeleteOptions())-1)
+		}
 		a.touch()
 	}
 	return nil
@@ -206,7 +215,7 @@ func (a *app) conversationDeleteOver(frame string) string {
 }
 
 func (a *app) deleteConfirmCard(cursor int, message string) (wallCard, bool) {
-	return a.choiceConfirmCard("Stop work and permanently delete?", "", []string{"cancel", "delete"}, cursor, message, 64)
+	return a.choiceConfirmCardAt("Stop work and permanently delete?", "", []string{"cancel", "delete"}, cursor, message, 64, &a.cdelete.messageTop)
 }
 
 func (a *app) taskDeleteOpen(row session.SessionRow, entry session.TaskIndexEntry) tea.Cmd {

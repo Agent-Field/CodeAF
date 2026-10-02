@@ -78,3 +78,24 @@ manager's membership. A new manager requires Add member first, then Choose manag
 Deletion hides the dialog during the engine call, restoring it only for a failure; Sessions
 has no transient deleting-status dialog. Deleting Home's final saved conversation leaves
 no phantom start-tab session row.
+
+## Milestone 3 revision: manager responsibilities and empty conversations
+
+A manager conversation has one managed anchor and may also manage descendants of that
+anchor. Ordinary multi-membership stays intact. The global manager cannot also manage an
+ordinary team. Assignments and moves cannot introduce new conflicts; legacy conflicts stay
+visible and are resolved by the person choosing replacement managers in Teams.
+
+Deletion refusal names every active managed team and directs the person to Choose manager.
+Launch cleanup and reuse protect empty conversations referenced by team records, including
+retained history. Cleanup rechecks those records and emptiness under the team writer's lock;
+unknown membership preserves the conversation. Missing transcripts remain unavailable and
+are not recreated or selected as replacement managers.
+
+The earlier demo is retained as evidence. Fresh review data uses distinct managers for
+unrelated teams and a separate subteam manager.
+
+The review pass removed writer reuse of old empty identities: startup now mints a fresh
+conversation and reaps eligible leftovers under a strict lock. Named deletion refusals
+scroll without hiding choices. Manager selection rechecks missing previews, and hosted
+snapshots never resolve remote paths against the window's filesystem.

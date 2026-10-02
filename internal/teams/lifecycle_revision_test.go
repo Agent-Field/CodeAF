@@ -30,7 +30,7 @@ func TestConversationDeleteChoicesAreExplicitAndReviewedScopeIsStable(t *testing
 		{ID: "aaaaaaaaaaaa", Name: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "replacement"}}},
 		{ID: "bbbbbbbbbbbb", Name: "child", Parent: "aaaaaaaaaaaa", Manager: "manager", Members: []Member{{Key: "manager"}}},
 	}}
-	if err := f.RemoveConversation("manager", nil, time.Now()); err == nil || err.Error() != ManagerRemovalInstruction {
+	if err := f.RemoveConversation("manager", nil, time.Now()); err == nil || err.Error() != f.ManagerRemovalMessage("manager") {
 		t.Fatalf("manager deletion must require replacement in Teams: %v", err)
 	}
 	choices := map[string]string{"aaaaaaaaaaaa": "", "bbbbbbbbbbbb": ""}

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -115,7 +116,7 @@ func TestConversationDeleteSimpleDefaultCancelAndTaskDoesNotReplaceManager(t *te
 		t.Fatal("footer hints missing")
 	}
 	a.conversationDeleteChoose(1)
-	if a.cdelete.message != teamManagerRemovalWord || a.cdelete.cursor != 0 || len(a.conversationDeleteOptions()) != 2 {
+	if a.cdelete.message != a.teamTree().ManagerRemovalMessage(a.convKey(a.cdelete.file)) || a.cdelete.cursor != 0 || len(a.conversationDeleteOptions()) != 2 {
 		t.Fatal("manager deletion did not require a replacement in Teams")
 	}
 	called := false
@@ -294,12 +295,27 @@ func TestConversationDeleteBlockedUntilEveryActiveManagerChangedInTeams(t *testi
 	a.profileDir = t.TempDir()
 	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch)
 	old := a.frontTabKey()
-	for _, id := range []string{parent, child} {
-		if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(id, old) }); err != nil {
-			t.Fatal(err)
+	for i := range a.wall.teams {
+		if a.wall.teams[i].ID == parent || a.wall.teams[i].ID == child {
+			a.wall.teams[i].Manager = old
+			if !a.wall.teams[i].Holds(old) {
+				a.wall.teams[i].Members = append(a.wall.teams[i].Members, teamMember{Key: old, File: a.file})
+			}
 		}
 	}
-	drain(t, a, a.teamsWrite())
+	// Seed the older on-disk shape directly: new appointments must not create it.
+	raw, err := json.Marshal(struct {
+		Version int    `json:"version"`
+		Teams   []team `json:"teams"`
+	}{teamstore.Version, a.wall.teams})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(teamstore.Path(a.profileDir), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.teamsDisk.queue, a.teamsDisk.queueSeq = nil, nil
+
 	called := false
 	a.deleteConversation = func(_ string, choices map[string]string, affected map[string][]string) error {
 		if len(choices) != 0 || len(affected) != 0 {
@@ -311,7 +327,7 @@ func TestConversationDeleteBlockedUntilEveryActiveManagerChangedInTeams(t *testi
 	for _, id := range []string{parent, child} {
 		a.conversationDeleteOpen(a.file, "manager")
 		drain(t, a, a.conversationDeleteChoose(1))
-		if called || a.cdelete.message != teamManagerRemovalWord {
+		if called || a.cdelete.message != a.teamTree().ManagerRemovalMessage(a.convKey(a.cdelete.file)) {
 			t.Fatalf("current manager was deletable: called=%v message=%q team=%s", called, a.cdelete.message, id)
 		}
 		text := ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", 35)))
@@ -519,5 +535,128 @@ func TestTeamsGlobalManagerCanAddReplacementBeforeChoosing(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("added global candidate absent from manager picker")
+	}
+}
+
+func TestTeamsChooseManagerRejectsUnrelatedAndMissingCandidates(t *testing.T) {
+	a, parent, other := menuApp(t)
+	a.width, a.height = 120, 35
+	tm := mustTeam(t, a, parent)
+	candidate := tm.Members[1]
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(other, candidate.Key) }); err != nil {
+		t.Fatal(err)
+	}
+	a.teamChooseManagerOpen(parent)
+	var index int
+	for i, row := range a.tmembers.shown {
+		if row.key == candidate.Key {
+			index = i + 1
+		}
+	}
+	before := mustTeam(t, a, parent).Manager
+	a.teamMembershipChoose(index)
+	if !a.tmembers.on || !strings.Contains(a.tmembers.message, "separate responsibilities") || mustTeam(t, a, parent).Manager != before {
+		t.Fatal("unrelated manager appointment accepted")
+	}
+	a.tp.previews = map[string]teamsPreview{candidate.Key: {missing: true}}
+	delete(a.behind, candidate.Key)
+	a.teamChooseManagerOpen(parent)
+	for _, row := range a.teamMembershipRows() {
+		if row.key == candidate.Key {
+			t.Fatal("missing conversation offered as replacement")
+		}
+	}
+}
+
+func TestConversationDeleteLongManagerRefusalStaysVisibleAndScrolls(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.width, a.height = 72, 16
+	a.conversationDeleteOpen(a.file, "manager")
+	for i := 0; i < 35; i++ {
+		a.wall.teams = append(a.wall.teams, team{ID: fmt.Sprintf("legacy-%d", i), Name: fmt.Sprintf("Long team name %02d with a detailed responsibility", i), Manager: a.frontTabKey()})
+	}
+	a.conversationDeleteChoose(1)
+	text := ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", a.height)))
+	for _, word := range []string{"cancel", "delete", "This conversation manages", "scroll", "esc cancel"} {
+		if !strings.Contains(text, word) {
+			t.Fatalf("refusal lost %q: %s", word, text)
+		}
+	}
+	if len(a.cdelete.hits) != 2 {
+		t.Fatal("refusal hid the choices")
+	}
+	for i := 0; i < 100; i++ {
+		a.conversationDeleteKey(key("pgdown"))
+	}
+	text = ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", a.height)))
+	if !strings.Contains(text, "Teams") || !strings.Contains(text, "deleting it") {
+		t.Fatalf("last refusal lines are unreachable: %s", text)
+	}
+	if a.cdelete.messageTop == 0 {
+		t.Fatal("refusal did not scroll")
+	}
+	a.height = 50
+	if _, visible := a.deleteConfirmCard(0, a.cdelete.message); !visible {
+		t.Fatal("resize hid refusal")
+	}
+}
+
+func TestTeamsChooseManagerRechecksMissingDisplayedCandidate(t *testing.T) {
+	a, parent, _ := menuApp(t)
+	a.width, a.height = 120, 35
+	if err := a.teamAdd(parent, []chatTab{{key: "stale", file: "/tmp/stale/transcript.jsonl", word: "Stale"}}); err != nil {
+		t.Fatal(err)
+	}
+	a.teamChooseManagerOpen(parent)
+	a.teamMembershipOver(strings.Repeat("\n", a.height))
+	candidate, index := "stale", 0
+	for i, row := range a.tmembers.shown {
+		if row.key == candidate {
+			index = i + 1
+		}
+	}
+	if index == 0 {
+		t.Fatal("candidate was not displayed")
+	}
+	before := mustTeam(t, a, parent).Manager
+	a.tp.previews = map[string]teamsPreview{candidate: {missing: true}}
+	delete(a.behind, candidate)
+	a.teamMembershipChoose(index)
+	if mustTeam(t, a, parent).Manager != before || !strings.Contains(a.tmembers.message, "no longer eligible") {
+		t.Fatal("stale candidate became manager")
+	}
+}
+
+func TestTeamsChooseManagerQueuedEditPreservesLocalAliases(t *testing.T) {
+	a, _, _ := menuApp(t)
+	dir := t.TempDir()
+	file, alias := filepath.Join(dir, "transcript.jsonl"), filepath.Join(dir, "alias.jsonl")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(file, alias); err != nil {
+		t.Fatal(err)
+	}
+	f := &teamstore.File{Teams: []team{
+		{ID: "parent", Name: "Parent", Manager: alias, Members: []teamMember{{Key: alias, File: alias}}},
+		{ID: "child-a", Name: "A", Parent: "parent", Manager: file, Members: []teamMember{{Key: file, File: file}}},
+		{ID: "child-b", Name: "B", Parent: "parent", Manager: "other", Members: []teamMember{{Key: "other"}, {Key: file, File: file}}},
+	}}
+	a.profileDir = t.TempDir()
+	if err := teamstore.Save(a.profileDir, f.Teams); err != nil {
+		t.Fatal(err)
+	}
+	a.wall.teams, a.wall.loaded = f.Teams, true
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager("child-b", file) }); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, a, a.teamsWrite())
+	stored, err := teamstore.Load(a.profileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, _ := stored.Team("child-b")
+	if child.Manager != file {
+		t.Fatal("valid descendant manager appointment was refused during persistence")
 	}
 }

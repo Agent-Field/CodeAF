@@ -472,7 +472,8 @@ func (a *app) wallOrganizeQuietAsk(gen int) func() []string {
 		return nil
 	}
 	dir, now := a.profileDir, a.now()
-	tree := &teamstore.File{Teams: teamsClone(a.wall.teams)}
+	tree := a.teamTree().ManagementSnapshot()
+	tree.Teams = teamsClone(a.wall.teams)
 	return func() []string {
 		ids, err := teamstore.Quiet(dir, tree, now, teamstore.QuietAfter)
 		if err != nil {

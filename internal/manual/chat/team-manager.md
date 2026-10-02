@@ -490,3 +490,11 @@ member’s handle to open the delivered brief in that member’s conversation.
 Collapsed work opens at the selected message. Older unnumbered receipts are
 matched only when the accepted handle and brief identify one successful start
 in the current team; ambiguous or missing history is not guessed.
+
+## Managing one team and its subteams
+
+One conversation may manage a team and descendants of that team, while remaining an
+ordinary member of other teams. It cannot manage unrelated teams. The global manager is
+separate from every ordinary team's manager. Choose manager or a team move refuses a
+change that introduces conflicting responsibilities, naming the teams. Existing conflicts
+are retained until the person explicitly chooses replacements in Teams.
