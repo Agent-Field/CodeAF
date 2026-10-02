@@ -329,7 +329,7 @@ with the cursor on `continue here`, because pressing enter on the row already sa
 The card says how fresh the copy is: `last durable turn <N>s ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
 `running on <device>` row the card starts with that: `running on <device>; last durable turn
-<N>s ago`. Press enter to continue: the chat is fetched, this machine takes it
+<N>s ago`. When that device is not online, the card leaves `running on` out and says `last durable turn <N>s ago`. Press enter to continue: the chat is fetched, this machine takes it
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent
@@ -439,7 +439,7 @@ the chat's `trees` folder.
 
 ## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
 
-A chat that was taken over while another machine still held unsent turns leaves those turns
+A chat that was moved to another machine while another machine still held unsent turns leaves those turns
 as a branch. Press enter on its row to be asked **What should happen to these turns?** and
 answer `discard` (or `merge`, where it is offered), then enter; the cursor starts on `leave
 them`. **Discard archives** the branch: it leaves this list and is not deleted. **Merge is
