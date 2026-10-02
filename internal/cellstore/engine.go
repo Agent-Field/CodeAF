@@ -66,6 +66,20 @@ type Composer interface {
 	Compose(c cell.Cell) error
 }
 
+// Composers is several Composers run in order; the first that fails stops the
+// seal, since a seal missing one of its carried parts is not the chat.
+type Composers []Composer
+
+// Compose implements Composer.
+func (cs Composers) Compose(c cell.Cell) error {
+	for _, one := range cs {
+		if err := one.Compose(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // LocalDir is the device-local directory of a cell: the engine store and the
 // call WAL. It is never inside the cell and never synced.
 func (e Engine) LocalDir(c cell.Cell) string { return filepath.Join(e.Root(), c.ID) }
@@ -92,7 +106,8 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := noteLeftOut(c, e.tree(c), screened, info.Calls); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record what was left out: %w", err)
 	}
-	receipt := newReceipt(info, transcriptRange(c, head))
+	at := e.now()
+	receipt := newReceipt(info, transcriptRange(c, head), at)
 	raw, rid, err := receipt.encode()
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: encode receipt: %w", err)
@@ -104,7 +119,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, err
 	}
-	turn := newTurn(snapshot, parentOf(head), e.now(), info, rid, e.identity())
+	turn := newTurn(snapshot, parentOf(head), at, info, rid, e.identity())
 	if err := appendTurn(c, turn); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record turn: %w", err)
 	}

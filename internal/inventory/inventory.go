@@ -85,7 +85,12 @@ type Inventory struct {
 	// Workspace is the folder the seal was taken in, so a machine that receives
 	// the chat can say the folder changed. It is display only: nothing is ever
 	// resolved against it (L1).
-	Workspace   string   `json:"workspace,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	// ChatDir is the chat's own folder when the seal carried files out of it
+	// (job logs, saved tool output, task journals). The transcript names those
+	// files by the absolute path they had there, so a machine that receives the
+	// chat can say where they are now. Display only, like Workspace.
+	ChatDir     string   `json:"chat_dir,omitempty"`
 	Lockfiles   []string `json:"lockfiles,omitempty"`
 	EnvVarNames []string `json:"env_var_names,omitempty"`
 	// Running, Withheld and Detached are what the chat left behind that a seal

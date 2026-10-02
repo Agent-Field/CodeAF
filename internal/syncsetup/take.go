@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/chatfiles"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/inventory"
@@ -87,7 +88,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 		Branch:  c.branch(brancher),
 		RootFor: c.opt.RootFor,
 		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
-		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, c.pullVault},
+		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
 	}
 }
 
@@ -254,10 +255,18 @@ func titleOf(root string) string {
 	return m.Title
 }
 
+// restoreChatFiles puts the chat's job logs, saved tool output and task
+// journals back beside it, so the paths its messages name open on this machine.
+func restoreChatFiles(_ context.Context, c cell.Cell) error {
+	_, err := chatfiles.Carry{}.Restore(c)
+	return err
+}
+
 // rebuildIndexes makes the session row and the other derived files of a chat
-// that just arrived, from its transcript, so this machine lists it.
+// that just arrived, from its transcript, so this machine lists it. A chat this
+// machine already held comes with older indexes: they are brought up to date too.
 func rebuildIndexes(_ context.Context, c cell.Cell) error {
-	_, err := cellindex.Rebuild(c, workspaceOf(c.Root))
+	_, err := cellindex.Refresh(c, workspaceOf(c.Root))
 	return err
 }
 
