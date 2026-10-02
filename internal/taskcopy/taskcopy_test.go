@@ -416,3 +416,73 @@ func TestComposeRecordsCopyInstallFolders(t *testing.T) {
 		t.Fatalf("record %+v after the task finished", got)
 	}
 }
+
+// forkCutter is a Cutter that makes the copy a repository of its own, the way a
+// task's fork is: the new branch lives in the copy and the project never hears
+// of it.
+type forkCutter struct{}
+
+func (forkCutter) Cut(project, dest string, spec Spec) error {
+	if err := exec.Command("git", "clone", "-q", "--no-checkout", project, dest).Run(); err != nil {
+		return err
+	}
+	return exec.Command("git", "-C", dest, "checkout", "-q", "-b", spec.Branch, spec.At).Run()
+}
+
+// A kept task branch is the project's record of finished work, and the project
+// arrived with it. Cutting the copy again on a fork must not leave the project
+// without the ref, or the commit it names is only an unreferenced object that
+// the next garbage collection may drop.
+func TestKeptBranchStaysInTheProjectWhenTheCopyIsCutAsAFork(t *testing.T) {
+	a := newMachine(t)
+	tree := a.task("1")
+	write(t, filepath.Join(tree, "done.txt"), "work\n")
+	run(t, tree, "git", "add", ".")
+	run(t, tree, "git", "commit", "-q", "-m", "task")
+	want := run(t, tree, "git", "rev-parse", "HEAD")
+	a.seal()
+	b := newMachineNoRepo(t)
+	a.moveTo(b)
+	if _, err := (Carry{Cutter: forkCutter{}}).Restore(b.cell, b.project); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, b.project, "git", "rev-parse", "--verify", "refs/heads/task/1"); got != want {
+		t.Errorf("project's task/1 = %q, want the kept commit %q", got, want)
+	}
+}
+
+// leakyForkCutter is a fork the way furrow makes one: a copy of the project's
+// folder as it stands, edits not yet committed included, with the branch then
+// made at the commit. Git carries a local edit over such a checkout, so the copy
+// holds the project's files and not the commit's.
+type leakyForkCutter struct{}
+
+func (leakyForkCutter) Cut(project, dest string, spec Spec) error {
+	if err := exec.Command("cp", "-a", project, dest).Run(); err != nil {
+		return err
+	}
+	return exec.Command("git", "-C", dest, "checkout", "-q", "-b", spec.Branch, spec.At).Run()
+}
+
+// What a task copy held is its commit plus the files it carried. The project's
+// own uncommitted edits on this machine are neither, and must not show in it.
+func TestRestoredCopyHoldsItsCommitNotTheProjectsUncommittedEdits(t *testing.T) {
+	a := newMachine(t)
+	tree := a.task("1")
+	write(t, filepath.Join(tree, "done.txt"), "work\n")
+	run(t, tree, "git", "add", ".")
+	run(t, tree, "git", "commit", "-q", "-m", "task")
+	a.seal()
+	b := newMachineNoRepo(t)
+	a.moveTo(b)
+	write(t, filepath.Join(b.project, "README.md"), "edited in the project, not committed\n")
+	if _, err := (Carry{Cutter: leakyForkCutter{}}).Restore(b.cell, b.project); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := b.read("1", "README.md"); got != "readme\n" {
+		t.Errorf("README.md in the copy = %q, want the committed %q", got, "readme\n")
+	}
+	if got, _ := b.read("1", "done.txt"); got != "work\n" {
+		t.Errorf("done.txt = %q, want the task's commit", got)
+	}
+}

@@ -393,13 +393,16 @@ chat while you are still fetching it, this machine keeps exactly what it had.
 
 A chat that moves to another computer brings, from the relay and sealed on the way:
 
-- the whole conversation, and every file in its folder, which includes a background job's log (`.codeaf/jobs/<n>.log`) like any other file. The job itself is not carried: a command that was running is listed on the card as `was running there:` and codeaf never starts it for you;
-- the task list, each task's own record of what it said and did, its deliverables, the dials the chat was set to (effort and approval), the folders it refers to and which tasks were put away;
-- a task's unlanded working copy and its branch (see "Tasks that had not landed when a chat moved"); a task that already finished has no copy, so a branch it left kept stays in the repository where it was made and is not carried on its own;
+- the whole conversation, and every file in its folder;
+- the files beside the chat that its messages name: a job's log (`logs/jobs/<n>.log`), a cut-short tool result's full output and each task's journal. A file over 1 MiB, or past 16 MiB together, or one that looks like a secret, stays behind and is named under `not brought along:`. The job itself is not carried: `was running there:` lists it and codeaf never restarts it;
+- the chat's dials (effort, approval), the folders it refers to and which tasks were put away;
+- a task's unlanded working copy and its branch (see "Tasks that had not landed when a chat moved"), and a finished task's kept branch (see the same section);
 - what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;
 - the memories that chat wrote, kept in the chat's own ledger and read back into the new computer's memory.
 
-It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Budgets, limits and model picks are per computer and never travel. Memory that belongs to no chat, for example a line edited by hand in the memory place, stays on the computer it was written on. The next sections have the card and the odd files.
+The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
+
+It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Budgets, limits and model picks are per computer and never travel. Memory that belongs to no chat, for example a line edited by hand in the memory place, stays on the computer it was written on.
 
 ## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
 
@@ -432,7 +435,7 @@ command by itself, and database rows or container data do not travel. A secret i
 command is shown as `…`. Limits: there is no way to force a folder to travel, and what was
 running is known only from the moment of the move.
 
-## A file that cannot be read, two files with the same name in different case — odd files and a moved chat, not brought along, read-only folder
+## A file that cannot be read, two files with the same name in different case — odd files and a moved chat, not brought along, read-only folder, hard links
 
 One odd file never stops a chat from saving or moving. A file that this machine cannot read
 (mode `0000`, or owned by another user) is kept out of the saved history: the chat says
@@ -444,9 +447,10 @@ spelled, cannot both live on a Mac's default disk. The move brings one, the name
 first (`README.md` before `Readme.md`), keeps the other out and lists it on the card as
 `<file>: not brought along; same name as <other> here`. Taking the chat back leaves both
 files on the machine that had them. A folder marked read-only moves like any other and
-arrives read-only.
+arrives read-only. Two paths that are one file (a hard link) arrive as one file again; where
+the disk refuses links they arrive as two files with the same bytes.
 
-## Tasks that had not landed when a chat moved — working copy, uncommitted task edits, unmerged task branch, worktree
+## Tasks that had not landed when a chat moved — does my task branch come with me, working copy, uncommitted task edits, unmerged task branch, kept branch, worktree
 
 A task works in a
 copy of your repository on its own branch. When the chat moves, each copy still at work comes
@@ -454,7 +458,7 @@ along: its branch and commits arrive with the project, and the files the task ha
 not yet committed (edited, added, and the ones it deleted) are carried beside them and laid back
 over a fresh copy on the same branch, in this machine's own folder for that chat. Home says
 `the working copy of a task came along: <task>`, or `working copies of tasks came along:
-<task>, <task>` for several. A task that has finished has no copy, so nothing comes for it.
+<task>, <task>` for several. A task that has finished has no copy, but the branch it kept is put back in your project on this machine at the same commit, so it does come.
 What the repository's own `.gitignore` names (build output, a `.env`) and any file that looks
 like it holds a secret stay behind, and so does a task's own installed `node_modules`, which the
 card in "What a moved chat left behind" lists as `trees/<task>/…`. Copies the other machine registered in the repository are

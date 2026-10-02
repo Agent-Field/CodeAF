@@ -46,6 +46,12 @@ impl PathIndex {
              ) WITHOUT ROWID;
              CREATE INDEX IF NOT EXISTS entries_parent_name
                 ON entries(parent, name);
+             CREATE TABLE IF NOT EXISTS links (
+                path BLOB PRIMARY KEY,
+                device INTEGER NOT NULL,
+                inode INTEGER NOT NULL
+             ) WITHOUT ROWID;
+             CREATE INDEX IF NOT EXISTS links_identity ON links(device, inode);
              CREATE TABLE IF NOT EXISTS state (
                 singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
                 root_tree BLOB NOT NULL,
@@ -105,6 +111,7 @@ impl PathIndex {
 
     pub fn reset(&self) -> anyhow::Result<()> {
         self.connection.execute("DELETE FROM entries", [])?;
+        self.connection.execute("DELETE FROM links", [])?;
         self.connection.execute("DELETE FROM state", [])?;
         Ok(())
     }
@@ -136,20 +143,103 @@ impl PathIndex {
     }
 
     pub fn remove_subtree(&self, path: &[u8]) -> anyhow::Result<u64> {
-        let removed = self.connection.execute(
-            "WITH RECURSIVE descendants(path) AS (
+        const DESCENDANTS: &str = "WITH RECURSIVE descendants(path) AS (
                 SELECT path FROM entries WHERE path = ?1
                 UNION ALL
                 SELECT child.path
                 FROM entries child JOIN descendants parent ON child.parent = parent.path
-             )
-             DELETE FROM entries WHERE path IN descendants",
+             )";
+        // The link rows go first, while the entries that name the subtree exist.
+        self.connection.execute(
+            &format!("{DESCENDANTS} DELETE FROM links WHERE path IN descendants"),
+            params![path],
+        )?;
+        let removed = self.connection.execute(
+            &format!("{DESCENDANTS} DELETE FROM entries WHERE path IN descendants"),
             params![path],
         )?;
         Ok(removed as u64)
     }
 
+    /// Notes which file `path` is on disk when it shares that file with another
+    /// directory entry (`identity` is its device and inode), and forgets the
+    /// note when it does not. Two paths are one file when both notes agree.
+    pub fn note_link(&self, path: &[u8], identity: Option<(u64, u64)>) -> anyhow::Result<()> {
+        match identity {
+            Some((device, inode)) => self.connection.execute(
+                "INSERT OR REPLACE INTO links(path, device, inode) VALUES(?1, ?2, ?3)",
+                params![path, device as i64, inode as i64],
+            )?,
+            None => self
+                .connection
+                .execute("DELETE FROM links WHERE path = ?1", params![path])?,
+        };
+        Ok(())
+    }
+
+    /// The device and inode noted for `path`, when it shares its file.
+    pub fn link_identity(&self, path: &[u8]) -> anyhow::Result<Option<(u64, u64)>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT device, inode FROM links WHERE path = ?1",
+                params![path],
+                |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, i64>(1)? as u64)),
+            )
+            .optional()?)
+    }
+
+    /// True when `path` shares its file with something and no other path of
+    /// the index is known to be that file. After an incremental capture this
+    /// means its siblings were not looked at, because nothing told us they
+    /// changed when the link was made.
+    pub fn link_has_no_known_sibling(&self, path: &[u8]) -> anyhow::Result<bool> {
+        Ok(self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM links mine WHERE mine.path = ?1)
+                AND NOT EXISTS(
+                    SELECT 1 FROM links mine JOIN links other
+                      ON other.device = mine.device AND other.inode = mine.inode
+                     AND other.path <> mine.path
+                    WHERE mine.path = ?1)",
+            params![path],
+            |row| row.get(0),
+        )?)
+    }
+
+    /// The paths that share a file with another path of the index, as sets in
+    /// bytewise order of their first path. A file linked to something outside
+    /// the tree (the store, another folder) is alone here and is not a group.
+    pub fn link_groups(&self) -> anyhow::Result<Vec<Vec<Vec<u8>>>> {
+        let mut statement = self.connection.prepare(
+            "SELECT device, inode, path FROM links
+             WHERE (device, inode) IN (
+                SELECT device, inode FROM links GROUP BY device, inode HAVING COUNT(*) > 1)
+             ORDER BY device, inode, path",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                (row.get::<_, i64>(0)?, row.get::<_, i64>(1)?),
+                row.get::<_, Vec<u8>>(2)?,
+            ))
+        })?;
+        let mut groups: Vec<Vec<Vec<u8>>> = Vec::new();
+        let mut last = None;
+        for row in rows {
+            let (identity, path) = row?;
+            match last.replace(identity) {
+                Some(previous) if previous == identity => {
+                    groups.last_mut().expect("a group is open").push(path)
+                }
+                _ => groups.push(vec![path]),
+            }
+        }
+        groups.sort();
+        Ok(groups)
+    }
+
     pub fn remove(&self, path: &[u8]) -> anyhow::Result<bool> {
+        self.connection
+            .execute("DELETE FROM links WHERE path = ?1", params![path])?;
         Ok(self
             .connection
             .execute("DELETE FROM entries WHERE path = ?1", params![path])?

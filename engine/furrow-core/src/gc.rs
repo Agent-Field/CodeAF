@@ -553,6 +553,7 @@ mod tests {
             sqlite_backups: Vec::new(),
             claims: Vec::new(),
             excluded_paths: Vec::new(),
+            hardlinks: Vec::new(),
         }
     }
 

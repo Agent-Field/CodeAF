@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/chatfiles"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
@@ -63,7 +64,7 @@ func WithNotices(say func(string)) SeatOption {
 // session's seat and the `cell` verbs both come here, so a rewind restores the
 // tree that was sealed.
 func EngineFor(workspace string) Engine {
-	return Engine{Workspace: workspace, Compose: taskcopy.Carry{}, Guard: Guard{Ledger: keys.NewLedger()}}
+	return Engine{Workspace: workspace, Compose: Composers{taskcopy.Carry{}, chatfiles.Carry{}}, Guard: Guard{Ledger: keys.NewLedger()}}
 }
 
 func recorderFor(inner executor.Executor, store Store, c cell.Cell, opts Options) (*Recorder, error) {
