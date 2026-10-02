@@ -171,7 +171,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// whether `remember` exists.
 	if config.hasStore() {
 		agent.memory = newMemoryBrain(config.Memory)
-		bindMemoryLedger(config.Place)
+		bindMemoryLedger(config.Place, agent.tellWrote)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
 	// AND THE NAMER'S OWN LIFETIME, minted for every session because every
@@ -241,6 +241,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		file.onWrite = agent.tellWrote
 		agent.presentation = file.presentation
 		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
