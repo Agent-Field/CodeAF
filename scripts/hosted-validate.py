@@ -148,7 +148,7 @@ class Pass:
     def pair(self):
         sh("tmux -L vdp kill-server", check=False)
         t0 = time.time()
-        sh(f"tmux -L vdp new-session -d -s vdp -x 150 -y 30 \"bash -lc '. {A_R}/env.sh; codeaf pair --code; echo EXIT=\\$?; sleep 120'\"")
+        sh(f"tmux -L vdp new-session -d -s vdp -x 150 -y 30 \"bash -lc '. {A_R}/env.sh; codeaf pair --code --name spark-a; echo EXIT=\\$?; sleep 120'\"")
         code = None
         while time.time() - t0 < 20:
             m = re.search(r"codeaf pair (\d\d-\d\d\d-\d\d\d)", sh("tmux -L vdp capture-pane -p -t vdp").stdout)
@@ -158,7 +158,7 @@ class Pass:
             time.sleep(0.03)
         assert code, "no code shown"
         t_code = time.time()
-        join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_R}/env.sh; codeaf pair {code}'"],
+        join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_R}/env.sh; codeaf pair --name dumb-b {code}'"],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         answered = None
         while time.time() - t_code < 30:

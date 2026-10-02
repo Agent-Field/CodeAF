@@ -114,14 +114,14 @@ class Fid:
 
     def pair(self):
         sh("tmux -L vfp kill-server", check=False)
-        sh(f"tmux -L vfp new-session -d -s vfp -x 150 -y 30 \"bash -lc '. {A_ROOT}/env.sh; codeaf pair --code; echo EXIT=\\$?; sleep 60'\"")
+        sh(f"tmux -L vfp new-session -d -s vfp -x 150 -y 30 \"bash -lc '. {A_ROOT}/env.sh; codeaf pair --code --name spark-a; echo EXIT=\\$?; sleep 60'\"")
         code, t0 = None, time.time()
         while time.time() - t0 < 60 and not code:
             m = re.search(r"codeaf pair (\d\d-\d\d\d-\d\d\d)", sh("tmux -L vfp capture-pane -p -t vfp", check=False).stdout)
             code = m and m.group(1)
             time.sleep(0.05)
         assert code, "no pairing code shown"
-        join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_ROOT}/env.sh; codeaf pair {code}'"],
+        join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_ROOT}/env.sh; codeaf pair --name dumb-b {code}'"],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         answered = False
         while time.time() - t0 < 60:
