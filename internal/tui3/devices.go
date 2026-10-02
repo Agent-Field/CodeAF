@@ -164,7 +164,7 @@ func (c *deviceCard) pick() (DeviceRow, bool) {
 
 func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 	if !c.loaded {
-		return dressed(wrap(devicesLoading, max(width, 4)), pal.ink)
+		return dressed(wrap(c.waiting(), max(width, 4)), pal.ink)
 	}
 	var out []string
 	for i, d := range c.rowsOf {
@@ -177,6 +177,16 @@ func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 		out = append(out, dressed(wrap(c.line, max(width, 4)), pal.accent)...)
 	}
 	return out
+}
+
+// waiting is what the card says before it has a list: that it is looking, or,
+// once the look has failed, why. A failure that landed on a card still saying
+// "looking up" would never be read.
+func (c *deviceCard) waiting() string {
+	if c.line != "" {
+		return c.line
+	}
+	return devicesLoading
 }
 
 // row is one device: its dot, name, system and, when it is off, when it was
