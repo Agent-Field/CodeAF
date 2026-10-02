@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"io"
 	"log"
@@ -1271,9 +1272,11 @@ func sameStore(left, right string) bool {
 	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }
 
+// residentHost names the computer that holds the store, spelled as every other
+// screen spells a computer ([devname.Shown]): the holder recorded its raw host name.
 func residentHost(holder *lease.Resident) string {
 	if host := strings.TrimSpace(holder.Host); host != "" {
-		return host
+		return devname.Shown(host)
 	}
 	return "unknown host"
 }

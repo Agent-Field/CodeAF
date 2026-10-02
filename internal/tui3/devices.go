@@ -55,6 +55,9 @@ type deviceCard struct {
 	line     string
 	// naming is the name being typed, and nil when no name is being typed.
 	naming *string
+	// read is the newest directory version the rows were read at, so a change another computer
+	// makes (a device revoked, renamed or added) is read again once and not on every signal.
+	read uint64
 }
 
 type devicesMsg struct {
@@ -87,8 +90,21 @@ func (m devicesMsg) land(a *app) tea.Cmd {
 	for i := range m.rows {
 		m.rows[i].Online = online[m.rows[i].ID] && !m.rows[i].Revoked
 	}
+	picked, had := m.card.pick()
 	m.card.rowsOf, m.card.loaded = orderDevices(m.rows), true
+	m.card.keepCursorOn(picked.ID, had)
 	return nil
+}
+
+// keepCursorOn puts the cursor back on the row it was on after the list was read again, because a
+// re-read can reorder rows and `r` must never land on a different computer than the one chosen.
+func (c *deviceCard) keepCursorOn(id string, had bool) {
+	if !had {
+		return
+	}
+	if i := slices.IndexFunc(c.rowsOf, func(d DeviceRow) bool { return d.ID == id }); i >= 0 {
+		c.cursor = i
+	}
 }
 
 // livePresence is the card's presence, or none when it was given no source.
@@ -244,6 +260,21 @@ func (a *app) reloadDevices(c *deviceCard) tea.Cmd {
 		rows, err := door.Devices(ctx)
 		return devicesMsg{card: c, rows: rows, err: err}
 	}
+}
+
+// refreshOnChange reads the list again when the feed has announced a directory version the open
+// card has not read, so what another computer did to a device shows here without closing the card.
+func (a *app) refreshOnChange() tea.Cmd {
+	card, open := a.pair.card.(*deviceCard)
+	if !open || !a.pair.open || a.dirFeed == nil || a.approvals == nil {
+		return nil
+	}
+	version := a.dirFeed.State().Version
+	if version <= card.read {
+		return nil
+	}
+	card.read = version
+	return a.reloadDevices(card)
 }
 
 // pick is the row under the cursor, if the list has one.

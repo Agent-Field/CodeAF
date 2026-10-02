@@ -41,7 +41,7 @@ def steps(passes):
     dur = lambda who: [statistics.median(c["durable_ms"] for c in p[who]["calls"] if c["durable_ms"] and c["durable_ms"] < 20000) / 1000 for p in passes]
     push = lambda k: [statistics.median(p[k]) / 1000 for p in passes]
     rows = [
-        row("Pair (scripted)", f("pair_s"), "n/a", lambda v: True, note="`codeaf pair` shows a code, the other machine types it, `y` is typed; staging keeps a mailbox 4 s"),
+        row("Pair (scripted)", f("pair_s"), "n/a", lambda v: True, note="the new machine runs `codeaf pair` and shows a link, the first machine runs `codeaf pair approve <link>` and `y` is typed against the check number"),
         row("First upload durable, after the turn ended", f("first_upload_durable_s"), "n/a", lambda v: True, note="202 MB tree, 226 frame puts"),
         row("Save: seal after a tool call, A (median)", seal("a_latency"), "~0.15 s", lambda v: v <= 0.16, note="tool call ended to turn sealed"),
         row("Save: seal after a tool call, A (worst)", seal_max("a_latency"), "~0.15 s", lambda v: v <= 0.16),

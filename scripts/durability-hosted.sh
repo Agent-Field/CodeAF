@@ -9,7 +9,7 @@
 #
 # It needs tmux, a built bin/codeaf (`make build`) and the network. It makes NO
 # model calls (the model is a script on loopback) and costs the relay a few
-# hundred requests. The relay is $CODEAF_HOSTED_URL, and staging when unset.
+# hundred requests. The relay is $CODEAF_RELAY and has no default: unset, the script stops.
 # Every run makes a fresh identity of its own, so it never touches another
 # run's chats on the relay.
 #
@@ -21,6 +21,7 @@
 # takes about twenty minutes, most of it the three minutes the lid stays shut.
 set -u
 cd "$(dirname "$0")/.." || exit 2
+: "${CODEAF_RELAY:?it is the relay under test, for example https://relay.example.com (docs/testing-anywhere.md)}"
 only="${1:-}"
 log=".lane/durability-hosted.log"
 mkdir -p .lane

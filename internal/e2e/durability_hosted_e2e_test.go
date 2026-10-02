@@ -6,8 +6,8 @@ package e2e
 //
 // The real binary is the holding machine (home A, in a real terminal) and runs
 // a scripted model, so every tool call is the same call every time and the
-// moment it finished is known to the millisecond. The relay is the hosted
-// staging Worker. A machine that dies mid-work is simulated by what really
+// moment it finished is known to the millisecond. The relay is the one
+// CODEAF_RELAY names. A machine that dies mid-work is simulated by what really
 // kills one: SIGKILL, a dead network, a frozen process. Then the other machine
 // (home B, in this process, over the same real take path the chat uses) takes
 // the chat over, and the run counts: calls completed on A against calls present
@@ -15,8 +15,8 @@ package e2e
 // two numbers.
 //
 // One identity per run, made fresh and shared between the homes, so a run never
-// meets another run's chats on the relay. The relay is CODEAF_HOSTED_URL, and
-// staging when unset.
+// meets another run's chats on the relay. The relay is CODEAF_RELAY (relayenv_test.go);
+// with it unset the suite skips and says why.
 //
 //	go test -tags e2e -count=1 -run TestDurability -v -timeout 40m ./internal/e2e/
 
@@ -43,8 +43,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
-const stagingRelay = "https://caf-relay-staging.instrument-santosh.workers.dev"
-
 // durable is one run's world: two homes of one identity, the scripted model,
 // the proxy that can cut the holder's network, and the chat on A.
 type durable struct {
@@ -66,10 +64,7 @@ func newDurable(t *testing.T, script ...brainStep) *durable {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
-	relay := os.Getenv("CODEAF_HOSTED_URL")
-	if relay == "" {
-		relay = stagingRelay
-	}
+	relay := relayUnderTest(t)
 	overrides := map[string]any{
 		"model.talk": durabilityModel, "model.work": durabilityModel, "model.plan": durabilityModel,
 		"models.tiers.worker": durabilityModel, "models.tiers.high": durabilityModel,
