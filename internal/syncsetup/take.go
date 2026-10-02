@@ -96,6 +96,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 // with it.
 func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 	from := c.holderName(ctx, id)
+	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
 	defer sc.Settle()
 	taken, err := c.taker(sc).Take(ctx, id)
@@ -111,6 +112,44 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 	}
 	return out, nil
 }
+
+// releaseWithin bounds the wait for a session on this machine to let go of the
+// chat. The engine host answers a request within half a second, so a holder
+// that has not answered by now is not going to, and the take goes on without it.
+const releaseWithin = 5 * time.Second
+
+// retireHolder ends the session this machine's engine still holds for chat id,
+// BEFORE the transcript is replaced. That session was open when the chat left
+// (the engine outlives its windows, and a closed lid freezes it mid-chat), so
+// it holds the conversation as it was before the other machine moved it on.
+// Left alive, the window that opens after the take is handed that session again:
+// old context, and every tool refused as superseded. Retiring it first also
+// keeps its closing write on the old journal, where the take reconciles it,
+// rather than on the one that has just arrived. It is the ordinary
+// move-it-here request, so the engine closes the session the way it does for a
+// second window; with no holder there is nothing to ask and nothing is written.
+func (c *Continuer) retireHolder(ctx context.Context, id string) {
+	root := c.opt.RootFor(id)
+	journal := session.Place{Dir: root}.Transcript()
+	if !session.InUse(journal) || session.AskTakeover(root) != nil {
+		return
+	}
+	defer session.CancelTakeover(root)
+	deadline := time.NewTimer(releaseWithin)
+	defer deadline.Stop()
+	for session.InUse(journal) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-deadline.C:
+			return
+		case <-time.After(releaseBeat):
+		}
+	}
+}
+
+// releaseBeat is how often the wait above looks at the journal's lock.
+const releaseBeat = 50 * time.Millisecond
 
 // arrive is the look at this machine that a takeover ends with, taken before
 // anything here seals over the record the chat arrived with. The record is not a
