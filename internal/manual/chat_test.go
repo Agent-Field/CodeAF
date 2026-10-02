@@ -3063,6 +3063,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does the task proposal card look like", "tasks"},
 		{"why did team_start not ask me first", "team-manager"},
 		{"why did setup show only one screen", "getting-started"},
+		{"enter on the setup model list when nothing matches", "getting-started"},
+		{"clicking and scrolling on the setup screen", "getting-started"},
+		{"why the setup only lists free models", "getting-started"},
+		{"why the setup examples change every three seconds", "getting-started"},
+		{"asking what a quoted /task command does", "commands"},
+		{"how to turn telemetry off now", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
 	}

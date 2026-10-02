@@ -161,6 +161,9 @@ the turn already running always finishes (*Models and cost* has the rest). (Unti
 recorded spending, that running calls can carry it a little past, and that task crews have
 a cap of their own in `/crew`.)
 
+## Where the daily limit is saved and why setup does not ask about every spending limit
+
+The setup screen’s **Daily limit** writes the same setting as `/budget`.
 `$500` is **the amount codeaf has always shipped** and this screen did not change it.
 
 What it writes: `daily_budget_usd` in your profile's `config.json`, through **the same
@@ -174,7 +177,7 @@ here. They keep their shipped defaults — plan approval asks first above `$100`
 conversation ceiling is `no limit` — and `/budget` or `/settings` → Spending changes them
 when they start to matter.
 
-## The model you talk to on the setup screen — and why it does not ask about the crew
+## The first screen asks for a daily limit and a chat model — choosing the model you talk to
 
 **Chat model** is the model you talk to, shown by name — `DeepSeek V4 Flash` rather than
 `deepseek/deepseek-v4-flash`. Its line reads *The model you talk to in this
@@ -189,10 +192,23 @@ rather than changes. Choosing one goes through the same settings row `/model` wr
 is kept for the next launch, and `enter` then goes on to the next row, as it does on the
 limit — so pressing `enter` alone walks the whole form down to `Start a conversation`.
 
-**The rows take the mouse too.** A click on a row is the key that row would have taken: a
+## Enter on the setup model list when nothing matches
+
+On **Basic settings**, the chat-model list accepts only a row it can show.
+Enter with nothing matching leaves the list open with
+`nothing matches · backspace widens it`. It changes no model, answers no row and
+keeps the focus on **Chat model**. Backspace widens the list; `esc` closes it without
+taking a model.
+
+## Clicking and scrolling on the setup screen
+
+The **Basic settings** controls take clicks and scrolling. A click on a row is the
+key that row would have taken: a
 click on the limit focuses it to type into, a click on the chat model opens its list, a
 click on one model of the list takes it, and a click on `Start a conversation` leaves. The wheel scrolls the open list. A click on a sentence, a
 blank row or the example panel does nothing.
+
+## Why the setup only lists free models when my account is low
 
 **With no credit on the OpenRouter account, the list shows free models only.** When the
 account's balance has read low — $0.50 or less, the same reading that puts the low-credits
@@ -203,50 +219,66 @@ last row of the screen, right-aligned in the warning colour — where the low-cr
 stands under the message box once you are in a conversation. The model you
 are already on stays on the list whatever it costs, so accepting still confirms. The balance
 is read right after the key lands, so the cut usually arrives a moment after the screen does;
-a top-up is read on the next launch (*OpenRouter credits and free models*). A key OpenRouter
-refuses as **expired** is said the same way, on the last row, but the list is not cut, because
-free models fail on an expired key too. The line names the door to a new key, and the door
+a top-up is read on the next launch (*OpenRouter credits and free models*).
+
+## My OpenRouter key has expired on the setup screen
+
+On **Basic settings**, an expired OpenRouter key is shown on the last row. The list
+is not cut to free models, because they fail on an expired key too. The line names the door to a new key, and the door
 depends on whether a connect step came before this screen: with one, it reads
 `Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys` and
 `esc` goes back there; when the key was already in the shell or the profile and only this
 screen was asked, `esc` skips the setup instead — the keys line says so — and the line reads
 `Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys`.
 
+## Why setup does not ask about the task crew
+
 **There is no crew question**, because the crew is three seats — the worker, the planner and the
 checker — and codeaf picks all three for each task from what kind of work it is, so there
 is nothing to choose before the first task. `/crew` shows the crew, and pins a seat when
-you want one model there every time. The model that answers you is the one above, and
-neither touches the other.
-
-**`esc` out of the list leaves the row exactly as it was.** A cursor inside a list is
-provisional until you accept it.
+you want one model there every time. **Chat model** chooses the model that answers
+you; changing it does not change the task crew.
 
 If a **task model** is pinned (`task.model`), one dim line under the chat model says so —
 `Tasks are pinned to … · /settings changes that` — because that pin decides the worker
 seat, and a screen that did not mention it would be hiding where tasks run.
 
-**Above the form**, under the `codeaf · setup · 2 of 2` header, a bordered panel stands on
+## What the example panel above the setup form shows
+
+**Above the form**, under the setup header, a bordered panel stands on
 any window with the rows to hold the whole of it — the only bordered surface codeaf draws,
 so it cannot be read as more form. Its top edge is labelled `○ Example · ` followed by the
 example's own title (`Understand an unfamiliar project`, `Hand off something longer`,
 `Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`); its
 bottom edge carries `←  3 / 5  →`, the arrows that browse it. It is as wide as the screen allows,
 up to 92 columns, so the request in it stands on one row. It holds one request you could
-type and what it leads to. It opens on the first (`Understand an unfamiliar project`) and
+type and what it leads to.
+
+## Why the setup examples change every three seconds and how to pause them
+
+The **Basic settings** example panel opens on the first (`Understand an unfamiliar project`) and
 **turns to the next by itself every 3 seconds**, round and round through the five
 (`Hand off something longer` with `/task Fix the failing tests and explain the changes.`,
 `Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`
 with `/senior-dev Add retries with backoff to the HTTP client, with tests.`); a command in
 a request is painted as the same chip the message box paints a recognised command with.
-`←`/`→` browse by hand and go round the same ring. **Any key holds the clock** for 3
+`←`/`→` browse by hand and go round the same ring. **Any key or click holds the clock** for 3
 seconds from that key — typing an amount, walking the rows, browsing — so the panel never
 turns under your hands. Walking the rows does not move it (until 2026-10-01 it followed the
-row you were on). Each example **types itself out once** on arriving, then settles; typing
-settles it at once. Two blank rows separate the panel from the form's heading. On a window
+row you were on). The screen-reader tier never turns by itself. The clock stops when setup closes or returns
+to the connection step. Each example **types itself out once** on arriving, then settles; typing
+settles it at once.
+
+## Why the setup example disappears on a short window
+
+The **Basic settings** form keeps its values and keys when the example panel cannot fit.
+Two blank rows separate the panel from the form's heading. On a window
 too short to hold the form and the whole panel — 24 rows, say — the panel is not drawn and
 the form is unchanged. (Until 2026-10-01 the panel was a second column to the right of the
 form, drawn only from 112 columns up, and carried `An illustration. Nothing here has run.`
 at its foot; the label on its edge now says that once.)
+
+## What the setup row colours and keys mean
 
 **A row's name says where you are.** Each name — `Daily limit`, `Chat model`,
 `Start a conversation` — is in the body colour until you have answered it, blue while
@@ -293,7 +325,7 @@ the header is the count of those: a key already in the shell leaves the controls
 alone on the frame, with no `1 of 1` counting to one at anybody.
 
 While it is up it is the whole screen: every keystroke belongs to it except `ctrl+c`,
-which is still the door (twice, as always), and the mouse does nothing. The returning
+which is still the door (twice, as always). The controls take clicks and scrolling. The returning
 provider step may open after you type, but the draft is held untouched underneath it.
 
 ## Change what I picked during setup — where each answer lives afterwards
@@ -311,6 +343,8 @@ Every answer went through a settings row, so every answer has a door:
 A credential changed in the settings row reaches the running conversation at once,
 exactly as the setup's does. A crew pin and the budget are read live too: the next task
 starts on the new pin, and the rail is checked against the new ceiling.
+
+## Which settings the setup does not ask about
 
 **The setup asks about two things and no more.** Memory stays on, tool approvals keep
 prompting, and a proposed task keeps its 15-second countdown — none of them becomes a
@@ -362,6 +396,8 @@ Font, in Terminal.app under Profiles → Text → Font → Change…, and in kit
 ghostty with `font_family`, `[font.normal] family` and `font-family` in their config
 files.
 
+## My Option key types letters on macOS instead of moving to a place
+
 **Option as meta, on macOS.** Every chord codeaf binds is the option key, and on a Mac it is
 drawn the way the keycap names it, `opt+enter` to send what you typed off as a task, `opt+1`…`opt+8`
 to jump to a place, `opt+.` for the map. (On Linux and Windows the same chords are drawn
@@ -377,7 +413,9 @@ composer still names what `enter` does — and the first place you land on says 
 line: `your terminal sends opt as a letter — turn on "use option as meta" in …`, naming the
 terminal you are actually in.
 
-**The first-run setup says it too.** When the questions are done, a Mac gets one more
+## Why setup mentions Option on a Mac and which terminals also accept Control
+
+**The first-run setup explains Option on a Mac.** When the questions are done, a Mac gets one more
 line: `the places answer opt+1…opt+8 · if opt types a character instead, turn on "use option as
 meta" in …`. It is a condition rather than a report — nothing has been pressed yet — and it is
 said once.

@@ -54,6 +54,8 @@ nothing on this page yet — it fills in as the task works
 Neither of the landed lines would be true there: nothing was lost, and nothing is over.
 This one comes off by itself the moment the task's first block arrives.
 
+## What an empty task page shows before any tool has run or after the transcript is lost
+
 **A room never draws a blank body under its header.** Above that line the page draws what
 it already knows, which is different for work that is still going and work that is over.
 
