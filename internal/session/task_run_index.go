@@ -39,6 +39,28 @@ func (a *Agent) indexRunRow(notice TaskNotice) {
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
+	entry := crewRunEntry(notice, session)
+	worktree := ""
+	if where := notice.Copy; where != nil {
+		worktree = where.Dir
+		entry.Where, entry.Ground, entry.Mode, entry.Rung = where.Dir, where.Ground, where.Mode, where.Rung
+	}
+	entry.ArtifactURI = taskArtifactURI(worktree, notice.Branch, notice.Merge)
+	if notice.State.settled() && entry.Cost == 0 {
+		entry.Cost = a.beltRunSpent(notice.ID)
+	}
+	a.recordTaskIndexEntry(entry)
+	// Another window learns the run started, or ended, now rather than at the
+	// next heartbeat.
+	a.nudgePresence()
+}
+
+// crewRunEntry is the row a hand-off's run publishes, without the facts that
+// name a folder on the machine that ran it (Where, Ground, Mode, Rung and the
+// artifact URI). The live writer adds those, and a row rebuilt on another
+// machine ([RebuiltTaskRows]) leaves them absent, because a path of the first
+// machine is a lie anywhere else.
+func crewRunEntry(notice TaskNotice, session string) TaskIndexEntry {
 	entry := TaskIndexEntry{
 		ID:         strconv.FormatUint(notice.ID, 10),
 		Parent:     taskIndexParent(notice.Parent),
@@ -65,22 +87,10 @@ func (a *Agent) indexRunRow(notice TaskNotice) {
 		entry.Ending = TaskEndingStopped
 	}
 	entry.Files, entry.FilesChanged = taskFileCitations(notice.Changed)
-	worktree := ""
-	if where := notice.Copy; where != nil {
-		worktree = where.Dir
-		entry.Where, entry.Ground, entry.Mode, entry.Rung = where.Dir, where.Ground, where.Mode, where.Rung
-	}
-	entry.ArtifactURI = taskArtifactURI(worktree, notice.Branch, notice.Merge)
 	if notice.State.settled() {
 		entry.Cost = notice.CostUSD
-		if entry.Cost == 0 {
-			entry.Cost = a.beltRunSpent(notice.ID)
-		}
 	}
-	a.recordTaskIndexEntry(entry)
-	// Another window learns the run started, or ended, now rather than at the
-	// next heartbeat.
-	a.nudgePresence()
+	return entry
 }
 
 // beltRunSpent is what the live run whose own row id is this one came to, as

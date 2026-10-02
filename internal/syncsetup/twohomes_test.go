@@ -1016,3 +1016,27 @@ func TestTwoHomesTakeCarriesTheTurnThatEndedOnAReply(t *testing.T) {
 		}
 	}
 }
+
+// The transcript names a job log by its path on the machine that ran it. A
+// chat that moved must carry that file, so the agent on the other machine can
+// open the evidence its own messages cite, and must say where it is now.
+func TestTwoHomesTakeCarriesTheJobLogsTheTranscriptNames(t *testing.T) {
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+	a := h.openA()
+	logPath := filepath.Join(h.cell.Root, "logs", "jobs", "2.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("server listening on 8794\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.mustSay("start the server; its log is " + logPath)
+	executor.Settle(context.Background(), a.seat)
+
+	got := h.takeOnB(a)
+	onB, err := os.ReadFile(filepath.Join(got.Taken.Cell.Root, "logs", "jobs", "2.log"))
+	if err != nil || string(onB) != "server listening on 8794\n" {
+		t.Fatalf("the job log on B = %q, %v; want A's bytes", onB, err)
+	}
+}

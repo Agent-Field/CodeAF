@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/chatfiles"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 )
 
@@ -27,6 +28,12 @@ type Resume struct {
 	// here; a command that names Was is shown with the change said once.
 	Was string `json:"was,omitempty"`
 	Now string `json:"now,omitempty"`
+	// ChatWas and ChatNow are the chat's own folder there and here, said when
+	// the chat carried files out of it (job logs, saved tool output, task
+	// journals): its messages name those files by the old folder, and they are
+	// under the new one.
+	ChatWas string `json:"chat_was,omitempty"`
+	ChatNow string `json:"chat_now,omitempty"`
 	// Missing is the folders the seal left out that are not on this machine.
 	Missing []inventory.Withheld `json:"missing,omitempty"`
 	// Stopped is the commands that were running there and are not running here.
@@ -54,6 +61,10 @@ func (r Resume) Empty() bool { return !r.hasFacts() && len(r.Lacks) == 0 }
 // test for what can be offered.
 func (r Resume) Worth() bool { return !r.Empty() || len(r.Uncommitted) > 0 || r.Tests != nil }
 
+// chatMoved is whether the chat's carried files are under another folder than
+// its messages name. It is news and never an offer, so it keeps Empty as it was.
+func (r Resume) chatMoved() bool { return r.ChatWas != "" && r.ChatWas != r.ChatNow }
+
 // hasFacts is whether the chat left anything behind, apart from tools this
 // machine lacks, which the setup brief already names.
 func (r Resume) hasFacts() bool {
@@ -70,14 +81,15 @@ type Here interface {
 }
 
 // LocalHere is this machine: the workspace the tools run in and the cell's own
-// folder, where a task copy's folders live.
+// folder, where a task copy's folders and the chat's own files live.
 type LocalHere struct{ Root, Workspace string }
 
-// Has implements Here. A task copy's folder is named from the cell's own folder
-// and every other from the workspace, as the record spells them.
+// Has implements Here. A task copy's folder and a chat's own file are named from
+// the cell's own folder and every other from the workspace, as the record spells
+// them.
 func (h LocalHere) Has(recordPath string) bool {
 	base := h.Workspace
-	if strings.HasPrefix(recordPath, cell.TreesDir+"/") {
+	if strings.HasPrefix(recordPath, cell.TreesDir+"/") || chatfiles.OwnsWithheld(recordPath) {
 		base = h.Root
 	}
 	_, err := os.Stat(filepath.Join(base, filepath.FromSlash(recordPath)))
@@ -103,7 +115,7 @@ func (LocalHere) Answers(port int) bool {
 // (taking a chat back onto the machine that kept its own) is not missing, and a
 // recorded port that answers is not stopped.
 func Compare(from string, inv inventory.Inventory, here Here, report Report) Resume {
-	r := Resume{From: from, Was: inv.Workspace, Detached: inv.Detached, Omitted: inv.Omitted, Tests: inv.Tests}
+	r := Resume{From: from, Was: inv.Workspace, ChatWas: inv.ChatDir, Detached: inv.Detached, Omitted: inv.Omitted, Tests: inv.Tests}
 	r.Missing = missingFrom(inv.Withheld, here)
 	r.Stopped = stoppedFrom(inv.Running, here)
 	r.Lacks = report.needs()
