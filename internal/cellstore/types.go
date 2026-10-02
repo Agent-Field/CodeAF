@@ -95,6 +95,11 @@ type Receipt struct {
 	Calls      []Call       `json:"calls"`
 	Services   []ServiceRec `json:"services,omitempty"`
 	ModelCalls []ModelCall  `json:"model_calls,omitempty"`
+	// SealedAtMs is when the seal was made. The turn line says it too, but the
+	// line of a chat's newest turn is not in the log a take carries and the
+	// receipt, being in the sealed tree, is. Zero in a receipt made before it was
+	// written.
+	SealedAtMs int64 `json:"sealed_at_ms,omitempty"`
 }
 
 // Executed is one finished call as the device knows it: the receipt row, the

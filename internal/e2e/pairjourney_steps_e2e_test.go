@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -91,6 +92,13 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		j.check(ok, "A showed no 'joined your fleet' news")
 		t.Logf("A after approve:\n%s", toast)
 	})
+
+	// UX_SEGMENT=A stops after the approval and runs only the fresh-install check.
+	if os.Getenv("UX_SEGMENT") == "A" {
+		j.freeze()
+		stepFresh(j, env)
+		return
+	}
 
 	var b2 *rig
 	j.step("4a B: opens a chat and does some work", true, func() {
@@ -204,6 +212,11 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 	})
 
 	j.freeze()
+	stepFresh(j, env)
+}
+
+func stepFresh(j *journey, env []string) {
+	t := j.t
 	j.step("0 fresh install: the card shows with no setup", false, func() {
 		fresh := startWithEnv(t, env, "fresh", newHome(t, nil), newWorkspace(t, "fresh", true), 180, 45)
 		fresh.skipSetup(t)

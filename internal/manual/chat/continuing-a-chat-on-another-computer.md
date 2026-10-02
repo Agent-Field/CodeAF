@@ -2,7 +2,7 @@
 
 This page is about continuing a chat on another computer: the question home asks, the offer when a device is off, and the line that says how long the move took.
 
-## Why can't I type in this chat — one of my machines is running it, and Continue here
+## Why can't I type in this chat — one of my machines is running it, Continue here, and what leave it there does
 
 A chat can be worked on by one device at a time. If you open a chat here that another of your devices is running right now, and you type a message and press enter, the message does not go to the chat. Home opens instead, with that chat's row under the cursor and the question up:
 
@@ -85,6 +85,14 @@ On the set-up card, `set up` runs only the commands the card lists, and `not now
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here`: the move failed. The row stays where it was; try again.
 - With no way to continue set up, an off row has no `continue here`: enter says why.
+
+## Taking a chat back, and two computers racing for the same chat — who wins, and what the loser sees
+
+A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: merge / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
+
+If two computers press `continue here` for the same chat together, the relay lets one of them hold it. The slower one sees `another device continued this chat first`, nothing is changed on it, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+
+When the holder is off (its lid is shut), the row reads `<device> off` and you can still continue the chat here: the card says `last durable turn <N>s ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; when it comes back online it sees the chat was continued elsewhere and keeps those turns as a branch for you to merge or discard.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 

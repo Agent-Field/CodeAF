@@ -125,7 +125,7 @@ func within(all []file) (carried []file, left []inventory.Withheld) {
 }
 
 func stayed(rel, why string) inventory.Withheld {
-	return inventory.Withheld{Path: rel, Why: why + "; it stayed on the machine that made it"}
+	return inventory.Withheld{Path: rel, Reason: why + "; it stayed on the machine that made it"}
 }
 
 func relsOf(files []file) []string {

@@ -106,7 +106,7 @@ func TestAFileOverTheLimitStaysAndIsNamed(t *testing.T) {
 		t.Error("a file over the limit was carried")
 	}
 	left := inventoryOf(t, b).Withheld
-	if len(left) != 1 || left[0].Path != "logs/jobs/1.log" || !strings.Contains(left[0].Why, "stayed on the machine that made it") {
+	if len(left) != 1 || left[0].Path != "logs/jobs/1.log" || !strings.Contains(left[0].Reason, "stayed on the machine that made it") {
 		t.Errorf("withheld = %+v, want logs/jobs/1.log named with why it stayed", left)
 	}
 }

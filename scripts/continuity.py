@@ -4,7 +4,7 @@
   scripts/continuity.py cold [--out DIR]     a fresh B takes a finished session
   scripts/continuity.py warm [--out DIR]     B already holds an older copy; A continues; B takes again
 
-Two homes on this box are two devices of one identity (staging relay in CODEAF_SYNC_URL). Home A does a
+Two homes on this box are two devices of one identity (the relay under test, CODEAF_RELAY). Home A does a
 realistic session in a real repository with a live model (reads, two edits, tests, an install, a dev
 server, a task, a memory, a setting, a closing summary). The chat then moves to home B through the home
 screen (cold) or the take the home screen runs (warm). Everything the chat owns is snapshotted on both
@@ -35,14 +35,24 @@ spec.loader.exec_module(hv)
 import check  # noqa: E402
 import tuidrive as td  # noqa: E402
 
-RIG = os.environ.get("CONT_RIG", os.path.expanduser("~/caf-vcont-rig"))
-BIN = os.environ.get("CONT_BIN", os.path.join(os.path.dirname(HERE), "bin"))
+sys.path.insert(0, os.path.join(HERE, "measure"))
+import rigenv  # noqa: E402
+
+# The folders are read by configure() once the arguments are parsed, so that `--help` works on a box
+# where none of them is set.
+RIG = BIN = WS_A = A = B = None
 # CONT_SUFFIX names the tmux servers, so a second rig (another binary) can run beside the first.
 SUF = os.environ.get("CONT_SUFFIX", "")
-WS_A = f"{RIG}/a/work/inv"
-A = hv.Box("A", f"{RIG}/a", hv.sh, "vca" + SUF)
-B = hv.Box("B", f"{RIG}/b", hv.sh, "vcb" + SUF)
 sh, log = hv.sh, hv.log
+
+
+def configure():
+    """Read the rig folder and the built programs, stopping with the name of the first one that is missing."""
+    global RIG, BIN, WS_A, A, B
+    RIG, BIN = rigenv.get("CODEAF_FIRST_ROOT"), rigenv.get("CODEAF_RIG_BIN")
+    rigenv.get("CODEAF_RELAY")  # the rig scripts read it themselves; a missing one is better named now than half way in
+    WS_A = f"{RIG}/a/work/inv"
+    A, B = hv.Box("A", f"{RIG}/a", hv.sh, "vca" + SUF), hv.Box("B", f"{RIG}/b", hv.sh, "vcb" + SUF)
 
 PORT = os.environ.get("CONT_PORT", "8793")   # one dev-server port per rig, so two rigs can run side by side
 # Each model turn names itself with a dashed word (ref-vcN): the rig tells one turn from the last by it.
@@ -112,7 +122,7 @@ class Run:
             sh(f"bash {KIT}/rig.sh {box.root}")
             if os.path.isdir(f"{box.root}/paired"):
                 sh(f"rm -rf {box.root}/home && cp -a {box.root}/paired {box.root}/home")
-            sh(f"cp {BIN}/codeaf {BIN}/codeaf-vd {HELP}/tuidrive.py {HELP}/treehash.py {box.root}/bin/ && cp {RIG}/../caf-vdemo-rig/bin/s1probe {box.root}/bin/")
+            sh(f"cp {BIN}/codeaf {BIN}/codeaf-vd {HELP}/tuidrive.py {HELP}/treehash.py {box.root}/bin/ && cp {BIN}/s1probe {box.root}/bin/")
         sh(f"bash {KIT}/fixture.sh {WS_A}")
         sh(f"mkdir -p {B.root}/work/b && cd {B.root}/work/b && git init -q && echo b > README.md && git add . && git -c user.name=v -c user.email=v@x commit -qm init")
 
@@ -352,6 +362,7 @@ def main():
     ap.add_argument("kind", choices=["cold", "warm", "pair"])
     ap.add_argument("--out", default=os.path.join(os.path.dirname(HERE), ".lane", "continuity"))
     args = ap.parse_args()
+    configure()
     r = Run(args.kind, args.out)
     try:
         getattr(r, args.kind)()

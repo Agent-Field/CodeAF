@@ -37,6 +37,7 @@ serde_json.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
 tiny_http.workspace = true
+unicode-normalization.workspace = true
 ureq.workspace = true
 url.workspace = true
 xattr.workspace = true

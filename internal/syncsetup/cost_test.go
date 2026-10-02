@@ -145,7 +145,12 @@ func (r *driveRig) costOf() cost {
 
 // runScript plays four turns of ten tool calls over the real engine reached
 // through its daemon, as a chat reaches it, and closes the chat.
-func runScript(t *testing.T, idle func(*Drive)) cost {
+func runScript(t *testing.T, idle func(*Drive)) cost { return runScriptTail(t, idle, false) }
+
+// runScriptTail is runScript with, when tail is set, the writes a turn leaves
+// behind (a title line) and the trailing seal the watch makes for them, once
+// after each turn end.
+func runScriptTail(t *testing.T, idle func(*Drive), tail bool) cost {
 	r := newDriveRig(t)
 	r.engine.Transport = cellstore.Daemon{Socket: filepath.Join(t.TempDir(), "e.sock"), Binary: r.bin}
 	r.a.Interval = DefaultInterval // the rig shortens it for tests that run on real time
@@ -163,6 +168,14 @@ func runScript(t *testing.T, idle func(*Drive)) cost {
 	}
 	s := &scriptedSession{r: r, clock: sim, chat: &chat{r: r, drive: drive, seat: executor.Gated(seat, drive.Gate)}}
 	s.end = func() { idle(drive) }
+	if tail {
+		s.end = func() {
+			idle(drive)
+			appendTo(t, transcriptOf(r.cell), `{"type":"message","role":"assistant","content":"a title"}`+"\n")
+			executor.Settle(context.Background(), s.chat.seat)
+			idle(drive)
+		}
+	}
 	sim.settle()
 	for range 4 {
 		s.turn(10)
@@ -190,5 +203,19 @@ func TestScriptedSessionCosts(t *testing.T) {
 	const calls = 4*10 + 4 // a publish per call at most, plus one idle upload per turn
 	if got.Publishes == 0 || got.Publishes > calls {
 		t.Fatalf("%d publishes, want between 1 and %d", got.Publishes, calls)
+	}
+}
+
+// TestScriptedSessionTailSealCosts pins what the trailing seal adds: at most one
+// publish per turn, and still one frame and one put each.
+func TestScriptedSessionTailSealCosts(t *testing.T) {
+	base := runScript(t, (*Drive).Idle)
+	with := runScriptTail(t, (*Drive).Idle, true)
+	t.Logf("without the tail seal: %+v; with it: %+v", base, with)
+	if with.Frames != with.Publishes || with.Puts != with.Frames {
+		t.Fatalf("%d publishes made %d frames in %d puts", with.Publishes, with.Frames, with.Puts)
+	}
+	if extra := with.Publishes - base.Publishes; extra > 4 {
+		t.Fatalf("the tail seal added %d publishes over 4 turns, want at most one per turn", extra)
 	}
 }

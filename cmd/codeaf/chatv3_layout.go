@@ -800,9 +800,21 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	if drive != nil {
 		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}
-	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive))
+	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note))
 	failed(watch, err)
+	watch.OnTail = func() { sealTail(seat, drive) }
 	return executor.Gated(seat, driveGate(drive)), machine, watch
+}
+
+// sealTail seals what the chat wrote after the turn-end seal (titles, summaries,
+// memories) and sends it. It is the turn's own ending again, so the record has
+// one way to become durable; the sync side's single flight folds it into the
+// upload already running. The watch calls it from its own timer, once.
+func sealTail(seat executor.Seat, drive *liveDrive) {
+	executor.Settle(context.Background(), seat)
+	if drive != nil {
+		drive.Idle()
+	}
 }
 
 // observerOf is the machine's observer, and no observer where the inventory
