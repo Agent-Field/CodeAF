@@ -185,3 +185,43 @@ func TestATakenChatHomeDoesNotListStillOpens(t *testing.T) {
 		t.Fatal("a takeover that named no journal still produced a line")
 	}
 }
+
+// THE FIRST ENTER SENDS WHAT WAS TYPED OVER A CARD THAT ARRIVED UNASKED. The
+// resume card is raised by an arrival, not by a gesture, so nothing the person
+// did asked for it: it must neither take `enter` away from a sentence in the
+// box (which left the text standing and needed a second enter) nor answer a key
+// that was aimed at whatever was on screen a moment before it.
+func TestTheFirstEnterSendsTheSentenceOverTheArrivalCard(t *testing.T) {
+	for _, settled := range []bool{false, true} {
+		for _, card := range []machine.Resume{webResume(), {From: "spark", Uncommitted: []string{"README.md"}}} {
+			a, agent := movedApp(t)
+			typeText(t, a, "hello there")
+			a.offerSetup(card)
+			_ = a.questionRows(a.width) // the draw stamps the card as seen
+			if settled {
+				harnessSettled(t, a)
+			}
+			drive(t, a, key("enter"))
+			if len(agent.sent) != 1 || agent.sent[0] != "hello there" {
+				t.Fatalf("settled=%v: the first enter sent %q, want the sentence", settled, agent.sent)
+			}
+			if got := a.input.String(); got != "" {
+				t.Fatalf("settled=%v: the sentence stayed in the box: %q", settled, got)
+			}
+			if _, ok := a.questionHead(); !ok {
+				t.Fatalf("settled=%v: sending a message answered the card", settled)
+			}
+		}
+	}
+}
+
+// An empty box still lets enter take the card's pointer, which is drawn.
+func TestEnterOverAnEmptyBoxStillAnswersTheArrivalCard(t *testing.T) {
+	a, _ := movedApp(t)
+	a.offerSetup(webResume())
+	harnessSettled(t, a)
+	drive(t, a, key("enter"))
+	if _, ok := a.questionHead(); ok {
+		t.Fatal("enter over an empty box did not answer the card")
+	}
+}
