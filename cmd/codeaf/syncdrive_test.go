@@ -240,3 +240,61 @@ func TestStartDriveWithNoIdentityReportsNothing(t *testing.T) {
 		t.Fatalf("waiting for an identity was reported as a seal outcome: %v", reported)
 	}
 }
+
+// A chat that was moved to another computer and then moved back opens here with a drive side of
+// its own. The drive side kept from before the move only shows the chat, so reusing it would
+// refuse every tool call in the chat that was moved back.
+func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
+	cfg, c := doorChat(t)
+	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
+	t.Cleanup(srv.Close)
+	t.Setenv(syncsetup.URLVar, srv.URL)
+	t.Setenv(syncsetup.IntervalVar, "50")
+	first := home.Dir()
+	id, err := identity.Ensure(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seated := v3Seated(cfg)
+	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	firstBook := syncDrives
+
+	// The second computer, one identity with the first, opens the chat while the first drives it.
+	second := t.TempDir()
+	blob, err := identity.Export(id, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := identity.Import(blob, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.Adopt(second, moved, false); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(home.EnvVar, second)
+	syncDrives = &driveBook{}
+	t.Cleanup(func() { syncDrives = firstBook })
+	engine := cellstore.EngineFor(cfg.Place.Workspace)
+	viewing := syncDrives.driveOf(c, engine, func(error) {})
+	if viewing == nil || viewing.started() == nil {
+		t.Fatal("the second computer made no drive side")
+	}
+	if _, viewer := viewing.started().Viewer(); !viewer {
+		t.Skip("the first computer did not hold the lease yet")
+	}
+
+	// The first computer lets the chat go; opening it again here must drive it.
+	t.Setenv(home.EnvVar, first)
+	firstBook.closeAll()
+	t.Setenv(home.EnvVar, second)
+	again := syncDrives.driveOf(c, engine, func(error) {})
+	if again == viewing {
+		t.Fatal("the drive side that only showed the chat was reused")
+	}
+	if line := again.Gate(); line != nil {
+		t.Fatalf("a chat opened after it was moved back is refused: %v", line)
+	}
+}
