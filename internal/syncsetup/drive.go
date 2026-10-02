@@ -166,6 +166,12 @@ func (s *Sync) putDevice(ctx context.Context, name string) error {
 	return s.Dir.PutDevice(ctx, s.Device.ID(), rec)
 }
 
+// Rename tells the identity's other devices what this one is now called. It is
+// the same upsert every chat start makes ([Sync.putDevice]): a device may only
+// ever write its own record, the name travels sealed under the identity's key,
+// and the relay never learns it.
+func (s *Sync) Rename(ctx context.Context, name string) error { return s.putDevice(ctx, name) }
+
 // driving finds where this chat stands in the directory: no record yet (fence
 // 0), a record this device now holds, or a record another device holds, in
 // which case held names that device. A chat that was branched drives its branch.
@@ -285,6 +291,24 @@ func (d *Drive) Viewer() (string, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.line, d.line != ""
+}
+
+// HoldsLease says whether this drive side still drives the chat: it is not a
+// viewer, and the directory's lease is this device's at the fence this drive
+// side publishes under. A lease taken by another device since (a take by force
+// moves it without telling the drive side that was idle) answers false. A
+// directory that cannot be asked answers true, because a drive side that cannot
+// tell must not be thrown away for it.
+func (d *Drive) HoldsLease(ctx context.Context) bool {
+	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
+		return false
+	}
+	v, err := d.sync.Dir.Cell(ctx, d.cell.ID)
+	if err != nil {
+		return true
+	}
+	lease := v.Cell.Lease
+	return lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
 }
 
 // Gate refuses with the superseded line once the chat is a viewer, and answers

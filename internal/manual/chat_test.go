@@ -3705,7 +3705,7 @@ func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
 // page that answers it, and the section that says the answer: a page that is
 // complete but unreachable is a page the chat talks over the top of.
 func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
-	const add, cont = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer"
+	const add, cont, naming = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"
 	for _, probe := range []struct{ asked, page, says string }{
 		{"why can't I type in this chat", cont, "Your words stay in the box"},
 		{"my message did not send and home opened with a question", cont, "Continue this chat here?"},
@@ -3723,6 +3723,10 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"how do I remove a computer", add, "r revoke"},
 		{"what does the dot next to a computer mean", add, "○ dumb (offline)"},
 		{"I was told this computer was removed", add, "this computer was stopped by another of your computers"},
+		{"how do I rename this computer", naming, "codeaf devices rename \"atlas\""},
+		{"why does it show my hostname", naming, "Because you never named this device"},
+		{"how do I change what my device is called", naming, "press `n`"},
+		{"can I name a device when I join", naming, "codeaf pair --name"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

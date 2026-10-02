@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -86,6 +87,22 @@ func (l *liveDrive) Close(ctx context.Context) error {
 		return d.Close(ctx)
 	}
 	return nil
+}
+
+// holdsLeaseWithin bounds the look at the directory that a chat opened again makes.
+const holdsLeaseWithin = 5 * time.Second
+
+// superseded says a drive side was running and the chat has since been taken from it, by
+// another machine or by a move back to this one, so that it no longer holds the lease it
+// publishes under. A drive side that still waits for an identity, or that drives, is not.
+func (l *liveDrive) superseded() bool {
+	d := l.started()
+	if d == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
+	defer cancel()
+	return !d.HoldsLease(ctx)
 }
 
 // started is the drive side if one ever started, without trying to start it.

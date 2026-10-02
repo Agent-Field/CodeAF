@@ -35,13 +35,16 @@ package remote
 
 import (
 	"errors"
-	"os"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// MachineName is what this machine calls itself on the wire: its host name with
-// any domain trimmed off, so a person reads `spark` rather than
-// `spark.local.example.com` in a sentence about which window is typing.
+// MachineName is what this machine calls itself on the wire: the name a person
+// gave it, else its host name with any domain trimmed off ([devname.Name]), so a
+// person reads `spark` rather than `spark.local.example.com` in a sentence about
+// which window is typing.
 //
 // IT IS A LABEL AND NOT AN IDENTITY (see [Hello.Surface]). The empty string is a
 // machine that could not answer, and the empty string is what every screen
@@ -50,18 +53,9 @@ import (
 //
 // internal/pair's ThisMachineLabel reads the same fact for the pairing lane and
 // is deliberately NOT called here: the two packages are siblings glued together
-// by the door in cmd/codeaf, neither imports the other, and pairing's label is a
-// device's durable name where this is one connection's passing one.
-func MachineName() string {
-	name, err := os.Hostname()
-	if err != nil {
-		return ""
-	}
-	if dot := strings.IndexByte(name, '.'); dot > 0 {
-		name = name[:dot]
-	}
-	return machineLabel(name)
-}
+// by the door in cmd/codeaf and neither imports the other. They agree because
+// both read [devname.Name], which is the one place the name is kept.
+func MachineName() string { return machineLabel(devname.Name(home.Dir())) }
 
 // machineNameMost is the most of a machine name that is worth carrying. A name
 // longer than this is not a machine somebody types at; it is a mistake or a

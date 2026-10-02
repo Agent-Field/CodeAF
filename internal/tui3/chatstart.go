@@ -419,6 +419,11 @@ func (a *app) startChatEnter(marked bool) tea.Cmd {
 	if !a.startingChat() {
 		return nil
 	}
+	// A PAIR LINK IS NOT A FIRST MESSAGE: it opens no conversation, and it is
+	// answered before one is made (approve.go's [app.takePairLink]).
+	if cmd, took := a.takePairLink(); took {
+		return cmd
+	}
 	// A FULL TRAY IS A MESSAGE, which is input.go's law about enter: a picture
 	// with no words is not an empty message. Anything else is a person pressing
 	// enter at a blank page, and a conversation made for that would be a session
