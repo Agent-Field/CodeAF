@@ -180,7 +180,7 @@ func TestExternalCallKeepsOutputInTheWAL(t *testing.T) {
 }
 
 func TestFlagOffWrapIsTheExecutorItself(t *testing.T) {
-	t.Setenv(cell.EnvVar, "")
+	t.Setenv(cell.EnvVar, "0")
 	c := newCell(t)
 	inner := &stubExec{}
 	got, err := Wrap(inner, c)

@@ -21,7 +21,7 @@
 //     completion is INCOMPLETE and is only ever surfaced, never re-run (L9).
 //   - Recorder (recorder.go) is the one hook: an executor.Executor decorator
 //     that logs intent, runs the call, logs completion, and seals. It exists
-//     only when CODEAF_CELLS is on ([Wrap]); off, the executor is returned
+//     unless CODEAF_CELLS=0 ([Wrap]); off, the executor is returned
 //     untouched.
 //   - Engine (engine.go) is the Store over the engine, one data directory per
 //     cell so writers never share a catalog lock. A seal is one turn-end verb

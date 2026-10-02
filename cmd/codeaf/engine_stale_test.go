@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"net"
 	"os"
 	"os/exec"
@@ -153,7 +154,7 @@ var (
 func TestAHostOfThisBuildIsSplicedOntoWithoutAWord(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity()}, false)
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity(), Cells: cell.Enabled()}, false)
 
 	note, err := clearStaleEngineHost(workspace)
 	if err != nil {

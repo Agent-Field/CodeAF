@@ -28,7 +28,6 @@ func doorChat(t *testing.T) (session.Config, cell.Cell) {
 	if _, err := furrow.ResolveOwned(); err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	t.Setenv(cell.EnvVar, "1")
 	// The engine daemon has no sync verbs until its own lane lands, so the
 	// door's sync runs over the spawn transport, which has them.
 	t.Setenv("CODEAF_ENGINE_DAEMON", "0")

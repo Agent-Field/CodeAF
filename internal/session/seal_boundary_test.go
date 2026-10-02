@@ -50,7 +50,6 @@ func (s *transcriptAtSeal) seals() int {
 // other machine a transcript that says what the work was and what came of it,
 // so the model does not run a finished call again.
 func TestSealsCarryTheToolResultAndTheClosingAnswer(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
 	if err != nil {

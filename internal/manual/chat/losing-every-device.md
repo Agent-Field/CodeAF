@@ -8,7 +8,7 @@ If you still have one computer that holds your identity, pair a new one from it:
 
 Only two things can save you before that day:
 
-- **An identity file.** `codeaf identity export` writes your identity under a passphrase, and `codeaf identity import` reads it on a new computer. It needs `CODEAF_CELLS=1` in this build. Keep the file and the passphrase in a safe place, apart from the computer.
+- **An identity file.** `codeaf identity export` writes your identity under a passphrase, and `codeaf identity import` reads it on a new computer. Keep the file and the passphrase in a safe place, apart from the computer.
 - **One computer that you keep.** A second computer that is paired is a backup.
 
 ## Can I change my identity — identity rotate

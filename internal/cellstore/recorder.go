@@ -59,7 +59,7 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 		pending: rec.Completed, incomplete: rec.Incomplete}, nil
 }
 
-// Wrap is the seam callers use. With CODEAF_CELLS off it returns inner itself,
+// Wrap is the seam callers use. With CODEAF_CELLS=0 it returns inner itself,
 // so the flag-off path is not a different code path, it is no path.
 func Wrap(inner executor.Executor, c cell.Cell) (executor.Executor, error) {
 	if !cell.Enabled() {

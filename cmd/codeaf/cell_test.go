@@ -178,7 +178,6 @@ func TestEachSeatOwnsItsSealWatch(t *testing.T) {
 		t.Skipf("no engine binary: %v", err)
 	}
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_CELLS", "1")
 	bucket := filepath.Join(home.Join("v3", "projects"), "-work")
 	seatOf := func() *cellstore.SealWatch {
 		c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})
