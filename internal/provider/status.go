@@ -2,9 +2,23 @@ package provider
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 )
+
+// KeyExpiredFrom keeps the expiry fact after the engine wire has flattened a
+// refusal into text, so hosted and local conversations refresh the same reading.
+func KeyExpiredFrom(err error) bool {
+	if err == nil {
+		return false
+	}
+	if refusal, ok := RefusalFrom(err); ok {
+		return refusal.KeyExpired()
+	}
+	status, ok := statusFromText(err.Error())
+	return ok && status == http.StatusUnauthorized && strings.Contains(strings.ToLower(err.Error()), "expired")
+}
 
 // StatusOf returns the HTTP status a provider failure carried, including the
 // status in the legacy `API error (N)` spelling. The fallback is centralized

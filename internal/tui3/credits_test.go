@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -12,8 +13,62 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+func TestEngineRefusalReadsCreditsOnlyForExpiredKeysOrUnpayableAccounts(t *testing.T) {
+	a := placeApp(t)
+	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }
+	for _, tc := range []struct {
+		status  int
+		message string
+		want    bool
+	}{
+		{401, "API key expired.", true}, {401, "invalid key", false},
+		{403, "API key expired.", false}, {429, "expired quota", false},
+		{500, "expired upstream", false},
+	} {
+		t.Run(fmt.Sprintf("%d/%s", tc.status, tc.message), func(t *testing.T) {
+			err := &provider.APIError{Status: tc.status, Message: tc.message}
+			crossed := remote.WireEvent(session.Event{Err: err}).Unwire().Err
+			if got := a.creditRefusalEnded(crossed); got != tc.want {
+				t.Fatalf("engine refusal %q requests credit read=%v, want %v", crossed, got, tc.want)
+			}
+		})
+	}
+	if a.creditRefusalEnded(errors.New("network connection expired")) {
+		t.Fatal("network failure requested a credit read")
+	}
+	prefix := config.ConnectionOutcomeWord(modelsource.DefaultSource("").Name, modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay})
+	if !a.creditRefusalEnded(errors.New(prefix)) {
+		t.Fatal("the account-cannot-pay reading stopped requesting credits")
+	}
+	source := modelsource.Source{ID: "custom:company", Written: "custom:company", Name: "company", Address: "http://local.invalid/v1"}
+	a.sources = modelsource.NewSet(modelsource.Connected{Source: source, Address: source.Address})
+	a.model = "custom:company/model"
+	err := remote.WireEvent(session.Event{Err: &provider.APIError{Status: 401, Message: "API key expired."}}).Unwire().Err
+	if a.creditRefusalEnded(err) {
+		t.Fatal("a direct model's expired key requested OpenRouter credits")
+	}
+}
+
+func TestExpiredReadKeepsBothUntouchedConversationDefaults(t *testing.T) {
+	for _, model := range []string{config.FreeChatModel, config.DefaultModel} {
+		t.Run(model, func(t *testing.T) {
+			a := placeApp(t)
+			a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }
+			a.model, a.implicitTalk = model, true
+			seedExpiredKey(t, a)
+			before := len(a.entries)
+			a.refreshCreditWarnings()
+			if a.model != model || len(a.entries) != before {
+				t.Fatalf("expired read changed untouched model %q to %q and added %d notes", model, a.model, len(a.entries)-before)
+			}
+		})
+	}
+}
 
 func TestSurfaceCancelsAndJoinsAnInFlightCreditRead(t *testing.T) {
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})

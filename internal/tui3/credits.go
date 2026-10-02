@@ -162,7 +162,7 @@ func (a *app) refreshCreditWarnings() {
 	// launch read says otherwise. A conversation that has sent anything keeps its
 	// model either way, and nothing here writes a talk row.
 	want := config.ChatDefaultAt(a.profileDir)
-	if a.readCredits != nil && !a.creditSwitching && a.implicitTalk && a.model != want &&
+	if a.readCredits != nil && !a.creditsExpired && !a.creditSwitching && a.implicitTalk && a.model != want &&
 		(a.model == config.DefaultModel || a.model == config.FreeChatModel) &&
 		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" {
 		a.creditSwitching = true
@@ -209,7 +209,10 @@ func (a *app) creditRefusalEnded(err error) bool {
 	if err == nil || a.readCredits == nil || a.modelIsDirect(a.model) {
 		return false
 	}
-	if refusal, ok := provider.RefusalFrom(err); ok && (refusal.AccountCannotPay() || refusal.KeyExpired()) {
+	if provider.KeyExpiredFrom(err) {
+		return true
+	}
+	if refusal, ok := provider.RefusalFrom(err); ok && refusal.AccountCannotPay() {
 		return true
 	}
 	prefix := config.ConnectionOutcomeWord(modelsource.DefaultSource("").Name, modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay})

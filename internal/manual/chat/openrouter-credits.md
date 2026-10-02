@@ -82,8 +82,10 @@ warning colour. Unlike the low-credits line it shows on **every** model the defa
 OpenRouter service serves — free or paid — and never on a model served by Codex, a local
 model or another connected service. It wins over the low-credits line, and the free
 defaults are **not** used, because they would fail on the same key. A turn refused with
-`API key expired` mid-session starts a fresh read, so the warning arrives without a
-relaunch. On the first-run setup screen the same fact stands on the last row, and the list
+`API key expired` mid-session starts a fresh read on both the ordinary engine launch
+and `codeaf chat --no-host`, so the warning arrives without a relaunch. An expired
+reading leaves an untouched conversation on its current model: it moves neither
+from the free default to the paid default nor the other way, and adds no model note. On the first-run setup screen the same fact stands on the last row, and the list
 is not cut to free models. When a connect step came before the screen it reads
 `Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys`
 and `esc` goes back there; when the key was already in the shell or the profile and only the
