@@ -113,9 +113,15 @@ def select(pred, limit=20):
     return ""
 
 
+# A chat that left a dev server running says `1 job working` in its footer for as long as the server lives, though the
+# turn is over: the word `idle` never comes back, so a running job alone must not keep a finished turn from ending.
+JOBS_ONLY = re.compile(r"\d+ jobs? +working$")
+
+
 def status_idle(text):
-    """The footer's right-hand word, `idle` once the chat waits for the next prompt."""
-    return any(l.startswith("─") and l.rstrip(" ─").endswith("idle") for l in map(plain, text.splitlines()))
+    """The footer's right-hand word, `idle` once the chat waits for the next prompt (or only background jobs run)."""
+    return any(l.startswith("─") and (l.rstrip(" ─").endswith("idle") or JOBS_ONLY.search(l.rstrip(" ─")))
+               for l in map(plain, text.splitlines()))
 
 
 def finished_after(text, token):
@@ -199,8 +205,13 @@ def take(hint):
     t["resume_card"] = shown if t["resume_card_ms"] else ""
     t["ready_ms"], _ = wait_for(lambda x: "›" in x and "type to search" not in x, 60)
     if t["resume_card_ms"]:
-        key("Escape")   # the card's own `not now`
-        wait_for(lambda x: "not now" not in x, 3)
+        # The card's own `not now`. An escape sent in the instant the card is drawn is not read by it (a person cannot
+        # type that fast), so the key is sent again until the card is gone.
+        for _ in range(4):
+            time.sleep(0.7)
+            key("Escape")
+            if wait_for(lambda x: "esc not now" not in x, 2)[0]:
+                break
     t["screen_after"] = cap()
     return t
 
