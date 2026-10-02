@@ -43,6 +43,10 @@ Focused TUI and session regressions cover routing, membership boundaries, scope 
 confirmation resizing/scrolling, owner stopping, concurrency, aliases and tombstones.
 The complete lightweight teams, remote and enginehost suites check storage and protocol
 behavior. The light gate checks build, vet, formatting, packed manuals, retrieval, and laws.
+Home deletion hints and `/delete` routing name the existing conversation. Wrap-up timing
+remains visible. Disband completion waits for its own store acknowledgement; refused writes
+are reported on the visible page. A real-terminal smoke test deletes a throwaway conversation
+and checks the saved tombstone and Home removal.
 Builds use only `make build`, producing this worktree's `bin/codeaf`.
 
 The milestone 3 review fixture is `/private/tmp/codeaf-teams-milestone-3`. It contains shared

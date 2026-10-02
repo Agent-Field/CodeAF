@@ -91,7 +91,10 @@ type teamsPage struct {
 	answer    editor
 	// msg is the page's one line of news, said on its note.
 	msg string
-	// undo is the last close, while Undo is offered (teamclose.go).
+	// The disband notice follows its queued write without offering reopen.
+	disbandName string
+	disbandSaid teamWriteSaid
+	// undo retains the older close record for compatibility helpers.
 	undo teamsUndo
 	// picked is the teams picked on the rail with `space`, which one `Move
 	// into…` moves together (teammove.go).

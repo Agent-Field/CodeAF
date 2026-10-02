@@ -174,7 +174,6 @@ func (a *app) teamsCloseNow(id, report string, expected ...[]string) tea.Cmd {
 		return nil
 	}
 	cmd := a.teamsAfterClose(t, shut, now, true)
-	a.tp.msg = t.Name + " is disbanded; conversations and current work continue"
 	return cmd
 }
 
@@ -221,27 +220,34 @@ func (a *app) teamsStopMembers(id string) []string {
 	return shut
 }
 
-// teamsAfterClose is what follows a close on this window: Undo offered, the
-// selection and the wall moved off the team, and its Traffic told when tell
-// says the store did not tell it already.
+// teamsAfterClose releases the overlay and shows the preserved history. A
+// local edit announces completion only after its own store write succeeds.
 func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) tea.Cmd {
-	id := t.ID
-	// On the page the Undo row says it; off it the close is said where the
-	// person is standing.
 	a.tp.undo = teamsUndo{}
-	if !a.at(pageTeams) {
-		a.note(t.Name + " is disbanded; its conversations and current work continue")
+	a.tp.msg = ""
+	if tell {
+		a.tp.disbandName, a.tp.disbandSaid = t.Name, a.teamWriteWatch(nil)
+	} else {
+		a.teamsDisbandSaid(t.Name, "")
 	}
-	a.tp.closedOpen, a.tp.sel = true, id
+	a.tp.closedOpen, a.tp.sel = true, t.ID
 	if active, ok := a.teamByID(a.teamViews.id); !ok || active.Closed() {
 		a.teamViewSet("")
 	}
 	a.touch()
-	if !tell {
-		return nil
+	return nil
+}
+
+// teamsDisbandSaid puts the store's result where the person is standing.
+func (a *app) teamsDisbandSaid(name, why string) {
+	word := name + " is disbanded; conversations and current work continue"
+	if why != "" {
+		word = teamNotSaved("the disbanding of "+name, why)
 	}
-	return tea.Batch(a.teamsTell(id, teamstore.Entry{Kind: teamstore.KindClose, From: teamstore.FromYou, To: teamstore.ToEveryone,
-		Text: "the person disbanded the team; memberships ended and current work continues"}))
+	a.tp.msg = word
+	if !a.at(pageTeams) {
+		a.note(word)
+	}
 }
 
 // teamsUndoing reports whether Undo is still offered for the last close.

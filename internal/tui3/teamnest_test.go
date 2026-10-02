@@ -299,7 +299,7 @@ func TestDraggingAMemberRowOntoATeamAddsIt(t *testing.T) {
 		t.Fatal("p did not open the members card")
 	}
 	text := teamsFrameText(a)
-	if !strings.Contains(text, "@crane") || !strings.Contains(text, "Resume") || strings.Contains(text, "not open") {
+	if !strings.Contains(text, "@crane") || !strings.Contains(text, "crane work") || strings.Contains(text, "not open") {
 		t.Fatalf("the members card:\n%s", text)
 	}
 	var row wallHit
@@ -466,9 +466,8 @@ func TestSwitcherIsTheTreeAndTheWallSaysParentAndChild(t *testing.T) {
 	}
 }
 
-// THE HEADER IS ONE LINE AT EVERY WIDTH: the name always, the buttons unless
-// nothing else fits, a working member as a chip, everyone else one idle word,
-// and narrow, the idle word goes before the chip.
+// The team header keeps its name and places membership controls in order.
+// Member activity belongs to the cards rather than a second header summary.
 func TestTheTeamHeaderIsOneLineAndDropsInOrder(t *testing.T) {
 	for _, width := range []int{80, 110, 160} {
 		t.Run(itoa(width), func(t *testing.T) {
@@ -485,17 +484,15 @@ func TestTheTeamHeaderIsOneLineAndDropsInOrder(t *testing.T) {
 			if !strings.Contains(line, "harbor") {
 				t.Fatalf("the header lost the team's name at %d: %q", width, line)
 			}
-			chip := strings.Contains(line, "working")
-			idle := strings.Contains(line, "idle")
-			if idle && !chip {
-				t.Fatalf("the idle word stayed while the working chip went at %d: %q", width, line)
+			if width >= 110 {
+				add := strings.Index(line, "+ Add member")
+				sub := strings.Index(line, "+ Add subteam")
+				if add < 0 || sub <= add || !strings.Contains(line, "Disband") {
+					t.Fatalf("the header lost its controls at %d: %q", width, line)
+				}
 			}
-			if width >= 110 && (!chip || !idle) {
-				t.Fatalf("at %d the header should have room for the chip and the idle word: %q", width, line)
-			}
-			next := strings.Split(text, "\n")[y+1]
-			if strings.Contains(next, "idle") || strings.Contains(next, "not open") {
-				t.Fatalf("the members spilled onto a second row at %d: %q", width, next)
+			if strings.Contains(line, "working") || strings.Contains(line, "idle") {
+				t.Fatalf("the header duplicated card activity at %d: %q", width, line)
 			}
 		})
 	}

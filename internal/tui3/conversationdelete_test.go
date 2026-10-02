@@ -102,3 +102,22 @@ func TestTeamsHistoricalInteractionsNeverFollowReusedAliasesOrNewManagers(t *tes
 		t.Fatal("stable history identities followed replacements")
 	}
 }
+
+// Home must confirm the saved conversation already held behind it, never start
+// a new conversation merely to satisfy a destructive slash command.
+func TestHomeDeleteSlashConfirmsHeldConversationWithoutStarting(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.page = pageHome
+	a.start, a.fresh = nil, nil
+	file, owner := a.file, a.agent
+	a.homeSlash("/delete")
+	if !a.cdelete.on || a.cdelete.file != file || a.file != file || a.agent != owner {
+		t.Fatal("Home deletion did not confirm the existing conversation")
+	}
+	a.cdelete = conversationDeleteSheet{}
+	a.file = ""
+	a.homeSlash("/delete")
+	if a.cdelete.on || a.home.msg != "This conversation has no saved transcript yet" {
+		t.Fatalf("unsaved Home deletion did not explain the refusal: %q", a.home.msg)
+	}
+}

@@ -119,6 +119,9 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	if spend := a.teamsSpendWords(t); spend != "" {
 		left += "  " + a.pal.dim(spend)
 	}
+	if wrap := a.teamWrapWords(t, a.now()); wrap != "" {
+		left += "  " + a.pal.dim(wrap)
+	}
 	if !t.Root {
 		for _, control := range []struct {
 			word string

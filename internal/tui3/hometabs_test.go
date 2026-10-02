@@ -219,7 +219,8 @@ func TestHomeConversationListsStayInSyncAcrossWidths(t *testing.T) {
 			homeText(a)
 			assertHomeTabParity(t, a)
 			a.home.point(files[1])
-			drive(t, a, key("ctrl+e"))
+			line, _ := a.home.focusedLine()
+			drain(t, a, a.homeArchiveRow(line.row))
 			assertHomeTabParity(t, a)
 			_, closed := homeConversationLines(a)
 			if len(closed) != 1 || closed[0].row.Transcript != files[1] {
@@ -244,7 +245,8 @@ func TestARowThisTerminalHoldsNeverClaimsAnotherWindowAfterClose(t *testing.T) {
 	for _, closeIt := range []bool{false, true} {
 		if closeIt {
 			a.home.point(files[0])
-			drive(t, a, key("right"), key("x"))
+			line, _ := a.home.focusedLine()
+			drain(t, a, a.homeArchiveRow(line.row))
 		}
 		a.home.point(files[0])
 		frame := homeText(a)

@@ -181,10 +181,8 @@ func TestTheMacJumpsMoveTheCaretInHomesBox(t *testing.T) {
 	}
 }
 
-// CMD+→ MAY NOT PUT A CONVERSATION AWAY. It arrives as `ctrl+e`, which is home's
-// own key for setting the row under the cursor aside — so with a sentence in the
-// box the caret wins, exactly as it does in the message box. A destructive key
-// may not be reachable by a gesture that means "move the caret".
+// CMD+→ moves the caret while typing. With an empty box the same terminal
+// chord opens deletion confirmation; it never deletes without confirmation.
 func TestCmdRightMovesTheCaretOnHomeRatherThanArchivingTheRow(t *testing.T) {
 	a := placeApp(t)
 	before := homeArchivedWord(a)
@@ -198,17 +196,15 @@ func TestCmdRightMovesTheCaretOnHomeRatherThanArchivingTheRow(t *testing.T) {
 	if got := homeArchivedWord(a); got != before {
 		t.Fatalf("cmd+→ put a row away while somebody was typing: %q became %q", before, got)
 	}
-	// AND THE KEY IS NOT LOST, only guarded: over an empty box it is the
-	// put-away key the card's legend names, and from the END of a typed line it
-	// is that key too — which is the way back out of the archive
-	// (home_test.go's own row-away test walks it: type the name of a row you put
-	// away, the list finds it, `ctrl+e` from there brings it back).
 	a.home.box.reset()
 	a.home.build()
 	a.home.say("", "")
 	a.homeKey(cmdRight)
-	if a.home.msg == "" {
-		t.Fatal("ctrl+e over an empty box said nothing — the card's legend names the key")
+	if !a.cdelete.on {
+		t.Fatal("ctrl+e over an empty box did not ask before deletion")
+	}
+	if got := homeArchivedWord(a); got != before {
+		t.Fatal("asking to delete changed saved conversations")
 	}
 }
 

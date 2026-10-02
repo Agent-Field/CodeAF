@@ -61,6 +61,9 @@ func (s *teamWriteSaid) settle(w teamsWrote) bool {
 // a slow write over a connection still shows its notice for the whole time.
 func (a *app) teamsWriteSettled(w teamsWrote) {
 	a.tmemberStart.said.settle(w)
+	if a.tp.disbandSaid.settle(w) {
+		a.teamsDisbandSaid(a.tp.disbandName, a.tp.disbandSaid.why)
+	}
 	now := a.now()
 	if a.wall.madeSaid.settle(w) {
 		a.wall.madeAt = now

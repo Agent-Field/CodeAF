@@ -139,15 +139,15 @@ func TestTheTeamsPageSaysAClosedTeamOnlyOnceTheStoreTookIt(t *testing.T) {
 			a.teamsDisk.door = refusingSeam(a, teamstore.ErrBusy)
 		}
 		_ = a.teamsCloseNow(harbor, "")
-		if text := teamsFrameText(a); strings.Contains(text, "harbor is closed") {
-			t.Fatalf("refuse=%v: the page said harbor is closed before the store took it:\n%s", refuse, text)
+		if text := teamsFrameText(a); strings.Contains(text, "harbor is disbanded") {
+			t.Fatalf("refuse=%v: the page said harbor is disbanded before the store took it:\n%s", refuse, text)
 		}
 		drive(t, a, runCmd(a.teamsWrite())...)
 		text := teamsFrameText(a)
 		switch {
-		case refuse && (strings.Contains(text, "harbor is closed") || !strings.Contains(text, "the close of harbor was not saved")):
+		case refuse && (strings.Contains(text, "harbor is disbanded") || !strings.Contains(text, "the disbanding of harbor was not saved")):
 			t.Fatalf("a refused close said it closed, or not that it was refused:\n%s", text)
-		case !refuse && !strings.Contains(text, "harbor is closed"):
+		case !refuse && !strings.Contains(text, "harbor is disbanded"):
 			t.Fatalf("a taken close was not said:\n%s", text)
 		}
 	}

@@ -34,19 +34,22 @@ func teamAwayApp(t *testing.T) (a *app, harbor, awayKey string) {
 	return a, harbor, awayKey
 }
 
-// THE STRIP AND THE WALL AGREE ABOUT A TEAM. Both are what is open in this
-// window, narrowed to it: a member not open here is not a tab and not a tile,
-// the Teams row counts it apart, and the title offers it once, `1 more in
-// harbor · Open them`. The owner's screen read `test 1` over three tabs.
+// A TEAM OVERLAY includes every member as a tab, including one not held by
+// this window. The conversation grid still distinguishes held conversations.
 func TestTheStripAndTheWallAgreeAboutATeam(t *testing.T) {
 	a, _, awayKey := teamAwayApp(t)
-	if row := plain(a.tabsRow(a.width)); strings.Contains(row, "quantum") {
-		t.Fatalf("a member not open here has a tab: %q", row)
-	}
+	a.tabsRow(a.width)
+	found := false
 	for _, hit := range a.chatTabHits {
 		if hit.tab.key == awayKey {
-			t.Fatalf("a member not open here is a strip target: %+v", hit)
+			found = true
+			if hit.tab.held || hit.tab.here {
+				t.Fatal("an unheld member claimed to be open in this window")
+			}
 		}
+	}
+	if !found {
+		t.Fatal("the team overlay omitted an unheld member's tab")
 	}
 	spend(t, a, a.openWall())
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
@@ -381,7 +384,7 @@ func TestAClosedTeamLinkSelectsItInsideClosed(t *testing.T) {
 	if !a.tp.closedOpen {
 		t.Fatal("the Closed fold stayed shut")
 	}
-	if text := teamsFrameText(a); !strings.Contains(text, "Closed") || !strings.Contains(text, "orbit") || !strings.Contains(text, "closed without a report") {
+	if text := teamsFrameText(a); !strings.Contains(text, "Closed") || !strings.Contains(text, "orbit") || !strings.Contains(text, "disbanded without a report") {
 		t.Fatalf("the closed team is not in the pane:\n%s", text)
 	}
 }

@@ -620,9 +620,9 @@ func TestTeamsSettingsTabOverHostIsReadOnlyAndSaysWhose(t *testing.T) {
 
 // ── organize ────────────────────────────────────────────────────────────────
 
-// ORGANIZE OFFERS TO CLOSE THE QUIET TEAMS, ticked like every suggestion,
-// never on its own, and Undo reopens them.
-func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
+// Organize suggests disbanding quiet teams, never applies it on its own, and
+// its grouping Undo cannot reopen a disbanded team.
+func TestOrganizeDisbandsQuietTeamsWithoutReopeningOnUndo(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
 	old := a.now().Add(-10 * 24 * time.Hour)
 	if err := a.teamEdit(func(f *teamstore.File) error {
@@ -666,8 +666,8 @@ func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
 	}
 	a.wallOrganizeUndo()
 	for _, id := range []string{harbor, orbit} {
-		if got, _ := a.teamByID(id); got.Closed() {
-			t.Fatalf("Undo left %s closed", got.Name)
+		if got, _ := a.teamByID(id); !got.Closed() {
+			t.Fatalf("Undo reopened disbanded %s", got.Name)
 		}
 	}
 }
