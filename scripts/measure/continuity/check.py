@@ -153,8 +153,8 @@ def machine_local(rel):
     """Files the move rebuilds or never carries by design: the job registry's bookkeeping, and a task copy's own git and
     engine folders (re-cut on B, so their ids and objects differ)."""
     base = os.path.basename(rel)
-    if base.startswith(".retention") or base.endswith(".retention"):
-        return True
+    if base.startswith(".retention") or base.endswith(".retention") or "/node_modules/" in "/" + rel:
+        return True   # node_modules is withheld by design and named in the inventory, a lockfile rebuilds it
     return rel.startswith("trees/") and any(p in (".git", ".furrow") for p in rel.split("/")[2:3])
 
 
@@ -257,7 +257,7 @@ def chat_evidence_checks(a, b, cap=EVIDENCE_CAP):
     wh = withheld_paths(b)
     # Opening the chat on B files the task journals under .cell/tasks; the bytes are the same, so either place counts.
     b = dict(b, chat_files={**{k: v for k, v in b["cell_files"].items() if k.startswith("tasks/")}, **b["chat_files"]})
-    files = {r: v for r, v in a["chat_files"].items() if r.startswith(EVIDENCE_DIRS) and "sha" in v}
+    files = {r: v for r, v in a["chat_files"].items() if r.startswith(EVIDENCE_DIRS) and "sha" in v and not machine_local(r)}
     verdicts = {r: evidence_verdict(r, v, b["chat_files"], wh, cap) for r, v in files.items()}
     bad = sorted(r for r, v in verdicts.items() if v in ("differ", "missing"))
     res = {"cap_bytes": cap, "a_files": len(files), "equal": sum(v == "equal" for v in verdicts.values()),
