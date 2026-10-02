@@ -892,16 +892,19 @@ journal is synced and unlocked — see *Will I lose this if it crashes?*.
 
 `/delete` asks to stop the current conversation and permanently remove its transcript.
 Home's `delete` action (or `ctrl+e` on a conversation) and Sessions' `x delete` use
-that same confirmation. Its question is `Stop work and permanently delete the transcript?`.
-Only `cancel` and `yes` appear, with `cancel` selected by default. The bottom-right hints
+that same confirmation. Its question is `Stop work and permanently delete?`.
+The question sits on the top border. Only `cancel` and `delete` appear, with `cancel` selected by default. The bottom-right hints
 are `enter choose · esc cancel`. Cancel changes nothing.
 
-A conversation that manages active teams opens a separate manager step after `yes`.
-Choose an eligible replacement, create a new manager conversation, or disband each managed
-team. A new manager's membership is saved before deletion can appoint it. Disbanding includes
-all named subteams; a changed tree requires another confirmation. The optional global manager
+A conversation that manages active teams opens a separate manager step after `delete`.
+Choose `delete and assign @<member> as manager`, `delete and create new manager`,
+or `delete and disband teams (N)`. Each action proceeds directly; there is no extra yes row.
+When the conversation manages several teams, choose for each team in turn before deletion.
+The manager dialog has only its action choices and the same Enter/Esc footer hints. A new manager's membership is saved before deletion can appoint it. Disbanding includes
+all descendant teams; a changed tree requires another confirmation. The optional global manager
 can be replaced or removed without disbanding the global team.
 
+The dialog disappears while deletion runs; a failure restores it with the reason.
 Deletion removes all team memberships and the conversation's tasks and transcripts.
 Earlier team exchanges and decisions remain in team history. Links to a deleted conversation
 say it is unavailable. Other conversations and their work survive. Deleted conversations
@@ -911,7 +914,7 @@ cannot be reopened or recreated from a stale tab. This cannot be undone.
 
 Every saved Sessions row offers `x delete`. With an empty filter, `x` opens confirmation;
 while typing a filter it remains text. Task confirmation asks
-`Stop work and permanently delete this task?`, with the same default `cancel` and `yes` choices.
+`Stop work and permanently delete?`, with the same default `cancel` and `delete` choices.
 Deleting a task stops and removes its own work and every descendant. A leaf subtask deletes
 only itself. The owning conversation and sibling tasks remain. A task inside a manager
 conversation does not need manager replacement. Deleted tasks stay absent after restart

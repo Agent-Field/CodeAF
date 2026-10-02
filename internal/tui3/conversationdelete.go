@@ -7,7 +7,6 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 // Permanent deletion owns a confirmation and explicit choices for every team
@@ -22,7 +21,6 @@ type conversationDeleteSheet struct {
 	file, name, message     string
 	choices                 map[string]string
 	affected                map[string][]string
-	detailsTop, detailsMax  int
 	cursor, top             int
 	hits                    []wallHit
 	rect                    wallRect
@@ -64,41 +62,72 @@ func (a *app) deleteSheetOpen(file, name string, task bool) tea.Cmd {
 	return nil
 }
 
-func (a *app) conversationDeleteOptions() []conversationDeleteOption {
-	s := &a.cdelete
-	key := a.convKey(s.file)
-	if !s.managing {
-		return []conversationDeleteOption{{word: "cancel", action: 1}, {word: "yes", action: 2}}
-	}
-	options := []conversationDeleteOption{{word: "cancel", action: 1}}
+// Each managed team is resolved in turn. The final action deletes immediately;
+// a conversation shared by several teams never loses another manager choice.
+func (a *app) conversationDeleteManagerTeam() (team, bool) {
+	key := a.convKey(a.cdelete.file)
 	for _, t := range a.wall.teams {
 		if t.Closed() || t.Manager != key {
 			continue
 		}
-		for _, m := range t.Members {
-			if m.Key == key {
-				continue
-			}
-			word := "Replace manager of " + t.Name + " with @" + m.Handle + " · " + m.Word
-			if chosen, ok := s.choices[t.ID]; ok && chosen == m.Key {
-				word += " (selected)"
-			}
-			options = append(options, conversationDeleteOption{word: word, team: t.ID, replacement: m.Key})
+		if _, chosen := a.cdelete.choices[t.ID]; !chosen {
+			return t, true
 		}
-		word := "Disband " + a.teamsAffectedNames(t.ID)
-		if t.Root {
-			word = "Remove the global manager"
-		}
-		if chosen, ok := s.choices[t.ID]; ok && chosen == "" {
-			word += " (selected)"
-		}
-		if a.start != nil && !a.shared {
-			options = append(options, conversationDeleteOption{word: "+ New manager for " + t.Name, team: t.ID, action: 3})
-		}
-		options = append(options, conversationDeleteOption{word: word, team: t.ID})
 	}
-	options = append(options, conversationDeleteOption{word: "yes", action: 2})
-	return options
+	return team{}, false
+}
+
+func (a *app) conversationDeleteOptions() []conversationDeleteOption {
+	if !a.cdelete.managing {
+		return []conversationDeleteOption{{word: "cancel", action: 1}, {word: "delete", action: 2}}
+	}
+	options := []conversationDeleteOption{{word: "cancel", action: 1}}
+	t, ok := a.conversationDeleteManagerTeam()
+	if !ok {
+		return options
+	}
+	key := a.convKey(a.cdelete.file)
+	for _, m := range t.Members {
+		if m.Key != key {
+			options = append(options, conversationDeleteOption{word: "delete and assign @" + m.Handle + " as manager", team: t.ID, replacement: m.Key})
+		}
+	}
+	if a.start != nil && !a.shared {
+		options = append(options, conversationDeleteOption{word: "delete and create new manager", team: t.ID, action: 3})
+	}
+	word := "delete and disband teams (" + itoa(len(a.cdelete.affected[t.ID])) + ")"
+	if t.Root {
+		word = "delete and remove global manager"
+	}
+	return append(options, conversationDeleteOption{word: word, team: t.ID})
+}
+
+func (a *app) conversationDeleteManagerChoice(id, replacement string) tea.Cmd {
+	a.cdelete.choices[id] = replacement
+	if t, ok := a.teamByID(id); ok && replacement == "" && !t.Root {
+		for _, child := range a.teamTree().Descendants(id) {
+			if child.Manager == a.convKey(a.cdelete.file) && !child.Closed() {
+				a.cdelete.choices[child.ID] = ""
+			}
+		}
+	}
+	a.cdelete.cursor, a.cdelete.top, a.cdelete.message = 0, 0, ""
+	if _, remains := a.conversationDeleteManagerTeam(); remains {
+		a.touch()
+		return nil
+	}
+	return a.conversationDeleteRun()
+}
+
+// A new replacement must be saved before its action can remove the old manager.
+func (a *app) conversationDeleteAfterManagerWrite() tea.Cmd {
+	s := &a.cdelete
+	if !s.on || !s.managing || s.pendingTeam == "" || s.newSaid.pending || s.newSaid.why != "" {
+		return nil
+	}
+	id, key := s.pendingTeam, s.pendingKey
+	s.pendingTeam, s.pendingKey = "", ""
+	return a.conversationDeleteManagerChoice(id, key)
 }
 
 func (a *app) conversationDeleteChoose(index int) tea.Cmd {
@@ -116,54 +145,35 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	if option.action == 3 {
-		if s.newSaid.pending || a.conversationOpening {
+	if s.newSaid.pending || a.conversationOpening {
+		return nil
+	}
+	if s.managing {
+		if _, visible := a.conversationDeleteManagerCard(); !visible {
 			return nil
 		}
+	} else if _, visible := a.deleteConfirmCard(s.cursor, s.message); !visible {
+		return nil
+	}
+	if option.action == 3 {
 		return a.conversationDeleteNewManager(option.team)
 	}
 	if option.action == 0 {
-		s.choices[option.team] = option.replacement
-		s.message = ""
-		a.touch()
-		return nil
+		return a.conversationDeleteManagerChoice(option.team, option.replacement)
 	}
-	if !s.managing {
-		if _, visible := a.simpleConfirmCard(a.conversationDeleteQuestion(), s.cursor, s.message); !visible {
+	if !s.managing && s.taskID == "" {
+		if _, managing := a.conversationDeleteManagerTeam(); managing {
+			s.managing, s.cursor = true, 0
+			a.touch()
 			return nil
 		}
 	}
-	width, height := a.size()
-	if s.managing && (width < 24 || height < 14) {
-		s.message = "Resize the terminal to review deletion"
-		a.touch()
-		return nil
-	}
+	return a.conversationDeleteRun()
+}
+
+func (a *app) conversationDeleteRun() tea.Cmd {
+	s := &a.cdelete
 	key := a.convKey(s.file)
-	if s.newSaid.pending {
-		s.message = "Saving the new manager membership"
-		a.touch()
-		return nil
-	}
-	if !s.managing && s.taskID == "" {
-		for _, t := range a.wall.teams {
-			if !t.Closed() && t.Manager == key {
-				s.managing = true
-				s.cursor = 0
-				a.touch()
-				return nil
-			}
-		}
-	}
-	for _, t := range a.wall.teams {
-		if s.taskID == "" && !t.Closed() && t.Manager == key {
-			if _, chosen := s.choices[t.ID]; !chosen {
-				s.message = "Choose a replacement or disband " + t.Name + " first"
-				a.touch()
-				return nil
-			}
-		}
-	}
 	file, name, taskID, choices := s.file, s.name, s.taskID, make(map[string]string, len(s.choices))
 	for id, replacement := range s.choices {
 		choices[id] = replacement
@@ -195,16 +205,15 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 		door = func(file string, _ map[string]string, _ map[string][]string) error { return remove(file, taskID) }
 	}
 	affected := s.affected
-	s.busy, s.message = true, "Deleting conversation"
-	if taskID != "" {
-		s.message = "Deleting task"
-	}
+	s.busy, s.message = true, ""
 	a.touch()
 	return a.offLoop(func() func(bool) tea.Cmd {
 		err := door(file, choices, affected)
 		return func(bool) tea.Cmd {
 			if err != nil {
 				a.cdelete.busy, a.cdelete.message = false, err.Error()
+				a.cdelete.managing, a.cdelete.cursor = false, 0
+				a.cdelete.choices = map[string]string{}
 				a.touch()
 				return a.teamsRead(true)
 			}
@@ -250,19 +259,11 @@ func (a *app) conversationDeleteKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		a.cdelete = conversationDeleteSheet{}
 		a.touch()
-	case "pgdown":
-		a.cdelete.detailsTop = min(a.cdelete.detailsTop+5, a.cdelete.detailsMax)
-		a.touch()
-	case "pgup":
-		a.cdelete.detailsTop = max(a.cdelete.detailsTop-5, 0)
-		a.touch()
 	case "up", "shift+tab":
 		a.cdelete.cursor = max(a.cdelete.cursor-1, 0)
-		a.cdelete.detailsTop = 0
 		a.touch()
 	case "down", "tab":
 		a.cdelete.cursor = min(a.cdelete.cursor+1, len(a.conversationDeleteOptions())-1)
-		a.cdelete.detailsTop = 0
 		a.touch()
 	case "enter", "space":
 		return a.conversationDeleteChoose(a.cdelete.cursor)
@@ -290,73 +291,42 @@ func (a *app) conversationDeleteMouse(msg tea.Msg, m tea.Mouse) tea.Cmd {
 }
 
 func (a *app) conversationDeleteOver(frame string) string {
-	if !a.cdelete.on {
+	if !a.cdelete.on || a.cdelete.busy {
 		return frame
 	}
 	s := &a.cdelete
-	if !s.managing {
-		card, visible := a.simpleConfirmCard(a.conversationDeleteQuestion(), s.cursor, s.message)
-		s.hits = nil
-		if !visible {
-			return frame
-		}
-		s.hits = card.hits
-		s.rect = wallRect{card.x, card.y, card.x + card.w, card.y + len(card.rows)}
-		return a.confirmCardOver(frame, card)
+	card, visible := a.deleteConfirmCard(s.cursor, s.message)
+	if s.managing {
+		card, visible = a.conversationDeleteManagerCard()
 	}
-	width, height := a.size()
-	w := min(width-2, 90)
-	inner := w - 4
-	if inner < 18 || height < 14 {
+	s.hits = nil
+	if !visible {
 		return frame
 	}
-	var lines []wallCardLine
-	lines = append(lines, wallCardLine{s: a.pal.ink(fit("Choose replacement managers or disband their teams", inner))})
-	options := a.conversationDeleteOptions()
-	room := min(max(height-11, 1), 8)
-	s.cursor = min(s.cursor, len(options)-1)
-	s.top = min(s.top, max(len(options)-room, 0))
-	if s.cursor < s.top {
-		s.top = s.cursor
-	}
-	if s.cursor >= s.top+room {
-		s.top = s.cursor - room + 1
-	}
-	for i := s.top; i < min(s.top+room, len(options)); i++ {
-		lines = append(lines, wallCardLine{s: wallPopRowPaint(a.pal, fit(options[i].word, inner), inner, i == s.cursor), hits: []wallHit{{x1: inner, y1: 1, arg: i}}})
-	}
-	details := wrap(options[s.cursor].word, inner)
-	detailRoom := max(height-len(lines)-7, 1)
-	s.detailsMax = max(len(details)-detailRoom, 0)
-	s.detailsTop = min(s.detailsTop, s.detailsMax)
-	lines = append(lines, wallCardLine{s: a.pal.dim(fit("Details · pgup/pgdown", inner))})
-	for _, text := range details[s.detailsTop:min(s.detailsTop+detailRoom, len(details))] {
-		lines = append(lines, wallCardLine{s: a.pal.ink(text)})
-	}
-	if s.message != "" {
-		lines = append(lines, wallCardLine{s: a.pal.warn(fit(s.message, inner))})
-	}
-	x, y := (width-w)/2, max((height-len(lines)-2)/3, 1)
-	card := wallCardBuild(a.pal, "Choose managers", lines, x, y, w, 1, 0)
 	s.hits = card.hits
 	s.rect = wallRect{card.x, card.y, card.x + card.w, card.y + len(card.rows)}
-	rows := strings.Split(frame, "\n")
-	for len(rows) < height {
-		rows = append(rows, "")
-	}
-	for i, row := range card.rows {
-		if y+i < height {
-			rows[y+i] = wallSplice(rows[y+i], row, x, width)
-		}
-	}
-	return strings.Join(rows[:height], "\n")
+	return a.confirmCardOver(frame, card)
 }
 
-func (a *app) conversationDeleteQuestion() string {
-	if a.cdelete.taskID != "" {
-		return "Stop work and permanently delete this task?"
+func (a *app) deleteConfirmCard(cursor int, message string) (wallCard, bool) {
+	return a.choiceConfirmCard("Stop work and permanently delete?", "", []string{"cancel", "delete"}, cursor, message, 64)
+}
+
+func (a *app) conversationDeleteManagerCard() (wallCard, bool) {
+	options := a.conversationDeleteOptions()
+	words := make([]string, len(options))
+	for i, option := range options {
+		words[i] = option.word
 	}
-	return "Stop work and permanently delete the transcript?"
+	title := "Choose managers"
+	if t, ok := a.conversationDeleteManagerTeam(); ok {
+		// With several memberships the current team must be identifiable.
+		if len(a.cdelete.affected) > 1 {
+			title += " · " + t.Name
+		}
+	}
+	width, _ := a.size()
+	return a.choiceConfirmCard(fit(title, max(min(width-2, 90)-5, 0)), "", words, a.cdelete.cursor, a.cdelete.message, 90)
 }
 
 func (a *app) taskDeleteOpen(row session.SessionRow, entry session.TaskIndexEntry) tea.Cmd {

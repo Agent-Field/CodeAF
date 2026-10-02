@@ -600,7 +600,7 @@ page — and the foot names only what is true of the row you are on: `enter open
 
 On Home or Sessions, select any conversation or task row, press `→`, then `x delete`.
 On Sessions an empty filter also permits the bare `x` key. Typing a filter keeps `x` as text.
-The confirmation defaults to `cancel`; `yes` permanently deletes the selected row.
+The confirmation defaults to `cancel`; `delete` permanently deletes the selected row.
 A conversation deletes its transcript and every task underneath it. A task deletes only
 its own records and descendants. Deleting a leaf subtask deletes only that subtask.
 Surviving siblings and their conversations remain. Deleted records cannot be recovered by search or reopened.
@@ -934,7 +934,7 @@ conversation, the commands and page say
 ## Can I put away a conversation on the other machine from home
 
 Yes. `x delete` on the row menu or `ctrl+e` opens the same default-cancel confirmation.
-Choosing `yes` stops and permanently deletes that conversation and its tasks on the machine whose Home you are viewing.
+Choosing `delete` stops and permanently deletes that conversation and its tasks on the machine whose Home you are viewing.
 `enter` on a far conversation opens it in this window. `c copy name` copies its current
 name to this computer’s clipboard. `o open folder` and starting a new conversation in that
 folder are absent on far rows because those paths do not name local folders.

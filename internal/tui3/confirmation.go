@@ -8,20 +8,52 @@ import (
 // Destructive confirmations share two choices and visible keyboard hints. A
 // terminal must fit the complete card before an affirmative choice can act.
 func (a *app) simpleConfirmCard(question string, cursor int, message string) (wallCard, bool) {
+	return a.choiceConfirmCard("", question, []string{"cancel", "yes"}, cursor, message, 64)
+}
+
+// Titles stay on the border. Options wrap without a second details pane, and
+// the selected option must fit fully before its destructive action can run.
+func (a *app) choiceConfirmCard(title, question string, words []string, cursor int, message string, limit int) (wallCard, bool) {
 	width, height := a.size()
-	w := min(width-2, 64)
+	w := min(width-2, limit)
 	inner := w - 4
 	hint := "enter choose · esc cancel"
-	if inner < ansi.StringWidth(hint) {
+	if inner < ansi.StringWidth(hint) || title != "" && ansi.StringWidth(title)+5 > w {
 		return wallCard{}, false
 	}
 	var lines []wallCardLine
-	for _, line := range wrap(question, inner) {
-		lines = append(lines, wallCardLine{s: a.pal.ink(line)})
+	if question != "" {
+		for _, line := range wrap(question, inner) {
+			lines = append(lines, wallCardLine{s: a.pal.ink(line)})
+		}
 	}
 	lines = append(lines, wallCardLine{})
-	for i, word := range []string{"cancel", "yes"} {
-		lines = append(lines, wallCardLine{s: wallPopRowPaint(a.pal, word, inner, i == cursor), hits: []wallHit{{x1: inner, y1: 1, arg: i}}})
+	room := height - len(lines) - 6
+	if message != "" {
+		room -= len(wrap(message, inner))
+	}
+	start, count := min(cursor, len(words)-1), 0
+	if start < 0 {
+		return wallCard{}, false
+	}
+	count = len(wrap(words[start], inner))
+	if count > room {
+		return wallCard{}, false
+	}
+	for start > 0 && count+len(wrap(words[start-1], inner)) <= room {
+		start--
+		count += len(wrap(words[start], inner))
+	}
+	count = 0
+	for i := start; i < len(words); i++ {
+		wrapped := wrap(words[i], inner)
+		if count+len(wrapped) > room {
+			break
+		}
+		for _, line := range wrapped {
+			lines = append(lines, wallCardLine{s: wallPopRowPaint(a.pal, line, inner, i == cursor), hits: []wallHit{{x1: inner, y1: 1, arg: i}}})
+		}
+		count += len(wrapped)
 	}
 	if message != "" {
 		for _, line := range wrap(message, inner) {
@@ -34,7 +66,7 @@ func (a *app) simpleConfirmCard(question string, cursor int, message string) (wa
 		return wallCard{}, false
 	}
 	x, y := (width-w)/2, max((height-h)/3, 1)
-	return wallCardBuild(a.pal, "", lines, x, y, w, 1, 0), true
+	return wallCardBuild(a.pal, title, lines, x, y, w, 1, 0), true
 }
 
 func (a *app) confirmCardOver(frame string, card wallCard) string {

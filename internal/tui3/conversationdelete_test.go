@@ -30,13 +30,12 @@ func TestConversationDeleteOnlyFrontReturnsHomeWithoutRequiringStart(t *testing.
 	}
 }
 
-func TestConversationDeleteRequiresVisibleConfirmationAndScrollableAffectedNames(t *testing.T) {
+func TestConversationDeleteManagerDialogIsCleanAndCountsAffectedTeams(t *testing.T) {
 	a, parent, _ := menuApp(t)
-	a.width, a.height = 50, 24
-	manager := a.frontTabKey()
+	a.width, a.height = 60, 24
 	for i := range a.wall.teams {
 		if a.wall.teams[i].ID == parent {
-			a.wall.teams[i].Manager = manager
+			a.wall.teams[i].Manager = a.frontTabKey()
 		}
 	}
 	for i := 0; i < 60; i++ {
@@ -44,20 +43,19 @@ func TestConversationDeleteRequiresVisibleConfirmationAndScrollableAffectedNames
 	}
 	a.conversationDeleteOpen(a.file, "manager")
 	a.conversationDeleteChoose(1)
-	for i, o := range a.conversationDeleteOptions() {
-		if o.team == parent && o.replacement == "" {
-			a.cdelete.cursor = i
-			break
+	text := ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", 24)))
+	if !strings.Contains(text, "delete and disband teams (61)") || !strings.Contains(text, "enter choose · esc cancel") {
+		t.Fatalf("missing clean manager actions: %s", text)
+	}
+	for _, old := range []string{"Details", "pgup", "Replace manager of", "(selected)"} {
+		if strings.Contains(text, old) {
+			t.Fatalf("old manager UI: %s", text)
 		}
 	}
-	a.conversationDeleteOver(strings.Repeat("\n", 24))
-	if a.cdelete.detailsMax == 0 {
-		t.Fatal("affected names cannot scroll")
-	}
-	a.cdelete.detailsTop = a.cdelete.detailsMax
-	text := ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", 24)))
-	if !strings.Contains(text, "descendant-59") {
-		t.Fatal("last descendant cannot be reviewed")
+	for _, option := range a.conversationDeleteOptions() {
+		if option.word == "yes" {
+			t.Fatal("redundant confirmation remained")
+		}
 	}
 	a.width = 10
 	if cmd := a.conversationDeleteChoose(len(a.conversationDeleteOptions()) - 1); cmd != nil || a.cdelete.busy {
@@ -226,7 +224,6 @@ func TestConversationDeleteNewManagerCannotFallThroughWhileOpening(t *testing.T)
 	a.start = func(string) (Conversation, error) { return Conversation{}, nil }
 	a.conversationDeleteOpen(a.file, "manager")
 	a.conversationDeleteChoose(1)
-	a.cdelete.choices[parent] = "replacement"
 	for i, o := range a.conversationDeleteOptions() {
 		if o.action == 3 {
 			a.conversationOpening = true
@@ -261,26 +258,28 @@ func TestConversationDeleteCreatesAndSavesABrandNewReplacementManager(t *testing
 	a.start = func(string) (Conversation, error) {
 		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: file, Workspace: a.workspace}, nil
 	}
+	called := false
+	replacement := a.convKey(file)
+	a.deleteConversation = func(_ string, choices map[string]string, _ map[string][]string) error {
+		stored, err := teamstore.Load(a.profileDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, ok := stored.Team(parent)
+		if !ok || !tm.Holds(replacement) || tm.Manager != old || choices[parent] != replacement {
+			t.Fatal("deletion preceded persisted replacement membership")
+		}
+		called = true
+		return errors.New("captured deletion")
+	}
 	a.conversationDeleteOpen(a.file, "manager")
 	a.conversationDeleteChoose(1)
 	drain(t, a, a.conversationDeleteNewManager(parent))
 	drain(t, a, a.teamsWrite())
-	replacement := a.convKey(file)
-	stored, err := teamstore.Load(a.profileDir)
-	if err != nil {
-		t.Fatal(err)
+	if !called || a.cdelete.busy || a.cdelete.message != "captured deletion" {
+		t.Fatal("new manager action did not proceed after save")
 	}
-	tm, ok := stored.Team(parent)
-	if !ok || !tm.Holds(replacement) || tm.Manager != old || a.cdelete.choices[parent] != replacement || a.cdelete.newSaid.pending {
-		t.Fatal("new replacement was not saved before selection")
-	}
-	a.deleteConversation = func(_ string, choices map[string]string, _ map[string][]string) error {
-		if choices[parent] != replacement {
-			t.Fatal("new manager choice lost")
-		}
-		return errors.New("captured deletion")
-	}
-	drain(t, a, a.conversationDeleteChoose(len(a.conversationDeleteOptions())-1))
+
 }
 
 func TestTeamsRevisedHeaderAndSidebarPlacement(t *testing.T) {
@@ -331,5 +330,128 @@ func TestTaskDeleteRecountsSessionsBeforeQueryFiltering(t *testing.T) {
 	r := a.taskSheet.filtered(a)
 	if r.whole != 1 || r.wholeChats != 1 || r.wholeCost != 2 {
 		t.Fatalf("stale deletion counts: %d, %d, %f", r.whole, r.wholeChats, r.wholeCost)
+	}
+}
+
+func TestConversationDeleteBorderTitleAndNoBusyFlash(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.width, a.height = 100, 30
+	a.wall.teams = nil
+	a.conversationDeleteOpen(a.file, "plain")
+	card, visible := a.deleteConfirmCard(0, "")
+	if !visible || !strings.Contains(ansi.Strip(card.rows[0]), "Stop work and permanently delete?") {
+		t.Fatal("question is not on the top border")
+	}
+	body := ansi.Strip(strings.Join(card.rows[1:], "\n"))
+	if strings.Contains(body, "Stop work") || strings.Contains(body, "yes") || !strings.Contains(body, "delete") {
+		t.Fatal("confirmation body is not minimal")
+	}
+	a.deleteConversation = func(string, map[string]string, map[string][]string) error { return errors.New("try again") }
+	cmd := a.conversationDeleteChoose(1)
+	frame := strings.Repeat("saved rows\n", 30)
+	if !a.cdelete.busy || a.conversationDeleteOver(frame) != frame {
+		t.Fatal("deletion drew a transient status dialog")
+	}
+	drain(t, a, cmd)
+	if a.cdelete.busy || !a.cdelete.on || a.cdelete.message != "try again" || a.cdelete.cursor != 0 {
+		t.Fatal("failure did not restore default-cancel confirmation")
+	}
+}
+
+func TestConversationDeleteManagerActionsResolveEveryManagedTeam(t *testing.T) {
+	a, parent, child := menuApp(t)
+	a.width, a.height = 120, 35
+	for i := range a.wall.teams {
+		if a.wall.teams[i].ID == parent || a.wall.teams[i].ID == child {
+			a.wall.teams[i].Manager = a.frontTabKey()
+		}
+	}
+	called := false
+	a.deleteConversation = func(_ string, choices map[string]string, _ map[string][]string) error {
+		if choices[parent] != "replacement" || choices[child] != "" {
+			t.Fatalf("lost a managed-team choice: %+v", choices)
+		}
+		called = true
+		return errors.New("captured")
+	}
+	a.conversationDeleteOpen(a.file, "manager")
+	a.conversationDeleteChoose(1)
+	if cmd := a.conversationDeleteManagerChoice(parent, "replacement"); cmd != nil || called || a.cdelete.busy {
+		t.Fatal("deleted before choosing for the child team")
+	}
+	options := a.conversationDeleteOptions()
+	if options[len(options)-1].team != child || a.cdelete.cursor != 0 {
+		t.Fatal("next team did not open on cancel")
+	}
+	drain(t, a, a.conversationDeleteChoose(len(options)-1))
+	if !called {
+		t.Fatal("final manager action required another confirmation")
+	}
+}
+
+func TestConversationDeleteDisbandActionIncludesManagedDescendants(t *testing.T) {
+	a, parent, child := menuApp(t)
+	a.width, a.height = 120, 35
+	for i := range a.wall.teams {
+		if a.wall.teams[i].ID == parent || a.wall.teams[i].ID == child {
+			a.wall.teams[i].Manager = a.frontTabKey()
+			if a.wall.teams[i].ID == child {
+				a.wall.teams[i].Parent = parent
+			}
+		}
+	}
+	called := false
+	a.deleteConversation = func(_ string, choices map[string]string, _ map[string][]string) error {
+		for _, id := range []string{parent, child} {
+			if replacement, ok := choices[id]; !ok || replacement != "" {
+				t.Fatalf("missing recursive choice: %+v", choices)
+			}
+		}
+		called = true
+		return errors.New("captured")
+	}
+	a.conversationDeleteOpen(a.file, "manager")
+	a.conversationDeleteChoose(1)
+	drain(t, a, a.conversationDeleteChoose(len(a.conversationDeleteOptions())-1))
+	if !called {
+		t.Fatal("recursive disband action did not delete directly")
+	}
+}
+
+func TestConversationDeleteManyManagersAndLongNamesRemainVisible(t *testing.T) {
+	a, first, second := menuApp(t)
+	a.width, a.height = 70, 24
+	for i := range a.wall.teams {
+		if a.wall.teams[i].ID == first || a.wall.teams[i].ID == second {
+			a.wall.teams[i].Manager = a.frontTabKey()
+			a.wall.teams[i].Name = strings.Repeat("long team name ", 15)
+		}
+		if a.wall.teams[i].ID == first {
+			for j := 0; j < 30; j++ {
+				a.wall.teams[i].Members = append(a.wall.teams[i].Members, teamstore.Member{Key: fmt.Sprintf("person-%d", j), Handle: fmt.Sprintf("person-%d", j)})
+			}
+		}
+	}
+	a.conversationDeleteOpen(a.file, "manager")
+	a.conversationDeleteChoose(1)
+	options := a.conversationDeleteOptions()
+	for cursor := range options {
+		a.cdelete.cursor = cursor
+		card, visible := a.conversationDeleteManagerCard()
+		if !visible {
+			t.Fatalf("manager dialog vanished at option %d", cursor)
+		}
+		for _, row := range card.rows {
+			if ansi.StringWidth(row) > a.width {
+				t.Fatal("manager card exceeds terminal")
+			}
+		}
+		found := false
+		for _, hit := range card.hits {
+			found = found || hit.arg == cursor
+		}
+		if !found {
+			t.Fatalf("selected option %d is invisible", cursor)
+		}
 	}
 }

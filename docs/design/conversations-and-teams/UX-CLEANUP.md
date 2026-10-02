@@ -56,9 +56,9 @@ normal profile. Later navigation ideas in the planning document remain separate 
 
 ## Milestone 3 revision: every saved row can be deleted
 
-The conversation confirmation has no title: `Stop work and permanently delete the transcript?`,
-then `cancel` (default) and `yes`. Muted `enter choose · esc cancel` hints sit at bottom right.
-A managing conversation proceeds to a separate manager choice step after yes, including a
+The conversation confirmation puts `Stop work and permanently delete?` on the top border,
+with only `cancel` (default) and `delete` inside. Muted `enter choose · esc cancel` hints sit at bottom right.
+A managing conversation proceeds to a separate manager choice step after delete, including a
 new blank manager conversation whose membership must be saved before replacement.
 
 Sessions offers x delete on every conversation, task, and subtask row. Conversations remove
@@ -70,3 +70,8 @@ The existing stop action remains separate; close/reopen is removed from row acti
 Settings and Disband sit on the right of the selected-team header, separate from add controls.
 Disband has no trailing ellipsis. The New team sidebar control follows the active list.
 Additional improvements remain pending a fresh discussion with the owner.
+
+The manager dialog contains direct delete-and-assign, delete-and-create, and delete-and-disband
+actions with a team count. It has no details pane or redundant final yes row. Multiple managed
+teams are resolved in turn. Deletion hides the dialog during the engine call, restoring it only
+for a failure; Sessions has no transient deleting-status dialog.

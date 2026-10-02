@@ -5465,8 +5465,7 @@ the page. `tab` selects the next place.
 
 Every saved conversation, task and subtask row offers `x delete` when its engine
 supports deletion. With no filter being typed, `x` opens the confirmation directly;
-it also appears in the row's verbs. The question is `Stop work and permanently
-delete the transcript?`, with `cancel` selected by default and `yes`. `enter choose`
+it also appears in the row's verbs. The top border asks `Stop work and permanently delete?`, with `cancel` selected by default and `delete`. `enter choose`
 and `esc cancel` appear at the bottom right. Deleting a conversation removes all
 its tasks. Deleting a task removes that task and its contained subtasks; a leaf
 removes only itself. Other tasks are kept. These rows have no close or reopen action.
