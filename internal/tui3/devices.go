@@ -8,6 +8,11 @@ package tui3
 // the choice, a revoked device is refused by the relay from that moment, and
 // it can only come back as a new request that this fleet approves again.
 //
+// `n` NAMES THIS DEVICE. The name starts as the host name and is filled in, so
+// enter keeps it and any typing edits it; the other devices show the new name
+// from then on. Only this device's own row can be named here, because a device
+// writes nothing but its own record.
+//
 // THIS DEVICE CANNOT REVOKE ITSELF HERE. Its row has no `r`, so a stray key
 // never locks a person out of their own fleet; the key says so. Rows sort this
 // device, online, away, then by name and id; same-name rows carry a short id.
@@ -27,13 +32,16 @@ import (
 )
 
 const (
-	devicesKeys    = "↑↓ choose · r revoke · esc close"
-	devicesLoading = "looking up your devices…"
-	devicesNone    = "no other device is in your fleet yet - /pair adds one"
-	devicesRevoked = "%s was revoked - it can no longer reach your chats."
-	devicesSelf    = "this device"
-	devicesOwnRow  = "this device cannot remove itself - choose another row."
-	idTail         = 4
+	devicesKeys     = "↑↓ choose · n name this device · r revoke · esc close"
+	devicesNameKeys = "enter save · ctrl+u clear · esc cancel"
+	devicesNameAsk  = "name this device: "
+	devicesNameOwn  = "a device names itself - choose this device's row, or open /devices on the one you mean."
+	devicesLoading  = "looking up your devices…"
+	devicesNone     = "no other device is in your fleet yet - /pair adds one"
+	devicesRevoked  = "%s was revoked - it can no longer reach your chats."
+	devicesSelf     = "this device"
+	devicesOwnRow   = "this device cannot remove itself - choose another row."
+	idTail          = 4
 )
 
 // deviceCard is the list's state. Online comes from the feed when the card opens.
@@ -45,11 +53,22 @@ type deviceCard struct {
 	loaded   bool
 	cursor   int
 	line     string
+	// naming is the name being typed, and nil when no name is being typed.
+	naming *string
+	// read is the newest directory version the rows were read at, so a change another computer
+	// makes (a device revoked, renamed or added) is read again once and not on every signal.
+	read uint64
 }
 
 type devicesMsg struct {
 	card *deviceCard
 	rows []DeviceRow
+	err  error
+}
+
+type renamedMsg struct {
+	card *deviceCard
+	said string
 	err  error
 }
 
@@ -71,8 +90,21 @@ func (m devicesMsg) land(a *app) tea.Cmd {
 	for i := range m.rows {
 		m.rows[i].Online = online[m.rows[i].ID] && !m.rows[i].Revoked
 	}
+	picked, had := m.card.pick()
 	m.card.rowsOf, m.card.loaded = orderDevices(m.rows), true
+	m.card.keepCursorOn(picked.ID, had)
 	return nil
+}
+
+// keepCursorOn puts the cursor back on the row it was on after the list was read again, because a
+// re-read can reorder rows and `r` must never land on a different computer than the one chosen.
+func (c *deviceCard) keepCursorOn(id string, had bool) {
+	if !had {
+		return
+	}
+	if i := slices.IndexFunc(c.rowsOf, func(d DeviceRow) bool { return d.ID == id }); i >= 0 {
+		c.cursor = i
+	}
 }
 
 // livePresence is the card's presence, or none when it was given no source.
@@ -81,6 +113,18 @@ func (c *deviceCard) livePresence() (map[string]bool, bool) {
 		return nil, false
 	}
 	return c.presence()
+}
+
+func (m renamedMsg) land(a *app) tea.Cmd {
+	if a.pair.card != panelCard(m.card) {
+		return nil
+	}
+	if m.err != nil {
+		m.card.line = m.err.Error()
+		return nil
+	}
+	m.card.naming, m.card.line = nil, m.said
+	return a.reloadDevices(m.card)
 }
 
 func (m revokedMsg) land(a *app) tea.Cmd {
@@ -152,7 +196,86 @@ func (c *deviceCard) mark(id string) {
 	}
 }
 
-func (c *deviceCard) hint() string { return devicesKeys }
+func (c *deviceCard) hint() string {
+	if c.naming != nil {
+		return devicesNameKeys
+	}
+	return devicesKeys
+}
+
+func (c *deviceCard) typing() bool { return c.naming != nil }
+
+// typed is one key while a name is being typed: text goes in, backspace and
+// ctrl+u take it out, enter saves it and esc gives up the edit and nothing else.
+func (c *deviceCard) typed(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	switch name := msg.String(); name {
+	case "esc":
+		c.naming, c.line = nil, ""
+	case "enter":
+		return a.rename(c)
+	case "backspace":
+		runes := []rune(*c.naming)
+		*c.naming = string(runes[:max(len(runes)-1, 0)])
+	case "ctrl+u":
+		*c.naming = ""
+	case "ctrl+k":
+		// The caret is always at the end of the name, so kill-to-the-end has
+		// nothing to remove; the key is answered so it is not typed as text.
+	default:
+		*c.naming += msg.Key().Text
+	}
+	return nil
+}
+
+// startNaming opens the field on this device's own row with its current name in
+// it, or says why the row under the cursor cannot be named.
+func (c *deviceCard) startNaming() {
+	row, ok := c.pick()
+	if !ok || !row.Self {
+		c.line = devicesNameOwn
+		return
+	}
+	current := row.Name
+	c.naming, c.line = &current, ""
+}
+
+// rename saves the typed name off the loop.
+func (a *app) rename(c *deviceCard) tea.Cmd {
+	door, typed := a.approvals, *c.naming
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), approveTimeout)
+		defer cancel()
+		said, err := door.Rename(ctx, typed)
+		return renamedMsg{card: c, said: said, err: err}
+	}
+}
+
+// reloadDevices asks the door for the list again, so the row shows the name the
+// directory now holds.
+func (a *app) reloadDevices(c *deviceCard) tea.Cmd {
+	door := a.approvals
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), approveTimeout)
+		defer cancel()
+		rows, err := door.Devices(ctx)
+		return devicesMsg{card: c, rows: rows, err: err}
+	}
+}
+
+// refreshOnChange reads the list again when the feed has announced a directory version the open
+// card has not read, so what another computer did to a device shows here without closing the card.
+func (a *app) refreshOnChange() tea.Cmd {
+	card, open := a.pair.card.(*deviceCard)
+	if !open || !a.pair.open || a.dirFeed == nil || a.approvals == nil {
+		return nil
+	}
+	version := a.dirFeed.State().Version
+	if version <= card.read {
+		return nil
+	}
+	card.read = version
+	return a.reloadDevices(card)
+}
 
 // pick is the row under the cursor, if the list has one.
 func (c *deviceCard) pick() (DeviceRow, bool) {
@@ -164,7 +287,7 @@ func (c *deviceCard) pick() (DeviceRow, bool) {
 
 func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 	if !c.loaded {
-		return dressed(wrap(devicesLoading, max(width, 4)), pal.ink)
+		return dressed(wrap(c.waiting(), max(width, 4)), pal.ink)
 	}
 	var out []string
 	for i, d := range c.rowsOf {
@@ -173,10 +296,23 @@ func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 	if len(c.rowsOf) <= 1 {
 		out = append(out, dressed(wrap(devicesNone, max(width, 4)), pal.dim)...)
 	}
+	if c.naming != nil {
+		out = append(out, pal.ink(fit(devicesNameAsk+*c.naming+"▏", width)))
+	}
 	if c.line != "" {
 		out = append(out, dressed(wrap(c.line, max(width, 4)), pal.accent)...)
 	}
 	return out
+}
+
+// waiting is what the card says before it has a list: that it is looking, or,
+// once the look has failed, why. A failure that landed on a card still saying
+// "looking up" would never be read.
+func (c *deviceCard) waiting() string {
+	if c.line != "" {
+		return c.line
+	}
+	return devicesLoading
 }
 
 // row is one device: its dot, name, system and, when it is off, when it was
@@ -234,6 +370,8 @@ func (c *deviceCard) key(a *app, name string) (tea.Cmd, bool) {
 		return nil, true
 	case isMove:
 		c.cursor = min(max(c.cursor+move, 0), max(len(c.rowsOf)-1, 0))
+	case name == "n":
+		c.startNaming()
 	case name == "r":
 		return a.revoke(c), false
 	}

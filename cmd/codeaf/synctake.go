@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -145,8 +146,6 @@ func takeRootFor(id string) string {
 	return filepath.Join(home.Join("v3", "projects", encodeWorkspace(here)), id)
 }
 
-// deviceName is what this machine is called in a sentence about it.
-func deviceName() string {
-	name, _ := os.Hostname()
-	return name
-}
+// deviceName is what this machine is called in a sentence about it: the name a
+// person gave it, else its host name.
+func deviceName() string { return devname.Name(home.Dir()) }

@@ -202,7 +202,7 @@ func TestPairJourney(t *testing.T) {
 	defer j.write(filepath.Join(out, "e2e-run.json"))
 
 	j.relay = startRelay(t)
-	env := []string{config.APIKeyEnv + "=" + key, "CODEAF_SYNC_URL=" + j.relay, "CODEAF_CELLS=1", "CODEAF_SYNC_INTERVAL_MS=1000"}
+	env := []string{config.APIKeyEnv + "=" + key, "CODEAF_SYNC_URL=" + j.relay, "CODEAF_SYNC_INTERVAL_MS=1000"}
 	homeA, homeB := newHome(t, nil), newHome(t, nil)
 	wsA := newWorkspace(t, "proj", true)
 	wsB := newWorkspace(t, "proj", true)

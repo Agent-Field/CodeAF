@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"io"
 	"log"
@@ -414,7 +415,7 @@ type doRequest struct {
 	// continuation of it. It names the run; empty is a fresh run, named by task.
 	assignment string
 	// cellRoot is the cell a continuation goes on working in; empty mints one
-	// (with CODEAF_CELLS=1) or runs on the host.
+	// (cells on, the default) or runs on the host.
 	cellRoot string
 	// run is the id this invocation minted at the door ([trace.Begin]). It goes
 	// out on the `--json` envelope, where it is the join to the model-call log
@@ -1271,9 +1272,11 @@ func sameStore(left, right string) bool {
 	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }
 
+// residentHost names the computer that holds the store, spelled as every other
+// screen spells a computer ([devname.Shown]): the holder recorded its raw host name.
 func residentHost(holder *lease.Resident) string {
 	if host := strings.TrimSpace(holder.Host); host != "" {
-		return host
+		return devname.Shown(host)
 	}
 	return "unknown host"
 }

@@ -48,7 +48,6 @@ func TestRelayBill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("no engine program: %v", err)
 	}
-	t.Setenv(cell.EnvVar, "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv(syncsetup.URLVar, strings.TrimRight(*billURL, "/"))
 	t.Setenv(syncsetup.IntervalVar, "")

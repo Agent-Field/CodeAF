@@ -68,7 +68,7 @@ func TestNewChatIsACellWhenTheFlagIsOn(t *testing.T) {
 }
 
 func TestNewChatIsALegacyFolderWhenTheFlagIsOff(t *testing.T) {
-	t.Setenv(cell.EnvVar, "")
+	t.Setenv(cell.EnvVar, "0")
 	bucket, workspace := t.TempDir(), t.TempDir()
 	place := mintOpened(t, bucket, workspace)
 
@@ -84,7 +84,7 @@ func TestNewChatIsALegacyFolderWhenTheFlagIsOff(t *testing.T) {
 // real mint and the real agent, with a task journal beside the transcript.
 func legacyFolder(t *testing.T, bucket, workspace string) session.Place {
 	t.Helper()
-	t.Setenv(cell.EnvVar, "")
+	t.Setenv(cell.EnvVar, "0")
 	place, err := v3MintSession(bucket, workspace, workspace, false)
 	if err != nil {
 		t.Fatal(err)
@@ -214,6 +214,7 @@ func TestTwoSessionsOnOnePathKeepTheirOwnClasses(t *testing.T) {
 }
 
 func TestNoSeatWhenCellsAreOffOrTheFolderIsNoCell(t *testing.T) {
+	t.Setenv(cell.EnvVar, "0")
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)

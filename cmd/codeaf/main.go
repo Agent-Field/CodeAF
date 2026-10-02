@@ -368,12 +368,12 @@ func run() error {
 		return runWake(os.Args[2:])
 	case "cell":
 		// The turn chain of a cell (cell.go): its log and its rewind. Machinery
-		// while cells are behind CODEAF_CELLS, so DELIBERATELY ABSENT from the
+		// with cells on by default, DELIBERATELY ABSENT from the
 		// usage text below, like `engine` and `tick`.
 		return runCell(os.Args[2:])
 	case "identity":
 		// The person's one root secret and its passphrase-wrapped export
-		// (identity.go). Machinery while cells are behind CODEAF_CELLS, so
+		// (identity.go). Machinery, so
 		// DELIBERATELY ABSENT from the usage text below, like `cell`.
 		return runIdentity(os.Args[2:])
 	case "tick":
@@ -572,16 +572,16 @@ Housekeeping — changes state on disk or on the network
       delete the build cache; you type "` + cacheCleanWord + `" to confirm, --yes skips it
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
-  codeaf pair [--via url]
+  codeaf pair [--via url] [--name name]
       show a code that shares your chats with another computer
-  codeaf pair <code> [--via url] [--replace]
+  codeaf pair <code> [--via url] [--replace] [--name name]
       type the code another computer shows: this one gets its chats
   codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices
       list the devices with your chats and the ones that can use this machine
-  codeaf devices revoke <name> [--all]
-      stop one device; it cannot undo what a computer already holds
+  codeaf devices revoke <name> [--all] | rename <name>
+      stop one (cannot undo what a computer holds), or name this one
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]

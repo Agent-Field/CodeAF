@@ -74,7 +74,7 @@ func TestRunInCellSealsItsCallsAndContinuesFromThem(t *testing.T) {
 
 func TestRunWithCellsOffMakesNoCell(t *testing.T) {
 	beltRunEnv(t)
-	t.Setenv(cell.EnvVar, "")
+	t.Setenv(cell.EnvVar, "0")
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 
 	record := doInCell(t, beltRepoWorkspace(t), "write out.txt", "")

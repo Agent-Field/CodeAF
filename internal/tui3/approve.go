@@ -71,6 +71,9 @@ type Approvals interface {
 	Revoke(ctx context.Context, id string) error
 	// DeviceName opens a name the relay sealed, as a joined event carries it.
 	DeviceName(sealed string) string
+	// Rename gives THIS device the name a person typed and tells the fleet. It
+	// answers the sentence to say, or the sentence for why the name is refused.
+	Rename(ctx context.Context, typed string) (string, error)
 }
 
 // The screen's own words, in the vocabulary law's terms.
@@ -100,6 +103,27 @@ func isPairLink(typed string) bool {
 	}
 	ref, err := pair.ReadLink(text)
 	return (err == nil && len(ref.Key) > 0) || strings.Contains(strings.ToLower(text), "/p/")
+}
+
+// takePairLink is the box's answer to enter, asked before the line can become a
+// message: a pair link carries the key that opens a fleet, so it is the approve
+// screen's and never a model's, in a running conversation and on the start page
+// alike. With no door to approve through, openApprove says so and the link is
+// still not sent.
+func (a *app) takePairLink() (tea.Cmd, bool) {
+	line := strings.TrimSpace(a.pastesUnfolded(strings.TrimSpace(a.input.String())))
+	if !isPairLink(line) {
+		return nil, false
+	}
+	a.input.reset()
+	a.endRecall()
+	a.closeLists()
+	if a.approvals == nil && a.startingChat() {
+		// The start page draws no transcript, so a note there is said to nobody.
+		a.startSay(pairUnavailableWord)
+		return nil, true
+	}
+	return a.openApprove(line), true
 }
 
 func isLinkShape(typed string) bool { return linkShape.MatchString(strings.TrimSpace(typed)) }
@@ -312,8 +336,20 @@ func (a *app) showCard(c panelCard) {
 	a.touch()
 }
 
+// typingCard is a card with a text field. While it has one open it takes every
+// key, whole, because a name is made of letters the card's own keys also use.
+type typingCard interface {
+	typing() bool
+	typed(a *app, msg tea.KeyPressMsg) tea.Cmd
+}
+
 // cardKey is the card's press: its own keys, and ctrl+c is the app's.
 func (a *app) cardKey(msg tea.KeyPressMsg) tea.Cmd {
+	if t, ok := a.pair.card.(typingCard); ok && t.typing() {
+		cmd := t.typed(a, msg)
+		a.touch()
+		return cmd
+	}
 	cmd, closeAfter := a.pair.card.key(a, msg.String())
 	if closeAfter {
 		a.pair.close()

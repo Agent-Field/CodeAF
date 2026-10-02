@@ -117,3 +117,33 @@ func ApprovedLine(name string) string { return name + " joined your devices." }
 
 // DeclinedLine is what the approving device says after a no.
 const DeclinedLine = "Request declined."
+
+// ── naming this computer ─────────────────────────────────────────────────────
+
+// RenamedAloneLine is what a computer with no other device says after it was
+// named: the name is kept here, and there is nobody yet to show it to.
+func RenamedAloneLine(name string) string {
+	return fmt.Sprintf("This computer is now called %s.", name)
+}
+
+// RenamedLine is what a computer in a fleet says after it was named and the
+// sync service has the new name, so every other device shows it.
+func RenamedLine(name string) string {
+	return fmt.Sprintf("This computer is now called %s on all your devices.", name)
+}
+
+// RenamedHereLine is what it says when the new name is kept here but the sync
+// service could not be reached: the next time this computer connects it tells
+// the others, so nothing needs to be typed again.
+func RenamedHereLine(name string) string {
+	return fmt.Sprintf("This computer is now called %s. Your other devices will show it after this one next connects.", name)
+}
+
+// NamePrompt is the question a person is asked while a computer joins: the name
+// is already filled in with the host name, and Enter keeps it.
+func NamePrompt(name string) string {
+	return fmt.Sprintf("Your other devices will call this computer %q. Press Enter to keep that, or type another name:", name)
+}
+
+// NameTried is the sentence for a name that was refused, then the question again.
+func NameTried(err error) string { return err.Error() + " - try another." }

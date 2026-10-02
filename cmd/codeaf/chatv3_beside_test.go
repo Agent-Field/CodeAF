@@ -16,6 +16,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"os"
 	"path/filepath"
 	"sync"
@@ -167,8 +168,9 @@ func farHost(t *testing.T, far *farMachine) {
 	stopped := make(chan error, 1)
 	go func() {
 		stopped <- enginehost.Run(far.workspace, enginehost.Options{
-			Boot: far.boot,
-			Key:  func(hello remote.Hello) string { return hello.Session },
+			Cells: cell.Enabled(),
+			Boot:  far.boot,
+			Key:   func(hello remote.Hello) string { return hello.Session },
 		})
 	}()
 	t.Cleanup(func() {

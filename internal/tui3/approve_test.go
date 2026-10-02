@@ -21,6 +21,8 @@ type fakeApprovals struct {
 	err     error
 	devices []DeviceRow
 	calls   []string
+	// renameErr is the refusal Rename answers, when a test wants one.
+	renameErr error
 }
 
 func (f *fakeApprovals) log(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
@@ -50,6 +52,20 @@ func (f *fakeApprovals) Revoke(_ context.Context, id string) error {
 	return f.err
 }
 func (f *fakeApprovals) DeviceName(sealed string) string { return "n:" + sealed }
+func (f *fakeApprovals) Rename(_ context.Context, typed string) (string, error) {
+	f.log("rename:" + typed)
+	if f.renameErr != nil {
+		return "", f.renameErr
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.devices {
+		if f.devices[i].Self {
+			f.devices[i].Name = strings.TrimSpace(typed)
+		}
+	}
+	return "This computer is now called " + strings.TrimSpace(typed) + " on all your devices.", nil
+}
 
 func spark(now time.Time) PendingDevice {
 	return PendingDevice{Code: "k7m2q9xd", Device: "dev_B", Name: "spark", Platform: "linux", Check: "4821",
@@ -222,12 +238,13 @@ func TestJoinedEventFromAnotherDeviceIsToldOnce(t *testing.T) {
 
 // stillFeed is a followed feed with fixed state.
 type stillFeed struct {
-	online []string
-	joined []dirwatch.Joined
+	online  []string
+	joined  []dirwatch.Joined
+	version uint64
 }
 
 func (f stillFeed) State() dirwatch.State {
-	return dirwatch.State{Up: true, Online: f.online, Joined: f.joined}
+	return dirwatch.State{Up: true, Online: f.online, Joined: f.joined, Version: f.version}
 }
 func (stillFeed) Changes() <-chan struct{} { return nil }
 func (stillFeed) Probe()                   {}
@@ -345,5 +362,24 @@ func TestRevokingAsksTheFleetAgain(t *testing.T) {
 	}
 	if a.askFleet() == nil && !a.addMachine.asking {
 		t.Fatal("fleet not asked")
+	}
+}
+
+// ANOTHER DEVICE REVOKING A COMPUTER MUST SHOW ON A /devices LIST THAT IS OPEN: the card read the
+// directory once, so the revoked computer stayed a normal row until the list was closed and
+// opened again, which made two computers of one person disagree about who is still in.
+func TestOpenDeviceListMarksADeviceAnotherComputerRevoked(t *testing.T) {
+	door := devicesFake()
+	a, r := approveApp(t, door)
+	r.slash("/devices")
+	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
+	door.mu.Lock()
+	door.devices[1].Revoked = true
+	door.mu.Unlock()
+	a.dirFeed = &stillFeed{version: 9}
+	r.feed(dirWatchMsg{from: a.dirFeed})
+	r.until("revoked row", func() bool { return strings.Contains(plain(frame(a)), "spark  Linux  revoked") })
+	if strings.Contains(plain(frame(a)), "● spark") {
+		t.Fatalf("a revoked computer shows online:\n%s", plain(frame(a)))
 	}
 }
