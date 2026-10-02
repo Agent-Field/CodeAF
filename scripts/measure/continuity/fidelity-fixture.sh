@@ -111,6 +111,18 @@ build_uncommitted_state() {
   printf 'untracked\n' > untracked.txt
 }
 
+# Why: a pair that is missing because nobody asked for it must not be reported as a property of the
+# filesystem, or a reader would believe the case test cannot run on a plain Linux box.
+# Usage: skip_note <entries found> <entries wanted> <name> <reason when asked but short>
+skip_note() {
+  [ "$1" -ge "$2" ] && return 0
+  if [ -z "${FIXTURE_NAME_COLLISIONS:-}" ]; then
+    echo "SKIP $3 (not requested: set FIXTURE_NAME_COLLISIONS=1)"
+  else
+    echo "SKIP $3 ($4)"
+  fi
+}
+
 build_names() {
   mkdir -p names
   printf 'nfc\n' > "names/$(printf 'caf\303\251')-nfc.txt"
@@ -121,17 +133,13 @@ build_names() {
     printf 'same-nfc\n' > "names/same-$(printf 'caf\303\251').txt"
     printf 'same-nfd\n' > "names/same-$(printf 'cafe\314\201').txt"
   fi
-  if [ "$(ls names | grep -c '^same-')" -lt 2 ]; then
-    echo "SKIP same-word NFC/NFD pair (this filesystem folds the two spellings)"
-  fi
+  skip_note "$(ls names | grep -c '^same-')" 2 "same-word NFC/NFD pair" "this filesystem folds the two spellings"
   printf 'emoji\n' > "names/rocket-$(printf '\360\237\232\200').txt"
   printf 'spaces\n' > "names/name with  spaces.txt"
   printf 'dash\n' > "./-leading dash.txt"
   printf 'lower\n' > Readme.md
   if [ -n "${FIXTURE_NAME_COLLISIONS:-}" ]; then printf 'UPPER\n' > README.md; fi
-  if [ "$(ls | grep -ci '^readme\.md$')" -lt 2 ]; then
-    echo "SKIP case-collision (this filesystem is case-insensitive)"
-  fi
+  skip_note "$(ls | grep -ci '^readme\.md$')" 2 "case-collision" "this filesystem is case-insensitive"
 }
 
 # Why: a 3-deep empty chain, and a path past 200 characters, are the shapes that sync tools
