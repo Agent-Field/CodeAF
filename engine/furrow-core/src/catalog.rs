@@ -407,15 +407,16 @@ impl Catalog {
         )? as u64)
     }
 
-    pub fn reset_pack_index(&mut self, pack: &str) -> anyhow::Result<()> {
-        let tx = self.conn.transaction()?;
-        tx.execute("DELETE FROM objects WHERE pack = ?1", params![pack])?;
-        tx.execute(
-            "DELETE FROM pack_checkpoints WHERE pack = ?1",
-            params![pack],
-        )?;
-        tx.commit()?;
-        Ok(())
+    pub fn reset_pack_index(&self, pack: &str) -> anyhow::Result<()> {
+        self.batch(|| {
+            self.conn
+                .execute("DELETE FROM objects WHERE pack = ?1", params![pack])?;
+            self.conn.execute(
+                "DELETE FROM pack_checkpoints WHERE pack = ?1",
+                params![pack],
+            )?;
+            Ok(())
+        })
     }
 
     pub fn insert_object(

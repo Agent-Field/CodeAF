@@ -199,3 +199,28 @@ func TestPublishAfterTakeSendsOnlyTheEdit(t *testing.T) {
 		t.Fatalf("sent %d bytes, the size of the chat taken (%d) or more", got, len(big))
 	}
 }
+
+// A create the relay committed whose answer was lost (the drive was closed
+// while it was in flight) must not leave the chat unable to publish: the next
+// publish takes the lease it already holds and carries on.
+func TestPublishAfterACreateWhoseAnswerWasLost(t *testing.T) {
+	r := newRig(t)
+	h1 := r.seal(map[string]string{"a": "one"})
+	r.dirA.lose = 1
+	if err := r.pub.Publish(context.Background(), r.drv, h1, r.info()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("first publish = %v, want the lost answer", err)
+	}
+	if r.drv.Fence != 0 {
+		t.Fatalf("a publish with no answer claimed fence %d", r.drv.Fence)
+	}
+	if err := r.pub.Publish(context.Background(), r.drv, h1, r.info()); err != nil {
+		t.Fatalf("publish after the lost answer: %v", err)
+	}
+	if got := r.head(cellID); got.Head != h1 || r.drv.Fence != got.Lease.Fence || r.drv.Fence == 0 {
+		t.Fatalf("cell %+v, driving %+v", got, r.drv)
+	}
+	h2 := r.seal(map[string]string{"a": "one", "b": "two"})
+	if err := r.pub.Publish(context.Background(), r.drv, h2, r.info()); err != nil {
+		t.Fatalf("the publish after that: %v", err)
+	}
+}

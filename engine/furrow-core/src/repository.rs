@@ -1649,10 +1649,11 @@ impl FurrowRepository {
         plan: &ForkPlan,
         destination: PathBuf,
         base: ObjectId,
-        fork_repository: FurrowRepository,
+        mut fork_repository: FurrowRepository,
         fork_head: ObjectId,
         report: ForkReport,
     ) -> anyhow::Result<ForkSummary> {
+        self.adopt_family(&mut fork_repository)?;
         write_fork_id(&fork_repository, &plan.fork_id)?;
         let summary = fork_summary(
             &plan.fork_id,
@@ -1666,6 +1667,21 @@ impl FurrowRepository {
         fs::create_dir_all(self.forks_dir())?;
         atomic_write(&record_path, &serde_json::to_vec_pretty(&summary)?)?;
         Ok(summary)
+    }
+
+    /// Makes a fresh fork a sibling of this workspace. The copy leaves `.furrow`
+    /// behind, so the fork attaches with a family of its own; without this its
+    /// claims, radar and coord values would never meet its siblings'.
+    fn adopt_family(&self, fork: &mut FurrowRepository) -> anyhow::Result<()> {
+        write_family_id(
+            IdentityHome::Workspace,
+            &fork.root,
+            &fork.store,
+            &fork.workspace_id,
+            &self.family_id,
+        )?;
+        fork.family_id = self.family_id.clone();
+        Ok(())
     }
 
     /// Reapply a captured entry's mode, extended attributes, and mtime after

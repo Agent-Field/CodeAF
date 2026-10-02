@@ -137,15 +137,43 @@ func (p *Publisher) put(ctx context.Context, f FrameFile) (string, error) {
 
 // advance moves the directory head and answers the fence now held.
 func (p *Publisher) advance(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
-	if d.Fence == 0 {
-		return p.create(ctx, d, head, in, frames)
+	if d.Fence != 0 {
+		return p.move(ctx, d, head, in, frames)
 	}
+	fence, err := p.create(ctx, d, head, in, frames)
+	if errors.Is(err, directory.ErrExists) {
+		return p.resume(ctx, d, head, in, frames, err)
+	}
+	return fence, err
+}
+
+// move publishes head on the lease d already holds.
+func (p *Publisher) move(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	_, err := p.Dir.Publish(ctx, d.ID(), directory.Publish{
 		Fence: d.Fence, OldHead: d.Head, Head: head,
 		Size: in.Size, Class: in.Class, Title: in.Title, Pending: in.Pending,
 		Frames: frames,
 	})
 	return d.Fence, refusal(err)
+}
+
+// resume finishes a create that already happened. A create the relay committed
+// but whose answer never arrived (the drive was closed while it was in flight,
+// or the connection dropped) leaves this device without a fence for a cell it
+// holds, and creating again is refused as "exists" for good. Taking the lease
+// back names the fence and the head the relay has, and the publish carries on
+// from there. A cell somebody else holds stays the refusal it was: created is
+// the original error.
+func (p *Publisher) resume(ctx context.Context, d Driving, head string, in PublishInfo, frames []string, created error) (uint64, error) {
+	v, err := p.Dir.Acquire(ctx, d.ID(), directory.AcquireOpts{})
+	if err != nil {
+		return 0, created
+	}
+	d.Fence, d.Head = v.Cell.Lease.Fence, v.Cell.Head
+	if d.Head == head {
+		return d.Fence, nil
+	}
+	return p.move(ctx, d, head, in, frames)
 }
 
 func (p *Publisher) create(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
