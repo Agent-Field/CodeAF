@@ -14,6 +14,7 @@ pub mod gc;
 pub mod mcp;
 pub mod merge;
 pub mod model;
+pub mod name_fold;
 pub mod overlay;
 pub mod path_index;
 pub mod policy;

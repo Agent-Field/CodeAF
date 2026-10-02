@@ -57,10 +57,13 @@ type Running struct {
 // Withheld is a folder the seal left out because a lockfile that does travel
 // rebuilds it. Lock is that lockfile. MadeBy and Cwd say which command made the
 // folder, and are empty when the folder was there before the chat or came from
-// another terminal.
+// another terminal. An entry with a Reason and no Lock is a single path set apart
+// (a file this machine could not read, a name it could not keep): nothing
+// rebuilds it, and Reason says why. A reader that does not know Reason ignores it.
 type Withheld struct {
 	Path   string `json:"path"`
-	Lock   string `json:"lock"`
+	Lock   string `json:"lock,omitempty"`
+	Reason string `json:"reason,omitempty"`
 	MadeBy string `json:"made_by,omitempty"`
 	Cwd    string `json:"cwd,omitempty"`
 }
