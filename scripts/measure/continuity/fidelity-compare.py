@@ -55,6 +55,16 @@ def is_reported(ctx, entries, key):
     return entries[key]["esc"] in ctx.reported or text(key) in ctx.reported
 
 
+def is_set_apart(ctx, key):
+    """True for a path the product named as not brought along (in B's record), or anything inside it.
+
+    Why: a file the machine cannot read, and the second of two names its file system folds, are set apart by design:
+    absent from the receiving side, named in the record, and every other row must not count them as lost.
+    """
+    name = text(key)
+    return any(name == path or name.startswith(path + "/") for path in ctx.reported)
+
+
 def vacuous(what):
     return FAIL, "A has no %s, so this check would prove nothing" % what
 
@@ -177,7 +187,8 @@ def unicode_result(a, b, ctx):
     if problems:
         return FAIL, listing(problems), set()
     if notes:
-        return DEFINED, listing(notes), explained
+        verdict, note = named_or_defined(ctx, listing(notes))
+        return verdict, note, explained
     return PASS, "%d non-ASCII names byte-identical" % len(targets), set()
 
 
@@ -211,12 +222,16 @@ def judge_case_group(a, b, ctx, keys):
     named = "survivor %s" % listing(show(b["entries"], k) for k in present)
     reported = all(is_reported(ctx, a["entries"], k) for k in gone)
     if ctx.platform_b == "mac" or reported:
-        return DEFINED, "%s; folded away: %s" % (named, listing(show(a["entries"], k) for k in gone)), set(keys) | set(present)
+        verdict, note = named_or_defined(ctx, "%s; folded away: %s" % (named, listing(show(a["entries"], k) for k in gone)))
+        return verdict, note, set(keys) | set(present)
     return FAIL, "case-sensitive B lost %s, not reported; %s" % (listing(show(a["entries"], k) for k in gone), named), set()
 
 
 def case_result(a, b, ctx):
     groups = case_groups(a["entries"])
+    if not groups and ctx.reported and case_groups(b["entries"]):
+        kept = listing(", ".join(text(k) for k in ks) for ks in case_groups(b["entries"]).values())
+        return PASS, "the machine that had both names still has both: " + kept, set()
     if not groups:
         return (*vacuous("case-colliding names"), set())
     verdicts, notes, explained = [], [], set()
@@ -229,6 +244,8 @@ def case_result(a, b, ctx):
         return FAIL, listing(n for v, n in zip(verdicts, notes) if v == FAIL), set()
     if DEFINED in verdicts:
         return DEFINED, listing(n for v, n in zip(verdicts, notes) if v == DEFINED), explained
+    if explained:
+        return PASS, listing(n for n in notes if n), explained
     return PASS, "%d case-colliding group(s), every name present with its own content" % len(groups), set()
 
 
@@ -243,20 +260,33 @@ def explained_keys(a, b, ctx):
     return unicode_result(a, b, ctx)[2] | case_result(a, b, ctx)[2]
 
 
+def named_or_defined(ctx, note):
+    """PASS when the product named what it set apart (B's record, given as --reported); DEFINED when it only happened."""
+    if ctx.reported:
+        return PASS, note + "; set apart and named in the record"
+    return DEFINED, note
+
+
 def r1(a, b, ctx):
     explained = explained_keys(a, b, ctx)
-    keys = [k for k in scoped(a["entries"]) if k not in explained]
+    keys = [k for k in scoped(a["entries"]) if k not in explained and not is_set_apart(ctx, k)]
     missing, differing = compare_keys(a, b, keys)
     ghosts = [show(b["entries"], k) for k in scoped(b["entries"])
-              if k not in a["entries"] and k not in explained]
+              if k not in a["entries"] and k not in explained and not is_set_apart(ctx, k)]
     if missing or differing or ghosts:
         parts = ["missing: " + listing(missing)] if missing else []
         parts += ["differing: " + listing(differing)] if differing else []
         parts += ["ghosts on B: " + listing(ghosts)] if ghosts else []
         return FAIL, " | ".join(parts)
     if explained:
-        return DEFINED, "all other entries equal; %d entries are the defined R4/R5 differences" % len(explained)
+        return named_or_defined(ctx, "all other entries equal; %d entries are the R4/R5 differences" % len(explained))
     return PASS, "%d entries equal in kind, mode, size, sha256" % len(keys)
+
+
+def holds_set_apart(side, ctx, key):
+    """A directory that holds a set-apart file on this side is not empty there by design."""
+    prefix = raw(key) + b"/"
+    return any(raw(k).startswith(prefix) and is_set_apart(ctx, k) for k in side["entries"])
 
 
 def r2(a, b, ctx):
@@ -264,6 +294,7 @@ def r2(a, b, ctx):
               if a["entries"][k]["kind"] == "dir" and a["entries"][k].get("empty")]
     if not wanted:
         return vacuous("empty directories")
+    wanted = [k for k in wanted if not holds_set_apart(b, ctx, k)]
     bad = [show(a["entries"], k) for k in wanted
            if not (k in b["entries"] and b["entries"][k]["kind"] == "dir" and b["entries"][k].get("empty"))]
     return (FAIL, "lost or no longer empty: " + listing(bad)) if bad else (PASS, "%d empty directories kept" % len(wanted))
@@ -329,8 +360,8 @@ def mode_cases(entries):
     return picks
 
 
-def broken_modes(a, b):
-    picks = mode_cases(a["entries"])
+def broken_modes(a, b, ctx):
+    picks = [k for k in mode_cases(a["entries"]) if not is_set_apart(ctx, k)]
     bad = ["mode %s: %s" % (show(a["entries"], k), "missing" if k not in b["entries"] else
                             "%s->%s" % (a["entries"][k]["mode"], b["entries"][k]["mode"]))
            for k in picks if k not in b["entries"] or b["entries"][k]["mode"] != a["entries"][k]["mode"]]
@@ -340,7 +371,7 @@ def broken_modes(a, b):
 def r7(a, b, ctx):
     links, bad_links = broken_symlinks(a, b)
     groups, bad_groups = broken_hard_links(a, b)
-    picks, bad_modes = broken_modes(a, b)
+    picks, bad_modes = broken_modes(a, b, ctx)
     if not (links or groups or picks):
         return vacuous("symlinks, hard links or special modes")
     bad = bad_links + bad_groups + bad_modes
@@ -358,7 +389,7 @@ def git_file_problems(a, b):
 
 def status_defined_only(a_out, b_out, a, b, ctx):
     """(unexplained differing lines, count of explained ones); R4/R5 differences show up in `git status` too."""
-    names = {text(k) for k in explained_keys(a, b, ctx)}
+    names = {text(k) for k in explained_keys(a, b, ctx)} | set(ctx.reported)
     changed = set(a_out.splitlines()) ^ set(b_out.splitlines())
     rest = [line for line in changed if not any(n in line for n in names)]
     return rest, len(changed) - len(rest)
@@ -397,7 +428,7 @@ def r8(a, b, ctx):
     if problems or more:
         return FAIL, listing(problems + more)
     if explained:
-        return DEFINED, "git state equal; %d status lines differ only by the defined R4/R5 names" % explained
+        return named_or_defined(ctx, "git state equal; %d status lines differ only by the R4/R5 names" % explained)
     skip = " (submodule status empty on both: SKIP)" if not a["git"]["submodules"]["out"].strip() else ""
     return PASS, "fsck exit 0; .git files, stash, status, branches, tags, submodules equal" + skip
 
@@ -460,6 +491,18 @@ def r10(a, b, ctx):
     return (DEFINED if withheld else PASS), note
 
 
+def r11(a, b, ctx):
+    """Set-apart files the other machine held before this move are still here, byte for byte (take back deletes nothing)."""
+    if not ctx.keeps:
+        return PASS, "no --keeps manifest given"
+    held = [k for k in ctx.keeps["entries"] if is_set_apart(ctx, k) and ctx.keeps["entries"][k]["kind"] == "file"]
+    if not held:
+        return vacuous("set-apart files")
+    bad = [show(ctx.keeps["entries"], k) for k in held
+           if k not in b["entries"] or content_diff(ctx.keeps["entries"][k], b["entries"][k])]
+    return (FAIL, "lost on the machine that held them: " + listing(bad)) if bad else (PASS, "%d set-apart files still here, content equal" % len(held))
+
+
 ROWS = [
     ("R1", "every path equal in kind, mode, size, sha256; no ghosts", r1),
     ("R2", "empty directories preserved", r2),
@@ -470,6 +513,7 @@ ROWS = [
     ("R7", "symlinks, hard links, executable, 0000, read-only dir", r7),
     ("R8", ".git intact (fsck, files, stash, status, refs, submodules)", r8),
     ("R9", "no ghosts after a mutation (--expect-gone)", r9),
+    ("R11", "set-apart files survive a take back", r11),
     ("R10", "ignored files, secret modes, node_modules (informational)", r10),
 ]
 
@@ -498,9 +542,10 @@ def main():
     parser.add_argument("--platform-b", default="linux")
     parser.add_argument("--expect-gone", default="")
     parser.add_argument("--reported", default="")
+    parser.add_argument("--keeps", default="")
     args = parser.parse_args()
     ctx = SimpleNamespace(platform_b=args.platform_b, expect_gone=split_list(args.expect_gone),
-                          reported=split_list(args.reported))
+                          reported=split_list(args.reported), keeps=json.load(open(args.keeps)) if args.keeps else None)
     with open(args.a) as fa, open(args.b) as fb:
         results = evaluate(json.load(fa), json.load(fb), ctx)
     print(render(results))

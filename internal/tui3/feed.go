@@ -302,6 +302,8 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 			if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
 				f.entries[n-1].carried = true
 			}
+		} else if ev.Told {
+			f.toldNote(ev.Text)
 		} else {
 			f.note(ev.Text)
 		}
