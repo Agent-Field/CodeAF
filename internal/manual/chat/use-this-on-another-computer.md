@@ -230,7 +230,7 @@ You can move your identity by file. This needs no relay. It is the way to use wh
 - `codeaf identity export` on the first computer asks for a passphrase and writes your identity under it.
 - `codeaf identity import` on the other computer reads that file with the same passphrase.
 
-**In this build, the `identity` verb is behind `CODEAF_CELLS=1`.** It is not in the help text. Without `CODEAF_CELLS=1` it stops with `codeaf identity needs CODEAF_CELLS=1`. Set `CODEAF_CELLS=1` on both computers to use it. The full description is under "Your identity" on the terminal page.
+The `identity` verb needs no setting: cells, and so moving chats, are on by default. It is not in the help text. If you set `CODEAF_CELLS=0` to turn cells off, it stops with `codeaf identity needs cells, and CODEAF_CELLS=0 turned them off`. The full description is under "Your identity" on the terminal page.
 
 Keep the file and the passphrase safe. Anybody who has both has your chats.
 

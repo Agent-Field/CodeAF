@@ -414,7 +414,7 @@ type doRequest struct {
 	// continuation of it. It names the run; empty is a fresh run, named by task.
 	assignment string
 	// cellRoot is the cell a continuation goes on working in; empty mints one
-	// (with CODEAF_CELLS=1) or runs on the host.
+	// (cells on, the default) or runs on the host.
 	cellRoot string
 	// run is the id this invocation minted at the door ([trace.Begin]). It goes
 	// out on the `--json` envelope, where it is the join to the model-call log

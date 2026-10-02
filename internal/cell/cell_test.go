@@ -119,7 +119,7 @@ func TestIDsSortByTime(t *testing.T) {
 }
 
 func TestEnabled(t *testing.T) {
-	for v, want := range map[string]bool{"": false, "0": false, "1": true} {
+	for v, want := range map[string]bool{"": true, "0": false, "1": true} {
 		t.Setenv(EnvVar, v)
 		if Enabled() != want {
 			t.Errorf("%q: want %v", v, want)

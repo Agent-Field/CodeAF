@@ -57,7 +57,7 @@ func TestIdentityImportRefusesOtherIdentityWithoutReplace(t *testing.T) {
 }
 
 func TestIdentityNeedsCells(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "")
+	t.Setenv("CODEAF_CELLS", "0")
 	if err := runIdentity([]string{"show"}); err == nil || !strings.Contains(err.Error(), "CODEAF_CELLS") {
 		t.Fatalf("got %v", err)
 	}

@@ -465,10 +465,10 @@ it says `no engine is holding /home/you/api on this machine`. `--status-all` doe
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.
 
-## Cells on for this chat but the engine runs with cells off — what happens
+## Cells on for this chat but the engine runs with cells off (CODEAF_CELLS=0) — what happens
 
 An engine reads `CODEAF_CELLS` once, at launch, and serves every later chat in that
-mode. So a chat opened with `CODEAF_CELLS=1` next to an engine that runs with cells off
+mode. So a chat opened with cells on (the default) next to an engine started with `CODEAF_CELLS=0`
 would never migrate. It does not attach in silence. **An idle engine in the other mode
 is restarted**, with one line saying so (`restarted the idle engine because it ran with cells
 off; it runs with cells on now`). **An engine that is still working is left alone** and the

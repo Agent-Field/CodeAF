@@ -68,7 +68,6 @@ func newDriveRig(t *testing.T) *driveRig {
 	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	srv := httptestServer(t, svc.Handler)
-	t.Setenv(cell.EnvVar, "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	homeA := machine(t, srv.URL)
 	t.Setenv(IntervalVar, "50")
@@ -371,7 +370,6 @@ func TestDriveSideOffIsStageZero(t *testing.T) {
 		t.Skipf("no engine binary: %v", err)
 	}
 	hosted(t, "") // a build with no default relay: empty now means the built-in one
-	t.Setenv(cell.EnvVar, "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	h := t.TempDir()
 	if s, ok, err := Open(h); s != nil || ok || err != nil {

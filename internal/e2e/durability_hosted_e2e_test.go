@@ -87,7 +87,7 @@ func newDurable(t *testing.T, script ...brainStep) *durable {
 func (d *durable) env() []string {
 	return []string{
 		"OPENROUTER_API_KEY=stub-key", "CODEAF_BASE_URL=" + d.brain.url(),
-		"CODEAF_CELLS=1", "CODEAF_SYNC_URL=" + d.relay,
+		"CODEAF_SYNC_URL=" + d.relay,
 		"HTTPS_PROXY=" + d.proxy.url(), "https_proxy=" + d.proxy.url(),
 		"CODEAF_TASK_BELT=node",
 	}
@@ -247,7 +247,6 @@ type machineB struct {
 func (d *durable) machineB() *machineB {
 	d.t.Helper()
 	d.t.Setenv("CODEAF_HOME", d.homeB)
-	d.t.Setenv("CODEAF_CELLS", "1")
 	d.t.Setenv("CODEAF_SYNC_URL", d.relay)
 	d.t.Setenv("HTTPS_PROXY", "")
 	d.t.Setenv("https_proxy", "")

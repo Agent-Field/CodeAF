@@ -44,7 +44,7 @@ func TestFreshInstallSendsNothingToTheSyncService(t *testing.T) {
 	count := &tally{}
 	srv := httptest.NewServer(count)
 	defer srv.Close()
-	env := []string{config.APIKeyEnv + "=" + key, "CODEAF_SYNC_URL=" + srv.URL, "CODEAF_CELLS=1", "CODEAF_SYNC_INTERVAL_MS=1000"}
+	env := []string{config.APIKeyEnv + "=" + key, "CODEAF_SYNC_URL=" + srv.URL, "CODEAF_SYNC_INTERVAL_MS=1000"}
 
 	home, ws := newHome(t, nil), newWorkspace(t, "proj", true)
 	app := startWithEnv(t, env, "quiet", home, ws, 180, 45)

@@ -12,7 +12,7 @@ import (
 )
 
 func TestSeatIsPlainWhenCellsAreOff(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "")
+	t.Setenv("CODEAF_CELLS", "0")
 	seat, err := SeatFor(executor.Sandboxed, newCell(t), t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatal(err)

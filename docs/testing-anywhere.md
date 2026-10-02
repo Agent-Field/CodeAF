@@ -4,6 +4,9 @@ This page says how to test every path a chat takes between two computers, from t
 fastest check to a walk by hand. Run the sections in order. Each one costs more than the
 one before it and proves more.
 
+Moving chats is on by default, so no test or rig sets a cell variable. Only a test of
+the off path sets `CODEAF_CELLS=0`.
+
 Settings. Every script that names a machine, a folder or a relay reads it from an
 environment variable (through `scripts/measure/rigenv.py`) and stops with a message that
 names the variable when one is missing. Nothing is edited in a script. Export these once:
