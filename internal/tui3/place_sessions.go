@@ -358,6 +358,10 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	if len(undeletedItems) != len(p.reading.items) || len(undeletedChats) != len(p.reading.chats) {
 		tree := tasksTreeOf(undeletedItems, r.now, r.order, undeletedChats...)
 		r.shape = &tree
+		r.whole, r.wholeChats, r.wholeCost = len(undeletedItems), len(tree.groups), 0
+		for _, item := range undeletedItems {
+			r.wholeCost += item.entry.Cost
+		}
 	}
 	r.chatViews = make(map[string]tasksChatView)
 	for _, tab := range a.tabList() {

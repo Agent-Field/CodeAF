@@ -319,3 +319,17 @@ func TestTeamsRevisedHeaderAndSidebarPlacement(t *testing.T) {
 		t.Fatal("New team is not immediately below active teams")
 	}
 }
+
+func TestTaskDeleteRecountsSessionsBeforeQueryFiltering(t *testing.T) {
+	a, _, _ := menuApp(t)
+	row := session.SessionRow{ID: "owner"}
+	a.taskSheet.reading = tasksReading{whole: 2, wholeChats: 1, wholeCost: 3, chats: []session.SessionRow{row}, items: []tasksItem{
+		{row: row, entry: session.TaskIndexEntry{SessionID: "owner", ID: "1", Cost: 1}},
+		{row: row, entry: session.TaskIndexEntry{SessionID: "owner", ID: "2", Cost: 2}},
+	}}
+	a.deletedSessionRows = map[tasksKey]bool{{session: "owner", id: "1"}: true}
+	r := a.taskSheet.filtered(a)
+	if r.whole != 1 || r.wholeChats != 1 || r.wholeCost != 2 {
+		t.Fatalf("stale deletion counts: %d, %d, %f", r.whole, r.wholeChats, r.wholeCost)
+	}
+}
