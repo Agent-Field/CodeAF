@@ -145,6 +145,19 @@ pub struct Snapshot {
     pub claims: Vec<ClaimRecord>,
     #[serde(default)]
     pub excluded_paths: Vec<String>,
+    /// Sets of two or more paths of this snapshot that were one file on disk
+    /// (one inode). Absent from snapshots that hold none, and from every
+    /// snapshot sealed before links were recorded, so those keep their IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hardlinks: Vec<LinkGroup>,
+}
+
+/// Paths that were hard links of one another when the snapshot was sealed,
+/// in bytewise order. The group names no inode, because an inode number means
+/// nothing on another machine.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LinkGroup {
+    pub paths: Vec<serde_bytes::ByteBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
