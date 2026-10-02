@@ -287,6 +287,24 @@ func (d *Drive) Viewer() (string, bool) {
 	return d.line, d.line != ""
 }
 
+// HoldsLease says whether this drive side still drives the chat: it is not a
+// viewer, and the directory's lease is this device's at the fence this drive
+// side publishes under. A lease taken by another device since (a take by force
+// moves it without telling the drive side that was idle) answers false. A
+// directory that cannot be asked answers true, because a drive side that cannot
+// tell must not be thrown away for it.
+func (d *Drive) HoldsLease(ctx context.Context) bool {
+	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
+		return false
+	}
+	v, err := d.sync.Dir.Cell(ctx, d.cell.ID)
+	if err != nil {
+		return true
+	}
+	lease := v.Cell.Lease
+	return lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
+}
+
 // Gate refuses with the superseded line once the chat is a viewer, and answers
 // nil while this device drives it. It is what a viewer's tool calls meet.
 func (d *Drive) Gate() error {
