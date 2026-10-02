@@ -54,7 +54,7 @@ FIRST = [
     "Install the vendored dependency: run exactly `npm install ./vendor/pad-lite-1.0.0.tgz --offline --no-audit --no-fund --cache ./.npm-cache` once, then show me the dependencies line of package.json. (ref-vc5)",
 ]
 SECOND = [
-    f"Start the dev server in the background and leave it running: one bash call, `PORT={PORT} nohup node server.js > /tmp/vcont-srv.log 2>&1 &`, then check with `ss -ltn` that port {PORT} listens. (ref-vc6)",
+    f"Start the dev server as a background job: one bash call with the tool's background option set to true and the command `PORT={PORT} node server.js`, then check with `ss -ltn` that port {PORT} listens. (ref-vc6)",
     ("slash", "/task solo Write docs/CSV.md: a half-page design for exporting invoices as CSV (columns, quoting rules, one example row). Do not touch src/.", r"branch kept|landed"),
     "Remember this for next time, with your remember tool: the team prefers tabs in docs, and the on-call maintainer is Ines Okafor. (ref-vc8)",
     ("slash", "/effort high", r"high"),
