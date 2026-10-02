@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // sealSurface is a surface whose seam is a real watch, so the tests below pin
@@ -120,5 +121,20 @@ func TestOneChatsFailedSealIsNotAnothers(t *testing.T) {
 	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}}, true)
 	if a.sealSegment() != "" {
 		t.Fatal("a conversation with no seam kept the last one's segment")
+	}
+}
+
+// A sentence the seal watch sends on the turn's stream is addressed to the
+// person: the feed keeps it as a told note, which the work group may not fold.
+func TestToldNoticeIsATellingNoteAndAPlainOneIsNot(t *testing.T) {
+	f := &feed{live: -1, think: -1, turn: 1}
+	f.ingest(session.Event{Kind: session.EventNotice, Text: "zero.txt cannot be read here", Told: true})
+	f.ingest(session.Event{Kind: session.EventNotice, Text: "trimmed the request and asked again"})
+
+	if n := len(f.entries); n != 2 {
+		t.Fatalf("two notices left %d entries", n)
+	}
+	if !f.entries[0].told || f.entries[1].told {
+		t.Fatalf("told flags: %v then %v, want true then false", f.entries[0].told, f.entries[1].told)
 	}
 }

@@ -420,6 +420,20 @@ command by itself, and database rows or container data do not travel. A secret i
 command is shown as `…`. Limits: there is no way to force a folder to travel, and what was
 running is known only from the moment of the move.
 
+## A file that cannot be read, two files with the same name in different case — odd files and a moved chat, not brought along, read-only folder
+
+One odd file never stops a chat from saving or moving. A file that this machine cannot read
+(mode `0000`, or owned by another user) is kept out of the saved history: the chat says
+`<file> cannot be read here, so it is left out of the saved history until its permissions
+allow it`, the card lists it under `not brought along:` with the same reason, and everything
+else saves as usual. Once the file can be read, the next save carries it. Two files whose
+names differ only in letter case (`Readme.md` and `README.md`), or only in how an accent is
+spelled, cannot both live on a Mac's default disk. The move brings one, the name that sorts
+first (`README.md` before `Readme.md`), keeps the other out and lists it on the card as
+`<file>: not brought along; same name as <other> here`. Taking the chat back leaves both
+files on the machine that had them. A folder marked read-only moves like any other and
+arrives read-only.
+
 ## Tasks that had not landed when a chat moved — working copy, uncommitted task edits, unmerged task branch, worktree
 
 A task works in a

@@ -74,6 +74,9 @@ func (r Resume) missing() []entry {
 // missingBrief names what rebuilds the folder and how it was made, or how it
 // usually is when nobody saw it made.
 func missingBrief(w inventory.Withheld) string {
+	if setApart(w) {
+		return w.Path + ": not brought along; " + w.Reason
+	}
 	how := "usually `" + rebuild.Hint(w.Lock) + "`"
 	if w.MadeBy != "" {
 		how = "it was made with `" + w.MadeBy + "`" + inDir(w.Cwd)
@@ -82,6 +85,9 @@ func missingBrief(w inventory.Withheld) string {
 }
 
 func missingNews(w inventory.Withheld) string {
+	if setApart(w) {
+		return w.Path + " (" + w.Reason + ")"
+	}
 	return w.Path + " (" + rebuildCommand(w) + ")"
 }
 
@@ -324,8 +330,16 @@ func (r Resume) Grants() []string {
 	return out
 }
 
-// rebuildCommand is the command a folder is brought back with.
+// setApart reports whether the entry is a single path left out for a reason,
+// which nothing rebuilds: it has no lockfile to name and no command to run.
+func setApart(w inventory.Withheld) bool { return w.Lock == "" && w.Reason != "" }
+
+// rebuildCommand is the command a folder is brought back with, and nothing for a
+// path that is set apart, since no command brings it back.
 func rebuildCommand(w inventory.Withheld) string {
+	if setApart(w) {
+		return ""
+	}
 	if w.MadeBy != "" {
 		return w.MadeBy
 	}
