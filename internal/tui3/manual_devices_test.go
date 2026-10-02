@@ -26,6 +26,7 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 			deviceBring, deviceNothing, devicePickAsk, devicePickLeav,
 			chatlist.Device{Name: "dumb"}.Mark(false), chatlist.Removed,
 		},
+		"naming-a-device": {devicesNameKeys, devicesNameAsk + "atlas▏", devicesNameOwn},
 		"continuing-a-chat-on-another-computer": {
 			continueAsk, continueStay, continueFails, lostRaceWord, chatlist.Unreachable,
 			fmt.Sprintf(resumeAskFormat, "spark"), resumeYes, resumeNo,
@@ -54,7 +55,7 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 var banned = regexp.MustCompile(`\b(relay|node|lease|manifest|takeover|take over)\b`)
 
 func TestTheDevicePagesKeepTheVocabularyLaw(t *testing.T) {
-	for _, name := range []string{"add-or-remove-a-computer", "continuing-a-chat-on-another-computer"} {
+	for _, name := range []string{"add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"} {
 		page, _ := manual.Chat().Page(name)
 		if word := banned.FindString(strings.ToLower(page)); word != "" {
 			t.Errorf("the page %s uses %q", name, word)
