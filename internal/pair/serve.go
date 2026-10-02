@@ -17,11 +17,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
@@ -278,17 +279,8 @@ func (h *Host) connect(stream io.ReadWriteCloser) {
 	h.say(who.Label + " left")
 }
 
-// ThisMachineLabel is what this device calls itself when it pairs. It is the
-// host name, because that is the word a person already uses for their laptop,
-// and it is only ever a label — a connection is checked against a key.
-func ThisMachineLabel() string {
-	name, err := os.Hostname()
-	if err != nil || strings.TrimSpace(name) == "" {
-		return "a device"
-	}
-	// A host name with a domain on it reads badly in a list of two laptops.
-	if dot := strings.IndexByte(name, '.'); dot > 0 {
-		name = name[:dot]
-	}
-	return readableLabel(name)
-}
+// ThisMachineLabel is what this device calls itself when it pairs: the name a
+// person gave it, else the host name ([devname.Name]), because that is the word
+// they already use for their laptop. It is only ever a label — a connection is
+// checked against a key.
+func ThisMachineLabel() string { return readableLabel(devname.Name(home.Dir())) }

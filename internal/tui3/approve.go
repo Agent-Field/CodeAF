@@ -71,6 +71,9 @@ type Approvals interface {
 	Revoke(ctx context.Context, id string) error
 	// DeviceName opens a name the relay sealed, as a joined event carries it.
 	DeviceName(sealed string) string
+	// Rename gives THIS device the name a person typed and tells the fleet. It
+	// answers the sentence to say, or the sentence for why the name is refused.
+	Rename(ctx context.Context, typed string) (string, error)
 }
 
 // The screen's own words, in the vocabulary law's terms.
@@ -333,8 +336,20 @@ func (a *app) showCard(c panelCard) {
 	a.touch()
 }
 
+// typingCard is a card with a text field. While it has one open it takes every
+// key, whole, because a name is made of letters the card's own keys also use.
+type typingCard interface {
+	typing() bool
+	typed(a *app, msg tea.KeyPressMsg) tea.Cmd
+}
+
 // cardKey is the card's press: its own keys, and ctrl+c is the app's.
 func (a *app) cardKey(msg tea.KeyPressMsg) tea.Cmd {
+	if t, ok := a.pair.card.(typingCard); ok && t.typing() {
+		cmd := t.typed(a, msg)
+		a.touch()
+		return cmd
+	}
 	cmd, closeAfter := a.pair.card.key(a, msg.String())
 	if closeAfter {
 		a.pair.close()

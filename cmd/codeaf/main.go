@@ -572,16 +572,16 @@ Housekeeping — changes state on disk or on the network
       delete the build cache; you type "` + cacheCleanWord + `" to confirm, --yes skips it
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
-  codeaf pair [--via url]
+  codeaf pair [--via url] [--name name]
       show a code that shares your chats with another computer
-  codeaf pair <code> [--via url] [--replace]
+  codeaf pair <code> [--via url] [--replace] [--name name]
       type the code another computer shows: this one gets its chats
   codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices
       list the devices with your chats and the ones that can use this machine
-  codeaf devices revoke <name> [--all]
-      stop one device; it cannot undo what a computer already holds
+  codeaf devices revoke <name> [--all] | rename <name>
+      stop one (cannot undo what a computer holds), or name this one
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]

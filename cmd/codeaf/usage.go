@@ -342,7 +342,7 @@ func breakLong(word string, width int) []string {
 // `devices revoke` is the same shape as `cache clean` and is here for the same
 // reason: one noun, a harmless reading verb and a destructive one, and without
 // the entry `codeaf devices --help` would print the revoking line under the
-// listing's name.
+// listing's name. `rename` shares that line, so `codeaf devices rename --help` prints it too.
 var longerCommands = []string{"cache clean", "devices revoke"}
 
 // usageForCommand lifts one command's lines out of [usageText].

@@ -98,6 +98,7 @@ var cases = map[string]func(*testing.T, env){
 	"ReleaseStaleRefused":            releaseStaleRefused,
 	"ArchiveIsIdempotent":            archiveIsIdempotent,
 	"PutDeviceUpserts":               putDeviceUpserts,
+	"RenameReachesSiblingDevices":    renameReachesSiblingDevices,
 	"SetVaultIsCompareAndSwap":       setVaultIsCompareAndSwap,
 	"DirectoryClockStampsEverything": directoryClockStampsEverything,
 	"ConcurrentAcquireOneWins":       concurrentAcquireOneWins,
@@ -391,6 +392,27 @@ func putDeviceUpserts(t *testing.T, e env) {
 	must(t, err)
 	if len(l.Devices) != 1 || l.Devices[e.id(devA)].Name != "two" {
 		t.Fatalf("devices = %+v", l.Devices)
+	}
+}
+
+// renameReachesSiblingDevices: a device that renames itself is a second PutDevice
+// of its own record, with no verb of its own, so an older client and an older
+// relay carry a rename already. The sibling sees the new name on its next list,
+// the renamed device keeps what the relay alone writes (when it joined, whether
+// it is stopped), and the sibling's own record is not touched.
+func renameReachesSiblingDevices(t *testing.T, e env) {
+	twoDevices(t, e)
+	before, err := e.as(devB).List(ctx)
+	must(t, err)
+	must(t, e.as(devA).PutDevice(ctx, e.id(devA), directory.Device{V: 1, Name: "renamed"}))
+	after, err := e.as(devB).List(ctx)
+	must(t, err)
+	renamed, sibling := after.Devices[e.id(devA)], after.Devices[e.id(devB)]
+	if renamed.Name != "renamed" || renamed.Created != before.Devices[e.id(devA)].Created || renamed.Revoked {
+		t.Fatalf("renamed device = %+v, before %+v", renamed, before.Devices[e.id(devA)])
+	}
+	if sibling.Name != devB {
+		t.Fatalf("the sibling's own record changed: %+v", sibling)
 	}
 }
 
