@@ -637,9 +637,10 @@ func TestPlainDraftTeamPaintingAllocatesNothing(t *testing.T) {
 }
 
 // Unsent drafts may name tabs, but only sent or named conversations are references.
+// The window can judge only its own front's unsent state, not another tab's.
 func TestAtListOmitsUnsentShellsOnEveryBox(t *testing.T) {
 	for _, b := range atBoxes {
-		for _, kind := range []string{"draft", "sent", "named"} {
+		for _, kind := range []string{"draft", "sent", "named", "held-draft"} {
 			t.Run(b.name+"/"+kind, func(t *testing.T) {
 				a := b.make(t)
 				a.title, a.openingPrompt, a.entries = "", "", nil
@@ -655,6 +656,14 @@ func TestAtListOmitsUnsentShellsOnEveryBox(t *testing.T) {
 					a.title = "named shell"
 				}
 				file := a.file
+				if kind == "held-draft" {
+					conv := a.front()
+					side := a.detachConversation()
+					side.draft = "unsent shell words"
+					a.stow(conv, side)
+					a.file = filepath.Join(t.TempDir(), "new-front.jsonl")
+					a.input.reset()
+				}
 				if b.name != "home" {
 					a.input.reset()
 				}
@@ -665,7 +674,7 @@ func TestAtListOmitsUnsentShellsOnEveryBox(t *testing.T) {
 						found = true
 					}
 				}
-				want := b.name != "conversation" && kind != "draft"
+				want := kind == "held-draft" || b.name != "conversation" && kind != "draft"
 				if found != want {
 					t.Fatalf("%s front offered=%v, want %v; rows=%+v", kind, found, want, b.comp(a).chatHits)
 				}
@@ -810,5 +819,303 @@ func TestClosedHomeArrowsLeaveMentionCatalogsAlone(t *testing.T) {
 	a.Update(key("down"))
 	if got := a.home.comp.teams; len(got) != 1 || got[0].id != "kept" {
 		t.Fatalf("closed arrow copied a catalog: %+v", got)
+	}
+}
+
+// An opening belongs to the token, even after its unmatched rows disappear.
+func TestOneRecentReadAndNoticePerAtTokenOnEveryBox(t *testing.T) {
+	for _, b := range atBoxes {
+		for _, scenario := range []string{"@chat:no such words", "@chat:unique words", "@no such words", "paste and caret", "remove and replace", "cut and replace", "send and replace", "different at"} {
+			t.Run(b.name+"/"+scenario, func(t *testing.T) {
+				a := b.make(t)
+				a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recents = false, true, nil
+				reads, notices := 0, 0
+				a.recentSessions = func() []Session {
+					reads++
+					return []Session{{File: filepath.Join(a.workspace, "unique.jsonl"), Title: "unique words"}}
+				}
+				edit := func(msg tea.Msg) {
+					a.notices.seen[eventAtOpened] = false
+					drive(t, a, msg)
+					if a.notices.seen[eventAtOpened] {
+						notices++
+					}
+				}
+				typeWords := func(words string) {
+					for _, r := range words {
+						edit(key(string(r)))
+					}
+				}
+				want := 1
+				switch scenario {
+				case "paste and caret":
+					edit(tea.PasteMsg{Content: "@chat:no such words"})
+					edit(key("left"))
+					edit(key("right"))
+				case "remove and replace":
+					typeWords("@chat:x")
+					for b.box(a) != "" {
+						edit(key("backspace"))
+					}
+					typeWords("@chat:y")
+					want = 2
+				case "different at":
+					typeWords("@chat:x @chat:y")
+					want = 2
+				case "cut and replace":
+					typeWords("@chat:x")
+					edit(key("ctrl+u"))
+					typeWords("@chat:y")
+					want = 2
+				case "send and replace":
+					typeWords("@chat:no such words")
+					edit(key("enter"))
+					if b.box(a) != "" {
+						t.Fatalf("send kept its token in the box: %q", b.box(a))
+					}
+					if b.name == "home" {
+						a.showPage(pageHome)
+					}
+					typeWords("@chat:y")
+					want = 2
+				default:
+					typeWords(scenario)
+				}
+				t.Logf("reads=%d opening notices=%d, want %d of each", reads, notices, want)
+				if reads != want || notices != want {
+					t.Errorf("one opening per token: reads=%d notices=%d, want %d", reads, notices, want)
+				}
+			})
+		}
+	}
+}
+
+// Escape ends an opening without deleting its token; the next letter reads anew.
+func TestEscEndsAtOpeningAndNextLetterReadsFreshOnEveryBox(t *testing.T) {
+	for _, b := range atBoxes {
+		for _, query := range []string{"@", "@chat:"} {
+			t.Run(b.name+"/"+query, func(t *testing.T) {
+				a := b.make(t)
+				a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recents = false, true, nil
+				reads, notices := 0, 0
+				rows := []Session{{File: filepath.Join(a.workspace, "old.jsonl"), Title: "old conversation"}}
+				a.recentSessions = func() []Session { reads++; return rows }
+				edit := func(msg tea.Msg) {
+					a.notices.seen[eventAtOpened] = false
+					drive(t, a, msg)
+					if a.notices.seen[eventAtOpened] {
+						notices++
+					}
+				}
+				for _, r := range query {
+					edit(key(string(r)))
+				}
+				c := b.comp(a)
+				if !c.open || reads != 1 || notices != 1 {
+					t.Fatalf("initial opening: open=%v reads=%d notices=%d", c.open, reads, notices)
+				}
+				edit(key("esc"))
+				if c.open || b.box(a) != query || reads != 1 || notices != 1 {
+					t.Fatalf("escape: open=%v box=%q reads=%d notices=%d", c.open, b.box(a), reads, notices)
+				}
+				rows = []Session{{File: filepath.Join(a.workspace, "cloudflare.jsonl"), Title: "Cloudflare worker deploy"}}
+				edit(key("c"))
+				if !c.open || reads != 2 || notices != 2 {
+					t.Fatalf("letter after escape: open=%v reads=%d notices=%d, want 2 of each", c.open, reads, notices)
+				}
+				edit(key("l"))
+				if !c.open || reads != 2 || notices != 2 || len(c.chatHits) != 1 || c.chatHits[0].title != rows[0].Title {
+					t.Fatalf("next letter: open=%v reads=%d notices=%d chats=%+v", c.open, reads, notices, c.chatHits)
+				}
+				edit(key("esc"))
+				edit(key("o"))
+				if !c.open || reads != 3 || notices != 3 {
+					t.Fatalf("another dismissal: open=%v reads=%d notices=%d, want 3 of each", c.open, reads, notices)
+				}
+				edit(key("esc"))
+				edit(key(" "))
+				if c.open || reads != 3 || notices != 3 {
+					t.Fatalf("separator after escape: open=%v reads=%d notices=%d", c.open, reads, notices)
+				}
+				for _, r := range "@chat:cl" {
+					edit(key(string(r)))
+				}
+				if !c.open || reads != 4 || notices != 4 {
+					t.Fatalf("new token after escape and space: open=%v reads=%d notices=%d, want 4 of each", c.open, reads, notices)
+				}
+				t.Logf("four openings, reads=%d opening notices=%d", reads, notices)
+			})
+		}
+	}
+}
+
+// Each token owns its read, even if another token's answer is still off-loop.
+func TestNewAtTokenReadsWhilePreviousAnswerWaits(t *testing.T) {
+	for _, b := range atBoxes {
+		t.Run(b.name, func(t *testing.T) {
+			a := b.make(t)
+			a.comp.recentsHeld, a.comp.recents = false, nil
+			reads := 0
+			a.recentSessions = func() []Session {
+				reads++
+				if reads == 1 {
+					return []Session{{File: filepath.Join(a.workspace, "unique.jsonl"), Title: "unique words"}}
+				}
+				return nil
+			}
+			_, first := a.Update(tea.PasteMsg{Content: "@chat:old words"})
+			for b.box(a) != "" {
+				a.Update(key("backspace"))
+			}
+			_, second := a.Update(tea.PasteMsg{Content: "@chat:unique words"})
+			spend(t, a, second)
+			if reads != 1 || !b.comp(a).open || len(b.comp(a).chatHits) != 1 {
+				t.Fatalf("new token did not start its own read: reads=%d open=%v rows=%+v", reads, b.comp(a).open, b.comp(a).chatHits)
+			}
+			spend(t, a, first)
+			if reads != 2 || !b.comp(a).open || len(b.comp(a).chatHits) != 1 {
+				t.Fatalf("old answer displaced the new token's catalog: reads=%d open=%v rows=%+v", reads, b.comp(a).open, b.comp(a).chatHits)
+			}
+		})
+	}
+}
+
+// Emptying home's box must end its token before another window changes recents.
+func TestHomeEmptyBoxEndsAtTokenAndNextOpeningReadsFreshRows(t *testing.T) {
+	a := atBoxes[1].make(t)
+	a.comp.recentsHeld, a.comp.recents = false, nil
+	reads := 0
+	rows := []Session{{File: filepath.Join(a.workspace, "old.jsonl"), Title: "old conversation"}}
+	a.recentSessions = func() []Session { reads++; return rows }
+	typeInto(t, a, "@chat:")
+	for a.home.box.String() != "" {
+		drive(t, a, key("backspace"))
+	}
+	if a.home.comp.open {
+		t.Error("home kept the list open after backspace emptied its box")
+	}
+	rows = []Session{{File: filepath.Join(a.workspace, "puff.jsonl"), Title: "puff conversation"}}
+	typeInto(t, a, "@chat:puff")
+	if reads != 2 || len(a.home.comp.chatHits) != 1 || a.home.comp.chatHits[0].title != "puff conversation" {
+		t.Fatalf("second opening reads=%d rows=%+v, want a fresh puff conversation", reads, a.home.comp.chatHits)
+	}
+	drive(t, a, key("enter"))
+	if a.home.box.String() != "@puff-conversation" {
+		t.Fatalf("enter inserted %q", a.home.box.String())
+	}
+}
+
+// A default cursor is not a person's choice; fresh data should improve its match.
+func TestRecentArrivalSelectsBestMatchUntilPersonChooses(t *testing.T) {
+	for _, b := range atBoxes[:2] {
+		for _, arrowed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/arrowed=%v", b.name, arrowed), func(t *testing.T) {
+				a := b.make(t)
+				loose := Session{File: filepath.Join(a.workspace, "swan.jsonl"), Title: "what color is a swan heron"}
+				best := Session{File: filepath.Join(a.workspace, "heron.jsonl"), Title: "heron conversation"}
+				a.mentionRecentsLoaded([]Session{loose})
+				a.recentSessions = func() []Session { return []Session{best, loose} }
+				_, cmd := a.Update(tea.PasteMsg{Content: "@chat:heron"})
+				c := b.comp(a)
+				if chosen, ok := c.chatChoice(); !ok || chosen.file != loose.File {
+					t.Fatalf("stale catalog did not initially offer the loose match: %+v", c.chatHits)
+				}
+				if arrowed {
+					drive(t, a, key("down"))
+				}
+				spend(t, a, cmd)
+				want := "@heron-conversation"
+				if arrowed {
+					want = "@what-color-is-a-swan-heron"
+				}
+				if c.chatHits[0].file != best.File {
+					t.Fatal("fresh data did not rank the best match first")
+				}
+				drive(t, a, key("enter"))
+				if got := b.box(a); got != want {
+					t.Fatalf("arrival inserted %q, want %q", got, want)
+				}
+			})
+		}
+	}
+}
+
+// Changing a query gives the best match the cursor again, including on file arrivals.
+func TestQueryChangeEndsTheChosenRowOnEveryBox(t *testing.T) {
+	for _, b := range atBoxes[:2] {
+		t.Run(b.name, func(t *testing.T) {
+			a := b.make(t)
+			c := b.comp(a)
+			c.all, c.loaded = []string{"heron-a.md", "heron-b.md"}, true
+			if b.name == "home" {
+				a.home.walked = a.homeCompletionRoot()
+			}
+			typeInto(t, a, "@file:heron")
+			drive(t, a, key("down"))
+			drive(t, a, key("-"))
+			drive(t, a, filesLoadedMsg{paths: []string{"heron-.md", "heron-a.md", "heron-b.md"}, home: b.name == "home"})
+			drive(t, a, key("enter"))
+			if got := b.box(a); got != "@heron-.md" {
+				t.Fatalf("query change retained the old choice: %q", got)
+			}
+		})
+	}
+}
+
+// A queued first user message remains mentionable when its untitled tab is held.
+func TestFirstQueuedFollowUpRemainsMentionableWhenHeld(t *testing.T) {
+	_, a := queuedConversation(t)
+	file := filepath.Join(t.TempDir(), "first-follow.jsonl")
+	a.file, a.title, a.openingPrompt, a.entries = file, "", "", nil
+	a.input.setText("first sent follow-up")
+	drive(t, a, key("ctrl+enter"), streamClosedMsg{gen: a.gen})
+	sent := false
+	for _, e := range a.entries {
+		if e.kind == entryUser && e.text == "first sent follow-up" {
+			sent = true
+		}
+	}
+	if !sent {
+		t.Fatal("the queued turn did not record its sent user message")
+	}
+	a.input.setText("a later unsent draft")
+	conv := a.front()
+	side := a.detachConversation()
+	a.stow(conv, side)
+	a.file = filepath.Join(t.TempDir(), "new-front.jsonl")
+	a.input.reset()
+	for _, chat := range a.mentionChatsExcept("") {
+		if chat.file == file {
+			return
+		}
+	}
+	t.Fatalf("held queued conversation was omitted: title=%q opening=%q draft=%q", side.title, side.openingPrompt, side.draft)
+}
+
+// Only the in-memory front is subject to the unsent-shell rule.
+func TestOtherTabsRemainMentionableWithoutTitlesOrOpenings(t *testing.T) {
+	a := mentionApp(t)
+	file := filepath.Join(t.TempDir(), "held.jsonl")
+	a.stow(Conversation{Agent: &fakeAgent{}, SessionFile: file}, &aside{draft: "held draft"})
+	for _, chat := range a.mentionChatsExcept("") {
+		if chat.file == file {
+			return
+		}
+	}
+	t.Fatal("an unlabelled held tab was filtered by the front's unsent-shell rule")
+}
+
+// The manual must explain token openings, deliberate choices and the front-only omission.
+func TestMentionManualExplainsTokenOpeningsAndDeliberateChoices(t *testing.T) {
+	for _, name := range []string{"conversations-and-teams.md", "home.md", "keys.md", "attaching-files.md"} {
+		raw, err := os.ReadFile(filepath.Join("..", "manual", "chat", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, words := range []string{"once per", "token", "best match", "chose", "window's own"} {
+			if !strings.Contains(string(raw), words) {
+				t.Errorf("%s does not explain %q", name, words)
+			}
+		}
 	}
 }

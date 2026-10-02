@@ -238,13 +238,13 @@ func mentionToken(chat mentionChat) string {
 func (a *app) fillMentions() {
 	a.comp.teams = a.mentionTeams()
 	a.comp.chats = a.mentionChats()
-	a.comp.recentsLoaded = a.mentionRecentsReady(a.comp.open)
+	a.comp.recentsLoaded = a.mentionRecentsReady(true)
 }
 
-// mentionRecentsReady keeps an opening's cached rows visible while treating
-// its fresh read as pending. Further edits wait for that same read to finish.
-func (a *app) mentionRecentsReady(open bool) bool {
-	return a.recentSessions == nil || !a.comp.recentsPending && (open || a.comp.recentsHeld) && (a.comp.recentsLoaded || len(a.comp.recents) > 0)
+// mentionRecentsReady distinguishes an unanswered read from a settled catalog.
+// Token openings invalidate it through the read itself, never a display close.
+func (a *app) mentionRecentsReady(_ bool) bool {
+	return a.recentSessions == nil || !a.comp.recentsPending && (a.comp.recentsLoaded || len(a.comp.recents) > 0)
 }
 
 func (a *app) mentionTeams() []mentionTeam {
@@ -308,31 +308,25 @@ func (a *app) mentionChatsExcept(front string) []mentionChat {
 	return out
 }
 
-// mentionableTab distinguishes a conversation's own name or sent opening
-// from the unsent words the strip may borrow. This list never reads a transcript.
+// mentionableTab leaves off only the front's own unsent shell. Other tabs are
+// offered without guessing their sent history from a name or sidecar.
 func (a *app) mentionableTab(tab chatTab) bool {
+	if tab.key != a.frontTabKey() {
+		return true
+	}
 	named := func(title string) bool {
 		title = strings.TrimSpace(title)
 		return title != "" && title != unnamedConversationWord
 	}
-	if tab.key == a.frontTabKey() {
-		if named(a.title) || strings.TrimSpace(a.openingPrompt) != "" {
+	if named(a.title) || strings.TrimSpace(a.openingPrompt) != "" {
+		return true
+	}
+	for _, e := range a.entries {
+		if e.kind == entryUser {
 			return true
 		}
-		for _, e := range a.entries {
-			if e.kind == entryUser {
-				return true
-			}
-		}
-		return false
 	}
-	if held := a.behind[tab.key]; held != nil {
-		if held.conv.Agent != nil && named(held.conv.Agent.Title()) {
-			return true
-		}
-		return held.side != nil && (named(held.side.title) || strings.TrimSpace(held.side.openingPrompt) != "")
-	}
-	return named(tab.full)
+	return false
 }
 
 func (a *app) mentionFromTab(tab chatTab, open bool) mentionChat {
@@ -374,22 +368,26 @@ func (a *app) mentionHandle(key string) string {
 type mentionRecentsMsg struct {
 	rows []Session
 	keys []string
+	read uint64
 }
 
 // loadMentionRecents reads the door's recent list. The door's function may
 // open a directory, so it runs inside the command and not on the loop.
 //
-// IT RUNS ON EVERY OPENING OF THE LIST, not once per process. The read is the
-// door's own bounded walk — twenty transcripts at most, on the keystroke that
-// asks (cmd/codeaf's v3RecentSessions) — and the keystroke is "@", not every
-// letter after it: [app.syncLists] asks only when the list was closed and is
-// now open. One read is held at a time; a second "@" while the first is still
-// walking waits for that answer rather than starting another walk.
+// IT RUNS ON EVERY OPENING, not once per process. A new @ token or the list
+// returning after Escape starts an opening. The read is the door's own bounded
+// walk — twenty transcripts at most, on the keystroke that asks (cmd/codeaf's
+// v3RecentSessions), never each following letter. [completion.beginToken]
+// recognizes openings independently of automatic display closes. A new opening
+// starts its own read even while an earlier answer is pending; only the newest
+// answer settles the shared catalog.
 func (a *app) loadMentionRecents() tea.Cmd {
-	if a.comp.recentsHeld || a.recentSessions == nil {
+	if a.recentSessions == nil || a.comp.recentsHeld && !a.comp.recentsPending {
 		return nil
 	}
 	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = true, false, true
+	a.comp.recentsRead++
+	readID := a.comp.recentsRead
 	read, hosted := a.recentSessions, a.hosted()
 	return func() tea.Msg {
 		list := read()
@@ -410,7 +408,7 @@ func (a *app) loadMentionRecents() tea.Cmd {
 				keys[i] = convKey(file)
 			}
 		}
-		return mentionRecentsMsg{rows: list, keys: keys}
+		return mentionRecentsMsg{rows: list, keys: keys, read: readID}
 	}
 }
 
@@ -418,8 +416,6 @@ func (a *app) loadMentionRecents() tea.Cmd {
 // supplied without keys uses cleaned spellings and never resolves local files.
 func (a *app) mentionRecentsLoaded(rows []Session, keys ...string) {
 	// The read has landed, so the next opening of the list may ask again.
-	chosen := a.comp.selectionKey(a.comp.selLine())
-	homeChosen := a.home.comp.selectionKey(a.home.cursor)
 	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = false, true, false
 	a.comp.recents = a.comp.recents[:0]
 	seen := map[string]bool{}
@@ -456,13 +452,11 @@ func (a *app) mentionRecentsLoaded(rows []Session, keys ...string) {
 	if a.comp.open {
 		a.fillMentions()
 		a.comp.refresh(&a.input)
-		a.comp.restoreSelection(chosen)
 	}
 	// AND HOME'S LIST IS THE OTHER READER OF THE SAME SNAPSHOT (homeat.go).
 	if a.home.comp.open {
 		a.fillHomeMentions()
 		a.home.comp.rank()
-		a.home.comp.restoreSelection(homeChosen)
 		a.home.build()
 	}
 	a.touch()

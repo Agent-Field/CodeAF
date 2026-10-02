@@ -1484,11 +1484,12 @@ files and folders, ranked as you type, `folder` and `img` tags on the right. The
 root is the pinned target, otherwise this window's workspace; over `--host` the
 unpinned list uses this machine's working directory, as a conversation's list does. `@team:`
 keeps only teams, `@chat:` only conversations, `@file:` only files, exactly as in a
-conversation. Typing or pasting opens the catalogs and starts the same reads.
-The conversations are named or sent conversations open in this window, including other
-projects and the one behind home — then the twenty most recent in this project. An unnamed
-conversation with nothing sent is absent even if its unsent draft names a tab. Each time
-the list appears, including a paste, it reads the recent list again.
+conversation.
+Conversations are every open tab, including other projects — then the twenty
+most recent in this project. Only the window's own front conversation is absent for being
+unnamed with nothing sent, even if its draft names its tab. Held, restored and side tabs
+are offered without that check. Recents are read once per opening: a new `@` token
+or the list returning on the next letter after `esc`.
 
 `↑`/`↓` pick and `enter` puts the row in: a team as `●harbor` in the team's colour, a
 conversation as `@handle` or a short slug of its title, a path after the `@`. Choosing a
@@ -1525,11 +1526,17 @@ token. Only prefixed searches hold spaces, up to three and never across a newlin
 match every word in any order; finished words match whole, and only the final
 word may match by letters in order.
 
-Every opening reads the recent list again, including a pasted search after an earlier read.
-A prefixed chat search stays open with `looking…` until that fresh read answers. A prefixed
-search of several words with no match closes after that read. New rows keep the
-chosen row selected while it is still offered. After choosing, a space or
-punctuation such as a comma keeps the list closed so you can write on.
+Recents are read once per opening: a new token appearing or starting at a different
+`@`, or the next letter bringing the list back after `esc`. Letters and caret moves
+in an existing opening, and automatic unmatched closes, start no new read. Clearing the box ends the token and closes its list;
+the next `@` reads again and can offer a conversation started in another window.
+A prefixed chat search waits with `looking…` for its fresh read. Several words
+with no match close it after that answer.
+
+An arrival selects the best match unless you chose a row with the arrows since
+the query last changed; that choice survives while still offered. A changed query
+returns to the best match. Clicking a row inserts it immediately. After choosing,
+a space or punctuation such as a comma keeps the list closed so you can write on.
 
 ## How do I get back to the dashboard or the home screen from any page — press space twice
 

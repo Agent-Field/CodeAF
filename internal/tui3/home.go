@@ -1458,6 +1458,9 @@ func (a *app) refreshHome() {
 func (h *homeView) build() {
 	if len(h.box.value) == 0 {
 		h.projectPaste = homeProjectPaste{}
+		// An empty box draws the grid without visiting completionLines, so it
+		// must close the list before that grid inherits the previous choice.
+		h.comp.sync(&h.box)
 	}
 	previous := h.focused()
 	// AND THE ITEM UNDER THE CURSOR IS FOLLOWED THE SAME WAY. A band re-sorts

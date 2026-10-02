@@ -78,9 +78,10 @@ var skipDirs = map[string]bool{
 // keeps its walk across closes: the second @ of a session opens instantly.
 type completion struct {
 	open bool
-	// opened records a new @ search even when a ready unmatched section
-	// immediately closes it, because every opening still reads recents.
-	opened bool
+	// tokenAt is the current @ token's start plus one, or zero without a token.
+	// A negative start means Escape dismissed its opening; automatic display
+	// closes keep it positive, so edits within it share one recent read.
+	tokenAt int
 	// at is the rune index of the '@' in the draft, and query what follows it.
 	at    int
 	query string
@@ -90,10 +91,9 @@ type completion struct {
 	// and an image is written into the line like any other file, because in
 	// "/image shot.png" the path is what the command takes.
 	arg bool
-	// done is the query this completion just INSERTED at at. It is what keeps
-	// the list from reopening on top of its own answer: the caret ends up
-	// inside a perfectly good @token, and a list that reappeared over it would
-	// make enter a key that never finishes.
+	// done is the query this completion inserted or the person dismissed at at.
+	// It keeps the list from reopening over its own answer or over a separator
+	// typed after Escape, so the person can finish a mention and write on.
 	done string
 
 	all     []string
@@ -145,6 +145,9 @@ type completion struct {
 	// recentsPending marks a scheduled read, so a supplied catalog whose door
 	// is held shut remains ready without being mistaken for an unanswered read.
 	recentsPending bool
+	// recentsRead identifies the newest read, so an earlier opening's answer
+	// cannot settle a newer search. Only the app's shared catalog uses it.
+	recentsRead uint64
 
 	// lines is what the overlay DRAWS, section rules included, and sel is the
 	// line each selectable row sits on, in cursor order. The split is what lets
@@ -155,6 +158,9 @@ type completion struct {
 
 	cursor int
 	top    int
+	// chosen is the identity the person selected with arrows, or empty before
+	// a choice. Query changes clear it; ranking follows it while still offered.
+	chosen string
 }
 
 // compLine is one drawn row: a section rule, the prefix words, a team, a
@@ -181,7 +187,6 @@ func deadLine() compLine {
 // draft is still what it is about — but it answers to [argToken] instead, and
 // it stays open while the person types a path with spaces in it.
 func (c *completion) sync(e *editor) {
-	c.opened = false
 	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
 		c.close()
 		return
@@ -209,6 +214,12 @@ func (c *completion) sync(e *editor) {
 	}
 	at, query, ok := atToken(e.value, e.cursor)
 	if !ok || len([]rune(query)) < completeMin {
+		c.open, c.tokenAt, c.done = false, 0, ""
+		return
+	}
+	if c.tokenAt == -(at + 1) {
+		// Home builds before asking beginToken about the edit. A dismissed list
+		// must wait for that question before adopting the next letter's query.
 		c.open = false
 		return
 	}
@@ -225,7 +236,6 @@ func (c *completion) sync(e *editor) {
 			return
 		}
 	}
-	c.opened = !c.open
 	c.narrow(at, query, false)
 	// A MULTI-WORD SEARCH THAT MATCHES NOTHING AFTER ITS CATALOGS ARRIVE
 	// closes rather than saying `no matches` under it: the words after a
@@ -236,6 +246,44 @@ func (c *completion) sync(e *editor) {
 	if strings.Contains(strings.TrimSpace(query), " ") && !c.anyHits() && c.catalogsReady() {
 		c.open = false
 	}
+}
+
+// beginToken reports a new @ token or an opening returning after Escape.
+// Every box calls it after edits, including the edit that removes the token.
+func (c *completion) beginToken(e *editor) bool {
+	at, query, ok := atToken(e.value, e.cursor)
+	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
+		ok = false
+	}
+	if _, _, arg := argToken(e.value, e.cursor); arg {
+		ok = false
+	}
+	token := 0
+	if ok {
+		token = at + 1
+	}
+	previous := c.tokenAt
+	if token == 0 {
+		c.tokenAt = 0
+		// The @ token's end must not erase a command argument's insertion stamp.
+		if !c.arg {
+			c.done = ""
+		}
+		return false
+	}
+	if token == previous || previous == -token && query == c.query {
+		return false
+	}
+	// A completed mention or a separator after Escape keeps the list closed.
+	if (previous == 0 || previous == -token) && c.done != "" && at == c.at && strings.HasPrefix(query, c.done) {
+		tail := []rune(strings.TrimPrefix(query, c.done))
+		if len(tail) == 0 || !mentionContinuation(tail[0]) {
+			return false
+		}
+	}
+	c.tokenAt = token
+	c.done = ""
+	return true
 }
 
 // refresh reconsiders a search after its catalogs arrive. An argument opened
@@ -252,12 +300,12 @@ func (c *completion) refresh(e *editor) {
 // token, re-rank it, and keep the cursor only if it is still walking the same
 // list.
 func (c *completion) narrow(at int, query string, arg bool) {
-	was := c.open && c.at == at && c.arg == arg
+	was := c.open && c.at == at && c.arg == arg && c.query == query
 	c.open, c.arg, c.at, c.query = true, arg, at, query
-	c.rank()
 	if !was {
-		c.cursor, c.top = 0, 0
+		c.cursor, c.top, c.chosen = 0, 0, ""
 	}
+	c.rank()
 }
 
 // openArg is tab: open the list over a command's path argument even when
@@ -273,6 +321,16 @@ func (c *completion) openArg(e *editor) bool {
 }
 
 func (c *completion) close() { c.open = false }
+
+// dismiss ends the person's opening while leaving its token in the box. The
+// next query edit can open it anew; ordinary display closes keep the opening.
+func (c *completion) dismiss() {
+	c.close()
+	if !c.arg {
+		c.done = c.query
+		c.tokenAt = -(c.at + 1)
+	}
+}
 
 // argPrefixes are the commands that take a PATH, spelled as they are typed.
 //
@@ -390,14 +448,12 @@ func (c *completion) selectionKey(at int) string {
 }
 
 // restoreSelection follows the chosen row through a fresh ranking. A row
-// removed by the new data leaves the ordinary clamped cursor in force.
+// removed by the new data, or never chosen, gives the best match the cursor.
 func (c *completion) restoreSelection(chosen string) {
-	if chosen == "" {
-		return
-	}
+	c.cursor, c.top, c.chosen = 0, 0, ""
 	for cursor, at := range c.sel {
-		if c.selectionKey(at) == chosen {
-			c.cursor = cursor
+		if chosen != "" && c.selectionKey(at) == chosen {
+			c.cursor, c.chosen = cursor, chosen
 			break
 		}
 	}
@@ -437,8 +493,7 @@ func (c *completion) rank() {
 		c.rankTasks()
 	}
 	c.layout()
-	c.cursor = moveCursor(c.cursor, 0, len(c.sel))
-	c.follow(c.rowsWanted())
+	c.restoreSelection(c.chosen)
 }
 
 // layout turns the two ranked lists into the rows the overlay draws: the task
@@ -593,6 +648,7 @@ func subsequence(text, needle string) (int, bool) {
 
 func (c *completion) move(delta int) {
 	c.cursor = moveCursor(c.cursor, delta, len(c.sel))
+	c.chosen = c.selectionKey(c.selLine())
 	c.follow(c.rowsWanted())
 }
 

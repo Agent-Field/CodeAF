@@ -1595,12 +1595,16 @@ picture's `img` note. Choosing one puts its path into the sentence, exactly as a
 file does. It does not choose that folder as a place; `/folder` does that.
 
 The prefix words, teams and open tabs arrive from memory. Recent conversations and
-the file walk arrive as they are read. Whenever the list appears, by typing or
-pasting, it reads the recent list again. A prefixed multi-word conversation search waits with
-`looking…` until that fresh read answers, even after an earlier read.
+the file walk arrive as they are read. Recents are read once per opening:
+a new `@` token, typed or pasted, or the next letter bringing the list back after
+`esc` on any box. Letters, caret moves and automatic unmatched closes start no new
+read. Removing the token, including clearing home's box, ends it; the next `@`
+reads again. A prefixed multi-word chat search waits with `looking…` for that answer.
 An unread catalog says `looking…`; a read with no match says `no matches`, or
 `no team matches`, `no conversation matches` or `no file matches` for a prefix.
-New data keeps the chosen row selected while it is still on the list.
+New data selects the best match unless you chose a row with the arrows since the
+query last changed; that choice survives while still offered. A changed query
+returns to the best match. On home, clicking a row inserts it immediately.
 
 ## Searching the @ list with spaces — which words are a search
 
@@ -1627,9 +1631,10 @@ keeps the list closed: `@side-chat,` and `@side-chat is a chat` are writing on.
 ## Which conversations and how many rows the @ list shows
 
 The conversations are every tab open in this window, including other projects'
-tabs, except the one you are typing in. An unnamed conversation with nothing sent
-is absent even if its unsent draft names a tab. Then come the twenty most recent in this
-project, read again each time the list opens. Older conversations and other
+tabs, except the one you are typing in. Only the window's own front conversation
+is absent for being unnamed with nothing sent, even if its draft names its tab.
+Held, restored and side tabs are offered without that check. Then come the twenty
+most recent in this project, read once per opening. Older conversations and other
 projects' saved conversations require `/resume` unless they are already open here.
 Home and the new-chat page leave no eligible conversation off: their sentences start a
 new conversation, so the one behind them can be a reference too.

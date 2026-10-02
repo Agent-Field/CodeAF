@@ -159,7 +159,7 @@ func (h *homeView) completionPath(line homeLine) (string, bool) {
 func (a *app) fillHomeMentions() {
 	a.home.comp.teams = a.mentionTeams()
 	a.home.comp.chats = a.mentionChatsExcept("")
-	a.home.comp.recentsLoaded = a.mentionRecentsReady(a.home.comp.open)
+	a.home.comp.recentsLoaded = a.mentionRecentsReady(true)
 }
 
 // homeCompletionRoot uses the explicit pin, otherwise the conversation's file
@@ -175,8 +175,7 @@ func (a *app) homeCompletionRoot() string {
 // outside a search leave the completed file walk and the mention catalogs alone.
 func (a *app) prepareHomeCompletion(text string) {
 	h := &a.home
-	h.comp.opened = false
-	h.comp.recentsLoaded = a.mentionRecentsReady(h.comp.open)
+	h.comp.recentsLoaded = a.mentionRecentsReady(true)
 	if !h.comp.open {
 		if text == "" {
 			return
@@ -206,16 +205,20 @@ func (a *app) prepareHomeCompletion(text string) {
 
 // syncHomeCompletion starts the same reads for every opening. Catalogs are
 // supplied after nonprinting edits too, before the next frame can draw them.
-func (a *app) syncHomeCompletion(was bool) tea.Cmd {
+func (a *app) syncHomeCompletion(_ bool) tea.Cmd {
 	h := &a.home
 	root := a.homeCompletionRoot()
 	var recents tea.Cmd
-	if (h.comp.open || h.comp.opened) && !was {
+	opening := h.comp.beginToken(&h.box)
+	if opening {
+		a.noticeEvent(eventAtOpened)
 		recents = a.loadMentionRecents()
 		a.fillHomeMentions()
 		a.alignHomeFiles(root)
+	}
+	h.comp.sync(&h.box)
+	if opening || h.comp.open {
 		h.build()
-		h.comp.opened = false
 	}
 	return tea.Batch(a.loadHomeFiles(root), recents)
 }
@@ -258,10 +261,8 @@ func (a *app) homeFilesLoaded(paths []string, root string) {
 	if root != "" && root != h.walked {
 		return
 	}
-	chosen := h.comp.selectionKey(h.cursor)
 	h.comp.all, h.comp.loaded, h.comp.loading = paths, true, false
 	h.comp.rank()
-	h.comp.restoreSelection(chosen)
 	h.build()
 	a.touch()
 }
@@ -329,8 +330,9 @@ func (a *app) homeComplete(line homeLine) tea.Cmd {
 // dismissCompletion is esc over the list: it closes, and stays closed over
 // exactly this query — the next letter of the token opens it again, which is
 // the conversation list's own rule (app.go's [app.dismissLists] seals only the
-// command list). [completion.done] is what holds it shut meanwhile.
+// command list). The dismissal ends the opening, so its next letter reads anew.
+// [completion.done] also keeps a separator after this query from reopening it.
 func (h *homeView) dismissCompletion() {
 	h.comp.done = h.comp.query
-	h.comp.close()
+	h.comp.dismiss()
 }

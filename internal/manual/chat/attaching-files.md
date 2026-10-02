@@ -562,10 +562,12 @@ filters every section at once. `@file:` keeps only files, `@team:` only teams,
 the hint says `click`.
 
 The conversations on it are the tabs open in this window, including other projects'
-tabs, except the one you are typing in. An unnamed conversation with nothing sent
-is absent even if its unsent draft names a tab. Then come the twenty most recent
-in this project, read again each time the list opens, by typing or pasting. For
-older or other-project conversations not open here, use `/resume`. The bare
+tabs, except the one you are typing in. Only the window's own front conversation
+is absent for being unnamed with nothing sent, even if its draft names its tab.
+Held, restored and side tabs are offered without that check. Then come the twenty
+most recent in this project, read once per opening: a new `@` token or the list
+returning on the next letter after `esc`. For older or other-project conversations
+not open here, use `/resume`. The bare
 `@` shows eight of them; `@chat:` shows them all and scrolls. Home's box opens the
 same list with the same sections and prefixes, leaving no eligible conversation off.
 Files use the pinned target or workspace. Locally the foot's `project: `
@@ -578,7 +580,10 @@ until the model asks. Choosing a team puts `●harbor` in its current colour, on
 home too. Choosing a conversation puts `@handle`, or a short slug of the title when it has no handle,
 and the hint on the row is the full title. Conversations in no team are offered too.
 
-After you send, that team mark and that `@handle` stay clickable. A press on the
+## After sending a team or conversation mention
+
+After you send, a team mark such as `●harbor` and a conversation's `@handle` stay
+clickable. A press on the
 team opens the teams page with it selected. A press on the conversation opens it. Over
 `--host`, against an engine with no teams doors, a press on the team opens the
 conversations view on it instead. The
@@ -595,8 +600,14 @@ spaces and never across a newline. Teams, conversations and files match every
 word in any order; only the final word may match by letters in order. Tasks keep
 their own scorer for the whole query.
 
-Every opening starts a fresh read of the recent list, by typing or pasting,
-including on home and after an earlier read. Further letters in an open list
-start no new read. Several words with no match close a prefixed search only after its catalog has been read;
-before that fresh read answers it stays open with `looking…`. A space or
-punctuation after a chosen mention keeps the list closed so you can write on.
+Recents are read once per opening: a new token appearing or starting at a different
+`@`, or the next letter bringing the list back after `esc`. Letters and caret moves
+in an existing opening, and automatic unmatched closes, start no new read. Removing the token, including clearing home's box,
+ends it; the next `@` reads again. A prefixed multi-word chat search waits with
+`looking…` for its fresh read. Several words with no match close a prefixed search
+after its catalog has been read.
+
+An arrival selects the best match unless you chose a row with the arrows since
+the query last changed; that choice survives while still offered. A changed query
+returns to the best match. On home, clicking a row inserts it immediately. A space
+or punctuation after a chosen mention keeps the list closed so you can write on.
