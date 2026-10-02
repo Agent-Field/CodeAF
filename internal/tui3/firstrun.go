@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -93,20 +94,22 @@ type setupFlow struct {
 	//     viewport and a filter over the WHOLE catalog rather than a truncation
 	//     of it, because a form with five rows must still reach two hundred
 	//     models.
-	//   - reviewOpen is the optional reading of the settings this screen
-	//     deliberately does not ask about, example is which illustration the
-	//     right-hand column is showing, and seeded says the screen has already
+	//   - example is which illustration the panel is showing, and seeded says
+	//     the screen has already
 	//     been read from the profile once — so coming back from the step behind
 	//     it does not throw away what was typed.
-	control    setupControl
-	detail     bool
+	control setupControl
+	detail  bool
+	// answered marks the rows enter has acted on — the limit committed, a
+	// model taken — which is what paints a row's name dim
+	// once it is done (onboarding.go's [app.setupLabelInk]).
+	answered   [setupControlCount]bool
 	limitText  string
 	limitTyped bool
 	modelOpen  bool
 	modelAt    int
 	modelTop   int
 	modelFind  string
-	reviewOpen bool
 	example    int
 	seeded     bool
 	// The example panel's one-shot demonstration (onboarding.go): demoAt is
@@ -116,9 +119,20 @@ type setupFlow struct {
 	demoAt      int
 	demoGen     int
 	demoTicking bool
+	// A hold moves the deadline while one timer remains in flight. Its stamp
+	// is separate from the hold generation, because a key can arrive after
+	// the timer has queued its message and must still hold that arriving tick.
+	turnGen       int
+	turnClockGen  int
+	turnTicking   bool
+	turnHoldUntil time.Time
 	// refusal is the one line the screen says under the box when enter was
 	// pressed on something it will not write. Any other key clears it.
 	refusal string
+	// doors is what the last frame of the controls screen drew for the pointer
+	// (onboarding.go's [setupDoors]): a press is answered against the rows that
+	// are on the screen, and nothing else.
+	doors setupDoors
 	// auth is the default provider's browser trip. Starting covers the short
 	// interval before its listener is handed back; flow and link cover the wait
 	// after that. id names the attempt so a late answer after esc is dropped.
@@ -404,11 +418,11 @@ func (a *app) setupControlsPress(name, text string) (tea.Cmd, bool) {
 			return a.endSetup(false), true
 		}
 		a.touch()
-		return nil, true
+		return a.holdSetupTurn(), true
 	case "esc":
 		if a.setupControlsKey(name, text) {
 			a.touch()
-			return nil, true
+			return a.holdSetupTurn(), true
 		}
 		if s.at > 0 {
 			s.at--
@@ -421,12 +435,12 @@ func (a *app) setupControlsPress(name, text string) (tea.Cmd, bool) {
 	}
 	a.setupControlsKey(name, text)
 	a.touch()
-	// AND THE EXAMPLE PANEL'S CLOCK IS ARMED FROM HERE, once, after the key has
-	// been dealt with. [app.setupDemoCmd] answers nil in every state that should
-	// not have a beat — finished, already ticking, off this screen, or the
-	// screen-reader tier — so this line is safe on every key rather than only on
-	// the two that start it (onboarding.go).
-	return a.setupDemoCmd(), true
+	// AND THE PANEL'S TWO CLOCKS ARE DEALT WITH FROM HERE, once, after the key
+	// has been handled: the demonstration's beat is armed where one is owed
+	// ([app.setupDemoCmd] answers nil everywhere else), and the turn is held
+	// for a full interval from this key ([app.holdSetupTurn]), so the panel
+	// never turns under a person's hands (onboarding.go).
+	return tea.Batch(a.setupDemoCmd(), a.holdSetupTurn()), true
 }
 
 // advanceSetup moves past one answered step and closes the screen after the
@@ -446,7 +460,7 @@ func (a *app) advanceSetup() tea.Cmd {
 	if s.step() == setupControls {
 		a.startSetupControls()
 		a.touch()
-		return a.setupDemoCmd()
+		return tea.Batch(a.setupDemoCmd(), a.setupTurnCmd())
 	}
 	a.touch()
 	return nil

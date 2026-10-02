@@ -135,3 +135,29 @@ func TestTriggerCoalescesAndDebouncesRefusalsWithAFakeClock(t *testing.T) {
 		t.Fatal("a changed key was debounced")
 	}
 }
+
+// AN EXPIRED KEY IS A READING, NOT A FAILURE. The service's 401 that says the
+// key has expired is the one fact the account can still give, so it comes back
+// as a known, expired reading — never low, because there is no balance under
+// it — on either of the two routes. A 401 that says nothing about expiry stays
+// a failed read (the table above holds that).
+func TestAnExpiredKeyIsAKnownReadingOnEitherRoute(t *testing.T) {
+	const refusal = `{"error":{"message":"API key expired.","code":401}}`
+	for _, where := range []string{"/api/v1/key", "/api/v1/credits"} {
+		t.Run(where, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == where {
+					w.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprint(w, refusal)
+					return
+				}
+				fmt.Fprint(w, `{"data":{"limit_remaining":50,"total_credits":0,"total_usage":0}}`)
+			}))
+			defer server.Close()
+			reading, err := Read(context.Background(), server.Client(), server.URL+"/api/v1", "key")
+			if err != nil || !reading.Known || !reading.Expired || reading.Low {
+				t.Fatalf("an expired key read as %+v, %v; want known and expired, not low", reading, err)
+			}
+		})
+	}
+}

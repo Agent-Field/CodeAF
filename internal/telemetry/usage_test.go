@@ -44,7 +44,8 @@ func TestPeriodicFlushSendsBeforeTheSessionEnds(t *testing.T) {
 	testHome(t)
 	VersionForTest(t, "v0.6.1-test")
 	recorder := newRelay(t)
-	MarkNoticeShown()
+	// No notice gate stands before the first send since 2026-10-01: a queued
+	// row leaves on the next flush, which is the whole claim here.
 	if err := SpoolSync(UsageDelta(ModeChat, 100, 25, "open-session", time.Now())); err != nil {
 		t.Fatal(err)
 	}

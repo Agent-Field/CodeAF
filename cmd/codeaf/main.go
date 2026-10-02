@@ -371,10 +371,6 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
-	case "telemetry":
-		// The person's door onto the anonymous-usage pipe: what it is doing,
-		// exactly what would leave, and the switch. It emits nothing itself.
-		return runTelemetry(os.Args[2:])
 	case "manual":
 		// Everything codeaf knows about itself, read straight (manual.go). It
 		// is the same corpus the chat's manual tool reads, printed as it is
@@ -516,8 +512,6 @@ Look at what happened — read-only, no key, nothing spent
       show today's self-spend receipts
   codeaf why <task-id> [--db path]
       what one piece of work did — its turns, tools, arguments, how it ended
-  codeaf telemetry
-      the anonymous usage counts: status, info, show, off, on
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what
@@ -695,8 +689,9 @@ than fighting your shell.
                        your prompts included. Off by default, and for one run
                        at a time.
   CODEAF_TELEMETRY    on (default). off turns the anonymous usage counts off;
-                       ` + "`codeaf telemetry`" + ` says what they are and what would
-                       leave, DO_NOT_TRACK=1 does the same
+                       docs/TELEMETRY.md in the repository says what they are,
+                       DO_NOT_TRACK=1 does the same, and so does the telemetry
+                       switch in the chat's /settings
   CODEAF_TELEMETRY_ENDPOINT
                        where the usage counts go
                        (default https://agentfield.ai/api/oss/codeaf/telemetry);

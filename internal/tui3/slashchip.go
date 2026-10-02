@@ -93,19 +93,30 @@ func knownCommand(word string) bool {
 	return false
 }
 
-// commandSpans finds every recognized slash command in value, as rune ranges,
+// recognizedCommandSpans finds every recognized slash command in value, as rune ranges,
 // left to right.
 //
 // A CANDIDATE STARTS AT A WORD BOUNDARY and runs to the next space or newline.
 // That one rule is what keeps a path out of this: "/Users/example" is a single
 // candidate whose word is "Users/santosh" and matches nothing, rather than two
 // candidates one of which might. A slash with a letter in front of it — the one
-// in "http://", the one in "cmd/codeaf" — is not a candidate at all.
+// in "http://", the one in "cmd/codeaf" — is not a candidate at all. A QUOTE IS
+// A WORD BOUNDARY TOO, on either side: prose that says '/budget 50' is naming
+// the command, and the closing quote of '/settings' is not part of its name.
 //
 // boundary says whether position 0 of value counts as a word boundary. The
 // composer paints one soft-wrapped ROW at a time, and a row that begins in the
 // middle of a word begins in the middle of a word.
 func recognizedCommandSpans(value []rune, boundary bool) []segment {
+	return scanCommandSpans(value, boundary, true)
+}
+
+// scanCommandSpans keeps painting and action on the same command vocabulary.
+// QUOTES ARE BOUNDARIES FOR PAINTING ONLY: naming a command must never run it.
+func scanCommandSpans(value []rune, boundary, quoted bool) []segment {
+	isBoundary := func(r rune) bool {
+		return r == ' ' || r == '\n' || (quoted && commandBoundary(r))
+	}
 	var out []segment
 	for i := 0; i < len(value); i++ {
 		if value[i] != '/' {
@@ -116,11 +127,11 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 			if !boundary {
 				continue
 			}
-		case value[i-1] != ' ' && value[i-1] != '\n':
+		case !isBoundary(value[i-1]):
 			continue
 		}
 		end := i + 1
-		for end < len(value) && value[end] != ' ' && value[end] != '\n' {
+		for end < len(value) && !isBoundary(value[end]) {
 			end++
 		}
 		if knownCommand(string(value[i+1 : end])) {
@@ -134,15 +145,31 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 	return out
 }
 
+// commandBoundary is a rune a command's name stops at or starts after: the
+// spaces and newlines that separate words, and the straight and curly quotes
+// that prose wraps a command in.
+func commandBoundary(r rune) bool {
+	switch r {
+	case ' ', '\n', '\'', '"', '\u2018', '\u2019', '\u201c', '\u201d':
+		return true
+	}
+	return false
+}
+
 func commandSpans(value []rune, boundary bool) []segment {
 	if strings.HasPrefix(strings.TrimSpace(string(value)), "!") {
 		return nil
 	}
-	// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE: [recognizedCommandSpans]
-	// already returns only known commands, so the mark travels with the word
-	// anywhere it stands. The promise law lives on [commandDoor] (liveTags, the
-	// hint line): send still runs only a leading command, and still acts on a
-	// send-door tag away from the head.
+	return scanCommandSpans(value, boundary, false)
+}
+
+// paintedCommandSpans keeps bash input plain while recognizing quoted names.
+// THE BASH GUARD BELONGS TO INPUT AND TRANSCRIPT PAINTING: informational prose
+// still names commands even when its line begins with an exclamation mark.
+func paintedCommandSpans(value []rune, boundary bool) []segment {
+	if strings.HasPrefix(strings.TrimSpace(string(value)), "!") {
+		return nil
+	}
 	return recognizedCommandSpans(value, boundary)
 }
 
@@ -160,10 +187,11 @@ func containsSegment(list []segment, want segment) bool {
 // on: a live tag would have taken its own door before this road, or the road
 // has no tag doors. It is drawn plain, as every mid-sentence door word was
 // drawn before every recognised command wore a chip. Ordinary commands keep
-// their chip.
+// their chip. THE SCAN MATCHES TRANSCRIPT PAINTING, including quoted names,
+// because every door word the paint recognises needs its resting annotation.
 func restingDoorWords(value []rune) []segment {
 	var plain []segment
-	for _, s := range commandSpans(value, true) {
+	for _, s := range paintedCommandSpans(value, true) {
 		if s.from > 0 && commandDoor(string(value[s.from+1:s.to])) != sendDoorNone {
 			plain = append(plain, s)
 		}
@@ -174,22 +202,32 @@ func restingDoorWords(value []rune) []segment {
 // liveTags returns the actionable send-door words away from the head command.
 func (a *app) liveTags() []segment { return a.input.liveTags() }
 
-// plainTags returns the demoted ranges as rune offsets into the trimmed line a
-// send will display. The editor's ranges are offsets into its raw value, and
-// the displayed line drops the leading whitespace ([strings.TrimSpace] in
-// [app.enterLine]); every range is shifted by that many runes. A range that
-// starts inside the trimmed whitespace is dropped, because it cannot name a
-// word the displayed line still holds.
+// plainTags returns the demoted and resting door ranges as rune offsets into
+// the trimmed line a send will display. The editor's ranges are offsets into
+// its raw value. The displayed line drops the leading whitespace
+// ([strings.TrimSpace] in [app.enterLine]); every range is shifted by that many
+// runes. A range that starts inside the trimmed whitespace is dropped, because
+// it cannot name a word the displayed line still holds.
 func (e *editor) plainTags() []segment {
-	if len(e.demotedTags) == 0 {
+	plain := append([]segment(nil), e.demotedTags...)
+	// A QUOTED DOOR NAME IS PROSE WHEN SENT. The painting scan sees it, but
+	// the action scan does not, so it joins the plain ranges before reset.
+	// Live tags keep their chip to show which door acted on those words.
+	live := e.liveTags()
+	for _, s := range restingDoorWords(e.value) {
+		if !containsSegment(live, s) && !containsSegment(plain, s) {
+			plain = append(plain, s)
+		}
+	}
+	if len(plain) == 0 {
 		return nil
 	}
 	lead := 0
 	for lead < len(e.value) && unicode.IsSpace(e.value[lead]) {
 		lead++
 	}
-	out := make([]segment, 0, len(e.demotedTags))
-	for _, s := range e.demotedTags {
+	out := make([]segment, 0, len(plain))
+	for _, s := range plain {
 		if s.from < lead {
 			continue
 		}
@@ -357,7 +395,7 @@ func plainWithoutTag(value []rune, tag segment, plain []segment) []segment {
 // unpainted.
 func paintCommands(line string, pal palette, ink func(string) string, boundary bool) string {
 	value := []rune(line)
-	spans := commandSpans(value, boundary)
+	spans := paintedCommandSpans(value, boundary)
 	return paintCommandSpans(line, spans, pal, ink)
 }
 
@@ -390,7 +428,7 @@ func paintCommandSpans(line string, spans []segment, pal palette, ink func(strin
 // rebase would mis-chip across wrapped rows, because a span's offset restarts
 // at zero on every row.
 func transcriptCommandSpans(value []rune, plain []segment, offset int) []segment {
-	spans := commandSpans(value, true)
+	spans := paintedCommandSpans(value, true)
 	if len(plain) == 0 {
 		return spans
 	}
@@ -406,7 +444,7 @@ func transcriptCommandSpans(value []rune, plain []segment, offset int) []segment
 
 func paintDraftCommands(line string, pal palette, ink func(string) string, offset int, boundary bool, demoted []segment) string {
 	value := []rune(line)
-	spans := commandSpans(value, boundary)
+	spans := paintedCommandSpans(value, boundary)
 	kept := spans[:0]
 	for _, s := range spans {
 		s.from += offset

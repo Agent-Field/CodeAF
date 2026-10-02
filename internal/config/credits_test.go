@@ -252,3 +252,31 @@ func TestLowCreditsFollowTheEffectiveEnvironmentKey(t *testing.T) {
 		})
 	}
 }
+
+// AN EXPIRED KEY IS RECORDED AS ITS OWN FACT. It is not low — the free defaults
+// would fail on the same key, so nothing moves to them — it belongs to the key
+// that was read, and it is read again at the next launch.
+func TestAnExpiredReadingIsRecordedWithoutMovingTheDefaults(t *testing.T) {
+	dir := creditsProfile(t)
+	if err := WriteAPIKey(dir, "key-A"); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteCreditsReading(dir, "key-A", credits.Reading{Known: true, Expired: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !CreditsExpiredAt(dir) {
+		t.Fatal("the expired reading was lost")
+	}
+	if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel {
+		t.Fatal("an expired key moved the defaults to the free models, which fail on the same key")
+	}
+	if !CreditsNeedRead(dir, APIKeyAt(dir)) {
+		t.Fatal("an expired key was not scheduled for another read")
+	}
+	if err := WriteAPIKey(dir, "key-B"); err != nil {
+		t.Fatal(err)
+	}
+	if CreditsExpiredAt(dir) {
+		t.Fatal("key A's expiry was pinned on key B before B was read")
+	}
+}

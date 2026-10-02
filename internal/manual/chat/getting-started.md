@@ -19,22 +19,22 @@ default provider needs a key and no daily limit is configured, it has **two scre
 nothing else on the frame:
 
 1. **connect openrouter** — the default provider; `enter` signs in in your browser, and pasting an existing key also works
-2. **Models and spending** — one screen with two controls on it, **Daily limit** and
+2. **Basic settings** — one screen with two controls on it, **Daily limit** and
    **Chat model**, each already showing the value that is in force
 
 **With a key already found, there is no setup screen.** When a provider key is saved in
 the profile or set in the environment, such as `OPENROUTER_API_KEY`, a plain launch skips
-the connection screen and **Models and spending**. With nothing elsewhere to show, it
+the connection screen and **Basic settings**. With nothing elsewhere to show, it
 opens the chat's greeting, `What would you like to work on?`; when other conversations
 are available, it opens home. `/budget` sets a daily limit
 later. A `--no-host` launch on such a profile skips only the connection screen,
-and still opens **Models and spending** while no daily limit is set. A resumed conversation,
+and still opens **Basic settings** while no daily limit is set. A resumed conversation,
 or one on another machine, never opens first-run setup.
 
 The second screen's way out is **`Start a conversation`**. Every control on it opens on
 the value you already have, so pressing `enter` there agrees to exactly what is on the
-screen. Its heading is `Models and spending` and the line under it is
-`Keep these choices or change them.`
+screen. Its heading is `Basic settings`, one line, with the keys line directly under it
+(until 2026-10-01 it was `Models and spending` over `Keep these choices or change them.`).
 
 ## Skipping setup and reading its header
 
@@ -145,19 +145,25 @@ force — `$500` on a profile that has never chosen one, or your own figure if y
 Its one line reads:
 
 > When all codeaf spends today reaches this amount, new work waits until midnight or you
-> raise it.
+> raise it. /budget changes it later.
+
+`/budget` in the line is painted as a command chip, the way the message box paints one.
 
 Type a number to change it — the `$` is drawn for you rather than typed — or type
 **`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
-`?` on the row adds the part that matters when the bill arrives: *it counts spending
-codeaf records here. Calls already running can carry it a little past. Your provider
-account has its own controls. Task crews also have a daily cap of their own, set in /crew.*
-The two are different limits: this one covers everything codeaf spends, and `/crew`'s
-**crew daily cap** covers only what task crews spend. It is a backstop against a runaway, not a promise about
-your whole bill. Something that is not a dollar amount is refused in the settings row's
-own words — `that's not a dollar amount — a number, or none for no limit` — and the
-screen stays.
+`?` on the row explains the two ceilings and how they meet: *The day's ceiling for
+everything codeaf does: '/budget 50' changes it later and '/budget none' removes it. A
+conversation can carry a smaller ceiling of its own set by e.g. '/budget conversation 20'.
+Both hold at once, and whichever is reached first stops the work.* The commands are quoted
+whole, and each `/budget` in it is painted as a command chip. The day's limit holds
+everything until midnight or you raise it; a conversation's holds just that conversation;
+the turn already running always finishes (*Models and cost* has the rest). (Until 2026-10-01 the detail said only that the figure counts
+recorded spending, that running calls can carry it a little past, and that task crews have
+a cap of their own in `/crew`.)
 
+## Where the daily limit is saved and why setup does not ask about every spending limit
+
+The setup screen’s **Daily limit** writes the same setting as `/budget`.
 `$500` is **the amount codeaf has always shipped** and this screen did not change it.
 
 What it writes: `daily_budget_usd` in your profile's `config.json`, through **the same
@@ -171,46 +177,127 @@ here. They keep their shipped defaults — plan approval asks first above `$100`
 conversation ceiling is `no limit` — and `/budget` or `/settings` → Spending changes them
 when they start to matter.
 
-## The model you talk to on the setup screen — and why it does not ask about the crew
+## The first screen asks for a daily limit and a chat model — choosing the model you talk to
 
 **Chat model** is the model you talk to, shown by name — `DeepSeek V4 Flash` rather than
 `deepseek/deepseek-v4-flash`. Its line reads *The model you talk to in this
-conversation.*, and `?` adds the exact catalog id, that it also handles this
+conversation. /model changes it later.* (`/model` worn as a command chip), and `?` adds the exact catalog id, that it also handles this
 conversation's tool use, and that tasks get their own crew, picked per task. Opening the
 row draws the real catalog: five rows at a time, `↑`/`↓` scroll the rest past, and
 **typing narrows it**, so two hundred models are reachable from a form with five rows on
-it. The row under the cursor shows its exact id. The model you are already on is always on
+it. Each row is the model's exact catalog id — `qwen/qwen3.8-27b:free` — one flat list, no
+friendly names (typing still finds a model by its friendly name). The model you are already on is always on
 that list and the cursor opens on it, even with no catalog yet, so accepting confirms
 rather than changes. Choosing one goes through the same settings row `/model` writes and
-is kept for the next launch.
+is kept for the next launch, and `enter` then goes on to the next row, as it does on the
+limit — so pressing `enter` alone walks the whole form down to `Start a conversation`.
+
+## Enter on the setup model list when nothing matches
+
+On **Basic settings**, the chat-model list accepts only a row it can show.
+Enter with nothing matching leaves the list open with
+`nothing matches · backspace widens it`. It changes no model, answers no row and
+keeps the focus on **Chat model**. Backspace widens the list; `esc` closes it without
+taking a model.
+
+## Clicking and scrolling on the setup screen
+
+The **Basic settings** controls take clicks and scrolling. A click on a row is the
+key that row would have taken: a
+click on the limit focuses it to type into, a click on the chat model opens its list, a
+click on one model of the list takes it, and a click on `Start a conversation` leaves. The wheel scrolls the open list. A click on a sentence, a
+blank row or the example panel does nothing.
+
+## Why the setup only lists free models when my account is low
+
+**With no credit on the OpenRouter account, the list shows free models only.** When the
+account's balance has read low — $0.50 or less, the same reading that puts the low-credits
+warning under the message box — the list is cut to the `:free` ids and the catalog rows
+priced at zero, its count line says `free only`, and
+`Your OpenRouter account is low on credits · the list shows free models only` stands on the
+last row of the screen, right-aligned in the warning colour — where the low-credits warning
+stands under the message box once you are in a conversation. The model you
+are already on stays on the list whatever it costs, so accepting still confirms. The balance
+is read right after the key lands, so the cut usually arrives a moment after the screen does;
+a top-up is read on the next launch (*OpenRouter credits and free models*).
+
+## My OpenRouter key has expired on the setup screen
+
+On **Basic settings**, an expired OpenRouter key is shown on the last row. The list
+is not cut to free models, because they fail on an expired key too. The line names the door to a new key, and the door
+depends on whether a connect step came before this screen: with one, it reads
+`Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys` and
+`esc` goes back there; when the key was already in the shell or the profile and only this
+screen was asked, `esc` skips the setup instead — the keys line says so — and the line reads
+`Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys`.
+
+## Why setup does not ask about the task crew
 
 **There is no crew question**, because the crew is three seats — the worker, the planner and the
 checker — and codeaf picks all three for each task from what kind of work it is, so there
 is nothing to choose before the first task. `/crew` shows the crew, and pins a seat when
-you want one model there every time. The model that answers you is the one above, and
-neither touches the other.
-
-**`esc` out of the list leaves the row exactly as it was.** A cursor inside a list is
-provisional until you accept it.
+you want one model there every time. **Chat model** chooses the model that answers
+you; changing it does not change the task crew.
 
 If a **task model** is pinned (`task.model`), one dim line under the chat model says so —
 `Tasks are pinned to … · /settings changes that` — because that pin decides the worker
 seat, and a screen that did not mention it would be hiding where tasks run.
 
-At **112 columns and wider** a bordered panel stands beside these rows, labelled
-`○ Example · what you can do` and footed `An illustration. Nothing here has run.` — the
-only bordered surface codeaf draws, so it cannot be read as more form. It holds one
-request you could type and what it leads to, and follows the row you are on: beside the
-review row it shows `/task Fix the failing tests and explain the changes.` That request **types
-itself out once** on arriving and on `←`/`→`, then settles; typing settles it at once.
-Under 112 columns it is not drawn and the form is unchanged.
+## What the example panel above the setup form shows
+
+**Above the form**, under the setup header, a bordered panel stands on
+any window with the rows to hold the whole of it — the only bordered surface codeaf draws,
+so it cannot be read as more form. Its top edge is labelled `○ Example · ` followed by the
+example's own title (`Understand an unfamiliar project`, `Hand off something longer`,
+`Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`); its
+bottom edge carries `←  3 / 5  →`, the arrows that browse it. It is as wide as the screen allows,
+up to 92 columns, so the request in it stands on one row. It holds one request you could
+type and what it leads to.
+
+## Why the setup examples change every three seconds and how to pause them
+
+The **Basic settings** example panel opens on the first (`Understand an unfamiliar project`) and
+**turns to the next by itself every 3 seconds**, round and round through the five
+(`Hand off something longer` with `/task Fix the failing tests and explain the changes.`,
+`Follow the work and its cost`, `Compare the options`, `Hand off complex coding tasks`
+with `/senior-dev Add retries with backoff to the HTTP client, with tests.`); a command in
+a request is painted as the same chip the message box paints a recognised command with.
+`←`/`→` browse by hand and go round the same ring. **Any key or click holds the clock** for 3
+seconds from that key — typing an amount, walking the rows, browsing — so the panel never
+turns under your hands. Walking the rows does not move it (until 2026-10-01 it followed the
+row you were on). The screen-reader tier never turns by itself. The clock stops when setup closes or returns
+to the connection step. Each example **types itself out once** on arriving, then settles; typing
+settles it at once.
+
+## Why the setup example disappears on a short window
+
+The **Basic settings** form keeps its values and keys when the example panel cannot fit.
+Two blank rows separate the panel from the form's heading. On a window
+too short to hold the form and the whole panel — 24 rows, say — the panel is not drawn and
+the form is unchanged. (Until 2026-10-01 the panel was a second column to the right of the
+form, drawn only from 112 columns up, and carried `An illustration. Nothing here has run.`
+at its foot; the label on its edge now says that once.)
+
+## What the setup row colours and keys mean
+
+**A row's name says where you are.** Each name — `Daily limit`, `Chat model`,
+`Start a conversation` — is in the body colour until you have answered it, blue while
+you are on it, and grey once `enter` has acted on it: the limit set, a model taken from the
+list. Walking back onto an answered row makes it blue again while you are
+there. Opening the list and leaving it with `esc` answers nothing.
+
+The keys line is the form's second row, directly under `Basic settings`. It reads `enter
+sets the limit · ↑↓ moves · esc back · type an amount or none · ? detail` on the limit
+row; `enter` on the other rows says what it does there (`opens the list`, `starts`).
+`↑`/`↓` and `tab` both walk the rows. It does not name the example's
+arrows; the panel's own edge does.
 
 The controls screen shows **once, ever**. The default OpenRouter prerequisite above is the only
 step that may return.
 
 ## What appears once — and why the default provider's OpenRouter step can return
 
-The **Models and spending screen** is shown once per profile. When the first-run screen
+The **Basic settings screen** is shown once per profile. When the first-run screen
 closes — finished or skipped — `setup_seen_at` is written into `config.json` with the time,
 and no later launch asks those preference questions again. Skipping with `esc` counts as
 shown.
@@ -238,7 +325,7 @@ the header is the count of those: a key already in the shell leaves the controls
 alone on the frame, with no `1 of 1` counting to one at anybody.
 
 While it is up it is the whole screen: every keystroke belongs to it except `ctrl+c`,
-which is still the door (twice, as always), and the mouse does nothing. The returning
+which is still the door (twice, as always). The controls take clicks and scrolling. The returning
 provider step may open after you type, but the draft is held untouched underneath it.
 
 ## Change what I picked during setup — where each answer lives afterwards
@@ -251,11 +338,13 @@ Every answer went through a settings row, so every answer has a door:
 | the crew | nothing was asked — it is auto. `/crew` shows it, and `/crew pin <seat> <model>` pins a seat |
 | the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `CODEAF_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |
-| memory, permissions, the task countdown | `/settings`; the setup screen only shows them, under `Other settings` |
+| memory, permissions, the task countdown | `/settings` — the setup screen does not show them; the note under **Start a conversation** points there |
 
 A credential changed in the settings row reaches the running conversation at once,
 exactly as the setup's does. A crew pin and the budget are read live too: the next task
 starts on the new pin, and the rail is checked against the new ceiling.
+
+## Which settings the setup does not ask about
 
 **The setup asks about two things and no more.** Memory stays on, tool approvals keep
 prompting, and a proposed task keeps its 15-second countdown — none of them becomes a
@@ -263,17 +352,12 @@ question there, because none can be answered usefully before you have seen codea
 anything. They are taught where they happen: the countdown is on the task card, and the
 first permission question explains the actual tool that asked for something.
 
-Under the two fields is one row that shows them: **`Other settings use defaults ·
-review`** on a fresh profile, and **`Review other settings`** on a profile that has
-already written any of them down — it never claims your own settings are defaults.
-`enter` on that row opens three read-only rows straight off the settings registry:
-
-```
-  memory              on
-  ask before running  prompt
-  task countdown      15s
-  /settings changes these and every other one.
-```
+Under `Start a conversation` one dim line reads **`Everything else is in /settings`**, with
+`/settings` painted as a command chip; that is the whole of what the screen says about the
+settings it does not ask about. (Until 2026-10-01 a row `Other settings use defaults ·
+review` stood between the chat model and the way out and opened three read-only rows —
+memory, ask before running, task countdown; a row that showed settings and let nobody change
+them was removed.)
 
 Per-plan approval, the per-conversation ceiling, individual crew seats, reasoning,
 routing, extra provider keys, concurrency and appearance are all deliberately absent from
@@ -312,6 +396,8 @@ Font, in Terminal.app under Profiles → Text → Font → Change…, and in kit
 ghostty with `font_family`, `[font.normal] family` and `font-family` in their config
 files.
 
+## My Option key types letters on macOS instead of moving to a place
+
 **Option as meta, on macOS.** Every chord codeaf binds is the option key, and on a Mac it is
 drawn the way the keycap names it, `opt+enter` to send what you typed off as a task, `opt+1`…`opt+8`
 to jump to a place, `opt+.` for the map. (On Linux and Windows the same chords are drawn
@@ -327,7 +413,9 @@ composer still names what `enter` does — and the first place you land on says 
 line: `your terminal sends opt as a letter — turn on "use option as meta" in …`, naming the
 terminal you are actually in.
 
-**The first-run setup says it too.** When the questions are done, a Mac gets one more
+## Why setup mentions Option on a Mac and which terminals also accept Control
+
+**The first-run setup explains Option on a Mac.** When the questions are done, a Mac gets one more
 line: `the places answer opt+1…opt+8 · if opt types a character instead, turn on "use option as
 meta" in …`. It is a condition rather than a report — nothing has been pressed yet — and it is
 said once.

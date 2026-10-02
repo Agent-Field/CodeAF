@@ -336,9 +336,10 @@ var allowedProps = map[string]map[string]bool{
 const EveryEvent = "every event"
 
 // propDocs is what each allowlisted prop IS, in a person's words: the third
-// column of docs/TELEMETRY.md's table, held here so that `codeaf telemetry
-// show` and the doc read from one table and the doc test can fail the build
-// when the two drift. Every allowlisted prop has a line, and the test holds
+// column of docs/TELEMETRY.md's table, held here so that the doc and the code
+// read from one table and the doc test can fail the build when the two drift.
+// Until 2026-10-01 `codeaf telemetry show` printed it too; the doc is its one
+// reader now. Every allowlisted prop has a line, and the test holds
 // that too.
 var propDocs = map[string]map[string]string{
 	EveryEvent: {
@@ -422,10 +423,10 @@ func StopReasons() []string {
 
 // exampleProps is one plausible value per event prop, spelled from the
 // contract's own constants wherever the contract has one, so an example row
-// can never show a value a real row could not carry. `codeaf telemetry show`
-// prints one row per event from this table so a person sees the shape of
-// what leaves before anything has. The fingerprint is the one invented value:
-// sixteen hex characters, which is all a real one is.
+// can never show a value a real row could not carry. docs/TELEMETRY.md is held
+// to this table so a person reading the repository sees the shape of what
+// leaves. The fingerprint is the one invented value: sixteen hex characters,
+// which is all a real one is.
 var exampleProps = map[string]map[string]string{
 	"session_started": {
 		"mode":    string(ModeChat),

@@ -13,6 +13,12 @@ OpenRouter account out of credit: a seat nobody pinned is routed to a free pool,
 task's crew line says `free routes in use (may log prompts) · credit unavailable on
 openrouter` (*Route health* in *Models and cost*).
 
+While the balance is low, the first-run setup screen's **chat model list shows free models
+only** — the `:free` ids and the catalog rows priced at zero, with `free only` on its count
+line and `Your OpenRouter account is low on credits · the list shows free models only` on
+the last row of the screen — so a person who has never run codeaf is not handed three hundred paid names to
+pick the wrong one from. The model already in use stays on that list.
+
 Free ids are defaults only. A model you chose with `/model` or the setup screen,
 `--model`, `CODEAF_MODEL`, a seat you pinned with `/crew pin` or a helper row you set stays
 chosen, and the free defaults are never written into your settings. Nothing is spent
@@ -57,12 +63,43 @@ error from OpenRouter — changes nothing and never warns. A key with no spendin
 cap whose account balance OpenRouter will not report is simply unknown: no free
 defaults, no warning.
 
+On the ordinary engine launch, a turn ending `your key was not accepted for this model`
+for the default service asks for a fresh read, whatever key source follows the sentence.
+The read decides whether the key expired; a merely invalid key is a failed read and
+changes nothing.
+
 A conversation that has sent nothing and whose model nobody chose follows the
 default both ways: onto the free model when the account reads low, and back to
 the usual default when a later read finds more than $0.50. A conversation that has
 sent a message keeps its model either way. After a top-up, the next new
 conversation opens on the usual default, the helper rows return to their usual models,
 and the crew is routed over paid routes again.
+
+## My OpenRouter key has expired — the warning and what to do
+
+OpenRouter keys can carry an expiry date, and an expired key is refused on every model,
+the free ones included. codeaf learns it from the same balance read it makes for a low
+account: when OpenRouter answers that read with `API key expired`, codeaf records the
+key as expired instead of treating the read as failed, and
+`Your OpenRouter key has expired — make a new one at openrouter.ai/settings/keys`
+appears at the right of the keys row under a conversation's or Home's message box, in the
+warning colour. Unlike the low-credits line it shows on **every** model the default
+OpenRouter service serves — free or paid — and never on a model served by Codex, a local
+model or another connected service. It wins over the low-credits line, and the free
+defaults are **not** used, because they would fail on the same key. A turn refused with
+`API key expired` mid-session starts a fresh read on both the ordinary engine launch
+and `codeaf chat --no-host`, unless one finished in the last 30 seconds, so the warning
+arrives without a relaunch. An expired
+reading leaves an untouched conversation on its current model: it moves neither
+from the free default to the paid default nor the other way, and adds no model note. On the first-run setup screen the same fact stands on the last row, and the list
+is not cut to free models. When a connect step came before the screen it reads
+`Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys`
+and `esc` goes back there; when the key was already in the shell or the profile and only the
+settings screen was asked, `esc` skips the setup instead and the line reads
+`Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys`.
+The fix is a new key at https://openrouter.ai/settings/keys, pasted on the connect step, in
+`/settings`, or in `/connect`; the old key's warning goes the moment the new key is saved,
+before it has even been read.
 
 ## Low on credits warning under the message box
 

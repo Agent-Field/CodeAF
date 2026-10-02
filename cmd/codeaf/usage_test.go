@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,6 +10,18 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec"
 )
+
+func TestRemovedTelemetryCommandRefusesAndNamesItsReplacement(t *testing.T) {
+	err := unknownCommand("telemetry")
+	if exitCodeOf(err) != 1 {
+		t.Fatalf("removed telemetry command exits %d, want 1", exitCodeOf(err))
+	}
+	for _, word := range []string{"there is no", "CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "/settings", "docs/TELEMETRY.md"} {
+		if err == nil || !strings.Contains(err.Error(), word) {
+			t.Errorf("removed telemetry refusal must name %q: %v", word, err)
+		}
+	}
+}
 
 // exitCodeOf reads an error the way [execute] does, so a test can assert the
 // number the shell actually sees rather than the shape of the error value.
@@ -69,15 +79,6 @@ func TestAskingForHelpIsNotAFailure(t *testing.T) {
 		{"plan run", func(args []string) error { return runGraph("plan run", args) }},
 		{"services", runServices},
 		{"models", runModels},
-		// The telemetry group and each of its verbs. The group took `--help`
-		// for a sixth verb and every verb answered `flag: help requested`,
-		// all with 1, while the manual says help on any verb exits 0.
-		{"telemetry", runTelemetry},
-		{"telemetry status", telemetryVerb("status")},
-		{"telemetry info", telemetryVerb("info")},
-		{"telemetry show", telemetryVerb("show")},
-		{"telemetry on", telemetryVerb("on")},
-		{"telemetry off", telemetryVerb("off")},
 		// The two old top-level spellings. They still open, and asking one for
 		// help says NOTHING on stderr: `--help` runs nothing, so there is no run
 		// for the rename notice to be about, and a Makefile that probes the
@@ -120,29 +121,6 @@ func TestAskingForHelpIsNotAFailure(t *testing.T) {
 					door.name, errs.String())
 			}
 		})
-	}
-}
-
-// telemetryVerb is `codeaf telemetry <verb>` as the dispatch reaches it.
-func telemetryVerb(verb string) func([]string) error {
-	return func(args []string) error { return runTelemetry(append([]string{verb}, args...)) }
-}
-
-// ASKING `off` FOR HELP TURNS NOTHING OFF. `--help` runs nothing, so a person
-// reading what `codeaf telemetry off` does has not yet chosen to do it.
-func TestAskingTelemetryOffForHelpChangesNothing(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("CODEAF_HOME", home)
-	before, _ := os.ReadFile(filepath.Join(config.ProfileDir(), "config.json"))
-	captureUsage(t)
-	for _, verb := range []string{"off", "on"} {
-		if code := exitCodeOf(runTelemetry([]string{verb, "--help"})); code != 0 {
-			t.Fatalf("`codeaf telemetry %s --help` left with %d, want 0", verb, code)
-		}
-	}
-	after, _ := os.ReadFile(filepath.Join(config.ProfileDir(), "config.json"))
-	if string(before) != string(after) {
-		t.Fatalf("asking for help rewrote the setting:\nbefore %q\nafter  %q", before, after)
 	}
 }
 

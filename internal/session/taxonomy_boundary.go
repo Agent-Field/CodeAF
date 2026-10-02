@@ -314,6 +314,11 @@ func (a *Agent) readWireEvidence(evidence taxonomy.Evidence, model, role string)
 	return verdict
 }
 
+// UnauthorizedKeySentence is the ending shared with surfaces that receive only
+// words over the engine wire. Keeping it here lets those surfaces ask for a
+// fresh account read without inventing a second spelling of the refusal.
+const UnauthorizedKeySentence = "your key was not accepted for this model"
+
 // transportWords is the person's spelling of a wire failure — the same shape the
 // journal names, said the way somebody watching a reply would say it.
 //
@@ -347,7 +352,7 @@ func transportWords(verdict taxonomy.Verdict) string {
 	case taxonomy.ReasonWithdrawn:
 		return "that model is not being served any more"
 	case taxonomy.ReasonUnauthorized:
-		return "your key was not accepted for this model"
+		return UnauthorizedKeySentence
 	case taxonomy.ReasonOverflow:
 		return "this conversation got too long for the model"
 	case taxonomy.ReasonTooBig:
@@ -391,7 +396,7 @@ func transportKeptWords(verdict taxonomy.Verdict) string {
 	case taxonomy.ReasonWithdrawn:
 		return "that model is not being served any more"
 	case taxonomy.ReasonUnauthorized:
-		return "your key was not accepted for this model"
+		return UnauthorizedKeySentence
 	case taxonomy.ReasonOverflow, taxonomy.ReasonTooBig:
 		return "this conversation kept being too long for the model"
 	case taxonomy.ReasonOurBytes:

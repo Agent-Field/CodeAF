@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -261,7 +260,6 @@ func TestOptOutLadderGatesTheWritePaths(t *testing.T) {
 				rung.configure(t)
 			}
 			recorder := newRelay(t)
-			MarkNoticeShown()
 			Spool(SessionStarted(ModeChat, false, "session-gated", freshClock(t)))
 			if err := SpoolSync(SessionStarted(ModeChat, false, "session-gated-sync", freshClock(t))); err != nil {
 				t.Fatalf("SpoolSync returned %v on a gated run; a no-op answers nil", err)
@@ -351,44 +349,6 @@ func TestFirstRunIsEmittedOncePerInstallID(t *testing.T) {
 	}
 	if !FirstRunPending() {
 		t.Fatal("a new install id has not sent first_run yet")
-	}
-}
-
-// The notice is the contract's text, byte for byte. The contract file itself
-// is not committed, so the expected text lives here.
-const contractNotice = `codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode, session counts, errors, and total tokens used.
-  Never: anything about you or your work. No prompts, code, file names,
-         paths, repo names, keys, email, IP, or machine name.
-  What is collected:        codeaf telemetry info
-  Turn off:                 CODEAF_TELEMETRY=off`
-
-func TestNoticeIsTheContractText(t *testing.T) {
-	if Notice != contractNotice {
-		t.Errorf("Notice drifted from the contract:\n got: %q\nwant: %q", Notice, contractNotice)
-	}
-}
-
-func TestPrintNoticeWritesOneLineOnce(t *testing.T) {
-	old := os.Stderr
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stderr = writer
-	captured := make(chan string, 1)
-	go func() {
-		var buf strings.Builder
-		_, _ = io.Copy(&buf, reader)
-		captured <- buf.String()
-	}()
-	PrintNotice()
-	PrintNotice()
-	os.Stderr = old
-	writer.Close()
-	got := <-captured
-	if count := strings.Count(got, Notice); count != 1 {
-		t.Errorf("the notice printed %d times in one process, want 1", count)
 	}
 }
 
@@ -533,7 +493,6 @@ func TestNoTestBinaryCanReachTheProductionRelay(t *testing.T) {
 	previous := httpClient
 	httpClient = &http.Client{Transport: counter}
 	t.Cleanup(func() { httpClient = previous })
-	MarkNoticeShown()
 	event := SessionStarted(ModeChat, false, "session-law", freshClock(t))
 	if err := SpoolSync(event); err != nil {
 		t.Fatalf("SpoolSync returned %v; a spool that is never sent answers nil", err)
@@ -572,7 +531,6 @@ func TestNewRelayAfterTestHomeOverridesTheDeadLoopback(t *testing.T) {
 	if override := os.Getenv("CODEAF_TELEMETRY_ENDPOINT"); override != Endpoint() {
 		t.Fatalf("after newRelay Endpoint() answers %q but the override is %q", Endpoint(), override)
 	}
-	MarkNoticeShown()
 	event := stamped(SessionStarted(ModeChat, false, "session-relay", freshClock(t)))
 	if err := SpoolSync(event); err != nil {
 		t.Fatalf("SpoolSync returned %v; a spool that is sent answers nil", err)
@@ -608,7 +566,6 @@ func TestFlushAgainstTheDefaultEndpointRefusesLikeADeadRelay(t *testing.T) {
 	previous := httpClient
 	httpClient = &http.Client{Transport: counter}
 	t.Cleanup(func() { httpClient = previous })
-	MarkNoticeShown()
 	event := SessionStarted(ModeChat, false, "session-refused", freshClock(t))
 	if err := SpoolSync(event); err != nil {
 		t.Fatalf("SpoolSync returned %v; a spool that is never sent answers nil", err)
@@ -648,7 +605,6 @@ func TestForcingTheLadderOnCannotReopenTheDefaultEndpointPath(t *testing.T) {
 	previous := httpClient
 	httpClient = &http.Client{Transport: counter}
 	t.Cleanup(func() { httpClient = previous })
-	MarkNoticeShown()
 	event := SessionStarted(ModeChat, false, "session-forced-ladder", freshClock(t))
 	if err := SpoolSync(event); err != nil {
 		t.Fatalf("SpoolSync returned %v; a spool that is never sent answers nil", err)

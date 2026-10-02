@@ -4,33 +4,37 @@ codeaf counts how it is used — how often, in which modes, on which platforms �
 so the parts people rely on get the work. The counts are anonymous: nothing
 about you or your work ever leaves this machine.
 
-## The notice
+The counts are **ON by default**. They go to AgentField's relay at
+`https://agentfield.ai/api/oss/codeaf/telemetry` (`telemetry.DefaultEndpoint`).
+`CODEAF_TELEMETRY_ENDPOINT` moves the relay; an empty value turns sending off.
 
-Before the first session's events are sent, codeaf shows this once:
+## The disclosure
 
-```
-codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode, session counts, errors, and total tokens used.
-  Never: anything about you or your work. No prompts, code, file names,
-         paths, repo names, keys, email, IP, or machine name.
-  What is collected:        codeaf telemetry info
-  Turn off:                 CODEAF_TELEMETRY=off
-```
+This page, and the *Telemetry* section of the repository's README, are the whole
+of it. In one paragraph:
 
-The installer prints nothing about telemetry; the notice above arrives with the
-first session, before anything is sent. A chat shows it on the first
-conversation's screen, dim, under the starting points, and it counts as shown
-only once a frame has drawn it: a window too short to hold all six lines, or the
-first-run setup standing in front, leaves it owed for the next launch. A task
-command (`do`, `run`, `plan run`) and `chat --once` draw no screen, so they print
-it to stderr before they start. Until it has been shown, nothing is sent.
+> codeaf sends anonymous usage counts to AgentField. Sent: version, OS, mode,
+> session counts, errors, and total tokens used, as counts and bands. Never:
+> anything about you or your work — no prompts, code, file names, paths, repo
+> names, keys, email, IP, machine name, or model names. Turn off: the `telemetry`
+> switch in `/settings`, `CODEAF_TELEMETRY=off`, or `DO_NOT_TRACK=1`.
+
+**The product itself says nothing about it.** Until 2026-10-01 codeaf printed a
+six-line notice once per install — on the first conversation's screen, or to
+stderr ahead of a task — and sent nothing until that notice had been shown; it
+also carried a `codeaf telemetry` command (`status`, `info`, `show`, `on`, `off`)
+that printed the fields and the waiting rows. Both were removed: new people read
+the notice as something to deal with on a screen that is supposed to be three
+sentences long, and a disclosure belongs in the repository, where it can be read
+before anything is installed. The installer prints nothing about telemetry
+either. The counts are sent from the first session on, under the switches below.
 
 ## What is sent
 
 Exactly five events. Each carries the every-event properties; four of them
 add more. Values are counts, bands, or words from fixed lists. The
 table's names come from the same allowlist the code is held to and its words
-from the table `codeaf telemetry info` prints, and a test fails the build if
+from the same table the code describes each field with, and a test fails the build if
 any of the three drift apart.
 
 | Event | Property | What it is |
@@ -86,10 +90,10 @@ the marshalled output.
 
 Events wait in ~/.codeaf/telemetry/spool.jsonl until they are sent: at most 50
 per request, every 30 seconds while a session is open and once more when it
-ends. Nothing older than 7 days is sent, at most 1000 lines are kept, and
-nothing is sent before the notice has been shown. An event whose version is
-unknown is dropped at send time and never leaves the machine. `codeaf telemetry
-show` prints exactly what has not left yet, as JSON.
+ends. Nothing older than 7 days is sent and at most 1000 lines are kept. An
+event whose version is unknown is dropped at send time and never leaves the
+machine. The spool is plain JSON lines, so what has not left yet can be read
+with any editor.
 
 ## Turning it off
 
@@ -100,9 +104,11 @@ Model Pool from sending. They are checked in this order:
 2. `DO_NOT_TRACK=1` — also `true`, the ecosystem's own word for it.
 3. `telemetry = off` in the project's settings file, `.codeaf/config.json`. A
    project may only turn the counts off, never on.
-4. `codeaf telemetry off`, which writes the profile setting; `codeaf telemetry
-   on` is the way back and records that explicit opt-in as the notice being
-   shown.
+4. the `telemetry` switch on the *display* tab of the chat's `/settings`, which
+   writes `telemetry = off` to the profile's `config.json` and stops sending
+   immediately, including later periodic and exit flushes. Turning it back on
+   takes effect the next time codeaf starts. A request already on the wire may
+   complete; counts already queued locally stay unsent while it is off.
 5. an empty `CODEAF_TELEMETRY_ENDPOINT`.
 
 A build that cannot name its own source — dirty or unstamped — never reports,
@@ -119,49 +125,15 @@ seat, the judge's slug, the seat (the worker, checker or planner, spelled on the
 the door the run came in by (task, do, exec or run), the crew size and the UTC
 day, under a random per-install nonce in an `X-Codeaf-Install` header. No prompt, code, path or name rides in a row. **Every way of turning the
 counts off turns this stream off too** — `CODEAF_TELEMETRY=off`,
-`DO_NOT_TRACK=1`, the project file, `codeaf telemetry off` — by capping the
-pool at `read`: the index is still read and the judge still scores into the
-install's own sheet, but nothing is sent, and `codeaf pool status` says `mode
-read · telemetry`. That cap wins over an explicit `model_pool = on`, because
-the notice's "Turn off" line carries no exception. The pool's own switch,
-`model_pool` in settings or `CODEAF_MODEL_POOL`, adds `off` (ask no judge at
-all). `codeaf telemetry info` describes both streams and `codeaf telemetry
-show` prints the rows waiting to leave from both, so "what is collected" is
-answered for everything the binary sends.
-
-## The command
-
-`codeaf telemetry` reads the counts and never sends anything of its own.
-
-- `codeaf telemetry status` says whether the counts are on, and why not when
-  they are off.
-- `codeaf telemetry info` opens on the fact a person came to check — `codeaf
-  does NOT collect or share your chat`, with the never list — then prints what
-  is collected, from BOTH streams, shaped like the data: for the usage counts,
-  every every-event field with the value
-  this machine would send now, one example row per event (`mode=chat
-  duration=5-30m  turns=6-20 …`, from the contract's own bands) and the stop
-  reasons a row can carry; for the Model Pool, one example row in the bytes
-  the relay receives and the two identities a batch travels under. Each stream
-  sits under a numbered heading, `1. Usage Counts` and `2. Model Pool`, naming
-  where it goes or why it is not sent. It lists only what is sent — the never lists are the notice's and this page's.
-- `codeaf telemetry show` prints what is waiting to leave right now, as one
-  JSON object indented by two: a key per destination, `usage` and
-  `model_pool`, and under each its `destination`, an `off` reason when
-  nothing is sent there, and `waiting`, the rows in the bytes the relay would
-  receive, `[]` when none wait — which is what a fresh install shows.
-- `codeaf telemetry off` and `codeaf telemetry on` write the profile setting.
-
-```
-telemetry on
-  endpoint: https://agentfield.ai/api/oss/codeaf/telemetry
-  notice: shown
-  spooled events: 3
-  install: 4f2a9c1b7e08…
-```
-
-When the counts are off, a `reason:` line follows `telemetry off` and names the
-switch that turned them off.
+`DO_NOT_TRACK=1`, the project file, the `telemetry` switch in `/settings` — by
+capping the pool at `read`: the index is still read and the judge still scores
+into the install's own sheet, but nothing is sent, and `codeaf pool status`
+says `mode read · telemetry`. That cap wins over an explicit `model_pool = on`,
+because the disclosure's "Turn off" line carries no exception. The pool's own
+switch, `model_pool` in settings or `CODEAF_MODEL_POOL`, adds `off` (ask no
+judge at all). `codeaf pool status` says how many rows wait to leave for the
+pool; this page describes both streams, so "what is collected" is answered
+for everything the binary sends.
 
 ## Download counts
 

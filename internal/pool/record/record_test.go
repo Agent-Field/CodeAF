@@ -328,8 +328,9 @@ func TestCellsAnswerSortedAndCarryTheMeanAndCount(t *testing.T) {
 	}
 }
 
-// TestExampleRowJSONIsARow holds the example `codeaf telemetry show` prints
-// to the row itself: it parses back into a Row, carries every key the row
+// TestExampleRowJSONIsARow holds the example row — once what `codeaf
+// telemetry show` printed, kept as the disclosure's worked example — to the
+// row itself: it parses back into a Row, carries every key the row
 // spells and no other, and names the day it was asked for.
 func TestExampleRowJSONIsARow(t *testing.T) {
 	day := time.Date(2026, 9, 19, 23, 59, 0, 0, time.UTC)

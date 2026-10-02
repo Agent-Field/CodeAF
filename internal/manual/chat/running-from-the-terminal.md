@@ -105,8 +105,9 @@ model. On a terminal it ends by asking `Start codeaf in <folder> now? [Y/n]`; `e
 starts it there, and the first run connects a model. `--no-start` or
 `CODEAF_NO_START=1` skips the question, and nothing is asked when the output is not a
 terminal, when `CI` is set, or when the install runs in your home folder or `/` —
-`cd` into a project and type `codeaf` there instead. It prints nothing about telemetry; codeaf itself shows that
-notice before any count is sent.
+`cd` into a project and type `codeaf` there instead. It prints nothing about telemetry, and
+neither does codeaf: what the anonymous usage counts carry is written in `docs/TELEMETRY.md`
+in the repository, and the `telemetry` switch in `/settings` turns them off.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 
@@ -782,7 +783,7 @@ values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
 does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
 from the shell, and on a CI machine with neither set codeaf reads but does
 not send. **The telemetry off switch stops the pool sending too**:
-`CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or `codeaf telemetry off` caps the
+`CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or the `telemetry` switch in `/settings` caps the
 pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
 then says `mode read · telemetry`.
 
@@ -808,8 +809,7 @@ Only `codeaf pool` reads that sheet; it does not pick the next crew.
 
 `codeaf pool status` reports how many outbox rows wait to be sent and whether the mode
 allows sending and reading. Its `pending` line can also say `dropped N` and `identity set`;
-it counts waiting rows but does not list them. `codeaf telemetry show` prints the rows
-themselves as JSON. Status also says whether the relay and mirror answered, what the last
+it counts waiting rows but does not list them. Status also says whether the relay and mirror answered, what the last
 judge did, how many runs are `pending judge:`, and what happened in the `last sweep:`.
 `--json` prints the same answer as one object; `show` reads nothing off the network.
 
@@ -986,7 +986,7 @@ as a command that broke.
 
 ## Which of these cost money, and which need no API key
 
-**These read, need no key and spend nothing**: `why`, `telemetry`, `notebook`, `competence`, `services`
+**These read, need no key and spend nothing**: `why`, `notebook`, `competence`, `services`
 (listing), `doctor`, `logs`, `cache`, `show`, `manual`, `version` and `--help`. They are
 safe in a shell prompt, a CI step or a bug report.
 
@@ -1044,33 +1044,40 @@ first — `cache clean` wants the word `now` typed out, the same word `/cache cl
 wants in the chat, and `rebuild` wants `y` — and `--yes` skips the question on both. The other three act at once, and all three can be undone: a
 retracted belief restores, a stopped service starts again, a revoked device pairs again.
 
-## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
+## Does codeaf collect data about me — telemetry, the anonymous usage counts
 
-`codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
-they are on and why not when they are off; `info` opens on `codeaf does NOT collect or
-share your chat` and then says what is collected, shaped like the data — for each stream, under a line naming where it goes or why it is not sent, every
-every-event field with the value this machine would send now and one example row per
-event (`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) with the stop reasons a
-row can carry, and for the Model Pool one example row in the relay's own bytes; `show`
-prints what is waiting to leave right now as one JSON object, a key per destination
-(`usage`, `model_pool`) with its `destination`, an `off` reason when nothing is sent
-there, and `waiting`, the rows themselves, `[]` on the day you install; and `off` and
-`on` write the answer to your profile; `on` is an explicit opt-in and opens the send gate
-without waiting for another chat frame. `info` lists only what is sent, never a disclaimer.
-Each completed provider call queues a `usage_delta` with exact input, output and total
-tokens, never which model or what it read. The queue is sent every 30 seconds while the
-session stays open and once more when it ends; `session_ended` carries the outcome and
-bucketed session counts without repeating tokens that were already reported.
-`CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
-usage counts go quiet and the Model Pool is capped at `read`, so it can still fetch the index
-and sends nothing. The pool's own switch, `model_pool` in `/settings` or
-`CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
-sends nothing of its own — it is a command about the counts, not a session. The
-notice names the bargain before the first byte leaves. A chat shows it once, dim,
-on the first conversation's screen under the starting points, and nothing is sent
-until a frame has drawn it. A task command and `chat --once` print it to stderr
-instead. `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
-docs/TELEMETRY.md for the whole contract.
+codeaf sends anonymous usage counts to AgentField, **on by default**: version, OS,
+mode (chat or task), session counts and errors in bands, and the tokens each provider
+call used. Never prompts, code, file names, paths, repo names, keys, email, IP or
+machine name, and no model names. Each completed provider call queues a `usage_delta`
+with exact input, output and total tokens. The queue is sent every 30 seconds while
+the session stays open and once more when it ends; `session_ended` carries the outcome
+and bucketed counts without repeating those tokens.
+
+The relay is `https://agentfield.ai/api/oss/codeaf/telemetry`;
+`CODEAF_TELEMETRY_ENDPOINT` moves it. The full disclosure, field by field, is
+`docs/TELEMETRY.md` in the repository, linked from the README's *Telemetry* section.
+The product prints no notice. With `model_pool` on, one scored row per crew seat also
+leaves for the Model Pool after a task lands (*Model Pool* above).
+
+## How to turn telemetry off now — /settings stops sending immediately
+
+On the *display* tab of `/settings`, turn the `telemetry` switch off. It writes
+`telemetry = off` to your profile and stops sending immediately: no new event is
+spooled and later periodic and exit flushes send nothing. Turning it back on takes
+effect the next time codeaf starts. A request already on the wire may complete;
+counts already queued locally stay unsent while it is off.
+
+Other ways to turn the counts off: `CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1`,
+`telemetry = off` in the project's `.codeaf/config.json` (a project may only turn it
+off), or an empty `CODEAF_TELEMETRY_ENDPOINT`. Every switch also caps the Model Pool
+at `read`: its index is still fetched and nothing is sent. Dirty or unstamped builds
+and test binaries never report.
+
+`codeaf telemetry` is no longer a command. It exits with an error naming the off
+switches and `docs/TELEMETRY.md`, which lists what is sent. The former `status`, `info`
+and `show` verbs were removed. Unsent events can be read directly in
+`~/.codeaf/telemetry/spool.jsonl`.
 
 ## Reading a plan by hand — codeaf plan new, show, revise and run
 

@@ -130,8 +130,9 @@ var settingReaders = map[string]string{
 	// the attribution line.
 	KeyAttributionModel: "AssistedByModelAt",
 	// The pool row is read through [ModelPoolAt] since the telemetry off switch
-	// started capping the pool at read: `codeaf pool` and `codeaf telemetry`
-	// call [ModelPoolResolved] with their injected environment, and every
+	// started capping the pool at read: `codeaf pool` calls [ModelPoolResolved]
+	// with its injected environment (`codeaf telemetry` did too, until the
+	// command went on 2026-10-01), and every
 	// other verb calls [ModelPoolAt]. Nothing outside this package reads the
 	// stored word directly any more.
 	KeyModelPool: "ModelPoolAt",

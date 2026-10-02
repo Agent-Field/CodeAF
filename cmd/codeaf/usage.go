@@ -465,6 +465,11 @@ func commandHelp(name string) error {
 // scrolled off the top of the terminal and the obvious next step was never
 // named. Now it is the miss, the nearest thing to it, and where the rest is.
 func unknownCommand(typed string) error {
+	if typed == "telemetry" {
+		return fmt.Errorf("there is no `codeaf %s`.\n"+
+			"turn counts off with CODEAF_TELEMETRY=off, DO_NOT_TRACK=1, or the telemetry switch in /settings.\n"+
+			"docs/TELEMETRY.md lists what is sent.\nrun `codeaf --help` for every command", typed)
+	}
 	if nearest := nearestCommand(typed); nearest != "" {
 		return fmt.Errorf("there is no `codeaf %s`. did you mean `codeaf %s`?\n"+
 			"run `codeaf --help` for every command", typed, nearest)

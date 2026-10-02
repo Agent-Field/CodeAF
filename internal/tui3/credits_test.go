@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -12,8 +13,105 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// A terminal session sentence is what crosses the engine wire, so a raw
+// provider error alone cannot prove the ordinary launch asks for a read.
+func TestEngineUnauthorizedEndingRequestsCreditReadOnlyOnDefaultService(t *testing.T) {
+	a := placeApp(t)
+	a.model = config.DefaultModel
+	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }
+	for _, tail := range []string{"", " — the shell's OPENROUTER_API_KEY", " — the profile's saved key"} {
+		t.Run("default"+tail, func(t *testing.T) {
+			err := errors.New(session.UnauthorizedKeySentence + tail)
+			crossed := remote.WireEvent(session.Event{Kind: session.EventError, Err: err}).Unwire().Err
+			if !a.creditRefusalEnded(crossed) {
+				t.Fatalf("engine ending %q did not request a credit read", crossed)
+			}
+			if !a.creditRefusalEnded(errors.New(" \n" + crossed.Error() + "\t")) {
+				t.Fatal("space around an engine ending hid its shared prefix")
+			}
+		})
+	}
+	for _, tc := range []struct {
+		status  int
+		message string
+	}{
+		{401, "invalid key"}, {403, "API key expired."},
+		{429, "expired quota"}, {500, "expired upstream"},
+	} {
+		t.Run(fmt.Sprintf("%d/%s", tc.status, tc.message), func(t *testing.T) {
+			err := &provider.APIError{Status: tc.status, Message: tc.message}
+			crossed := remote.WireEvent(session.Event{Kind: session.EventError, Err: err}).Unwire().Err
+			if a.creditRefusalEnded(crossed) {
+				t.Fatalf("raw refusal %q unexpectedly requested a credit read", crossed)
+			}
+		})
+	}
+	source := modelsource.Source{ID: "custom:company", Written: "custom:company", Name: "company", Address: "http://local.invalid/v1"}
+	a.sources = modelsource.NewSet(modelsource.Connected{Source: source, Address: source.Address})
+	a.model = "custom:company/model"
+	err := errors.New(session.UnauthorizedKeySentence + " — the shell's OPENROUTER_API_KEY")
+	crossed := remote.WireEvent(session.Event{Kind: session.EventError, Err: err}).Unwire().Err
+	if a.creditRefusalEnded(crossed) {
+		t.Fatal("a direct model's unauthorized ending requested OpenRouter credits")
+	}
+}
+
+func TestEngineRefusalReadsCreditsOnlyForExpiredKeysOrUnpayableAccounts(t *testing.T) {
+	a := placeApp(t)
+	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }
+	for _, tc := range []struct {
+		status  int
+		message string
+		want    bool
+	}{
+		{401, "API key expired.", true}, {401, "invalid key", false},
+		{403, "API key expired.", false}, {429, "expired quota", false},
+		{500, "expired upstream", false},
+	} {
+		t.Run(fmt.Sprintf("%d/%s", tc.status, tc.message), func(t *testing.T) {
+			err := &provider.APIError{Status: tc.status, Message: tc.message}
+			crossed := remote.WireEvent(session.Event{Err: err}).Unwire().Err
+			if got := a.creditRefusalEnded(crossed); got != tc.want {
+				t.Fatalf("engine refusal %q requests credit read=%v, want %v", crossed, got, tc.want)
+			}
+		})
+	}
+	if a.creditRefusalEnded(errors.New("network connection expired")) {
+		t.Fatal("network failure requested a credit read")
+	}
+	prefix := config.ConnectionOutcomeWord(modelsource.DefaultSource("").Name, modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay})
+	if !a.creditRefusalEnded(errors.New(prefix)) {
+		t.Fatal("the account-cannot-pay reading stopped requesting credits")
+	}
+	source := modelsource.Source{ID: "custom:company", Written: "custom:company", Name: "company", Address: "http://local.invalid/v1"}
+	a.sources = modelsource.NewSet(modelsource.Connected{Source: source, Address: source.Address})
+	a.model = "custom:company/model"
+	err := remote.WireEvent(session.Event{Err: &provider.APIError{Status: 401, Message: "API key expired."}}).Unwire().Err
+	if a.creditRefusalEnded(err) {
+		t.Fatal("a direct model's expired key requested OpenRouter credits")
+	}
+}
+
+func TestExpiredReadKeepsBothUntouchedConversationDefaults(t *testing.T) {
+	for _, model := range []string{config.FreeChatModel, config.DefaultModel} {
+		t.Run(model, func(t *testing.T) {
+			a := placeApp(t)
+			a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }
+			a.model, a.implicitTalk = model, true
+			seedExpiredKey(t, a)
+			before := len(a.entries)
+			a.refreshCreditWarnings()
+			if a.model != model || len(a.entries) != before {
+				t.Fatalf("expired read changed untouched model %q to %q and added %d notes", model, a.model, len(a.entries)-before)
+			}
+		})
+	}
+}
 
 func TestSurfaceCancelsAndJoinsAnInFlightCreditRead(t *testing.T) {
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -363,5 +461,51 @@ func TestAHealthyReadMovesAnUntouchedImplicitConversationBackToTheDefault(t *tes
 				t.Fatalf("following the default wrote a talk model: %q", saved)
 			}
 		})
+	}
+}
+
+// seedExpiredKey is seedLowCredits for a key the service refused as expired.
+func seedExpiredKey(t *testing.T, a *app) {
+	t.Helper()
+	if err := config.WriteAPIKey(a.profileDir, "credit-test-key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteCreditsReading(a.profileDir, "credit-test-key", credits.Reading{Known: true, Expired: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// AN EXPIRED KEY WARNS ON EVERY OPENROUTER MODEL, the free default included,
+// because the key fails them all — and says nothing on a model another service
+// serves. It wins over the low-credits line, and a new key clears it before
+// that key is read.
+func TestAnExpiredKeyWarnsOnEveryOpenRouterModel(t *testing.T) {
+	a := placeApp(t)
+	a.width = 200
+	a.readCredits = func(context.Context) (credits.Reading, error) {
+		return credits.Reading{Known: true, Expired: true}, nil
+	}
+	seedExpiredKey(t, a)
+	a.refreshCreditWarnings()
+	if !a.creditsExpired || a.creditsLow {
+		t.Fatalf("the expired record read as expired=%v low=%v", a.creditsExpired, a.creditsLow)
+	}
+	if !strings.Contains(plain(a.hintRow(200)), expiredKeyWarning) || !strings.Contains(placeFrameText(a), expiredKeyWarning) {
+		t.Fatal("conversation and home boxes did not show the expired-key warning")
+	}
+	a.switchModel(config.FreeChatModel, 0)
+	if !strings.Contains(plain(a.hintRow(200)), expiredKeyWarning) {
+		t.Fatal("the free model hid the expired-key warning, though the key fails it too")
+	}
+	if strings.Contains(plain(a.hintRow(200)), lowCreditsWarning) {
+		t.Fatal("the low-credits line was drawn beside the expired-key one")
+	}
+	// A new key is a different fact, not yet read: nothing is said about it.
+	if err := config.WriteAPIKey(a.profileDir, "another-key"); err != nil {
+		t.Fatal(err)
+	}
+	a.refreshCreditWarnings()
+	if a.creditsExpired || a.chatCreditWarning != "" {
+		t.Fatalf("the old key's expiry was pinned on the new key (expired=%v, warning %q)", a.creditsExpired, a.chatCreditWarning)
 	}
 }

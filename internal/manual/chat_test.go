@@ -127,6 +127,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it worked and then stopped", "openrouter-credits"},
 		{"why is my model a free one", "openrouter-credits"},
 		{"low on credits warning", "openrouter-credits"},
+		{"setup only shows free models", "openrouter-credits"},
+		{"my openrouter key has expired", "openrouter-credits"},
+		{"api key expired warning", "openrouter-credits"},
+		// The anonymous usage counts, asked the two ways people ask: whether
+		// anything is collected, and how to stop it.
+		{"does codeaf collect data about me", "running-from-the-terminal"},
+		{"turn off telemetry", "running-from-the-terminal"},
+		{"can I click on the setup screen", "getting-started"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
@@ -3055,6 +3063,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does the task proposal card look like", "tasks"},
 		{"why did team_start not ask me first", "team-manager"},
 		{"why did setup show only one screen", "getting-started"},
+		{"enter on the setup model list when nothing matches", "getting-started"},
+		{"clicking and scrolling on the setup screen", "getting-started"},
+		{"why the setup only lists free models", "getting-started"},
+		{"why the setup examples change every three seconds", "getting-started"},
+		{"asking what a quoted /task command does", "commands"},
+		{"how to turn telemetry off now", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
 	}

@@ -4,7 +4,34 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
+
+func TestTelemetryRegistryOffStopsTheRunningProcessAndOnWaitsForRestart(t *testing.T) {
+	t.Setenv("CODEAF_TELEMETRY", "")
+	t.Setenv("DO_NOT_TRACK", "")
+	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "http://127.0.0.1:1/telemetry")
+	telemetry.EnableForTest(t, false)
+	telemetry.Configure(false)
+	t.Cleanup(func() { telemetry.Configure(false) })
+	row, ok := registry(t, t.TempDir()).Row(KeyTelemetry)
+	if !ok {
+		t.Fatal("telemetry switch is missing")
+	}
+	if err := row.Apply("off"); err != nil {
+		t.Fatal(err)
+	}
+	if telemetry.OffReason() != telemetry.OffConfig || telemetry.Enabled() {
+		t.Fatalf("registry off left the running gate at %q, want %q", telemetry.OffReason(), telemetry.OffConfig)
+	}
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	if row.Value() != "on" || telemetry.OffReason() != telemetry.OffConfig {
+		t.Fatalf("on must persist for next start without reopening this process: row=%q gate=%q", row.Value(), telemetry.OffReason())
+	}
+}
 
 // The telemetry row is registered the way the call-log and history rows are:
 // a key, a default, an environment pin, a place in the sheet, and a reader

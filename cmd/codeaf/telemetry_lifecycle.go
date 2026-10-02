@@ -1,8 +1,11 @@
 package main
 
 // The execute() lifecycle for the anonymous usage counts: which invocation is
-// a session, which mode it ran in, when the notice is printed, and how a run
-// ends in the contract's stop-reason vocabulary. Everything here is driven
+// a session, which mode it ran in, and how a run ends in the contract's
+// stop-reason vocabulary. The disclosure — what is counted and how to turn it
+// off — is README.md and docs/TELEMETRY.md in the repository; the binary
+// prints nothing about it and has no command for it (both left on
+// 2026-10-01, with the notice that used to gate the first send). Everything here is driven
 // from execute() (main.go), the one exit every command leaves through, so no
 // door can be missed by a counter that would then miscount the runs it was
 // built to count.
@@ -18,11 +21,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
-	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
-// telemetryConfiguredOff is the config's one answer to the ladder, read the
-// same way the `telemetry status` verb reads it. An unreadable config is the
+// telemetryConfiguredOff is the config's one answer to the ladder. An unreadable config is the
 // ladder's default — on — never a failure the run inherits: `codeaf version`
 // still owes its answer on a machine with no profile, and a config error has
 // never been a reason to refuse one.
@@ -65,13 +66,6 @@ var currentTelemetrySession telemetrySession
 // The mode is read from os.Args here rather than handed down from each door
 // because a door that had to remember it would be a door that could forget
 // it — and the doors differ only in the word they call themselves.
-//
-// THE NOTICE: printed once per install, to stderr, before the first session's
-// events are ever sent — but never into a --json stdout, and never into a
-// pipe: a person who cannot see stderr is a person who cannot be asked, so
-// the events wait in the spool until a session that can show the notice runs.
-// A task command is always shown it, because a task runs unattended and its
-// person may never open a chat at all.
 func telemetryBegin() telemetrySession {
 	// Wired first: a fault can arrive from any goroutine the run spawns from
 	// here on, and the hook reads the session assigned below when it fires.
@@ -84,30 +78,6 @@ func telemetryBegin() telemetrySession {
 	}
 	id := telemetrySessionID()
 	currentTelemetrySession = telemetrySession{mode: mode, resumed: resumed, sessionID: id}
-	// A run the ladder has turned off prints no notice either: the notice is
-	// the sentence that asks permission to send, and a pipe that will never
-	// send has nobody to ask — and marking it shown would create the very
-	// directory this run promised not to write.
-	//
-	// A CHAT OWES IT TO THE SURFACE INSTEAD. A chat on a terminal is about to
-	// hand that terminal to a full-screen surface, and a notice printed here
-	// sat on the normal screen underneath it: read only after quitting, and
-	// marked seen from the moment it was printed, so the first exit sent the
-	// counts at the instant the notice first became visible. So a chat marks
-	// nothing here. It owes the notice, [runSurface] hands it to the surface,
-	// and the surface marks it once a frame has drawn it; a chat that never
-	// draws one (`--once`) prints it on the road it does take
-	// ([payTelemetryNoticeOnStderr]). Until the mark, [telemetry.Flush] sends
-	// nothing.
-	if telemetry.Enabled() && !telemetry.NoticeShown() && !telemetryHasJSON(args) &&
-		(mode == telemetry.ModeTask || noticeTerminal()) {
-		if mode == telemetry.ModeChat {
-			telemetryNoticeOwed = true
-		} else {
-			telemetry.PrintNotice()
-			telemetry.MarkNoticeShown()
-		}
-	}
 	// Both opening events go through SpoolSync, not the fire-and-forget Spool:
 	// first_run must be on disk before session_started even exists, and a run's
 	// session_started must be spooled before the process can reach the exit and
@@ -270,45 +240,25 @@ func telemetryStopReason(code int) string {
 	return telemetry.StopUnknown
 }
 
-// stderrIsTerminal is whether a person can see the notice: stderr attached to
-// a terminal. A redirected or piped stderr is the CI case, and CI is a rung
-// of the ladder's own — but the notice's rule is narrower than that, because
-// `codeaf do 2>/dev/null` in a person's own script is not CI and still must
-// not spend the one line the person will never read.
-// noticeTerminal is [stderrIsTerminal] as the notice asks it, a seam so a test
-// can stand a terminal behind a process whose stderr is a pipe.
-var noticeTerminal = stderrIsTerminal
-
-// telemetryNoticeOwed says this chat's notice is owed to the surface rather
-// than printed: set at the start ([telemetryBegin]) and paid by the frame that
-// draws it ([runSurface]).
-var telemetryNoticeOwed bool
-
-// payTelemetryNoticeOnStderr prints an owed notice on a chat road that draws no
-// surface — `--once` writes its answer to the terminal as plain lines, so the
-// notice printed ahead of it is read ahead of it — and marks it seen.
-func payTelemetryNoticeOnStderr() {
-	if !telemetryNoticeOwed {
-		return
+// telemetryMode decides, from the command line, whether this invocation is a
+// session worth counting and which of the two modes it ran in. Every command
+// that is not named here emits nothing and sends nothing.
+func telemetryMode(args []string) (mode telemetry.Mode, resumed bool, session bool) {
+	// `plan run` is two args: the verb is the second word. Matching `plan`
+	// alone would also count `plan new`, which writes a file and runs nothing.
+	if len(args) >= 2 && args[0] == "plan" && args[1] == "run" {
+		return telemetry.ModeTask, false, true
 	}
-	telemetryNoticeOwed = false
-	telemetry.PrintNotice()
-	telemetry.MarkNoticeShown()
-}
-
-// telemetryNoticeForSurface lays an owed notice on the surface's options: the
-// exact text, and the mark the surface calls after the frame that drew it.
-func telemetryNoticeForSurface(options *tui3.Options) {
-	if !telemetryNoticeOwed {
-		return
+	if len(args) < 1 {
+		return telemetry.ModeChat, false, true
 	}
-	options.TelemetryNotice = telemetry.Notice
-	options.TelemetryNoticeShown = func() {
-		telemetryNoticeOwed = false
-		telemetry.MarkNoticeShown()
+	switch args[0] {
+	case "chat":
+		return telemetry.ModeChat, false, true
+	case "resume":
+		return telemetry.ModeChat, true, true
+	case "do", "exec", "run":
+		return telemetry.ModeTask, false, true
 	}
-}
-
-func stderrIsTerminal() bool {
-	return stdinIsTerminal(os.Stderr)
+	return "", false, false
 }

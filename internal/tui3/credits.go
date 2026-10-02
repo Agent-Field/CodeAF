@@ -13,9 +13,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const lowCreditsWarning = "Your OpenRouter account is low on credits — some models may not be available"
+
+// expiredKeyWarning is the same row's line when the service has refused the key
+// as expired. It names the fix, because unlike a low balance there is nothing
+// to wait for: every OpenRouter model, the free ones included, fails on this
+// key until a new one is pasted.
+const expiredKeyWarning = "Your OpenRouter key has expired — make a new one at openrouter.ai/settings/keys"
 
 type creditWakeMsg struct{}
 type creditReadMsg struct {
@@ -122,6 +129,20 @@ func (a *app) tookCredits(msg creditReadMsg) tea.Cmd {
 	}
 	if msg.err == nil {
 		a.refreshCreditWarnings()
+		// A READING THAT LANDS WHILE THE SETUP'S LIST IS OPEN RE-AIMS IT. The
+		// list is cut to free rows the moment the account reads low
+		// (onboarding.go's [app.setupModelChoices]), so a cursor that was on
+		// the ninth row of the whole catalog would be on the ninth row of a
+		// much shorter list — or past its end. The filter pass puts the cursor
+		// back on the model in use, which is where it opened.
+		if a.setup.open {
+			if a.setup.modelOpen {
+				a.filterSetupModels(a.setup.modelFind)
+			}
+			// And the screen is redrawn either way: the line under the chat
+			// model says what the reading found, list open or not.
+			a.touch()
+		}
 	}
 	return a.takeCreditWake()
 }
@@ -131,6 +152,7 @@ func (a *app) tookCredits(msg creditReadMsg) tea.Cmd {
 func (a *app) refreshCreditWarnings() {
 	if a.readCredits != nil {
 		a.creditsLow = config.CreditsLowAt(a.profileDir)
+		a.creditsExpired = config.CreditsExpiredAt(a.profileDir)
 	}
 	// AN UNTOUCHED CONVERSATION FOLLOWS THE DEFAULT, BOTH WAYS. One that has sent
 	// nothing, on the build's own default, with no model chosen anywhere, is not
@@ -141,7 +163,7 @@ func (a *app) refreshCreditWarnings() {
 	// launch read says otherwise. A conversation that has sent anything keeps its
 	// model either way, and nothing here writes a talk row.
 	want := config.ChatDefaultAt(a.profileDir)
-	if a.readCredits != nil && !a.creditSwitching && a.implicitTalk && a.model != want &&
+	if a.readCredits != nil && !a.creditsExpired && !a.creditSwitching && a.implicitTalk && a.model != want &&
 		(a.model == config.DefaultModel || a.model == config.FreeChatModel) &&
 		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" {
 		a.creditSwitching = true
@@ -149,7 +171,22 @@ func (a *app) refreshCreditWarnings() {
 		a.creditSwitching = false
 	}
 	a.chatCreditWarning, a.homeCreditWarning = "", ""
-	if a.readCredits == nil || !a.creditsLow {
+	if a.readCredits == nil {
+		return
+	}
+	if a.creditsExpired {
+		// AN EXPIRED KEY WARNS ON EVERY MODEL THE DEFAULT SERVICE SERVES, free
+		// or paid, because the key fails them all; a model another service
+		// serves is untouched and says nothing.
+		if !a.modelIsDirect(a.model) {
+			a.chatCreditWarning = expiredKeyWarning
+		}
+		if !a.modelIsDirect(a.targetModel()) {
+			a.homeCreditWarning = expiredKeyWarning
+		}
+		return
+	}
+	if !a.creditsLow {
 		return
 	}
 	var models []Model
@@ -173,11 +210,18 @@ func (a *app) creditRefusalEnded(err error) bool {
 	if err == nil || a.readCredits == nil || a.modelIsDirect(a.model) {
 		return false
 	}
+	if provider.KeyExpiredFrom(err) {
+		return true
+	}
 	if refusal, ok := provider.RefusalFrom(err); ok && refusal.AccountCannotPay() {
 		return true
 	}
+	// THE READ DECIDES WHETHER THE KEY EXPIRED. The engine sends the session's
+	// unauthorized sentence without its typed refusal, so that shared sentence
+	// asks for a read too; a merely invalid key leaves the last reading alone.
+	message := strings.TrimSpace(err.Error())
 	prefix := config.ConnectionOutcomeWord(modelsource.DefaultSource("").Name, modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay})
-	return strings.HasPrefix(err.Error(), prefix)
+	return strings.HasPrefix(message, session.UnauthorizedKeySentence) || strings.HasPrefix(message, prefix)
 }
 
 func (a *app) paidCreditModel(id string, models []Model) bool {
