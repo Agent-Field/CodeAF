@@ -234,24 +234,31 @@ You can move your identity by file. This needs no relay. It is the way to use wh
 
 Keep the file and the passphrase safe. Anybody who has both has your chats.
 
-## Where your chats are stored — the fabric (the hosted sync service), turning it off, your own relay to self-host, is my code private
+## Is my code sent anywhere before I pair — quiet first launch
+
+No. The first launch makes your identity on this machine and does nothing on the network: no request, no connection and no device record reaches the relay. That state is **quiet**. It ends when you pair another machine (`/pair`, `codeaf pair` or `codeaf pair approve`), open the `+ Add another machine` card with `alt+d`, or already belong to a fleet of more than one. Until then your chats stay here, and home shows no devices row.
+
+If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
+
+The first-run line about the hosted relay is said once, when chats are first copied, which is after pairing. `CODEAF_SYNC_URL=off` keeps even a paired machine from sending anything.
+
+## Where your chats are stored — the hosted relay, turning it off, your own relay, is my code private
 
 Your chats live on your own computer first. They are also copied, sealed,
 to a relay, so your other computers can open them. Which relay is one setting,
 `CODEAF_SYNC_URL`, and there is no sign-in and no account:
 
-- **Unset** uses codeaf's fabric, the hosted sync service at `https://codeaf.agentfield.ai/fabric`,
-  and says so once, in one line, the first time your chats are copied: `Your chats sync
-  end-to-end encrypted through codeaf's fabric (codeaf.agentfield.ai/fabric), a sync service
-  that only ever sees ciphertext; turn that off with CODEAF_SYNC_URL=off, or use your own with
-  CODEAF_SYNC_URL=<url>.` A computer you paired with another one uses the address that pairing
-  saved instead. A build with no fabric address has no default, and nothing is copied until you
-  name one.
+- **Unset** uses codeaf's hosted relay (`https://codeaf.agentfield.ai/fabric`) when this build has one, and says so once, in one
+  line, the first time your chats are copied: `Your chats sync end-to-end encrypted through
+  codeaf's hosted relay, which only ever sees ciphertext; turn that off with
+  CODEAF_SYNC_URL=off, or use your own relay with CODEAF_SYNC_URL=<url>.` A computer you
+  paired with another one uses the relay that pairing saved instead. A build with no
+  hosted relay has no default, and nothing is copied until you name a relay.
 - **`CODEAF_SYNC_URL=off`** turns the copying off. Nothing leaves the computer, and `codeaf pair`
   says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
 - **`CODEAF_SYNC_URL=https://relay.example.com`** is your own relay. You run it with
   `codeaf relay --listen :8787 --store <directory>` (see "Running the relay yourself" on the page
-  *Reaching a machine with a pairing code*). The fabric and your own relay speak the same way, so
+  *Reaching a machine with a pairing code*). The hosted relay and your own speak the same way, so
   nothing else changes.
 
 **Is my code private?** Everything a chat holds, its turns and the files it saved, is sealed
@@ -266,7 +273,7 @@ A relay is a small service that passes bytes between the two computers. Your cha
 
 What the relay does see is short: the number at the start of the code, the time, how long each message is, and the network address of each computer. It never sees the six digits.
 
-Pairing goes through the relay this computer syncs through: codeaf's fabric (`https://codeaf.agentfield.ai/fabric`) when this build has one and you have not chosen another, else the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved. A build with no fabric address has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
+Pairing goes through the relay this computer syncs through. The first that answers wins: the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved, else codeaf's hosted relay (`https://codeaf.agentfield.ai/fabric`) when this build has one. A build with no hosted relay has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
 
 ```
 no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>
@@ -285,7 +292,7 @@ When the computer that has your chats uses a relay you named, the code it shows 
   on it run  codeaf pair 42-715-302 --via https://relay.example.com   (valid 10 minutes)
 ```
 
-After the pairing, the other computer saves that relay and syncs through it; when it is the fabric there is nothing to save, because every computer reaches it without being told. The way to run a relay yourself is on the page *Reaching a machine with a pairing code*, under "Running the relay yourself".
+After the pairing, the other computer saves that relay and syncs through it; when it is the hosted relay there is nothing to save, because every computer reaches it without being told. The way to run a relay yourself is on the page *Reaching a machine with a pairing code*, under "Running the relay yourself".
 
 `CODEAF_SYNC_URL=off` turns sync off. Then pairing is not available. Both commands say so before they send anything:
 

@@ -1,15 +1,15 @@
 # Hosted relay or your own relay
 
-## Hosted relay or my own — which one do I use
+## Hosted relay or my own — which one do I use, and where does sync go by default
 
 A relay is the small service your computers sync through. There are two kinds. Both speak the same wire: the chat cannot tell them apart.
 
-- **A hosted relay** is run for you on a cloud account. You do nothing to run it. codeaf's own is the fabric, built in; any other you give the chat the address of.
+- **A hosted relay** is run for you on a cloud account. You do nothing to run it. You give the chat its address.
 - **Your own relay** is the program `codeaf relay`. You run it on a computer you control.
 
 Either way the relay sees only ciphertext and the short list on "What can the relay see".
 
-**In this build the address `https://codeaf.agentfield.ai/fabric` is built in: it is codeaf's fabric, the hosted sync service, and a computer with no other word syncs through it.** The address has a path, `/fabric`, and you keep it if you type it yourself. You can still choose another: set `CODEAF_SYNC_URL`, or pass `--via <address>` to a pairing command. A computer that has paired with a relay of its own uses that one. A build with no address built in does not pick one for you, and says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. Give it one of the two below.
+**Where sync goes by default.** Unset, a computer syncs through codeaf's hosted relay at `https://codeaf.agentfield.ai/fabric`, once this build carries that address. The address lives in one place in the program, `HostedRelayURL`; a build whose value is empty has no default, and then nothing is copied and pairing says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. Even with a default, a computer that has never been paired sends nothing: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
 
@@ -21,7 +21,7 @@ CODEAF_SYNC_URL=https://relay.example.com codeaf
 
 - **A web address** like `https://relay.example.com` or `http://host:8787`. Plain `http` is for trying it out inside an ssh tunnel. An address that is not a web address stops with `CODEAF_SYNC_URL is not a web address like http://host:8787`.
 - **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
-- **Unset:** a computer that was paired uses the relay the pairing saved. A computer that never paired syncs through the built-in `https://codeaf.agentfield.ai/fabric`.
+- **Unset:** a computer that was paired with a named relay uses the relay the pairing saved. Otherwise it uses the hosted default above, if this build has one, and has none if it does not.
 
 Your own computers must all name the same relay and hold the same identity, or they see different chats.
 
