@@ -6,7 +6,7 @@ import { Counters } from '../src/counters.js';
 import { Directory } from '../src/directory.js';
 import { asGrant, checkDigits, codeOf, CODE_ALPHABET, deviceIdOf, newCode, newRequest, platformOf } from '../src/link/code.js';
 import { settled } from '../src/link/state.js';
-import { onlineDevices, presenceOf } from '../src/presence.js';
+import { parseBeat, presenceOf } from '../src/presence.js';
 import { STAGE1 } from '../src/rules.js';
 import { memorySql } from './sql.js';
 
@@ -100,12 +100,6 @@ test('presence lists every live device, online ones as seen now', () => {
   const devices = { dev_A: { revoked: false }, dev_B: { revoked: false, last_seen: 1789999000000 }, dev_C: { revoked: true } };
   const answer = presenceOf(devices, new Set(['dev_A', 'dev_C']), 1790000001000);
   assert.deepEqual(answer, vectors.presence_list);
-});
-
-test('a device is online when any socket carries its tag', () => {
-  const sockets = [['dev_A'], ['dev_A'], ['dev_B']];
-  const ctx = { getWebSockets: () => sockets, getTags: (s) => s };
-  assert.deepEqual([...onlineDevices(ctx)].sort(), ['dev_A', 'dev_B']);
 });
 
 test('counters peek counts nothing and forgets an ended window', () => {

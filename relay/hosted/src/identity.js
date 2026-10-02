@@ -26,6 +26,7 @@ const signedHeaders = (request) => Object.fromEntries(Object.entries(SIGNED).map
 export class IdentityDO extends DurableObject {
   flight = new Flight();
   #tenant = null;
+  #arming = Promise.resolve(); // the tail of the alarm settings made so far, see #arm
   #gone = null; // whether the tombstone is written, read once from storage
   #admitted = new Lazy((ip) => this.#admitNewcomer(ip)); // single-flight: a burst of first requests is one admission
 
@@ -33,7 +34,14 @@ export class IdentityDO extends DurableObject {
     super(ctx, env);
     this.limits = limitsOf(env);
     this.policy = policyOf(env.LEASE_POLICY);
-    this.watchers = new Watchers(ctx, this.limits.maxWatchers, this.policy.ttlMs, (at) => this.ctx.waitUntil(this.#arm(at)));
+    this.watchers = new Watchers(
+      ctx,
+      this.limits.maxWatchers,
+      this.policy.ttlMs,
+      (at) => this.ctx.waitUntil(this.#arm(at)),
+      // A sweep stamps last_seen through the tenant, which an alarm wake has built just before it (see alarm).
+      (device, at) => this.#tenant?.dir.seen(device, at),
+    );
     this.identityRate = new RateLimit(this.limits.requestsPerMinute);
     this.deviceRate = new RateLimit(this.limits.requestsPerMinutePerDevice);
   }
@@ -108,16 +116,18 @@ export class IdentityDO extends DurableObject {
   }
 
   /**
-   * alarm does the two things an object is woken for: write the counts that changed since the last
+   * alarm does the things an object is woken for: tell who went silent or is owed an offline frame, write the counts that changed since the last
    * write (stats.js), and delete the identity once its retirement is due. It always ends by arming
    * the retirement deadline again, because #arm only ever moves the alarm earlier and a stats alarm
    * may have stood in front of it.
    */
   async alarm() {
-    this.watchers.expire();
     const identity = await this.ctx.storage.get('identity');
+    const retired = identity && (await this.#isGone());
+    if (identity && !retired) this.#tenantOf(identity);
+    this.watchers.expire();
     if (!identity) return;
-    if (await this.#isGone()) return this.#erase(identity);
+    if (retired) return this.#erase(identity);
     const tenant = this.#tenantOf(identity);
     tenant.stats.flush();
     const at = tenant.retireAt();
@@ -125,8 +135,17 @@ export class IdentityDO extends DurableObject {
     return at <= Date.now() ? this.#erase(identity) : this.#arm(at);
   }
 
-  /** #arm wakes the object at `at` unless it is already set to wake sooner, so no caller can push another's alarm later. */
-  async #arm(at) {
+  /**
+   * #arm wakes the object at `at` unless it is already set to wake sooner, so no caller can push another's alarm later.
+   * Calls run one after another: two that overlapped would both read the same alarm and the later write would win.
+   */
+  #arm(at) {
+    const run = this.#arming.then(() => this.#armSooner(at));
+    this.#arming = run.catch(() => {}); // one failed setting must not stop the later ones
+    return run;
+  }
+
+  async #armSooner(at) {
     const set = await this.ctx.storage.getAlarm();
     if (set === null || at < set) await this.ctx.storage.setAlarm(at);
   }

@@ -143,6 +143,29 @@ const cases = {
     assert.deepEqual((await wc.closed).code, 4401);
     assert.deepEqual(plain.frames.filter((f) => !WIRE.test(f)), [], 'a socket that did not ask for events never hears one');
   },
+  /** Presence from the sign of life (contract 21.12): a socket that declared beat=2 and never pings is told offline and closed 4408. */
+  async frozen() {
+    const [a, b, c] = await party(3);
+    const idb = await deviceId(b);
+    for (const bad of ['?beat=0', '?beat=61', '?beat=x', '?beat=2&beat=3']) assert.equal((await dialled(b, bad)).status, 400, bad);
+    assert.equal((await dialled(c, '?beat=2')).headers['codeaf-presence'], '1', 'the 101 says the relay judges presence by the sign of life');
+    const viewer = await openWatch(a, BASE, '?events=1');
+    const quietOne = await openWatch(b, BASE, '?beat=2');
+    const opened = Date.now();
+    await waitFor(viewer, () => viewer.frames.some((f) => f.includes('"online":false')), 12_000);
+    assert.ok(Date.now() - opened >= 4_000, 'not before 2.5 beats of silence');
+    const told = viewer.frames.filter((f) => f.includes(idb)).map((f) => JSON.parse(f));
+    assert.deepEqual(told.map((f) => f.online), [true, false]);
+    assert.deepEqual((await quietOne.closed).code, 4408);
+    const listed = (await call(a, 'GET', '/v1/dir/presence')).json?.devices?.[idb];
+    assert.equal(listed?.online, false, 'the presence answer lists it offline');
+    const pinger = await openWatch(b, BASE, '?beat=2');
+    await waitFor(viewer, () => viewer.frames.filter((f) => f.includes(idb)).length >= 3, 3_000);
+    for (let i = 0; i < 5; i++) (pinger.send('ping'), await sleep(2_000));
+    assert.equal((await call(a, 'GET', '/v1/dir/presence')).json?.devices?.[idb]?.online, true, 'a pinging socket stays online past the window');
+    viewer.close();
+    pinger.close();
+  },
   async firstFrame() {
     const [a] = await party();
     const w = await openWatch(a);
