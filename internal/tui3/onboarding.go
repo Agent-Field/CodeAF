@@ -3,6 +3,7 @@ package tui3
 import (
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -393,9 +395,10 @@ func (a *app) setupControlsEnter() bool {
 	case controlChatModel:
 		if s.modelOpen {
 			models := a.setupModelChoices()
-			if s.modelAt >= 0 && s.modelAt < len(models) {
-				a.takeSetupModel(models[s.modelAt].ID)
+			if s.modelAt < 0 || s.modelAt >= len(models) {
+				return false
 			}
+			a.takeSetupModel(models[s.modelAt].ID)
 			s.closeChoosers()
 			// AND THEN ENTER GOES ON, as it does on the limit. A model taken
 			// from the list is this row answered; an earlier build left the
@@ -627,11 +630,20 @@ func (a *app) setupModelChoices() []Model {
 		// where a person who has never run the program is choosing by name, a
 		// list of three hundred paid models they cannot use is a list they will
 		// pick the wrong row from (five new people did, 2026-09-30). The same
-		// test the warning uses decides a row ([app.paidCreditModel]): a `:free`
+		// test the warning uses decides a row: a `:free`
 		// id, a catalog row priced at zero, or a model another service serves.
+		// Build the free-id set once because this list is read on every key;
+		// scanning the whole catalog again for each row made that work quadratic.
+		freeIDs := make(map[string]bool, len(models))
+		for _, model := range models {
+			if config.IsFreeModel(model.ID, model.PriceKnown, model.PromptPrice, model.CompletionPrice, model.RequestPrice) {
+				freeIDs[model.ID] = true
+			}
+		}
 		free := make([]Model, 0, len(models))
 		for _, model := range models {
-			if !a.paidCreditModel(model.ID, models) {
+			bare, _ := roles.SplitEffort(strings.TrimPrefix(model.ID, "~"))
+			if strings.TrimSpace(model.ID) == "" || a.modelIsDirect(model.ID) || config.IsFreeModel(model.ID, false, 0, 0, 0) || freeIDs[bare] {
 				free = append(free, model)
 			}
 		}
@@ -1982,8 +1994,13 @@ func (a *app) setupDemoBeatAt(gen int) tea.Cmd {
 // next, and how long any key holds the clock.
 const setupTurnEvery = 3 * time.Second
 
-// setupTurnMsg is the turn's clock arriving, stamped with the generation that
-// armed it so a tick left over from before a key is dropped.
+// setupTurnClockGeneration gives each physical timer a separate negative stamp.
+// A timer's queued message survives a later hold, but never a closed showing;
+// nonnegative generations remain the direct clock-delivery seam's hold stamps.
+var setupTurnClockGeneration atomic.Int64
+
+// setupTurnMsg is the turn's clock arriving, stamped so an old showing cannot
+// turn a panel that has since closed.
 type setupTurnMsg struct{ gen int }
 
 // turnSetupExample moves the panel by delta, round the ring, and plays the
@@ -2010,32 +2027,41 @@ func (a *app) setupTurnCmd() tea.Cmd {
 		return nil
 	}
 	s.turnTicking = true
-	gen := s.turnGen
-	return surfaceTick(setupTurnEvery, func(time.Time) tea.Msg { return setupTurnMsg{gen: gen} })
+	s.turnClockGen = -int(setupTurnClockGeneration.Add(1))
+	gen := s.turnClockGen
+	delay := setupTurnEvery
+	if remaining := s.turnHoldUntil.Sub(a.now()); remaining > 0 {
+		delay = remaining
+	}
+	return surfaceTick(delay, func(time.Time) tea.Msg { return setupTurnMsg{gen: gen} })
 }
 
-// holdSetupTurn is any key on this screen: the clock in flight is retired and
-// a fresh one armed, so the next turn is a full [setupTurnEvery] after the key.
+// holdSetupTurn moves the deadline rather than arming a timer per key. The
+// timer already in flight checks the last hold when it reaches the update loop.
 func (a *app) holdSetupTurn() tea.Cmd {
 	s := &a.setup
 	s.turnGen++
-	s.turnTicking = false
+	s.turnHoldUntil = a.now().Add(setupTurnEvery)
 	return a.setupTurnCmd()
 }
 
 // setupTurnAt is the clock arriving. A tick from a retired generation is
 // dropped whole, and so is one that finds the screen gone or stepped back to
-// the key; otherwise the next example arrives, plays, and the clock is armed
-// again.
+// the key. A live tick waits out the latest hold before the next example
+// arrives, plays, and arms the clock again.
 func (a *app) setupTurnAt(gen int) tea.Cmd {
 	s := &a.setup
-	if gen != s.turnGen {
+	if gen != s.turnGen && gen != s.turnClockGen {
 		return nil
 	}
 	s.turnTicking = false
-	if !s.open || len(s.steps) == 0 || s.step() != setupControls {
+	if !s.open || len(s.steps) == 0 || s.step() != setupControls || a.linear {
 		return nil
 	}
+	if a.now().Before(s.turnHoldUntil) {
+		return a.setupTurnCmd()
+	}
+	s.turnHoldUntil = time.Time{}
 	a.turnSetupExample(1)
 	return tea.Batch(a.setupDemoCmd(), a.setupTurnCmd())
 }

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -100,7 +101,7 @@ type setupFlow struct {
 	control setupControl
 	detail  bool
 	// answered marks the rows enter has acted on — the limit committed, a
-	// model taken, the review shown — which is what paints a row's name dim
+	// model taken — which is what paints a row's name dim
 	// once it is done (onboarding.go's [app.setupLabelInk]).
 	answered   [setupControlCount]bool
 	limitText  string
@@ -118,11 +119,13 @@ type setupFlow struct {
 	demoAt      int
 	demoGen     int
 	demoTicking bool
-	// The turn's clock (onboarding.go's [app.setupTurnCmd]): turnGen stamps
-	// the ticks so one armed before a key is dropped, and turnTicking says one
-	// is in flight.
-	turnGen     int
-	turnTicking bool
+	// A hold moves the deadline while one timer remains in flight. Its stamp
+	// is separate from the hold generation, because a key can arrive after
+	// the timer has queued its message and must still hold that arriving tick.
+	turnGen       int
+	turnClockGen  int
+	turnTicking   bool
+	turnHoldUntil time.Time
 	// refusal is the one line the screen says under the box when enter was
 	// pressed on something it will not write. Any other key clears it.
 	refusal string

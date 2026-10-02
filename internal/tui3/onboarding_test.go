@@ -2,8 +2,10 @@ package tui3
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -13,6 +15,135 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
+
+func TestSetupEnterWithNoMatchingModelKeepsTheListAndFocus(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.setup.control = controlChatModel
+	pressSetup(a, key("enter"))
+	a.filterSetupModels("zzzz")
+	model := a.model
+	pressSetup(a, key("enter"))
+	if !a.setup.modelOpen || a.setup.control != controlChatModel || a.setup.answered[controlChatModel] || a.model != model {
+		t.Fatalf("no-match enter closed=%v moved=%v answered=%v model=%q", !a.setup.modelOpen, a.setup.control != controlChatModel, a.setup.answered[controlChatModel], a.model)
+	}
+	if !strings.Contains(setupScreen(a), "nothing matches") {
+		t.Fatal("no-match enter lost its nothing-matches line")
+	}
+	pressSetup(a, key("backspace"), key("backspace"), key("backspace"), key("backspace"))
+	if len(a.setupModelChoices()) == 0 || !a.setup.modelOpen {
+		t.Fatal("backspace did not widen the open list")
+	}
+	pressSetup(a, key("esc"))
+	if a.setup.modelOpen || a.setup.answered[controlChatModel] {
+		t.Fatal("esc did not close the unanswered list")
+	}
+}
+
+func TestSetupRapidKeysAndPressesKeepOneTimerUntilTheLastHold(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.setup.turnTicking = false
+	now := time.Unix(100, 0)
+	a.clock = func() time.Time { return now }
+	old := surfaceTick
+	t.Cleanup(func() { surfaceTick = old })
+	var turns []func(time.Time) tea.Msg
+	var delays []time.Duration
+	surfaceTick = func(d time.Duration, cb func(time.Time) tea.Msg) tea.Cmd {
+		if d > setupDemoBeat {
+			turns = append(turns, cb)
+			delays = append(delays, d)
+		}
+		return func() tea.Msg { return nil }
+	}
+	a.setupTurnCmd()
+	for i := 0; i < 100; i++ {
+		now = now.Add(10 * time.Millisecond)
+		if i%2 == 0 {
+			a.setupControlsPress("down", "")
+		} else {
+			a.Update(clickAt(0, 0))
+		}
+	}
+	if len(turns) != 1 {
+		t.Fatalf("100 rapid keys and presses armed %d turn timers, want 1 in flight", len(turns))
+	}
+	at := a.setup.example
+	now = time.Unix(103, 0)
+	a.Update(turns[0](now))
+	if a.setup.example != at || len(turns) != 2 || delays[1] != time.Second {
+		t.Fatalf("early tick turned=%v timers=%d delays=%v; want a one-second remainder", a.setup.example != at, len(turns), delays)
+	}
+	now = now.Add(time.Second)
+	a.Update(turns[1](now))
+	if a.setup.example != wrapCursor(at, 1, len(setupExamples)) || len(turns) != 3 {
+		t.Fatalf("last hold did not turn once and rearm: example=%d timers=%d", a.setup.example, len(turns))
+	}
+	pressSetup(a, key("esc"))
+	a.Update(turns[2](now.Add(setupTurnEvery)))
+	if len(turns) != 3 || a.setup.turnTicking {
+		t.Fatal("the turn clock continued on the key step")
+	}
+}
+
+func TestSetupKeyBeforeAQueuedTickKeepsTheClockAlive(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.setup.turnTicking = false
+	now := time.Unix(100, 0)
+	a.clock = func() time.Time { return now }
+	old := surfaceTick
+	t.Cleanup(func() { surfaceTick = old })
+	var turns []func(time.Time) tea.Msg
+	surfaceTick = func(d time.Duration, cb func(time.Time) tea.Msg) tea.Cmd {
+		if d > setupDemoBeat {
+			turns = append(turns, cb)
+		}
+		return func() tea.Msg { return nil }
+	}
+	a.setupTurnCmd()
+	now = now.Add(setupTurnEvery)
+	queued := turns[0](now)
+	a.setupControlsPress("down", "")
+	at := a.setup.example
+	a.Update(queued)
+	if len(turns) != 2 || a.setup.example != at {
+		t.Fatalf("a key before the queued tick stopped the clock: timers=%d turned=%v", len(turns), a.setup.example != at)
+	}
+	now = now.Add(setupTurnEvery)
+	a.Update(turns[1](now))
+	if a.setup.example != wrapCursor(at, 1, len(setupExamples)) {
+		t.Fatal("the queued tick never resumed after the full hold")
+	}
+}
+
+func TestLowSetupCatalogKeepsFourHundredRowsInSourceOrder(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.creditsLow = true
+	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }
+	a.model = "paid/current"
+	catalog := make([]Model, 400)
+	want := []string{a.model}
+	for i := range catalog {
+		row := Model{ID: fmt.Sprintf("catalog/model-%03d", i), PriceKnown: i%4 != 3, PromptPrice: 1}
+		switch i % 4 {
+		case 0:
+			row.ID += ":free"
+		case 1:
+			row.PromptPrice = 0
+		}
+		catalog[i] = row
+		if i%4 < 2 {
+			want = append(want, row.ID)
+		}
+	}
+	a.models = func() []Model { return catalog }
+	var got []string
+	for _, row := range a.setupModelChoices() {
+		got = append(got, row.ID)
+	}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("400-row catalog changed membership or source order: got %v, want %v", got, want)
+	}
+}
 
 // THE CONTROLS SCREEN'S OWN TESTS (onboarding.go).
 //
