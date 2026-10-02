@@ -54,8 +54,11 @@ nothing on this page yet — it fills in as the task works
 Neither of the landed lines would be true there: nothing was lost, and nothing is over.
 This one comes off by itself the moment the task's first block arrives.
 
-**A room never draws a blank body under its header.** Above that line the page draws what
-it already knows, which is different for work that is still going and work that is over.
+## What an empty task page shows before any tool has run or after the transcript is lost
+
+**A room never draws a blank body under its header.** A landed task draws what it knows
+above the foot line `this task has finished — say it to main`. Before landing it draws
+that above `nothing on this page yet — it fills in as the task works`, with no foot.
 
 For a task that has **not landed**, the page draws **the instruction you gave it** — the
 brief, held since the task was admitted — and then, where the engine has said one, the
@@ -73,14 +76,12 @@ Every one of those rows is drawn only while the page has no blocks, so the whole
 replaced — not added to — the moment the transcript arrives. Opening the page starts
 nothing and restarts nothing: it reads work that is already running.
 
-The header above it is saying the state in one word (`working`, `waiting`, `queued`) with
-the clock beside it, so the body never repeats that word — what it adds is the reason
-underneath it, which is the thing the header has no room for.
+The header gives the state (`working`, `waiting`, `queued`) and clock; the body adds
+the reason instead of repeating the state.
 
-For a task that **has landed**, the report takes that place. If the roster still holds it —
-and it does, for anything that landed in a conversation you have open — the report is drawn
-above the line, so the page tells you what the work came to even when the transcript behind
-it is gone:
+For a task that **has landed**, its report takes that place when the roster holds it —
+as it does for landings in an open conversation. Even with the transcript gone, it says
+what the work came to:
 
 ```
 Added the guard in parseRow and covered it with a test.
@@ -88,8 +89,7 @@ this task's transcript is not here any more
 this task has finished — say it to main
 ```
 
-The header is drawn from the same record, which is why it stays correct — the name, the
-state, the elapsed — in every one of these cases.
+The header reads the same record, keeping the name, state and elapsed correct.
 
 The room is one of two doors onto old work. The other is the sessions place (`ctrl+.`,
 `/history`), whose `enter` on a completed task's row opens a card with the task's report read off
