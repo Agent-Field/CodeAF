@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -224,6 +226,172 @@ func TestTheSessionReachesTheSourceThatServesItsModel(t *testing.T) {
 		t.Fatalf("session model = %q, want its service-qualified identity", agent.Model())
 	}
 	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-conversation-key", "stub/conversation")
+}
+
+// clientDoorHost is the Host header a request to address arrives with, which is
+// neither the scheme nor the base path. It is read back from the address rather
+// than taken from a stub's own idea of itself, because the claim under test is
+// WHICH host was asked and a stub that reported its own host could not fail.
+func clientDoorHost(address string) string {
+	parsed, err := url.Parse(address)
+	if err != nil {
+		return address
+	}
+	return parsed.Host
+}
+
+// aiandClientDoorSource is the vendored ai& row as the session door is asked to
+// handle it: ONE billing door, no regions, no metered overflow beside it, an
+// OpenAI-shaped sk- key under AIAND_API_KEY, and a /models listing the vendor
+// serves itself at its own base.
+//
+// IT IS SPELLED OUT HERE RATHER THAN READ FROM modelsource.Vendored, because a
+// test that reads the registry back proves only that the registry is
+// reachable. This one states the SHAPE the session has to be right about, so a
+// change to the row that mattered — a second door, a bare slug, a key made
+// optional — fails here instead of quietly redefining what was promised.
+func aiandClientDoorSource(address string) modelsource.Source {
+	return modelsource.Source{
+		ID: "aiand", Written: "aiand", Name: "ai&", Address: address,
+		KeyEnv: "AIAND_API_KEY", KeyShape: modelsource.LooksLikeAPIKey,
+		Listing: modelsource.ListingModels,
+		Probe:   modelsource.Probe{Address: "/models", Method: http.MethodGet, Accepts: []int{http.StatusOK}},
+	}
+}
+
+// ai& is THE INTERESTING DIRECT VENDOR FOR THE PREFIX. Every other direct row
+// serves bare ids, so stripping the service's written name is the whole job and
+// a double prefix is invisible. This vendor publishes its models as
+// `vendor/model` — `zai-org/glm-5.3` — so the qualified id a person selects is
+// THREE segments and the wire slug is a TWO-segment id with one removed. The
+// split happens on the FIRST segment alone, so the bare slug keeps its own
+// vendor segment, and the failure mode of getting that wrong is a slug no vendor
+// publishes (the router's 400 about a model nobody serves), not a wrong host.
+//
+// THE OTHER HALF IS WHAT A DIRECT VENDOR IS NEVER ASKED FOR. /models is the
+// catalog the CONNECT step asks for and /endpoints is the router's lane sheet;
+// both are OpenRouter machinery, so a turn aimed at a direct service must put
+// exactly one POST on exactly one road.
+func TestTheClientDoorReachesAiandWithItsBareVendorSlug(t *testing.T) {
+	const (
+		key       = "aiand-wire-key"
+		wireModel = "zai-org/glm-5.3"
+	)
+	// The id a person selects, and the two spellings it must NOT reach the wire
+	// as: the qualified one, and the slug with the written name re-attached.
+	qualified := "aiand/" + wireModel
+
+	t.Run("reaches the aiand host with the bare vendor slug", func(t *testing.T) {
+		host := sourcestub.New(wireModel)
+		t.Cleanup(host.Close)
+		// The default member is the DEAD address [directClientDoorSources]
+		// installs beside its service, so a turn that fell through to it is a
+		// connection error rather than a silent success on somebody else's key.
+		// It is spelled out rather than borrowed because that helper wants the
+		// chat stub it would put on aiand's own host.
+		unreachable := "http://127.0.0.1:1"
+		agent, err := New(Config{
+			Workspace: t.TempDir(), Model: qualified,
+			Sources: modelsource.NewSet(
+				modelsource.Connected{Source: modelsource.DefaultSource(unreachable), Key: "default-aiand-key", Address: unreachable},
+				modelsource.Connected{
+					Source: aiandClientDoorSource(host.URL()), Key: key, Address: host.URL(),
+				},
+			),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = agent.Close() })
+		drainTurn(t, agent, "answer from ai&")
+
+		// The session keeps the SERVICE-QUALIFIED identity the person chose even
+		// though the slug it puts on the wire has no service name in it.
+		if agent.Model() != qualified {
+			t.Fatalf("session model = %q, want its service-qualified identity %q", agent.Model(), qualified)
+		}
+
+		// ONE request, and it is the chat POST. A GET /v1/models here would be
+		// the session doing config's job; this host records it either way.
+		requests := host.Requests()
+		if len(requests) != 1 {
+			t.Fatalf("the aiand host received %d requests, want only the turn's completion: %+v", len(requests), requests)
+		}
+		request := requests[0]
+		if request.Method != http.MethodPost || request.Path != "/v1"+modelsource.ChatCompletionsPath {
+			t.Fatalf("the aiand host received %s %s, want POST /v1%s", request.Method, request.Path, modelsource.ChatCompletionsPath)
+		}
+		if request.Host != clientDoorHost(host.URL()) {
+			t.Fatalf("request Host = %q, want aiand's own host %q", request.Host, clientDoorHost(host.URL()))
+		}
+		if request.Bearer != "Bearer "+key {
+			t.Fatalf("Authorization = %q, want Bearer %s — aiand's own key, never the default service's", request.Bearer, key)
+		}
+		// The identity codeaf gives a service it reaches itself, which is the
+		// whole of what a direct vendor is told about who is calling.
+		if request.Agent != provider.DirectUserAgent {
+			t.Fatalf("User-Agent = %q, want %q — a direct vendor is not sent the router attribution", request.Agent, provider.DirectUserAgent)
+		}
+
+		var envelope struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(request.Body, &envelope); err != nil {
+			t.Fatalf("decode the aiand request body: %v (%s)", err, request.Body)
+		}
+		if envelope.Model != wireModel {
+			t.Fatalf("wire model = %q, want the bare vendor slug %q with only the service's written name removed", envelope.Model, wireModel)
+		}
+		if strings.Contains(envelope.Model, "aiand/") {
+			t.Fatalf("wire model = %q, want NO copy of the service name on it — a direct vendor serves %q", envelope.Model, wireModel)
+		}
+	})
+
+	t.Run("a direct vendor is asked for nothing but the chat road", func(t *testing.T) {
+		// A stub that fails the test on ANY request, so absence is proved rather
+		// than inferred: a leaked /models or /endpoints GET to the default is
+		// named with its method and path instead of vanishing into a 404.
+		forbidden := newForbiddenClientDoorServer(t)
+		host := newClientDoorServer(t, "done")
+		agent, err := New(Config{
+			Workspace: t.TempDir(), Model: qualified,
+			Sources: modelsource.NewSet(
+				modelsource.Connected{Source: modelsource.DefaultSource(forbidden.URL), Key: "default-aiand-key", Address: forbidden.URL},
+				modelsource.Connected{Source: aiandClientDoorSource(host.URL), Key: key, Address: host.URL},
+			),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = agent.Close() })
+		drainTurn(t, agent, "answer from ai&")
+
+		// THE COMPATIBILITY CONTROL. A plain service row on an ordinary slug
+		// changes nothing about the request: the slug is the bare id, and
+		// codeaf invented neither a reasoning level nor a provider.max_price.
+		assertOrdinaryClientDoorCall(t, host.call(t, 0), key, wireModel)
+
+		// The ledger is the stronger claim than the one call above, because this
+		// stub records EVERYTHING that arrives, 404s included. Routing is on by
+		// default, so a session whose model were not treated as direct would put
+		// its lane-sheet GET on this host; its absence is asserted here.
+		requests := host.allRequests()
+		if len(requests) != 1 {
+			t.Fatalf("the direct vendor received %d requests, want only the chat completion: %+v", len(requests), requests)
+		}
+		for _, request := range requests {
+			if request.method != http.MethodPost || request.path != modelsource.ChatCompletionsPath {
+				t.Fatalf("a direct vendor received %s %s; /models and /endpoints are OpenRouter machinery and reach it never",
+					request.method, request.path)
+			}
+			if request.authorization != "Bearer "+key {
+				t.Fatalf("request Authorization = %q, want Bearer %s", request.authorization, key)
+			}
+		}
+		if got := forbidden.calls.Load(); got != 0 {
+			t.Fatalf("the default service received %d requests; a qualified aiand model must not fall through to it", got)
+		}
+	})
 }
 
 // Every model chooses its own service before its slug is put on the request.

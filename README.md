@@ -73,8 +73,8 @@ To build it yourself: `git clone`, `make build`, `bin/codeaf`
 </details>
 
 On first start it connects OpenRouter in your browser, or takes a key. Codex signs in
-a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax
-and Qwen take keys; Ollama needs none.
+a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax,
+Qwen and ai& take keys; Ollama needs none.
 
 ## One window for every project
 
@@ -187,7 +187,7 @@ request goes to the provider that has been fastest for that kind of call.
 
 <img src="assets/readme/screens/models.webp" alt="The right model for each call: the spend page showing what ran it, by model and role: glm-5.3, deepseek-v4-flash and qwen3.8-27b with calls, tokens and dollars" width="100%">
 
-Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Codex through a
+Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, ai&, Qwen, Codex through a
 ChatGPT plan, Ollama and any OpenAI-compatible endpoint.
 
 ## Model Pool

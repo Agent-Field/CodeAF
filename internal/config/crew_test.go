@@ -38,7 +38,8 @@ func rawCrewRow(t *testing.T, dir, key string) string {
 func crewProfile(t *testing.T) string {
 	t.Helper()
 	for _, name := range []string{APIKeyEnv, "OPENAI_API_KEY", ModelEnv, PlanModelEnv, CheckModelEnv, "CODEAF_BASE_URL",
-		"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "MINIMAX_API_KEY", "DASHSCOPE_API_KEY"} {
+		"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "MINIMAX_API_KEY", "DASHSCOPE_API_KEY",
+		"AIAND_API_KEY"} {
 		t.Setenv(name, "")
 	}
 	dir := t.TempDir()
@@ -396,6 +397,52 @@ func TestAPlanRouteIsFreeAndCollidingIdsKeepTheirRouterSpelling(t *testing.T) {
 	d, _ = RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
 	if p := d.Seat(crewroute.Planner); p.Send != "openrouter/z-ai/glm-5.3-flash" || p.Provider != "openrouter" {
 		t.Errorf("planner pinned @openrouter: %+v", p)
+	}
+}
+
+// A DIRECT CONNECTION REACHES THE CATALOG VENDORS IT ACTUALLY CARRIES, which is
+// what [crewVendors] is for: Moonshot's Written is `moonshot` where the catalog
+// writes `moonshotai/`, and Codex's is `codex` where the catalog writes `openai/`,
+// so neither would ever be offered a Kimi or a GPT without a row naming the
+// vendor the catalog actually uses.
+//
+// THE SEND IS THE ID THAT CONNECTION'S OWN API KNOWS, and that is not always the
+// catalog's id with the segment dropped. ai& is the first connection whose own
+// API is ITSELF a router — its 2026-10-02 listing named
+// `deepseek-ai/deepseek-v4-flash` and `zai-org/glm-5.3-flash` — so its send
+// keeps the segment, spelled as ai& spells it rather than as the catalog does.
+func TestADirectRouterConnectionServesItsCatalogVendorsUnderItsOwnIds(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{
+		{ID: "aiand", Written: "aiand", Key: "sk-aiand-crewtest-0123456789ab", Order: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	routes := map[string]string{}
+	for _, c := range CrewCandidatesAt(dir) {
+		for _, r := range c.Routes {
+			if r.Provider == "aiand" {
+				routes[c.Model.ID] = r.Send
+			}
+		}
+	}
+	want := map[string]string{
+		// Both renames come from the listing the row's comment cites.
+		"deepseek/deepseek-v4-flash": "aiand/deepseek-ai/deepseek-v4-flash",
+		"z-ai/glm-5.3-flash":         "aiand/zai-org/glm-5.3-flash",
+		// And a vendor the catalog and ai& already spell the same way keeps the
+		// catalog's segment rather than losing it.
+		"moonshotai/kimi-k3": "aiand/moonshotai/kimi-k3",
+	}
+	for model, send := range want {
+		if routes[model] != send {
+			t.Errorf("%s through ai& sends %q, want %q", model, routes[model], send)
+		}
+	}
+	// A vendor it does not carry is still not offered through it, however good
+	// the catalog's figures for it are.
+	if _, offered := routes["anthropic/claude-opus-5"]; offered {
+		t.Error("ai& offers a model from a vendor it does not serve")
 	}
 }
 

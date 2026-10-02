@@ -501,6 +501,27 @@ func Vendored() []Source {
 			Preferred: "qwen3.7-plus",
 		},
 		{
+			// OBSERVED 2026-10-02 against api.aiand.com: one door, and
+			// <base>/models answering 200 with thirteen models under the
+			// catalog's own vendor/model spelling. Nothing on the wire tells a
+			// plan from metered credit — the same host, bearer, model and
+			// request spend the balance either way — so this row claims NO
+			// second door, the way MiniMax's does not, and returns one only
+			// when an observed response field, header or error can prove which
+			// billing product answered. It serves Japan only, so there are no
+			// regions. Its backend is vLLM over several kinds of GPU rather
+			// than one named machine, so nothing about an answer names a
+			// server and there is no ServedAs either.
+			ID: "aiand", Written: "aiand", Name: "ai&", KeyEnv: "AIAND_API_KEY",
+			Address: "https://api.aiand.com/v1", KeyShape: LooksLikeAPIKey,
+			// The probe model is the cheapest lane that still holds a million
+			// tokens of context ($0.15/$0.25 as listed), and the preference is
+			// the flagship ($1.00/$4.00, also 1M) rather than the cheapest,
+			// because a seat that can afford the flagship should have it.
+			Listing: ListingModels, ProbeModel: "deepseek-ai/deepseek-v4-flash",
+			Probe: listingProbe(), Preferred: "zai-org/glm-5.3",
+		},
+		{
 			ID: "codex", Written: "codex", Name: CodexName, ServedAs: CodexName,
 			Address:  "https://chatgpt.com/backend-api/codex",
 			KeyShape: func(key string) bool { return strings.TrimSpace(key) == "chatgpt" },

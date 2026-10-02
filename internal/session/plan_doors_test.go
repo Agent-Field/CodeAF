@@ -199,13 +199,26 @@ func TestOnlyAnExplicitReconnectRebindsTheDoor(t *testing.T) {
 }
 
 func TestEveryOneDoorServiceKeepsItsHostAndBearer(t *testing.T) {
+	// keyEnv and shape carry the key DESCRIPTION a vendored row declares and a
+	// custom or local row has no opinion about. Both are zero for every row that
+	// did not set them, and a nil KeyShape accepts any non-blank value, so
+	// declaring them changes nothing the older rows prove.
 	for _, testCase := range []struct {
 		id, written, key string
 		optional         bool
+		keyEnv           string
+		shape            func(string) bool
 	}{
 		{id: "deepseek", written: "deepseek-direct", key: "deepseek-test-key"},
 		{id: "ollama", written: "ollama", optional: true},
 		{id: "custom", written: "something-local", key: "custom-test-key"},
+		// ai& is one billing door with no metered overflow beside it: the plan
+		// and pay-as-you-go split exists on the vendors that sell both, and a
+		// service that sells one has nothing for the door walk to choose
+		// between. It is not key-optional either — an OpenAI-shaped sk- key is
+		// the only way in — so a blank one has to fail rather than reach the host.
+		{id: "aiand", written: "aiand", key: "aiand-one-door-test-key",
+			keyEnv: "AIAND_API_KEY", shape: modelsource.LooksLikeAPIKey},
 	} {
 		t.Run(testCase.id, func(t *testing.T) {
 			host := sourcestub.New("one-model")
@@ -213,6 +226,7 @@ func TestEveryOneDoorServiceKeepsItsHostAndBearer(t *testing.T) {
 			service := modelsource.Connected{
 				Source: modelsource.Source{
 					ID: testCase.id, Written: testCase.written, Address: host.URL(),
+					KeyEnv: testCase.keyEnv, KeyShape: testCase.shape,
 					KeyOptional: testCase.optional, Listing: modelsource.ListingModels,
 				},
 				Key: testCase.key, Address: host.URL(),
@@ -222,6 +236,15 @@ func TestEveryOneDoorServiceKeepsItsHostAndBearer(t *testing.T) {
 			calls := completionRequestsOf(host)
 			if len(calls) != 1 {
 				t.Fatalf("one-door turn requests = %+v", calls)
+			}
+			// The turn is answered by the one host and no other, so every call
+			// that reached it carries the key this service was connected with
+			// AND the identity codeaf gives a service it reaches itself. A
+			// vendor that is not the router gets the product's own name and no
+			// router attribution, and that is the whole of the direct road.
+			if calls[0].Host != clientDoorHost(host.URL()) {
+				t.Fatalf("request reached host %q, want the service's own host %q",
+					calls[0].Host, clientDoorHost(host.URL()))
 			}
 			assertRequestsCarry(t, calls, testCase.key)
 		})

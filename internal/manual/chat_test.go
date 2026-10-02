@@ -145,6 +145,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is codeaf supported by zhipu", "services"},
 		{"how do I reconnect a model provider", "services"},
 		{"I exported the model provider key after the engine started", "services"},
+		// ai& (services.md). A person meets it under its display name on the
+		// row and under `aiand` everywhere else — in the connect line, in the
+		// picker heading and in every model id — so both spellings are asked.
+		{"how do I connect to ai&", "services"},
+		{"can I use my aiand key", "services"},
+		{"why does aiand list models from different labs", "services"},
 		{"why does /connect say connections are unavailable", "accounts"},
 		{"connect says unavailable on my own machine", "accounts"},
 		{"credentials.json is damaged but where are my models", "accounts"},

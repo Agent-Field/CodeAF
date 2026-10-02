@@ -7,7 +7,7 @@ something else again: long-running background processes, covered by their own pa
 ## Add a key — connect a provider, add an api key, use a different provider
 
 An api key for another provider, or another model provider, is added here. Open `/connect` or
-`/connections`. The `providers` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex,
+`/connections`. The `providers` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, ai&, Codex,
 Ollama and **Custom OpenAI-compatible API**, followed by any provider already connected and, once
 a custom provider is connected, a `+ add a provider` row. Codex says `browser`; it signs
 in a ChatGPT plan instead of asking for an API key. Ollama needs no key. The other named vendors
@@ -63,24 +63,27 @@ the variable.
 `--at`, connecting a provider is absent because the profile behind the conversation is
 not the local profile the panel could write.
 
-## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen or MiniMax directly
+## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen, MiniMax or ai& directly
 
-Open `/connect` and choose the vendor in the `models` group. DeepSeek and MiniMax open
-`your key` directly. Z.ai, Moonshot and Alibaba Qwen first open `your region` as a
+Open `/connect` and choose the vendor in the `models` group. DeepSeek, MiniMax and ai&
+open `your key` directly. Z.ai, Moonshot and Alibaba Qwen first open `your region` as a
 choice with `International` under the cursor and `China` below it; a region is never
 typed. Up and down, or `ctrl+p` and `ctrl+n`, move the cursor. A letter jumps to a
 region whose name starts with it, enter takes the row under the cursor and opens
 `your key`, and esc returns to the provider row with nothing saved. The same choice
 opens when reconnecting one of these providers from its Providers row in `/settings`.
 Z.ai is the direct provider for GLM and Moonshot is the direct provider for Kimi.
-MiniMax, Ollama and **Custom OpenAI-compatible API** are single-door providers. MiniMax makes no plan
-claim because its plan and metered traffic currently have no wire-level difference
-codeaf can use to prove which balance answered.
+MiniMax, ai&, Ollama and **Custom OpenAI-compatible API** are single-door providers. MiniMax and ai& make no plan
+claim because their plan and metered traffic have no wire-level difference codeaf can
+use to prove which balance answered; ai& spends one prepaid credit per token, so a
+second door would be a label codeaf cannot check.
 
 A provider name cannot be confused with the author part of a model already on the default
 provider. When `deepseek` is already an author there, codeaf connects the direct provider
 under `deepseek-direct` in that same attempt. The region and key are not asked for twice,
-and its models read `deepseek-direct/<model id>`.
+and its models read `deepseek-direct/<model id>`. ai& is not one of those: no model
+author on the default provider is `aiand`, so it connects under the name `aiand` and its
+models read `aiand/<model id>`.
 
 ## Why is my provider called z-ai-direct — I connected Z.ai, the name changed
 
@@ -89,11 +92,50 @@ author. codeaf appends `-direct` and finishes the connection in the same attempt
 region and key are not asked for twice. The connect line tells you the name it used, for
 example `z-ai-direct is connected · coding plan · 4 models`, and those models read
 `z-ai-direct/<model id>`. DeepSeek follows the same rule: it becomes `deepseek-direct`,
-and its models read `deepseek-direct/<model id>`.
+and its models read `deepseek-direct/<model id>`. ai& collides with no author, so it keeps
+the name `aiand` and never becomes `aiand-direct`.
+
+## ai& — one key for open models from several labs
+
+ai& sells one prepaid credit, spends it per token, and lets that credit buy any model in its
+list. So one key reaches models built by several different labs at once — the list is
+organised by who made the model, not by one house. Its address is
+`https://api.aiand.com/v1`, and it answers both the OpenAI-shaped and the
+Anthropic-shaped chat path, so one key covers either. A key starts `sk-` and may also be
+the name of an environment variable, such as `$AIAND_API_KEY`.
+
+It lists its models, so the connect line carries the count that came back, for example
+`aiand is connected · 13 models`, and `/model` fills its group from that list instead of
+asking you to type an id. Its list is organised by organisation and moves as the vendor adds
+and retires them, so the count in that line is whatever answered that day rather than a
+number codeaf remembers. A model from an organisation the list no longer carries is simply
+gone from that group; nothing here claims an organisation is served forever.
+
+Most of what it serves is a model codeaf already knows from somewhere else: on the list
+seen when this page was written, five of the seven organisations were ones a connected
+provider already carries — DeepSeek, Z.ai, Moonshot and Alibaba Qwen, plus OpenAI behind
+Codex — so the same families, GLM and Kimi among them, come through the one ai& key. Two
+are not: `motif-technologies` is one codeaf knows nothing about, and `google` is an
+organisation the catalog knows while no connected provider carries it. Models under either
+are in ai&'s list and you can still pick them, but nothing here chooses one for a task or
+plans a crew around them.
+
+Every id in that list already names the lab that built the model, so it is the whole model
+id codeaf wants and it is not shortened. Connecting ai& moves this conversation onto one of
+the models it listed, in the same moment, and the line says so the way it does for any
+provider.
+
+There is no plan door to pick and no region to choose: one key, one credit, one door. A run
+with nothing left on that credit is answered by ai& with a `402` and `insufficient_credits`,
+which is the balance speaking rather than a bad key.
+
+Inference runs in Japan and ai& markets data residency on that. That is the vendor's own
+claim about its own infrastructure, and it is why there is no region to pick; codeaf
+promises nothing about where a request goes.
 
 ## Connect a provider — what is asked for, and what codeaf checks before it saves anything
 
-Open `/connect` and choose a row in `providers`. DeepSeek asks for `your key`. Z.ai,
+Open `/connect` and choose a row in `providers`. DeepSeek and ai& ask for `your key`. Z.ai,
 Moonshot and Alibaba Qwen ask `your region` with one row per region: `International`
 is first and starts under the cursor, then `China`. Up and down, or `ctrl+p` and
 `ctrl+n`, move the cursor; a letter jumps to a region whose name starts with it;
@@ -206,6 +248,11 @@ provider is written `<provider>/<model id>`, such as
 where the model can be reached. With two or more connected providers, `/model` shows a dim
 heading for each provider, default first, in the order shown in the Providers tab. A
 custom provider's heading is the name you gave it.
+
+One provider's ids already arrive qualified, so its qualified form carries two segments:
+`aiand/zai-org/glm-5.3`. The first still names the provider that can reach it, and
+everything after it is that provider's own id, unchanged — `zai-org/glm-5.3`,
+`deepseek-ai/deepseek-v4.1-flash`. Nothing after the first segment is ever shortened.
 
 The status line uses the same spelling: an unqualified default-provider id, and
 `<provider>/<model id>` for every other provider. It does not shorten

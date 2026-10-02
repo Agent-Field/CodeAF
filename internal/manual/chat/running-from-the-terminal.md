@@ -221,13 +221,17 @@ machine, the next line gives the tunnel to run before opening that address here:
 ssh -L 1455:localhost:1455 <that machine>
 ```
 
-If that sign-in chose port 1457 instead, the printed command uses 1457. DeepSeek and
-MiniMax take a key through the same checked connection as `/connect`; Ollama takes none.
+If that sign-in chose port 1457 instead, the printed command uses 1457. DeepSeek, MiniMax
+and ai& take a key through the same checked connection as `/connect`; Ollama takes none.
 Z.ai, Moonshot and Qwen take a key and also need `--region intl` or `--region cn`. A key
 is read from stdin when it is piped, or asked for without echo on a terminal. A new custom
 provider is created only in the chat: an unknown custom name says it is not a provider this
 profile knows. Once the chat has created one, `codeaf connect <its name>` can reconnect
 that instance with a key.
+
+`codeaf connect aiand` is the one line that adds ai&: the provider it saves is named
+`aiand`, so that is the word the command and every model id take. It asks for a key and no
+`--region`, because ai& has no region to choose.
 
 `codeaf disconnect <provider>` says `forget a provider and the key or sign-in behind it`
 in its help. The command forgets that provider and its key or sign-in. Neither

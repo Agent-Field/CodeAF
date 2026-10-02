@@ -690,11 +690,48 @@ type CrewProvider struct {
 	collides map[string]bool
 }
 
-// crewVendors maps a direct connection to the catalog vendor prefixes it
+// crewVendors maps a direct connection to the CATALOG vendor prefixes it
 // serves. A connection whose Written is the vendor's own prefix needs no row.
+//
+// THE PREFIXES ARE THE CATALOG'S, NOT THE CONNECTION'S OWN. The router weighs
+// catalog ids ([CrewCatalog]), and [CrewProvider.route] reads the vendor off the
+// front of one; the connection's spelling is what the SEND is built from, below.
+// Moonshot's catalog says `moonshotai/kimi-k3` and Codex's says `openai/gpt-5.5`,
+// which is why those two rows read the way they do. A TABLE OF FACTS: every
+// entry is a vendor somebody watched that connection serve.
 var crewVendors = map[string][]string{
 	"moonshot": {"moonshotai"},
 	"codex":    {"openai"},
+	// OBSERVED 2026-10-02 on a live GET https://api.aiand.com/v1/models with a
+	// key: thirteen models under seven prefixes, which are six catalog vendors —
+	// the seventh, motif-technologies, is not one this catalog carries. The list
+	// is org-scoped and DYNAMIC: ai& adds and retires orgs, so a vendor missing
+	// from it is a model this connection no longer serves, not a claim that it
+	// never could.
+	"aiand": {"deepseek", "z-ai", "moonshotai", "qwen", "openai", "google"},
+}
+
+// crewVendorWire spells the catalog's vendor segment the way a connection's OWN
+// API spells it, where the two differ. A vendor absent from a connection's row
+// keeps the catalog's own spelling — the ordinary case, and the reason moonshot
+// and codex need no row here: the catalog already says `moonshotai/` and
+// `openai/`. A connection named here is ITSELF A ROUTER: it addresses a model as
+// <vendor>/<name> and never as a bare name, so its send keeps the segment a
+// vendor's own API would have dropped.
+//
+// ai& IS THE FIRST SUCH CONNECTION, AND THE TABLE IS NOT OPTIONAL. Its listing
+// names `deepseek-ai/deepseek-v4-flash` and `zai-org/glm-5.3-flash` where the
+// catalog says `deepseek/deepseek-v4-flash` and `z-ai/glm-5.3-flash`.
+//
+// A BARE NAME IS REFUSED, which is what makes the send a correctness question
+// rather than a tidiness one. Asked on 2026-10-02 for the bare names this table
+// exists to avoid sending — `deepseek-v4-flash`, `glm-5.3-flash`, `kimi-k3` —
+// api.aiand.com answered 404 `model_not_found` for every one, while
+// `deepseek-ai/deepseek-v4-flash` and `zai-org/glm-5.3-flash` answered 200. So
+// the send without this table is not a spelling somebody might prefer; it is a
+// call that fails. A TABLE OF FACTS, one spelling each.
+var crewVendorWire = map[string]map[string]string{
+	"aiand": {"deepseek": "deepseek-ai", "z-ai": "zai-org"},
 }
 
 // CrewProvidersAt is every provider the crew can route through: each
@@ -800,7 +837,27 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 			return crewroute.Route{}, false
 		}
 	}
-	return crewroute.Route{Provider: p.ID, Send: p.Written + "/" + tail, Kind: p.Kind}, true
+	return crewroute.Route{Provider: p.ID, Send: p.send(vendor, tail), Kind: p.Kind}, true
+}
+
+// send is the id a call to this connection carries, which is not always its
+// prefix over the model's name.
+//
+// THE ORDINARY SEND DROPS THE CATALOG'S VENDOR SEGMENT, because every vendor
+// whose own API this table has reached so far takes a BARE model id: the
+// catalog's `moonshotai/kimi-k3` goes out as `moonshot/kimi-k3`. A CONNECTION
+// THAT IS ITSELF A ROUTER keeps the segment, spelled as its own API spells it
+// ([crewVendorWire]) — `aiand/deepseek-ai/deepseek-v4-flash`, which is the id
+// that listing named, rather than an `aiand/deepseek-v4-flash` no router of that
+// shape has ever heard of.
+func (p CrewProvider) send(vendor, tail string) string {
+	if wire, ok := crewVendorWire[p.ID]; ok {
+		if spelled, ok := wire[vendor]; ok {
+			return p.Written + "/" + spelled + "/" + tail
+		}
+		return p.Written + "/" + vendor + "/" + tail
+	}
+	return p.Written + "/" + tail
 }
 
 // CrewCandidatesAt is what the router may pick from on this profile: every

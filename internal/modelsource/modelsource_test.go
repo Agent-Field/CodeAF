@@ -128,7 +128,7 @@ func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 func TestVendoredRowsCarryTheCodexServiceInItsDecidedPlace(t *testing.T) {
 	// C12: Codex is a model service whose models are qualified on every surface.
 	rows := Vendored()
-	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "codex", "ollama", "custom"}
+	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "aiand", "codex", "ollama", "custom"}
 	if len(rows) != len(want) {
 		t.Fatalf("vendored rows = %d, want %d", len(rows), len(want))
 	}
@@ -140,14 +140,32 @@ func TestVendoredRowsCarryTheCodexServiceInItsDecidedPlace(t *testing.T) {
 			t.Errorf("row %s probe timeout = %s, want %s", rows[i].ID, rows[i].Probe.Timeout, ProbeTimeout)
 		}
 	}
-	if !rows[6].KeyOptional {
+	// OLLAMA IS NAMED, NEVER COUNTED. A row that may omit its key is a
+	// statement about a service, so it is read by identity — an insertion above
+	// it moves it down an index without saying anything about it.
+	ollama, ok := vendoredByID(rows, "ollama")
+	if !ok {
+		t.Fatal("the vendored rows name no ollama")
+	}
+	if !ollama.KeyOptional {
 		t.Fatal("only Ollama may omit its key")
 	}
-	for index, row := range rows {
-		if index != 6 && row.KeyOptional {
+	for _, row := range rows {
+		if row.ID != "ollama" && row.KeyOptional {
 			t.Fatalf("%s unexpectedly accepts a blank key", row.ID)
 		}
 	}
+}
+
+// vendoredByID finds one vendored row by its own id, the way a caller that
+// cares about a service rather than about its position in the table finds it.
+func vendoredByID(rows []Source, id string) (Source, bool) {
+	for _, row := range rows {
+		if row.ID == id {
+			return row, true
+		}
+	}
+	return Source{}, false
 }
 
 // THE ROWS RECORD THE BEST KNOWN TRUTH, AND OBSERVATION OUTRANKS THE SURVEY.
@@ -180,6 +198,12 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		{"moonshot", ListingNone, "kimi-k2.7-code", "kimi-k2.7-code"},
 		{"minimax", ListingNone, "MiniMax-M3", "MiniMax-M3"},
 		{"qwen", ListingNone, "qwen3.8-flash", "qwen3.7-plus"},
+		// OBSERVED on 2026-10-02 with a live key against api.aiand.com:
+		// <base>/models answered 200 with thirteen models, so the hint is
+		// ListingModels rather than a guess. The probe is the cheapest lane
+		// that still holds a million tokens and the preference the flagship,
+		// both read off that same listing rather than invented.
+		{"aiand", ListingModels, "deepseek-ai/deepseek-v4-flash", "zai-org/glm-5.3"},
 		{"codex", ListingNone, "", "gpt-5.5"},
 		{"ollama", ListingModels, "", ""},
 		{"custom", ListingModels, "", ""},
