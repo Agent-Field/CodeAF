@@ -56,14 +56,11 @@ func move(t *testing.T, from cell.Cell) cell.Cell {
 	return to
 }
 
-func TestJobLogsStubsAndJournalsComeBackOnTheOtherMachine(t *testing.T) {
+func TestJobLogsAndStubsComeBackOnTheOtherMachine(t *testing.T) {
 	a := chat(t)
 	files := map[string]string{
-		"logs/jobs/2.log":                 "server listening on 8794\n",
-		"logs/stubs/0123abcd.txt":         "the whole tool output\n",
-		"tasks/4/trajectory.jsonl":        "{\"step\":1}\n",
-		"tasks/4/logs/stubs/ffee0011.txt": "a task's own spill\n",
-		"tasks/4/20261001-1_worker.jsonl": "{\"worker\":1}\n",
+		"logs/jobs/2.log":         "server listening on 8794\n",
+		"logs/stubs/0123abcd.txt": "the whole tool output\n",
 	}
 	for rel, body := range files {
 		put(t, a, rel, []byte(body), time.Minute)
@@ -151,5 +148,19 @@ func TestAChatWithNothingToCarryNamesNoFolder(t *testing.T) {
 	}
 	if got := inventoryOf(t, a).ChatDir; got != "" {
 		t.Errorf("ChatDir = %q, want none", got)
+	}
+}
+
+// A task's journals are truth in .cell/tasks and travel with the cell; a second
+// copy from beside the chat would be a second answer to where a journal is.
+func TestTaskJournalsAreNotCarriedASecondTime(t *testing.T) {
+	a := chat(t)
+	put(t, a, "tasks/4/trajectory.jsonl", []byte("{}\n"), time.Minute)
+	put(t, a, "logs/jobs/2.log", []byte("x\n"), time.Minute)
+	if err := (Carry{}).Compose(a); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(a.Root, CarriedPath, "tasks")); err == nil {
+		t.Error("task journals were copied into the carried files")
 	}
 }

@@ -889,6 +889,17 @@ func (c *Client) FallbackModels(model string) []string {
 	return carried
 }
 
+// fallbacksWritten reports whether the person wrote a fallback list at all, the
+// one predicate that decides whether the catalog may suggest a model for them.
+func (c *Client) fallbacksWritten() bool {
+	for _, model := range c.config.Fallbacks {
+		if strings.TrimSpace(model) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // fallbackChain is the models to try after the ladder, in order.
 //
 // The operator's own list wins outright, and the catalog is only asked when
@@ -897,6 +908,15 @@ func (c *Client) FallbackModels(model string) []string {
 // adapter overruling them with an inference.
 //
 // The failing model is never in the chain, and nothing appears twice.
+//
+// A LIST THAT NAMES ONLY THE FAILING MODEL IS A PIN, AND IT HOLDS. Writing
+// `models.fallbacks` as the very model that is failing ("pin every role to this
+// one") leaves the chain empty after the failing model is struck, and an empty
+// chain used to be read as "the person wrote nothing", so the catalog's guess
+// was asked and two other models were sent the turn (measured 2026-10-01, a
+// pinned deepseek/deepseek-v4.1-flash walked to v4-pro-0813 and v4-flash-0731
+// after two reply cuts). Whether the person answered is a fact about the ROW,
+// settled by [Client.fallbacksWritten], and not about what is left of it.
 func (c *Client) fallbackChain(model string) []string {
 	seen := map[string]bool{normalizeModel(model): true}
 	var chain []string
@@ -912,7 +932,7 @@ func (c *Client) fallbackChain(model string) []string {
 		}
 	}
 	add(c.config.Fallbacks)
-	if len(chain) == 0 && c.config.NearestModels != nil {
+	if !c.fallbacksWritten() && c.config.NearestModels != nil {
 		add(c.config.NearestModels(model))
 	}
 	if len(chain) > maxFallbackModels {
