@@ -3433,6 +3433,15 @@ func ModelPoolResolved(profileDir string, lookup func(string) (string, bool)) po
 	return cfg
 }
 
+// PoolTelemetryRowsOffAt rechecks the telemetry project file and profile row
+// before an in-flight pool send, because either can change after the caller
+// resolved its configuration. The caller keeps its own resolved environment;
+// this check does not resolve the pool configuration again.
+func PoolTelemetryRowsOffAt(profileDir string) bool {
+	cwd, _ := os.Getwd()
+	return telemetryRowsOff(cwd, profileDir)
+}
+
 // telemetryRowsOff is the disk half of [TelemetryOffReason]: the project file
 // and the profile row. It does not read CODEAF_TELEMETRY itself — the caller
 // has read that through its own lookup — but it is not blind to the process
