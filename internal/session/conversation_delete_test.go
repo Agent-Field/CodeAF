@@ -240,3 +240,67 @@ func TestConversationDeleteRetryPreservesCapturedManagerAliases(t *testing.T) {
 		t.Fatalf("alias survived retry: %+v", f.Teams[0])
 	}
 }
+
+func TestConversationDeleteOptionalGlobalManagerKeepsTeamsAndAllowsRecreation(t *testing.T) {
+	root, profile, file := deletionFixture(t)
+	var global string
+	if err := teams.Update(profile, func(f *teams.File) error {
+		global = f.MakeRoot(time.Now())
+		if err := f.AddMember("aaaaaaaaaaaa", teams.Member{Key: "ordinary-manager", File: "/ordinary/transcript.jsonl", Handle: "ordinary"}); err != nil {
+			return err
+		}
+		if err := f.SetManager("aaaaaaaaaaaa", "ordinary-manager"); err != nil {
+			return err
+		}
+		if err := f.AddMember(global, teams.Member{Key: file, File: file, Handle: "global"}); err != nil {
+			return err
+		}
+		return f.SetManager(global, file)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stopped := false
+	if err := DeleteConversationUnder(root, profile, file, map[string]string{global: ""}, func(string) error { stopped = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if !stopped {
+		t.Fatal("global manager owner not stopped")
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatal("global transcript survived")
+	}
+	f, err := teams.Load(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, ok := f.Root()
+	if !ok || r.Manager != "" || r.Holds(file) {
+		t.Fatal("root did not survive without deleted manager")
+	}
+	ordinary, ok := f.Team("aaaaaaaaaaaa")
+	if !ok || ordinary.Closed() || ordinary.Manager != "ordinary-manager" || ordinary.Parent != global {
+		t.Fatal("ordinary team changed")
+	}
+	if err := teams.Update(profile, func(f *teams.File) error {
+		if id := f.MakeRoot(time.Now()); id != global {
+			t.Fatal("recreation replaced root")
+		}
+		if err := f.AddMember(global, teams.Member{Key: "new-global", File: "/new-global/transcript.jsonl", Handle: "new-global"}); err != nil {
+			return err
+		}
+		return f.SetManager(global, "new-global")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f, err = teams.Load(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ = f.Root()
+	if home, ok := f.Home("ordinary-manager"); !ok || home.Manager != "new-global" {
+		t.Fatal("current top-level manager did not report to the recreated global manager")
+	}
+	if r.Manager != "new-global" || len(f.TopManagers()) != 1 {
+		t.Fatal("new global manager did not recover current reports")
+	}
+}

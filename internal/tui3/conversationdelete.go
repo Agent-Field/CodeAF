@@ -8,8 +8,8 @@ import (
 	"strconv"
 )
 
-// Permanent deletion never changes team leadership. A replacement must be chosen
-// in Teams first, and no destructive choice is selected by default.
+// Ordinary team managers need a replacement in Teams before deletion. The
+// optional global manager can be deleted independently; cancel remains the default.
 type conversationDeleteSheet struct {
 	on, busy            bool
 	taskID              string
@@ -17,6 +17,7 @@ type conversationDeleteSheet struct {
 	cursor, messageTop  int
 	hits                []wallHit
 	rect                wallRect
+	managerChoices      map[string]string
 }
 
 type conversationDeleteOption struct {
@@ -66,7 +67,11 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 	}
 	if s.taskID == "" {
 		file := a.teamTree()
-		if len(file.ManagedTeams(a.convKey(s.file))) > 0 {
+		managed := file.ManagedTeams(a.convKey(s.file))
+		s.managerChoices = nil
+		if len(managed) == 1 && managed[0].Root {
+			s.managerChoices = map[string]string{managed[0].ID: ""}
+		} else if len(managed) > 0 {
 			s.message, s.cursor, s.messageTop = file.ManagerRemovalMessage(a.convKey(s.file)), 0, 0
 			a.touch()
 			return nil
@@ -79,6 +84,7 @@ func (a *app) conversationDeleteRun() tea.Cmd {
 	s := &a.cdelete
 	key := a.convKey(s.file)
 	file, name, taskID := s.file, s.name, s.taskID
+	choices := s.managerChoices
 	door := a.deleteConversation
 	if door == nil {
 		profile, root := a.profileDir, a.placesRoot()
@@ -108,7 +114,7 @@ func (a *app) conversationDeleteRun() tea.Cmd {
 	s.busy, s.message = true, ""
 	a.touch()
 	return a.offLoop(func() func(bool) tea.Cmd {
-		err := door(file, nil, nil)
+		err := door(file, choices, nil)
 		return func(bool) tea.Cmd {
 			if err != nil {
 				a.cdelete.busy, a.cdelete.message = false, err.Error()
@@ -130,9 +136,13 @@ func (a *app) conversationDeleteRun() tea.Cmd {
 				delete(a.tabShut, key)
 				delete(a.unreadChats, key)
 				a.chatTabBar = tabBar{}
+				// The last held team conversation can stop the traffic clock.
+				// Refresh through the ordered store door so deleted memberships
+				// and optional leadership never wait for that clock to restart.
+				_ = a.teamEdit(func(*teamstore.File) error { return nil })
 				a.refreshHome()
 				a.touch()
-				return a.teamsRead(true)
+				return tea.Batch(a.teamsWrite(), a.teamsRead(true))
 			}
 			if key == a.frontTabKey() {
 				if cmd, moved := a.leaveFront(leaveAgent, false); moved {

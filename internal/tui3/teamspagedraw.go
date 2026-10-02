@@ -108,6 +108,8 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 		switch r.kind {
 		case railRowAll:
 			return a.teamsRailAll(d, width, y)
+		case railRowGlobalManager:
+			return d.row(" "+teamGlobalManagerSlotWord, width, teamsTarget{act: teamsActRootManager, y: y, hint: "Create the optional global manager; its reports are top-level team managers" + hintSegment + "M"}, false)
 		case railRowTeam:
 			t, _ := a.teamByID(r.id)
 			return a.teamsRailTeam(d, t, r.depth, width, y)
@@ -169,7 +171,7 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 	var head, middle, foot []int
 	for i, row := range kinds {
 		switch row.kind {
-		case railRowAll:
+		case railRowAll, railRowGlobalManager:
 			head = append(head, i)
 		case railRowNew, railRowClosed, railRowOrganize:
 			foot = append(foot, i)
@@ -183,9 +185,10 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 		head = []int{foot[0]}
 		foot = nil
 	}
-	for len(head)+len(foot) > height {
+	for len(head)+len(foot) > height && len(foot) > 0 {
 		foot = foot[:len(foot)-1]
 	}
+	head = head[:min(len(head), height)]
 	room := max(height-len(head)-len(foot), 0)
 	off := min(a.tp.railOffset, max(len(middle)-room, 0))
 	for _, target := range d.targets[mark:] {
@@ -247,34 +250,19 @@ func (a *app) teamsSpark() string {
 	return spark
 }
 
-// teamsRailAll is the `All teams` row: the root team when there is one, and
-// otherwise a row over the top level carrying `+ Manager`, the optional
-// global manager.
+// All teams always opens the hierarchy; global-manager creation has its own row.
 func (a *app) teamsRailAll(d *teamsDraw, width, y int) string {
-	pal := a.pal
+	word := " " + a.pal.bold(a.pal.ink(teamstore.RootName))
 	if root, ok := a.teamsRoot(); ok {
-		word := " " + pal.bold(pal.ink(teamstore.RootName))
 		if root.Manager != "" {
-			word += " " + pal.dim(a.teamManagerMark())
+			word += " " + a.pal.dim(a.teamManagerMark())
 		}
 		if n := a.teamsNeeds(root); n > 0 {
-			word += " " + pal.ask("? "+itoa(n))
+			word += " " + a.pal.ask("? "+itoa(n))
 		}
-		return d.row(word, width, teamsTarget{act: teamsActSelect, id: teamsAllRow, y: y,
-			hint: "Every team, and what waits on you from any of them" + hintSegment + "enter"}, a.teamsAllSelected())
 	}
-	word := teamManagerSlotWord
-	bw := ansi.StringWidth(word) + 2
-	left := width - bw
-	selected := a.tp.sel == teamsAllRow
-	name := d.row(" "+pal.bold(pal.ink(teamstore.RootName)), left, teamsTarget{act: teamsActSelect, id: teamsAllRow, y: y,
-		hint: "Every team, and what waits on you from any of them" + hintSegment + "enter"}, selected)
-	if left < 12 {
-		return teamsPad(name, width)
-	}
-	btn, _ := d.button(word, teamsTarget{act: teamsActRootManager, x0: left, y: y,
-		hint: "Start a manager over every team: you talk to it, it talks to theirs" + hintSegment + "M"}, pal.muted)
-	return name + btn
+	return d.row(word, width, teamsTarget{act: teamsActSelect, id: teamsAllRow, y: y,
+		hint: "Every team, and what waits on you from any of them" + hintSegment + "enter"}, a.teamsAllSelected())
 }
 
 // teamsRailTeam is one team's row: indent, colour dot, name, and at most one

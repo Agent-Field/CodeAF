@@ -207,7 +207,10 @@ it does not select an overlay.
 A **manager** is a conversation that runs the team: you talk to it, it sends work to members
 and reports progress. Teams offers **Choose manager** for existing members and **+ Manager**
 when a team has none. Add a new member first when you need a new conversation to replace
-an existing manager. All teams has separate controls for the global manager.
+an existing manager. All teams has a dedicated Global manager card. `+ Global manager` creates its optional
+conversation. Its reports are the managers of open top-level teams; subteam managers
+report to their parent. Its card's `x` deletes the global-manager conversation with the
+normal confirmation, preserving every team and its manager. The creation control returns.
 
 In a selected overlay the manager's tab is pinned at the left. It reads `◆ Manager`, or
 `+ Manager` while there is none. The grid does not pin managers or relabel their tiles.

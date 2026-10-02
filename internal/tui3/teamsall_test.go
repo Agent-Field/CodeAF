@@ -183,6 +183,8 @@ func TestTeamsOrganizeStaysOnTeamsAndTinyModalCannotApply(t *testing.T) {
 func TestTeamsAllOverviewRefreshesFailureWithoutVisitingTheTeam(t *testing.T) {
 	l := newTeamsOpenLab(t, true)
 	a := l.a
+	// Leave room for the global-manager card above the nested team state.
+	a.height = 45
 	teamsFlush(t, a)
 	for _, state := range []string{teamstore.StateFailed, teamstore.StateFinished} {
 		if err := teamstore.AppendTraffic(a.profileDir, l.orbit, teamstore.Entry{Kind: teamstore.KindEvent, Member: l.key, From: "boss", To: teamstore.ToManager, State: state}); err != nil {

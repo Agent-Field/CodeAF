@@ -28,7 +28,8 @@ the press opens the team-agnostic conversations view instead, and the hint says 
 The left column is the **rail**:
 
 ```
- All teams     + Manager │
+ All teams               │
+ + Global manager        │
  ● harbor ◆          ? 1 │
    ● orbit           ⠿   │
  ● docs                  │
@@ -37,9 +38,10 @@ The left column is the **rail**:
  ☐ Show closed · 2       │
 ```
 
-- **`All teams`** is the top row. With no manager over every team it offers `+ Manager`,
+- **`All teams`** is the top row. With no manager over every team, the next row offers `+ Global manager`,
   which starts a separate global manager conversation: you talk to it, and it talks
-  to each team's own manager. Once there is one, All teams still opens the overview; its manager link opens that conversation.
+  to the managers of open top-level teams. Subteam managers report to their parent team.
+  Once there is one, All teams still opens the overview; its Global manager card opens that conversation.
 - **Every open team**, a sub-team indented under the team it belongs to, with its colour dot.
   A team with a manager wears a dim `◆`.
 - **A mark only when something is happening.** A dim `⠿` says a member of the team is
@@ -72,8 +74,9 @@ and remote restrictions described below also apply here.
 
 Click a team's name or card background to inspect its Teams overview without opening a chat.
 Click a manager alias to open its conversation with that team's Chats overlay. Reading a
-preview does not mark a conversation read. The optional global manager and global settings
-remain accessible, and pending decisions remain directly actionable above the cards.
+preview does not mark a conversation read. The dedicated Global manager card precedes the team cards;
+it shows its alias, saved update, activity, spending and reporting teams. Its alias and
+preview lead to its conversation. Pending decisions remain directly actionable above the cards.
 
 Arrow keys walk the cards; `space` picks teams and `m` moves the focused or picked teams.
 Drag a team card onto another card or sidebar team to move it; the empty sidebar below the
@@ -387,7 +390,7 @@ manager remains a member, and both conversations keep their work and history.
 The picker cannot create a conversation or add membership. All teams also offers
 `+ Add member` for adding a global-manager candidate; automatic memberships stay protected. For a new manager, first use
 `+ Add member` to add or create its conversation, then use `Choose manager`.
-A manager cannot be removed or permanently deleted while it manages an active team.
+An ordinary team manager cannot be removed or permanently deleted while it manages an active team.
 The deletion confirmation names every active team it manages and says
 `Assign another manager before deleting it.` Replace it in every named
 team before deleting its conversation. Missing conversations are not replacement candidates.
@@ -413,3 +416,23 @@ missing, its card says `Conversation unavailable`; add or select a replacement e
 A blocked deletion names every active team the conversation manages. In a short terminal,
 scroll the message with the mouse wheel or Page Up/Page Down. Cancel/delete and the
 keyboard hints remain visible. Choose replacements through Teams → Choose manager first.
+
+## Global manager — create, delete and recreate
+
+All teams shows a dedicated **Global manager** card above its team cards. The global
+manager is optional. `+ Global manager` in the sidebar or this card creates a separate
+conversation; the managers of open top-level teams become its reports automatically.
+Ordinary members and subteam managers are not direct reports. The card shows the current
+reporting teams and up to four lines of the latest saved assistant update. Read the preview
+without marking the conversation read; click its alias or preview to open and respond.
+
+The card's `x` permanently deletes the global-manager conversation with the usual
+`cancel` / `delete` confirmation. Its teams, their managers, running work and history remain.
+This same optional-global-manager exception works from Home, Chats and Sessions.
+`+ Global manager` reappears so it can be created again; assigning it reconnects current
+top-level managers as reports. Ordinary members retain their reporting choices. A global manager cannot also
+manage an ordinary team; conflicting old assignments must be repaired before deletion.
+
+`+ Add member` and `Choose manager` still allow an existing conversation to become the
+global manager. `Settings` retains global spending controls. If the manager transcript is
+missing, the card says `Conversation unavailable` and offers `+ Global manager` to replace it.

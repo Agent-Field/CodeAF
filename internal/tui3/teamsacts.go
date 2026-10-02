@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -87,6 +88,15 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		return a.teamsManagerStart(t.id)
 	case teamsActRootManager:
 		return a.teamsRootManagerStart()
+	case teamsActDeleteGlobalManager:
+		root, ok := a.teamsRoot()
+		if !ok || root.ID != t.id || root.Manager != t.arg {
+			return nil
+		}
+		if m, ok := root.Member(root.Manager); ok {
+			return a.conversationDeleteOpen(m.File, m.Word)
+		}
+		return nil
 	case teamsActSettings:
 		return a.teamSheetOpen(t.id, teamSheetSettings)
 	case teamsActClose:
@@ -241,13 +251,17 @@ func (a *app) teamsManagerStart(id string) tea.Cmd {
 	}
 	a.tp.focus = false
 	return a.teamsStartManager(a.teamWhere(t), func(tab chatTab) {
-		if err := a.teamMakeManager(id, tab); err != nil {
-			a.note("the manager is set for this window, but " + err.Error())
+		if err := a.teamMakeManager(id, tab, t.Manager); err != nil {
+			a.note("Could not assign manager: " + err.Error())
+			a.tp.sel = ""
+			return
 		}
+		a.teamsWatchManagerStart(tab.key)
+		a.tp.sel = id
 	})
 }
 
-// teamsRootManagerStart is `+ Manager` on the `All teams` row: the optional
+// teamsRootManagerStart is `+ Global manager` on the `All teams` row: the optional
 // global manager. It makes the root team (every top-level team moves under it,
 // internal/teams' root.go) and its manager in one edit.
 func (a *app) teamsRootManagerStart() tea.Cmd {
@@ -257,7 +271,7 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 		return nil
 	}
 	if root, ok := a.teamsRoot(); ok {
-		if root.Manager != "" {
+		if root.Manager != "" && !a.teamsManagerMissing(root) {
 			return a.teamsSelect(root.ID)
 		}
 		return a.teamsManagerStart(root.ID)
@@ -270,6 +284,9 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 		err := a.teamEdit(func(f *teamstore.File) error {
 			id := rootID
 			if r, ok := f.Root(); ok {
+				if r.ID != rootID || r.Manager != "" && r.Manager != tab.key {
+					return fmt.Errorf("The global manager changed; review it in Teams before assigning another")
+				}
 				id = r.ID
 			} else {
 				f.Teams = append([]teamstore.Team{{ID: rootID, Name: teamstore.RootName, Made: now, Root: true}}, f.Teams...)
@@ -287,8 +304,11 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 			return f.SetManager(id, tab.key)
 		})
 		if err != nil {
-			a.note("the manager is set for this window, but " + err.Error())
+			a.note("Could not assign global manager: " + err.Error())
+			a.tp.sel = ""
+			return
 		}
+		a.teamsWatchManagerStart(tab.key)
 		a.tp.sel = rootID
 		if r, ok := a.teamsRoot(); ok {
 			a.tp.sel = r.ID

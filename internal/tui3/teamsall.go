@@ -100,23 +100,6 @@ func (a *app) teamsAllHeader(d *teamsDraw, width, y int) []string {
 	button, _ := d.button(word, teamsTarget{act: teamsActOrganize, x0: x, y: y, hint: "Suggest teams; nothing changes until you apply", pane: true}, pal.muted)
 	left := fit(" "+pal.bold(pal.ink(teamstore.RootName)), max(x-1, 1))
 	out := []string{teamsPad(left, x) + button}
-	if root, ok := a.teamsRoot(); ok {
-		if m, ok := root.Member(root.Manager); ok {
-			alias := m.Word
-			if m.Handle != "" {
-				alias = "@" + m.Handle
-			}
-			b, _ := d.button("Manager "+alias, teamsTarget{act: teamsActMember, id: root.ID, arg: m.Key, x0: 1, y: y + len(out), hint: "Open the manager of all teams", pane: true}, pal.muted)
-			out = append(out, " "+b)
-		}
-		for _, control := range []struct {
-			word string
-			act  teamsAct
-		}{{"+ Add member", teamsActAddMember}, {"Choose manager", teamsActChooseManager}, {"Settings", teamsActSettings}} {
-			b, _ := d.button(control.word, teamsTarget{act: control.act, id: root.ID, x0: 1, y: y + len(out), hint: control.word + " of All teams", pane: true}, pal.muted)
-			out = append(out, " "+b)
-		}
-	}
 	// Undo belongs to the same surface as Apply, including its store refusal.
 	o := a.wall.org
 	if o.said.said() && teamSaidWithin(o.doneAt, a.now(), wallOrganizedFor) {
@@ -139,7 +122,9 @@ func (a *app) teamsAllCards(d *teamsDraw, width, y int) []string {
 	if width < 12 {
 		return nil
 	}
-	return a.teamsOverviewGrid(d, a.teamsOverviewRoots(), width, 0, y, false, map[string]bool{})
+	out := a.teamsGlobalManagerCard(d, width, y)
+	out = append(out, "")
+	return append(out, a.teamsOverviewGrid(d, a.teamsOverviewRoots(), width, 0, y+len(out), false, map[string]bool{})...)
 }
 
 func (a *app) teamsOverviewGrid(d *teamsDraw, teams []team, width, x, y int, compact bool, ancestors map[string]bool) []string {

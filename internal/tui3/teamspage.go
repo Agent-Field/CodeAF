@@ -169,6 +169,7 @@ const (
 	teamsActRemoveMember
 	teamsActAddSubteam
 	teamsActOrganizeUndo
+	teamsActDeleteGlobalManager
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────
@@ -191,6 +192,7 @@ const (
 	// railRowNewIn is the second row of `+ New team in harbor` on a rail too
 	// narrow to say it on one: `in harbor`, under `+ New team`.
 	railRowNewIn
+	railRowGlobalManager
 )
 
 // teamsRoot is the root team, false when there is none. Memory only.
@@ -237,6 +239,9 @@ func (a *app) teamsClosed() []team {
 // teamsRailRows is the rail, top to bottom. Memory only.
 func (a *app) teamsRailRows() []teamsRailRow {
 	rows := []teamsRailRow{{kind: railRowAll}}
+	if root, ok := a.teamsRoot(); !ok || root.Manager == "" || a.teamsManagerMissing(root) {
+		rows = append(rows, teamsRailRow{kind: railRowGlobalManager})
+	}
 	rows = append(rows, a.teamsOpenTree()...)
 	if closed := a.teamsClosed(); len(closed) > 0 {
 		if a.tp.closedOpen {

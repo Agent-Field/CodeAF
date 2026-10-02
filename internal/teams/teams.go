@@ -481,6 +481,15 @@ func (f *File) SetManager(id, key string) error {
 	}
 	f.Teams[idx].Manager = key
 	assignHandles(&f.Teams[idx])
+	if f.Teams[idx].Root {
+		// Explicitly assigning the optional global role reconnects its current
+		// top-level managers, including reports made independent by its deletion.
+		// Ordinary members and former managers keep their reporting choices.
+		seatTopManagers(f.Teams, id)
+		for _, m := range f.TopManagers() {
+			setHomeFlag(f.Teams, m.Key, id)
+		}
+	}
 	return nil
 }
 

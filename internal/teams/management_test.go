@@ -192,3 +192,20 @@ func TestMoveEffectsKeepsLocalAliasIdentity(t *testing.T) {
 	copy := f.tidyCopy()
 	must(t, copy.SetParent("child-a", "child-b"))
 }
+
+func TestGlobalManagerAssignmentReconnectsOnlyCurrentTopManagers(t *testing.T) {
+	f := &File{Teams: []Team{
+		{ID: "root", Name: RootName, Root: true, Members: []Member{{Key: "global"}, {Key: "extra", Independent: true}, {Key: "former", Independent: true}}},
+		{ID: "parent", Name: "parent", Parent: "root", Manager: "parent-manager", Members: []Member{{Key: "parent-manager", Independent: true}, {Key: "worker", Independent: true}}},
+		{ID: "child", Name: "child", Parent: "parent", Manager: "child-manager", Members: []Member{{Key: "child-manager", Independent: true}}},
+	}}
+	must(t, f.SetManager("root", "global"))
+	if home, ok := f.Home("parent-manager"); !ok || home.Manager != "global" {
+		t.Fatal("current top-level manager not reconnected")
+	}
+	for _, key := range []string{"extra", "former", "worker", "child-manager"} {
+		if _, ok := f.Home(key); ok {
+			t.Fatalf("changed reporting choice of %s", key)
+		}
+	}
+}

@@ -247,9 +247,10 @@ type teamsDisk struct {
 	// number: seq counts every edit this window has made, so a notice that
 	// says an edit happened can ask whether the store took THAT edit
 	// ([app.teamsWriteSettled]).
-	queue    []func(*teamstore.File) error
-	queueSeq []int
-	seq      int
+	queue         []func(*teamstore.File) error
+	queueSeq      []int
+	seq           int
+	managerStarts map[int]string
 	// fetch says an opening found nothing held ([TeamsSeam.Load]'s known
 	// false) and a read is wanted; fetching says it is out.
 	fetch, fetching bool
@@ -407,6 +408,15 @@ func (a *app) teamsWrite() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// Manager creation keeps the new conversation ordinary if another writer took
+// leadership first. A rejected assignment must also discard its optimistic role.
+func (a *app) teamsWatchManagerStart(key string) {
+	if a.teamsDisk.managerStarts == nil {
+		a.teamsDisk.managerStarts = map[int]string{}
+	}
+	a.teamsDisk.managerStarts[a.teamsDisk.seq] = key
+}
+
 // teamsTake folds one write or the opening's read in, on the loop.
 //
 // A LIST FROM THE STORE REPLACES WHAT THE WINDOW HOLDS ONLY WHEN IT IS THE
@@ -422,9 +432,30 @@ func (a *app) teamsTake(w teamsWrote) {
 		a.traffic.wrote = w.covers
 		a.teamsWriteSettled(w)
 	}
+	managerRefused := false
+	for _, seq := range w.seqs {
+		if key, watched := a.teamsDisk.managerStarts[seq]; watched {
+			delete(a.teamsDisk.managerStarts, seq)
+			if w.refused[seq] != nil {
+				managerRefused = true
+				if key == a.frontTabKey() {
+					a.teamViewSet("")
+				}
+			}
+		}
+	}
+	if managerRefused && w.covers == a.traffic.edits && w.stamp != "" {
+		a.teamAdopt(teamsClone(w.teams))
+		a.traffic.stamp = w.stamp
+		a.touch()
+	}
 	if w.err != nil {
 		if !w.read {
-			a.note("the teams are kept for this window, but " + w.err.Error())
+			if managerRefused {
+				a.note("Could not assign manager: " + w.err.Error())
+			} else {
+				a.note("the teams are kept for this window, but " + w.err.Error())
+			}
 		}
 		return
 	}

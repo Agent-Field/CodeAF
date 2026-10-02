@@ -147,3 +147,22 @@ Milestone 2 review revision: hovering a conversation tab, including its close ce
 manager place, gives the fixed All button its normal hover emphasis. Its geometry, action
 and pointer hint still belong to the button itself; team selection and new-chat controls
 do not trigger that emphasis.
+
+
+Milestone 2 global-manager revision: All teams has a dedicated Global manager card before
+the team hierarchy. The creation label is `+ Global manager`, in its own sidebar row and
+on the card when absent or missing. The populated card retains the current alias, saved
+assistant preview, state, spending and global controls, and names its current reporting
+teams. The reports are top-level team managers, excluding closed teams and subteams.
+The card's `x` uses ordinary permanent conversation deletion confirmation. The optional
+root-manager choice clears only that role; all teams and their managers survive.
+Creation is available again afterward. Ordinary manager deletion still requires replacing
+that manager in Teams, including legacy conflicts involving the global role.
+
+Adversarial review repaired recreation routing: explicit global-manager assignment
+reconnects only current top-level managers. The card checks actual reporting homes, and
+conversation deletion refreshes team state even when no held team conversation remains.
+Manager creation from another selected team opens the captured manager's own overlay.
+Concurrent creation refuses changed root/manager assignments, adopts current leadership
+and preserves its newly created conversation as ordinary Chats. Focused tests exercise
+these transitions through the real saved-conversation and teams-store doors.
