@@ -172,7 +172,7 @@ func (au *audited) remember(t *testing.T, h *twoHomes) string {
 	}
 	defer brain.Close()
 	brain.SetMemoryLedger(session.CellMemories)
-	session.CellMemories.Bind(h.cell.ID, h.cell.Root)
+	session.CellMemories.Bind(h.cell.ID, h.cell.Root, nil)
 	m, err := brain.AddMemory(store.Memory{Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
 		Title: "parser order", Text: "migrate the parser before the printer", SourceSession: h.cell.ID})
 	if err != nil {

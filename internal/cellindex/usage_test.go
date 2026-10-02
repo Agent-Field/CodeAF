@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,4 +107,42 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// The log a take carries does not name the newest turn, but that turn's receipt
+// is in the tree: its calls are still the chat's spend.
+func TestUsageCountsTheReceiptOfATurnTheCarriedLogDoesNotName(t *testing.T) {
+	bin, err := furrow.ResolveOwned()
+	if err != nil {
+		t.Skipf("no engine binary: %v", err)
+	}
+	t.Setenv(home.EnvVar, t.TempDir())
+	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir()}
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := cellstore.NewRecorder(nil, e, c, filepath.Join(t.TempDir(), "wal"), cellstore.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		rec.NoteModelCall(executor.ModelCall{Model: "m", Role: "turn", TokensIn: 10, TokensOut: 1, CostMicroUSD: 1000})
+		if err := os.WriteFile(filepath.Join(c.Root, "f.txt"), []byte{byte('a' + i)}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		around(t, rec)
+	}
+	rec.Settle(context.Background())
+	all, _ := cellstore.ModelCalls(c)
+
+	path := filepath.Join(c.Root, cellstore.TurnsPath)
+	raw, _ := os.ReadFile(path)
+	lines := strings.SplitAfter(strings.TrimRight(string(raw), "\n"), "\n")
+	if err := os.WriteFile(path, []byte(strings.Join(lines[:len(lines)-1], "")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := cellstore.ModelCalls(c); err != nil || len(got) != len(all) || len(all) != 3 {
+		t.Fatalf("with the newest line missing %d calls are counted (%v), want %d", len(got), err, len(all))
+	}
 }
