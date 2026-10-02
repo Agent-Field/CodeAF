@@ -92,6 +92,8 @@ A chat has one holder at a time. To take a chat back from the computer that took
 
 If two computers press `continue here` for the same chat together, only one of them gets it. The slower one sees `another device continued this chat first`, nothing is changed on it, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
+While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
+
 When the holder is off (its lid is shut), the row reads `<device> off` and you can still continue the chat here: the card says `last durable turn <N>s ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; when it comes back online it sees the chat was continued elsewhere and keeps those turns as a branch for you to merge or discard.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
