@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sync"
 	"time"
@@ -60,6 +61,13 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 // yet (which /pair will change) from one that cannot sync at all.
 func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*syncsetup.Drive, error) {
 	s, ok, err := syncsetup.Open(home.Dir())
+	if errors.Is(err, syncsetup.ErrNoIdentity) {
+		// Waiting for an identity is not a seal failing: the live drive starts by itself once one
+		// is made, and until then nothing is owed to the relay. With the hosted default every
+		// fresh computer is in this state, so reporting it would mark every first launch as
+		// failing to seal.
+		return nil, err
+	}
 	if err != nil || !ok {
 		report(err)
 		return nil, err
