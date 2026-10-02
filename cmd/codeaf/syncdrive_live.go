@@ -88,6 +88,18 @@ func (l *liveDrive) Close(ctx context.Context) error {
 	return nil
 }
 
+// superseded says a drive side was running and another machine then took the chat from it,
+// which leaves it only showing the chat. A drive side that is still waiting for an identity,
+// or that drives, is not.
+func (l *liveDrive) superseded() bool {
+	d := l.started()
+	if d == nil {
+		return false
+	}
+	_, viewer := d.Viewer()
+	return viewer
+}
+
 // started is the drive side if one ever started, without trying to start it.
 func (l *liveDrive) started() *syncsetup.Drive {
 	l.mu.Lock()
