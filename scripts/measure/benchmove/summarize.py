@@ -17,6 +17,14 @@ ORDER = {"S": 0, "M": 1, "L": 2, "XL": 3}
 KIND_ORDER = {"one": 0, "fifty": 1, "big": 2}
 
 
+def device_name(rows, env, who):
+    """The device a latency table row is about: A is this box; the other is whichever second device the env ran (A2 on one box)."""
+    if who == "a":
+        return "A"
+    others = {r["machine"] for r in rows if r["env"] == env} - {"A"}
+    return min(others) if others else "A2"
+
+
 def counts(wire):
     g = lambda k: wire.get(k, {})
     dir_n = sum(v["n"] for k, v in wire.items() if k.startswith("dir_"))
@@ -204,7 +212,7 @@ def md(rows, out):
         for s in sizes:
             for who in ("a", "b"):
                 for lab, nm in (("interval_200ms", "200 ms"), ("interval_default_5s", "5 s (default)")):
-                    xs = [r for r in rows if r["env"] == e and r["size"] == s and r["scenario"] == "latency_" + lab and r["machine"] == (("spark") if who == "a" else [m for m in {x["machine"] for x in rows if x["env"] == e} if m != "spark"][0] if [m for m in {x["machine"] for x in rows if x["env"] == e} if m != "spark"] else "spark-b")]
+                    xs = [r for r in rows if r["env"] == e and r["size"] == s and r["scenario"] == "latency_" + lab and r["machine"] == device_name(rows, e, who)]
                     if not xs:
                         continue
                     sl, dl = sorted(r["turn"]["seal_ms"] for r in xs), sorted(r["turn"]["durable_ms"] for r in xs)

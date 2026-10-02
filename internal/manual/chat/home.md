@@ -288,7 +288,7 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
-## Chats on my other machines — a chat running on another computer, "running on studio", "studio off", merge / discard
+## Chats on my other machines — a chat running on another computer, "running on studio", "studio off", why does it say running on build-box off, merge / discard
 
 When this machine can reach your other machines, a chat that lives on one of them is a
 row under **sessions**, beside the local ones and ordered by when its last saved turn
@@ -301,7 +301,7 @@ happened. The row says where the chat is only where that tells you something:
 | a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
 | held by this machine, or let go by everyone | nothing |
 
-A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box off` says that computer is switched off, asleep or offline and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `off` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -388,6 +388,18 @@ If you continue a chat on a machine that already has it, the chat as it was left
 what is there. Anything you had changed and never saved is kept first, as a branch, with the
 sentence above; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
+
+## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
+
+A chat that moves to another computer brings, from the relay and sealed on the way:
+
+- the whole conversation, and every file in its folder, which includes a background job's log (`.codeaf/jobs/<n>.log`) like any other file. The job itself is not carried: a command that was running is listed on the card as `was running there:` and codeaf never starts it for you;
+- the task list, each task's own record of what it said and did, its deliverables, the dials the chat was set to (effort and approval), the folders it refers to and which tasks were put away;
+- a task's unlanded working copy and its branch (see "Tasks that had not landed when a chat moved"); a task that already finished has no copy, so a branch it left kept stays in the repository where it was made and is not carried on its own;
+- what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;
+- the memories that chat wrote, kept in the chat's own ledger and read back into the new computer's memory.
+
+It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Budgets, limits and model picks are per computer and never travel. Memory that belongs to no chat, for example a line edited by hand in the memory place, stays on the computer it was written on. The next sections have the card and the odd files.
 
 ## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
 

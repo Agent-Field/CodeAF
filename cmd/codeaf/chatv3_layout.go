@@ -802,7 +802,19 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note))
 	failed(watch, err)
+	watch.OnTail = func() { sealTail(seat, drive) }
 	return executor.Gated(seat, driveGate(drive)), machine, watch
+}
+
+// sealTail seals what the chat wrote after the turn-end seal (titles, summaries,
+// memories) and sends it. It is the turn's own ending again, so the record has
+// one way to become durable; the sync side's single flight folds it into the
+// upload already running. The watch calls it from its own timer, once.
+func sealTail(seat executor.Seat, drive *liveDrive) {
+	executor.Settle(context.Background(), seat)
+	if drive != nil {
+		drive.Idle()
+	}
 }
 
 // observerOf is the machine's observer, and no observer where the inventory
@@ -816,11 +828,22 @@ func observerOf(m *preflight.Machine) executor.Observer {
 
 // sealSeamOf is what a session's seals tell the chat surface: nothing for a
 // session with no seat of its own.
-func sealSeamOf(seals session.SealState) tui3.SealSeam {
-	if seals == nil {
-		return tui3.SealSeam{}
+//
+// WHETHER THE LAST SEAL FAILED IS ASKED OF THE AGENT, not of the watch: the
+// ordinary launch shows an agent running in a separate engine process, where
+// the watch is not in this one and the engine states the fact over the wire
+// ([session.Facts.Unsealed]). The agent's own predicate is the one source both
+// readings come from. The sentences are drained from the local watch only; an
+// engine tells its own on the turn's stream.
+func sealSeamOf(agent any, seals session.SealState) tui3.SealSeam {
+	var seam tui3.SealSeam
+	if seals != nil {
+		seam = tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
 	}
-	return tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
+	if door, ok := agent.(interface{ SealFailing() bool }); ok {
+		seam.Failing = door.SealFailing
+	}
+	return seam
 }
 
 // stderrSay is where a run with no surface says its sentences.

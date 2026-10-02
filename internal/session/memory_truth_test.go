@@ -26,7 +26,7 @@ func memoryCell(t *testing.T, ledger bool) (cell.Cell, string) {
 	defer brain.Close()
 	if ledger {
 		brain.SetMemoryLedger(session.CellMemories)
-		session.CellMemories.Bind(c.ID, c.Root)
+		session.CellMemories.Bind(c.ID, c.Root, nil)
 	}
 	kept, err := brain.AddMemory(store.Memory{Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
 		Title: "parser order", Text: "migrate the parser before the printer", SourceSession: c.ID})

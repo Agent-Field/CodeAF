@@ -1,5 +1,14 @@
 package session
 
+// SealFailing reports whether the last seal of this conversation's calls
+// failed. It is the one predicate every reader asks: the in-process surface
+// reads it directly, and an engine states it to a surface in another process on
+// [Facts.Unsealed]. A conversation whose calls are not sealed at all, or whose
+// seals hold, answers false.
+func (a *Agent) SealFailing() bool {
+	return a != nil && a.config.Seals != nil && a.config.Seals.Failing()
+}
+
 // noticeSealed says on the turn's own stream what the seat's seal watch has to
 // say: a file kept out of the saved history, a seal that failed, a seal that
 // works again.
