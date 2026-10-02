@@ -43,9 +43,12 @@ type teamMenuRow struct {
 	depth int
 }
 
-// teamMenuRows starts with None and then lists the active team hierarchy.
+// The optional global manager has its own overlay, distinct from the grid.
 func (a *app) teamMenuRows() []teamMenuRow {
 	rows := []teamMenuRow{{code: teamMenuNone}}
+	if root, ok := a.teamsRoot(); ok && root.Manager != "" && !a.teamsManagerMissing(root) {
+		rows = append(rows, teamMenuRow{code: wallPopTeam, id: root.ID})
+	}
 	for _, r := range a.teamsOpenTree() {
 		rows = append(rows, teamMenuRow{code: wallPopTeam, id: r.id, depth: r.depth})
 	}
@@ -286,7 +289,7 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 				name = ansi.Truncate(name, wallChipCap, g.more)
 			}
 			n := 0
-			for _, m := range t.Members {
+			for _, m := range a.teamsCrewMembers(t) {
 				if open[m.Key] {
 					n++
 				}

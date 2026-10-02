@@ -123,6 +123,26 @@ func (a *app) teamsRouteMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		a.teamsInteractionsScroll(delta)
 		return nil, true
 	}
+	// A tall manager excerpt has a second reading position. One wheel tick
+	// reaches its latest visible words instead of skipping the whole card.
+	if _, wheel := msg.(tea.MouseWheelMsg); wheel && !a.tcrew.on && !a.tdrag.press && m.Y >= placeHeadRows && m.Y < a.height-placeFootRowsFor(pageTeams, a.height) {
+		if target, ok := a.teamsTargetAt(m.X, m.Y); ok && target.act == teamsActMember {
+			if team, found := a.teamByID(target.id); found && !team.Root && target.arg == team.Manager && (m.Button == tea.MouseWheelDown || m.Button == tea.MouseWheelUp) {
+				next := teamsRef{act: teamsActMember, id: target.id, arg: target.arg}
+				if m.Button == tea.MouseWheelDown {
+					next.opt = "preview"
+				}
+				current, currentOK := a.teamsCursorTarget()
+				reading := a.tp.cur.act == teamsActMember && a.tp.cur.id == target.id && a.tp.cur.arg == target.arg
+				if next != a.tp.cur && (reading || !currentOK || !current.pane) {
+					a.tp.focus = true
+					a.tp.cur = next
+					a.touch()
+					return nil, true
+				}
+			}
+		}
+	}
 	// THE MEMBERS CARD, AND A DRAG, TAKE THE POINTER FIRST (teamcrew.go,
 	// teamdrag.go): a drag that started on the card goes on over the rail.
 	if a.tdrag.press {

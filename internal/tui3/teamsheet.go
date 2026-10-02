@@ -12,36 +12,10 @@ import (
 
 // ── THE TEAM SETTINGS CARD, AND THE CLOSE AND DELETE CARDS ─────────────────
 //
-// One card over whatever the frame is showing, opened from three doors that
-// mean the same thing: `Team settings…` in the strip's switcher, `e` on the
-// wall, and `Settings` in the teams page's header. It was a popover on the wall
-// alone; it is a card of its own now because a team's settings are a fact
-// about the team and not about the wall.
-//
-//	╭─ Team settings ─────────────────────────────────────────╮
-//	│                                                          │
-//	│  Name      harbor▏                                       │
-//	│  Colour    ◉ ● ● ● ●                                     │
-//	│  ──────────────────────────────────────────────────────  │
-//	│  questions go to the manager   on · from Settings        │
-//	│  daily cap                     $5 a day          reset   │
-//	│  team depth                    3 levels · from harbor    │
-//	│  sub-team share                50% · from Settings       │
-//	│  ──────────────────────────────────────────────────────  │
-//	│   Close team…                                   Done ⏎   │
-//	│                                                          │
-//	╰──────────────────────────────────────────────────────────╯
-//
-// OVERRIDES ONLY. A value the team inherits is drawn dim with where it comes
-// from ([teamstore.Origin.Words]: `from Settings`, `from harbor`); a value the
-// team sets is drawn in ink with `reset` beside it. Changing a dim value makes
-// it an override; `reset` makes it inherit again. The writes are
-// [teamstore.File.SetSettings] through [app.teamEdit], so they reach the
-// session's own file, over --host included.
-//
-// THERE IS NO `wake` ROW. The ruling names one, and the store on this build has
-// no such field (internal/teams' teamsettings.go keeps four); a row that wrote
-// nothing would be a control that lies, so it waits for the store.
+// Settings belongs to the Teams page. The five rows use the same override and
+// reset mechanics; inherited parent values name their source, while profile
+// defaults need no repeated provenance. Movement remains in the Teams picker.
+// Writes reach the session's own store, including over --host.
 //
 // THE SAME CARD CLOSES AND DELETES (teamclose.go says what each does), in two
 // more modes, because each is a question about one team asked where the team
@@ -73,8 +47,8 @@ const (
 	tsCancel
 	tsDelete
 	tsKeep
-	// `Inside: harbor ▾` and the move it asks for (teammove.go): its
-	// consequence line's `Move` and `Cancel`, and the Undo after it.
+	// Retired movement hit codes remain stable so stale frames cannot become
+	// a different settings action after the Inside control is removed.
 	tsInside
 	tsMoveYes
 	tsMoveNo
@@ -167,7 +141,7 @@ type teamSheetRow struct {
 	own          bool
 }
 
-// teamSheetRows is the four overrides of team t, in the ruling's order.
+// teamSheetRows lists the five overrides in their displayed order.
 func (a *app) teamSheetRows(t team) []teamSheetRow {
 	e := a.teamTree().Effective(t.ID, a.tp.defaults)
 	known := a.tp.defaultsOK
@@ -346,7 +320,6 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 		colour += "  " + pal.dim("←→")
 	}
 	lines = append(lines, wallCardLine{s: colour, hits: swh})
-	lines = append(lines, a.teamSheetInsideLines(t, inner, labelW)...)
 	lines = append(lines, wallCardLine{rule: true})
 	const valueX = 31
 	for _, r := range a.teamSheetRows(t) {
@@ -357,10 +330,10 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 			box, _, _ := draftBlock(&s.box, pal, inner-valueX-2, 1, teamSheetBoxHint(r.code), "")
 			text = pal.ink(teamsPad(r.label, valueX)) + strings.Join(box, "")
 		case r.own:
-			text = pal.ink(teamsPad(r.label, valueX)) + pal.ink(value)
+			text = pal.dim(teamsPad(r.label, valueX)) + pal.ink(value)
 		default:
 			words := value
-			if r.from != "" {
+			if r.from != "" && r.from != "from Settings" {
 				if words != "" {
 					words += " " + a.teamsDot() + " "
 				}
@@ -371,7 +344,7 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 		ln := wallCardLine{hits: []wallHit{{x0: 0, x1: inner - 8, y1: 1, kind: wallHitPopRow, arg: r.code}}}
 		if r.own && s.editing != r.code {
 			reset := "reset"
-			rs := pal.muted(reset)
+			rs := pal.dim(reset)
 			if s.hot == r.code+tsReset {
 				rs = pal.cursor(pal.ink(reset), 0)
 			}
@@ -404,49 +377,6 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 	row = teamsPad(row, doneX) + done
 	lines = append(lines, wallCardLine{s: row, hits: append(hits, doneHit), bleed: true})
 	return lines
-}
-
-// teamSheetInsideLines is `Inside: harbor ▾`, the team's place in the tree,
-// which opens the move picker; under it, while one is asked from here, the
-// move's consequence line with `Move` and `Cancel`, or the move just made with
-// `Undo`. The root has no place to move to and draws none.
-func (a *app) teamSheetInsideLines(t team, inner, labelW int) []wallCardLine {
-	if t.Root {
-		return nil
-	}
-	pal := a.pal
-	s := &a.tsheet
-	where := "Top level"
-	if p, ok := a.teamByID(t.Parent); ok && !p.Root {
-		where = p.Name
-	}
-	value := pal.ink(where + " " + a.linearMark("▾", "v"))
-	line := pal.dim(teamsPad("Inside", labelW)) + value
-	if s.cursor == tsInside || s.hot == tsInside {
-		line = pal.cursor(teamsPad(line, inner), inner)
-	}
-	out := []wallCardLine{{s: line, hits: []wallHit{{x0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: tsInside}}}}
-	if p := a.tmove.pend; len(p.ids) > 0 && p.from == teamMoveFromCard {
-		for _, l := range wrap(p.words, max(inner-labelW, 12)) {
-			out = append(out, wallCardLine{s: strings.Repeat(" ", labelW) + pal.ink(l)})
-		}
-		// The line bleeds a cell to the left (wallCardLine), so a button's cell
-		// of air stands where the value's first letter's left neighbour is, and
-		// its word lines up with the value above it.
-		yes, hy, wy := a.teamSheetButton("Move", "", tsMoveYes, labelW, true)
-		no, hn, _ := a.teamSheetButton("Cancel", "esc", tsMoveNo, labelW+wy+1, false)
-		out = append(out, wallCardLine{s: strings.Repeat(" ", labelW) + yes + " " + no, hits: []wallHit{hy, hn}, bleed: true})
-	} else if a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromCard {
-		ink := pal.dim
-		if a.tmove.undo.said.why != "" {
-			ink = pal.warn
-		}
-		said := ink(a.tmove.undo.word) + " "
-		x := labelW + 1 + ansi.StringWidth(a.tmove.undo.word) + 1
-		undo, hu, _ := a.teamSheetButton("Undo", "u", tsMoveUndo, x, false)
-		out = append(out, wallCardLine{s: strings.Repeat(" ", labelW+1) + said + undo, hits: []wallHit{hu}, bleed: true})
-	}
-	return out
 }
 
 // teamSheetButtonW is a button's width as [app.teamSheetButton] draws it.
@@ -522,14 +452,6 @@ func (a *app) teamSheetStops() []int {
 	case teamSheetSettings:
 		stops := []int{tsName, tsColour}
 		t, ok := a.teamByID(s.team)
-		if ok && !t.Root {
-			stops = append(stops, tsInside)
-			if p := a.tmove.pend; len(p.ids) > 0 && p.from == teamMoveFromCard {
-				stops = append(stops, tsMoveYes, tsMoveNo)
-			} else if a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromCard {
-				stops = append(stops, tsMoveUndo)
-			}
-		}
 		stops = append(stops, tsQuestions, tsWake, tsCap, tsDepth, tsShare)
 		if ok && !t.Root {
 			stops = append(stops, tsCloseTeam, tsDeleteTeam)
@@ -683,9 +605,6 @@ func (a *app) teamSheetDo(code int) tea.Cmd {
 	case tsCap, tsDepth, tsShare:
 		s.cursor, s.editing = code, code
 		s.box.reset()
-	case tsInside:
-		s.cursor = code
-		return a.teamMoveOpen([]string{id}, teamMoveFromCard)
 	case tsMoveYes:
 		s.cursor = tsInside
 		return a.teamMoveConfirm()
@@ -867,7 +786,7 @@ func (a *app) teamSheetHint() string {
 		return "type to rename · ↓ next · esc done"
 	case tsColour:
 		return "←→ colour · esc done"
-	case tsQuestions, tsCap, tsDepth, tsShare:
+	case tsQuestions, tsWake, tsCap, tsDepth, tsShare:
 		return "enter change it for this team · r reset to inherit · esc done"
 	case tsInside:
 		return "enter Move into… another team, or the top level · esc done"

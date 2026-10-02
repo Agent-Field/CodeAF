@@ -403,35 +403,21 @@ func TestNewTeamInTheChosenTeam(t *testing.T) {
 	}
 }
 
-// THE TEAM'S CARD HAS `Inside: …  ▾`, which opens the same picker, and the move
-// it makes is offered back on the card.
-func TestTheCardsInsideFieldMovesTheTeam(t *testing.T) {
-	a, harbor, _, dock := nestLab(t)
+// Movement belongs to Teams, and cannot be opened by a retired Settings hit.
+func TestSettingsCannotOpenRetiredInsideControl(t *testing.T) {
+	a, _, _, dock := nestLab(t)
 	drive(t, a, runCmd(a.teamSheetOpen(dock, teamSheetSettings))...)
-	if text := teamsFrameText(a); !strings.Contains(text, "Inside") || !strings.Contains(text, "Top level ▾") {
-		t.Fatalf("the card has no Inside field:\n%s", text)
+	if text := teamsFrameText(a); strings.Contains(text, "Inside") {
+		t.Fatalf("retired Inside field: %s", text)
 	}
 	drive(t, a, runCmd(a.teamSheetDo(tsInside))...)
-	if !a.tmove.on || a.tmove.from != teamMoveFromCard {
-		t.Fatal("Inside did not open the picker")
-	}
-	drive(t, a, key("enter"))
-	if parentOf(a, dock) != harbor {
-		t.Fatalf("dock is under %q", parentOf(a, dock))
-	}
-	text := teamsFrameText(a)
-	if !strings.Contains(text, "harbor ▾") || !strings.Contains(text, "Undo") {
-		t.Fatalf("the card does not show the move and its Undo:\n%s", text)
-	}
-	drive(t, a, key("u"))
-	if parentOf(a, dock) != "" {
-		t.Fatal("u on the card did not undo the move")
+	if a.tmove.on {
+		t.Fatal("stale settings hit opened move picker")
 	}
 }
 
-// THE SWITCHER IS THE TREE, INDENTED; THE WALL'S TEAMS ROW STAYS FLAT and says
-// `harbor › orbit` for the team inside harbor.
-func TestSwitcherIsTheTreeAndTheWallSaysParentAndChild(t *testing.T) {
+// The switcher preserves hierarchy while the conversation grid stays team agnostic.
+func TestSwitcherIsTheTreeAndConversationGridRemainsTeamAgnostic(t *testing.T) {
 	a, harbor, orbit, _ := nestLab(t)
 	a.leavePlace()
 	a.openTeamMenu()
@@ -461,8 +447,8 @@ func TestSwitcherIsTheTreeAndTheWallSaysParentAndChild(t *testing.T) {
 	}
 	a.width = 160
 	drive(t, a, runCmd(a.openWall())...)
-	if !strings.Contains(teamsFrameText(a), "harbor › orbit") {
-		t.Fatalf("the wall's Teams row does not say harbor › orbit:\n%s", teamsFrameText(a))
+	if strings.Contains(teamsFrameText(a), "harbor › orbit") {
+		t.Fatalf("conversation grid regained a team hierarchy row:\n%s", teamsFrameText(a))
 	}
 }
 

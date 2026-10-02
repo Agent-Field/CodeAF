@@ -71,7 +71,11 @@ func TestTeamsOverviewSelectionDoesNotOpenOrFocusManager(t *testing.T) {
 	if len(l.asked) != 0 || l.a.frontTabKey() != front || !l.a.at(pageTeams) {
 		t.Fatalf("team selection changed chat focus: calls %v front %q", l.asked, l.a.frontTabKey())
 	}
-	if text := teamsFrameText(l.a); !strings.Contains(text, "@boss") || !strings.Contains(text, "Recent interactions") {
+	if text := teamsFrameText(l.a); !strings.Contains(text, "@boss") {
+		t.Fatal(text)
+	}
+	l.a.tp.cur = teamsRef{act: teamsActInteractionDown, id: l.orbit}
+	if text := teamsFrameText(l.a); !strings.Contains(text, "Recent interactions") {
 		t.Fatal(text)
 	}
 }

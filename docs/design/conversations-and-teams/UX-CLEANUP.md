@@ -166,3 +166,36 @@ Manager creation from another selected team opens the captured manager's own ove
 Concurrent creation refuses changed root/manager assignments, adopts current leadership
 and preserves its newly created conversation as ordinary Chats. Focused tests exercise
 these transitions through the real saved-conversation and teams-store doors.
+
+## Additional improvements: follow-up milestone 3
+
+The Chats picker offers None, then All teams when the optional global manager exists,
+then the ordinary active hierarchy. All teams activates the global-manager overlay;
+the fixed All grid remains independent and shows conversations open in this window.
+Root counts use its actual overlay crew, excluding retained former managers or candidates.
+A root with no manager or a known missing manager transcript has no picker row.
+
+A selected team's manager now leads in a full-width card at least as tall as Recent
+interactions. Ordinary members retain their compact seven-row grid below it; the interaction
+table follows. The manager's latest excerpt preserves message authors and paragraph breaks,
+including steering corrections, interruption labels and actual team delivery senders.
+Delivery parsing shares Chats' own cards so internal wrappers are never presented as team
+messages. Quoted delivery text typed by a person remains their own text. Up to eight recent
+messages fit within the existing 64 KiB reading budget; current front messages take precedence
+without filesystem reads during paint. The card grows to at most 24 rows and uses the same
+minimum height budget as the interaction table. Clipped text explicitly says continued.
+Short frames can reach the latest excerpt with Down or the wheel; subsequent wheel ticks
+continue toward members and interactions. Every preview link opens the originating team's
+normal Chats composer. Reading a card leaves unread state and unsent drafts unchanged.
+
+Settings removes Inside and repeated profile-default provenance. Parent inheritance still
+names the source team. Wake shares the other overrides' styling, dim reset control and reset
+shortcut. Name, colour, questions, spending cap, depth and subteam share remain editable;
+moving teams remains on Teams with m or dragging.
+
+The adversarial revision pass repaired delivery/correction authorship, hosted availability,
+root crew counts, short-frame reading, repeated wheel navigation and Unicode byte-budget
+edges. Focused tests cover these paths, ordinary card geometry, interaction paging, retained
+decisions, manager preview-to-composer navigation and Wake resets. The isolated review
+launcher is /private/tmp/codeaf-teams-followup-milestone-3/review.sh and launches this worktree's
+canonical bin/codeaf. Its saved manager exchanges also appear in the actual Chats transcript.

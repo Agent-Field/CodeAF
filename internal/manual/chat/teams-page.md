@@ -95,18 +95,23 @@ opens the team's settings and spending controls. Member cards provide the conver
 links directly; there is no separate `Members` button. `p` opens the keyboard member list
 for dragging a conversation onto another team.
 
-Every member has the same size card. The manager comes first and its card says `Manager`;
-ordinary member cards have a plain border with no role title.
-Cards show a team alias, the conversation's title, activity, and two lines from its most
-recent saved assistant update. The latest update may still describe earlier work while a
-new turn is running. Clicking an alias, title or preview opens the conversation in Chats
+The manager comes first in a full-width card, at least as tall as Recent interactions.
+Compact ordinary member cards follow, with a plain border and no role title; the interaction
+panel follows the members. The manager card shows a labelled latest excerpt from up to eight
+recent messages, preserving authors and paragraph breaks. A clipped message says `continued`.
+On short windows, Down from the manager alias or a wheel tick on its card reveals the latest
+excerpt lines; Up or a wheel tick upward returns to the alias. Clicking either opens Chats.
+Messages currently displayed in the front conversation take precedence over saved previews.
+Other conversations use the saved transcript tail, which may describe earlier work while
+another turn is running. Ordinary cards retain two lines of the latest saved assistant update. Clicking an alias, title or preview opens the conversation in Chats
 with this team's view selected. The card's `working`, `asking`, `failed` or `idle` state is
 separate from `unread`; looking at a preview does not mark the chat read.
 
 A preview reads only the last 64 KiB of a local transcript. `Updates appear here` means no
 assistant update was found in that tail. `Conversation unavailable` means the file could
-not be found. Remote transcript previews are not available over `--host`; local files are
-never read as substitutes for a remote conversation.
+not be found. Saved remote transcript previews are not available over `--host`; the front conversation
+can still show its already displayed messages. Local files are never read as substitutes
+for a remote conversation.
 
 ## Adding and removing team members
 
@@ -183,8 +188,7 @@ Chats without a separate `Open` or `Resume` button.
 Teams nest: a team can sit inside another, the way `orbit` sits inside `harbor` on the rail.
 You move a team by choosing where it goes.
 
-**Move into…** Choose a team on the rail and press `m`, or open the team's card and press its
-**`Inside: harbor ▾`** row. A picker opens with every team as a tree and `Top level` first:
+**Move into…** Choose a team on the rail and press `m`, or drag its team card onto another team. A picker opens with every team as a tree and `Top level` first:
 
 ```
 ╭─ Move dock into ─────────────────────────────╮
@@ -275,30 +279,30 @@ After `M` starts a manager, Chats opens and its message box receives the keyboar
 
 ## A team's card: its settings, and where each value comes from
 
-`Settings` on the header, `Team settings…` in the team switcher on the tab strip, `e` on the
-conversations view, or `s` here opens the team's **card**:
+`Settings` on the Teams header or `s` here opens the team's **card**:
 
 ```
 ╭─ Team settings ────────────────────────────────────────────╮
 │  Name      orbit                                           │
 │  Colour    ◉ ● ● ● ● ●                                     │
 │  ────────────────────────────────────────────────────────  │
-│  questions go to the manager    on · from Settings         │
-│  team messages wake             on · from Settings         │
+│  questions go to the manager    on                            │
+│  team messages wake             on                            │
 │  daily cap                      $5.00 a day · from harbor  │
 │  team depth                     2 levels        reset      │
-│  sub-team share                 50% · from Settings        │
+│  sub-team share                 50%                          │
 │  ────────────────────────────────────────────────────────  │
-│  Close team…                                     Done ⏎    │
+│  Disband team…                                   Done ⏎    │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
 The card holds only what the team **overrides**. A value the team takes from somewhere else
-is dim and says where: `· from Settings` for the defaults under **Teams** in `/settings`, or
-`· from harbor` when a team above it set it. A value the team sets itself is drawn plain with
+is dim. Profile defaults omit the repeated provenance; an inherited parent override still
+says `· from harbor` so spending and depth constraints remain clear. A value the team sets itself is drawn plain with
 `reset` beside it, which gives the value back to what it inherits. `enter` on a row changes
 it (the two on and off rows flip; the others take a figure), and `r` resets the row the
-cursor is on. A cap is dollars a day (0 for none), a depth is 1 to 10 levels, a share is 1 to
+cursor is on. Wake follows the same styling, reset control and `r` shortcut as the other rows.
+Team movement remains on Teams with `m` or dragging; Settings has no Inside field. A cap is dollars a day (0 for none), a depth is 1 to 10 levels, a share is 1 to
 100 percent. The name is edited as you type and kept with `enter` or when the card is put
 away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
 
@@ -342,7 +346,7 @@ conversations`**, which suggests teams from the conversations you have open, and
 
 Over `--host` the page shows the teams of the machine the conversations run on: their
 decisions, their spend and their managers. The **Teams** tab of `/settings` edits that
-machine's defaults, and each value says `from Settings`. An older engine keeps the tab
+machine's defaults. Team Settings omit the repeated profile-default provenance. An older engine keeps the tab
 read only and says `changing them is not available over this connection`. A closed team's
 report is not read over the connection yet, and the page says
 `its closing report is kept where the team ran, and is not readable over this connection`

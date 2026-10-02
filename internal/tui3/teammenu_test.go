@@ -5,8 +5,56 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestTeamMenuOffersGlobalOverlayOnlyWithManager(t *testing.T) {
+	a, _, _ := menuApp(t)
+	var rootID string
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		rootID = f.MakeRoot(a.now())
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertRoot := func(want bool) {
+		t.Helper()
+		found := false
+		for _, row := range a.teamMenuRows() {
+			if row.id == rootID {
+				found = true
+			}
+		}
+		if found != want {
+			t.Fatalf("global choice = %v, want %v", found, want)
+		}
+	}
+	assertRoot(false)
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		return f.SetManager(rootID, "global")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertRoot(true)
+	a.openTeamMenu()
+	menuFrame(t, a)
+	hit := menuHit(t, a, wallPopTeam, rootID)
+	drive(t, a, runCmd(a.teamMenuPress(hit.x0+1, hit.y0))...)
+	if a.wall.activeID != rootID {
+		t.Fatal("global choice did not activate global overlay")
+	}
+	a.openTeamMenu()
+	if a.teamMenu.cursor != 1 {
+		t.Fatalf("global choice not selected: %d", a.teamMenu.cursor)
+	}
+	a.tp.previews = map[string]teamsPreview{"global": {missing: true}}
+	assertRoot(false)
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.ClearManager(rootID) }); err != nil {
+		t.Fatal(err)
+	}
+	assertRoot(false)
+}
 
 // menuApp is the strip's three conversations with two teams, harbor holding
 // the conversation in front and orbit holding one behind it, and harbor shown.
@@ -236,4 +284,36 @@ func TestTeamMenuPrintsFrame(t *testing.T) {
 	a.openTeamMenu()
 	frame, _ := menuFrame(t, a)
 	t.Logf("120x30, the chat with the team switcher open:\n%s", strings.Join(strings.Split(frame, "\n")[:14], "\n"))
+}
+
+func TestGlobalPickerCountExcludesRetainedCandidates(t *testing.T) {
+	a, _, _ := menuApp(t)
+	tabs := a.tabList()
+	var rootID string
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		rootID = f.MakeRoot(a.now())
+		if err := f.SetManager(rootID, a.frontTabKey()); err != nil {
+			return err
+		}
+		for _, tab := range tabs {
+			if tab.key != a.frontTabKey() {
+				return f.AddMember(rootID, teamstore.Member{Key: tab.key})
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.openTeamMenu()
+	frame, _ := menuFrame(t, a)
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.Contains(line, "All teams") && strings.Contains(line, "│") {
+			body := strings.TrimSpace(strings.Split(line, "│")[1])
+			if !strings.HasSuffix(body, "1") {
+				t.Fatalf("root count included retained candidate: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("global picker row absent")
 }

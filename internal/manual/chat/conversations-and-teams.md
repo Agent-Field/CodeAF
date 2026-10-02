@@ -144,7 +144,7 @@ changes no membership. Team colours mark memberships and overlays, not the globa
 ## Team settings and teams inside teams
 
 **Settings** at the right of a selected team's overview opens its name, colour, inherited
-settings and overrides. **Inside** opens the Move into picker. You can also move a team with
+settings and overrides. Move a team with
 `m` or a drag in the Teams sidebar; each move can be undone briefly. The sidebar and Chats
 Teams dropdown show the hierarchy. All teams nests smaller subteam cards inside parent cards.
 The grid offers no team settings or hierarchy controls.
@@ -192,7 +192,10 @@ again to refresh suggestions. The conversation grid has no Organize or Undo cont
 
 The dropdown is first on the Chats tab strip. With no overlay its label is **Teams ▾**;
 with one selected it shows that team's name and colour. Its first choice is **None**,
-followed by the active team hierarchy. It has no All option and no management actions.
+followed by **All teams** when a global manager exists, then the active team hierarchy.
+All teams selects the global-manager overlay; it is separate from the team-agnostic `▦ All` grid.
+A root without a manager or with a known missing manager transcript has no All teams choice.
+The picker has no management actions.
 Closed teams are available through Show closed on Teams, not through this picker.
 
 Selecting a team restores its conversation and horizontal strip position. A new overlay

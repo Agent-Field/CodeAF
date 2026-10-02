@@ -10,7 +10,10 @@ with a message that says what happened.
 
 Member previews read at most **64 KiB** (`teamsPreviewBytes`) from each selected local
 member's journal, off the UI loop. An unchanged size/mtime reuses its cached preview;
-remote journals are never opened on this machine. Interaction readings retain at most
+remote journals are never opened on this machine. Manager excerpts retain at most **8 messages**
+(`teamsPreviewMessages`) in that same tail; the front conversation uses its already displayed
+messages, capped to the same **64 KiB** total. Its card caps the height expansion at **24 rows** (`teamsManagerRows`) and never falls below
+the shared interaction-panel minimum. Interaction readings retain at most
 **200 entries** (`trafficKeep`), merged by id without consuming the live delivery cursor.
 The table paints at most **10 body rows**, reduced to fit the available pane, with a
 pinned header and independent scrolling. Paint performs no filesystem or network reads.

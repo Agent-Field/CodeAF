@@ -204,6 +204,7 @@ func teamsOverviewTraffic(t *testing.T, a *app, id string, count int) {
 			From: teamstore.FromManager, To: "model", Text: fmt.Sprintf("Exchange %02d: check the member cards and report the result.", i), At: a.now().Add(-time.Duration(i) * time.Minute)})
 	}
 	a.teamsTakeInteractions(id, entries)
+	a.tp.cur = teamsRef{act: teamsActInteractionDown, id: id}
 }
 
 func TestTeamsInteractionPanelScrollsIndependentlyAndKeepsItsHeader(t *testing.T) {
@@ -309,7 +310,8 @@ func TestTeamsManyMembersAndTheirInteractionPanelRemainReachable(t *testing.T) {
 	for _, member := range crew {
 		a.tp.previews[member.key] = teamsPreview{text: "Saved member update"}
 	}
-	lastRow := crew[(len(crew)-1)/3*3].key
+	members := crew[1:]
+	lastRow := members[(len(members)-1)/3*3].key
 	a.tp.cur = teamsRef{act: teamsActMember, id: harbor, arg: crew[0].key}
 	for i := 0; i < len(crew) && a.tp.cur.arg != lastRow; i++ {
 		_ = teamsFrameText(a)
@@ -436,6 +438,7 @@ func TestTeamsInteractionExpansionAndParticipantDoors(t *testing.T) {
 	reply := teamstore.Entry{ID: "000000000002", Kind: teamstore.KindNote, From: "model", To: teamstore.ToManager, Answers: root.ID, Text: "The table keeps more exchanges visible."}
 	event := teamstore.Entry{ID: "000000000003", Kind: teamstore.KindEvent, From: "model", To: teamstore.ToManager, Answers: root.ID, State: teamstore.StateFinished}
 	a.teamsTakeInteractions(harbor, []teamstore.Entry{root, reply, event})
+	a.tp.cur = teamsRef{act: teamsActInteractionDown, id: harbor}
 	text := teamsFrameText(a)
 	if !strings.Contains(text, "1 reply") || strings.Contains(text, "2 replies") {
 		t.Fatal(text)
@@ -553,4 +556,266 @@ func TestTeamsRailKeepsCreationAndHistoryVisibleWithALongTree(t *testing.T) {
 			t.Fatal("permanent sidebar controls disappeared")
 		}
 	}
+}
+
+func TestManagerPreviewPreservesRecentAuthorsParagraphsAndBounds(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "transcript.jsonl")
+	var data strings.Builder
+	for i := 0; i < teamsPreviewMessages+4; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		fmt.Fprintf(&data, "{\"type\":\"message\",\"role\":%q,\"content\":%q}\n", role, fmt.Sprintf("Message %02d\nSecond paragraph", i))
+	}
+	if err := os.WriteFile(file, []byte(data.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := teamsReadPreview(file, teamsPreview{})
+	if p.count != teamsPreviewMessages || p.messages[0].text != "Message 04\nSecond paragraph" || p.messages[7].role != "assistant" {
+		t.Fatalf("excerpt: %+v", p)
+	}
+	if p.text != "Message 11 Second paragraph" {
+		t.Fatal("compact preview changed")
+	}
+}
+
+func TestSelectedManagerCardLeadsCompactMembersAndUsesActualMessages(t *testing.T) {
+	for _, width := range []int{40, 80, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			a, id, _ := teamsHostedLab(t)
+			a.width, a.height = width, 48
+			team := mustTeam(t, a, id)
+			manager := team.Manager
+			a.entries = nil
+			a.tp.previews = map[string]teamsPreview{}
+			a.tp.previews[manager] = teamsPreview{count: 2, messages: [teamsPreviewMessages]teamsPreviewMessage{{role: "user", text: "Which layout?"}, {role: "assistant", text: "Use the wide layout.\nKeep the narrow fallback."}}}
+			d := &teamsDraw{a: a}
+			rows := a.teamsMemberCards(d, team, width, 0)
+			text := plain(strings.Join(rows, "\n"))
+			for _, want := range []string{"You", "Which layout?", "Use the wide layout.", "Keep the narrow fallback."} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("missing %q: %s", want, text)
+				}
+			}
+			managerHeight := max(a.teamsInteractionHeight()+4, min(a.height/2, teamsManagerRows))
+			table := a.teamsInteractionTable(&teamsDraw{a: a}, team, width, 0)
+			if managerHeight < len(table) {
+				t.Fatal("manager shorter than interactions")
+			}
+			crew := a.teamsCrew(team)
+			if len(crew) < 2 {
+				t.Fatal("fixture has no ordinary member")
+			}
+			firstMemberY := -1
+			for _, target := range d.targets {
+				if target.act == teamsActMember && target.arg == crew[1].key && firstMemberY < 0 {
+					firstMemberY = target.y
+				}
+				if target.act == teamsActMember && target.arg == manager && target.id != id {
+					t.Fatal("preview has wrong overlay")
+				}
+			}
+			if firstMemberY != managerHeight+2 {
+				t.Fatalf("member grid starts at %d, want %d", firstMemberY, managerHeight+2)
+			}
+			for _, row := range rows {
+				if ansi.StringWidth(row) > width {
+					t.Fatal("card exceeds pane")
+				}
+			}
+			if a.unreadChats[manager] {
+				t.Fatal("fixture unexpected unread")
+			}
+			if a.unreadChats == nil {
+				a.unreadChats = map[string]bool{}
+			}
+			a.unreadChats[manager] = true
+			a.teamsMemberCards(&teamsDraw{a: a}, team, width, 0)
+			if !a.unreadChats[manager] {
+				t.Fatal("preview consumed unread")
+			}
+		})
+	}
+}
+
+func TestManagerPreviewUsesFrontConversationAndLabelsClippedTail(t *testing.T) {
+	a, id, _ := teamsPlaceLabIDs(t)
+	team := mustTeam(t, a, id)
+	team.Manager = a.frontTabKey()
+	a.width, a.height = 100, 40
+	a.tp.previews[team.Manager] = teamsPreview{text: "stale saved update"}
+	a.entries = []entry{{kind: entryUser, text: "Use this prompt"}, {kind: entryAssistant, text: strings.Repeat("earlier line\n", 30) + "Latest answer", cut: true}, {kind: entryThinking, text: "private reasoning"}}
+	r := teamsCrewRow{key: team.Manager, handle: "lead", manager: true, word: "idle"}
+	rows := a.teamsManagerCard(&teamsDraw{a: a}, team, r, 100, 0)
+	text := plain(strings.Join(rows, "\n"))
+	if !strings.Contains(text, "Latest answer") || !strings.Contains(text, "Manager (interrupted) (continued)") || strings.Contains(text, "stale saved update") || strings.Contains(text, "private reasoning") {
+		t.Fatal(text)
+	}
+}
+
+func TestManagerPreviewSharesChatsDeliveryAndCorrectionWords(t *testing.T) {
+	a, id, _ := teamsHostedLab(t)
+	manager := mustTeam(t, a, id).Manager
+	wrapper := `Team traffic in "harbor" for you (@boss). These are the team's messages, not the person's words:
+from @scrape #1: The draft is ready.
+(SECRET MODEL RULE)`
+	saved := session.DisplayEntry{Role: "aside", Text: wrapper}
+	messages := teamsPreviewMessageOf(saved)
+	if len(messages) != 1 || messages[0].text != "The draft is ready." || messages[0].author != "@scrape to @boss" {
+		t.Fatalf("delivery: %+v", messages)
+	}
+	structured := session.DisplayEntry{Role: "aside", Team: []session.TeamLine{{From: "scrape", To: teamstore.ToManager, Text: "Ready without wrapper", Kind: teamstore.KindNote}}}
+	if got := teamsPreviewMessageOf(structured); len(got) != 1 || got[0].text != "Ready without wrapper" {
+		t.Fatalf("structured delivery: %+v", got)
+	}
+	correction := session.DisplayEntry{Role: "user", Text: "Use narrow instead", Steer: &session.SteerMark{}}
+	if got := teamsPreviewMessageOf(correction); len(got) != 1 || got[0].role != "correction" {
+		t.Fatalf("saved correction: %+v", got)
+	}
+	a.entries = []entry{{kind: entryTeam, text: wrapper}, {kind: entrySteer, steer: &steerElbow{words: "Use narrow instead"}}}
+	rows := a.teamsManagerCard(&teamsDraw{a: a}, mustTeam(t, a, id), teamsCrewRow{key: manager, handle: "boss", manager: true, word: "idle"}, 120, 0)
+	text := plain(strings.Join(rows, "\n"))
+	for _, want := range []string{"@scrape to @boss", "The draft is ready.", "You (correction)", "Use narrow instead"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q: %s", want, text)
+		}
+	}
+	if strings.Contains(text, "SECRET MODEL RULE") || strings.Contains(text, teamAsideLead) {
+		t.Fatal("model wrapper leaked")
+	}
+}
+
+func TestManagerPreviewClickUsesTheOriginatingTeamsComposer(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	l.a.width, l.a.height = 140, 50
+	l.selectOrbit(t)
+	l.a.tp.previews[l.key] = teamsPreview{text: "Here is my update"}
+	l.a.tp.cur = teamsRef{act: teamsActMember, id: l.orbit, arg: l.key}
+	teamsFrameText(l.a)
+	var preview teamsTarget
+	for _, target := range l.a.tp.targets {
+		if target.act == teamsActMember && target.arg == l.key && target.y >= placeHeadRows && target.y < l.a.height-placeBareFootRows {
+			preview = target
+		}
+	}
+	if preview.arg == "" {
+		t.Fatal("no visible preview link")
+	}
+	drive(t, l.a, runCmd(l.a.teamsDo(preview))...)
+	if l.a.frontTabKey() != l.key || l.a.wall.activeID != l.orbit || l.a.pageShowing() || l.a.tp.focus {
+		t.Fatal("preview did not open originating team's composer")
+	}
+}
+
+func TestTallManagerLatestExcerptRemainsReachableByArrowsAndWheel(t *testing.T) {
+	for _, gesture := range []string{"arrows", "wheel"} {
+		t.Run(gesture, func(t *testing.T) {
+			a, id, _ := teamsHostedLab(t)
+			a.width, a.height = 40, 24
+			if err := a.teamEdit(func(f *teamstore.File) error {
+				i := teamstore.Index(f.Teams, id)
+				m, _ := f.Teams[i].Member(f.Teams[i].Manager)
+				f.Teams[i].Members = []teamstore.Member{m}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			manager := mustTeam(t, a, id).Manager
+			a.tp.previews = map[string]teamsPreview{}
+			a.entries = []entry{{kind: entryAssistant, text: strings.Repeat("Older line\n", 20) + "LATEST DECISION"}}
+			a.tp.cur = teamsRef{act: teamsActMember, id: id, arg: manager}
+			a.tp.focus = true
+			a.touch()
+			before := teamsFrameText(a)
+			if strings.Contains(before, "LATEST DECISION") {
+				t.Fatal("fixture did not clip latest preview")
+			}
+			if gesture == "arrows" {
+				drive(t, a, key("down"))
+			} else {
+				var hit teamsTarget
+				for _, target := range a.tp.targets {
+					if target.act == teamsActMember && target.arg == manager && target.y >= placeHeadRows && target.y < a.height-placeBareFootRows {
+						hit = target
+						break
+					}
+				}
+				drive(t, a, tea.MouseWheelMsg{X: hit.x0 + 1, Y: hit.y, Button: tea.MouseWheelDown})
+			}
+			if text := teamsFrameText(a); !strings.Contains(text, "LATEST DECISION") {
+				t.Fatalf("latest preview inaccessible via %s: %s", gesture, text)
+			}
+			if a.tp.cur.arg != manager || a.tp.cur.opt != "preview" || !a.at(pageTeams) {
+				t.Fatal("reading moved away from manager")
+			}
+		})
+	}
+}
+
+func TestManagerPreviewKeepsQuotedDeliveryTextAndBoundsLiveWords(t *testing.T) {
+	quoted := `Team traffic in "example" for you (@boss).
+from @example: text quoted by the person
+(rule quoted by the person)`
+	for _, role := range []string{"user", "assistant"} {
+		got := teamsPreviewMessageOf(session.DisplayEntry{Role: role, Text: quoted})
+		if len(got) != 1 || got[0].role != role || got[0].text != quoted {
+			t.Fatalf("quoted %s delivery reinterpreted: %+v", role, got)
+		}
+	}
+	a, _, _ := teamsHostedLab(t)
+	a.entries = []entry{{kind: entryUser, text: "Earlier prompt"}, {kind: entryAssistant, text: strings.Repeat("界", teamsPreviewBytes) + "Newest"}}
+	got := a.teamsManagerMessages(a.frontTabKey())
+	n := 0
+	for _, m := range got {
+		n += len(m.text)
+		if !strings.Contains(m.text, "Newest") {
+			t.Fatal("lost newest message")
+		}
+	}
+	if len(got) != 1 || n > teamsPreviewBytes {
+		t.Fatalf("live excerpt exceeded shared bound: %d bytes, %d messages", n, len(got))
+	}
+}
+
+func TestManagerReadingWheelContinuesToMembersAndInteractions(t *testing.T) {
+	a, id, _ := teamsHostedLab(t)
+	a.width, a.height = 80, 24
+	manager := mustTeam(t, a, id).Manager
+	a.tp.previews = map[string]teamsPreview{}
+	a.entries = []entry{{kind: entryAssistant, text: strings.Repeat("Older line\n", 20) + "LATEST WORDS"}}
+	a.tp.focus = true
+	a.tp.cur = teamsRef{act: teamsActMember, id: id, arg: manager}
+	a.touch()
+	teamsFrameText(a)
+
+	var pointer teamsTarget
+	for _, target := range a.tp.targets {
+		if target.act == teamsActMember && target.arg == manager && target.y >= placeHeadRows && target.y < a.height-placeBareFootRows {
+			pointer = target
+			break
+		}
+	}
+	if pointer.arg == "" {
+		t.Fatal("no visible manager reading target")
+	}
+	wheel := func() {
+		drive(t, a, tea.MouseWheelMsg{X: pointer.x0 + 1, Y: pointer.y, Button: tea.MouseWheelDown})
+		teamsFrameText(a)
+	}
+	wheel()
+	if a.tp.cur.opt != "preview" {
+		t.Fatal("first wheel missed latest preview")
+	}
+	wheel()
+	if a.tp.cur.act == teamsActMember && a.tp.cur.arg == manager {
+		t.Fatal("second wheel trapped in manager")
+	}
+	for i := 0; i < 4; i++ {
+		wheel()
+	}
+	if a.tp.cur.act != teamsActInteractionDown && a.tp.cur.act != teamsActInteractionToggle && a.tp.cur.act != teamsActInteractionJump {
+		t.Fatalf("repeated wheel could not reach interactions: %+v", a.tp.cur)
+	}
+
 }

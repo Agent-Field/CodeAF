@@ -246,13 +246,17 @@ func teamsHostedLab(t *testing.T) (a *app, harbor, orbit string) {
 // The overview owns its keyboard, so typing here cannot alter the manager's
 // conversation draft.
 func TestTeamsOverviewDoesNotEditTheManagersDraft(t *testing.T) {
-	a, _, _ := teamsHostedLab(t)
+	a, harbor, _ := teamsHostedLab(t)
 	a.input.insert("draft")
 	text := teamsFrameText(a)
-	for _, want := range []string{"All teams", "harbor", "Settings", "Recent interactions"} {
+	for _, want := range []string{"All teams", "harbor", "Settings", "Manager"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, text)
 		}
+	}
+	a.tp.cur = teamsRef{act: teamsActInteractionDown, id: harbor}
+	if text := teamsFrameText(a); !strings.Contains(text, "Recent interactions") {
+		t.Fatal(text)
 	}
 	drive(t, a, key("h"), key("i"))
 	if a.input.String() != "draft" || !a.at(pageTeams) {
@@ -300,9 +304,17 @@ func TestTeamsCardShowsProvenanceAndResets(t *testing.T) {
 		t.Fatal("the card did not open")
 	}
 	text := teamsFrameText(a)
-	for _, want := range []string{"from Settings", "from harbor", "$5 a day"} {
+	for _, want := range []string{"from harbor", "$5 a day"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the card lost %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "from Settings") || strings.Contains(text, "Inside") {
+		t.Fatalf("redundant controls: %s", text)
+	}
+	for _, code := range a.teamSheetStops() {
+		if code == tsInside {
+			t.Fatal("Inside still keyboard reachable")
 		}
 	}
 	if strings.Contains(text, "reset") {
@@ -824,7 +836,7 @@ func TestTeamsOverviewRetainsDecisionControls(t *testing.T) {
 	}
 	drive(t, a, runCmd(a.teamsRead(false))...)
 	text := teamsFrameText(a)
-	for _, want := range []string{"Ship on Friday or Monday?", "Friday", "Monday", "Recent interactions"} {
+	for _, want := range []string{"Ship on Friday or Monday?", "Friday", "Monday"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("lost %q:\n%s", want, text)
 		}
@@ -838,6 +850,11 @@ func TestTeamsOverviewRetainsDecisionControls(t *testing.T) {
 	if !found {
 		t.Fatal("decision option is not interactive")
 	}
+	a.tp.cur = teamsRef{act: teamsActInteractionDown, id: harbor}
+	if text := teamsFrameText(a); !strings.Contains(text, "Recent interactions") {
+		t.Fatal("interaction panel unreachable")
+	}
+
 }
 
 // The keyboard member list keeps the manager separate from its member count.
@@ -859,5 +876,47 @@ func TestTeamsCardsStandOverThePane(t *testing.T) {
 	teamsFrameText(a)
 	if rail := teamsRailCols(a.width); a.tsheet.rect.x0 < rail {
 		t.Fatalf("the settings card starts at %d, over the rail's %d columns:\n%s", a.tsheet.rect.x0, rail, teamsFrameText(a))
+	}
+}
+
+func TestTeamSettingsWakeUsesTheSharedOverrideAndResetMechanics(t *testing.T) {
+	a, id, _ := teamsPlaceLabIDs(t)
+	a.tp.defaultsOK = true
+	drive(t, a, runCmd(a.teamSheetOpen(id, teamSheetSettings))...)
+	a.tsheet.cursor = tsWake
+	if !strings.Contains(a.teamSheetHint(), "r reset to inherit") {
+		t.Fatal("Wake has no shared reset hint")
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsWake))...)
+	team := mustTeam(t, a, id)
+	if team.Settings.Wake == nil {
+		t.Fatal("Wake toggle did not create override")
+	}
+	lines := a.teamSheetSettingsLines(team, 64)
+	var wakeLine wallCardLine
+	for _, line := range lines {
+		if strings.Contains(plain(line.s), "team messages wake") {
+			wakeLine = line
+		}
+	}
+	if !strings.Contains(plain(wakeLine.s), "reset") {
+		t.Fatal("Wake override missing reset")
+	}
+	found := false
+	for _, hit := range wakeLine.hits {
+		if hit.arg == tsWake+tsReset {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Wake reset is not clickable")
+	}
+	drive(t, a, key("r"))
+	if mustTeam(t, a, id).Settings.Wake != nil {
+		t.Fatal("Wake reset retained override")
+	}
+	text := teamsFrameText(a)
+	if strings.Contains(text, "from Settings") || strings.Contains(text, "Inside") {
+		t.Fatal("settings clutter returned")
 	}
 }

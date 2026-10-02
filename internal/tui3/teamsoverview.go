@@ -19,11 +19,21 @@ import (
 // Preview reads are bounded because a team's overview must not replay every
 // conversation on each beat. The frame only sees these cached readings.
 const teamsPreviewBytes = 64 << 10
+const teamsPreviewMessages = 8
+const teamsManagerRows = 24
+
+type teamsPreviewMessage struct {
+	author      string
+	role, text  string
+	interrupted bool
+}
 
 type teamsPreview struct {
 	unavailable bool
 	missing     bool
 	text        string
+	messages    [teamsPreviewMessages]teamsPreviewMessage
+	count       int
 	size        int64
 	modified    time.Time
 }
@@ -64,7 +74,44 @@ func teamsReadPreview(file string, previous teamsPreview) teamsPreview {
 			break
 		}
 	}
+	for i := len(entries) - 1; i >= 0 && preview.count < teamsPreviewMessages; i-- {
+		piece := teamsPreviewMessageOf(entries[i])
+		for j := len(piece) - 1; j >= 0 && preview.count < teamsPreviewMessages; j-- {
+			preview.messages[preview.count] = piece[j]
+			preview.count++
+		}
+	}
+	for i, j := 0, preview.count-1; i < j; i, j = i+1, j-1 {
+		preview.messages[i], preview.messages[j] = preview.messages[j], preview.messages[i]
+	}
 	return preview
+}
+
+// Use the same delivery parse as Chats so wrappers intended only for the
+// model never appear in the preview and each teammate keeps their own words.
+func teamsPreviewMessageOf(e session.DisplayEntry) []teamsPreviewMessage {
+	if e.Role == "aside" && !e.Interrupted && asideShapeOf(e) == asideTeam {
+		var out []teamsPreviewMessage
+		for _, card := range teamCardsOf(e, "") {
+			author := strings.TrimSpace(card.from) + " to " + strings.TrimSpace(card.to)
+			if card.tag != "" {
+				author += " (" + card.tag + ")"
+			}
+			out = append(out, teamsPreviewMessage{role: "team", author: author, text: card.text})
+		}
+		return out
+	}
+	role := e.Role
+	if e.Interrupted {
+		role = "assistant"
+	}
+	if role == "user" && e.Steer != nil {
+		role = "correction"
+	}
+	if (role != "assistant" && role != "user" && role != "correction") || strings.TrimSpace(e.Text) == "" {
+		return nil
+	}
+	return []teamsPreviewMessage{{role: role, text: e.Text, interrupted: e.Interrupted}}
 }
 
 // The overview's log read must never execute commands from past traffic or
@@ -176,8 +223,8 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	return left + strings.Repeat(" ", max(rightX-ansi.StringWidth(left), 0)) + strings.Join(buttons, " ") + " "
 }
 
-// Manager and member cards share their geometry. Role and ink distinguish the
-// manager while aliases, titles and previews all take the same navigation door.
+// The manager leads with a full-width conversation excerpt. Members retain
+// their compact grid, and every preview uses the same conversation door.
 func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 	if width < 12 {
 		return nil
@@ -192,6 +239,11 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 	}
 	w := (width - (columns-1)*2) / columns
 	var out []string
+	if len(crew) > 0 && crew[0].manager {
+		out = append(out, a.teamsManagerCard(d, t, crew[0], width, y)...)
+		out = append(out, "")
+		crew = crew[1:]
+	}
 	for first := 0; first < len(crew); first += columns {
 		var cards [][]string
 		for column := 0; column < columns && first+column < len(crew); column++ {
@@ -259,6 +311,146 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 		out = append(out, "")
 	}
 	return out
+}
+
+// Both panels use one height budget so the manager is never shorter than the
+// interaction panel, including on terminals with the rail above the content.
+func (a *app) teamsInteractionHeight() int {
+	height := min(max(a.height/3, 4), 10)
+	available := a.height - placeHeadRows - placeFootRowsFor(pageTeams, a.height)
+	if teamsRailCols(a.width) == 0 {
+		available -= min(len(a.teamsRailRows()), max(min(available/3, 5), 1)) + 1
+	}
+	height = min(height, max(available-4, 1))
+	return height
+}
+
+// Recent messages preserve paragraph breaks and authors. A bounded tail is
+// explicitly labelled as an excerpt; it never pretends to be a generated summary.
+func (a *app) teamsManagerMessages(key string) []teamsPreviewMessage {
+	p := a.tp.previews[key]
+	messages := append([]teamsPreviewMessage(nil), p.messages[:p.count]...)
+	if key == a.frontTabKey() && len(a.entries) > 0 {
+		messages = nil
+		remaining := teamsPreviewBytes
+		for i := len(a.entries) - 1; i >= 0 && len(messages) < teamsPreviewMessages && remaining > 0; i-- {
+			e := a.entries[i]
+			var piece []teamsPreviewMessage
+			switch e.kind {
+			case entryTeam:
+				piece = teamsPreviewMessageOf(session.DisplayEntry{Role: "aside", Text: e.text, Team: e.team})
+			case entryUser:
+				piece = teamsPreviewMessageOf(session.DisplayEntry{Role: "user", Text: e.text})
+			case entryAssistant:
+				piece = teamsPreviewMessageOf(session.DisplayEntry{Role: "assistant", Text: e.text, Interrupted: e.cut})
+			case entrySteer:
+				if e.steer != nil && strings.TrimSpace(e.steer.words) != "" {
+					piece = []teamsPreviewMessage{{role: "correction", text: e.steer.words}}
+				}
+			}
+			for j := len(piece) - 1; j >= 0 && len(messages) < teamsPreviewMessages && remaining > 0; j-- {
+				if len(piece[j].text) > remaining {
+					piece[j].text = strings.ToValidUTF8(piece[j].text[len(piece[j].text)-remaining:], "")
+					remaining = 0
+				} else {
+					remaining -= len(piece[j].text)
+				}
+				messages = append(messages, piece[j])
+			}
+		}
+		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+			messages[i], messages[j] = messages[j], messages[i]
+		}
+	}
+	if len(messages) == 0 && p.text != "" {
+		messages = append(messages, teamsPreviewMessage{role: "assistant", text: p.text})
+	}
+	return messages
+}
+
+func (a *app) teamsManagerCard(d *teamsDraw, t team, r teamsCrewRow, width, y int) []string {
+	inner := width - 4
+	height := max(a.teamsInteractionHeight()+4, min(a.height/2, teamsManagerRows))
+	state := r.word
+	if a.unreadChats[r.key] {
+		state += "  unread"
+	}
+	if age := sinceAt(r.at, a.now()); age != "" && r.word != "working" {
+		state += "  " + age
+	}
+	words := []string{a.pal.ink(r.name()), a.pal.dim(r.title), a.teamsCrewInk(r.word)(state), a.pal.dim("Recent messages" + hintSegment + "latest excerpt")}
+	budget := max(height-2-len(words), 1)
+	var excerpt []string
+	messages := a.teamsManagerMessages(r.key)
+	// Fit newest messages first, then show them in conversation order. Repeating
+	// the author on a clipped message prevents the excerpt misattributing a tail.
+	for i := len(messages) - 1; i >= 0 && len(excerpt) < budget; i-- {
+		m := messages[i]
+		author := "Manager"
+		if m.role == "user" {
+			author = "You"
+		} else if m.role == "team" {
+			author = m.author
+		} else if m.role == "correction" {
+			author = "You (correction)"
+		}
+		if m.interrupted {
+			author += " (interrupted)"
+		}
+		var body []string
+		for _, paragraph := range strings.Split(strings.TrimSpace(m.text), "\n") {
+			body = append(body, wrap(paragraph, inner)...)
+		}
+		room := budget - len(excerpt)
+		if room < 2 {
+			break
+		}
+		if len(body) > room-1 {
+			body = body[len(body)-(room-1):]
+			author += " (continued)"
+		}
+		part := []string{a.pal.dim(author)}
+		for _, line := range body {
+			part = append(part, a.pal.ink(line))
+		}
+		excerpt = append(part, excerpt...)
+	}
+	if len(excerpt) == 0 {
+		word := "Updates appear here"
+		if a.hosted() || a.tp.previews[r.key].unavailable {
+			word = "Preview unavailable"
+		}
+		if a.tp.previews[r.key].missing {
+			word = "Conversation unavailable"
+		}
+		excerpt = []string{a.pal.dim(word)}
+	}
+	words = append(words, excerpt...)
+	latestRow := len(words) - 1
+	for len(words) < height-2 {
+		words = append(words, "")
+	}
+	var lines []wallCardLine
+	for row, word := range words {
+		contentWidth := inner
+		if row == 0 && !t.Closed() {
+			contentWidth -= 3
+		}
+		line := teamsPad(word, contentWidth)
+		if !a.tp.previews[r.key].missing {
+			opt := ""
+			if row == latestRow {
+				opt = "preview"
+			}
+			line = d.row(word, contentWidth, teamsTarget{act: teamsActMember, id: t.ID, arg: r.key, opt: opt, x0: 2, y: y + 1 + row, hint: a.teamsCrewHint(r), pane: true}, false)
+		}
+		if row == 0 && !t.Closed() {
+			button, _ := d.button(a.linearMark(tabCloseASCII, tabCloseASCII), teamsTarget{act: teamsActRemoveMember, id: t.ID, arg: r.key, x0: width - 5, y: y + 1, hint: "Assign another manager before removing this one", pane: true}, a.pal.muted)
+			line += button
+		}
+		lines = append(lines, wallCardLine{s: line})
+	}
+	return wallCardBuild(a.pal, a.teamManagerMark()+" Manager", lines, 0, y, width, 1, 0).rows
 }
 
 type teamsTableRect struct{ x, y, w, h int }
@@ -442,12 +634,7 @@ func (a *app) teamsInteractionTable(d *teamsDraw, t team, width, y int) []string
 			}
 		}
 	}
-	height := min(max(a.height/3, 4), 10)
-	available := a.height - placeHeadRows - placeFootRowsFor(pageTeams, a.height)
-	if teamsRailCols(a.width) == 0 {
-		available -= min(len(a.teamsRailRows()), max(min(available/3, 5), 1)) + 1
-	}
-	height = min(height, max(available-4, 1))
+	height := a.teamsInteractionHeight()
 	a.tp.tablePageSize = height
 	a.tp.tableOver = max((len(rows)-1)/height, 0) * height
 	if a.tp.interactionOffsets == nil {
