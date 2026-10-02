@@ -1,7 +1,7 @@
 ---
 kind: added
 title: ai& is offered as a provider of its own, asked for by key and nothing else
-pr: 1736
+pr: 1
 surface: [chat, engine]
 invalidates:
   - >-
@@ -30,15 +30,19 @@ One prepaid credit spends any model in ai&'s list, and that list reaches several
 labs at once, so a single key covers models a person would otherwise open four
 different accounts for.
 
-This change is one row in `modelsource.Vendored()` and nothing else. Every other
-surface — the connect panel, the providers group, the picker group, the Providers
-tab and `codeaf connect aiand` — is derived from that catalog, and
+The PROVIDER is one row in `modelsource.Vendored()`, and every surface a person
+touches is already derived from that catalog — the connect panel, the providers
+group, the picker group, the Providers tab and `codeaf connect aiand`.
 `Config.Direct` already switches off the router's lane sheet, receipt fetch, price
 ceiling and routing vocabulary for a vendor reached directly, so a direct vendor
 stays a base-URL swap. `internal/session` needed no change either:
 `clientdoor.go` keys its adapter pool on the resolved connection and strips the
 service segment from the id it sends, which is why ai&'s own two-segment ids
-(`zai-org/glm-5.3`, `deepseek-ai/deepseek-v4.1-flash`) already reach it whole.
+(`zai-org/glm-5.3-flash`, `deepseek-ai/deepseek-v4.1-flash`) already reach it
+whole.
+
+`internal/config/crew.go` is the only other file with production code in it, and
+it takes two tables rather than any new machinery — described below.
 
 ai& lists its models — `GET /v1/models` answers — so the connect line carries the
 count that came back, for example `aiand is connected · 13 models`, and `/model`
