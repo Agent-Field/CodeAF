@@ -400,9 +400,15 @@ func orgHash(a, b string, kind byte) uint64 {
 // `thinking…` in the card until it answers. It does nothing while a team is
 // shown, where the button is not drawn.
 func (a *app) wallOrganizeOpen() tea.Cmd {
-	if a.wall.activeID != "" {
+	if !a.at(pageTeams) && a.wall.activeID != "" {
 		return nil
 	}
+	var opened tea.Cmd
+	if !a.at(pageTeams) {
+		a.closeWall()
+		opened = a.showPage(pageTeams)
+	}
+	a.tp.sel, a.tp.answering = teamsAllRow, ""
 	a.teamsEnsure()
 	o := &a.wall.org
 	o.gen++
@@ -420,16 +426,16 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	if proposer == nil || len(convs) < 2 {
 		a.wallOrganizeShow(nil, proposer == nil && len(convs) >= 2, "")
 		if quietAsk == nil {
-			return nil
+			return opened
 		}
 		gen := o.gen
-		return a.besideLine(func() func(here bool) tea.Cmd {
+		return tea.Batch(opened, a.besideLine(func() func(here bool) tea.Cmd {
 			ids := quietAsk()
 			return func(bool) tea.Cmd {
 				a.wallOrganizeQuietTake(gen, ids)
 				return nil
 			}
-		})
+		}))
 	}
 	in := session.TeamProposalInput{}
 	for _, c := range convs {
@@ -444,7 +450,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	}
 	gen := o.gen
 	o.thinking = true
-	return a.besideLine(func() func(here bool) tea.Cmd {
+	return tea.Batch(opened, a.besideLine(func() func(here bool) tea.Cmd {
 		var quiet []string
 		if quietAsk != nil {
 			quiet = quietAsk()
@@ -457,7 +463,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 			a.wallOrganized(gen, res, err)
 			return nil
 		}
-	})
+	}))
 }
 
 // wallOrganizeQuietAsk is the question, to be asked off the loop in the same
@@ -754,7 +760,7 @@ func orgJoined(joins []orgJoin, id, key string) bool {
 // nothing written in between the list is back exactly as it was.
 func (a *app) wallOrganizeUndo() {
 	o := &a.wall.org
-	if o.undo == nil || o.doneAt.IsZero() || a.now().Sub(o.doneAt) >= wallOrganizedFor {
+	if len(o.undoMade)+len(o.undoJoins) == 0 || o.doneAt.IsZero() || a.now().Sub(o.doneAt) >= wallOrganizedFor {
 		return
 	}
 	made, joins := o.undoMade, o.undoJoins

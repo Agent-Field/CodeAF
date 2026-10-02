@@ -142,8 +142,13 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 			return d.row(word, width, teamsTarget{act: teamsActClosedFold, y: y, hint: hint + hintSegment + "enter"}, false)
 		case railRowClosedTeam:
 			t, _ := a.teamByID(r.id)
-			return d.row("   "+pal.dim(t.Name), width, teamsTarget{act: teamsActSelect, id: t.ID, y: y,
-				hint: t.Name + " closed" + hintSegment + "read-only history and permanent Delete"}, a.tp.sel == t.ID)
+			parts := wrap(a.teamsAncestryName(t), max(width-3, 1))
+			name := ""
+			if r.depth < len(parts) {
+				name = parts[r.depth]
+			}
+			return d.row("   "+pal.dim(name), width, teamsTarget{act: teamsActSelect, id: t.ID, y: y,
+				hint: a.teamsAncestryName(t) + " closed" + hintSegment + "read-only history and permanent Delete"}, a.tp.sel == t.ID)
 		}
 		return strings.Repeat(" ", width)
 	}
@@ -259,8 +264,8 @@ func (a *app) teamsRailAll(d *teamsDraw, width, y int) string {
 		if n := a.teamsNeeds(root); n > 0 {
 			word += " " + pal.ask("? "+itoa(n))
 		}
-		return d.row(word, width, teamsTarget{act: teamsActSelect, id: root.ID, y: y,
-			hint: "Every team, and what waits on you from any of them" + hintSegment + "enter"}, a.tp.sel == root.ID)
+		return d.row(word, width, teamsTarget{act: teamsActSelect, id: teamsAllRow, y: y,
+			hint: "Every team, and what waits on you from any of them" + hintSegment + "enter"}, a.teamsAllSelected())
 	}
 	word := teamManagerSlotWord
 	bw := ansi.StringWidth(word) + 2
@@ -363,14 +368,23 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		// Air between the notice and the team it is not about.
 		out = append(out, "")
 	}
-	if !ok {
-		if a.tp.sel == teamsAllRow {
-			out = append(out, " "+pal.bold(pal.ink(teamstore.RootName)))
-			out = append(out, a.teamsInboxRows(d, width, len(out))...)
+	if a.teamsAllSelected() {
+		out = append(out, a.teamsAllHeader(d, width, len(out))...)
+		if root, exists := a.teamsRoot(); exists {
+			out = append(out, a.teamsPromptRows(d, root, width, len(out))...)
 		}
+		out = append(out, a.teamsInboxRows(d, width, len(out))...)
+		return out
+	}
+	if !ok {
 		return out
 	}
 	out = append(out, a.teamsOverviewHeader(d, t, width, len(out)))
+	if t.Closed() && t.Parent != "" {
+		for _, line := range wrap(a.teamsAncestryName(t), max(width-2, 1)) {
+			out = append(out, " "+pal.dim(line))
+		}
+	}
 	if !t.Closed() {
 		for _, control := range []struct {
 			word string
@@ -819,11 +833,9 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 	switch {
 	case a.teamsOff():
 		out = append(out, "", " "+pal.dim(fit(teamHostedWord, width-2)))
-	case !ok && a.tp.sel == teamsAllRow:
-		out = append(out, "", " "+pal.dim(fit("a manager over every team: you talk to it, and it talks to each team's own", width-2)))
-		s, _ := d.button(teamManagerSlotWord, teamsTarget{act: teamsActRootManager, x0: 1, y: y + len(out) + 1,
-			hint: "Start the manager of every team" + hintSegment + "M"}, pal.ink)
-		out = append(out, "", " "+s)
+	case a.teamsAllSelected():
+		out = append(out, "")
+		out = append(out, a.teamsAllCards(d, width, y+len(out))...)
 	case !ok:
 	case t.Closed():
 		out = append(out, a.teamsClosedRows(d, t, width, y)...)
@@ -967,7 +979,7 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	} else {
 		// A narrow rail has its own window so a long team list cannot take
 		// all the space needed by the selected team's overview.
-		limit := max(min(room/3, 5), 1)
+		limit := min(len(a.teamsRailRows()), max(min(room/3, 5), 1))
 		lines = append(lines, a.teamsRailWindow(d, width, limit)...)
 		lines = append(lines, "")
 	}

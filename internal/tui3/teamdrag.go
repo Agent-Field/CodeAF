@@ -124,7 +124,7 @@ func (a *app) teamDropAt(x, y int) (string, bool, string) {
 		lastTree = max(lastTree, t.y)
 	}
 	for _, t := range a.tp.targets {
-		if t.hidden || t.pane || y != t.y || x < t.x0 || x >= t.x1 {
+		if t.hidden || y != t.y || x < t.x0 || x >= t.x1 {
 			continue
 		}
 		switch {

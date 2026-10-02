@@ -27,8 +27,7 @@ conversation remains, the view returns to All. Narrow strips use the existing sc
 
 To see all your conversations at once, open the **conversations view**: every conversation
 this window has open, as a grid of live tiles, so you can see at a glance which ones are working, which are waiting on you
-and which are at rest, and go to any of them with one press. It is also where you group
-conversations into **teams**.
+and which are at rest, and go to any of them with one press. Team organization belongs to **All teams** on the Teams page.
 
 Open it any of these ways:
 
@@ -51,7 +50,7 @@ members that this window does not have open are not grid tiles; while the shown 
 has any, the title bar carries one quiet button, `2 more in harbor · Open them` (or `r`), that
 resumes them in the background, so they arrive as tiles while the conversation in
 front and your focus stay where they are. When every member is open the button is not there. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
-shown, and at the bottom a toolbar with `Filter /`,
+shown. That action navigates to Teams and opens suggestions over All teams. At the bottom is a toolbar with `Filter /`,
 `New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
 of the toolbar says in one dim line what it does and which key does the same; on a narrow
 window `Columns` and the other buttons step aside for that line so it is always whole, and

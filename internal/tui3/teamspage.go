@@ -44,6 +44,8 @@ const (
 // teamsPage is the page's whole state, on the app (place_teams.go's handle
 // holds none).
 type teamsPage struct {
+	orgHits            []wallHit
+	orgRect            wallRect
 	previews           map[string]teamsPreview
 	interactionOffsets map[string]int
 	table              teamsTableRect
@@ -166,6 +168,7 @@ const (
 	teamsActChooseManager
 	teamsActRemoveMember
 	teamsActAddSubteam
+	teamsActOrganizeUndo
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────
@@ -236,12 +239,17 @@ func (a *app) teamsRailRows() []teamsRailRow {
 	rows := []teamsRailRow{{kind: railRowAll}}
 	rows = append(rows, a.teamsOpenTree()...)
 	rows = append(rows, teamsRailRow{kind: railRowNew})
-	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowOrganize})
 	if closed := a.teamsClosed(); len(closed) > 0 {
 		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
 		if a.tp.closedOpen {
+			width := teamsRailCols(a.width) - 1
+			if width < 1 {
+				width = a.width
+			}
 			for _, t := range closed {
-				rows = append(rows, teamsRailRow{kind: railRowClosedTeam, id: t.ID})
+				for i := range wrap(a.teamsAncestryName(t), max(width-3, 1)) {
+					rows = append(rows, teamsRailRow{kind: railRowClosedTeam, id: t.ID, depth: i})
+				}
 			}
 		}
 	}
@@ -273,10 +281,7 @@ func (a *app) teamsSelected() (team, bool) {
 // team, else the root, else the `All teams` row, else nothing.
 func (a *app) teamsSettle() {
 	if a.tp.sel == teamsAllRow {
-		if _, root := a.teamsRoot(); !root && a.teamsAny() {
-			return
-		}
-		a.tp.sel = ""
+		return
 	}
 	if t, ok := a.teamByID(a.tp.sel); ok {
 		if !t.Closed() || a.tp.closedOpen {
@@ -359,6 +364,11 @@ func (a *app) teamsPick(id string) {
 func (a *app) teamsMoveIDs() []string {
 	if ids := a.teamsPickedIDs(); len(ids) > 0 {
 		return ids
+	}
+	if target, ok := a.teamsCursorTarget(); ok && target.act == teamsActSelect && target.pane {
+		if t, ok := a.teamByID(target.id); ok && !t.Root && !t.Closed() {
+			return []string{t.ID}
+		}
 	}
 	if t, ok := a.teamsSelected(); ok && !t.Root && !t.Closed() {
 		return []string{t.ID}
@@ -461,6 +471,8 @@ func (a *app) teamsInbox() []teamstore.Packet {
 		switch {
 		case p.Team == teamstore.Person && (all || a.teamsSubtree(sel, p.Origin)):
 			out = append(out, p)
+		case all && hasRoot && p.Team == root.ID:
+			out = append(out, p)
 		case p.Team == sel && sel != "":
 			out = append(out, p)
 		}
@@ -509,6 +521,7 @@ type teamsGot struct {
 	previews        map[string]teamsPreview
 	interactionTeam string
 	interactions    []teamstore.Entry
+	interactionSets map[string][]teamstore.Entry
 
 	packets      []teamstore.Packet
 	packetsStamp string
@@ -579,6 +592,20 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 			}
 		}
 	}
+	if a.teamsAllSelected() {
+		seen := map[string]bool{}
+		pools = nil
+		for _, t := range a.wall.teams {
+			if t.Closed() {
+				continue
+			}
+			owner, _ := a.teamsPool(t)
+			if !seen[owner] {
+				pools = append(pools, owner)
+				seen[owner] = true
+			}
+		}
+	}
 	spendSince := make([]string, len(pools))
 	for i, id := range pools {
 		spendSince[i] = a.tp.spendStamp[id]
@@ -590,6 +617,29 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	selected, _ := a.teamsSelected()
 	members := append([]teamMember(nil), a.teamsCrewMembers(selected)...)
 	members = append(members, selected.FormerMembers...)
+	if a.teamsAllSelected() {
+		members = nil
+		seen := map[string]bool{}
+		for _, t := range a.wall.teams {
+			if t.Closed() {
+				continue
+			}
+			if m, ok := t.Member(t.Manager); ok && !seen[m.Key] {
+				members = append(members, m)
+				seen[m.Key] = true
+			}
+		}
+	}
+	var interactionIDs []string
+	if a.teamsAllSelected() {
+		for _, t := range a.wall.teams {
+			if !t.Closed() {
+				interactionIDs = append(interactionIDs, t.ID)
+			}
+		}
+	} else if selected.ID != "" {
+		interactionIDs = append(interactionIDs, selected.ID)
+	}
 	previous := a.tp.previews
 	worldDoor, hosted, rowsDoor := a.world, a.hosted(), a.teamsDisk.rows
 	if rowsDoor == nil {
@@ -598,10 +648,14 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	return a.besideLine(func() func(bool) tea.Cmd {
 		got := teamsGot{spend: map[string]teamstore.Spend{}, spendStamp: map[string]string{}}
 		var wg sync.WaitGroup
+		// A large hierarchy must not start one remote request per team at once.
+		slots := make(chan struct{}, 4)
 		side := func(read func()) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				slots <- struct{}{}
+				defer func() { <-slots }()
 				read()
 			}()
 		}
@@ -613,11 +667,11 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 				}
 			})
 		}
-		if selected.ID != "" && seam.Traffic != nil {
-			side(func() {
-				got.interactionTeam = selected.ID
-				got.interactions, _ = seam.Traffic(selected.ID, "", trafficKeep)
-			})
+		traffic := make([][]teamstore.Entry, len(interactionIDs))
+		if seam.Traffic != nil {
+			for i, id := range interactionIDs {
+				side(func() { traffic[i], _ = seam.Traffic(id, "", trafficKeep) })
+			}
 		}
 		type spendGot struct {
 			spend teamstore.Spend
@@ -659,6 +713,13 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 			side(func() { got.world, got.worldKnown = teamsMemberRows(worldDoor, hosted, rowsDoor, files) })
 		}
 		wg.Wait()
+		got.interactionSets = map[string][]teamstore.Entry{}
+		for i, entries := range traffic {
+			if entries != nil {
+				got.interactionSets[interactionIDs[i]] = entries
+			}
+		}
+
 		for i, id := range pools {
 			if spends[i].ok {
 				got.spend[id], got.spendStamp[id] = spends[i].spend, spends[i].stamp
@@ -756,6 +817,9 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 	}
 	if got.interactionTeam != "" && got.interactions != nil {
 		changed = a.teamsTakeInteractions(got.interactionTeam, got.interactions) || changed
+	}
+	for id, entries := range got.interactionSets {
+		changed = a.teamsTakeInteractions(id, entries) || changed
 	}
 	if got.packetsErr == nil && !got.packetsSame && got.packetsStamp != "" {
 		a.tp.packets, a.tp.packetsStamp, a.tp.packetsKnown = got.packets, got.packetsStamp, true

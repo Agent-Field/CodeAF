@@ -110,7 +110,12 @@ func TestTeamsStartJumpRetainsOriginAfterTheOverlayChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(other, a.frontTabKey()) }); err != nil {
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.SetParent(other, harbor); err != nil {
+			return err
+		}
+		return f.SetManager(other, a.frontTabKey())
+	}); err != nil {
 		t.Fatal(err)
 	}
 	id := "000000000001"

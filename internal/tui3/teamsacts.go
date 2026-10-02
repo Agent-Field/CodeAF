@@ -73,9 +73,10 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActNewTeam:
 		return a.teamMenuNewTeamIn("")
 	case teamsActOrganize:
-		open := a.openWall()
-		a.wallSetTeam("")
-		return tea.Batch(open, a.wallOrganizeOpen())
+		return a.wallOrganizeOpen()
+	case teamsActOrganizeUndo:
+		a.wallOrganizeUndo()
+		return nil
 	case teamsActWall:
 		open := a.openWall()
 		a.wallSetTeam(t.id)
@@ -133,7 +134,7 @@ func (a *app) teamDraggable(t teamsTarget) bool {
 		return t.arg != ""
 	case teamsActSelect:
 		u, ok := a.teamByID(t.id)
-		return ok && !t.pane && !u.Root && !u.Closed()
+		return ok && !u.Root && !u.Closed()
 	}
 	return false
 }

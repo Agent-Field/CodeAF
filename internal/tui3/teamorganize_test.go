@@ -328,7 +328,7 @@ func TestOrganizeCountAndOrganizedStates(t *testing.T) {
 	if !a.wall.org.thinking || !strings.Contains(orgFrame(a), "thinking…") {
 		t.Fatalf("the card does not say it is thinking:\n%s", orgFrame(a))
 	}
-	namerDoors(t, a, cmd)
+	spend(t, a, cmd)
 	if frame := orgFrame(a); !strings.Contains(frame, "Everything is organized") || !strings.Contains(frame, "Close esc") {
 		t.Fatalf("an empty run:\n%s", frame)
 	}
@@ -350,7 +350,7 @@ func TestOrganizeModelFailureFallsBackToFolders(t *testing.T) {
 	p := &proposingAgent{err: errors.New("no provider answered")}
 	a := organizeApp(t, func(inner Agent) Agent { p.Agent = inner; return p })
 	cmd := a.wallOrganizeOpen()
-	namerDoors(t, a, cmd)
+	spend(t, a, cmd)
 	if !a.wall.org.folderOnly || len(a.wall.org.props) != 1 || a.wall.org.props[0].name != "lab" {
 		t.Fatalf("after a failure: %+v", a.wall.org)
 	}
@@ -378,7 +378,7 @@ func TestOrganizeModelFailureFallsBackToFolders(t *testing.T) {
 		PromptChars: 4000,
 	}
 	cmd = a.wallOrganizeOpen()
-	namerDoors(t, a, cmd)
+	spend(t, a, cmd)
 	o := a.wall.org
 	if o.folderOnly || len(o.props) != 2 || o.props[0].name != "lab" || o.props[1].name != "scrapers" {
 		t.Fatalf("after an answer: %+v", o.props)

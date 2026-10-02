@@ -55,6 +55,9 @@ func (placeTeams) tick(a *app, now time.Time) (bool, tea.Cmd) {
 // fold are kept for the next visit, as a place's views are.
 func (placeTeams) close(a *app) {
 	a.tp.focus, a.tp.targets = false, nil
+	if a.wall.org.on {
+		a.wallOrganizeClose()
+	}
 	a.tp.answering = ""
 	// A drag, the members card and a move waiting on its line belong to the
 	// page and go with it; a move made keeps its Undo for the next visit.
@@ -385,7 +388,7 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		// SPACE PICKS A TEAM ON THE RAIL, as it picks a tile on the wall, so
 		// several can be moved with one `Move into…`.
-		if key == "space" && t.act == teamsActSelect && !t.pane {
+		if key == "space" && t.act == teamsActSelect {
 			if u, ok := a.teamByID(t.id); ok && !u.Root && !u.Closed() {
 				a.teamsPick(t.id)
 				return nil, true
@@ -426,6 +429,9 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // teamsLetter is one of the bare letters: the act on the selected team, when
 // the page offers it there.
 func (a *app) teamsLetter(act teamsAct) tea.Cmd {
+	if act == teamsActOrganize {
+		return a.wallOrganizeOpen()
+	}
 	if t, ok := a.teamsSelected(); ok {
 		switch act {
 		case teamsActSettings, teamsActWall:

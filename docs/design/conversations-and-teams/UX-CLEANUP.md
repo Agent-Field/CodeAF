@@ -99,3 +99,20 @@ The review pass removed writer reuse of old empty identities: startup now mints 
 conversation and reaps eligible leftovers under a strict lock. Named deletion refusals
 scroll without hiding choices. Manager selection rechecks missing previews, and hosted
 snapshots never resolve remote paths against the window's filesystem.
+
+## Additional improvements: follow-up milestone 1
+
+All teams now shows top-level team cards with smaller subteams nested inside them,
+recursively. Cards show their own memberships' activity and unread counts separately,
+spending when known, and a compact saved manager update. Card backgrounds open the team's
+overview; manager aliases open Chats with that team's overlay. Organization suggestions,
+Apply and Undo stay on Teams. Global manager controls and directly actionable decisions
+remain above the cards. Closed records show complete ancestry paths, wrapping when needed.
+
+Focused regressions cover nested targets, origin routing, long and narrow overviews,
+global controls and decisions, activity refresh, and real Teams Apply/Undo. The isolated
+review launcher is `/private/tmp/codeaf-teams-followup-milestone-1/review.sh`.
+
+The next milestones change Chats navigation and its team-agnostic conversation grid,
+then enlarge the selected team's manager preview and simplify Settings. Those changes
+remain subject to their own binary review and are not implemented in this milestone.

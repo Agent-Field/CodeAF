@@ -284,6 +284,7 @@ func (a *app) frame() (string, int, int) {
 	// The teams page's members card hangs over its pane (teamcrew.go), a
 	// team's card (teamsheet.go) over whatever is drawn under it, and the move
 	// picker (teammove.go) over both, since the card opens it.
+	body = a.teamsOrganizeOver(body)
 	body = a.teamCrewOver(body)
 	body = a.teamSheetOver(body)
 	body = a.teamMoveOver(body)

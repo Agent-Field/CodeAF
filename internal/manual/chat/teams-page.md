@@ -12,7 +12,7 @@ since you last looked.
 
 A team is a group of conversations you name, and a team's **manager** is a conversation that
 runs it for you (the **team manager** page). The conversations view (`alt+v`) is where you see
-every conversation at once and group them; this page is where you steer the teams you made.
+every open conversation at once; All teams on this page is where you organize your teams.
 
 ## Where a team link in a chat opens
 
@@ -29,34 +29,57 @@ The left column is the **rail**:
 
 ```
  All teams     + Manager │
- + New team              │
  ● harbor ◆          ? 1 │
    ● orbit           ⠿   │
  ● docs                  │
+ + New team              │
                          │
- ✦ Organize              │
  Closed teams · 2 ▸      │
 ```
 
 - **`All teams`** is the top row. With no manager over every team it offers `+ Manager`,
   which starts a separate global manager conversation: you talk to it, and it talks
-  to each team's own manager. Once there is one, the row is that manager's.
+  to each team's own manager. Once there is one, All teams still opens the overview; its manager link opens that conversation.
 - **Every open team**, a sub-team indented under the team it belongs to, with its colour dot.
   A team with a manager wears a dim `◆`.
 - **A mark only when something is happening.** A dim `⠿` says a member of the team is
   working; an amber `? 2` says two things wait on you from it or from a team under it: a
   decision addressed to you, or a member stopped on a question only you can answer. A team
   where nothing is happening draws no mark at all.
-- **`+ New team`** stays visible below `All teams` and always creates a top-level team.
+- **`+ New team`** stays visible below the active team list and always creates a top-level team.
   **`+ Add subteam`**, beside and after **`+ Add member`** in a selected team's header,
   creates inside that team. The depth limit still applies.
-- **`✦ Organize`** suggests groupings and disbanding quiet teams.
+- **`✦ Organize`** in the All teams header suggests groupings and disbanding quiet teams. Its dialog stays on Teams; nothing changes until Apply.
 - **`Closed teams · N ▸`** is at the bottom of the rail. Expand it to inspect disbanded history.
-  The category remains visible while a long team list scrolls.
+  The category remains visible while a long team list scrolls. Each record shows its full ancestry, such as `harbor › orbit`; long paths wrap. Its history also shows the full path.
 
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
 and the pane beside it. Choosing a team changes the overview without changing the chat in
 front or its draft. Clicking a member opens Chats with that team's view selected.
+
+## All teams overview: parent cards and nested subteams
+
+Choose **All teams** in the Teams sidebar to see one card per top-level team, in stored order.
+Each card shows the team's name, conversation count, activity and unread counts separately,
+spending when available, the manager's alias and conversation title, and up to two lines
+of its latest saved assistant update. Smaller subteam cards sit inside their parent's card;
+deeper descendants remain nested. Narrow panes use one column. The existing preview limits
+and remote restrictions described below also apply here.
+
+Click a team's name or card background to inspect its Teams overview without opening a chat.
+Click a manager alias to open its conversation with that team's Chats overlay. Reading a
+preview does not mark a conversation read. The optional global manager and global settings
+remain accessible, and pending decisions remain directly actionable above the cards.
+
+Arrow keys walk the cards; `space` picks teams and `m` moves the focused or picked teams.
+Drag a team card onto another card or sidebar team to move it; the empty sidebar below the
+team list means Top level. Drag a manager alias onto a team to add that conversation as a
+member. A membership drag never removes other memberships. Long overviews reveal the card
+reached by the keyboard. Move confirmations and Undo remain on Teams.
+
+**Organize** opens its suggestions here, including when reached from the conversation grid.
+Apply changes only the checked suggestions; Undo appears here after the change is saved.
+Closing the dialog returns to All teams without changing the Chats overlay or draft.
 
 ## The pane: the team you chose
 
@@ -93,8 +116,8 @@ approval rules. `Cancel · esc` dismisses the sheet; Esc also cancels a pending 
 
 Each ordinary member card has a small `x` that removes only this membership. Its session,
 draft, transcript, running work and other memberships survive. A manager cannot be removed
-with `x`; permanent manager-conversation deletion requires explicit replacement or disbanding
-choices. There is no member Actions menu. Removing the reporting membership leaves that
+with `x`. Before permanently deleting its conversation, assign another manager in Teams
+for every active team it manages. There is no member Actions menu. Removing the reporting membership leaves that
 conversation independent; another manager is never assigned automatically.
 
 `a` opens Add member. The picker uses `Name` and `Project` columns and does not display IDs.

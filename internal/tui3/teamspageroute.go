@@ -62,6 +62,9 @@ func (a *app) teamsUndoRow(d *teamsDraw, width, y int) []string {
 }
 
 func (a *app) teamsRoute(msg tea.Msg) (tea.Cmd, bool) {
+	if a.at(pageTeams) && !a.wall.on && a.wall.org.on {
+		return a.teamsOrganizeRoute(msg)
+	}
 	if !a.at(pageTeams) || a.tsheet.on || a.teamMenu.on || a.wall.on || a.tmove.on {
 		return nil, false
 	}
@@ -157,8 +160,8 @@ func (a *app) teamsRouteMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 				if a.teamDraggable(t) {
 					member := t.act == teamsActMember
 					id := t.id
-					a.teamDragPress(m.X, m.Y, member, id, t.arg, t, member)
-					if member {
+					a.teamDragPress(m.X, m.Y, member, id, t.arg, t, member || t.pane)
+					if member || t.pane {
 						return nil, true
 					}
 				}
