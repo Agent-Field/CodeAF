@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -139,7 +140,23 @@ func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	return rowsOf(listing, directory.MetadataKey(id.CellKey()), self), nil
+	rows := rowsOf(listing, directory.MetadataKey(id.CellKey()), self)
+	if own, named := devname.Chosen(d.dir); named {
+		rows = withOwnName(rows, own)
+	}
+	return rows, nil
+}
+
+// withOwnName puts this computer's own name on its own row. The directory holds
+// the name this computer last managed to tell it, which is the old one for a
+// person who renamed offline; the name kept here is the one they typed.
+func withOwnName(rows []tui3.DeviceRow, own string) []tui3.DeviceRow {
+	for i := range rows {
+		if rows[i].Self {
+			rows[i].Name = own
+		}
+	}
+	return rows
 }
 
 func rowsOf(l directory.Listing, key []byte, self string) []tui3.DeviceRow {
@@ -183,4 +200,11 @@ func (d *approvalsDoor) DeviceName(sealed string) string {
 		return "a new device"
 	}
 	return openName(directory.MetadataKey(id.CellKey()), sealed)
+}
+
+// Rename names this computer. It is the door's one write of its own record: the
+// same function `codeaf devices rename` runs, so the two cannot say different
+// things.
+func (d *approvalsDoor) Rename(ctx context.Context, typed string) (string, error) {
+	return renameThisDevice(ctx, d.dir, typed)
 }
