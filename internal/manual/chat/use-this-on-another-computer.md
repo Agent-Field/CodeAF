@@ -31,7 +31,7 @@ The code is good for 10 minutes. It works once.
 `/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair --code` shows a code in a terminal; `codeaf pair` with nothing after it asks to join by link instead. `codeaf pair <code>` uses one.
 
 ```
-usage: codeaf pair [<code>] [--via url] [--replace]
+usage: codeaf pair [<code>] [--via url] [--replace] [--name <name>]
 ```
 
 Press ctrl+c in the terminal to take a shown code back. In the chat, Esc stops it.
@@ -230,7 +230,7 @@ You can move your identity by file. This needs no relay. It is the way to use wh
 - `codeaf identity export` on the first computer asks for a passphrase and writes your identity under it.
 - `codeaf identity import` on the other computer reads that file with the same passphrase.
 
-**In this build, the `identity` verb is behind `CODEAF_CELLS=1`.** It is not in the help text. Without `CODEAF_CELLS=1` it stops with `codeaf identity needs CODEAF_CELLS=1`. Set `CODEAF_CELLS=1` on both computers to use it. The full description is under "Your identity" on the terminal page.
+The `identity` verb needs no setting: cells, and so moving chats, are on by default. It is not in the help text. If you set `CODEAF_CELLS=0` to turn cells off, it stops with `codeaf identity needs cells, and CODEAF_CELLS=0 turned them off`. The full description is under "Your identity" on the terminal page.
 
 Keep the file and the passphrase safe. Anybody who has both has your chats.
 

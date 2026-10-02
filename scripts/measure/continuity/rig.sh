@@ -15,7 +15,7 @@ rm -rf "$R/home" "$R/work"; mkdir -p "$R/home" "$R/work"
 } > "$R/home/config.json"
 cat > "$R/env.sh" <<EOT
 R=\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)
-export CODEAF_HOME="\$R/home" CODEAF_CELLS=1 CODEAF_SYNC_URL=$URL
+export CODEAF_HOME="\$R/home" CODEAF_SYNC_URL=$URL
 export PATH="\$R/bin:\$PATH"
 EOT
 echo ready "$R"

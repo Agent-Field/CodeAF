@@ -1424,6 +1424,9 @@ func (a *app) enter() tea.Cmd { return a.enterLine(false) }
 // recall history, the draft file, the slash, the mentions — and it is one
 // function so it stays that way.
 func (a *app) enterLine(marked bool) tea.Cmd {
+	if cmd, took := a.takePairLink(); took {
+		return cmd
+	}
 	if a.startingChat() {
 		return a.startChatEnter(marked)
 	}

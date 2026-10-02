@@ -280,7 +280,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/pair` | `/sync`, `/link`, `/laptop` | — | shows a code like `42-715-302`, valid 10 minutes, that gives your chats to another computer, then asks `y / n` when that computer types it |
 | `/pair` | `/sync`, `/link`, `/laptop` | `<code>` | on the other computer: uses a code from `/pair` there, and shows three words to compare while it waits |
 | `/pair` | `/sync`, `/link`, `/laptop` | `<link>` | on a device already in your fleet: opens a new device's request from the link it shows, with its name, system, time and a check number to compare, then `a` approves and `d` denies |
-| `/devices` | — | — | lists your devices with `●` online and `○` away; `r` revokes the one under the cursor at once, and a revoked device can only return as a new request you approve |
+| `/devices` | — | — | lists your devices with `●` online and `○` away; `n` names this device, `r` revokes the one under the cursor at once, and a revoked device can only return as a new request you approve |
 
 The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. All five open the same door. In a terminal the same two forms are `codeaf pair` and `codeaf pair <code>`. The page *Pairing your chats with a second computer* has the whole story: the three words, one attempt for each code, and what revoking cannot take back.
 
@@ -2278,5 +2278,5 @@ each call asks first, exactly like any other outside action, unless approvals ar
 (`--yolo` or the allow posture). Limits: a setup turn is never replayed on another machine
 (the agent does it again there), it never runs impossible items, it needs your permission
 for the network, a sandboxed conversation can install only inside its own folder (`bin/`, `.venv/bin` and `node_modules/.bin` there count as this machine's tools), and it can be rewound like any turn. When it ends, codeaf looks at what is
-now on this machine and updates the record. Cells must be on (`CODEAF_CELLS=1`); without a
+now on this machine and updates the record. Cells are on by default (`CODEAF_CELLS=0` turns them off); without a
 cell there is nothing to set up.

@@ -462,7 +462,21 @@ func (a *app) questionOpen() []questionShown {
 // confirmation is raised by a gesture and answered in the same breath, so
 // nothing can pile up in front.
 func questionRaisedHere(q session.Question) bool {
-	return q.Asker.Kind == session.AskerSurface && q.Ask == session.AskConfirmation
+	return q.Asker.Kind == session.AskerSurface && q.Ask == session.AskConfirmation && !questionArrivedUnasked(q)
+}
+
+// questionArrivedUnasked reports whether the surface raised this card on its
+// own account, because something arrived, rather than because a person pressed
+// a key to get it.
+//
+// IT IS THE LINE THAT KEEPS A CARD FROM TAKING THE KEYBOARD. Every guard that
+// [questionRaisedHere] lifts rests on the person's hand having just made the
+// gesture. A card that landed with a moved chat has no such gesture behind it,
+// so it keeps the settle guard and leaves the box alone: the first `enter` over
+// a typed sentence sends the sentence, as it does under any question the engine
+// asks, instead of answering the card and leaving the words standing.
+func questionArrivedUnasked(q session.Question) bool {
+	return q.Kind == resumeKind
 }
 
 // questionHead is the question the block is drawing, and whether there is one.
@@ -3099,6 +3113,9 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	// before the question had been on screen long enough was aimed at whatever
 	// was there before it, and applying it late is applying it to the wrong
 	// question rather than to none.
+	if a.questionLeavesBox(head) {
+		return nil, false
+	}
 	if !a.questionSettled(head) {
 		// AND A DROP ON A CLOCK THAT ANSWERS IS NOT A SILENT ONE (#1547). The
 		// task proposal is the one question whose silence starts paid work, and
@@ -3181,6 +3198,25 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		return nil, false
 	}
 	return a.questionVerbKey(head, key)
+}
+
+// questionLeavesBox reports whether the words in the box are the conversation's
+// and this question has no claim on them.
+//
+// IT COMES BEFORE THE SETTLE GUARD, because the guard drops a key that was aimed
+// at whatever was on screen before the question, and a sentence somebody is
+// typing was aimed at the box, which has not moved. A question that arrives over
+// a sentence waits for a pause ([app.questionQuieted]) and can then be drawn for
+// less than [questionSettle] when the person presses `enter`; dropping that key
+// left the sentence standing and made them press it twice. A card the person's
+// own gesture raised is the exception and keeps the whole keyboard
+// ([questionRaisedHere]), as does a question whose answer is the words
+// ([questionOwnsBox]).
+func (a *app) questionLeavesBox(head questionShown) bool {
+	if strings.TrimSpace(a.input.String()) == "" || questionRaisedHere(head.question) {
+		return false
+	}
+	return !questionOwnsBox(head.question)
 }
 
 // questionEnter is `enter` under a question: send the words where there are

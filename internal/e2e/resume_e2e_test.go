@@ -37,7 +37,7 @@ func TestResumeBriefAfterTakeover(t *testing.T) {
 	ws := jsWorkspace(t)
 	t.Cleanup(func() { logServerLog(t, ws) })
 	cache := warmNpmCache(t, ws)
-	sync := []string{"CODEAF_CELLS=1", "CODEAF_SYNC_URL=" + relay, "CODEAF_SYNC_INTERVAL_MS=500"}
+	sync := []string{"CODEAF_SYNC_URL=" + relay, "CODEAF_SYNC_INTERVAL_MS=500"}
 
 	a := startWithEnv(t, append([]string{config_key(t)}, append(sync, "CODEAF_TASK_BELT=node")...), "resume_a", homeA, ws, 160, 45, "chat", "--model", model, "--one-model", "--no-host")
 	a.skipSetup(t)
@@ -141,7 +141,7 @@ func shareIdentity(t *testing.T, from, to string) {
 	t.Helper()
 	blob := filepath.Join(t.TempDir(), "id.blob")
 	run := func(home, phrase string, args ...string) {
-		cmd := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home, "CODEAF_CELLS=1"), binary(t), append([]string{"identity"}, args...)...)
+		cmd := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home), binary(t), append([]string{"identity"}, args...)...)
 		cmd.Stdin = strings.NewReader(phrase + "\n")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("identity %v: %v\n%s", args, err, out)

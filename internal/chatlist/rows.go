@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
@@ -157,7 +158,7 @@ func DeviceName(devs map[string]directory.Device, id string, open Opener) string
 // deviceName opens the holder's sealed name; a name that will not open, or a
 // device the listing does not know, shows the first hex digits of its id.
 func deviceName(devs map[string]directory.Device, id string, open Opener) string {
-	return nameOr(open, devs[id].Name, shortID(id))
+	return devname.Shown(nameOr(open, devs[id].Name, shortID(id)))
 }
 
 func shortID(id string) string {

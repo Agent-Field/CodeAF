@@ -1319,11 +1319,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_MODEL_POOL_SUBMIT_URL",
 	"CODEAF_MODEL_POOL_MIRROR_URL",
 	"CODEAF_MODEL_POOL_TTL",
-	// CODEAF_CELLS switches cells on (internal/cell): the isolated working
-	// folders whose verbs, `codeaf cell`, stay hidden while it is off. It is
-	// the flag unreleased work hides behind, so it is plumbing and never a
-	// row — a persisted row would arm half-built machinery on a machine
-	// where the variable is nowhere in sight. It goes the day cells ship.
+	// CODEAF_CELLS=0 switches cells off (internal/cell); on is the default, so a
+	// paired install moves chats with no setting. It is an escape hatch and so
+	// plumbing, never a row: a persisted row would turn cells off on a machine
+	// where the variable is nowhere in sight.
 	"CODEAF_CELLS",
 	// CODEAF_SYNC_URL names the relay that syncs cells between this person's
 	// machines (internal/syncsetup), and CODEAF_SYNC_INTERVAL_MS is how often

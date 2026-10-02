@@ -44,7 +44,7 @@ class Box:
         return r
 
     def probe(self, verb, root, interval_ms=None, timeout=7200, **flags):
-        env = f"CODEAF_SYNC_URL={self.url} CODEAF_CELLS=1 BENCH_FURROW={self.furrow}"
+        env = f"CODEAF_SYNC_URL={self.url} BENCH_FURROW={self.furrow}"
         if interval_ms:
             env += f" CODEAF_SYNC_INTERVAL_MS={interval_ms}"
         args = " ".join(f"-{k} {shlex.quote(str(v))}" for k, v in flags.items())

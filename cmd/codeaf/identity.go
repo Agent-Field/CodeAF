@@ -39,10 +39,10 @@ var identityVerbs = map[string]func(d identityDoor, args []string) error{
 }
 
 // runIdentity is the door onto the person's identity. Like `cell` it is
-// machinery, off the help page and refused, until cells are the default.
+// machinery, off the help page, and refused only when CODEAF_CELLS=0 turns cells off.
 func runIdentity(args []string) error {
 	if !cell.Enabled() {
-		return errors.New("codeaf identity needs CODEAF_CELLS=1")
+		return errors.New("codeaf identity needs cells, and CODEAF_CELLS=0 turned them off")
 	}
 	return runIdentityAt(args, identityDoor{home: home.Dir(), out: os.Stdout, passphrase: askPassphrase, in: os.Stdin, rotation: realRotation, now: time.Now})
 }

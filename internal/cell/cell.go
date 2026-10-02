@@ -8,7 +8,7 @@
 // Every path this package persists is cell-relative; absolute paths exist
 // only transiently, as the answer to Cell.Path.
 //
-// New chats opt in behind [Enabled] (CODEAF_CELLS=1): v3MintSession in
+// New chats are cells unless [Enabled] says otherwise (CODEAF_CELLS=0 turns them off): v3MintSession in
 // cmd/codeaf/chatv3_layout.go calls [CreateIn] on the project bucket, and
 // internal/session's layout.go recognises a folder holding .cell/ and keeps
 // the transcript there. A legacy folder is migrated in place when it is opened
@@ -42,11 +42,14 @@ const (
 	schemaV = 1
 )
 
-// EnvVar switches new chats onto cells. Unset or anything but "1" is off.
+// EnvVar is the switch that turns cells off. Cells are on by default, because a
+// paired install moves chats between computers with no setting; "0" is the one
+// way to opt out, and it is the only place any code reads the switch.
 const EnvVar = "CODEAF_CELLS"
 
-// Enabled reports whether new chats should be created as cells.
-func Enabled() bool { return env.Get(EnvVar) == "1" }
+// Enabled reports whether new chats should be created as cells: always, unless
+// the person set CODEAF_CELLS=0.
+func Enabled() bool { return env.Get(EnvVar) != "0" }
 
 // Options describe a new cell. KeyID is generated when empty.
 type Options struct {
