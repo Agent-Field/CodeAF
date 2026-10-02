@@ -816,11 +816,22 @@ func observerOf(m *preflight.Machine) executor.Observer {
 
 // sealSeamOf is what a session's seals tell the chat surface: nothing for a
 // session with no seat of its own.
-func sealSeamOf(seals session.SealState) tui3.SealSeam {
-	if seals == nil {
-		return tui3.SealSeam{}
+//
+// WHETHER THE LAST SEAL FAILED IS ASKED OF THE AGENT, not of the watch: the
+// ordinary launch shows an agent running in a separate engine process, where
+// the watch is not in this one and the engine states the fact over the wire
+// ([session.Facts.Unsealed]). The agent's own predicate is the one source both
+// readings come from. The sentences are drained from the local watch only; an
+// engine tells its own on the turn's stream.
+func sealSeamOf(agent any, seals session.SealState) tui3.SealSeam {
+	var seam tui3.SealSeam
+	if seals != nil {
+		seam = tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
 	}
-	return tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
+	if door, ok := agent.(interface{ SealFailing() bool }); ok {
+		seam.Failing = door.SealFailing
+	}
+	return seam
 }
 
 // stderrSay is where a run with no surface says its sentences.
