@@ -4,6 +4,10 @@ codeaf counts how it is used — how often, in which modes, on which platforms �
 so the parts people rely on get the work. The counts are anonymous: nothing
 about you or your work ever leaves this machine.
 
+The counts are **ON by default**. They go to AgentField's relay at
+`https://agentfield.ai/api/oss/codeaf/telemetry` (`telemetry.DefaultEndpoint`).
+`CODEAF_TELEMETRY_ENDPOINT` moves the relay; an empty value turns sending off.
+
 ## The disclosure
 
 This page, and the *Telemetry* section of the repository's README, are the whole
@@ -101,8 +105,10 @@ Model Pool from sending. They are checked in this order:
 3. `telemetry = off` in the project's settings file, `.codeaf/config.json`. A
    project may only turn the counts off, never on.
 4. the `telemetry` switch on the *display* tab of the chat's `/settings`, which
-   writes `telemetry = off` to the profile's `config.json`; the same switch is
-   the way back.
+   writes `telemetry = off` to the profile's `config.json` and stops sending
+   immediately, including later periodic and exit flushes. Turning it back on
+   takes effect the next time codeaf starts. A request already on the wire may
+   complete; counts already queued locally stay unsent while it is off.
 5. an empty `CODEAF_TELEMETRY_ENDPOINT`.
 
 A build that cannot name its own source — dirty or unstamped — never reports,

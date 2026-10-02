@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // The settings registry is the one place a user-tunable knob is written down.
@@ -2595,11 +2596,25 @@ func (s *Settings) build() []Setting {
 			Key: KeyTelemetry, Category: CategoryInterface, Kind: SettingBool,
 			Label: "telemetry", Env: "CODEAF_TELEMETRY",
 			Hint: "sends the anonymous usage counts described in docs/TELEMETRY.md — session " +
-				"starts and ends, tool and model call counts, coarse cost — after a notice " +
-				"has been printed once. Off sends nothing. The session's own counters still " +
-				"count, because counting is free; a change lands the next time codeaf starts.",
-			read:  func() string { return formatBool(TelemetryAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyTelemetry, raw) },
+				"starts and ends, tool and model call counts, coarse cost. Off stops sending " +
+				"immediately. Turning it on takes effect the next time codeaf starts. " +
+				"The session's own counters still count.",
+			read: func() string { return formatBool(TelemetryAt(dir)) },
+			write: func(raw string) error {
+				on, err := parseBool(raw)
+				if err != nil {
+					return err
+				}
+				if err := WriteTelemetry(dir, on); err != nil {
+					return err
+				}
+				// OFF REACHES THE RUNNING PIPE AT ONCE. Re-enabling waits for
+				// startup to resolve every opt-out before anything can be sent.
+				if !on {
+					telemetry.Configure(true)
+				}
+				return nil
+			},
 		},
 		Setting{
 			Key: KeyDraftPersist, Category: CategoryInterface, Kind: SettingBool,

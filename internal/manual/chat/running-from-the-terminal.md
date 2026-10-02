@@ -1044,31 +1044,40 @@ first — `cache clean` wants the word `now` typed out, the same word `/cache cl
 wants in the chat, and `rebuild` wants `y` — and `--yes` skips the question on both. The other three act at once, and all three can be undone: a
 retracted belief restores, a stopped service starts again, a revoked device pairs again.
 
-## Does codeaf collect data about me — telemetry, the anonymous usage counts, and how to turn them off
+## Does codeaf collect data about me — telemetry, the anonymous usage counts
 
-codeaf sends anonymous usage counts to AgentField: the version, OS, mode (chat or task),
-session counts and errors in bands, and the tokens each provider call used. Never anything
-about you or your work — no prompts, code, file names, paths, repo names, keys, email, IP or
-machine name, and no model names. Each completed provider call queues a `usage_delta` with
-exact input, output and total tokens, never which model or what it read; the queue is sent
-every 30 seconds while the session stays open and once more when it ends, and `session_ended`
-carries the outcome and bucketed session counts without repeating tokens already reported.
-There is **no notice in the product and no `codeaf telemetry` command**: the whole account of
-what leaves, field by field, is `docs/TELEMETRY.md` in the repository (linked from the
-README's *Telemetry* section), and a test holds that page to the code. The counts are not
-the only stream: with `model_pool` on, one scored row per crew seat leaves for the Model
-Pool after a task lands (*Model Pool* above).
+codeaf sends anonymous usage counts to AgentField, **on by default**: version, OS,
+mode (chat or task), session counts and errors in bands, and the tokens each provider
+call used. Never prompts, code, file names, paths, repo names, keys, email, IP or
+machine name, and no model names. Each completed provider call queues a `usage_delta`
+with exact input, output and total tokens. The queue is sent every 30 seconds while
+the session stays open and once more when it ends; `session_ended` carries the outcome
+and bucketed counts without repeating those tokens.
 
-**To turn it off**, any one of these does it, and every one of them also caps the Model
-Pool at `read`, so it still fetches the index and sends nothing: the `telemetry` switch on
-the *display* tab of `/settings`, which writes `telemetry = off` to your profile;
-`CODEAF_TELEMETRY=off` in the shell; `DO_NOT_TRACK=1`, the ecosystem's own word for it;
-`telemetry = off` in the project's `.codeaf/config.json`, which may only turn it off, never
-on; or an empty `CODEAF_TELEMETRY_ENDPOINT`. A build that cannot name its own source — dirty
-or unstamped — never reports, and neither does a test binary. There is nothing to show or
-inspect from the terminal: the spool waits in `~/.codeaf/telemetry/spool.jsonl` and the
-`codeaf telemetry status`, `info` and `show` verbs that used to print it were removed on
-2026-10-01 along with the notice.
+The relay is `https://agentfield.ai/api/oss/codeaf/telemetry`;
+`CODEAF_TELEMETRY_ENDPOINT` moves it. The full disclosure, field by field, is
+`docs/TELEMETRY.md` in the repository, linked from the README's *Telemetry* section.
+The product prints no notice. With `model_pool` on, one scored row per crew seat also
+leaves for the Model Pool after a task lands (*Model Pool* above).
+
+## How to turn telemetry off now — /settings stops sending immediately
+
+On the *display* tab of `/settings`, turn the `telemetry` switch off. It writes
+`telemetry = off` to your profile and stops sending immediately: no new event is
+spooled and later periodic and exit flushes send nothing. Turning it back on takes
+effect the next time codeaf starts. A request already on the wire may complete;
+counts already queued locally stay unsent while it is off.
+
+Other ways to turn the counts off: `CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1`,
+`telemetry = off` in the project's `.codeaf/config.json` (a project may only turn it
+off), or an empty `CODEAF_TELEMETRY_ENDPOINT`. Every switch also caps the Model Pool
+at `read`: its index is still fetched and nothing is sent. Dirty or unstamped builds
+and test binaries never report.
+
+`codeaf telemetry` is no longer a command. It exits with an error naming the off
+switches and `docs/TELEMETRY.md`, which lists what is sent. The former `status`, `info`
+and `show` verbs were removed. Unsent events can be read directly in
+`~/.codeaf/telemetry/spool.jsonl`.
 
 ## Reading a plan by hand — codeaf plan new, show, revise and run
 

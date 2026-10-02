@@ -296,7 +296,7 @@ Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/p
 
 ## Telemetry
 
-codeaf sends anonymous usage counts to AgentField.
+codeaf sends anonymous usage counts to AgentField, on by default.
 
 - **Sent:** version, OS, mode (chat or task), session counts, errors, and total
   tokens used — as counts and bands, under a random per-install id.
@@ -305,6 +305,8 @@ codeaf sends anonymous usage counts to AgentField.
 - **Turn off:** the `telemetry` switch in the chat's `/settings`,
   `CODEAF_TELEMETRY=off`, or `DO_NOT_TRACK=1`. Any one of them stops every
   stream, the Model Pool's rows included.
+  The `/settings` switch stops sending immediately; turning it back on takes
+  effect the next time codeaf starts.
 
 This page and [docs/TELEMETRY.md](docs/TELEMETRY.md) are the whole disclosure:
 the product itself prints no notice and has no telemetry command. The document

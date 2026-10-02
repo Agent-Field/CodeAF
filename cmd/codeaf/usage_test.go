@@ -11,6 +11,18 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec"
 )
 
+func TestRemovedTelemetryCommandRefusesAndNamesItsReplacement(t *testing.T) {
+	err := unknownCommand("telemetry")
+	if exitCodeOf(err) != 1 {
+		t.Fatalf("removed telemetry command exits %d, want 1", exitCodeOf(err))
+	}
+	for _, word := range []string{"there is no", "CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "/settings", "docs/TELEMETRY.md"} {
+		if err == nil || !strings.Contains(err.Error(), word) {
+			t.Errorf("removed telemetry refusal must name %q: %v", word, err)
+		}
+	}
+}
+
 // exitCodeOf reads an error the way [execute] does, so a test can assert the
 // number the shell actually sees rather than the shape of the error value.
 func exitCodeOf(err error) int {

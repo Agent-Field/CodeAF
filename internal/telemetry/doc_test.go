@@ -163,7 +163,7 @@ func TestDocPropertyTableMatchesTheAllowlist(t *testing.T) {
 // every switch and everything that is never sent.
 func TestDocCarriesTheDisclosureAndTheSwitches(t *testing.T) {
 	body := docBody(t)
-	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "/settings", "codeaf sends anonymous usage counts"} {
+	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "/settings", ".codeaf/config.json", "an empty `CODEAF_TELEMETRY_ENDPOINT`", DefaultEndpoint, "ON by default", "codeaf sends anonymous usage counts"} {
 		if !strings.Contains(body, wanted) {
 			t.Errorf("docs/TELEMETRY.md must mention %q", wanted)
 		}
