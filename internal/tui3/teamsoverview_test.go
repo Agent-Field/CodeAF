@@ -598,11 +598,7 @@ func TestSelectedManagerCardLeadsCompactMembersAndUsesActualMessages(t *testing.
 					t.Fatalf("missing %q: %s", want, text)
 				}
 			}
-			managerHeight := max(a.teamsInteractionHeight()+4, min(a.height/2, teamsManagerRows))
-			table := a.teamsInteractionTable(&teamsDraw{a: a}, team, width, 0)
-			if managerHeight < len(table) {
-				t.Fatal("manager shorter than interactions")
-			}
+			managerHeight := a.teamsManagerHeight()
 			crew := a.teamsCrew(team)
 			if len(crew) < 2 {
 				t.Fatal("fixture has no ordinary member")
@@ -656,6 +652,7 @@ func TestManagerPreviewUsesFrontConversationAndLabelsClippedTail(t *testing.T) {
 
 func TestManagerPreviewSharesChatsDeliveryAndCorrectionWords(t *testing.T) {
 	a, id, _ := teamsHostedLab(t)
+	a.height = 48
 	manager := mustTeam(t, a, id).Manager
 	wrapper := `Team traffic in "harbor" for you (@boss). These are the team's messages, not the person's words:
 from @scrape #1: The draft is ready.
@@ -818,4 +815,130 @@ func TestManagerReadingWheelContinuesToMembersAndInteractions(t *testing.T) {
 		t.Fatalf("repeated wheel could not reach interactions: %+v", a.tp.cur)
 	}
 
+}
+
+func TestBoxedTeamDecisionKeepsAnswerHitInsideItsBorder(t *testing.T) {
+	for _, width := range []int{24, 40, 80, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			a, id, _ := teamsPlaceLabIDs(t)
+			a.width, a.height = width, 100
+			flushTeams(t, a)
+			p, err := a.teamsSeam().Raise(teamstore.Packet{Team: teamstore.Person, Origin: id, Kind: teamstore.PacketQuestion, RaisedBy: teamstore.FromManager, Question: "Which layout should we review first?", Options: []teamstore.Option{{ID: "wide", Label: "Wide terminal", Consequence: "Review the wide layout"}, {ID: "narrow", Label: "Narrow terminal", Consequence: "Review the narrow layout"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			drive(t, a, runCmd(a.teamsRead(false))...)
+			d := &teamsDraw{a: a}
+			rows := a.teamsCard(d, p, width, 8)
+			if len(rows) < 4 || !strings.HasPrefix(plain(rows[0]), "╭") || !strings.HasPrefix(plain(rows[len(rows)-1]), "╰") {
+				t.Fatal("decision lost boundary")
+			}
+			a.tp.targets = d.targets
+			var chosen teamsTarget
+			for _, target := range d.targets {
+				if target.x0 < 2 || target.x1 > width-2 || target.y <= 8 || target.y >= 8+len(rows)-1 {
+					t.Fatalf("answer touches border: %+v", target)
+				}
+				if target.act == teamsActOption && target.opt == "narrow" {
+					chosen = target
+				}
+			}
+			if chosen.opt == "" {
+				t.Fatal("missing narrow choice")
+			}
+			if !strings.Contains(ansi.Cut(plain(rows[chosen.y-8]), chosen.x0, chosen.x1), "Narrow") {
+				t.Fatal("answer hit does not lie on its label")
+			}
+			if _, ok := a.teamsTargetAt(0, chosen.y); ok {
+				t.Fatal("border has an answer hit")
+			}
+			hit, ok := a.teamsTargetAt(chosen.x0+1, chosen.y)
+			if !ok || hit.opt != "narrow" {
+				t.Fatal("clicked label did not resolve its answer")
+			}
+			drive(t, a, runCmd(a.teamsDo(hit))...)
+			packets, _, _, err := a.teamsSeam().Packets(teamstore.ScopeAll, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, packet := range packets {
+				if packet.ID == p.ID && packet.Waiting() {
+					t.Fatal("answer did not decide the boxed question")
+				}
+			}
+			for _, row := range rows {
+				if ansi.StringWidth(row) != width {
+					t.Fatal("question box exceeds pane")
+				}
+			}
+		})
+	}
+}
+
+func TestBoxedPermissionPromptRetainsWrappedChoicesAndSendsAnswer(t *testing.T) {
+	for _, width := range []int{24, 40, 80} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			a, id, _ := teamsPlaceLabIDs(t)
+			a.width, a.height = width, 100
+			team := mustTeam(t, a, id)
+			m := team.Members[0]
+			for _, member := range team.Members {
+				if member.File != a.file {
+					m = member
+					break
+				}
+			}
+			now := time.Now()
+			a.clock = func() time.Time { return now }
+			question := consentQuestion(17, "Allow this member to regenerate the report?")
+			row := session.SessionRow{Transcript: m.File, Dir: filepath.Dir(m.File), Live: true, Presence: session.SessionPresence{UpdatedAt: now, State: session.PresenceWaiting, Question: question}}
+			a.tp.world = map[string]session.SessionRow{filepath.Clean(m.File): row}
+			var sent []string
+			a.leaveAnswer = func(dir string, kind session.QuestionKind, id uint64, key string) error {
+				sent = append(sent, key)
+				return nil
+			}
+			d := &teamsDraw{a: a}
+			rows := a.teamsPromptRows(d, team, width, 8)
+			keys := map[string]bool{}
+			a.tp.targets = d.targets
+			for _, target := range d.targets {
+				if target.act != teamsActPrompt {
+					continue
+				}
+				keys[target.opt] = true
+				if target.x0 < 2 || target.x1 > width-2 {
+					t.Fatal("prompt answer crosses border")
+				}
+				if !strings.Contains(plain(rows[target.y-8]), question.Label(target.opt)) {
+					t.Fatalf("choice is hidden: %s", target.opt)
+				}
+			}
+			for _, chip := range answerChips(question) {
+				if !keys[chip.key] {
+					t.Fatalf("lost wrapped choice: %s", chip.label)
+				}
+			}
+			var selected teamsTarget
+			for _, target := range d.targets {
+				if target.act == teamsActPrompt {
+					selected = target
+					break
+				}
+			}
+			hit, ok := a.teamsTargetAt(selected.x0+1, selected.y)
+			if !ok {
+				t.Fatal("boxed permission choice is not clickable")
+			}
+			drive(t, a, runCmd(a.teamsDo(hit))...)
+			if len(sent) != 1 || sent[0] != selected.opt {
+				t.Fatalf("prompt chose wrong answer: %+v", sent)
+			}
+			for _, line := range rows {
+				if ansi.StringWidth(line) > width {
+					t.Fatal("prompt exceeds box")
+				}
+			}
+		})
+	}
 }

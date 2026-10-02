@@ -199,3 +199,12 @@ edges. Focused tests cover these paths, ordinary card geometry, interaction pagi
 decisions, manager preview-to-composer navigation and Wake resets. The isolated review
 launcher is /private/tmp/codeaf-teams-followup-milestone-3/review.sh and launches this worktree's
 canonical bin/codeaf. Its saved manager exchanges also appear in the actual Chats transcript.
+
+Milestone 3 review revision: the selected manager card is about forty percent shorter,
+with an eight-row reading minimum and fourteen-row ceiling. This replaces the earlier
+requirement that its height match or exceed Recent interactions. Ordinary member cards
+retain their geometry. Expanded decision packets and each member permission prompt use
+an enclosing card boundary, grouping their questions and choices. Answer targets shift
+with their visible text and stay inside the border; narrow permission choices wrap onto
+additional rows instead of disappearing. Focused regressions exercise boxed option clicks,
+real packet decisions, permission answer delivery, Unicode and short-frame preview reading.

@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -571,33 +570,59 @@ func (a *app) teamsMembersRows(d *teamsDraw, t team, width, y int) []string {
 func (a *app) teamsPromptRows(d *teamsDraw, t team, width, y int) []string {
 	pal := a.pal
 	var out []string
-	now := time.Now()
 	for _, row := range a.teamsPrompts(t) {
-		question, _ := answerable(row, now)
+		question, _ := answerable(row, a.now())
 		who := "@" + a.teamsHandleOf(t, row.Transcript)
 		head := question.Text
 		if question.Full != nil && strings.TrimSpace(question.Full.Head) != "" {
 			head = question.Full.Head
 		}
 		out = append(out, "")
-		out = append(out, " "+pal.ask("? "+who+" asks")+pal.dim(" "+a.teamsDot()+" ")+pal.ink(fit(switcherFirstLine(head), width-ansi.StringWidth(who)-12)))
-		if _, sent := a.answerSent(row, question); sent {
-			out = append(out, "   "+pal.dim(answerWaitingWord))
-			continue
-		}
-		line, x := "  ", 2
-		for _, chip := range answerChips(question) {
-			s, w := d.button(chip.label, teamsTarget{act: teamsActPrompt, id: t.ID, arg: row.Transcript, opt: chip.key,
-				x0: x, y: y + len(out), hint: chip.label + " for " + who + hintSegment + "your own gate; a manager never answers it"}, pal.ink)
-			if x+w > width {
-				break
+		out = append(out, a.teamsDecisionBox(d, width, y+len(out), func(inner, top int) []string {
+			lines := []string{" " + pal.ask("? "+who+" asks")}
+			for _, text := range wrap(switcherFirstLine(head), max(inner-2, 1)) {
+				lines = append(lines, " "+pal.ink(text))
 			}
-			line += s + " "
-			x += w + 1
-		}
-		out = append(out, line)
+			if _, sent := a.answerSent(row, question); sent {
+				return append(lines, " "+pal.dim(answerWaitingWord))
+			}
+			line, x := " ", 1
+			for _, chip := range answerChips(question) {
+				label := fit(chip.label, max(inner-3, 1))
+				cells := ansi.StringWidth(label) + 2
+				if x+cells > inner && x > 1 {
+					lines = append(lines, line)
+					line, x = " ", 1
+				}
+				button, w := d.button(label, teamsTarget{act: teamsActPrompt, id: t.ID, arg: row.Transcript, opt: chip.key, x0: x, y: top + len(lines), hint: chip.label + " for " + who + hintSegment + "your own gate; a manager never answers it"}, pal.ink)
+				line += button + " "
+				x += w + 1
+			}
+			return append(lines, line)
+		})...)
 	}
 	return out
+}
+
+// Decision boundaries use the same card renderer as members. Shift and clip
+// the existing controls with the body so the border never becomes an answer.
+func (a *app) teamsDecisionBox(d *teamsDraw, width, y int, body func(int, int) []string) []string {
+	if width < 12 {
+		return body(width, y)
+	}
+	inner := width - 4
+	mark := len(d.targets)
+	rows := body(inner, y+1)
+	for i := mark; i < len(d.targets); i++ {
+		d.targets[i].x0 = min(max(d.targets[i].x0, 0), inner)
+		d.targets[i].x1 = min(max(d.targets[i].x1, 0), inner)
+	}
+	d.shift(mark, 2, 0)
+	lines := make([]wallCardLine, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, wallCardLine{s: row})
+	}
+	return wallCardBuild(a.pal, "", lines, 0, y, width, 1, 0).rows
 }
 
 // teamsHandleOf is the handle, or failing that the name, of the member whose
@@ -672,6 +697,10 @@ const teamsFoldWaiting = "waiting on you"
 // open with the manager's mark, so `◆ question · raised by @boss` read as the
 // manager's question.
 func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string {
+	return a.teamsDecisionBox(d, width, y, func(inner, top int) []string { return a.teamsCardContent(d, p, inner, top) })
+}
+
+func (a *app) teamsCardContent(d *teamsDraw, p teamstore.Packet, width, y int) []string {
 	pal := a.pal
 	mine := p.Team == teamstore.Person
 	var out []string

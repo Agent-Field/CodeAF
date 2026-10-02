@@ -95,7 +95,8 @@ opens the team's settings and spending controls. Member cards provide the conver
 links directly; there is no separate `Members` button. `p` opens the keyboard member list
 for dragging a conversation onto another team.
 
-The manager comes first in a full-width card, at least as tall as Recent interactions.
+The manager comes first in a full-width card, about forty percent shorter than the previous
+large preview. It ranges from eight to fourteen rows to keep authors and recent text readable.
 Compact ordinary member cards follow, with a plain border and no role title; the interaction
 panel follows the members. The manager card shows a labelled latest excerpt from up to eight
 recent messages, preserving authors and paragraph breaks. A clipped message says `continued`.
@@ -155,7 +156,8 @@ says `that message is older than this chat's history`.
 
 ## What waits on you: decisions, permissions and spending controls
 
-Decision cards remain on the overview. Click an option to decide, or `Your own answer…`
+Expanded decisions and member permission prompts have a bounding box on the overview.
+Each box groups the question with its answer choices. Click an option to decide, or `Your own answer…`
 to enter your own response (`enter` submits, `esc` cancels). The newest three cards show
 whole; older cards collapse to one line and can be expanded. Each shows who raised it,
 what waits on you, its options and any recommendation.

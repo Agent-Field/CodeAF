@@ -20,7 +20,8 @@ import (
 // conversation on each beat. The frame only sees these cached readings.
 const teamsPreviewBytes = 64 << 10
 const teamsPreviewMessages = 8
-const teamsManagerRows = 24
+const teamsManagerRows = 14
+const teamsManagerMinRows = 8
 
 type teamsPreviewMessage struct {
 	author      string
@@ -368,9 +369,15 @@ func (a *app) teamsManagerMessages(key string) []teamsPreviewMessage {
 	return messages
 }
 
+// The shorter card keeps room for authors and a message while making the
+// overview's manager section about sixty percent of its former height.
+func (a *app) teamsManagerHeight() int {
+	return max(teamsManagerMinRows, min(a.height*3/10, teamsManagerRows), (a.teamsInteractionHeight()+4)*3/5)
+}
+
 func (a *app) teamsManagerCard(d *teamsDraw, t team, r teamsCrewRow, width, y int) []string {
 	inner := width - 4
-	height := max(a.teamsInteractionHeight()+4, min(a.height/2, teamsManagerRows))
+	height := a.teamsManagerHeight()
 	state := r.word
 	if a.unreadChats[r.key] {
 		state += "  unread"
