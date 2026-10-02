@@ -54,17 +54,18 @@ type Running struct {
 	Since   int64  `json:"since,omitempty"`
 }
 
-// Withheld is a path the seal left out. A folder a lockfile that does travel
-// rebuilds names that Lock, and MadeBy and Cwd say which command made it (empty
-// when the folder was there before the chat or came from another terminal). A
-// file of the chat's own evidence has no lockfile and nothing rebuilds it: Why
-// says in words what kept it back, and it stayed on the machine that made it.
+// Withheld is a folder the seal left out because a lockfile that does travel
+// rebuilds it. Lock is that lockfile. MadeBy and Cwd say which command made the
+// folder, and are empty when the folder was there before the chat or came from
+// another terminal. An entry with a Reason and no Lock is a single path set apart
+// (a file this machine could not read, a name it could not keep): nothing
+// rebuilds it, and Reason says why. A reader that does not know Reason ignores it.
 type Withheld struct {
 	Path   string `json:"path"`
 	Lock   string `json:"lock,omitempty"`
+	Reason string `json:"reason,omitempty"`
 	MadeBy string `json:"made_by,omitempty"`
 	Cwd    string `json:"cwd,omitempty"`
-	Why    string `json:"why,omitempty"`
 }
 
 // Detached is a container or service a command started outside its own process

@@ -301,6 +301,7 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	a.tellTurnStarted()
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}
@@ -1784,7 +1785,23 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// first would send a seal that ends before them.
 	procexec.Settle(context.Background(), a.config.seat())
 	a.tellTurnEnded()
+	a.noticeSealed()
 	return turn
+}
+
+// tellWrote tells the seal watch that the chat's record changed, when it wants
+// to know: a write behind the last seal is sealed by the watch once it stops.
+func (a *Agent) tellWrote() {
+	if t, ok := a.config.Seals.(Tail); ok {
+		t.Wrote()
+	}
+}
+
+// tellTurnStarted lets the seal watch know the agent is writing the record itself.
+func (a *Agent) tellTurnStarted() {
+	if t, ok := a.config.Seals.(Tail); ok {
+		t.TurnStarted()
+	}
 }
 
 // tellTurnEnded lets the seat's seal watch know the agent has stopped to wait

@@ -2928,6 +2928,42 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I lost all my computers, can I recover my chats", "losing-every-device"},
 		{"is there a codeaf identity rotate", "losing-every-device"},
 		{"I typed the code on the first screen and nothing happened", "use-this-on-another-computer"},
+		// THE CROSS-COMPUTER FEATURES, ASKED IN A PERSON'S OWN WORDS: quiet first
+		// launch, the link and its token, the devices list, taking a chat back, what a
+		// move carries, and memory across computers.
+		{"is my code sent anywhere before I pair", "use-this-on-another-computer"},
+		{"does codeaf send anything before I pair a second computer", "use-this-on-another-computer"},
+		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer"},
+		{"what is the https codeaf.agentfield.ai/p link", "add-or-remove-a-computer"},
+		{"what is the bare token for pairing a headless server", "add-or-remove-a-computer"},
+		{"how do I pair a server with no browser", "add-or-remove-a-computer"},
+		{"how do I approve a new computer from a terminal", "add-or-remove-a-computer"},
+		{"why does it say running on build-box off", "home"},
+		{"what does the offline holder mean when I try to continue a chat", "continuing-a-chat-on-another-computer"},
+		{"what does leave it there do", "continuing-a-chat-on-another-computer"},
+		{"when was a device last seen", "add-or-remove-a-computer"},
+		{"what does the removed computer see after I remove it", "add-or-remove-a-computer"},
+		{"what happens to node_modules when I move a chat", "home"},
+		{"are my job logs moved with the chat", "home"},
+		{"does the task history come with the chat to another computer", "home"},
+		{"do kept branches come along when I move a chat", "home"},
+		{"does my spend move with a chat to another computer", "home"},
+		{"do my usage numbers sync between computers", "home"},
+		{"two files with the same name in different case after a move", "home"},
+		{"a folder was left out of the move because it could not be read", "home"},
+		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer"},
+		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer"},
+		{"does /remember work on my other computer", "what-i-remember"},
+		{"are my memories shared across computers", "what-i-remember"},
+		{"too many pairing attempts from this network", "relay-limits-and-refusals"},
+		{"this computer was revoked what does it say", "add-or-remove-a-computer"},
+		{"how do I use my own relay instead of the hosted one", "relay-hosted-or-your-own"},
+		{"where does sync go by default", "relay-hosted-or-your-own"},
+		{"the pairing link says it ran out before anyone approved it", "add-or-remove-a-computer"},
+		{"the link says that request was already answered", "add-or-remove-a-computer"},
+		{"it says the check number does not fit that device", "add-or-remove-a-computer"},
+		{"how many pairing links can I make in an hour", "add-or-remove-a-computer"},
+		{"why is my memory missing on the new laptop", "what-i-remember"},
 		// THE TERMINAL VERBS. Six of them — `why`, `notebook`, `competence`,
 		// `services`, `wake` and `rebuild` — were in no page at all, so a person
 		// who asked the chat how to see what a piece of work did was answered by
@@ -3687,6 +3723,37 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"how do I remove a computer", add, "r revoke"},
 		{"what does the dot next to a computer mean", add, "○ dumb (offline)"},
 		{"I was told this computer was removed", add, "this computer was stopped by another of your computers"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a %s section that says %q", probe.asked, probe.page, probe.says)
+		}
+	}
+}
+
+// THE CROSS-COMPUTER ANSWERS BY WHAT THEY SAY. Reaching the page is not enough
+// for these: each question must reach the section that holds the fact a person
+// is asking for, in the code's own words.
+func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
+	for _, probe := range []struct{ asked, page, says string }{
+		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
+		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer", "That is not a fault."},
+		{"how do I pair a server with no browser", "add-or-remove-a-computer", "the bare token `<code>.<key>`"},
+		{"the pairing link says it ran out before anyone approved it", "add-or-remove-a-computer", "a link is good for 10 minutes"},
+		{"how many pairing links can I make in an hour", "add-or-remove-a-computer", "at most 10 new links in an hour and 3 waiting at once"},
+		{"what happens to node_modules when I move a chat", "home", "`node_modules` (with a `package-lock.json`"},
+		{"are my job logs moved with the chat", "home", "`.codeaf/jobs/<n>.log`"},
+		{"does my spend move with a chat to another computer", "home", "read again from its sealed record"},
+		{"does /remember work on my other computer", "what-i-remember", "when that chat is continued there"},
+		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
+		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
+		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

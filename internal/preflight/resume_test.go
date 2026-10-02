@@ -300,7 +300,7 @@ func TestCarriedChatFilesAreToldWhereTheyAreWithoutRaisingAnOffer(t *testing.T) 
 }
 
 func TestAChatFileThatStayedBehindIsNamedWithWhy(t *testing.T) {
-	inv := inventory.Inventory{Withheld: []inventory.Withheld{{Path: "logs/jobs/2.log", Why: "over the 1 MiB carry limit for one file; it stayed on the machine that made it"}}}
+	inv := inventory.Inventory{Withheld: []inventory.Withheld{{Path: "logs/jobs/2.log", Reason: "over the 1 MiB carry limit for one file; it stayed on the machine that made it"}}}
 	r := Compare("box", inv, here{}, Report{})
 	for _, text := range []string{r.Brief(), r.News()} {
 		if !strings.Contains(text, "logs/jobs/2.log") || !strings.Contains(text, "stayed on the machine that made it") {
@@ -319,5 +319,21 @@ func TestAChatFileIsLookedForInTheChatFolderNotTheWorkspace(t *testing.T) {
 	}
 	if !(LocalHere{Root: root, Workspace: workspace}).Has("logs/jobs/2.log") {
 		t.Error("a log in the chat folder was reported missing")
+	}
+}
+
+func TestAnEntryWithAReasonIsToldWithItsReasonAndNoCommand(t *testing.T) {
+	r := Resume{Missing: []inventory.Withheld{{Path: "odd.bin", Reason: "cannot be read on this machine"}}}
+	if got := missingBrief(r.Missing[0]); got != "odd.bin: not brought along; cannot be read on this machine" {
+		t.Fatalf("brief %q", got)
+	}
+	if got := missingNews(r.Missing[0]); got != "odd.bin (cannot be read on this machine)" {
+		t.Fatalf("news %q", got)
+	}
+	if got := r.Grants(); len(got) != 0 {
+		t.Fatalf("a path with no way to rebuild it was granted %v", got)
+	}
+	if !strings.Contains(r.Brief(), "odd.bin: not brought along; cannot be read") {
+		t.Fatalf("brief lacks the entry:\n%s", r.Brief())
 	}
 }

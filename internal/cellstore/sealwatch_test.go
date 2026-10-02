@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
@@ -112,5 +113,58 @@ func TestSealWatchForwardsTurnEnd(t *testing.T) {
 	w.TurnEnded()
 	if heard != 2 {
 		t.Fatalf("heard %d turn ends, want 2", heard)
+	}
+}
+
+// Writes behind the turn-end seal are sealed once, after they stop: a burst of
+// them is one seal, and nothing is sealed while a turn is running.
+func TestSealWatchSealsTheTailOnceAfterTheWritesStop(t *testing.T) {
+	tails := make(chan struct{}, 8)
+	w := &SealWatch{Quiet: 30 * time.Millisecond, OnTail: func() { tails <- struct{}{} }}
+
+	w.Wrote() // before any turn has ended nothing is owed: the turn's own seal is coming
+	w.TurnEnded()
+	for range 5 {
+		w.Wrote()
+		time.Sleep(5 * time.Millisecond)
+	}
+	select {
+	case <-tails:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the writes behind the turn-end seal were never sealed")
+	}
+	select {
+	case <-tails:
+		t.Fatal("one burst of writes made more than one tail seal")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	w.Wrote()
+	w.TurnStarted() // the next turn seals its own writes
+	select {
+	case <-tails:
+		t.Fatal("a tail seal fired inside a turn")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestSealWatchNoteIsSaidAndDoesNotFailTheState(t *testing.T) {
+	var w SealWatch
+	w.Note("zero.txt cannot be read here, so it is left out of the saved history until its permissions allow it")
+	if w.Failing() {
+		t.Fatal("a note is not a failed seal")
+	}
+	if got := w.Take(); !strings.Contains(got, "zero.txt") {
+		t.Fatalf("note not handed to the surface: %q", got)
+	}
+}
+
+func TestWithNoticesSendsTheGuardsLineToTheSurface(t *testing.T) {
+	var said []string
+	e := Engine{}
+	WithNotices(func(line string) { said = append(said, line) })(&e)
+	e.Guard.notify("one line")
+	if len(said) != 1 || said[0] != "one line" {
+		t.Fatalf("guard notice went elsewhere: %q", said)
 	}
 }

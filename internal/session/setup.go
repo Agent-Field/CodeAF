@@ -51,6 +51,17 @@ type TurnEnder interface {
 	TurnEnded()
 }
 
+// Tail is what a SealState may also do: hear that a turn began and that the chat's
+// record was written. The seal at the end of a turn only covers what the turn
+// wrote; titles, summaries and memories are written after it, and the watch seals
+// them once they stop.
+type Tail interface {
+	// TurnStarted is called as each turn begins.
+	TurnStarted()
+	// Wrote is called after every write to the chat's record. It must not wait.
+	Wrote()
+}
+
 // Machine is the session's view of the device it runs on. preflight.Machine is
 // the one implementation.
 type Machine interface {

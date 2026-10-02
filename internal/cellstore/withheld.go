@@ -17,13 +17,22 @@ import (
 // folder's file. Below one marker line sit the paths withheld because they
 // carry secrets, and below another the install folders left out because a
 // lockfile that does travel rebuilds them (docs/STAGE-1-CONTRACTS.md section 19).
-// The harness owns only those two blocks: each is rewritten whole at every seal,
-// so a path a person has cleaned of its secret goes back into the next snapshot.
+// Two more blocks set single paths apart: those this machine cannot read (a file
+// with no permissions, a folder it may not list) and those whose name this
+// machine's file system cannot keep beside another's (written when a chat is
+// taken here, never by a seal).
+// The harness owns only those four blocks. The first three are rewritten whole
+// at every seal, so a path a person has cleaned of its secret, or whose
+// permissions now allow a read, goes back into the next snapshot; the held block
+// is kept exactly as it was read.
 const (
 	policyName  = ".furrowpolicy"
 	withheldTag = "# codeaf: withheld from every seal because they hold secrets (managed block)"
 	rebuiltTag  = "# codeaf: left out because a lockfile rebuilds them (managed block)"
-	excludeWord = "exclude "
+	// unreadableTag and heldTag open the blocks of paths set apart one by one.
+	unreadableTag = "# codeaf: left out because they cannot be read here (managed block)"
+	heldTag       = "# codeaf: left out because this machine's file system cannot keep both names (managed block)"
+	excludeWord   = "exclude "
 )
 
 // controlDirs are never scanned or excluded: the engine and the cell own them.
@@ -34,7 +43,11 @@ type policyFile struct {
 	user     []string // lines above the block, kept verbatim
 	withheld []string // paths the harness withholds because they hold secrets, sorted
 	rebuilt  []string // install folders the harness leaves out, sorted
-	outside  []string // the workspace's own lines, when the file is elsewhere
+	// unreadable is the paths this machine cannot read, sorted; a seal recomputes it.
+	unreadable []string
+	// held is the paths whose name this machine cannot keep; only a take writes it.
+	held    []string
+	outside []string // the workspace's own lines, when the file is elsewhere
 }
 
 // readPolicy reads the harness's policy file in dir and, when dir is not the
@@ -69,6 +82,10 @@ func parsePolicy(text string) policyFile {
 			block = &p.withheld
 		case rebuiltTag:
 			block = &p.rebuilt
+		case unreadableTag:
+			block = &p.unreadable
+		case heldTag:
+			block = &p.held
 		default:
 			*block = append(*block, managedLine(block == &p.user, line))
 		}
@@ -97,6 +114,31 @@ func (p policyFile) leaving(folders []string) policyFile {
 	return p
 }
 
+// unreadableAre is the file with its unreadable block replaced by paths.
+func (p policyFile) unreadableAre(paths []string) policyFile {
+	p.unreadable = sorted(paths)
+	return p
+}
+
+// holding is the file with paths added to its held block, which keeps what it
+// had: a held name stays held until a person clears the block by hand.
+func (p policyFile) holding(paths []string) policyFile {
+	p.held = sorted(union(p.held, paths))
+	return p
+}
+
+func union(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, path := range append(append([]string(nil), a...), b...) {
+		if !seen[path] {
+			seen[path] = true
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
 func sorted(paths []string) []string {
 	out := append([]string(nil), paths...)
 	sort.Strings(out)
@@ -107,6 +149,8 @@ func (p policyFile) String() string {
 	lines := append([]string(nil), p.user...)
 	lines = appendBlock(lines, withheldTag, p.withheld)
 	lines = appendBlock(lines, rebuiltTag, p.rebuilt)
+	lines = appendBlock(lines, unreadableTag, p.unreadable)
+	lines = appendBlock(lines, heldTag, p.held)
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		return ""
 	}
@@ -131,6 +175,13 @@ func (p policyFile) isWithheld(rel string) bool { return inRules(p.withheld, rel
 // isRebuilt reports whether rel is inside an install folder the harness leaves
 // out.
 func (p policyFile) isRebuilt(rel string) bool { return inRules(p.rebuilt, rel) }
+
+// isUnreadable reports whether rel is one of the paths set apart because this
+// machine cannot read it.
+func (p policyFile) isUnreadable(rel string) bool { return inRules(p.unreadable, rel) }
+
+// isHeld reports whether rel is a path whose name this machine cannot keep.
+func (p policyFile) isHeld(rel string) bool { return inRules(p.held, rel) }
 
 // isLeftOut reports whether rel is a control directory or a path the person
 // excluded: nothing there is sealed, so nothing there is scanned.
@@ -190,4 +241,17 @@ func ignoreMissing(err error) error {
 func (e Engine) Withheld(c cell.Cell) (tree string, paths []string, err error) {
 	p, err := readPolicyAt(e.policyDir(c))
 	return e.tree(c), p.withheld, err
+}
+
+// apart is every path set apart one by one, each with its default reason: what
+// the record names so the next machine can read that it was left out.
+func (p policyFile) apart() []Apart {
+	var out []Apart
+	for _, path := range p.unreadable {
+		out = append(out, Apart{Path: path, Reason: reasonUnreadable})
+	}
+	for _, path := range p.held {
+		out = append(out, Apart{Path: path, Reason: reasonHeld})
+	}
+	return out
 }

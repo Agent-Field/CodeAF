@@ -13,6 +13,7 @@ use crate::model::{
     id_hex, parse_id, Blob, ChunkRef, ClaimRecord, EntryKind, ObjectId, ObjectKind, SealQuality,
     Snapshot, SnapshotTrigger, SqliteBackup, TreeEntry, XattrEntry, Xattrs,
 };
+use crate::name_fold::NameFolding;
 use crate::overlay::{self, Overlay, WithOverlay};
 use crate::path_index::{PathIndex, CHILD_BATCH};
 use crate::policy::{CapturePolicy, POLICY_FILE_BYTES};
@@ -111,6 +112,41 @@ pub struct RewindPlan {
     pub current_tree: Option<String>,
     pub changes: Vec<RewindChange>,
     pub preview_digest: String,
+    /// Paths of the target the plan leaves unwritten because the file system
+    /// being written keeps one name for them and another path holds it.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub held: Vec<HeldPath>,
+}
+
+/// A path a restore did not write because its name collides, on the file
+/// system being written, with another path of the same snapshot.
+#[derive(Debug, Clone, Serialize)]
+pub struct HeldPath {
+    pub path: String,
+    pub reason: String,
+    #[serde(skip)]
+    raw_path: Vec<u8>,
+}
+
+impl HeldPath {
+    fn new(raw_path: &[u8], parent: &[u8], twin: &[u8]) -> Self {
+        let mut twin_path = parent.to_vec();
+        if !twin_path.is_empty() {
+            twin_path.push(b'/');
+        }
+        twin_path.extend_from_slice(twin);
+        Self {
+            path: display_relative(raw_path),
+            reason: format!("same name as {} here", display_relative(&twin_path)),
+            raw_path: raw_path.to_vec(),
+        }
+    }
+
+    /// Whether `path` is this path or lies inside it.
+    fn covers(&self, path: &[u8]) -> bool {
+        path == self.raw_path
+            || (path.starts_with(&self.raw_path) && path.get(self.raw_path.len()) == Some(&b'/'))
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1111,6 +1147,7 @@ impl FurrowRepository {
             target: id_hex(&incoming_id),
             current_tree: Some(id_hex(&local.root_tree)),
             changes,
+            held: Vec::new(),
         };
         let local_entries = self.entries_for_changed_paths(&local.root_tree, &plan)?;
         let incoming_entries = self.entries_for_plan(&incoming.root_tree, &plan)?;
@@ -1173,6 +1210,7 @@ impl FurrowRepository {
                 target: id_hex(&local_id),
                 current_tree: Some(id_hex(&incoming.root_tree)),
                 changes: rollback_changes,
+                held: Vec::new(),
             };
             let rollback_entries = self.entries_for_plan(&local.root_tree, &rollback_plan)?;
             self.apply_plan_at(&self.root, &rollback_entries, &rollback_plan, &[])
@@ -2559,6 +2597,7 @@ impl FurrowRepository {
             target: target_id,
             current_tree: Some(current_tree),
             changes,
+            held: Vec::new(),
         };
         let entries = self.entries_for_plan(&target_snapshot.root_tree, &plan)?;
         self.apply_plan_at(root, &entries, &plan, &[])
@@ -2759,6 +2798,8 @@ impl FurrowRepository {
                 && !protected.excludes_bytes(&change.raw_path)
                 && !self.in_overlay(&change.raw_path)
         });
+        let held = self.colliding_paths(&target_snapshot.root_tree, &changes)?;
+        changes.retain(|change| !held.iter().any(|held| held.covers(&change.raw_path)));
         let target_id = id_hex(target);
         let current_tree = id_hex(&current_tree);
         Ok(RewindPlan {
@@ -2766,7 +2807,65 @@ impl FurrowRepository {
             target: target_id,
             current_tree: Some(current_tree),
             changes,
+            held,
         })
+    }
+
+    /// The paths of `changes` that the file system under the workspace cannot
+    /// keep next to another path of the target (see [`crate::name_fold`]). Each
+    /// is judged against every entry of its directory in the target, not only
+    /// the changed ones, because the kept twin may already be on disk. A
+    /// file system that keeps every name has none.
+    fn colliding_paths(
+        &self,
+        target_root: &ObjectId,
+        changes: &[RewindChange],
+    ) -> anyhow::Result<Vec<HeldPath>> {
+        let folding = NameFolding::probe(&self.root);
+        if !folding.is_active() {
+            return Ok(Vec::new());
+        }
+        let mut directories: BTreeMap<Vec<u8>, BTreeMap<Vec<u8>, Vec<u8>>> = BTreeMap::new();
+        let mut held = Vec::new();
+        for change in changes.iter().filter(|change| change.action != "remove") {
+            let (parent, name) = split_parent(&change.raw_path);
+            if !directories.contains_key(parent) {
+                let kept = self.kept_names(target_root, parent, &folding)?;
+                directories.insert(parent.to_vec(), kept);
+            }
+            let kept = &directories[parent];
+            if let Some(twin) = kept
+                .get(&folding.key(name))
+                .filter(|twin| twin.as_slice() != name)
+            {
+                held.push(HeldPath::new(&change.raw_path, parent, twin));
+            }
+        }
+        Ok(held)
+    }
+
+    /// For each folded name of the target directory at `parent`, the name that
+    /// is kept: the first in the tree's bytewise order.
+    fn kept_names(
+        &self,
+        target_root: &ObjectId,
+        parent: &[u8],
+        folding: &NameFolding,
+    ) -> anyhow::Result<BTreeMap<Vec<u8>, Vec<u8>>> {
+        let tree = if parent.is_empty() {
+            Some(*target_root)
+        } else {
+            self.lookup_tree_path(target_root, parent)?
+                .and_then(|entry| entry.target)
+        };
+        let mut kept = BTreeMap::new();
+        if let Some(tree) = tree {
+            tree::for_each_entry(&self.store, &tree, |entry| {
+                kept.entry(folding.key(&entry.name)).or_insert(entry.name);
+                Ok(())
+            })?;
+        }
+        Ok(kept)
     }
 
     pub fn rewind(
@@ -2891,6 +2990,7 @@ impl FurrowRepository {
             target: "overlay".to_owned(),
             current_tree: None,
             changes,
+            held: Vec::new(),
         };
         let entries = match target {
             Some(tree) => self.entries_for_plan(&tree, &plan)?,
@@ -3939,7 +4039,12 @@ impl FurrowRepository {
                 }
             }
             fs::create_dir_all(&destination)?;
-            fs::set_permissions(&destination, fs::Permissions::from_mode(flat.entry.mode))?;
+            // The owner can write here until every child is in place; the
+            // recorded mode is applied last, after the children (see below).
+            fs::set_permissions(
+                &destination,
+                fs::Permissions::from_mode(flat.entry.mode | OWNER_WRITABLE_DIR),
+            )?;
         }
 
         for (path, flat) in target {
@@ -4024,8 +4129,10 @@ impl FurrowRepository {
             }
         }
 
-        // Apply directory mtimes after child operations so materialization does
-        // not overwrite the captured timestamp.
+        // Apply directory modes and mtimes after child operations, deepest
+        // first: a read-only directory (mode 0555) is filled while it is still
+        // writable, and writing a child must not overwrite the captured
+        // timestamp.
         for (path, flat) in target.iter().rev() {
             if !changed.contains(path)
                 || !selected(path, selected_paths)
@@ -4034,6 +4141,7 @@ impl FurrowRepository {
                 continue;
             }
             let destination = safe_join(root, path)?;
+            fs::set_permissions(&destination, fs::Permissions::from_mode(flat.entry.mode))?;
             let mtime = FileTime::from_unix_time(flat.entry.mtime_secs, flat.entry.mtime_nanos);
             filetime::set_file_mtime(destination, mtime)?;
         }
@@ -4784,6 +4892,7 @@ fn merge_rewind_plan(
             target: "merge".to_owned(),
             current_tree: None,
             changes: rewind_changes,
+            held: Vec::new(),
         },
         target,
     ))
@@ -4969,6 +5078,19 @@ fn subtree_intersects(path: &[u8], selections: &[PathBuf]) -> bool {
         .any(|selection| candidate.starts_with(selection) || selection.starts_with(candidate))
 }
 
+/// A repository-relative path split into its directory (empty at the root) and
+/// its last name.
+fn split_parent(path: &[u8]) -> (&[u8], &[u8]) {
+    match path.iter().rposition(|byte| *byte == b'/') {
+        Some(at) => (&path[..at], &path[at + 1..]),
+        None => (&[], path),
+    }
+}
+
+/// The owner's read, write and search bits, which a directory needs while a
+/// restore fills it.
+const OWNER_WRITABLE_DIR: u32 = 0o700;
+
 fn display_relative(path: &[u8]) -> String {
     String::from_utf8_lossy(path).into_owned()
 }
@@ -5015,5 +5137,7 @@ fn sync_pull_outcome(
     }
 }
 
+#[cfg(test)]
+mod odd_names_tests;
 #[cfg(test)]
 mod seal_tests;

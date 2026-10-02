@@ -26,12 +26,15 @@ func SeatFor(class executor.Class, c cell.Cell, workspace string, obs executor.O
 // SeatOver is SeatFor with the store every seal goes through decorated by
 // over, which is handed the cell's engine. A nil over seals on the engine
 // itself. It is how a chat that syncs notes each turn it seals.
-func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error), over func(Engine) Store) (executor.Seat, error) {
+func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error), over func(Engine) Store, opts ...SeatOption) (executor.Seat, error) {
 	base := executor.Stance{Class: class, Observer: obs, Secrets: vaultEnv{c}}
 	if !cell.Enabled() {
 		return executor.Watching(base, obs), nil
 	}
 	engine := EngineFor(workspace)
+	for _, opt := range opts {
+		opt(&engine)
+	}
 	var store Store = engine
 	if over != nil {
 		store = over(engine)
@@ -41,6 +44,16 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 		return executor.Watching(base, obs), err
 	}
 	return executor.Watching(sealed{Stance: base, rec: rec}, obs), nil
+}
+
+// SeatOption adjusts the engine a seat seals through.
+type SeatOption func(*Engine)
+
+// WithNotices sends the guard's one-line notices (a file kept out of the saved
+// history, and why) to say instead of to stderr, which a full-screen surface
+// cannot show. A door with a surface passes where its sentences go.
+func WithNotices(say func(string)) SeatOption {
+	return func(e *Engine) { e.Guard.Notify = say }
 }
 
 // EngineFor is the store of a cell whose session works in workspace: it seals
