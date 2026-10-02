@@ -4,14 +4,28 @@ This page says how to test every path a chat takes between two computers, from t
 fastest check to a walk by hand. Run the sections in order. Each one costs more than the
 one before it and proves more.
 
-Names used below:
+Settings. Every script that names a machine, a folder or a relay reads it from an
+environment variable (through `scripts/measure/rigenv.py`) and stops with a message that
+names the variable when one is missing. Nothing is edited in a script. Export these once:
 
-- `$SECOND_HOST` is the second machine, reachable with `ssh $SECOND_HOST` and no password
-  prompt. It can be a Mac or a Linux box.
-- `$RELAY` is the relay under test: a hosted one (`https://...`) or your own
-  (`codeaf relay`, see [relay.md](relay.md)).
-- Anything that calls a model uses `deepseek/deepseek-v4.1-flash` for every role. The key
-  must already be in your login environment; none of these scripts print it.
+| Variable | Meaning | Default |
+|---|---|---|
+| `CODEAF_RELAY` | the relay under test: a hosted one (`https://...`) or your own (`codeaf relay`, see [relay.md](relay.md)) | none |
+| `CODEAF_SECOND_HOST` | the second machine, reachable with `ssh $CODEAF_SECOND_HOST` and no password prompt; a Mac or a Linux box | none |
+| `CODEAF_SECOND_ROOT` | an absolute folder on the second machine that a rig may fill and wipe | none |
+| `CODEAF_FIRST_ROOT` | the same on this machine | `~/caf-rig` |
+| `CODEAF_CORPUS` | a folder holding the corpus repos `r18-pareto-c365`, `r02-mj-base`, `r06-agentfield` | none |
+| `CODEAF_RIG_BIN` | a folder holding the built `codeaf`, `codeaf-vd` and `s1probe` | none |
+| `CODEAF_EVIDENCE` | where `hosted-validate.py` writes its result folders | `~/caf-evidence` |
+
+Other names read by one rig: `CODEAF_SRC` and `BENCH_BUILD` (`bench-move.sh`: the checkout to
+build, where it builds), `CONT_PORT` and `CONT_SUFFIX` (`continuity.py`: a dev-server port and a
+tmux name, so two rigs can run side by side), `FID_REUSE` and `FID_PLAIN` (`fidelity.py`: keep the
+pairing between runs; build the older fixture), `BILL_DOC` (`relay-bill.sh`: the decision
+document it rewrites).
+
+Anything that calls a model uses `deepseek/deepseek-v4.1-flash` for every role. The key must
+already be in your login environment; none of these scripts print it.
 
 ## What each test proves
 
@@ -68,7 +82,7 @@ Pass: every step prints its screen and the test ends `ok`. The journey budget is
 `$CODEAF_HOSTED_URL`; point it at your own relay to keep the load off the hosted one:
 
 ```sh
-CODEAF_HOSTED_URL=$RELAY scripts/durability-hosted.sh KillAfterLoneCall
+CODEAF_HOSTED_URL=$CODEAF_RELAY scripts/durability-hosted.sh KillAfterLoneCall
 ```
 
 The name after the script picks one test (`KillAfterLoneCall`, `KillAfterBurst`,
@@ -86,17 +100,16 @@ its transcript line did not). It uses a scripted model, so it makes no model cal
 
 ## 3. Two real machines against the hosted relay
 
-You need a Linux and a Mac, the second reachable as `$SECOND_HOST`. Build `bin/codeaf` and the
+You need a Linux and a Mac, the second reachable as `$CODEAF_SECOND_HOST`. Build `bin/codeaf` and the
 engine on both machines from the same commit (`make build`; on the Mac, `export
 PATH=/opt/homebrew/bin:$PATH` first). A copied binary is killed by macOS until it is signed:
 `codesign -s - -f <binary>`.
 
-Several of these scripts keep the machine names, the working folders and the corpus folder in
-constants near the top of the file (`B_HOST`, `B_R`/`B_ROOT`, `A_R`, `CORPUS`). Edit those
-first; read the docstring at the top of each script for the layout it expects. Run `--help`
-on any of them to see the options.
+Export the settings above first; each script's docstring says which of them it reads and the
+layout it expects under the roots. Run `--help` on any of them to see the options.
 
-The relay under test is whatever `CODEAF_SYNC_URL` says; the scripts default to staging.
+The relay under test is whatever `CODEAF_RELAY` says; the rigs put it into each home as
+`CODEAF_SYNC_URL`, which is the variable the product itself reads.
 
 **The whole loop.**
 
@@ -145,14 +158,14 @@ below.
 **What it costs.**
 
 ```sh
-scripts/bench-move.sh --envs same,dumb --sizes S --reps 3
+scripts/bench-move.sh --envs same,second --sizes S --reps 3
 ```
 
-`--envs` picks `same` (two homes on this box, a Go relay in docker), `dumb` (the second
-machine, which reaches the relay through `ssh -R`) and `cf-a`/`cf-c` (hosted Workers). Set
-`DUMB_HOST=$SECOND_HOST`, `CODEAF_SRC` (the checkout to build, default this one) and
-`BENCH_CORPUS` (a folder holding the three corpus repos `r18-pareto-c365`, `r02-mj-base`,
-`r06-agentfield`). It builds, runs scripted edits (no model), and writes `rows.jsonl`,
+`--envs` picks `same` (two homes on this box, a Go relay in docker), `second` (the second
+machine, which reaches the relay through `ssh -R`) and `hosted` (both machines talk to
+`$CODEAF_RELAY`). It needs `CODEAF_SECOND_HOST` and `CODEAF_SECOND_ROOT` (for `second`
+and `hosted`) and `CODEAF_CORPUS`; `CODEAF_SRC` is the checkout to build (default this one).
+It builds, runs scripted edits (no model), and writes `rows.jsonl`,
 `summary.json` and `summary.md` under `.lane/bench-move/`. Size S is a few seconds; M and L
 take minutes to an hour a cell on a slow link. Run it on a quiet machine: it measures time.
 
@@ -174,7 +187,7 @@ never against a hosted deployment, and exits 0 only when no suite failed or ran 
 To hold one live relay to the suites by hand:
 
 ```sh
-go test -count=1 -tags relayurl ./internal/relayconf/ -relay-url=$RELAY
+go test -count=1 -tags relayurl ./internal/relayconf/ -relay-url=$CODEAF_RELAY
 ```
 
 The suites are store, directory, isolation, pairing, rotation, big take, watch and lease. Run
@@ -184,7 +197,7 @@ end-to-end scripts: `(cd relay/hosted && npm run e2e)`.
 
 ## 5. The manual walk
 
-Use two terminals, one per machine, both with `CODEAF_SYNC_URL=$RELAY`. A is the machine that
+Use two terminals, one per machine, both with `CODEAF_SYNC_URL=$CODEAF_RELAY`. A is the machine that
 already has your work, B is the new one. This is what each step should look like.
 
 1. **Home on A.** Run `codeaf`. If this machine never synced, the home screen shows a card,
