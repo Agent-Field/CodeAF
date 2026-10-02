@@ -63,6 +63,11 @@ error from OpenRouter — changes nothing and never warns. A key with no spendin
 cap whose account balance OpenRouter will not report is simply unknown: no free
 defaults, no warning.
 
+On the ordinary engine launch, a turn ending `your key was not accepted for this model`
+for the default service asks for a fresh read, whatever key source follows the sentence.
+The read decides whether the key expired; a merely invalid key is a failed read and
+changes nothing.
+
 A conversation that has sent nothing and whose model nobody chose follows the
 default both ways: onto the free model when the account reads low, and back to
 the usual default when a later read finds more than $0.50. A conversation that has
@@ -83,7 +88,8 @@ OpenRouter service serves — free or paid — and never on a model served by Co
 model or another connected service. It wins over the low-credits line, and the free
 defaults are **not** used, because they would fail on the same key. A turn refused with
 `API key expired` mid-session starts a fresh read on both the ordinary engine launch
-and `codeaf chat --no-host`, so the warning arrives without a relaunch. An expired
+and `codeaf chat --no-host`, unless one finished in the last 30 seconds, so the warning
+arrives without a relaunch. An expired
 reading leaves an untouched conversation on its current model: it moves neither
 from the free default to the paid default nor the other way, and adds no model note. On the first-run setup screen the same fact stands on the last row, and the list
 is not cut to free models. When a connect step came before the screen it reads

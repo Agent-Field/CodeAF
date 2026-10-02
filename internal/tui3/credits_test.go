@@ -18,6 +18,49 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// A terminal session sentence is what crosses the engine wire, so a raw
+// provider error alone cannot prove the ordinary launch asks for a read.
+func TestEngineUnauthorizedEndingRequestsCreditReadOnlyOnDefaultService(t *testing.T) {
+	a := placeApp(t)
+	a.model = config.DefaultModel
+	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }
+	for _, tail := range []string{"", " — the shell's OPENROUTER_API_KEY", " — the profile's saved key"} {
+		t.Run("default"+tail, func(t *testing.T) {
+			err := errors.New(session.UnauthorizedKeySentence + tail)
+			crossed := remote.WireEvent(session.Event{Kind: session.EventError, Err: err}).Unwire().Err
+			if !a.creditRefusalEnded(crossed) {
+				t.Fatalf("engine ending %q did not request a credit read", crossed)
+			}
+			if !a.creditRefusalEnded(errors.New(" \n" + crossed.Error() + "\t")) {
+				t.Fatal("space around an engine ending hid its shared prefix")
+			}
+		})
+	}
+	for _, tc := range []struct {
+		status  int
+		message string
+	}{
+		{401, "invalid key"}, {403, "API key expired."},
+		{429, "expired quota"}, {500, "expired upstream"},
+	} {
+		t.Run(fmt.Sprintf("%d/%s", tc.status, tc.message), func(t *testing.T) {
+			err := &provider.APIError{Status: tc.status, Message: tc.message}
+			crossed := remote.WireEvent(session.Event{Kind: session.EventError, Err: err}).Unwire().Err
+			if a.creditRefusalEnded(crossed) {
+				t.Fatalf("raw refusal %q unexpectedly requested a credit read", crossed)
+			}
+		})
+	}
+	source := modelsource.Source{ID: "custom:company", Written: "custom:company", Name: "company", Address: "http://local.invalid/v1"}
+	a.sources = modelsource.NewSet(modelsource.Connected{Source: source, Address: source.Address})
+	a.model = "custom:company/model"
+	err := errors.New(session.UnauthorizedKeySentence + " — the shell's OPENROUTER_API_KEY")
+	crossed := remote.WireEvent(session.Event{Kind: session.EventError, Err: err}).Unwire().Err
+	if a.creditRefusalEnded(crossed) {
+		t.Fatal("a direct model's unauthorized ending requested OpenRouter credits")
+	}
+}
+
 func TestEngineRefusalReadsCreditsOnlyForExpiredKeysOrUnpayableAccounts(t *testing.T) {
 	a := placeApp(t)
 	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{}, nil }

@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const lowCreditsWarning = "Your OpenRouter account is low on credits — some models may not be available"
@@ -215,8 +216,12 @@ func (a *app) creditRefusalEnded(err error) bool {
 	if refusal, ok := provider.RefusalFrom(err); ok && refusal.AccountCannotPay() {
 		return true
 	}
+	// THE READ DECIDES WHETHER THE KEY EXPIRED. The engine sends the session's
+	// unauthorized sentence without its typed refusal, so that shared sentence
+	// asks for a read too; a merely invalid key leaves the last reading alone.
+	message := strings.TrimSpace(err.Error())
 	prefix := config.ConnectionOutcomeWord(modelsource.DefaultSource("").Name, modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay})
-	return strings.HasPrefix(err.Error(), prefix)
+	return strings.HasPrefix(message, session.UnauthorizedKeySentence) || strings.HasPrefix(message, prefix)
 }
 
 func (a *app) paidCreditModel(id string, models []Model) bool {
