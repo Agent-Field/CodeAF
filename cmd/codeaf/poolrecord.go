@@ -260,7 +260,9 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 		return
 	}
 	recorder := &record.Recorder{Sheet: sheet}
-	if pool.CanSend() {
+	// The judge may have outlived a settings change. A quieted install still
+	// keeps its own scores, but those scores never enter the outgoing rows.
+	if config.ModelPoolAt(profileDir).CanSend() {
 		ob, err := outbox.Open(outboxPath(poolDir))
 		if err != nil {
 			if trace.Enabled() {
