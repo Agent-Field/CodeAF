@@ -93,7 +93,7 @@ func (a *app) tookWatch(msg dirWatchMsg) tea.Cmd {
 	a.considerResume()
 	a.rebuildMachines()
 	a.announceJoined()
-	return tea.Batch(a.awaitWatch(), a.readForFrame())
+	return tea.Batch(a.awaitWatch(), a.readForFrame(), a.refreshOnChange())
 }
 
 // readForFrame reads the list if the feed is ahead of the last reading, or owes
