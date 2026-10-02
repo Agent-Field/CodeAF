@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite" // reads the memory graph, which is a SQLite file
 )
@@ -95,18 +96,49 @@ func isHeader(line []byte) bool {
 	return json.Unmarshal(line, &row) == nil && row.Type == "session"
 }
 
-// untypedDraft is for a composer's saved record: it is only the owner's mark
-// until the person types, and then it holds slots with their words.
+// untypedDraft is for a composer's saved record. It names its owner and keeps a
+// slot for each recipient, and a slot is only the person's once it holds words,
+// a paste, an attachment or a sent line; an emptied slot is a tombstone.
 func untypedDraft(path string) (bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return true, err
 	}
-	var rec struct{ Slots []json.RawMessage }
+	var rec struct {
+		Slots []struct {
+			Text                 string
+			Pastes, Chips, Sends []json.RawMessage
+		}
+	}
 	if err := json.Unmarshal(raw, &rec); err != nil {
 		return true, nil
 	}
-	return len(rec.Slots) > 0, nil
+	for _, slot := range rec.Slots {
+		if slot.Text != "" || len(slot.Pastes)+len(slot.Chips)+len(slot.Sends) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// onlyCommands is for the recall history. A line starting with a slash is a
+// command said to codeaf (such as the /quit of a person leaving), not work; any
+// other line is a request the person made.
+func onlyCommands(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return true, err
+	}
+	sc := bufio.NewScanner(bytes.NewReader(raw))
+	sc.Buffer(nil, len(raw)+1)
+	for sc.Scan() {
+		var entry struct{ Text string }
+		if line := bytes.TrimSpace(sc.Bytes()); len(line) > 0 &&
+			(json.Unmarshal(line, &entry) != nil || !strings.HasPrefix(entry.Text, "/")) {
+			return true, nil
+		}
+	}
+	return false, sc.Err()
 }
 
 // graphRoot is the one node a start puts in the memory graph.

@@ -25,8 +25,9 @@ var startedFiles = map[string]string{
 	"pool/doc.json": "{}", "pool/outbox.jsonl": "", "pool/meta.json": "{}",
 	"telemetry/install_id": "x", "telemetry/first_run": "x",
 	"graph.db-wal": "x", "graph.db-shm": "x",
-	"v3/models.json": "{}", "v3/lanes.json": "{}", "v3/lanes.json.lock": "",
-	"v3/draft-ab-0-12.json":           `{"version":1,"owner":"o","at":"t"}`,
+	"v3/history.jsonl": `{"text":"/quit","cwd":"/w","ts":"2026-01-01T00:00:00Z"}` + "\n",
+	"v3/models.json":   "{}", "v3/lanes.json": "{}", "v3/lanes.json.lock": "",
+	"v3/draft-ab-0-12.json":           `{"version":1,"owner":"o","slots":[{"owner":"o","caret":0}]}`,
 	"v3/hosts/ab/host.sock":           "",
 	"v3/hosts/ab/host.log":            "",
 	"v3/standing/tick.lock":           "",
@@ -119,6 +120,9 @@ func TestPristineRefusesEveryKindOfUse(t *testing.T) {
 		"a memory": func(h string) { put(t, filepath.Join(h, cellDir, "memories.jsonl"), `{"m":1}`) },
 		"a typed draft": func(h string) {
 			put(t, filepath.Join(h, "v3/draft-ab-0-12.json"), `{"version":1,"slots":[{"text":"hi"}]}`)
+		},
+		"a typed request": func(h string) {
+			put(t, filepath.Join(h, "v3/history.jsonl"), `{"text":"/quit"}`+"\n"+`{"text":"fix the bug"}`+"\n")
 		},
 		"a stored blob":    func(h string) { put(t, filepath.Join(h, "cas/ab/blob"), "x") },
 		"a synced cell":    func(h string) { put(t, filepath.Join(h, "v3/stores/01SESSION/store-v1/packs/p"), "x") },

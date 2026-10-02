@@ -36,7 +36,7 @@ var started = within(rules{
 	}),
 	"telemetry": within(rules{"first_run": never, "install_id": never, "notice_seen": never}),
 	"v3": within(rules{
-		"models.json": never, "lanes.json": never, "lanes.json.lock": never,
+		"history.jsonl": onlyCommands, "models.json": never, "lanes.json": never, "lanes.json.lock": never,
 		"draft-*.json": untypedDraft, "hosts": never, "standing": never,
 		"stores": within(rules{
 			"sweep.stamp": never,
