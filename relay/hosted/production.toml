@@ -1,8 +1,11 @@
-# Production deployment, served at https://codeaf.agentfield.ai/fabric and nowhere else.
+# Production deployment, served at https://codeaf.agentfield.ai/fabric and the pairing link page
+# at https://codeaf.agentfield.ai/p/<code>, and nowhere else.
 #
-# The hostname already answers other things, so the Worker owns only the path /fabric*: the route
-# below leaves every other path on codeaf.agentfield.ai exactly as it is, and BASE_PATH makes the
-# Worker serve its routes beneath that prefix and answer 404 outside it.
+# The hostname already answers other things, so the Worker owns only two paths: /fabric*, the wire,
+# and /p/*, the page a pairing link opens in a browser. That page lives on the bare host, outside
+# BASE_PATH, so it needs its own route. The routes below leave every other path on
+# codeaf.agentfield.ai exactly as it is, and BASE_PATH makes the Worker serve its wire beneath
+# /fabric and answer 404 for every other path that reaches it.
 #
 # Nothing here deploys by itself. Create what it names once, from a machine logged in to the
 # Cloudflare account that holds the agentfield.ai zone:
@@ -23,7 +26,10 @@ compatibility_date = "2026-09-01"
 workers_dev = false
 preview_urls = false
 
-routes = [{ pattern = "codeaf.agentfield.ai/fabric*", zone_name = "agentfield.ai" }]
+routes = [
+  { pattern = "codeaf.agentfield.ai/fabric*", zone_name = "agentfield.ai" },
+  { pattern = "codeaf.agentfield.ai/p/*", zone_name = "agentfield.ai" },
+]
 
 [observability]
 enabled = false
