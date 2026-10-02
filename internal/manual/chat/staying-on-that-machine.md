@@ -277,7 +277,7 @@ window and get on with something else on this machine.
 You get one sentence back from the machine holding the conversation:
 
 ```
-the keyboard is on spark right now — press enter here to take it back
+the keyboard is on spark right now — press enter here to move it here
 ```
 
 or, for a window on this same machine, `the keyboard is in another window right now — press

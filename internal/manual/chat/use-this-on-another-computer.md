@@ -200,7 +200,7 @@ devices with your chats
   laptop  this computer
   desktop
 
-stop one with `codeaf devices revoke <name>` — that cuts it off from your chats on the relay, and cannot take back what it already holds.
+stop one with `codeaf devices revoke <name>` — that cuts it off from your chats on the relay, and cannot undo what it already holds.
 ```
 
 The group of computers you let in with `codeaf serve` has this heading, and its own list under it:
@@ -212,12 +212,12 @@ devices that can use this machine
 To stop one, run `codeaf devices revoke <name>` with the name from the list. It works on both groups. When you stop a computer that holds your chats, it says:
 
 ```
-desktop has been stopped — it can no longer sync your chats through the relay. it cannot take back what that computer already holds: it has your chats and keys, so if it was stolen, treat your chats as exposed.
+desktop has been stopped — it can no longer sync your chats through the relay. it cannot undo what that computer already holds: it has your chats and keys, so if it was stolen, treat your chats as exposed.
 ```
 
 You cannot stop the computer you are typing on. It says `that is this computer — stop it from another of your computers, so it is not the one cutting itself off`.
 
-**Revoking has a limit, and you must know it.** Revoking cuts a device off from the relay. The relay stops serving it. Revoking does not take back what the device already holds. That device has your whole identity. It keeps every secret it already has.
+**Revoking has a limit, and you must know it.** Revoking cuts a device off from the relay. The relay stops serving it. Revoking does not undo what the device already holds. That device has your whole identity. It keeps every secret it already has.
 
 So a computer that is lost or stolen must be treated as if your chats are exposed. Revoking it stops it from syncing. It does not make the chats on it unreadable to the person who has it.
 

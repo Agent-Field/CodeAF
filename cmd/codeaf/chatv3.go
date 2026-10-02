@@ -167,7 +167,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which they meant would open a conversation on a machine they did not
 	// name.
 	if strings.TrimSpace(*host) != "" && strings.TrimSpace(*at) != "" {
-		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through a relay: name one or the other, not both")
+		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through the sync service: name one or the other, not both")
 	}
 
 	// A BUDGET IS A SENTENCE ABOUT AN UNATTENDED SESSION, so it is refused
