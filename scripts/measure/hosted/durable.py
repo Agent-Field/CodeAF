@@ -7,7 +7,7 @@ The watch file is s1probe's JSONL: one line per poll of the directory listing.
 A turn becomes durable at the `durable_at` (directory clock, ms) the directory
 gave the FIRST head that is this turn or a later one. Turns that never became
 durable are counted, not dropped, because "nothing lost" is what item 7 checks.
-seal_to_durable_ms = durable_at - sealed_at_ms. Both clocks are spark's own here
+seal_to_durable_ms = durable_at - sealed_at_ms. Both clocks are A's own here
 (the relay container shares the host kernel clock); the watch lines also carry
 the directory's `now` next to local ms so any skew is visible in the raw file.
 """
