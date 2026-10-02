@@ -95,6 +95,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 // Take continues chat id here. Everything the surface says about it comes back
 // with it.
 func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
+	defer handoff.Arrive(c.opt.RootFor(id))()
 	from := c.holderName(ctx, id)
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
