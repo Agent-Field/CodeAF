@@ -132,12 +132,12 @@ func TestManagerRemovalNamesEveryActiveTeamAndPreservesHistory(t *testing.T) {
 	must(t, f.SetManager("parent", "manager"))
 	must(t, f.SetManager("child-a", "manager"))
 	message := f.ManagerRemovalMessage("manager")
-	if !strings.Contains(message, "Interface cleanup") || !strings.Contains(message, "Layout") || !strings.Contains(message, "in Teams") {
+	if !strings.Contains(message, "Interface cleanup") || !strings.Contains(message, "Layout") || !strings.Contains(message, "Assign another manager before deleting it.") {
 		t.Fatal(message)
 	}
 	must(t, f.Disband("child-a", time.Now(), ""))
-	if strings.Contains(f.ManagerRemovalMessage("manager"), "Layout") {
-		t.Fatal("closed team prevented deletion")
+	if got := f.ManagerRemovalMessage("manager"); got != "This conversation manages Interface cleanup. Assign another manager before deleting it." {
+		t.Fatalf("single-team refusal: %s", got)
 	}
 	must(t, f.SetManager("other", "replacement"))
 }

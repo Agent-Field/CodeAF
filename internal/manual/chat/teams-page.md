@@ -361,7 +361,7 @@ The picker cannot create a conversation or add membership. All teams also offers
 `+ Add member` to add or create its conversation, then use `Choose manager`.
 A manager cannot be removed or permanently deleted while it manages an active team.
 The deletion confirmation names every active team it manages and says
-`Choose another manager for each in Teams before deleting it.` Replace it in every named
+`Assign another manager before deleting it.` Replace it in every named
 team before deleting its conversation. Missing conversations are not replacement candidates.
 
 ## Can one conversation manage multiple teams?

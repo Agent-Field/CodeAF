@@ -589,7 +589,7 @@ func TestConversationDeleteLongManagerRefusalStaysVisibleAndScrolls(t *testing.T
 		a.conversationDeleteKey(key("pgdown"))
 	}
 	text = ansi.Strip(a.conversationDeleteOver(strings.Repeat("\n", a.height)))
-	if !strings.Contains(text, "Teams") || !strings.Contains(text, "deleting it") {
+	if !strings.Contains(text, "Assign another manager") || !strings.Contains(text, "deleting it") {
 		t.Fatalf("last refusal lines are unreachable: %s", text)
 	}
 	if a.cdelete.messageTop == 0 {

@@ -63,7 +63,7 @@ func (f *File) ManagerRemovalMessage(key string) string {
 	if len(names) == 0 {
 		return ManagerRemovalInstruction
 	}
-	return "This conversation manages " + strings.Join(names, ", ") + ". Choose another manager for each in Teams before deleting it."
+	return "This conversation manages " + strings.Join(names, ", ") + ". Assign another manager before deleting it."
 }
 
 type managerConflict struct{ teams []string }
