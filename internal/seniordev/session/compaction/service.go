@@ -659,6 +659,23 @@ func (s *Service) Process(ctx context.Context, input ProcessInput) (steploop.Res
 		}
 	}
 
+	// THE DIRECTION GIVEN WHILE IT WORKED IS PINNED LIKE THE TASK. A summary
+	// drops the loop's own messages, and a message from the person's side is
+	// one (app/steering.go keeps each in .senior-dev/steering.md for this).
+	if pin := BuildSteeringPin(s.steering()); pin != "" {
+		if err := s.deps.Store.UpdatePart(ctx, msgmodel.TextPart{
+			PartBase: msgmodel.PartBase{
+				ID: s.deps.NewID("part"), MessageID: accepted.Info.MessageID(),
+				SessionID: input.SessionID,
+			},
+			Text:      pin,
+			Synthetic: boolAddress(true),
+			Metadata:  msgmodel.RawObject(`{"compaction_role":"steering"}`),
+		}); err != nil {
+			return steploop.ResultStop, err
+		}
+	}
+
 	if pin := BuildChangedFilesPin(changedFiles); pin != "" {
 		if err := s.deps.Store.UpdatePart(ctx, msgmodel.TextPart{
 			PartBase: msgmodel.PartBase{
@@ -967,7 +984,9 @@ func (s *Service) installCapacityFallback(
 			written = true
 			continue
 		}
-		if ok && compactionRole(part) == "authoritative_task" {
+		// Durable direction stands beside the task even when generated state
+		// cannot fit; steering is already bounded by steeringPinMost.
+		if ok && (compactionRole(part) == "authoritative_task" || compactionRole(part) == "steering") {
 			continue
 		}
 		switch raw.(type) {
@@ -1022,6 +1041,45 @@ func (s *Service) authoritativeTask(messages []msgmodel.WithParts) (string, stri
 		}
 	}
 	return "", ""
+}
+
+// steeringPinMost bounds the steering pin; past it the newest messages are
+// kept, because the latest direction is the one that stands.
+const steeringPinMost = 8 << 10
+
+// steering is the messages the run was handed while it worked, from
+// .senior-dev/steering.md, "" when there were none.
+func (s *Service) steering() string {
+	if s.deps.Instance.Directory == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(filepath.Join(s.deps.Instance.Directory, ".senior-dev", "steering.md"))
+	if err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(string(raw))
+	if len(text) > steeringPinMost {
+		text = text[len(text)-steeringPinMost:]
+		if cut := strings.IndexByte(text, '\n'); cut >= 0 {
+			text = text[cut+1:]
+		}
+	}
+	return text
+}
+
+// BuildSteeringPin is the messages from the person's side, verbatim, as a
+// compacted conversation carries them. Empty for none.
+func BuildSteeringPin(steering string) string {
+	if strings.TrimSpace(steering) == "" {
+		return ""
+	}
+	return strings.Join([]string{
+		"# DIRECTION FROM THE PEOPLE YOU WORK FOR (verbatim — durable, not generated)",
+		"Messages that reached you while you worked, oldest first. They still stand; the task above is still what the work must achieve.",
+		"<steering>",
+		steering,
+		"</steering>",
+	}, "\n")
 }
 
 func BuildAuthoritativeTaskPin(task, source string) string {

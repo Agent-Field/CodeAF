@@ -21,8 +21,8 @@ func countFailingEntrypoints(result projectVerificationResult) int {
 	return failing
 }
 
-// workspaceGit runs git in the workspace with the committer identity pinned,
-// the same way eager-commit does. Without it `commit-tree` dies with "Author
+// workspaceGit runs git in the workspace with the committer identity pinned
+// (util.GitArgv). Without it `commit-tree` dies with "Author
 // identity unknown" in a container that has no git config -- and commit-tree
 // is how submit records the frozen candidate, so the run could not submit at
 // all. The identity flags are `-c` overrides, which git ranks below

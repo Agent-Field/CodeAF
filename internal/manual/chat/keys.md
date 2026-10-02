@@ -27,8 +27,20 @@ after this one. It is the secondary choice for when you do not want to change th
 work already under way. At rest it does nothing at all. **On Linux and Windows that key
 is called `super+enter`** — see "What cmd+enter is called on your keyboard" below.
 
-`ctrl+enter` sends it as **something to keep true** — a standing order — instead of
-work to do once. The standing orders page has the whole of it.
+`ctrl+enter` queues non-empty words **only while this conversation's turn is
+running**, from its own composer, and only when the draft is not a `/command`
+and has no live send-door tag. With no turn running, on the new-chat start page,
+over a `/command`, or with a live `/standing`, `/orders` or `/task` tag, it is
+plain `enter`: send, start the chat, or run the command at once. An empty box
+also takes enter's ordinary action. It works wherever the terminal sends the
+chord, including modifyOtherKeys terminals; the hint and tip advertise it only
+after the terminal says it can distinguish keys. Terminals that cannot send it
+send plain `enter` on many keyboards or `ctrl+j` (a newline) on some.
+
+The queue carries words alone: mid-turn with a picture or a picked harness on
+the tray it refuses in one line and changes nothing. Queued messages sit above
+the box behind a dim reply arrow `↳`. Only messages queued from this window can
+be taken back before their turns start — see "The queued messages" below.
 
 What `enter` does depends on what is in the box:
 
@@ -41,9 +53,11 @@ What `enter` does depends on what is in the box:
 
 While a turn is running, plain `enter` **steers**: it stops the model's current
 reply where it is, keeps what has arrived, and sends your words into the same turn.
-See "Typing while an answer is still coming" below. `ctrl+q` instead queues a fresh
-turn to run after the current one; an empty box does nothing. Until its turn starts,
-a dim row above the box reads `  after yield · N`. If queueing fails, codeaf notes
+See "Typing while an answer is still coming" below. `ctrl+enter` instead queues a
+fresh turn to run after the current one; commands and an empty box take plain
+enter's action. Until its turn
+starts, the queued message sits above the box behind a reply arrow `↳`, dim, one row
+each, and nothing is written under them. If queueing fails, codeaf notes
 `follow-up failed: <error>`.
 
 ## Typing while an answer is still coming — interrupting and steering
@@ -83,12 +97,13 @@ one.
 | What you do | What happens |
 |---|---|
 | `enter` | stops the current generation and sends the words into this turn |
+| `ctrl+enter` | queues the message to run after this turn — see "The queued messages" below |
 | `cmd+enter` | holds the message for an ordinary turn after this answer |
 | `esc` | stops the answer and clears both waiting-message queues |
 | `→` over an empty box | steers the oldest waiting words into the running answer |
 | click `→ steers it in` | the same, with the pointer |
 | `ctrl+shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
-| `↑` over an empty box | takes the newest waiting message back into the box to edit |
+| `↑` over an empty box | takes the newest parked message back into the box to edit; with none parked, walk your history. A queued message is not reached this way — click its row |
 | click the block | takes **that** message back into the box to edit |
 | `cmd+enter` again | holds the edited sentence again |
 
@@ -97,7 +112,7 @@ it back. `/`-commands are **not** held: a slash command is something you said to
 surface rather than to the model, and it runs at once.
 
 **Limits.** `esc` with nothing waiting is exactly the plain interrupt it always was.
-With messages waiting, it clears both the editable parked queue and the `ctrl+q`
+With messages waiting, it clears both the editable parked queue and the session's
 follow-up queue. Each nonempty queue says what was dropped — `1 waiting message dropped`
 or `N waiting messages dropped` for parked messages, and the corresponding `queued`
 word for follow-ups. Replacing the conversation with `/new` or from the welcome box also
@@ -111,6 +126,41 @@ The current generation is itself made into a legal boundary: codeaf keeps its pa
 assistant message without incomplete tool calls, writes your user message after it,
 and asks the model again. A steer that races with a turn already sealing still lifts
 to the follow-up queue, so the words are never dropped.
+
+## The queued messages — what ctrl+enter holds, and how to take one back
+
+`ctrl+enter` queues non-empty words from this conversation's own box while its
+turn is running and has no live send-door tag. With no turn running, on the
+new-chat start page, over a `/command`, with a live `/standing`, `/orders` or
+`/task` tag, or with an empty box, it takes plain enter's action. It works whenever
+the terminal sends it; hints and tips require the terminal's key-support reply.
+Terminals that cannot send it deliver plain enter or, on some, a newline.
+
+Each queued message is drawn above the box behind a dim reply arrow `↳`, wrapping
+within the frame. Nothing is written under the block. Its words reach the
+transcript as an ordinary sent line only when its turn begins. Slash words made
+plain with Backspace stay plain there.
+
+**Taking one back before it runs.** Only messages you queued from this window
+light under the pointer and take a click. Rows admitted from another window or
+a steer that fell through are drawn the same but cannot be taken back here.
+A click asks the session to remove that message; another click while the answer
+is pending asks nothing. `↑` belongs to parked messages and history.
+
+A successful take-back returns the words, pasted documents and plain slash words
+to **this conversation's composer**, even if a task room has the keyboard. An
+empty box receives the original draft. In a non-empty box the returned message
+is appended on a new line; the existing draft and tray stay, and paste chips
+are renumbered to avoid collisions. Multiple take-backs keep click order. If you
+replaced the conversation before the answer, its words stay reachable in ↑ history.
+
+**The queue carries words alone.** With a picture or a picked harness on the tray,
+it refuses: `ctrl+enter queues words alone — take the pictures or the shape of work off first`.
+The draft and tray stay; the queue hint is absent. Send pictures with `enter`.
+
+**Limits.** A message whose turn already started cannot be restored: a false
+answer leaves it to run. `esc` drops the queue and says `N queued messages dropped`;
+a drain never restarts work you stopped.
 
 ## Correct it without stopping the turn — `enter` stops only the current reply and steers
 
@@ -157,23 +207,24 @@ under the block says so: `→ steers it in`. You can click those words instead. 
 anything typed in the box, `→` is the caret key it always is — the shortcut only exists
 where `→` had nothing else to mean.
 
-**A message with pictures, or one marked with `ctrl+enter`, is left waiting.** Only
-words steer; pictures take their own durable attachment path, and a marked sentence
-is bound for the standing-order door. When either is at the front of the queue, the
-line does not offer `→ steers it in`.
+**A message with pictures, or one bound for the standing-order door (`/standing`),
+is left waiting.** Only words steer; pictures take their own durable attachment
+path, and a standing sentence is bound for its own door. When either is at the
+front of the queue, the line does not offer `→ steers it in`.
 
 **The line that teaches it.** While a turn is running and you have words in the box, the
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
+enter steers it in · ctrl+enter queue · esc interrupt
 ```
 
-That is the terminal-capable form when no command can be kept. A running foreground
-command that can be kept adds `ctrl+g backgrounds` immediately before `esc interrupt`;
-a `!` command cannot be kept. A terminal that cannot deliver `ctrl+shift+enter`
-leaves that clause out. `cmd+enter` still waits, but the one-line slot no longer
-advertises it.
+That is the form when no command can be kept. A running foreground command that can be
+kept adds `ctrl+g backgrounds` immediately before `esc interrupt`; a `!` command cannot
+be kept. The `ctrl+enter queue` clause appears only on a terminal that can send that
+chord and has replied that it can distinguish keys. `cmd+enter` still waits and
+`ctrl+shift+enter` still stops and sends, but the
+one-line slot advertises neither — they are on the keys sheet (`?`).
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -196,13 +247,16 @@ temporary steer clause and draws the normal user line when that next turn begins
 kitty, WezTerm and recent iTerm2 profiles all do; a plain Terminal.app does not.
 
 Where it cannot be spelled, the key arrives as ordinary `enter` and therefore
-**steers**. Use `ctrl+q` if you need a guaranteed fresh turn on such a terminal.
+**steers**. Queueing needs the same terminal support (`ctrl+enter` has it on exactly
+the same terminals) — on a plain terminal the follow-up queue is not available at all.
 
 On those terminals codeaf never advertises the chord. The line under the box still
 begins `enter steers it in`, because plain enter works everywhere, and ends with the
 stop clause that works in the current state.
 
-**What works everywhere instead.** `ctrl+q` queues a new turn after the current one.
+**What works everywhere instead.** `enter` steers, `esc` stops, and a message that
+missed its moment can simply be typed again; the queued block, where a follow-up
+waits, is clickable on every terminal.
 
 ## What cmd+enter is called on your keyboard — super+enter off a Mac
 
@@ -291,8 +345,8 @@ actually queued a message.
 **With an empty box it does nothing at all** — not even a plain interrupt. Use `esc` for
 that. With nothing running it also does nothing: `enter` already sends.
 
-**It marks nothing.** `ctrl+enter` is the chord that means "keep this true"; this one
-means "instead of that". One key does not do both.
+**It marks nothing.** `ctrl+enter` is the chord that queues a message for after the
+running turn; this one means "instead of that". One key does not do both.
 
 **Where it does not exist.** Inside a **task room** there is nothing for it to mean —
 `enter` in a room steers the node there and then, with no queue to jump, and a room's way
@@ -301,8 +355,8 @@ of ending work is `x` and a card that asks first. The chord is ignored there.
 **Terminals that cannot send it.** `ctrl+shift+enter` reaches a program only where the terminal
 can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
 modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
-and your message **steers** instead. On those terminals codeaf never advertises the
-chord. Use `esc` to stop the whole turn, then send the next message normally.
+and your message **steers** instead. Use `esc` to stop the whole turn, then send the next
+message normally.
 
 **The line that teaches it.** While a turn is running and you have typed something, the
 right end of the row under the message box reads exactly:
@@ -311,14 +365,14 @@ right end of the row under the message box reads exactly:
 enter steers it in · esc interrupt
 ```
 
-On a terminal that can spell the secondary chords, the line reads
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt`. A foreground
-command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
+On a terminal that can send `ctrl+enter` it reads
+`enter steers it in · ctrl+enter queue · esc interrupt`. The row does not name
+`ctrl+shift+enter`, even where the chord works (it did until 2026-09-30, in the slot the
+queue key now has); the keys sheet (`?`) lists it. A foreground command that can be kept
+inserts `ctrl+g backgrounds` before the final stop clause.
 
 **A picture on the tray is a message even when the box has no words.** It cannot steer, so
-that form reads `enter waits · esc interrupt`, or
-`enter waits · ctrl+shift+enter stops and sends · esc interrupt` on a terminal that can
-spell the secondary chord. With neither words nor a picture, the line is simply
+that form reads `enter waits · esc interrupt`. With neither words nor a picture, the line is simply
 `esc interrupt`, unless a command can be kept, when it is
 `ctrl+g backgrounds · esc interrupt`.
 
@@ -342,7 +396,7 @@ type it again.
 The same is true of a task or a background job that finishes in that window: its
 note lands and codeaf speaks about it rather than leaving it sitting there.
 
-The one thing that is not answered is a message you queued with `ctrl+q` for a
+The one thing that is not answered is a message you queued with `ctrl+enter` for a
 turn you then **interrupted**. A drain never restarts a turn you stopped, so those
 are dropped — press `enter` again to send it.
 
@@ -386,9 +440,8 @@ is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
 message box ends with `esc interrupt` — for example
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while you have
-typed something and this terminal can deliver `ctrl+shift+enter`. A foreground command that
-can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
+`enter steers it in · ctrl+enter queue · esc interrupt` while you have typed something
+on a terminal that can send `ctrl+enter`. A foreground command that can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
 `esc interrupts · ctrl+c quits · ? for help`.
@@ -582,28 +635,30 @@ These apply with no overlay up, no room open, and no mode on.
 | Chord | What it does |
 |---|---|
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
-| `ctrl+enter` | Send it as something to **keep true** — codeaf shapes it into a standing order's card instead of doing it once. See the standing orders page |
+| `ctrl+enter` | Queue non-empty words from this conversation's composer while its turn runs. Commands, idle sends, the start page and an empty box take plain enter's action. Any decoded chord works; hints need the terminal's reply |
 | `shift+enter` | Open a new line without sending, on home and in conversations |
 | `alt+enter` | Open a new line in a conversation |
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
 | `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
 | `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: quit codeaf, on that press |
-| `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | A foreground command that can be kept: send that command to the background. Otherwise: close the task column, or bring it back. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `enter` while a turn runs | Stop the current generation, keep its partial reply, and steer the words into the same turn |
 | `cmd+enter` while a turn runs | Hold the message above the box until the answer finishes. Empty box: nothing. Nothing running: nothing |
 | `ctrl+shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
 | `→` over an empty box, a message waiting | Send that waiting message into the running answer. With text in the box it is the caret key |
-| `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
+| `↑` over an empty box | takes the newest parked message back into the box to edit; with none parked, walk your history. A queued message is not reached this way — click its row |
 
 The enter family, shortest first: `enter` sends or steers, `cmd+enter` holds it for the
-next answer, `ctrl+enter` marks it as something to keep true, `ctrl+shift+enter` stops the
-whole turn and sends, and `shift+enter`, `alt+enter` or `ctrl+j` opens a line.
+next answer, `ctrl+enter` queues it for after the current turn, `ctrl+shift+enter` stops
+the whole turn and sends, and `shift+enter`, `alt+enter` or `ctrl+j` opens a line.
 
 Neither `ctrl+shift+enter` nor `cmd+enter` opens a line — use `shift+enter` for that.
 Both need a terminal that can tell them apart from plain `enter`; where it cannot, the
-key arrives as ordinary `enter` and the message steers instead.
+key arrives as ordinary `enter` and the message steers instead. A decoded `ctrl+enter`
+is accepted wherever the terminal sends it, including modifyOtherKeys without a kitty
+reply. Its hint and tip still require the terminal's key-support reply. A terminal that
+cannot send it delivers plain enter on many keyboards, or a newline on some.
 
 ## Keys in the message box: opening things and moving the view
 
@@ -1027,7 +1082,7 @@ The word list is a courtesy for teaching you the chord, not a rule about what ca
 spelled out — the chord works wherever the hint is drawn, and nowhere else. Pressed where
 the hint is absent, `ctrl+r` does nothing at all.
 
-It **shares the slot** with the standing-order hint, and `ctrl+enter keeps this true`
+It **shares the slot** with the standing-order hint, and `/standing keeps this true`
 wins whenever both would show. A sentence read as one-off work when you meant a rule is a
 rule that silently never existed; a request sent without its details is still a good
 answer to a slightly vague question.
@@ -1087,8 +1142,8 @@ that has moved on. There is nothing to press; it is automatic.
   **not** clear it.
 - **A box holding only blank lines or spaces is not a draft**, and nothing is written
   for it — the file is removed instead. Blank lines are what `ctrl+j` and `alt+enter`
-  leave behind, and what `ctrl+enter` and `shift+enter` leave behind on a terminal that
-  cannot send those chords, and nothing on the frame draws them. One kept on disk used
+  leave behind. Unsupported modified-enter chords can arrive as plain enter, or
+  as `ctrl+j` on some terminals; only the latter opens a blank line, and nothing on the frame draws them. One kept on disk used
   to be adopted by the next window in the directory, which then opened with a box that
   looked empty, was not, and refused `space space` for home.
 - The file is keyed by the directory plus this process's id, and is written with mode
@@ -1669,12 +1724,29 @@ Providers tab (the same list and the same keys, drawn in the panel's place):
 effort · `ctrl+r` fetch the newest model list (`/model` only — not the settings panel's
 rows) · `tab` and `→` open the providers under the model the cursor is on and move the
 cursor into them, `tab` and `←` close them and put it back on the model ·
-`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
+`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list · the **mouse wheel**
+walks the list too, three rows a notch, clamped at both ends, in `/model`, settings
+slots and roles, home's draft list and the task composer's list. The page beneath
+stays put until the list closes ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
 column and **`alt+shift+s`** turns that column round · anything else types into it.
 
-Every column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
+## Where the model list cursor opens — Enter, refresh and ctrl+u
+
+Every model list opens on the model it holds, highlighted and on screen. `/model`
+opens on the model in use, so enter with nothing typed confirms; settings slots and
+roles, a task's model word, home's draft, `alt+o` and lane lists and chips follow the
+same rule. A refresh puts the cursor back on the held model with the filter kept,
+and `ctrl+u` emptying the box returns there too. If that model is absent, the cursor
+uses the first selectable row past unavailable notices. `/model <query>` and typing
+a filter start the narrowed list at its first row. The model in use is bold in the
+accent with no band of its own; the cursor supplies the band, and a pointer hovering
+another row lifts it too.
+
+## Sorting and folding the model picker — alt+s, tab and arrows
+
+Every model picker column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
 `model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
 published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
 column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
@@ -2313,7 +2385,7 @@ shared composer, so a space left in it on another place still opens home from
 standing.
 
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
-`alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
+`alt+enter`, or a modified-enter chord delivered as `ctrl+j` by some terminals,
 draw nothing on the frame — and the gesture reads the box the same way the frame does, so
 two spaces open home and the blank lines go with the draft. The rule in one sentence:
 wherever the foot advertises `space space home`, two spaces open it.
@@ -2883,11 +2955,19 @@ under the pointer".
 
 ## Scrolling
 
-The wheel moves three rows per notch, on whichever surface owns the frame. It is
-routed to copy mode, then the settings panel, then the task page, then home, then the
-rewind timeline, then the status deck, then the phone tool sheet, then the fullscreen
-roster, then **the task column** when the pointer is over it, then an open room, and
-otherwise the conversation.
+The wheel usually moves three rows per notch on the surface that owns the frame.
+The context chooser answers first, then the conversation switcher (one row a notch),
+copy mode, questions, the crew panel, and `/model`. Next come the task composer's
+model list, a settings slot or role's model list, and home's draft model list: each
+walks its own cursor, clamped at both ends, with the page beneath unchanged.
+
+With those lists closed, the page navigation row answers before settings, the task
+page, home and the other places. Next come the rewind timeline, the status deck,
+the phone tool sheet, conversation tabs, an open command menu, the fullscreen roster,
+**the task column** under the pointer, an open question room or task room, and
+otherwise the conversation. Each list whose window follows its cursor stops at its
+own ends. A task's decision sheet or move menu absorbs the wheel, and an open design
+wall handles it before the context chooser.
 
 On the settings panel, the task page, home, the rewind timeline and the fullscreen roster
 the wheel walks the **cursor** rather than a scroll offset of its own, because on those the
@@ -2902,6 +2982,8 @@ Reaching the bottom **re-arms sticking**, so new replies follow along again. Scr
 up drops out of it.
 
 `pgup` and `pgdown` move the height of the view minus one row, never fewer than one.
+
+## Jump to the latest replies — the latest chip and ctrl+l
 
 **The jump-to-latest chip** is one dim chip at the left edge reading `↓ latest · ctrl+l`
 — `v latest · ctrl+l` on the linear tier — and it appears only when you are parked

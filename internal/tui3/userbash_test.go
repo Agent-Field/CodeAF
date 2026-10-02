@@ -47,7 +47,7 @@ func TestUserBashComposerBypassesSetupAndKeepsShellSyntax(t *testing.T) {
 	if a.menu.open || a.comp.open || len(a.liveTags()) != 0 {
 		t.Fatal("shell syntax opened a picker or became a command tag")
 	}
-	result := runSubmit(t, a.enterLine(true))
+	result := runSubmit(t, a.enterLine())
 	if result.err != nil || a.setup.open {
 		t.Fatalf("shell hit setup: %v", result.err)
 	}
@@ -98,7 +98,9 @@ func TestUserBashHomeRunsInTheSelectedProject(t *testing.T) {
 	}
 	line := "!printf '%s' /task @literal"
 	typeHome(a, line)
-	runCmd(a.homeEnter())
+	// The opening is answered off the update loop (#1662), so its result is
+	// delivered back through the program the way the event loop delivers it.
+	spend(t, a, a.homeEnter())
 	if opened != theirs || len(next.bashSent) != 1 || len(next.sent) != 1 || next.sent[0] != line {
 		t.Fatalf("home shell went to %q with %q", opened, next.sent)
 	}

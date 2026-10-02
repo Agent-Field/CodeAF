@@ -408,7 +408,7 @@ func TestNewAtHomeSaysItWasTheConversationBehindHome(t *testing.T) {
 		return Conversation{Agent: next, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
 	}
 	typeHome(a, "/new")
-	runCmd(a.key(key("enter")))
+	spend(t, a, a.key(key("enter")))
 
 	if a.input.String() != "" || len(a.chips) != 0 {
 		t.Fatal("/new on Home carried the old conversation draft")

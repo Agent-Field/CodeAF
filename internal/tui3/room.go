@@ -1608,10 +1608,15 @@ func (a *app) steer() tea.Cmd {
 		a.roomNote(roomGuestReadingWord)
 		return nil
 	}
-	// A PROGRAM READS NO MESSAGE (programroom.go). Nothing is sent and nothing is
-	// taken out of the box: the page says so, names where the words can go, and
-	// leaves the sentence where the person can carry it there.
+	// A PROGRAM THAT LISTENS TAKES THE LINE THROUGH ITS INBOX (programroom.go):
+	// the same note door a run's task takes it through, which its worker copies
+	// to the program. One that does not listen — or no longer does, having
+	// handed in — reads no message: nothing is sent and nothing is taken out of
+	// the box, and the page says so and names where the words can go.
 	if room.program != nil {
+		if room.program.listens() && !room.done {
+			return a.programRoomSteer(line)
+		}
 		a.roomNote(a.programRoomRefusal().line())
 		return nil
 	}
@@ -1917,7 +1922,7 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 	// not main's, so a remove would delete the crash insurance for a sentence
 	// still sitting in the box this keystroke just came back to.
 	a.keepMainDraft()
-	return a.submitShown(line, shown)
+	return a.submitShown(line, shown, restingDoorWords([]rune(shown)))
 }
 
 // ── the guard, drawn ────────────────────────────────────────────────────────
@@ -2061,6 +2066,12 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// to outrank the key that raised it. Everything above still outranks both.
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
+	}
+	// THE ROOM HAS NO FOLLOW-UP QUEUE. After its overlays and question have
+	// had their own keys, the chord takes the room's enter road, including an
+	// empty-box retry or the controls of an adaptive run.
+	if msg.String() == "ctrl+enter" {
+		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
 	}
 	// THE LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK ARE NOT TAKEN HERE.
 	// A landed `your call` is a question, and the question block above the box
@@ -4273,9 +4284,13 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// listening" is the question it exists to answer.
 		lane = orchSteerLane + roomSteerBack
 	}
-	if a.room.program != nil {
-		// A PROGRAM READS NO MESSAGE, so the box does not offer to steer it: it
-		// says the fact and the place the words can go, the same line enter over a
+	if p := a.room.program; p != nil && p.listens() {
+		// A PROGRAM THAT LISTENS IS OFFERED THE LINE, by name, and the box says
+		// when it reads it: before its next call to its model (programroom.go).
+		lane = programSteerLane(convProgramName(p.page)) + roomSteerBack
+	} else if a.room.program != nil {
+		// A PROGRAM THAT READS NO MESSAGE is not offered one: the box says the
+		// fact and the place the words can go, the same line enter over a
 		// sentence says (programroom.go).
 		lane = a.programRoomRefusal().fit(room)
 	} else if a.room.plan != nil {

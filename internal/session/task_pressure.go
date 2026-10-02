@@ -365,7 +365,7 @@ func newAdmissionGovernor(maxLoad float64, minFreeMB int) *admissionGovernor {
 	return &admissionGovernor{
 		maxLoad:   maxLoad,
 		minFreeMB: minFreeMB,
-		read:      hostReading,
+		read:      readHost,
 		now:       time.Now,
 	}
 }
@@ -378,7 +378,7 @@ func newAdmissionGovernorForProfile(maxLoad float64, minFreeMB int, profileDir s
 	governor := newAdmissionGovernor(maxLoad, minFreeMB)
 	// An empty profile selects the ordinary CODEAF_HOME profile too.
 	if governor == nil {
-		governor = &admissionGovernor{read: hostReading, now: time.Now}
+		governor = &admissionGovernor{read: readHost, now: time.Now}
 	}
 	governor.settings = func() (float64, int) {
 		return config.TaskAdmissionLimitsAt(profileDir, maxLoad, minFreeMB)
@@ -562,6 +562,15 @@ func (g *admissionGovernor) footprintLocked() int {
 	}
 	return max(share, g.peakShareMB)
 }
+
+// readHost is the reading every governor is built over, and it is a variable
+// for one reason: a test of HELD work needs the hold to be there at the first
+// StartTask, before any governor exists for it to reach into through the
+// `read` field, and on a host with no /proc — macOS — the real reading is
+// unknown and an unknown reading holds nothing. A test states its machine
+// here (littleMemoryHost in task_pressure_test.go) and restores this when it
+// ends. Nothing outside a test assigns it.
+var readHost = hostReading
 
 // hostReading asks this machine what it is carrying. Every part is read
 // independently, and a part that cannot be read is reported as zero rather

@@ -323,7 +323,7 @@ func (a *app) rewindKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case "esc":
 		a.leaveRewind(true)
-	case "enter":
+	case "enter", "ctrl+enter":
 		a.commitRewind()
 	case rewindSheetLiftKey:
 		// tab LIFTS, and it is the one key here that opens something rather than

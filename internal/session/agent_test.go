@@ -2293,6 +2293,111 @@ func TestInterruptClearsTheFollowUpQueue(t *testing.T) {
 	}
 }
 
+// TAKING ONE QUEUED MESSAGE BACK OUT, named by the stream the surface has held
+// since the moment it queued (agent.go's [Agent.UnqueueFollowUp]): the message
+// leaves the queue, its stream closes with no events — "this never ran" — and
+// the messages that remain drain in the order they were typed.
+func TestUnqueueFollowUpTakesOneQueuedMessageBackOut(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(entered)
+			<-release
+			return textResponse("one"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("two"), nil },
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	first := mustSubmit(t, agent, "the question")
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first step never started")
+	}
+	kept, err := agent.FollowUp("the follow-up")
+	if err != nil {
+		t.Fatalf("FollowUp: %v", err)
+	}
+	taken, err := agent.FollowUp("the typo")
+	if err != nil {
+		t.Fatalf("FollowUp: %v", err)
+	}
+
+	if !agent.UnqueueFollowUp(taken) {
+		t.Fatal("the queued message did not come out")
+	}
+	// A SECOND TAKE OF THE SAME STREAM IS FALSE: the message is already out,
+	// and a queue that reported it twice would be a queue nobody can read.
+	if agent.UnqueueFollowUp(taken) {
+		t.Fatal("the same message came out twice")
+	}
+	// A STREAM THAT WAS NEVER QUEUED IS NOT ONE EITHER.
+	if agent.UnqueueFollowUp(make(chan Event)) {
+		t.Fatal("an unknown stream was taken out of the queue")
+	}
+
+	close(release)
+	collect(t, first)
+	collect(t, kept)
+	dropped := collect(t, taken)
+	if len(dropped) != 0 {
+		t.Fatalf("the taken-back follow-up streamed %v, want a closed channel", kinds(dropped))
+	}
+	if completer.requests() != 2 {
+		t.Fatalf("requests = %d, want 2 — the taken-back message still ran", completer.requests())
+	}
+	if got := messageText(completer.request(1)[3]); got != "the follow-up" {
+		t.Fatalf("the surviving turn opened with %q", got)
+	}
+	if countMessages(agent, "the typo") != 0 {
+		t.Fatal("a taken-back follow-up reached the transcript")
+	}
+}
+
+// FALSE IS THE RACE, SAID HONESTLY. A turn that ended between the surface's
+// frame and the take-back has already drained the message and started its
+// turn, and a false here is the surface's sign that the words are no longer
+// its to take back — the turn is the person's whether they wanted it or not.
+func TestUnqueueFollowUpIsFalseOnceTheTurnHasStarted(t *testing.T) {
+	entered := make(chan struct{})
+	started := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(entered)
+			return textResponse("one"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(started)
+			return textResponse("two"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	first := mustSubmit(t, agent, "the question")
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first step never started")
+	}
+	queued, err := agent.FollowUp("the follow-up")
+	if err != nil {
+		t.Fatalf("FollowUp: %v", err)
+	}
+
+	collect(t, first)
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the follow-up's turn never started")
+	}
+	if agent.UnqueueFollowUp(queued) {
+		t.Fatal("a message whose turn already started was taken back")
+	}
+	collect(t, queued)
+}
+
 // Queued with nothing running, a follow-up starts at once: there is no turn
 // end coming to drain it.
 func TestFollowUpOnAnIdleAgentStartsImmediately(t *testing.T) {

@@ -1041,15 +1041,9 @@ func helpText(file string, chords chordSpelling) string {
 		// row is safe either way today; `cmd+` against `⌘` is not, and the order
 		// is the sheet's rule rather than this row's luck (chords.go).
 		helpKeyRow(chords.say("alt+enter"), "open a line · enter sends"),
-		// THE MARKED SEND (standmark.go). It is on this sheet because it is the
-		// one key here that changes what a sentence MEANS rather than where it
-		// goes, and nothing else on the screen names it until a draft happens to
-		// look like a rule.
-		standMarkKey+"     keep this true · a standing order's card, never work done once",
-		// SPELL IT OUT (spellout.go), on this sheet for the line above's reason:
-		// it is about the sentence in the box rather than about the screen, and
-		// nothing else names it until a draft happens to look like something to
-		// build.
+		// SPELL IT OUT (spellout.go), on this sheet because it is about the
+		// sentence in the box rather than about the screen, and nothing else names
+		// it until a draft happens to look like something to build.
 		// AND THE SCOPE IS ON THE ROW, because this chord is on this sheet TWICE.
 		// `ctrl+r` is the spell-it-out chord over a draft and the reveal key inside
 		// /files (deliverables.go's [filesRevealKey]), thirty-six rows apart, and
@@ -1073,7 +1067,14 @@ func helpText(file string, chords chordSpelling) string {
 		// not have — while the keystroke itself arrives there as `super+enter`
 		// (steer.go binds both names). The substitution is chords.go's one door.
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
-		"ctrl+q         hand this to the session now, to run after the current turn",
+		// THE QUEUE KEY (followup.go). It took over this sheet's standing-order
+		// chord on 2026-09-30 — queueing is pressed many times a session, marking a
+		// sentence is not — and the standing sentence's explicit door is the typed
+		// command, which works on every terminal this one does not.
+		// AND THE CAVEAT IS ON THE ROW for the chord's own limit: on a terminal that
+		// cannot tell ctrl+enter from a plain enter, the key arrives as a newline
+		// and queues nothing.
+		helpKeyRow(chords.say("ctrl+enter"), "mid-answer: queue the draft to run after the current turn · needs a terminal that can send it · /standing keeps a sentence true"),
 		// THE ROW READS IN THE ROUTER'S ORDER. The empty-box key asks the running
 		// turn's window first ([app.toggleLatestWorkfold]) and falls through to
 		// thinking ([app.toggleLatestThought]); the row was rewritten when the key was.

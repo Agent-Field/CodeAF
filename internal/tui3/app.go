@@ -265,10 +265,13 @@ type entry struct {
 	kind entryKind
 	text string
 	turn int
-	// actedTags are send-door words kept in the displayed sentence after they
-	// were stripped from the payload. Mid-sentence slash prose has no ranges,
-	// so a demoted tag stays plain in the transcript as promised.
-	actedTags []segment
+	// plainTags are the slash words the person demoted with backspace before
+	// sending, as rune ranges into the displayed message text (entry.text). A
+	// demoted word stays plain in the transcript exactly as it did in the box:
+	// [transcriptCommandSpans] subtracts these ranges before painting a chip,
+	// and an edit before the word carries the range along with it. They are
+	// empty on every message with no demotion.
+	plainTags []segment
 	// replyTags are the finished tasks this assistant block answers. They are
 	// empty for every ordinary person-prompted reply.
 	replyTags []session.TaskReplyTag
@@ -874,11 +877,13 @@ type (
 )
 
 type app struct {
-	hostReplayLoading bool
-	hostReplayPending []followingMsg
-	hostReplayWaiting bool
-	hostCalls         int
-	hostDeferred      []func() tea.Cmd
+	conversationRequest uint64
+	conversationOpening bool
+	hostReplayLoading   bool
+	hostReplayPending   []followingMsg
+	hostReplayWaiting   bool
+	hostCalls           int
+	hostDeferred        []func() tea.Cmd
 	// telemetryNotice is the usage notice still owed to the person, drawn on the
 	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
 	// is owed or once the greeting that showed it has gone.
@@ -1990,10 +1995,13 @@ type app struct {
 	// a person that this surface lies to them, so [app.bargeOffered] reads this
 	// before anything else it asks.
 	keysDisambiguated bool
-	// follows are the messages typed with ctrl+q while a turn ran, each holding
+	// follows are the messages typed with ctrl+enter while a turn ran, each holding
 	// the stream the turn it starts will speak on — and the woken turns waiting
 	// on the same door, which are streams with no message at all (followup.go).
 	follows []queued
+	// followRecalls holds take-backs in click order, so answers folded in a
+	// different order cannot reorder the words restored to the main composer.
+	followRecalls []*followRecall
 	// parks are the messages typed with plain enter while an answer was still
 	// coming: held HERE rather than handed to the session, so they can still be
 	// edited, taken back, or steered into the running turn (park.go). Each one
@@ -3704,6 +3712,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
+		// A repeated enter keeps the pending conversation; ctrl+enter does
+		// the same only on the start page, where it is another enter spelling.
+		// Any other key cancels the transition before editing or navigating.
+		if a.conversationOpening {
+			if msg.String() == "enter" || (a.startingChat() && msg.String() == "ctrl+enter") {
+				return a, nil
+			}
+			a.cancelConversationOpening()
+		}
 		a.sawAPerson()
 		a.stirred()
 		// AND THE HAND IS STAMPED HERE, because this is the only line every
@@ -3848,6 +3865,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.PasteMsg:
+		if a.conversationOpening {
+			a.cancelConversationOpening()
+		}
 		a.stirred()
 		// Bracketed paste, whole, in one message — the parser coalesced the keys
 		// between the brackets for us, so the newlines inside it are text and not
@@ -4065,6 +4085,40 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.crewWheel(placeWheelDelta(msg.Mouse().Button))
 			return a, nil
 		}
+		// THE MODEL PICKER OWNS THE WHEEL WHILE IT IS UP, over the whole frame,
+		// like every modal above: the conversation under it is not live, and a
+		// notch that fell through used to scroll a transcript the person cannot
+		// see move (the owner's TODO on the /model menu). While the list is up
+		// every key belongs to it, and the wheel is a key here for the same
+		// reason; its window follows its cursor, so the wheel walks that — and
+		// [picker.move] clamps at both ends, so the wheel cannot run past the
+		// list either.
+		if a.pick.open {
+			a.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// THE COMPOSER'S MODEL LIST OWNS THE SAME GESTURE: its page is still
+		// drawn beneath the layer, but a notch must walk the choice in front.
+		if a.composerShowing() && a.composer.pick.open {
+			a.composer.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// A SETTINGS ROW'S MODEL LIST ANSWERS BEFORE THE PAGE, including
+		// its nav: the row being chosen must move, not the slot under it.
+		if a.at(pageSettings) && a.sheet.sel != nil && a.sheet.sel.pick.open {
+			a.sheet.sel.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		// AND HOME'S DRAFT LIST ANSWERS BEFORE HOME, for the same reason:
+		// its window follows this cursor while the draft's page stays put.
+		if a.targetPickShowing() {
+			a.target.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
 		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on every page in the same
 		// cells, so a wheel answered by the place under it would scroll a list
@@ -4237,6 +4291,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.conversationOpening {
+			a.cancelConversationOpening()
+		}
 		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
@@ -4600,6 +4657,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.parkPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND A MESSAGE THE SESSION IS HOLDING IS PRESSABLE the same way:
+			// the press takes that message out of the session's queue before the
+			// turn that would have run it begins (followup.go), and the row's
+			// hover is the only thing that says so. It is read beside the parked
+			// block for the same reason every chrome target is.
+			if cmd, took := a.followPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE DIM LINE UNDER THAT BLOCK CARRIES ONE DOOR OF ITS OWN:
 			// `→ steers it in` puts the waiting message into the answer that is
 			// still running (steer.go). It is read directly after the block for the
@@ -4851,7 +4916,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (followup.go). Nil when nothing is queued.
 		//
 		// AND A PARKED MESSAGE GOES HERE TOO, one per finished turn and after the
-		// follow-up queue is offered the same moment (park.go): a ctrl+q message
+		// follow-up queue is offered the same moment (park.go): a queued message
 		// was handed to the session before this one was parked, and a surface that
 		// let the newer sentence jump the older one would be reordering what the
 		// person said. [app.sendParked] stands down when the follow-up above it
@@ -6769,9 +6834,9 @@ func (a *app) submit(text string) tea.Cmd {
 	return a.submitting(text, submitStart(agent, ctx, text))
 }
 
-func (a *app) submitShown(text, shown string) tea.Cmd {
+func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submittingShown(text, shown, submitStart(agent, ctx, text))
+	return a.submittingShown(text, shown, plain, submitStart(agent, ctx, text))
 }
 
 // submitStart is the one plain-message engine call used by both front and held
@@ -6790,14 +6855,17 @@ func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan s
 // The second door is a picked harness, which is a turn in every respect except
 // which function starts it (harnesspick.go's [app.runPickedHarness]).
 func (a *app) submitting(text string, start func() (<-chan session.Event, error)) tea.Cmd {
-	return a.submittingShown(text, text, start)
+	return a.submittingShown(text, text, nil, start)
 }
 
 // submittingShown separates the words a door receives from the honest line
 // the transcript keeps. Slash tags are stripped from the payload but remain in
 // the person's message as the chipped token that explains which door acted.
-func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
-	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, start) }) {
+//
+// plain carries the words the person demoted with backspace, as ranges into
+// shown, so the transcript leaves them plain (entry.plainTags).
+func (a *app) submittingShown(text, shown string, plain []segment, start func() (<-chan session.Event, error)) tea.Cmd {
+	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, plain, start) }) {
 		return nil
 	}
 	call := a.hostCallStarted()
@@ -6827,18 +6895,10 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	// conversation. It is asked rather than assumed so that the day the engine
 	// routes a conversation's turn into a named thread, the line that says so is
 	// already being drawn — one mechanism, keyed off what the session exposes.
-	var acted []segment
-	if shown != text {
-		for _, s := range commandSpans([]rune(shown), true) {
-			if s.from > 0 {
-				acted = append(acted, s)
-			}
-		}
-	}
 	if a.openingPrompt == "" {
 		a.openingPrompt = shown
 	}
-	a.said(entry{kind: entryUser, text: shown, turn: a.turn, actedTags: acted, began: a.now(), context: a.turnContext()})
+	a.said(entry{kind: entryUser, text: shown, turn: a.turn, plainTags: plain, began: a.now(), context: a.turnContext()})
 	// AND OVER A CONNECTION THE LINE IS MARKED UNTIL THE ENGINE HAS IT. The
 	// sentence is already on the page — the line above put it there, in the place
 	// it will keep — and what a connection adds is a gap between that and the far
@@ -8006,8 +8066,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// The bool is for a caller with a sentence to send afterwards; /new has
 		// none — it is the whole of what was asked for — and the refusal is
 		// already a note in the conversation it was typed in.
-		cmd, _ := a.renew()
-		return cmd
+		return a.renewLater(a.note, nil)
 
 	default:
 		// A DROPPED FILE IS NOT AN UNKNOWN COMMAND. A terminal that delivers a
@@ -8260,6 +8319,12 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		say("new session failed: " + err.Error())
 		return nil, false
 	}
+	return a.finishRenew(conv, whole, replacing), true
+}
+
+// finishRenew commits a prepared conversation on the update loop. Opening it
+// may happen off-loop; no draft is detached until that opening succeeds.
+func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 	// THE DOOR IS ASKED BEFORE ANYTHING IS PUT DOWN, which is [app.openSession]'s
 	// own repair: a /new that failed used to leave the surface holding a closed
 	// session with nothing to fall back on, and now a refusal costs nothing at
@@ -8273,10 +8338,18 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		// the engine swapped to, so this close would land on the conversation
 		// /new had just made ([Options.SharedAgent]).
 		if leaving != nil && !a.shared {
-			leaving.InterruptFor(session.StopByLeaving)
-			if err := leaving.Close(); err != nil {
-				a.note("close failed: " + err.Error())
-			}
+			// Retiring the unused conversation is also a wire operation. It
+			// must not move the opening wait back onto the completion frame.
+			stowed = a.offLoop(func() func(bool) tea.Cmd {
+				leaving.InterruptFor(session.StopByLeaving)
+				err := leaving.Close()
+				return func(here bool) tea.Cmd {
+					if here && err != nil {
+						a.note("close failed: " + err.Error())
+					}
+					return nil
+				}
+			})
 		}
 	} else {
 		// AND THE CONVERSATION GOES ON RUNNING, in the keeper (keeper.go). Its
@@ -8338,7 +8411,7 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// A conversation started while a team is shown is one of that team
 	// (teams.go's [app.teamJoinFront]).
 	a.teamJoinFront()
-	return cmd, true
+	return cmd
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────
@@ -9144,7 +9217,13 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.touch()
 		return nil, true
 
-	case "enter":
+	case "enter", "ctrl+enter":
+		// Commands take the list's ordinary enter road. Words that can queue
+		// still reach the chord below, even with an inline tag list showing.
+		// The harness and skill pickers above keep their original key message.
+		if msg.String() == "ctrl+enter" && a.queueSendOffered() {
+			return nil, false
+		}
 		if a.menu.open {
 			// A COMPLETE LIVE TAG OWNS ENTER, even while the spelling list is
 			// still visible under it. Choosing the row merely rewrote the word in

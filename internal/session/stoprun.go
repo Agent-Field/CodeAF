@@ -274,6 +274,9 @@ func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (Steer
 		if terminalStoreStatus(task.Status) {
 			return SteerReceipt{}, true, fmt.Errorf("%s has finished, not running", taskStopName(id, task.Title))
 		}
+		if err := a.programHearsNothing(run.store, key); err != nil {
+			return SteerReceipt{}, true, err
+		}
 		var err error
 		if origin == fromPerson {
 			_, err = run.store.AddPersonNote(key, text)
@@ -329,7 +332,7 @@ func (a *Agent) beltRunRootRow(id string) (uint64, bool) {
 //
 // A PROGRAM'S STOPPED WORK GOES WHERE AN ENDED ONE'S DOES: its folder finished
 // the one way every ending of it is ([ProgramFolder.Finish]), with the stop's
-// words as the body of the commit that holds what it left.
+// words after its usable message, or below the title as a fallback.
 func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	report := stopBecause(taskStoppedWord, why)
 	var merge, branch string
@@ -342,6 +345,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 				g.planNote("the program's answered models could not be read: " + err.Error())
 			}
 		}
+		run.folder.Passed = false
 		end := run.folder.Finish(report)
 		report += " · " + end.Sentence()
 		merge, changed = mergeInPlace, end.Changed

@@ -166,6 +166,17 @@ const (
 	// exchange unreadable at exactly the moment it matters. U+21B3 is
 	// East_Asian_Width=Neutral and one cell under both shipping rulers.
 	GlyphReplyIn = "↳"
+	// GlyphFollowUp is A MESSAGE QUEUED FOR AFTER THE CURRENT TURN — one row of
+	// the block the session is holding above the box, put there by ctrl+enter
+	// (internal/tui3's followup.go). It is the reply arrow, [GlyphReplyIn]'s
+	// byte, by the owner's pick (2026-09-30): a line of the person's own words
+	// that comes AFTER what is running, the way a reply comes after what it
+	// answers. The two are told apart by position — the reply mark is drawn
+	// only under a question in its room, this one only in the block above the
+	// message box — which is the argument glyphvocab_test.go's table records.
+	// It is deliberately not [GlyphQueued], the circle a waiting TASK wears: a
+	// queued message read as a task would be a row promising work it is not.
+	GlyphFollowUp = "↳"
 	// GlyphDraftUnsent is a message a person typed and then CLEARED the whole
 	// box into — the mark the /drafts page draws in front of each line that
 	// is still waiting to come back (internal/tui3's draftpage.go).
@@ -475,6 +486,7 @@ func Glyphs() []GlyphInfo {
 		{"PromptChat", GlyphPromptChat, '›', false},
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
 		{"ReplyIn", GlyphReplyIn, '↳', false},
+		{"FollowUp", GlyphFollowUp, '↳', false},
 		{"DraftUnsent", GlyphDraftUnsent, '✐', false},
 		{"Pinned", GlyphPinned, '⌖', false},
 		{"Thought", GlyphThought, '✳', false},

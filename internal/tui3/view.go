@@ -18,7 +18,7 @@ import (
 //	(blank)                                              ↓ latest · ctrl+l
 //	───────────    a thin dim rule: below it is your business
 //	(consent)      the approval question, when one is waiting
-//	(follow)       after yield · N, when something is queued
+//	(follow)       the queued rows, when the session is holding messages
 //	(blank)
 //	 › the draft   one row, or up to six of a pasted block
 //	(overlay)      the open list, when one is open
@@ -137,6 +137,11 @@ const (
 	// about the column as well as the row, since the other clauses on the line are
 	// statements.
 	chromeParkedHint
+	// chromeQueued is one row of a message the SESSION is holding for after this
+	// turn (followup.go); index is which queued message that row belongs to, so
+	// a press takes that one back out of the session's queue and into the box.
+	// The block is its messages and nothing else: no line is drawn under it.
+	chromeQueued
 	// chromeJump is the gap row the jump-to-latest chip is floating on. The row
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
@@ -799,8 +804,12 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.guardRows(width) {
 		add(line, a.guardMark(i))
 	}
-	if line := a.followRow(width); line != "" {
-		add(line, chromeRow{})
+	// THE QUEUE THE SESSION IS HOLDING sits in the same slot the count it
+	// replaced sat in (followup.go), and each of its rows is pressable the way a
+	// parked row is: a click takes that message back out of the session's queue
+	// and into the box, before the turn that would have run it begins.
+	for i, line := range a.followRows(width) {
+		add(line, a.followMark(i, width))
 	}
 	// AND WHAT IS WAITING TO GO INTO ANOTHER FOLDER, in the same slot and by the
 	// same law: one dim row while there is something to land, nothing at all

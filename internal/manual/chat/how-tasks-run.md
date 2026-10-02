@@ -457,7 +457,7 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## codeaf committed to dev — why my task's branch was kept, has codeaf committed to dev or main, I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
+## codeaf committed to dev — has codeaf committed to dev or main, why my task's branch was kept, which branches does codeaf refuse to write
 
 A tag with the same name as a branch does not change which branch is protected
 or which commit the landing compares. Git signature-display settings also do
@@ -475,6 +475,10 @@ You will see one exact reason:
 - `its branch task/x was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout`
 - `its branch task/… was kept: feat/x has moved on since the work was cut — inspect the retained task branch before choosing a destination`
 
+## How do I take the work — why did the work not land in my checkout, why didn't my task merge, I committed, amended, rebased or reset my branch while it ran, my checkout is on main or dev, tasks do not merge into a protected branch automatically
+
+An ordinary task keeps its work on its own branch when your checkout is protected,
+detached, on a different branch or on a commit you moved after the task started.
 Take it with `git merge task/x` on the branch where you want the work. `git branch --list
 'task/*'` lists finished work waiting this way. Or check out a feature branch before
 starting tasks; when it is still checked out at landing and any commits since the cut came
@@ -2859,6 +2863,7 @@ task's card. They are three kinds of news:
     replies with nothing visible in them — so the turn ended. Whatever it had already done
     is on the branch; the thinking behind it was never written anywhere, which is why the
     run stopped rather than carried on.
+
 ## Why does it say not accepted under my task — the check named gaps, or you said it was not right
 
 Two endings mean **something was found**, rather than something having happened to the

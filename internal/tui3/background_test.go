@@ -72,8 +72,7 @@ func TestARunningCommandIsSentToTheBackgroundWithOneKey(t *testing.T) {
 	}
 	drive(t, a, tea.KeyboardEnhancementsMsg{Flags: 1})
 	typeInto(t, a, "use the race-safe helper")
-	wantHint := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord +
-		" · ctrl+g backgrounds · esc interrupt"
+	wantHint := "enter " + steerSendWord + " · " + queueFootWord + " · ctrl+g backgrounds · esc interrupt"
 	if got := a.hintWord(); got != wantHint {
 		t.Fatalf("the full running-turn hint is %q, want %q", got, wantHint)
 	}

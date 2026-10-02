@@ -36,6 +36,10 @@ const (
 	RecordStage    = "stage"
 	RecordStep     = "step"
 	RecordTerminal = "terminal"
+	// RecordHeard names the messages a listening program has put before its
+	// model (inbox.go), and RecordInbox says it has stopped reading them.
+	RecordHeard = "heard"
+	RecordInbox = "inbox"
 )
 
 // ProtocolVersion is the version `hello` carries. Both ends are this package,
@@ -55,7 +59,18 @@ type Hello struct {
 	Protocol int      `json:"protocol"`
 	Delegate string   `json:"delegate"`
 	Stages   []string `json:"stages,omitempty"`
+	// Accepts names what the program takes from codeaf while it runs:
+	// [AcceptMessages] for a program reading its inbox (inbox.go). OPTIONAL AND
+	// ADDITIVE: a hello without it is a program that takes nothing, which is
+	// every program before it.
+	Accepts []string `json:"accepts,omitempty"`
 }
+
+// AcceptMessages is the word a listening program's hello carries.
+const AcceptMessages = "messages"
+
+// Listening reports whether the hello says the program reads its inbox.
+func (h Hello) Listening() bool { return slices.Contains(h.Accepts, AcceptMessages) }
 
 // The terminal statuses. The set is closed and it is senior-dev's, because
 // senior-dev's projection of an ending onto four words was already the right one:
@@ -299,6 +314,16 @@ type Sink interface {
 	Terminal(t Terminal)
 }
 
+// MessageSink is a Sink that sends a listening program messages (inbox.go)
+// and wants to know what became of them. It is optional: [Read] tells a sink
+// that is one, and passes the records by every other.
+type MessageSink interface {
+	// Heard names the messages the program has put before its model.
+	Heard(ids []string)
+	// InboxClosed says the program reads no more messages, and why.
+	InboxClosed(reason string)
+}
+
 // Reading is what a reader saw, for the record the launch keeps: the last
 // stage, how many steps, whether a terminal arrived, and how many lines were
 // not the protocol's (dropped, not failed). What the run spent is not here:
@@ -395,6 +420,29 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 					Added:       rawWhole(rec.Added),
 					Removed:     rawWhole(rec.Removed),
 				})
+			}
+		case RecordHeard, RecordInbox:
+			// THE LISTENING RECORDS REACH ONLY A SINK THAT LISTENS. A host
+			// that never sent a message has nothing to do with a receipt for
+			// one, so an older sink is simply not told.
+			var rec struct {
+				IDs    []string `json:"ids"`
+				Open   *bool    `json:"open"`
+				Reason string   `json:"reason"`
+			}
+			if json.Unmarshal([]byte(line), &rec) != nil {
+				reading.Ignored++
+				continue
+			}
+			listener, ok := sink.(MessageSink)
+			if !ok {
+				continue
+			}
+			if head.Type == RecordHeard && len(rec.IDs) > 0 {
+				listener.Heard(rec.IDs)
+			}
+			if head.Type == RecordInbox && rec.Open != nil && !*rec.Open {
+				listener.InboxClosed(cut(oneLine(rec.Reason), observationCap))
 			}
 		case RecordTerminal:
 			if reading.Terminal != nil {

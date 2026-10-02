@@ -93,6 +93,9 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 // (AddPersonNote), so a surface draws the two voices apart.
 func (a *Agent) PlanNote(id, text string) error {
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		if err := a.programHearsNothing(store, task.ID); err != nil {
+			return err
+		}
 		_, err := store.AddPersonNote(task.ID, text)
 		return err
 	})
@@ -110,6 +113,9 @@ func (a *Agent) PlanNote(id, text string) error {
 // apart from the person's own.
 func (a *Agent) PlanNoteFromChat(id, text string) error {
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		if err := a.programHearsNothing(store, task.ID); err != nil {
+			return err
+		}
 		_, err := store.AddNote(task.ID, plandb.NoteAgentChat, text)
 		return err
 	})

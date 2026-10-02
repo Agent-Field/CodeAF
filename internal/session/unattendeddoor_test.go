@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -837,41 +838,53 @@ func TestACommitRefusedInAWritableTreeIsAboutTheWork(t *testing.T) {
 // Here the first call hangs, is cut at its share ([auditCallShare]), and the
 // second answers — with the landing saying which try it was.
 func TestAStalledCheckIsAbandonedAndTheSecondCallAnswers(t *testing.T) {
-	repo := newGoModuleRepo(t)
+	repo := newTestRepo(t)
 	t.Setenv("HOME", t.TempDir())
 
+	const window = auditDeadline
+	opened := make(chan controlledCheckCall, 2)
+	started := time.Now()
+	var elapsed atomic.Int64
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go"),
+			proposeCall("Add the greeting", "write greet.txt"),
 			finalText("handed off"),
 		},
 		child: []step{
-			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
-			finalText("Wrote greet.go with the greeting."),
+			writeCall("call-src", "greet.txt", "hi\n"),
+			finalText("Wrote greet.txt with the greeting."),
 		},
 		audit: []step{
 			// THE HUNG STREAM. It answers nothing and never refuses, which is
 			// exactly what the wire did.
 			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				call := <-opened
+				if want := window / auditCallShare; call.bound != want {
+					t.Errorf("the first call was given %s, want its share %s", call.bound, want)
+				}
+				// Expire only after the stalled call starts, at its assigned share.
+				// The same logical clock leaves the rest of the window for retry.
+				elapsed.Store(int64(call.bound))
+				call.expire()
 				<-ctx.Done()
 				return nil, ctx.Err()
 			},
-			verdict("VERIFIED — greet.go has the greeting the brief asked for"),
+			verdict("VERIFIED — greet.txt has the greeting the brief asked for"),
 		},
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
 		config.AskConsent = false
 		config.TaskAutoApproveSeconds = 0
-		// The first call must time out, while the second still needs room for
-		// real repository setup when other package suites share the machine.
-		config.auditWindow = 10 * time.Second
+		config.auditWindow = window
+		config.clock = func() time.Time { return started.Add(time.Duration(elapsed.Load())) }
+		config.auditTimeout = controlCheck(opened)
 	})
 	graph := agent.graph()
 	collect(t, mustSubmit(t, agent, "add a greeting"))
 
 	node := graph.node(1)
-	waitDoneNode(t, node)
+	awaitTestCompletion(t, node.done, "the retried task's landing")
 	notice := node.notice()
 
 	if notice.State != TaskDone {

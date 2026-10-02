@@ -85,8 +85,12 @@ turns it back; the key row says `ctrl+y calls` or `ctrl+y actions`.
 
 `esc`, a press on the conversation's tab, or a press on the `home` tab leaves it, and the run goes
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
-Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
-it to main`, and `enter` says the same line and keeps your words in the box.
+While it works, the box says `Tell senior-dev something… (esc: main)`, and `enter` sends
+your words to it: the page says `sent · senior-dev reads it before its next model call`,
+and a line `gave its model your message: …` appears once it has. Once it has handed in, the
+box says `senior-dev reads no more messages (it has handed in its work, and what it handed
+in is frozen)` and `enter` keeps your words in the box (see steering senior-dev while it
+works).
 
 ## When does senior-dev's ending card appear — during a reply, worked fold, task page open
 
@@ -221,10 +225,43 @@ brief that tells senior-dev to make a checkout of its own somewhere else does no
 its file tools refuse to write outside its folder, and what a shell command changes out
 there is not part of the task.
 
+## Steering senior-dev while it works — tell it something, redirect it, it is going the wrong way, send it a message
+
+**You can tell a running senior-dev something, and so can the chat.** Type in the box on
+its page, or ask the chat to tell it (the chat uses `tasks` `say` on its task). The words
+go on the task as a note, codeaf copies them to senior-dev, and senior-dev hands them to its
+model **before its next model call**, never in the middle of one. If it is inside a long
+command, the words wait for that command to finish.
+
+**Its model reads them as direction from the people it works for**: where to look, what to
+stop chasing, what you now know. Its brief is still what the work must achieve; if a message
+asks for something the brief does not, it follows the brief and says what it did about the
+message when it hands in. If it had stopped without handing in, your words are its next
+prompt instead of a nudge, and they do not count as one.
+
+**It keeps them.** Every message it took is kept in `.senior-dev/steering.md`. The pin
+beside the brief keeps the newest 8 KB of those messages each time its older history is
+summarized; the file keeps them all.
+
+**The page shows when it has them**: `gave its model your message: …` (or `the chat's
+message`). Until then the note is not counted as delivered.
+
+**After it hands in, it reads no more messages.** What it handed in is frozen, so words
+cannot change it: the box and the chat's `say` are refused with `senior-dev reads no more
+messages (it has handed in its work, and what it handed in is frozen)`. To change finished
+work, stop it and hand off the right ask. A run that stops, crashes, or reaches its ceiling
+without handing in reads no more messages either: `it has stopped working`.
+A message sent during the call in which it hands
+in has no next call to reach, so when the run ends its page says `senior-dev did not read
+this before it stopped reading (…)` with the words. In the first moments of a run, before it
+has begun, the refusal is `senior-dev has not started reading messages yet`; say it again
+shortly.
+
 ## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 
 **It cannot ask you anything.** Nobody is at its keyboard, so the `question` tool is
-absent from the model's tools. Put everything it would stop and ask into the brief.
+absent from the model's tools. Put everything it would stop and ask into the brief. You
+can still tell it something while it works, but it never waits for an answer.
 
 **It cannot wait on another task.** A task handed to senior-dev starts the moment it is
 approved, so a proposal whose `depends_on` names work that has not finished is refused
@@ -239,8 +276,8 @@ and a task cannot wait on one.`
 **A run is never resumed, but codeaf may send the work back.** A run that ended is not
 started again: `senior-dev's run is never carried on: its work is left where it ended, and
 a new hand-off starts a new run`. Its card offers no retry, and the `@` list offers no
-steer on a running one, because it reads no messages. What codeaf does instead is the next
-section.
+retry on an ended one; a running one can still be told something (see steering senior-dev
+while it works). What codeaf does instead of a retry is the next section.
 
 ## What codeaf does when senior-dev ends — its ending, checked, sent back, retry, at most twice, ask before spending more
 
@@ -250,26 +287,30 @@ check of the project, handed in a change its own check did not pass or did not f
 handed in nothing, stopped on a limit, or broke — and acts on it:
 
 - **passed**: the chat looks at what changed against what was asked, then tells you where
-  the work is and offers to merge its branch;
+  the work is and offers to merge its branch, or to push it when the ending says it tracks
+  a remote branch;
 - **handed in, but its own check did not pass or finish**: the run is done. senior-dev's
   check guesses the project's commands and environment and is often wrong about them, so
   the chat treats what it said as a lead: it runs the project's own checks on the branch
-  in a temporary worktree, and only a failure it sees there is fixed or handed back.
+  in a temporary worktree, and only a failure it sees there is handed back to senior-dev
+  — or fixed by the chat itself when it is trivial.
   The landing note tells the chat to run each check from that worktree, never from your
   checkout. If the copy was kept, it uses that copy; a folder with no git history is
   checked where the run worked;
-- **handed in nothing**: the chat finishes a small gap on its branch itself, or hands the
-  work back to senior-dev with a brief sharpened by what is missing;
+- **handed in nothing**: the chat hands the work back to senior-dev with a brief sharpened
+  by what is missing, and finishes only a trivial gap on its branch itself;
 - **stopped on a dollar or time limit**: the chat never sends it back on its own, because
   another run spends more of your money: it says what is done and what is left, and asks;
 - **broke**: the chat hands it back once if the cause looks passing (a network or model
   service failure), and otherwise tells you what broke.
 
-If the project's checks passed but the model never called `submit`, the ending says plainly
-`the checks passed, but nothing was submitted`. There is no resume or submit command for an
-ended run. The ending names the kept tree and gives the one command to start senior-dev in
-that tree and hand it in: `codeaf senior-dev --dir <kept-tree> -- "submit the existing work"`.
-The run still ends incomplete, with exit 2, because passing checks are not a submission.
+## How codeaf fixes senior-dev's work — hand it back, trivial gaps, retries spent
+
+For the chat, handing the work back to senior-dev counts as fixing it itself, and is its
+first choice for anything beyond a line or two: on that turn senior-dev carries on from its
+own branch. It edits the branch in a worktree of its own only for a trivial gap. Once
+senior-dev can be sent back no more, the chat tells the person what still does not work,
+where the work is, and what it would try next.
 
 **codeaf sends senior-dev back at most twice on its own** for one piece of work. A third
 hand-off it tries, or one after a limit, is refused
@@ -278,6 +319,14 @@ own: tell the person where the work stands and let them decide`), and you decide
 hand-off you ask for yourself is yours, and starts the count again. This count holds
 through wake turns and a reopened conversation until you send a message. Each hand-off still
 shows its card, with the same countdown as any other, so you can stop one.
+
+## senior-dev's checks passed but nothing was submitted — the kept tree, submit the existing work
+
+If the project's checks passed but the model never called `submit`, the ending says plainly
+`the checks passed, but nothing was submitted`. There is no resume or submit command for an
+ended run. The ending names the kept tree and gives the one command to start senior-dev in
+that tree and hand it in: `codeaf senior-dev --dir <kept-tree> -- "submit the existing work"`.
+The run still ends incomplete, with exit 2, because passing checks are not a submission.
 
 ## What does senior-dev's ending card say — badge, quiet card, ctrl+o output
 
@@ -338,15 +387,24 @@ sentence, such as that it submitted a change and the project's own build and tes
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
 
-## A run codeaf sends back — carries on on the last run's branch, a new branch after a pass
+## A run codeaf sends back — carries on on the last run's branch, a pull request's branch, a new branch after a pass
 
-**A run codeaf sends back carries on on the last run's branch.** When the chat hands the
-work back after an ending, before you have said anything, the new run is cut in a copy of
-its own on the branch the last run left, and its receipt says `carrying on on its branch
-<branch>, where the last run left it`. What earlier runs committed is counted as the line's
-work, so a run that adds nothing never reads it as nothing. **A branch whose work passed is
-never written again**: the next hand-off before you speak — the rest of the work, or the
-next piece — is cut on a new branch from its tip, and says `on a new branch <new> cut from
+**A run codeaf sends back carries on on the last run's branch.** Before you speak, a
+hand-off starts a new run in its own copy on that branch, and its receipt says `carrying on on its branch
+<branch>, where the last run left it`. **Its ending counts only its own files**, from where
+the branch stood when it began, excluding earlier work and files a rebase brought in:
+`its work is on the branch <branch> in
+<folder>, N files past <commit>, where the last run left it`. A run that adds nothing says
+`it added nothing to the branch <branch> in <folder>, which still holds the earlier runs'
+work as the last run left it`. **A branch that tracks a live remote branch of its own
+name — a pull request's branch — gets push advice**: the ending says ``<branch> tracks origin/<branch>, so
+`git -C '<folder>' push origin <branch>` sends this work there``, with no stash and no merge
+into your checkout. The remote name must start with a letter or digit and contain only
+letters, digits, `.`, `_` and `-`. Any other upstream keeps the merge advice as before.
+The chat never pushes on its own: it offers, and pushes only when you ask in a later message.
+**A branch whose work passed is
+never written again**: the next hand-off before you speak — the rest of this work — is
+cut on a new branch from its tip, and says `on a new branch <new> cut from
 <branch>, whose work passed and which it leaves as it is`; its ending says its branch is
 `on top of <branch>, whose work it holds too`. A hand-off made after you have spoken starts
 fresh, on a new branch cut from your folder as it stands: check an earlier run's branch out
@@ -532,35 +590,24 @@ they never end up on a branch, and the next run in that folder never reads the l
 one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
 left where it is, and never ends up on a branch either.
 
-## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, not squashed
+## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, one commit
 
 In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`) from
 the commit your checkout stands on — with your uncommitted changes as its first commit, when
 you have some (see uncommitted changes) — checked out in a private copy of the repository
-(see where senior-dev's copy is), and senior-dev works there. senior-dev commits each file
-it writes, except initially ignored files and test caches (`wip(write): <path>`,
-`wip(edit): <path>`), on that branch, which is how it keeps a record to restore from; they
-stay there, and nothing squashes them.
+(see where senior-dev's copy is), and senior-dev works there; it makes no commits of its
+own (see does senior-dev commit or push).
 
 When the run ends — finished or not, stopped, crashed, or codeaf gone — codeaf commits
 what it left uncommitted on that branch, excluding paths ignored at the start and known
-test caches, in one commit whose subject is the task's title and whose body is senior-dev's
-own ending, and **removes the copy**, so the branch is checked out nowhere and free to
-merge, check out or hand back. **The branch is always kept**, even when the run changed
+test caches, in one commit — with **senior-dev's usable commit message**, followed by the
+run's ending when it did not pass, or the task's title and ending as a fallback — and
+**removes the copy**, so the branch is checked out nowhere and free to merge, check out or hand back. **The branch is always kept**, even when the run changed
 nothing. Nothing is merged into your own branch. The task's page and the conversation both
 say ``its work is on the branch <branch> in <folder>, N files; your checkout was not
 touched, and `git -C '<folder>' merge <branch>` brings it in``. Merge it when you are ready,
-or ask the chat to.
-
-The finishing commit's model credit names only models recorded as answering a call in
-that run, including a model that answered in place of the one asked for. If no model
-answered, there is no `Assisted-by` trailer. The attribution setting still decides
-whether answered model names are shown.
-If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
-than your Git identity. The `Assisted-by` credit is added only to a finishing
-commit codeaf makes when there is something left to stage, and that holds for a run you
-stopped and for one whose codeaf closed under it. It never amends, rebases or rewrites a
-commit.
+or ask the chat to; a branch published under its own name is pushed instead (see "A run
+codeaf sends back").
 
 The ending keeps two witnesses apart: what senior-dev's model said it did
 (`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
@@ -570,6 +617,46 @@ and tests (`senior-dev observed: …`). Read the second for "did it work".
 branch <branch> in <folder> as it stops` at once. **A run that changed nothing** says `it changed
 nothing; its branch <branch> in <folder> is kept where it began, and your checkout was not
 touched`.
+
+## Who gets credit for senior-dev's finishing commit — answered models, no history rewrite
+
+The finishing commit codeaf makes when senior-dev ends names only models recorded as
+answering a call in that run, including a model that answered in place of the one asked
+for. If no model answered, there is no `Assisted-by` trailer. The attribution setting
+still decides whether answered model names are shown.
+If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
+than your Git identity. The `Assisted-by` credit is added only to a finishing
+commit codeaf makes when there is something left to stage, and that holds for a run you
+stopped and for one whose codeaf closed under it. It never amends, rebases or rewrites a
+commit.
+
+## Does senior-dev commit or push — no wip commits, who writes the commit message
+
+**senior-dev makes no commits of its own**: no per-file `wip(write): <path>` or
+`wip(edit): <path>` commits and nothing authored `senior-dev`. Its restore snapshots stay
+outside its branch. Older runs' commits stay on their branches.
+
+In a git repository, codeaf's line at the head of the brief asks senior-dev to leave its
+work uncommitted: no push, branch switch, history rewrite, stash, reset, clean, or check out
+or restore files over its work, even when your brief asks. It asks for the commit message
+in `.senior-dev/commit-message`: a subject of at most 72 characters in the repository's
+`git log` style, a blank line, and what changed and why. A folder with no git history gets
+no commit and no request for a message.
+
+When the run ends, codeaf commits what it left uncommitted once. A usable message is used
+as it is **only when the run passed**; when it did not pass, the commit carries senior-dev's
+message, a blank line, then the run's ending, then the model credit lines. Missing credit
+lines are added without repeating those already there.
+
+The title-and-ending fallback applies when the message is absent or blank, over 8 KiB,
+not UTF-8, contains a NUL byte, is nothing but codeaf's credit lines, is not a plain file
+(including a symlink or named pipe), or is byte-for-byte the copy the repository
+already tracked at the run's start. The `.senior-dev/` notes never reach the branch; they are kept
+in the run's record.
+
+This is asked, not enforced: no git command is blocked. A commit senior-dev makes anyway
+stays on its branch; codeaf commits the work still uncommitted. Pushing and opening a pull
+request happen after the run — ask the chat.
 
 ## Where is senior-dev's copy — a git worktree in codeaf's cache folder, removed when it ends
 
@@ -1099,7 +1186,7 @@ task and page; the old page stays as the record of what it did.
 
 **senior-dev is never cut off mid-edit.** codeaf hands its hold on the copy to senior-dev's
 own process, so a codeaf that dies leaves senior-dev its 15 seconds to stop — put back
-what it submitted, commit its last edits — and nothing touches the copy until it has gone.
+what it submitted and leave its last edits for codeaf to keep — and nothing touches the copy until it has gone.
 
 **Then the next codeaf that finds the run finishes its copy**: the one that opens that
 conversation, hands work off in it, or starts a run on that repository, a shell run

@@ -279,21 +279,22 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 			[]string{"enter", "p", "s", "n", "esc"}},
 		{"enter open · ctrl+r reveal · ctrl+y copy · esc",
 			[]string{"enter", "ctrl+r", "ctrl+y", "esc"}},
-		{"ctrl+enter keeps this true", []string{"ctrl+enter"}},
+		{"/standing keeps this true", nil},
 		{"ctrl+g tasks", []string{"ctrl+g"}},
 		{"x stop", []string{"x"}},
 		{"nothing to rewind", nil},
 		{"↑ or click to edit", []string{"↑"}},
 	}
 	// H6: every sentence the running-turn composer can produce lifts the key at
-	// the head of every clause and leaves the verbs as prose. The five possible
-	// send prefixes combine independently with the background and stop clauses.
+	// the head of every clause and leaves the verbs as prose. The send prefixes,
+	// with and without the queue clause, combine independently with the
+	// background and stop clauses.
 	runPrefixes := []hintGrammarCase{
 		{},
 		{hint: enterWaitHint, want: []string{"enter"}},
-		{hint: enterWaitHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
+		{hint: enterWaitHint + " · " + queueFootWord, want: []string{"enter", "ctrl+enter"}},
 		{hint: steerShortHint, want: []string{"enter"}},
-		{hint: steerShortHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
+		{hint: steerShortHint + " · " + queueFootWord, want: []string{"enter", "ctrl+enter"}},
 	}
 	for _, prefix := range runPrefixes {
 		for _, background := range []bool{false, true} {

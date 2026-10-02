@@ -188,19 +188,25 @@ line, the spawn tree, the gauges, the prose slots — is in
 `internal/tui2/tokens/nerdfont.go`, one binding each, with its argument at its
 own binding.
 
-The prompt family is three slots and not two since the questions wave
-(`docs/design/questions/DESIGN.md`), because an exchange has two voices in it:
+The prompt family is four slots: the questions wave
+(`docs/design/questions/DESIGN.md`) made it three, because an exchange has two voices in
+it, and the queue made it four on 2026-09-30:
 
 | Meaning | Slot | Plain | Nerd font | ASCII |
 | --- | --- | --- | --- | --- |
 | the composer, chat | `GPromptChat` | `›` | geometry | `›` |
 | the composer, a steer line | `GPromptSteer` | `↦` | geometry | `↦` |
 | the answer to a question put back to the asker | `GReplyIn` | `↳` | geometry | `↳` |
+| a message queued for after the current turn (`ctrl+enter`) | `GFollowUp` | `↳` | geometry | `↳` |
 
 `GReplyIn` is deliberately not `GPromptChat`: `›` is the person typing and `↳` is
 what came back, and a page that drew both with one mark would make an exchange
-unreadable at exactly the moment it matters. All three are punctuation rather
-than pictographs, so they are geometry and neither tier swaps the byte.
+unreadable at exactly the moment it matters. `GFollowUp` is deliberately not
+`GQueued`: the circle is a task waiting its turn, and a queued message drawn with it
+reads as work it is not. It shares `↳` with `GReplyIn` by position — the reply mark is
+drawn only under a question in its room, the queue mark only above the message box —
+and `TestOneGlyphOneMeaning` carries that argument. All four are punctuation rather than pictographs, so they
+are geometry and neither tier swaps the byte.
 
 ### What a question is doing (`docs/design/questions/DESIGN.md`)
 

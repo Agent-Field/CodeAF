@@ -491,3 +491,18 @@ func TestASecondRunCarriesOnOnTheFirstRunsBranch(t *testing.T) {
 		t.Fatalf("the first run's work is gone from its branch:\n%s", files)
 	}
 }
+
+// A FIX THE CHAT WOULD MAKE ITSELF GOES BACK TO THE PROGRAM. The wake turn is
+// the one moment a hand-off carries on from the program's own branch, and the
+// page once taught the chat to patch that branch in a worktree instead, so a
+// follow-up the program was built for was done by the conversation.
+func TestAProgramOutcomeCountsAHandBackAsFixingItYourself(t *testing.T) {
+	for _, want := range []string{
+		"handing it back to the same program with propose_task and via counts as doing it yourself",
+		"only for a trivial gap",
+	} {
+		if !strings.Contains(programOutcomePrompt, want) {
+			t.Errorf("program outcome prompt does not teach %q", want)
+		}
+	}
+}

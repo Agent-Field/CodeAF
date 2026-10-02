@@ -327,6 +327,14 @@ func (runner *pipeline) soloConverse(
 			prompt = soloToolLeakPrompt()
 			continue
 		}
+		// A MESSAGE WAITING WHEN THE MODEL STOPS IS ITS NEXT PROMPT, in place of
+		// a nudge and without counting as one: it did not stall, somebody spoke
+		// to it (steering.go).
+		if steer, saved := runner.takeSteering(); steer != "" {
+			prompt = steer
+			runner.promptSaved = saved
+			continue
+		}
 		findings := runner.soloUnsubmittedFindings(state.baseSHA)
 		verification := runner.soloCheckUnsubmitted(
 			workCtx, state, soloCheckTimeout, "nudge",
@@ -354,7 +362,14 @@ func (runner *pipeline) soloConverse(
 }
 
 func (runner *pipeline) soloTurn(ctx context.Context, goal, prompt string) (turnResult, error) {
+	// A PROMPT THAT CARRIES STEERING owes its receipt once it is saved; the
+	// receipt is this turn's alone.
+	saved := runner.promptSaved
+	runner.promptSaved = nil
 	if runner.turnForTest != nil {
+		if saved != nil {
+			saved()
+		}
 		return runner.turnForTest(ctx, goal, prompt)
 	}
 	markdown, ok := baked.GetBakedAgent("coder")
@@ -385,6 +400,10 @@ func (runner *pipeline) soloTurn(ctx context.Context, goal, prompt string) (turn
 	configured.SystemInstructions = runner.runtime.registry.SystemInstructions(ctx)
 	configured.LoadInstructions = runner.runtime.registry.SystemInstructions
 	configured.AfterAssistant = runner.runtime.registry.ClearInstructionClaims
+	// Messages from the person's side are taken before each model call
+	// (steering.go), never in the middle of one.
+	configured.BetweenStepReminder = runner.takeSteering
+	configured.PromptSaved = saved
 	response, err := runner.runtime.runTurn(ctx, configured)
 	runner.runtime.addCost(response.CostUSD)
 	return response, err
@@ -596,12 +615,6 @@ func (runner *pipeline) soloUnsubmittedFindings(baseSHA string) []string {
 				"the tree differs from the starting commit in %d file(s)", change.files))
 		}
 	}
-	// Only the git recorder has an index to be unclean, and only it can act on
-	// the advice. Under --in-place nothing commits, so the finding would send
-	// the model after a step it cannot take.
-	if git, ok := runner.recorder.(*gitRecorder); ok {
-		findings = append(findings, git.statusFindings()...)
-	}
 	if pinned := runner.readPinnedCommand(); pinned == "" {
 		findings = append(findings,
 			"no pinned command was recorded in .senior-dev/pinned.txt — "+
@@ -676,6 +689,9 @@ func (runner *pipeline) soloFreezeWithContext(
 		ChecklistSatisfied: submission.ChecklistSatisfied,
 	}
 	state.freeze(candidate)
+	// A FROZEN TREE TAKES NO DIRECTION, so the inbox closes the moment it is
+	// frozen and codeaf refuses later words with this reason (steering.go).
+	runner.closeInbox("it has handed in its work, and what it handed in is frozen")
 	// checklist_satisfied is the model's CLAIM; checklist_items/checklist_ticked
 	// are what the file actually says. They are recorded side by side and never
 	// reconciled: models routinely claim satisfaction without ticking a box, so

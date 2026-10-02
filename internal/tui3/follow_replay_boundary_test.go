@@ -258,7 +258,7 @@ func TestReconnectRefreshHoldsFollowUpCallUntilSnapshotIsFolded(t *testing.T) {
 	a := newTestApp(agent)
 	snapshot := a.refreshHostedReplay()
 	answer := snapshot()
-	if cmd := a.sendFollow("after reconnect", "after reconnect"); cmd != nil {
+	if cmd := a.sendFollow("after reconnect", "after reconnect", nil); cmd != nil {
 		t.Fatal("follow-up escaped replay gate")
 	}
 	if len(a.hostDeferred) != 1 {

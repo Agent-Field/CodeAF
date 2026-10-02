@@ -83,10 +83,10 @@ func TestAWokenTurnSpeaksIntoTheLiveFeed(t *testing.T) {
 	if a.stream != nil || a.state == stateWorking {
 		t.Fatalf("the surface is still pumping a turn that ended: stream=%v state=%v", a.stream != nil, a.state)
 	}
-	// And the count above the box is untouched: a woken stream is not a message
+	// And the queued block is untouched: a woken stream is not a message
 	// somebody queued (followup.go).
-	if a.followRow(60) != "" {
-		t.Fatalf("a woken turn was counted as a queued message: %q", plain(a.followRow(60)))
+	if rows := a.followRows(60); len(rows) != 0 {
+		t.Fatalf("a woken turn was drawn as a queued message: %q", plain(rows[0]))
 	}
 }
 
@@ -107,8 +107,8 @@ func TestAWokenTurnWaitsForTheStreamBeingPumped(t *testing.T) {
 	if a.stream != live {
 		t.Fatal("the woken turn took the stream from the turn in flight")
 	}
-	if a.followRow(60) != "" {
-		t.Fatalf("the waiting wake was counted above the box: %q", plain(a.followRow(60)))
+	if rows := a.followRows(60); len(rows) != 0 {
+		t.Fatalf("the waiting wake was drawn above the box: %q", plain(rows[0]))
 	}
 
 	// The turn ends, and the woken one is adopted on the way out — the same door

@@ -1663,7 +1663,7 @@ Pinned by `internal/session/window_policy_test.go`,
 | Law | Where it is pinned |
 | --- | --- |
 | A warm tool-schema encode allocates **nothing**. The belt is append-only, so the memo hands back the slice it holds. | `internal/provider/alloclaws_test.go` |
-| A warm transcript encode costs the **same** at 81 turns as at 8 — 1 allocation automatic, 8 with breakpoints. Encode runs once per call, so a per-call cost linear in the transcript is a per-run cost quadratic in the run. | `internal/provider/alloclaws_test.go` |
+| A warm transcript encode costs the **same** at 81 turns as at 8 — 1 allocation automatic; with breakpoints, the result slice, the parts slice the marked system message is expanded into, and encoding/json's own price for the two marked marshals, measured in-process (8 in all on Go 1.26, 11 on Go 1.27 — both measured). This package's own allocations are named, and an extra allocation of its own anywhere on that path, inside `marshalMarked` included, fails. Encode runs once per call, so a per-call cost linear in the transcript is a per-run cost quadratic in the run. | `internal/provider/alloclaws_test.go` |
 | The babble guard builds **one** zlib writer per stream and Resets it per window; a window costs at most 4 allocations. A writer per window is a hundred kilobytes of deflate state per five hundred bytes of reply. | `internal/provider/alloclaws_test.go` |
 | The hub's backlog fold is **amortized constant per delta**: ten times the deltas for less than twice the allocations. `Text += delta` is quadratic — 1.6 GB of copying over one long reply, under the hub's lock. | `internal/session/alloclaws_test.go` |
 | Splitting or shape-checking a **4,000-line paste** allocates at most **10 times** the bytes of 1,000 lines. A linear parser measured 5.1 (slices grow by doubling, so up to twice either side of fourfold); the parser that copied the rest of the paste at every word measured 15.3 and froze a real 4,000-line paste for twenty seconds. The gate counts bytes because that copy is one allocation per word, so an allocation count grows fourfold either way. | `internal/tui3/imagepaste_test.go` |
@@ -1966,21 +1966,15 @@ against a catalog endpoint that refuses immediately.
 
 - **Nothing on the way to the first frame unpacks a corpus.** Zero, for
   `--version` and for the whole chat launch. `packed.Unpacks()` is the reading.
-- **Wiring a conversation's subharnesses asks the catalog one blocking
-  question**, and it is not this surface's: `subharness.go`'s linear
-  constructor, shared with the headless doors where waiting is correct. What
-  `chatv3_subharness.go` asks for itself is zero — it reads the window through
-  `catalog.Catalog.ModelsNow`, which answers nil while the catalog warms.
-- **The whole launch asks eleven** against this fixture's empty custom-base
-  catalog, and that figure is a ratchet, not a law. Ten of them come from
-  `v3RunHarness` building the harness tool bridge eagerly and asking the
-  capability questions that leave all five media hands off the belt. This pin
-  no longer covers the extra catalog reads paid when a listing advertises the
-  media models and arms that family; those reads occur only on a machine whose
-  catalog says the tools can work. Nothing in the first frame reads any of
-  those answers. The smaller figure is written down as the known lower bound
-  this refusing fixture measures, and the only direction it may move without a
-  conversation is down.
+- **Wiring a conversation's subharnesses asks zero blocking questions.** A
+  nonblocking window reading, including an unknown zero, is passed through the
+  shared leaf constructor without resolving the catalog.
+- **The whole launch asks zero blocking questions.** Harness media bridges are
+  initialized on their first run. A held-response regression also proves that
+  launch assembly and agent creation return while model discovery is still waiting.
+  Media capability checks use a nonblocking snapshot of published cache rows or
+  the default service's curated offline fallback; a custom service never borrows
+  those fallback rows.
 
 `catalog.Catalog.BlockingReads` and `packed.Unpacks` exist for these pins and
 for nothing else. Each is one atomic counter behind a door that already existed,

@@ -18,6 +18,411 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.6.0 — 2026-10-01
+
+### Added
+
+- **senior-dev can be told something while it works, from its page or the chat, until it hands in** — [#1689](https://github.com/Agent-Field/codeaf/pull/1689) · `engine` `chat` `docs`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - senior-dev read nothing after its brief: its page's box said `senior-dev reads no messages — say it to main`. The box now says `Tell senior-dev something…` and sends the line, which senior-dev's model reads before its next model call; before it starts, the box says `senior-dev has not started reading messages yet`.
+  - The chat's `tasks` say to a running senior-dev task was refused (or, before that, stored unread). It is now delivered through the program's inbox and marked had only when senior-dev says it heard it; after senior-dev hands in it is refused with `senior-dev reads no more messages (it has handed in its work, …)`, or `it has stopped working` when the run stops without handing in.
+  - A delegate program had no road in from codeaf while it ran; stdin stays closed. A program that sets `Delegate.Listens` is started with `CODEAF_INBOX`, says `accepts: ["messages"]` in its hello, and answers with `heard` and `inbox` records (docs/design/delegate/PROTOCOL.md §5a).
+  - senior-dev's step loop had a between-steps reminder hook nothing used. It now carries the messages, and each one is kept in `.senior-dev/steering.md`; the newest 8 KB stays pinned beside the brief when history is summarized, including a capacity rebuild.
+
+  </details>
+
+- **skills kept for OpenCode and Goose are read too, including their ~/.config folders** — [#1691](https://github.com/Agent-Field/codeaf/pull/1691) · `chat` `resident`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - codeaf read skills from six folders (.codeaf, .agents, .claude, .codex, .cursor, .gemini under skills/). It also reads .opencode/skills and .goose/skills in the project and the home, and ~/.config/opencode/skills and ~/.config/goose/skills in the home only.
+
+  OpenCode and Goose keep a person's global skills under ~/.config rather than in a
+  dot folder named after the tool, so those are read in the home scope, after every
+  shared folder, where a name kept by hand earlier still owns it.
+
+  </details>
+
+
+### Changed
+
+- **Routine coding replies lead with the outcome and stay short** — [#1428](https://github.com/Agent-Field/codeaf/pull/1428) · `chat` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The answer guidance did not give routine coding reports a specific shape. They now default to an outcome and up to three brief bullets, with requested length or format taking precedence.
+
+  Keep checks, failures, remaining work and complete deliverables visible. These are
+  model instructions, not an enforced response-length limit.
+
+  The answer guidance fits the existing fixed and lean prompt budgets and retains
+  the chat-only closing-offer rule used by the worker-isolation check.
+
+  </details>
+
+- **Home copies the current conversation name from its second menu action** — [#1433](https://github.com/Agent-Field/codeaf/pull/1433) · `chat` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Home conversation menus offered Copy project last. They now offer Copy name second, on c, and copy the full current conversation title; task menus and Ctrl+Y retain project-path copying.
+
+  </details>
+
+- **Sessions filters whole conversations by name, project or nested task** — [#1434](https://github.com/Agent-Field/codeaf/pull/1434) · `chat` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Filtering Sessions by a task name kept only matching tasks and their ancestors. It now keeps the entire owning conversation, including unmatched siblings and descendants.
+  - Project paths and task display labels could fail to find their conversations. Sessions now matches those alongside conversation names, project names and full task titles, including conversations without tasks.
+
+  </details>
+
+- **a reply cut off mid-stream is dropped and asked again** — [#1497](https://github.com/Agent-Field/codeaf/pull/1497) · `chat` `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A streamed reply ending without a finish reason or [DONE] marker was returned as complete, so its partial text could enter the conversation. It is discarded and retried while attempts remain; the final cut reply is discarded too. Either explicit completion signal is enough.
+
+  </details>
+
+- **Home points to the standing place for a waiting order's due time** — [#1544](https://github.com/Agent-Field/codeaf/pull/1544) · `chat` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Home's waiting standing row promised its next due time at the right edge. It does not show that time there; open the standing place to read when the order is due.
+
+  </details>
+
+- **the size budget is measured on darwin/amd64 and raised to 68,850,000 bytes** — [#1695](https://github.com/Agent-Field/codeaf/pull/1695) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - SIZE-BUDGET was 57,400,000 and the Makefile and ci-full.yml said it was set on linux/arm64, while every platform already weighed more and make size was red on a clean tree. It is now 68,850,000, set two percent above darwin/amd64, the heaviest shipped platform, with that platform's own furrow staged and the Go release go.mod pins.
+
+  The raise restores a gate that had stopped meaning anything; it does not make the
+  weight wanted. #1694 finds what grew the binary and lowers the number with each cut.
+
+  </details>
+
+- **Every recognised slash command is chipped wherever it stands, in the box and the sent transcript** — [#1699](https://github.com/Agent-Field/codeaf/pull/1699) · `chat` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A chip marked only a command this surface would act on: a leading command, or a send-door tag (`/standing`, `/orders`, `/task`) elsewhere, while `/compact` mid-sentence stayed plain. A chip now marks any recognised command wherever it stands, and whether enter acts on it is unchanged.
+
+  A chip is a recognition mark: it says codeaf knows the word, not that enter will
+  run it. Enter still runs only a leading command, and still acts on a send-door tag
+  away from the head. A tag backspaced to plain words stays plain in the sent
+  transcript as it already did in the box, and that includes a message typed while an
+  answer was still coming, which waits its turn with the tag still plain.
+  The waiting block, a sentence steered into a running answer and a reopened
+  conversation keep recognised commands chipped and demoted send-door words plain.
+
+  </details>
+
+- **dev and staging builds report to OpenRouter as their own apps; a release stays AgentField AI** — [#1723](https://github.com/Agent-Field/codeaf/pull/1723) · `chat` `engine` `build`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Every codeaf build reported to OpenRouter as AgentField AI (https://agentfield.ai). Only stable and release-candidate builds do now; a staging build reports as codeaf staging (https://staging.codeaf.agentfield.ai), and a dev build or what `make build` makes from a checkout as codeaf dev (https://dev.codeaf.agentfield.ai).
+  - internal/provider/attribution.go said the attribution values were constants nothing could vary. The binary's own release stamp now picks one of three identities; the environment still cannot change it.
+  - The release-tag grammar was spelled in internal/update. It lives in internal/buildinfo (Channel), and update reads its patterns from there.
+
+  The team's own dev, staging and source-build usage was landing on the release's
+  OpenRouter app page. Each identity is a separate origin because OpenRouter groups
+  referers by origin: `https://agentfield.ai/codeaf` resolves to the AgentField AI app.
+
+  </details>
+
+
+### Fixed
+
+- **Provider keys no longer reach a model's shell commands** — [#1486](https://github.com/Agent-Field/codeaf/pull/1486) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A bash command the model ran, foreground or background, inherited codeaf's whole process environment; a provider credential such as `OPENROUTER_API_KEY` was readable and printable from inside it. `JobShellEnv` now strips every provider key codeaf knows about — the OpenRouter/OpenAI variables, each vendored service's key variable, and any custom key variable a person named for a connected service — unless `CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL` is set in codeaf's own environment.
+
+  </details>
+
+- **benchmark examples use the script's current path** — [#1498](https://github.com/Agent-Field/codeaf/pull/1498) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The examples pointed to `docs/benchmarks/measure-cli.sh`, which does not exist; use `docs/benchmarks/performance/measure-cli.sh`.
+
+  </details>
+
+- **a late task start is an uncertain receipt** — [#1539](https://github.com/Agent-Field/codeaf/pull/1539) · `chat` `remote`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A task start that did not answer within the connection's wait was reported as a refusal. It is now an uncertain receipt; the task may already be running, stays visible through its task updates, and is not retried automatically.
+
+  </details>
+
+- **benchmark cells cannot see upstream fix branches** — [#1621](https://github.com/Agent-Field/codeaf/pull/1621)
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Benchmark cells cloned every upstream branch before running. They now fetch only the requested base commit or remote HEAD.
+
+  </details>
+
+- **Startup and home conversation openings keep the interface responsive** — [#1662](https://github.com/Agent-Field/codeaf/pull/1662) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Launch assembly previously permitted eleven blocking catalog reads. It now permits zero; cold discovery also cannot hold agent creation.
+  - Home new/open and /new previously waited for engine preparation on the UI loop. Current connections now show opening feedback and accept cancellation while preparation runs.
+
+  Model capability checks use a nonblocking snapshot of current or cached rows,
+  with curated fallback rows only for the default service. Harness tool bridges
+  are constructed on first use. Home search ranks each matching conversation once.
+
+  A cancelled or refused conversation opening keeps the draft and current
+  conversation. Repeated Enter does not create duplicate openings. Legacy
+  connections with a shared agent retain their existing transition behavior.
+
+  </details>
+
+- **the teams cap, header, keyboard and wall show the right thing** — [#1668](https://github.com/Agent-Field/codeaf/pull/1668) · `chat`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - The daily cap per team default was one shared pool when it reached All teams, and the header read `All teams's cap`. Each top-level team has its own default cap now, All teams has none unless one is set on it, and the possessive reads `All teams' cap`.
+  - After `Raise to $4` the team header kept showing the old recurring cap. It shows today's raised ceiling for the rest of the day.
+  - After `M` started a manager on the teams page the keyboard stayed on the page, so typing ran page shortcuts. The new manager's message box has the keyboard, the hints say `M`, and the key sheet lists `M m p r d u`.
+  - The wall counted conversations another window held as open here, and a tile opened from Teams landed back on the teams page. The wall shows only this window's conversations, and enter on a tile brings that conversation to the front.
+  - The team naming card waited for the next key press before painting the name. It paints as soon as the name is ready.
+
+  Re-cut from #1604. The manager's empty Tasks column on the teams page (item 3 of #1552) is not fixed here.
+
+  </details>
+
+- **the park test waits for both parts to start instead of counting them at the park** — [#1676](https://github.com/Agent-Field/codeaf/pull/1676) · `engine`
+
+  <details><summary>why</summary>
+
+  TestAParentHandedADivisionBeforeItStartedOpensOnTheReportsAndNotOnTheWait counted
+  the parts its runner had seen at the moment the parent parked. A part reaches that
+  runner on a goroutine of its own, and the parent parks on the parts it has
+  outstanding rather than on their runners having started, so on a loaded CI box the
+  park came first and the test read one part. It now waits, bounded, for both.
+
+  </details>
+
+- **a job's log path is spelled the way the session spelled its folder** — [#1687](https://github.com/Agent-Field/codeaf/pull/1687) · `chat` `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Since #1627 a job's `log at …` sentence, its row and its footer printed the symlink-resolved folder — `/private/var/…` for a macOS temporary folder, the real target for a linked home or chosen folder — and three `internal/session` landing tests failed on every macOS `make test-laws`. They print the folder as the session named it again; only the retention walk uses the resolved path.
+
+  The resolved anchor exists so retention can refuse links planted inside the
+  owned `logs/jobs` subtree, and it still does. It had leaked into `logPath`,
+  which is the pointer a person and the model read, not a handle anything walks.
+
+  </details>
+
+- **a note or say to a program that cannot read it is refused without storing the words** — [#1689](https://github.com/Agent-Field/codeaf/pull/1689) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The chat's `tasks` say or note to a running program's task answered `Its worker is handed it as soon as the step it is on ends` and stored words nothing read. A program that does not listen, has not started listening, or has stopped listening now answers `nothing was noted: …` and writes nothing. senior-dev itself now listens; see `1689-senior-dev-steering`.
+
+  </details>
+
+- **the model picker keeps the cursor's row on screen at every width** — [#1696](https://github.com/Agent-Field/codeaf/pull/1696) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Service and machines' headings and reason lines could push the cursor's row past the drawn edge, including the opening frame. The window now counts screen lines, so /model and every model door open visibly on the model they hold; enter immediately confirms, and a refresh returns to that held model with the filter kept.
+  - At the bottom of the model list the cursor could disappear because the scroll window counted rows while the frame spent extra lines on headings and phone tails. Repeated arrows, page keys and wheel notches now keep the cursor's row visibly on screen. Opening a fold preserves preceding context when it fits and otherwise scrolls by the least that shows the block and its cursor.
+
+  One rule places the window and one count feeds it: `picker.follow` reads the
+  same line costs the frame spends on rows, headings and explanations, so the
+  cursor's row is always drawn.
+
+  </details>
+
+- **the current model wears no band of its own and every model list owns the wheel** — [#1696](https://github.com/Agent-Field/codeaf/pull/1696) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The /model list drew the model in use on the ladder's selected ground, a full-width highlighted row wherever the cursor was. The current model keeps its accent and its weight and wears no band of its own now; the cursor supplies its band, and a pointer hovering another row lifts that row too.
+  - A wheel notch fell through open model lists and moved the page beneath them. /model, settings slots and roles, home's draft list and the task composer's list now claim the wheel and walk three rows a notch, clamped at both ends like the keys; closing the list returns the wheel to the page.
+
+  The grammar is the picker's own (`palette.frontUnlifted`), so every other list
+  that draws through the shared overlay renderer keeps the ladder's selected step
+  for its front mark.
+
+  </details>
+
+- **a typed /senior-dev names its ceiling and its ending cards wear the badge** — [#1697](https://github.com/Agent-Field/codeaf/pull/1697) · `chat` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Typing /senior-dev in the chat drew no visible start line; the started note and its ceiling folded into `worked`. The start receipt now names the program and the same ceiling words the shell run's first line uses, outside the fold.
+  - A senior-dev run's ending card in the chat, alone or in a landing batch, was an ordinary task card without `[senior-dev]` or `senior-dev's ending went to the chat`. It keeps the badge (`[sd]` when the title is cut) and, opened, says where the ending went.
+  - The manual said the ending card stands outside the fold as soon as the run lands. A run that lands while another reply streams appears right after that reply, which is #1640's deliberate hold.
+
+  </details>
+
+- **no zero rates, no raw ids as names, and the manual matches the screen** — [#1698](https://github.com/Agent-Field/codeaf/pull/1698) · `chat` `docs`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - The status line drew `0 tok/s` for a rate below 1, and the thinking label drew `thinking · 0 tok` before a token could be estimated. Both now draw nothing for a zero; the column header's `Tasks 0` stays, as its design test pins.
+  - The sessions place named a conversation it could not find `Conversation <16-hex id>`. It now reads `new conversation`, the unnamed word Home uses.
+  - The manual said the /model picker always groups models under provider headings; with only the default provider registered there is no heading (adding Ollama draws them even without the default provider's key).
+  - The manual said /new, and opening another project, make the tab strip show both conversations. An untouched new conversation has no tab until it has a draft or a first message.
+  - TestTUIE2E/space_in_the_task_room_pages_the_card required the window's own untitled conversation on the first 14-row screen and failed whenever the earlier task landed `your call`. The driver now walks to it.
+
+  </details>
+
+- **Flags after the brief, run-engine token counts, long-home ssh paths and auth failures** — [#1700](https://github.com/Agent-Field/codeaf/pull/1700) · `engine` `remote` `docs`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - Flags after the brief (`codeaf senior-dev "<brief>" --max-cost 0.5`) were folded into the brief and the default ceiling applied. They are parsed wherever they sit for every delegate program, an unknown flag is refused, and `--` still ends flags.
+  - `codeaf do --json` on the default run road reported a positive `spend` with both spend halves at zero, zero tokens and an empty `workspace`. The halves now add up to `spend`, `tokens` are the call totals (including calls in a turn that later errored and auxiliary summary calls), and `workspace` is the absolute project directory.
+  - The ssh control-path check ignored OpenSSH's 17-character temporary suffix, so `--host` under a long codeaf home failed to dial. Both the final and the temporary path must fit, or multiplexing is left off.
+  - A senior-dev run that ended with passing checks but no submission said only that it ended without submitting. It says the checks passed, names the kept tree and gives the command to submit it; the exit code is still 2.
+  - A 401 or 403 was retried as a provider 5xx by the chat and senior-dev. It is a terminal auth failure everywhere: senior-dev stops without another model call (landing turn included), the explanation names the source of the key the served model actually used (a direct provider no longer names OPENROUTER_API_KEY), and `codeaf do` carries the reason into its error field. The model API still answers an upstream account refusal with 502, by design. The key order is unchanged.
+  - `codeaf disconnect --help` said it forgets a service, and connect's `--region` described a service region. Both say provider.
+
+  Re-cut of #1669 (itself re-cut from the docs-audit batch) onto current dev. `--workspace` still defaults to the home directory; that item of the CLI audit stays open.
+
+  </details>
+
+- **chat sign-in cancel, picture names, speech spend, palette lists and team wording are accurate** — [#1702](https://github.com/Agent-Field/codeaf/pull/1702) · `chat` `engine` `docs`
+
+  <details><summary>10 things that are no longer true</summary>
+
+  - Angle-bracketed words like `<id>` in model prose were dropped. They now show as written.
+  - The composing model list in `/settings` was empty because Lyria's audio row was rejected. Audio rows marked as music are listed now; plain speech rows still are not.
+  - `/remember`, `/memories`, `/forget` and the memory place said `memory is off for this session` on a plain `codeaf` in a folder (the engine road) and on a hosted session, while Settings said memory on; the demo home's notes were hidden. They now use the connected engine's store and setting, follow the engine's automatic profile, run off the update loop so a slow engine does not freeze typing, and apply in the order they were issued. A save that outlives the wire wait says it has not answered yet instead of claiming failure.
+  - A redial's ssh diagnostics were painted over the full-screen frame, and a redialing window came back as a watcher of its own session. The frame stays clean (the first carrier too, once its handshake is done), and a returning window takes back its own keyboard without taking another live window's.
+  - An empty `/drafts` trapped the keyboard, and `/skill` on an empty shelf left `/skill ` in the message box. Both now behave like every other place.
+  - Esc did not cancel a browser sign-in started from `/connect`, the Codex row or the Settings Codex row. It does now; in Settings the first esc cancels and keeps the page open.
+  - A generated picture was named from the provider's declared type, so JPEG bytes could be saved as `.png`. It is named from its bytes now.
+  - Speech spend had no role in `usage.jsonl` and media calls left no call-log rows. Speech records under its own role and every media request writes a call-log pair with its cost, including header-only image costs and a completed video poll's price.
+  - The `/` list and `/help` left out `/land`, `/crew cap task` and `/cache clean now`, `/compact` on a short chat printed a raw engine error, and a fallback task title could end on a dangling word or mid-word. All three are fixed.
+  - `team_start` told the model the person is always asked first, and a sub-team manager naming its own team in `team_post` got an unknown-team refusal. The description now says when the person is asked, and the refusal points at the team above.
+
+  Re-cut of #1672 (itself re-cut from the larger audit batch) onto current dev.
+
+  </details>
+
+- **a carried-on run counts only its own files, and a published branch is pushed, not merged** — [#1705](https://github.com/Agent-Field/codeaf/pull/1705) · `engine` `chat` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A senior-dev run that carried on an earlier run's branch counted its files from where the line's first run began, so a branch rebased onto newer history between runs (for its pull request) had a run that changed 13 files end saying 117. It now counts from where the branch stood when the run began (`N files past <commit>, where the last run left it`), and one that adds nothing says `it added nothing to the branch <branch> in <folder>, which still holds the earlier runs' work as the last run left it`. The branch is still kept and still lands as the line's.
+  - That ending told the person to `git stash` and `git merge` the branch into their own checkout even when it tracked a remote branch with an open pull request. Only a branch tracking a live remote branch of its own name, on a plainly named remote, now says it tracks `origin/<branch>` and that `git -C '<folder>' push origin <branch>` sends this work there, with no stash and no merge; any other upstream keeps the merge advice as before. The chat offers the push and never runs it on its own; it pushes only when the person asks in a later message. For a carried branch with no eligible upstream, the stash advice appears while the branch still begins with the person's uncommitted changes, rebased since or not, and goes once it does not.
+
+  </details>
+
+- **a terminal resize leaves no text from the previous frame** — [#1709](https://github.com/Agent-Field/codeaf/pull/1709) · `chat` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - After the terminal changed size, cells from the previous frame could stay on screen — leftover setup prose in the first greeting, Home's panels inside Sessions or beside a chat reply. When a resize burst settles the surface now repaints the whole screen once.
+
+  </details>
+
+- **a stopped run names the work its worker already committed** — [#1710](https://github.com/Agent-Field/codeaf/pull/1710) · `chat` `engine` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Stopping a run whose worker had already committed its work said `stopped · it had changed nothing` and named no branch, although the branch held the commits. The stop receipt and row now count work committed on the task branch since its base as well as uncommitted edits, and name the branch; a run that truly changed nothing still says so.
+
+  </details>
+
+- **settings says checker, no zero durations or byte counts, and help and manual match the screen** — [#1711](https://github.com/Agent-Field/codeaf/pull/1711) · `chat` `docs`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - /settings → Providers labelled the checking role `auditor`; it says `checker` (a saved pin keeps the `auditor` id).
+  - A thinking row could say `thought for 0s`; an unknown or sub-second duration now draws nothing.
+  - A senior-dev submission in a plain folder said `0 bytes across 3 file(s)`; an unmeasured size draws nothing.
+  - `codeaf doc --help` printed `codeaf doc` without its PATH; it reads `codeaf doc PATH [--pages A-B]`.
+  - The manual said `codeaf --help` prints the environment table (it points to `codeaf help env`), that /settings has nine tabs (ten, with Teams), that a launch with a key always opens on Home (a first launch with nothing elsewhere opens the chat's greeting), and that an untitled manager is `@manager-…` (it is `@<team>`, or `@lead` for All teams).
+
+  </details>
+
+- **skills context stays out of messages, rewind, reopened chats and titles** — [#1713](https://github.com/Agent-Field/codeaf/pull/1713) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - #1627 was believed to have fixed #1504 (the `Skills suited to this message:` list inside your message). It kept the journal and store to your words, but the live copy still carried the block into reopened conversations, `/export`, rewind drafts, compaction and title input. Now those keep only your words for new messages; the model's copy still carries the block.
+
+  `Skills suited to this message:` is context for the model. One shared helper
+  reads the message's injection mark so display, rewind, compaction, the turn's
+  explanation and title input keep only the person's words. The model's copy keeps
+  the block, and a block the person pasted keeps every word.
+
+  A conversation compacted by an earlier build may already have the block saved in
+  its journal. `/export` and rewinding to a message from before the update can still
+  carry that saved block; the conversation on screen does not show it. Nothing
+  removes it by matching its wording: a pasted block must keep every word.
+
+  </details>
+
+- **A shell senior-dev run with flags after the brief runs instead of failing to parse** — [#1717](https://github.com/Agent-Field/codeaf/pull/1717) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - #1700's entry said flags after the brief are parsed wherever they sit for every delegate program. On the shell road in a repository, `codeaf senior-dev "<brief>" --max-cost 0.5` then announced $0.50 and died: the copy's note was put between `--max-cost` and its value and the child refused to parse the line. The invocation's line is now kept flags-first, the way the parser reads it, so the child gets the same ceiling, the copy's folder and the note ahead of the brief in any typed order.
+
+  </details>
+
+
+### Internal
+
+- **go.mod lists github.com/google/uuid as the direct requirement it is** — [#1688](https://github.com/Agent-Field/codeaf/pull/1688) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Every `go build`, `go test` or `make build` on a clean `dev` checkout rewrote go.mod and stamped the binary `dirty=true`, because `internal/codexauth` imports `github.com/google/uuid` directly (since #1336) while go.mod still marked it indirect. go.mod now says direct, and a build leaves the tree clean.
+
+  </details>
+
+
+## v0.5.1 — 2026-10-01
+
+### Fixed
+
+- **the first launch of the day no longer waits on the model list before it draws** — [#1724](https://github.com/Agent-Field/codeaf/pull/1724) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A model catalog older than 24 hours was fetched again before a lazily loaded catalog answered anything, so the first launch of each day (and any launch after a day away) drew nothing until GET /models came back or hit its fifteen-second ceiling: about ten seconds on an ordinary connection, close to a minute where DNS was failing. A lazy catalog now answers from the day-old cache at once and fetches the new list in the background; the new list is what the next launch reads. Only a machine with no cache at all still waits for the first fetch.
+  - Restarting the machine was taken to be the fix for the v0.5.0 slow start on 2026-10-01. It was not: the restart coincided with a catalog fetched minutes earlier, and the stall would have come back the next day.
+
+  Opening a conversation asks the catalog several questions through the door that
+  waits — the agent's tool belt needs to know which media models exist — and every
+  one of them waited on the same fetch. `internal/catalog`'s LoadLazy already
+  served the old cache when that fetch failed; it now serves it before the fetch
+  rather than after it. Eager `Load` (`codeaf models`) and `/model`'s ctrl+r refresh
+  are unchanged.
+
+  </details>
+
+
+### Internal
+
+- **the unreleased entries are rolled up into CHANGELOG.md as v0.5.0** — [#1683](https://github.com/Agent-Field/codeaf/pull/1683) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - docs/changes/unreleased/ held 143 entries for the work after v0.4.1. They are now the `## v0.5.0` section of CHANGELOG.md, and the folder starts the next version.
+
+  </details>
+
+
 ## v0.5.0 — 2026-09-30
 
 ### Added

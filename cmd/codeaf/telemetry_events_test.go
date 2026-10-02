@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -57,7 +59,6 @@ func TestTelemetryEventsTeeCountsAHostedSession(t *testing.T) {
 		ToolCalls:        2,
 		ToolCallsFailed:  1,
 		CostUSD:          0.123456,
-		TotalTokens:      155,
 	}
 	if got := telemetry.Snapshot(); got != want {
 		t.Fatalf("hosted stream counted %+v, want %+v", got, want)
@@ -167,5 +168,85 @@ func TestTelemetryAConversationOpenedBesideIsCounted(t *testing.T) {
 	got := telemetry.Snapshot()
 	if got.Turns != 1 || got.ModelCalls != 1 || got.ToolCalls != 1 || got.CostUSD != 0.5 {
 		t.Fatalf("the conversation opened beside counted %+v, want one turn, one call, one tool and its cost", got)
+	}
+}
+
+// queueingAgent is a far agent whose follow-ups WAIT: each one is a stream held
+// open until the turn would start, and the take-back closes it unrun, the way
+// [session.Agent.UnqueueFollowUp] does.
+type queueingAgent struct {
+	quietAgent
+	mu     sync.Mutex
+	queued []chan session.Event
+}
+
+func (q *queueingAgent) FollowUp(string) (<-chan session.Event, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	ch := make(chan session.Event)
+	q.queued = append(q.queued, ch)
+	return ch, nil
+}
+
+func (q *queueingAgent) UnqueueFollowUp(ch <-chan session.Event) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for i, held := range q.queued {
+		if (<-chan session.Event)(held) == ch {
+			q.queued = append(q.queued[:i], q.queued[i+1:]...)
+			close(held)
+			return true
+		}
+	}
+	return false
+}
+
+// TestTelemetryTheCountingTeeTakesAQueuedMessageBack: THE CLICK ON A QUEUED ROW
+// WORKS ON A HOSTED CHAT. The tee hands the surface a COPY of each follow-up's
+// stream, and the surface takes a message back by the channel it holds — so a
+// take-back promoted straight through named a stream the remote agent had never
+// minted and answered false every time. Over the real wire, through the tee the
+// hosted door builds, the take-back comes out, the copy closes with no events,
+// and a second press is false.
+func TestTelemetryTheCountingTeeTakesAQueuedMessageBack(t *testing.T) {
+	far := &queueingAgent{}
+	loop, err := remote.Loopback(
+		remote.Hello{Version: remote.Version, Workspace: "/srv/app"},
+		remote.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: far, Workspace: "/srv/app", SessionFile: "/srv/app/a.jsonl"}, nil
+		}},
+	)
+	if err != nil {
+		t.Fatalf("dial the loopback: %v", err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+
+	agent := countedAgent(loop.Client.Agent())
+	if _, counted := agent.(*countingAgent); !counted {
+		t.Fatalf("the linked agent was not wrapped by the counting tee: %T", agent)
+	}
+	ch, err := agent.FollowUp("and the changelog")
+	if err != nil {
+		t.Fatalf("FollowUp: %v", err)
+	}
+	unqueuer, ok := agent.(interface {
+		UnqueueFollowUp(<-chan session.Event) bool
+	})
+	if !ok {
+		t.Fatal("the counting tee does not offer the take-back, so the surface draws no click")
+	}
+	if !unqueuer.UnqueueFollowUp(ch) {
+		t.Fatal("the take-back answered false for a message the tee queued")
+	}
+	select {
+	case ev, open := <-ch:
+		if open {
+			t.Fatalf("the taken-back follow-up streamed %v, want a closed channel", ev.Kind)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the taken-back follow-up's stream was never closed")
+	}
+	if unqueuer.UnqueueFollowUp(ch) {
+		t.Fatal("the same message was taken back twice")
 	}
 }
