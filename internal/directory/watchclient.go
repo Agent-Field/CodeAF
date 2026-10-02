@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -35,6 +38,16 @@ var (
 // not send it is an old one that ignores the names.
 const vouchHeader = "Codeaf-Vouch"
 
+// BeatSeconds is the period, in seconds, at which a watch socket pings, and
+// the value every dial declares as `beat`. The relay derives the window in
+// which it counts the device online from it. It is derived from the feed's own
+// ping period rather than restated, so the declaration and the pings cannot
+// drift (the feed's package cannot import this one, so the number lives there).
+const BeatSeconds = int(dirwatch.KeepEvery / time.Second)
+
+// closeSilent is the close code of a relay that stopped hearing the socket.
+const closeSilent websocket.StatusCode = dirwatch.CloseSilent
+
 // watchLimit is the most a frame may weigh. The frames are a few bytes, so a
 // larger one is a fault and is refused before it is buffered.
 const watchLimit = 1 << 10
@@ -60,7 +73,7 @@ func (h *HTTP) dial(ctx context.Context, holds []Hold, events bool) (dirwatch.St
 	if err != nil {
 		return nil, err
 	}
-	req.URL.RawQuery = watchQuery(holds, events)
+	req.URL.RawQuery = withBeat(watchQuery(holds, events))
 	h.sign(req, nil)
 	// The library applies the client's Timeout to the dial alone and clears it
 	// for the socket, so the shared client is safe to hand over.
@@ -73,6 +86,17 @@ func (h *HTTP) dial(ctx context.Context, holds []Hold, events bool) (dirwatch.St
 	}
 	c.SetReadLimit(watchLimit)
 	return &socket{c: c, vouching: resp.Header.Get(vouchHeader) == "1"}, nil
+}
+
+// withBeat appends the declaration of how often this client pings, which is
+// what the relay sizes its presence window from. It is added here, to every
+// dial of both kinds of socket, so no caller of watchQuery can forget it.
+func withBeat(query string) string {
+	beat := url.Values{"beat": {strconv.Itoa(BeatSeconds)}}.Encode()
+	if query == "" {
+		return beat
+	}
+	return query + "&" + beat
 }
 
 // watchRefusals pairs each refusal the feed must stop on with the dirwatch
@@ -125,13 +149,18 @@ func (s *socket) Vouching() bool { return s.vouching }
 // Close says goodbye without waiting for the server to answer.
 func (s *socket) Close() { _ = s.c.Close(websocket.StatusNormalClosure, "") }
 
-// closeSentinel turns the server's refusal close codes into their sentinels.
+// closeSentinels maps each close code the server ends a socket with to the
+// sentinel the feed acts on.
+var closeSentinels = map[websocket.StatusCode]error{
+	dirwatch.CloseRevoked: dirwatch.ErrRevoked,
+	dirwatch.CloseRotated: dirwatch.ErrRotated,
+	closeSilent:           dirwatch.ErrSilent,
+}
+
+// closeSentinel turns the server's close codes into their sentinels.
 func closeSentinel(err error) error {
-	switch websocket.CloseStatus(err) {
-	case dirwatch.CloseRevoked:
-		return dirwatch.ErrRevoked
-	case dirwatch.CloseRotated:
-		return dirwatch.ErrRotated
+	if sentinel, ok := closeSentinels[websocket.CloseStatus(err)]; ok {
+		return sentinel
 	}
 	return err
 }
