@@ -8,6 +8,7 @@ use crate::durability::Written;
 use crate::estimate::{self, CaptureEstimate};
 use crate::fork::{fork_workspace_excluding, try_clone_file, ForkReport, ForkTier};
 use crate::gc::{self, GcReport};
+use crate::hardlink;
 use crate::merge::{self, MergeAction, MergeConflict};
 use crate::model::{
     id_hex, parse_id, Blob, ChunkRef, ClaimRecord, EntryKind, ObjectId, ObjectKind, SealQuality,
@@ -596,6 +597,7 @@ impl FurrowRepository {
             };
             let (secs, nanos) = now();
             let claims = self.active_claims()?;
+            let hardlinks = hardlink::groups(self.open_path_index()?.link_groups()?);
             let snapshot = Snapshot {
                 root_tree,
                 parent,
@@ -608,6 +610,7 @@ impl FurrowRepository {
                 sqlite_backups,
                 claims,
                 excluded_paths: policy.rule_strings(),
+                hardlinks,
             };
             let id = self.store.put_struct(ObjectKind::Snapshot, &snapshot)?;
             Ok((id, secs))
@@ -1181,7 +1184,10 @@ impl FurrowRepository {
             &incoming_entries,
             &plan,
             &[],
-            false,
+            ApplyMode {
+                sync_each_file: false,
+                links: Some(incoming),
+            },
             |entry| {
                 pull.fetch_file(entry.target.context("file missing blob ID")?)?;
                 if let Some(xattrs) = entry.xattrs {
@@ -2910,7 +2916,7 @@ impl FurrowRepository {
         })?;
 
         let result = self
-            .apply_plan_at(&self.root, &target_entries, &plan, paths)
+            .apply_plan_with_links(&self.root, &target_entries, &plan, paths, &target_snapshot)
             .and_then(|_| {
                 test_pause("FURROW_TEST_REWIND_PAUSE_AFTER_APPLY_MS");
                 self.verify_plan_state(&self.root, &target_entries, &plan, paths)?;
@@ -3220,6 +3226,7 @@ impl FurrowRepository {
 
         let mut dirty_directories = BTreeSet::new();
         for relative in paths {
+            let linked_before = index.link_identity(&relative)?;
             index.remove_subtree(&relative)?;
             let absolute = self.physical_path(&relative)?;
             if !policy.excludes_bytes(&relative) && fs::symlink_metadata(&absolute).is_ok() {
@@ -3227,6 +3234,13 @@ impl FurrowRepository {
                     let parent = relative_parent(&relative);
                     index.upsert(&relative, &parent, &entry)?;
                 }
+            }
+            if self.found_new_link(index, &relative, linked_before)? {
+                // Making a link changes the directory that holds the new name
+                // and nothing that names the file's other paths, so they are
+                // found by looking at the whole tree once.
+                index.reset()?;
+                return self.capture_directory_impl(&self.root, index, policy);
             }
             let mut parent = relative_parent(&relative);
             loop {
@@ -3277,6 +3291,19 @@ impl FurrowRepository {
             }
         }
         Ok(root_tree)
+    }
+
+    /// True when `relative` was just captured as a file that shares its inode
+    /// with a path this index has never seen, so the index must be rebuilt to
+    /// find the paths it shares it with.
+    fn found_new_link(
+        &self,
+        index: &PathIndex,
+        relative: &[u8],
+        linked_before: Option<(u64, u64)>,
+    ) -> anyhow::Result<bool> {
+        Ok(index.link_identity(relative)? != linked_before
+            && index.link_has_no_known_sibling(relative)?)
     }
 
     fn capture_directory_impl(
@@ -3393,6 +3420,7 @@ impl FurrowRepository {
         let mode = metadata.permissions().mode();
         let class = content_class::classify(&relative);
         if file_type.is_file() {
+            index.note_link(&relative, hardlink::identity(&metadata))?;
             return self
                 .capture_file_entry(path, &relative, name, class, &metadata)
                 .map(Some);
@@ -4006,11 +4034,95 @@ impl FurrowRepository {
         plan: &RewindPlan,
         selected_paths: &[PathBuf],
     ) -> anyhow::Result<()> {
-        self.apply_plan_at_with_file_sync(root, target, plan, selected_paths, false, |_| Ok(()))?;
+        self.apply_plan_with(root, target, plan, selected_paths, None)
+    }
+
+    /// [`Self::apply_plan_at`] that also puts back the hard links `snapshot`
+    /// recorded, so a restored folder keeps one file where the sealed one had
+    /// one.
+    fn apply_plan_with_links(
+        &self,
+        root: &Path,
+        target: &BTreeMap<Vec<u8>, FlatEntry>,
+        plan: &RewindPlan,
+        selected_paths: &[PathBuf],
+        snapshot: &Snapshot,
+    ) -> anyhow::Result<()> {
+        self.apply_plan_with(root, target, plan, selected_paths, Some(snapshot))
+    }
+
+    fn apply_plan_with(
+        &self,
+        root: &Path,
+        target: &BTreeMap<Vec<u8>, FlatEntry>,
+        plan: &RewindPlan,
+        selected_paths: &[PathBuf],
+        links: Option<&Snapshot>,
+    ) -> anyhow::Result<()> {
+        self.apply_plan_at_with_file_sync(
+            root,
+            target,
+            plan,
+            selected_paths,
+            ApplyMode {
+                sync_each_file: false,
+                links,
+            },
+            |_| Ok(()),
+        )?;
         // One durability step for the whole batch instead of one per file: the
         // caller clears the restore intent only after this returns.
         applied_writes(root, target, plan)?.make_durable()?;
         Ok(())
+    }
+
+    /// Links the members of each recorded group to one another. It runs before
+    /// directory modes are applied, while a read-only directory is still
+    /// writable, and it only ever links paths of `snapshot` to one another.
+    fn restore_links(
+        &self,
+        root: &Path,
+        snapshot: &Snapshot,
+        selected_paths: &[PathBuf],
+    ) -> anyhow::Result<()> {
+        let unlinked = hardlink::restore(&snapshot.hardlinks, |path| {
+            self.intact_member(root, snapshot, path, selected_paths)
+        })?;
+        if !unlinked.is_empty() {
+            eprintln!(
+                "warning: {} path(s) were hard links when sealed and stay separate copies here \
+                 because this file system refused the link, first: {}",
+                unlinked.len(),
+                display_relative(&unlinked[0])
+            );
+        }
+        Ok(())
+    }
+
+    /// The place on disk of a group member that is selected and is still the
+    /// regular file its entry in `snapshot` describes (by mode, size and time,
+    /// which a restore sets), or None.
+    fn intact_member(
+        &self,
+        root: &Path,
+        snapshot: &Snapshot,
+        path: &[u8],
+        selected_paths: &[PathBuf],
+    ) -> anyhow::Result<Option<PathBuf>> {
+        if !selected(path, selected_paths) {
+            return Ok(None);
+        }
+        let place = safe_join(root, path)?;
+        let Some(entry) = self
+            .lookup_tree_path(&snapshot.root_tree, path)?
+            .filter(|entry| entry.kind == EntryKind::File)
+        else {
+            return Ok(None);
+        };
+        Ok(match fs::symlink_metadata(&place) {
+            Ok(metadata) if stat_matches_entry(&metadata, &entry) => Some(place),
+            _ => None,
+        })
     }
 
     /// Materialize `plan` at `root`. `before_file` runs immediately before each
@@ -4023,7 +4135,7 @@ impl FurrowRepository {
         target: &BTreeMap<Vec<u8>, FlatEntry>,
         plan: &RewindPlan,
         selected_paths: &[PathBuf],
-        sync_each_file: bool,
+        mode: ApplyMode<'_>,
         mut before_file: impl FnMut(&TreeEntry) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         let mut applied_operations = 0_usize;
@@ -4077,7 +4189,7 @@ impl FurrowRepository {
             match flat.entry.kind {
                 EntryKind::File => {
                     before_file(&flat.entry)?;
-                    self.restore_file_with_sync(&destination, &flat.entry, sync_each_file)?
+                    self.restore_file_with_sync(&destination, &flat.entry, mode.sync_each_file)?
                 }
                 EntryKind::Symlink => {
                     std::os::unix::fs::symlink(
@@ -4131,6 +4243,10 @@ impl FurrowRepository {
                     remove_path(&destination)?;
                 }
             }
+        }
+
+        if let Some(snapshot) = mode.links {
+            self.restore_links(root, snapshot, selected_paths)?;
         }
 
         // Apply directory modes and mtimes after child operations, deepest
@@ -5022,6 +5138,25 @@ fn ensure_safe_parent(root: &Path, destination: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// True when a file on disk has the mode, size and modification time of its
+/// tree entry: a restore sets all three, so a file that has them is the one it
+/// wrote or one that was already right.
+fn stat_matches_entry(metadata: &fs::Metadata, entry: &TreeEntry) -> bool {
+    metadata.is_file()
+        && metadata.permissions().mode() == entry.mode
+        && metadata.len() == entry.size
+        && metadata.mtime() == entry.mtime_secs
+        && metadata.mtime_nsec().max(0) as u32 == entry.mtime_nanos
+}
+
+/// How a plan is written: whether each file is flushed as it lands, and the
+/// snapshot whose recorded hard links are put back once the files are in.
+#[derive(Clone, Copy)]
+struct ApplyMode<'a> {
+    sync_each_file: bool,
+    links: Option<&'a Snapshot>,
+}
+
 fn selected(path: &[u8], selections: &[PathBuf]) -> bool {
     if selections.is_empty() {
         return true;
@@ -5160,6 +5295,8 @@ fn sync_pull_outcome(
     }
 }
 
+#[cfg(test)]
+mod hardlink_tests;
 #[cfg(test)]
 mod odd_names_tests;
 #[cfg(test)]

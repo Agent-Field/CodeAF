@@ -56,7 +56,7 @@ func toolCallOn(t *testing.T, seat executor.Seat, workspace string) error {
 // is not gated, and a turn is sealed by the zero device under fence 0.
 func TestDriveSideOffIsStageZero(t *testing.T) {
 	cfg, c := doorChat(t)
-	t.Setenv(syncsetup.URLVar, "")
+	t.Setenv(syncsetup.URLVar, "off")
 	seated := v3Seated(cfg)
 	if len(syncDrives.drive) != 0 {
 		t.Fatal("a drive side was made with sync off")
@@ -223,5 +223,20 @@ func TestDrivePathsFollowMayTalk(t *testing.T) {
 			}
 			_ = cfg
 		})
+	}
+}
+
+// A computer with no identity is waiting, not failing to seal: with the hosted default every fresh
+// computer is in that state, and it must not show a failing seal on its first launch.
+func TestStartDriveWithNoIdentityReportsNothing(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv(syncsetup.URLVar, "")
+	var reported []error
+	d, err := startDrive(cell.Cell{}, cellstore.Engine{}, func(e error) { reported = append(reported, e) })
+	if d != nil || !errors.Is(err, syncsetup.ErrNoIdentity) {
+		t.Fatalf("startDrive = %v, %v; want no drive and ErrNoIdentity", d, err)
+	}
+	if len(reported) != 0 {
+		t.Fatalf("waiting for an identity was reported as a seal outcome: %v", reported)
 	}
 }

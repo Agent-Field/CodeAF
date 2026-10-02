@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/mirror"
 )
 
 // Carry is the mechanism: [Carry.Compose] on the seal side, [Carry.Restore] on
@@ -85,7 +86,7 @@ func carry(tree, dest string) error {
 		return err
 	}
 	present, deleted := partition(tree, withoutSecrets(tree, changed))
-	if err := syncFiles(tree, filepath.Join(dest, filesDir), present); err != nil {
+	if _, err := mirror.Sync(tree, filepath.Join(dest, filesDir), present); err != nil {
 		return err
 	}
 	branch := branchOf(tree)
@@ -204,48 +205,4 @@ func skipEntry(d fs.DirEntry) error {
 		return filepath.SkipDir
 	}
 	return nil
-}
-
-// syncFiles makes dest hold exactly the named files of tree. A file whose size
-// and time already match is left alone, so a seal that changed nothing rewrites
-// nothing and the engine's own stat cache stays warm.
-func syncFiles(tree, dest string, rels []string) error {
-	if err := dropStale(dest, rels); err != nil {
-		return err
-	}
-	for _, rel := range rels {
-		if err := copyIfChanged(filepath.Join(tree, rel), filepath.Join(dest, rel)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// dropStale removes the files under dest that are not in rels.
-func dropStale(dest string, rels []string) error {
-	want := map[string]bool{}
-	for _, rel := range rels {
-		want[filepath.Join(dest, rel)] = true
-	}
-	err := filepath.WalkDir(dest, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || want[path] {
-			return err
-		}
-		return os.Remove(path)
-	})
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	return err
-}
-
-func copyIfChanged(from, to string) error {
-	src, err := os.Stat(from)
-	if err != nil {
-		return err
-	}
-	if dst, err := os.Stat(to); err == nil && dst.Size() == src.Size() && dst.ModTime().Equal(src.ModTime()) {
-		return nil
-	}
-	return copyFile(from, to, src, src.Mode().Perm())
 }

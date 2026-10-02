@@ -503,6 +503,7 @@ fn benchmark_gc(profile: Profile) -> anyhow::Result<Sample> {
             sqlite_backups: Vec::new(),
             claims: Vec::new(),
             excluded_paths: Vec::new(),
+            hardlinks: Vec::new(),
         };
         let id = store.put_struct(ObjectKind::Snapshot, &snapshot)?;
         store.publish_snapshot("history", id, sealed_at, None, SnapshotTrigger::Watcher)?;

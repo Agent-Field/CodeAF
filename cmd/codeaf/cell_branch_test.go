@@ -135,7 +135,7 @@ func TestCellDiscard(t *testing.T) {
 }
 
 func TestCellDiscardNeedsSyncSetUp(t *testing.T) {
-	t.Setenv("CODEAF_SYNC_URL", "")
+	t.Setenv("CODEAF_SYNC_URL", "off")
 	if err := runCellIn([]string{"discard", branchID, mustCellRoot(t)}, &bytes.Buffer{}, t.TempDir()); err == nil {
 		t.Error("discard ran on a device with no sync")
 	}

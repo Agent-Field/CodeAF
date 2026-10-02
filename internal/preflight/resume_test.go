@@ -270,6 +270,58 @@ func TestSetupBriefWithoutFactsIsTheToolBriefAsBefore(t *testing.T) {
 	}
 }
 
+// The transcript names a job log by the folder the chat had on the other
+// machine. When the chat's files were carried to another folder, the next step
+// is told where they are, though nothing was left out or left running: it is
+// news and not an offer.
+func TestCarriedChatFilesAreToldWhereTheyAreWithoutRaisingAnOffer(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	if err := inventory.Record(root, func(inv *inventory.Inventory) { inv.V = 1; inv.ChatDir = "/home/me/a/chat1" }); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Arrive(root, workspace, "box")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Empty() {
+		t.Fatal("moved chat files alone raised an offer")
+	}
+	m, err := OpenMachine(root, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	news := m.News()
+	if !strings.Contains(news, "name under /home/me/a/chat1 were carried: they are under "+root+" here") {
+		t.Fatalf("news:\n%s", news)
+	}
+	if again := m.News(); again != "" {
+		t.Fatalf("the same news came twice:\n%s", again)
+	}
+}
+
+func TestAChatFileThatStayedBehindIsNamedWithWhy(t *testing.T) {
+	inv := inventory.Inventory{Withheld: []inventory.Withheld{{Path: "logs/jobs/2.log", Reason: "over the 1 MiB carry limit for one file; it stayed on the machine that made it"}}}
+	r := Compare("box", inv, here{}, Report{})
+	for _, text := range []string{r.Brief(), r.News()} {
+		if !strings.Contains(text, "logs/jobs/2.log") || !strings.Contains(text, "stayed on the machine that made it") {
+			t.Errorf("text does not say the log stayed:\n%s", text)
+		}
+	}
+}
+
+func TestAChatFileIsLookedForInTheChatFolderNotTheWorkspace(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "logs/jobs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "logs/jobs/2.log"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !(LocalHere{Root: root, Workspace: workspace}).Has("logs/jobs/2.log") {
+		t.Error("a log in the chat folder was reported missing")
+	}
+}
+
 func TestAnEntryWithAReasonIsToldWithItsReasonAndNoCommand(t *testing.T) {
 	r := Resume{Missing: []inventory.Withheld{{Path: "odd.bin", Reason: "cannot be read on this machine"}}}
 	if got := missingBrief(r.Missing[0]); got != "odd.bin: not brought along; cannot be read on this machine" {

@@ -127,7 +127,7 @@ func TestRotateRefusesWhatItDoesNotKnow(t *testing.T) {
 // With sync off there is no relay to rotate on, and nothing is done.
 func TestRotateSyncOff(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
-	t.Setenv("CODEAF_SYNC_URL", "")
+	t.Setenv("CODEAF_SYNC_URL", "off") // an empty value now means the built-in default
 	_, _, err := realRotation(0, nil)
 	if err == nil || !strings.Contains(err.Error(), "needs sync") {
 		t.Fatalf("realRotation with sync off = %v", err)

@@ -76,9 +76,9 @@ func (m *Machine) here() Here { return LocalHere{Root: m.root, Workspace: m.work
 // takeover could see (the commands that were running elsewhere) kept from it.
 func (m *Machine) resume(inv inventory.Inventory, report Report) Resume {
 	r := Absent(inv, m.here(), report)
-	r.Now = m.workspace
+	r.Now, r.ChatNow = m.workspace, m.root
 	if kept, ok := m.stashed(); ok {
-		r.From, r.Was, r.Stopped, r.Detached = kept.From, kept.Was, kept.Stopped, kept.Detached
+		r.From, r.Was, r.ChatWas, r.Stopped, r.Detached = kept.From, kept.Was, kept.ChatWas, kept.Stopped, kept.Detached
 	}
 	return r
 }
@@ -95,7 +95,7 @@ func Arrive(root, workspace, from string) (Resume, error) {
 	}
 	inv := m.store.Snapshot()
 	r := Compare(from, inv, m.here(), Check(inv, LocalFor(inv, m.path)))
-	r.Now = workspace
+	r.Now, r.ChatNow = workspace, root
 	r.Uncommitted = Uncommitted(workspace)
 	return r, m.stash(r)
 }
