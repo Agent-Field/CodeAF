@@ -394,7 +394,7 @@ chat while you are still fetching it, this machine keeps exactly what it had.
 A chat that moves to another computer brings, from the relay and sealed on the way:
 
 - the whole conversation, and every file in its folder;
-- the files beside the chat that its messages name: a job's log (`logs/jobs/<n>.log`), a cut-short tool result's full output and each task's journal. A file over 1 MiB, or past 16 MiB together, or one that looks like a secret, stays behind and is named under `not brought along:`. The job itself is not carried: `was running there:` lists it and codeaf never restarts it;
+- the files beside the chat that its messages name: a job's log (`logs/jobs/<n>.log`) and a cut-short tool result's full output. A log or output file over 1 MiB, or past 16 MiB together, or one that looks like a secret, stays behind and is named under `not brought along:`. Each task's journal is not among them: it travels whole inside the chat, with no size limit. The job itself is not carried: `was running there:` lists it and codeaf never restarts it;
 - the chat's dials (effort, approval), the folders it refers to and which tasks were put away;
 - a task's unlanded working copy and its branch (see "Tasks that had not landed when a chat moved"), and a finished task's kept branch (see the same section);
 - what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;
