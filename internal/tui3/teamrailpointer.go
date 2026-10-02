@@ -71,24 +71,11 @@ func (a *app) trafficKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return a.trafficGo(t.Manager), true
 }
 
-// teamOfFront is the team the conversation in front belongs to and is run
-// from: the team shown when it holds it, else the first managed team that
-// does, else the team shown. Frame-safe: memory only.
+// teamOfFront is the explicit overlay holding this conversation. All never
+// infers an overlay from membership; the engine keeps its roles independently.
 func (a *app) teamOfFront() (team, bool) {
-	if !a.wall.loaded {
-		return team{}, false
-	}
-	front := a.frontTabKey()
-	shown, showing := a.teamActive()
-	if showing && teamHolds(shown, front) {
-		return shown, true
-	}
-	for _, t := range a.wall.teams {
-		if t.Manager != "" && teamHolds(t, front) {
-			return t, true
-		}
-	}
-	return shown, showing
+	t, ok := a.teamActive()
+	return t, ok && !t.Closed() && a.teamOverlayHolds(t, a.frontTabKey())
 }
 
 // trafficHint is the composer's placeholder in a managed team: the person's

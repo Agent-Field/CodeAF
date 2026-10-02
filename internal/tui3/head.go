@@ -74,7 +74,7 @@ func (a *app) headRows(width int, strip string, pal palette) []string {
 		a.wall.chip, a.wall.door = hudSpan{}, hudSpan{}
 		return []string{nav, "", line, ""}
 	}
-	return []string{nav, "", strip, line, ""}
+	return []string{nav, "", strip, line, a.teamBadgesRow(width)}
 }
 
 // stripInHead reports whether this frame draws the chat strip. A conversation

@@ -84,6 +84,9 @@ func (a *app) reopenTabKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // did nothing visible. The walk continues to the one under it, which is the tab
 // they meant.
 func (a *app) reopenClosedTab() tea.Cmd {
+	if len(a.closedTabs) > 0 {
+		a.teamViewSet("")
+	}
 	for len(a.closedTabs) > 0 {
 		last := len(a.closedTabs) - 1
 		tab := a.closedTabs[last]

@@ -81,6 +81,27 @@ assistant update was found in that tail. `Conversation unavailable` means the fi
 not be found. Remote transcript previews are not available over `--host`; local files are
 never read as substitutes for a remote conversation.
 
+## Adding and removing team members
+
+`+ Add member` on the selected team's overview opens a searchable conversation picker.
+It lists existing saved conversations across projects, including ones already in other
+teams; members of this team are left out. Type a title or workspace to filter, use arrows
+and `enter`, or click a row. Adding an existing conversation keeps its context, other
+memberships and reporting manager.
+
+`+ New conversation` in the picker asks for its first assignment. `Create member · enter`
+creates a session in the team's workspace, adds its membership, opens it in Chats with this
+team's overlay, and submits the assignment. It follows the conversation's ordinary tool
+approval rules. `Cancel · esc` dismisses the sheet; Esc also cancels a pending creation.
+
+Each card's `Actions` opens `Remove from this team` and `Make manager`. Removal affects
+only the selected membership. Its session, draft, transcript, running work and other
+memberships survive. A manager must be replaced by another member before it can be removed.
+Removing the membership supplying its reporting manager leaves the conversation independent;
+other teams remain links until reporting is explicitly assigned.
+
+`a` opens Add member. With a member card selected, `e` opens its Actions.
+
 ## Recent interactions: scrolling, expanding replies and opening their conversations
 
 `Recent interactions` is one boxed table with a fixed header and compact exchange rows.
@@ -217,6 +238,8 @@ Teams owns its keyboard. Typing here does not edit a manager's draft.
 | `m` | Move into… |
 | `space` on a team | pick it for a move of several |
 | `p` | member list |
+| `a` | Add member picker |
+| `e` | Actions for the selected member card |
 | `M` | start a manager when offered |
 | `r`, `d` | reopen or delete a closed team |
 | `u` | Undo a close or move while offered |
@@ -320,3 +343,10 @@ the same geometry, with the manager distinguished by its role. Updates can be re
 opening a conversation; aliases and exchanges lead into Chats when detail is needed.
 The interaction table keeps many exchanges visible in one panel and expands replies inline.
 Choosing a team never changes the current chat or takes the keyboard into its draft.
+
+## Assigning a reporting manager after removal
+
+An ordinary member’s `Actions` menu includes `Report to this team’s manager` while that team has its own manager. This explicitly chooses
+that membership as the conversation’s reporting home and releases any previous reporting
+assignment. The action is absent on the manager’s own card and in a team without its own manager. Independent
+conversations stay independent until you choose a reporting manager.

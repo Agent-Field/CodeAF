@@ -13,7 +13,7 @@ func (a *app) teamsSync() tea.Cmd {
 		a.tp.focus = true
 		a.tp.railW = teamsRailCols(a.width)
 	}
-	return nil
+	return a.teamOverlaySync()
 }
 
 // teamsNoticeRows is the pane's first rows: a move waiting on `Move` or

@@ -123,7 +123,9 @@ func memberLine(m Member, s MemberState, manager bool) string {
 		state = "busy for " + s.ReportsTo
 	}
 	b.WriteString(": " + state)
-	if s.ReportsTo != "" {
+	if m.Independent {
+		b.WriteString(", independent; notes only")
+	} else if s.ReportsTo != "" {
 		b.WriteString(", reports to " + s.ReportsTo)
 	}
 	if s.SinceActive > 0 {

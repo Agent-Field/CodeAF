@@ -219,17 +219,16 @@ func (a *app) sideTeam() (team, int, string) {
 	if a.teamsOff() || !a.wall.loaded || len(a.wall.teams) == 0 {
 		return team{}, sideKindPlain, ""
 	}
-	if t, ok := a.teamFrontManaged(); ok {
-		return t, sideKindManager, ""
+	t, ok := a.teamOfFront()
+	if !ok || t.Manager == "" {
+		return team{}, sideKindPlain, ""
 	}
 	front := a.frontTabKey()
-	for _, t := range a.wall.teams {
-		if t.Manager == "" || t.Manager == front {
-			continue
-		}
-		if m, ok := t.Member(front); ok && m.Handle != "" {
-			return t, sideKindMember, m.Handle
-		}
+	if t.Manager == front {
+		return t, sideKindManager, ""
+	}
+	if m, ok := t.Member(front); ok && m.Handle != "" {
+		return t, sideKindMember, m.Handle
 	}
 	return team{}, sideKindPlain, ""
 }

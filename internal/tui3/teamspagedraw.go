@@ -354,6 +354,18 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		return out
 	}
 	out = append(out, a.teamsOverviewHeader(d, t, width, len(out)))
+	if !t.Closed() && !t.Root {
+		visible := false
+		for _, target := range d.targets {
+			if target.act == teamsActAddMember && target.id == t.ID {
+				visible = true
+			}
+		}
+		if !visible {
+			button, _ := d.button("+ Add member", teamsTarget{act: teamsActAddMember, id: t.ID, x0: 1, y: len(out), hint: "Add a new or existing conversation" + hintSegment + "a", pane: true}, pal.muted)
+			out = append(out, " "+button)
+		}
+	}
 	if t.Closed() {
 		return out
 	}

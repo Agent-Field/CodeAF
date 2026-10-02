@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -128,5 +129,27 @@ func TestAnUnreadableTeamsFileIsSetAsideByTheEnginesRead(t *testing.T) {
 	wrote, err := loop.Client.TeamsUpdate(read.Stamp, []teamstore.Team{{ID: "0a0a0a0a0a0a", Name: "beta"}})
 	if err != nil || wrote.Stale || len(wrote.Teams) != 1 {
 		t.Fatalf("a write after the read: %+v, %v", wrote, err)
+	}
+}
+
+func TestTeamMembershipDeliveryBoundaryUsesTheEngineClock(t *testing.T) {
+	loop, _ := teamsLoop(t)
+	initial, err := loop.Client.TeamsRead("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now()
+	wrote, err := loop.Client.TeamsUpdate(initial.Stamp, []teamstore.Team{{ID: "abcdefabcdef", Name: "Clock test", Members: []teamstore.Member{{Key: "/srv/member.jsonl", JoinedAt: before.Add(time.Hour)}}}})
+	after := time.Now()
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := wrote.Teams[0].Members[0].JoinedAt
+	if joined.Before(before) || joined.After(after) {
+		t.Fatalf("delivery boundary borrowed the client's clock: %v", joined)
+	}
+	again, err := loop.Client.TeamsUpdate(wrote.Stamp, wrote.Teams)
+	if err != nil || !again.Teams[0].Members[0].JoinedAt.Equal(joined) {
+		t.Fatal("unrelated write changed membership delivery boundary")
 	}
 }

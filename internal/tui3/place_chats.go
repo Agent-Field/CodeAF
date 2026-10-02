@@ -43,6 +43,7 @@ func (placeChats) enter(a *app) tea.Cmd { return a.goChats() }
 // goChats is the way back: the place closes and the conversation in front is
 // in front again, or, with none open, the new-chat page opens.
 func (a *app) goChats() tea.Cmd {
+	a.teamViewSet("")
 	a.showPage(pageNone)
 	a.touch()
 	if len(a.tabList()) == 0 && a.canStart() {

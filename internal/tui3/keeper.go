@@ -1142,6 +1142,7 @@ func (a *app) lastConversation() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	a.teamViewSet("")
 	cmd, _ := a.bringForward(a.behind[key].conv.SessionFile)
 	return cmd
 }

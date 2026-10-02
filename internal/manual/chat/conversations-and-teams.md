@@ -1,5 +1,28 @@
 # Conversations and teams
 
+## All, team overlays, membership badges and stable tabs
+
+Ordinary Home, saved-session and Chats-menu navigation opens the original conversation with
+`All` selected. All disables the team's visual overlay; it does not end membership, change
+reporting authority, or stop background team work. The composer has no team-recipient hint
+and the sidebar uses the ordinary task view.
+
+Team badges below the tab strip name this conversation's active memberships. Clicking a
+badge selects that overlay while keeping the conversation in front. Choosing a team in the
+dropdown restores that team's last selected conversation. Following a member or interaction
+from Teams explicitly selects its originating team's overlay, including shared sessions.
+
+A team overlay shows every member as a tab, manager first, using team aliases. Saved members
+have tabs even before this window attaches their conversations; selecting one uses the
+ordinary conversation-open door and reports unavailable or locked sessions honestly. Team
+tabs have no close action: `ctrl+w` keeps them visible and points to removal in Teams. In
+All, tabs retain their ordinary close behavior. Closing an All tab never removes membership.
+
+Each view remembers selection and horizontal strip browsing separately. A conversation's
+draft and reading position are shared across all its overlays. New members appear without
+stealing focus. Removing the selected membership chooses the nearest remaining tab; if no
+conversation remains, the view returns to All. Narrow strips use the existing scroll arrows.
+
 ## The conversations view (the wall): every open conversation at once
 
 To see all your conversations at once, open the **conversations view**: every conversation
@@ -21,12 +44,12 @@ Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or
 the strip's `▦ All`. Nothing you do in the view ends any work: closing a tile closes its
 view in this window, and the conversation keeps running.
 
-The view and the tab strip show **what is open in this window**. The title bar says so,
+The grid shows **what is open in this window**. A selected team’s Chats tab strip shows every member, including saved conversations that have not been opened here. The title bar says so,
 `Conversations · open in this window`, or `open in this window · in harbor` while a team is
 shown, and counts what is running, what needs you and how many are open here. A team's
-members that this window does not have open are not tiles and not tabs; while the shown team
+members that this window does not have open are not grid tiles; while the shown team
 has any, the title bar carries one quiet button, `2 more in harbor · Open them` (or `r`), that
-resumes them in the background, so they arrive as tiles and tabs while the conversation in
+resumes them in the background, so they arrive as tiles while the conversation in
 front and your focus stay where they are. When every member is open the button is not there. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
 shown, and at the bottom a toolbar with `Filter /`,
 `New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
@@ -117,9 +140,10 @@ While anything is picked, a tray rises over the bottom of the grid:
 
 A **team** is a group of conversations you name, like `harbor` for everything about one
 project. A conversation can be in any number of teams: a team is a grouping, not a place a
-conversation lives. Showing a team narrows both the conversations view and the **tab strip**
-to its members that are open in this window, and nothing else changes: no conversation is
-opened, closed or stopped. A team's whole membership, open here or not, lives on the team:
+conversation lives. The conversations grid shows the team’s members open in this window.
+Selecting a team overlay in Chats shows **all its memberships as tabs**, manager first,
+and restores that view’s last selected conversation. Selecting a saved member opens it.
+Changing the view never stops ongoing work. A team's whole membership, open here or not, lives on the team:
 each segment of the Teams row counts the members open here, and resting the pointer on it
 says both, `harbor · 1 open here · 3 members`.
 
@@ -242,13 +266,13 @@ While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`,
 strip and right before the tabs it narrows, with the manager's place after it:
 
 ```
-   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
+   ● harbor ▾   ◆ Manager   @rail   @prices   +   ▦ All
 ```
 
-The chip is a filter over the tabs, so it sits with them. There is no `home` on the strip:
+The chip selects the Chats view, so it sits with its tabs. Team tabs have no individual close button; All has ordinary closable tabs. There is no `home` on the strip:
 home is the first place on the top line, over the strip while a chat is in front. The
 strip is not drawn on a place. When the row runs
-short the chip goes, and never the tab in front. With teams but none shown, the chip is a quiet `teams ▾`; with no teams at all there
+short the chip goes, and never the tab in front. With teams but none shown, the chip is a quiet `All ▾`; with no teams at all there
 is no chip. A press on the
 chip opens the **team switcher** under it, on any page the strip is on, the conversations view
 included:
@@ -267,9 +291,10 @@ included:
 ╰────────────────────────────╯
 ```
 
-- a team, or **All**, narrows or widens the strip; the conversation in front stays in front
-  unless it is not in the team, and then the team's first conversation comes forward. The
-  teams are the tree: a team inside another stands indented under it
+- a team enables its overlay; **All** returns to the ordinary conversation view. Each view
+  restores its selected conversation and horizontal tab-strip position. A new team view
+  keeps the current conversation when it is a member, otherwise selects its manager first.
+  The teams are the tree: a team inside another stands indented under it
 - **+ Add this conversation** puts the conversation in front into the team that is shown, and
   the row turns into **− Remove this conversation**
 - **Closed · 2** is there while you have closed teams: a press opens the teams page with its

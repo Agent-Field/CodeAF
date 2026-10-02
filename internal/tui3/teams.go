@@ -570,7 +570,12 @@ func (a *app) teamAdd(id string, tabs []chatTab) error {
 	id = a.wall.teams[i].ID
 	members := teamFromTabs("", tabs, time.Time{}).Members
 	return a.teamEdit(func(f *teamstore.File) error {
+		current, ok := f.Team(id)
+		if !ok || current.Closed() || current.Root {
+			return errors.New("memberships can be edited only in active regular teams")
+		}
 		for _, m := range members {
+			m.JoinedAt = time.Now()
 			// A member joins with a handle when it has a title
 			// ([teamstore.File.AddMember]); one already there is left as it is.
 			if err := f.AddMember(id, m); err != nil {
@@ -591,7 +596,14 @@ func (a *app) teamRemove(id string, keys []string) error {
 	}
 	id = a.wall.teams[i].ID
 	return a.teamEdit(func(f *teamstore.File) error {
+		current, ok := f.Team(id)
+		if !ok || current.Closed() || current.Root {
+			return errors.New("memberships can be edited only in active regular teams")
+		}
 		for _, k := range keys {
+			if current.Manager == k {
+				return errors.New("choose another member as manager before removing this one")
+			}
 			// A manager taken out of its team is no longer its manager.
 			if err := f.RemoveMember(id, k); err != nil {
 				return err
@@ -601,29 +613,40 @@ func (a *app) teamRemove(id string, keys []string) error {
 	})
 }
 
-// teamActivate narrows the strip to team id, or widens it to every tab for
-// "" (or an id that is gone). It changes the view and nothing else. If the
-// conversation in front is not a member, the strip would be narrowed away
-// from the page the person is on, so it steps to the first member instead and
-// returns that switch.
-func (a *app) teamActivate(id string) tea.Cmd {
+// teamActivate switches the explicit Chats view and restores its last selection.
+func (a *app) teamActivate(id string) (cmd tea.Cmd) {
 	a.teamsEnsure()
-	t, ok := a.teamByID(id)
-	if !ok {
-		a.wall.activeID = ""
+	if t, ok := a.teamByID(id); !ok || t.Closed() {
+		id = ""
+	}
+	if id == a.teamViews.id {
 		return nil
 	}
-	a.wall.activeID = id
-	if len(t.Members) == 0 || teamHolds(t, a.frontTabKey()) {
+	a.teamViewSet(id)
+	if view, exists := a.teamViews.views[id]; exists {
+		defer func() { a.tabView = view.viewport }()
+	}
+	remembered := a.teamViews.views[id]
+	if id == "" {
+		if remembered.key != "" && !a.tabShut[remembered.key] {
+			return a.trafficGo(remembered.key)
+		}
 		return nil
 	}
-	// A team with nothing open here narrows the strip to the tab in front, and
-	// the front stays where it is: nothing to step to is not a reason to open.
-	tabs := teamTabs(t, a.tabList(), a.teamHeldOpen)
-	if len(tabs) == 0 {
+	t, _ := a.teamByID(id)
+	if a.teamOverlayHolds(t, remembered.key) {
+		return a.trafficGo(remembered.key)
+	}
+	if a.teamOverlayHolds(t, a.frontTabKey()) {
 		return nil
 	}
-	return a.tabGo(tabs[0])
+	if t.Manager != "" {
+		return a.trafficGo(t.Manager)
+	}
+	if len(t.Members) > 0 {
+		return a.trafficGo(t.Members[0].Key)
+	}
+	return nil
 }
 
 // teamActive is the team the strip is narrowed to. It reads only memory and
@@ -707,30 +730,36 @@ func (a *app) teamJoinNew(tab chatTab) {
 	}
 }
 
-// teamStripTabs is what the strip draws given the tabs it would draw with no
-// team. With a team active it is that team's members, plus the tab in front
-// when it is not one of them: THE TAB YOU ARE ON NEVER VANISHES, because a
-// strip that does not show where you are cannot show you the way back. With no
-// team active the tabs come back unchanged. Frame-safe: memory only.
+// teamStripTabs draws every selected membership, independently of All's hidden
+// tabs and presentation cap. A saved conversation can be selected before its
+// agent is attached; tabs make no claim about whether work is running.
 func (a *app) teamStripTabs(tabs []chatTab) []chatTab {
 	t, ok := a.teamActive()
-	if !ok {
+	if !ok || t.Closed() {
 		return tabs
 	}
-	out := a.teamStripManager(t, teamTabs(t, tabs, a.teamHeldOpen))
-	// A member held behind that the strip had no tab for yet (one the manager
-	// started) still says what it is doing, as every held tab does.
-	for i := range out {
-		if held := a.behind[out[i].key]; held != nil && !out[i].held {
-			out[i].held = true
-			out[i].signal = a.tabSignalFor(out[i].key, false)
+	front := a.frontTabKey()
+	out := make([]chatTab, 0, len(t.Members))
+	for _, m := range a.teamsCrewMembers(t) {
+		tab := chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word, full: m.Word, here: m.Key == front, team: t.ID}
+		for _, live := range tabs {
+			if live.key == m.Key {
+				tab = live
+				tab.team = t.ID
+				break
+			}
 		}
-	}
-	for _, tab := range tabs {
-		if tab.here && !teamHolds(t, tab.key) {
-			out = append(out, tab)
-			break
+		if m.Handle != "" {
+			tab.word = "@" + m.Handle
 		}
+		if tab.word == "" {
+			tab.word = "Conversation"
+		}
+		if held := a.behind[m.Key]; held != nil {
+			tab.held = true
+		}
+		tab.signal = a.tabSignalFor(m.Key, tab.here)
+		out = append(out, tab)
 	}
-	return out
+	return a.teamStripManager(t, out)
 }

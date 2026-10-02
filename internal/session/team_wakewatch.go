@@ -410,6 +410,9 @@ func (a *Agent) teamWatchReadLocked(profile string, role teamRole) []teams.Entry
 // asking event, for the manager. The watch suppresses a finished event when
 // the same turn already posted a reply.
 func teamWakes(role teamRole, entry teams.Entry) bool {
+	if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) {
+		return false
+	}
 	if role.manager && teams.IsWrapUp(entry) {
 		return true
 	}

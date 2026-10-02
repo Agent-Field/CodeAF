@@ -3259,6 +3259,7 @@ func (a *app) homeEnter() tea.Cmd {
 // cursor" is two answers to whether a project somewhere else may be opened, and
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
+	a.teamViewSet("")
 	h := &a.home
 	if line.row.Archived {
 		if err := a.writeHomeArchived(line.row, false); err != nil {
@@ -3393,6 +3394,7 @@ func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
 // road, and reading the refusal is the only way to tell those apart
 // ([app.homeHeldEnter]).
 func (a *app) homeWalkIn(line homeLine) (tea.Cmd, string) {
+	a.teamViewSet("")
 	where := homeWhere(line)
 	if !homeFolderThere(where) {
 		// ONE os.Stat, ON THE KEYSTROKE, in the same place the flock probe puts
@@ -3583,6 +3585,7 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 // opens. The shared legacy connection still swaps in place and keeps its
 // existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	a.teamViewSet("")
 	// THE SHELL REFUSAL COMES BEFORE THE ROAD IS CHOSEN, so a line home will not
 	// run is refused the same way whichever road would have opened it.
 	if _, bash := session.BashCommand(text); bash {

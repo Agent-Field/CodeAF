@@ -3,6 +3,7 @@ package remote
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -113,6 +114,18 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 // lock, only while the file is at the window's base.
 func teamsUpdate(dir string, args TeamsUpdateArgs) (TeamsReading, error) {
 	f, stamp, err := teamstore.ChangeIf(dir, args.Base, func(f *teamstore.File) error {
+
+		// Delivery boundaries use the engine's clock, never a remote client's.
+		// Existing memberships retain the boundary accepted by their original write.
+		for i := range args.Teams {
+			previous, _ := f.Team(args.Teams[i].ID)
+			for j := range args.Teams[i].Members {
+				member := &args.Teams[i].Members[j]
+				if !previous.Holds(member.Key) && !member.JoinedAt.IsZero() {
+					member.JoinedAt = time.Now()
+				}
+			}
+		}
 		f.Teams = args.Teams
 		return nil
 	})

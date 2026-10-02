@@ -287,6 +287,7 @@ func (a *app) frame() (string, int, int) {
 	body = a.teamCrewOver(body)
 	body = a.teamSheetOver(body)
 	body = a.teamMoveOver(body)
+	body = a.teamMembershipOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 
@@ -302,6 +303,7 @@ func (a *app) frameBody() (string, int, int) {
 	// to paint would open a place for a click on a rule (topnav.go's
 	// [app.navPress]).
 	a.tabRow = -1
+	a.teamViews.badges = nil
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)

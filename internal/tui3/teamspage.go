@@ -159,6 +159,8 @@ const (
 	teamsActInteractionJump
 	teamsActInteractionUp
 	teamsActInteractionDown
+	teamsActAddMember
+	teamsActMemberActions
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────

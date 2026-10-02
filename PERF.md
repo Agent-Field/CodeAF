@@ -2418,7 +2418,7 @@ include the complete tab identity and picker availability, not just rendered wor
 
 
 The navigation panel renders a separate transcript separator and, inside a task,
-a separate metadata row. Its tab candidate slice is bounded to 32 entries;
+a separate metadata row. Its ordinary All tab candidate slice is bounded to 32 entries; a team overlay draws its complete stored membership without applying that presentation cap. Overlay frames build membership tabs from memory and never open agents or transcripts; the membership picker captures its saved-session snapshot off-loop once when opened.
 the recency stack and held agents remain uncapped. Membership walks can still
 inspect recency keys when candidates are dismissed or missing, but the renderer
 no longer builds an unbounded temporary tab list and compares each entry against

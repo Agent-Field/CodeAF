@@ -23,11 +23,15 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	a.tp.msg = ""
 	a.tp.cur = t.ref()
 	switch t.act {
+	case teamsActAddMember:
+		return a.teamMembershipOpen(t.id, "")
+	case teamsActMemberActions:
+		return a.teamMembershipOpen(t.id, t.arg)
 	case teamsActInteractionToggle:
 		a.trafficToggle(trafficOpenKey(t.id, t.arg))
 		return nil
 	case teamsActInteractionJump:
-		a.wall.activeID = t.id
+		a.teamViewSet(t.id)
 		a.leavePlace()
 		a.closeRoom()
 		return a.trafficJumpFromTeam(t.id, t.arg, t.opt)
@@ -136,7 +140,7 @@ func (a *app) teamsMemberGo(id, key string) tea.Cmd {
 	if key == "" {
 		return nil
 	}
-	a.wall.activeID = id
+	a.teamViewSet(id)
 	a.leavePlace()
 	a.closeRoom()
 	return a.trafficGo(key)
@@ -271,7 +275,7 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 func (a *app) teamsStartManager(where string, made func(chatTab)) tea.Cmd {
 	take := func() {
 		made(chatTab{key: a.convKey(a.file), file: a.file, where: a.workspace})
-		a.wall.activeID = a.tp.sel
+		a.teamViewSet(a.tp.sel)
 		a.leavePlace()
 		a.tp.focus = false
 		a.touch()

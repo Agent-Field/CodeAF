@@ -395,6 +395,12 @@ func (a *app) trafficAct(teamID string, e teamstore.Entry) tea.Cmd {
 	switch e.Kind {
 	case teamstore.KindStop:
 		key := trafficMemberKey(t, e.To, e.Member)
+		if member, ok := t.Member(key); ok && member.Independent {
+			return nil
+		}
+		if home, ok := a.teamTree().Home(key); ok && home.Team != t.ID {
+			return nil
+		}
 		if !a.trafficHeld(key) {
 			return nil
 		}

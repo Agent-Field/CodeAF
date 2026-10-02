@@ -60,6 +60,7 @@ func (s *teamWriteSaid) settle(w teamsWrote) bool {
 // A notice's clock starts when its write comes back, not when it was made, so
 // a slow write over a connection still shows its notice for the whole time.
 func (a *app) teamsWriteSettled(w teamsWrote) {
+	a.tmemberStart.said.settle(w)
 	now := a.now()
 	if a.wall.madeSaid.settle(w) {
 		a.wall.madeAt = now

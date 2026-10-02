@@ -28,14 +28,14 @@ import (
 //	╰──────────────────────────╯
 //
 // Choosing a team narrows the strip as the wall's segments do, and switches the
-// conversation in front only when it is not a member ([app.teamActivate]).
+// conversation in front to that view’s remembered selection ([app.teamActivate]).
 // The rows under the rule act on the conversation in front: into or out of the
 // team that is shown, a new team starting with it, or the shown team's settings,
 // the last two on the wall, where teams are edited. `Make manager` makes a
 // member the team's manager, and on the manager it reads `Remove manager`
 // (teammanager.go).
 //
-// WITH NO TEAM SHOWN THE CHIP IS STILL THERE, AS A QUIET ` teams ▾ `, whenever
+// WITH NO TEAM SHOWN THE CHIP IS STILL THERE, AS A QUIET ` All ▾ `, whenever
 // there is a team to switch to. The strip is the one control on every page,
 // and a switcher that appeared only once a team was already chosen could not be
 // used to choose the first; with no team at all there is nothing to switch to
@@ -95,9 +95,11 @@ func (a *app) teamMenuRows() []teamMenuRow {
 		rows = append(rows, teamMenuRow{code: teamMenuClosed})
 	}
 	rows = append(rows, teamMenuRow{rule: true})
-	_, shown := a.teamActive()
+	shownTeam, shown := a.teamActive()
 	if shown && a.frontTabKey() != "" {
-		rows = append(rows, teamMenuRow{code: teamMenuToggle})
+		if !shownTeam.Root {
+			rows = append(rows, teamMenuRow{code: teamMenuToggle})
+		}
 		if t, _ := a.teamActive(); teamHolds(t, a.frontTabKey()) {
 			rows = append(rows, teamMenuRow{code: teamMenuManager})
 		}

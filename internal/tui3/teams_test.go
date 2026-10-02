@@ -146,7 +146,7 @@ func TestTeamTabsDrawNoTabForAMemberNotOpenHere(t *testing.T) {
 	}
 }
 
-func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
+func TestTeamStripTabsShowsOnlyTheSelectedMemberships(t *testing.T) {
 	a := &app{}
 	a.teamsEnsure()
 	tabs := []chatTab{{key: "a", word: "alpha"}, {key: "b", word: "beta", here: true}, {key: "c", word: "gamma"}}
@@ -167,8 +167,8 @@ func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
 	for _, tab := range got[1:] {
 		keys = append(keys, tab.key)
 	}
-	if strings.Join(keys, ",") != "c,a,b" {
-		t.Fatalf("strip keys %v, want c,a,b", keys)
+	if strings.Join(keys, ",") != "c,a" {
+		t.Fatalf("strip keys %v, want c,a", keys)
 	}
 	// A front tab that is a member is not drawn twice.
 	tabs[1].here, tabs[0].here = false, true

@@ -140,6 +140,8 @@ type chatTab struct {
 	// [app.convKey]) rather than a title or a number. Two conversations may
 	// share a name, and an unnamed one has none at all.
 	key string
+	// team identifies a non-closable membership tab in an explicit overlay.
+	team string
 	// file is the address a press hands to the door, and where is the workspace
 	// that door needs when the conversation is not open any more.
 	file  string
@@ -738,7 +740,7 @@ func (a *app) tabTeamWord() string {
 		if len(a.wall.teams) == 0 {
 			return ""
 		}
-		return " teams " + caret + " "
+		return " All " + caret + " "
 	}
 	name := sp.Name
 	if ansi.StringWidth(name) > teamNameCells {
@@ -936,9 +938,14 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 		// THE CLOSE CELLS ARE A TARGET OF THEIR OWN AND THEY ARE ALWAYS THERE.
 		// What changes under the pointer is whether the mark is painted into them
 		// ([app.tabsPaint]), never how many cells they are.
-		pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabCloseCells), kind: tabClose, tab: tabs[i]})
-		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + tabCloseCells}, kind: tabClose, tab: tabs[i]})
-		at += tabCloseCells
+		if tabs[i].team == "" {
+			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabCloseCells), kind: tabClose, tab: tabs[i]})
+			hits = append(hits, tabHit{span: hudSpan{from: at, to: at + tabCloseCells}, kind: tabClose, tab: tabs[i]})
+			at += tabCloseCells
+		} else {
+			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabCloseCells), quiet: true})
+			at += tabCloseCells
+		}
 	}
 	if pin > 0 {
 		place(0, false)
@@ -1366,6 +1373,11 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // refusals said in the same words, because one gesture with two spellings of
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
+	defer func() {
+		if t, ok := a.teamActive(); ok && !a.wall.on && !a.teamOverlayHolds(t, a.frontTabKey()) {
+			a.teamViewSet("")
+		}
+	}()
 	if tab.work {
 		return a.openWorkTab()
 	}
@@ -1414,6 +1426,10 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 // about at all: there is nothing to decide, and a question with one useful answer
 // is friction.
 func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
+	if t, ok := a.teamActive(); ok && !a.wall.on && teamHolds(t, tab.key) {
+		a.note("Team tabs stay visible; remove membership from Teams")
+		return nil
+	}
 	if a.closingTab() {
 		// The card is up about a tab already; a second press on a ✕ is not a
 		// second question. The keyboard is the card's and so is the pointer.
@@ -1430,6 +1446,9 @@ func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
 // tabDismissNow is the act itself, with the question already answered or never
 // worth asking. Every road to a tab leaving the row ends here.
 func (a *app) tabDismissNow(tab chatTab) (cmd tea.Cmd) {
+	if t, ok := a.teamActive(); ok && !a.wall.on && teamHolds(t, tab.key) {
+		return nil
+	}
 	a.tabReveal()
 	if tab.start {
 		return a.cancelChatStart()

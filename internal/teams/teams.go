@@ -31,6 +31,12 @@ type Member struct {
 	// with a manager somewhere up its chain. [File.SetHome] moves it; tidy
 	// picks it when there is none and never moves a valid one.
 	Home bool `json:"home,omitempty"`
+	// Independent preserves the person's removal of a reporting membership.
+	// Other memberships remain links until SetHome explicitly assigns a manager.
+	Independent bool `json:"independent,omitempty"`
+	// JoinedAt bounds delivery for a conversation added through membership editing.
+	// An ended membership cannot regain directives from its previous lifetime.
+	JoinedAt time.Time `json:"joined_at,omitempty"`
 	// Started says this membership was made by the team manager's team_start
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.
@@ -400,6 +406,11 @@ func (f *File) AddMember(id string, m Member) error {
 	case m.HandleBy == "":
 		m.HandleBy = HandleByTyped
 	}
+	for _, other := range f.Teams {
+		if existing, ok := other.Member(m.Key); ok && existing.Independent {
+			m.Independent = true
+		}
+	}
 	t.Members = append(t.Members, m)
 	assignHandles(t)
 	return nil
@@ -413,6 +424,16 @@ func (f *File) RemoveMember(id, key string) error {
 		return err
 	}
 	t := &f.Teams[i]
+	if m, ok := t.Member(key); ok && m.Home {
+		for ti := range f.Teams {
+			for mi := range f.Teams[ti].Members {
+				if f.Teams[ti].Members[mi].Key == key {
+					f.Teams[ti].Members[mi].Independent = true
+					f.Teams[ti].Members[mi].Home = false
+				}
+			}
+		}
+	}
 	if j := t.member(key); j >= 0 {
 		t.Members = append(t.Members[:j:j], t.Members[j+1:]...)
 	}

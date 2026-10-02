@@ -119,6 +119,15 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	if spend := a.teamsSpendWords(t); spend != "" {
 		left += "  " + a.pal.dim(spend)
 	}
+	if !t.Root {
+		x := ansi.StringWidth(left) + 1
+		button, _ := d.button("+ Add member", teamsTarget{act: teamsActAddMember, id: t.ID, x0: x, y: y, hint: "Add a new or existing conversation" + hintSegment + "a", pane: true}, a.pal.muted)
+		if x+ansi.StringWidth(button) <= width {
+			left += " " + button
+		} else {
+			d.targets = d.targets[:len(d.targets)-1]
+		}
+	}
 	x := ansi.StringWidth(left) + 1
 	button, _ := d.button("Settings", teamsTarget{act: teamsActSettings, id: t.ID, x0: x, y: y,
 		hint: "Team settings and spending controls" + hintSegment + "s"}, a.pal.muted)
@@ -165,6 +174,9 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 				role = a.teamManagerMark() + " Manager"
 			}
 			state := r.word
+			if m, ok := t.Member(r.key); ok && m.Independent {
+				state += "  independent"
+			}
 			if a.unreadChats[r.key] {
 				state += "  unread"
 			}
@@ -192,6 +204,14 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 				if !a.tp.previews[r.key].missing {
 					line = d.row(word, w-4, teamsTarget{act: teamsActMember, id: t.ID, arg: r.key,
 						x0: x + 2, y: y + len(out) + 1 + row, hint: a.teamsCrewHint(r), pane: true}, false)
+				}
+				if row == 0 && !t.Root && !t.Closed() {
+					const actionCells = 9
+					if !a.tp.previews[r.key].missing {
+						d.targets[len(d.targets)-1].x1 = x + w - 2 - actionCells
+					}
+					action, _ := d.button("Actions", teamsTarget{act: teamsActMemberActions, id: t.ID, arg: r.key, x0: x + w - 2 - actionCells, y: y + len(out) + 1, hint: "Edit this team membership", pane: true}, a.pal.muted)
+					line = fit(line, w-4-actionCells) + action
 				}
 				lines = append(lines, wallCardLine{s: line})
 			}

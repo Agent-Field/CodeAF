@@ -124,7 +124,8 @@ type teamRole struct {
 	reportsTo string
 	// derived says handle is the word list's guess, which the title model
 	// chooses again once (handlepick.go).
-	derived bool
+	derived  bool
+	joinedAt time.Time
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -397,12 +398,16 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			wakes:       effective.Wake,
 			questionsUp: effective.QuestionsUp,
 			derived:     member.HandleDerived(),
+			joinedAt:    member.JoinedAt,
 		}
 		if hasHome {
 			role.questionsUp = file.Effective(home.Team, d).QuestionsUp
 		}
-		if role.managed && !role.manager && hasHome && home.Team != boss {
+		if role.managed && !role.manager && ((!hasHome && member.Independent) || (hasHome && home.Team != boss)) {
 			role.shared = true
+			if member.Independent {
+				role.questionsUp = false
+			}
 			if at, ok := file.Team(home.Team); ok {
 				role.reportsTo = at.Name
 			}
@@ -627,6 +632,9 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		var lines []string
 		for _, entry := range entries {
 			cursor = entry.ID
+			if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) {
+				continue
+			}
 			if line := a.teamEntryLineLocked(profile, role, entry); line != "" {
 				lines = append(lines, line)
 				// WHAT THE MANAGER LAST SAID TO IT IS WHAT IT ANSWERS, until the
@@ -806,7 +814,11 @@ func teamLine(role teamRole, entry teams.Entry) string {
 		// nothing more (the verb refuses the rest); a directive that reached
 		// it anyway, from an older build, is information.
 		if role.shared {
-			word = fmt.Sprintf("◆ fyi from the manager of %q (you report to %q, whose word directs you)", role.name, role.reportsTo)
+			if role.reportsTo == "" {
+				word = fmt.Sprintf("◆ fyi from the manager of %q (you are independent; this is a note)", role.name)
+			} else {
+				word = fmt.Sprintf("◆ fyi from the manager of %q (you report to %q, whose word directs you)", role.name, role.reportsTo)
+			}
 		}
 		return word + teamAimed(entry.To, false) + number + ": " + text
 	}
@@ -1358,7 +1370,7 @@ const teamRoleWithdrawn = "You are no longer the manager or a member of any team
 // teamManagerLaws is how a manager works, stated once in the role. The verbs'
 // own descriptions carry how each is called.
 const teamManagerLaws = "Seven laws:\n" +
-	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Asked what is happening, answer from the team.\n" +
+	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Use team_add for an existing conversation and team_remove to release a membership without stopping work. Asked what is happening, answer from the team.\n" +
 	"2. The person outranks you: what they say in a member's own conversation stands over your directive, and a conflict goes to them.\n" +
 	"3. You cannot answer a member's permission prompt; tell the person it is waiting.\n" +
 	"4. You direct only the members who report to you, one level down: a team under yours is its manager's to run, so you direct that manager, never its members. A member team_status marks `reports to` another team is shared: read it and send it notes, never a directive or a stop.\n" +
@@ -1486,6 +1498,11 @@ func teamRoster(role teamRole, file *teams.File) string {
 		if word := strings.TrimSpace(member.Word); word != "" {
 			who += " (" + cutRunesTeam(word, teamRosterWord) + ")"
 		}
+		if member.Independent {
+			who += " [independent; notes only]"
+		} else if where := reportsElsewhere(file, team, member); where != "" {
+			who += " [reports to " + where + "; notes only here]"
+		}
 		named = append(named, who)
 	}
 	if len(named) == 0 {
@@ -1515,6 +1532,9 @@ func teamMemberRole(role teamRole) string {
 			said += " Your clarifying questions (ask) go to that manager first, and its answer comes back marked \"◆ answered\"; permission prompts still go to the person."
 		}
 		return said
+	}
+	if role.shared && role.reportsTo == "" {
+		return fmt.Sprintf("You are %s in the team %q, but you are independent and report to no manager. This team may exchange notes with you but cannot direct or stop you. Use team_post for updates.", you, role.name)
 	}
 	if role.shared {
 		return fmt.Sprintf("You are %s in the team %q too, but you report to the manager of %q: that manager's word directs you, and this team's manager may only send you notes (fyi). "+

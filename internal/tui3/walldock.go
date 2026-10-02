@@ -113,13 +113,13 @@ func (a *app) dockTabs() []chatTab {
 	// the front), so with nothing held and at most one on it there cannot be two. That is
 	// most frames, scrolling included, and the list is allocations the scroll's
 	// own law counts (inputsmooth_test.go).
-	if len(a.behind) == 0 && len(a.prev) < 2 {
+	if a.wall.activeID == "" && len(a.behind) == 0 && len(a.prev) < 2 {
 		a.dockList = a.dockList[:0]
 		return a.dockList
 	}
 	out := a.dockList[:0]
-	for _, tab := range a.tabList() {
-		if tab.start || tab.work {
+	for _, tab := range a.teamStripTabs(a.tabList()) {
+		if tab.start || tab.work || tab.slot {
 			continue
 		}
 		out = append(out, tab)

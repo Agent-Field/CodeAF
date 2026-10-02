@@ -59,6 +59,7 @@ func (placeTeams) close(a *app) {
 	// A drag, the members card and a move waiting on its line belong to the
 	// page and go with it; a move made keeps its Undo for the next visit.
 	a.tdrag, a.tcrew = teamDrag{}, teamCrew{}
+	a.teamMembershipShut()
 	a.tmove.pend = teamMovePend{}
 }
 
@@ -397,6 +398,16 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 		return a.teamMoveOpen(ids, teamMoveFromPage), true
+	case "a":
+		if t, ok := a.teamsSelected(); ok {
+			return a.teamMembershipOpen(t.ID, ""), true
+		}
+		return nil, true
+	case "e":
+		if target, ok := a.teamsCursorTarget(); ok && target.act == teamsActMember {
+			return a.teamMembershipOpen(target.id, target.arg), true
+		}
+		return nil, true
 	case teamCrewLetter:
 		if t, ok := a.teamsSelected(); ok && !t.Closed() {
 			return a.teamCrewOpen(t.ID), true

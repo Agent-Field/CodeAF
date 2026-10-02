@@ -126,6 +126,7 @@ func (a *app) openWall() tea.Cmd {
 
 func (a *app) closeWall() {
 	a.wall.on = false
+	a.wall.activeID = a.teamViews.id
 	a.wall.naming, a.wall.filterOn = false, false
 	a.wall.hover = wallHitRef{}
 	a.wall.pop = wallPop{}
@@ -585,6 +586,7 @@ func (a *app) wallOpen(tiles []wallTile, i int) tea.Cmd {
 		return nil
 	}
 	tab := tiles[i].tab
+	a.teamViewSet("")
 	from, ok := a.wallTileRect(i)
 	a.closeWall()
 	var cmd tea.Cmd

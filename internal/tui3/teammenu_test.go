@@ -75,7 +75,6 @@ func menuHit(t *testing.T, a *app, code int, id string) wallHit {
 // the conversation in front when it is a member.
 func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 	a, harbor, orbit := menuApp(t)
-	front := a.frontTabKey()
 	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
 		t.Fatal("the chip did not open the switcher")
 	}
@@ -114,14 +113,14 @@ func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 	}
 	// Back to harbor by the pointer: harbor holds this one too, so nothing
 	// switches.
-	front = a.frontTabKey()
+	remembered := a.teamViews.views[harbor].key
 	if err := a.teamAdd(harbor, []chatTab{a.teamMenuFront()}); err != nil {
 		t.Fatal(err)
 	}
 	a.openTeamMenu()
 	_, _ = menuFrame(t, a)
 	hit := menuHit(t, a, wallPopTeam, harbor)
-	if cmd := a.teamMenuPress(hit.x0+2, hit.y0); cmd != nil || a.wall.activeID != harbor || a.frontTabKey() != front {
+	if _ = a.teamMenuPress(hit.x0+2, hit.y0); a.wall.activeID != harbor || a.frontTabKey() != remembered {
 		t.Fatalf("choosing harbor switched the conversation in front: active %q", a.wall.activeID)
 	}
 	// All widens the strip.
@@ -245,7 +244,7 @@ func TestTeamMenuOpensTheCardAndTheSettings(t *testing.T) {
 	}
 }
 
-// WITH NO TEAM SHOWN THE CHIP IS A QUIET `teams ▾` while there are teams, and
+// WITH NO TEAM SHOWN THE CHIP IS A QUIET `All ▾` while there are teams, and
 // is not there at all while there are none.
 func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	a, _, _ := tabApp(t)
@@ -257,7 +256,7 @@ func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	a.teamActivate("")
 	a.touch()
 	row := plain(a.tabsRow(a.width))
-	if !strings.Contains(row, " teams ▾ ") || !a.wall.chip.pressable() {
+	if !strings.Contains(row, " All ▾ ") || !a.wall.chip.pressable() {
 		t.Fatalf("no quiet chip: %q", row)
 	}
 	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {

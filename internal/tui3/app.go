@@ -1447,6 +1447,10 @@ type app struct {
 	teamsDisk teamsDisk
 	// teamMenu is the strip chip's team switcher (teammenu.go).
 	teamMenu teamMenu
+	// Overlay selection belongs to the view; conversation drafts stay in the keeper.
+	teamViews    teamOverlayViews
+	tmembers     teamMembershipSheet
+	tmemberStart teamMemberStart
 	// tp is the teams page's own state: its selection, its reading of the
 	// store and the targets it drew (teamspage.go).
 	tp teamsPage
@@ -3571,6 +3575,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if write := a.teamsWrite(); write != nil {
 		cmd = tea.Batch(cmd, write)
 	}
+	if send := a.teamMembershipSubmit(); send != nil {
+		cmd = tea.Batch(cmd, send)
+	}
 	// AND THE TEAMS PAGE SETTLES WHICH CONVERSATION ITS PANE HOSTS, after
 	// every message that could have moved the front (teamspagehost.go). One
 	// comparison on every other place.
@@ -4026,6 +4033,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		// A notch, a press and a release are never a still frame, even when the
 		// motion spent ahead of them in the same message was one (wall.go's
 		// [app.wallMotion]).
@@ -4289,6 +4300,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		if a.conversationOpening {
 			a.cancelConversationOpening()
 		}
@@ -4605,6 +4620,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// It is read with the rest of the pinned rows and above the strip and
 			// the rail for the same reason they are: it spans the whole window
 			// while both of those claim columns of it.
+			if cmd, took := a.teamBadgePress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			if cmd, took := a.tabPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
@@ -4713,6 +4731,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		a.ptr.still = false
 		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
 		// started: the press it would close was taken by the sheet, and letting
@@ -4754,6 +4776,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseMotionMsg:
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		a.sawAPerson()
 		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
 		// targets light under the pointer, and the strip above it still does
@@ -4825,6 +4851,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// mean the same thing on every page, so the button under the pointer
 		// takes its ground wherever a person is standing (topnav.go's
 		// [app.headHover]).
+		a.teamBadgeMotion(msg.Mouse().X, msg.Mouse().Y)
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
 		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
 			// AND THE HEAD TAKES THE POINTER OFF HOME'S PROJECT NAMES, which
