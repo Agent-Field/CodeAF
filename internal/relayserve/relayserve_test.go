@@ -92,7 +92,7 @@ func (r *rig) logf(format string, args ...any) {
 
 // start brings the relay up on a fresh port over the same store: a restart.
 func (r *rig) start() {
-	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf, Grace: testGrace, MaxWatchers: r.watch})
+	r.svc = relayserve.New(relayserve.Config{Store: r.store, Now: r.clock.Now, Logf: r.logf, Grace: testGrace, MaxWatchers: r.watch, After: r.clock.After})
 	r.srv = httptest.NewServer(r.svc.Handler)
 	r.t.Cleanup(r.stop)
 }

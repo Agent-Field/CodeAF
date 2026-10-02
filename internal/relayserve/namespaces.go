@@ -35,6 +35,8 @@ type namespaces struct {
 	grace    directory.GraceBounds // what a retire may ask for; the zero value is the default
 	watchers int                   // the per-identity watch cap; zero is directory.MaxWatchers
 
+	after directory.After // the timers presence runs on; nil is the wall clock's
+
 	links directory.Decider // where an approve decides a pending request; set once by New
 
 	mu   sync.Mutex
@@ -79,6 +81,9 @@ func (n *namespaces) sqlite(id string) (*directory.SQLite, error) {
 	d.SetGraceBounds(n.grace)
 	if n.watchers > 0 {
 		d.SetMaxWatchers(n.watchers)
+	}
+	if n.after != nil {
+		d.SetAfter(n.after)
 	}
 	n.dirs[id] = d
 	return d, nil
