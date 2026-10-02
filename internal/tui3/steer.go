@@ -80,8 +80,8 @@ import (
 //
 // WHY THIS ONE — WHAT THE AUDIT LEFT. The gesture has to read as a SEND rather
 // than as a letter, which means a modifier on enter, and the other three are
-// spent: `alt+enter` (with `ctrl+j`) opens a line, `ctrl+enter` marks the
-// sentence as something to keep true (standmark.go), and `ctrl+shift+enter` stops the
+// spent: `alt+enter` (with `ctrl+j`) opens a line, `ctrl+enter` queues the
+// sentence for after this turn (followup.go), and `ctrl+shift+enter` stops the
 // answer and sends (bargein.go). cmd+enter is what is left, and it is the right
 // one on its own merits — it is the "send it now, properly" chord in every chat
 // application a person has ever used. Here it is deliberately secondary: plain
@@ -264,9 +264,10 @@ func (a *app) steerIn() tea.Cmd {
 	a.noticeEvent(eventSteered)
 	waiting := len(a.parks)
 	// The mark is deliberately not passed, for [app.bargeIn]'s reason: ctrl+enter
-	// is the gesture that means "keep this true" and this one means "and also
-	// this" — a chord that did both would be one keystroke making two decisions.
-	cmd := a.enterLine(false)
+	// is the gesture that means "queue it for after this turn" and this one means
+	// "and also this" — a chord that did both would be one keystroke making two
+	// decisions (followup.go).
+	cmd := a.enterLine()
 	if len(a.parks) == waiting {
 		// The road did something other than park. The turn is left alone and the
 		// words went wherever that road sends them, which is the guard above said
@@ -421,11 +422,13 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // typingHint is the send half of the running-turn hint while there is something
 // in the box or on the tray.
 //
-// It teaches plain enter first, then the stop-and-send chord only when the
-// terminal says it can distinguish it. `cmd+enter waits` remains on the keys
-// page, but this live slot spends its cells on the actions that move now.
+// It teaches plain enter first, then the queue key where the terminal can send
+// it and there are words to queue. THE STOP-AND-SEND CHORD IS NOT NAMED HERE,
+// by the owner's call (2026-09-30): `ctrl+shift+enter` still stops and sends
+// (bargein.go) and the key sheet lists it, but the slot it held on this line
+// went to the queue key, which is pressed far more often.
 //
-//	enter steers it in · ctrl+shift+enter stops and sends
+//	enter steers it in · ctrl+enter queue
 var steerShortHint = "enter " + steerSendWord
 
 // enterWaitHint is the plain-enter half of the running-turn hint. The tray and
@@ -440,10 +443,10 @@ func (a *app) typingHint() string {
 	if a.steerOffered() {
 		first = steerShortHint
 	}
-	if !a.bargeOffered() {
-		return first
+	if a.queueFootOffered() {
+		return first + hintSegment + queueFootWord
 	}
-	return first + hintSegment + bargeKey + " " + bargeSendWord
+	return first
 }
 
 // runSendOffered is [app.bargeOffered] without the terminal's chord gate. It is
@@ -457,7 +460,7 @@ func (a *app) runSendOffered() bool {
 }
 
 // runHint is the one line while a turn runs. Its order follows the hand across
-// the box: send, stop-and-send, background, stop. Every conditional clause asks
+// the box: send, queue, background, stop. Every conditional clause asks
 // the same predicate as its key, so a word in this line is a working gesture on
 // the frame that drew it.
 func (a *app) runHint() string {

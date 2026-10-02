@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -44,9 +45,10 @@ import (
 // of the turn that one starts. A drain that started three turns at once, or
 // spliced three sentences into one message, would be a decision nobody made.
 //
-// ctrl+q is still its own key and still means something else: a follow-up is
-// handed to the SESSION the moment it is typed (followup.go), with no take-backs
-// and no editing. A parked message is still yours until it goes.
+// ctrl+enter is still its own key and still means something else: a follow-up
+// is handed to the SESSION the moment it is typed (followup.go) — and, since
+// 2026-09-30, one that can be taken back out of the session's queue before its
+// turn starts. A parked message is still yours until it goes.
 
 // parked is one message typed while a turn was open: the words, and the
 // pictures that were in the tray with them.
@@ -67,6 +69,12 @@ type parked struct {
 	// gesture was made when the message was typed, and a queue that forgot it
 	// would send the sentence as ordinary work minutes later.
 	standing bool
+	// plain is every slash tag the person backspaced to plain words before
+	// pressing enter, as offsets into text. IT WAITS WITH THE WORDS for the
+	// mark's reason: the demotion was made when the message was typed, and a
+	// queue that forgot it would chip the word again in the transcript the
+	// moment the message went (slashchip.go's [transcriptCommandSpans]).
+	plain []segment
 }
 
 // parking reports whether plain enter parks rather than sends.
@@ -83,14 +91,19 @@ func (a *app) parking() bool { return a.state == stateWorking }
 // draft file is done with, exactly as a sent message spends them, because from
 // the person's side they have said the thing — it is only the model that has not
 // heard it yet.
-func (a *app) park(text string, standing bool) tea.Cmd {
-	text = strings.TrimSpace(text)
+//
+// plain is the demoted tags as offsets into text, and they are rebased here by
+// whatever leading space the trim takes off, so they still name the same words.
+func (a *app) park(text string, standing bool, plain []segment) tea.Cmd {
+	trimmed := strings.TrimLeftFunc(text, unicode.IsSpace)
+	plain = shiftSegments(plain, len([]rune(text))-len([]rune(trimmed)))
+	text = strings.TrimSpace(trimmed)
 	chips := append([]chip(nil), a.chips...)
 	if text == "" && len(chips) == 0 {
 		return nil
 	}
 	a.chips = nil
-	a.parks = append(a.parks, parked{text: text, chips: chips, pastes: a.pastes, standing: standing})
+	a.parks = append(a.parks, parked{text: text, chips: chips, pastes: a.pastes, standing: standing, plain: plain})
 	a.pastes = nil
 	a.follow()
 	a.touch()
@@ -106,7 +119,10 @@ func (a *app) park(text string, standing bool) tea.Cmd {
 // jumped a queue the person filled first would be this surface reordering their
 // sentences. Whichever starts, the rest stay parked and go at the next close.
 func (a *app) sendParked() tea.Cmd {
-	if a.stream != nil || a.parkSending || len(a.parks) == 0 {
+	// A pending take-back can leave the surface between pumps while the
+	// session's next turn is already running. Its queue settles first; parked
+	// words must not open a second turn in that gap.
+	if a.stream != nil || len(a.follows) > 0 || a.parkSending || len(a.parks) == 0 {
 		return nil
 	}
 	next := a.parks[0]
@@ -127,16 +143,16 @@ func (a *app) sendParked() tea.Cmd {
 		// were plainly still composing with.
 		held := a.chips
 		a.chips = next.chips
-		cmd := a.submitImagesShown(spoken, shown)
+		cmd := a.submitImagesShown(spoken, shown, next.plain)
 		a.chips = held
 		return cmd
 	}
 	// A MARKED MESSAGE GOES THROUGH THE MARKED DOOR, however long it waited
 	// (standmark.go).
 	if next.standing {
-		return a.submitStandingShown(spoken, shown)
+		return a.submitStandingShown(spoken, shown, next.plain)
 	}
-	return a.submitShown(spoken, shown)
+	return a.submitShown(spoken, shown, next.plain)
 }
 
 // parkedStart turns one waiting message into the same engine call a front send
@@ -194,6 +210,9 @@ func (a *app) recallParked() bool {
 	}
 	a.parks = a.parks[:len(a.parks)-1]
 	a.input.setText(last.text)
+	// AND A TAG MADE PLAIN COMES BACK PLAIN. The words go into the box exactly
+	// as they were parked, so the parked offsets are the box's offsets.
+	a.input.demotedTags = append([]segment(nil), last.plain...)
 	a.chips = append(a.chips, last.chips...)
 	a.stick = true
 	a.touch()
@@ -213,6 +232,7 @@ func (a *app) recallParkedAt(i int) bool {
 	}
 	a.parks = append(a.parks[:i], a.parks[i+1:]...)
 	a.input.setText(one.text)
+	a.input.demotedTags = append([]segment(nil), one.plain...)
 	a.chips = append(a.chips, one.chips...)
 	a.stick = true
 	a.touch()
@@ -282,12 +302,18 @@ func (a *app) parkedRows(width int) []string {
 		// over three rows with one of them banded would read as three things
 		// (hover.go: the set that lights is the set the press acts on).
 		hot := a.hoveringParked(at)
-		for i, line := range wrap(userLine(p.text, p.chips, a.pal), width-2) {
+		shown := userLine(p.text, p.chips, a.pal)
+		body, bodyAt := wrapWithOffsets(shown, width-2)
+		// Attachment markers follow the words, so their suffix cannot move a
+		// demotion. Tabs are rebased against the same text the block wraps.
+		plain := tabExpandedSegments(p.plain, shown)
+		for i, line := range body {
 			lead := "  "
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			text := lead + a.pal.accent(line)
+			spans := transcriptCommandSpans([]rune(line), plain, bodyAt[i])
+			text := lead + paintCommandSpans(line, spans, a.pal, a.pal.accent)
 			if hot {
 				text = a.hoverRow(text, width)
 			}

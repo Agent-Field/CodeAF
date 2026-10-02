@@ -423,6 +423,17 @@ type Session struct {
 	rings map[uint64]*ring
 	held  *heldSet
 
+	// follows is every QUEUED FOLLOW-UP this conversation is holding that a
+	// surface named a stream for, keyed by that stream id (followup.go's
+	// take-back, [MethodUnqueueFollowUp]). The queue itself is the agent's; this
+	// is the wire's own index from the id a surface received to the channel the
+	// queue holds, and an entry is removed the instant its stream ends — the
+	// same instant the ring goes — so "that id is not queued any more" and
+	// "that turn is over" stay one fact. Cleared on a session swap beside the
+	// rings, because a stream id minted by the conversation before the swap
+	// names nothing the new agent holds.
+	follows map[uint64]followQueued
+
 	// surfaces is everybody attached right now. Events fan out to all of them;
 	// calls arrive from each independently. Stream-opening and shape-changing
 	// calls stay serialized on that connection's reader ([classify]); getters
@@ -530,6 +541,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		persistent: persistent,
 		instance:   rand.Text(),
 		rings:      map[uint64]*ring{},
+		follows:    map[uint64]followQueued{},
 		held:       newHeldSet(),
 		surfaces:   map[*server]struct{}{},
 		tasklanes:  map[*server]*taskFeed{},
@@ -1508,8 +1520,10 @@ func (sess *Session) finish(id, generation uint64) {
 		last = held.last
 	}
 	// The ring goes with the stream: from here on, a cursor naming it is
-	// answered with nothing and the transcript is the authority.
+	// answered with nothing and the transcript is the authority. The take-back's
+	// index goes with it — a stream that ended is not queued, whatever ended it.
 	delete(sess.rings, id)
+	delete(sess.follows, id)
 	watching := sess.watchingLocked()
 	sess.mu.Unlock()
 
@@ -1548,6 +1562,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.agent = next
 	sess.generation++
 	sess.rings = map[uint64]*ring{}
+	sess.follows = map[uint64]followQueued{}
 	sess.held.forget()
 	sess.engine.SessionFile = file
 	sess.engine.Resumed = resumed
@@ -2020,7 +2035,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2497,6 +2512,34 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		events, err := agent.FollowUp(args.Text)
 		return s.stream(MethodFollowUp, args.Text, events, err)
+
+	case MethodUnqueueFollowUp:
+		args, err := arg[UnqueueArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// THE ID IS TAKEN OFF THE INDEX FIRST, under the lock, so a second press
+		// racing this one can never reach the same channel twice — one take-back
+		// removes one message, and the agent's own answer decides whether it was
+		// still queued (a turn that drained it first answers false, and the
+		// surface keeps the row).
+		sess.mu.Lock()
+		queued, ok := sess.follows[args.Stream]
+		if ok && queued.generation == sess.generation && queued.owner == s {
+			delete(sess.follows, args.Stream)
+		} else {
+			ok = false
+		}
+		sess.mu.Unlock()
+		answered := false
+		if ok {
+			if door, can := agent.(interface {
+				UnqueueFollowUp(ch <-chan session.Event) bool
+			}); can {
+				answered = door.UnqueueFollowUp(queued.ch)
+			}
+		}
+		return json.Marshal(answered)
 
 	case MethodSteer:
 		args, err := arg[SubmitArgs](call)
@@ -3221,6 +3264,14 @@ func (s *server) stream(method, said string, events <-chan session.Event, err er
 		events = empty
 	}
 	id, generation := s.session.mint()
+	// The result hands this id to the surface before release starts the pump.
+	// Register its take-back receipt now, before an off-lane unqueue can arrive.
+	if method == MethodFollowUp {
+		sess := s.session
+		sess.mu.Lock()
+		sess.follows[id] = followQueued{generation: generation, ch: events, owner: s}
+		sess.mu.Unlock()
+	}
 	s.pending = &pending{id: id, generation: generation, method: method, said: said, events: events}
 	return json.Marshal(StreamRef{Stream: id})
 }
@@ -3266,8 +3317,20 @@ func (s *server) release() {
 	if waiting.method != MethodSteer {
 		sess.tellTurn(Turn{Stream: waiting.id, Said: waiting.said}, s)
 	}
+	// The follow-up receipt was registered before its result was sent. Do not
+	// re-register it here: an unqueue may already have removed it.
 	sess.pumps.Add(1)
 	go sess.pump(waiting.id, waiting.generation, waiting.events)
+}
+
+// followQueued is one entry of [Session.follows]: the queued stream's channel,
+// and the generation it was minted in, so a stale id from before a session swap
+// is refused rather than read against the wrong conversation. Its connection
+// owns the receipt even when another window has since taken the keyboard.
+type followQueued struct {
+	generation uint64
+	ch         <-chan session.Event
+	owner      *server
 }
 
 // ── the pipe ────────────────────────────────────────────────────────────────

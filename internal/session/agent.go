@@ -2094,6 +2094,40 @@ func (a *Agent) nextFollowUpLocked(completed bool) (followUp, bool) {
 	return next, true
 }
 
+// UnqueueFollowUp takes ONE queued follow-up back out, named by the stream the
+// surface has held since the moment it queued — the stream is the receipt, and
+// matching on it rather than on a position is what keeps a queue the surface
+// cannot see whole (a steering line queued as a follow-up at a turn's end,
+// steer.go) from making an index lie. It reports whether the message came out.
+//
+// FALSE IS THE RACE, SAID HONESTLY. A turn that ended between the surface's
+// frame and this call has already drained the message and started its turn, and
+// a false here is the surface's sign that it may not call the words its own
+// again — the turn is the person's whether they wanted it or not, and taking
+// the row off the screen while the model answers it would be the surface
+// claiming a removal that never happened.
+//
+// The stream is closed on the way out, exactly as [Agent.dropFollowUpsLocked]
+// closes each one: the channel ending with no events is how a caller reads
+// "this never ran", and a message taken back before dispatch must read exactly
+// that way — it never executes.
+func (a *Agent) UnqueueFollowUp(ch <-chan Event) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return false
+	}
+	for i, item := range a.followups {
+		if item.stream.out != ch {
+			continue
+		}
+		a.followups = append(a.followups[:i], a.followups[i+1:]...)
+		item.stream.close()
+		return true
+	}
+	return false
+}
+
 // dropFollowUpsLocked forgets every queued follow-up and ends its stream. The
 // channel closing with no events is what a caller reads as "this never ran" —
 // the alternative, leaving it open, is a surface waiting on a turn that will
@@ -4827,6 +4861,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
 		displayText := messageContentText(msg)
+		// personWords removes only this message's recorded skills injection.
+		if role == "user" {
+			displayText = presentation.personWords(msg)
+		}
 		interrupted, explicitlyHuman := false, false
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			interrupted = mark.Interrupted

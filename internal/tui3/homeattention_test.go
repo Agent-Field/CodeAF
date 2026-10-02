@@ -491,7 +491,7 @@ func TestARowOpensItsConversationAndRaisesNothingOverIt(t *testing.T) {
 	a.agent = &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.openHome()
 	a.home.point(quiet)
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 
 	if a.file != quiet {
 		t.Fatalf("the row opened %q, want %q (%q)", a.file, quiet, a.home.msg)

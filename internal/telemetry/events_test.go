@@ -199,7 +199,6 @@ func TestSessionEndedBucketsAndClamps(t *testing.T) {
 		ToolCalls:        21,
 		ToolCallsFailed:  101,
 		CostUSD:          0.42,
-		TotalTokens:      12500,
 		StopReason:       "blew up",
 		ExitCode:         99,
 	}, "session-clamp", testNow)
@@ -212,7 +211,6 @@ func TestSessionEndedBucketsAndClamps(t *testing.T) {
 		"tool_calls":         BucketTwo1,
 		"tool_calls_failed":  Bucket100,
 		"cost_usd":           Cost10cTo1,
-		"total_tokens":       12500,
 		"stop_reason":        StopUnknown,
 		"exit_code":          5,
 	}
@@ -230,6 +228,18 @@ func TestSessionEndedBucketsAndClamps(t *testing.T) {
 	}
 	if got := SessionEnded(ModeChat, SessionStats{CostUSD: 0.004}, "s", testNow).Props["cost_usd"]; got != CostUnder1c {
 		t.Errorf("a sub-cent cost became %v, want %q", got, CostUnder1c)
+	}
+}
+
+func TestUsageDeltaCarriesOnlyPositiveProviderTokens(t *testing.T) {
+	testHome(t)
+	event := UsageDelta(ModeTask, -10, 25, "session-usage", testNow)
+	if event.Props["mode"] != "task" || event.Props["input_tokens"] != 0 ||
+		event.Props["output_tokens"] != 25 || event.Props["total_tokens"] != 25 {
+		t.Fatalf("UsageDelta props = %v", event.Props)
+	}
+	if _, exists := SessionEnded(ModeTask, SessionStats{}, "session-usage", testNow).Props["total_tokens"]; exists {
+		t.Fatal("session_ended still carries total_tokens and would double-count usage_delta")
 	}
 }
 
@@ -261,6 +271,7 @@ func TestAllowlistedPropsMatchTheConstructors(t *testing.T) {
 	events := []Event{
 		FirstRun(testNow),
 		SessionStarted(ModeChat, false, "session-1", testNow),
+		UsageDelta(ModeChat, 10_000, 2_500, "session-1", testNow),
 		SessionEnded(ModeChat, SessionStats{Duration: time.Minute, Turns: 1, CostUSD: 1}, "session-1", testNow),
 		FaultEvent(Fault{Mode: string(ModeChat), Scope: ScopeMain}, "session-1", testNow),
 	}
@@ -284,13 +295,13 @@ func TestAllowlistedPropsMatchTheConstructors(t *testing.T) {
 	if got := AllowlistedProps("nosuchevent"); len(got) != 0 {
 		t.Errorf("AllowlistedProps(nosuchevent) = %v, want none", got)
 	}
-	wantEvents := map[string]bool{"first_run": true, "session_started": true, "session_ended": true, "fault": true}
+	wantEvents := map[string]bool{"first_run": true, "session_started": true, "usage_delta": true, "session_ended": true, "fault": true}
 	gotEvents := map[string]bool{}
 	for _, name := range AllowlistedEvents() {
 		gotEvents[name] = true
 	}
 	if !reflect.DeepEqual(gotEvents, wantEvents) {
-		t.Errorf("AllowlistedEvents = %v, want the contract's four", AllowlistedEvents())
+		t.Errorf("AllowlistedEvents = %v, want the contract's five", AllowlistedEvents())
 	}
 	common := map[string]bool{}
 	for _, name := range CommonPropNames() {
@@ -319,6 +330,7 @@ func TestNothingSentinelEverReachesTheWire(t *testing.T) {
 	events := []Event{
 		FirstRun(testNow),
 		SessionStarted(Mode(sentinels[2]), true, "session "+sentinels[1], testNow),
+		UsageDelta(Mode(sentinels[2]), 100, 25, "session "+sentinels[1], testNow),
 		SessionEnded(ModeChat, SessionStats{
 			Duration: 42 * time.Minute, Turns: 3, ModelCalls: 9, ModelCallsFailed: 1,
 			ToolCalls: 12, ToolCallsFailed: 2, CostUSD: 0.4, StopReason: StopDone, ExitCode: 0,

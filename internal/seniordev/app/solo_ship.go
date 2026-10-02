@@ -180,9 +180,10 @@ func (runner *pipeline) soloRestoreIfDiverged(state *soloState, outcome *soloOut
 	// Diverged. Later edits are not part of the submitted answer, whether
 	// they look like improvements or not. The restore first copies their bytes
 	// outside the workspace and refuses to proceed if that copy fails.
-	// soloRestoreTree rather than a bare checkout: a file ADDED after submit is
-	// tracked by eager-commit and would survive an overlay checkout, shipping a
-	// tree that silently differs from the frozen candidate it claims to be.
+	// soloRestoreTree rather than a bare checkout: a file ADDED after submit
+	// that the model's shell staged or committed would survive an overlay
+	// checkout, shipping a tree that silently differs from the frozen
+	// candidate it claims to be.
 	if err := runner.soloRestoreTree(candidate.CommitSHA, candidate.TreeSHA); err != nil {
 		runner.events.stage("ship", "restore-failed", map[string]any{
 			"error": err.Error(), "commit_sha": candidate.CommitSHA,

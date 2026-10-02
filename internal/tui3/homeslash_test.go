@@ -83,7 +83,7 @@ func TestHomeSlashEnterOnOfferedRow(t *testing.T) {
 	if a.home.lines[a.home.cursor].cmd.name != "settings" {
 		t.Fatalf("filter selected %q, want the best match /settings", a.home.lines[a.home.cursor].cmd.name)
 	}
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if !a.at(pageSettings) {
 		t.Fatalf("enter on the offered /settings row did not open the settings place")
 	}
@@ -107,7 +107,7 @@ func TestHomeSlashTypedLineDispatches(t *testing.T) {
 		return Conversation{Agent: next, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
 	}
 	typeHome(a, "/settings")
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if !a.at(pageSettings) {
 		t.Fatal("typing /settings and pressing enter did not open the settings place")
 	}
@@ -132,7 +132,7 @@ func TestHomeSlashUnknownAnswer(t *testing.T) {
 		return Conversation{Agent: next, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
 	}
 	typeHome(a, "/nonsense")
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if a.at(pageSettings) || a.at(pageNone) {
 		t.Fatalf("an unknown command moved the surface to %v", a.page)
 	}
@@ -159,7 +159,7 @@ func TestHomePlainSentenceStillStarts(t *testing.T) {
 		return Conversation{Agent: next, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
 	}
 	typeHome(a, "hello there")
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if a.at(pageHome) {
 		t.Fatal("a plain sentence no longer starts a conversation")
 	}
@@ -362,7 +362,7 @@ func TestEnterAtHomeOpensTheConversationInTheRowsFolder(t *testing.T) {
 	}
 
 	typeHome(a, "why is the lexer allocating")
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if opened != theirs {
 		t.Fatalf("enter opened a conversation in %q, want the row's own folder %q", opened, theirs)
 	}
@@ -726,7 +726,7 @@ func TestHomeSlashChosenRowWritesTheNameAndNotThePlaceholder(t *testing.T) {
 	if word := chosen.cmd.typed(); !strings.Contains(word, "<") {
 		t.Fatalf("the row reads %q, so this test is no longer about a placeholder", word)
 	}
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if got := a.home.box.String(); got != "/model " {
 		t.Fatalf("choosing /model <slug> left %q in the box, want %q", got, "/model ")
 	}
@@ -749,7 +749,7 @@ func TestHomeSlashMentionRewritesTheTokenInPlace(t *testing.T) {
 	if k := homeKindAt(a); k != homeCommand {
 		t.Fatalf("↑ never reached a command row; it rests on %v:\n%s", k, homeText(a))
 	}
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if got := a.home.box.String(); got != "what does /settings" {
 		t.Fatalf("the mention left %q in the box", got)
 	}

@@ -144,7 +144,8 @@ folder with `--dir`.
 
 **It cannot ask you anything.** Nobody is at its keyboard. Write the brief so that
 everything it would stop and ask is already settled. The model is told the same thing when
-it proposes one.
+it proposes one. A program that listens, as senior-dev does until it hands in, can still be
+told something while it works; it never waits for a reply.
 
 **It has no step cap.** senior-dev has finite dollar and wall-clock ceilings even when
 the conversation sets none; `/budget conversation` can lower the dollar ceiling,
@@ -200,21 +201,23 @@ too.
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.
 
-## Where a delegate's work goes — its own branch, not checked out, not merged into mine, not squashed, the wip commits, what it costs
+## Where a delegate's work goes — its own branch, not checked out, not merged into mine, one commit, nothing to squash, no wip commits, what it costs
 
 In a git repository codeaf cuts the program a branch of its own (`task/<title>-<id>`) from
 the commit your checkout stands on, in a private copy of the repository, and the program
-works there; its own commits (senior-dev's `wip(edit): …`) stay on that branch, and
-nothing squashes them. When it ends — finished, stopped, crashed, or codeaf gone — codeaf
-commits what it left uncommitted onto that branch (the task's title, with the program's
-own account of the ending as the body) and removes the copy, so **the branch is kept and
+works there. senior-dev commits nothing as it goes — no `wip(edit): …` commits, and
+nothing under its name — and its brief tells it not to commit or push even if yours asks.
+When it ends — finished, stopped, crashed, or codeaf gone — codeaf commits what it left
+uncommitted onto that branch in one commit (its usable message, followed by the run's
+ending if it did not pass, or the task's title and ending as a fallback) and removes the copy, so **the branch is kept and
 checked out nowhere**, even when the run changed nothing. **Your checkout is never
 touched**: tracked edits and staged additions become its branch's first commit while staying
 uncommitted in your folder. Untracked files it changed go on its branch; the rest stay off it
 (senior-dev's page says how to bring the branch in).
 The task's page and the conversation say ``its work is on the branch <branch> in <folder>,
 N files; your checkout was not touched, and `git -C '<folder>' merge <branch>` brings it
-in``. Ask the chat to merge it, or run that yourself, when you are ready.
+in``. Ask the chat to merge it, or run that yourself, when you are ready; a branch published
+under its own name is pushed instead (see senior-dev's "A run codeaf sends back").
 
 If the program's own shell left its copy on another branch, codeaf commits nothing there
 and keeps what was loose as a patch in the run's record folder. Its own notes

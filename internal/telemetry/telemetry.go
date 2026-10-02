@@ -1,8 +1,7 @@
 // Package telemetry implements codeaf's anonymous usage counting exactly as
-// docs/TELEMETRY.md spells it: four typed events, an allowlisted property
-// set, a local spool, and one deadline-bounded flush. It is a library only —
-// nothing in cmd/codeaf, internal/session or internal/config reads it yet; the
-// wiring is a later job.
+// docs/TELEMETRY.md spells it: five typed events, an allowlisted property set,
+// a local spool, periodic delivery while a session is open, and one final
+// deadline-bounded flush. cmd/codeaf owns the process lifecycle wiring.
 //
 // The law of the package is docs/TELEMETRY.md. When this file and the doc
 // disagree, the doc wins and this package is the defect.

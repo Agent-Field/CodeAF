@@ -1,5 +1,22 @@
 # Commands
 
+## ctrl+enter over a slash command — commands run at once
+
+`ctrl+enter` over a `/command` takes plain enter's command action, even while a turn
+is running. With no turn running or on the new-chat start page it also acts as plain
+enter. A live `/standing`, `/orders` or `/task` tag inside a sentence also keeps
+plain enter's door. It queues only non-empty words mid-turn from this conversation's
+own composer, with no live send-door tag.
+The decoded chord works wherever the terminal sends it; the queue hint and tip are
+advertised only after the terminal's key-support reply. A terminal that cannot send
+it delivers plain enter or, on some keyboards, a newline.
+
+Only messages queued from this window can be clicked back out of the queue. Their
+words return to this conversation's composer. If a draft is already there, the
+returned message is appended on a new line, keeping the draft and tray and renumbering
+its paste chips. `/standing <words>` sends marked words even with pictures or a picked
+shape on the tray, leaving those on the tray; the standing hint's absence is separate.
+
 ## Bash mode — run a shell command with ! and keep its output in context
 
 Start a message with `!` to run a non-interactive shell command yourself:
@@ -96,19 +113,24 @@ handling; typing `/` there does not open this composer list.
 
 A command codeaf recognizes is not drawn as ordinary text. `/task`, `/compact`, `/clear`
 and the rest get a **chip**: a tinted background behind exactly the letters of the
-command — the same tint the *chosen* row of a list wears, the one that marks the model in
-use or the conversation you are in — with the accent ink on top.
+command — the same tint the *chosen* row in `/resume` wears, marking the
+conversation you are in — with the accent ink on top.
 No brackets, no border, and nothing added to the line.
 
 It happens in two places: **live in the message box as you type**, and in your message
 after it is sent, where it stays for as long as the conversation is scrolled back
 through.
 
-Only a command this surface will act on gets one. At the start of the box that is every
-recognized command. In the middle or at the end it is one of the two send-door tags,
-`/standing` or `/task`, including `/orders`. Other commands there are plain words. A typo
-is plain too: `/tsak` stays ordinary text. A path is never chipped, for the reasons in
-"Why a file path does not pop up the command list".
+A sentence you send into a running answer keeps its chips. A message waiting for
+the answer shows them while it waits.
+
+A chip marks any command codeaf recognises, wherever it stands — at the start, in
+the middle, or at the end. `/compact`, `/clear`, `/model` and the rest wear it
+exactly as a leading command does. It does not mean enter will run that word:
+enter acts only on a leading command, and on a send-door tag away from the head
+(the next section). A typo is plain: `/tsak` stays ordinary text. A path is never
+chipped, for the reasons in "Why a file path does not pop up the command list".
+A command glued to punctuation — `/model,` or `(/model)` — is plain, like a typo.
 
 The chip never adds a cell. A leading command runs in its usual form. A live send-door
 tag is removed from the words handed through its door, while your transcript keeps the
@@ -129,12 +151,14 @@ tags** anywhere else in a draft:
 
 Both roads end at something you can see: standing raises its ratification card, and task
 starts one worker in the open — its started row, and its row on the roster, where it can be
-stopped. A pasted tag does not silently do work, because the chip says what enter will do. With no other words, each tag behaves like that command's existing
+stopped. A pasted tag does not silently do work: a live send-door tag is named on
+the hint line under the box, and it only ever opens the door you can see. With no other words, each tag behaves like that command's existing
 bare form. With two live tags codeaf sends nothing, leaves the draft in the box, and says
 `one tag per send — backspace one to make it plain words`.
 
 Other commands remain ordinary prose away from the start. `later I will run /compact on
-this` is sent literally, and `/compact` is plain rather than chipped.
+this` is sent literally, and codeaf still chips `/compact` there — the mark says the word
+is recognised, not that enter will run it.
 
 ## Backspace after a slash tag makes it plain words
 
@@ -143,16 +167,18 @@ backspace removes its chip but deletes no letter. The word is now plain prose an
 sends it to the conversation normally. A second backspace edits the word as usual.
 
 Editing the demoted word makes codeaf recognize its current spelling afresh. Edits before
-it merely move the annotation with the text. Emptying or sending the draft forgets all
-demotions.
+it merely move the annotation with the text. The word stays plain in the sent message
+too, including one typed while an answer was still coming that waited its turn, and a
+waiting message pulled back into the box keeps it plain there. Emptying the draft forgets
+all demotions.
 
 ## Slash command did nothing
 
 A command in the middle of a sentence acts only when it is `/standing`, `/orders`, or
-`/task`, and a chip is the promise that it will act. `/clear`, `/model`, `/compact` and
-the other commands are plain prose there. Put one of those commands at the start if you
-want to run it. If a send-door word is plain, it was demoted with backspace; edit it or
-type it again to make it live.
+`/task`. Every other command there is still highlighted — `/compact`, `/clear` and
+`/model` wear the same chip as any recognized word — but enter sends it as ordinary
+words. Put one of those commands at the start if you want to run it. If a send-door word
+is plain, it was demoted with backspace; edit it or type it again to make it live.
 
 The command list follows that rule when you choose a row from it:
 
@@ -319,7 +345,7 @@ aligned, each row with its alias tail. The first line is the product's own name,
 `codeaf` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
-`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t` (a new chat), `ctrl+w` (close this tab),
+`ctrl+c`, `ctrl+o`, `ctrl+enter`, `ctrl+e`, `ctrl+t` (a new chat), `ctrl+w` (close this tab),
 `alt+t` (the task roster), `ctrl+l`, `alt+backspace` (the word kill), `ctrl+,`, `@path`,
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         quits everything · mid-turn it interrupts instead, like esc`.
@@ -393,6 +419,11 @@ The keys page has the whole rule under "Quitting codeaf".
 
 `/new` (or `/clear`, `/clean`, `/reset`) opens a fresh conversation on the same config,
 with a fresh agent and a fresh session file.
+
+On a current engine connection, opening runs in the background. The screen says
+`opening conversation… · esc cancels` while it prepares the conversation. Repeated
+Enter does not create another one. Esc, typing, or clicking cancels the pending
+transition; the existing conversation and unsent draft stay available.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
@@ -1031,10 +1062,27 @@ esc itself changes **nothing** — it closes the list and gives your half-typed 
 frame back as they were. What enter already did is already done; esc does not undo it. The
 filter is forgotten when the picker closes.
 
-The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
+## Where the /model cursor opens — Enter confirms the model in use
 
-The placeholder in the empty filter box reads:
+Every model list opens on the model it holds: `/model` opens on the model in use,
+highlighted and on screen on the first frame, so enter with nothing typed confirms it.
+A settings slot or role, a task's model word, home's draft, the task composer's `alt+o`
+and a lane list or chip likewise open on their held model. A refresh puts the cursor
+back on that model, keeping the typed filter; `ctrl+u` emptying the box returns there
+too. If the held model is absent, the cursor rests on the first selectable row, skipping
+unavailable notices. `/model <query>` and typing a filter start the narrowed list at
+its first row.
+
+The model in use is bold in the accent with no band of its own. The cursor supplies
+the highlighted band, and hovering another row lifts that row too. Arrows, page keys
+and the wheel stop at the list's ends with the cursor visibly on screen, counting the
+headings and extra lines. The wheel walks the open model list, three rows a notch,
+in `/model`, settings slots and roles, home's draft and the task composer; the page
+beneath stays put until the list closes.
+
+## Model picker filter box and key hints
+
+The model picker's empty filter box reads:
 
 ```
 filter by name · ctrl+r refresh
@@ -1058,7 +1106,9 @@ back` — the foot names whichever key actually works at that moment. What is le
 the box is the name of the box and the one key that is about the LIST rather than about the
 row under the cursor.
 
-Choosing a model sets it on the agent, teaches the surface its context window and tells
+## Choosing a model and saving it for the next launch
+
+Choosing a model in `/model` sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
 notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
 opens on it. Over `--host` the switch takes for the session and is not written down: the
@@ -1125,7 +1175,9 @@ Limits:
 ## Refreshing the model list — a new model came out but it is not in /model; the model list is out of date
 
 The list `/model` shows is fetched from the router at most once a day, so a model a
-provider shipped this morning may not be in it yet. With the picker open, press
+provider shipped this morning may not be in it yet. When the saved list is more than a day
+old, codeaf starts with it anyway — starting never waits on that fetch — and fetches the
+newer list in the background, so it is there the next time codeaf starts. With the picker open, press
 **`ctrl+r`** to fetch the newest list now from the router and every connected provider
 that lists models. Each provider's group fills as its answer arrives; one provider's
 failure does not stop the others. The placeholder names it — `ctrl+r refresh` —
@@ -1251,6 +1303,12 @@ the command list*). The box says `› type to search or start something new` and
 names the available draft controls:
 `alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
 keys still work, without hints on this row.
+
+Starting or reopening a conversation from home leaves the screen responsive while
+it opens. Your message is sent only after that conversation is ready. If opening
+fails, home keeps your draft and shows the reason. Editing or navigating while it
+opens cancels that pending transition, so a late reply cannot move you elsewhere
+or send the earlier draft.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
@@ -1428,7 +1486,7 @@ The tag form works in the middle or at the end too: `always run the tests /stand
 `always /orders run the tests` hand the remaining sentence through the same door. Press
 backspace immediately after the tag to make it plain words instead.
 
-They go through the same deliberate door `ctrl+enter` opens: codeaf is told to shape the
+They go through the deliberate marked door: codeaf is told to shape the
 sentence into a standing order's card — when it wakes, what it does, how far it reaches —
 and it never carries the sentence out as one-off work as well. Nothing stands until you
 answer the card. A sentence that cannot stand at all gets one short line saying so and

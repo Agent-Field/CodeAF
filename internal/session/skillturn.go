@@ -43,6 +43,10 @@ const skillTurnMax = 4
 // it does in a task's brief).
 const skillTurnResolveLimit = store.SkillShelfLimit
 
+// turnSkillsLead introduces the block [turnSkills] splices onto the copy the
+// model reads.
+const turnSkillsLead = "\n\nSkills suited to this message:\n"
+
 // attachTurnSkillsLocked composes the block for one message the person is
 // sending and splices it onto what the model reads, under a.mu, at the one
 // door every person-typed message passes through (agent.go submitUser). It is
@@ -69,6 +73,14 @@ func (a *Agent) attachTurnSkillsLocked(user *userMessage) {
 	}
 	user.message = textMessage("user", messageContentText(user.message)+block)
 	user.skills = carried
+	// Provenance for the display door: shapeEntries strips the block by THIS
+	// mark — the exact bytes appended to this one message — and never by
+	// matching the text, so a block the person pasted into a message of their
+	// own is kept word for word.
+	if a.presentation == nil {
+		a.presentation = &presentationIndex{}
+	}
+	a.presentation.remember(user.message, &messagePresentation{SkillsBlock: block})
 }
 
 // turnSkills composes the skills one message carries and renders them as the
@@ -131,7 +143,7 @@ func (a *Agent) turnSkills(text string) (string, []string) {
 	if block == "" {
 		return "", nil
 	}
-	return "\n\nSkills suited to this message:\n" + block, carried
+	return turnSkillsLead + block, carried
 }
 
 // fillSkillRoom takes at most room names off the retrieved half. It is the one

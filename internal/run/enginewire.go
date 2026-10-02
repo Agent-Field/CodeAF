@@ -64,7 +64,6 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			ModelPrice:   spec.ModelPrice,
 			Seat:         WorkSeat(spec.ProfileDir, spec.WorkModel),
 			PlainFolder:  spec.PlainFolder,
-			Branch:       spec.ProgramBranch,
 			IgnoredFile:  spec.ProgramIgnoredFile,
 			InputsFile:   spec.ProgramInputsFile,
 			BriefNote:    spec.ProgramBriefNote,

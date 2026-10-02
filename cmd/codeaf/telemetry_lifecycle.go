@@ -40,9 +40,11 @@ func telemetryConfiguredOff() bool {
 // from. A nil mode means this invocation is not a session at all (version,
 // help, doctor, the rest) and nothing is spooled for it.
 type telemetrySession struct {
-	mode      telemetry.Mode
-	resumed   bool
-	sessionID string
+	mode              telemetry.Mode
+	resumed           bool
+	sessionID         string
+	finishUsage       func()
+	stopPeriodicFlush func()
 }
 
 // currentTelemetrySession is the session this invocation decided, kept where
@@ -126,6 +128,19 @@ func telemetryBegin() telemetrySession {
 	return currentTelemetrySession
 }
 
+// telemetryStart opens the two pieces that live only while dispatch is
+// running: the identity used by provider-call usage deltas and the periodic
+// sender. Keeping this beside execute rather than inside telemetryBegin lets
+// lifecycle tests inspect opening events without leaking a background loop.
+func telemetryStart(session telemetrySession) telemetrySession {
+	if session.mode == "" || !telemetry.Enabled() {
+		return session
+	}
+	session.finishUsage = telemetry.BeginUsageSession(session.mode, session.sessionID)
+	session.stopPeriodicFlush = telemetry.StartPeriodicFlush(telemetry.PeriodicFlushInterval)
+	return session
+}
+
 // telemetryFaultHook hands guard the reporter it cannot import. guard sits
 // below internal/telemetry — the spool's own append runs on guard.Go — so the
 // package that absorbs a goroutine's panic must not depend on the package that
@@ -164,6 +179,12 @@ func telemetryFaultHook() {
 // keeps this defer free for every non-session command: `codeaf version` runs
 // it and it costs a mode read and nothing else.
 func telemetryEnd(session telemetrySession, code int) {
+	if session.stopPeriodicFlush != nil {
+		session.stopPeriodicFlush()
+	}
+	if session.finishUsage != nil {
+		session.finishUsage()
+	}
 	// Nothing is built when the ladder is off, and that is load-bearing: the
 	// event's identity alone reads the install id, which mints and writes one
 	// on a machine that has never sent anything — the very file this run

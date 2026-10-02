@@ -361,8 +361,9 @@ func TestTelemetryInfoNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 		"what each event adds, for example",
 		"first_run            nothing; sent once per install",
 		"session_started      mode=chat  resumed=false",
+		"usage_delta          mode=chat  input_tokens=10000  output_tokens=2500  total_tokens=12500",
 		"session_ended        mode=chat  duration=5-30m  turns=6-20",
-		"total_tokens=12500  stop_reason=done",
+		"cost_usd=0.1-1  stop_reason=done",
 		"exit_code=0",
 		// No blank line between the last event and the stop reasons.
 		"fingerprint=3fa9c1e2b7d04e85\n    stop_reason          one of done · error · incomplete",
@@ -443,6 +444,9 @@ func TestTelemetryOffCommandQuietsThePool(t *testing.T) {
 	}
 	if err := runTelemetry([]string{"on"}); err != nil {
 		t.Fatal(err)
+	}
+	if !telemetry.NoticeShown() {
+		t.Fatal("`telemetry on` is explicit consent and should open the send gate")
 	}
 	if cfg := config.ModelPoolResolved(root, poolOn); !cfg.CanSend() {
 		t.Fatalf("`telemetry on` should hand the pool back, got mode %v from %q", cfg.Mode, cfg.Source.Mode)

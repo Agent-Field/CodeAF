@@ -63,7 +63,7 @@ at the person's discretion.
 | Command | `/<name> <brief>`, one word per installed delegate | 2026-09-21 |
 | What it starts | a task through the existing `/task` door, never a blocking turn | 2026-09-21 |
 | Questions from the delegate | none. The brief must be self-sufficient | 2026-09-21 |
-| senior-dev's `wip(edit)` commits | squashed into one commit at landing (2026-09-21); kept on the program's own branch, under one commit of what it left uncommitted, from 2026-09-24 | 2026-09-24 |
+| senior-dev's `wip(edit)` commits | squashed into one commit at landing (2026-09-21); kept on the program's own branch, under one commit of what it left uncommitted, from 2026-09-24; never made at all from 2026-09-30 — the run's work is the one commit codeaf makes when it ends, because the kept commits reached a pull request with senior-dev as an author and a squash merge wrote every one into the trunk's message | 2026-09-30 |
 | senior-dev control plane | optional. Landed in senior-dev `f3b9716` | 2026-09-21 |
 | Live cost from senior-dev | a top-level `spend` record. Landed in senior-dev `5793499` | 2026-09-22 |
 | Steps from senior-dev | a `step` record per finished tool call. Landed in senior-dev `5793499` | 2026-09-22 |
@@ -171,7 +171,8 @@ pays for.
 Two things codeaf does **not** ask, and the manual page says so:
 
 - **No questions.** senior-dev auto-rejects its own `question` tool and has no
-  stdin road. Write the brief so nobody needs to be asked.
+  stdin road. Write the brief so nobody needs to be asked. It can still be told
+  things while it works, through its inbox (PROTOCOL.md §5a), until it hands in.
 - **No step cap.** senior-dev has cost and hours only. The step count on the
   task page is whatever the reader can count off the stream.
 
@@ -277,7 +278,7 @@ read and folded. Without one the row reads `stopped` with the last stage seen.
 
 *As built on 2026-09-21 and deleted on 2026-09-24: since then senior-dev works in
 the person's folder on a branch of its own, its `wip(edit)` commits stay on that
-branch, what it left uncommitted is committed there when it ends, and the branch
+branch (until 2026-09-30, when it stopped making them), what it left uncommitted is committed there when it ends, and the branch
 is left checked out rather than merged. `refs/senior-dev/*` are written into the
 person's repository and overwritten by the next run.*
 

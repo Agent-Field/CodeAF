@@ -18,10 +18,10 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/runbudget"
-	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 type pipelineDeps struct {
@@ -78,6 +78,13 @@ type pipeline struct {
 	// on the last verdict (rememberVerifiedTree in workspace_git.go).
 	lastVerify        *projectVerificationResult
 	lastVerifyTreeSHA string
+	// inbox is where the person's side sends the run messages while it works
+	// (steering.go), nil for a run nobody talks to and once it has closed.
+	inbox   delegate.Listener
+	inboxMu sync.Mutex
+	// promptSaved is the receipt the next turn gives once its prompt, which
+	// carries steering, is saved (steering.go).
+	promptSaved func()
 }
 
 type pipelineResult struct {
@@ -279,12 +286,6 @@ func (runner *pipeline) prepareWorkspace(ctx context.Context) error {
 	runner.recorder = newWorkspaceRecorder(runner.args, absolute, runner.note)
 	if err := runner.recorder.Prepare(ctx); err != nil {
 		return err
-	}
-	if !runner.recorder.CommitsOnWrite() {
-		// The recorder keeps its own copies of the tree, so a per-write commit
-		// buys nothing -- and under --in-place the workspace may be a
-		// repository this run has no business writing history into.
-		util.DisableEagerCommit()
 	}
 	runner.events.stage("bootstrap", "ready", map[string]any{
 		"workspace": absolute, "recorder": runner.recorder.Kind(),

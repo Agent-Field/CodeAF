@@ -133,7 +133,7 @@ func TestDocPropertyTableMatchesTheAllowlist(t *testing.T) {
 	}
 	for name := range docPerEvent {
 		if !events[name] {
-			t.Errorf("the doc has property rows for %q, which is not one of the four events", name)
+			t.Errorf("the doc has property rows for %q, which is not one of the five events", name)
 		}
 	}
 	for _, event := range AllowlistedEvents() {

@@ -69,11 +69,6 @@ type workspaceRecorder interface {
 	// that cannot produce a field omits it rather than failing. The returned
 	// status is the event's status.
 	Summary(ctx context.Context, base string) (data map[string]any, status string)
-
-	// CommitsOnWrite reports whether the recorder wants a checkpoint taken
-	// after each file write. Git does, because a per-write commit is nearly
-	// free; copying the tree after every edit would not be.
-	CommitsOnWrite() bool
 }
 
 // newWorkspaceRecorder picks the recorder for a run. Git is used IF IT IS

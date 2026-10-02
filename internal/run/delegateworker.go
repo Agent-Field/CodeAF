@@ -49,6 +49,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -115,11 +116,10 @@ type DelegateSetup struct {
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
 	// flags for that (delegate.Delegate.PlainFolder).
 	PlainFolder bool
-	// Branch is the run's own task branch; IgnoredFile is its start-time
-	// ignore list, and InputsFile the untracked files copied into its copy
-	// with their fingerprints (session.ProgramFolder.InputsFile). All three are
-	// passed to the child before any eager commit.
-	Branch      string
+	// IgnoredFile is the run's start-time ignore list, and InputsFile the
+	// untracked files copied into its copy with their fingerprints
+	// (session.ProgramFolder.InputsFile). Both are passed to the child, whose
+	// recorder keeps both out of every tree it records.
 	IgnoredFile string
 	InputsFile  string
 	// BriefNote is the line the program's brief opens with when it works in a
@@ -201,6 +201,18 @@ type delegateSink struct {
 	reader  delegate.ActionReader
 	stepped bool
 	step    string
+	// inboxPath is the listening program's inbox (delegate's inbox.go), empty
+	// for a program that does not listen. ctx bounds the forwarding that feeds
+	// it, and the rest is what the forwarding and the program's receipts share.
+	inboxPath string
+	ctx       context.Context
+	inboxMu   sync.Mutex
+	sent      map[string]bool
+	had       map[string]bool
+	closedWhy string
+	// forwarding closes when the forwarding loop has returned, nil while it
+	// was never started.
+	forwarding chan struct{}
 }
 
 // remember writes one received record to the task's action log, stamped with
@@ -270,6 +282,17 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 		// It is a record, so a disk that refuses it costs the page its heading
 		// and never the run.
 		s.record.Stages = h.Stages
+		// A PROGRAM THAT SAYS IT LISTENS, STARTED WITH AN INBOX, IS FED ONE.
+		// Its record says so, which is what the conversation and the page read
+		// before they offer to send it words.
+		if h.Listening() && s.inboxPath != "" && s.forwarding == nil {
+			s.record.Listening = true
+			s.forwarding = make(chan struct{})
+			go func() {
+				defer close(s.forwarding)
+				s.forward()
+			}()
+		}
 		_ = delegate.WriteProgram(s.taskDir, s.record)
 		return
 	}
@@ -307,6 +330,204 @@ func (s *delegateSink) Step(record delegate.StepRecord) {
 		s.lastErr = err
 	}
 	s.remember(delegate.StepAction(time.Now(), record))
+}
+
+// forward copies the task's notes into the listening program's inbox as they
+// are written, until the program stops reading or the run ends.
+//
+// A NOTE IS SENT ONCE AND HAD ONLY WHEN THE PROGRAM SAYS SO. Sent is this
+// loop's own mark, so a note is appended once; had is the program's receipt
+// ([delegateSink.Heard]), written to the trajectory the way a bash worker
+// writes the notes it was handed, so a later worker of the same task does not
+// hand them over again. Notes the task already had before this run are skipped.
+func (s *delegateSink) forward() {
+	tick := time.NewTicker(inboxPoll)
+	defer tick.Stop()
+	rejected := map[string]bool{}
+	for {
+		s.inboxMu.Lock()
+		closed := s.closedWhy != ""
+		skip := make(map[string]bool, len(s.sent)+len(s.had))
+		for id := range s.sent {
+			skip[id] = true
+		}
+		for id := range s.had {
+			skip[id] = true
+		}
+		for id := range rejected {
+			skip[id] = true
+		}
+		s.inboxMu.Unlock()
+		if closed {
+			return
+		}
+		for _, note := range delegateUnreadNotes(s.worker.store, s.taskID, s.name, skip) {
+			// REGISTER THE SEND BEFORE PUBLISHING THE LINE. A child can save
+			// and receipt it before AppendInbox returns, and that receipt must
+			// already have a sent mark to pair with.
+			s.inboxMu.Lock()
+			s.sent[note.ID] = true
+			s.inboxMu.Unlock()
+			if err := delegate.AppendInbox(s.inboxPath, delegate.Message{ID: note.ID, From: messageFrom(note), Text: note.Body}); err != nil {
+				s.inboxMu.Lock()
+				delete(s.sent, note.ID)
+				s.inboxMu.Unlock()
+				// Bad words stay unread for the report, but cannot block later
+				// direction; an I/O failure waits for the next tick instead.
+				if errors.Is(err, delegate.ErrInboxMessage) {
+					rejected[note.ID] = true
+					continue
+				}
+				break
+			}
+		}
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// delegateNotesMost is the store's largest supported enumeration, because its
+// default oldest-fifty window hides later notes even after the first were read.
+const delegateNotesMost = 200
+
+// delegateUnreadNotes excludes the program's own words before the batch bound,
+// so its reports cannot occupy every delivery and starve later direction.
+func delegateUnreadNotes(store *plandb.Store, taskID, name string, skip map[string]bool) []plandb.Note {
+	var fresh []plandb.Note
+	for _, note := range store.Notes(taskID, delegateNotesMost) {
+		if skip[note.ID] || strings.TrimSpace(note.Agent) == name {
+			continue
+		}
+		fresh = append(fresh, note)
+		if len(fresh) >= notesPerDelivery {
+			break
+		}
+	}
+	return fresh
+}
+
+// endForwarding stops the forwarding loop and waits for it to return.
+func (s *delegateSink) endForwarding() {
+	if s.stop != nil {
+		s.stop()
+	}
+	if s.forwarding != nil {
+		<-s.forwarding
+	}
+}
+
+// inboxPoll is how often a listening program's notes are looked for.
+var inboxPoll = time.Second
+
+// messageFrom is who a note is from, as a program is told it.
+func messageFrom(note plandb.Note) string {
+	switch {
+	case note.From == plandb.NoteFromPerson:
+		return delegate.FromPerson
+	case strings.TrimSpace(note.Agent) == plandb.NoteAgentChat:
+		return delegate.FromConversation
+	}
+	return delegate.FromWorker
+}
+
+// reportUnheard leaves one note on a listening program's task naming the
+// messages it never said it heard, once the program is gone.
+//
+// A MESSAGE THE PROGRAM NEVER READ IS SAID NOT TO HAVE BEEN READ. The box that
+// sent it said the program reads it before its next model call, and a message
+// that arrives during the call that hands the work in has no next call: the
+// inbox closes with the hand-in, and the words were never before the model.
+// Without this the page would show the message and nothing after it, which
+// reads as though it were taken.
+func (s *delegateSink) reportUnheard() {
+	if !s.record.Listening {
+		return
+	}
+	s.inboxMu.Lock()
+	had := make(map[string]bool, len(s.had))
+	for id := range s.had {
+		had[id] = true
+	}
+	why := s.closedWhy
+	s.inboxMu.Unlock()
+	var unheard []string
+	for _, note := range s.worker.store.Notes(s.taskID, delegateNotesMost) {
+		spoken := note.From == plandb.NoteFromPerson || strings.TrimSpace(note.Agent) == plandb.NoteAgentChat
+		if spoken && !had[note.ID] {
+			unheard = append(unheard, "“"+unheardExcerpt(strings.TrimSpace(note.Body))+"”")
+		}
+	}
+	if len(unheard) == 0 {
+		return
+	}
+	if why == "" {
+		why = "it ended"
+	}
+	body := fmt.Sprintf("%s did not read %s before it stopped reading (%s):",
+		unheardExcerpt(s.name), map[bool]string{true: "this", false: "these"}[len(unheard) == 1], unheardExcerpt(why))
+	for i, quote := range unheard {
+		more := fmt.Sprintf(" … %d more messages were not read.", len(unheard)-i)
+		if len(unheard)-i == 1 {
+			more = " … 1 more message was not read."
+		}
+		if len(body)+1+len(quote)+len(more) > unheardReportMost {
+			body += more
+			break
+		}
+		body += " " + quote
+	}
+	// The report is the worker's own, so no later worker of the task is
+	// handed it as a message.
+	if note, err := s.worker.store.AddNote(s.taskID, s.name, body); err == nil {
+		_ = appendTrajectory(s.storeDir, s.taskID, Step{Kind: trajectoryNotesKind, Notes: []string{note.ID}})
+	}
+}
+
+// Unread reports quote enough to identify each message, with room below the
+// store's 32 KiB note cap for the sentence and a count of omitted messages.
+const (
+	unheardExcerptMost = 300
+	unheardReportMost  = 30 << 10
+)
+
+// unheardExcerpt cuts on a rune boundary so a saved quote keeps readable words.
+func unheardExcerpt(text string) string {
+	runes := []rune(text)
+	if len(runes) > unheardExcerptMost {
+		return string(runes[:unheardExcerptMost]) + "…"
+	}
+	return text
+}
+
+// Heard is the program's receipt for messages it put before its model.
+func (s *delegateSink) Heard(ids []string) {
+	s.inboxMu.Lock()
+	var fresh []string
+	for _, id := range ids {
+		if s.sent[id] && !s.had[id] {
+			s.had[id] = true
+			fresh = append(fresh, id)
+		}
+	}
+	s.inboxMu.Unlock()
+	if len(fresh) > 0 {
+		_ = appendTrajectory(s.storeDir, s.taskID, Step{Kind: trajectoryNotesKind, Notes: fresh})
+	}
+}
+
+// InboxClosed is the program saying it reads no more messages.
+func (s *delegateSink) InboxClosed(reason string) {
+	if strings.TrimSpace(reason) == "" {
+		reason = "it reads no more messages"
+	}
+	s.inboxMu.Lock()
+	s.closedWhy = reason
+	s.inboxMu.Unlock()
+	s.record.InboxClosed = reason
+	_ = delegate.WriteProgram(s.taskDir, s.record)
 }
 
 func (s *delegateSink) Terminal(t delegate.Terminal) {
@@ -500,7 +721,28 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	launchCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	sink := &delegateSink{worker: w, taskID: task.ID, storeDir: storeDir, taskDir: taskDir, name: w.program.Name, stop: stop,
-		record: delegate.ProgramRecord{Name: w.program.Name, CeilingUSD: w.cost}}
+		record: delegate.ProgramRecord{Name: w.program.Name, CeilingUSD: w.cost},
+		ctx:    launchCtx, sent: map[string]bool{}, had: notesAlreadyHad(storeDir, task.ID)}
+	// NO RECORD BEFORE HELLO ON A NORMAL LAUNCH. A task folder outlives its
+	// process, so remove the previous run's listening state before a new child
+	// starts. If removal fails, replace it so stale refusals cannot survive.
+	if err := os.Remove(filepath.Join(taskDir, delegate.ProgramFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		_ = delegate.WriteProgram(taskDir, sink.record)
+	}
+	childEnv := append(delegate.ChildEnv(api.API()), "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
+		gitidentity.InputsEnv+"="+w.setup.InputsFile)
+	// THE INBOX STARTS EMPTY ON EVERY LAUNCH. It lives in the task's folder,
+	// which outlives a run, and a program reads it from its first line: a second
+	// worker of the same task would otherwise be handed the last run's messages
+	// as new ones. An inbox that cannot be emptied is not handed over at all, and
+	// the program runs as one nobody talks to.
+	if w.program.Listens {
+		path := filepath.Join(taskDir, delegate.InboxName)
+		if os.WriteFile(path, nil, 0o600) == nil {
+			sink.inboxPath = path
+			childEnv = append(childEnv, delegate.EnvInbox+"="+path)
+		}
+	}
 	brief := strings.TrimSpace(task.Description)
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
@@ -517,8 +759,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 			delegate.RunFacts{Plain: w.setup.PlainFolder, Crew: w.setup.Crew}),
 		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the API's
 		// address and token are what its engine needs; model commands lose both.
-		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
-			gitidentity.InputsEnv+"="+w.setup.InputsFile),
+		Env:        childEnv,
 		Dir:        w.workspace,
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,
@@ -534,7 +775,17 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	// run's program, and it is not written down as one.
 	if sink.mismatch == "" {
 		sink.record.EndedAt = ended
+		// AN EXITED PROGRAM READS NO MORE WORDS, even when a crash or a cut
+		// left it no chance to close its inbox itself.
+		if sink.record.Listening && sink.record.InboxClosed == "" {
+			sink.InboxClosed("it has stopped working")
+		}
 		_ = delegate.WriteProgram(taskDir, sink.record)
+		// THE FORWARDING ENDS BEFORE THE REPORT IS WRITTEN, so the report is
+		// read against every note that was ever sent and never lands in an
+		// inbox nobody reads.
+		sink.endForwarding()
+		sink.reportUnheard()
 	}
 	// The program has exited: its API goes with it, so nothing it left behind
 	// can spend, and the calls that were still running write their last turn.

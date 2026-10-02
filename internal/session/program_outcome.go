@@ -139,7 +139,7 @@ func programNextStep(o programOutcome) string {
 	left := programAutoRetries - o.auto
 	switch o.verdict {
 	case programPassed:
-		return "Its change passed the project's own checks. Check the result against what was asked, then tell the person in one short summary where the work is and offer to merge it."
+		return "Its change passed the project's own checks. Check the result against what was asked, then tell the person in one short summary where the work is and offer to merge it, or, when the ending says its branch tracks a remote branch, to push it there as the ending says."
 	case programUnverified:
 		return "It handed in a change, but its own check of the project did not pass or did not finish. That check guesses the project's commands and environment and is often wrong about them, so what it says is a lead, not a verdict: run the project's own checks on its branch yourself, and act only on what yours show."
 	case programLimit:
@@ -151,7 +151,7 @@ func programNextStep(o programOutcome) string {
 	if o.verdict == programCrashed {
 		return fmt.Sprintf("It broke rather than finished. If the cause looks passing (a network or provider failure), hand the same work to %s again; otherwise tell the person plainly. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 	}
-	return fmt.Sprintf("It handed in no finished change. Read what it got done on its branch; finish a small gap yourself, or hand the work back to %s with a brief sharpened by what is missing. You may send it back %d more time%s on your own.", o.program, left, plural(left))
+	return fmt.Sprintf("It handed in no finished change. Read what it got done on its branch, then hand the work back to %s with a brief sharpened by what is missing, which counts as fixing it yourself; finish only a trivial gap in your own worktree. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 }
 
 // rememberProgramOutcomeLocked keeps a program's ending until the person next

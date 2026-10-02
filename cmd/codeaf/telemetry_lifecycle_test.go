@@ -119,7 +119,7 @@ func TestTelemetryTaskSessionSpoolsStartedAndEnded(t *testing.T) {
 	restore := telemetryArgs("plan", "run", "p.json")
 	defer restore()
 
-	session := telemetryBegin()
+	session := telemetryStart(telemetryBegin())
 	if session.mode != telemetry.ModeTask || session.resumed {
 		t.Fatalf("plan run: mode=%q resumed=%v, want task, false", session.mode, session.resumed)
 	}
@@ -181,6 +181,32 @@ func TestTelemetrySessionEndedCarriesTheSessionCounters(t *testing.T) {
 		if ended[key] != value {
 			t.Errorf("session_ended %s = %v, want %s", key, ended[key], value)
 		}
+	}
+}
+
+func TestTelemetryUsageIsQueuedBeforeTheSessionEnds(t *testing.T) {
+	telemetryLifecycleHome(t)
+	telemetry.ResetCountersForTest(t)
+	restore := telemetryArgs("exec", "answer once")
+	defer restore()
+
+	session := telemetryStart(telemetryBegin())
+	telemetry.CountTokens(100, 25)
+	if session.finishUsage != nil {
+		session.finishUsage()
+		session.finishUsage = nil
+	}
+
+	rows := telemetrySpoolRows(t)
+	usage := telemetryProps(t, telemetryRowNamed(t, rows, "usage_delta"))
+	if usage["input_tokens"] != float64(100) || usage["output_tokens"] != float64(25) || usage["total_tokens"] != float64(125) {
+		t.Fatalf("usage_delta props = %v", usage)
+	}
+
+	telemetryEnd(session, 0)
+	ended := telemetryProps(t, telemetryRowNamed(t, telemetrySpoolRows(t), "session_ended"))
+	if _, exists := ended["total_tokens"]; exists {
+		t.Fatalf("session_ended repeated the token total: %v", ended)
 	}
 }
 

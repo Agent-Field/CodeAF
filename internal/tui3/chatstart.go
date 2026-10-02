@@ -415,7 +415,7 @@ func (a *app) startChatOpen(slot int) tea.Cmd {
 // A conversation holding an unsent sentence is not one the create may close
 // ([app.startKeepsLeaving]) — because the words a `+` promised to leave where
 // they were cannot be left anywhere if their owner is ended.
-func (a *app) startChatEnter(marked bool) tea.Cmd {
+func (a *app) startChatEnter() tea.Cmd {
 	if !a.startingChat() {
 		return nil
 	}
@@ -435,22 +435,15 @@ func (a *app) startChatEnter(marked bool) tea.Cmd {
 		return nil
 	}
 	page := a.liveComposer()
-	cmd, started := a.renewRefusing(a.startSay)
-	if !started {
-		// The door refused and said so on the page. Nothing was put down —
-		// [app.renew] asks before it detaches — so the words are still in the box,
-		// the conversation behind is still running, and the person can press enter
-		// again or escape back to it.
-		return nil
-	}
-	a.startBack = startBack{}
-	a.startKept = composerState{}
-	// The surface has had its greeting: this page WAS one, and a conversation
-	// opening under it must not raise a second.
-	a.welcome = welcome{spent: true}
-	a.putComposer(page)
-	send := a.enterLine(marked)
-	return tea.Batch(cmd, send)
+	return a.renewLater(a.startSay, func() tea.Cmd {
+		a.startBack = startBack{}
+		a.startKept = composerState{}
+		// The start page was the greeting; opening its conversation must not
+		// raise another one over the first message.
+		a.welcome = welcome{spent: true}
+		a.putComposer(page)
+		return a.enterLine()
+	})
 }
 
 // startChatKey is the page's claim on the keyboard, and it is four keys wide.
@@ -478,14 +471,14 @@ func (a *app) startChatKey(name string) (tea.Cmd, bool) {
 		// The greeting's own walk, on the greeting's own terms: only over an empty
 		// box, because a person editing a sentence is moving a caret.
 		return a.welcomeKey(name)
-	case "enter":
+	case "enter", "ctrl+enter":
 		if a.typedListOpen() {
 			return nil, false
 		}
 		if a.welcome.sel >= 0 && a.welcome.sel < len(a.welcome.recent) && a.input.empty() {
 			return a.startChatOpen(a.welcome.sel), true
 		}
-		return a.startChatEnter(false), true
+		return a.startChatEnter(), true
 	}
 	return nil, false
 }
@@ -517,7 +510,7 @@ func (a *app) startMenuEnter() tea.Cmd {
 	// dispatch that is not made here; the line has to be in the composer for the
 	// page to send it, because what the page sends is what is in the composer.
 	a.input.setText(word)
-	return a.startChatEnter(false)
+	return a.startChatEnter()
 }
 
 // typedListOpen reports whether one of the lists that hang under the draft has

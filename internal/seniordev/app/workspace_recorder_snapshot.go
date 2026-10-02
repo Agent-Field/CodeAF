@@ -45,8 +45,7 @@ func newSnapshotRecorder(workspace string, note func(string)) *snapshotRecorder 
 	}
 }
 
-func (recorder *snapshotRecorder) Kind() string         { return "snapshot" }
-func (recorder *snapshotRecorder) CommitsOnWrite() bool { return false }
+func (recorder *snapshotRecorder) Kind() string { return "snapshot" }
 
 func (recorder *snapshotRecorder) Prepare(ctx context.Context) error {
 	if _, err := os.Stat(recorder.workspace); err != nil {

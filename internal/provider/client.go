@@ -275,7 +275,8 @@ func (c *Client) SetAPIKey(key string) error {
 	key = strings.TrimSpace(key)
 	var base *ai.Client
 	if key != "" {
-		siteName := AppName
+		app := RunningApp()
+		siteName := app.Name
 		if c.config.Direct {
 			siteName = DirectUserAgent
 		}
@@ -284,7 +285,7 @@ func (c *Client) SetAPIKey(key string) error {
 			BaseURL:  c.config.BaseURL,
 			Model:    c.config.Model,
 			Timeout:  c.config.Timeout,
-			SiteURL:  AppURL,
+			SiteURL:  app.URL,
 			SiteName: siteName,
 		})
 		if err != nil {

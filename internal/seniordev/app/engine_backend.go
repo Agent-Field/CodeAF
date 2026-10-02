@@ -241,7 +241,7 @@ func messagesSince(messages []msgmodel.WithParts, messageID string) []msgmodel.W
 func turnReminderInjector(
 	store steploop.Store,
 	sessionID string,
-	next func() string,
+	next func() (string, func()),
 ) func(context.Context, []msgmodel.WithParts, msgmodel.User) ([]msgmodel.WithParts, error) {
 	if next == nil {
 		return nil
@@ -249,7 +249,7 @@ func turnReminderInjector(
 	return func(
 		ctx context.Context, messages []msgmodel.WithParts, user msgmodel.User,
 	) ([]msgmodel.WithParts, error) {
-		text := next()
+		text, saved := next()
 		if text == "" {
 			return messages, nil
 		}
@@ -270,6 +270,11 @@ func turnReminderInjector(
 		}
 		if err := store.UpdatePart(ctx, part); err != nil {
 			return nil, err
+		}
+		// THE RECEIPT FOLLOWS THE SAVE, never the read: words that never
+		// reached the session were never before the model.
+		if saved != nil {
+			saved()
 		}
 		out := append([]msgmodel.WithParts(nil), messages...)
 		return append(out, msgmodel.WithParts{Info: reminder, Parts: msgmodel.Parts{part}}), nil
