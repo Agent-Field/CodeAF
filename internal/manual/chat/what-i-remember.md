@@ -45,7 +45,14 @@ that did nothing.
 
 ## It said memory is off and I never turned it off
 
-Then it is not the setting, it is the file. Two different sentences use the same
+If memory notes were still being written in that conversation, it was a bug that
+is fixed: `/remember`, `/forget` and `/memories` asked the conversation's own
+window whether it had a brain, and on the ordinary launch the conversation runs
+in a session host that window could not see into. They now ask the host, so the
+three commands answer the same way the agent's own `remember` does, and the
+sentence above appears only when memory really is off for that conversation.
+
+Otherwise it is not the setting, it is the file. Two different sentences use the same
 words, and the one printed on the terminal before the screen appears always says
 what the trouble was after a colon:
 

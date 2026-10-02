@@ -77,7 +77,7 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	flags.StringVar(&filter.run, "run", "", "only calls belonging to this run")
 	flags.StringVar(&filter.tag, "tag", "", "only calls with this tag")
 	flags.StringVar(&filter.model, "model", "", "only calls asking for this model")
-	flags.StringVar(&filter.node, "node", "", "only calls belonging to this node")
+	flags.StringVar(&filter.node, "node", "", "only calls belonging to this part")
 	flags.StringVar(&filter.call, "call", "", "only this call id, both of its rows")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err

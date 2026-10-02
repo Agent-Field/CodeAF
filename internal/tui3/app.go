@@ -7869,16 +7869,13 @@ func (a *app) slash(line string) tea.Cmd {
 		if rest == "" && (name != "memories" || a.memoryReady()) {
 			return a.showPage(pageMemory)
 		}
-		a.runMemories(rest)
-		return nil
+		return a.runMemories(rest)
 
 	case "remember":
-		a.runRemember(rest)
-		return nil
+		return a.runRemember(rest)
 
 	case "forget":
-		a.runForget(rest)
-		return nil
+		return a.runForget(rest)
 
 	case "crew":
 		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
