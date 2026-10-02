@@ -169,6 +169,9 @@ type faultDir struct {
 	mu    sync.Mutex
 	err   error
 	beats atomic.Int32 // heartbeats attempted, for tests that count relay requests
+	// lose is how many creates are committed by the relay and then answered
+	// with a cancellation, as a drive closed mid-request sees them.
+	lose int
 }
 
 func (d *faultDir) set(err error) {
@@ -187,7 +190,14 @@ func (d *faultDir) Create(ctx context.Context, id string, in directory.CellInit)
 	if err := d.fault(); err != nil {
 		return directory.CellView{}, err
 	}
-	return d.Client.Create(ctx, id, in)
+	v, err := d.Client.Create(ctx, id, in)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err == nil && d.lose > 0 {
+		d.lose--
+		return directory.CellView{}, context.Canceled
+	}
+	return v, err
 }
 
 func (d *faultDir) Publish(ctx context.Context, id string, p directory.Publish) (directory.CellView, error) {

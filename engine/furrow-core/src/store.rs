@@ -136,7 +136,7 @@ impl ObjectStore {
             file: RefCell::new(Some(lock)),
             packs: RefCell::new(HashMap::new()),
         });
-        let mut store = Self {
+        let store = Self {
             root,
             catalog,
             active_pack: RefCell::new(active_pack),
@@ -723,7 +723,25 @@ impl ObjectStore {
         }
     }
 
-    fn recover_pack(&mut self) -> anyhow::Result<()> {
+    /// Recovery takes the catalog's write lock BEFORE the pack lock. A capture
+    /// already holds the catalog write lock when it appends an object and asks
+    /// for the pack lock, so the opposite order here let two processes each
+    /// hold one lock and wait on the other until SQLite's busy timeout gave up
+    /// with "database is locked".
+    fn recover_pack(&self) -> anyhow::Result<()> {
+        if !self
+            .root
+            .join("packs")
+            .join(&*self.active_pack.borrow())
+            .exists()
+        {
+            return Ok(());
+        }
+        self.catalog
+            .batch(|| self.recover_pack_under_catalog_lock())
+    }
+
+    fn recover_pack_under_catalog_lock(&self) -> anyhow::Result<()> {
         let pack_name = self.active_pack.borrow().clone();
         let pack_path = self.root.join("packs").join(&pack_name);
         if !pack_path.exists() {

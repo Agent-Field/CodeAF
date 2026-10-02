@@ -2,7 +2,7 @@ use crate::model::SnapshotTrigger;
 use crate::repository::FurrowRepository;
 use crate::self_write::{self, FilterResult};
 use anyhow::Context;
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -93,6 +93,11 @@ fn record_event(
     overflow: &AtomicBool,
 ) {
     match event {
+        // A READ IS NOT A CHANGE. Linux inotify reports every open and close of
+        // a file, and a seal opens the files it hashes, so counting those would
+        // make each seal wake the next one and the watcher would never go
+        // quiet. Every real write also arrives as a create, modify or remove.
+        Ok(event) if matches!(event.kind, EventKind::Access(_)) => {}
         Ok(event) => changed_paths.extend(event.paths),
         Err(error) => {
             eprintln!("furrow: watcher warning: {error}");
