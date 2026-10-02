@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"strings"
 	"testing"
 	"time"
@@ -408,5 +409,28 @@ func TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat(t *testing.T
 			confirm(t, a)
 			askedCard(t, a)
 		})
+	}
+}
+
+// The card of a chat whose device is offline does not say it runs there, by the
+// row on home or by the left-off chord; an online device still does.
+func TestTakeoverCardOfAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
+	a := continueHome(t, &fakeTaker{}, chatlist.Static{
+		{Cell: "c-run", Title: "Nightly", Device: "build-box", DeviceID: "dev_box", Status: chatlist.Running, DurableAgo: 15 * time.Second},
+	}, 200)
+	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_box"}}}
+	a.dirFeed = feed
+	a.rebuildMachines()
+	standOn(t, a, "c-run")
+	if text := homeText(a); !strings.Contains(text, "running on build-box; last durable turn 15s ago") {
+		t.Fatalf("an online device's card lost running on:\n%s", text)
+	}
+	feed.state.Online = nil
+	raw := a.machineRead.rows[0]
+	a.dropHomeAsk()
+	a.offerContinue(raw, chatlist.Offer{})
+	text := homeText(a)
+	if strings.Contains(text, "running on") || !strings.Contains(text, "last durable turn 15s ago") {
+		t.Fatalf("an offline device's card says the wrong thing:\n%s", text)
 	}
 }

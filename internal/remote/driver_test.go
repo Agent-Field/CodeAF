@@ -151,7 +151,7 @@ func TestAWindowWithoutTheKeyboardIsRefusedInWordsAndNotInSilence(t *testing.T) 
 		{MethodSubmitFiles, SubmitFilesArgs{Text: "here"}},
 	} {
 		result := desk.call(1, door.method, door.payload)
-		want := "the keyboard is on spark right now — press enter here to take it back"
+		want := "the keyboard is on spark right now — press enter here to move it here"
 		if result.Error != want {
 			t.Fatalf("%s from a watcher answered %q, want %q", door.method, result.Error, want)
 		}
@@ -540,7 +540,7 @@ func TestTheSurfaceLearnsItHasBecomeAWatcherWithNobodyTouchingIt(t *testing.T) {
 	// way back.
 	if _, err := first.Client.Agent().Submit(t.Context(), "go"); err == nil {
 		t.Fatalf("the watching surface was allowed to type")
-	} else if !strings.Contains(err.Error(), "press enter here to take it back") {
+	} else if !strings.Contains(err.Error(), "press enter here to move it here") {
 		t.Fatalf("the refusal did not say how to get back: %v", err)
 	}
 
@@ -602,7 +602,7 @@ func TestAWindowWithNoNameIsStillAnotherWindow(t *testing.T) {
 	if !told.Here || told.Machine != "" {
 		t.Fatalf("a nameless window was drawn as something: %+v", told)
 	}
-	want := "the keyboard is in another window right now — press enter here to take it back"
+	want := "the keyboard is in another window right now — press enter here to move it here"
 	if got := notDrivingWord(told); got != want {
 		t.Fatalf("the refusal reads %q, want %q", got, want)
 	}
