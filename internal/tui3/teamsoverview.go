@@ -206,9 +206,13 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 			}
 			var lines []wallCardLine
 			for row, word := range words {
-				line := teamsPad(word, w-4)
+				contentWidth := w - 4
+				if row == 0 && !t.Root && !t.Closed() {
+					contentWidth -= 3
+				}
+				line := teamsPad(word, contentWidth)
 				if !a.tp.previews[r.key].missing {
-					line = d.row(word, w-4, teamsTarget{act: teamsActMember, id: t.ID, arg: r.key,
+					line = d.row(word, contentWidth, teamsTarget{act: teamsActMember, id: t.ID, arg: r.key,
 						x0: x + 2, y: y + len(out) + 1 + row, hint: a.teamsCrewHint(r), pane: true}, false)
 				}
 				if row == 0 && !t.Root && !t.Closed() {
@@ -217,7 +221,7 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 						d.targets[len(d.targets)-1].x1 = x + w - 2 - actionCells
 					}
 					action, _ := d.button(a.linearMark(tabCloseASCII, tabCloseASCII), teamsTarget{act: teamsActRemoveMember, id: t.ID, arg: r.key, x0: x + w - 2 - actionCells, y: y + len(out) + 1, hint: "Remove from this team; conversation and work continue", pane: true}, a.pal.muted)
-					line = fit(line, w-4-actionCells) + action
+					line += action
 				}
 				lines = append(lines, wallCardLine{s: line})
 			}
