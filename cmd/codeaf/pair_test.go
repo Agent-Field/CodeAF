@@ -59,7 +59,7 @@ func (b *pairScreenText) waitFor(t *testing.T, pattern string) []string {
 // no relay setting at all.
 func TestPairBadCode(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_SYNC_URL", "")
+	t.Setenv("CODEAF_SYNC_URL", "off")
 	for _, typed := range []string{"12", "abc-def-ghi", "4-715-30x"} {
 		out := &pairScreenText{}
 		err := newPairDoor(strings.NewReader(""), out).run(context.Background(), []string{typed})
