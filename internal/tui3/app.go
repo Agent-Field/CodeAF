@@ -3916,6 +3916,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case mentionRecentsMsg:
 		if msg.read == 0 || msg.read == a.comp.recentsRead {
+			if msg.read != 0 && a.comp.recentsAgain {
+				// Openings after this read began need rows from the follow-up,
+				// so its older answer must leave their search pending.
+				a.comp.recentsHeld, a.comp.recentsPending, a.comp.recentsAgain = false, false, false
+				return a, a.loadMentionRecents()
+			}
 			a.mentionRecentsLoaded(msg.rows, msg.keys...)
 		}
 		return a, nil

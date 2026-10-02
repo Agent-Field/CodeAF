@@ -565,8 +565,8 @@ The conversations on it are the tabs open in this window, including other projec
 tabs, except the one you are typing in. Only the window's own front conversation
 is absent for being unnamed with nothing sent, even if its draft names its tab.
 Held, restored and side tabs are offered without that check. Then come the twenty
-most recent in this project, read once per opening: a new `@` token or the list
-returning on the next letter after `esc`. For older or other-project conversations
+most recent in this project, read once per opening when no read is pending: a new
+`@` token or the next letter after `esc`. Openings during a read share one follow-up. For older or other-project conversations
 not open here, use `/resume`. The bare
 `@` shows eight of them; `@chat:` shows them all and scrolls. Home's box opens the
 same list with the same sections and prefixes, leaving no eligible conversation off.
@@ -600,9 +600,11 @@ spaces and never across a newline. Teams, conversations and files match every
 word in any order; only the final word may match by letters in order. Tasks keep
 their own scorer for the whole query.
 
-Recents are read once per opening: a new token appearing or starting at a different
-`@`, or the next letter bringing the list back after `esc`. Letters and caret moves
-in an existing opening, and automatic unmatched closes, start no new read. Removing the token, including clearing home's box,
+Recents are read once per opening when no read is pending: a new `@` token or the
+next letter after `esc`. Openings during a read share one follow-up; the older answer
+cannot settle their search. Letters, caret moves and automatic closes start no read.
+After `esc`, a space or punctuation keeps even a bare `@` closed.
+Removing the token, including clearing home's box,
 ends it; the next `@` reads again. A prefixed multi-word chat search waits with
 `looking…` for its fresh read. Several words with no match close a prefixed search
 after its catalog has been read.

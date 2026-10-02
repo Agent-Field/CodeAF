@@ -374,15 +374,19 @@ type mentionRecentsMsg struct {
 // loadMentionRecents reads the door's recent list. The door's function may
 // open a directory, so it runs inside the command and not on the loop.
 //
-// IT RUNS ON EVERY OPENING, not once per process. A new @ token or the list
-// returning after Escape starts an opening. The read is the door's own bounded
-// walk — twenty transcripts at most, on the keystroke that asks (cmd/codeaf's
-// v3RecentSessions), never each following letter. [completion.beginToken]
-// recognizes openings independently of automatic display closes. A new opening
-// starts its own read even while an earlier answer is pending; only the newest
-// answer settles the shared catalog.
+// EVERY OPENING ASKS FOR FRESH ROWS, not just the process's first one. A new @
+// token or the list returning after Escape starts an opening, independently of
+// automatic display closes ([completion.beginToken]). Only one walk may be in
+// flight per window. Openings while it runs owe one follow-up after it lands;
+// its earlier answer cannot settle their search as fresh. The door returns at
+// most twenty recent conversations (cmd/codeaf's v3RecentSessions), but may
+// examine many more session folders, so overlapping its walks is unbounded work.
 func (a *app) loadMentionRecents() tea.Cmd {
 	if a.recentSessions == nil || a.comp.recentsHeld && !a.comp.recentsPending {
+		return nil
+	}
+	if a.comp.recentsPending {
+		a.comp.recentsAgain = true
 		return nil
 	}
 	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = true, false, true
@@ -417,6 +421,7 @@ func (a *app) loadMentionRecents() tea.Cmd {
 func (a *app) mentionRecentsLoaded(rows []Session, keys ...string) {
 	// The read has landed, so the next opening of the list may ask again.
 	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = false, true, false
+	a.comp.recentsAgain = false
 	a.comp.recents = a.comp.recents[:0]
 	seen := map[string]bool{}
 	for i, row := range rows {

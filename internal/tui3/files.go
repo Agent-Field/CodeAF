@@ -125,8 +125,8 @@ type completion struct {
 
 	// teams and chats are the catalogs this list ranks, copied from memory on
 	// the update loop (mention.go). recents is the recent-conversation snapshot,
-	// read off the loop because that list can touch the disk, and read again
-	// each time the list opens so a conversation started since is on it.
+	// read off the loop because that list can touch the disk. Each opening asks
+	// for fresh rows so a conversation started since is on it.
 	teams   []mentionTeam
 	chats   []mentionChat
 	recents []mentionChat
@@ -145,8 +145,11 @@ type completion struct {
 	// recentsPending marks a scheduled read, so a supplied catalog whose door
 	// is held shut remains ready without being mistaken for an unanswered read.
 	recentsPending bool
-	// recentsRead identifies the newest read, so an earlier opening's answer
-	// cannot settle a newer search. Only the app's shared catalog uses it.
+	// recentsAgain records openings since the in-flight read began. They share
+	// one follow-up, because an older read cannot settle their search as fresh.
+	recentsAgain bool
+	// recentsRead identifies the in-flight read, so a duplicate older answer
+	// cannot settle its follow-up. Only the app's shared catalog uses it.
 	recentsRead uint64
 
 	// lines is what the overlay DRAWS, section rules included, and sel is the
@@ -275,7 +278,7 @@ func (c *completion) beginToken(e *editor) bool {
 		return false
 	}
 	// A completed mention or a separator after Escape keeps the list closed.
-	if (previous == 0 || previous == -token) && c.done != "" && at == c.at && strings.HasPrefix(query, c.done) {
+	if (previous == 0 || previous == -token) && (c.done != "" || previous == -token) && at == c.at && strings.HasPrefix(query, c.done) {
 		tail := []rune(strings.TrimPrefix(query, c.done))
 		if len(tail) == 0 || !mentionContinuation(tail[0]) {
 			return false

@@ -29,7 +29,7 @@ import (
 // person who had learnt `@chat:` in a conversation found it answered `no file
 // matches` on home: one search behaves one way on every box. The catalogs are
 // the same memory the conversation's list copies ([app.fillHomeMentions]), the
-// recent list is read again on each opening exactly as there, and choosing a
+// recent list is refreshed on openings exactly as there, and choosing a
 // team or a conversation types exactly what it types there ([completeTeamIn],
 // [completeChatIn]). The one difference is which conversation is left off: a
 // conversation's list leaves off the one being typed in, and home's leaves off
@@ -192,7 +192,7 @@ func (a *app) prepareHomeCompletion(text string) {
 		if !ok {
 			return
 		}
-		if h.comp.done != "" && at == h.comp.at && strings.HasPrefix(query, h.comp.done) {
+		if (h.comp.done != "" || h.comp.tokenAt == -(at+1)) && at == h.comp.at && strings.HasPrefix(query, h.comp.done) {
 			tail := []rune(strings.TrimPrefix(query, h.comp.done))
 			if len(tail) == 0 || !mentionContinuation(tail[0]) {
 				return

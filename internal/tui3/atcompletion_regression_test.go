@@ -5,7 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -949,33 +953,97 @@ func TestEscEndsAtOpeningAndNextLetterReadsFreshOnEveryBox(t *testing.T) {
 	}
 }
 
-// Each token owns its read, even if another token's answer is still off-loop.
-func TestNewAtTokenReadsWhilePreviousAnswerWaits(t *testing.T) {
+// A new token shares the pending walk's follow-up, whose newer catalog must
+// survive an older answer arriving again after the fresh rows have landed.
+func TestANewAtTokenWaitsForTheWalkInFlightAndIsSettledByItsFollowUp(t *testing.T) {
 	for _, b := range atBoxes {
 		t.Run(b.name, func(t *testing.T) {
 			a := b.make(t)
-			a.comp.recentsHeld, a.comp.recents = false, nil
-			reads := 0
+			a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recents = false, true, nil
+			var reads, active, maximum atomic.Int32
+			started := make(chan int32, 1)
+			release := make(chan struct{})
+			answers := make(chan tea.Msg, 3)
+			var workers sync.WaitGroup
+			defer func() { close(release); workers.Wait() }()
 			a.recentSessions = func() []Session {
-				reads++
-				if reads == 1 {
-					return []Session{{File: filepath.Join(a.workspace, "unique.jsonl"), Title: "unique words"}}
+				read := reads.Add(1)
+				n := active.Add(1)
+				for old := maximum.Load(); n > old; old = maximum.Load() {
+					if maximum.CompareAndSwap(old, n) {
+						break
+					}
 				}
-				return nil
+				started <- read
+				<-release
+				active.Add(-1)
+				if read == 1 {
+					return []Session{{File: filepath.Join(a.workspace, "old.jsonl"), Title: "old words"}}
+				}
+				return []Session{{File: filepath.Join(a.workspace, "unique.jsonl"), Title: "unique words"}}
+			}
+			scheduled := 0
+			start := func(cmd tea.Cmd) {
+				for _, read := range completionRecentCommands(cmd) {
+					scheduled++
+					workers.Add(1)
+					go func() { defer workers.Done(); answers <- read() }()
+					select {
+					case <-started:
+					case <-time.After(5 * time.Second):
+						t.Fatal("scheduled recent reader did not start")
+					}
+				}
+			}
+			land := func() (tea.Msg, tea.Cmd) {
+				release <- struct{}{}
+				select {
+				case msg := <-answers:
+					_, cmd := a.Update(msg)
+					return msg, cmd
+				case <-time.After(5 * time.Second):
+					t.Fatal("released reader did not answer")
+					return nil, nil
+				}
 			}
 			_, first := a.Update(tea.PasteMsg{Content: "@chat:old words"})
+			start(first)
+			if scheduled != 1 || reads.Load() != 1 || active.Load() != 1 {
+				t.Fatalf("first token scheduled=%d reads=%d active=%d, want 1 of each", scheduled, reads.Load(), active.Load())
+			}
 			for b.box(a) != "" {
-				a.Update(key("backspace"))
+				_, cmd := a.Update(key("backspace"))
+				start(cmd)
 			}
 			_, second := a.Update(tea.PasteMsg{Content: "@chat:unique words"})
-			spend(t, a, second)
-			if reads != 1 || !b.comp(a).open || len(b.comp(a).chatHits) != 1 {
-				t.Fatalf("new token did not start its own read: reads=%d open=%v rows=%+v", reads, b.comp(a).open, b.comp(a).chatHits)
+			start(second)
+			c := b.comp(a)
+			if scheduled != 1 || reads.Load() != 1 || active.Load() != 1 || maximum.Load() != 1 {
+				t.Fatalf("new token overlapped the pending walk: scheduled=%d reads=%d active=%d peak=%d", scheduled, reads.Load(), active.Load(), maximum.Load())
 			}
-			spend(t, a, first)
-			if reads != 2 || !b.comp(a).open || len(b.comp(a).chatHits) != 1 {
-				t.Fatalf("old answer displaced the new token's catalog: reads=%d open=%v rows=%+v", reads, b.comp(a).open, b.comp(a).chatHits)
+			if !a.comp.recentsPending || !a.comp.recentsAgain || c.recentsLoaded || !c.open || !strings.Contains(b.text(a), "looking…") {
+				t.Fatal("new token did not wait for the pending walk's follow-up")
 			}
+			old, follow := land()
+			if !a.comp.recentsPending || a.comp.recentsLoaded || c.recentsLoaded || len(a.comp.recents) != 0 || len(c.chatHits) != 0 || !c.open || !strings.Contains(b.text(a), "looking…") {
+				t.Fatal("answer begun before the newest opening settled its search as fresh")
+			}
+			start(follow)
+			if scheduled != 2 || reads.Load() != 2 || active.Load() != 1 || maximum.Load() != 1 {
+				t.Fatalf("first answer did not start exactly one follow-up: scheduled=%d reads=%d active=%d peak=%d", scheduled, reads.Load(), active.Load(), maximum.Load())
+			}
+			_, extra := land()
+			if len(completionRecentCommands(extra)) != 0 || a.comp.recentsPending || !a.comp.recentsLoaded || !c.recentsLoaded || !c.open || len(c.chatHits) != 1 || c.chatHits[0].title != "unique words" {
+				t.Fatalf("follow-up did not settle the new token: pending=%v open=%v rows=%+v", a.comp.recentsPending, c.open, c.chatHits)
+			}
+			_, stale := a.Update(old)
+			if len(completionRecentCommands(stale)) != 0 || a.comp.recentsPending || !c.recentsLoaded || !c.open || len(a.comp.recents) != 1 || a.comp.recents[0].title != "unique words" || len(c.chatHits) != 1 || c.chatHits[0].title != "unique words" {
+				t.Fatalf("old answer displaced the newer catalog: pending=%v open=%v rows=%+v", a.comp.recentsPending, c.open, c.chatHits)
+			}
+			if reads.Load() != 2 || active.Load() != 0 || maximum.Load() != 1 {
+				t.Fatalf("settled reads=%d active=%d peak=%d, want 2, 0, 1", reads.Load(), active.Load(), maximum.Load())
+			}
+			t.Logf("settled: reads=%d peak=%d catalog=%q", reads.Load(), maximum.Load(), c.chatHits[0].title)
 		})
 	}
 }
@@ -1115,6 +1183,276 @@ func TestMentionManualExplainsTokenOpeningsAndDeliberateChoices(t *testing.T) {
 		for _, words := range []string{"once per", "token", "best match", "chose", "window's own"} {
 			if !strings.Contains(string(raw), words) {
 				t.Errorf("%s does not explain %q", name, words)
+			}
+		}
+	}
+}
+
+// Only recent-reader commands are driven here, so unrelated clocks and file walks
+// cannot obscure the exact number of reads admitted by the real edit path.
+func completionRecentCommands(cmd tea.Cmd) []tea.Cmd {
+	if cmd == nil {
+		return nil
+	}
+	name := runtime.FuncForPC(reflect.ValueOf(cmd).Pointer()).Name()
+	if strings.Contains(name, ".loadMentionRecents.") {
+		return []tea.Cmd{cmd}
+	}
+	if !strings.Contains(name, ".Batch.") {
+		return nil
+	}
+	var out []tea.Cmd
+	for _, child := range cmd().(tea.BatchMsg) {
+		out = append(out, completionRecentCommands(child)...)
+	}
+	return out
+}
+
+// Blocking the reader makes overlap and freshness counts independent of disk
+// speed. A burst owes one follow-up, begun after its last opening, not one per edit.
+func TestRecentWalksNeverOverlapAndCoalesceOpeningBursts(t *testing.T) {
+	for _, b := range atBoxes {
+		for _, scenario := range []string{"three tokens", "sixty-four tokens", "escape and eight letters", "one pasted token", "replace pasted token"} {
+			t.Run(b.name+"/"+scenario, func(t *testing.T) {
+				a := b.make(t)
+				a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recents = false, true, nil
+				var openings, active, maximum, reads atomic.Int32
+				started := make(chan int32, 128)
+				release := make(chan struct{})
+				answers := make(chan tea.Msg, 128)
+				var workers sync.WaitGroup
+				defer func() { close(release); workers.Wait() }()
+				a.recentSessions = func() []Session {
+					reads.Add(1)
+					n := active.Add(1)
+					for old := maximum.Load(); n > old; old = maximum.Load() {
+						if maximum.CompareAndSwap(old, n) {
+							break
+						}
+					}
+					opening := openings.Load()
+					started <- opening
+					<-release
+					active.Add(-1)
+					return []Session{{File: filepath.Join(a.workspace, "latest.jsonl"), Title: fmt.Sprintf("latest words at opening %d", opening)}}
+				}
+				scheduled := 0
+				start := func(cmd tea.Cmd) {
+					for _, read := range completionRecentCommands(cmd) {
+						scheduled++
+						workers.Add(1)
+						go func() { defer workers.Done(); answers <- read() }()
+						select {
+						case opening := <-started:
+							if opening != openings.Load() {
+								t.Fatalf("read began at opening %d, newest is %d", opening, openings.Load())
+							}
+						case <-time.After(5 * time.Second):
+							t.Fatal("scheduled recent reader did not start")
+						}
+					}
+				}
+				edit := func(msg tea.Msg) {
+					a.notices.seen[eventAtOpened] = false
+					_, cmd := a.Update(msg)
+					if a.notices.seen[eventAtOpened] {
+						openings.Add(1)
+					}
+					start(cmd)
+				}
+				wantOpenings := int32(1)
+				switch scenario {
+				case "three tokens", "sixty-four tokens":
+					wantOpenings = 3
+					if scenario == "sixty-four tokens" {
+						wantOpenings = 64
+					}
+					for i := int32(0); i < wantOpenings; i++ {
+						if i > 0 {
+							edit(key("backspace"))
+						}
+						edit(key("@"))
+					}
+				case "escape and eight letters":
+					edit(key("@"))
+					for i := 0; i < 8; i++ {
+						edit(key("esc"))
+						edit(key("c"))
+					}
+					wantOpenings = 9
+				case "one pasted token", "replace pasted token":
+					edit(tea.PasteMsg{Content: "@chat:latest words"})
+					if scenario == "replace pasted token" {
+						for b.box(a) != "" {
+							edit(key("backspace"))
+						}
+						edit(tea.PasteMsg{Content: "@chat:latest words"})
+						wantOpenings = 2
+					}
+				}
+				t.Logf("before answers: reads=%d active=%d peak=%d openings=%d", reads.Load(), active.Load(), maximum.Load(), openings.Load())
+				if scheduled != 1 || maximum.Load() != 1 || openings.Load() != wantOpenings {
+					t.Fatalf("burst scheduled=%d peak=%d openings=%d, want 1, 1, %d", scheduled, maximum.Load(), openings.Load(), wantOpenings)
+				}
+				if !a.comp.recentsPending || b.comp(a).recentsLoaded {
+					t.Fatal("blocked read was treated as settled")
+				}
+				if strings.Contains(b.box(a), " ") && (!b.comp(a).open || !strings.Contains(b.text(a), "looking…")) {
+					t.Fatal("spaced search did not wait for its fresh catalog")
+				}
+				land := func() (tea.Msg, tea.Cmd) {
+					release <- struct{}{}
+					select {
+					case msg := <-answers:
+						_, cmd := a.Update(msg)
+						return msg, cmd
+					case <-time.After(5 * time.Second):
+						t.Fatal("released reader did not answer")
+						return nil, nil
+					}
+				}
+				old, follow := land()
+				wantReads := int32(1)
+				if wantOpenings > 1 {
+					wantReads = 2
+					if !a.comp.recentsPending || a.comp.recentsLoaded || b.comp(a).recentsLoaded || len(a.comp.recents) != 0 {
+						t.Fatal("read begun before the newest opening settled its search")
+					}
+					start(follow)
+					if scheduled != 2 {
+						t.Fatalf("burst scheduled %d reads after first answer, want 2", scheduled)
+					}
+					if _, cmd := a.Update(old); len(completionRecentCommands(cmd)) != 0 || !a.comp.recentsPending {
+						t.Fatal("duplicate old answer disturbed the follow-up")
+					}
+					_, extra := land()
+					if len(completionRecentCommands(extra)) != 0 {
+						t.Fatal("settled burst scheduled a third read")
+					}
+				} else if len(completionRecentCommands(follow)) != 0 {
+					t.Fatal("one opening scheduled a follow-up")
+				}
+				a.Update(old)
+				wantTitle := fmt.Sprintf("latest words at opening %d", wantOpenings)
+				if a.comp.recentsPending || !a.comp.recentsLoaded || len(a.comp.recents) != 1 || a.comp.recents[0].title != wantTitle {
+					t.Fatalf("final catalog is not fresh: pending=%v rows=%+v", a.comp.recentsPending, a.comp.recents)
+				}
+				if reads.Load() != wantReads || maximum.Load() != 1 || active.Load() != 0 {
+					t.Fatalf("settled reads=%d peak=%d active=%d, want %d, 1, 0", reads.Load(), maximum.Load(), active.Load(), wantReads)
+				}
+				t.Logf("settled: reads=%d peak=%d final catalog=%q", reads.Load(), maximum.Load(), wantTitle)
+			})
+		}
+	}
+}
+
+// A supplied catalog with its door held shut remains authoritative across openings.
+func TestHeldRecentCatalogDoesNotScheduleWalksForOpeningBursts(t *testing.T) {
+	for _, b := range atBoxes {
+		t.Run(b.name, func(t *testing.T) {
+			a := b.make(t)
+			reads := 0
+			a.recentSessions = func() []Session { reads++; return nil }
+			for i := 0; i < 3; i++ {
+				drive(t, a, key("@"), key("backspace"))
+			}
+			if reads != 0 || a.comp.recentsRead != 0 || a.comp.recentsPending {
+				t.Fatalf("held catalog read=%d generation=%d pending=%v", reads, a.comp.recentsRead, a.comp.recentsPending)
+			}
+		})
+	}
+}
+
+// Moving between boxes must not create a second owner of the pending catalog.
+func TestAtBoxesShareOnePendingRecentCatalog(t *testing.T) {
+	a := atBoxes[2].make(t)
+	a.cancelChatStart()
+	a.comp.recentsHeld, a.comp.recents = false, nil
+	reads := 0
+	a.recentSessions = func() []Session {
+		reads++
+		return []Session{{File: filepath.Join(a.workspace, "latest.jsonl"), Title: fmt.Sprintf("latest words %d", reads)}}
+	}
+	_, first := a.Update(tea.PasteMsg{Content: "@chat:latest words"})
+	commands := completionRecentCommands(first)
+	if len(commands) != 1 {
+		t.Fatalf("conversation scheduled %d readers, want 1", len(commands))
+	}
+	a.showPage(pageHome)
+	_, home := a.Update(tea.PasteMsg{Content: "@chat:latest words"})
+	if len(completionRecentCommands(home)) != 0 {
+		t.Fatal("home started a second reader while the conversation's was pending")
+	}
+	a.showPage(pageNone)
+	a.openChatStart()
+	if !a.startingChat() {
+		t.Fatal("fixture did not open the start page")
+	}
+	_, start := a.Update(tea.PasteMsg{Content: "@chat:latest words"})
+	if len(completionRecentCommands(start)) != 0 {
+		t.Fatal("start started a second reader while the conversation's was pending")
+	}
+	_, next := a.Update(commands[0]())
+	commands = completionRecentCommands(next)
+	if len(commands) != 1 || !a.comp.recentsPending || a.comp.recentsLoaded || a.home.comp.recentsLoaded {
+		t.Fatal("three boxes did not share one pending follow-up")
+	}
+	_, extra := a.Update(commands[0]())
+	if len(completionRecentCommands(extra)) != 0 || reads != 2 || a.comp.recentsPending || !a.comp.recentsLoaded {
+		t.Fatalf("shared catalog did not settle after two reads: reads=%d pending=%v", reads, a.comp.recentsPending)
+	}
+	if len(a.comp.chatHits) != 1 || a.comp.chatHits[0].title != "latest words 2" {
+		t.Fatalf("start did not receive the shared fresh catalog: %+v", a.comp.chatHits)
+	}
+	// Leaving home closes its list, so it copies the shared rows when needed again.
+	a.fillHomeMentions()
+	for _, chat := range a.home.comp.chats {
+		if chat.title == "latest words 2" && a.home.comp.recentsLoaded {
+			return
+		}
+	}
+	t.Fatalf("home did not copy the shared fresh catalog: %+v", a.home.comp.chats)
+}
+
+// Escape seals even the empty query over a separator; letters still begin one
+// fresh opening, and another letter in that opening starts no additional read.
+func TestEscThenSeparatorKeepsBareAndNamedAtListsClosed(t *testing.T) {
+	for _, b := range atBoxes {
+		for _, query := range []string{"@", "@chat:ki"} {
+			for _, after := range []string{" ", ",", ".", ";", ":", "!", "?", "(", ")", "'", "c", "é"} {
+				t.Run(b.name+"/"+query+"/"+after, func(t *testing.T) {
+					a := b.make(t)
+					a.comp.recentsHeld = false
+					reads, notices := 0, 0
+					a.recentSessions = func() []Session { reads++; return nil }
+					edit := func(msg tea.Msg) {
+						a.notices.seen[eventAtOpened] = false
+						drive(t, a, msg)
+						if a.notices.seen[eventAtOpened] {
+							notices++
+						}
+					}
+					for _, r := range query {
+						edit(key(string(r)))
+					}
+					edit(key("esc"))
+					if b.comp(a).open || b.box(a) != query {
+						t.Fatal("escape changed the token or left the list open")
+					}
+					edit(key(after))
+					wantOpen := after == "c" || after == "é"
+					wantReads := 1
+					if wantOpen {
+						wantReads++
+					}
+					if b.comp(a).open != wantOpen || reads != wantReads || notices != wantReads {
+						t.Fatalf("after %q: open=%v reads=%d notices=%d, want open=%v reads/notices=%d", after, b.comp(a).open, reads, notices, wantOpen, wantReads)
+					}
+					edit(key("c"))
+					if b.comp(a).open != wantOpen || reads != wantReads || notices != wantReads {
+						t.Fatal("following letter changed the separator or read again within an opening")
+					}
+				})
 			}
 		}
 	}

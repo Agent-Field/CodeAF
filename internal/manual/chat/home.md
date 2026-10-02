@@ -1488,15 +1488,15 @@ conversation.
 Conversations are every open tab, including other projects — then the twenty
 most recent in this project. Only the window's own front conversation is absent for being
 unnamed with nothing sent, even if its draft names its tab. Held, restored and side tabs
-are offered without that check. Recents are read once per opening: a new `@` token
-or the list returning on the next letter after `esc`.
+are offered without that check. Recents are read once per opening when no read is
+pending: a new `@` or the next letter after `esc`. Openings during a read share one
+follow-up.
 
 `↑`/`↓` pick and `enter` puts the row in: a team as `●harbor` in the team's colour, a
 conversation as `@handle` or a short slug of its title, a path after the `@`. Choosing a
 picture takes the half-typed token out and puts the picture on home's tray instead, saying
 `attached · shot.png · rides with the next conversation`. `esc` closes the list and leaves
-the word alone — and it is the innermost layer of the three esc walks through on home, so
-the first `esc` takes the list and a later one leaves home. Tasks are not on this list — a
+the word alone. It takes the list first; a later `esc` leaves home. Tasks are not on this list — a
 task pointer is minted when a conversation sends, and home has none yet. While the walk is
 still running the column reads `looking…`; with no match it reads `no matches`, or under a
 prefix `no team matches`, `no conversation matches` or `no file matches`. On home the three
@@ -1526,9 +1526,11 @@ token. Only prefixed searches hold spaces, up to three and never across a newlin
 match every word in any order; finished words match whole, and only the final
 word may match by letters in order.
 
-Recents are read once per opening: a new token appearing or starting at a different
-`@`, or the next letter bringing the list back after `esc`. Letters and caret moves
-in an existing opening, and automatic unmatched closes, start no new read. Clearing the box ends the token and closes its list;
+Recents are read once per opening when no read is pending: a new `@` token or the
+next letter after `esc`. Openings during a read share one follow-up; the older answer
+cannot settle their search. Letters, caret moves and automatic closes start no read.
+After `esc`, a space or punctuation keeps even a bare `@` closed.
+Clearing the box ends the token and closes its list;
 the next `@` reads again and can offer a conversation started in another window.
 A prefixed chat search waits with `looking…` for its fresh read. Several words
 with no match close it after that answer.

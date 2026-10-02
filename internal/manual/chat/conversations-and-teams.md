@@ -341,14 +341,13 @@ even if its draft names its tab. Held, restored and side tabs have no such
 check. Home and the new-chat page (`+` or `ctrl+t`) leave no eligible chat off: their
 sentences open a new one, so the chat behind them is a reference too.
 
-After the tabs come the twenty most recent conversations in this project, by when
-you last spoke in them. They are read once per opening: a new token appearing or
-starting at a different `@`, typed or pasted, or the next letter bringing the list
-back after `esc` on any box. Letters and caret moves in an existing opening, and
-automatic unmatched closes, start no new read. Until its fresh read answers, a
-prefixed multi-word chat search stays up
-with `looking…`. Removing the token, including clearing home's box, ends it;
-the next `@` reads again.
+After the tabs come the twenty most recent conversations in this project. They
+are read once per opening when no read is pending: a new `@` token, typed or pasted,
+or the next letter after `esc`. Openings during a read share one follow-up; the
+older answer cannot settle their search. Letters, caret moves and automatic closes
+start no read. A prefixed multi-word chat search waits with `looking…` for its
+fresh read. Removing the token ends it; the next `@` asks again. After `esc`,
+a space or punctuation keeps even a bare `@` closed.
 Over `--host` those are the far machine's. An older conversation, or one in another
 project, is offered only if it is already an open tab here; otherwise use `/resume`.
 The same transcript appears once, even when its folder has a symlink spelling.
