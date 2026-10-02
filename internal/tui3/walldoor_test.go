@@ -20,8 +20,8 @@ func wallDoorApp(t *testing.T, width int) *app {
 	return a
 }
 
-// THE STRIP HAS ITS OWN DOOR TO THE CONVERSATIONS VIEW: ` ▦ All ` right after
-// the new-chat `+`, touching it, its hit on its own words, and kept out of the
+// THE STRIP HAS ITS OWN DOOR TO THE CONVERSATIONS VIEW: ` ▦ All ` after
+// the tabs at the right edge, its hit on its own words, and kept out of the
 // tabs' own list so a walk of the tabs never meets it.
 func TestTabWallDoorStandsAfterTheNewChat(t *testing.T) {
 	a := wallDoorApp(t, 120)
@@ -42,9 +42,8 @@ func TestTabWallDoorStandsAfterTheNewChat(t *testing.T) {
 			plus = hit
 		}
 	}
-	// ONE GAP AFTER THE `+`, the gap between any two pieces of the strip.
-	if !plus.span.pressable() || plus.span.to+1 != door.from || plain(ansi.Cut(row, plus.span.to, door.from)) != " " {
-		t.Fatalf("the door does not stand one gap after the +: + %+v door %+v\n%q", plus.span, door, plain(row))
+	if !plus.span.pressable() || plus.span.to >= door.from || door.to != 120 {
+		t.Fatalf("grid door is not fixed at right: plus %+v door %+v", plus.span, door)
 	}
 	// The same blank either side as the +.
 	pw := plain(ansi.Cut(row, plus.span.from, plus.span.to))
@@ -80,7 +79,7 @@ func TestTabWallDoorHover(t *testing.T) {
 	if !strings.Contains(cell, "\x1b[48;") || cell == ansi.Cut(rest, door.from, door.to) {
 		t.Fatalf("the hovered door wears no ground: %q", cell)
 	}
-	if got := a.dockHoverWords(); got != dockWallWord || !strings.Contains(got, "teams") || !strings.HasSuffix(got, wallOpenKey) {
+	if got := a.dockHoverWords(); got != dockWallWord || !strings.Contains(got, "open conversations") || !strings.HasSuffix(got, wallOpenKey) {
 		t.Fatalf("the hint slot says %q", got)
 	}
 	t.Logf("120 columns at rest:\n%q\nhovered:\n%q", plain(rest), plain(lit))
@@ -142,8 +141,8 @@ func TestTabWallDoorAtEveryWidth(t *testing.T) {
 			if hit.kind != tabFold {
 				continue
 			}
-			if door.pressable() && door.to+tabsMoreGap > hit.span.from {
-				t.Fatalf("at %d columns the count is not after the door by %d: %+v %+v\n%q", width, tabsMoreGap, door, hit.span, plain(row))
+			if door.pressable() && hit.span.to >= door.from {
+				t.Fatalf("at %d columns the count overlaps the right-aligned door (%d): %+v %+v\n%q", width, tabsMoreGap, door, hit.span, plain(row))
 			}
 			for _, other := range a.chatTabHits {
 				if other.span.from > hit.span.from {
@@ -176,7 +175,7 @@ func TestTabWallDoorTakesTheTeamColour(t *testing.T) {
 	if ink == nil {
 		t.Skip("the palette draws no team colour")
 	}
-	if cell := ansi.Cut(row, door.from, door.to); !strings.Contains(cell, ink("▦")) {
-		t.Fatalf("the door's glyph is not in the team's colour: %q (before %q)", cell, ansi.Cut(before, a.wall.door.from, a.wall.door.to))
+	if cell := ansi.Cut(row, door.from, door.to); strings.Contains(cell, ink("▦")) {
+		t.Fatalf("team-agnostic grid door acquired the team's colour: %q (before %q)", cell, ansi.Cut(before, a.wall.door.from, a.wall.door.to))
 	}
 }

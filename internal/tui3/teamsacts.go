@@ -82,9 +82,7 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		a.wallOrganizeUndo()
 		return nil
 	case teamsActWall:
-		open := a.openWall()
-		a.wallSetTeam(t.id)
-		return open
+		return a.openWall()
 	case teamsActManager:
 		return a.teamsManagerStart(t.id)
 	case teamsActRootManager:

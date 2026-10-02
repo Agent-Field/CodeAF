@@ -4053,9 +4053,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// motion spent ahead of them in the same message was one (wall.go's
 		// [app.wallMotion]).
 		a.ptr.still = false
-		// A wheel under the switcher puts it away: it hangs from the strip,
-		// and the page under it is about to move.
+		// A long overlay picker keeps the wheel inside its own visible rows.
 		if a.teamMenu.on {
+			if a.teamMenu.card.holds(msg.Mouse().X, msg.Mouse().Y) {
+				a.teamMenu.cursor = min(max(a.teamMenu.cursor+placeWheelDelta(msg.Mouse().Button), 0), len(a.teamMenuRows())-1)
+				a.teamMenu.hover = wallHitRef{}
+				a.touch()
+				return a, nil
+			}
 			a.closeTeamMenu()
 		}
 		if a.tsheet.on || a.tmove.on {

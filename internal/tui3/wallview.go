@@ -291,7 +291,11 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 	rows[0] = row
 	hits = append(hits, h...)
 	if height > 1 {
-		row, h := wallTeamsRow(pal, g, v, width, height, inset, c, first, last, 1)
+		if v.filtering || v.filter != "" || v.naming && !wallNameCardFits(width, height) {
+			row, h = wallTeamsRow(pal, g, v, width, height, inset, c, first, last, 1)
+		} else {
+			row, h = wallTeamsRight(pal, g, v, "", 0, nil, wallOrgPiece{}, width, inset, c, first, last, 1)
+		}
 		rows[1] = row
 		hits = append(hits, h...)
 	}
@@ -476,6 +480,9 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		pills = append(pills, awayPill(true))
 	}
 	open := strconv.Itoa(len(v.tiles)) + " open"
+	if v.filter != "" && v.total > len(v.tiles) {
+		open = strconv.Itoa(len(v.tiles)) + " of " + strconv.Itoa(v.total) + " open"
+	}
 	pills = append(pills, pill{s: pal.dim(open), w: len(open)})
 	gapBefore := func(i int) int {
 		if i == 0 {

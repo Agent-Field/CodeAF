@@ -38,7 +38,7 @@ which resumes it first when this window does not have it open. A team's name in 
 places, written as a team (`team harbor`, `the harbor team` or `"harbor"`), is a link too. A
 press opens the **teams page** with that team selected. The hint says `Open harbor on the
 teams page · click`. Over `--host`, against an engine with no teams doors, the press opens the
-conversations view on that team instead, and the hint says so.
+team-agnostic conversations view instead, and the hint says so.
 
 ## Making a manager
 
@@ -51,18 +51,12 @@ its tab strip and never scrolls away:
 
 - **`+ Manager`**, a quiet button, while the team has none. A press starts a new conversation
   in the team's folder and makes it the manager. Its hint says so. Under 100 columns the
-  button leaves the strip; the team switcher still offers it.
-- **`◆ Make this harbor's manager`** in the team switcher (the `● harbor ▾` chip) makes the
-  conversation in front the manager. A tile's Teams list on the conversations view makes
-  that tile the manager. With an existing manager, the row names which one it replaces:
-  `◆ Make this harbor's manager (replaces Shipping the parser)`. On the manager itself the row
-  reads **`◇ Make an ordinary member`**, which turns it back into an ordinary conversation with
-  all its history. When the chip reads `All ▾` with All shown, choose a team and reopen the
-  chip: All has no manager or Remove row. After you make a manager, the menu stays open and
-  that row changes to `◇ Make an ordinary member`.
+  button leaves the strip; Teams still offers manager controls.
+- **Choose manager** on Teams assigns an existing member. To use a new conversation,
+  first use Add member, then Choose manager. The Chats dropdown and conversation grid
+  offer no manager-assignment controls.
 
-The manager's place reads **`◆ Manager`**. Its conversations tile comes first, titled
-`◆ Manager · <its title>`. The tab's hint names its team and title. `alt+m` goes to the
+The manager's place reads **`◆ Manager`**. Its tile in the team-agnostic grid keeps its ordinary title and position. The tab's hint names its team and title. `alt+m` goes to the
 manager from any conversation in the team.
 
 An untitled manager is addressable immediately: codeaf derives its fallback handle from

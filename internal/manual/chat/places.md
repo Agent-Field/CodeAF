@@ -159,7 +159,7 @@ back.
 **The hint line says what the word opens and its key** while the pointer rests on it:
 `alt+2 teams · the teams you hand work to`, `alt+3 chats · every conversation, one at a
 time`. On `more ▾` it says `more · the places this row has no room for`; on the strip's
-`▦ All` it says `The grid of your open tabs, and your teams · alt+v`.
+`▦ All` it says `The grid of your open conversations · alt+v`.
 
 **A resize drops that hint.** Widening the window so `more ▾` is no longer drawn clears
 the hover, and the hint line stops saying `more · the places this row has no room for`
@@ -199,7 +199,7 @@ page, which repeated the teams rail and home's sessions. Now:
 - **The top line** is the wordmark, the six places, and the machine's signs on the far end.
   It is identical on every page; only which word is lit changes. It never moves.
 - **The second line of a chat** is the tab strip: the team chip (` ● harbor ▾ `, or a quiet
-  ` All ▾ `), `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece, since home
+  ` Teams ▾ `), `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece, since home
   is the first word of the line above.
 - **On a place the second line is the rule**, then a blank, and the page starts on the next
   row. A click there is the page's. There is no invisible tab under it.

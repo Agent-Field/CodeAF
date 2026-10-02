@@ -338,6 +338,9 @@ type (
 
 // wallState is the wall's whole footprint on the app: one field.
 type wallState struct {
+	// Cancellation restores the Chats strip before the grid borrowed its viewport.
+	returnTeam string
+	returnView tabViewport
 	// frontVer is the front conversation as the wall last read it for its tile
 	// (walltail.go's [app.wallFrontMoved]).
 	frontVer wallFrontVer

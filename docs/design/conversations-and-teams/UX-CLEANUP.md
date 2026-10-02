@@ -119,3 +119,26 @@ review launcher is `/private/tmp/codeaf-teams-followup-milestone-1/review.sh`.
 The next milestones change Chats navigation and its team-agnostic conversation grid,
 then enlarge the selected team's manager preview and simplify Settings. Those changes
 remain subject to their own binary review and are not implemented in this milestone.
+
+## Additional improvements: follow-up milestone 2
+
+Chats separates navigation from team management. The tab strip reserves a permanently
+right-aligned All grid button before fitting conversation tabs. It remains reachable during
+overflow and narrow layouts. The dropdown reads Teams when no overlay is selected and
+offers None followed by active teams; it cannot change memberships, leadership or settings.
+
+The grid shows all conversations open in this window, regardless of overlay. It retains
+membership dots as context, conversation filtering, state previews, selection, view dismissal
+and minimap scrolling. It offers no team filtering or management controls. Tab walks tiles.
+Cancelling restores the original overlay and draft; opening any tile enters bare Chats.
+Teams retains team creation and subteam naming, membership, manager and settings actions.
+
+Focused regressions cover keyboard and pointer routing, cancelling and same-tile opening,
+Unicode overflow and pinned managers across 12–200 columns, picker choices and retired keys.
+The selected manager's larger faithful preview and Settings cleanup remain milestone 3.
+
+Adversarial review caught filtered totals, hidden long-picker selection, borrowed viewport
+persistence and historical membership dots. Those were repaired with focused regressions,
+including picker resize bounds. The focused navigation/team/grid suites and lightweight
+gate pass. Review data is isolated in `/private/tmp/codeaf-teams-followup-milestone-2`;
+`review.sh` launches this worktree's canonical binary against that fixture.

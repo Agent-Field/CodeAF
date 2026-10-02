@@ -21,7 +21,7 @@ A team link in a chat opens this page. That is a team's name written as a team (
 `●harbor` you sent with `@`. A press selects that team: the rail's cursor on it, the pane
 showing it. A closed team turns on `Show closed` and selects its retained history. The hint says
 `Open harbor on the teams page · click`. Over `--host`, when the engine has no teams doors,
-the press opens the conversations view on that team instead, and the hint says so.
+the press opens the team-agnostic conversations view instead, and the hint says so.
 
 ## The rail: your teams as a tree
 

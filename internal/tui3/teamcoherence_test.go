@@ -53,15 +53,8 @@ func TestTheStripAndTheWallAgreeAboutATeam(t *testing.T) {
 	}
 	spend(t, a, a.openWall())
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	open := len(a.wallShown(a.now()))
-	for _, want := range []string{
-		"open in this window · in harbor",
-		"1 more in harbor · Open them",
-		"harbor " + itoa(open),
-	} {
-		if !strings.Contains(frame, want) {
-			t.Fatalf("the wall lacks %q:\n%s", want, frame)
-		}
+	if !strings.Contains(frame, "open in this window") || strings.Contains(frame, "in harbor") || strings.Contains(frame, "Open them") {
+		t.Fatal(frame)
 	}
 	if strings.Contains(frame, "quantum") {
 		t.Fatalf("a member not open here is a tile:\n%s", frame)
@@ -72,7 +65,7 @@ func TestTheStripAndTheWallAgreeAboutATeam(t *testing.T) {
 // tile, the conversation in front and the box stay as they were, the focus
 // stays on the tile it was on, and the button is gone because every member is
 // open now (the emptiness law).
-func TestOpenThemResumesTheRestBehindAndMovesNothing(t *testing.T) {
+func TestGridDoesNotResumeUnheldTeamMembers(t *testing.T) {
 	a, _, awayKey := teamAwayApp(t)
 	opened := 0
 	a.open = func(workspace, transcript string) (Conversation, error) {
@@ -85,28 +78,11 @@ func TestOpenThemResumesTheRestBehindAndMovesNothing(t *testing.T) {
 	_ = a.wallFrame(a.width, a.height)
 	focused := a.wallFocusedKey(a.wallShown(a.now()))
 	spend(t, a, wallKeyPress(a, "r"))
-	if opened != 1 {
-		t.Fatalf("Open them opened %d conversations", opened)
+	if opened != 0 || a.behind[awayKey] != nil {
+		t.Fatal("grid resumed an unopened team member")
 	}
-	if a.frontTabKey() != front || string(a.input.value) != "half a thought" {
-		t.Fatalf("Open them moved the front: %q (was %q), box %q", a.frontTabKey(), front, string(a.input.value))
-	}
-	if a.behind[awayKey] == nil {
-		t.Fatal("the member is not held behind")
-	}
-	if got := a.wallFocusedKey(a.wallShown(a.now())); got != focused {
-		t.Fatalf("the focus moved from %q to %q", focused, got)
-	}
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if strings.Contains(frame, wallResumeWord) {
-		t.Fatalf("every member is open, yet the title still offers more:\n%s", frame)
-	}
-	if !strings.Contains(frame, "quantum gravity") {
-		t.Fatalf("the resumed member is not a tile:\n%s", frame)
-	}
-	a.touch()
-	if row := plain(a.tabsRow(a.width)); !strings.Contains(row, "quantum") {
-		t.Fatalf("the resumed member has no tab: %q", row)
+	if a.frontTabKey() != front || a.input.String() != "half a thought" || a.wallFocusedKey(a.wallShown(a.now())) != focused {
+		t.Fatal("grid moved the front, draft, or focus")
 	}
 }
 

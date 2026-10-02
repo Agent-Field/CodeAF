@@ -634,8 +634,8 @@ func TestOrganizeDisbandsQuietTeamsWithoutReopeningOnUndo(t *testing.T) {
 		t.Fatal(err)
 	}
 	flushTeams(t, a)
-	_ = a.openWall()
-	a.wallSetTeam("")
+	a.closeWall()
+	runCmd(a.showPage(pageTeams))
 	drive(t, a, runCmd(a.wallOrganizeOpen())...)
 	var quiet *orgProp
 	for i := range a.wall.org.props {
@@ -649,7 +649,7 @@ func TestOrganizeDisbandsQuietTeamsWithoutReopeningOnUndo(t *testing.T) {
 	// Its row is its sentence whole, then the teams: no colour dot and no
 	// second count, and not cut to a team name's width.
 	a.width, a.height = 110, 30
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
+	frame := orgFrame(a)
 	if !strings.Contains(frame, "☑ Disband 2 quiet teams  harbor, orbit") {
 		t.Fatalf("the quiet-teams row reads:\n%s", frame)
 	}

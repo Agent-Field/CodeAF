@@ -10,40 +10,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// ── THE STRIP'S TEAM SWITCHER ───────────────────────────────────────────────
-//
-// The chip at the strip's left end, ` ● harbor ▾ ` while a team narrows the
-// strip, is the switcher: a press opens a small menu hung under it, on every
-// page the strip is drawn on, the conversations view included.
-//
-//	╭─ Teams ──────────────────╮
-//	│ ◉ ● harbor            3  │
-//	│ ○ ● orbit             5  │
-//	│ ○   All              12  │
-//	│ ──────────────────────── │
-//	│ + Add this conversation  │
-//	│ ◆ Make manager           │
-//	│ + New team…              │
-//	│   Team settings…         │
-//	╰──────────────────────────╯
-//
-// Choosing a team narrows the strip as the wall's segments do, and switches the
-// conversation in front to that view’s remembered selection ([app.teamActivate]).
-// The rows under the rule act on the conversation in front: into or out of the
-// team that is shown, a new team starting with it, or the shown team's settings,
-// the last two on the wall, where teams are edited. `Make manager` makes a
-// member the team's manager, and on the manager it reads `Remove manager`
-// (teammanager.go).
-//
-// WITH NO TEAM SHOWN THE CHIP IS STILL THERE, AS A QUIET ` All ▾ `, whenever
-// there is a team to switch to. The strip is the one control on every page,
-// and a switcher that appeared only once a team was already chosen could not be
-// used to choose the first; with no team at all there is nothing to switch to
-// and the chip takes no cells.
-//
-// It is modal as every menu is: while it is up it has the keyboard (↑ ↓ enter
-// esc), and a press anywhere off it puts it away and does nothing else. It is
-// drawn from memory alone; the teams were loaded on an opening (teamsEnsure).
+// The strip's switcher chooses only a team overlay. None restores ordinary
+// Chats; selecting a team restores its last conversation and strip position.
+// Management belongs to Teams, so this menu cannot change a membership or manager.
+// It is modal: arrows choose a row, enter activates it, and escape or a press
+// outside closes the menu without changing the view.
 
 // teamMenu is the switcher's state: whether it is up, the row the keyboard is
 // on, the row the pointer is on, and where the last frame drew it and its rows,
@@ -51,6 +22,7 @@ import (
 type teamMenu struct {
 	on     bool
 	cursor int
+	top    int
 	hover  wallHitRef
 	card   wallRect
 	hits   []wallHit
@@ -58,14 +30,7 @@ type teamMenu struct {
 
 // The switcher's rows that are not a team. A team's row is a wallHitPopRow
 // with arg wallPopTeam and the team's id.
-const (
-	teamMenuAll      = -10 // All
-	teamMenuToggle   = -11 // + Add this conversation, or − Remove it
-	teamMenuNew      = -12 // + New team…
-	teamMenuSettings = -13 // Team settings…
-	teamMenuManager  = -14 // ◆ Make manager, or Remove manager
-	teamMenuClosed   = -15 // Closed · N, folded, which opens the teams page
-)
+const teamMenuNone = -10 // None selects ordinary Chats without a team overlay.
 
 // teamMenuRow is one row of the switcher, as the painter and the keys both
 // read it.
@@ -78,35 +43,11 @@ type teamMenuRow struct {
 	depth int
 }
 
-// teamMenuRows is the switcher's rows in order: each team, All, a rule, then
-// the acts on the conversation in front. Add and settings are offered only
-// while a team is shown, and Add only for a conversation that can be a member.
+// teamMenuRows starts with None and then lists the active team hierarchy.
 func (a *app) teamMenuRows() []teamMenuRow {
-	var rows []teamMenuRow
-	// THE TEAMS ARE THE TREE, each sub-team indented under its team, in the
-	// order the teams page's rail draws them (ruling c-12).
+	rows := []teamMenuRow{{code: teamMenuNone}}
 	for _, r := range a.teamsOpenTree() {
 		rows = append(rows, teamMenuRow{code: wallPopTeam, id: r.id, depth: r.depth})
-	}
-	rows = append(rows, teamMenuRow{code: teamMenuAll})
-	// THE CLOSED TEAMS ARE ONE FOLDED ROW (ruling c-9), never a team on the
-	// switcher: a press opens the teams page with its Closed fold open.
-	if len(a.teamsClosed()) > 0 {
-		rows = append(rows, teamMenuRow{code: teamMenuClosed})
-	}
-	rows = append(rows, teamMenuRow{rule: true})
-	shownTeam, shown := a.teamActive()
-	if shown && a.frontTabKey() != "" {
-		if !shownTeam.Root {
-			rows = append(rows, teamMenuRow{code: teamMenuToggle})
-		}
-		if t, _ := a.teamActive(); teamHolds(t, a.frontTabKey()) {
-			rows = append(rows, teamMenuRow{code: teamMenuManager})
-		}
-	}
-	rows = append(rows, teamMenuRow{code: teamMenuNew})
-	if shown {
-		rows = append(rows, teamMenuRow{code: teamMenuSettings})
 	}
 	return rows
 }
@@ -123,13 +64,13 @@ func teamMenuPicks(rows []teamMenuRow) []teamMenuRow {
 }
 
 // openTeamMenu puts the switcher up with the keyboard on the team that is
-// shown, or on All.
+// shown, or on None.
 func (a *app) openTeamMenu() {
 	a.teamsEnsure()
 	a.teamMenu = teamMenu{on: true}
 	picks := teamMenuPicks(a.teamMenuRows())
 	for i, r := range picks {
-		if (r.code == wallPopTeam && r.id == a.wall.activeID) || (r.code == teamMenuAll && a.wall.activeID == "") {
+		if (r.code == wallPopTeam && r.id == a.wall.activeID) || (r.code == teamMenuNone && a.wall.activeID == "") {
 			a.teamMenu.cursor = i
 			break
 		}
@@ -156,52 +97,14 @@ func (a *app) teamMenuFront() chatTab {
 
 // teamMenuDo is one row chosen, by the keyboard or the pointer.
 func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
-	switch r.code {
-	case wallPopTeam, teamMenuAll:
-		a.closeTeamMenu()
-		if a.wall.on {
-			// On the wall the choice is the wall's own segment's, which keeps
-			// each team's place and never switches the conversation in front.
-			a.wallSetTeam(r.id)
-			return nil
-		}
-		return a.teamActivate(r.id)
-	case teamMenuToggle:
-		// The menu stays up, so the row's word is seen to flip.
-		t, ok := a.teamActive()
-		if !ok {
-			return nil
-		}
-		if err := a.teamToggleMember(t.ID, a.teamMenuFront()); err != nil {
-			a.note("the team is changed for this window, but " + err.Error())
-		}
-		a.touch()
+	if r.code != wallPopTeam && r.code != teamMenuNone {
 		return nil
-	case teamMenuManager:
-		// The menu stays up, so the row's word is seen to flip.
-		t, ok := a.teamActive()
-		if !ok {
-			return nil
-		}
-		if err := a.teamToggleManager(t.ID, a.teamMenuFront()); err != nil {
-			a.note("the manager is changed for this window, but " + err.Error())
-		}
-		a.touch()
-		return nil
-	case teamMenuNew:
-		a.closeTeamMenu()
-		return a.teamMenuNewTeam()
-	case teamMenuClosed:
-		a.closeTeamMenu()
-		a.tp.closedOpen = true
-		return a.showPage(pageTeams)
-	case teamMenuSettings:
-		a.closeTeamMenu()
-		// The team's card, over whatever is drawn (teamsheet.go): its name,
-		// its colour, the settings it overrides and its close.
-		return a.teamSheetOpen(a.wall.activeID, teamSheetSettings)
 	}
-	return nil
+	a.closeTeamMenu()
+	if a.wall.on {
+		a.closeWall()
+	}
+	return a.teamActivate(r.id)
 }
 
 // teamMenuNewTeam opens the wall with the new-team card, the conversation in
@@ -258,6 +161,10 @@ func (a *app) teamMenuKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.cursor = min(m.cursor+1, len(picks)-1)
 		a.touch()
 	case "enter", "space":
+		width, height := a.size()
+		if len(a.teamMenuCard(width, height).rows) == 0 {
+			return nil
+		}
 		if m.cursor >= 0 && m.cursor < len(picks) {
 			return a.teamMenuDo(picks[m.cursor])
 		}
@@ -334,11 +241,10 @@ func (a *app) teamMenuOver(frame string) string {
 
 // teamMenuCard is the switcher as a card, hung from the chip's first cell on
 // the row under the strip, kept a cell inside the frame's sides, and not drawn
-// on a frame too small to hold it whole.
+// with a scrolling row window when the hierarchy is longer than the frame.
 func (a *app) teamMenuCard(width, height int) wallCard {
 	pal := a.pal
 	g := wallGlyphsFor(pal.ascii)
-	k := wallKeysFor(pal.ascii)
 	on, off := "◉", pal.glyph(tokens.GEmptyCell)
 	if pal.ascii {
 		on, off = "*", "o"
@@ -366,8 +272,6 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 		leftW       int
 	}
 	var lines []line
-	front := a.frontTabKey()
-	shown, _ := a.teamActive()
 	for _, r := range rows {
 		ln := line{row: r}
 		switch r.code {
@@ -391,39 +295,14 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 			ln.left = pal.ink(radio) + " " + indent + a.tabTeamDot(t) + " " + pal.ink(name)
 			ln.leftW = ansi.StringWidth(radio) + 3 + len(indent) + ansi.StringWidth(name)
 			ln.right = strconv.Itoa(n)
-		case teamMenuAll:
+		case teamMenuNone:
 			radio := off
 			if a.wall.activeID == "" {
 				radio = on
 			}
-			ln.left = pal.ink(radio) + "   " + pal.ink("All")
-			ln.leftW = ansi.StringWidth(radio) + 3 + 3
+			ln.left = pal.ink(radio) + "   " + pal.ink("None")
+			ln.leftW = ansi.StringWidth(radio) + 3 + len("None")
 			ln.right = strconv.Itoa(len(open))
-		case teamMenuClosed:
-			word := "Closed " + a.teamsDot() + " " + strconv.Itoa(len(a.teamsClosed())) + " " + a.linearMark("▸", ">")
-			ln.left = strings.Repeat(" ", ansi.StringWidth(off)+3) + pal.dim(word)
-			ln.leftW = ansi.StringWidth(off) + 3 + ansi.StringWidth(word)
-		case teamMenuToggle:
-			word := "+ Add this conversation"
-			if teamHolds(shown, front) {
-				word = "− Remove this conversation"
-				if pal.ascii {
-					word = "- Remove this conversation"
-				}
-			}
-			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
-		case teamMenuManager:
-			word := a.teamManagerMenuWord(shown, front)
-			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
-			if a.teamsOff() {
-				ln.left = pal.dim(word)
-			}
-		case teamMenuNew:
-			word := "+ New team" + k.more
-			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
-		case teamMenuSettings:
-			word := "  Team settings" + k.more
-			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
 		}
 		lines = append(lines, ln)
 	}
@@ -441,20 +320,43 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 		inner = max(inner, w)
 	}
 	const padX = 1
-	w := inner + 2 + 2*padX
-	h := len(lines) + 2
-	top := tabStripRow + 1
-	if w > width-2 || top+h > height {
+	inner = min(inner, width-2-2-2*padX)
+	if inner < 16 {
 		return wallCard{}
+	}
+	w := inner + 2 + 2*padX
+	top := tabStripRow + 1
+	capacity := height - top - 2
+	if w > width-2 || capacity < 1 {
+		return wallCard{}
+	}
+	m := &a.teamMenu
+	m.cursor = min(max(m.cursor, 0), len(lines)-1)
+	m.top = min(max(m.top, 0), max(len(lines)-capacity, 0))
+	if m.cursor < m.top {
+		m.top = m.cursor
+	}
+	if m.cursor >= m.top+capacity {
+		m.top = m.cursor - capacity + 1
+	}
+	end := min(m.top+capacity, len(lines))
+	title := "Teams"
+	if end-m.top < len(lines) {
+		title += " " + a.teamsDot() + " " + strconv.Itoa(m.top+1) + "-" + strconv.Itoa(end) + " of " + strconv.Itoa(len(lines))
 	}
 	x := min(max(a.wall.chip.from, 1), width-1-w)
 	var cardLines []wallCardLine
-	for _, ln := range lines {
+	for _, ln := range lines[m.top:end] {
 		if ln.row.rule {
 			cardLines = append(cardLines, wallCardLine{rule: true})
 			continue
 		}
-		s := ln.left
+		leftRoom := inner
+		if ln.right != "" {
+			leftRoom -= len(ln.right) + 3
+		}
+		s := ansi.Truncate(ln.left, leftRoom, g.more)
+		ln.leftW = ansi.StringWidth(s)
 		if ln.right != "" {
 			s += strings.Repeat(" ", max(inner-ln.leftW-len(ln.right)-1, 1)) + pal.dim(ln.right) + " "
 		}
@@ -463,5 +365,5 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 			hits: []wallHit{{x0: 0, y0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: ln.row.code, id: ln.row.id}},
 		})
 	}
-	return wallCardBuild(pal, "Teams", cardLines, x, top, w, padX, 0)
+	return wallCardBuild(pal, ansi.Truncate(title, w-5, g.more), cardLines, x, top, w, padX, 0)
 }

@@ -69,8 +69,7 @@ func menuHit(t *testing.T, a *app, code int, id string) wallHit {
 }
 
 // THE CHIP IS THE SWITCHER, ON THE CHAT AS ON THE WALL. A press opens a menu
-// under it with every team, All, and what can be done with the conversation
-// in front; its rows lie on their words, never overlap, and the frame keeps its
+// under it with None and every active team; its rows lie on their words, never overlap, and the frame keeps its
 // size; the keyboard walks it and a choice narrows the strip without leaving
 // the conversation in front when it is a member.
 func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
@@ -79,7 +78,7 @@ func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 		t.Fatal("the chip did not open the switcher")
 	}
 	frame, rows := menuFrame(t, a)
-	for _, want := range []string{"╭─ Teams ─", "◉ ● harbor", "○ ● orbit", "○   All", "− Remove this conversation", "+ New team…", "  Team settings…"} {
+	for _, want := range []string{"╭─ Teams ─", "◉ ● harbor", "○ ● orbit", "○   None"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the switcher lacks %q\n%s", want, frame)
 		}
@@ -126,7 +125,7 @@ func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 	// All widens the strip.
 	a.openTeamMenu()
 	_, _ = menuFrame(t, a)
-	hit = menuHit(t, a, teamMenuAll, "")
+	hit = menuHit(t, a, teamMenuNone, "")
 	a.teamMenuPress(hit.x0+2, hit.y0)
 	if a.wall.activeID != "" {
 		t.Fatalf("All left %q shown", a.wall.activeID)
@@ -135,47 +134,17 @@ func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 
 // ADD FLIPS TO REMOVE. The row puts the conversation in front into the team
 // that is shown and takes it out again, saved, with the menu still up.
-func TestTeamMenuAddsAndRemovesTheFrontConversation(t *testing.T) {
-	a, _, orbit := menuApp(t)
-	front := a.frontTabKey()
-	a.teamActivate(orbit)
-	// orbit does not hold what was in front, so the activation switched; come
-	// back to it with orbit still shown.
-	a.wall.activeID = ""
-	for _, tab := range a.tabList() {
-		if tab.key == front {
-			_ = a.tabGo(tab)
-		}
-	}
-	a.wall.activeID = orbit
+func TestTeamMenuOffersOnlyOverlayChoices(t *testing.T) {
+	a, _, _ := menuApp(t)
 	a.openTeamMenu()
 	frame, _ := menuFrame(t, a)
-	if !strings.Contains(frame, "+ Add this conversation") {
-		t.Fatalf("no Add row:\n%s", frame)
-	}
-	hit := menuHit(t, a, teamMenuToggle, "")
-	a.teamMenuPress(hit.x0+1, hit.y0)
-	if got := a.teamsOf(a.frontTabKey()); len(got) != 2 || !a.teamMenu.on {
-		t.Fatalf("after Add the conversation is in %v, menu %v", got, a.teamMenu.on)
-	}
-	if frame, _ = menuFrame(t, a); !strings.Contains(frame, "− Remove this conversation") {
-		t.Fatalf("the row did not flip:\n%s", frame)
-	}
-	teamsFlush(t, a)
-	disk, _ := loadTeams(a.profileDir, nil)
-	saved := false
-	for _, tm := range disk {
-		if tm.ID == orbit && teamHolds(tm, a.frontTabKey()) {
-			saved = true
+	for _, word := range []string{"Add this conversation", "Remove this conversation", "New team", "Team settings", "Make manager", "Closed"} {
+		if strings.Contains(frame, word) {
+			t.Fatalf("management action %q remains in overlay picker", word)
 		}
 	}
-	if !saved {
-		t.Fatal("the Add was not saved")
-	}
-	hit = menuHit(t, a, teamMenuToggle, "")
-	a.teamMenuPress(hit.x0+1, hit.y0)
-	if got := a.teamsOf(a.frontTabKey()); len(got) != 1 {
-		t.Fatalf("after Remove the conversation is in %v", got)
+	if len(a.teamMenuRows()) != len(a.teamsOpenTree())+1 {
+		t.Fatal("picker has extra rows")
 	}
 }
 
@@ -208,43 +177,26 @@ func TestTeamMenuClosesOnAPressOffItAndOnEsc(t *testing.T) {
 	}
 }
 
-// NEW TEAM AND TEAM SETTINGS OPEN THE WALL WHERE TEAMS ARE EDITED: the card
-// with the conversation in front already picked, or the shown team's settings.
-func TestTeamMenuOpensTheCardAndTheSettings(t *testing.T) {
+// A team selected from the grid leaves the grid and enables its overlay.
+func TestTeamMenuChoosesOverlayFromGridWithoutFilteringIt(t *testing.T) {
 	a, harbor, _ := menuApp(t)
 	front := a.frontTabKey()
-	a.openTeamMenu()
+	a.input.insert("keep this draft")
+	_ = a.openWall()
 	_, _ = menuFrame(t, a)
-	hit := menuHit(t, a, teamMenuNew, "")
-	a.teamMenuPress(hit.x0+1, hit.y0)
-	if !a.wall.on || !a.wall.naming || !a.wall.marked[front] || len(a.wall.marked) != 1 {
-		t.Fatalf("New team: wall %v naming %v marked %v", a.wall.on, a.wall.naming, a.wall.marked)
-	}
-	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	a.closeWall()
-
-	a.openTeamMenu()
-	_, _ = menuFrame(t, a)
-	hit = menuHit(t, a, teamMenuSettings, "")
-	a.teamMenuPress(hit.x0+1, hit.y0)
-	if !a.tsheet.on || a.tsheet.mode != teamSheetSettings || a.tsheet.team != harbor {
-		t.Fatalf("Team settings: card %+v", a.tsheet)
-	}
-	// And on the wall the chip is the switcher too.
-	a.tsheet = teamSheet{}
-	if !a.wall.on {
-		_ = a.openWall()
+	_, _ = a.wallPress(a.wall.chip.from+1, tabStripRow)
+	if !a.teamMenu.on {
+		t.Fatal("grid chip did not open overlay picker")
 	}
 	_, _ = menuFrame(t, a)
-	if _, took := a.wallPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
-		t.Fatal("the chip on the wall did not open the switcher")
-	}
-	if frame, _ := menuFrame(t, a); !strings.Contains(frame, "╭─ Teams ─") {
-		t.Fatalf("the switcher is not drawn over the wall:\n%s", frame)
+	hit := menuHit(t, a, wallPopTeam, harbor)
+	drive(t, a, runCmd(a.teamMenuPress(hit.x0+1, hit.y0))...)
+	if a.wall.on || a.teamViews.id != harbor || a.frontTabKey() != front || a.input.String() != "keep this draft" {
+		t.Fatal("overlay choice did not return to unchanged chat")
 	}
 }
 
-// WITH NO TEAM SHOWN THE CHIP IS A QUIET `All ▾` while there are teams, and
+// WITH NO TEAM SHOWN THE CHIP IS A QUIET `Teams ▾` while there are teams, and
 // is not there at all while there are none.
 func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	a, _, _ := tabApp(t)
@@ -256,20 +208,20 @@ func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	a.teamActivate("")
 	a.touch()
 	row := plain(a.tabsRow(a.width))
-	if !strings.Contains(row, " All ▾ ") || !a.wall.chip.pressable() {
+	if !strings.Contains(row, " Teams ▾ ") || !a.wall.chip.pressable() {
 		t.Fatalf("no quiet chip: %q", row)
 	}
 	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
 		t.Fatal("the quiet chip did not open the switcher")
 	}
 	frame, _ := menuFrame(t, a)
-	if !strings.Contains(frame, "◉   All") || strings.Contains(frame, "Add this conversation") || strings.Contains(frame, "Team settings") {
+	if !strings.Contains(frame, "◉   None") || strings.Contains(frame, "Add this conversation") || strings.Contains(frame, "Team settings") {
 		t.Fatalf("the switcher with no team shown:\n%s", frame)
 	}
 	a.pal.ascii = true
 	a.touch()
 	frame, _ = menuFrame(t, a)
-	if !strings.Contains(frame, "*   All") || strings.ContainsAny(frame, "◉○") {
+	if !strings.Contains(frame, "*   None") || strings.ContainsAny(frame, "◉○") {
 		t.Fatalf("the ASCII switcher:\n%s", frame)
 	}
 }

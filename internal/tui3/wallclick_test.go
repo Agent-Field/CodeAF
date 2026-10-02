@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // wallHitFor is the first target of kind and arg on the wall as it was last
@@ -49,71 +48,28 @@ func wallClick(t *testing.T, a *app, hit wallHit) tea.Cmd {
 	return cmd
 }
 
-// A HAND CAN DO WHAT THE KEYS DO: pick two tiles with their boxes, make a team
-// of them from the tray, keep the name the wall offered, and land in it.
-func TestWallClickPicksTilesAndMakesATeam(t *testing.T) {
+// Selection and bulk dismissal use the same view-only door as the keys.
+func TestWallClickPicksTilesAndClosesViews(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
 	_ = a.wallFrame(a.width, a.height)
-	if n := len(a.wallShown(a.now())); n < 2 {
-		t.Fatalf("%d tiles", n)
-	}
-
-	// The box is revealed by the hover, then pressed.
+	tiles := a.wallShown(a.now())
 	body := wallHitFor(t, a, wallHitTile, 1)
 	a.wallMotion(body.x0+4, body.y0+2)
 	_ = a.wallFrame(a.width, a.height)
 	wallClick(t, a, wallHitFor(t, a, wallHitSelect, 1))
-	if len(a.wall.marked) != 1 {
-		t.Fatalf("the box marked %d tiles", len(a.wall.marked))
-	}
-	// Selection mode: a press on another tile's body picks it too.
 	wallClick(t, a, wallHitFor(t, a, wallHitTile, 0))
 	if len(a.wall.marked) != 2 {
-		t.Fatalf("a press in selection mode marked %d tiles", len(a.wall.marked))
+		t.Fatalf("selected %d", len(a.wall.marked))
 	}
-	if !strings.Contains(wallPlainFrame(a.wallFrame(a.width, a.height)), "2 selected") {
-		t.Fatal("no tray")
+	wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActCloseViews)))
+	if len(a.wallShown(a.now())) != len(tiles)-2 || len(a.wall.marked) != 0 {
+		t.Fatal("Close views left selected tiles visible")
 	}
-
-	wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActMakeTeam)))
-	if !a.wall.naming || a.wall.name == "" || !a.wall.nameFresh {
-		t.Fatalf("make team opened no card with a name in it: naming=%v name=%q", a.wall.naming, a.wall.name)
-	}
-	offered := a.wall.name
-	// While the card is up nothing under it answers.
-	if cmd := a.wallDo(wallHit{kind: wallHitAction, arg: int(wallActClear)}); cmd != nil || len(a.wall.marked) != 2 {
-		t.Fatal("the card let a press through")
-	}
-	wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActSave)))
-	if a.wall.naming || a.wall.activeID != "" || len(a.wall.teams) == 0 || a.wall.teams[len(a.wall.teams)-1].Name != offered {
-		t.Fatalf("create did not make %q and stay in the view: %+v active=%q", offered, a.wall.teams, a.wall.activeID)
-	}
-	if len(a.wall.marked) != 0 || a.wall.made != offered {
-		t.Fatalf("after create: marked=%v made=%q", a.wall.marked, a.wall.made)
-	}
-	// `Made` is said once the store took the team (teamwritesaid.go).
-	teamsFlush(t, a)
-	if !strings.Contains(ansi.Strip(a.wallFrame(a.width, a.height)[a.wall.headRows+1]), "Made "+offered) {
-		t.Fatal("the chips row does not say the team was made")
-	}
-
-	// The chip for all widens the wall again, and the typed name replaces the
-	// offered one.
-	wallClick(t, a, wallHitForTeam(t, a, wallHitChip, ""))
-	if a.wall.activeID != "" {
-		t.Fatalf("the all chip left team %q active", a.wall.activeID)
-	}
-	a.wallKey(tea.KeyPressMsg{Code: 's', Text: "s"})
-	a.wallKey(tea.KeyPressMsg{Code: 'q', Text: "q"})
-	if a.wall.name != "q" {
-		t.Fatalf("the first key did not replace the offered name: %q", a.wall.name)
-	}
-	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	// esc with tiles picked clears the pick before it closes anything.
-	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if !a.wall.on || len(a.wall.marked) != 0 {
-		t.Fatalf("esc: on=%v marked=%v", a.wall.on, a.wall.marked)
+	for _, tile := range tiles[:2] {
+		if a.behind[tile.tab.key] == nil {
+			t.Fatal("closing a view discarded its conversation")
+		}
 	}
 }
 
@@ -140,59 +96,35 @@ func TestWallTileFromTeamsPageLandsOnConversation(t *testing.T) {
 	}
 }
 
-// A CONVERSATION'S TEAMS ARE A CLICK AWAY: its ●+ opens the popover, a box
-// puts it in a team and takes it out again, and a team's dot opens its
-// settings, where it is renamed, recoloured and deleted, the last only once
-// the question is answered.
-func TestWallClickTeamsPopoverAndSettings(t *testing.T) {
+// Membership context stays in the grid while settings remain on Teams.
+func TestWallKeepsTeamControlsOnTeamsPage(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
-	_ = a.wallFrame(a.width, a.height)
 	tiles := a.wallShown(a.now())
 	harbor, err := a.teamMake("harbor", []chatTab{tiles[0].tab})
 	if err != nil {
 		t.Fatal(err)
 	}
-	orbit, err := a.teamMake("orbit", []chatTab{tiles[0].tab})
-	if err != nil {
+	if _, err := a.teamMake("orbit", []chatTab{tiles[0].tab}); err != nil {
 		t.Fatal(err)
 	}
+	a.wallMotion(10, 10)
 	_ = a.wallFrame(a.width, a.height)
-	key := tiles[1].tab.key
-
-	// Hover the tile so its controls are drawn, then press its ●+.
-	body := wallHitFor(t, a, wallHitTile, 1)
-	a.wallMotion(body.x0+4, body.y0+3)
-	_ = a.wallFrame(a.width, a.height)
-	wallClick(t, a, wallHitFor(t, a, wallHitTeams, 1))
-	if a.wall.pop.kind != wallPopMembers || len(a.wall.pop.targets) != 1 || a.wall.pop.targets[0] != key {
-		t.Fatalf("the popover: %+v", a.wall.pop)
+	for _, hit := range a.wall.hits {
+		switch hit.kind {
+		case wallHitTeams, wallHitChip, wallHitChipMenu, wallHitAddTeam:
+			t.Fatalf("grid offers team control %+v", hit)
+		}
 	}
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "☐ ● harbor") || !strings.Contains(frame, "+ New team") {
-		t.Fatalf("the popover is not drawn:\n%s", frame)
-	}
-	wallClick(t, a, wallHitForTeam(t, a, wallHitPopRow, orbit))
-	if got := a.teamsOf(key); len(got) != 1 || got[0] != orbit {
-		t.Fatalf("after one box the conversation is in %v", got)
-	}
-	a.wallKey(tea.KeyPressMsg{Code: tea.KeyUp})
-	a.wallKey(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	if got := a.teamsOf(key); len(got) != 2 {
-		t.Fatalf("after the keyboard's box the conversation is in %v", got)
-	}
-	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if a.wall.pop.kind != wallPopNone || !a.wall.on {
-		t.Fatal("esc did not put the popover away, or took the whole view with it")
+	a.closeWall()
+	runCmd(a.showPage(pageTeams))
+	runCmd(a.teamsSelect(harbor))
+	target := teamsTargetOf(t, a, teamsActSettings, harbor)
+	drive(t, a, tea.MouseClickMsg{X: target.x0, Y: target.y, Button: tea.MouseLeft})
+	if !a.tsheet.on || a.tsheet.team != harbor {
+		t.Fatal("Teams settings did not open")
 	}
 
-	// The dot on a segment opens that team's settings.
-	_ = a.wallFrame(a.width, a.height)
-	wallClick(t, a, wallHitForTeam(t, a, wallHitChipMenu, harbor))
-	// The team's card (teamsheet.go), over the wall.
-	if !a.tsheet.on || a.tsheet.team != harbor || a.tsheet.name.String() != "harbor" {
-		t.Fatalf("settings: %+v", a.tsheet)
-	}
 	before := a.wall.teams[0].HueSpec()
 	a.teamSheetDo(tsSwatch + 2)
 	if a.wall.teams[0].HueSpec() == before {
@@ -212,7 +144,7 @@ func TestWallClickTeamsPopoverAndSettings(t *testing.T) {
 	_ = a.wallFrame(a.width, a.height)
 	// The card's `Close team…` closes it (ruling c-9: a team is deleted only
 	// once closed, from the teams page), and the wall's Teams row drops it.
-	wallClick(t, a, wallHitForTeam(t, a, wallHitChipMenu, harbor))
+	runCmd(a.teamsDo(teamsTarget{act: teamsActSettings, id: harbor}))
 	a.teamSheetDo(tsCloseTeam)
 	a.teamSheetDo(tsCloseNow)
 	if got, ok := a.teamByID(harbor); !ok || !got.Closed() {

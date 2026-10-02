@@ -193,7 +193,6 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 	left := []wallButton{{act: wallActBack, label: k.back + " Back", key: "esc"}}
 	acts := []wallButton{
 		{act: wallActFilter, label: "Filter", key: "/"},
-		{act: wallActNewTeam, label: "New team", key: "s"},
 	}
 	cols := []wallButton{{act: wallActColsLess, label: k.minus}, {act: wallActColsMore, label: "+"}}
 	const colsWord = "Columns"
@@ -880,7 +879,6 @@ func wallTileActs(ascii bool, t wallTile, w int) []wallTileAct {
 	all := []wallTileAct{
 		{kind: wallHitOpen, btn: first},
 		{kind: wallHitSelect, btn: wallButton{label: "Select", key: k.pick}},
-		{kind: wallHitTeams, btn: wallButton{label: "Teams", key: "m"}},
 		{kind: wallHitClose, btn: wallButton{label: "Close", key: "x"}},
 	}
 	// The row keeps "╰─" before the first button and at least one rule cell
@@ -1102,13 +1100,10 @@ func wallTray(pal palette, g wallGlyphs, v wallView, width, height int) wallCard
 	if n == 0 || height < 8 {
 		return wallCard{}
 	}
-	k := wallKeysFor(pal.ascii)
 	word := strconv.Itoa(n) + " selected"
 	lead := pal.accent(g.marked) + " " + pal.ink(word) + "  "
 	leadW := ansi.StringWidth(g.marked) + 1 + len(word) + 2
 	bs := []wallButton{
-		{act: wallActMakeTeam, label: "Make team", key: "s"},
-		{act: wallActAddTo, label: "Add to" + k.more + " " + k.caret},
 		{act: wallActCloseViews, label: "Close views"},
 		{act: wallActClear, label: "Clear", key: "esc"},
 	}

@@ -267,7 +267,7 @@ func TestWallRenderStates(t *testing.T) {
 	frame := wallPlainFrame(rows)
 	for _, want := range []string{
 		"▦ Conversations", "open in this window · in port", "⠿ 2 running", "? 1 needs you", "6 open",
-		"Teams", "All 6", "port 3", "+ New team",
+		"Filter /", "Help ?",
 		"Answer ↵", "seen 6m ago", "running bash " + wallGlyphsFor(false).sep + " 2m", "? waiting on you",
 		"updated 5m ago", "☑", "▌", tokens.Spinner(v.spin),
 	} {
@@ -503,7 +503,7 @@ func TestWallBarTrayIffMarked(t *testing.T) {
 					adds = true
 				}
 			}
-			if makes != marks || (marks && !adds) {
+			if makes || adds {
 				t.Fatalf("%dx%d marks=%v: make team=%v add to=%v\n%s", sz[0], sz[1], marks, makes, adds, frame)
 			}
 			if bar := ansi.Strip(rows[len(rows)-1]); !strings.Contains(bar, "Back esc") {
@@ -666,8 +666,8 @@ func TestWallTileActionRowDropsFromTheRight(t *testing.T) {
 				t.Fatalf("%s width %d: the action row is %d cells", pname, w, got)
 			}
 		}
-		if n := len(wallTileActs(pal.ascii, v.tiles[0], 200)); n != 4 {
-			t.Fatalf("%s: a wide tile carries %d buttons, want 4", pname, n)
+		if n := len(wallTileActs(pal.ascii, v.tiles[0], 200)); n != 3 {
+			t.Fatalf("%s: a wide tile carries %d buttons, want 3", pname, n)
 		}
 	}
 }
@@ -756,24 +756,9 @@ func TestWallClickTeamsAndMinimap(t *testing.T) {
 		}
 		c, _, tileH := wallGrid(n, 120, 40, 0)
 		overflow := (n+c-1)/c > wallVisibleRows(40, tileH)
-		if len(chips) != 4 || !add || menus != 3 || (minis > 0) != overflow {
+		if len(chips) != 0 || add || menus != 0 || (minis > 0) != overflow {
 			t.Fatalf("n%d: chips %v, + New team %v, %d dots, %d minimap cells\n%s", n, chips, add, menus, minis, ansi.Strip(rows[1]))
 		}
-	}
-	v := wallUnmarked(wallFixture(6))
-	v.hover = wallHitRef{kind: wallHitChip, id: wallTestIDs[1]}
-	rows, hits := renderWall(pal, v, 120, 40)
-	if !strings.Contains(ansi.Strip(rows[1]), "infra ⋯ │") {
-		t.Fatalf("the hovered segment shows no ⋯: %q", ansi.Strip(rows[1]))
-	}
-	tails := 0
-	for _, hit := range hits {
-		if hit.kind == wallHitChipMenu && hit.id == wallTestIDs[1] {
-			tails++
-		}
-	}
-	if tails != 2 || strings.Count(ansi.Strip(rows[1]), "⋯") != 1 {
-		t.Fatalf("the hovered segment: %d settings targets, row %q", tails, ansi.Strip(rows[1]))
 	}
 }
 
@@ -955,31 +940,25 @@ func TestWallToolbarExplainsTheHover(t *testing.T) {
 
 // THE TEAMS ROW IS ONE SEGMENTED CONTROL: every separator has one blank cell
 // either side, and + New team is its last segment.
-func TestWallTeamsRowIsEvenlyPadded(t *testing.T) {
+func TestWallControlRowHasNoTeamNavigation(t *testing.T) {
 	for pname, pal := range wallTestPalettes() {
 		for _, hover := range []wallHitRef{{}, {kind: wallHitChip, id: wallTestIDs[1]}} {
 			v := wallUnmarked(wallFixture(6))
 			v.hover = hover
-			rows, _ := renderWall(pal, v, 120, 40)
+			rows, hits := renderWall(pal, v, 120, 40)
 			row := ansi.Strip(rows[1])
-			sep := "│"
-			if pal.ascii {
-				sep = "|"
-			}
-			parts := strings.Split(row, sep)
-			if len(parts) != 5 {
-				t.Fatalf("%s: %d segments in %q", pname, len(parts), row)
-			}
-			for i, p := range parts {
-				if i > 0 && (!strings.HasPrefix(p, " ") || strings.HasPrefix(p, "  ")) {
-					t.Fatalf("%s: segment %d is %q", pname, i, p)
-				}
-				if i < len(parts)-1 && (!strings.HasSuffix(p, " ") || strings.HasSuffix(p, "  ")) {
-					t.Fatalf("%s: segment %d is %q", pname, i, p)
+			for _, word := range []string{"New team", "infra", "port", "Organize"} {
+				if strings.Contains(row, word) {
+					t.Fatalf("%s grid control row offers %q: %q", pname, word, row)
 				}
 			}
-			if !strings.HasPrefix(parts[4], " + New team ") {
-				t.Fatalf("%s: + New team is not the last segment: %q", pname, row)
+			if ansi.StringWidth(row) != 120 {
+				t.Fatalf("%s row width %d", pname, ansi.StringWidth(row))
+			}
+			for _, hit := range hits {
+				if hit.kind == wallHitChipMenu {
+					t.Fatal("stale hover exposed team settings")
+				}
 			}
 		}
 	}

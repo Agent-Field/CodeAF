@@ -39,16 +39,7 @@ import (
 //	enter              open the focused tile         a press on any tile, or Open
 //	space              pick the focused tile         Select; any tile once one is picked
 //	x                  close its view, or the picked'  Close on a tile, Close views
-//	m                  its teams, or the picked'    Teams on a tile, Add to…
-//	s                  new team of the picked       + New team, Make team
-//	e                  the shown team's card        a segment's dot or ⋯
-//	r                  resume the shown team's      the title's Open them
-//	                   members not open here
-//	tab, shift+tab     next or previous team        a Teams segment
-//	1 to 9             that team, again for All     a Teams segment
-//	D                  close the shown team         Close… on its card
-//	o                  suggest teams, on All        ✦ Organize on the Teams row
-//	u                  undo the last Organize       Undo, while the Teams row offers it
+//	tab, shift+tab     next or previous conversation (key only)
 //	/                  filter                        Filter /
 //	-, + or =          fewer or more columns         Columns − +
 //	0                  columns back to automatic     (key only)
@@ -90,7 +81,9 @@ func wallOpenPressed(msg tea.KeyPressMsg) bool {
 func (a *app) openWall() tea.Cmd {
 	a.teamsEnsure()
 	now := a.now()
+	a.wall.returnTeam, a.wall.returnView = a.teamViews.id, a.tabView
 	a.wall.on = true
+	a.wall.activeID = ""
 	a.wall.openedAt = now
 	a.wall.naming, a.wall.filterOn = false, false
 	a.wall.places = nil
@@ -125,6 +118,9 @@ func (a *app) openWall() tea.Cmd {
 }
 
 func (a *app) closeWall() {
+	if a.wall.on && a.teamViews.id == a.wall.returnTeam {
+		a.tabView = a.wall.returnView
+	}
 	a.wall.on = false
 	a.wall.activeID = a.teamViews.id
 	a.wall.naming, a.wall.filterOn = false, false
@@ -140,38 +136,10 @@ func (a *app) closeWall() {
 	a.touch()
 }
 
-// wallShown is the tiles the wall draws: every conversation open in this
-// window, narrowed to the active team's members when one is active. A member
-// this window does not have open is not a tile; the title counts it and
-// offers to resume it ([app.wallResumeAway]).
+// wallShown always reads the conversations open in this window. Team overlays
+// select Chats tabs only; they cannot hide an unrelated conversation in the grid.
 func (a *app) wallShown(now time.Time) []wallTile {
-	tiles := a.wallTiles(now)
-	sp, ok := a.teamActive()
-	if !ok {
-		return tiles
-	}
-	in := make(map[string]bool, len(sp.Members))
-	for _, m := range sp.Members {
-		in[m.Key] = true
-	}
-	kept := tiles[:0]
-	for _, tile := range tiles {
-		if in[tile.tab.key] {
-			kept = append(kept, tile)
-		}
-	}
-	// THE MANAGER'S TILE IS PINNED FIRST, as its tab is the strip's first
-	// place, and wears the manager's mark (teammanager.go).
-	for i, tile := range kept {
-		if sp.Manager == "" || tile.tab.key != sp.Manager {
-			continue
-		}
-		tile.manager = true
-		copy(kept[1:i+1], kept[:i])
-		kept[0] = tile
-		break
-	}
-	return kept
+	return a.wallTiles(now)
 }
 
 // wallHead is the rows above the grid: the same pulse, tab strip and rule
@@ -204,7 +172,11 @@ func (a *app) wallFrame(width, height int) []string {
 	a.wall.spinning = false
 	for i := range tiles {
 		tiles[i].marked = a.wall.marked[tiles[i].tab.key]
-		tiles[i].teams = a.teamsOf(tiles[i].tab.key)
+		for _, id := range a.teamsOf(tiles[i].tab.key) {
+			if t, ok := a.teamByID(id); ok && !t.Closed() {
+				tiles[i].teams = append(tiles[i].teams, id)
+			}
+		}
 		tail := a.wall.tails[tiles[i].tab.key]
 		tiles[i].rows = a.wallMiniRows(tail, wallInnerW(tileW))
 		if tail != nil {
@@ -250,40 +222,18 @@ func (a *app) wallFrame(width, height int) []string {
 		helpTop:   a.wall.helpTop,
 		doorHot:   a.hot.kind == hoverTab && a.wall.door.pressable() && a.hot.index == a.wall.door.from,
 	}
-	if t, ok := a.teamActive(); ok {
-		view.team = t.ID
-	}
-	view.popManager, view.mark = a.wallPopManagerRow(), a.teamManagerMark()
-	if view.popManager != 0 {
-		if t, ok := a.teamActive(); ok && len(a.wall.pop.targets) == 1 {
-			view.popManagerWord = a.teamManagerMenuWord(t, a.wall.pop.targets[0])
+	// Text filtering changes the shown count, never the window's open count.
+	for _, tab := range a.tabList() {
+		if !tab.start && !tab.work && (tab.here || a.behind[tab.key] != nil) {
+			view.total++
 		}
 	}
-	// The counts are of conversations open in this window, whatever a filter
-	// is hiding: a team's members this window has no tab for are still
-	// members, but they are not on the wall; the title counts them apart and
-	// offers to resume them ([app.wallResumeAway]). They are read off the
-	// strip's list, not a second build of every tile.
-	open := map[string]bool{}
-	tabs := a.tabList()
-	for _, tab := range tabs {
-		if !tab.start && !tab.work {
-			open[tab.key] = true
+	// Membership dots are context; they do not filter or manage this grid.
+	for _, t := range a.wall.teams {
+		if t.Closed() {
+			continue
 		}
-	}
-	view.org = a.wallOrganizeFrame(tiles, tabs)
-	view.total = len(open)
-	for _, t := range a.wallTeams() {
-		n := 0
-		for _, m := range t.Members {
-			if open[m.Key] {
-				n++
-			}
-		}
-		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: a.wallTeamLabel(t), hue: t.HueSpec(), count: n, members: len(t.Members)})
-	}
-	if t, ok := a.teamActive(); ok {
-		view.away = len(a.teamAway(t, tabs))
+		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: a.wallTeamLabel(t), hue: t.HueSpec(), members: len(t.Members)})
 	}
 	rows, hits := renderWall(a.pal, view, width, room)
 	// A scroll moved the tiles under a pointer that did not move: the target
@@ -463,20 +413,6 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		return a.wallOpen(tiles, a.wall.focus)
 	case "space":
 		a.wallToggle(tiles, a.wall.focus)
-	case "m":
-		// The picked conversations' teams, as the tray's Add to… opens them;
-		// with none picked, the focused one's, as a press on its Teams does.
-		if marked := a.wallMarkedTabs(tiles); len(marked) > 0 {
-			keys := make([]string, 0, len(marked))
-			for _, tab := range marked {
-				keys = append(keys, tab.key)
-			}
-			a.wallOpenMembers(keys, a.wallAnchor(wallHitAction, int(wallActAddTo)))
-		} else if n > 0 {
-			a.wallOpenMembers([]string{tiles[a.wall.focus].tab.key}, a.wallAnchor(wallHitTeams, a.wall.focus))
-		}
-	case "s":
-		return a.wallStartNaming(tiles)
 	case "x":
 		// The picked views, as the tray's Close views does; with none picked,
 		// the focused one's, as its Close does.
@@ -487,25 +423,6 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 			return nil
 		}
 		return a.wallDismissAt(tiles, a.wall.focus)
-	case "r":
-		// The shown team's members not open here, as the title's Open them.
-		return a.wallResumeAway()
-	case "e":
-		// The shown team's settings, where its dot or ⋯ opens them.
-		if id := a.wall.activeID; id != "" {
-			return a.teamSheetOpen(id, teamSheetSettings)
-		}
-	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-		// A team by its place on the Teams row; the digit of the team that
-		// is shown goes back to All, so the same key undoes itself.
-		i := int(key[0] - '1')
-		switch {
-		case i >= len(a.wallTeams()):
-		case a.wallTeams()[i].ID == a.wall.activeID:
-			a.wallSetTeam("")
-		default:
-			a.wallSetTeam(a.wallTeams()[i].ID)
-		}
 	case "/":
 		a.wall.filterOn = true
 	case "n":
@@ -513,7 +430,13 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "?":
 		a.wallOpenHelp()
 	case "tab", "shift+tab":
-		a.wallCycleTeam(key == "tab")
+		if n > 0 {
+			step := 1
+			if key == "shift+tab" {
+				step = n - 1
+			}
+			a.wallMove((a.wall.focus+step)%n, n)
+		}
 	case "-":
 		a.wallCols(-1, n)
 	case "=", "+":
@@ -521,17 +444,7 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "0":
 		a.wall.cols = 0
 		a.wallMove(a.wall.focus, n)
-	case "D":
-		// CLOSE the shown team (ruling c-9): at once with Undo when nothing
-		// in it runs, and the close card when something does. A team is
-		// deleted only from the teams page's Closed fold, once it is closed.
-		if id := a.wall.activeID; id != "" {
-			return a.teamsCloseAsk(id)
-		}
-	case "o":
-		return a.wallOrganizeOpen()
-	case "u":
-		a.wallOrganizeUndo()
+
 	}
 	return nil
 }
@@ -586,6 +499,10 @@ func (a *app) wallOpen(tiles []wallTile, i int) tea.Cmd {
 		return nil
 	}
 	tab := tiles[i].tab
+	// Save the original overlay's viewport, not the grid's borrowed strip.
+	if a.teamViews.id == a.wall.returnTeam {
+		a.tabView = a.wall.returnView
+	}
 	a.teamViewSet("")
 	from, ok := a.wallTileRect(i)
 	a.closeWall()
