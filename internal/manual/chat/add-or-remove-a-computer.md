@@ -100,7 +100,7 @@ When you have two or more devices, home shows one row of them:
 ● This Mac  ● spark  ○ dumb (offline)
 ```
 
-A filled green dot `●` is a device that is online now, and always your own. A hollow dim dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. The row changes by itself within a second or two when a device comes or goes. If home cannot tell who is online, the row is not drawn, because a row that guessed would be wrong.
+A filled green dot `●` is a device that is online now, and always your own. A hollow dim dot `○` with `(offline)` is one that is not online: its lid is closed or codeaf is not running there. A computer counts as online only while it keeps answering: when another computer has not answered for 25 seconds (it is asleep, frozen, switched off or disconnected) its dot goes hollow and reads `(offline)`, within 30 seconds of its last answer, and a frozen computer no longer shows as online for minutes. It is back at once when it answers again. The row changes by itself, with no key to press, when a device comes or goes. As a backstop, home also reads the list again every 5 minutes while it is connected, and every minute while it is not. If home cannot tell who is online, the row is not drawn, because a row that guessed would be wrong.
 
 Under the row, `alt+m bring work here` brings the newest chat of an online device to this one. With more than one choice it asks `Which device?` and the last choice is `leave it there`. If there is nothing to bring it says `no other device that is online has a chat to bring here`. The page *Continuing a chat on another device* tells what happens next.
 
@@ -123,7 +123,7 @@ To remove a device, move to its row and press `r`. It is removed at once and the
 dumb was revoked - it can no longer reach your chats.
 ```
 
-The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `spark #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself - choose another row.` A computer that is already revoked does nothing when you press `r`. A removed computer can only come back as a new request that you approve. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
+The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `spark #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself - choose another row.` A computer that is already revoked does nothing when you press `r`. A removed computer can only come back as a new request that you approve. If you remove a computer from another of your devices while this list is open, its row changes to `revoked` here too, without closing the list. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
 **I was told this device was removed.** Another of your devices removed this one. The chat says:
 

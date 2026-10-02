@@ -82,10 +82,11 @@ times and verdicts go to `$UX_EVIDENCE` (default `~/ux-evidence/e2e-run.json`).
 Pass: every step prints its screen and the test ends `ok`. The journey budget is two minutes.
 
 **Durability, against the Go relay or any other.** The same tests as section 3 run against
-`$CODEAF_HOSTED_URL`; point it at your own relay to keep the load off the hosted one:
+`$CODEAF_RELAY`, the same variable every script reads, with no default; a run with it unset stops
+(the Go suite skips) and names it. Point it at your own relay to keep the load off a hosted one:
 
 ```sh
-CODEAF_HOSTED_URL=$CODEAF_RELAY scripts/durability-hosted.sh KillAfterLoneCall
+CODEAF_RELAY=https://relay.example.com scripts/durability-hosted.sh KillAfterLoneCall
 ```
 
 The name after the script picks one test (`KillAfterLoneCall`, `KillAfterBurst`,
