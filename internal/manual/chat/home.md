@@ -1480,13 +1480,15 @@ tab that turns them off, are on the *hints and tips* page.
 Yes. Type `@` into home's box and the same list a conversation's box opens appears in
 home's column, with the same sections and the same prefixes. Its first row is the words
 **team**, **chat** and **file**; under them come **teams**, then **conversations**, then
-files and folders under the folder the next conversation opens in (the one at the right
-of the keys row), ranked as you type, `folder` and `img` tags on the right. `@team:`
+files and folders, ranked as you type, `folder` and `img` tags on the right. Their
+root is the pinned target, otherwise this window's workspace; over `--host` the
+unpinned list uses this machine's working directory, as a conversation's list does. `@team:`
 keeps only teams, `@chat:` only conversations, `@file:` only files, exactly as in a
 conversation. Typing or pasting opens the catalogs and starts the same reads.
-The conversations are every tab open in this window, including other projects' tabs and the one
-behind home, since the sentence opens a new conversation — then the twenty most recent
-in this project, read again each time the list opens.
+The conversations are named or sent conversations open in this window, including other
+projects and the one behind home — then the twenty most recent in this project. An unnamed
+conversation with nothing sent is absent even if its unsent draft names a tab. Each time
+the list appears, including a paste, it reads the recent list again.
 
 `↑`/`↓` pick and `enter` puts the row in: a team as `●harbor` in the team's colour, a
 conversation as `@handle` or a short slug of its title, a path after the `@`. Choosing a
@@ -1499,6 +1501,21 @@ still running the column reads `looking…`; with no match it reads `no matches`
 prefix `no team matches`, `no conversation matches` or `no file matches`. On home the three
 words on the first row are not buttons: type the prefix.
 
+## Which project home's @ paths use
+
+Home's `@` files come from the target pinned with `alt+p` or `/project`, otherwise
+this window's file root. On a local window that is the workspace, the folder the
+sentence opens in and the one named after `project: ` on the keys row while the
+list is up. Over `--host`, the unpinned list offers this machine's files, as a
+conversation's list does; the foot and sent sentence use the far machine's
+workspace. The project row the cursor stood on before opening the list does not
+choose the file root.
+
+Changing the pinned project while the list is up replaces its files immediately
+and starts the new folder's walk. A late answer from the old folder is ignored.
+With the list closed, arrows across other projects leave the completed walk
+alone; opening the list again on that folder reuses it.
+
 ## Searching home's @ list with spaces and writing after a mention
 
 On home, a bare `@` token ends at its first space: `ask @ben to fix` stays a
@@ -1508,7 +1525,8 @@ token. Only prefixed searches hold spaces, up to three and never across a newlin
 match every word in any order; finished words match whole, and only the final
 word may match by letters in order.
 
-A first pasted search stays open while its catalog is being read. A prefixed
+Every opening reads the recent list again, including a pasted search after an earlier read.
+A prefixed chat search stays open with `looking…` until that fresh read answers. A prefixed
 search of several words with no match closes after that read. New rows keep the
 chosen row selected while it is still offered. After choosing, a space or
 punctuation such as a comma keeps the list closed so you can write on.

@@ -9018,9 +9018,9 @@ func (a *app) paste(text string) tea.Cmd {
 		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
 		// ask the same question of the same keyboard and get the same answer.
 		box, chips := a.keyboardBox()
-		was, root := a.home.comp.open, ""
+		was := a.home.comp.open
 		if box == &a.home.box {
-			root = a.prepareHomeCompletion()
+			a.prepareHomeCompletion(text)
 		}
 		wasEmpty := len(box.value) == 0
 		if box == &a.home.box {
@@ -9038,7 +9038,7 @@ func (a *app) paste(text string) tea.Cmd {
 		a.dropLanded(box)
 		a.touch()
 		if box == &a.home.box {
-			return a.syncHomeCompletion(was, root)
+			return a.syncHomeCompletion(was)
 		}
 		return nil
 	}
@@ -9226,8 +9226,10 @@ func (a *app) syncLists() tea.Cmd {
 	was := a.comp.open
 	a.fillMentions()
 	a.comp.sync(&a.input)
-	if a.comp.open && !was {
-		// The list coming up is the proof that `@` has been found (notice.go).
+	if (a.comp.open || a.comp.opened) && !was {
+		a.comp.opened = false
+		// Recognizing an opening proves that `@` has been found (notice.go),
+		// even when its ready section closes before a frame.
 		a.noticeEvent(eventAtOpened)
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the

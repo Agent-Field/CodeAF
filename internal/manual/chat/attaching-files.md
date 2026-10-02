@@ -559,21 +559,24 @@ Type `@` in the message box. The list under it has three words on the first row,
 **team**, **chat** and **file**, then teams, conversations, tasks, and files. Typing
 filters every section at once. `@file:` keeps only files, `@team:` only teams,
 `@chat:` only conversations. The three words are buttons: a press types that prefix,
-the word under the pointer takes a background, and the hint names the key, `click`.
+the hint says `click`.
 
 The conversations on it are the tabs open in this window, including other projects'
-tabs, except the one you are
-typing in, and then the twenty most recent in this project, read again each time
-the list opens, by typing or pasting. An older conversation or one in another
-project is offered only if already open here; otherwise use `/resume`. The bare
+tabs, except the one you are typing in. An unnamed conversation with nothing sent
+is absent even if its unsent draft names a tab. Then come the twenty most recent
+in this project, read again each time the list opens, by typing or pasting. For
+older or other-project conversations not open here, use `/resume`. The bare
 `@` shows eight of them; `@chat:` shows them all and scrolls. Home's box opens the
-same list with the same sections and prefixes, leaving no conversation off.
+same list with the same sections and prefixes, leaving no eligible conversation off.
+Files use the pinned target or workspace. Locally the foot's `project: `
+names that folder and the sentence opens there. Over `--host`, the unpinned
+list offers this machine's files, as in a conversation; the foot and sent
+sentence use the far workspace.
 
 Choosing a file still puts `@` and the path in the sentence, and nothing is read
-until the model asks. Choosing a team puts `●harbor` in the team's colour. Choosing
-a conversation puts `@handle`, or a short slug of the title when it has no handle,
-and the hint on the row is the full title. A conversation that is in no team is
-still on the list.
+until the model asks. Choosing a team puts `●harbor` in its current colour, on
+home too. Choosing a conversation puts `@handle`, or a short slug of the title when it has no handle,
+and the hint on the row is the full title. Conversations in no team are offered too.
 
 After you send, that team mark and that `@handle` stay clickable. A press on the
 team opens the teams page with it selected. A press on the conversation opens it. Over
@@ -592,7 +595,8 @@ spaces and never across a newline. Teams, conversations and files match every
 word in any order; only the final word may match by letters in order. Tasks keep
 their own scorer for the whole query.
 
-Typing or pasting starts the same catalog reads, including on home. Several
-words with no match close a prefixed search only after its catalog has been read;
-before then it stays open with `looking…`. A space or punctuation after a chosen
-mention keeps the list closed so you can write on.
+Every opening starts a fresh read of the recent list, by typing or pasting,
+including on home and after an earlier read. Further letters in an open list
+start no new read. Several words with no match close a prefixed search only after its catalog has been read;
+before that fresh read answers it stays open with `looking…`. A space or
+punctuation after a chosen mention keeps the list closed so you can write on.

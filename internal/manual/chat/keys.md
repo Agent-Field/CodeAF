@@ -1540,7 +1540,9 @@ picture's `img` note. Choosing one puts its path into the sentence, exactly as a
 file does. It does not choose that folder as a place; `/folder` does that.
 
 The prefix words, teams and open tabs arrive from memory. Recent conversations and
-the file walk arrive as they are read. Typing or pasting starts the same reads.
+the file walk arrive as they are read. Whenever the list appears, by typing or
+pasting, it reads the recent list again. A prefixed multi-word conversation search waits with
+`looking…` until that fresh read answers, even after an earlier read.
 An unread catalog says `looking…`; a read with no match says `no matches`, or
 `no team matches`, `no conversation matches` or `no file matches` for a prefix.
 New data keeps the chosen row selected while it is still on the list.
@@ -1570,10 +1572,11 @@ keeps the list closed: `@side-chat,` and `@side-chat is a chat` are writing on.
 ## Which conversations and how many rows the @ list shows
 
 The conversations are every tab open in this window, including other projects'
-tabs, except the one you are typing in. Then come the twenty most recent in this
+tabs, except the one you are typing in. An unnamed conversation with nothing sent
+is absent even if its unsent draft names a tab. Then come the twenty most recent in this
 project, read again each time the list opens. Older conversations and other
 projects' saved conversations require `/resume` unless they are already open here.
-Home and the new-chat page leave no conversation off: their sentences start a
+Home and the new-chat page leave no eligible conversation off: their sentences start a
 new conversation, so the one behind them can be a reference too.
 
 The bare `@` keeps eight teams and eight conversations. `@chat:` and `@team:`
@@ -1584,16 +1587,21 @@ at 8 and searched to a pool of 40.
 ## Which folders the @ file list walks and why a new file is missing
 
 The `@` file list walks the conversation's workspace, or your own machine's
-working directory over `--host`. Home's list walks the folder the next conversation
-opens in — the `project:` at the right of the keys row. Moving that target with
-`alt+p` or `/project` walks again. Home offers files and folders, never tasks:
+working directory over `--host`. Home's list walks the pinned target, otherwise
+this window's file root. On a local window that is the workspace, where the next
+conversation opens and what `project:` names while the list is up. Over `--host`,
+the unpinned list offers this machine's files, as a conversation's list does;
+the foot and sent sentence use the far machine's workspace. The row selected
+before opening the list does not choose the file root.
+Moving that target with `alt+p` or `/project` replaces the catalog and walks again. Home offers files and folders, never tasks:
 a task pointer is minted when a conversation sends and home has none yet.
 
 Skipped: `.git`, `vendor`, `node_modules`, every dot-directory, every dot-file and
 every symlink. Unreadable directories are skipped rather than fatal. The walk is
 capped at 10,000 files, with paths relative to its root and forward slashes.
 It runs once per conversation; a file created part-way through will not appear.
-Home keeps its walk until its target changes.
+With its list closed, home keeps its completed walk across arrows over other
+projects and reuses it when the list next opens in the same folder.
 
 File ranking puts a prefix above a substring above a subsequence. The whole path
 and base name are both tried at each tier, with the base name a hair below the path.

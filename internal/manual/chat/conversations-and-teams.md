@@ -320,7 +320,8 @@ The first row is the words **team**, **chat** and **file**. Each is a button wit
 background under the pointer and a one-line hint (`only teams · click`). A press
 types `@team:`, `@chat:` or `@file:`, and the list keeps only that section.
 
-Choosing a team inserts `●harbor` in the team's colour, on home's box too.
+Choosing a team inserts `●harbor` in its current colour, on home's box too;
+a team edit or adoption is reflected on every box.
 Choosing a conversation inserts `@handle`, or a short slug of its title when it
 has none, and the row's hint is the full title. After you send, both stay links.
 A press on the team opens the teams page with it selected. A press on the
@@ -335,14 +336,17 @@ does not message it and does not wake it. Your transcript keeps the words you ty
 ## Which conversations the @ list offers, and why the one I am in is missing
 
 The `@` list offers every tab open in this window, including tabs from other
-projects, except the conversation you are typing in. Pointing at that conversation
-is not a reference, so it is left off. On the new-chat page (`+` on the strip, or
-`ctrl+t`) nothing is left off: the sentence opens a new conversation, so the one
-you came from is on the list.
+projects, except the conversation you are typing in: pointing at it is not a
+reference. An unnamed conversation with nothing sent is absent, even when its
+unsent draft gives its tab a name. On the new-chat page (`+` on the strip, or
+`ctrl+t`) no eligible conversation is left off: the sentence opens a new
+conversation, so the one you came from is on the list.
 
 After the tabs come the twenty most recent conversations in this project, by when
 you last spoke in them. They are read again each time the list opens, including a
-pasted opening, so a conversation started in another window a minute ago is on it.
+pasted opening. Until that fresh read answers, a prefixed multi-word chat search
+stays up with `looking…`, even after an earlier read. Typing further letters into
+an already-open list starts no new read.
 Over `--host` those are the far machine's. An older conversation, or one in another
 project, is offered only if it is already an open tab here; otherwise use `/resume`.
 The same transcript appears once, even when its folder has a symlink spelling.
@@ -351,10 +355,13 @@ The bare `@` keeps eight teams and eight conversations beside the tasks and file
 `@chat:` and `@team:` keep up to thirty-two rows in their section and scroll.
 
 Home's box has the same sections and three prefixes, with one difference: it
-leaves no conversation off, because its sentence opens a new one. The three words
-on its first row are not buttons there; type the prefix. Typing or pasting opens
+leaves no eligible conversation off, because its sentence opens a new one. The
+three words on its first row are not buttons there; type the prefix. Typing or pasting opens
 its catalogs and starts the same reads. Rows arriving keep the row you chose
 selected while it is still offered.
+
+Over `--host`, home's unpinned file list offers this machine's files, as a
+conversation's list does. The foot and sent sentence use the far workspace.
 
 ## Searching the @ list with spaces — @chat:who is
 

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -239,7 +238,13 @@ func mentionToken(chat mentionChat) string {
 func (a *app) fillMentions() {
 	a.comp.teams = a.mentionTeams()
 	a.comp.chats = a.mentionChats()
-	a.comp.recentsLoaded = a.comp.recentsLoaded || len(a.comp.recents) > 0 || a.recentSessions == nil
+	a.comp.recentsLoaded = a.mentionRecentsReady(a.comp.open)
+}
+
+// mentionRecentsReady keeps an opening's cached rows visible while treating
+// its fresh read as pending. Further edits wait for that same read to finish.
+func (a *app) mentionRecentsReady(open bool) bool {
+	return a.recentSessions == nil || !a.comp.recentsPending && (open || a.comp.recentsHeld) && (a.comp.recentsLoaded || len(a.comp.recents) > 0)
 }
 
 func (a *app) mentionTeams() []mentionTeam {
@@ -286,7 +291,7 @@ func (a *app) mentionChatsExcept(front string) []mentionChat {
 	var out []mentionChat
 	seen := map[string]bool{}
 	for _, tab := range a.tabList() {
-		if tab.slot || tab.key == "" || tab.key == front || seen[tab.key] {
+		if tab.slot || tab.key == "" || tab.key == front || seen[tab.key] || !a.mentionableTab(tab) {
 			continue
 		}
 		seen[tab.key] = true
@@ -301,6 +306,33 @@ func (a *app) mentionChatsExcept(front string) []mentionChat {
 		out = append(out, chat)
 	}
 	return out
+}
+
+// mentionableTab distinguishes a conversation's own name or sent opening
+// from the unsent words the strip may borrow. This list never reads a transcript.
+func (a *app) mentionableTab(tab chatTab) bool {
+	named := func(title string) bool {
+		title = strings.TrimSpace(title)
+		return title != "" && title != unnamedConversationWord
+	}
+	if tab.key == a.frontTabKey() {
+		if named(a.title) || strings.TrimSpace(a.openingPrompt) != "" {
+			return true
+		}
+		for _, e := range a.entries {
+			if e.kind == entryUser {
+				return true
+			}
+		}
+		return false
+	}
+	if held := a.behind[tab.key]; held != nil {
+		if held.conv.Agent != nil && named(held.conv.Agent.Title()) {
+			return true
+		}
+		return held.side != nil && (named(held.side.title) || strings.TrimSpace(held.side.openingPrompt) != "")
+	}
+	return named(tab.full)
 }
 
 func (a *app) mentionFromTab(tab chatTab, open bool) mentionChat {
@@ -357,7 +389,7 @@ func (a *app) loadMentionRecents() tea.Cmd {
 	if a.comp.recentsHeld || a.recentSessions == nil {
 		return nil
 	}
-	a.comp.recentsHeld = true
+	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = true, false, true
 	read, hosted := a.recentSessions, a.hosted()
 	return func() tea.Msg {
 		list := read()
@@ -388,7 +420,7 @@ func (a *app) mentionRecentsLoaded(rows []Session, keys ...string) {
 	// The read has landed, so the next opening of the list may ask again.
 	chosen := a.comp.selectionKey(a.comp.selLine())
 	homeChosen := a.home.comp.selectionKey(a.home.cursor)
-	a.comp.recentsHeld, a.comp.recentsLoaded = false, true
+	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = false, true, false
 	a.comp.recents = a.comp.recents[:0]
 	seen := map[string]bool{}
 	for i, row := range rows {
@@ -583,17 +615,15 @@ func (a *app) mentionHeadHint() string {
 // paintDraftMentions colours a "●slug" in the box with its team's colour. The
 // runes stay the runes, so the caret's column does not move.
 func (a *app) paintDraftMentions(block []string) []string {
-	if len(a.comp.teams) == 0 && len(a.wall.teams) == 0 {
-		return block
-	}
-	teams := a.comp.teams
-	if len(teams) == 0 {
-		teams = a.mentionTeams()
-	}
+	var teams []mentionTeam
 	for i, line := range block {
-		plain := ansi.Strip(line)
-		if !strings.Contains(plain, "●") {
+		if !strings.Contains(line, "●") {
 			continue
+		}
+		// Only a row containing a team mark pays for the current catalog. The
+		// conversation's completion snapshot may predate a team edit or adoption.
+		if teams == nil {
+			teams = a.mentionTeams()
 		}
 		for _, team := range teams {
 			token := "●" + team.slug

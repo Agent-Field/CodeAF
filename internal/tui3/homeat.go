@@ -159,63 +159,96 @@ func (h *homeView) completionPath(line homeLine) (string, bool) {
 func (a *app) fillHomeMentions() {
 	a.home.comp.teams = a.mentionTeams()
 	a.home.comp.chats = a.mentionChatsExcept("")
-	a.home.comp.recentsLoaded = a.comp.recentsLoaded || len(a.comp.recents) > 0 || a.recentSessions == nil
+	a.home.comp.recentsLoaded = a.mentionRecentsReady(a.home.comp.open)
 }
 
-// homeCompletionRoot captures the target before the list replaces the project
-// row that supplied it. While the list is up, its own rows have no project address.
+// homeCompletionRoot uses the explicit pin, otherwise the conversation's file
+// root. Hosted lists offer this machine's files while sentences open on the far one.
 func (a *app) homeCompletionRoot() string {
-	if a.home.comp.open && strings.TrimSpace(a.target.where) == "" && a.home.walked != "" {
-		return a.home.walked
+	if pinned := strings.TrimSpace(a.target.where); pinned != "" {
+		return pinned
 	}
-	root := a.targetWhere()
-	if root == "" {
-		root = a.pathRoot()
-	}
-	return root
+	return a.pathRoot()
 }
 
-// prepareHomeCompletion captures the project's address and aligns its catalog
-// before the edit ranks it. A pasted search must not run against an old target.
-func (a *app) prepareHomeCompletion() string {
-	root := a.homeCompletionRoot()
-	a.fillHomeMentions()
+// prepareHomeCompletion supplies catalogs before an edit can rank them. Keys
+// outside a search leave the completed file walk and the mention catalogs alone.
+func (a *app) prepareHomeCompletion(text string) {
 	h := &a.home
-	if h.walked != root {
-		h.comp.all, h.comp.loaded, h.comp.loading = nil, false, false
-		h.walked = root
-		h.comp.rank()
-		if h.comp.open {
-			h.build()
+	h.comp.opened = false
+	h.comp.recentsLoaded = a.mentionRecentsReady(h.comp.open)
+	if !h.comp.open {
+		if text == "" {
+			return
+		}
+		if !strings.Contains(text, "@") {
+			if _, _, ok := atToken(h.box.value, h.box.cursor); !ok {
+				return
+			}
+		}
+		// Only an edit that can open a search needs catalogs in advance. Arrows,
+		// prose and punctuation after a chosen mention preserve the closed cache.
+		value := append(append([]rune(nil), h.box.value[:h.box.cursor]...), []rune(text)...)
+		at, query, ok := atToken(value, len(value))
+		if !ok {
+			return
+		}
+		if h.comp.done != "" && at == h.comp.at && strings.HasPrefix(query, h.comp.done) {
+			tail := []rune(strings.TrimPrefix(query, h.comp.done))
+			if len(tail) == 0 || !mentionContinuation(tail[0]) {
+				return
+			}
 		}
 	}
-	return root
+	a.fillHomeMentions()
+	a.alignHomeFiles(a.homeCompletionRoot())
 }
 
-// syncHomeCompletion starts the same reads for a typed or pasted opening.
-// The root was captured before the edit, while home's project row still existed.
-func (a *app) syncHomeCompletion(was bool, root string) tea.Cmd {
-	files := a.loadHomeFiles(root)
+// syncHomeCompletion starts the same reads for every opening. Catalogs are
+// supplied after nonprinting edits too, before the next frame can draw them.
+func (a *app) syncHomeCompletion(was bool) tea.Cmd {
+	h := &a.home
+	root := a.homeCompletionRoot()
 	var recents tea.Cmd
-	if a.home.comp.open && !was {
+	if (h.comp.open || h.comp.opened) && !was {
 		recents = a.loadMentionRecents()
+		a.fillHomeMentions()
+		a.alignHomeFiles(root)
+		h.build()
+		h.comp.opened = false
 	}
-	return tea.Batch(files, recents)
+	return tea.Batch(a.loadHomeFiles(root), recents)
 }
 
-// loadHomeFiles walks the captured target once, off the loop. Catalogs and
+// loadHomeFiles walks the completion folder once, off the loop. Catalogs and
 // their ranked rows change together, so no frame can paint an old file index.
 func (a *app) loadHomeFiles(root string) tea.Cmd {
 	h := &a.home
 	if !h.comp.open || root == "" {
 		return nil
 	}
+	a.alignHomeFiles(root)
 	if h.comp.loaded || h.comp.loading {
 		return nil
 	}
 	// Home offers no task pointers, so there is no task read to wait for.
 	h.comp.tasksLoaded, h.comp.loading = true, true
 	return func() tea.Msg { return filesLoadedMsg{paths: walkFiles(root, walkCap), home: true, root: root} }
+}
+
+// alignHomeFiles replaces paths and ranked rows together. An opening must not
+// dismiss a spaced file search against a completed walk of another folder.
+func (a *app) alignHomeFiles(root string) {
+	h := &a.home
+	if h.walked == root {
+		return
+	}
+	h.comp.all, h.comp.loaded, h.comp.loading = nil, false, false
+	h.walked = root
+	h.comp.rank()
+	if h.comp.open {
+		h.build()
+	}
 }
 
 // homeFilesLoaded takes the walk back onto home's list and rebuilds the rows

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,8 +125,8 @@ func TestHomeAtTargetChangeNeverLeavesStaleFileRows(t *testing.T) {
 	}
 	_, cmd := a.Update(key("@"))
 	c := &a.home.comp
-	if a.home.walked != other {
-		t.Errorf("opening the list changed its root from the selected project to %q", a.home.walked)
+	if a.home.walked != here || a.targetWhere() != here {
+		t.Errorf("opening walks %q while its sentence opens in %q, want %q", a.home.walked, a.targetWhere(), here)
 	}
 	for _, line := range c.lines {
 		if line.file >= len(c.all) {
@@ -339,6 +340,7 @@ func TestHomeChosenTeamUsesItsColourAtWideAndPhoneWidths(t *testing.T) {
 		a := atHomeWithMentions(t)
 		a.pal = newPalette(tokens.ANSI256, false)
 		a.width, a.height = width, 30
+		a.comp.teams = []mentionTeam{{id: "old", name: "old team", slug: "old-team"}}
 		typeInto(t, a, "@team:h")
 		drive(t, a, key("enter"))
 		lines, _, _, _ := a.homeFrame(width, 30)
@@ -374,8 +376,8 @@ func TestMentionManualSectionsAreShortAndExplainPrefixedSpaces(t *testing.T) {
 	}
 }
 
-// The moved engine conversation and the shell carrying its unsent words have
-// different transcripts, even when the shell's tab borrows those words as its title.
+// The moved conversation remains a reference, while a shell named only by
+// its draft remains a tab without being offered as a conversation.
 func TestMovedDraftTabIsADifferentConversationFromTheRecentRow(t *testing.T) {
 	lab := newHomeLab(t)
 	now := lab.pin(time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC))
@@ -406,30 +408,27 @@ func TestMovedDraftTabIsADifferentConversationFromTheRecentRow(t *testing.T) {
 	a.comp.recentsHeld = false
 	a.recentSessions = func() []Session { return []Session{{File: mine, Title: "user asks who kim jong il is"}} }
 	typeInto(t, a, "@chat:")
-	var draft, recent mentionChat
+	var recent mentionChat
 	for _, chat := range a.home.comp.chatHits {
 		if chat.title == "see node_modules/@types/node is old" {
-			draft = chat
+			t.Errorf("unsent shell is offered as a conversation: %+v", chat)
 		}
 		if chat.title == "user asks who kim jong il is" {
 			recent = chat
 		}
 	}
-	if draft.key == "" || recent.key == "" {
-		t.Fatalf("missing moved fixture rows: %+v", a.home.comp.chatHits)
+	if recent.key == "" || recent.file != mine {
+		t.Fatalf("the moved conversation is missing: %+v", a.home.comp.chatHits)
 	}
-	if draft.key == recent.key || draft.file == recent.file {
-		t.Fatalf("draft and recent are the same transcript: %+v %+v", draft, recent)
-	}
-	if draft.file != filepath.Join(where, "next", "transcript.jsonl") {
-		t.Fatalf("draft tab does not name the new shell: %+v", draft)
+	if name := a.conversationName(); name != "see node_modules/@types/node is old" {
+		t.Fatalf("the draft no longer names its tab: %q", name)
 	}
 	for _, e := range a.entries {
 		if e.kind == entryUser {
 			t.Fatal("the shell already has a sent message")
 		}
 	}
-	t.Logf("draft key=%q file=%q; moved key=%q file=%q; shell has no sent messages", draft.key, draft.file, recent.key, recent.file)
+	t.Logf("moved key=%q file=%q; unsent shell is absent from mentions", recent.key, recent.file)
 }
 
 // The command keeps the hosted rule it was issued under, even if the surface
@@ -474,5 +473,342 @@ func TestHomeAtIgnoresAFileWalkFromItsPreviousTarget(t *testing.T) {
 	spend(t, a, nextCmd)
 	if !a.home.comp.loaded {
 		t.Fatal("the current target's walk did not land")
+	}
+}
+
+// A local list and its foot must describe the same folder all the way through send.
+func TestHomeAtFilesFollowTheSentencesFolder(t *testing.T) {
+	lab := newHomeLab(t)
+	now := lab.pin(time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC))
+	here, other := lab.workspace("here"), lab.workspace("other")
+	mine := lab.session("here", "aaaa000000000001", "here conversation", here, now)
+	theirs := lab.session("other", "aaaa000000000002", "other conversation", other, now)
+	for root, name := range map[string]string{here: "here.md", other: "other.md"} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := lab.app(mine)
+	a.width = 260
+	a.showPage(pageHome)
+	a.home.point(theirs)
+	if a.targetWhere() != other {
+		t.Fatal("fixture did not select the other project")
+	}
+	typeInto(t, a, "@file:")
+	if a.home.walked != here || a.targetWhere() != here {
+		t.Errorf("list walks %q but sentence opens in %q, want %q", a.home.walked, a.targetWhere(), here)
+	}
+	if text := homeText(a); !strings.Contains(text, "here.md") || strings.Contains(text, "other.md") || !strings.Contains(text, targetProjectLead+a.targetProject()) {
+		t.Errorf("files and project foot disagree:\n%s", text)
+	}
+	drive(t, a, key("enter"))
+	typeInto(t, a, " say only ok")
+	assertCompletionSent(t, atBoxes[1], a, "@here.md say only ok")
+	if a.workspace != here {
+		t.Fatalf("started workspace=%q, want %q", a.workspace, here)
+	}
+}
+
+// A project chord must replace the paths and the rows before any frame draws.
+func TestHomeAtProjectChordRebuildsBeforeTheNextFrame(t *testing.T) {
+	lab := newHomeLab(t)
+	now := lab.pin(time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC))
+	one, two := lab.workspace("one"), lab.workspace("two")
+	mine := lab.session("one", "aaaa000000000001", "first chat", one, now)
+	lab.session("two", "aaaa000000000002", "second chat", two, now)
+	for root, name := range map[string]string{one: "one.md", two: "two.md"} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := lab.app(mine)
+	a.showPage(pageHome)
+	a.target.where = one
+	_, first := a.Update(key("@"))
+	a.homeFilesLoaded([]string{"one.md"}, one)
+	_, next := a.Update(key("alt+p"))
+	if a.target.where != two {
+		t.Fatal("project chord did not pin the other folder")
+	}
+	if a.home.walked != two || a.home.comp.loaded || len(a.home.comp.all) != 0 {
+		t.Errorf("project chord retained the old catalog: walked=%q paths=%v loaded=%v", a.home.walked, a.home.comp.all, a.home.comp.loaded)
+	}
+	for _, line := range a.home.comp.lines {
+		if line.file >= len(a.home.comp.all) {
+			t.Errorf("stale file index %d", line.file)
+		}
+	}
+	_ = homeText(a)
+	spend(t, a, first)
+	if a.home.walked != two || a.home.comp.loaded || len(a.home.comp.all) != 0 {
+		t.Error("the old walk replaced the current target")
+	}
+	spend(t, a, next)
+	if text := homeText(a); !strings.Contains(text, "two.md") || strings.Contains(text, "one.md") {
+		t.Errorf("new target's files did not land:\n%s", text)
+	}
+}
+
+// Closed-list navigation must preserve a completed walk for the next opening.
+func TestHomeAtClosedArrowsReuseTheCompletedWalk(t *testing.T) {
+	lab := newHomeLab(t)
+	now := lab.pin(time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC))
+	one, two := lab.workspace("one"), lab.workspace("two")
+	mine := lab.session("one", "aaaa000000000001", "first chat", one, now)
+	other := lab.session("two", "aaaa000000000002", "second chat", two, now)
+	a := lab.app(mine)
+	a.width, a.height = 180, 40
+	a.showPage(pageHome)
+	a.home.point(mine)
+	a.home.walked = a.targetWhere()
+	a.home.comp.all, a.home.comp.loaded = []string{"notes.md"}, true
+	root := a.home.walked
+	a.home.point(other)
+	a.Update(key("down"))
+	a.home.point(mine)
+	a.Update(key("down"))
+	a.home.point(mine)
+	_, cmd := a.Update(key("@"))
+	walks := 0
+	for _, msg := range runCmd(cmd) {
+		if files, ok := msg.(filesLoadedMsg); ok && files.home {
+			walks++
+		}
+	}
+	if a.home.walked != root || !a.home.comp.loaded || walks != 0 {
+		t.Fatalf("cached root=%q reopened=%q loaded=%v new walks=%d, want zero", root, a.home.walked, a.home.comp.loaded, walks)
+	}
+}
+
+// A warm catalog must wait for the opening's fresh read, including on a paste.
+func TestSpacedOpeningRefreshesTheRecentListOnEveryBox(t *testing.T) {
+	for _, b := range atBoxes {
+		for _, pasted := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/paste=%v", b.name, pasted), func(t *testing.T) {
+				a := b.make(t)
+				a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recents = false, true, nil
+				reads := 0
+				a.recentSessions = func() []Session { reads++; return []Session{{File: "/s/brand.jsonl", Title: "brand new conversation"}} }
+				var cmd tea.Cmd
+				if pasted {
+					_, cmd = a.Update(tea.PasteMsg{Content: "@chat:brand new"})
+				} else {
+					_, cmd = a.Update(key("@"))
+					for _, r := range "chat:brand new" {
+						a.Update(key(string(r)))
+					}
+				}
+				c := b.comp(a)
+				if !c.open || !strings.Contains(b.text(a), "looking…") {
+					t.Error("warm opening closed before the fresh recent read answered")
+				}
+				if reads != 0 {
+					t.Fatal("the recent reader ran on the update loop")
+				}
+				spend(t, a, cmd)
+				if reads != 1 || !c.open || len(c.chatHits) != 1 {
+					t.Fatalf("fresh opening reads=%d open=%v hits=%d, want one read and one row", reads, c.open, len(c.chatHits))
+				}
+				drive(t, a, key("x"))
+				if reads != 1 {
+					t.Fatalf("typing in the open list started %d reads", reads)
+				}
+				if c.open {
+					t.Error("a completed unmatched multi-word search stayed open")
+				}
+			})
+		}
+	}
+}
+
+// Plain draft rows must not pay for a team catalog they cannot use.
+func TestPlainDraftTeamPaintingAllocatesNothing(t *testing.T) {
+	a := atHomeWithMentions(t)
+	block := []string{"ordinary draft"}
+	for _, stale := range []bool{false, true} {
+		if stale {
+			a.comp.teams = []mentionTeam{{slug: "old-team"}}
+		}
+		if got := testing.AllocsPerRun(20, func() { a.paintDraftMentions(block) }); got != 0 {
+			t.Errorf("plain row stale=%v allocated %.0f times, want exactly zero", stale, got)
+		}
+	}
+}
+
+// Unsent drafts may name tabs, but only sent or named conversations are references.
+func TestAtListOmitsUnsentShellsOnEveryBox(t *testing.T) {
+	for _, b := range atBoxes {
+		for _, kind := range []string{"draft", "sent", "named"} {
+			t.Run(b.name+"/"+kind, func(t *testing.T) {
+				a := b.make(t)
+				a.title, a.openingPrompt, a.entries = "", "", nil
+				a.file = filepath.Join(t.TempDir(), "shell.jsonl")
+				if err := os.WriteFile(a.file, []byte(`{"type":"session","version":1,"id":"shell"}`+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				a.input.setText("unsent shell words")
+				if kind == "sent" {
+					a.entries = []entry{{kind: entryUser, text: "sent shell words"}}
+				}
+				if kind == "named" {
+					a.title = "named shell"
+				}
+				file := a.file
+				if b.name != "home" {
+					a.input.reset()
+				}
+				typeInto(t, a, "@chat:")
+				found := false
+				for _, chat := range b.comp(a).chatHits {
+					if chat.file == file {
+						found = true
+					}
+				}
+				want := b.name != "conversation" && kind != "draft"
+				if found != want {
+					t.Fatalf("%s front offered=%v, want %v; rows=%+v", kind, found, want, b.comp(a).chatHits)
+				}
+			})
+		}
+	}
+}
+
+// Retrieval must tell a person why a draft-only tab is missing and what home walks.
+func TestMentionManualExplainsSentenceFoldersAndUnsentShells(t *testing.T) {
+	for name, words := range map[string][]string{
+		"home.md":                    {"sentence opens", "project: ", "nothing sent"},
+		"conversations-and-teams.md": {"nothing sent", "fresh read", "looking…"},
+	} {
+		raw, err := os.ReadFile(filepath.Join("..", "manual", "chat", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, word := range words {
+			if !strings.Contains(string(raw), word) {
+				t.Errorf("%s does not explain %q", name, word)
+			}
+		}
+	}
+}
+
+// A hosted list offers this machine's files, while its sentence opens on the far one.
+func TestHomeAtHostedFilesUseLocalRootAndSentenceUsesFarWorkspace(t *testing.T) {
+	a, root := atHome(t)
+	far := "/far/project"
+	a.target.where = ""
+	a.host, a.workspace, a.localRoot = "far", far, root
+	a.width = 260
+	drive(t, a, key("@"))
+	if a.home.walked != root || a.home.walked != a.pathRoot() {
+		t.Fatalf("hosted list walks %q, want local root %q", a.home.walked, root)
+	}
+	walk := a.loadFiles()
+	if walk == nil {
+		t.Fatal("the conversation's file walk did not start")
+	}
+	conversation := walk().(filesLoadedMsg)
+	if got, want := strings.Join(a.home.comp.all, "\n"), strings.Join(conversation.paths, "\n"); got != want {
+		t.Fatalf("hosted home files=%q, conversation files=%q", got, want)
+	}
+	if a.targetWhere() != far {
+		t.Errorf("hosted sentence targets %q, want far workspace %q", a.targetWhere(), far)
+	}
+	if text := homeText(a); !strings.Contains(text, "notes.md") || !strings.Contains(text, targetProjectLead+"far:"+far) {
+		t.Errorf("hosted list must show local files and the foot must name the far workspace:\n%s", text)
+	}
+	drive(t, a, key("n"), key("enter"))
+	typeInto(t, a, " say only ok")
+	assertCompletionSent(t, atBoxes[1], a, "@notes.md say only ok")
+	if a.workspace != far {
+		t.Fatalf("hosted sentence opened in %q, want far workspace %q", a.workspace, far)
+	}
+}
+
+// A ready walk from another target cannot dismiss a paste before the new walk.
+func TestHomeAtSpacedFilePasteWaitsForItsNewFolder(t *testing.T) {
+	a, old := atHome(t)
+	a.home.walked = old
+	a.home.comp.all, a.home.comp.loaded = []string{"old.md"}, true
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "new note.md"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.target.where = root
+	_, cmd := a.Update(tea.PasteMsg{Content: "@file:new note"})
+	if !a.home.comp.open || !a.home.comp.loading || a.home.walked != root {
+		t.Fatalf("new-folder paste open=%v loading=%v walked=%q", a.home.comp.open, a.home.comp.loading, a.home.walked)
+	}
+	spend(t, a, cmd)
+	drive(t, a, key("enter"))
+	if got := a.home.box.String(); got != "@new note.md" {
+		t.Fatalf("new-folder paste chose %q", got)
+	}
+}
+
+// A paste recognizes an opening even when its ready section closes at once.
+func TestUnmatchedPrefixedPasteStillReadsRecentsOnEveryBox(t *testing.T) {
+	for _, b := range atBoxes {
+		for _, query := range []string{"@team:no such", "@file:no such"} {
+			t.Run(b.name+"/"+query, func(t *testing.T) {
+				a := b.make(t)
+				c := b.comp(a)
+				c.all, c.loaded = []string{"unrelated.md"}, true
+				if b.name == "home" {
+					a.home.walked = a.homeCompletionRoot()
+				}
+				a.comp.recentsHeld, a.comp.recentsLoaded = false, true
+				reads := 0
+				a.recentSessions = func() []Session { reads++; return nil }
+				_, cmd := a.Update(tea.PasteMsg{Content: query})
+				if c.open {
+					t.Error("a ready unmatched multi-word section stayed open")
+				}
+				if reads != 0 {
+					t.Fatal("the reader ran on the update loop")
+				}
+				spend(t, a, cmd)
+				if reads != 1 {
+					t.Fatalf("pasted opening read recents %d times, want once", reads)
+				}
+			})
+		}
+	}
+}
+
+// Removing a newline can recognize the same opening as a printable key or paste.
+func TestBackspaceOpeningRefreshesRecentsOnEveryBox(t *testing.T) {
+	for _, b := range atBoxes {
+		t.Run(b.name, func(t *testing.T) {
+			a := b.make(t)
+			c := b.comp(a)
+			c.recentsLoaded = true
+			a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recents = false, true, nil
+			completionBoxEditor(b, a).setText("@chat:brand new\n")
+			reads := 0
+			a.recentSessions = func() []Session { reads++; return []Session{{File: "/s/brand.jsonl", Title: "brand new conversation"}} }
+			_, cmd := a.Update(key("backspace"))
+			if !c.open || !strings.Contains(b.text(a), "looking…") {
+				t.Error("backspace opening did not wait for its fresh recent read")
+			}
+			spend(t, a, cmd)
+			if reads != 1 || !c.open || len(c.chatHits) != 1 {
+				t.Fatalf("backspace reads=%d open=%v hits=%d", reads, c.open, len(c.chatHits))
+			}
+		})
+	}
+}
+
+// A chosen mention in a closed box does not make arrows catalog edits.
+func TestClosedHomeArrowsLeaveMentionCatalogsAlone(t *testing.T) {
+	a, root := atHome(t)
+	a.home.walked = root
+	a.home.comp.all, a.home.comp.loaded = []string{"notes.md"}, true
+	a.home.box.setText("@notes.md")
+	a.home.comp.done = "notes.md"
+	a.home.comp.teams = []mentionTeam{{id: "kept", name: "kept", slug: "kept"}}
+	a.Update(key("down"))
+	if got := a.home.comp.teams; len(got) != 1 || got[0].id != "kept" {
+		t.Fatalf("closed arrow copied a catalog: %+v", got)
 	}
 }

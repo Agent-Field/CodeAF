@@ -78,6 +78,9 @@ var skipDirs = map[string]bool{
 // keeps its walk across closes: the second @ of a session opens instantly.
 type completion struct {
 	open bool
+	// opened records a new @ search even when a ready unmatched section
+	// immediately closes it, because every opening still reads recents.
+	opened bool
 	// at is the rune index of the '@' in the draft, and query what follows it.
 	at    int
 	query string
@@ -139,6 +142,9 @@ type completion struct {
 	recentsHeld bool
 	// recentsLoaded distinguishes an unread catalog from a read that found nothing.
 	recentsLoaded bool
+	// recentsPending marks a scheduled read, so a supplied catalog whose door
+	// is held shut remains ready without being mistaken for an unanswered read.
+	recentsPending bool
 
 	// lines is what the overlay DRAWS, section rules included, and sel is the
 	// line each selectable row sits on, in cursor order. The split is what lets
@@ -175,6 +181,7 @@ func deadLine() compLine {
 // draft is still what it is about — but it answers to [argToken] instead, and
 // it stays open while the person types a path with spaces in it.
 func (c *completion) sync(e *editor) {
+	c.opened = false
 	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
 		c.close()
 		return
@@ -218,6 +225,7 @@ func (c *completion) sync(e *editor) {
 			return
 		}
 	}
+	c.opened = !c.open
 	c.narrow(at, query, false)
 	// A MULTI-WORD SEARCH THAT MATCHES NOTHING AFTER ITS CATALOGS ARRIVE
 	// closes rather than saying `no matches` under it: the words after a
