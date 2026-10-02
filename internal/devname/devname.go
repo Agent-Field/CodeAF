@@ -72,9 +72,24 @@ func Default() string {
 // that was never chosen.
 func Name(dir string) string {
 	if chosen, ok := Chosen(dir); ok {
-		return chosen
+		return Shown(chosen)
 	}
 	return Default()
+}
+
+// mdnsSuffix is what macOS adds to a host name on the local network.
+const mdnsSuffix = ".local"
+
+// Shown is a device name as every screen writes it: without the ".local" a Mac
+// adds to its host name. A device record sealed by an older build holds the raw
+// host name, and the other devices read that record, so the cut is made where a
+// name is read as well as where it is made, and the banner of a moved chat can
+// never disagree with the device list about what a computer is called.
+func Shown(name string) string {
+	if len(name) > len(mdnsSuffix) && strings.EqualFold(name[len(name)-len(mdnsSuffix):], mdnsSuffix) {
+		return name[:len(name)-len(mdnsSuffix)]
+	}
+	return name
 }
 
 // Chosen is the name a person gave this computer, and false when they never did.
