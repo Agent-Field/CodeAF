@@ -92,7 +92,8 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := noteLeftOut(c, e.tree(c), screened, info.Calls); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record what was left out: %w", err)
 	}
-	receipt := newReceipt(info, transcriptRange(c, head))
+	at := e.now()
+	receipt := newReceipt(info, transcriptRange(c, head), at)
 	raw, rid, err := receipt.encode()
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: encode receipt: %w", err)
@@ -104,7 +105,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, err
 	}
-	turn := newTurn(snapshot, parentOf(head), e.now(), info, rid, e.identity())
+	turn := newTurn(snapshot, parentOf(head), at, info, rid, e.identity())
 	if err := appendTurn(c, turn); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record turn: %w", err)
 	}

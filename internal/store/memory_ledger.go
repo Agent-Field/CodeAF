@@ -113,8 +113,19 @@ func (s *Store) MemoryEventsOf(session string) ([]MemoryEvent, error) {
 	return out, rows.Err()
 }
 
+// HoldsMemoryEvent reports whether the journal already holds this event: the
+// same memory, kind and instant.
+func (s *Store) HoldsMemoryEvent(e MemoryEvent) (bool, error) {
+	var found int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id = ? AND kind = ? AND ts = ?`,
+		e.ID, e.Kind, formatTime(e.Time)).Scan(&found)
+	return found > 0, err
+}
+
 // ImportMemoryEvents replays ledgered events into the journal and the views, in
-// the order given, without handing them back to the ledger.
+// the order given, without handing them back to the ledger. An event the journal
+// already holds is not replayed, so a ledger read again after a newer copy of
+// the chat arrived brings in only what is new.
 //
 // An event the views cannot take is skipped, not failed: it is either already
 // reflected here (a memory added twice) or aimed at a memory another
@@ -123,6 +134,12 @@ func (s *Store) ImportMemoryEvents(events []MemoryEvent) error {
 	for _, event := range events {
 		if !ledgered[event.Kind] {
 			return fmt.Errorf("import memory events: %w: %q is not a memory event", ErrInvalid, event.Kind)
+		}
+		if held, err := s.HoldsMemoryEvent(event); err != nil || held {
+			if err != nil {
+				return fmt.Errorf("import memory events: %w", err)
+			}
+			continue
 		}
 		if err := s.importMemoryEvent(event); err != nil {
 			return fmt.Errorf("import memory events: %w", err)
