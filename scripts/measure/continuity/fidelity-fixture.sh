@@ -11,7 +11,7 @@ SCRATCH=/tmp/claude-1001/-home-santosh/aea61d84-87f0-47fc-afde-ed7141b18d38/scra
 # before it deletes anything; /private/tmp is what /tmp resolves to on macOS.
 is_allowed_root() {
   case "$1" in
-    /tmp/* | /private/tmp/* | /home/santosh/caf-vcont-rig* | "$SCRATCH"/*) return 0 ;;
+    /tmp/* | /private/tmp/* | /home/santosh/caf-vcont-rig* | /home/santosh/caf-vfid-rig* | "$SCRATCH"/*) return 0 ;;
   esac
   return 1
 }

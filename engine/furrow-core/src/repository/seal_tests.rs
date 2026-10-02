@@ -5,7 +5,7 @@ use super::*;
 use std::sync::Mutex;
 
 /// The store location comes from the environment, so tests that set it take turns.
-static DATA_DIR: Mutex<()> = Mutex::new(());
+pub(super) static DATA_DIR: Mutex<()> = Mutex::new(());
 
 struct Setup {
     _guard: std::sync::MutexGuard<'static, ()>,

@@ -59,6 +59,15 @@ func (w *SealWatch) Report(err error) {
 	w.fail(err.Error())
 }
 
+// Note says a sentence that is not about a seal failing, such as a file the
+// guard kept out of the saved history. It never changes whether sealing is
+// failing, and it travels the same road as the watch's own sentences.
+func (w *SealWatch) Note(sentence string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.say(sentence)
+}
+
 func (w *SealWatch) fail(cause string) {
 	switch {
 	case !w.failing:

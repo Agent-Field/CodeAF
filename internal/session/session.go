@@ -680,7 +680,12 @@ type Event struct {
 	Kind EventKind
 	// Addressed is a producer's declaration that streamed text is for the person.
 	// It does not imply a completed response and survives interruption.
-	Addressed     bool `json:"Addressed,omitempty"`
+	Addressed bool `json:"Addressed,omitempty"`
+	// Told marks an [EventNotice] as addressed to the person: a surface draws it
+	// as a line to read, and never folds it into the turn's work group with the
+	// dim facts. It is omitted when false, so an older peer sees what it always
+	// saw.
+	Told          bool `json:"Told,omitempty"`
 	Text          string
 	ShortTitle    string `json:"ShortTitle,omitempty"`
 	Tool          string
